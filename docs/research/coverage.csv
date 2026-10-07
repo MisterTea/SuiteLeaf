@@ -1,0 +1,23 @@
+product,ebook_candidates_selected,ebook_candidates_found,ebooks_downloaded,full_guides_downloaded,shortfall_below_five_listings,shortfall_below_five_downloads
+Gmail,6,6,0,1,0,5
+Google Calendar,9,9,0,0,0,5
+Google Meet,5,5,1,1,0,4
+Google Chat,4,4,0,0,1,5
+Google Drive,10,10,1,1,0,4
+Google Docs,9,9,1,1,0,4
+Google Sheets,10,11,0,1,0,5
+Google Slides,7,7,0,1,0,5
+Google Vids,0,0,0,0,5,5
+Google Forms,9,9,2,0,0,3
+Google Sites,5,5,0,1,0,5
+Google Keep,6,6,0,0,0,5
+Google Tasks,5,5,0,0,0,5
+Gemini for Google Workspace,1,1,0,4,4,5
+Gemini Notebook,6,6,3,0,0,2
+AppSheet,2,2,0,1,3,5
+Google Apps Script,10,13,2,0,0,3
+Google Cloud Search,0,0,0,0,5,5
+Admin Console,6,6,0,1,0,5
+Google Vault,4,4,0,1,1,5
+Endpoint Management,2,2,0,0,3,5
+Work Insights,0,0,0,0,5,5

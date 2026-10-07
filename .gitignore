@@ -1,7 +1,7 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
-/node_modules
+**/node_modules/
 /.pnp
 .pnp.js
 
@@ -34,3 +34,22 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Downloaded third-party research books and private validation extracts
+/research-library/
+
+# Downloaded document corpora and generated dataset inventories
+/datasets/
+
+# Build outputs and test artifacts
+**/dist/
+**/out/
+**/release/
+/test-results/
+/playwright-report/
+# Local reference books are not distributed with the Apache-licensed source
+/docs/*.pdf
+/docs/*.epub
+
+# Private text extracted from local reference manuals
+/artifacts/sheets-workflow/**/manual.txt

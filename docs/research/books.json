@@ -1,0 +1,766 @@
+[
+  {
+    "id": "P01",
+    "title": "Google Workspace For Dummies (2024)",
+    "author": "Paul McFedries",
+    "source_url": "https://www.oreilly.com/library/view/google-workspace-for/9781394253227/",
+    "products": [
+      "Gmail",
+      "Google Calendar",
+      "Google Meet",
+      "Google Chat",
+      "Google Drive",
+      "Google Docs",
+      "Google Sheets",
+      "Google Slides",
+      "Google Forms",
+      "Google Keep"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "Wiley. Product coverage verified from contents; AI features are limited coverage.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P02",
+    "title": "G Suite For Dummies (2020)",
+    "author": "Paul McFedries",
+    "source_url": "https://www.oreilly.com/library/view/g-suite-for/9781119742173/",
+    "products": [
+      "Gmail",
+      "Google Calendar",
+      "Google Meet",
+      "Google Chat",
+      "Google Drive",
+      "Google Docs",
+      "Google Sheets",
+      "Google Slides",
+      "Google Forms",
+      "Google Keep"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "Earlier predecessor to P01; substantial overlap. Historical workflows.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P03",
+    "title": "Google Workspace User Guide",
+    "author": "Balaji Iyer",
+    "source_url": "https://www.packtpub.com/en-us/product/google-workspace-user-guide-9781801070683",
+    "products": [
+      "Admin Console",
+      "Endpoint Management",
+      "AppSheet",
+      "Google Apps Script",
+      "Google Calendar"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "Packt, 2022. Configuration and integrations focus; Apps Script and AppSheet chapter, endpoint management section.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P04",
+    "title": "My Google Apps, Second Edition",
+    "author": "Patrice-Anne Rutledge; Sherry Kinkoph Gunter",
+    "source_url": "https://www.oreilly.com/library/view/my-google-apps/9780134165134/",
+    "products": [
+      "Gmail",
+      "Google Calendar",
+      "Google Drive",
+      "Google Docs",
+      "Google Sheets",
+      "Google Slides",
+      "Google Sites",
+      "Google Tasks",
+      "Admin Console",
+      "Google Vault"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "Que, 2015. Historical UI. Hangouts material is not counted as modern Meet or Chat.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P05",
+    "title": "Google Drive & Docs In 30 Minutes, 3rd Edition",
+    "author": "Ian Lamont",
+    "source_url": "https://googledrive.in30minutes.com/",
+    "products": [
+      "Google Drive",
+      "Google Docs",
+      "Google Sheets",
+      "Google Slides",
+      "Google Forms",
+      "Google Sites"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "i30 Media. Publisher also identifies Forms and Sites coverage.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P06",
+    "title": "The Ridiculously Simple Guide to Google Apps (G Suite)",
+    "author": "Scott La Counte",
+    "source_url": "https://play.google.com/store/books/details?id=kNquDwAAQBAJ",
+    "products": [
+      "Google Drive",
+      "Google Docs",
+      "Google Sheets",
+      "Google Slides",
+      "Google Forms"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "Broad suite guide; older interfaces.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P07",
+    "title": "Google Apps: The Missing Manual",
+    "author": "Nancy Conner",
+    "source_url": "https://www.oreilly.com/library/view/google-apps-the/9780596515799/",
+    "products": [
+      "Gmail",
+      "Google Calendar",
+      "Google Docs"
+    ],
+    "status": "licensed access required; historical",
+    "kind": "ebook",
+    "notes": "O'Reilly, 2008. Historical reference; not counted toward current 5-book targets.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false,
+    "count_toward_target": false
+  },
+  {
+    "id": "P08",
+    "title": "Hands-On G Suite for Administrators",
+    "author": "Cesar Anton Dorantes",
+    "source_url": "https://www.packtpub.com/en-us/product/hands-on-g-suite-for-administrators-9781789613018",
+    "products": [
+      "Gmail",
+      "Google Calendar",
+      "Google Meet",
+      "Google Chat",
+      "Google Drive",
+      "Google Sites",
+      "Admin Console",
+      "Google Vault"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "Packt, 2019. Includes Vault and Hangouts Chat/Meet predecessor workflows.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P09",
+    "title": "Democratizing Application Development with AppSheet",
+    "author": "Koichi Tsuji; Suvrutt Gurjar; Takuya Miyai",
+    "source_url": "https://www.packtpub.com/en-us/product/democratizing-application-development-with-appsheet-9781803241173",
+    "products": [
+      "AppSheet"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "Packt, 396 pages.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P10",
+    "title": "Google Apps Script, 2nd Edition",
+    "author": "James Ferreira",
+    "source_url": "https://www.oreilly.com/library/view/google-apps-script/9781491946176/",
+    "products": [
+      "Google Apps Script"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "O'Reilly, 2014. Historical APIs require checking.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P11",
+    "title": "Google Apps Script for Beginners",
+    "author": "Serge Gabet",
+    "source_url": "https://www.packtpub.com/en-us/product/google-apps-script-for-beginners-9781783552184",
+    "products": [
+      "Google Apps Script"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "Packt, 2014. Historical APIs require checking.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P12",
+    "title": "Learning Google Apps Script",
+    "author": "Ramalingam Ganapathy",
+    "source_url": "https://www.packtpub.com/en-us/product/learning-google-apps-script-9781785882456",
+    "products": [
+      "Google Apps Script"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "Packt, 2016. Historical APIs require checking; distinct from RIP Tutorial F08.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P13",
+    "title": "Kickstart Google Apps Script",
+    "author": "Dmitry Kostyuk",
+    "source_url": "https://www.overdrive.com/media/12091230/kickstart-google-apps-script",
+    "products": [
+      "Google Apps Script"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "Library ebook listing; not downloaded.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P14",
+    "title": "A Simpler Guide to Gmail, 6th Edition",
+    "author": "Ceri Clark",
+    "source_url": "https://cericlark.com/gmail-guide-for-beginners-edition-6/",
+    "products": [
+      "Gmail",
+      "Google Calendar",
+      "Google Keep",
+      "Google Tasks"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "Author page and Google Play listing establish suite coverage.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P15",
+    "title": "Tame Your Gmail in 5 Easy Steps with David Allen's GTD",
+    "author": "Dominic Wolff",
+    "source_url": "https://play.google.com/store/books/details?id=krIKBAAAQBAJ",
+    "products": [
+      "Gmail",
+      "Google Calendar",
+      "Google Drive",
+      "Google Tasks"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "2014. Historical productivity workflows.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P16",
+    "title": "ChromeOS System Administrator's Guide",
+    "author": "Packt Publishing",
+    "source_url": "https://www.packtpub.com/en-us/product/chromeos-system-administrators-guide-9781803234236",
+    "products": [
+      "Admin Console",
+      "Endpoint Management"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "Includes Workspace Admin Console; endpoint coverage is ChromeOS-focused.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P17",
+    "title": "Google Workspace Administrator Certification",
+    "author": "Cybellium",
+    "source_url": "https://play.google.com/store/books/details?id=smIsEQAAQBAJ",
+    "products": [
+      "Admin Console"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "Certification ebook listing; full contents not reviewed.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P18",
+    "title": "Cloud Forensics Demystified",
+    "author": "Packt Publishing",
+    "source_url": "https://www.oreilly.com/library/view/-/9781800564411/",
+    "products": [
+      "Admin Console"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "Partial coverage of Workspace auditing and security.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P19",
+    "title": "The Ultimate Guide to eDiscovery with Google Workspace and Google Vault",
+    "author": "Onna",
+    "source_url": "https://www.onna.com/resources/content-library/ultimate-guide-to-ediscovery-with-google-workspace-and-google-vault",
+    "products": [
+      "Google Vault"
+    ],
+    "status": "publisher ebook; download access unresolved",
+    "kind": "ebook",
+    "notes": "Publisher offers ebook. Direct download not obtained.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P20",
+    "title": "A Practical Guide to Effective Data Management and Governance for Google Workspace",
+    "author": "Onna",
+    "source_url": "https://www.onna.com/resources/content-library/guide-to-data-management-and-governance-for-google-workspace",
+    "products": [
+      "Google Vault"
+    ],
+    "status": "publisher ebook; download access unresolved",
+    "kind": "ebook",
+    "notes": "Publisher offers ebook. Direct download not obtained.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P21",
+    "title": "Beginner's Guide to Google Drive",
+    "author": "Barrie (Baz) Roberts",
+    "source_url": "https://bazroberts.com/books/",
+    "products": [
+      "Google Drive"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P22",
+    "title": "Beginner's Guide to Google Docs",
+    "author": "Barrie (Baz) Roberts",
+    "source_url": "https://bazroberts.com/books/",
+    "products": [
+      "Google Docs"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P23",
+    "title": "Beginner's Guide to Google Sheets",
+    "author": "Barrie (Baz) Roberts",
+    "source_url": "https://bazroberts.com/books/",
+    "products": [
+      "Google Sheets"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P24",
+    "title": "Google Sheet Functions: A Step-by-Step Guide",
+    "author": "Barrie (Baz) Roberts",
+    "source_url": "https://bazroberts.com/books/",
+    "products": [
+      "Google Sheets"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P25",
+    "title": "Google Sheets Functions 2",
+    "author": "Barrie (Baz) Roberts",
+    "source_url": "https://bazroberts.com/books/",
+    "products": [
+      "Google Sheets"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P26",
+    "title": "Google Sheets in about an Hour",
+    "author": "Barrie (Baz) Roberts",
+    "source_url": "https://bazroberts.com/books/",
+    "products": [
+      "Google Sheets"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P27",
+    "title": "Step-by-step Guide to Google Forms",
+    "author": "Barrie (Baz) Roberts",
+    "source_url": "https://bazroberts.com/books/",
+    "products": [
+      "Google Forms"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P28",
+    "title": "Step-by-step Guide to Google Slides",
+    "author": "Barrie (Baz) Roberts",
+    "source_url": "https://bazroberts.com/books/",
+    "products": [
+      "Google Slides"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P29",
+    "title": "Step-by-step Guide to Google Meet",
+    "author": "Barrie (Baz) Roberts",
+    "source_url": "https://bazroberts.com/books/",
+    "products": [
+      "Google Meet"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P30",
+    "title": "Step-by-step Guide to Google Sites",
+    "author": "Barrie (Baz) Roberts",
+    "source_url": "https://bazroberts.com/books/",
+    "products": [
+      "Google Sites"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P31",
+    "title": "Beginner's Guide to Apps Script 1 \u2013 Sheets",
+    "author": "Barrie (Baz) Roberts",
+    "source_url": "https://bazroberts.com/books/",
+    "products": [
+      "Google Apps Script",
+      "Google Sheets"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P32",
+    "title": "Beginner's Guide to Apps Script 2 \u2013 Forms",
+    "author": "Barrie (Baz) Roberts",
+    "source_url": "https://bazroberts.com/books/",
+    "products": [
+      "Google Apps Script",
+      "Google Forms"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P33",
+    "title": "Beginner's Guide to Apps Script 3 \u2013 Drive",
+    "author": "Barrie (Baz) Roberts",
+    "source_url": "https://bazroberts.com/books/",
+    "products": [
+      "Google Apps Script",
+      "Google Drive"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P34",
+    "title": "Step-by-step Guide to Apps Script 4 \u2013 Documents",
+    "author": "Barrie (Baz) Roberts",
+    "source_url": "https://bazroberts.com/books/",
+    "products": [
+      "Google Apps Script",
+      "Google Docs"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P35",
+    "title": "Google Apps Script Projects 1",
+    "author": "Barrie (Baz) Roberts",
+    "source_url": "https://bazroberts.com/books/",
+    "products": [
+      "Google Apps Script"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P36",
+    "title": "Google Apps Script Projects 2",
+    "author": "Barrie (Baz) Roberts",
+    "source_url": "https://bazroberts.com/books/",
+    "products": [
+      "Google Apps Script"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P37",
+    "title": "Spreadsheets for Librarians: Getting Results with Excel and Google Sheets",
+    "author": "Bruce White",
+    "source_url": "https://www.bloomsbury.com/ca/spreadsheets-for-librarians-9781440869327/",
+    "products": [
+      "Google Sheets"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "Bloomsbury / Libraries Unlimited. Includes Excel as well as Sheets.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P38",
+    "title": "Going Chromebook: Learn to Master Google Slides",
+    "author": "Brian Schell",
+    "source_url": "https://books.apple.com/us/book/going-chromebook-learn-to-master-google-slides/id1558459359",
+    "products": [
+      "Google Slides"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "Author-published ebook, 2021.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P39",
+    "title": "Understanding Google Docs \u2013 2025 Edition",
+    "author": "Kevin Wilson",
+    "source_url": "https://play.google.com/store/books/details?id=SpWLEQAAQBAJ",
+    "products": [
+      "Google Docs"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "Elluminet Press.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P40",
+    "title": "Google Chat For Beginners",
+    "author": "Voltaire Lumiere",
+    "source_url": "https://books.apple.com/us/book/google-chat-for-beginners-the-comprehensive-guide-to/id6473212127",
+    "products": [
+      "Google Chat"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "Retailer confirms ebook. Full text and quality not assessed.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P41",
+    "title": "All That You Need to Know About Google Keep for Increasing Productivity",
+    "author": "Koushik K",
+    "source_url": "https://play.google.com/store/books/details?id=WXD3DwAAQBAJ",
+    "products": [
+      "Google Keep"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "2018. Full text and quality not assessed.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P42",
+    "title": "Google Keep Productivity Mastery: Setup, Workflows, Automation, and Collaboration",
+    "author": "Ajay",
+    "source_url": "https://play.google.com/store/books/details?id=u0TuEQAAQBAJ",
+    "products": [
+      "Google Keep"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "Retailer listing only; full text and quality not assessed.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P43",
+    "title": "Google Keep Mastery: The Complete Guide to Notes, Lists, and Productivity",
+    "author": "MG",
+    "source_url": "https://play.google.com/store/books/details?id=gVnsEQAAQBAJ",
+    "products": [
+      "Google Keep"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "Retailer listing only; full text and quality not assessed.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P44",
+    "title": "Google Calendar: Smart Agenda \u2013 Shortcuts & Tips Guide",
+    "author": "BEPINKU.COM",
+    "source_url": "https://play.google.com/store/books/details?id=Q20OEgAAQBAJ",
+    "products": [
+      "Google Calendar",
+      "Google Tasks"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "Tasks integration coverage. Retailer listing only; author metadata varies between crawls.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P45",
+    "title": "Google Calendar: The Complete Masterclass & Professional User Guide",
+    "author": "MEDOORI / Mindroot",
+    "source_url": "https://play.google.com/store/books/details?id=N5gDEgAAQBAJ",
+    "products": [
+      "Google Calendar",
+      "Google Tasks"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "Tasks integration coverage. Retailer listing only; author metadata varies between crawls.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P46",
+    "title": "Google NotebookLM Complete Guide",
+    "author": "Hyungjoo Kim",
+    "source_url": "https://play.google.com/store/books/details?id=LB2fEQAAQBAJ",
+    "products": [
+      "Gemini Notebook"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "Retailer listing only; full text and quality not assessed.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P47",
+    "title": "Mastering Google NotebookLM",
+    "author": "Nico Zwaneveld",
+    "source_url": "https://nicozwaneveld.gumroad.com/l/notebooklm",
+    "products": [
+      "Gemini Notebook"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "Author's ebook storefront.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P48",
+    "title": "NotebookLM for Students & Academics: AI-Powered Study & Research",
+    "author": "StoryBuddiesPlay",
+    "source_url": "https://books.apple.com/us/book/notebooklm-for-students-academics-ai-powered-study/id6756457088",
+    "products": [
+      "Gemini Notebook"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "Retailer listing only; full text and quality not assessed.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P49",
+    "title": "Google Gemini For Dummies",
+    "author": "Bonaventura Di Bello",
+    "source_url": "https://www.wiley-vch.de/en?isbn=9781394433018&option=com_eshop&title=Google+Gemini+For+Dummies&view=product",
+    "ebook_listing_url": "https://www.vitalsource.com/mx/products/google-gemini-for-dummies-bonaventura-di-bello-v9781394433025",
+    "products": [
+      "Gemini for Google Workspace"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "Wiley, July 2026. Publisher confirms Workspace workflows; digital ISBN 9781394433025 listed by retailer.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  },
+  {
+    "id": "P50",
+    "title": "Google Sites and Other Google Tools\u2014Bringing Everything Together",
+    "author": "Kyle Brumbaugh; Elizabeth Calhoon",
+    "source_url": "https://play.google.com/store/books/details?id=txRdBAAAQBAJ",
+    "products": [
+      "Google Sites"
+    ],
+    "status": "purchase or licensed access required",
+    "kind": "ebook",
+    "notes": "Teacher Created Materials, 2014. Short educational ebook; classic Sites interface.",
+    "checked_date": "2026-10-06",
+    "full_text_reviewed": false
+  }
+]

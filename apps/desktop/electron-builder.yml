@@ -1,0 +1,30 @@
+appId: org.suiteleaf.app
+productName: SuiteLeaf
+copyright: Copyright © SuiteLeaf contributors
+artifactName: SuiteLeaf-${version}-${os}-${arch}.${ext}
+directories:
+  output: release
+files:
+  - out/**/*
+  - package.json
+extraResources:
+  - from: resources/THIRD_PARTY_NOTICES.txt
+    to: THIRD_PARTY_NOTICES.txt
+icon: resources/icon.png
+asar: true
+mac:
+  icon: resources/icon.icns
+  identity: null
+  category: public.app-category.productivity
+  target:
+    - dmg
+    - zip
+win:
+  icon: resources/icon.ico
+  target:
+    - nsis
+linux:
+  category: Office
+  target:
+    - AppImage
+    - deb

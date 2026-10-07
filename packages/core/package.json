@@ -1,0 +1,20 @@
+{
+  "name": "@suiteleaf/core",
+  "type": "module",
+  "version": "0.1.0",
+  "exports": {
+    ".": "./src/index.ts",
+    "./office": "./src/office.ts"
+  },
+  "dependencies": {
+    "cfb": "^1.2.2",
+    "fast-xml-parser": "^5.11.2",
+    "htmlparser2": "^12.0.0",
+    "jszip": "^3.10.2",
+    "mammoth": "^1.13.0",
+    "pako": "^2.1.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+    "zod": "^4.0.0"
+  },
+  "license": "Apache-2.0"
+}

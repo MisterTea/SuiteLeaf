@@ -1,0 +1,71 @@
+{
+  "generatedAt": "2026-10-07T10:56:01.709Z",
+  "scope": "All inventoried DOCX/XLSX files; every original imported or explicitly rejected through the shared converter",
+  "tested": 13390,
+  "imported": 12932,
+  "encryptedOrInvalid": 451,
+  "capacityLimited": 7,
+  "unexpectedFailures": 0,
+  "formats": {
+    "docx": {
+      "tested": 7427,
+      "imported": 7200,
+      "encryptedOrInvalid": 227,
+      "capacityLimited": 0,
+      "unexpectedFailures": 0
+    },
+    "xlsx": {
+      "tested": 5963,
+      "imported": 5732,
+      "encryptedOrInvalid": 224,
+      "capacityLimited": 7,
+      "unexpectedFailures": 0
+    }
+  },
+  "warnings": "Import success and native round-trip validity do not establish pixel-perfect Word/Excel fidelity. Import compatibility notes describe simplified or unsupported features.",
+  "sourceHashesVerified": 12932,
+  "converterRevisions": [
+    "e256e1ca2c322d406a0fc483bd1827863d36b9bdaddf97b7796020e91e781db3",
+    "eb8a7f00d3e42b7e5e805ceb19d928f79c4998e1bb223b9203629522790b0597"
+  ],
+  "rechecks": "Corrupt secondary ZIP part and two heap-limit failures were rechecked with bounded diagnostics; the per-file records retain the snapshot revision used for each result.",
+  "limits": [
+    {
+      "path": "apache-poi/files/test-data/spreadsheet/poc-shared-strings.xlsx",
+      "code": "content-limit",
+      "reason": "This workbook contains more than 100 MB of cell text; it exceeds the editable import limit."
+    },
+    {
+      "path": "napierone/files/xlsx/2918-xlsx.xlsx",
+      "code": "native-limit",
+      "reason": "The converted workbook exceeds the 200 MB editable native-file limit."
+    },
+    {
+      "path": "napierone/files/xlsx/3243-xlsx.xlsx",
+      "code": "native-limit",
+      "reason": "The converted workbook exceeds the 200 MB editable native-file limit."
+    },
+    {
+      "path": "napierone/files/xlsx/3245-xlsx.xlsx",
+      "code": "native-limit",
+      "reason": "The converted workbook exceeds the 200 MB editable native-file limit."
+    },
+    {
+      "path": "napierone/files/xlsx/3570-xlsx.xlsx",
+      "code": "memory-limit",
+      "reason": "Converter worker exited (SIGABRT)."
+    },
+    {
+      "path": "napierone/files/xlsx/4067-xlsx.xlsx",
+      "code": "expanded-limit",
+      "reason": "This Office package expands beyond the 1 GB import limit."
+    },
+    {
+      "path": "napierone/files/xlsx/4359-xlsx.xlsx",
+      "code": "memory-limit",
+      "reason": "Converter worker exited (SIGABRT)."
+    }
+  ],
+  "unexpected": [],
+  "perFileReport": "datasets/validation/office-final-results/complete-results.jsonl"
+}
