@@ -123,6 +123,8 @@ export function htmlToDocument(html: string): JsonNode {
     }
     if (current.length || !result.length)
       result.push({ type: "paragraph", attrs: attributes, content: current });
+    return result;
+  }
   const BLOCK_TAGS = new Set([
     "p", "h1", "h2", "h3", "h4", "h5", "h6",
     "ul", "ol", "li", "table", "tbody", "thead", "tfoot", "tr", "td", "th",
