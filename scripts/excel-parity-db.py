@@ -345,7 +345,9 @@ def report(db, output):
             categories[category] = categories.get(category, 0) + 1
     stats.update(totals=totals, mismatch_categories=categories)
     (output / 'summary.json').write_text(json.dumps(stats, indent=2) + '\n')
-    lines = ['# Excel visual parity audit', '', f"Workbooks: {stats['total']:,}. Embedded screenshots: {stats['screenshots']:,}.", '',
+    lines = ['# Excel visual parity audit', '',
+             'Coverage scope: one initial viewport per sheet; clipped and offscreen content is not reviewed.', '',
+             f"Workbooks: {stats['total']:,}. Embedded screenshots: {stats['screenshots']:,}.", '',
              '| Format | Status | Parity | Files |', '|---|---|---|---:|']
     for r in counts:
         lines.append(f"| {r['format']} | {r['status']} | { {None: 'inconclusive/unreviewed', 0: 'fail', 1: 'pass'}[r['parity']] } | {r['files']} |")

@@ -1,6 +1,8 @@
 """Bounded native checkpoint regression using synthetic PNGs and mocked UI boundaries."""
 import importlib.util
 import json
+import random
+import re
 from pathlib import Path
 import tempfile
 import unittest
@@ -10,6 +12,51 @@ from PIL import Image
 spec = importlib.util.spec_from_file_location('native', Path(__file__).resolve().parents[1] / 'scripts/excel-parity-native.py')
 native = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(native)
+
+
+class NativeTileFitTests(unittest.TestCase):
+    def test_matches_linear_boundaries_with_variable_and_hidden_sizes(self):
+        rng = random.Random(1370)
+        for _ in range(100):
+            widths = [rng.choice([0, 12, 50, 150, 400]) for _ in range(60)]
+            heights = [rng.choice([0, 11.25, 20, 100, 350]) for _ in range(100)]
+            row, column = rng.randrange(1, 20), rng.randrange(1, 20)
+            row_end, column_end = rng.randrange(50, 100), rng.randrange(30, 60)
+            calls = []
+            def measure(address):
+                calls.append(address)
+                a, b = address.split(':')
+                end_row = int(re.search(r'\d+', b)[0])
+                end_column = 0
+                for ch in re.match(r'[A-Z]+', b)[0]:
+                    end_column = end_column * 26 + ord(ch) - 64
+                return {'width_points':sum(widths[column-1:end_column]),
+                        'height_points':sum(heights[row-1:end_row])}
+            expected_row, expected_column = row_end, column_end
+            while sum(widths[column-1:expected_column]) > 675:
+                expected_column -= 1
+            while sum(heights[row-1:expected_row]) > 375:
+                expected_row -= 1
+            fitted_row, fitted_column, address, dimensions = native.fit_tile(row, column, row_end, column_end, measure)
+            self.assertEqual((fitted_row, fitted_column), (expected_row, expected_column))
+            self.assertLessEqual(dimensions['width_points'], 675)
+            self.assertLessEqual(dimensions['height_points'], 375)
+            self.assertLessEqual(len(calls), 17)
+
+    def test_oversized_cells_and_native_query_retry(self):
+        for axis, dimensions in [('column', {'width_points':676, 'height_points':10}),
+                                 ('row', {'width_points':10, 'height_points':376})]:
+            with self.assertRaisesRegex(RuntimeError, f'One {axis} exceeds'):
+                native.fit_tile(1, 1, 10, 10, lambda address: dimensions)
+        calls = 0
+        def transient(address):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise RuntimeError('Transient native failure')
+            return {'width_points':50, 'height_points':15}
+        self.assertEqual(native.fit_tile(1, 1, 1, 1, transient)[2], 'A1:A1')
+        self.assertEqual(calls, 2)
 
 
 class Watcher:
@@ -58,7 +105,7 @@ class NativeResumeTests(unittest.TestCase):
         if str(args[0]) == 'swift':
             return json.dumps({'id':1, 'name':'Fixture', 'bounds':{'X':0,'Y':0,'Width':800,'Height':600}})
         if 'excel-parity-grid.applescript' in str(args[1]):
-            return json.dumps({'x':0,'y':0,'height':500})
+            return json.dumps({'x':0,'y':0,'width':800,'height':500})
         if str(args[0]) == '/usr/sbin/screencapture':
             path=Path(args[-1]);self.captured.append(path.name)
             if any(f'c{col}.png' in path.name for col in self.fail_columns):
@@ -68,7 +115,16 @@ class NativeResumeTests(unittest.TestCase):
 
     def capture(self):
         with patch.object(native,'excel',self.excel), patch.object(native,'command',self.command), patch.object(native.subprocess,'Popen',Watcher), patch.object(native.time,'sleep'):
-            return native.capture(self.source,self.output)
+            return native.capture(self.source,self.output,single_view=False)
+
+    def test_default_single_view_captures_one_initial_view(self):
+        with patch.object(native,'excel',self.excel), patch.object(native,'command',self.command), patch.object(native.subprocess,'Popen',Watcher), patch.object(native.time,'sleep'):
+            result=native.capture(self.source,self.output)
+        self.assertTrue(result['complete'], result['errors'])
+        self.assertEqual(len(result['screenshots']),1)
+        self.assertEqual(self.captured,['sheet-1-r1c1.png'])
+        self.assertEqual(result['capture_settings']['coverage_mode'], 'one initial viewport per sheet; clipped content accepted')
+        self.assertEqual(result['sheets'][0]['expected_tiles'], ['r1c1'])
 
     def test_interruption_resume_truncated_tail_and_corrupt_images(self):
         self.fail_columns={2}

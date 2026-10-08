@@ -51,6 +51,45 @@ def column_name(column):
     return name
 
 
+def fit_tile(row, column, row_end, column_end, measure):
+    """Find the same maximal paired rectangle without linear native queries.
+
+    Range dimensions are monotone, including hidden (zero-size) rows/columns.
+    Cache measured rectangles and retry each failed native dimension query once.
+    """
+    cache = {}
+
+    def metrics(r, c):
+        key = (r, c)
+        if key not in cache:
+            address = f'{column_name(column)}{row}:{column_name(c)}{r}'
+            cache[key] = retry(lambda: measure(address))
+        return cache[key]
+
+    initial = metrics(row_end, column_end)
+    for axis, limit, field in [('column', 675, 'width_points'), ('row', 375, 'height_points')]:
+        if initial[field] <= limit:
+            continue
+        start, end = (column, column_end) if axis == 'column' else (row, row_end)
+        def size(value):
+            return metrics(row_end, value)[field] if axis == 'column' else metrics(value, column_end)[field]
+        if size(start) > limit:
+            raise RuntimeError(f'One {axis} exceeds paired capture {"width" if axis == "column" else "height"} at 100% zoom')
+        low, high = start, end
+        while low < high:
+            middle = (low + high + 1) // 2
+            if size(middle) <= limit:
+                low = middle
+            else:
+                high = middle - 1
+        if axis == 'column':
+            column_end = low
+        else:
+            row_end = low
+    address = f'{column_name(column)}{row}:{column_name(column_end)}{row_end}'
+    return row_end, column_end, address, metrics(row_end, column_end)
+
+
 class NativeJournal:
     """Append-only completed-tile ledger; no native/UI calls in recovery."""
     image_fields = ('path', 'full_window_path', 'normalized_path')
@@ -110,19 +149,20 @@ class NativeJournal:
         self.tiles[self.key(shot)] = shot
 
 
-def capture(source, output, password='', readable=False):
+def capture(source, output, password='', readable=False, single_view=True):
     output.mkdir(parents=True, exist_ok=True)
     fingerprint = json.loads(command(['python3', ROOT / 'scripts/excel-parity-db.py', 'fingerprint']))
     audit_revision_start = fingerprint['audit_revision']
     result = dict(filename=source.relative_to(ROOT).as_posix() if source.is_relative_to(ROOT) else str(source),
                   source_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
                   excel_version=excel('version'), excel_version_build=fingerprint['excel_version'], application='excel', screenshots=[], sheets=[], errors=[],
-                  audit_revision_start=audit_revision_start, capture_protocol_version=3,
+                  audit_revision_start=audit_revision_start, capture_protocol_version=4,
                   capture_protocol_hash=hashlib.sha256(b''.join((ROOT / 'scripts' / name).read_bytes() for name in
                       ['excel-parity-native.py', 'excel-parity-capture.applescript', 'excel-parity-recover.applescript',
                        'excel-parity-grant-access.applescript', 'excel-parity-window.swift', 'excel-parity-grid.applescript'])).hexdigest(),
                   capture_settings=dict(zoom=100, native_window_points=[1440, 900], supplemental_readability=readable,
-                                        tile_overlap='one complete row and column',
+                                        coverage_mode='one initial viewport per sheet; clipped content accepted' if single_view else 'full used area',
+                                        tile_overlap=None if single_view else 'one complete row and column',
                                         normalization='native points 72dpi to CSS96dpi; retina removed' , screenshot='native-window',
                                         macros='force-disabled', external_links='disabled',
                                         appearance='white sheet; application chrome excluded from review'))
@@ -202,21 +242,17 @@ def capture(source, output, password='', readable=False):
                             tile = retry(lambda: excel('tile', workbook, str(index), str(row), str(col)))
                             tile_id = f'r{row}c{col}'
                             path = output / f'sheet-{index}-{tile_id}.png'
-                            r_end = min(tile['row_end'] - 1, metadata['last_row'])
-                            c_end = min(tile['column_end'] - 1, metadata['last_column'])
-                            requested_range = f'{column_name(tile["column_start"])}{tile["row_start"]}:{column_name(c_end)}{r_end}'
-                            metrics = excel('metrics', workbook, str(index), requested_range)
-                            while metrics['width_points'] > 675 or metrics['height_points'] > 375:
-                                if metrics['width_points'] > 675:
-                                    if c_end <= tile['column_start']:
-                                        raise RuntimeError('One column exceeds paired capture width at 100% zoom')
-                                    c_end -= 1
-                                if metrics['height_points'] > 375:
-                                    if r_end <= tile['row_start']:
-                                        raise RuntimeError('One row exceeds paired capture height at 100% zoom')
-                                    r_end -= 1
-                                requested_range = f'{column_name(tile["column_start"])}{tile["row_start"]}:{column_name(c_end)}{r_end}'
-                                metrics = excel('metrics', workbook, str(index), requested_range)
+                            if single_view:
+                                r_end = tile['row_end'] - 1
+                                c_end = tile['column_end'] - 1
+                                requested_range = tile['range'].replace('$', '')
+                                metrics = retry(lambda: excel('metrics', workbook, str(index), requested_range))
+                            else:
+                                r_end = min(tile['row_end'] - 1, metadata['last_row'])
+                                c_end = min(tile['column_end'] - 1, metadata['last_column'])
+                                r_end, c_end, requested_range, metrics = fit_tile(
+                                    tile['row_start'], tile['column_start'], r_end, c_end,
+                                    lambda address: excel('metrics', workbook, str(index), address))
                             cached = journal.tiles.get((index - 1, sheet['name'], sheet['visibility'], tile_id, requested_range))
                             if cached and NativeJournal.valid(cached):
                                 result['screenshots'].append(cached)
@@ -242,17 +278,29 @@ def capture(source, output, password='', readable=False):
                                 path.rename(full_path)
                                 left = grid_info['x'] - window_info['bounds']['X'] + 22
                                 top = grid_info['y'] - window_info['bounds']['Y'] + 21
-                                crop = [round(left*dpr), round(top*dpr),
-                                        round((left+metrics['width_points'])*dpr),
-                                        round((top+metrics['height_points'])*dpr)]
-                                exact_crop = tile['row_end'] < 1000 and not metadata['freeze_panes']
-                                if exact_crop:
-                                    full_image.crop(crop).save(path)
+                                if single_view:
+                                    # Keep the full visible grid viewport, including partial cells.
+                                    viewport_crop = [
+                                        round((grid_info['x'] - window_info['bounds']['X'])*dpr),
+                                        round((grid_info['y'] - window_info['bounds']['Y'])*dpr),
+                                        round((grid_info['x'] + grid_info['width'] - window_info['bounds']['X'])*dpr),
+                                        round((grid_info['y'] + grid_info['height'] - window_info['bounds']['Y'])*dpr),
+                                    ]
+                                    crop = viewport_crop
+                                    full_image.crop(viewport_crop).save(path)
+                                    exact_crop = False
                                 else:
-                                    # Keep all cell content, including frozen panes. This
-                                    # viewport evidence must be reviewed with its range metadata.
-                                    full_image.crop((round(left*dpr), round(top*dpr), full_image.width,
-                                                     round((grid_info['y']-window_info['bounds']['Y']+grid_info['height']-27)*dpr))).save(path)
+                                    crop = [round(left*dpr), round(top*dpr),
+                                            round((left+metrics['width_points'])*dpr),
+                                            round((top+metrics['height_points'])*dpr)]
+                                    exact_crop = tile['row_end'] < 1000 and not metadata['freeze_panes']
+                                    if exact_crop:
+                                        full_image.crop(crop).save(path)
+                                    else:
+                                        # Keep all cell content, including frozen panes. This
+                                        # viewport evidence must be reviewed with its range metadata.
+                                        full_image.crop((round(left*dpr), round(top*dpr), full_image.width,
+                                                         round((grid_info['y']-window_info['bounds']['Y']+grid_info['height']-27)*dpr))).save(path)
                                 normalized = path.with_name(path.stem + '-96dpi.png')
                                 cropped = Image.open(path)
                                 cropped.resize((round(cropped.width/dpr*96/72),
@@ -275,13 +323,13 @@ def capture(source, output, password='', readable=False):
                             sheet['expected_tiles'].append(tile_id)
                             row_end = r_end if row_end is None else min(row_end, r_end)
                             # Last visible cells may be partial: overlap them on next tile.
-                            if c_end >= metadata['last_column']:
+                            if single_view or c_end >= metadata['last_column']:
                                 break
                             next_col = max(col + 1, c_end - 1)
                             if next_col <= col:
                                 raise RuntimeError('Cannot advance at 100% zoom; oversized or inaccessible columns')
                             col = next_col
-                        if row_end >= metadata['last_row']:
+                        if single_view or row_end >= metadata['last_row']:
                             break
                         next_row = max(row + 1, row_end - 1)
                         if next_row <= row:
@@ -318,13 +366,12 @@ if __name__ == '__main__':
     parser.add_argument('source', type=pathlib.Path)
     parser.add_argument('output', type=pathlib.Path)
     parser.add_argument('--password', default='')
-    parser.add_argument('--readable', action='store_true', help='Supplemental capture with widened columns; retain original-width baseline separately')
     args = parser.parse_args()
     # Shared flock ensures concurrent file agents cannot interfere with Excel.
     lock = pathlib.Path(tempfile.gettempdir()) / 'suiteleaf-excel-visual-parity.lock'
     with lock.open('a') as stream:
         fcntl.flock(stream, fcntl.LOCK_EX)
-        evidence = capture(args.source.resolve(), args.output.resolve(), args.password, args.readable)
+        evidence = capture(args.source.resolve(), args.output.resolve(), args.password, single_view=True)
     print(json.dumps(dict(manifest=str(args.output.resolve() / 'excel.json'),
                          sheets=len(evidence['sheets']), screenshots=len(evidence['screenshots']),
                          errors=evidence['errors'])))

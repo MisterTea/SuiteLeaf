@@ -35,35 +35,32 @@ Read docs/excel-visual-parity.md for capture commands, result contract, and audi
 You exclusively own native Excel and SuiteLeaf source fixes while this task runs.
 Use the actual SuiteLeaf browser importer and native Microsoft Excel, disposable copies,
 macros disabled, external links disabled. Preserve unrelated existing code changes and
-user-open workbooks. Include hidden/very-hidden sheets and full readable content-area
-tiling and drawing extent. Never silently cap screenshots or claim unviewed
-evidence passed. View every paired PNG in YOUR context, no screenshots to the parent.
-The user explicitly requested the entire corpus. Duration, large tile counts, or an
-estimate that capture takes many hours are not reasons to stop deliberately or mark
-coverage incomplete. Continue uncapped capture and review; use checkpoints/resumption.
-An incomplete outcome requires a real, measured resource or capture barrier and its
-concrete evidence (for example exhaustion, a persistent application failure, or an
-inaccessible sheet), not an arbitrary time or screenshot budget.
+user-open workbooks. Include hidden/very-hidden sheets by exposing them in disposable
+copies. Capture exactly one screenshot per sheet in each application, at 100% zoom,
+from its initial A1 view. Keep the full visible grid viewport. Do not pan, scroll to
+other cells, enlarge columns, or take supplemental screenshots. Clipped or unreadable
+content is acceptable; compare only visible, unambiguous content. A pass is scoped to
+the captured view and says nothing about offscreen cells. View every paired PNG in
+YOUR context, no screenshots to the parent.
 Retry each failed capture operation once. Record persistent failures explicitly and
-continue capturing remaining accessible sheets, including after a mismatch.
-Use known documented dataset passwords when available, record remaining barriers.
-Enlarge the native window first if numbers display #####. If width still clips
-values, capture additional --readable evidence using the native helper and apply
-its declared column widths in the corresponding SuiteLeaf disposable view.
-Retain original-width evidence to detect unreadable or truncated content. Prioritize
-correct values, formula results, sheet visibility, charts, and images. Minor font,
-spacing, border, color, or placement differences are acceptable when content stays
-complete, readable, and unambiguous. Do not mask a content problem by changing only
-the reference. Record reference_altered_by_excel=true whenever
-Excel repairs the original; recovered reference cannot establish original parity.
-On first content disparity, FIX the application, test the change meaningfully, then
-recapture and visually review this workbook at the new revision. Repeat until fixed.
-Do not advance to another dataset file or mask missing, changed, or unreadable
-content by changing the reference, removing content, or replacing the real importer.
+continue capturing one screenshot from every remaining sheet, including after a
+mismatch. Use known documented dataset passwords when available, record remaining
+barriers. Prioritize visible values, formula results, sheet visibility, charts, and
+images. Minor font, spacing, border, color, or placement differences are acceptable.
+Do not mask a visible content problem by changing only the reference. Record
+reference_altered_by_excel=true whenever Excel repairs the original; recovered
+reference cannot establish original parity. On first visible content disparity, FIX
+the application, test the change meaningfully, then recapture and visually review this
+workbook at the new revision. Repeat until fixed. Do not advance to another dataset
+file or mask visible missing or changed content by removing it or replacing the real
+importer.
 Write {directory}/result.json following the documented contract. Record exact FINAL
 SuiteLeaf fingerprint by loading scripts/excel-parity-db.py and calling revision().
 Also record audit_revision from its audit_revision() function; both source and
 capture protocol must remain stable throughout the final evidence capture.
+Set capture_settings.coverage_mode to exactly "one initial viewport per sheet; clipped
+content accepted". Set coverage_complete=true only when each sheet has one screenshot
+pair and its visible content has been reviewed.
 Record unresolved implementation issues and incomplete coverage honestly. If a disparity
 cannot be fixed without user input, mark it with errors and do not claim a pass.
 For each observed mismatch review, include a category (values, layout, formatting,

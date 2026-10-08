@@ -440,28 +440,61 @@ async function parseZipPptx(
         }
       }
 
-      // If it's a visible shape without text
-      const geomMatch = /<a:prstGeom\s+prst="([^"]+)"/.exec(spXml);
-      if (geomMatch || fillColor) {
-        let shapeType: "rect" | "roundRect" | "ellipse" | "line" | "arrow" =
-          "rect";
-        const geom = geomMatch ? geomMatch[1] : "rect";
-        if (geom.includes("roundRect")) shapeType = "roundRect";
-        else if (geom.includes("ellipse") || geom.includes("circle"))
-          shapeType = "ellipse";
-        else if (geom.includes("line")) shapeType = "line";
-        else if (geom.includes("Arrow")) shapeType = "arrow";
+      // Check for image fill (<a:blipFill>)
+      const blipMatch = /<a:blip\b([^>]*)\/?>/.exec(spXml);
+      let blipHandled = false;
+      if (blipMatch) {
+        const blipAttrs = parseXmlAttrs(blipMatch[1]);
+        const rId = blipAttrs["r:embed"] || blipAttrs["r:link"];
+        if (rId && slideRels[rId]) {
+          const mediaRelTarget = slideRels[rId].target;
+          const mediaZipPath = resolveZipPath(slidePath, mediaRelTarget);
+          const mediaFile = zip.file(mediaZipPath);
+          if (mediaFile) {
+            const imgBytes = await mediaFile.async("uint8array");
+            const mime = detectImageMime(imgBytes);
+            if (mime) {
+              const b64 = uint8ToBase64(imgBytes);
+              elements.push({
+                id: crypto.randomUUID(),
+                type: "image",
+                x,
+                y,
+                width: w,
+                height: h,
+                src: `data:${mime};base64,${b64}`,
+                alt: "Shape image fill",
+              });
+              blipHandled = true;
+            }
+          }
+        }
+      }
 
-        elements.push({
-          id: crypto.randomUUID(),
-          type: "shape",
-          x,
-          y,
-          width: w,
-          height: h,
-          shapeType,
-          fill: fillColor || "#e2e8f0",
-        });
+      if (!blipHandled) {
+        // If it's a visible shape without text
+        const geomMatch = /<a:prstGeom\s+prst="([^"]+)"/.exec(spXml);
+        if (geomMatch || fillColor) {
+          let shapeType: "rect" | "roundRect" | "ellipse" | "line" | "arrow" =
+            "rect";
+          const geom = geomMatch ? geomMatch[1] : "rect";
+          if (geom.includes("roundRect")) shapeType = "roundRect";
+          else if (geom.includes("ellipse") || geom.includes("circle"))
+            shapeType = "ellipse";
+          else if (geom.includes("line")) shapeType = "line";
+          else if (geom.includes("Arrow")) shapeType = "arrow";
+
+          elements.push({
+            id: crypto.randomUUID(),
+            type: "shape",
+            x,
+            y,
+            width: w,
+            height: h,
+            shapeType,
+            fill: fillColor || "#e2e8f0",
+          });
+        }
       }
     }
 

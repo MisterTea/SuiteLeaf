@@ -96,6 +96,19 @@ describe("powerpoint imports", () => {
     }
   });
 
+  it("imports shapes with blipFill image fills as image elements", async () => {
+    const poiPath = "datasets/apache-poi/files/test-data/slideshow/51187.pptx";
+    if (fs.existsSync(poiPath)) {
+      const buf = fs.readFileSync(poiPath);
+      const res = await parsePowerPoint(buf, "51187.pptx");
+      expect(res.kind).toBe("slide");
+      const slide = res.content.slides[res.content.slideOrder[0]];
+      const imgEl = slide.elements.find((el) => el.type === "image");
+      expect(imgEl).toBeDefined();
+      expect(imgEl?.src).toMatch(/^data:image\/png;base64,/);
+    }
+  });
+
   it("handles password, damaged signature, and regression fixtures without crashing", async () => {
     const edgePaths = [
       "datasets/napierone/files/pptx-password/0001-pptx-password.pptx",

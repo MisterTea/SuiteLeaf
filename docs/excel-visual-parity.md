@@ -40,20 +40,22 @@ earlier verdicts and requeue them for the updated application.
   updates. Preserve user-open workbooks and unrelated repository edits.
 - Capture every worksheet, including hidden and very-hidden worksheets exposed
   only in disposable state. Preserve original visibility in metadata.
-- Capture at 100% zoom with overlapping readable tiles over the entire used
-  area, visible formatting and drawing extent. Blank sheets get one tile.
-- Record actual visible ranges and frozen panes. A screenshot that clips a
-  requested region does not prove coverage. Never silently cap tiles.
+- Capture exactly one screenshot per sheet in each application at 100% zoom.
+  Start at the sheet's initial A1 view and keep the full visible grid viewport.
+  Do not pan, scroll to additional cells, or take supplemental readability
+  screenshots. Clipped cells, drawings, or other content are acceptable.
+- Review only what appears in the paired viewport screenshots. A pass means the
+  visible content matches; it does not claim parity for offscreen content.
+  `coverage_complete` means every sheet has one paired viewport screenshot and a
+  visual review; it does not mean every cell or drawing was captured.
 - Visually inspect every paired image in the file subagent's context, with
   content correctness as the acceptance criterion: displayed values and formula
   results, sheet visibility, and chart/image content must be present and
   readable. Small differences in font metrics, spacing, colors, borders, or
   placement are acceptable unless they hide, clip, alter, or change the meaning
   of content. Application controls and antialiasing do not matter.
-- Enlarge the Excel window when values are clipped. If `#####` persists because
-  a column is too narrow, use `--readable` for supplemental native evidence and
-  its manifest for matching SuiteLeaf widths. Retain original-width baseline
-  captures for layout comparison; record the adjusted widths in both views.
+- Preserve the initial viewport, even when values display as `#####` or other
+  content is clipped. Do not resize, pan, or take extra screenshots to reveal it.
 - Excel recovery is allowed only on disposable copies. Set
   `reference_altered_by_excel: true` if recovery changes the reference; that
   workbook remains inconclusive against the original, even if its recovered
@@ -61,8 +63,8 @@ earlier verdicts and requeue them for the updated application.
 - Fix the first content disparity, run meaningful regression checks, and
   recapture. Do not spend time making harmless pixel-level styling differences
   identical. Do not hide missing or unsupported content to pass.
-- Continue capturing remaining sheets even after a mismatch. Record inaccessible
-  sheets, capture errors, oversized cells and resource barriers as incomplete.
+- Continue capturing one viewport from every remaining sheet after a mismatch.
+  Record inaccessible sheets and capture errors as incomplete.
 - Passwords explicitly documented in dataset metadata may be used. NapierOne
   password variants use `napierone`; unknown passwords are barriers.
 - Only a complete visual review can pass. Excel-readable/SuiteLeaf-rejected files
@@ -85,7 +87,8 @@ relative to the result file. Sheet indices are zero-based, tile IDs are strings.
   "excel_readable": true,
   "sheet_inventory_complete": true,
   "coverage_complete": true,
-  "capture_settings": {"zoom": 100, "appearance": "light"},
+  "capture_settings": {"zoom": 100, "appearance": "light",
+    "coverage_mode": "one initial viewport per sheet; clipped content accepted"},
   "sheets": [
     {"index": 0, "name": "Sheet1", "visibility": "visible",
      "expected_tiles": ["r1c1"], "excel_complete": true,

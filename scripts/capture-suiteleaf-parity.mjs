@@ -53,11 +53,12 @@ export async function captureSuiteLeaf(file, outputDir, options = {}) {
   const captureProtocolHash=createHash('sha256').update(await readFile(new URL(import.meta.url))).digest('hex');
   const sourceHash=createHash('sha256').update(await readFile(file)).digest('hex');
   const source=await sourceSheets(file);
+  const singleViewport=options.excelManifest?.capture_settings?.coverage_mode?.startsWith('one initial viewport')??true;
   const declaredScale=options.excelManifest?.capture_settings?.device_scale_factor??options.excelManifest?.screenshots?.[0]?.device_scale_factor;
   let deviceScaleFactor=options.deviceScaleFactor??declaredScale??1;
   const native=options.excelManifest?.screenshots?.find(t=>t.native_bounds&&t.path);
   if(options.deviceScaleFactor===undefined&&declaredScale===undefined&&native){const png=await readFile(native.path);const logical=native.native_bounds.Width??(native.native_bounds[2]-native.native_bounds[0]);if(logical>0)deviceScaleFactor=png.readUInt32BE(16)/logical;}
-  const manifest={application:'suiteleaf',filename:relative(root,file),complete:false,sheets:[],screenshots:[],errors:[],audit_revision_start:fingerprintStart.audit_revision,capture_protocol_version:2,capture_protocol_hash:captureProtocolHash,capture_revision_start:captureRevisionStart,capture_settings:{zoom:100,device_scale_factor:deviceScaleFactor,appearance:'light',viewport:options.viewport??{width:1800,height:1200},supplemental_readability:!!options.excelManifest?.capture_settings?.supplemental_readability,method:'actual browser UI import and Univer editor'},attempts:0};
+  const manifest={application:'suiteleaf',filename:relative(root,file),complete:false,sheets:[],screenshots:[],errors:[],audit_revision_start:fingerprintStart.audit_revision,capture_protocol_version:3,capture_protocol_hash:captureProtocolHash,capture_revision_start:captureRevisionStart,capture_settings:{zoom:100,device_scale_factor:deviceScaleFactor,appearance:'light',viewport:options.viewport??{width:1440,height:900},coverage_mode:singleViewport?'one initial viewport per sheet; clipped content accepted':'full used area',supplemental_readability:!!options.excelManifest?.capture_settings?.supplemental_readability,method:'actual browser UI import and Univer editor'},attempts:0};
   // Read only complete newline records. A killed append may leave a partial
   // trailing record, which is not a committed checkpoint and must be recaptured.
   const reusable=new Map();
@@ -112,6 +113,7 @@ export async function captureSuiteLeaf(file, outputDir, options = {}) {
         try {
           await page.evaluate(id=>{const w=window.__suiteleafAudit.workbook;const s=w.getSheetBySheetId(id);s.showSheet();w.setActiveSheet(s);s.zoom(1);window.__suiteleafAudit.univerAPI.executeCommand('sheet.operation.set-selections',{unitId:w.getId(),subUnitId:id,selections:[],reveal:false});s.scrollToCell(0,0,0)},match.id);await page.waitForTimeout(400);
           const reference=options.excelManifest?.sheets?.find(s=>s.name?s.name===sheet.name:s.index===sheet.index);
+          entry.excel_complete=reference?.excel_complete===true;
           if(reference?.supplemental&&reference.column_widths_points){
             await page.evaluate(({id,widths})=>{const s=window.__suiteleafAudit.workbook.getSheetBySheetId(id);widths.forEach((w,c)=>s.setColumnWidth(c,w*96/72));},{id:match.id,widths:reference.column_widths_points});
             if(reference.wrap_text) await page.evaluate(({id,rows,columns,heights})=>{const s=window.__suiteleafAudit.workbook.getSheetBySheetId(id);s.getRange(0,0,rows,columns).setWrap(true);heights?.forEach((h,r)=>s.setRowHeight(r,h*96/72));},{id:match.id,rows:reference.last_row,columns:reference.last_column,heights:reference.row_heights_points});
@@ -125,14 +127,14 @@ export async function captureSuiteLeaf(file, outputDir, options = {}) {
           entry.content_bounds=label(bounds);entry.original_freeze=match.snapshot.freeze??null;
           // Add only blank scroll margin beyond the evidence bounds in the disposable
           // browser document. Without it, bottom/right clamping can hide final cells.
-          entry.capture_scroll_margin=await page.evaluate(({id,bounds,viewport})=>{const s=window.__suiteleafAudit.workbook.getSheetBySheetId(id),originalRows=s.getMaxRows(),originalColumns=s.getMaxColumns();const rows=Math.max(originalRows,Math.min(1048576,bounds.endRow+Math.ceil(viewport.height/10)+5)),columns=Math.max(originalColumns,Math.min(16384,bounds.endColumn+Math.ceil(viewport.width/10)+5));if(rows>originalRows)s.setRowCount(rows);if(columns>originalColumns)s.setColumnCount(columns);return {original_rows:originalRows,original_columns:originalColumns,capture_rows:rows,capture_columns:columns,content_bounds_unchanged:true};},{id:match.id,bounds,viewport:manifest.capture_settings.viewport});
+          entry.capture_scroll_margin=singleViewport?{skipped:true,reason:'single initial viewport per sheet'}:await page.evaluate(({id,bounds,viewport})=>{const s=window.__suiteleafAudit.workbook.getSheetBySheetId(id),originalRows=s.getMaxRows(),originalColumns=s.getMaxColumns();const rows=Math.max(originalRows,Math.min(1048576,bounds.endRow+Math.ceil(viewport.height/10)+5)),columns=Math.max(originalColumns,Math.min(16384,bounds.endColumn+Math.ceil(viewport.width/10)+5));if(rows>originalRows)s.setRowCount(rows);if(columns>originalColumns)s.setColumnCount(columns);return {original_rows:originalRows,original_columns:originalColumns,capture_rows:rows,capture_columns:columns,content_bounds_unchanged:true};},{id:match.id,bounds,viewport:manifest.capture_settings.viewport});
           await appendFile(journal,JSON.stringify({event:'sheet',sheet:entry})+'\n');
           if(sheet.drawing_extent_verified===false&&!options.excelManifest) entry.object_extent_unverified=true;
           const requests=options.excelManifest?.screenshots?.filter(t=>t.sheet_name?t.sheet_name===sheet.name:t.sheet_index===sheet.index);
-          const queue=requests?.length?requests.map(t=>({range:typeof t.range==='string'?a1Bounds(t.range):t.range,tile_id:t.tile_id})): [{range:{startRow:0,startColumn:0},tile_id:0}];
+          const queue=requests?.length?requests.slice(0,singleViewport?1:undefined).map(t=>({range:typeof t.range==='string'?a1Bounds(t.range):t.range,tile_id:t.tile_id})): [{range:{startRow:0,startColumn:0,endRow:0,endColumn:0},tile_id:'r1c1'}];
           const visited=new Set(); let tile=0;
           while(queue.length) {
-            const request=queue.shift(),r=request.range;if(!r)throw Error('Invalid requested range');
+              const request=queue.shift(),r=request.range;if(!r)throw Error('Invalid requested range');
             const key=`${r.startRow},${r.startColumn}`;if(visited.has(key))continue;visited.add(key);
             await page.evaluate(({id,r})=>window.__suiteleafAudit.workbook.getSheetBySheetId(id).scrollToCell(r.startRow,r.startColumn,0),{id:match.id,r});await page.waitForTimeout(220);
             const view=await page.evaluate(({id,requested,rtl,freeze})=>{
@@ -154,13 +156,13 @@ export async function captureSuiteLeaf(file, outputDir, options = {}) {
               const fullGridClip={...clip};
               if(requested?.endRow!==undefined){const a=cellRect(requested.startRow,requested.startColumn),z=cellRect(requested.endRow,requested.endColumn);clip={x:box.x+Math.min(a.left,z.left),y:box.y+Math.min(a.top,z.top),width:Math.max(a.right,z.right)-Math.min(a.left,z.left),height:Math.max(a.bottom,z.bottom)-Math.min(a.top,z.top)};if(clip.x<gridLeft||clip.y<box.y+20||clip.x+clip.width>gridRight||clip.y+clip.height>box.bottom-16)throw Error('Paired range pixels do not fit unobscured grid viewport');}
               return {range,viewport_ranges:all,clip,full_grid_clip:fullGridClip,first,scroll_state:state,scroll_pixels:{x:scrollX,y:scrollY}};
-            },{id:match.id,requested:requests?.length?r:null,rtl:match.snapshot.rightToLeft===1,freeze:match.snapshot.freeze});
+            },{id:match.id,requested:requests?.length&&!singleViewport?r:null,rtl:match.snapshot.rightToLeft===1,freeze:match.snapshot.freeze});
             const covered=view.range;
             const visible=view.viewport_ranges.map(v=>v.range);
             const contains=(row,col)=>visible.some(v=>v.startRow<=row&&v.endRow>=row&&v.startColumn<=col&&v.endColumn>=col);
             if(!contains(r.startRow,r.startColumn))throw Error(`Scroll failed to expose ${label({...r,endRow:r.startRow,endColumn:r.startColumn})}; actual ${label(covered)}`);
             const screenshotClip={...view.clip,width:Math.ceil(view.clip.width),height:Math.ceil(view.clip.height)};
-            const tileId=String(request.tile_id??`r${r.startRow+1}c${r.startColumn+1}`),rangeLabel=label(requests?.length?r:covered);
+            const tileId=String(request.tile_id??`r${r.startRow+1}c${r.startColumn+1}`),rangeLabel=label(requests?.length&&!singleViewport?r:covered);
             const reused=reusable.get(`${sheet.index}:${tileId}:${rangeLabel}`);
             if(reused){manifest.screenshots.push(reused);manifest.reused_tile_count++;tile++;}
             else {
@@ -169,14 +171,14 @@ export async function captureSuiteLeaf(file, outputDir, options = {}) {
             if(match.snapshot.freeze?.xSplit||match.snapshot.freeze?.ySplit){fullGridPath=join(outputDir,`suiteleaf-sheet-${sheet.index}-tile-${tile}-full-grid.png`);await page.screenshot({path:fullGridPath,clip:view.full_grid_clip});}
             const normalizedPath=join(outputDir,`suiteleaf-sheet-${sheet.index}-tile-${tile}-96dpi.png`);
             execFileSync('python3',['-c','from PIL import Image; import sys; i=Image.open(sys.argv[1]); scale=float(sys.argv[3]); i.resize((round(i.width/scale),round(i.height/scale)),Image.Resampling.LANCZOS).save(sys.argv[2])',png,normalizedPath,String(deviceScaleFactor)]);
-            manifest.screenshots.push({application:'suiteleaf',sheet_index:sheet.index,sheet_name:sheet.name,visibility:sheet.visibility,range:label(requests?.length?r:covered),visible_range:label(covered),requested_range:requests?.length?label(r):null,tile_id:String(request.tile_id??`r${r.startRow+1}c${r.startColumn+1}`),path:png,normalized_path:normalizedPath,full_grid_path:fullGridPath,scroll_state:view.scroll_state,scroll_pixels:view.scroll_pixels,device_scale_factor:deviceScaleFactor,comparison_dpi:96,image_hash:createHash('sha256').update(await readFile(png)).digest('hex'),normalized_image_hash:createHash('sha256').update(await readFile(normalizedPath)).digest('hex'),full_grid_image_hash:fullGridPath?createHash('sha256').update(await readFile(fullGridPath)).digest('hex'):undefined,visible_ranges:view.viewport_ranges,viewport_ranges:view.viewport_ranges,crop:screenshotClip,requested_cell_rect:view.clip,paired_exact_crop:!!requests?.length});tile++;
+            manifest.screenshots.push({application:'suiteleaf',sheet_index:sheet.index,sheet_name:sheet.name,visibility:sheet.visibility,range:label(requests?.length&&!singleViewport?r:covered),visible_range:label(covered),requested_range:requests?.length&&!singleViewport?label(r):null,tile_id:String(request.tile_id??`r${r.startRow+1}c${r.startColumn+1}`),path:png,normalized_path:normalizedPath,full_grid_path:fullGridPath,scroll_state:view.scroll_state,scroll_pixels:view.scroll_pixels,device_scale_factor:deviceScaleFactor,comparison_dpi:96,image_hash:createHash('sha256').update(await readFile(png)).digest('hex'),normalized_image_hash:createHash('sha256').update(await readFile(normalizedPath)).digest('hex'),full_grid_image_hash:fullGridPath?createHash('sha256').update(await readFile(fullGridPath)).digest('hex'):undefined,visible_ranges:view.viewport_ranges,viewport_ranges:view.viewport_ranges,crop:screenshotClip,requested_cell_rect:view.clip,paired_exact_crop:!!requests?.length&&!singleViewport});tile++;
             }
-            if(requests?.length){
+            if(requests?.length&&!singleViewport){
               const rows=[r.startRow,r.endRow+1,...visible.flatMap(v=>[v.startRow,v.endRow+1])].filter(n=>n>=r.startRow&&n<=r.endRow+1).sort((a,b)=>a-b);
               const cols=[r.startColumn,r.endColumn+1,...visible.flatMap(v=>[v.startColumn,v.endColumn+1])].filter(n=>n>=r.startColumn&&n<=r.endColumn+1).sort((a,b)=>a-b);
               for(const row of rows.slice(0,-1))for(const col of cols.slice(0,-1))if(!contains(row,col))throw Error(`Excel requested tile ${label(r)} has cells outside actual visible viewports`);
             }
-            else {
+            else if(!singleViewport) {
               if(covered.endColumn<bounds.endColumn)queue.push({range:{startRow:r.startRow,startColumn:Math.max(r.startColumn+1,covered.endColumn)},tile_id:undefined});
               if(r.startColumn===0&&covered.endRow<bounds.endRow)queue.push({range:{startRow:Math.max(r.startRow+1,covered.endRow),startColumn:0},tile_id:undefined});
             }
