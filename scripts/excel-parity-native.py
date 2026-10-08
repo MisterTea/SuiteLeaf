@@ -135,7 +135,7 @@ def capture(source, output, password='', readable=False):
             for open_attempt in range(2):
                 grant = subprocess.Popen(['osascript', str(ROOT / 'scripts/excel-parity-grant-access.applescript'), copy.name],
                                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                recovery = subprocess.Popen(['osascript', str(ROOT / 'scripts/excel-parity-recover.applescript'), copy.name],
+                recovery = subprocess.Popen(['osascript', str(ROOT / 'scripts/excel-parity-recover.applescript'), copy.name, copy.stem],
                                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 try:
                     opened = excel('open', str(copy), password, copy.name)
@@ -163,6 +163,8 @@ def capture(source, output, password='', readable=False):
                     if recovery_text.startswith('Recovered disposable workbook:'):
                         result['reference_recovery'] = recovery_text.strip()
                         result['reference_altered_by_excel'] = True
+                    elif recovery_text.startswith('Opened unsupported-content disposable workbook read-only:'):
+                        result['excel_read_only_prompt'] = recovery_text.strip()
             workbook = opened['workbook']
             window_name = pathlib.Path(workbook).stem
             window_info = json.loads(command(['swift', WINDOW, window_name]))
