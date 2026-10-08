@@ -24,11 +24,18 @@ export function excelColumnWidthPixels(
     1,
     Math.round((maxDigitWidthCss * 72) / 96),
   );
-  const contentCharacters =
-    storedCharacters === undefined
-      ? baseCharacters
-      : Math.max(0, storedCharacters - 5 / sourceDigitWidth);
-  return (Math.round(contentCharacters * nativeDigitWidth + 5) * 96) / 72;
+  // Stored OOXML character widths already include their source padding. Scale
+  // the whole stored width into native point glyph units once. Base widths are
+  // unpadded character counts, so only the default adds native UI padding.
+  return (
+    (Math.round(
+      storedCharacters === undefined
+        ? baseCharacters * nativeDigitWidth + 5
+        : storedCharacters * nativeDigitWidth,
+    ) *
+      96) /
+    72
+  );
 }
 
 type ExcelLayout = {

@@ -303,14 +303,19 @@ async function styleTable(zip: JSZip): Promise<Record<string, any>> {
     const bg = color(fill?.patternFill?.fgColor, palette);
     if (bg && fill?.patternFill?.["@_patternType"] !== "none")
       style.bg = { rgb: bg };
-    const a = xf.alignment;
+    const inherited = array<any>(s?.cellStyleXfs?.xf)[Number(xf["@_xfId"] ?? 0)]
+      ?.alignment;
+    const a = b(xf["@_applyAlignment"])
+      ? (xf.alignment ?? {})
+      : (xf.alignment ?? inherited);
     if (a) {
+      if (a["@_horizontal"] === "center") style.pd = { l: 0, r: 0 };
       style.ht =
         ({ left: 1, center: 2, right: 3, justify: 4, distributed: 6 } as any)[
           a["@_horizontal"]
         ] ?? 0;
       style.vt =
-        ({ top: 1, center: 2, bottom: 3 } as any)[a["@_vertical"]] ?? 0;
+        ({ top: 1, center: 2, bottom: 3 } as any)[a["@_vertical"]] ?? 3;
       if (b(a["@_wrapText"])) style.tb = 3;
       if (a["@_textRotation"])
         style.tr = { a: Math.min(90, +a["@_textRotation"]) };

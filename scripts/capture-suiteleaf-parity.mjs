@@ -4,7 +4,7 @@
  * Evidence describes actual visible ranges; requested Excel ranges are never asserted covered without checking.
  */
 import { chromium } from '@playwright/test';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, appendFile } from 'node:fs/promises';
 import { resolve, relative, join, posix } from 'node:path';
 import { createHash } from 'node:crypto';
 import JSZip from 'jszip';
@@ -51,12 +51,29 @@ export async function captureSuiteLeaf(file, outputDir, options = {}) {
   const fingerprintStart=sourceFingerprint();
   const captureRevisionStart=fingerprintStart.suiteleaf_revision;
   const captureProtocolHash=createHash('sha256').update(await readFile(new URL(import.meta.url))).digest('hex');
+  const sourceHash=createHash('sha256').update(await readFile(file)).digest('hex');
   const source=await sourceSheets(file);
   const declaredScale=options.excelManifest?.capture_settings?.device_scale_factor??options.excelManifest?.screenshots?.[0]?.device_scale_factor;
   let deviceScaleFactor=options.deviceScaleFactor??declaredScale??1;
   const native=options.excelManifest?.screenshots?.find(t=>t.native_bounds&&t.path);
   if(options.deviceScaleFactor===undefined&&declaredScale===undefined&&native){const png=await readFile(native.path);const logical=native.native_bounds.Width??(native.native_bounds[2]-native.native_bounds[0]);if(logical>0)deviceScaleFactor=png.readUInt32BE(16)/logical;}
   const manifest={application:'suiteleaf',filename:relative(root,file),complete:false,sheets:[],screenshots:[],errors:[],audit_revision_start:fingerprintStart.audit_revision,capture_protocol_version:2,capture_protocol_hash:captureProtocolHash,capture_revision_start:captureRevisionStart,capture_settings:{zoom:100,device_scale_factor:deviceScaleFactor,appearance:'light',viewport:options.viewport??{width:1800,height:1200},supplemental_readability:!!options.excelManifest?.capture_settings?.supplemental_readability,method:'actual browser UI import and Univer editor'},attempts:0};
+  // Read only complete newline records. A killed append may leave a partial
+  // trailing record, which is not a committed checkpoint and must be recaptured.
+  const reusable=new Map();
+  if(options.resume!==false)for(const attempt of [1,2])try{
+    const text=await readFile(join(outputDir,`capture-attempt-${attempt}.ndjson`),'utf8');
+    const records=text.slice(0,text.lastIndexOf('\n')+1).split('\n').filter(Boolean).map(line=>JSON.parse(line));
+    const header=records[0];
+    if(header?.source_sha256!==sourceHash||header.audit_revision!==fingerprintStart.audit_revision||header.suiteleaf_revision!==captureRevisionStart||JSON.stringify(header.capture_settings)!==JSON.stringify(manifest.capture_settings))continue;
+    for(const record of records)if(record.event==='tile'){
+      const shot=record.screenshot,raw=await readFile(shot.path),normalized=await readFile(shot.normalized_path);
+      if(createHash('sha256').update(raw).digest('hex')!==shot.image_hash||createHash('sha256').update(normalized).digest('hex')!==shot.normalized_image_hash)continue;
+      if(shot.full_grid_path&&createHash('sha256').update(await readFile(shot.full_grid_path)).digest('hex')!==shot.full_grid_image_hash)continue;
+      reusable.set(`${shot.sheet_index}:${shot.tile_id}:${shot.range}`,shot);
+    }
+  }catch{/* Absent/corrupt evidence is recaptured rather than counted. */}
+  manifest.reused_tile_count=0;
   for(let attempt=1;attempt<=2;attempt++) {
     manifest.attempts=attempt;let browser;
     try {
@@ -80,8 +97,14 @@ export async function captureSuiteLeaf(file, outputDir, options = {}) {
       }
       if(!await page.evaluate(()=>!!window.__suiteleafAudit))throw Error(`SuiteLeaf import rejected: ${(await page.locator('body').innerText()).slice(-3000)}`);
       await page.waitForTimeout(800);
-      const imported=await page.evaluate(()=>{const w=window.__suiteleafAudit.workbook;const snap=w.save();return w.getSheets().map((s,index)=>({index,id:s.getSheetId(),name:s.getSheetName(),visibility:['visible','hidden','veryHidden'][s.getHiddenState()]??String(s.getHiddenState()),snapshot:snap.sheets[s.getSheetId()]}))});
+      // The facade can exist before render controllers are registered. Probe the actual
+      // scrolling capability with a deadline rather than sleeping for an assumed duration.
+      await page.waitForFunction(()=>{try{const s=window.__suiteleafAudit.workbook.getActiveSheet();s.scrollToCell(0,0,0);return !!s.getVisibleRange();}catch{return false;}},null,{timeout:60000,polling:250});
+      const imported=await page.evaluate(()=>{const w=window.__suiteleafAudit.workbook;const snap=w.save();return w.getSheets().map((s,index)=>{const snapshot=snap.sheets[s.getSheetId()];let endRow=0,endColumn=0;for(const [r,cells]of Object.entries(snapshot.cellData??{})){endRow=Math.max(endRow,+r);for(const c of Object.keys(cells))endColumn=Math.max(endColumn,+c);}return {index,id:s.getSheetId(),name:s.getSheetName(),visibility:['visible','hidden','veryHidden'][s.getHiddenState()]??String(s.getHiddenState()),snapshot:{...snapshot,cellData:undefined},cell_bounds:{endRow,endColumn}};})});
       manifest.sheets=[];manifest.screenshots=[];manifest.errors=[];
+      const journal=join(outputDir,`capture-attempt-${attempt}.ndjson`);
+      manifest.checkpoint_journal=journal;
+      await writeFile(journal,JSON.stringify({event:'start',filename:manifest.filename,source_sha256:sourceHash,attempt,audit_revision:manifest.audit_revision_start,suiteleaf_revision:manifest.capture_revision_start,capture_settings:manifest.capture_settings})+'\n');
       for(const sheet of source??imported) {
         const match=imported.find(s=>s.name===sheet.name);
         const entry={index:sheet.index,name:sheet.name,visibility:sheet.visibility,expected_tiles:[],excel_complete:false,suiteleaf_complete:false};manifest.sheets.push(entry);
@@ -91,14 +114,19 @@ export async function captureSuiteLeaf(file, outputDir, options = {}) {
           const reference=options.excelManifest?.sheets?.find(s=>s.name?s.name===sheet.name:s.index===sheet.index);
           if(reference?.supplemental&&reference.column_widths_points){
             await page.evaluate(({id,widths})=>{const s=window.__suiteleafAudit.workbook.getSheetBySheetId(id);widths.forEach((w,c)=>s.setColumnWidth(c,w*96/72));},{id:match.id,widths:reference.column_widths_points});
-            entry.supplemental=true;entry.column_widths_points=reference.column_widths_points;await page.waitForTimeout(220);
+            if(reference.wrap_text) await page.evaluate(({id,rows,columns,heights})=>{const s=window.__suiteleafAudit.workbook.getSheetBySheetId(id);s.getRange(0,0,rows,columns).setWrap(true);heights?.forEach((h,r)=>s.setRowHeight(r,h*96/72));},{id:match.id,rows:reference.last_row,columns:reference.last_column,heights:reference.row_heights_points});
+            entry.supplemental=true;entry.column_widths_points=reference.column_widths_points;entry.row_heights_points=reference.row_heights_points;entry.wrap_text=reference.wrap_text;await page.waitForTimeout(220);
           }
           const bounds={...((reference?.last_row&&reference?.last_column?{startRow:0,startColumn:0,endRow:reference.last_row-1,endColumn:reference.last_column-1}:a1Bounds(reference?.content_bounds??reference?.used_range??''))??sheet.bounds??{startRow:0,startColumn:0,endRow:0,endColumn:0})};
-          for(const [r,cells] of Object.entries(match.snapshot.cellData??{})) {bounds.endRow=Math.max(bounds.endRow,+r);for(const c of Object.keys(cells))bounds.endColumn=Math.max(bounds.endColumn,+c);}
+          bounds.endRow=Math.max(bounds.endRow,match.cell_bounds.endRow);bounds.endColumn=Math.max(bounds.endColumn,match.cell_bounds.endColumn);
           // Imported floating objects can extend beyond populated cells. Include their original pixel footprint.
           const objects=await page.evaluate(id=>window.__suiteleafAudit.content.charts?.filter(c=>c.sheetId===id).map(c=>({endX:c.x+c.width,endY:c.y+c.height}))??[],match.id);
           for(const o of objects){bounds.endRow=Math.max(bounds.endRow,Math.ceil(o.endY/(match.snapshot.defaultRowHeight??24)));bounds.endColumn=Math.max(bounds.endColumn,Math.ceil(o.endX/(match.snapshot.defaultColumnWidth??100)));}
           entry.content_bounds=label(bounds);entry.original_freeze=match.snapshot.freeze??null;
+          // Add only blank scroll margin beyond the evidence bounds in the disposable
+          // browser document. Without it, bottom/right clamping can hide final cells.
+          entry.capture_scroll_margin=await page.evaluate(({id,bounds,viewport})=>{const s=window.__suiteleafAudit.workbook.getSheetBySheetId(id),originalRows=s.getMaxRows(),originalColumns=s.getMaxColumns();const rows=Math.max(originalRows,Math.min(1048576,bounds.endRow+Math.ceil(viewport.height/10)+5)),columns=Math.max(originalColumns,Math.min(16384,bounds.endColumn+Math.ceil(viewport.width/10)+5));if(rows>originalRows)s.setRowCount(rows);if(columns>originalColumns)s.setColumnCount(columns);return {original_rows:originalRows,original_columns:originalColumns,capture_rows:rows,capture_columns:columns,content_bounds_unchanged:true};},{id:match.id,bounds,viewport:manifest.capture_settings.viewport});
+          await appendFile(journal,JSON.stringify({event:'sheet',sheet:entry})+'\n');
           if(sheet.drawing_extent_verified===false&&!options.excelManifest) entry.object_extent_unverified=true;
           const requests=options.excelManifest?.screenshots?.filter(t=>t.sheet_name?t.sheet_name===sheet.name:t.sheet_index===sheet.index);
           const queue=requests?.length?requests.map(t=>({range:typeof t.range==='string'?a1Bounds(t.range):t.range,tile_id:t.tile_id})): [{range:{startRow:0,startColumn:0},tile_id:0}];
@@ -132,12 +160,17 @@ export async function captureSuiteLeaf(file, outputDir, options = {}) {
             const contains=(row,col)=>visible.some(v=>v.startRow<=row&&v.endRow>=row&&v.startColumn<=col&&v.endColumn>=col);
             if(!contains(r.startRow,r.startColumn))throw Error(`Scroll failed to expose ${label({...r,endRow:r.startRow,endColumn:r.startColumn})}; actual ${label(covered)}`);
             const screenshotClip={...view.clip,width:Math.ceil(view.clip.width),height:Math.ceil(view.clip.height)};
+            const tileId=String(request.tile_id??`r${r.startRow+1}c${r.startColumn+1}`),rangeLabel=label(requests?.length?r:covered);
+            const reused=reusable.get(`${sheet.index}:${tileId}:${rangeLabel}`);
+            if(reused){manifest.screenshots.push(reused);manifest.reused_tile_count++;tile++;}
+            else {
             const png=join(outputDir,`suiteleaf-sheet-${sheet.index}-tile-${tile}.png`);await page.screenshot({path:png,clip:screenshotClip});
             let fullGridPath;
             if(match.snapshot.freeze?.xSplit||match.snapshot.freeze?.ySplit){fullGridPath=join(outputDir,`suiteleaf-sheet-${sheet.index}-tile-${tile}-full-grid.png`);await page.screenshot({path:fullGridPath,clip:view.full_grid_clip});}
             const normalizedPath=join(outputDir,`suiteleaf-sheet-${sheet.index}-tile-${tile}-96dpi.png`);
             execFileSync('python3',['-c','from PIL import Image; import sys; i=Image.open(sys.argv[1]); scale=float(sys.argv[3]); i.resize((round(i.width/scale),round(i.height/scale)),Image.Resampling.LANCZOS).save(sys.argv[2])',png,normalizedPath,String(deviceScaleFactor)]);
-            manifest.screenshots.push({application:'suiteleaf',sheet_index:sheet.index,sheet_name:sheet.name,visibility:sheet.visibility,range:label(requests?.length?r:covered),visible_range:label(covered),requested_range:requests?.length?label(r):null,tile_id:String(request.tile_id??`r${r.startRow+1}c${r.startColumn+1}`),path:png,normalized_path:normalizedPath,full_grid_path:fullGridPath,scroll_state:view.scroll_state,scroll_pixels:view.scroll_pixels,device_scale_factor:deviceScaleFactor,comparison_dpi:96,image_hash:createHash('sha256').update(await readFile(png)).digest('hex'),visible_ranges:view.viewport_ranges,viewport_ranges:view.viewport_ranges,crop:screenshotClip,requested_cell_rect:view.clip,paired_exact_crop:!!requests?.length});tile++;
+            manifest.screenshots.push({application:'suiteleaf',sheet_index:sheet.index,sheet_name:sheet.name,visibility:sheet.visibility,range:label(requests?.length?r:covered),visible_range:label(covered),requested_range:requests?.length?label(r):null,tile_id:String(request.tile_id??`r${r.startRow+1}c${r.startColumn+1}`),path:png,normalized_path:normalizedPath,full_grid_path:fullGridPath,scroll_state:view.scroll_state,scroll_pixels:view.scroll_pixels,device_scale_factor:deviceScaleFactor,comparison_dpi:96,image_hash:createHash('sha256').update(await readFile(png)).digest('hex'),normalized_image_hash:createHash('sha256').update(await readFile(normalizedPath)).digest('hex'),full_grid_image_hash:fullGridPath?createHash('sha256').update(await readFile(fullGridPath)).digest('hex'):undefined,visible_ranges:view.viewport_ranges,viewport_ranges:view.viewport_ranges,crop:screenshotClip,requested_cell_rect:view.clip,paired_exact_crop:!!requests?.length});tile++;
+            }
             if(requests?.length){
               const rows=[r.startRow,r.endRow+1,...visible.flatMap(v=>[v.startRow,v.endRow+1])].filter(n=>n>=r.startRow&&n<=r.endRow+1).sort((a,b)=>a-b);
               const cols=[r.startColumn,r.endColumn+1,...visible.flatMap(v=>[v.startColumn,v.endColumn+1])].filter(n=>n>=r.startColumn&&n<=r.endColumn+1).sort((a,b)=>a-b);
@@ -147,10 +180,13 @@ export async function captureSuiteLeaf(file, outputDir, options = {}) {
               if(covered.endColumn<bounds.endColumn)queue.push({range:{startRow:r.startRow,startColumn:Math.max(r.startColumn+1,covered.endColumn)},tile_id:undefined});
               if(r.startColumn===0&&covered.endRow<bounds.endRow)queue.push({range:{startRow:Math.max(r.startRow+1,covered.endRow),startColumn:0},tile_id:undefined});
             }
+            // A complete newline record commits this tile after pixel and coverage checks.
+            await appendFile(journal,JSON.stringify({event:'tile',sheet_index:sheet.index,screenshot:manifest.screenshots.at(-1)})+'\n');
           }
           entry.expected_tiles=manifest.screenshots.filter(t=>t.sheet_index===sheet.index).map(t=>t.tile_id);entry.suiteleaf_complete=!entry.object_extent_unverified;
           if(entry.object_extent_unverified)throw Error('Original drawing extents require Excel paired manifest; SuiteLeaf imported no chart extents');
         }catch(e){entry.error=e.message;manifest.errors.push(`${sheet.name}: ${e.message}`);}
+        await appendFile(journal,JSON.stringify({event:'sheet_end',sheet:entry})+'\n');
       }
       manifest.complete=manifest.sheets.length>0&&manifest.sheets.every(s=>s.suiteleaf_complete);
       await browser.close();browser=null;

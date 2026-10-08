@@ -138,6 +138,39 @@ def archive(db, row):
       (history, row['id']))
 
 
+def complete_pass_is_valid(db, row):
+    """Refuse inherited pass flags that lack every reviewed, embedded tile."""
+    if row['status'] != 'complete' or row['parity'] != 1 or row['excel_readable'] != 1:
+        return False
+    sheets, reviews = json.loads(row['sheets']), json.loads(row['reviews'])
+    if not sheets or not reviews:
+        return False
+    if not all(sheet.get('excel_complete') is True and sheet.get('suiteleaf_complete') is True
+               and isinstance(sheet.get('expected_tiles'), list) and sheet['expected_tiles']
+               for sheet in sheets):
+        return False
+    expected = [(sheet['index'], tile) for sheet in sheets for tile in sheet['expected_tiles']]
+    if len(set(expected)) != len(expected):
+        return False
+    reviewed = [(review.get('sheet_index'), review.get('tile_id')) for review in reviews
+                if review.get('parity') is True]
+    if len(reviewed) != len(expected) or set(reviewed) != set(expected):
+        return False
+    if any(review.get('parity') is not True for review in reviews):
+        return False
+    for app in ('excel', 'suiteleaf'):
+        manifest = json.loads(row[app + '_screenshots'])
+        refs = [(item.get('sheet_index'), item.get('tile_id')) for item in manifest]
+        if len(refs) != len(expected) or set(refs) != set(expected):
+            return False
+        for item in manifest:
+            evidence = db.execute('SELECT 1 FROM screenshots WHERE id=? AND workbook_id=? AND application=?',
+                                  (item.get('screenshot_id'), row['id'], app)).fetchone()
+            if not evidence:
+                return False
+    return db.execute('SELECT count(*) FROM screenshots WHERE workbook_id=?', (row['id'],)).fetchone()[0] == len(expected) * 2
+
+
 def initialize(db, output):
     rev, version, protocol = revision(), excel_version(), audit_revision()
     old = {row['filename']: row for row in db.execute('SELECT * FROM workbooks')}
@@ -158,7 +191,13 @@ def initialize(db, output):
         raise ValueError('Frozen inventory changed. Use a new output directory for a changed corpus.')
     for record in inventory:
         previous = old.get(record['filename'])
-        if previous and (previous['source_sha256'], previous['suiteleaf_revision'], previous['excel_version'], previous['audit_revision']) == (record['source_sha256'], rev, version, protocol):
+        valid_previous_pass = not previous or previous['parity'] != 1 or complete_pass_is_valid(db, previous)
+        if previous and not valid_previous_pass:
+            db.execute("UPDATE workbooks SET parity=NULL,status='incomplete',blocked_reasons=? WHERE id=?",
+                       (json.dumps(['Stored pass was missing complete embedded screenshot and review evidence; re-audit required.']), previous['id']))
+            db.commit()
+            previous = db.execute('SELECT * FROM workbooks WHERE id=?', (previous['id'],)).fetchone()
+        if previous and valid_previous_pass and (previous['source_sha256'], previous['suiteleaf_revision'], previous['excel_version'], previous['audit_revision']) == (record['source_sha256'], rev, version, protocol):
             continue
         if previous:
             archive(db, previous)
@@ -348,13 +387,7 @@ def verify(db):
                 ids.append(evidence['id'])
         assert len(ids) == db.execute('SELECT count(*) FROM screenshots WHERE workbook_id=?', (row['id'],)).fetchone()[0]
         if row['parity'] == 1:
-            assert row['status'] == 'complete' and json.loads(row['sheets']) and ids
-            sheets, reviews = json.loads(row['sheets']), json.loads(row['reviews'])
-            expected = {(s['index'], t) for s in sheets for t in s['expected_tiles']}
-            assert all(s['excel_complete'] and s['suiteleaf_complete'] and s['expected_tiles'] for s in sheets)
-            assert {(r['sheet_index'], r['tile_id']) for r in reviews if r.get('parity') is True} == expected
-            for app in ['excel', 'suiteleaf']:
-                assert {(s['sheet_index'], s['tile_id']) for s in json.loads(row[app + '_screenshots'])} == expected
+            assert ids and complete_pass_is_valid(db, row)
     return dict(integrity='ok', filenames=db.execute('SELECT count(*) FROM workbooks').fetchone()[0])
 
 

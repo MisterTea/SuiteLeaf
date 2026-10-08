@@ -155,7 +155,9 @@ export function decryptOfficePackage(
   const node = encryptor.encryptedKey;
   const p = parameters(node),
     data = parameters(root.keyData);
-  const spin = number(node["@_spinCount"], 0, 10000000);
+  // Keep hostile metadata from monopolizing the converter worker. The common
+  // Office value is 100,000; one million leaves room for unusual files.
+  const spin = number(node["@_spinCount"], 0, 1000000);
   const utf16 = new Uint8Array(password.length * 2);
   // Preserve UTF-16 code units, including surrogate pairs.
   for (let i = 0; i < password.length; i++) {
@@ -219,34 +221,42 @@ export function decryptOfficePackage(
     base64(integrity["@_encryptedHmacKey"]),
     secret,
     dataIV(blocks.integrityKey),
-  );
+  ).slice(0, data.hash.outputLen);
   const expectedHmac = decrypt(
     base64(integrity["@_encryptedHmacValue"]),
     secret,
     dataIV(blocks.integrityValue),
   ).subarray(0, data.hash.outputLen);
-  if (!equal(hmac(data.hash, hmacKey, payload), expectedHmac))
-    throw new OfficeImportError(
-      "invalid-encryption",
-      "This password-protected Office file is damaged: its integrity check failed.",
-    );
-  const result = new Uint8Array(length);
-  for (
-    let offset = 0, segment = 0;
-    offset < length;
-    offset += 4096, segment++
-  ) {
-    const block = new Uint8Array(4);
-    new DataView(block.buffer).setUint32(0, segment, true);
-    const end = Math.min(payload.length, 8 + offset + 4096);
-    const decrypted = decrypt(
-      payload.subarray(8 + offset, end),
-      secret,
-      dataIV(block),
-    );
-    result.set(decrypted.subarray(0, Math.min(4096, length - offset)), offset);
+  try {
+    if (!equal(hmac(data.hash, hmacKey, payload), expectedHmac))
+      throw new OfficeImportError(
+        "invalid-encryption",
+        "This password-protected Office file is damaged: its integrity check failed.",
+      );
+    const result = new Uint8Array(length);
+    for (
+      let offset = 0, segment = 0;
+      offset < length;
+      offset += 4096, segment++
+    ) {
+      const block = new Uint8Array(4);
+      new DataView(block.buffer).setUint32(0, segment, true);
+      const end = Math.min(payload.length, 8 + offset + 4096);
+      const decrypted = decrypt(
+        payload.subarray(8 + offset, end),
+        secret,
+        dataIV(block),
+      );
+      result.set(
+        decrypted.subarray(0, Math.min(4096, length - offset)),
+        offset,
+      );
+      block.fill(0);
+      decrypted.fill(0);
+    }
+    return result;
+  } finally {
+    secret.fill(0);
+    hmacKey.fill(0);
   }
-  secret.fill(0);
-  hmacKey.fill(0);
-  return result;
 }

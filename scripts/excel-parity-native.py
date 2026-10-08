@@ -10,6 +10,7 @@ import argparse
 import fcntl
 import hashlib
 import json
+import os
 import pathlib
 import shutil
 import subprocess
@@ -50,13 +51,73 @@ def column_name(column):
     return name
 
 
+class NativeJournal:
+    """Append-only completed-tile ledger; no native/UI calls in recovery."""
+    image_fields = ('path', 'full_window_path', 'normalized_path')
+
+    def __init__(self, path, header):
+        self.path, self.header, self.tiles = path, header, {}
+        matched = False
+        try:
+            data = path.read_bytes()
+            records = [json.loads(line) for line in data[:data.rfind(b'\n') + 1].splitlines()]
+            if records and records[0] == dict(event='start', **header):
+                matched = True
+                # Remove only the uncommitted partial tail, then continue appending.
+                with path.open('r+b') as stream:
+                    stream.truncate(data.rfind(b'\n') + 1)
+                for record in records[1:]:
+                    if record.get('event') == 'tile' and self.valid(record['screenshot']):
+                        self.tiles[self.key(record['screenshot'])] = record['screenshot']
+        except (OSError, ValueError, KeyError):
+            pass
+        if not matched:
+            if path.exists():
+                path.rename(path.with_name(path.name + f'.stale-{time.time_ns()}'))
+            self.append(dict(event='start', **header))
+
+    @staticmethod
+    def key(shot):
+        return (shot['sheet_index'], shot['sheet_name'], shot['visibility'], shot['tile_id'], shot['range'])
+
+    @classmethod
+    def valid(cls, shot):
+        try:
+            for field in cls.image_fields:
+                path = pathlib.Path(shot[field])
+                if hashlib.sha256(path.read_bytes()).hexdigest() != shot[field + '_sha256']:
+                    return False
+                with Image.open(path) as image:
+                    if image.format != 'PNG':
+                        return False
+                    image.load()
+            return True
+        except (OSError, KeyError, ValueError):
+            return False
+
+    def append(self, record):
+        with self.path.open('a') as stream:
+            stream.write(json.dumps(record) + '\n')
+            stream.flush()
+            os.fsync(stream.fileno())
+
+    def commit(self, shot):
+        for field in self.image_fields:
+            shot[field + '_sha256'] = hashlib.sha256(pathlib.Path(shot[field]).read_bytes()).hexdigest()
+        if not self.valid(shot):
+            raise RuntimeError('Native checkpoint contains invalid PNG evidence')
+        self.append(dict(event='tile', screenshot=shot))
+        self.tiles[self.key(shot)] = shot
+
+
 def capture(source, output, password='', readable=False):
     output.mkdir(parents=True, exist_ok=True)
-    audit_revision_start = json.loads(command(['python3', ROOT / 'scripts/excel-parity-db.py', 'fingerprint']))['audit_revision']
+    fingerprint = json.loads(command(['python3', ROOT / 'scripts/excel-parity-db.py', 'fingerprint']))
+    audit_revision_start = fingerprint['audit_revision']
     result = dict(filename=source.relative_to(ROOT).as_posix() if source.is_relative_to(ROOT) else str(source),
                   source_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
-                  excel_version=excel('version'), application='excel', screenshots=[], sheets=[], errors=[],
-                  audit_revision_start=audit_revision_start, capture_protocol_version=2,
+                  excel_version=excel('version'), excel_version_build=fingerprint['excel_version'], application='excel', screenshots=[], sheets=[], errors=[],
+                  audit_revision_start=audit_revision_start, capture_protocol_version=3,
                   capture_protocol_hash=hashlib.sha256(b''.join((ROOT / 'scripts' / name).read_bytes() for name in
                       ['excel-parity-native.py', 'excel-parity-capture.applescript', 'excel-parity-recover.applescript',
                        'excel-parity-grant-access.applescript', 'excel-parity-window.swift', 'excel-parity-grid.applescript'])).hexdigest(),
@@ -108,6 +169,17 @@ def capture(source, output, password='', readable=False):
             window_id = str(window_info['id'])
             grid_info = json.loads(command(['osascript', ROOT / 'scripts/excel-parity-grid.applescript', window_info['name']]))
             result['excel_readable'] = True
+            result['checkpoint_journal'] = str(output / 'native-capture.ndjson')
+            result['reused_tile_count'] = 0
+            # Gate on the original logical workbook name; the unique disposable
+            # copy name changes on reopen and is retained in tile provenance.
+            journal = NativeJournal(output / 'native-capture.ndjson', dict(
+                source_sha256=result['source_sha256'], filename=result['filename'],
+                workbook_name=source.name, excel_version=result['excel_version_build'],
+                audit_revision=audit_revision_start, protocol=result['capture_protocol_hash'],
+                capture_settings=result['capture_settings'],
+                native_window_size={k:window_info['bounds'][k] for k in ['Width','Height']},
+                reference_altered_by_excel=result.get('reference_altered_by_excel', False)))
             for index in range(1, opened['sheet_count'] + 1):
                 sheet = dict(index=index - 1, excel_complete=False, expected_tiles=[])
                 result['sheets'].append(sheet)
@@ -143,70 +215,78 @@ def capture(source, output, password='', readable=False):
                                     r_end -= 1
                                 requested_range = f'{column_name(tile["column_start"])}{tile["row_start"]}:{column_name(c_end)}{r_end}'
                                 metrics = excel('metrics', workbook, str(index), requested_range)
-                            # Allow native workbook rendering to settle before snapshot.
-                            time.sleep(0.15)
-                            retry(lambda: command(['/usr/sbin/screencapture', '-x', '-o', '-l' + window_id, path]))
-                            if path.read_bytes()[:8] != b'\x89PNG\r\n\x1a\n':
-                                raise RuntimeError('Native capture did not produce a PNG')
-                            full_image = Image.open(path)
-                            dpr = full_image.width / window_info['bounds']['Width']
-                            # Excel 16.113.3 at normal view/100% has a 22-point
-                            # row-heading width and a 21-point column-heading height.
-                            # Calibrated against native full-window grid boundary:
-                            # WithChart row boundary y396/397, chart top y398/399,
-                            # native chart top 1.499921 points; the former +22
-                            # height cropped away the original anchor offset.
-                            # Retain
-                            # the unmodified native PNG alongside the tight content crop.
-                            # Wider row headings/frozen panes require manual full-grid review.
-                            full_path = path.with_name(path.stem + '-full.png')
-                            path.rename(full_path)
-                            left = grid_info['x'] - window_info['bounds']['X'] + 22
-                            top = grid_info['y'] - window_info['bounds']['Y'] + 21
-                            crop = [round(left*dpr), round(top*dpr),
-                                    round((left+metrics['width_points'])*dpr),
-                                    round((top+metrics['height_points'])*dpr)]
-                            exact_crop = tile['row_end'] < 1000 and not metadata['freeze_panes']
-                            if exact_crop:
-                                full_image.crop(crop).save(path)
+                            cached = journal.tiles.get((index - 1, sheet['name'], sheet['visibility'], tile_id, requested_range))
+                            if cached and NativeJournal.valid(cached):
+                                result['screenshots'].append(cached)
+                                result['reused_tile_count'] += 1
                             else:
-                                # Keep all cell content, including frozen panes. This
-                                # viewport evidence must be reviewed with its range metadata.
-                                full_image.crop((round(left*dpr), round(top*dpr), full_image.width,
-                                                 round((grid_info['y']-window_info['bounds']['Y']+grid_info['height']-27)*dpr))).save(path)
-                            normalized = path.with_name(path.stem + '-96dpi.png')
-                            cropped = Image.open(path)
-                            cropped.resize((round(cropped.width/dpr*96/72),
-                                            round(cropped.height/dpr*96/72)), Image.Resampling.LANCZOS).save(normalized)
-                            result['screenshots'].append(dict(application='excel', sheet_index=index - 1,
-                                sheet_name=sheet['name'], visibility=sheet['visibility'], range=requested_range, viewport_range=tile['range'].replace('$', ''),
-                                device_scale_factor=dpr, full_window_path=str(full_path),
-                                normalized_path=str(normalized), exact_cell_crop=exact_crop,
-                                crop_uncertainty=None if exact_crop else 'Frozen panes or wide row headings; inspect full window evidence',
-                                crop_pixels=crop, native_dpi=72, comparison_dpi=96,
-                                heading_width_points=22, heading_height_points=21,
-                                crop_calibration='Excel 16.113.3 normal view at 100%; measured header/grid boundary and native chart point geometry',
-                                range_width_points=metrics['width_points'], range_height_points=metrics['height_points'],
-                                tile_id=tile_id, path=str(path), native_bounds=window_info['bounds'],
-                                scroll_row=row, scroll_column=col,
-                                row_start=tile['row_start'], row_end=tile['row_end'],
-                                column_start=tile['column_start'], column_end=tile['column_end']))
+                                # Allow native workbook rendering to settle before snapshot.
+                                time.sleep(0.15)
+                                retry(lambda: command(['/usr/sbin/screencapture', '-x', '-o', '-l' + window_id, path]))
+                                if path.read_bytes()[:8] != b'\x89PNG\r\n\x1a\n':
+                                    raise RuntimeError('Native capture did not produce a PNG')
+                                full_image = Image.open(path)
+                                dpr = full_image.width / window_info['bounds']['Width']
+                                # Excel 16.113.3 at normal view/100% has a 22-point
+                                # row-heading width and a 21-point column-heading height.
+                                # Calibrated against native full-window grid boundary:
+                                # WithChart row boundary y396/397, chart top y398/399,
+                                # native chart top 1.499921 points; the former +22
+                                # height cropped away the original anchor offset.
+                                # Retain
+                                # the unmodified native PNG alongside the tight content crop.
+                                # Wider row headings/frozen panes require manual full-grid review.
+                                full_path = path.with_name(path.stem + '-full.png')
+                                path.rename(full_path)
+                                left = grid_info['x'] - window_info['bounds']['X'] + 22
+                                top = grid_info['y'] - window_info['bounds']['Y'] + 21
+                                crop = [round(left*dpr), round(top*dpr),
+                                        round((left+metrics['width_points'])*dpr),
+                                        round((top+metrics['height_points'])*dpr)]
+                                exact_crop = tile['row_end'] < 1000 and not metadata['freeze_panes']
+                                if exact_crop:
+                                    full_image.crop(crop).save(path)
+                                else:
+                                    # Keep all cell content, including frozen panes. This
+                                    # viewport evidence must be reviewed with its range metadata.
+                                    full_image.crop((round(left*dpr), round(top*dpr), full_image.width,
+                                                     round((grid_info['y']-window_info['bounds']['Y']+grid_info['height']-27)*dpr))).save(path)
+                                normalized = path.with_name(path.stem + '-96dpi.png')
+                                cropped = Image.open(path)
+                                cropped.resize((round(cropped.width/dpr*96/72),
+                                                round(cropped.height/dpr*96/72)), Image.Resampling.LANCZOS).save(normalized)
+                                result['screenshots'].append(dict(application='excel', sheet_index=index - 1,
+                                    sheet_name=sheet['name'], visibility=sheet['visibility'], range=requested_range, viewport_range=tile['range'].replace('$', ''),
+                                    device_scale_factor=dpr, full_window_path=str(full_path),
+                                    normalized_path=str(normalized), exact_cell_crop=exact_crop,
+                                    crop_uncertainty=None if exact_crop else 'Frozen panes or wide row headings; inspect full window evidence',
+                                    crop_pixels=crop, native_dpi=72, comparison_dpi=96,
+                                    heading_width_points=22, heading_height_points=21,
+                                    crop_calibration='Excel 16.113.3 normal view at 100%; measured header/grid boundary and native chart point geometry',
+                                    range_width_points=metrics['width_points'], range_height_points=metrics['height_points'],
+                                    tile_id=tile_id, path=str(path), native_bounds=window_info['bounds'],
+                                    scroll_row=row, scroll_column=col,
+                                    row_start=tile['row_start'], row_end=tile['row_end'],
+                                    column_start=tile['column_start'], column_end=tile['column_end'],
+                                    disposable_workbook_name=workbook, logical_workbook_name=source.name))
+                                journal.commit(result['screenshots'][-1])
                             sheet['expected_tiles'].append(tile_id)
                             row_end = r_end if row_end is None else min(row_end, r_end)
                             # Last visible cells may be partial: overlap them on next tile.
                             if c_end >= metadata['last_column']:
                                 break
-                            next_col = c_end - 1
+                            next_col = max(col + 1, c_end - 1)
                             if next_col <= col:
                                 raise RuntimeError('Cannot advance at 100% zoom; oversized or inaccessible columns')
                             col = next_col
                         if row_end >= metadata['last_row']:
                             break
-                        next_row = row_end - 1
+                        next_row = max(row + 1, row_end - 1)
                         if next_row <= row:
                             raise RuntimeError('Cannot advance at 100% zoom; oversized or inaccessible rows')
                         row = next_row
-                    sheet['excel_complete'] = True
+                    sheet['excel_complete'] = bool(sheet['expected_tiles'])
+                    journal.append(dict(event='sheet_end', sheet=sheet))
                 except Exception as error:
                     sheet['blocked_reason'] = str(error)
                     result['errors'].append(dict(sheet_index=index - 1, reason=str(error)))
@@ -226,6 +306,7 @@ def capture(source, output, password='', readable=False):
             result['audit_revision'] = json.loads(command(['python3', ROOT / 'scripts/excel-parity-db.py', 'fingerprint']))['audit_revision']
             if result['audit_revision'] != audit_revision_start:
                 result['errors'].append(dict(reason='Capture helper fingerprint changed during capture; recapture required'))
+            result['complete'] = bool(result['sheets']) and not result['errors'] and all(s.get('excel_complete') and s.get('expected_tiles') for s in result['sheets'])
             (output / 'excel.json').write_text(json.dumps(result, indent=2) + '\n')
     return result
 

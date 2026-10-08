@@ -10,6 +10,17 @@ describe("Excel Normal font character widths", () => {
     expect(excelColumnWidthPixels(7.43, 15.28515625)).toBe((92 * 96) / 72);
     expect(excelColumnWidthPixels(7.43, 12.42578125)).toBe((75 * 96) / 72);
   });
+  it("matches all source column boundaries in a genuine native form capture", () => {
+    const chars = [
+      4.77734375, 8.33203125, 4.6640625, 4.6640625, 4, 4.33203125, 6.33203125,
+      5, 6.109375, 3.33203125, 3.33203125, 8.6640625, 8.6640625, 8.6640625,
+      10.6640625,
+    ];
+    const points = [29, 50, 28, 28, 24, 26, 38, 30, 37, 20, 20, 52, 52, 52, 64];
+    expect(chars.map((w) => excelColumnWidthPixels(8, w))).toEqual(
+      points.map((w) => (w * 96) / 72),
+    );
+  });
   it("uses the standard 96 dpi stored-width conversion on other platforms", () => {
     expect(excelColumnWidthPixels(7, 15.28515625, 8, false)).toBe(107);
   });

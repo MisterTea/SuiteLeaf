@@ -152,6 +152,29 @@ class LedgerTests(unittest.TestCase):
         finally:
             db.close()
 
+    def test_resume_quarantines_an_older_false_pass_without_reviewed_images(self):
+        root = self.output / 'project'
+        files = root / 'datasets/sample/files'
+        files.mkdir(parents=True)
+        (files / 'one.xlsx').write_bytes(b'owned original')
+        output = root / 'audit'
+        db = ledger.connect(output)
+        try:
+            with patch.object(ledger, 'ROOT', root), patch.object(ledger, 'revision', return_value='r1'), patch.object(ledger, 'excel_version', return_value='v'), patch.object(ledger, 'audit_revision', return_value='p1'):
+                ledger.initialize(db, output)
+                db.execute("UPDATE workbooks SET status='complete',parity=1,finished_at=?", (ledger.now(),))
+                db.commit()
+                ledger.initialize(db, output)
+                current = db.execute('SELECT status,parity,blocked_reasons FROM workbooks').fetchone()
+                self.assertEqual((current['status'], current['parity']), ('pending', None))
+                self.assertEqual(db.execute('SELECT count(*) FROM audit_history').fetchone()[0], 1)
+                old = json.loads(db.execute('SELECT workbook_record FROM audit_history').fetchone()[0])
+                self.assertEqual(old['status'], 'incomplete')
+                self.assertIsNone(old['parity'])
+                self.assertIn('re-audit required', old['blocked_reasons'])
+        finally:
+            db.close()
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -43,9 +43,9 @@ on run argv
    end if
    return "true"
   end if
-  if operation is "exists" then return (exists workbook (item 2 of argv)) as text
+  if operation is "exists" then return ((name of every workbook) contains (item 2 of argv)) as text
   if operation is "open" then
-   set oldSecurity to automation security
+   set oldSecurity to automation security as text
    set automation security to msoAutomationSecurityForceDisable
    try
     set pwd to ""
@@ -56,12 +56,18 @@ on run argv
     if count of argv < 4 then error "Disposable workbook name is required"
     set expectedWorkbook to item 4 of argv
     repeat 150 times
-     if exists workbook expectedWorkbook then exit repeat
+     if (name of every workbook) contains expectedWorkbook then exit repeat
      delay 0.2
     end repeat
-    if not (exists workbook expectedWorkbook) then error "Audited workbook did not finish opening"
+    if not ((name of every workbook) contains expectedWorkbook) then error "Audited workbook did not finish opening"
     set wb to workbook expectedWorkbook
-    set automation security to oldSecurity
+    if oldSecurity is "msoAutomationSecurityLow" then
+     set automation security to msoAutomationSecurityLow
+    else if oldSecurity is "msoAutomationSecurityByUI" then
+     set automation security to msoAutomationSecurityByUI
+    else
+     set automation security to msoAutomationSecurityForceDisable
+    end if
     activate
     try
      set bounds of active window to {6, 33, 1206, 833}
@@ -78,7 +84,13 @@ on run argv
     end tell
     return "{\"workbook\":" & my jsonString(name of wb) & ",\"sheet_count\":" & (count of sheets of wb) & ",\"excel_version\":" & my jsonString(version) & "}"
    on error msg number n
-    set automation security to oldSecurity
+    if oldSecurity is "msoAutomationSecurityLow" then
+     set automation security to msoAutomationSecurityLow
+    else if oldSecurity is "msoAutomationSecurityByUI" then
+     set automation security to msoAutomationSecurityByUI
+    else
+     set automation security to msoAutomationSecurityForceDisable
+    end if
     error msg number n
    end try
   end if
@@ -118,7 +130,7 @@ on run argv
     set columnWidths to columnWidths & (width of column columnIndex of sh)
    end repeat
    set columnWidths to columnWidths & "]"
-   return "{\"index\":" & (item 3 of argv) & ",\"name\":" & my jsonString(sheetName) & ",\"visibility\":" & my jsonString(originalVisibility) & ",\"original_view\":" & my jsonString(originalView) & ",\"capture_view\":\"normal view\",\"used_range\":" & my jsonString(get address of ur) & ",\"last_row\":" & maxRow & ",\"last_column\":" & maxCol & ",\"freeze_panes\":" & (freeze panes of active window as text) & ",\"split_row\":" & (split row of active window) & ",\"split_column\":" & (split column of active window) & "}"
+   return "{\"index\":" & (item 3 of argv) & ",\"name\":" & my jsonString(sheetName) & ",\"visibility\":" & my jsonString(originalVisibility) & ",\"original_view\":" & my jsonString(originalView) & ",\"capture_view\":\"normal view\",\"original_column_widths_points\":" & columnWidths & ",\"used_range\":" & my jsonString(get address of ur) & ",\"last_row\":" & maxRow & ",\"last_column\":" & maxCol & ",\"freeze_panes\":" & (freeze panes of active window as text) & ",\"split_row\":" & (split row of active window) & ",\"split_column\":" & (split column of active window) & "}"
   end if
   if operation is "metrics" then
    set rr to range (item 4 of argv) of sh
@@ -126,12 +138,20 @@ on run argv
   end if
   if operation is "readability" then
    set column width of entire column of used range of sh to 24
+   set wrap text of used range of sh to true
+   autofit entire row of used range of sh
+   set rowHeights to "["
+   repeat with rowIndex from 1 to ((first row index of used range of sh) + (count of rows of used range of sh) - 1)
+    if rowIndex > 1 then set rowHeights to rowHeights & ","
+    set rowHeights to rowHeights & (height of row rowIndex of sh)
+   end repeat
+   set rowHeights to rowHeights & "]"
    set columnWidths to "["
    repeat with columnIndex from 1 to ((item 4 of argv) as integer)
     if columnIndex > 1 then set columnWidths to columnWidths & ","
     set columnWidths to columnWidths & (width of column columnIndex of sh)
    end repeat
-   return "{\"column_widths_points\":" & columnWidths & "],\"supplemental\":true,\"column_width_characters\":24}"
+   return "{\"column_widths_points\":" & columnWidths & "],\"row_heights_points\":" & rowHeights & ",\"wrap_text\":true,\"supplemental\":true,\"column_width_characters\":24}"
   end if
   if operation is "tile" then
    activate object sh

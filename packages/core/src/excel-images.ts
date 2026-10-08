@@ -12,6 +12,7 @@ export type ExcelImage = {
   width: number;
   height: number;
   anchorType: "0" | "1" | "2";
+  to?: { row: number; column: number; offsetX: number; offsetY: number };
 };
 const base64 = (b: Uint8Array) => {
   let s = "";
@@ -74,7 +75,10 @@ export function rasterEmf(bytes: Uint8Array): string | undefined {
     w = i(16) - left + 1,
     h = i(20) - top + 1;
   if (w < 1 || h < 1 || w * h > 16000000) return;
-  const pixels = new Uint8Array(w * h * 4).fill(255);
+  // EMF preview framing is not an opaque image background. Retain opaque
+  // pixels from the embedded DIB only; painting the full metafile frame white
+  // obscured source text behind legacy control previews on macOS.
+  const pixels = new Uint8Array(w * h * 4);
   let bitmaps = 0;
   for (let o = 0; o + 8 <= bytes.length;) {
     const t = u(o),
@@ -125,6 +129,7 @@ export function rasterEmf(bytes: Uint8Array): string | undefined {
           pixels[d] = bytes[p + 2];
           pixels[d + 1] = bytes[p + 1];
           pixels[d + 2] = bytes[p];
+          pixels[d + 3] = 255;
         }
       bitmaps++;
     } else if (
@@ -162,6 +167,93 @@ async function imageSource(
     }
   }
 }
+/** Inert DrawingML text-box appearance; all source text is XML escaped. */
+export function textBoxSource(
+  shape: any,
+  width: number,
+  height: number,
+): string | undefined {
+  if (!shape.txBody || !(width > 0 && height > 0)) return;
+  const escape = (value: unknown) =>
+    String(value ?? "").replace(
+      /[&<>"']/g,
+      (c) =>
+        ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&apos;",
+        })[c]!,
+    );
+  const body = shape.txBody.bodyPr ?? {};
+  const left = Number(body["@_lIns"] ?? 91440) / 9525;
+  const top = Number(body["@_tIns"] ?? 45720) / 9525;
+  const right = Number(body["@_rIns"] ?? 91440) / 9525;
+  const color = (fill: any, fallback: string) => {
+    const rgb = fill?.srgbClr?.["@_val"];
+    if (/^[0-9a-f]{6}$/i.test(rgb ?? "")) return "#" + rgb;
+    const scheme = fill?.schemeClr;
+    if (scheme?.["@_val"] === "lt1")
+      return scheme.shade ? "#808080" : "#ffffff";
+    if (scheme?.["@_val"] === "dk1") return "#000000";
+    return fallback;
+  };
+  let y = top,
+    text = "";
+  for (const paragraph of array<any>(shape.txBody.p)) {
+    const runs = array<any>(paragraph.r);
+    const defaults = paragraph.pPr?.defRPr ?? paragraph.endParaRPr ?? {};
+    const size =
+      ((Math.max(
+        ...runs.map((r) => Number(r.rPr?.["@_sz"] ?? defaults["@_sz"] ?? 1100)),
+        Number(defaults["@_sz"] ?? 1100),
+      ) /
+        100) *
+        96) /
+      72;
+    const spacing = paragraph.pPr?.lnSpc;
+    const lineHeight = spacing?.spcPts
+      ? ((Number(spacing.spcPts["@_val"]) / 100) * 96) / 72
+      : (size * 1.2 * Number(spacing?.spcPct?.["@_val"] ?? 100000)) / 100000;
+    y +=
+      ((Number(paragraph.pPr?.spcBef?.spcPts?.["@_val"] ?? 0) / 100) * 96) / 72;
+    const align = paragraph.pPr?.["@_algn"];
+    const x =
+      align === "ctr" ? width / 2 : align === "r" ? width - right : left;
+    const anchor = align === "ctr" ? "middle" : align === "r" ? "end" : "start";
+    // Font substitution can make a source line wider than its original box.
+    // Keep complete single-line paragraphs readable within the source bounds.
+    const estimatedWidth = runs.reduce(
+      (sum, run) =>
+        sum +
+        ((((String(run.t ?? "").length *
+          Number(run.rPr?.["@_sz"] ?? defaults["@_sz"] ?? 1100)) /
+          100) *
+          96) /
+          72) *
+          0.56,
+      0,
+    );
+    const fit =
+      estimatedWidth > width - left - right
+        ? ` textLength="${width - left - right}" lengthAdjust="spacingAndGlyphs"`
+        : "";
+    text += `<text x="${x}" y="${y + size}" text-anchor="${anchor}" font-family="Calibri, Carlito, Arial, sans-serif" font-size="${size}"${fit}>`;
+    for (const run of runs) {
+      const props = { ...defaults, ...run.rPr };
+      const font = ((Number(props["@_sz"] ?? size * 75) / 100) * 96) / 72;
+      text += `<tspan font-size="${font}" font-weight="${props["@_b"] === "1" ? "bold" : "normal"}" font-style="${props["@_i"] === "1" ? "italic" : "normal"}" text-decoration="${props["@_u"] && props["@_u"] !== "none" ? "underline" : "none"}" fill="${color(props.solidFill, "#000000")}">${escape(run.t)}</tspan>`;
+    }
+    text += "</text>";
+    y +=
+      lineHeight +
+      ((Number(paragraph.pPr?.spcAft?.spcPts?.["@_val"] ?? 0) / 100) * 96) / 72;
+  }
+  const pr = shape.spPr ?? {};
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect x="0.5" y="0.5" width="${width - 1}" height="${height - 1}" fill="${pr.noFill !== undefined ? "none" : color(pr.solidFill, "#ffffff")}" stroke="${color(pr.ln?.solidFill, "#808080")}"/>${text}</svg>`;
+  return "data:image/svg+xml;base64," + base64(new TextEncoder().encode(svg));
+}
 export async function readExcelImages(
   zip: JSZip,
   parts: Map<string, string>,
@@ -178,6 +270,33 @@ export async function readExcelImages(
           ...array<any>(xml.wsDr?.twoCellAnchor),
           ...array<any>(xml.wsDr?.oneCellAnchor),
         ]) {
+          if (a.sp?.txBody) {
+            const ext = a.sp.spPr?.xfrm?.ext ?? a.ext;
+            const width = Number(ext?.["@_cx"]) / 9525,
+              height = Number(ext?.["@_cy"]) / 9525;
+            const src = textBoxSource(a.sp, width, height);
+            if (src)
+              out.push({
+                id: `excel-textbox-${sheetId}-${out.length}`,
+                sheetId,
+                src,
+                row: Number(a.from?.row ?? 0),
+                column: Number(a.from?.col ?? 0),
+                offsetX: Number(a.from?.colOff ?? 0) / 9525,
+                offsetY: Number(a.from?.rowOff ?? 0) / 9525,
+                width,
+                height,
+                anchorType: "1",
+                to: a.to
+                  ? {
+                      row: Number(a.to.row),
+                      column: Number(a.to.col),
+                      offsetX: Number(a.to.colOff ?? 0) / 9525,
+                      offsetY: Number(a.to.rowOff ?? 0) / 9525,
+                    }
+                  : undefined,
+              });
+          }
           if (!a.pic) continue;
           const image = rels.get(
             a.pic.blipFill?.blip?.["@_embed"] ?? a.pic.blipFill?.blip?.["@_id"],
@@ -204,6 +323,14 @@ export async function readExcelImages(
             offsetY: Number(a.from?.rowOff ?? 0) / 9525,
             width,
             height,
+            to: a.to
+              ? {
+                  row: Number(a.to.row),
+                  column: Number(a.to.col),
+                  offsetX: Number(a.to.colOff ?? 0) / 9525,
+                  offsetY: Number(a.to.rowOff ?? 0) / 9525,
+                }
+              : undefined,
             anchorType:
               a["@_editAs"] === "absolute"
                 ? "2"

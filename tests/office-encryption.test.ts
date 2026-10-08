@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createCipheriv, createHash, createHmac } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
 import * as CFB from "cfb";
 import JSZip from "jszip";
 import { importOffice, OFFICE_INPUT_LIMIT } from "../packages/core/src/office";
@@ -54,8 +55,13 @@ function encryptedFixture(
     );
   }
   const payload = Buffer.concat(chunks);
-  const hmacKey = Buffer.alloc(hash(Buffer.alloc(0)).length, 5);
-  const tag = createHmac(hashName.toLowerCase(), hmacKey)
+  // Agile stores a padded key in some producers; only hashSize bytes are the
+  // actual HMAC key. Keep extra bytes here to catch accidental full-block use.
+  const hmacKey = Buffer.alloc(hash(Buffer.alloc(0)).length + 16, 5);
+  const tag = createHmac(
+    hashName.toLowerCase(),
+    hmacKey.subarray(0, hash(Buffer.alloc(0)).length),
+  )
     .update(payload)
     .digest();
   const common = `saltSize="16" blockSize="16" keyBits="${keyBits}" hashSize="${tag.length}" cipherAlgorithm="AES" cipherChaining="ChainingModeCBC" hashAlgorithm="${hashName}"`;
@@ -84,6 +90,57 @@ function changePayload(
   return new Uint8Array(CFB.write(c, { type: "buffer" }));
 }
 describe("Office Agile password imports", () => {
+  it.skipIf(
+    !existsSync(
+      "datasets/napierone/files/xlsx-password/0001-xlsx-password.xlsx",
+    ),
+  )(
+    "opens the original documented encrypted workbook without changing its bytes",
+    async () => {
+      const bytes = new Uint8Array(
+        readFileSync(
+          "datasets/napierone/files/xlsx-password/0001-xlsx-password.xlsx",
+        ),
+      );
+      const original = bytes.slice();
+      const result = await importOffice(
+        bytes,
+        "xlsx",
+        "0001-xlsx-password.xlsx",
+        { password: "napierone" },
+      );
+      expect(result.file.kind).toBe("sheet");
+      if (result.file.kind === "sheet") {
+        expect(result.file.content.workbook.sheetOrder).toHaveLength(3);
+        const boxes = result.file.content.images!.filter((i) =>
+          i.id.startsWith("excel-textbox-"),
+        );
+        expect(boxes).toHaveLength(2);
+        const first = Buffer.from(
+          boxes[0].src.split(",")[1],
+          "base64",
+        ).toString();
+        expect(first).toContain("UK Biodiversity Indicators 2015");
+        expect(first).toContain(" on UK and international biodiversity");
+        expect(first).toContain("http://jncc.defra.gov.uk/page-4251");
+        expect(
+          Buffer.from(boxes[1].src.split(",")[1], "base64").toString(),
+        ).toContain("http://jncc.defra.gov.uk/page-1824");
+      }
+      expect(() => decryptOfficePackage(bytes, "incorrect")).toThrow(
+        expect.objectContaining({ code: "wrong-password" }),
+      );
+      expect(() =>
+        decryptOfficePackage(
+          changePayload(bytes, (payload) => {
+            payload[24] ^= 0x40;
+          }),
+          "napierone",
+        ),
+      ).toThrow(/integrity check failed/);
+      expect(bytes).toEqual(original);
+    },
+  );
   it.each([
     ["SHA512", 256],
     ["SHA384", 192],
@@ -132,6 +189,24 @@ describe("Office Agile password imports", () => {
       expect.objectContaining({ code: "input-limit" }),
     );
   });
+  it("rejects excessive password spin counts before deriving a key", () => {
+    const { bytes, password } = encryptedFixture(new Uint8Array(32));
+    const container = CFB.read(bytes, { type: "array" });
+    const info = container.FileIndex.find(
+      (entry) => entry.name === "EncryptionInfo",
+    )!;
+    const content = Buffer.from(info.content);
+    const xml = content
+      .subarray(8)
+      .toString("utf8")
+      .replace('spinCount="100"', 'spinCount="1000001"');
+    info.content = Buffer.concat([content.subarray(0, 8), Buffer.from(xml)]);
+    info.size = info.content.length;
+    const excessive = new Uint8Array(CFB.write(container, { type: "buffer" }));
+    expect(() => decryptOfficePackage(excessive, password)).toThrow(
+      /encryption parameters/,
+    );
+  });
   it("runs decrypted packages through the existing importer and XML safety validation", async () => {
     const original = await excelFixture(),
       zip = await JSZip.loadAsync(original),
@@ -155,5 +230,15 @@ describe("Office Agile password imports", () => {
         password: unsafe.password,
       }),
     ).rejects.toMatchObject({ code: "unsafe-xml" });
+    const missingWorkbook = await JSZip.loadAsync(original);
+    missingWorkbook.remove("xl/workbook.xml");
+    const missing = encryptedFixture(
+      await missingWorkbook.generateAsync({ type: "uint8array" }),
+    );
+    await expect(
+      importOffice(missing.bytes, "xlsx", "protected.xlsx", {
+        password: missing.password,
+      }),
+    ).rejects.toMatchObject({ code: "missing-part" });
   });
 });

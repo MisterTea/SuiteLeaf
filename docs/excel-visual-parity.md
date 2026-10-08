@@ -44,9 +44,12 @@ earlier verdicts and requeue them for the updated application.
   area, visible formatting and drawing extent. Blank sheets get one tile.
 - Record actual visible ranges and frozen panes. A screenshot that clips a
   requested region does not prove coverage. Never silently cap tiles.
-- Visually inspect every paired image in the file subagent's context. Values,
-  formulas' displayed results, layout, styles, charts and images matter.
-  Application controls and minor antialiasing differences do not matter.
+- Visually inspect every paired image in the file subagent's context, with
+  content correctness as the acceptance criterion: displayed values and formula
+  results, sheet visibility, and chart/image content must be present and
+  readable. Small differences in font metrics, spacing, colors, borders, or
+  placement are acceptable unless they hide, clip, alter, or change the meaning
+  of content. Application controls and antialiasing do not matter.
 - Enlarge the Excel window when values are clipped. If `#####` persists because
   a column is too narrow, use `--readable` for supplemental native evidence and
   its manifest for matching SuiteLeaf widths. Retain original-width baseline
@@ -55,8 +58,9 @@ earlier verdicts and requeue them for the updated application.
   `reference_altered_by_excel: true` if recovery changes the reference; that
   workbook remains inconclusive against the original, even if its recovered
   data compares successfully. Do not imitate diagrams deleted by recovery.
-- Fix the first disparity, run meaningful regression checks, and recapture.
-  Do not lower the review criteria or hide an unsupported feature to pass.
+- Fix the first content disparity, run meaningful regression checks, and
+  recapture. Do not spend time making harmless pixel-level styling differences
+  identical. Do not hide missing or unsupported content to pass.
 - Continue capturing remaining sheets even after a mismatch. Record inaccessible
   sheets, capture errors, oversized cells and resource barriers as incomplete.
 - Passwords explicitly documented in dataset metadata may be used. NapierOne
@@ -124,3 +128,20 @@ failing and inconclusive outcomes. `verify` checks SQLite integrity, foreign
 keys, image hashes, decoding, dimensions and evidence-manifest references.
 Earlier verdicts and embedded images survive replacement in `audit_history`
 and `history_screenshots`; only current-revision results count as current passes.
+
+Browser captures append each verified tile to `capture-attempt-N.ndjson`. Resume
+reads complete newline records and reuses tiles only when source SHA-256,
+application/capture revisions, capture settings, and embedded image hashes match.
+A truncated final journal record or corrupted image is recaptured. Final SQLite
+results still require native evidence and a complete visual review. The browser
+copy receives explicitly recorded blank scroll margin outside the content bounds
+to expose bottom/right cells; this does not modify originals or content bounds.
+Native captures append completed tiles to `native-capture.ndjson` with flushed,
+fsynced records. Reopening the same source reuses records only when its hash,
+logical original workbook name, Excel version/build, capture protocol, settings,
+window size, and recovery state match. Raw, full-window, and normalized PNGs must
+all decode and match recorded hashes. Incomplete trailing records are discarded;
+invalid identity journals are preserved as `.stale-*`. The random disposable
+workbook name remains provenance, while the original workbook name gates reuse.
+Visual-review checkpoint recovery remains a separate stage; reuse of capture
+images does not establish reviewed content parity.

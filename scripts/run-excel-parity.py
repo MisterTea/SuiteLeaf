@@ -36,21 +36,30 @@ You exclusively own native Excel and SuiteLeaf source fixes while this task runs
 Use the actual SuiteLeaf browser importer and native Microsoft Excel, disposable copies,
 macros disabled, external links disabled. Preserve unrelated existing code changes and
 user-open workbooks. Include hidden/very-hidden sheets and full readable content-area
-tiling, formatting and drawing extent. Never silently cap screenshots or claim unviewed
+tiling and drawing extent. Never silently cap screenshots or claim unviewed
 evidence passed. View every paired PNG in YOUR context, no screenshots to the parent.
+The user explicitly requested the entire corpus. Duration, large tile counts, or an
+estimate that capture takes many hours are not reasons to stop deliberately or mark
+coverage incomplete. Continue uncapped capture and review; use checkpoints/resumption.
+An incomplete outcome requires a real, measured resource or capture barrier and its
+concrete evidence (for example exhaustion, a persistent application failure, or an
+inaccessible sheet), not an arbitrary time or screenshot budget.
 Retry each failed capture operation once. Record persistent failures explicitly and
 continue capturing remaining accessible sheets, including after a mismatch.
 Use known documented dataset passwords when available, record remaining barriers.
 Enlarge the native window first if numbers display #####. If width still clips
 values, capture additional --readable evidence using the native helper and apply
 its declared column widths in the corresponding SuiteLeaf disposable view.
-Retain original-width evidence for layout checks. Do not hide a layout disparity
-by changing only the reference. Record reference_altered_by_excel=true whenever
+Retain original-width evidence to detect unreadable or truncated content. Prioritize
+correct values, formula results, sheet visibility, charts, and images. Minor font,
+spacing, border, color, or placement differences are acceptable when content stays
+complete, readable, and unambiguous. Do not mask a content problem by changing only
+the reference. Record reference_altered_by_excel=true whenever
 Excel repairs the original; recovered reference cannot establish original parity.
-On first visible disparity, FIX the application, test the change meaningfully, then
+On first content disparity, FIX the application, test the change meaningfully, then
 recapture and visually review this workbook at the new revision. Repeat until fixed.
-Do not advance to another dataset file and do not mask differences by changing the
-reference, lowering criteria, removing content, or replacing the real importer.
+Do not advance to another dataset file or mask missing, changed, or unreadable
+content by changing the reference, removing content, or replacing the real importer.
 Write {directory}/result.json following the documented contract. Record exact FINAL
 SuiteLeaf fingerprint by loading scripts/excel-parity-db.py and calling revision().
 Also record audit_revision from its audit_revision() function; both source and
@@ -141,12 +150,21 @@ def main():
             (output / 'active-agent.pid').unlink(missing_ok=True)
         result_path = directory / 'result.json'
         if not result_path.exists() or exitcode != 0:
+            # A failed file attempt remains terminal and is reported, but it does
+            # not prevent reviews of independent source files. If the agent
+            # changed the app before failing, establish that revision first so
+            # this incomplete row records the version that actually ran.
+            failed_revision, failed_protocol = ledger.revision(), ledger.audit_revision()
+            if failed_revision != row['suiteleaf_revision'] or failed_protocol != row['audit_revision']:
+                ledger.initialize(db, output)
             db.execute("UPDATE workbooks SET status='incomplete',parity=NULL,blocked_reasons=?,finished_at=? WHERE filename=?",
                        (json.dumps([f'File subagent failed or omitted result.json; exit={exitcode}; log={directory}/agent.jsonl']), ledger.now(), row['filename']))
             db.commit()
             ledger.report(db, output)
-            # Stop on a failed agent; do not repeatedly encounter the same environmental issue.
-            raise SystemExit('Audit stopped: file subagent failed. See per-file log.')
+            completed += 1
+            print(json.dumps(dict(event='file_finished', filename=row['filename'], status='incomplete',
+                                  parity=None, error=f'agent exit {exitcode}', evidence=str(directory))), flush=True)
+            continue
         final_revision = ledger.revision()
         final_protocol = ledger.audit_revision()
         if final_revision != row['suiteleaf_revision'] or final_protocol != row['audit_revision']:

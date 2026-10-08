@@ -228,9 +228,19 @@ export const fileSchema = z.discriminatedUnion("kind", [
           z.object({
             id: z.string(),
             sheetId: z.string(),
-            src: z.string().regex(/^data:image\/(png|jpeg|gif|webp);base64,/i),
+            src: z
+              .string()
+              .regex(/^data:image\/(png|jpeg|gif|webp|svg\+xml);base64,/i),
             row: z.number().int().nonnegative(),
             column: z.number().int().nonnegative(),
+            to: z
+              .object({
+                row: z.number().int().nonnegative(),
+                column: z.number().int().nonnegative(),
+                offsetX: z.number().finite(),
+                offsetY: z.number().finite(),
+              })
+              .optional(),
             offsetX: z.number().finite(),
             offsetY: z.number().finite(),
             width: z.number().positive().finite(),

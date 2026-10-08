@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   createUniver,
+  defaultTheme,
+  darkBlueTheme,
   LocaleType,
   mergeLocales,
   numfmt,
@@ -76,7 +78,10 @@ import {
 import { pivotResult, shiftRange, type CellValue } from "../analysis";
 import { exportText, printDocument } from "../storage";
 import { Tool, type EditorActions } from "../ui";
+import "../excel-overflow";
+import "../excel-wrap";
 import { resolveExcelColumnWidths } from "../excel-layout";
+import { useTheme } from "../theme";
 
 type ChartState = {
   definition: ChartDefinition;
@@ -375,6 +380,7 @@ export default function Sheets({
   onActions: (actions: EditorActions) => void;
   onError: (s: string) => void;
 }) {
+  const { isDark } = useTheme();
   const host = useRef<HTMLDivElement>(null),
     api = useRef<any>(null),
     book = useRef<any>(null),
@@ -431,6 +437,8 @@ export default function Sheets({
     let partialCleanup: (() => void) | undefined;
     const initialize = () => {
       const { univer, univerAPI } = createUniver({
+        theme: isDark ? darkBlueTheme : defaultTheme,
+        darkMode: isDark,
         locale: LocaleType.EN_US,
         locales: {
           [LocaleType.EN_US]: mergeLocales(
@@ -479,6 +487,33 @@ export default function Sheets({
             hydratedImageIds.add(image.id);
             continue;
           }
+          const config = (content.current.workbook as unknown as IWorkbookData)
+            .sheets[image.sheetId];
+          const span = (axis: "row" | "column", from: number, to: number) => {
+            let sum = 0;
+            for (let index = from; index < to; index++) {
+              if (axis === "column") {
+                const column = config.columnData?.[index];
+                if (column?.hd === 1) continue;
+                sum += column?.w ?? config.defaultColumnWidth ?? 100;
+              } else {
+                const row = config.rowData?.[index];
+                if (row?.hd === 1) continue;
+                sum += row?.h ?? config.defaultRowHeight ?? 24;
+              }
+            }
+            return sum;
+          };
+          const width = image.to
+            ? span("column", image.column, image.to.column) +
+              image.to.offsetX -
+              image.offsetX
+            : image.width;
+          const height = image.to
+            ? span("row", image.row, image.to.row) +
+              image.to.offsetY -
+              image.offsetY
+            : image.height;
           const built = await sheet
             .newOverGridImage()
             .setSource(image.src, univerAPI.Enum.ImageSourceType.BASE64)
@@ -486,8 +521,8 @@ export default function Sheets({
             .setRow(image.row)
             .setColumnOffset(image.offsetX)
             .setRowOffset(image.offsetY)
-            .setWidth(image.width)
-            .setHeight(image.height)
+            .setWidth(width)
+            .setHeight(height)
             .setAnchorType(image.anchorType as any)
             .buildAsync();
           if (disposed) return;
@@ -778,6 +813,13 @@ export default function Sheets({
     };
     // The workspace mounts a fresh editor per file. Changes must not recreate the engine.
   }, []);
+  useEffect(() => {
+    if (!api.current) return;
+    try {
+      api.current.toggleDarkMode?.(isDark);
+      api.current.setTheme?.(isDark ? darkBlueTheme : defaultTheme);
+    } catch {}
+  }, [isDark]);
   const formatCurrency = () => {
     try {
       api.current?.executeCommand("sheet.command.numfmt.set.currency");
