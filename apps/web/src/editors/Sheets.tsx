@@ -76,12 +76,139 @@ import {
 import { pivotResult, shiftRange, type CellValue } from "../analysis";
 import { exportText, printDocument } from "../storage";
 import { Tool, type EditorActions } from "../ui";
+import { resolveExcelColumnWidths } from "../excel-layout";
 
 type ChartState = {
   definition: ChartDefinition;
   values: CellValue[][];
   numberFormats: string[];
+  excelValues?: CellValue[][];
 };
+function ExcelLineChart({
+  chart,
+  series,
+}: {
+  chart: ChartDefinition;
+  series: CellValue[][];
+}) {
+  const w = chart.width,
+    h = chart.height;
+  const count = Math.max(1, ...series.map((s) => s.length));
+  const maximum = Math.max(
+    0,
+    ...series.flat().filter((v): v is number => typeof v === "number"),
+  );
+  const step =
+    Math.pow(10, Math.floor(Math.log10(maximum || 1))) *
+    (maximum <= 20 ? 0.2 : 0.5);
+  const top = 15,
+    bottom = h - 34,
+    left = 34,
+    right = w - (chart.excel?.legend === "r" ? 128 : 20);
+  const limit = Math.max(step, Math.ceil(maximum / step) * step);
+  const px = (i: number) => left + ((right - left) * (i + 0.5)) / count;
+  const py = (v: number) => bottom - ((bottom - top) * v) / limit;
+  const ticks = Array.from(
+    { length: Math.round(limit / step) + 1 },
+    (_, i) => i * step,
+  );
+  return (
+    <svg
+      className="excel-line-chart"
+      width="100%"
+      height="100%"
+      viewBox={`0 0 ${w} ${h}`}
+      style={{
+        background: "white",
+        fontFamily: "Calibri",
+        fontSize: 12,
+      }}
+      aria-label="Imported Excel line chart"
+    >
+      <rect
+        x={0.5}
+        y={0.5}
+        width={w - 1}
+        height={h - 1}
+        fill="none"
+        stroke="#808080"
+      />
+      {ticks.map((v) => (
+        <g key={v}>
+          <line x1={left} x2={right} y1={py(v)} y2={py(v)} stroke="#808080" />
+          <text x={left - 12} y={py(v) + 4} textAnchor="end">
+            {v}
+          </text>
+        </g>
+      ))}
+      <line x1={left} x2={left} y1={top} y2={bottom} stroke="#808080" />
+      {Array.from({ length: count }, (_, i) => (
+        <g key={i}>
+          <line
+            x1={px(i)}
+            x2={px(i)}
+            y1={bottom}
+            y2={bottom + 5}
+            stroke="#808080"
+          />
+          <text x={px(i)} y={bottom + 22} textAnchor="middle">
+            {i + 1}
+          </text>
+        </g>
+      ))}
+      {series.map((s, i) => {
+        const color = chart.excel!.series[i].color;
+        const points = s.flatMap((v, j) =>
+          typeof v === "number" ? [{ x: px(j), y: py(v) }] : [],
+        );
+        return (
+          <g key={i}>
+            <polyline
+              fill="none"
+              stroke={color}
+              strokeWidth={3.3}
+              points={points.map((p) => `${p.x},${p.y}`).join(" ")}
+            />
+            {chart.excel?.markers &&
+              points.map((p, j) =>
+                i % 2 ? (
+                  <rect
+                    key={j}
+                    x={p.x - 5}
+                    y={p.y - 5}
+                    width={10}
+                    height={10}
+                    fill={color}
+                  />
+                ) : (
+                  <path
+                    key={j}
+                    d={`M${p.x} ${p.y - 5}l5 5-5 5-5-5Z`}
+                    fill={color}
+                  />
+                ),
+              )}
+            {chart.excel?.legend === "r" && (
+              <g
+                transform={`translate(${right + 20},${h / 2 + (i - (series.length - 1) / 2) * 24})`}
+              >
+                <line x2={27} stroke={color} strokeWidth={3.3} />
+                {i % 2 ? (
+                  <rect x={10} y={-4} width={8} height={8} fill={color} />
+                ) : (
+                  <path d="M14 -4l4 4-4 4-4-4Z" fill={color} />
+                )}
+                <text x={30} y={4}>
+                  {chart.excel.series[i].name}
+                </text>
+              </g>
+            )}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
 function suggestedChartTitle(headers: CellValue[]) {
   const names = headers
     .slice(1)
@@ -106,6 +233,8 @@ function EmbeddedChart({ data }: { data?: { chartId: string } }) {
   );
   if (!state) return <div>Loading chart…</div>;
   const { definition: c, values, numberFormats } = state;
+  if (c.excel && !c.invalid)
+    return <ExcelLineChart chart={c} series={state.excelValues ?? []} />;
   const formatValue = (value: unknown, column: number) =>
     numberFormats[column]
       ? numfmt.format(numberFormats[column], value)
@@ -290,184 +419,362 @@ export default function Sheets({
   };
   useEffect(() => {
     if (!host.current) return;
+    const container = host.current;
     const sessionContent = content.current;
     let disposed = false,
       busy = false,
-      timer: ReturnType<typeof setTimeout> | undefined;
-    const { univer, univerAPI } = createUniver({
-      locale: LocaleType.EN_US,
-      locales: {
-        [LocaleType.EN_US]: mergeLocales(
-          CoreEnUS,
-          DrawingEnUS,
-          FilterEnUS,
-          SortEnUS,
-          FindEnUS,
-        ),
-      },
-      presets: [
-        UniverSheetsCorePreset({
-          container: host.current,
-          header: true,
-          toolbar: false,
-        }),
-        UniverSheetsDrawingPreset(),
-        UniverSheetsFilterPreset(),
-        UniverSheetsSortPreset(),
-        UniverSheetsFindReplacePreset(),
-      ],
-    });
-    api.current = univerAPI;
-    univerAPI.registerComponent("suiteleaf-chart", EmbeddedChart);
-    const workbook = univerAPI.createWorkbook(
-      content.current.workbook as unknown as IWorkbookData,
-    );
-    book.current = workbook;
-    const hydrateCharts = () => {
-      for (const c of content.current.charts) {
-        const sheet = workbook.getSheetBySheetId(c.sheetId);
-        if (!sheet) continue;
-        try {
-          const values = c.invalid ? [] : readRange(c.source);
-          const numberFormats = c.invalid
-            ? []
-            : workbook
-                .getSheetBySheetId(c.source.sheetId)!
-                .getRange(rangeLabel(c.source))
-                .getNumberFormats();
-          const formats = (values[0] ?? []).map((_, column) => {
-            const row = values.findIndex(
-              (cells, i) => i > 0 && typeof cells[column] === "number",
-            );
-            return numberFormats[row]?.[column] ?? "";
-          });
-          charts.set(c.id, {
-            definition: { ...c },
-            values,
-            numberFormats: formats,
-          });
-        } catch {
-          c.invalid = true;
-          charts.set(c.id, {
-            definition: { ...c },
-            values: [],
-            numberFormats: [],
-          });
-        }
-        window.dispatchEvent(new Event(`chart:${c.id}`));
-        if (!sheet.getFloatDomById(c.id))
-          sheet.addFloatDomToPosition(
-            {
-              componentKey: "suiteleaf-chart",
-              data: { chartId: c.id },
-              initPosition: {
-                startX: c.x,
-                endX: c.x + c.width,
-                startY: c.y,
-                endY: c.y + c.height,
-              },
-            },
-            c.id,
-          );
-      }
-    };
-    refreshCharts.current = () => {
-      busy = true;
-      try {
-        hydrateCharts();
-      } finally {
-        busy = false;
-      }
-    };
-    busy = true;
-    hydrateCharts();
-    busy = false;
-    persist.current = () => {
-      if (disposed) return;
-      pending.current = false;
-      for (const c of content.current.charts) {
-        const dom = workbook
-          .getSheetBySheetId(c.sheetId)
-          ?.getFloatDomById(c.id);
-        if (dom) {
-          c.x = dom.position.left ?? c.x;
-          c.y = dom.position.top ?? c.y;
-          c.width = dom.position.width ?? c.width;
-          c.height = dom.position.height ?? c.height;
-        }
-      }
-      content.current.workbook =
-        workbook.save() as unknown as SheetFile["content"]["workbook"];
-      changes.current(structuredClone(content.current));
-      setRevision((v) => v + 1);
-    };
-    const listener = workbook.onCommandExecuted((command: any) => {
-      if (busy || disposed || !command.id.includes("mutation")) return;
-      pending.current = true;
-      const p = command.params ?? {};
-      const structural = /sheet\.mutation\.(insert|remove)-(row|col)$/.exec(
-        command.id,
+      timer: ReturnType<typeof setTimeout> | undefined,
+      chartHydrationTimer: ReturnType<typeof setTimeout> | undefined;
+    const chartOrigins = new Map<string, { left: number; top: number }>();
+    const hydratedImageIds = new Set<string>();
+    let cleanup: (() => void) | undefined;
+    let partialCleanup: (() => void) | undefined;
+    const initialize = () => {
+      const { univer, univerAPI } = createUniver({
+        locale: LocaleType.EN_US,
+        locales: {
+          [LocaleType.EN_US]: mergeLocales(
+            CoreEnUS,
+            DrawingEnUS,
+            FilterEnUS,
+            SortEnUS,
+            FindEnUS,
+          ),
+        },
+        presets: [
+          UniverSheetsCorePreset({
+            container,
+            header: true,
+            toolbar: false,
+          }),
+          UniverSheetsDrawingPreset(),
+          UniverSheetsFilterPreset(),
+          UniverSheetsSortPreset(),
+          UniverSheetsFindReplacePreset(),
+        ],
+      });
+      partialCleanup = () => {
+        clearTimeout(timer);
+        api.current = null;
+        book.current = null;
+        persist.current = () => {};
+        refreshCharts.current = () => {};
+        for (const c of sessionContent.charts) charts.delete(c.id);
+        univer.dispose();
+      };
+      api.current = univerAPI;
+      univerAPI.registerComponent("suiteleaf-chart", EmbeddedChart);
+      const workbook = univerAPI.createWorkbook(
+        content.current.workbook as unknown as IWorkbookData,
       );
-      if (structural && p.range) {
-        const axis = structural[2] === "row" ? "row" : "column";
-        const start = axis === "row" ? p.range.startRow : p.range.startColumn;
-        const end = axis === "row" ? p.range.endRow : p.range.endColumn;
+      book.current = workbook;
+      // Import inert embedded appearances through the editor's native drawing service.
+      // Restored workbook resources retain the same IDs, avoiding duplicate images.
+      const hydrateImages = async () => {
+        for (const image of content.current.images ?? []) {
+          if (disposed) return;
+          const sheet = workbook.getSheetBySheetId(image.sheetId);
+          if (!sheet) continue;
+          if (sheet.getImageById(image.id)) {
+            hydratedImageIds.add(image.id);
+            continue;
+          }
+          const built = await sheet
+            .newOverGridImage()
+            .setSource(image.src, univerAPI.Enum.ImageSourceType.BASE64)
+            .setColumn(image.column)
+            .setRow(image.row)
+            .setColumnOffset(image.offsetX)
+            .setRowOffset(image.offsetY)
+            .setWidth(image.width)
+            .setHeight(image.height)
+            .setAnchorType(image.anchorType as any)
+            .buildAsync();
+          if (disposed) return;
+          sheet.insertImages([{ ...built, drawingId: image.id }]);
+          hydratedImageIds.add(image.id);
+        }
+      };
+      void hydrateImages().catch((cause: unknown) => {
+        if (!disposed)
+          error.current(
+            `Embedded image import failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+          );
+      });
+
+      const hydrateCharts = () => {
+        if (disposed) return;
+        for (const c of content.current.charts) {
+          const sheet = workbook.getSheetBySheetId(c.sheetId);
+          if (!sheet) continue;
+          try {
+            const values = c.invalid ? [] : readRange(c.source);
+            const numberFormats = c.invalid
+              ? []
+              : workbook
+                  .getSheetBySheetId(c.source.sheetId)!
+                  .getRange(rangeLabel(c.source))
+                  .getNumberFormats();
+            const formats = (values[0] ?? []).map((_, column) => {
+              const row = values.findIndex(
+                (cells, i) => i > 0 && typeof cells[column] === "number",
+              );
+              return numberFormats[row]?.[column] ?? "";
+            });
+            charts.set(c.id, {
+              definition: { ...c },
+              values,
+              numberFormats: formats,
+              excelValues: c.excel?.series.map((s) =>
+                readRange(s.values).flat(),
+              ),
+            });
+          } catch {
+            c.invalid = true;
+            charts.set(c.id, {
+              definition: { ...c },
+              values: [],
+              numberFormats: [],
+            });
+          }
+          window.dispatchEvent(new Event(`chart:${c.id}`));
+          let origin: { left: number; top: number };
+          try {
+            origin = JSON.parse(sheet.getRange("A1").getCellRect().toJSON());
+          } catch {
+            // The canvas for an inactive sheet may not exist until activation.
+            continue;
+          }
+          const gridX = c.excel ? origin.left : 0;
+          const gridY = c.excel ? origin.top : 0;
+          if (c.excel && !chartOrigins.has(c.id))
+            chartOrigins.set(c.id, origin);
+          if (!sheet.getFloatDomById(c.id))
+            sheet.addFloatDomToPosition(
+              {
+                componentKey: "suiteleaf-chart",
+                data: { chartId: c.id },
+                initPosition: {
+                  startX: c.x + gridX - (c.excel ? 2 : 0),
+                  endX: c.x + c.width + gridX + (c.excel ? 2 : 0),
+                  startY: c.y + gridY - (c.excel ? 2 : 0),
+                  endY: c.y + c.height + gridY + (c.excel ? 2 : 0),
+                },
+              },
+              c.id,
+            );
+        }
+      };
+      refreshCharts.current = () => {
+        busy = true;
+        try {
+          hydrateCharts();
+        } finally {
+          busy = false;
+        }
+      };
+      const scheduleChartHydration = (remaining = 100) => {
+        clearTimeout(chartHydrationTimer);
+        chartHydrationTimer = setTimeout(() => {
+          if (disposed) return;
+          refreshCharts.current();
+          const active = workbook.getActiveSheet();
+          const missing = content.current.charts.some(
+            (c) =>
+              c.sheetId === active.getSheetId() &&
+              !active.getFloatDomById(c.id),
+          );
+          if (missing && remaining > 0) scheduleChartHydration(remaining - 1);
+          else if (missing)
+            error.current(
+              "The chart canvas did not become ready. Reopen this workbook to retry.",
+            );
+        }, 50);
+      };
+      busy = true;
+      hydrateCharts();
+      busy = false;
+      // Floating drawings need the sheet selection renderer, which is created
+      // after the workbook facade. Retry once the initial canvas has mounted.
+      scheduleChartHydration();
+      persist.current = () => {
+        if (disposed) return;
+        pending.current = false;
+        if (content.current.images)
+          content.current.images = content.current.images.filter(
+            (image) =>
+              !hydratedImageIds.has(image.id) ||
+              !!workbook
+                .getSheetBySheetId(image.sheetId)
+                ?.getImageById(image.id),
+          );
+
+        for (const c of content.current.charts) {
+          const dom = workbook
+            .getSheetBySheetId(c.sheetId)
+            ?.getFloatDomById(c.id);
+          if (dom) {
+            c.x =
+              dom.position.left === undefined
+                ? c.x
+                : dom.position.left -
+                  (c.excel ? (chartOrigins.get(c.id)?.left ?? 46) - 2 : 0);
+            c.y =
+              dom.position.top === undefined
+                ? c.y
+                : dom.position.top -
+                  (c.excel ? (chartOrigins.get(c.id)?.top ?? 20) - 2 : 0);
+            c.width =
+              dom.position.width === undefined
+                ? c.width
+                : dom.position.width - (c.excel ? 4 : 0);
+            c.height =
+              dom.position.height === undefined
+                ? c.height
+                : dom.position.height - (c.excel ? 4 : 0);
+          }
+        }
+        content.current.workbook =
+          workbook.save() as unknown as SheetFile["content"]["workbook"];
+        changes.current(structuredClone(content.current));
+        setRevision((v) => v + 1);
+      };
+      const listener = workbook.onCommandExecuted((command: any) => {
+        if (busy || disposed || !command.id.includes("mutation")) return;
+        pending.current = true;
+        const p = command.params ?? {};
+        const structural = /sheet\.mutation\.(insert|remove)-(row|col)$/.exec(
+          command.id,
+        );
+        if (structural && p.range) {
+          const axis = structural[2] === "row" ? "row" : "column";
+          const start = axis === "row" ? p.range.startRow : p.range.startColumn;
+          const end = axis === "row" ? p.range.endRow : p.range.endColumn;
+          for (const chart of content.current.charts) {
+            for (const series of chart.excel?.series ?? []) {
+              if (series.values.sheetId !== p.subUnitId) continue;
+              const shifted = shiftRange(
+                series.values,
+                axis,
+                start,
+                end - start + 1,
+                structural[1] === "remove",
+              );
+              if (shifted) series.values = shifted;
+              else chart.invalid = true;
+            }
+          }
+          for (const item of [
+            ...content.current.charts,
+            ...content.current.pivots,
+          ])
+            if (item.source.sheetId === p.subUnitId) {
+              const shifted = shiftRange(
+                item.source,
+                axis,
+                start,
+                end - start + 1,
+                structural[1] === "remove",
+              );
+              if (shifted) item.source = shifted;
+              else item.invalid = true;
+            }
+        }
         for (const item of [
           ...content.current.charts,
           ...content.current.pivots,
         ])
-          if (item.source.sheetId === p.subUnitId) {
-            const shifted = shiftRange(
-              item.source,
-              axis,
-              start,
-              end - start + 1,
-              structural[1] === "remove",
-            );
-            if (shifted) item.source = shifted;
-            else item.invalid = true;
-          }
-      }
-      for (const item of [...content.current.charts, ...content.current.pivots])
-        if (!workbook.getSheetBySheetId(item.source.sheetId))
-          item.invalid = true;
-      if (command.id.includes("remove-sheet"))
-        content.current.pivots = content.current.pivots.filter((p) =>
-          workbook.getSheetBySheetId(p.targetSheetId),
-        );
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        refreshCharts.current();
-        persist.current();
-      }, 180);
-    });
-    const activeSheetChanged = univerAPI.addEvent(
-      univerAPI.Event.ActiveSheetChanged,
-      () => setRevision((v) => v + 1),
-    );
-    const removed = univerAPI.addEvent(
-      univerAPI.Event.FloatDomDeleted,
-      ({ drawings }) => {
-        if (busy || disposed) return;
-        content.current.charts = content.current.charts.filter(
-          (c) => !drawings.includes(c.id),
-        );
-        drawings.forEach((id) => charts.delete(id));
-        persist.current();
-      },
-    );
-    setReady(true);
-    // Native snapshot retains worksheet protection across reopen.
+          if (!workbook.getSheetBySheetId(item.source.sheetId))
+            item.invalid = true;
+        if (command.id.includes("remove-sheet"))
+          content.current.pivots = content.current.pivots.filter((p) =>
+            workbook.getSheetBySheetId(p.targetSheetId),
+          );
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          refreshCharts.current();
+          persist.current();
+        }, 180);
+      });
+      const activeSheetChanged = univerAPI.addEvent(
+        univerAPI.Event.ActiveSheetChanged,
+        () => {
+          setRevision((v) => v + 1);
+          scheduleChartHydration();
+        },
+      );
+      const removed = univerAPI.addEvent(
+        univerAPI.Event.FloatDomDeleted,
+        ({ drawings }) => {
+          if (busy || disposed) return;
+          content.current.charts = content.current.charts.filter(
+            (c) => !drawings.includes(c.id),
+          );
+          drawings.forEach((id) => charts.delete(id));
+          persist.current();
+        },
+      );
+      setReady(true);
+      // Native snapshot retains worksheet protection across reopen.
+      return () => {
+        disposed = true;
+        clearTimeout(timer);
+        clearTimeout(chartHydrationTimer);
+        listener.dispose();
+        removed.dispose();
+        activeSheetChanged.dispose();
+        partialCleanup?.();
+        partialCleanup = undefined;
+      };
+    };
+    void resolveExcelColumnWidths(
+      content.current.workbook as unknown as IWorkbookData,
+    )
+      .catch((cause) => {
+        if (!disposed)
+          error.current(cause instanceof Error ? cause.message : String(cause));
+      })
+      .then(() => {
+        for (const c of content.current.charts) {
+          if (!c.excel || c.excel.anchorResolved) continue;
+          const sheet = (content.current.workbook as unknown as IWorkbookData)
+            .sheets[c.sheetId];
+          const a = c.excel.anchor;
+          const x = (column: number, offset: number) =>
+            Array.from(
+              { length: column },
+              (_, i) =>
+                sheet.columnData?.[i]?.w ?? sheet.defaultColumnWidth ?? 100,
+            ).reduce((sum, v) => sum + v, 0) + offset;
+          const y = (row: number, offset: number) =>
+            Array.from(
+              { length: row },
+              (_, i) => sheet.rowData?.[i]?.h ?? sheet.defaultRowHeight ?? 24,
+            ).reduce((sum, v) => sum + v, 0) + offset;
+          c.x = x(a.fromColumn, a.fromColumnOffset);
+          c.y = y(a.fromRow, a.fromRowOffset);
+          c.width = x(a.toColumn, a.toColumnOffset) - c.x;
+          c.height = y(a.toRow, a.toRowOffset) - c.y;
+          c.excel.anchorResolved = true;
+        }
+        if (!disposed) cleanup = initialize();
+      })
+      .catch((cause) => {
+        const message = cause instanceof Error ? cause.message : String(cause);
+        try {
+          partialCleanup?.();
+        } catch (cleanupCause) {
+          if (!disposed)
+            error.current(`${message} (cleanup: ${String(cleanupCause)})`);
+          return;
+        } finally {
+          partialCleanup = undefined;
+        }
+        if (!disposed) error.current(message);
+      });
     return () => {
       disposed = true;
-      clearTimeout(timer);
-      listener.dispose();
-      removed.dispose();
-      activeSheetChanged.dispose();
-      api.current = null;
-      book.current = null;
-      for (const c of sessionContent.charts) charts.delete(c.id);
-      univer.dispose();
+      cleanup?.();
     };
     // The workspace mounts a fresh editor per file. Changes must not recreate the engine.
   }, []);
@@ -491,7 +798,9 @@ export default function Sheets({
   };
   const subtractDecimal = () => {
     try {
-      api.current?.executeCommand("sheet.command.numfmt.subtract.decimal.command");
+      api.current?.executeCommand(
+        "sheet.command.numfmt.subtract.decimal.command",
+      );
     } catch {}
     persist.current();
   };
@@ -545,7 +854,7 @@ export default function Sheets({
         r.setBorder(
           api.current.Enum.BorderType.ALL,
           api.current.Enum.BorderStyleTypes.THIN,
-          "#000000"
+          "#000000",
         );
       } catch {}
       persist.current();
@@ -561,7 +870,8 @@ export default function Sheets({
     }
   };
   const cycleHorizontalAlign = () => {
-    const next = hAlign === "left" ? "center" : hAlign === "center" ? "right" : "left";
+    const next =
+      hAlign === "left" ? "center" : hAlign === "center" ? "right" : "left";
     setHAlign(next);
     const r = book.current?.getActiveRange();
     if (r) {
@@ -570,7 +880,8 @@ export default function Sheets({
     }
   };
   const cycleVerticalAlign = () => {
-    const next = vAlign === "top" ? "middle" : vAlign === "middle" ? "bottom" : "top";
+    const next =
+      vAlign === "top" ? "middle" : vAlign === "middle" ? "bottom" : "top";
     setVAlign(next);
     const r = book.current?.getActiveRange();
     if (r) {
@@ -624,7 +935,9 @@ export default function Sheets({
             ? selected
             : sheet.getDataRange();
         if (!target.createFilter())
-          throw new Error("Select a range with a header row to create a filter.");
+          throw new Error(
+            "Select a range with a header row to create a filter.",
+          );
       }
       persist.current();
     } catch (e) {
@@ -849,7 +1162,11 @@ export default function Sheets({
   const items = content.current;
   return (
     <div className="sheets-editor">
-      <div className="sheets-toolbar" role="toolbar" aria-label="Spreadsheet formatting">
+      <div
+        className="sheets-toolbar"
+        role="toolbar"
+        aria-label="Spreadsheet formatting"
+      >
         <button
           type="button"
           className="menu-search-pill"

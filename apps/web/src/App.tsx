@@ -119,7 +119,7 @@ function ImportButton({
         hidden
         type="file"
         ref={input}
-        accept=".suiteleaf,.docx,.xlsx,.pptx,.ppt,.ppsx,.pptm,.potx,.ppsm,.html,.htm,.txt,.csv,.tsv"
+        accept=".suiteleaf,.docx,.xlsx,.xls,.xlsm,.xlsb,.xltx,.pptx,.ppt,.ppsx,.pptm,.potx,.ppsm,.html,.htm,.txt,.csv,.tsv"
         onChange={async (e) => {
           const f = e.target.files?.[0];
           e.target.value = "";
@@ -685,17 +685,65 @@ function Workspace() {
         </button>
         <span className={`file-icon ${f.kind}`}>
           {f.kind === "doc" ? (
-            <FileText size={24} />
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M14 2H6C4.9 2 4 2.9 4 4V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V8L14 2Z"
+                fill="#4285F4"
+              />
+              <path d="M14 2V8H20L14 2Z" fill="#A1C2FA" />
+              <path
+                d="M8 12H16V13.6H8V12ZM8 15.2H16V16.8H8V15.2ZM8 18.4H13V20H8V18.4Z"
+                fill="#FFFFFF"
+              />
+            </svg>
           ) : f.kind === "sheet" ? (
-            <svg width={24} height={24} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <rect width="24" height="24" rx="4" fill="#188038" />
-              <path d="M6 4.5C6 3.67 6.67 3 7.5 3H14L19 8V19.5C19 20.33 18.33 21 17.5 21H7.5C6.67 21 6 20.33 6 19.5V4.5Z" fill="#ffffff" />
-              <path d="M14 3V8H19L14 3Z" fill="#a8dab5" />
-              <rect x="8.5" y="10.5" width="7" height="6.5" rx="0.5" fill="#188038" />
-              <path d="M8.5 12.5H15.5M8.5 14.8H15.5M11.5 10.5V17" stroke="#ffffff" strokeWidth="0.8" />
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M14 2H6C4.9 2 4 2.9 4 4V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V8L14 2Z"
+                fill="#0F9D58"
+              />
+              <path d="M14 2V8H20L14 2Z" fill="#87CEAC" />
+              <path d="M8 11.5H16V18.5H8V11.5Z" fill="#0F9D58" />
+              <path
+                d="M8 11.5H16V18.5H8V11.5ZM8 13.8H16M8 16.2H16M12 11.5V18.5"
+                stroke="#FFFFFF"
+                strokeWidth="1.2"
+              />
             </svg>
           ) : (
-            <Presentation size={24} />
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M14 2H6C4.9 2 4 2.9 4 4V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V8L14 2Z"
+                fill="#F4B400"
+              />
+              <path d="M14 2V8H20L14 2Z" fill="#FCE293" />
+              <rect
+                x="7.5"
+                y="11.5"
+                width="9"
+                height="7"
+                rx="0.5"
+                fill="#FFFFFF"
+              />
+            </svg>
           )}
         </span>
         <div className="title-block">
@@ -779,17 +827,29 @@ function Workspace() {
             {f.kind === "doc" ? (
               <>
                 <Menu label="Edit">
-                  <MenuItem onSelect={() => actions.current?.docActions?.undo()}>
-                    Undo (Cmd+Z)
+                  <MenuItem
+                    shortcut="Cmd+Z"
+                    onSelect={() => actions.current?.docActions?.undo()}
+                  >
+                    Undo
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.docActions?.redo()}>
-                    Redo (Cmd+Y)
+                  <MenuItem
+                    shortcut="Cmd+Y"
+                    onSelect={() => actions.current?.docActions?.redo()}
+                  >
+                    Redo
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.docActions?.openFind()}>
-                    Find and replace (Cmd+Shift+H)
+                  <MenuItem
+                    shortcut="Cmd+Shift+H"
+                    onSelect={() => actions.current?.docActions?.openFind()}
+                  >
+                    Find and replace
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.docActions?.selectAll()}>
-                    Select all (Cmd+A)
+                  <MenuItem
+                    shortcut="Cmd+A"
+                    onSelect={() => actions.current?.docActions?.selectAll()}
+                  >
+                    Select all
                   </MenuItem>
                 </Menu>
                 <Menu label="View">
@@ -798,64 +858,121 @@ function Workspace() {
                   </MenuItem>
                 </Menu>
                 <Menu label="Insert">
-                  <MenuItem onSelect={() => actions.current?.docActions?.insertImage()}>
+                  <MenuItem
+                    onSelect={() => actions.current?.docActions?.insertImage()}
+                  >
                     Image
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.docActions?.insertTable()}>
+                  <MenuItem
+                    onSelect={() => actions.current?.docActions?.insertTable()}
+                  >
                     Table
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.docActions?.insertHorizontalRule()}>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.docActions?.insertHorizontalRule()
+                    }
+                  >
                     Horizontal line
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.docActions?.insertLink()}>
-                    Link (Cmd+K)
+                  <MenuItem
+                    shortcut="Cmd+K"
+                    onSelect={() => actions.current?.docActions?.insertLink()}
+                  >
+                    Link
                   </MenuItem>
                 </Menu>
                 <Menu label="Format">
-                  <MenuItem onSelect={() => actions.current?.docActions?.toggleBold()}>
-                    Bold (Cmd+B)
+                  <MenuItem
+                    shortcut="Cmd+B"
+                    onSelect={() => actions.current?.docActions?.toggleBold()}
+                  >
+                    Bold
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.docActions?.toggleItalic()}>
-                    Italic (Cmd+I)
+                  <MenuItem
+                    shortcut="Cmd+I"
+                    onSelect={() => actions.current?.docActions?.toggleItalic()}
+                  >
+                    Italic
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.docActions?.toggleUnderline()}>
-                    Underline (Cmd+U)
+                  <MenuItem
+                    shortcut="Cmd+U"
+                    onSelect={() =>
+                      actions.current?.docActions?.toggleUnderline()
+                    }
+                  >
+                    Underline
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.docActions?.toggleStrike()}>
+                  <MenuItem
+                    onSelect={() => actions.current?.docActions?.toggleStrike()}
+                  >
                     Strikethrough
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.docActions?.align("left")}>
+                  <MenuItem
+                    onSelect={() => actions.current?.docActions?.align("left")}
+                  >
                     Align left
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.docActions?.align("center")}>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.docActions?.align("center")
+                    }
+                  >
                     Align center
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.docActions?.align("right")}>
+                  <MenuItem
+                    onSelect={() => actions.current?.docActions?.align("right")}
+                  >
                     Align right
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.docActions?.align("justify")}>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.docActions?.align("justify")
+                    }
+                  >
                     Justify
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.docActions?.toggleBulletList()}>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.docActions?.toggleBulletList()
+                    }
+                  >
                     Bulleted list
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.docActions?.toggleOrderedList()}>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.docActions?.toggleOrderedList()
+                    }
+                  >
                     Numbered list
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.docActions?.clearFormatting()}>
+                  <MenuItem
+                    shortcut="Cmd+\"
+                    onSelect={() =>
+                      actions.current?.docActions?.clearFormatting()
+                    }
+                  >
                     Clear formatting
                   </MenuItem>
                 </Menu>
                 <Menu label="Tools">
-                  <MenuItem onSelect={() => actions.current?.docActions?.openFind()}>
+                  <MenuItem
+                    onSelect={() => actions.current?.docActions?.openFind()}
+                  >
                     Find and replace
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.docActions?.clearFormatting()}>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.docActions?.clearFormatting()
+                    }
+                  >
                     Spelling and grammar
                   </MenuItem>
                 </Menu>
                 <Menu label="Help">
-                  <MenuItem onSelect={() => actions.current?.docActions?.openFind()}>
+                  <MenuItem
+                    onSelect={() => actions.current?.docActions?.openFind()}
+                  >
                     Keyboard shortcuts
                   </MenuItem>
                 </Menu>
@@ -864,149 +981,209 @@ function Workspace() {
             {f.kind === "sheet" ? (
               <>
                 <Menu label="Edit">
-                  <MenuItem onSelect={() => actions.current?.sheetActions?.undo()}>
-                    Undo (Cmd+Z)
+                  <MenuItem
+                    shortcut="Cmd+Z"
+                    onSelect={() => actions.current?.sheetActions?.undo()}
+                  >
+                    Undo
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.sheetActions?.redo()}>
-                    Redo (Cmd+Y)
+                  <MenuItem
+                    shortcut="Cmd+Y"
+                    onSelect={() => actions.current?.sheetActions?.redo()}
+                  >
+                    Redo
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.sheetActions?.toggleBold()}>
-                    Cut (Cmd+X)
+                  <MenuItem
+                    shortcut="Cmd+X"
+                    onSelect={() => actions.current?.sheetActions?.toggleBold()}
+                  >
+                    Cut
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.sheetActions?.toggleBold()}>
-                    Copy (Cmd+C)
+                  <MenuItem
+                    shortcut="Cmd+C"
+                    onSelect={() => actions.current?.sheetActions?.toggleBold()}
+                  >
+                    Copy
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.sheetActions?.toggleBold()}>
-                    Paste (Cmd+V)
+                  <MenuItem
+                    shortcut="Cmd+V"
+                    onSelect={() => actions.current?.sheetActions?.toggleBold()}
+                  >
+                    Paste
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.sheetActions?.clearFormatting()}>
-                    Delete values (Delete)
+                  <MenuItem
+                    shortcut="Delete"
+                    onSelect={() =>
+                      actions.current?.sheetActions?.clearFormatting()
+                    }
+                  >
+                    Delete values
                   </MenuItem>
                 </Menu>
                 <Menu label="View">
                   <MenuItem onSelect={() => void doAction("print")}>
                     Print layout
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.sheetActions?.toggleFilter()}>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.sheetActions?.toggleFilter()
+                    }
+                  >
                     Toggle filter
                   </MenuItem>
-                  <MenuItem onSelect={() => {}}>
-                    Show formula bar
-                  </MenuItem>
-                  <MenuItem onSelect={() => {}}>
-                    Show gridlines
-                  </MenuItem>
+                  <MenuItem onSelect={() => {}}>Show formula bar</MenuItem>
+                  <MenuItem onSelect={() => {}}>Show gridlines</MenuItem>
                 </Menu>
                 <Menu label="Insert">
-                  <MenuItem onSelect={() => actions.current?.sheetActions?.insertChart()}>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.sheetActions?.insertChart()
+                    }
+                  >
                     Chart
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.sheetActions?.insertPivot()}>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.sheetActions?.insertPivot()
+                    }
+                  >
                     Pivot table
                   </MenuItem>
-                  <MenuItem onSelect={() => {}}>
-                    Function: SUM
+                  <MenuItem onSelect={() => {}}>Function: SUM</MenuItem>
+                  <MenuItem onSelect={() => {}}>Function: AVERAGE</MenuItem>
+                  <MenuItem shortcut="Cmd+K" onSelect={() => {}}>
+                    Link
                   </MenuItem>
-                  <MenuItem onSelect={() => {}}>
-                    Function: AVERAGE
-                  </MenuItem>
-                  <MenuItem onSelect={() => {}}>
-                    Link (Cmd+K)
-                  </MenuItem>
-                  <MenuItem onSelect={() => {}}>
-                    Checkbox
-                  </MenuItem>
+                  <MenuItem onSelect={() => {}}>Checkbox</MenuItem>
                 </Menu>
                 <Menu label="Format">
-                  <MenuItem onSelect={() => actions.current?.sheetActions?.formatCurrency()}>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.sheetActions?.formatCurrency()
+                    }
+                  >
                     Currency ($)
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.sheetActions?.formatPercent()}>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.sheetActions?.formatPercent()
+                    }
+                  >
                     Percent (%)
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.sheetActions?.toggleBold()}>
-                    Bold (Cmd+B)
+                  <MenuItem
+                    shortcut="Cmd+B"
+                    onSelect={() => actions.current?.sheetActions?.toggleBold()}
+                  >
+                    Bold
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.sheetActions?.toggleItalic()}>
-                    Italic (Cmd+I)
+                  <MenuItem
+                    shortcut="Cmd+I"
+                    onSelect={() =>
+                      actions.current?.sheetActions?.toggleItalic()
+                    }
+                  >
+                    Italic
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.sheetActions?.toggleStrike()}>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.sheetActions?.toggleStrike()
+                    }
+                  >
                     Strikethrough
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.sheetActions?.align("left")}>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.sheetActions?.align("left")
+                    }
+                  >
                     Align left
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.sheetActions?.align("center")}>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.sheetActions?.align("center")
+                    }
+                  >
                     Align center
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.sheetActions?.align("right")}>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.sheetActions?.align("right")
+                    }
+                  >
                     Align right
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.sheetActions?.clearFormatting()}>
-                    Clear formatting (Cmd+\)
+                  <MenuItem
+                    shortcut="Cmd+\"
+                    onSelect={() =>
+                      actions.current?.sheetActions?.clearFormatting()
+                    }
+                  >
+                    Clear formatting
                   </MenuItem>
                 </Menu>
                 <Menu label="Data">
-                  <MenuItem onSelect={() => actions.current?.sheetActions?.toggleFilter()}>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.sheetActions?.toggleFilter()
+                    }
+                  >
                     Create a filter
                   </MenuItem>
-                  <MenuItem onSelect={() => actions.current?.sheetActions?.insertPivot()}>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.sheetActions?.insertPivot()
+                    }
+                  >
                     Pivot table
                   </MenuItem>
-                  <MenuItem onSelect={() => {}}>
-                    Sort range
-                  </MenuItem>
-                  <MenuItem onSelect={() => {}}>
-                    Data validation
-                  </MenuItem>
+                  <MenuItem onSelect={() => {}}>Sort range</MenuItem>
+                  <MenuItem onSelect={() => {}}>Data validation</MenuItem>
                   <MenuItem onSelect={() => {}}>
                     Protect sheets and ranges
                   </MenuItem>
                 </Menu>
                 <Menu label="Tools">
-                  <MenuItem onSelect={() => {}}>
-                    Spelling
-                  </MenuItem>
-                  <MenuItem onSelect={() => {}}>
-                    Autocomplete
-                  </MenuItem>
-                  <MenuItem onSelect={() => {}}>
-                    Notification settings
-                  </MenuItem>
+                  <MenuItem onSelect={() => {}}>Spelling</MenuItem>
+                  <MenuItem onSelect={() => {}}>Autocomplete</MenuItem>
+                  <MenuItem onSelect={() => {}}>Notification settings</MenuItem>
                 </Menu>
                 <Menu label="Extensions">
-                  <MenuItem onSelect={() => {}}>
-                    Add-ons
-                  </MenuItem>
-                  <MenuItem onSelect={() => {}}>
-                    Apps Script
-                  </MenuItem>
-                  <MenuItem onSelect={() => {}}>
-                    AppSheet
-                  </MenuItem>
+                  <MenuItem onSelect={() => {}}>Add-ons</MenuItem>
+                  <MenuItem onSelect={() => {}}>Apps Script</MenuItem>
+                  <MenuItem onSelect={() => {}}>AppSheet</MenuItem>
                 </Menu>
                 <Menu label="Help">
-                  <MenuItem onSelect={() => {}}>
-                    Sheets Help
-                  </MenuItem>
-                  <MenuItem onSelect={() => {}}>
-                    Keyboard shortcuts
-                  </MenuItem>
+                  <MenuItem onSelect={() => {}}>Sheets Help</MenuItem>
+                  <MenuItem onSelect={() => {}}>Keyboard shortcuts</MenuItem>
                 </Menu>
               </>
             ) : null}
             {f.kind === "slide" ? (
               <>
                 <Menu label="Edit">
-                  <MenuItem onSelect={() => {}}>Undo (Cmd+Z)</MenuItem>
-                  <MenuItem onSelect={() => {}}>Redo (Cmd+Y)</MenuItem>
-                  <MenuItem onSelect={() => {}}>Cut (Cmd+X)</MenuItem>
-                  <MenuItem onSelect={() => {}}>Copy (Cmd+C)</MenuItem>
-                  <MenuItem onSelect={() => {}}>Paste (Cmd+V)</MenuItem>
+                  <MenuItem shortcut="Cmd+Z" onSelect={() => {}}>
+                    Undo
+                  </MenuItem>
+                  <MenuItem shortcut="Cmd+Y" onSelect={() => {}}>
+                    Redo
+                  </MenuItem>
+                  <MenuItem shortcut="Cmd+X" onSelect={() => {}}>
+                    Cut
+                  </MenuItem>
+                  <MenuItem shortcut="Cmd+C" onSelect={() => {}}>
+                    Copy
+                  </MenuItem>
+                  <MenuItem shortcut="Cmd+V" onSelect={() => {}}>
+                    Paste
+                  </MenuItem>
                 </Menu>
                 <Menu label="View">
-                  <MenuItem onSelect={() => void actions.current?.present?.()}>
-                    Slideshow (Cmd+Enter)
+                  <MenuItem
+                    shortcut="Cmd+Enter"
+                    onSelect={() => void actions.current?.present?.()}
+                  >
+                    Slideshow
                   </MenuItem>
                   <MenuItem onSelect={() => void actions.current?.print()}>
                     Print preview
@@ -1021,12 +1198,19 @@ function Workspace() {
                   </MenuItem>
                 </Menu>
                 <Menu label="Format">
-                  <MenuItem onSelect={() => {}}>Text: Bold</MenuItem>
-                  <MenuItem onSelect={() => {}}>Text: Italic</MenuItem>
+                  <MenuItem shortcut="Cmd+B" onSelect={() => {}}>
+                    Text: Bold
+                  </MenuItem>
+                  <MenuItem shortcut="Cmd+I" onSelect={() => {}}>
+                    Text: Italic
+                  </MenuItem>
                   <MenuItem onSelect={() => {}}>Align & indent</MenuItem>
                 </Menu>
                 <Menu label="Slide">
-                  <MenuItem onSelect={() => void doAction("new-slide")}>
+                  <MenuItem
+                    shortcut="Cmd+M"
+                    onSelect={() => void doAction("new-slide")}
+                  >
                     New slide
                   </MenuItem>
                   <MenuItem onSelect={() => {}}>Duplicate slide</MenuItem>

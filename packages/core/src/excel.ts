@@ -2,6 +2,8 @@ import * as XLSX from "xlsx";
 import { officeZlib } from "./zip-inflater";
 XLSX.CFB.utils.use_zlib(officeZlib);
 import JSZip from "jszip";
+import { readExcelImages } from "./excel-images";
+import { readBinaryExcelLayout } from "./excel-binary-metadata";
 import {
   createFile,
   parseRange,
@@ -17,6 +19,101 @@ import {
   OfficeImportError,
 } from "./office";
 
+/** Read binary formats without VBA, then reuse the editable XML importer. */
+export async function normalizeBinaryExcel(
+  bytes: Uint8Array,
+): Promise<Uint8Array> {
+  if (
+    !(bytes[0] === 0xd0 && bytes[1] === 0xcf) &&
+    !(bytes[0] === 0x50 && bytes[1] === 0x4b) &&
+    bytes[0] !== 0x09
+  )
+    throw new OfficeImportError(
+      "invalid-container",
+      "This file has an invalid Excel binary signature.",
+    );
+  try {
+    const book = XLSX.read(bytes, {
+      type: "array",
+      cellFormula: true,
+      cellNF: true,
+      cellStyles: true,
+      cellDates: false,
+      bookVBA: false,
+    });
+    if (
+      !book.SheetNames.length ||
+      book.SheetNames.some(
+        (name) =>
+          !name || name.length > 31 || /[\u0000-\u001f\[\]:*?/\\]/.test(name),
+      )
+    )
+      throw new OfficeImportError(
+        "conversion-failed",
+        "The binary Excel workbook contains unreadable worksheet names.",
+      );
+    const normalized = new Uint8Array(
+      XLSX.write(book, {
+        type: "array",
+        bookType: "xlsx",
+        cellStyles: true,
+        bookVBA: false,
+      }),
+    );
+    const layout = readBinaryExcelLayout(bytes, book);
+    const converted = await JSZip.loadAsync(normalized);
+    if (layout.normalFont) {
+      const family = layout.normalFont.family.replace(/[&<>"]+/g, (text) =>
+        Array.from(
+          text,
+          (character) =>
+            ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[
+              character
+            ],
+        ).join(""),
+      );
+      const stylesPart = converted.file("xl/styles.xml");
+      if (stylesPart)
+        converted.file(
+          "xl/styles.xml",
+          (await stylesPart.async("string")).replace(
+            /(<fonts\b[^>]*>)<font>[\s\S]*?<\/font>/,
+            `$1<font><name val="${family}"/><sz val="${layout.normalFont.size}"/></font>`,
+          ),
+        );
+    }
+    for (const [index, dimensions] of layout.sheets.entries()) {
+      const path = `xl/worksheets/sheet${index + 1}.xml`;
+      const part = converted.file(path);
+      if (!part || !Object.keys(dimensions).length) continue;
+      let sheet = await part.async("string");
+      const original = segment(sheet, "sheetFormatPr");
+      const attributes = attrParser(original ?? "");
+      if (dimensions.defaultRowHeight !== undefined)
+        attributes.defaultRowHeight = String(dimensions.defaultRowHeight);
+      if (dimensions.baseColumnWidthChars !== undefined)
+        attributes.baseColWidth = String(dimensions.baseColumnWidthChars);
+      if (dimensions.defaultColumnWidthChars !== undefined)
+        attributes.defaultColWidth = String(dimensions.defaultColumnWidthChars);
+      const format = `<sheetFormatPr ${Object.entries(attributes)
+        .map(([key, value]) => `${key}="${value}"`)
+        .join(" ")}/>`;
+      sheet = original
+        ? sheet.replace(original, format)
+        : sheet.replace(/<(?:\w+:)?sheetData\b/, format + "<sheetData");
+      converted.file(path, sheet);
+    }
+    return converted.generateAsync({ type: "uint8array" });
+  } catch (e) {
+    if (e instanceof OfficeImportError) throw e;
+    const message = e instanceof Error ? e.message : String(e);
+    throw new OfficeImportError(
+      /password|encrypted/i.test(message) ? "encrypted" : "conversion-failed",
+      `Excel conversion failed: ${message}`,
+    );
+  }
+}
+
 const attrParser = (text: string): Record<string, string> => {
   const o: Record<string, string> = {};
   for (const m of text.matchAll(/([\w:]+)\s*=\s*["']([^"']*)["']/g))
@@ -31,22 +128,78 @@ function segment(xml: string, name: string): string | undefined {
 const b = (v: any) =>
   v !== undefined && v !== null && v !== "0" && v !== "false";
 const indexedColors = [
-  "#000000",
-  "#FFFFFF",
-  "#FF0000",
-  "#00FF00",
-  "#0000FF",
-  "#FFFF00",
-  "#FF00FF",
-  "#00FFFF",
-];
+  "000000",
+  "FFFFFF",
+  "FF0000",
+  "00FF00",
+  "0000FF",
+  "FFFF00",
+  "FF00FF",
+  "00FFFF",
+  "000000",
+  "FFFFFF",
+  "FF0000",
+  "00FF00",
+  "0000FF",
+  "FFFF00",
+  "FF00FF",
+  "00FFFF",
+  "800000",
+  "008000",
+  "000080",
+  "808000",
+  "800080",
+  "008080",
+  "C0C0C0",
+  "808080",
+  "9999FF",
+  "993366",
+  "FFFFCC",
+  "CCFFFF",
+  "660066",
+  "FF8080",
+  "0066CC",
+  "CCCCFF",
+  "000080",
+  "FF00FF",
+  "FFFF00",
+  "00FFFF",
+  "800080",
+  "800000",
+  "008080",
+  "0000FF",
+  "00CCFF",
+  "CCFFFF",
+  "CCFFCC",
+  "FFFF99",
+  "99CCFF",
+  "FF99CC",
+  "CC99FF",
+  "FFCC99",
+  "3366FF",
+  "33CCCC",
+  "99CC00",
+  "FFCC00",
+  "FF9900",
+  "FF6600",
+  "666699",
+  "969696",
+  "003366",
+  "339966",
+  "003300",
+  "333300",
+  "993300",
+  "993366",
+  "333399",
+  "333333",
+].map((value) => "#" + value);
 function color(c: any, palette: string[]): string | undefined {
   if (!c) return;
   let rgb = c["@_rgb"];
   if (rgb && /^[a-f\d]{6,8}$/i.test(rgb)) return "#" + rgb.slice(-6);
   if (c["@_theme"] !== undefined) rgb = palette[+c["@_theme"]];
   else if (c["@_indexed"] !== undefined)
-    rgb = indexedColors[+c["@_indexed"] % 8];
+    rgb = +c["@_indexed"] === 64 ? "#000000" : indexedColors[+c["@_indexed"]];
   if (!rgb) return;
   const tint = Number(c["@_tint"]) || 0;
   if (!tint) return rgb;
@@ -109,7 +262,7 @@ async function styleTable(zip: JSZip): Promise<Record<string, any>> {
     }
   }
   const f = zip.file("xl/styles.xml");
-  if (!f) return {};
+  if (!f) return { styles: {}, normalFont: { family: "Calibri", size: 11 } };
   const s = parseXml(await f.async("string"), "xl/styles.xml").styleSheet;
   const fonts = array<any>(s?.fonts?.font),
     fills = array<any>(s?.fills?.fill),
@@ -122,7 +275,8 @@ async function styleTable(zip: JSZip): Promise<Record<string, any>> {
     );
   const out: Record<string, any> = {};
   array<any>(s?.cellXfs?.xf).forEach((xf, i) => {
-    const style: any = {},
+    // Native Excel's cell text inset is three points; the grid uses CSS pixels.
+    const style: any = { tb: 1, pd: { l: (3 * 96) / 72, r: (3 * 96) / 72 } },
       font = fonts[+xf["@_fontId"]],
       fill = fills[+xf["@_fillId"]],
       border = borders[+xf["@_borderId"]];
@@ -198,7 +352,20 @@ async function styleTable(zip: JSZip): Promise<Record<string, any>> {
     }
     if (Object.keys(style).length) out["excel-" + i] = style;
   });
-  return out;
+  const normalStyle = array<any>(s?.cellStyles?.cellStyle).find(
+    (style) => style["@_builtinId"] === "0" || style["@_name"] === "Normal",
+  );
+  const normalXf = array<any>(s?.cellStyleXfs?.xf)[
+    Number(normalStyle?.["@_xfId"] ?? 0)
+  ];
+  const normalFont = fonts[Number(normalXf?.["@_fontId"] ?? 0)];
+  return {
+    styles: out,
+    normalFont: {
+      family: normalFont?.name?.["@_val"] ?? "Calibri",
+      size: Number(normalFont?.sz?.["@_val"]) || 11,
+    },
+  };
 }
 export async function importXlsx(
   bytes: Uint8Array,
@@ -260,7 +427,8 @@ export async function importXlsx(
   const root = parseXml(xml, part).workbook;
   const sourceSheets = array<any>(root?.sheets?.sheet),
     rels = await relationships(zip, part),
-    styles = await styleTable(zip);
+    styleData = await styleTable(zip);
+  const { styles, normalFont } = styleData;
   const file = createFile("sheet", title) as SheetFile;
   const workbook = file.content.workbook;
   workbook.sheetOrder = [];
@@ -391,6 +559,7 @@ export async function importXlsx(
     }
     const rowData: Record<string, any> = {},
       columnData: Record<string, any> = {};
+    const columnWidths: Record<string, number> = {};
     for (const m of raw.matchAll(/<(?:\w+:)?row\b([^>]*?)(?:\/?>)/g)) {
       const a = attrParser(m[1]);
       const r = Number(a.r) - 1;
@@ -405,7 +574,16 @@ export async function importXlsx(
       const a = attrParser(m[1]);
       for (let c = Math.max(0, +a.min - 1); c < Math.min(16384, +a.max); c++) {
         const d: any = {};
-        if (a.width !== undefined) d.w = Math.floor(+a.width * 7 + 5);
+        if (
+          a.width !== undefined &&
+          Number.isFinite(+a.width) &&
+          +a.width >= 0
+        ) {
+          columnWidths[c] = +a.width;
+          // OOXML widths already include padding; apply the stored-width formula.
+          // The browser refines dimensions after loading the workbook Normal font.
+          d.w = Math.floor(((256 * +a.width + Math.floor(128 / 7)) / 256) * 7);
+        }
         if (a.hidden === "1" || a.hidden === "true") d.hd = 1;
         if (a.style !== undefined && styles["excel-" + a.style])
           d.s = "excel-" + a.style;
@@ -441,6 +619,16 @@ export async function importXlsx(
             startColumn: Number(pane["@_xSplit"]) || -1,
           }
         : undefined;
+    const sheetFormat = attrParser(segment(raw, "sheetFormatPr") ?? "");
+    const rowHeight = Number(sheetFormat.defaultRowHeight);
+    const columnWidth = Number(sheetFormat.defaultColWidth);
+    // OOXML row dimensions are points; Univer's grid dimensions are CSS pixels.
+    const defaultRowHeight =
+      Number.isFinite(rowHeight) && rowHeight > 0 ? (rowHeight * 96) / 72 : 20;
+    const defaultColumnWidth =
+      Number.isFinite(columnWidth) && columnWidth > 0
+        ? Math.floor(((256 * columnWidth + Math.floor(128 / 7)) / 256) * 7)
+        : 64;
     const hidden = book.Workbook?.Sheets?.[i]?.Hidden ?? 0;
     workbook.sheetOrder.push(id);
     workbook.sheets[id] = {
@@ -454,8 +642,23 @@ export async function importXlsx(
       mergeData: merges,
       hidden,
       freeze,
-      defaultColumnWidth: 100,
-      defaultRowHeight: 24,
+      custom: {
+        excelLayout: {
+          normalFont,
+          defaultColumnWidthChars:
+            Number.isFinite(columnWidth) && columnWidth > 0
+              ? columnWidth
+              : undefined,
+          baseColumnWidthChars:
+            Number(sheetFormat.baseColWidth) > 0
+              ? Number(sheetFormat.baseColWidth)
+              : 8,
+          columnWidths,
+        },
+      },
+      defaultStyle: styles["excel-0"] ? "excel-0" : undefined,
+      defaultColumnWidth,
+      defaultRowHeight,
       zoomRatio: 1,
       showGridlines: view?.["@_showGridLines"] === "0" ? 0 : 1,
       rightToLeft: view?.["@_rightToLeft"] === "1" ? 1 : 0,
@@ -526,6 +729,7 @@ export async function importXlsx(
   }
   if (stats.charts || features.includes("charts"))
     await readCharts(zip, file, sheetSources, sheetIds, warnings);
+  file.content.images = await readExcelImages(zip, sheetSources, warnings);
   for (const [feature, warning] of Object.entries({
     conditional_formatting:
       "Conditional formatting rules are not recreated; original base cell styles are retained.",
@@ -538,7 +742,7 @@ export async function importXlsx(
       "Hyperlink cell labels are preserved; hyperlink targets are not recreated.",
     pivot_tables:
       "Excel pivot results are retained as cells, but Excel pivot definitions are not recreated.",
-    images: "Embedded spreadsheet images are not displayed by this importer.",
+
     external_links:
       "External workbook links are retained as formula text and cached values; no external files are fetched.",
   }))
@@ -658,6 +862,53 @@ async function readCharts(
             width: 520,
             height: 340,
           };
+          if (anchor.to && type === "line") {
+            const importedSeries = series
+              .map((s, index) => {
+                const formula = s.val?.numRef?.f;
+                const m =
+                  typeof formula === "string"
+                    ? /^(?:'((?:[^']|'')+)'|([^!]+))!(.+)$/.exec(formula)
+                    : null;
+                const sourceId =
+                  m && ids.get((m[1] ?? m[2]).replaceAll("''", "'"));
+                return sourceId && m
+                  ? {
+                      name: String(s.tx?.v ?? `Series${index + 1}`),
+                      values: parseRange(m[3], sourceId),
+                      color: ["#4F81BD", "#C0504D", "#9BBB59", "#8064A2"][
+                        index % 4
+                      ],
+                    }
+                  : null;
+              })
+              .filter(Boolean) as NonNullable<
+              ChartDefinition["excel"]
+            >["series"];
+            if (importedSeries.length === series.length) {
+              const point = (p: any, key: string) => Number(p?.[key] ?? 0);
+              c.title = String(
+                x.chartSpace?.chart?.title?.tx?.rich?.p?.r?.t ?? "",
+              );
+              c.excel = {
+                series: importedSeries,
+                legend: String(
+                  x.chartSpace?.chart?.legend?.legendPos?.["@_val"] ?? "r",
+                ),
+                markers: model.marker?.["@_val"] !== "0",
+                anchor: {
+                  fromColumn: point(anchor.from, "col"),
+                  fromRow: point(anchor.from, "row"),
+                  fromColumnOffset: point(anchor.from, "colOff") / 9525,
+                  fromRowOffset: point(anchor.from, "rowOff") / 9525,
+                  toColumn: point(anchor.to, "col"),
+                  toRow: point(anchor.to, "row"),
+                  toColumnOffset: point(anchor.to, "colOff") / 9525,
+                  toRowOffset: point(anchor.to, "rowOff") / 9525,
+                },
+              };
+            }
+          }
           file.content.charts.push(c);
         }
       } catch (e) {

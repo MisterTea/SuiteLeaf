@@ -8,7 +8,7 @@ import {
 } from "@suiteleaf/core";
 export async function importFile(file: File): Promise<SuiteFile> {
   const ext = file.name.split(".").pop()?.toLowerCase();
-  if (ext === "docx" || ext === "xlsx") {
+  if (["docx", "xlsx", "xls", "xlsm", "xlsb", "xltx"].includes(ext ?? "")) {
     if (file.size > 120 * 1024 * 1024)
       throw new Error("Office imports are limited to 120 MB.");
     const { importOfficeFile } = await import("./office-import");
@@ -94,6 +94,6 @@ export async function importFile(file: File): Promise<SuiteFile> {
     return parsePowerPoint(buffer, title);
   }
   throw new Error(
-    "Supported formats: .suiteleaf, DOCX, XLSX, PowerPoint (.pptx, .ppt), HTML, text, CSV, and TSV.",
+    "Supported formats: .suiteleaf, DOCX, Excel (.xlsx, .xls, .xlsm, .xlsb, .xltx), PowerPoint (.pptx, .ppt), HTML, text, CSV, and TSV.",
   );
 }

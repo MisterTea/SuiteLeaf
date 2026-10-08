@@ -3,10 +3,10 @@ import * as CFB from "cfb";
 import { XMLParser, XMLValidator } from "fast-xml-parser";
 import { parseFile, type SuiteFile } from "./index";
 import { importDocx } from "./word";
-import { importXlsx } from "./excel";
+import { importXlsx, normalizeBinaryExcel } from "./excel";
 export const OFFICE_INPUT_LIMIT = 120 * 1024 * 1024;
 export const OFFICE_EXPANDED_LIMIT = 1024 * 1024 * 1024;
-export type OfficeFormat = "docx" | "xlsx";
+export type OfficeFormat = "docx" | "xlsx" | "xls" | "xlsm" | "xlsb" | "xltx";
 export type OfficeReport = {
   format: OfficeFormat;
   warnings: string[];
@@ -140,7 +140,12 @@ export async function inspectOffice(
       "missing-part",
       "The Office package has no content-types manifest.",
     );
-  let part = format === "docx" ? "word/document.xml" : "xl/workbook.xml";
+  let part =
+    format === "docx"
+      ? "word/document.xml"
+      : format === "xlsb"
+        ? "xl/workbook.bin"
+        : "xl/workbook.xml";
   // Root relationships live at _rels/.rels, not root.rels.
   const root = zip.file("_rels/.rels");
   if (root) {
@@ -175,16 +180,29 @@ export async function inspectOffice(
     const valid = XMLValidator.validate(xml);
     if (valid !== true)
       throw new OfficeImportError("invalid-xml", valid.err.msg);
-  } else parseXml(xml, part);
+  } else if (format !== "xlsb" || !part.endsWith(".bin")) parseXml(xml, part);
   return { zip, part, xml };
 }
 export async function importOffice(
   input: ArrayBuffer | Uint8Array,
   format: OfficeFormat,
   name: string,
+  options: { password?: string } = {},
 ): Promise<OfficeImport> {
-  const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
-  const inspected = await inspectOffice(bytes, format);
+  let bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
+  if (bytes.byteLength > OFFICE_INPUT_LIMIT)
+    throw new OfficeImportError(
+      "input-limit",
+      "Office imports are limited to 120 MB.",
+    );
+  if (bytes[0] === 0xd0 && bytes[1] === 0xcf) {
+    const { decryptOfficePackage } = await import("./office-encryption");
+    bytes = decryptOfficePackage(bytes, options.password);
+  }
+  const binary = format === "xls" || format === "xlsb";
+  if (format === "xlsb") await inspectOffice(bytes, format);
+  if (binary) bytes = await normalizeBinaryExcel(bytes);
+  const inspected = await inspectOffice(bytes, binary ? "xlsx" : format);
   const title = name.replace(/\.[^.]+$/, "").slice(0, 200) || "Imported file";
   let result: OfficeImport;
   try {
@@ -206,6 +224,11 @@ export async function importOffice(
       );
     throw e;
   }
+  result.report.format = format;
+  if (binary)
+    result.report.warnings.push(
+      "Binary Excel import preserves cell values, formulas, number formats, merges, and supported dimensions. Cell formatting, charts, drawings, and other workbook features may differ from Excel; macros are not imported.",
+    );
   result.file.importInfo = {
     sourceFormat: format,
     sourceName: name.slice(0, 250),

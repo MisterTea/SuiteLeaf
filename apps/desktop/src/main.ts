@@ -46,7 +46,15 @@ async function openFile() {
     filters: [
       {
         name: "SuiteLeaf and Office files",
-        extensions: ["suiteleaf", "docx", "xlsx"],
+        extensions: [
+          "suiteleaf",
+          "docx",
+          "xlsx",
+          "xls",
+          "xlsm",
+          "xlsb",
+          "xltx",
+        ],
       },
     ],
     properties: ["openFile"],
@@ -54,7 +62,8 @@ async function openFile() {
   if (result.canceled) return null;
   const path = resolve(result.filePaths[0]);
   const ext = extname(path).toLowerCase();
-  if (ext !== ".docx" && ext !== ".xlsx") return store.openPath(path);
+  if (![".docx", ".xlsx", ".xls", ".xlsm", ".xlsb", ".xltx"].includes(ext))
+    return store.openPath(path);
   const bytes = await readFile(path);
   if (bytes.length > 120 * 1024 * 1024)
     throw new Error("Office imports are limited to 120 MB.");

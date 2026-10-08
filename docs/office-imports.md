@@ -1,4 +1,4 @@
-# DOCX and XLSX imports
+# DOCX and Excel imports
 
 Use **Open / import** on the web, or native **Open** in Electron, to load an Office file. It becomes an editable SuiteLeaf copy. Saving/downloading uses `.suiteleaf`; original Office files are unchanged. DOCX/XLSX export is not included in this change.
 
@@ -7,7 +7,8 @@ Use **Open / import** on the web, or native **Open** in Electron, to load an Off
 | Format | Imported into editable content | Compatibility notes |
 | --- | --- | --- |
 | DOCX | Text and Unicode, headings, lists, emphasis, safe links, tables, supported raster images, footnote/endnote text | Continuous layout; Word page furniture becomes labelled sections. Deep nesting or semantic-parser failures recover text as paragraphs. Exact pagination, font styling, floating objects, equations, review history and unsupported image formats can differ. |
-| XLSX | Worksheet names/order, typed values, formulas and caches, shared/array formulas, date system, named ranges, basic styles, merges, row/column dimensions and hiding, frozen panes | Calculation uses Univer's supported functions. External links are not fetched. Excel conditional formatting, validation, protection, hyperlink targets and pivot definitions are not recreated. Pivot results remain cells. Embedded spreadsheet images are not displayed. Representable basic charts are recreated with simplified styling. |
+| XLSX, XLSM, XLTX | Worksheet names/order, typed values, formulas and caches, shared/array formulas, date system, named ranges, basic styles, merges, row/column dimensions and hiding, frozen panes | Calculation uses Univer's supported functions. External links are not fetched. Excel conditional formatting, validation, protection, hyperlink targets and pivot definitions are not recreated. Pivot results remain cells. Embedded spreadsheet images are not displayed. Representable basic charts are recreated with simplified styling. Macros are not executed or imported. |
+| XLS, XLSB | Cell values, formulas and caches, number formats, worksheet names/order, merges and supported dimensions through binary-to-XML normalization | Binary formatting, charts, drawings and other features may differ. Unreadable worksheet metadata produces an explicit error. Macros are not executed or imported. These formats have fixture regression coverage; the complete corpus totals below cover DOCX/XLSX only. |
 
 Each imported file stores `importInfo` and shows an expandable compatibility summary. These notes survive native saves and reopen. Document imports verify body-text retention; additional recovered text is labelled explicitly, and may duplicate content when source layout rearranges text. A successful import establishes editable content and native round-trip validity, not pixel-perfect Word/Excel equivalence.
 

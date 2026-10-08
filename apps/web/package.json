@@ -9,6 +9,7 @@
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
+    "@fontsource/carlito": "^5.3.0",
     "@radix-ui/react-dropdown-menu": "^2.1.0",
     "@suiteleaf/core": "*",
     "@tiptap/core": "3.31.4",

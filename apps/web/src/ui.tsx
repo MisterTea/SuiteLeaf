@@ -22,10 +22,12 @@ export function MenuItem({
   children,
   onSelect,
   disabled = false,
+  shortcut,
 }: {
   children: ReactNode;
   onSelect: () => void;
   disabled?: boolean;
+  shortcut?: string;
 }) {
   return (
     <Dropdown.Item
@@ -33,7 +35,8 @@ export function MenuItem({
       disabled={disabled}
       onSelect={onSelect}
     >
-      {children}
+      <span className="menu-item-label">{children}</span>
+      {shortcut ? <span className="menu-item-shortcut">{shortcut}</span> : null}
     </Dropdown.Item>
   );
 }

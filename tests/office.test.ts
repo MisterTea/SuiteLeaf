@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import JSZip from "jszip";
 import * as CFB from "cfb";
+import { readFileSync, existsSync } from "node:fs";
+import * as XLSX from "xlsx";
 import { importOffice, OfficeImportError } from "../packages/core/src/office";
 import { documentText } from "../packages/core/src/word";
 import {
@@ -14,6 +16,124 @@ function nodes(n: JsonNode): JsonNode[] {
   return [n, ...(n.content ?? []).flatMap(nodes)];
 }
 describe("editable Office imports", () => {
+  it.skipIf(
+    !existsSync(
+      "datasets/libreoffice/files/sc/qa/unit/data/xlsb/shared_formula.xlsb",
+    ),
+  )("preserves formulas from an original XLSB workbook", async () => {
+    const { file } = await importOffice(
+      readFileSync(
+        "datasets/libreoffice/files/sc/qa/unit/data/xlsb/shared_formula.xlsb",
+      ),
+      "xlsb",
+      "shared_formula.xlsb",
+    );
+    if (file.kind !== "sheet") throw new Error("Expected sheet");
+    const sheet =
+      file.content.workbook.sheets[file.content.workbook.sheetOrder[0]];
+    expect(sheet.cellData!["0"]["0"]).toMatchObject({ v: 3, f: "=1+2" });
+    expect(sheet.cellData!["29"]["0"].f).toBe("=1+2");
+    expect(parseFile(serializeFile(file))).toEqual(file);
+  });
+  it.skipIf(
+    !existsSync("datasets/apache-poi/files/test-data/spreadsheet/Simple.xls"),
+  )(
+    "imports real legacy XLS worksheets and retains original format through a native save",
+    async () => {
+      const { file, report } = await importOffice(
+        readFileSync(
+          "datasets/apache-poi/files/test-data/spreadsheet/Simple.xls",
+        ),
+        "xls",
+        "Simple.xls",
+      );
+      if (file.kind !== "sheet") throw new Error("Expected sheet");
+      const workbook = file.content.workbook;
+      expect(workbook.sheetOrder.map((id) => workbook.sheets[id].name)).toEqual(
+        ["Sheet1", "Sheet2", "Sheet3"],
+      );
+      expect(
+        workbook.sheets[workbook.sheetOrder[0]].cellData!["0"]["0"].v,
+      ).toBe("replaceMe");
+      expect(report.format).toBe("xls");
+      expect(file.importInfo!.sourceFormat).toBe("xls");
+      expect(parseFile(serializeFile(file))).toEqual(file);
+    },
+  );
+  it.skipIf(
+    !existsSync("datasets/apache-poi/files/test-data/spreadsheet/date.xlsb") ||
+      !existsSync(
+        "datasets/apache-poi/files/test-data/spreadsheet/Simple.xlsb",
+      ),
+  )(
+    "imports a real XLSB date with its number format and rejects unreadable binary sheet names",
+    async () => {
+      const { file } = await importOffice(
+        readFileSync(
+          "datasets/apache-poi/files/test-data/spreadsheet/date.xlsb",
+        ),
+        "xlsb",
+        "date.xlsb",
+      );
+      if (file.kind !== "sheet") throw new Error("Expected sheet");
+      expect(
+        file.content.workbook.sheets[file.content.workbook.sheetOrder[0]]
+          .cellData!["0"]["0"].v,
+      ).toBe(41286);
+      expect(file.importInfo!.sourceFormat).toBe("xlsb");
+      await expect(
+        importOffice(
+          readFileSync(
+            "datasets/apache-poi/files/test-data/spreadsheet/Simple.xlsb",
+          ),
+          "xlsb",
+          "Simple.xlsb",
+        ),
+      ).rejects.toMatchObject({ code: "conversion-failed" });
+    },
+  );
+  it.each(["xls", "xlsb"] as const)(
+    "preserves %s cell values and merges",
+    async (format) => {
+      const book = XLSX.utils.book_new();
+      const sheet = XLSX.utils.aoa_to_sheet([
+        ["Quantity", 12],
+        ["Total", 24],
+      ]);
+      sheet["!merges"] = [{ s: { r: 2, c: 0 }, e: { r: 2, c: 1 } }];
+      XLSX.utils.book_append_sheet(book, sheet, "Budget");
+      const { file } = await importOffice(
+        new Uint8Array(XLSX.write(book, { type: "array", bookType: format })),
+        format,
+        `Budget.${format}`,
+      );
+      if (file.kind !== "sheet") throw new Error("Expected sheet");
+      const imported =
+        file.content.workbook.sheets[file.content.workbook.sheetOrder[0]];
+      expect(imported.cellData!["0"]["1"].v).toBe(12);
+      expect(imported.cellData!["1"]["1"].v).toBe(24);
+      expect(imported.mergeData).toContainEqual({
+        startRow: 2,
+        endRow: 2,
+        startColumn: 0,
+        endColumn: 1,
+      });
+      expect(parseFile(serializeFile(file))).toEqual(file);
+    },
+  );
+  it.each(["xlsm", "xltx"] as const)(
+    "imports %s XML packages with original format metadata",
+    async (format) => {
+      const { file } = await importOffice(
+        await excelFixture(),
+        format,
+        `Budget.${format}`,
+      );
+      expect(file.kind).toBe("sheet");
+      expect(file.importInfo!.sourceFormat).toBe(format);
+      expect(parseFile(serializeFile(file))).toEqual(file);
+    },
+  );
   it("preserves Word headings, Unicode, emphasis, tables and safe links through native saves", async () => {
     const { file, report } = await importOffice(
       await wordFixture(),
@@ -61,8 +181,9 @@ describe("editable Office imports", () => {
       ff: "Arial",
       bl: 1,
       bg: { rgb: "#CCEEAA" },
+      pd: { l: 4, r: 4 },
     });
-    expect(s.columnData).toMatchObject({ "0": { w: 173 }, "1": { hd: 1 } });
+    expect(s.columnData).toMatchObject({ "0": { w: 168 }, "1": { hd: 1 } });
     expect(s.rowData).toMatchObject({ "0": { h: 40 } });
     expect(s.freeze).toMatchObject({ xSplit: 1, ySplit: 1 });
     expect(JSON.stringify(w.resources)).toContain("Revenue");

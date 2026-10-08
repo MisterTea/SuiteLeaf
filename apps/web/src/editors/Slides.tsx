@@ -734,14 +734,15 @@ ${slidesHtml}
         role="toolbar"
         aria-label="Slides toolbar"
       >
-        <div
-          className="toolbar-search-pill"
-          title="Search menus (Option+/)"
+        <button
+          type="button"
+          className="menu-search-pill"
+          title="Search the menus (Option+/)"
           onClick={() => {}}
         >
-          <Search size={14} />
+          <Search size={14} className="menu-search-icon" />
           <span>Menus</span>
-        </div>
+        </button>
 
         <div className="tool-group">
           <Menu label="+ New slide">
@@ -775,13 +776,11 @@ ${slidesHtml}
           <Tool label="Print (Cmd+P)" onClick={() => printDocument()}>
             <Printer size={16} />
           </Tool>
-          <div className="toolbar-zoom-dropdown">
-            <select aria-label="Zoom" defaultValue="Fit">
-              <option value="Fit">Fit</option>
-              <option value="50%">50%</option>
-              <option value="100%">100%</option>
-            </select>
-          </div>
+          <select className="toolbar-select zoom-select" aria-label="Zoom" defaultValue="Fit">
+            <option value="Fit">Fit</option>
+            <option value="50%">50%</option>
+            <option value="100%">100%</option>
+          </select>
         </div>
 
         <div className="toolbar-divider" />
@@ -884,6 +883,7 @@ ${slidesHtml}
             {selectedElement.type === "text" ? (
               <>
                 <select
+                  className="toolbar-select font-family-select"
                   aria-label="Font family"
                   value={selectedElement.fontFamily || "Arial"}
                   onChange={(e) =>
@@ -901,23 +901,46 @@ ${slidesHtml}
                   <option value="Trebuchet MS">Trebuchet MS</option>
                 </select>
 
-                <select
-                  aria-label="Font size"
-                  value={selectedElement.fontSize || 20}
-                  onChange={(e) =>
-                    updateElement(selectedElement.id, {
-                      fontSize: parseInt(e.target.value, 10),
-                    })
-                  }
-                >
-                  {[12, 14, 16, 18, 20, 24, 28, 32, 36, 44, 52, 64].map(
-                    (sz) => (
-                      <option key={sz} value={sz}>
-                        {sz} pt
-                      </option>
-                    ),
-                  )}
-                </select>
+                <div className="font-size-stepper">
+                  <button
+                    type="button"
+                    className="stepper-btn"
+                    title="Decrease font size"
+                    aria-label="Decrease font size"
+                    onClick={() =>
+                      updateElement(selectedElement.id, {
+                        fontSize: Math.max(6, (selectedElement.fontSize || 20) - 1),
+                      })
+                    }
+                  >
+                    <Minus size={12} />
+                  </button>
+                  <input
+                    className="font-size-input"
+                    aria-label="Font size"
+                    value={selectedElement.fontSize || 20}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      if (val > 0)
+                        updateElement(selectedElement.id, {
+                          fontSize: val,
+                        });
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="stepper-btn"
+                    title="Increase font size"
+                    aria-label="Increase font size"
+                    onClick={() =>
+                      updateElement(selectedElement.id, {
+                        fontSize: Math.min(96, (selectedElement.fontSize || 20) + 1),
+                      })
+                    }
+                  >
+                    <Plus size={12} />
+                  </button>
+                </div>
 
                 <Tool
                   label="Bold"

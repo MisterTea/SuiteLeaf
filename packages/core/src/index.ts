@@ -43,6 +43,26 @@ export const chartSchema = z.object({
   width: z.number().positive(),
   height: z.number().positive(),
   invalid: z.boolean().optional(),
+  excel: z
+    .object({
+      anchorResolved: z.boolean().optional(),
+      series: z.array(
+        z.object({ name: z.string(), values: rangeSchema, color: z.string() }),
+      ),
+      legend: z.string(),
+      markers: z.boolean(),
+      anchor: z.object({
+        fromColumn: z.number(),
+        fromRow: z.number(),
+        fromColumnOffset: z.number(),
+        fromRowOffset: z.number(),
+        toColumn: z.number(),
+        toRow: z.number(),
+        toColumnOffset: z.number(),
+        toRowOffset: z.number(),
+      }),
+    })
+    .optional(),
 });
 export type ChartDefinition = z.infer<typeof chartSchema>;
 export const pivotSchema = z.object({
@@ -177,7 +197,7 @@ const worksheetSchema = z
 const meta = {
   importInfo: z
     .object({
-      sourceFormat: z.enum(["docx", "xlsx"]),
+      sourceFormat: z.enum(["docx", "xlsx", "xls", "xlsm", "xlsb", "xltx"]),
       sourceName: z.string(),
       warnings: z.array(z.string()),
       features: z.array(z.string()),
@@ -203,6 +223,22 @@ export const fileSchema = z.discriminatedUnion("kind", [
           sheets: z.record(z.string(), worksheetSchema),
         })
         .passthrough(),
+      images: z
+        .array(
+          z.object({
+            id: z.string(),
+            sheetId: z.string(),
+            src: z.string().regex(/^data:image\/(png|jpeg|gif|webp);base64,/i),
+            row: z.number().int().nonnegative(),
+            column: z.number().int().nonnegative(),
+            offsetX: z.number().finite(),
+            offsetY: z.number().finite(),
+            width: z.number().positive().finite(),
+            height: z.number().positive().finite(),
+            anchorType: z.enum(["0", "1", "2"]),
+          }),
+        )
+        .optional(),
       charts: z.array(chartSchema),
       pivots: z.array(pivotSchema),
     }),

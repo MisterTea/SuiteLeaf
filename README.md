@@ -23,7 +23,7 @@ npm run dev:desktop
 ## What works
 
 - **Files:** create, rename, search, duplicate, remove, import, export, and original sample files.
-- **Office import:** load `.docx` and `.xlsx` through **Open / import** in the browser or native desktop file dialog. Conversion runs in a worker, produces an editable SuiteLeaf copy, and retains compatibility notes with the file. Original Office files remain unchanged.
+- **Office import:** load `.docx` and Excel `.xlsx`, `.xls`, `.xlsm`, `.xlsb`, and `.xltx` through **Open / import** in the browser or native desktop file dialog. Conversion runs in a worker, produces an editable SuiteLeaf copy, and retains compatibility notes with the file. Binary Excel formatting and features can differ; macros are not executed or imported. Original Office files remain unchanged.
 - **Docs:** continuous rich-text editing; headings and outline; fonts, sizes, colors, highlighting, alignment, lists, links, images, tables with selectable dimensions, find/replace with single replacement, backward navigation and search options, word count, spellcheck, undo/redo, and printing.
 - **Sheets:** multiple worksheets; formulas and references; formatting; number/date formats; merged cells; fill, clipboard, row/column operations, freezing, sorting, filtering, and find/replace, through Univer’s open source editor.
 - **Charts:** embedded column/bar, line, pie, and scatter charts. Select a range with headers, then **Insert chart**. Move and resize on the grid; edit or remove using **Charts & pivots**. Charts update from calculated source values.

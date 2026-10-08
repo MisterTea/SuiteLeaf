@@ -1,0 +1,46 @@
+import { expect, test } from "vitest";
+import { readFile } from "node:fs/promises";
+import { importOffice } from "../packages/core/src/office";
+import JSZip from "jszip";
+import { rasterEmf } from "../packages/core/src/excel-images";
+import { parseFile } from "../packages/core/src/index";
+test("imports original JPEG and inert VML raster appearances with precise sheet anchors", async () => {
+  const bytes = new Uint8Array(
+    await readFile(
+      "datasets/apache-poi/files/test-data/spreadsheet/45540_form_Footer.xlsx",
+    ),
+  );
+  const result = await importOffice(bytes, "xlsx", "45540_form_Footer.xlsx");
+  if (result.file.kind !== "sheet") throw Error("sheet expected");
+  expect(result.file.content.images).toHaveLength(41);
+  const logo = result.file.content.images!.find((x) =>
+    x.src.startsWith("data:image/jpeg"),
+  )!;
+  expect(logo.src).toMatch(/^data:image\/jpeg;base64,/);
+  expect(logo.offsetX).toBe(6);
+  expect(logo.offsetY).toBe(5);
+  expect(logo.width).toBe(193);
+  expect(
+    result.file.content
+      .images!.filter((x) => x !== logo)
+      .every((x) => x.src.startsWith("data:image/png;base64,")),
+  ).toBe(true);
+  expect(parseFile(JSON.stringify(result.file)).kind).toBe("sheet");
+  expect(result.file.content.workbook.styles["excel-17"]).toBeDefined();
+});
+
+test("rejects unknown EMF drawing records and invalid bitmap bounds instead of discarding content", async () => {
+  const zip = await JSZip.loadAsync(
+    await readFile(
+      "datasets/apache-poi/files/test-data/spreadsheet/45540_form_Footer.xlsx",
+    ),
+  );
+  const emf = await zip.file("xl/media/image2.emf")!.async("uint8array");
+  expect(rasterEmf(emf)).toMatch(/^data:image\/png;base64,/);
+  const unknown = emf.slice();
+  new DataView(unknown.buffer).setUint32(108, 43, true);
+  expect(rasterEmf(unknown)).toBeUndefined();
+  const invalid = emf.slice();
+  new DataView(invalid.buffer).setUint32(1308 + 48, 0xfffffff0, true);
+  expect(rasterEmf(invalid)).toBeUndefined();
+});
