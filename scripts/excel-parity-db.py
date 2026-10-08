@@ -50,7 +50,7 @@ def audit_revision():
     names = ['capture-suiteleaf-parity.mjs', 'excel-parity-native.py',
              'excel-parity-capture.applescript', 'excel-parity-grid.applescript',
              'excel-parity-grant-access.applescript', 'excel-parity-recover.applescript',
-             'excel-parity-window.swift']
+             'excel-parity-window.swift', 'excel-parity-db.py']
     for name in names:
         path = ROOT / 'scripts' / name
         if path.exists():
@@ -152,9 +152,9 @@ def complete_pass_is_valid(db, row):
     expected = [(sheet['index'], tile) for sheet in sheets for tile in sheet['expected_tiles']]
     if len(set(expected)) != len(expected):
         return False
-    reviewed = [(review.get('sheet_index'), review.get('tile_id')) for review in reviews
-                if review.get('parity') is True]
-    if len(reviewed) != len(expected) or set(reviewed) != set(expected):
+    reviewed = {(review.get('sheet_index'), review.get('tile_id')) for review in reviews
+                if review.get('parity') is True}
+    if reviewed != set(expected):
         return False
     if any(review.get('parity') is not True for review in reviews):
         return False
@@ -276,8 +276,6 @@ def ingest(db, result_path):
                     raise ValueError('Inconclusive review must reference an embedded SuiteLeaf screenshot')
             elif not all((app, *key) in evidence for app in ['excel', 'suiteleaf']):
                 raise ValueError('Visual review must reference an embedded screenshot pair')
-        if len({(r['sheet_index'], r['tile_id']) for r in reviews}) != len(reviews):
-            raise ValueError('Duplicate tile reviews')
         mismatches = [r for r in reviews if r.get('parity') is False]
         readable = result.get('excel_readable')
         reliable_reference = readable is True and not result.get('reference_altered_by_excel')
@@ -296,7 +294,8 @@ def ingest(db, result_path):
             suiteleaf = {(s, t) for a, s, t in evidence if a == 'suiteleaf'}
             complete = all(s.get('excel_complete') is True and s.get('suiteleaf_complete') is True
                            and s.get('expected_tiles') for s in sheets)
-            if (complete and expected == excel == suiteleaf == reviewed
+            if (complete and all(r.get('parity') is True for r in reviews)
+                    and expected == excel == suiteleaf == reviewed
                     and sum(len(s.get('expected_tiles', [])) for s in sheets) == len(expected)
                     and result.get('sheet_inventory_complete') is True
                     and result.get('coverage_complete') is True):

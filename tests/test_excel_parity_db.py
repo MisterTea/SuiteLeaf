@@ -52,6 +52,17 @@ class LedgerTests(unittest.TestCase):
         self.assertEqual(ledger.verify(self.db)['integrity'], 'ok')
         self.assertEqual(self.db.execute('SELECT count(*) FROM screenshots').fetchone()[0], 2)
 
+    def test_multiple_review_categories_can_cover_one_screenshot_pair(self):
+        self.result['reviews'] = [
+            dict(sheet_index=0, tile_id='t1', parity=True, category='values'),
+            dict(sheet_index=0, tile_id='t1', parity=True, category='images'),
+            dict(sheet_index=0, tile_id='t1', parity=True, category='layout'),
+        ]
+        self.assertEqual(self.ingest()['parity'], 1)
+        row = self.db.execute('SELECT * FROM workbooks').fetchone()
+        self.assertTrue(ledger.complete_pass_is_valid(self.db, row))
+        self.assertEqual(ledger.verify(self.db)['integrity'], 'ok')
+
     def test_missing_sheet_coverage_never_passes(self):
         self.result['sheets'].append(dict(index=1, name='Two', expected_tiles=['t2'],
                                           excel_complete=False, suiteleaf_complete=False))
