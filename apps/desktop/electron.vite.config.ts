@@ -22,6 +22,9 @@ export default defineConfig({
     root: resolve(import.meta.dirname, "../web"),
     plugins: [react()],
     base: "./",
+    worker: {
+      format: "es",
+    },
     build: {
       outDir: resolve(import.meta.dirname, "out/renderer"),
       rollupOptions: {
