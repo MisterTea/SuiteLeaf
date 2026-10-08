@@ -16,7 +16,7 @@ test.skipIf(!existsSync(fixturePath))(
     const bytes = new Uint8Array(await readFile(fixturePath));
     const result = await importOffice(bytes, "xlsx", "45540_form_Footer.xlsx");
     if (result.file.kind !== "sheet") throw Error("sheet expected");
-    expect(result.file.content.images).toHaveLength(41);
+    expect(result.file.content.images).toHaveLength(15);
     const logo = result.file.content.images!.find((x) =>
       x.src.startsWith("data:image/jpeg"),
     )!;
@@ -24,11 +24,29 @@ test.skipIf(!existsSync(fixturePath))(
     expect(logo.offsetX).toBe(6);
     expect(logo.offsetY).toBe(5);
     expect(logo.width).toBe(193);
+    const checkbox = result.file.content.images!.find(
+      (x) => x.column === 5 && x.row === 7,
+    )!;
+    expect(checkbox.to).toEqual({
+      column: 5,
+      offsetX: 24,
+      row: 8,
+      offsetY: 6,
+    });
     expect(
       result.file.content
-        .images!.filter((x) => x !== logo)
+        .images!.filter(
+          (x) => x !== logo && !x.src.startsWith("data:image/svg"),
+        )
         .every((x) => x.src.startsWith("data:image/png;base64,")),
     ).toBe(true);
+    const group = result.file.content.images!.find((x) =>
+      x.src.startsWith("data:image/svg"),
+    )!;
+    const svg = Buffer.from(group.src.split(",")[1], "base64").toString();
+    expect(svg.match(/<image /g)).toHaveLength(27);
+    expect(group.width).toBe(555);
+    expect(group.height).toBe(183);
     expect(parseFile(JSON.stringify(result.file)).kind).toBe("sheet");
     expect(result.file.content.workbook.styles["excel-17"]).toBeDefined();
   },

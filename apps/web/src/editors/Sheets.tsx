@@ -514,7 +514,7 @@ export default function Sheets({
               image.to.offsetY -
               image.offsetY
             : image.height;
-          const built = await sheet
+          const builder = sheet
             .newOverGridImage()
             .setSource(image.src, univerAPI.Enum.ImageSourceType.BASE64)
             .setColumn(image.column)
@@ -523,8 +523,65 @@ export default function Sheets({
             .setRowOffset(image.offsetY)
             .setWidth(width)
             .setHeight(height)
-            .setAnchorType(image.anchorType as any)
-            .buildAsync();
+            .setAnchorType(image.anchorType as any);
+          if (image.to && image.anchorType === "1") {
+            builder.setPlacement({
+              kind: univerAPI.Enum.SheetDrawingAnchorType.Both,
+              from: {
+                row: image.row,
+                column: image.column,
+                rowOffset: image.offsetY,
+                columnOffset: image.offsetX,
+              },
+              to: {
+                row: image.to.row,
+                column: image.to.column,
+                rowOffset: image.to.offsetY,
+                columnOffset: image.to.offsetX,
+              },
+            });
+          } else if (image.anchorType === "1") {
+            // Grouped VML children use absolute offsets from A1. Normalize
+            // those bounds into cell markers before cell sizes can change.
+            const markerAt = (axis: "row" | "column", position: number) => {
+              let index = 0;
+              while (
+                index <
+                (axis === "row"
+                  ? (config.rowCount ?? 1000)
+                  : (config.columnCount ?? 26)) -
+                  1
+              ) {
+                const size = span(axis, index, index + 1);
+                if (size > 0 && position < size) break;
+                position -= size;
+                index++;
+              }
+              return { index, offset: position };
+            };
+            const left = span("column", 0, image.column) + image.offsetX;
+            const top = span("row", 0, image.row) + image.offsetY;
+            const fromColumn = markerAt("column", left);
+            const fromRow = markerAt("row", top);
+            const toColumn = markerAt("column", left + width);
+            const toRow = markerAt("row", top + height);
+            builder.setPlacement({
+              kind: univerAPI.Enum.SheetDrawingAnchorType.Both,
+              from: {
+                row: fromRow.index,
+                column: fromColumn.index,
+                rowOffset: fromRow.offset,
+                columnOffset: fromColumn.offset,
+              },
+              to: {
+                row: toRow.index,
+                column: toColumn.index,
+                rowOffset: toRow.offset,
+                columnOffset: toColumn.offset,
+              },
+            });
+          }
+          const built = await builder.buildAsync();
           if (disposed) return;
           sheet.insertImages([{ ...built, drawingId: image.id }]);
           hydratedImageIds.add(image.id);

@@ -348,13 +348,53 @@ export async function readExcelImages(
           value?.endsWith("pt")
             ? (Number(value.slice(0, -2)) * 96) / 72
             : Number(value ?? 0);
-        const shapes = array<any>(xml.xml?.shape).map((s) => ({
-          s,
-          group: undefined as any,
-        }));
-        for (const group of array<any>(xml.xml?.group))
-          for (const s of array<any>(group.shape)) shapes.push({ s, group });
-        for (const { s, group } of shapes) {
+        const shapes = array<any>(xml.xml?.shape);
+        for (const group of array<any>(xml.xml?.group)) {
+          const gs = styles(group["@_style"] ?? "");
+          const width = dimension(gs.width),
+            height = dimension(gs.height);
+          const origin = String(group["@_coordorigin"] ?? "0,0")
+            .split(",")
+            .map(Number);
+          const size = String(group["@_coordsize"] ?? "1,1")
+            .split(",")
+            .map(Number);
+          const sx = width / size[0],
+            sy = height / size[1];
+          let children = "";
+          for (const s of array<any>(group.shape)) {
+            const image = rels.get(s.imagedata?.["@_relid"]);
+            if (!image || image.external) continue;
+            const src = await imageSource(zip, image.path);
+            if (!src) {
+              warnings.push(
+                "A legacy spreadsheet image appearance could not be displayed.",
+              );
+              continue;
+            }
+            const st = styles(String(s["@_style"] ?? ""));
+            children += `<image href="${src}" x="${(Number(st.left) - origin[0]) * sx}" y="${(Number(st.top) - origin[1]) * sy}" width="${dimension(st.width) * sx}" height="${dimension(st.height) * sy}" preserveAspectRatio="none"/>`;
+          }
+          if (!children || !(width > 0 && height > 0)) continue;
+          // Excel resizes a group as one object, preserving the relative
+          // positions of its children. Independent cell anchors distort it.
+          const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${children}</svg>`;
+          out.push({
+            id: `excel-image-${sheetId}-${out.length}`,
+            sheetId,
+            src:
+              "data:image/svg+xml;base64," +
+              base64(new TextEncoder().encode(svg)),
+            row: 0,
+            column: 0,
+            offsetX: dimension(gs["margin-left"]),
+            offsetY: dimension(gs["margin-top"]),
+            width,
+            height,
+            anchorType: "1",
+          });
+        }
+        for (const s of shapes) {
           const image = rels.get(s.imagedata?.["@_relid"]);
           if (!image || image.external) continue;
           const src = await imageSource(zip, image.path);
@@ -368,32 +408,13 @@ export async function readExcelImages(
               .split(",")
               .map(Number),
             style = styles(String(s["@_style"] ?? ""));
-          let width = dimension(style.width),
+          const width = dimension(style.width),
             height = dimension(style.height),
             row = anchor[2],
             column = anchor[0],
             offsetX = anchor[1],
             offsetY = anchor[3];
-          if (group) {
-            const gs = styles(group["@_style"] ?? ""),
-              origin = String(group["@_coordorigin"] ?? "0,0")
-                .split(",")
-                .map(Number),
-              size = String(group["@_coordsize"] ?? "1,1")
-                .split(",")
-                .map(Number),
-              sx = dimension(gs.width) / size[0],
-              sy = dimension(gs.height) / size[1];
-            column = row = 0;
-            offsetX =
-              dimension(gs["margin-left"]) +
-              (Number(style.left) - origin[0]) * sx;
-            offsetY =
-              dimension(gs["margin-top"]) +
-              (Number(style.top) - origin[1]) * sy;
-            width *= sx;
-            height *= sy;
-          } else if (anchor.length !== 8) continue;
+          if (anchor.length !== 8) continue;
           if (!(width > 0 && height > 0)) continue;
           out.push({
             id: `excel-image-${sheetId}-${out.length}`,
@@ -405,6 +426,16 @@ export async function readExcelImages(
             offsetY,
             width,
             height,
+            // VML offsets are pixels, and its explicit end cell can differ
+            // from the endpoint inferred from the style's physical size.
+            // Preserve it so resizing cells does not stretch a control across
+            // a neighboring column that the original anchor never occupied.
+            to: {
+              column: anchor[4],
+              offsetX: anchor[5],
+              row: anchor[6],
+              offsetY: anchor[7],
+            },
             anchorType: "1",
           });
         }
