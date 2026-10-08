@@ -79,6 +79,7 @@ import { pivotResult, shiftRange, type CellValue } from "../analysis";
 import { exportText, printDocument } from "../storage";
 import { Tool, type EditorActions } from "../ui";
 import "../excel-overflow";
+import "../excel-number-display";
 import "../excel-wrap";
 import { resolveExcelColumnWidths } from "../excel-layout";
 import { useTheme } from "../theme";

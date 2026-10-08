@@ -562,6 +562,21 @@ export async function importXlsx(
       maxRow = Math.max(maxRow, pos.r);
       maxCol = Math.max(maxCol, pos.c);
     }
+    // General numbers use a compact numeric inset. Keep rendering and the
+    // width-dependent rounding calculation on the same available rectangle.
+    for (const cells of Object.values(cellData)) {
+      for (const cell of Object.values(cells)) {
+        const style = typeof cell.s === "string" ? styles[cell.s] : cell.s;
+        if (
+          typeof cell.v === "number" &&
+          !style?.n &&
+          !style?.ht &&
+          style?.tb !== 3
+        ) {
+          cell.s = { ...style, pd: { l: 0, r: 96 / 72 } };
+        }
+      }
+    }
     const rowData: Record<string, any> = {},
       columnData: Record<string, any> = {};
     const columnWidths: Record<string, number> = {};

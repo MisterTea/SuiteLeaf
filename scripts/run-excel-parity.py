@@ -147,6 +147,10 @@ def main():
             (output / 'active-agent.pid').unlink(missing_ok=True)
         result_path = directory / 'result.json'
         if not result_path.exists() or exitcode != 0:
+            agent_log = (directory / 'agent.jsonl').read_text(errors='replace').lower()
+            backend_unavailable = any(marker in agent_log for marker in (
+                'hit your usage limit', 'rate limit reached', 'status 503 service unavailable',
+                'status 429 too many requests', 'insufficient_quota'))
             # A failed file attempt remains terminal and is reported, but it does
             # not prevent reviews of independent source files. If the agent
             # changed the app before failing, establish that revision first so
@@ -154,13 +158,18 @@ def main():
             failed_revision, failed_protocol = ledger.revision(), ledger.audit_revision()
             if failed_revision != row['suiteleaf_revision'] or failed_protocol != row['audit_revision']:
                 ledger.initialize(db, output)
-            db.execute("UPDATE workbooks SET status='incomplete',parity=NULL,blocked_reasons=?,finished_at=? WHERE filename=?",
-                       (json.dumps([f'File subagent failed or omitted result.json; exit={exitcode}; log={directory}/agent.jsonl']), ledger.now(), row['filename']))
+            failure_status = 'blocked' if backend_unavailable else 'incomplete'
+            reason = ('File subagent stopped because the model service or usage limit is unavailable.'
+                      if backend_unavailable else 'File subagent failed or omitted result.json.')
+            db.execute("UPDATE workbooks SET status=?,parity=NULL,blocked_reasons=?,finished_at=? WHERE filename=?",
+                       (failure_status, json.dumps([f'{reason} exit={exitcode}; log={directory}/agent.jsonl']), ledger.now(), row['filename']))
             db.commit()
             ledger.report(db, output)
             completed += 1
-            print(json.dumps(dict(event='file_finished', filename=row['filename'], status='incomplete',
+            print(json.dumps(dict(event='file_finished', filename=row['filename'], status=failure_status,
                                   parity=None, error=f'agent exit {exitcode}', evidence=str(directory))), flush=True)
+            if backend_unavailable:
+                raise SystemExit('Stopped after a model-service or usage-limit failure; pending files remain queued.')
             continue
         final_revision = ledger.revision()
         final_protocol = ledger.audit_revision()

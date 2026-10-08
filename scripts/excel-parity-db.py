@@ -50,7 +50,7 @@ def audit_revision():
     names = ['capture-suiteleaf-parity.mjs', 'excel-parity-native.py',
              'excel-parity-capture.applescript', 'excel-parity-grid.applescript',
              'excel-parity-grant-access.applescript', 'excel-parity-recover.applescript',
-             'excel-parity-window.swift', 'excel-parity-db.py']
+             'excel-parity-window.swift', 'excel-parity-db.py', 'run-excel-parity.py']
     for name in names:
         path = ROOT / 'scripts' / name
         if path.exists():
