@@ -276,7 +276,15 @@ async function styleTable(zip: JSZip): Promise<Record<string, any>> {
   const out: Record<string, any> = {};
   array<any>(s?.cellXfs?.xf).forEach((xf, i) => {
     // Native Excel's cell text inset is three points; the grid uses CSS pixels.
-    const style: any = { tb: 1, pd: { l: (3 * 96) / 72, r: (3 * 96) / 72 } },
+    // A stored cell XF replaces the column's alignment in Excel. Explicit
+    // General/bottom defaults prevent Univer composing a column alignment
+    // into a cell whose XF omits an alignment element.
+    const style: any = {
+        ht: 0,
+        vt: 3,
+        tb: 1,
+        pd: { l: (3 * 96) / 72, r: (3 * 96) / 72 },
+      },
       font = fonts[+xf["@_fontId"]],
       fill = fills[+xf["@_fillId"]],
       border = borders[+xf["@_borderId"]];

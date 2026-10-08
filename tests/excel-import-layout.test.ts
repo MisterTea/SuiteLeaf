@@ -3,6 +3,44 @@ import JSZip from "jszip";
 import { importOffice } from "../packages/core/src/office";
 import { excelFixture } from "./office-fixtures";
 
+it("keeps a cell XF's General alignment over a centered column default", async () => {
+  const zip = await JSZip.loadAsync(await excelFixture());
+  const stylesPath = "xl/styles.xml";
+  zip.file(
+    stylesPath,
+    (await zip.file(stylesPath)!.async("string"))
+      .replace('<cellXfs count="2">', '<cellXfs count="3">')
+      .replace(
+        "</cellXfs>",
+        '<xf fontId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf></cellXfs>',
+      ),
+  );
+  const sheetPath = "xl/worksheets/sheet1.xml";
+  zip.file(
+    sheetPath,
+    (await zip.file(sheetPath)!.async("string")).replace(
+      '<col min="1" max="1" width="24"/>',
+      '<col min="1" max="1" width="24" style="2"/>',
+    ),
+  );
+  const { file } = await importOffice(
+    await zip.generateAsync({ type: "uint8array" }),
+    "xlsx",
+    "column-alignment.xlsx",
+  );
+  if (file.kind !== "sheet") throw new Error("Expected sheet");
+  const book = file.content.workbook;
+  const sheet = book.sheets[book.sheetOrder[0]];
+  expect(book.styles![sheet.columnData![0].s as string]).toMatchObject({
+    ht: 2,
+    vt: 2,
+  });
+  expect(book.styles![sheet.cellData![0][0].s as string]).toMatchObject({
+    ht: 0,
+    vt: 3,
+  });
+});
+
 it("retains Excel character widths, Normal font, implicit style, and point row defaults", async () => {
   const zip = await JSZip.loadAsync(await excelFixture());
   const path = "xl/worksheets/sheet1.xml";
