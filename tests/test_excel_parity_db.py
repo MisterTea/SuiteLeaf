@@ -94,6 +94,18 @@ class LedgerTests(unittest.TestCase):
                            errors=['Excel unavailable'])
         self.assertIsNone(self.ingest()['parity'])
 
+    def test_inconclusive_review_can_reference_suiteleaf_only_evidence(self):
+        self.result.update(excel_readable=None, sheet_inventory_complete=False,
+                           coverage_complete=False,
+                           screenshots=[self.result['screenshots'][1]],
+                           reviews=[dict(sheet_index=0, tile_id='t1', parity=None,
+                                         reason='SuiteLeaf content reviewed; Excel unavailable')],
+                           errors=['Excel unavailable'])
+        outcome = self.ingest()
+        self.assertIsNone(outcome['parity'])
+        self.assertEqual(outcome['status'], 'blocked')
+        self.assertEqual(self.db.execute('SELECT count(*) FROM screenshots').fetchone()[0], 1)
+
     def test_excel_repaired_reference_cannot_establish_parity(self):
         self.result['reference_altered_by_excel'] = True
         self.assertIsNone(self.ingest()['parity'])

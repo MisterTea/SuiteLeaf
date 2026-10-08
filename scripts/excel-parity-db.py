@@ -269,7 +269,12 @@ def ingest(db, result_path):
             errors = [*errors, 'Excel repaired the disposable reference; parity against the unmodified original is inconclusive.']
         for review in reviews:
             key = (review['sheet_index'], review['tile_id'])
-            if not all((app, *key) in evidence for app in ['excel', 'suiteleaf']):
+            if review.get('parity') is None:
+                # An inconclusive review may still document what one application
+                # displayed when the reference application could not be captured.
+                if ('suiteleaf', *key) not in evidence:
+                    raise ValueError('Inconclusive review must reference an embedded SuiteLeaf screenshot')
+            elif not all((app, *key) in evidence for app in ['excel', 'suiteleaf']):
                 raise ValueError('Visual review must reference an embedded screenshot pair')
         if len({(r['sheet_index'], r['tile_id']) for r in reviews}) != len(reviews):
             raise ValueError('Duplicate tile reviews')
