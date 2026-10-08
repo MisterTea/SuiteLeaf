@@ -160,21 +160,30 @@ describe("editable Office imports", () => {
     expect(report.textPreserved).toBe(true);
     expect(parseFile(serializeFile(file))).toEqual(file);
   });
-  it("preserves checkboxes in docx form fields as checked and unchecked symbols", async () => {
-    const { file, report } = await importOffice(
-      readFileSync("datasets/apache-poi/files/test-data/document/checkboxes.docx"),
-      "docx",
-      "checkboxes.docx",
-    );
-    expect(file.kind).toBe("doc");
-    if (file.kind !== "doc") return;
-    const text = documentText(file.content);
-    expect(text).toContain("unchecked: ☐");
-    expect(text).toContain("Or checked: ☒");
-    expect(text).toContain("Test a checkbox within a textbox: ☐ -> ☒");
-    expect(text).toContain("☒☐☒");
-    expect(report.textPreserved).toBe(true);
-  });
+  it.skipIf(
+    !existsSync(
+      "datasets/apache-poi/files/test-data/document/checkboxes.docx",
+    ),
+  )(
+    "preserves checkboxes in docx form fields as checked and unchecked symbols",
+    async () => {
+      const { file, report } = await importOffice(
+        readFileSync(
+          "datasets/apache-poi/files/test-data/document/checkboxes.docx",
+        ),
+        "docx",
+        "checkboxes.docx",
+      );
+      expect(file.kind).toBe("doc");
+      if (file.kind !== "doc") return;
+      const text = documentText(file.content);
+      expect(text).toContain("unchecked: ☐");
+      expect(text).toContain("Or checked: ☒");
+      expect(text).toContain("Test a checkbox within a textbox: ☐ -> ☒");
+      expect(text).toContain("☒☐☒");
+      expect(report.textPreserved).toBe(true);
+    },
+  );
   it("preserves Excel cell types, shared formulas, date system, named ranges, styles and dimensions", async () => {
     const { file } = await importOffice(
       await excelFixture(),
