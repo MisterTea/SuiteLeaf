@@ -50,7 +50,11 @@ on run argv
    try
     set pwd to ""
     if count of argv > 2 then set pwd to item 3 of argv
-    open workbook workbook file name (item 2 of argv) update links do not update links read only true password pwd write reserved password pwd ignore read only recommended true editable true add to mru false
+    if pwd is "" then
+     open workbook workbook file name (item 2 of argv) update links do not update links read only true ignore read only recommended true add to mru false
+    else
+     open workbook workbook file name (item 2 of argv) update links do not update links read only true password pwd write reserved password pwd ignore read only recommended true editable true add to mru false
+    end if
     -- Malformed workbooks can return before the recovery dialog is answered.
     -- Bind only the caller's uniquely named disposable workbook after it opens.
     if count of argv < 4 then error "Disposable workbook name is required"
