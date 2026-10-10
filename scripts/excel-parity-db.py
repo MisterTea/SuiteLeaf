@@ -376,6 +376,11 @@ def verify(db):
         record = json.loads(history['workbook_record'])
         for app in ['excel', 'suiteleaf']:
             for item in json.loads(record[app + '_screenshots']):
+                # Early, corrupted reviews stored artifact paths in these columns.
+                # Preserve those records in history, but only treat embedded
+                # screenshot manifests as references to history_screenshots.
+                if not isinstance(item, dict) or 'screenshot_id' not in item:
+                    continue
                 assert db.execute('SELECT 1 FROM history_screenshots WHERE history_id=? AND original_screenshot_id=? AND application=?',
                                   (history['id'], item['screenshot_id'], app)).fetchone()
     for row in db.execute('SELECT * FROM screenshots UNION ALL SELECT id,history_id AS workbook_id,application,sheet_name,sheet_index,original_visibility,cell_range,tile_id,image_sha256,width,height,png FROM history_screenshots'):
@@ -387,6 +392,9 @@ def verify(db):
         ids = []
         for app in ['excel', 'suiteleaf']:
             for item in json.loads(row[app + '_screenshots']):
+                assert isinstance(item, dict) and 'screenshot_id' in item, (
+                    f"Workbook {row['filename']} has a non-embedded {app} screenshot manifest"
+                )
                 evidence = db.execute('SELECT * FROM screenshots WHERE id=?', (item['screenshot_id'],)).fetchone()
                 assert evidence and evidence['workbook_id'] == row['id'] and evidence['application'] == app
                 assert evidence['sheet_index'] == item['sheet_index'] and evidence['tile_id'] == item['tile_id']

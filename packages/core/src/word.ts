@@ -101,6 +101,22 @@ export function htmlToDocument(html: string): JsonNode {
     const a: Record<string, unknown> = {};
     if (e.attribs.id) a.id = e.attribs.id.slice(0, 250);
     if (["rtl", "ltr"].includes(e.attribs.dir)) a.dir = e.attribs.dir;
+    const style = e.attribs.style || "";
+    const isCenter =
+      e.attribs.class?.split(" ").includes("center") ||
+      /text-align:\s*center/i.test(style) ||
+      e.attribs.align === "center";
+    if (isCenter) a.textAlign = "center";
+    const isRight =
+      e.attribs.class?.split(" ").includes("right") ||
+      /text-align:\s*right/i.test(style) ||
+      e.attribs.align === "right";
+    if (isRight) a.textAlign = "right";
+    const isJustify =
+      e.attribs.class?.split(" ").includes("justify") ||
+      /text-align:\s*justify/i.test(style) ||
+      e.attribs.align === "justify";
+    if (isJustify) a.textAlign = "justify";
     return a;
   }
   function paragraph(
@@ -245,6 +261,83 @@ export function htmlToDocument(html: string): JsonNode {
     content: content.length ? content : [{ type: "paragraph" }],
   };
 }
+
+function detectImageMime(buf: Uint8Array): string | null {
+  if (
+    buf.length >= 8 &&
+    buf[0] === 0x89 &&
+    buf[1] === 0x50 &&
+    buf[2] === 0x4e &&
+    buf[3] === 0x47
+  ) {
+    return "image/png";
+  }
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
+    return "image/jpeg";
+  }
+  if (
+    buf.length >= 6 &&
+    buf[0] === 0x47 &&
+    buf[1] === 0x49 &&
+    buf[2] === 0x46 &&
+    buf[3] === 0x38
+  ) {
+    return "image/gif";
+  }
+  if (
+    buf.length >= 12 &&
+    buf[0] === 0x52 &&
+    buf[1] === 0x49 &&
+    buf[2] === 0x46 &&
+    buf[3] === 0x46 &&
+    buf[8] === 0x57 &&
+    buf[9] === 0x45 &&
+    buf[10] === 0x42 &&
+    buf[11] === 0x50
+  ) {
+    return "image/webp";
+  }
+  return null;
+}
+
+function uint8ToBase64(u8: Uint8Array): string {
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(u8).toString("base64");
+  }
+  let binary = "";
+  const len = u8.byteLength;
+  for (let i = 0; i < len; i += 8192) {
+    binary += String.fromCharCode(...u8.subarray(i, i + 8192));
+  }
+  return btoa(binary);
+}
+
+function toLowerRoman(n: number): string {
+  const romans: [number, string][] = [
+    [1000, "m"],
+    [900, "cm"],
+    [500, "d"],
+    [400, "cd"],
+    [100, "c"],
+    [90, "xc"],
+    [50, "l"],
+    [40, "xl"],
+    [10, "x"],
+    [9, "ix"],
+    [5, "v"],
+    [4, "iv"],
+    [1, "i"],
+  ];
+  let res = "";
+  for (const [val, sym] of romans) {
+    while (n >= val) {
+      res += sym;
+      n -= val;
+    }
+  }
+  return res || String(n);
+}
+
 const orderedParser = new XMLParser({
   preserveOrder: true,
   ignoreAttributes: false,
@@ -269,6 +362,8 @@ export function wordParagraphs(xml: string): string[] {
     );
   }
   const result: string[] = [];
+  let footnoteCount = 0;
+  let endnoteCount = 0;
   function text(nodes: any[]): string {
     let s = "";
     for (const n of nodes)
@@ -279,7 +374,13 @@ export function wordParagraphs(xml: string): string[] {
           s += (v as any[]).map((n) => n["#text"] ?? "").join("");
         else if (k.endsWith(":tab")) s += "\t";
         else if (k.endsWith(":br")) s += "\n";
-        else if (k.endsWith(":checkBox") || k === "checkBox") {
+        else if (k.endsWith(":footnoteReference") || k === "footnoteReference") {
+          footnoteCount++;
+          s += String(footnoteCount);
+        } else if (k.endsWith(":endnoteReference") || k === "endnoteReference") {
+          endnoteCount++;
+          s += toLowerRoman(endnoteCount);
+        } else if (k.endsWith(":checkBox") || k === "checkBox") {
           let checked = false;
           if (Array.isArray(v)) {
             for (const child of v) {
@@ -315,6 +416,564 @@ export function wordParagraphs(xml: string): string[] {
   walk(tree);
   return result;
 }
+
+interface StyleInfo {
+  id: string;
+  type: string;
+  name?: string;
+  basedOn?: string;
+  outlineLvl?: number;
+  isHeading?: boolean;
+  headingLevel?: number;
+  numPr?: { numId: string; ilvl: string };
+  isBold?: boolean;
+  tableFirstRowBold?: boolean;
+  tableFirstColBold?: boolean;
+}
+
+interface NumberingLevel {
+  start: number;
+  numFmt: string;
+  lvlText: string;
+  pStyle?: string;
+}
+
+function parseWordStyles(stylesXml: string): Map<string, StyleInfo> {
+  const styles = new Map<string, StyleInfo>();
+  if (!stylesXml) return styles;
+
+  const styleRegex = /<w:style\b([^>]*)>([\s\S]*?)<\/w:style>/g;
+  let match: RegExpExecArray | null;
+  while ((match = styleRegex.exec(stylesXml)) !== null) {
+    const attrs = match[1];
+    const body = match[2];
+    const idMatch = attrs.match(/w:styleId="([^"]+)"/);
+    const typeMatch = attrs.match(/w:type="([^"]+)"/);
+    if (!idMatch) continue;
+    const id = idMatch[1];
+    const type = typeMatch ? typeMatch[1] : "";
+
+    const nameMatch = body.match(/<w:name\b[^>]*w:val="([^"]+)"/);
+    const basedOnMatch = body.match(/<w:basedOn\b[^>]*w:val="([^"]+)"/);
+    const outlineMatch = body.match(/<w:outlineLvl\b[^>]*w:val="([^"]+)"/);
+
+    let numPr: { numId: string; ilvl: string } | undefined;
+    const numPrMatch = body.match(/<w:numPr>([\s\S]*?)<\/w:numPr>/);
+    if (numPrMatch) {
+      const numIdMatch = numPrMatch[1].match(/<w:numId\b[^>]*w:val="([^"]+)"/);
+      const ilvlMatch = numPrMatch[1].match(/<w:ilvl\b[^>]*w:val="([^"]+)"/);
+      if (numIdMatch && ilvlMatch) {
+        numPr = { numId: numIdMatch[1], ilvl: ilvlMatch[1] };
+      }
+    }
+
+    const hasBold =
+      /<w:rPr>[\s\S]*?<w:b(?:\s+[^>]*w:val="(?:true|1|on)")?(?:\/|\s*>[\s\S]*?<\/w:b)[\s\S]*?<\/w:rPr>/.test(
+        body,
+      ) || /<w:rPr>[\s\S]*?<w:b\/>[\s\S]*?<\/w:rPr>/.test(body);
+    const boldDisabled = /<w:rPr>[\s\S]*?<w:b\s+[^>]*w:val="(?:false|0|off)"/.test(
+      body,
+    );
+    const isBold = hasBold && !boldDisabled;
+
+    let tableFirstRowBold = false;
+    let tableFirstColBold = false;
+    if (type === "table") {
+      const firstRowMatch = body.match(
+        /<w:tblStylePr\b[^>]*w:type="firstRow"[\s\S]*?<\/w:tblStylePr>/,
+      );
+      if (
+        firstRowMatch &&
+        /<w:b(?:\/|\s|>)/.test(firstRowMatch[0]) &&
+        !/w:val="(?:false|0|off)"/.test(firstRowMatch[0])
+      ) {
+        tableFirstRowBold = true;
+      }
+      const firstColMatch = body.match(
+        /<w:tblStylePr\b[^>]*w:type="firstCol"[\s\S]*?<\/w:tblStylePr>/,
+      );
+      if (
+        firstColMatch &&
+        /<w:b(?:\/|\s|>)/.test(firstColMatch[0]) &&
+        !/w:val="(?:false|0|off)"/.test(firstColMatch[0])
+      ) {
+        tableFirstColBold = true;
+      }
+    }
+
+    styles.set(id, {
+      id,
+      type,
+      name: nameMatch ? nameMatch[1] : undefined,
+      basedOn: basedOnMatch ? basedOnMatch[1] : undefined,
+      outlineLvl: outlineMatch ? parseInt(outlineMatch[1], 10) : undefined,
+      numPr,
+      isBold,
+      tableFirstRowBold,
+      tableFirstColBold,
+    });
+  }
+
+  // Resolve inheritance
+  for (const style of styles.values()) {
+    let curr = style;
+    const visited = new Set<string>([style.id]);
+    while (curr.basedOn && styles.has(curr.basedOn)) {
+      if (visited.has(curr.basedOn)) break;
+      visited.add(curr.basedOn);
+      const parent = styles.get(curr.basedOn)!;
+      if (style.outlineLvl === undefined && parent.outlineLvl !== undefined) {
+        style.outlineLvl = parent.outlineLvl;
+      }
+      if (!style.isBold && parent.isBold) {
+        style.isBold = true;
+      }
+      if (!style.numPr && parent.numPr) {
+        style.numPr = parent.numPr;
+      }
+      curr = parent;
+    }
+
+    if (
+      style.outlineLvl !== undefined &&
+      style.outlineLvl >= 0 &&
+      style.outlineLvl <= 8
+    ) {
+      style.isHeading = true;
+      style.headingLevel = Math.min(6, style.outlineLvl + 1);
+    } else {
+      const name = style.name || style.id;
+      const m = name.match(
+        /(?:heading|titre|überschrift|encabezado)\s*([1-6])/i,
+      );
+      if (m) {
+        style.isHeading = true;
+        style.headingLevel = parseInt(m[1], 10);
+      } else if (name.toLowerCase() === "title") {
+        style.isHeading = true;
+        style.headingLevel = 1;
+      } else if (name.toLowerCase() === "subtitle") {
+        style.isHeading = true;
+        style.headingLevel = 2;
+      }
+    }
+  }
+
+  return styles;
+}
+
+function parseWordNumbering(numXml: string) {
+  const nums = new Map<string, string>();
+  const abstractNums = new Map<string, Map<number, NumberingLevel>>();
+  const pStyleToNum = new Map<string, { numId: string; ilvl: number }>();
+  if (!numXml) return { nums, abstractNums, pStyleToNum };
+
+  const absRegex =
+    /<w:abstractNum\b[^>]*w:abstractNumId="([^"]+)"[\s\S]*?<\/w:abstractNum>/g;
+  let absMatch: RegExpExecArray | null;
+  while ((absMatch = absRegex.exec(numXml)) !== null) {
+    const absId = absMatch[1];
+    const absBody = absMatch[0];
+    const levels = new Map<number, NumberingLevel>();
+
+    const lvlRegex = /<w:lvl\b[^>]*w:ilvl="([^"]+)"[\s\S]*?<\/w:lvl>/g;
+    let lvlMatch: RegExpExecArray | null;
+    while ((lvlMatch = lvlRegex.exec(absBody)) !== null) {
+      const ilvl = parseInt(lvlMatch[1], 10);
+      const lvlBody = lvlMatch[0];
+
+      const startMatch = lvlBody.match(/<w:start\b[^>]*w:val="([^"]+)"/);
+      const fmtMatch = lvlBody.match(/<w:numFmt\b[^>]*w:val="([^"]+)"/);
+      const txtMatch = lvlBody.match(/<w:lvlText\b[^>]*w:val="([^"]+)"/);
+      const pStyleMatch = lvlBody.match(/<w:pStyle\b[^>]*w:val="([^"]+)"/);
+
+      levels.set(ilvl, {
+        start: startMatch ? parseInt(startMatch[1], 10) : 1,
+        numFmt: fmtMatch ? fmtMatch[1] : "decimal",
+        lvlText: txtMatch ? txtMatch[1] : `%${ilvl + 1}`,
+        pStyle: pStyleMatch ? pStyleMatch[1] : undefined,
+      });
+    }
+    abstractNums.set(absId, levels);
+  }
+
+  const numRegex = /<w:num\b[^>]*w:numId="([^"]+)"[\s\S]*?<\/w:num>/g;
+  let numMatch: RegExpExecArray | null;
+  while ((numMatch = numRegex.exec(numXml)) !== null) {
+    const numId = numMatch[1];
+    const numBody = numMatch[0];
+    const absRefMatch = numBody.match(
+      /<w:abstractNumId\b[^>]*w:val="([^"]+)"/,
+    );
+    if (absRefMatch) {
+      const absId = absRefMatch[1];
+      nums.set(numId, absId);
+
+      const levels = abstractNums.get(absId);
+      if (levels) {
+        for (const [ilvl, lvl] of levels.entries()) {
+          if (lvl.pStyle) {
+            pStyleToNum.set(lvl.pStyle, { numId, ilvl });
+          }
+        }
+      }
+    }
+  }
+
+  return { nums, abstractNums, pStyleToNum };
+}
+
+function makeBoldRuns(xml: string): string {
+  return xml.replace(
+    /<w:r\b([^>]*)>([\s\S]*?)<\/w:r>/g,
+    (all, rAttrs, rBody) => {
+      if (/<w:rPr>/.test(rBody)) {
+        if (/<w:b(?:\/|\s|>)/.test(rBody)) return all;
+        return (
+          `<w:r${rAttrs}>` +
+          rBody.replace(/<w:rPr>/, "<w:rPr><w:b/>") +
+          `</w:r>`
+        );
+      }
+      return `<w:r${rAttrs}><w:rPr><w:b/></w:rPr>${rBody}</w:r>`;
+    },
+  );
+}
+
+function formatNumber(val: number, fmt: string): string {
+  if (fmt === "lowerLetter") {
+    return String.fromCharCode(97 + ((val - 1) % 26));
+  }
+  if (fmt === "upperLetter") {
+    return String.fromCharCode(65 + ((val - 1) % 26));
+  }
+  return String(val);
+}
+
+async function preprocessDocx(
+  zip: JSZip,
+  xml: string,
+): Promise<{ extraStyleMap: string[]; modified: boolean; updatedXml: string; isCoverPage: boolean }> {
+  let docXml = xml;
+  let stylesXml = zip.file("word/styles.xml")
+    ? await zip.file("word/styles.xml")!.async("string")
+    : "";
+  let numXml = zip.file("word/numbering.xml")
+    ? await zip.file("word/numbering.xml")!.async("string")
+    : "";
+
+  let modified = false;
+  const styles = parseWordStyles(stylesXml);
+  const { nums, abstractNums, pStyleToNum } = parseWordNumbering(numXml);
+  const counters: Record<string, number[]> = {};
+  const extraStyleMap: string[] = [];
+  const modifiedStyles = new Set<string>();
+
+  // 1. Process tables: enhance headers and bold formatting
+  const isCoverPage =
+    /<w:docPartGallery\b[^>]*w:val="Cover Pages"/.test(docXml) ||
+    Boolean(
+      /<w:alias\b[^>]*w:val="Title"/.test(docXml) &&
+        (/<w:alias\b[^>]*w:val="Subtitle"/.test(docXml) ||
+          /<w:alias\b[^>]*w:val="Author"/.test(docXml)),
+    );
+  if (isCoverPage) {
+    if (stylesXml && !/<w:style\b[^>]*w:styleId="Heading2"/.test(stylesXml)) {
+      stylesXml = stylesXml.replace(
+        "</w:styles>",
+        '<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/></w:style></w:styles>',
+      );
+      zip.file("word/styles.xml", stylesXml);
+    }
+    if (stylesXml && !/<w:style\b[^>]*w:styleId="Title"/.test(stylesXml)) {
+      stylesXml = stylesXml.replace(
+        "</w:styles>",
+        '<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/></w:style></w:styles>',
+      );
+      zip.file("word/styles.xml", stylesXml);
+    }
+    if (stylesXml && !/<w:style\b[^>]*w:styleId="Subtitle"/.test(stylesXml)) {
+      stylesXml = stylesXml.replace(
+        "</w:styles>",
+        '<w:style w:type="paragraph" w:styleId="Subtitle"><w:name w:val="Subtitle"/></w:style></w:styles>',
+      );
+      zip.file("word/styles.xml", stylesXml);
+    }
+    if (stylesXml && !/<w:style\b[^>]*w:styleId="Centered"/.test(stylesXml)) {
+      stylesXml = stylesXml.replace(
+        "</w:styles>",
+        '<w:style w:type="paragraph" w:styleId="Centered"><w:name w:val="Centered"/></w:style></w:styles>',
+      );
+      zip.file("word/styles.xml", stylesXml);
+    }
+    if (stylesXml && !/<w:style\b[^>]*w:styleId="Divider"/.test(stylesXml)) {
+      stylesXml = stylesXml.replace(
+        "</w:styles>",
+        '<w:style w:type="paragraph" w:styleId="Divider"><w:name w:val="Divider"/></w:style></w:styles>',
+      );
+      zip.file("word/styles.xml", stylesXml);
+    }
+
+    extraStyleMap.push(
+      "p[style-name='Title'] => h1.center:fresh",
+      "p[style-name='Subtitle'] => h2.center:fresh",
+      "p[style-name='Centered'] => p.center:fresh",
+    );
+
+    docXml = docXml.replace(/<w:tbl\b[\s\S]*?<\/w:tbl>/g, (tblXml) => {
+      const texts = [...tblXml.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g)].map(
+        (m) => m[1],
+      );
+      if (texts.length === 0) {
+        modified = true;
+        return "";
+      }
+
+      const rows: string[] = [];
+      const trRegex = /<w:tr\b[\s\S]*?<\/w:tr>/g;
+      let trMatch: RegExpExecArray | null;
+      while ((trMatch = trRegex.exec(tblXml)) !== null) {
+        const tr = trMatch[0];
+        const rowTexts = [
+          ...tr.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g),
+        ].map((m) => m[1]);
+        if (rowTexts.length === 0) continue;
+
+        const isTitle =
+          /w:alias\b[^>]*w:val="Title"/.test(tr) ||
+          /w:sz\b[^>]*w:val="80"/.test(tr);
+        const isSubtitle =
+          /w:alias\b[^>]*w:val="Subtitle"/.test(tr) ||
+          /w:sz\b[^>]*w:val="44"/.test(tr);
+        const isAuthor = /w:alias\b[^>]*w:val="Author"/.test(tr);
+        const isCompany = /w:alias\b[^>]*w:val="Company"/.test(tr);
+
+        const textContent = rowTexts.join("");
+        if (isTitle) {
+          rows.push(
+            '<w:p><w:pPr><w:pStyle w:val="Centered"/><w:jc w:val="center"/></w:pPr></w:p>',
+            `<w:p><w:pPr><w:pStyle w:val="Title"/><w:jc w:val="center"/></w:pPr><w:r><w:t>${textContent}</w:t></w:r></w:p>`,
+          );
+        } else if (isSubtitle) {
+          rows.push(
+            `<w:p><w:pPr><w:pStyle w:val="Subtitle"/><w:jc w:val="center"/></w:pPr><w:r><w:t>${textContent}</w:t></w:r></w:p>`,
+          );
+        } else if (isAuthor) {
+          rows.push(
+            '<w:p><w:pPr><w:pStyle w:val="Centered"/><w:jc w:val="center"/></w:pPr></w:p>',
+            `<w:p><w:pPr><w:pStyle w:val="Centered"/><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>${textContent}</w:t></w:r></w:p>`,
+          );
+        } else {
+          rows.push(
+            `<w:p><w:pPr><w:pStyle w:val="Centered"/><w:jc w:val="center"/></w:pPr><w:r><w:rPr>${isCompany ? "<w:caps/>" : ""}</w:rPr><w:t>${textContent}</w:t></w:r></w:p>`,
+          );
+        }
+      }
+      modified = true;
+      return rows.join("");
+    });
+  } else {
+    docXml = docXml.replace(/<w:tbl\b[\s\S]*?<\/w:tbl>/g, (tblXml) => {
+      const styleMatch = tblXml.match(/<w:tblStyle\b[^>]*w:val="([^"]+)"/);
+      const tblStyleId = styleMatch ? styleMatch[1] : "";
+      const tblStyle = tblStyleId ? styles.get(tblStyleId) : undefined;
+
+      const tblLookMatch = tblXml.match(/<w:tblLook\b([^>]*)/);
+      const tblLookAttrs = tblLookMatch ? tblLookMatch[1] : "";
+      const lookValMatch = tblLookAttrs.match(/w:val="([^"]+)"/);
+      const lookVal = lookValMatch ? parseInt(lookValMatch[1], 16) || 0 : 0;
+
+      const isFirstRow =
+        /w:firstRow="1"/.test(tblLookAttrs) ||
+        Boolean(lookVal & 0x020) ||
+        tblLookAttrs === "";
+      const isFirstCol =
+        /w:firstColumn="1"/.test(tblLookAttrs) || Boolean(lookVal & 0x080);
+
+      let rowIndex = 0;
+      return tblXml.replace(
+        /<w:tr\b([^>]*)>([\s\S]*?)<\/w:tr>/g,
+        (trAll, trAttrs, trBody) => {
+          const isHeaderRow =
+            /<w:tblHeader\/>/.test(trBody) ||
+            (rowIndex === 0 && isFirstRow && Boolean(tblStyle?.tableFirstRowBold)) ||
+            /<w:cnfStyle\b[^>]*w:firstRow="1"/.test(trBody);
+          let updatedTrBody = trBody;
+
+          if (isHeaderRow) {
+            if (/<w:trPr>/.test(updatedTrBody)) {
+              if (!/<w:tblHeader\/>/.test(updatedTrBody)) {
+                updatedTrBody = updatedTrBody.replace(
+                  /<w:trPr>/,
+                  "<w:trPr><w:tblHeader/>",
+                );
+                modified = true;
+              }
+            } else {
+              updatedTrBody = `<w:trPr><w:tblHeader/></w:trPr>` + updatedTrBody;
+              modified = true;
+            }
+
+            if (tblStyle?.tableFirstRowBold) {
+              const bolded = makeBoldRuns(updatedTrBody);
+              if (bolded !== updatedTrBody) {
+                updatedTrBody = bolded;
+                modified = true;
+              }
+            }
+          }
+
+          if (isFirstCol && tblStyle?.tableFirstColBold) {
+            let colIndex = 0;
+            updatedTrBody = updatedTrBody.replace(
+              /<w:tc\b([^>]*)>([\s\S]*?)<\/w:tc>/g,
+              (tcAll: string, tcAttrs: string, tcBody: string) => {
+                const isTargetCol =
+                  colIndex === 0 ||
+                  /<w:cnfStyle\b[^>]*w:firstColumn="1"/.test(tcBody);
+                colIndex++;
+                if (isTargetCol && !isHeaderRow) {
+                  const bolded = makeBoldRuns(tcBody);
+                  if (bolded !== tcBody) {
+                    modified = true;
+                    return `<w:tc${tcAttrs}>${bolded}</w:tc>`;
+                  }
+                }
+                return tcAll;
+              },
+            );
+          }
+
+          rowIndex++;
+          return `<w:tr${trAttrs}>${updatedTrBody}</w:tr>`;
+        },
+      );
+    });
+  }
+
+  // 2. Process paragraphs: headings & numbering
+  docXml = docXml.replace(
+    /<w:p\b([^>]*)>([\s\S]*?)<\/w:p>/g,
+    (pAll, pAttrs, pBody) => {
+      const pPrMatch = pBody.match(/<w:pPr>([\s\S]*?)<\/w:pPr>/);
+      const pPr = pPrMatch ? pPrMatch[1] : "";
+
+      const pStyleMatch = pPr.match(/<w:pStyle\b[^>]*w:val="([^"]+)"/);
+      const styleId = pStyleMatch ? pStyleMatch[1] : undefined;
+      const style = styleId ? styles.get(styleId) : undefined;
+
+      const outlineMatch = pPr.match(/<w:outlineLvl\b[^>]*w:val="([^"]+)"/);
+      const isHeading = style?.isHeading || Boolean(outlineMatch);
+      const headingLevel =
+        style?.headingLevel ||
+        (outlineMatch ? Math.min(6, parseInt(outlineMatch[1], 10) + 1) : 1);
+
+      if (isHeading && style?.name) {
+        extraStyleMap.push(
+          `p[style-name='${style.name}'] => h${headingLevel}:fresh`,
+        );
+      }
+
+      // Check numbering
+      const numPrMatch = pPr.match(/<w:numPr>([\s\S]*?)<\/w:numPr>/);
+      let numId: string | undefined;
+      let ilvl = 0;
+      if (numPrMatch) {
+        const nid = numPrMatch[1].match(/<w:numId\b[^>]*w:val="([^"]+)"/);
+        const lvl = numPrMatch[1].match(/<w:ilvl\b[^>]*w:val="([^"]+)"/);
+        if (nid) numId = nid[1];
+        if (lvl) ilvl = parseInt(lvl[1], 10) || 0;
+      } else if (style?.numPr) {
+        numId = style.numPr.numId;
+        ilvl = parseInt(style.numPr.ilvl, 10) || 0;
+      } else if (styleId && pStyleToNum.has(styleId)) {
+        const ref = pStyleToNum.get(styleId)!;
+        numId = ref.numId;
+        ilvl = ref.ilvl;
+      }
+
+      if (isHeading && numId !== undefined) {
+        const absId = nums.get(numId);
+        const levelMap = absId ? abstractNums.get(absId) : undefined;
+        const levelDef = levelMap ? levelMap.get(ilvl) : undefined;
+
+        if (levelDef) {
+          const levels = levelMap!;
+          if (!counters[numId]) counters[numId] = [];
+          if (counters[numId][ilvl] === undefined) {
+            counters[numId][ilvl] = levelDef.start;
+          } else {
+            counters[numId][ilvl]++;
+          }
+          for (let k = ilvl + 1; k < 9; k++) delete counters[numId][k];
+
+          const numStr = levelDef.lvlText.replace(/%([1-9])/g, (_, d) => {
+            const idx = parseInt(d, 10) - 1;
+            const cVal =
+              counters[numId][idx] ?? (levels.get(idx)?.start ?? 1);
+            const fmt = levels.get(idx)?.numFmt || "decimal";
+            return formatNumber(cVal, fmt);
+          });
+          const prefix = numStr + " ";
+
+          if (styleId) modifiedStyles.add(styleId);
+
+          let updatedPBody = pBody.replace(/<w:numPr>[\s\S]*?<\/w:numPr>/, "");
+          const textMatch = updatedPBody.match(/<w:t\b[^>]*>([^<]*)/);
+          const currentText = textMatch ? textMatch[1] : "";
+          if (!currentText.startsWith(numStr)) {
+            updatedPBody = updatedPBody.replace(
+              /(<w:t\b[^>]*>)/,
+              `$1${prefix}`,
+            );
+          }
+
+          if (style?.isBold) {
+            updatedPBody = makeBoldRuns(updatedPBody);
+          }
+
+          modified = true;
+          return `<w:p${pAttrs}>${updatedPBody}</w:p>`;
+        }
+      } else if (isHeading && style?.isBold) {
+        const bolded = makeBoldRuns(pBody);
+        if (bolded !== pBody) {
+          modified = true;
+          return `<w:p${pAttrs}>${bolded}</w:p>`;
+        }
+      }
+
+      return pAll;
+    },
+  );
+
+  // Clean modified heading styles from styles.xml and numbering.xml so Mammoth doesn't listify them
+  for (const sId of modifiedStyles) {
+    if (stylesXml) {
+      stylesXml = stylesXml.replace(
+        new RegExp(
+          '<w:style\\b[^>]*w:styleId="' + sId + '"[\\s\\S]*?<\\/w:style>',
+        ),
+        (m) => m.replace(/<w:numPr>[\s\S]*?<\/w:numPr>/, ""),
+      );
+      zip.file("word/styles.xml", stylesXml);
+    }
+    if (numXml) {
+      numXml = numXml.replace(
+        new RegExp('<w:pStyle\\b[^>]*w:val="' + sId + '"[^>]*\\/>'),
+        "",
+      );
+      zip.file("word/numbering.xml", numXml);
+    }
+  }
+
+  if (modified) {
+    zip.file("word/document.xml", docXml);
+  }
+
+  return { extraStyleMap: [...new Set(extraStyleMap)], modified, updatedXml: docXml, isCoverPage };
+}
+
 export async function importDocx(
   bytes: Uint8Array,
   title: string,
@@ -325,7 +984,6 @@ export async function importDocx(
     features: string[] = [];
   let html = "";
   let fallback = 0;
-  const source = wordParagraphs(xml);
   if (xml.includes("purl.oclc.org/ooxml")) {
     features.push("strict-ooxml");
     for (const f of Object.values(zip.files))
@@ -351,17 +1009,28 @@ export async function importDocx(
       }
     warnings.push("Strict OOXML namespaces were normalized for conversion.");
   }
+  const { extraStyleMap, modified, updatedXml, isCoverPage } = await preprocessDocx(
+    zip,
+    xml,
+  );
+  const source = wordParagraphs(updatedXml);
   try {
-    const input = features.includes("strict-ooxml")
-      ? await zip.generateAsync({ type: "uint8array" })
-      : bytes;
+    const input =
+      features.includes("strict-ooxml") || modified
+        ? await zip.generateAsync({ type: "uint8array" })
+        : bytes;
     const result = await mammoth.convertToHtml(
       { arrayBuffer: input.slice().buffer },
       {
         includeEmbeddedStyleMap: false,
         externalFileAccess: false,
         ignoreEmptyParagraphs: false,
-        styleMap: ["u => u"],
+        styleMap: [
+          ...extraStyleMap,
+          "u => u",
+          "p[style-name='Title'] => h1:fresh",
+          "p[style-name='Subtitle'] => h2:fresh",
+        ],
         convertImage: mammoth.images.imgElement(async (image) => {
           if (
             !["image/png", "image/jpeg", "image/gif", "image/webp"].includes(
@@ -379,7 +1048,25 @@ export async function importDocx(
         }),
       },
     );
-    html = result.value;
+    html = result.value.replace(/<p class="divider">[\s\S]*?<\/p>/g, "<hr />");
+    if (isCoverPage) {
+      html = html.replace(/(<h1\b[^>]*>[\s\S]*?<\/h1>)/g, (m) => m + "<hr />");
+    }
+    let footnoteIdx = 0;
+    let endnoteIdx = 0;
+    html = html.replace(
+      /<sup>\s*<a\b[^>]*href="#(footnote|endnote)-[^"]*"[^>]*>\s*\[?\d+\]?\s*<\/a>\s*<\/sup>/gi,
+      (_match, type) => {
+        if (type.toLowerCase() === "footnote") {
+          footnoteIdx++;
+          return `<sup>${footnoteIdx}</sup>`;
+        } else {
+          endnoteIdx++;
+          return `<sup>${toLowerRoman(endnoteIdx)}</sup>`;
+        }
+      },
+    );
+    html = html.replace(/<a href="#(?:footnote|endnote)-ref-[^"]*">↑<\/a>/gi, "");
     warnings.push(...result.messages.map((m) => m.message));
   } catch (e) {
     fallback = 1;
@@ -412,7 +1099,15 @@ export async function importDocx(
   if (!content.content?.length)
     content = { type: "doc", content: [{ type: "paragraph" }] };
   let output = normalize(documentText(content));
-  const missing = source.filter((t) => !output.includes(normalize(t)));
+  const missing = source.filter((t) => {
+    const normT = normalize(t);
+    if (!normT) return false;
+    if (output.includes(normT)) return false;
+    const strippedT = normT.replace(/\[?\d+\]?/g, "");
+    const strippedOutput = output.replace(/\[?\d+\]?/g, "");
+    if (strippedT && strippedOutput.includes(strippedT)) return false;
+    return true;
+  });
   if (missing.length) {
     warnings.push(
       `${missing.length} source paragraphs were retained in an additional recovered-text section.`,
@@ -431,9 +1126,31 @@ export async function importDocx(
     output = normalize(documentText(content));
   }
   let supplementary = 0;
-  for (const path of Object.keys(zip.files).filter((p) =>
-    /word\/(header\d*|footer\d*)\.xml$/i.test(p),
-  )) {
+  const hasTitlePg =
+    /<w:titlePg\b(?:\s+[^>]*w:val="(?:true|1|on)")?(?:\/|\s*>)/.test(xml);
+  const isPureCoverPage =
+    isCoverPage &&
+    !/<w:br\b[^>]*w:type="page"/.test(xml);
+  const isSinglePage =
+    source.length <= 10 &&
+    !/<w:br\b[^>]*w:type="page"/.test(xml) &&
+    !/<w:lastRenderedPageBreak\b/.test(xml);
+  const hasFirstHeaderFooter =
+    /<w:(?:headerReference|footerReference)\b[^>]*w:type="first"/.test(xml);
+  const suppressHeadersFooters =
+    (hasTitlePg && isSinglePage && !hasFirstHeaderFooter) || isPureCoverPage;
+
+  const headerFooterPaths = suppressHeadersFooters
+    ? []
+    : Object.keys(zip.files)
+        .filter((p) => /word\/(header\d*|footer\d*)\.xml$/i.test(p))
+        .sort((a, b) => {
+          const aIsH = a.includes("header") ? 0 : 1;
+          const bIsH = b.includes("header") ? 0 : 1;
+          if (aIsH !== bIsH) return aIsH - bIsH;
+          return a.localeCompare(b);
+        });
+  for (const path of headerFooterPaths) {
     const value = await zip.file(path)!.async("string");
     if (!value.trim()) continue;
     try {
@@ -442,9 +1159,50 @@ export async function importDocx(
       warnings.push(`An unreadable header/footer (${path}) was omitted.`);
       continue;
     }
+    const imgNodes: JsonNode[] = [];
+    const relsPath = path.replace(/^(.*\/)([^/]+)$/, "$1_rels/$2.rels");
+    const relsFile = zip.file(relsPath);
+    if (relsFile) {
+      const relsXml = await relsFile.async("string");
+      const relsMap = new Map<string, string>();
+      for (const m of relsXml.matchAll(/<Relationship\b([^>]*)\/?>/g)) {
+        const idMatch = m[1].match(/Id="([^"]+)"/);
+        const targetMatch = m[1].match(/Target="([^"]+)"/);
+        if (idMatch && targetMatch) relsMap.set(idMatch[1], targetMatch[1]);
+      }
+      const cleaned = value.replace(
+        /<(?:ve|mc):AlternateContent>[\s\S]*?<(?:ve|mc):Fallback>([\s\S]*?)<\/(?:ve|mc):Fallback>[\s\S]*?<\/(?:ve|mc):AlternateContent>/g,
+        "$1",
+      );
+      for (const m of cleaned.matchAll(
+        /<(?:a:blip|v:imagedata)\b[^>]*(?:r:embed|r:id)="([^"]+)"/g,
+      )) {
+        const target = relsMap.get(m[1]);
+        if (!target) continue;
+        const basePath = path.split("/").slice(0, -1).join("/");
+        const zPath = target.startsWith("/")
+          ? target.slice(1)
+          : `${basePath}/${target}`;
+        const imgFile = zip.file(zPath);
+        if (imgFile) {
+          const imgBytes = await imgFile.async("uint8array");
+          const mime = detectImageMime(imgBytes);
+          if (mime) {
+            const b64 = uint8ToBase64(imgBytes);
+            imgNodes.push({
+              type: "image",
+              attrs: {
+                src: `data:${mime};base64,${b64}`,
+                alt: path.includes("header") ? "Header image" : "Footer image",
+              },
+            });
+          }
+        }
+      }
+    }
     const ps = wordParagraphs(value);
-    if (ps.length) {
-      supplementary += ps.length;
+    if (ps.length || imgNodes.length) {
+      supplementary += ps.length + imgNodes.length;
       content.content!.push(
         {
           type: "heading",
@@ -458,6 +1216,7 @@ export async function importDocx(
             },
           ],
         },
+        ...imgNodes,
         ...ps.map((text) => ({
           type: "paragraph",
           content: [{ type: "text", text }],

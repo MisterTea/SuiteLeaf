@@ -38,6 +38,7 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
+  Cell,
 } from "recharts";
 import Papa from "papaparse";
 import {
@@ -81,6 +82,7 @@ import { Tool, type EditorActions } from "../ui";
 import "../excel-overflow";
 import "../excel-number-display";
 import "../excel-wrap";
+import "../excel-cell";
 import { resolveExcelColumnWidths } from "../excel-layout";
 import { useTheme } from "../theme";
 
@@ -239,7 +241,7 @@ function EmbeddedChart({ data }: { data?: { chartId: string } }) {
   );
   if (!state) return <div>Loading chart…</div>;
   const { definition: c, values, numberFormats } = state;
-  if (c.excel && !c.invalid)
+  if (c.type === "line" && c.excel && !c.invalid)
     return <ExcelLineChart chart={c} series={state.excelValues ?? []} />;
   const formatValue = (value: unknown, column: number) =>
     numberFormats[column]
@@ -272,7 +274,16 @@ function EmbeddedChart({ data }: { data?: { chartId: string } }) {
       keys.map((k, i) => [k, typeof r[i + 1] === "number" ? r[i + 1] : null]),
     ),
   }));
-  const colors = ["#267c60", "#5989c7", "#d6a348", "#8c70b8", "#c77366"];
+  const colors = [
+    "#4F81BD",
+    "#C0504D",
+    "#9BBB59",
+    "#8064A2",
+    "#4BACC6",
+    "#F79646",
+    "#2C4D75",
+    "#267C60",
+  ];
   return (
     <div className="suiteleaf-chart" aria-label={`Chart: ${c.title}`}>
       <strong>{c.title}</strong>
@@ -283,9 +294,16 @@ function EmbeddedChart({ data }: { data?: { chartId: string } }) {
               data={rows}
               dataKey="v0"
               nameKey="label"
-              fill={colors[0]}
-              label
-            />
+              isAnimationActive={false}
+              label={({ value }: { value?: any }) => formatValue(value, 1)}
+            >
+              {rows.map((_, index) => (
+                <Cell
+                  key={`cell-${index}`}
+                  fill={colors[index % colors.length]}
+                />
+              ))}
+            </Pie>
             <Tooltip formatter={formatTooltip} />
           </PieChart>
         ) : c.type === "scatter" ? (
@@ -477,6 +495,16 @@ export default function Sheets({
         content.current.workbook as unknown as IWorkbookData,
       );
       book.current = workbook;
+      // Excel stores a cached result for every formula cell but recalculates formulas on
+      // open. An imported snapshot can carry a stale or missing cached value that would
+      // display 0 while the formula resolves to a real number, so force one explicit full
+      // recalculation on import: this is an external data change that produced no dirty
+      // command, which is exactly when executeCalculation() applies.
+      univerAPI.getFormula().executeCalculation();
+      void univerAPI
+        .getFormula()
+        .onCalculationResultApplied(5000)
+        .catch(() => {});
       // Import inert embedded appearances through the editor's native drawing service.
       // Restored workbook resources retain the same IDs, avoiding duplicate images.
       const hydrateImages = async () => {
@@ -631,16 +659,16 @@ export default function Sheets({
             });
           }
           window.dispatchEvent(new Event(`chart:${c.id}`));
-          let origin: { left: number; top: number };
+          let origin: { left: number; top: number } | undefined;
           try {
             origin = JSON.parse(sheet.getRange("A1").getCellRect().toJSON());
           } catch {
             // The canvas for an inactive sheet may not exist until activation.
-            continue;
+            if (c.excel) continue;
           }
-          const gridX = c.excel ? origin.left : 0;
-          const gridY = c.excel ? origin.top : 0;
-          if (c.excel && !chartOrigins.has(c.id))
+          const gridX = c.excel && origin ? origin.left : 0;
+          const gridY = c.excel && origin ? origin.top : 0;
+          if (c.excel && origin && !chartOrigins.has(c.id))
             chartOrigins.set(c.id, origin);
           if (!sheet.getFloatDomById(c.id))
             sheet.addFloatDomToPosition(

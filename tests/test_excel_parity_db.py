@@ -132,6 +132,23 @@ class LedgerTests(unittest.TestCase):
         self.assertEqual(self.db.execute('SELECT count(*) FROM history_screenshots').fetchone()[0], 2)
         self.assertEqual(ledger.verify(self.db)['integrity'], 'ok')
 
+    def test_archived_legacy_paths_are_preserved_but_not_treated_as_embedded_refs(self):
+        self.ingest()
+        row = self.db.execute('SELECT * FROM workbooks').fetchone()
+        self.db.execute(
+            'UPDATE workbooks SET excel_screenshots=?, suiteleaf_screenshots=?',
+            ('["old/excel.png"]', '["old/suiteleaf.png"]'),
+        )
+        self.db.commit()
+        row = self.db.execute('SELECT * FROM workbooks').fetchone()
+        ledger.archive(self.db, row)
+        self.db.execute('DELETE FROM workbooks WHERE id=?', (row['id'],))
+        self.db.commit()
+        history = self.db.execute('SELECT workbook_record FROM audit_history').fetchone()
+        self.assertEqual(json.loads(history['workbook_record'])['excel_screenshots'], '["old/excel.png"]')
+        self.assertEqual(self.db.execute('SELECT count(*) FROM history_screenshots').fetchone()[0], 2)
+        self.assertEqual(ledger.verify(self.db)['integrity'], 'ok')
+
     def test_resume_preserves_completed_results_and_revision_change_requeues(self):
         root = self.output / 'project'
         files = root / 'datasets/sample/files'

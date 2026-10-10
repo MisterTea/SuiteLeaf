@@ -944,6 +944,12 @@ a {
   max-width: 100%;
   height: auto;
 }
+.document-content hr {
+  border: none;
+  border-top: 1.5px solid #4f81bd;
+  margin: 16px auto;
+  width: 50%;
+}
 .document-content table {
   border-collapse: collapse;
   width: 100%;

@@ -8,6 +8,14 @@ test("General first rounds fractions to retain visible integer digits", () => {
   expect(excelGeneralNumberText(4471025.26, "4471025.26", 7, measure)).toBe(
     "4471025",
   );
+  expect(
+    excelGeneralNumberText(
+      0.7853981633974483,
+      "0.785398163397448",
+      9,
+      measure,
+    ),
+  ).toBe("0.7853982");
 });
 test("scientific display retains precision and removes empty decimal separators", () => {
   expect(excelGeneralNumberText(409660132.9, "409660132.9", 7, measure)).toBe(

@@ -1,4 +1,5 @@
 import type { IWorkbookData } from "@univerjs/presets";
+import { DEFAULT_FONTFACE_PLANE } from "@univerjs/engine-render";
 
 /** Excel stores character widths against its Normal font, including five pixels
  * of padding. Native macOS Excel rounds the corresponding 72 dpi glyph metric
@@ -57,7 +58,7 @@ export async function resolveExcelColumnWidths(workbook: IWorkbookData) {
   const context = document.createElement("canvas").getContext("2d");
   if (!context) throw new Error("Excel font metrics are unavailable.");
   const fontSpec = (layout: ExcelLayout) =>
-    `${layout.normalFont.size}pt ${JSON.stringify(layout.normalFont.family)}`;
+    `${layout.normalFont.size}pt ${JSON.stringify(layout.normalFont.family)}, ${DEFAULT_FONTFACE_PLANE}`;
   await Promise.all(
     pending.map(({ layout }) => document.fonts.load(fontSpec(layout))),
   );

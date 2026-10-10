@@ -318,6 +318,7 @@ async function styleTable(zip: JSZip): Promise<Record<string, any>> {
       : (xf.alignment ?? inherited);
     if (a) {
       if (a["@_horizontal"] === "center") style.pd = { l: 0, r: 0 };
+      if (a["@_horizontal"] === "right") style.pd = { l: 0, r: 96 / 72 };
       style.ht =
         ({ left: 1, center: 2, right: 3, justify: 4, distributed: 6 } as any)[
           a["@_horizontal"]
@@ -460,8 +461,13 @@ export async function importXlsx(
       id = sheetIds.get(name)!;
     const meta =
       sourceSheets.find((s) => s["@_name"] === name) ?? sourceSheets[i];
+    const rel = rels.get(meta?.["@_id"]);
     const partPath =
-      rels.get(meta?.["@_id"])?.path ?? `xl/worksheets/sheet${i + 1}.xml`;
+      rel?.path ?? `xl/worksheets/sheet${i + 1}.xml`;
+    const isChartsheet =
+      rel?.type.endsWith("/chartsheet") ||
+      partPath.includes("chartsheets/") ||
+      (source as any)["!type"] === "chart";
     const raw = zip.file(partPath)
       ? await zip.file(partPath)!.async("string")
       : "";
@@ -545,19 +551,73 @@ export async function importXlsx(
         maxCol = Math.max(maxCol, coords.c);
       }
     };
-    const rows = (source as any)["!data"] as
-      (XLSX.CellObject[] | undefined)[] | undefined;
-    if (rows) {
-      rows.forEach((row, r) =>
-        row?.forEach((cell, c) => {
-          if (cell) copyCell(cell, { r, c });
-        }),
-      );
-    } else
-      for (const [address, cell] of Object.entries(source)) {
-        if (!address.startsWith("!"))
-          copyCell(cell as XLSX.CellObject, XLSX.utils.decode_cell(address));
+    if (!isChartsheet) {
+      const rows = (source as any)["!data"] as
+        (XLSX.CellObject[] | undefined)[] | undefined;
+      if (rows) {
+        rows.forEach((row, r) =>
+          row?.forEach((cell, c) => {
+            if (cell) copyCell(cell, { r, c });
+          }),
+        );
+      } else
+        for (const [address, cell] of Object.entries(source)) {
+          if (!address.startsWith("!"))
+            copyCell(cell as XLSX.CellObject, XLSX.utils.decode_cell(address));
+        }
+    }
+
+    // SheetJS's internal shift_formula_str does not shift whole-column references
+    // (e.g. A:A, B:B) in shared formulas because its cell regex requires row digits.
+    // Shift column ranges across shared formula ranges so recipient cells evaluate correctly.
+    const sharedDefs = new Map<string, { origin: { r: number; c: number }; formula: string }>();
+    for (const m of raw.matchAll(
+      /<(?:\w+:)?c\b([^>]*?)>(?:[\s\S]*?<(?:\w+:)?f\b([^>]*?)>([\s\S]*?)<\/(?:\w+:)?f>)/g,
+    )) {
+      const cAttrs = attrParser(m[1]);
+      const fAttrs = attrParser(m[2]);
+      const fText = m[3]?.trim();
+      if (cAttrs.r && fAttrs.si !== undefined && fAttrs.t === "shared" && fText) {
+        const origin = XLSX.utils.decode_cell(cAttrs.r);
+        sharedDefs.set(fAttrs.si, { origin, formula: fText });
       }
+    }
+    if (sharedDefs.size) {
+      const colRegex =
+        /(^|[^._A-Z0-9])(\$?)([A-Z]{1,3}):(\$?)([A-Z]{1,3})(?![_.\(A-Za-z0-9])/g;
+      for (const m of raw.matchAll(
+        /<(?:\w+:)?c\b([^>]*?)>(?:[\s\S]*?<(?:\w+:)?f\b([^>]*?)\/?>)/g,
+      )) {
+        const cAttrs = attrParser(m[1]);
+        const fAttrs = attrParser(m[2]);
+        if (cAttrs.r && fAttrs.si !== undefined && sharedDefs.has(fAttrs.si)) {
+          const def = sharedDefs.get(fAttrs.si)!;
+          const pos = XLSX.utils.decode_cell(cAttrs.r);
+          const dc = pos.c - def.origin.c;
+          if (dc !== 0 && colRegex.test(def.formula)) {
+            const shifted = def.formula.replace(
+              colRegex,
+              (_, prefix, s1, c1, s2, c2) => {
+                const shift = (colStr: string, abs: boolean) => {
+                  if (abs) return "$" + colStr;
+                  const newCol = XLSX.utils.decode_col(colStr) + dc;
+                  return newCol >= 0 ? XLSX.utils.encode_col(newCol) : colStr;
+                };
+                return (
+                  prefix +
+                  shift(c1, s1 === "$") +
+                  ":" +
+                  shift(c2, s2 === "$")
+                );
+              },
+            );
+            if (cellData[pos.r]?.[pos.c]) {
+              cellData[pos.r][pos.c].f = "=" + shifted;
+            }
+          }
+        }
+      }
+    }
 
     // Apply original cell style IDs without building a second full worksheet tree.
     for (const m of raw.matchAll(/<(?:\w+:)?c\b([^>]*?)(?:\/?>)/g)) {
@@ -570,7 +630,7 @@ export async function importXlsx(
       maxRow = Math.max(maxRow, pos.r);
       maxCol = Math.max(maxCol, pos.c);
     }
-    // General numbers use a compact numeric inset. Keep rendering and the
+    // Numeric and right-aligned cells use a compact numeric inset. Keep rendering and the
     // width-dependent rounding calculation on the same available rectangle.
     for (const cells of Object.values(cellData)) {
       for (const cell of Object.values(cells)) {
@@ -663,8 +723,8 @@ export async function importXlsx(
       id,
       name,
       cellData,
-      rowCount: Math.max(1000, maxRow + 1),
-      columnCount: Math.max(26, maxCol + 1),
+      rowCount: isChartsheet ? 100 : Math.max(1000, maxRow + 1),
+      columnCount: isChartsheet ? 26 : Math.max(26, maxCol + 1),
       rowData,
       columnData,
       mergeData: merges,
@@ -688,7 +748,7 @@ export async function importXlsx(
       defaultColumnWidth,
       defaultRowHeight,
       zoomRatio: 1,
-      showGridlines: view?.["@_showGridLines"] === "0" ? 0 : 1,
+      showGridlines: isChartsheet ? 0 : view?.["@_showGridLines"] === "0" ? 0 : 1,
       rightToLeft: view?.["@_rightToLeft"] === "1" ? 1 : 0,
     };
     delete book.Sheets[name];
@@ -809,6 +869,7 @@ async function readCharts(
         const anchors = [
           ...array<any>(root?.twoCellAnchor),
           ...array<any>(root?.oneCellAnchor),
+          ...array<any>(root?.absoluteAnchor),
         ];
         for (const anchor of anchors) {
           const chartRel =
@@ -869,6 +930,11 @@ async function readCharts(
             );
             continue;
           }
+          const hasCat = series.some(
+            (s) => s.cat?.strRef?.f || s.cat?.numRef?.f || s.xVal?.numRef?.f,
+          );
+          const minCol = Math.min(...parsed.map((r) => r.startColumn));
+          const startColumn = !hasCat && minCol > 0 ? minCol - 1 : minCol;
           const source = {
             sheetId: parsed[0].sheetId,
             startRow: Math.max(
@@ -876,19 +942,37 @@ async function readCharts(
               Math.min(...parsed.map((r) => r.startRow)) - 1,
             ),
             endRow: Math.max(...parsed.map((r) => r.endRow)),
-            startColumn: Math.min(...parsed.map((r) => r.startColumn)),
+            startColumn,
             endColumn: Math.max(...parsed.map((r) => r.endColumn)),
           };
+          const isAbsolute = !anchor.from && !!anchor.pos;
+          const posX = isAbsolute
+            ? Math.round(Number(anchor.pos?.["@_x"] ?? 0) / 9525)
+            : Number(anchor.from?.col ?? 3) * 100;
+          const posY = isAbsolute
+            ? Math.round(Number(anchor.pos?.["@_y"] ?? 0) / 9525)
+            : Number(anchor.from?.row ?? 3) * 24;
+          const width = isAbsolute
+            ? Math.min(1000, Math.round(Number(anchor.ext?.["@_cx"] ?? 0) / 9525) || 880)
+            : 520;
+          const height = isAbsolute
+            ? Math.min(650, Math.round(Number(anchor.ext?.["@_cy"] ?? 0) / 9525) || 580)
+            : 340;
+          const title = String(
+            x.chartSpace?.chart?.title?.tx?.rich?.p?.r?.t ??
+              x.chartSpace?.chart?.title?.tx?.strRef?.strCache?.pt?.v ??
+              "",
+          );
           const c: ChartDefinition = {
             id: crypto.randomUUID(),
-            title: "Imported chart",
+            title,
             type,
             source,
             sheetId,
-            x: Number(anchor.from?.col ?? 3) * 100,
-            y: Number(anchor.from?.row ?? 3) * 24,
-            width: 520,
-            height: 340,
+            x: isAbsolute ? Math.max(20, posX) : posX,
+            y: isAbsolute ? Math.max(10, posY) : posY,
+            width,
+            height,
           };
           if (anchor.to && type === "line") {
             const importedSeries = series

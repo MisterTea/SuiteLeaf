@@ -9,7 +9,7 @@ export function excelGeneralNumberText(
   measure: (text: string) => number,
 ): string {
   if (width <= 0 || measure(display) <= width) return display;
-  if (Math.abs(value) >= 1 && Math.abs(value) < 1e11) {
+  if (Math.abs(value) >= 1e-9 && Math.abs(value) < 1e11) {
     for (let places = 10; places >= 0; places--) {
       const rounded = value
         .toFixed(places)

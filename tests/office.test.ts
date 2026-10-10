@@ -184,6 +184,238 @@ describe("editable Office imports", () => {
       expect(report.textPreserved).toBe(true);
     },
   );
+  it.skipIf(
+    !existsSync(
+      "datasets/apache-poi/files/test-data/document/61991.docx",
+    ),
+  )(
+    "imports docx Title paragraph style as heading",
+    async () => {
+      const { file, report } = await importOffice(
+        readFileSync(
+          "datasets/apache-poi/files/test-data/document/61991.docx",
+        ),
+        "docx",
+        "61991.docx",
+      );
+      expect(file.kind).toBe("doc");
+      if (file.kind !== "doc") return;
+      const headings = (file.content.content ?? []).filter(
+        (n) => n.type === "heading",
+      );
+      expect(headings.length).toBeGreaterThanOrEqual(1);
+      expect(headings[0].attrs?.level).toBe(1);
+      expect(documentText(headings[0])).toContain(
+        "Next Generation Clinical Trial Transparency",
+      );
+      expect(report.textPreserved).toBe(true);
+    },
+  );
+  it.skipIf(
+    !existsSync(
+      "datasets/apache-poi/files/test-data/document/65099.docx",
+    ),
+  )(
+    "imports docx numbered multi-level headings and styled tables with visual parity",
+    async () => {
+      const { file, report } = await importOffice(
+        readFileSync(
+          "datasets/apache-poi/files/test-data/document/65099.docx",
+        ),
+        "docx",
+        "65099.docx",
+      );
+      expect(file.kind).toBe("doc");
+      if (file.kind !== "doc") return;
+      const headings = (file.content.content ?? []).filter(
+        (n) => n.type === "heading",
+      );
+      expect(headings.length).toBe(1);
+      expect(headings[0].attrs?.level).toBe(3);
+      expect(documentText(headings[0])).toBe("1.1.1 Acronyms");
+      expect(headings[0].content?.[0].marks).toEqual([{ type: "bold" }]);
+
+      const tables = (file.content.content ?? []).filter(
+        (n) => n.type === "table",
+      );
+      expect(tables.length).toBe(1);
+      const rows = tables[0].content ?? [];
+      expect(rows.length).toBe(6);
+
+      // Header row
+      expect(rows[0].content?.[0].type).toBe("tableHeader");
+      expect(documentText(rows[0].content![0])).toBe("Acronym");
+      expect(rows[0].content![0].content?.[0]?.content?.[0]?.marks).toEqual([{ type: "bold" }]);
+      expect(rows[0].content?.[1].type).toBe("tableHeader");
+      expect(documentText(rows[0].content![1])).toBe("Definition");
+      expect(rows[0].content![1].content?.[0]?.content?.[0]?.marks).toEqual([{ type: "bold" }]);
+
+      // First column bold in data rows
+      expect(documentText(rows[1].content![0])).toBe("LAB");
+      expect(rows[1].content![0].content?.[0]?.content?.[0]?.marks).toEqual([{ type: "bold" }]);
+      expect(documentText(rows[1].content![1])).toBe("Logical Architecture Blank");
+      expect(rows[1].content![1].content?.[0]?.content?.[0]?.marks).toBeUndefined();
+
+      expect(report.textPreserved).toBe(true);
+    },
+  );
+  it.skipIf(
+    !existsSync(
+      "datasets/apache-poi/files/test-data/document/Bug54771a.docx",
+    ),
+  )(
+    "imports docx cover page fields with headings, horizontal rule and visual parity",
+    async () => {
+      const { file, report } = await importOffice(
+        readFileSync(
+          "datasets/apache-poi/files/test-data/document/Bug54771a.docx",
+        ),
+        "docx",
+        "Bug54771a.docx",
+      );
+      expect(file.kind).toBe("doc");
+      if (file.kind !== "doc") return;
+      const text = documentText(file.content);
+      expect(text).toContain("BB");
+      expect(text).toContain("Test");
+      expect(text).toContain("Test Subtitle");
+      expect(text).toContain("Test User");
+      expect(report.stats.tables).toBe(0);
+      expect(report.stats.supplementaryParagraphs).toBe(0);
+      expect(text).not.toContain("Imported header");
+      expect(text).not.toContain("Imported footer");
+      const headings = (file.content.content ?? []).filter(
+        (n) => n.type === "heading",
+      );
+      expect(headings.length).toBe(2);
+      expect(headings[0].attrs?.level).toBe(1);
+      expect(documentText(headings[0])).toBe("Test");
+      expect(headings[1].attrs?.level).toBe(2);
+      expect(documentText(headings[1])).toBe("Test Subtitle");
+      expect(
+        (file.content.content ?? []).some((n) => n.type === "horizontalRule"),
+      ).toBe(true);
+      expect(report.textPreserved).toBe(true);
+    },
+  );
+  it.skipIf(
+    !existsSync(
+      "datasets/apache-poi/files/test-data/document/Bug54771b.docx",
+    ),
+  )(
+    "imports docx cover page fields from Bug54771b with headings, horizontal rule and visual parity",
+    async () => {
+      const { file, report } = await importOffice(
+        readFileSync(
+          "datasets/apache-poi/files/test-data/document/Bug54771b.docx",
+        ),
+        "docx",
+        "Bug54771b.docx",
+      );
+      expect(file.kind).toBe("doc");
+      if (file.kind !== "doc") return;
+      const text = documentText(file.content);
+      expect(text).toContain("Test");
+      expect(text).toContain("Test Subtitle");
+      expect(text).toContain("Test User");
+      expect(report.stats.tables).toBe(0);
+      expect(report.stats.supplementaryParagraphs).toBe(0);
+      expect(text).not.toContain("Imported header");
+      expect(text).not.toContain("Imported footer");
+      const headings = (file.content.content ?? []).filter(
+        (n) => n.type === "heading",
+      );
+      expect(headings.length).toBe(2);
+      expect(headings[0].attrs?.level).toBe(1);
+      expect(documentText(headings[0])).toBe("Test");
+      expect(headings[1].attrs?.level).toBe(2);
+      expect(documentText(headings[1])).toBe("Test Subtitle");
+      expect(
+        (file.content.content ?? []).some((n) => n.type === "horizontalRule"),
+      ).toBe(true);
+      expect(report.textPreserved).toBe(true);
+    },
+  );
+  it.skipIf(
+    !existsSync(
+      "datasets/apache-poi/files/test-data/document/Bug51170.docx",
+    ),
+  )(
+    "imports docx header image and footer text sections",
+    async () => {
+      const { file, report } = await importOffice(
+        readFileSync(
+          "datasets/apache-poi/files/test-data/document/Bug51170.docx",
+        ),
+        "docx",
+        "Bug51170.docx",
+      );
+      expect(file.kind).toBe("doc");
+      if (file.kind !== "doc") return;
+      const headings = (file.content.content ?? []).filter(
+        (n) => n.type === "heading",
+      );
+      expect(headings.map((h) => documentText(h))).toEqual([
+        "Imported header",
+        "Imported footer",
+      ]);
+      const images = (file.content.content ?? []).filter(
+        (n) => n.type === "image",
+      );
+      expect(images.length).toBe(1);
+      expect(images[0].attrs?.src).toMatch(/^data:image\/png;base64,/);
+      expect(report.textPreserved).toBe(true);
+    },
+  );
+  it.skipIf(
+    !existsSync(
+      "datasets/apache-poi/files/test-data/document/Bug54849.docx",
+    ),
+  )(
+    "imports docx footnotes and endnotes with visual parity without false recovered text",
+    async () => {
+      const { file, report } = await importOffice(
+        readFileSync(
+          "datasets/apache-poi/files/test-data/document/Bug54849.docx",
+        ),
+        "docx",
+        "Bug54849.docx",
+      );
+      expect(file.kind).toBe("doc");
+      if (file.kind !== "doc") return;
+      expect(report.textPreserved).toBe(true);
+      expect(report.stats.recoveredParagraphs).toBe(0);
+      const headings = (file.content.content ?? []).filter(
+        (n) => n.type === "heading",
+      );
+      expect(headings.map((h) => documentText(h))).not.toContain(
+        "Recovered document text",
+      );
+      const paragraphs = (file.content.content ?? []).filter(
+        (n) => n.type === "paragraph",
+      );
+      // Paragraph with footnote: Blahdeblah¹1
+      const pFootnote = paragraphs.find((p) =>
+        documentText(p).startsWith("Blahdeblah1"),
+      );
+      expect(pFootnote).toBeDefined();
+      expect(pFootnote?.content).toEqual([
+        { type: "text", text: "Blahdeblah" },
+        { type: "text", text: "1", marks: [{ type: "superscript" }] },
+        { type: "text", text: "1" },
+      ]);
+      // Paragraph with endnote: Blahdeblahⁱ6
+      const pEndnote = paragraphs.find((p) =>
+        documentText(p).startsWith("Blahdeblahi"),
+      );
+      expect(pEndnote).toBeDefined();
+      expect(pEndnote?.content).toEqual([
+        { type: "text", text: "Blahdeblah" },
+        { type: "text", text: "i", marks: [{ type: "superscript" }] },
+        { type: "text", text: "6" },
+      ]);
+    },
+  );
   it("preserves Excel cell types, shared formulas, date system, named ranges, styles and dimensions", async () => {
     const { file } = await importOffice(
       await excelFixture(),
