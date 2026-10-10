@@ -113,8 +113,11 @@ on run argv
    set visible of sh to sheet visible
    activate object sh
    set originalView to view of active window as text
-   set view of active window to normal view
-   set zoom of active window to 100
+   -- Preserve the workbook's native view. Some legacy sheets refuse a switch
+   -- to Normal view; the audit needs one viewport image, not a reconfigured view.
+   try
+    set zoom of active window to 100
+   end try
    set ur to used range of sh
    set maxRow to (first row index of ur) + (count of rows of ur) - 1
    set maxCol to (first column index of ur) + (count of columns of ur) - 1
@@ -134,7 +137,7 @@ on run argv
     set columnWidths to columnWidths & (width of column columnIndex of sh)
    end repeat
    set columnWidths to columnWidths & "]"
-   return "{\"index\":" & (item 3 of argv) & ",\"name\":" & my jsonString(sheetName) & ",\"visibility\":" & my jsonString(originalVisibility) & ",\"original_view\":" & my jsonString(originalView) & ",\"capture_view\":\"normal view\",\"original_column_widths_points\":" & columnWidths & ",\"used_range\":" & my jsonString(get address of ur) & ",\"last_row\":" & maxRow & ",\"last_column\":" & maxCol & ",\"freeze_panes\":" & (freeze panes of active window as text) & ",\"split_row\":" & (split row of active window) & ",\"split_column\":" & (split column of active window) & "}"
+   return "{\"index\":" & (item 3 of argv) & ",\"name\":" & my jsonString(sheetName) & ",\"visibility\":" & my jsonString(originalVisibility) & ",\"original_view\":" & my jsonString(originalView) & ",\"capture_view\":" & my jsonString(view of active window as text) & ",\"original_column_widths_points\":" & columnWidths & ",\"used_range\":" & my jsonString(get address of ur) & ",\"last_row\":" & maxRow & ",\"last_column\":" & maxCol & ",\"freeze_panes\":" & (freeze panes of active window as text) & ",\"split_row\":" & (split row of active window) & ",\"split_column\":" & (split column of active window) & "}"
   end if
   if operation is "metrics" then
    set rr to range (item 4 of argv) of sh
@@ -159,7 +162,9 @@ on run argv
   end if
   if operation is "tile" then
    activate object sh
-   set zoom of active window to 100
+   try
+    set zoom of active window to 100
+   end try
    try
     activate object range "IV65536" of sh
    end try
