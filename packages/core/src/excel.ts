@@ -120,6 +120,43 @@ const attrParser = (text: string): Record<string, string> => {
     o[m[1].split(":").pop()!] = m[2];
   return o;
 };
+function decodeXmlEntities(text: string): string {
+  return text
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(+n))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) =>
+      String.fromCodePoint(parseInt(h, 16)),
+    )
+    .replace(/&amp;/g, "&");
+}
+function implicitIntersectConcatenatedWholeColumns(formula: string): string {
+  const parts = formula.match(/"(?:[^"]|"")*"|[^"]+/g) ?? [];
+  let depth = 0;
+  let hasTopLevelConcatenation = false;
+  for (const part of parts) {
+    if (part.startsWith('"')) continue;
+    for (const character of part) {
+      if (character === "(") depth++;
+      else if (character === ")") depth = Math.max(0, depth - 1);
+      else if (character === "&" && depth === 0)
+        hasTopLevelConcatenation = true;
+    }
+  }
+  if (!hasTopLevelConcatenation) return formula;
+  return parts
+    .map((part) =>
+      part.startsWith('"')
+        ? part
+        : part.replace(
+            /(^|[^._A-Z0-9])(\$?[A-Z]{1,3}:\$?[A-Z]{1,3})(?![_.\(A-Za-z0-9])/g,
+            "$1@$2",
+          ),
+    )
+    .join("");
+}
 function segment(xml: string, name: string): string | undefined {
   return new RegExp(
     `<(?:(?:[\\w]+):)?${name}\\b[^>]*(?:\\/>|>[\\s\\S]*?<\\/(?:(?:[\\w]+):)?${name}>)`,
@@ -573,8 +610,10 @@ export async function importXlsx(
     // cell-to-formula regex becomes quadratic when no formula exists, which is
     // common in large formatted or merged workbooks.
     if (/<(?:\w+:)?f\b/.test(raw)) {
-      const cellPattern = /<(?:\w+:)?c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:\w+:)?c>)/g;
-      const formulaPattern = /<(?:\w+:)?f\b([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:\w+:)?f>)/;
+      const cellPattern =
+        /<(?:\w+:)?c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:\w+:)?c>)/g;
+      const formulaPattern =
+        /<(?:\w+:)?f\b([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:\w+:)?f>)/;
       const sharedDefs = new Map<
         string,
         { origin: { r: number; c: number }; formula: string }
@@ -584,7 +623,9 @@ export async function importXlsx(
         const formula = m[2]?.match(formulaPattern);
         if (!formula) continue;
         const fAttrs = attrParser(formula[1]);
-        const fText = formula[2]?.trim();
+        const fText = formula[2]
+          ? decodeXmlEntities(formula[2].trim())
+          : undefined;
         if (
           cAttrs.r &&
           fAttrs.si !== undefined &&
@@ -611,8 +652,11 @@ export async function importXlsx(
             const def = sharedDefs.get(fAttrs.si)!;
             const pos = XLSX.utils.decode_cell(cAttrs.r);
             const dc = pos.c - def.origin.c;
-            if (dc !== 0 && colRegex.test(def.formula)) {
-              const shifted = def.formula.replace(
+            const hasWholeColumnRange = colRegex.test(def.formula);
+            colRegex.lastIndex = 0;
+            let corrected = def.formula;
+            if (dc !== 0 && hasWholeColumnRange) {
+              corrected = corrected.replace(
                 colRegex,
                 (_, prefix, s1, c1, s2, c2) => {
                   const shift = (colStr: string, abs: boolean) => {
@@ -625,9 +669,10 @@ export async function importXlsx(
                   );
                 },
               );
-              if (cellData[pos.r]?.[pos.c]) {
-                cellData[pos.r][pos.c].f = "=" + shifted;
-              }
+            }
+            corrected = implicitIntersectConcatenatedWholeColumns(corrected);
+            if (cellData[pos.r]?.[pos.c] && corrected !== def.formula) {
+              cellData[pos.r][pos.c].f = "=" + corrected;
             }
           }
         }

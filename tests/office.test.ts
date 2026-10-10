@@ -201,6 +201,35 @@ describe("editable Office imports", () => {
   );
   it.skipIf(
     !existsSync(
+      "datasets/apache-poi/files/test-data/spreadsheet/0-www-crossref-org.lib.rivier.edu_education-files_suffix-generator.xlsm",
+    ),
+  )(
+    "preserves scalar semantics for shared whole-column concatenation formulas",
+    async () => {
+      const path =
+        "datasets/apache-poi/files/test-data/spreadsheet/0-www-crossref-org.lib.rivier.edu_education-files_suffix-generator.xlsm";
+      const { file } = await importOffice(
+        readFileSync(path),
+        "xlsm",
+        "suffix-generator.xlsm",
+      );
+      expect(file.kind).toBe("sheet");
+      if (file.kind !== "sheet") return;
+      const workbook = file.content.workbook;
+      const sheetId = workbook.sheetOrder.find(
+        (id) => workbook.sheets[id].name === "Data_sheet",
+      );
+      expect(sheetId).toBeDefined();
+      const data = workbook.sheets[sheetId!].cellData!;
+      expect(data["11"]["2"]).toMatchObject({
+        f: '=@A:A&"/"&@B:B',
+        v: "/",
+      });
+      expect(data["12"]["2"].f).toBe('=@A:A&"/"&@B:B');
+    },
+  );
+  it.skipIf(
+    !existsSync(
       "datasets/apache-poi/files/test-data/document/checkboxes.docx",
     ),
   )(
