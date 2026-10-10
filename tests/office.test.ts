@@ -222,10 +222,10 @@ describe("editable Office imports", () => {
       expect(sheetId).toBeDefined();
       const data = workbook.sheets[sheetId!].cellData!;
       expect(data["11"]["2"]).toMatchObject({
-        f: '=@A:A&"/"&@B:B',
+        f: '=IF(ISBLANK(A12),"",A12)&"/"&IF(ISBLANK(B12),"",B12)',
         v: "/",
       });
-      expect(data["12"]["2"].f).toBe('=@A:A&"/"&@B:B');
+      expect(data["12"]["2"].f).toBe('=IF(ISBLANK(A13),"",A13)&"/"&IF(ISBLANK(B13),"",B13)');
     },
   );
   it.skipIf(

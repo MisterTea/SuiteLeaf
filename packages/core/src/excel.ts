@@ -132,7 +132,7 @@ function decodeXmlEntities(text: string): string {
     )
     .replace(/&amp;/g, "&");
 }
-function implicitIntersectConcatenatedWholeColumns(formula: string): string {
+function implicitIntersectConcatenatedWholeColumns(formula: string, row: number): string {
   const parts = formula.match(/"(?:[^"]|"")*"|[^"]+/g) ?? [];
   let depth = 0;
   let hasTopLevelConcatenation = false;
@@ -152,7 +152,16 @@ function implicitIntersectConcatenatedWholeColumns(formula: string): string {
         ? part
         : part.replace(
             /(^|[^._A-Z0-9])(\$?[A-Z]{1,3}:\$?[A-Z]{1,3})(?![_.\(A-Za-z0-9])/g,
-            "$1@$2",
+            (_, prefix, columns) => {
+              const [first, last] = columns.split(":");
+              if (first.replace("$", "") !== last.replace("$", ""))
+                return `${prefix}@${columns}`;
+              // Excel's legacy implicit intersection takes this row's cell.
+              // Univer's @ range coercion turns empty cells into numeric zero;
+              // guard the scalar reference so concatenation retains empty text.
+              const cell = `${first}${row + 1}`;
+              return `${prefix}IF(ISBLANK(${cell}),"",${cell})`;
+            },
           ),
     )
     .join("");
@@ -670,7 +679,7 @@ export async function importXlsx(
                 },
               );
             }
-            corrected = implicitIntersectConcatenatedWholeColumns(corrected);
+            corrected = implicitIntersectConcatenatedWholeColumns(corrected, pos.r);
             if (cellData[pos.r]?.[pos.c] && corrected !== def.formula) {
               cellData[pos.r][pos.c].f = "=" + corrected;
             }
