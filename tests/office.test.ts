@@ -182,6 +182,25 @@ describe("editable Office imports", () => {
   });
   it.skipIf(
     !existsSync(
+      "datasets/apache-poi/files/test-data/spreadsheet/LIBRE_OFFICE-116306-0.xlsx",
+    ),
+  )(
+    "imports a large formula-free Excel workbook without quadratic scans",
+    async () => {
+      const path =
+        "datasets/apache-poi/files/test-data/spreadsheet/LIBRE_OFFICE-116306-0.xlsx";
+      const { file, report } = await importOffice(
+        readFileSync(path),
+        "xlsx",
+        "LIBRE_OFFICE-116306-0.xlsx",
+      );
+      expect(file.kind).toBe("sheet");
+      expect(report.stats.cells).toBeGreaterThan(600_000);
+      expect(report.stats.formulas).toBe(0);
+    },
+  );
+  it.skipIf(
+    !existsSync(
       "datasets/apache-poi/files/test-data/document/checkboxes.docx",
     ),
   )(

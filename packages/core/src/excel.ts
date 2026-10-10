@@ -462,8 +462,7 @@ export async function importXlsx(
     const meta =
       sourceSheets.find((s) => s["@_name"] === name) ?? sourceSheets[i];
     const rel = rels.get(meta?.["@_id"]);
-    const partPath =
-      rel?.path ?? `xl/worksheets/sheet${i + 1}.xml`;
+    const partPath = rel?.path ?? `xl/worksheets/sheet${i + 1}.xml`;
     const isChartsheet =
       rel?.type.endsWith("/chartsheet") ||
       partPath.includes("chartsheets/") ||
@@ -570,49 +569,65 @@ export async function importXlsx(
     // SheetJS's internal shift_formula_str does not shift whole-column references
     // (e.g. A:A, B:B) in shared formulas because its cell regex requires row digits.
     // Shift column ranges across shared formula ranges so recipient cells evaluate correctly.
-    const sharedDefs = new Map<string, { origin: { r: number; c: number }; formula: string }>();
-    for (const m of raw.matchAll(
-      /<(?:\w+:)?c\b([^>]*?)>(?:[\s\S]*?<(?:\w+:)?f\b([^>]*?)>([\s\S]*?)<\/(?:\w+:)?f>)/g,
-    )) {
-      const cAttrs = attrParser(m[1]);
-      const fAttrs = attrParser(m[2]);
-      const fText = m[3]?.trim();
-      if (cAttrs.r && fAttrs.si !== undefined && fAttrs.t === "shared" && fText) {
-        const origin = XLSX.utils.decode_cell(cAttrs.r);
-        sharedDefs.set(fAttrs.si, { origin, formula: fText });
-      }
-    }
-    if (sharedDefs.size) {
-      const colRegex =
-        /(^|[^._A-Z0-9])(\$?)([A-Z]{1,3}):(\$?)([A-Z]{1,3})(?![_.\(A-Za-z0-9])/g;
-      for (const m of raw.matchAll(
-        /<(?:\w+:)?c\b([^>]*?)>(?:[\s\S]*?<(?:\w+:)?f\b([^>]*?)\/?>)/g,
-      )) {
+    // Avoid scanning every cell for formulas in formula-free sheets. The broad
+    // cell-to-formula regex becomes quadratic when no formula exists, which is
+    // common in large formatted or merged workbooks.
+    if (/<(?:\w+:)?f\b/.test(raw)) {
+      const cellPattern = /<(?:\w+:)?c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:\w+:)?c>)/g;
+      const formulaPattern = /<(?:\w+:)?f\b([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:\w+:)?f>)/;
+      const sharedDefs = new Map<
+        string,
+        { origin: { r: number; c: number }; formula: string }
+      >();
+      for (const m of raw.matchAll(cellPattern)) {
         const cAttrs = attrParser(m[1]);
-        const fAttrs = attrParser(m[2]);
-        if (cAttrs.r && fAttrs.si !== undefined && sharedDefs.has(fAttrs.si)) {
-          const def = sharedDefs.get(fAttrs.si)!;
-          const pos = XLSX.utils.decode_cell(cAttrs.r);
-          const dc = pos.c - def.origin.c;
-          if (dc !== 0 && colRegex.test(def.formula)) {
-            const shifted = def.formula.replace(
-              colRegex,
-              (_, prefix, s1, c1, s2, c2) => {
-                const shift = (colStr: string, abs: boolean) => {
-                  if (abs) return "$" + colStr;
-                  const newCol = XLSX.utils.decode_col(colStr) + dc;
-                  return newCol >= 0 ? XLSX.utils.encode_col(newCol) : colStr;
-                };
-                return (
-                  prefix +
-                  shift(c1, s1 === "$") +
-                  ":" +
-                  shift(c2, s2 === "$")
-                );
-              },
-            );
-            if (cellData[pos.r]?.[pos.c]) {
-              cellData[pos.r][pos.c].f = "=" + shifted;
+        const formula = m[2]?.match(formulaPattern);
+        if (!formula) continue;
+        const fAttrs = attrParser(formula[1]);
+        const fText = formula[2]?.trim();
+        if (
+          cAttrs.r &&
+          fAttrs.si !== undefined &&
+          fAttrs.t === "shared" &&
+          fText
+        ) {
+          const origin = XLSX.utils.decode_cell(cAttrs.r);
+          sharedDefs.set(fAttrs.si, { origin, formula: fText });
+        }
+      }
+      if (sharedDefs.size) {
+        const colRegex =
+          /(^|[^._A-Z0-9])(\$?)([A-Z]{1,3}):(\$?)([A-Z]{1,3})(?![_.\(A-Za-z0-9])/g;
+        for (const m of raw.matchAll(cellPattern)) {
+          const cAttrs = attrParser(m[1]);
+          const formula = m[2]?.match(formulaPattern);
+          if (!formula) continue;
+          const fAttrs = attrParser(formula[1]);
+          if (
+            cAttrs.r &&
+            fAttrs.si !== undefined &&
+            sharedDefs.has(fAttrs.si)
+          ) {
+            const def = sharedDefs.get(fAttrs.si)!;
+            const pos = XLSX.utils.decode_cell(cAttrs.r);
+            const dc = pos.c - def.origin.c;
+            if (dc !== 0 && colRegex.test(def.formula)) {
+              const shifted = def.formula.replace(
+                colRegex,
+                (_, prefix, s1, c1, s2, c2) => {
+                  const shift = (colStr: string, abs: boolean) => {
+                    if (abs) return "$" + colStr;
+                    const newCol = XLSX.utils.decode_col(colStr) + dc;
+                    return newCol >= 0 ? XLSX.utils.encode_col(newCol) : colStr;
+                  };
+                  return (
+                    prefix + shift(c1, s1 === "$") + ":" + shift(c2, s2 === "$")
+                  );
+                },
+              );
+              if (cellData[pos.r]?.[pos.c]) {
+                cellData[pos.r][pos.c].f = "=" + shifted;
+              }
             }
           }
         }
@@ -748,7 +763,11 @@ export async function importXlsx(
       defaultColumnWidth,
       defaultRowHeight,
       zoomRatio: 1,
-      showGridlines: isChartsheet ? 0 : view?.["@_showGridLines"] === "0" ? 0 : 1,
+      showGridlines: isChartsheet
+        ? 0
+        : view?.["@_showGridLines"] === "0"
+          ? 0
+          : 1,
       rightToLeft: view?.["@_rightToLeft"] === "1" ? 1 : 0,
     };
     delete book.Sheets[name];
@@ -953,10 +972,16 @@ async function readCharts(
             ? Math.round(Number(anchor.pos?.["@_y"] ?? 0) / 9525)
             : Number(anchor.from?.row ?? 3) * 24;
           const width = isAbsolute
-            ? Math.min(1000, Math.round(Number(anchor.ext?.["@_cx"] ?? 0) / 9525) || 880)
+            ? Math.min(
+                1000,
+                Math.round(Number(anchor.ext?.["@_cx"] ?? 0) / 9525) || 880,
+              )
             : 520;
           const height = isAbsolute
-            ? Math.min(650, Math.round(Number(anchor.ext?.["@_cy"] ?? 0) / 9525) || 580)
+            ? Math.min(
+                650,
+                Math.round(Number(anchor.ext?.["@_cy"] ?? 0) / 9525) || 580,
+              )
             : 340;
           const title = String(
             x.chartSpace?.chart?.title?.tx?.rich?.p?.r?.t ??
