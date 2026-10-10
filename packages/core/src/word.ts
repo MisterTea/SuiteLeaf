@@ -1102,11 +1102,7 @@ export async function importDocx(
   const missing = source.filter((t) => {
     const normT = normalize(t);
     if (!normT) return false;
-    if (output.includes(normT)) return false;
-    const strippedT = normT.replace(/\[?\d+\]?/g, "");
-    const strippedOutput = output.replace(/\[?\d+\]?/g, "");
-    if (strippedT && strippedOutput.includes(strippedT)) return false;
-    return true;
+    return !output.includes(normT);
   });
   if (missing.length) {
     warnings.push(

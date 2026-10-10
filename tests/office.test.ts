@@ -162,6 +162,26 @@ describe("editable Office imports", () => {
   });
   it.skipIf(
     !existsSync(
+      "datasets/apache-poi/files/test-data/document/MultipleBodyBug.docx",
+    ),
+  )("recovers every body from a malformed multi-body Word package", async () => {
+    const path =
+      "datasets/apache-poi/files/test-data/document/MultipleBodyBug.docx";
+    const { file, report } = await importOffice(
+      readFileSync(path),
+      "docx",
+      "MultipleBodyBug.docx",
+    );
+    expect(file.kind).toBe("doc");
+    if (file.kind !== "doc") return;
+    const text = documentText(file.content);
+    expect(text).toContain("START BODY 1");
+    expect(text).toContain("START BODY 2");
+    expect(text).toContain("START BODY 3");
+    expect(report.textPreserved).toBe(true);
+  });
+  it.skipIf(
+    !existsSync(
       "datasets/apache-poi/files/test-data/document/checkboxes.docx",
     ),
   )(
