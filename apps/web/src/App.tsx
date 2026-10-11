@@ -430,6 +430,7 @@ function Workspace() {
     [status, setStatus] = useState("Opening…"),
     [locked, setLocked] = useState(false),
     [starred, setStarred] = useState(false);
+  const [actionsReady, setActionsReady] = useState(false);
   const current = useRef<FileRecord>(undefined),
     version = useRef(0),
     savedVersion = useRef(0),
@@ -483,6 +484,8 @@ function Workspace() {
   }, []);
   useEffect(() => {
     alive.current = true;
+    setActionsReady(false);
+    actions.current = undefined;
     const saveQueue = queue.current;
     let release: (() => void) | undefined,
       cancel = false;
@@ -650,6 +653,7 @@ function Workspace() {
   };
   const onActions = useCallback((a: EditorActions) => {
     actions.current = a;
+    setActionsReady(true);
   }, []);
   if (locked)
     return (
@@ -783,7 +787,7 @@ function Workspace() {
               <MenuItem onSelect={() => void doAction("new-slide")}>
                 New presentation
               </MenuItem>
-              <MenuItem onSelect={() => void saveAs()}>
+              <MenuItem disabled={!actionsReady} onSelect={() => void saveAs()}>
                 {window.suiteleaf ? "Save As…" : "Download SuiteLeaf file"}
               </MenuItem>
               <MenuItem onSelect={() => void save().catch(() => {})}>
@@ -793,17 +797,19 @@ function Workspace() {
                 onSelect={() =>
                   void exportNative().catch((e) => setError(message(e)))
                 }
+                disabled={!actionsReady}
               >
                 Export native copy
               </MenuItem>
               {(f.kind === "doc"
-                ? ["html", "txt"]
+                ? ["docx", "html", "txt"]
                 : f.kind === "sheet"
-                  ? ["csv", "tsv"]
+                  ? ["xlsx", "csv", "tsv"]
                   : ["txt", "html"]
               ).map((format) => (
                 <MenuItem
                   key={format}
+                  disabled={!actionsReady}
                   onSelect={() =>
                     void actions.current
                       ?.export(format)
@@ -1054,7 +1060,20 @@ function Workspace() {
                   <MenuItem shortcut="Cmd+K" onSelect={() => {}}>
                     Link
                   </MenuItem>
-                  <MenuItem onSelect={() => {}}>Checkbox</MenuItem>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.sheetActions?.insertCheckbox?.()
+                    }
+                  >
+                    Checkbox
+                  </MenuItem>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.sheetActions?.insertComment?.()
+                    }
+                  >
+                    Cell comment
+                  </MenuItem>
                 </Menu>
                 <Menu label="Format">
                   <MenuItem
@@ -1121,6 +1140,13 @@ function Workspace() {
                   >
                     Clear formatting
                   </MenuItem>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.sheetActions?.conditionalFormatting?.()
+                    }
+                  >
+                    Conditional formatting
+                  </MenuItem>
                 </Menu>
                 <Menu label="Data">
                   <MenuItem
@@ -1138,8 +1164,18 @@ function Workspace() {
                     Pivot table
                   </MenuItem>
                   <MenuItem onSelect={() => {}}>Sort range</MenuItem>
-                  <MenuItem onSelect={() => {}}>Data validation</MenuItem>
-                  <MenuItem onSelect={() => {}}>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.sheetActions?.dataValidation?.()
+                    }
+                  >
+                    Data validation
+                  </MenuItem>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.sheetActions?.tabsProtection?.()
+                    }
+                  >
                     Protect sheets and ranges
                   </MenuItem>
                 </Menu>
@@ -1241,6 +1277,7 @@ function Workspace() {
             className="doc-icon-btn"
             title="Comments"
             aria-label="Comments"
+            onClick={() => actions.current?.sheetActions?.openComments?.()}
           >
             <MessageSquare size={18} />
           </button>
@@ -1260,7 +1297,11 @@ function Workspace() {
             <Leaf size={16} />
             SuiteLeaf
           </span>
-          <button className="save-copy" onClick={() => void saveAs()}>
+          <button
+            className="save-copy"
+            disabled={!actionsReady}
+            onClick={() => void saveAs()}
+          >
             <Download size={16} />
             {window.suiteleaf ? "Save As" : "Download"}
           </button>

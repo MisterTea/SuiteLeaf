@@ -63,3 +63,21 @@ export class SaveQueue {
     await this.tail;
   }
 }
+
+export async function exportBinary(
+  name: string,
+  bytes: Uint8Array,
+  type: string,
+) {
+  if (window.suiteleaf) await window.suiteleaf.exportFile(name, bytes);
+  else {
+    const url = URL.createObjectURL(
+      new Blob([new Uint8Array(bytes)], { type }),
+    );
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import { generateJSON, type Extensions } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
@@ -46,7 +46,7 @@ import {
   type DocFile,
   type JsonNode,
 } from "@suiteleaf/core";
-import { exportText, printDocument } from "../storage";
+import { exportBinary, exportText, printDocument } from "../storage";
 import { Tool, type EditorActions } from "../ui";
 import { TextSelection } from "@tiptap/pm/state";
 import {
@@ -55,8 +55,18 @@ import {
   searchKey,
 } from "./doc-search-plugin";
 import { documentPlainText } from "./doc-text";
+import { slugify, uniqueSlug, anchorHref, isInternalAnchor } from "../anchors";
+
+import { DocumentPagination, PageBreak } from "./doc-pagination";
+import {
+  documentPageSettings,
+  pageDimensions,
+  type PageSettings,
+} from "@suiteleaf/core/document-layout";
 
 export const extensions: Extensions = [
+  DocumentPagination,
+  PageBreak,
   StarterKit.configure({
     link: { openOnClick: false, isAllowedUri: (url) => safeLink(url) },
   }),
@@ -127,10 +137,21 @@ export default function Docs({
   const [tableOpen, setTableOpen] = useState(false);
   const [tableRows, setTableRows] = useState(3);
   const [tableColumns, setTableColumns] = useState(3);
-  const [zoomLevel, setZoomLevel] = useState("100%");
+  const [zoomLevel, setZoomLevel] = useState(() =>
+    window.innerWidth < 700 ? "Fit" : "100%",
+  );
+  const paperContainer = useRef<HTMLDivElement>(null);
+  const [pageViewportWidth, setPageViewportWidth] = useState(
+    window.innerWidth - 32,
+  );
   const [textColor, setTextColor] = useState("#202124");
   const [highlightColor, setHighlightColor] = useState("#ffff00");
   const imageInput = useRef<HTMLInputElement>(null);
+  const [pageCount, setPageCount] = useState(1);
+  const [pageSetupOpen, setPageSetupOpen] = useState(false);
+  const [pageDraft, setPageDraft] = useState<PageSettings>(() =>
+    documentPageSettings(file.content),
+  );
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -163,6 +184,36 @@ export default function Docs({
         }
         return false;
       },
+      // Internal "#anchor" links scroll to the heading that owns that slug.
+      handleDOMEvents: {
+        click: (view, event) => {
+          const target = event.target as HTMLElement | null;
+          const anchor = target?.closest?.("a[href^='#']");
+          if (!anchor || !view) return false;
+          const href = String(anchor.getAttribute("href") ?? "");
+          if (!isInternalAnchor(href)) return false;
+          const slug = href.slice(1);
+          let matched: number | null = null;
+          view.state.doc.descendants((n: any, p: number) => {
+            if (
+              n.type.name === "heading" &&
+              slugify(n.textContent ?? "") === slug
+            ) {
+              matched = p;
+              return false;
+            }
+          });
+          if (matched === null) return false;
+          event.preventDefault();
+          editor
+            ?.chain()
+            .focus()
+            .setTextSelection(matched + 1)
+            .scrollIntoView()
+            .run();
+          return true;
+        },
+      },
     },
     onUpdate: ({ editor }) => changes.current(editor.getJSON() as JsonNode),
   });
@@ -193,16 +244,40 @@ export default function Docs({
         })(),
         words: e?.getText().trim().split(/\s+/).filter(Boolean).length ?? 0,
         headings: (() => {
-          const h: { text: string; pos: number; level: number }[] = [];
+          const h: {
+            text: string;
+            pos: number;
+            level: number;
+            slug: string;
+          }[] = [];
+          const used = new Set<string>();
           e?.state.doc.descendants((n, p) => {
-            if (n.type.name === "heading")
-              h.push({ text: n.textContent, pos: p, level: n.attrs.level });
+            if (n.type.name === "heading") {
+              const text = n.textContent ?? "";
+              const { slug } = uniqueSlug(text || "heading", used);
+              h.push({ text, pos: p, level: n.attrs.level, slug });
+            }
           });
           return h;
         })(),
       };
     },
   });
+
+  const paperWidth = pageDimensions(
+    documentPageSettings(
+      editor?.schema ? (editor.getJSON() as JsonNode) : file.content,
+    ),
+  ).width;
+  useEffect(() => {
+    const container = paperContainer.current;
+    if (!editor || !container) return;
+    const update = () => setPageViewportWidth(container.clientWidth);
+    const observer = new ResizeObserver(update);
+    observer.observe(container);
+    update();
+    return () => observer.disconnect();
+  }, [editor, paperWidth]);
 
   const insertTable = () => {
     editor
@@ -228,7 +303,20 @@ export default function Docs({
       onError("Use an https, http, mailto, or tel link.");
       return;
     }
-    editor?.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
+    editor
+      ?.chain()
+      .focus()
+      .extendMarkRange("link")
+      .setLink({ href: url })
+      .run();
+  };
+
+  const copyHeadingLink = async (slug: string) => {
+    try {
+      await navigator.clipboard.writeText(anchorHref(slug));
+    } catch {
+      onError("Could not copy the link.");
+    }
   };
 
   const insertImage = async (f?: File) => {
@@ -265,7 +353,17 @@ export default function Docs({
     onActions({
       flush: async () => {},
       async export(format) {
-        if (format === "html")
+        if (format === "docx") {
+          const { exportDocx } = await import("@suiteleaf/core/docx-export");
+          await exportBinary(
+            filename(file.title, "docx"),
+            await exportDocx({
+              title: file.title,
+              content: editor.getJSON() as JsonNode,
+            }),
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          );
+        } else if (format === "html")
           await exportText(
             filename(file.title, "html"),
             `<!doctype html><html><head><meta charset="utf-8"><title>${file.title.replace(/[<>&"]/g, "")}</title></head><body>${editor.getHTML()}</body></html>`,
@@ -296,8 +394,7 @@ export default function Docs({
         toggleItalic: () => editor.chain().focus().toggleItalic().run(),
         toggleUnderline: () => editor.chain().focus().toggleUnderline().run(),
         toggleStrike: () => editor.chain().focus().toggleStrike().run(),
-        toggleBulletList: () =>
-          editor.chain().focus().toggleBulletList().run(),
+        toggleBulletList: () => editor.chain().focus().toggleBulletList().run(),
         toggleOrderedList: () =>
           editor.chain().focus().toggleOrderedList().run(),
         tableAddRow: () => editor.chain().focus().addRowAfter().run(),
@@ -309,6 +406,14 @@ export default function Docs({
       },
     });
   }, [editor, file.title, onActions]);
+
+  useEffect(() => {
+    if (!editor) return;
+    const pages = (event: Event) =>
+      setPageCount((event as CustomEvent<number>).detail);
+    editor.view.dom.addEventListener("suiteleaf-pages", pages);
+    return () => editor.view.dom.removeEventListener("suiteleaf-pages", pages);
+  }, [editor]);
 
   useEffect(() => {
     if (!editor?.schema) return;
@@ -332,6 +437,12 @@ export default function Docs({
   if (!editor || !editor.schema)
     return <div className="loading">Opening document…</div>;
 
+  const pageSettings = documentPageSettings(editor.getJSON() as JsonNode);
+  const dimensions = pageDimensions(pageSettings);
+  const pageZoom =
+    zoomLevel === "Fit"
+      ? Math.min(1, pageViewportWidth / dimensions.width)
+      : parseInt(zoomLevel) / 100;
   const search = documentMatches(editor.state.doc, findOpen ? query : "", {
     matchCase,
     regex: useRegex,
@@ -414,10 +525,7 @@ export default function Docs({
         <Tool label="Print" onClick={() => printDocument(file.title)}>
           <Printer size={16} />
         </Tool>
-        <Tool
-          label="Paint format"
-          onClick={() => {}}
-        >
+        <Tool label="Paint format" onClick={() => {}}>
           <PaintRoller size={16} />
         </Tool>
 
@@ -427,6 +535,7 @@ export default function Docs({
           value={zoomLevel}
           onChange={(e) => setZoomLevel(e.target.value)}
         >
+          <option value="Fit">Fit page</option>
           <option value="50%">50%</option>
           <option value="75%">75%</option>
           <option value="90%">90%</option>
@@ -436,6 +545,25 @@ export default function Docs({
           <option value="200%">200%</option>
         </select>
 
+        <button
+          type="button"
+          className="menu-trigger"
+          onClick={() => {
+            setPageDraft(pageSettings);
+            setPageSetupOpen(true);
+          }}
+        >
+          Page setup
+        </button>
+        <button
+          type="button"
+          className="menu-trigger"
+          onClick={() =>
+            editor.chain().focus().insertContent({ type: "pageBreak" }).run()
+          }
+        >
+          Page break
+        </button>
         <span className="divider" />
 
         <select
@@ -566,7 +694,10 @@ export default function Docs({
           />
         </label>
 
-        <label className="color-tool highlight-color-picker" title="Highlight color">
+        <label
+          className="color-tool highlight-color-picker"
+          title="Highlight color"
+        >
           <span className="color-icon-wrapper">
             <Highlighter size={15} />
             <span
@@ -580,7 +711,11 @@ export default function Docs({
             value={highlightColor}
             onChange={(e) => {
               setHighlightColor(e.target.value);
-              editor.chain().focus().toggleHighlight({ color: e.target.value }).run();
+              editor
+                .chain()
+                .focus()
+                .toggleHighlight({ color: e.target.value })
+                .run();
             }}
           />
         </label>
@@ -590,10 +725,7 @@ export default function Docs({
         <Tool label="Insert link" onClick={insertLink}>
           <Link size={16} />
         </Tool>
-        <Tool
-          label="Add comment"
-          onClick={() => {}}
-        >
+        <Tool label="Add comment" onClick={() => {}}>
           <MessageSquarePlus size={16} />
         </Tool>
         <Tool label="Insert image" onClick={() => imageInput.current?.click()}>
@@ -644,16 +776,10 @@ export default function Docs({
         >
           <ListOrdered size={16} />
         </Tool>
-        <Tool
-          label="Decrease indent"
-          onClick={() => {}}
-        >
+        <Tool label="Decrease indent" onClick={() => {}}>
           <Outdent size={16} />
         </Tool>
-        <Tool
-          label="Increase indent"
-          onClick={() => {}}
-        >
+        <Tool label="Increase indent" onClick={() => {}}>
           <Indent size={16} />
         </Tool>
         <Tool
@@ -669,6 +795,131 @@ export default function Docs({
         </Tool>
       </div>
 
+      {pageSetupOpen ? (
+        <div
+          className="gdocs-modal-overlay"
+          onClick={() => setPageSetupOpen(false)}
+        >
+          <section
+            className="gdocs-dialog feature-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Page setup"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setPageSetupOpen(false);
+            }}
+          >
+            <div className="dialog-header">
+              <h2>Page setup</h2>
+              <button
+                aria-label="Close page setup"
+                onClick={() => setPageSetupOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="dialog-body page-setup-fields">
+              <label>
+                Paper size{" "}
+                <select
+                  autoFocus
+                  aria-label="Paper size"
+                  value={pageDraft.size}
+                  onChange={(e) =>
+                    setPageDraft({
+                      ...pageDraft,
+                      size: e.target.value as PageSettings["size"],
+                    })
+                  }
+                >
+                  <option value="letter">Letter</option>
+                  <option value="a4">A4</option>
+                </select>
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={pageDraft.landscape}
+                  onChange={(e) =>
+                    setPageDraft({ ...pageDraft, landscape: e.target.checked })
+                  }
+                />
+                Landscape
+              </label>
+              <label>
+                Margins (inches){" "}
+                <input
+                  aria-label="Page margins"
+                  type="number"
+                  min="0.25"
+                  max="1.5"
+                  step="0.125"
+                  value={pageDraft.margin / 96}
+                  onChange={(e) =>
+                    setPageDraft({
+                      ...pageDraft,
+                      margin: Number(e.target.value) * 96,
+                    })
+                  }
+                />
+              </label>
+              <label>
+                Header{" "}
+                <input
+                  aria-label="Page header"
+                  value={pageDraft.header}
+                  maxLength={500}
+                  onChange={(e) =>
+                    setPageDraft({ ...pageDraft, header: e.target.value })
+                  }
+                />
+              </label>
+              <label>
+                Footer{" "}
+                <input
+                  aria-label="Page footer"
+                  value={pageDraft.footer}
+                  maxLength={500}
+                  onChange={(e) =>
+                    setPageDraft({ ...pageDraft, footer: e.target.value })
+                  }
+                />
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={pageDraft.pageNumbers}
+                  onChange={(e) =>
+                    setPageDraft({
+                      ...pageDraft,
+                      pageNumbers: e.target.checked,
+                    })
+                  }
+                />
+                Page numbers
+              </label>
+            </div>
+            <div className="dialog-footer">
+              <button
+                disabled={
+                  !Number.isFinite(pageDraft.margin) ||
+                  pageDraft.margin < 24 ||
+                  pageDraft.margin > 144
+                }
+                onClick={() => {
+                  editor.view.dispatch(
+                    editor.state.tr.setDocAttribute("pageSettings", pageDraft),
+                  );
+                  setPageSetupOpen(false);
+                }}
+              >
+                Apply
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
       {findOpen ? (
         <div className="gdocs-modal-overlay" onClick={closeFind}>
           <div
@@ -877,21 +1128,32 @@ export default function Docs({
           {state?.headings.length ? (
             <div className="outline-list">
               {state.headings.map((h) => (
-                <button
-                  key={h.pos}
-                  className={`outline-item level-${h.level}`}
-                  style={{ paddingLeft: 12 + (h.level - 1) * 12 }}
-                  onClick={() =>
-                    editor
-                      .chain()
-                      .focus()
-                      .setTextSelection(h.pos + 1)
-                      .scrollIntoView()
-                      .run()
-                  }
-                >
-                  {h.text || "Untitled heading"}
-                </button>
+                <span key={h.pos} className={`outline-item level-${h.level}`}>
+                  <button
+                    type="button"
+                    className="outline-item-text"
+                    style={{ paddingLeft: 12 + (h.level - 1) * 12 }}
+                    onClick={() =>
+                      editor
+                        .chain()
+                        .focus()
+                        .setTextSelection(h.pos + 1)
+                        .scrollIntoView()
+                        .run()
+                    }
+                  >
+                    {h.text || "Untitled heading"}
+                  </button>
+                  <button
+                    type="button"
+                    className="outline-link-btn"
+                    title={`Copy link (#${h.slug})`}
+                    aria-label={`Copy link to ${h.text || "heading"}`}
+                    onClick={() => void copyHeadingLink(h.slug)}
+                  >
+                    <Link size={12} />
+                  </button>
+                </span>
               ))}
             </div>
           ) : (
@@ -900,14 +1162,58 @@ export default function Docs({
             </div>
           )}
         </aside>
-        <div className="paper-container">
-          <div className="paper">
+        <div
+          className="paper-container"
+          ref={paperContainer}
+          style={{
+            justifyContent:
+              dimensions.width * pageZoom > pageViewportWidth
+                ? "flex-start"
+                : "center",
+          }}
+        >
+          <style>{`@page { size: ${dimensions.width / 96}in ${dimensions.height / 96}in; margin: 0; }`}</style>
+          <div
+            className="paper paginated-paper"
+            style={
+              {
+                "--page-width": `${dimensions.width}px`,
+                "--page-height": `${dimensions.height}px`,
+                "--page-margin": `${pageSettings.margin}px`,
+                "--page-stride": `${dimensions.height + 24}px`,
+                minHeight: `${pageCount * dimensions.height + (pageCount - 1) * 24}px`,
+                zoom: pageZoom,
+              } as CSSProperties
+            }
+          >
+            <div className="page-furniture" aria-hidden="true">
+              {Array.from({ length: pageCount }, (_, i) => (
+                <div
+                  key={i}
+                  className="page-furniture-page"
+                  style={{ "--page-index": i } as CSSProperties}
+                >
+                  <div className="page-header">{pageSettings.header}</div>
+                  <div className="page-footer">
+                    <span>{pageSettings.footer}</span>
+                    {pageSettings.pageNumbers ? (
+                      <span>
+                        {i + 1} / {pageCount}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
             <EditorContent editor={editor} />
           </div>
         </div>
       </div>
       <footer className="editor-status">
-        {state?.words} words <span>Continuous document · English</span>
+        {state?.words} words{" "}
+        <span>
+          {pageCount} {pageCount === 1 ? "page" : "pages"} · English
+        </span>
       </footer>
       <input
         ref={imageInput}
@@ -922,4 +1228,3 @@ export default function Docs({
     </div>
   );
 }
-

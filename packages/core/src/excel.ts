@@ -2,10 +2,13 @@ import * as XLSX from "xlsx";
 import { officeZlib } from "./zip-inflater";
 XLSX.CFB.utils.use_zlib(officeZlib);
 import JSZip from "jszip";
+import { importExcelFeatures } from "./excel-features";
 import { readExcelImages } from "./excel-images";
 import { readBinaryExcelLayout } from "./excel-binary-metadata";
+import { readBinaryLineCharts } from "./excel-binary-charts";
 import {
   createFile,
+  chartSchema,
   parseRange,
   type SheetFile,
   type ChartDefinition,
@@ -62,6 +65,12 @@ export async function normalizeBinaryExcel(
     );
     const layout = readBinaryExcelLayout(bytes, book);
     const converted = await JSZip.loadAsync(normalized);
+    const binaryCharts = readBinaryLineCharts(bytes, book);
+    if (binaryCharts.length)
+      converted.file(
+        "xl/suiteleaf-binary-charts.json",
+        JSON.stringify(binaryCharts),
+      );
     if (layout.normalFont) {
       const family = layout.normalFont.family.replace(/[&<>"]+/g, (text) =>
         Array.from(
@@ -216,7 +225,10 @@ function decodeXmlEntities(text: string): string {
     )
     .replace(/&amp;/g, "&");
 }
-function implicitIntersectConcatenatedWholeColumns(formula: string, row: number): string {
+function implicitIntersectConcatenatedWholeColumns(
+  formula: string,
+  row: number,
+): string {
   const parts = formula.match(/"(?:[^"]|"")*"|[^"]+/g) ?? [];
   let depth = 0;
   let hasTopLevelConcatenation = false;
@@ -585,6 +597,16 @@ export async function importXlsx(
     book.SheetNames.map((name, i) => [name, `sheet-${i + 1}`]),
   );
   const sheetSources = new Map<string, string>();
+  const commentSources: XLSX.WorkBook = { SheetNames: [], Sheets: {} };
+  const binaryChartsPart = zip.file("xl/suiteleaf-binary-charts.json");
+  const binaryCharts: ChartDefinition[] = binaryChartsPart
+    ? array<unknown>(JSON.parse(await binaryChartsPart.async("string"))).map(
+        (chart) => chartSchema.parse(chart),
+      )
+    : [];
+  const binaryChartSheetIds = new Set(
+    binaryCharts.map((chart) => chart.sheetId),
+  );
   for (let i = 0; i < book.SheetNames.length; i++) {
     const name = book.SheetNames[i],
       source = book.Sheets[name] ?? {},
@@ -594,6 +616,7 @@ export async function importXlsx(
     const rel = rels.get(meta?.["@_id"]);
     const partPath = rel?.path ?? `xl/worksheets/sheet${i + 1}.xml`;
     const isChartsheet =
+      binaryChartSheetIds.has(id) ||
       rel?.type.endsWith("/chartsheet") ||
       partPath.includes("chartsheets/") ||
       (source as any)["!type"] === "chart";
@@ -763,7 +786,10 @@ export async function importXlsx(
                 },
               );
             }
-            corrected = implicitIntersectConcatenatedWholeColumns(corrected, pos.r);
+            corrected = implicitIntersectConcatenatedWholeColumns(
+              corrected,
+              pos.r,
+            );
             if (cellData[pos.r]?.[pos.c] && corrected !== def.formula) {
               cellData[pos.r][pos.c].f = "=" + corrected;
             }
@@ -908,6 +934,24 @@ export async function importXlsx(
           : 1,
       rightToLeft: view?.["@_rightToLeft"] === "1" ? 1 : 0,
     };
+    const comments: XLSX.WorkSheet = {};
+    const denseCells = (source as any)["!data"] as
+      (XLSX.CellObject | undefined)[][] | undefined;
+    if (denseCells)
+      denseCells.forEach((row, r) =>
+        row?.forEach((cell, c) => {
+          if (cell?.c?.length)
+            comments[XLSX.utils.encode_cell({ r, c })] = {
+              t: cell.t,
+              c: cell.c,
+            };
+        }),
+      );
+    else
+      for (const [ref, cell] of Object.entries(source))
+        if (!ref.startsWith("!") && (cell as XLSX.CellObject)?.c?.length)
+          comments[ref] = cell;
+    commentSources.Sheets[name] = comments;
     delete book.Sheets[name];
     for (const [feature, re] of Object.entries({
       conditional_formatting: /<(?:\w+:)?conditionalFormatting\b/,
@@ -952,6 +996,7 @@ export async function importXlsx(
       },
     ];
   }
+  await importExcelFeatures(file, zip, sheetSources, commentSources, warnings);
   const members = Object.keys(zip.files);
   const countParts = (part: string) =>
     members.filter((p) => new RegExp(`^xl/${part}/[^/]+\\.xml$`).test(p))
@@ -974,15 +1019,21 @@ export async function importXlsx(
   }
   if (stats.charts || features.includes("charts"))
     await readCharts(zip, file, sheetSources, sheetIds, warnings);
+  if (binaryChartsPart) {
+    file.content.charts.push(...binaryCharts);
+    stats.charts += binaryCharts.length;
+    if (!features.includes("charts")) features.push("charts");
+    for (const chart of binaryCharts) {
+      if (workbook.sheets[chart.sheetId])
+        workbook.sheets[chart.sheetId].showGridlines = 0;
+    }
+  }
   file.content.images = await readExcelImages(zip, sheetSources, warnings);
   for (const [feature, warning] of Object.entries({
-    conditional_formatting:
-      "Conditional formatting rules are not recreated; original base cell styles are retained.",
-    data_validation: "Excel validation rules are not enforced after import.",
     autofilters:
       "Autofilter definitions are not recreated; the data can be filtered with the Sheets toolbar.",
     sheet_protection:
-      "Excel protection is not applied; the imported copy is editable.",
+      "Protected Excel sheets open read-only; local protection can be removed in Sheet tools.",
     hyperlinks:
       "Hyperlink cell labels are preserved; hyperlink targets are not recreated.",
     pivot_tables:

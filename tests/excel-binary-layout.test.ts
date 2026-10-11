@@ -37,7 +37,15 @@ it("retains BIFF frozen headers, automatic row heights, and wrapped cell alignme
       paneView.setUint16(2, 10, true);
       paneView.setUint16(4, 1, true);
       paneView.setUint16(6, 1, true);
-      chunks.push(record, pane);
+      // A second workbook window can have unfrozen view settings. It must
+      // not replace the first window's pane state in the imported view.
+      const otherWindow = record.slice();
+      new DataView(otherWindow.buffer).setUint16(
+        4,
+        view.getUint16(4, true) & ~8,
+        true,
+      );
+      chunks.push(record, pane, otherWindow);
     } else {
       if (!rowInserted && [0x00fd, 0x0203, 0x027e].includes(type)) {
         const row = new Uint8Array(20),

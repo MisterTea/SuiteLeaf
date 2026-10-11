@@ -98,6 +98,12 @@ export type EditorActions = {
     hasTable: boolean;
   };
   sheetActions?: {
+    dataValidation?: () => void;
+    conditionalFormatting?: () => void;
+    openComments?: () => void;
+    insertComment?: () => void;
+    tabsProtection?: () => void;
+    insertCheckbox?: () => void;
     undo: () => void;
     redo: () => void;
     insertChart: () => void;

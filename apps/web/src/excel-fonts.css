@@ -40,3 +40,22 @@
   font-weight: 700;
   font-display: block;
 }
+
+/* Legacy Japanese Windows faces need a proportional Gothic fallback on macOS.
+   Otherwise canvas defaults to serif glyphs and wrapped task text is clipped. */
+@font-face {
+  font-family: "ＭＳ Ｐゴシック";
+  src:
+    local("MS PGothic"), local("Hiragino Sans W3"),
+    local("Hiragino Kaku Gothic ProN W3");
+  font-weight: 400;
+  font-display: block;
+}
+@font-face {
+  font-family: "ＭＳ Ｐゴシック";
+  src:
+    local("MS PGothic Bold"), local("Hiragino Sans W6"),
+    local("Hiragino Kaku Gothic ProN W6");
+  font-weight: 700;
+  font-display: block;
+}

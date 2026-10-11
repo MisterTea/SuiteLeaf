@@ -47,10 +47,32 @@ export const chartSchema = z.object({
     .object({
       anchorResolved: z.boolean().optional(),
       series: z.array(
-        z.object({ name: z.string(), values: rangeSchema, color: z.string() }),
+        z.object({
+          name: z.string(),
+          values: rangeSchema,
+          color: z.string(),
+          axis: z.number().optional(),
+          marker: z.number().optional(),
+          numberFormat: z.string().optional(),
+        }),
       ),
       legend: z.string(),
       markers: z.boolean(),
+      biff: z
+        .object({
+          axes: z.array(
+            z.object({
+              min: z.number().optional(),
+              max: z.number().optional(),
+              step: z.number().optional(),
+            }),
+          ),
+          categories: z.array(z.string()),
+          axisTitles: z.array(z.string()),
+          annotations: z.array(z.string()),
+          dataTable: z.boolean(),
+        })
+        .optional(),
       anchor: z.object({
         fromColumn: z.number(),
         fromRow: z.number(),
@@ -476,7 +498,7 @@ export interface DesktopBridge {
   open(): Promise<FileRecord | null>;
   saveAs(record: FileRecord): Promise<FileRecord | null>;
   reload(id: string): Promise<FileRecord | undefined>;
-  exportFile(name: string, text: string): Promise<void>;
+  exportFile(name: string, content: string | Uint8Array): Promise<void>;
   print(title?: string): Promise<void>;
   onMenu(callback: (action: string) => void): () => void;
   setDirty(dirty: boolean): void;

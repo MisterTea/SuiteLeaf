@@ -14,7 +14,6 @@ const cellEntry = functionInformation.find((item) => item[1] === "CELL");
 if (cellEntry && !(cellEntry[0] as any)[key]) {
   const CellClass = cellEntry[0] as any;
   CellClass[key] = true;
-  const originalGetWidthResult = CellClass.prototype._getWidthResult;
 
   CellClass.prototype._getWidthResult = function (
     columnData: Record<number, { w?: number }>,

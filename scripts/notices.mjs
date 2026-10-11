@@ -18,7 +18,7 @@ for (const [path, pkg] of Object.entries(lock.packages)) {
   let text = "";
   for (const file of candidates) {
     try {
-      text = await readFile(`${path}/${file}`, "utf8");
+      text = (await readFile(`${path}/${file}`, "utf8")).replace(/\r\n/g, "\n");
       break;
     } catch {}
   }

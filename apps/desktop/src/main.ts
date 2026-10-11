@@ -290,7 +290,7 @@ else {
     register("files:export", async (name, text) => {
       if (
         typeof name !== "string" ||
-        typeof text !== "string" ||
+        (typeof text !== "string" && !(text instanceof Uint8Array)) ||
         text.length > 210 * 1024 * 1024
       )
         throw new Error("Invalid export.");

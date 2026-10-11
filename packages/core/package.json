@@ -4,12 +4,16 @@
   "version": "0.1.0",
   "exports": {
     ".": "./src/index.ts",
-    "./office": "./src/office.ts"
+    "./office": "./src/office.ts",
+    "./docx-export": "./src/docx-export.ts",
+    "./xlsx-export": "./src/xlsx-export.ts",
+    "./document-layout": "./src/document-layout.ts"
   },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",
     "@noble/hashes": "^2.4.0",
     "cfb": "^1.2.2",
+    "docx": "^9.10.0",
     "fast-xml-parser": "^5.11.2",
     "htmlparser2": "^12.0.0",
     "jszip": "^3.10.2",

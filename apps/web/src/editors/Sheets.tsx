@@ -4,6 +4,7 @@ import {
   defaultTheme,
   darkBlueTheme,
   LocaleType,
+  LifecycleStages,
   mergeLocales,
   numfmt,
   type IWorkbookData,
@@ -18,6 +19,19 @@ import { UniverSheetsSortPreset } from "@univerjs/preset-sheets-sort";
 import SortEnUS from "@univerjs/preset-sheets-sort/locales/en-US";
 import { UniverSheetsFindReplacePreset } from "@univerjs/preset-sheets-find-replace";
 import FindEnUS from "@univerjs/preset-sheets-find-replace/locales/en-US";
+import { UniverSheetsDataValidationPreset } from "@univerjs/preset-sheets-data-validation";
+import ValidationEnUS from "@univerjs/preset-sheets-data-validation/locales/en-US";
+import "@univerjs/preset-sheets-data-validation/lib/index.css";
+import { UniverSheetsConditionalFormattingPreset } from "@univerjs/preset-sheets-conditional-formatting";
+import ConditionalEnUS from "@univerjs/preset-sheets-conditional-formatting/locales/en-US";
+import "@univerjs/preset-sheets-conditional-formatting/lib/index.css";
+import { UniverSheetsThreadCommentPreset } from "@univerjs/preset-sheets-thread-comment";
+import CommentEnUS from "@univerjs/preset-sheets-thread-comment/locales/en-US";
+import "@univerjs/preset-sheets-thread-comment/lib/index.css";
+import { UniverSheetsNotePreset } from "@univerjs/preset-sheets-note";
+import NoteEnUS from "@univerjs/preset-sheets-note/locales/en-US";
+import "@univerjs/preset-sheets-note/lib/index.css";
+import SheetFeatures from "./sheet-features";
 import "@univerjs/preset-sheets-core/lib/index.css";
 import "@univerjs/preset-sheets-drawing/lib/index.css";
 import "@univerjs/preset-sheets-filter/lib/index.css";
@@ -77,7 +91,8 @@ import {
   type SourceRange,
 } from "@suiteleaf/core";
 import { pivotResult, shiftRange, type CellValue } from "../analysis";
-import { exportText, printDocument } from "../storage";
+import { numberFormatsByGroup, applyNamedFormat } from "../formats";
+import { exportBinary, exportText, printDocument } from "../storage";
 import { Tool, type EditorActions } from "../ui";
 import "../excel-overflow";
 import "../excel-number-display";
@@ -99,6 +114,8 @@ function ExcelLineChart({
   chart: ChartDefinition;
   series: CellValue[][];
 }) {
+  if (chart.excel?.biff)
+    return <BinaryLineChart chart={chart} series={series} />;
   const w = chart.width,
     h = chart.height;
   const count = Math.max(1, ...series.map((s) => s.length));
@@ -211,6 +228,248 @@ function ExcelLineChart({
                 </text>
               </g>
             )}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+function BinaryLineChart({
+  chart,
+  series,
+}: {
+  chart: ChartDefinition;
+  series: CellValue[][];
+}) {
+  const meta = chart.excel!.biff!,
+    definitions = chart.excel!.series,
+    w = chart.width,
+    h = chart.height;
+  const count = Math.max(
+    1,
+    meta.categories.length,
+    ...series.map((s) => s.length),
+  );
+  const left = 140,
+    right = w - 90,
+    top = 70,
+    bottom = h - (meta.dataTable ? (definitions.length + 1) * 19 + 18 : 72);
+  const scales = meta.axes.map((axis, index) => {
+    const values = series.flatMap((s, i) =>
+      (definitions[i].axis ?? 0) === index
+        ? s.filter((v): v is number => typeof v === "number")
+        : [],
+    );
+    const peak = Math.max(0, ...values),
+      unit = 10 ** Math.floor(Math.log10(peak || 1));
+    return {
+      min: axis.min ?? 0,
+      max: axis.max ?? Math.ceil(peak / unit) * unit,
+      step: axis.step ?? unit,
+    };
+  });
+  const px = (i: number) => left + ((right - left) * (i + 0.5)) / count;
+  const py = (v: number, axis: number) => {
+    const s = scales[axis] ?? scales[0];
+    return bottom - ((bottom - top) * (v - s.min)) / (s.max - s.min || 1);
+  };
+  const fmt = (value: CellValue, format: string | undefined) =>
+    typeof value === "number"
+      ? numfmt.format(format ?? "#,##0", value)
+      : String(value ?? "");
+  const marker = (
+    x: number,
+    y: number,
+    color: string,
+    kind: number,
+    key: number,
+  ) =>
+    kind === 3 ? (
+      <path key={key} d={`M${x} ${y - 4}l4 8h-8Z`} fill={color} />
+    ) : kind === 8 ? (
+      <circle key={key} cx={x} cy={y} r={4} fill={color} />
+    ) : kind === 4 ? (
+      <rect key={key} x={x - 3} y={y - 3} width={6} height={6} fill={color} />
+    ) : kind ? (
+      <path key={key} d={`M${x} ${y - 4}l4 4-4 4-4-4Z`} fill={color} />
+    ) : null;
+  return (
+    <svg
+      width="100%"
+      height="100%"
+      viewBox={`0 0 ${w} ${h}`}
+      aria-label={chart.title}
+      style={{ background: "white", fontSize: 11, fontFamily: "sans-serif" }}
+    >
+      <rect
+        x={0.5}
+        y={0.5}
+        width={w - 1}
+        height={h - 1}
+        fill="white"
+        stroke="#808080"
+      />
+      <text
+        x={w / 2}
+        y={30}
+        textAnchor="middle"
+        fontSize={19}
+        fontWeight="bold"
+      >
+        {chart.title}
+      </text>
+      {scales.map((s, axis) => {
+        const format = definitions.find(
+          (d) => (d.axis ?? 0) === axis,
+        )?.numberFormat;
+        const ticks = Array.from(
+          {
+            length: Math.min(
+              40,
+              Math.floor((s.max - s.min) / s.step + 0.001) + 1,
+            ),
+          },
+          (_, i) => s.min + i * s.step,
+        );
+        return (
+          <g key={axis}>
+            <text
+              x={axis ? right : left}
+              y={52}
+              textAnchor={axis ? "end" : "start"}
+            >
+              {meta.axisTitles[axis]}
+            </text>
+            <line
+              x1={axis ? right : left}
+              x2={axis ? right : left}
+              y1={top}
+              y2={bottom}
+              stroke="#777"
+            />
+            {ticks.map((v, i) => (
+              <g key={i}>
+                {!axis && (
+                  <line
+                    x1={left}
+                    x2={right}
+                    y1={py(v, axis)}
+                    y2={py(v, axis)}
+                    stroke="#888"
+                  />
+                )}
+                <text
+                  x={axis ? right + 12 : left - 12}
+                  y={py(v, axis) + 4}
+                  textAnchor={axis ? "start" : "end"}
+                >
+                  {fmt(v, format)}
+                </text>
+              </g>
+            ))}
+          </g>
+        );
+      })}
+      {series.map((s, i) => {
+        const d = definitions[i],
+          points = s.flatMap((v, j) =>
+            typeof v === "number" ? [{ x: px(j), y: py(v, d.axis ?? 0) }] : [],
+          );
+        return (
+          <g key={i}>
+            <polyline
+              fill="none"
+              stroke={d.color}
+              strokeWidth={2}
+              points={points.map((p) => `${p.x},${p.y}`).join(" ")}
+            />
+            {points.map((p, j) => marker(p.x, p.y, d.color, d.marker ?? 0, j))}
+          </g>
+        );
+      })}
+      {Array.from({ length: count }, (_, i) => (
+        <text key={i} x={px(i)} y={bottom + 15} textAnchor="middle">
+          {meta.categories[i] ?? String(i + 1)}
+        </text>
+      ))}
+      {meta.dataTable &&
+        definitions.map((d, i) => (
+          <g key={i}>
+            <line
+              x1={5}
+              x2={right}
+              y1={bottom + (i + 1) * 19}
+              y2={bottom + (i + 1) * 19}
+              stroke="#888"
+            />
+            <line
+              x1={12}
+              x2={35}
+              y1={bottom + (i + 1) * 19 + 10}
+              y2={bottom + (i + 1) * 19 + 10}
+              stroke={d.color}
+              strokeWidth={2}
+            />
+            <text x={40} y={bottom + (i + 1) * 19 + 14} fontSize={10}>
+              {d.name}
+            </text>
+            {Array.from({ length: count }, (_, j) => (
+              <g key={j}>
+                <line
+                  x1={left + ((right - left) * j) / count}
+                  x2={left + ((right - left) * j) / count}
+                  y1={bottom}
+                  y2={bottom + (definitions.length + 1) * 19}
+                  stroke="#888"
+                />
+                <text
+                  x={px(j)}
+                  y={bottom + (i + 1) * 19 + 14}
+                  textAnchor="middle"
+                  fontSize={10}
+                >
+                  {fmt(series[i]?.[j] ?? null, d.numberFormat)}
+                </text>
+              </g>
+            ))}
+          </g>
+        ))}
+      {!meta.dataTable &&
+        definitions.map((d, i) => (
+          <g
+            key={i}
+            transform={`translate(${left + (i % 3) * 290},${h - 40 + Math.floor(i / 3) * 15})`}
+          >
+            <line x2={20} stroke={d.color} strokeWidth={2} />
+            <text x={26} y={4}>
+              {d.name}
+            </text>
+          </g>
+        ))}
+      {meta.annotations.map((text, i) => {
+        const chars = [...text],
+          lines = Array.from({ length: Math.ceil(chars.length / 24) }, (_, j) =>
+            chars.slice(j * 24, (j + 1) * 24).join(""),
+          );
+        const x = right - 260,
+          y = top + 25 + i * 160;
+        return (
+          <g key={i}>
+            <rect
+              x={x - 6}
+              y={y - 15}
+              width={270}
+              height={lines.length * 15 + 15}
+              fill="white"
+              stroke="#333"
+            />
+            <text x={x} y={y}>
+              {lines.map((line, j) => (
+                <tspan key={j} x={x} dy={j ? 15 : 0}>
+                  {line}
+                </tspan>
+              ))}
+            </text>
           </g>
         );
       })}
@@ -434,6 +693,7 @@ export default function Sheets({
     [vAlign, setVAlign] = useState<"top" | "middle" | "bottom">("middle"),
     [isWrap, setIsWrap] = useState(false);
   const pending = useRef(false);
+  const tabSettings = useRef<{ openTabs: () => void }>(null);
   const persist = useRef<() => void>(() => {}),
     refreshCharts = useRef<() => void>(() => {});
   const readRange = (r: SourceRange): CellValue[][] => {
@@ -466,6 +726,10 @@ export default function Sheets({
             FilterEnUS,
             SortEnUS,
             FindEnUS,
+            ValidationEnUS,
+            ConditionalEnUS,
+            CommentEnUS,
+            NoteEnUS,
           ),
         },
         presets: [
@@ -478,6 +742,10 @@ export default function Sheets({
           UniverSheetsFilterPreset(),
           UniverSheetsSortPreset(),
           UniverSheetsFindReplacePreset(),
+          UniverSheetsDataValidationPreset(),
+          UniverSheetsConditionalFormattingPreset(),
+          UniverSheetsThreadCommentPreset(),
+          UniverSheetsNotePreset(),
         ],
       });
       partialCleanup = () => {
@@ -835,13 +1103,58 @@ export default function Sheets({
           persist.current();
         },
       );
-      setReady(true);
-      // Native snapshot retains worksheet protection across reopen.
+      let permissionsReady = false;
+      const signalReady = () => {
+        if (
+          !disposed &&
+          permissionsReady &&
+          univerAPI.getCurrentLifecycleStage() >= LifecycleStages.Steady
+        )
+          setReady(true);
+      };
+      const lifecycleReady = univerAPI.addEvent(
+        univerAPI.Event.LifeCycleChanged,
+        signalReady,
+      );
+      // Local permissions need their view/manage points restored without a server.
+      void (async () => {
+        for (const sheet of workbook.getSheets()) {
+          const permission = sheet.getWorksheetPermission();
+          if (sheet.getCustomMetadata()?.suiteleafProtection?.sheet) {
+            if (!permission.isProtected()) await permission.protect();
+            await permission.setReadOnly();
+          }
+          const rules = await permission.listRangeProtectionRules({
+            ignoreCollaborators: true,
+          });
+          for (const rule of rules) {
+            await rule.setPoint(univerAPI.Enum.RangePermissionPoint.View, true);
+            await rule.setPoint(
+              univerAPI.Enum.RangePermissionPoint.Delete,
+              true,
+            );
+            await rule.setPoint(
+              univerAPI.Enum.RangePermissionPoint.ManageCollaborator,
+              true,
+            );
+            await rule.setPoint(
+              univerAPI.Enum.RangePermissionPoint.Edit,
+              false,
+            );
+          }
+        }
+        permissionsReady = true;
+        signalReady();
+      })().catch((cause) => {
+        if (!disposed)
+          error.current(cause instanceof Error ? cause.message : String(cause));
+      });
       return () => {
         disposed = true;
         clearTimeout(timer);
         clearTimeout(chartHydrationTimer);
         listener.dispose();
+        lifecycleReady.dispose();
         removed.dispose();
         activeSheetChanged.dispose();
         partialCleanup?.();
@@ -931,6 +1244,19 @@ export default function Sheets({
       );
     } catch {}
     persist.current();
+  };
+  // "More formats": apply a named catalog format (currency, percent, date, …)
+  // to the active range by its Excel/Univer number-format code. Unknown ids are
+  // a no-op; the active range is read exactly like the currency/percent tools.
+  const applyNamedFormatNow = (id: string) => {
+    const r = book.current?.getActiveRange();
+    if (!r) return;
+    const applied = applyNamedFormat(id, (code) => {
+      try {
+        (r as any).setNumberFormat?.(code);
+      } catch {}
+    });
+    if (applied.ok) persist.current();
   };
   const toggleBold = () => {
     const r = book.current?.getActiveRange();
@@ -1081,6 +1407,16 @@ export default function Sheets({
       },
       async export(format) {
         await api.current.getFormula().onCalculationResultApplied(10000);
+        if (format === "xlsx") {
+          persist.current();
+          const { exportXlsx } = await import("@suiteleaf/core/xlsx-export");
+          await exportBinary(
+            filename(file.title, "xlsx"),
+            await exportXlsx({ content: content.current }),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          );
+          return;
+        }
         const s = book.current.getActiveSheet();
         const values = s.getDataRange().getRawValues();
         await exportText(
@@ -1126,6 +1462,36 @@ export default function Sheets({
         }
       },
       sheetActions: {
+        dataValidation: () =>
+          void api.current?.executeCommand(
+            "data-validation.operation.open-validation-panel",
+            {},
+          ),
+        conditionalFormatting: () =>
+          void api.current?.executeCommand(
+            "sheet.operation.open.conditional.formatting.panel",
+            { value: 2 },
+          ),
+        openComments: () =>
+          void api.current?.executeCommand(
+            "sheet.operation.toggle-comment-panel",
+            {},
+          ),
+        insertComment: () =>
+          void api.current?.executeCommand(
+            "sheet.operation.show-comment-modal",
+            {},
+          ),
+        tabsProtection: () => tabSettings.current?.openTabs(),
+        insertCheckbox: () => {
+          const range = book.current?.getActiveRange();
+          if (range) {
+            range.setDataValidation(
+              api.current.newDataValidation().requireCheckbox().build(),
+            );
+            persist.current();
+          }
+        },
         undo: () => void api.current?.undo(),
         redo: () => void api.current?.redo(),
         insertChart: () => startPanel("chart"),
@@ -1290,6 +1656,14 @@ export default function Sheets({
   const items = content.current;
   return (
     <div className="sheets-editor">
+      {ready && api.current ? (
+        <SheetFeatures
+          ref={tabSettings}
+          api={api.current}
+          persist={() => persist.current()}
+          onError={onError}
+        />
+      ) : null}
       <div
         className="sheets-toolbar"
         role="toolbar"
@@ -1352,16 +1726,36 @@ export default function Sheets({
         <Tool label="Increase decimal places" onClick={addDecimal}>
           <span style={{ fontSize: 12, fontWeight: 600 }}>.00→</span>
         </Tool>
-        <button
-          type="button"
-          className="tool more-formats-btn"
-          title="More formats"
-          aria-label="More formats"
-          onClick={() => {}}
-        >
-          <span style={{ fontSize: 12, fontWeight: 600 }}>123</span>
-          <ChevronDown size={11} />
-        </button>
+        <details className="more-formats">
+          <summary
+            className="tool more-formats-btn"
+            title="More formats"
+            aria-label="More formats"
+          >
+            <span style={{ fontSize: 12, fontWeight: 600 }}>123</span>
+            <ChevronDown size={11} />
+          </summary>
+          <div className="more-formats-menu analysis-list">
+            {Object.entries(numberFormatsByGroup()).map(
+              ([group, items]: [string, any[]]) => (
+                <div key={group}>
+                  <div className={`more-formats-group ${group}`}>{group}</div>
+                  {items.map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      className="more-formats-item"
+                      title={f.code}
+                      onClick={() => applyNamedFormatNow(f.id)}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              ),
+            )}
+          </div>
+        </details>
 
         <span className="toolbar-divider" />
 
@@ -1514,7 +1908,14 @@ export default function Sheets({
         <Tool label="Insert link (Cmd+K)" onClick={() => {}}>
           <Link size={16} />
         </Tool>
-        <Tool label="Insert comment (Cmd+Option+M)" onClick={() => {}}>
+        <Tool
+          label="Insert comment (Cmd+Option+M)"
+          onClick={() =>
+            void api.current?.executeCommand(
+              "sheet.operation.show-comment-modal",
+            )
+          }
+        >
           <MessageSquarePlus size={16} />
         </Tool>
 
@@ -1663,7 +2064,13 @@ export default function Sheets({
           </div>
         </details>
       </div>
-      <div className="sheet-host" ref={host} aria-label="Spreadsheet grid" />
+      <div
+        className="sheet-host"
+        ref={host}
+        aria-label="Spreadsheet grid"
+        aria-busy={!ready}
+        style={{ pointerEvents: ready ? undefined : "none" }}
+      />
       {panel ? (
         <aside className="analysis-panel">
           <header>
