@@ -1,4 +1,4 @@
-import type { Download, Page } from "@playwright/test";
+import type { Download, Locator, Page } from "@playwright/test";
 import JSZip from "jszip";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,11 +26,15 @@ async function backToFiles(page: Page) {
   await expect(page.getByLabel("Search files")).toBeVisible();
 }
 
+/** Move the caret to the end of the line (End does not on macOS). */
+const lineEnd = (page: Page) =>
+  page.keyboard.press(process.platform === "darwin" ? "Meta+ArrowRight" : "End");
+
 /** Type a line, then give it a paragraph style from the toolbar menu. */
 async function styledLine(page: Page, text: string, style: string) {
   await typeSlowly(page, text);
   await page.getByRole("combobox", { name: "Paragraph style" }).selectOption({ label: style });
-  await page.keyboard.press("End");
+  await lineEnd(page);
   await page.keyboard.press("Enter");
 }
 
@@ -211,24 +215,48 @@ test("03-import-word-document", async ({ page }) => {
   await expect(editor.locator("h1")).toContainText("Office field notes");
   await expect(editor).toContainText("Hello 世界 — مرحبا");
   await expect(editor.locator("table")).toBeVisible();
+  await expect(editor.locator("sup")).toHaveText("2");
   await caption(page, "It converts on this computer into an editable SuiteLeaf copy.", 1600);
-  await caption(page, "The heading, bold italic text in three scripts, the link and the table came through.", 2200);
+  await caption(page, "The heading, bold italic text in three scripts, the link, the table and the ² in \"40 m²\" came through.", 2400);
 
   const notes = page.locator(".import-notes");
-  await expect(notes).toContainText("DOCX");
+  await expect(notes.locator("summary")).toHaveText(
+    "Imported DOCX: Office field notes.docx · 2 compatibility notes",
+  );
   await caption(page, "The banner says what was imported. Open it to read the compatibility notes.", 1200);
   await notes.locator("summary").click();
-  await beat(page, 2200);
+  await expect(notes.locator("li")).toHaveText([
+    /1 link with an unsafe or unsupported address \(javascript:\) was removed; its text was kept\./,
+    /SuiteLeaf lays out its own pages/,
+  ]);
+  await caption(page, "One note says an unsafe 'javascript:' link was removed. The other: Word's exact page breaks may differ.", 2600);
   await expect(editor.locator('a[href^="javascript:"]')).toHaveCount(0);
   await expect(editor.locator('a[href="https://example.org"]')).toHaveText("Reference");
-  await caption(page, "The file's unsafe 'javascript:' link was not kept; the normal link was.", 1800);
+  const pointBelow = async (target: Locator) => {
+    const box = (await target.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height + 14, { steps: 8 });
+  };
+  await pointBelow(editor.getByText("Unsafe link"));
+  await caption(page, "\"Unsafe link\" is now plain text. The normal \"Reference\" link was kept.", 2000);
   await notes.locator("summary").click();
 
-  await caption(page, "Now it's just a document. Lena adds a note at the end.", 1000);
-  await editor.click();
-  await editor.press("ControlOrMeta+End");
+  await caption(page, "Now it's just a document. Lena adds a note after \"40 m²\".", 1000);
+  await editor.locator(":scope > p").last().click();
+  await lineEnd(page);
   await page.keyboard.press("Enter");
+  const superscript = page.getByRole("button", { name: "Superscript", exact: true });
+  await expect(superscript).toHaveAttribute("aria-pressed", "true");
+  await pointBelow(superscript);
+  await caption(page, "As in Word, the new line carries on the superscript. The Superscript button shows it's on…", 2200);
+  await superscript.click();
+  await expect(superscript).toHaveAttribute("aria-pressed", "false");
+  await pointBelow(superscript);
+  await caption(page, "…so she turns it off and types normally.", 1000);
   await typeSlowly(page, "Reviewed by Lena: figures confirmed with the North team.");
+  const note = editor.locator(":scope > p").last();
+  await expect(note).toHaveText("Reviewed by Lena: figures confirmed with the North team.");
+  await expect(note.locator("sup")).toHaveCount(0);
+  await beat(page);
   await expect(page.getByRole("status")).toContainText("Saved");
   await caption(page, "Her edits save automatically. The original .docx is never changed.", 1600);
 
@@ -281,7 +309,7 @@ test("04-long-report-with-outline", async ({ page }) => {
   await jump("Summary");
   await caption(page, "…or straight to Volunteers to add a thank-you.", 700);
   await jump("Volunteers");
-  await page.keyboard.press("End");
+  await lineEnd(page);
   await page.keyboard.press("Enter");
   await typeSlowly(page, "A special thank-you to the Saturday tea rota!");
   await expect(
@@ -351,7 +379,7 @@ test("05-tables-images-and-links", async ({ page }) => {
   await page.getByRole("button", { name: "Insert link", exact: true }).click();
   const link = editor.locator('a[href="https://example.org/seed-swap"]');
   await expect(link).toHaveText("club website");
-  await page.keyboard.press("End");
+  await lineEnd(page);
   await caption(page, "The browser asks for the address; the words become a link.", 1800);
   await expect(page.getByRole("status")).toContainText("Saved");
   await showDocumentTop(page);
@@ -456,10 +484,12 @@ test("07-page-setup-and-export", async ({ page }) => {
   await expect(headers).toHaveCount(3);
   await expect(headers.first()).toHaveText("Riverside Garden Club");
   await expect(page.locator(".page-footer").first()).toContainText("1 / 3");
-  await caption(page, "Jump to Appendix A in the outline to see where the pages meet…", 900);
-  await page.locator(".outline").getByRole("button", { name: "Appendix A: plot assignments" }).click();
-  await expect(headers.nth(1)).toBeInViewport();
-  await caption(page, "…page 1 ends with the footer and \"1 / 3\"; page 2 starts with the header.", 2400);
+  await page
+    .locator(".page-footer")
+    .first()
+    .evaluate((el) => el.scrollIntoView({ behavior: "smooth", block: "center" }));
+  await beat(page, 700);
+  await caption(page, "Where pages meet: page 1 ends with the footer and \"1 / 3\"; page 2 starts with the header.", 2600);
 
   await caption(page, "File, Export DOCX makes a Word copy.", 900);
   const docx = await fileMenu(page, "Export DOCX");
@@ -522,7 +552,7 @@ test("08-carry-a-file-to-another-computer", async ({ page }) => {
   await expect(page.getByLabel("File title")).toHaveValue("Lisbon trip packing list");
   await caption(page, "Everything is back: the title, the heading and all four items.", 1600);
   await editor.locator("li").last().click();
-  await page.keyboard.press("End");
+  await lineEnd(page);
   await page.keyboard.press("Enter");
   await typeSlowly(page, "Sunglasses");
   await expect(editor.locator("li")).toHaveCount(5);

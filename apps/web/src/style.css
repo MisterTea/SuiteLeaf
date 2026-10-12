@@ -725,6 +725,9 @@ a {
   background: var(--toolbar-active);
   color: var(--toolbar-active-text);
 }
+.docs-editor .toolbar .tool {
+  padding: 5px;
+}
 .toolbar-select {
   background: transparent;
   border: 0;

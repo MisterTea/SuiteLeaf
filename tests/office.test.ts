@@ -4,7 +4,7 @@ import * as CFB from "cfb";
 import { readFileSync, existsSync } from "node:fs";
 import * as XLSX from "xlsx";
 import { importOffice, OfficeImportError } from "../packages/core/src/office";
-import { documentText } from "../packages/core/src/word";
+import { documentText, htmlToDocument } from "../packages/core/src/word";
 import {
   createFile,
   serializeFile,
@@ -159,6 +159,29 @@ describe("editable Office imports", () => {
     ).toBe(false);
     expect(report.textPreserved).toBe(true);
     expect(parseFile(serializeFile(file))).toEqual(file);
+  });
+  it("lists removed unsafe Word links and describes paged layout in the compatibility notes", async () => {
+    const { file, report } = await importOffice(
+      await wordFixture(),
+      "docx",
+      "Field notes.docx",
+    );
+    if (file.kind !== "doc") throw new Error("expected a document");
+    expect(documentText(file.content)).toContain("Unsafe link");
+    expect(report.warnings).toEqual([
+      "1 link with an unsafe or unsupported address (javascript:) was removed; its text was kept.",
+      "SuiteLeaf lays out its own pages, so Word's exact line and page breaks, floating placement and font styling may differ.",
+    ]);
+    expect(file.importInfo!.warnings).toEqual(report.warnings);
+  });
+  it("counts each removed link and leaves safe and bookmark links alone", () => {
+    const dropped: string[] = [];
+    const doc = htmlToDocument(
+      '<p><a href="https://example.org">ok</a><a href="#top">top</a><a id="bookmark"></a><a href="javascript:alert(1)">x</a><a href="file:///etc/passwd">y</a></p>',
+      dropped,
+    );
+    expect(dropped).toEqual(["javascript:alert(1)", "file:///etc/passwd"]);
+    expect(documentText(doc)).toBe("oktopxy");
   });
   it.skipIf(
     !existsSync(
