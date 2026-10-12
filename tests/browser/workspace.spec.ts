@@ -11,6 +11,7 @@ async function exported(page: Page) {
 }
 test("document edit → formatting → autosave → reopen → native export", async ({
   page,
+  isMobile,
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -19,7 +20,10 @@ test("document edit → formatting → autosave → reopen → native export", a
   await page.getByLabel("File title").fill("Field notes");
   const editor = page.getByRole("textbox", { name: "Document content" });
   await editor.fill("A working idea");
-  await editor.press("ControlOrMeta+A");
+  // Playwright's WebKit sends Ctrl+A with the macOS "move to paragraph start"
+  // command, which iPhone emulation on Linux applies after the select-all.
+  if (isMobile) await editor.selectText();
+  else await editor.press("ControlOrMeta+A");
   await page.getByRole("button", { name: "Bold", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("Saved");
   await page.getByRole("button", { name: "Back to files" }).click();
