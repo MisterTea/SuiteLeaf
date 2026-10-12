@@ -667,11 +667,6 @@ test("15-summarize-with-a-pivot", async ({ page }) => {
 
 test("16-import-and-export-csv", async ({ page }) => {
   await page.goto("/");
-  let preview = "";
-  page.on("dialog", async (dialog) => {
-    preview = dialog.message();
-    await dialog.accept();
-  });
   await caption(page, "Rosa got the community garden's member list as a CSV from the old signup site.");
   await caption(page, "Member IDs like 00412 matter: other spreadsheets often strip the leading zeros.", 1800);
   await caption(page, "She opens it with Open / import.", 900);
@@ -684,13 +679,32 @@ test("16-import-and-export-csv", async ({ page }) => {
       "Member ID,Name,ZIP,Plot,Dues paid\n00412,Rosa Delgado,02139,A3,45\n00977,Tom Okafor,07302,B1,45\n01205,Mei Chen,10001,B4,0\n00038,Luis Ortega,02139,C2,45\n",
     ),
   });
+  const dialog = page.getByRole("dialog", { name: "Import garden-members.csv" });
+  const summary = dialog.getByRole("status");
+  await expect(summary).toHaveText("4 data rows · 5 columns · comma-separated, plus a header row");
+  await summary.hover();
+  await caption(page, "Before anything lands in a sheet, SuiteLeaf previews it: four members, comma-separated, with a header row.", 2600);
+
+  const zip = dialog.getByRole("columnheader", { name: /^ZIP/ });
+  const keep = dialog.getByLabel("Keep code columns as text");
+  await expect(dialog).toContainText("Member ID and ZIP have codes with leading zeros");
+  await keep.hover();
+  await caption(page, "Member ID and ZIP contain codes with leading zeros, so every value in those columns stays text.", 2400);
+  await keep.uncheck();
+  await expect(zip).toHaveText("ZIPMixed");
+  await zip.hover();
+  await caption(page, "Without that option, 10001 would turn into a number while 02139 stayed text: a mixed column.", 2400);
+  await keep.check();
+  await expect(zip).toHaveText("ZIPText");
+  await dialog.getByRole("button", { name: "Import", exact: true }).hover();
+  await caption(page, "Rosa keeps the codes as text and imports.", 1400);
+  await dialog.getByRole("button", { name: "Import", exact: true }).click();
   await ready(page);
-  expect(preview).toContain("Import 5 rows using , delimiter?");
-  expect(preview).toContain("00412 | Rosa Delgado");
-  await caption(page, "SuiteLeaf showed a preview first: comma-separated rows, and a promise that \"identifiers with leading zeros stay text\".", 2600);
 
   await selectCells(page, "A2");
-  await caption(page, "And they did: 00412 is still 00412.", 1800);
+  await caption(page, "00412 is still 00412.", 1600);
+  await selectCells(page, "C4");
+  await caption(page, "And the ZIP column is text all the way down, 10001 included. Dues paid are real numbers.", 2200);
 
   await caption(page, "Mei paid her dues at the work day. Rosa records it.", 1000);
   await selectCells(page, "E4");
@@ -709,7 +723,7 @@ test("16-import-and-export-csv", async ({ page }) => {
   expect(rows[1]).toEqual(["00412", "Rosa Delgado", "02139", "A3", "45"]);
   expect(rows[3]).toEqual(["01205", "Mei Chen", "10001", "B4", "45"]);
   expect(rows[4][0]).toBe("00038");
-  await caption(page, "The exported file keeps every leading zero, with Mei's dues updated.", 2000);
+  await caption(page, `The downloaded file keeps every leading zero. Mei's line now reads: ${csv.split(/\r?\n/)[3]}`, 2800);
 });
 
 test("17-review-a-budget-with-notes-and-comments", async ({ page }) => {

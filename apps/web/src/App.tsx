@@ -57,7 +57,9 @@ import {
   type SlideFile,
 } from "@suiteleaf/core";
 import { storage, SaveQueue, exportText } from "./storage";
-import { importFile } from "./imports";
+import { importFile, type DelimitedDraft } from "./imports";
+import { CsvImportDialog } from "./csv-import";
+import type { DelimitedOptions } from "./csv";
 import { sampleDoc, sampleSheet, sampleSlide } from "./samples";
 import { Menu, MenuItem, type EditorActions } from "./ui";
 import { SheetViewMenu } from "./editors/SheetViewMenu";
@@ -186,6 +188,10 @@ function ImportButton({
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
+  const [review, setReview] = useState<{
+    draft: DelimitedDraft;
+    resolve: (options: DelimitedOptions | null) => void;
+  } | null>(null);
   const open = async () => {
     setImporting(true);
     try {
@@ -216,7 +222,12 @@ function ImportButton({
           if (!f) return;
           setImporting(true);
           try {
-            await onImport({ file: await importFile(f) });
+            const file = await importFile(
+              f,
+              (draft) =>
+                new Promise((resolve) => setReview({ draft, resolve })),
+            );
+            if (file) await onImport({ file });
           } catch (e) {
             onError(message(e));
           } finally {
@@ -228,6 +239,15 @@ function ImportButton({
         <button onClick={() => input.current?.click()}>
           Import Office / HTML / CSV
         </button>
+      ) : null}
+      {review ? (
+        <CsvImportDialog
+          draft={review.draft}
+          onDone={(options) => {
+            setReview(null);
+            review.resolve(options);
+          }}
+        />
       ) : null}
     </>
   );

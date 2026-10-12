@@ -1664,7 +1664,7 @@ export default function Sheets({
             delimiter: format === "tsv" ? "\t" : ",",
             escapeFormulae: true,
           }),
-          "text/csv",
+          format === "tsv" ? "text/tab-separated-values" : "text/csv",
         );
       },
       async print() {

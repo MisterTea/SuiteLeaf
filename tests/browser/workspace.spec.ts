@@ -289,7 +289,6 @@ test("CSV import preview preserves identifiers and formula-looking text, and exp
   page,
 }) => {
   await page.goto("/");
-  page.on("dialog", (d) => d.accept());
   await page.locator("input[type=file]").setInputFiles({
     name: "sales.csv",
     mimeType: "text/csv",
@@ -297,6 +296,12 @@ test("CSV import preview preserves identifiers and formula-looking text, and exp
       'Item,Amount,Identifier,Literal\n"North, studio",12.5,00123,=SUM(A1:A2)\nSouth,20,00999,hello',
     ),
   });
+  const dialog = page.getByRole("dialog", { name: "Import sales.csv" });
+  await expect(dialog.getByRole("status")).toHaveText(
+    "2 data rows · 4 columns · comma-separated, plus a header row",
+  );
+  await expect(dialog).toContainText("Formulas are not run");
+  await dialog.getByRole("button", { name: "Import", exact: true }).click();
   await page.getByText("Sheet1", { exact: true }).first().waitFor();
   const saved = await exported(page);
   const cells =
@@ -321,6 +326,52 @@ test("CSV import preview preserves identifiers and formula-looking text, and exp
   ]);
 });
 
+test("CSV import dialog chooses the separator, header row, and code columns", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const pick = () =>
+    page.locator("input[type=file]").setInputFiles({
+      name: "members.csv",
+      mimeType: "text/csv",
+      buffer: Buffer.from(
+        "Member ID;Name;ZIP;Dues\n00412;Rosa;02139;45\n01205;Mei;10001;0\n00038;Luis;07302;45\n",
+      ),
+    });
+  await pick();
+  const dialog = page.getByRole("dialog", { name: "Import members.csv" });
+  const summary = dialog.getByRole("status");
+  const zip = dialog.getByRole("columnheader", { name: /^ZIP/ });
+  await expect(summary).toHaveText(
+    "3 data rows · 4 columns · semicolon-separated, plus a header row",
+  );
+  await expect(dialog.getByLabel("Separator")).toHaveValue(";");
+  await expect(dialog).toContainText("Member ID and ZIP have codes with leading zeros");
+  await expect(zip).toHaveText("ZIPText");
+  await dialog.getByLabel("Keep code columns as text").uncheck();
+  await expect(zip).toHaveText("ZIPMixed");
+  await dialog.getByLabel("Keep code columns as text").check();
+  await dialog.getByLabel("First row is a header").uncheck();
+  await expect(summary).toHaveText("4 data rows · 4 columns · semicolon-separated");
+  await dialog.getByLabel("First row is a header").check();
+  await dialog.getByLabel("Separator").selectOption(",");
+  await expect(summary).toContainText("1 column · comma-separated");
+  await dialog.getByLabel("Separator").selectOption(";");
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator(".error")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Open / import" })).toBeEnabled();
+
+  await pick();
+  await dialog.getByRole("button", { name: "Import", exact: true }).click();
+  await page.getByText("Sheet1", { exact: true }).first().waitFor();
+  const saved = await exported(page);
+  const cells =
+    saved.content.workbook.sheets[saved.content.workbook.sheetOrder[0]].cellData;
+  expect(cells[1][0]).toMatchObject({ v: "00412", t: 1 });
+  expect(cells[2][2]).toMatchObject({ v: "10001", t: 1 });
+  expect(cells[2][3]).toMatchObject({ v: 0, t: 2 });
+});
 test("document outline, images, tables, find/replace, and print layout", async ({
   page,
   browserName,

@@ -2805,6 +2805,89 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 .drive-dialog {
   width: 640px;
 }
+.csv-import-dialog {
+  width: 640px;
+  overflow-y: auto;
+}
+.csv-import-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.csv-import-separator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.csv-import-separator select {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+.csv-import-options .checkbox-row {
+  align-items: flex-start;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+.csv-import-options .checkbox-row input {
+  margin-top: 2px;
+}
+.csv-import-options .checkbox-row small {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.csv-import-summary {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.csv-import-preview {
+  overflow: auto;
+  max-height: 240px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.csv-import-preview table {
+  border-collapse: collapse;
+  font-size: 12px;
+  min-width: 100%;
+}
+.csv-import-preview th,
+.csv-import-preview td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: left;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+.csv-import-preview th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-hover);
+  font-weight: 600;
+}
+.csv-import-preview th small {
+  display: block;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+.csv-import-preview td.number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.csv-import-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
 .drive-browser {
   display: flex;
   flex-direction: column;

@@ -346,7 +346,61 @@ describe("analytics", () => {
   });
 });
 
-import { csvCell } from "../apps/web/src/csv";
+import {
+  csvCell,
+  defaultDelimitedOptions,
+  delimitedCellData,
+  guessHeader,
+  identifierColumns,
+  parseDelimited,
+} from "../apps/web/src/csv";
+describe("delimited imports", () => {
+  const members =
+    "Member ID,Name,ZIP,Plot,Dues paid\n00412,Rosa Delgado,02139,A3,45\n01205,Mei Chen,10001,B4,0\n";
+  it("detects or overrides the separator", () => {
+    expect(parseDelimited(members).delimiter).toBe(",");
+    expect(parseDelimited("a;b\n1;2").delimiter).toBe(";");
+    expect(parseDelimited("a\tb\n1\t2").rows).toEqual([["a", "b"], ["1", "2"]]);
+    expect(parseDelimited("a;b\n1;2", ",").rows).toEqual([["a;b"], ["1;2"]]);
+    expect(parseDelimited('a,"b\n1,2').error).toBeTruthy();
+  });
+  it("keeps every value of a code column as text, and the header out of the data", () => {
+    const { rows } = parseDelimited(members);
+    const options = defaultDelimitedOptions(rows, ",");
+    expect(options).toEqual({
+      delimiter: ",",
+      header: true,
+      convert: true,
+      keepIdentifiers: true,
+    });
+    expect([...identifierColumns(rows, true)]).toEqual([0, 2]);
+    const cells = delimitedCellData(rows, options);
+    expect(cells[0][4]).toEqual({ v: "Dues paid", t: 1 });
+    expect(cells[1][0]).toEqual({ v: "00412", t: 1 });
+    expect(cells[2][2]).toEqual({ v: "10001", t: 1 });
+    expect(cells[2][4]).toEqual({ v: 0, t: 2 });
+    const perCell = delimitedCellData(rows, { ...options, keepIdentifiers: false });
+    expect(perCell[1][2]).toEqual({ v: "02139", t: 1 });
+    expect(perCell[2][2]).toEqual({ v: 10001, t: 2 });
+    const text = delimitedCellData(rows, { ...options, convert: false });
+    expect(text[1][4]).toEqual({ v: "45", t: 1 });
+  });
+  it("only treats a row of distinct labels as a header", () => {
+    expect(guessHeader([["Item", "Amount"], ["a", "1"]])).toBe(true);
+    expect(guessHeader([["2024", "Amount"], ["a", "1"]])).toBe(false);
+    expect(guessHeader([["Item", "Item"], ["a", "1"]])).toBe(false);
+    expect(guessHeader([["Item", "Amount"]])).toBe(false);
+    const cells = delimitedCellData([["1", "=SUM(A1)"], ["12345678901234567", "2"]], {
+      delimiter: ",",
+      header: false,
+      convert: true,
+      keepIdentifiers: true,
+    });
+    expect(cells[0][0]).toEqual({ v: "1", t: 1 });
+    expect(cells[0][1]).toEqual({ v: "=SUM(A1)", t: 1 });
+    expect(cells[1][1]).toEqual({ v: 2, t: 2 });
+  });
+});
 it("imports numeric CSV values while preserving formulas, identifiers, and precision", () => {
   expect(csvCell("12.5")).toEqual({ v: 12.5, t: 2 });
   expect(csvCell("TRUE")).toEqual({ v: true, t: 3 });
