@@ -389,7 +389,7 @@ test("presentation lifecycle → slide creation, editing, thumbnail selection, p
   await notesArea.fill("Remember to emphasize zero cloud telemetry.");
 
   // 5. Test Presentation mode (fullscreen slide show)
-  await page.getByRole("button", { name: "Present", exact: true }).click();
+  await page.getByRole("button", { name: "Slideshow", exact: true }).click();
   await expect(page.locator(".presenter-overlay")).toBeVisible();
   await expect(page.locator(".presenter-overlay")).toContainText(
     "Key Features",
