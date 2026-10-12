@@ -180,47 +180,67 @@ test("20-build-a-presentation", async ({ page }) => {
   await typeSlowly(page, "Spring Garden Kickoff");
 
   const boxes = page.locator(".slide-canvas .slide-element textarea");
-  await caption(page, "The first slide is a title slide. Type the title and subtitle.", 900);
-  await retype(page, boxes.nth(0), "Spring Garden Kickoff");
-  await retype(page, boxes.nth(1), "Community Garden · Saturday 10 am");
+  const rows = page.locator(".thumbnail-row");
+  await expect(boxes.nth(0)).toHaveAttribute("placeholder", "Click to add title");
+  await expect(boxes.nth(0)).toHaveValue("");
+  await caption(page, "The title slide has empty placeholders. Click one and type.", 1200);
+  await boxes.nth(0).click();
+  await typeSlowly(page, "Spring Garden Kickoff");
+  await boxes.nth(1).click();
+  await typeSlowly(page, "Community Garden · Saturday 10 am");
 
   await caption(page, "Add a slide with a title and bullet points.", 900);
   await page.getByRole("button", { name: "+ New slide" }).click();
   await beat(page, 500);
   await page.getByRole("menuitem", { name: "Title & body" }).click();
-  await expect(page.locator(".thumbnail-row")).toHaveCount(2);
-  await retype(page, boxes.nth(0), "This season's plan");
-  await retype(
+  await expect(rows).toHaveCount(2);
+  await beat(page, 600);
+  await boxes.nth(0).click();
+  await typeSlowly(page, "This season's plan");
+  await boxes.nth(1).click();
+  await typeSlowly(
     page,
-    boxes.nth(1),
     "• Tomatoes and basil in the sunny beds\n• New compost bins by the shed\n• Watering rota on the noticeboard",
   );
 
-  await caption(page, "Next, a two-column slide for the volunteer jobs.", 900);
+  await caption(page, "Another slide for the volunteer jobs.", 900);
   await page.getByRole("button", { name: "+ New slide" }).click();
   await beat(page, 500);
+  await page.getByRole("menuitem", { name: "Title & body" }).click();
+  await boxes.nth(0).click();
+  await typeSlowly(page, "How you can help");
+
+  await caption(page, "Two lists side by side would read better. Change the layout.", 1100);
+  await clickSlideBackground(page);
+  await page.getByRole("button", { name: "Layout" }).click();
+  await beat(page, 500);
   await page.getByRole("menuitem", { name: "Two columns" }).click();
-  await retype(page, boxes.nth(0), "How you can help");
-  await retype(page, boxes.nth(1), "Saturdays\n• Weeding, 9–11 am\n• Watering rota");
-  await retype(page, boxes.nth(2), "In May\n• Seedling swap\n• Plant sale stall");
+  await expect(boxes).toHaveCount(3);
+  await expect(boxes.nth(0)).toHaveValue("How you can help");
+  await beat(page, 700);
+  await boxes.nth(1).click();
+  await typeSlowly(page, "Saturdays\n• Weeding, 9–11 am\n• Watering rota");
+  await boxes.nth(2).click();
+  await typeSlowly(page, "In May\n• Seedling swap\n• Plant sale stall");
 
   await caption(page, "A section header to close. It comes with a dark background.", 900);
   await page.getByRole("button", { name: "+ New slide" }).click();
   await beat(page, 500);
   await page.getByRole("menuitem", { name: "Section header" }).click();
-  await retype(page, boxes.nth(0), "Questions?");
-  await expect(page.locator(".thumbnail-row")).toHaveCount(4);
+  await boxes.nth(0).click();
+  await typeSlowly(page, "Questions?");
+  await expect(rows).toHaveCount(4);
 
   await caption(page, "Back on the title slide, add a shape: a yellow sun in the corner.", 900);
-  await page.locator(".thumbnail-row").nth(0).click();
+  await rows.nth(0).click();
   await page.getByRole("button", { name: "Circle" }).click();
   const shape = page.locator(".slide-canvas .slide-shape");
   await expect(shape).toBeVisible();
   await page.getByRole("button", { name: "Fill", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Yellow" }).click();
+  await page.getByRole("menuitem", { name: "Yellow", exact: true }).click();
   const canvas = (await page.locator(".slide-canvas").boundingBox())!;
   const scale = canvas.width / 960;
-  await drag(page, shape, 560 * scale, -140 * scale);
+  await drag(page, shape, 630 * scale, -135 * scale);
   await beat(page, 600);
 
   await caption(page, "Give the title slide a soft green background.", 900);
@@ -233,12 +253,16 @@ test("20-build-a-presentation", async ({ page }) => {
   );
   await beat(page);
 
-  await caption(page, "The volunteer slide should come first. Select its thumbnail and move it up.", 1200);
-  await page.locator(".thumbnail-row").nth(2).click();
-  await beat(page, 500);
-  await page.getByTitle("Move slide up").click();
-  await expect(page.locator(".thumbnail-row").nth(1)).toContainText("How you can help");
-  await expect(page.locator(".thumbnail-row").nth(2)).toContainText("This season's plan");
+  await caption(page, "The volunteer slide should come first. Drag its thumbnail up.", 1200);
+  const from = (await rows.nth(2).boundingBox())!;
+  const to = (await rows.nth(1).boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2, { steps: 10 });
+  await page.mouse.down();
+  await page.mouse.move(to.x + to.width / 2, to.y + 6, { steps: 30 });
+  await beat(page, 700);
+  await page.mouse.up();
+  await expect(rows.nth(1)).toContainText("How you can help");
+  await expect(rows.nth(2)).toContainText("This season's plan");
   await beat(page);
 
   await expect(page.getByRole("status")).toContainText("Saved");

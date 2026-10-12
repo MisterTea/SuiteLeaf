@@ -1799,19 +1799,6 @@ a {
 .toolbar-zoom-dropdown select:hover {
   background: rgba(0, 0, 0, 0.05);
 }
-.toolbar-text-btn {
-  border: 0;
-  background: transparent;
-  font-size: 13px;
-  font-weight: 500;
-  color: #444746;
-  padding: 4px 8px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-.toolbar-text-btn:hover {
-  background: rgba(0, 0, 0, 0.05);
-}
 .menu-color-swatch {
   display: inline-block;
   width: 14px;
@@ -1918,6 +1905,42 @@ a {
 .thumbnail-row.selected {
   background: #e8f0fe;
 }
+.thumbnails-list {
+  user-select: none;
+}
+.thumbnails-list:focus {
+  outline: none;
+}
+.thumbnails-list:focus-visible .thumbnail-row.selected .thumbnail-card {
+  box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.35);
+}
+.thumbnails-list.dragging,
+.thumbnails-list.dragging .thumbnail-row {
+  cursor: grabbing;
+}
+.thumbnail-row.drag-source {
+  opacity: 0.45;
+}
+.thumbnail-row.drop-before,
+.thumbnail-row.drop-after {
+  position: relative;
+}
+.thumbnail-row.drop-before::before,
+.thumbnail-row.drop-after::after {
+  content: "";
+  position: absolute;
+  left: 22px;
+  right: 4px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--google-blue);
+}
+.thumbnail-row.drop-before::before {
+  top: -8px;
+}
+.thumbnail-row.drop-after::after {
+  bottom: -8px;
+}
 .thumbnail-num {
   font-size: 12px;
   font-weight: 500;
@@ -1996,20 +2019,6 @@ a {
 }
 .add-slide-sidebar-btn:hover {
   background: var(--surface-hover);
-}
-.grid-view-btn {
-  border: 0;
-  background: transparent;
-  padding: 6px;
-  border-radius: 4px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.grid-view-btn:hover {
-  background: #e8eaed;
 }
 .slides-canvas-stage {
   flex: 1;
@@ -2106,29 +2115,6 @@ a {
   cursor: ew-resize;
 }
 
-.rotation-stem {
-  position: absolute;
-  top: -14px;
-  left: 50%;
-  width: 1px;
-  height: 14px;
-  background: var(--google-blue);
-  transform: translateX(-50%);
-}
-.rotation-handle {
-  position: absolute;
-  top: -22px;
-  left: 50%;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #ffffff;
-  border: 1.5px solid var(--google-blue);
-  transform: translateX(-50%);
-  cursor: grab;
-  pointer-events: auto;
-  z-index: 20;
-}
 .element-textarea {
   width: 100%;
   height: 100%;
@@ -2143,6 +2129,10 @@ a {
   padding: 4px;
   box-sizing: border-box;
   outline: none;
+}
+.element-textarea::placeholder {
+  color: currentColor;
+  opacity: 0.5;
 }
 .slide-element img {
   width: 100%;

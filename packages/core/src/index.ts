@@ -110,6 +110,7 @@ export const slideElementSchema = z.object({
   height: z.number().nonnegative(),
   rotation: z.number().optional(),
   content: z.string().optional(),
+  placeholder: z.string().optional(),
   fontSize: z.number().optional(),
   fontFamily: z.string().optional(),
   bold: z.boolean().optional(),
@@ -431,7 +432,6 @@ export function createFile(
         slides: {
           [slideId]: {
             id: slideId,
-            title: "Untitled slide",
             layout: "title",
             elements: [
               {
@@ -441,7 +441,8 @@ export function createFile(
                 y: 160,
                 width: 760,
                 height: 100,
-                content: title,
+                content: "",
+                placeholder: "Click to add title",
                 fontSize: 44,
                 bold: true,
                 align: "center",
@@ -454,7 +455,8 @@ export function createFile(
                 y: 280,
                 width: 760,
                 height: 60,
-                content: "Click to add subtitle",
+                content: "",
+                placeholder: "Click to add subtitle",
                 fontSize: 22,
                 align: "center",
                 color: "#64748b",
