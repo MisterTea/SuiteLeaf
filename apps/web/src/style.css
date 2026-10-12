@@ -2594,6 +2594,13 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
   color: var(--google-red);
   font-size: 13px;
 }
+.same-file-dialog .dialog-body {
+  display: grid;
+  gap: 8px;
+}
+.same-file-dialog .same-file-warning {
+  color: var(--google-red);
+}
 .provider-buttons {
   display: grid;
   gap: 8px;
