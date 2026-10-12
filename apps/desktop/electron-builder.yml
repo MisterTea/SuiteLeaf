@@ -42,6 +42,7 @@ win:
 linux:
   executableName: suiteleaf
   category: Office
+  maintainer: SuiteLeaf contributors
   target:
     - AppImage
     - deb
