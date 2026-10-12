@@ -98,7 +98,7 @@ function validation(rule: Data): string {
     }
   }
   if (type === "list" && !String(f1).startsWith("="))
-    f1 = `"${rule.type === "checkbox" ? `${f1 || "TRUE"},${f2 || "FALSE"}` : String(f1).replace(/^"|"$/g, "").replace(/"/g, '""')}"`;
+    f1 = `"${rule.type === "checkbox" ? (f1 || f2 ? `${f1 || "TRUE"},${f2 || "FALSE"}` : "1,0") : String(f1).replace(/^"|"$/g, "").replace(/"/g, '""')}"`;
   return `<dataValidation type="${type}" sqref="${esc((rule.ranges ?? []).map(rangeRef).join(" "))}" allowBlank="${rule.allowBlank ? 1 : 0}" showErrorMessage="${rule.showErrorMessage ? 1 : 0}" errorStyle="${esc(rule.errorStyle || "stop")}"${rule.operator && type !== "list" ? ` operator="${esc(rule.operator)}"` : ""} error="${esc(rule.error)}" errorTitle="${esc(rule.errorTitle)}"><formula1>${esc(String(f1).replace(/^=/, ""))}</formula1>${f2 && type !== "list" ? `<formula2>${esc(f2)}</formula2>` : ""}</dataValidation>`;
 }
 function conditional(rule: Data, priority: number, dxfs: string[]): string {
@@ -192,8 +192,14 @@ export async function exportXlsx(
           r = Number(row),
           c = Number(col),
           ref = XLSX.utils.encode_cell({ r, c });
-        const value =
+        const stored =
           cell.v ?? cell.p?.body?.dataStream?.replace(/\r?\n$/, "") ?? "";
+        const value =
+          cell.t === 3
+            ? stored === true ||
+              stored === 1 ||
+              String(stored).toUpperCase() === "TRUE"
+            : stored;
         const errorCodes: Data = {
           "#NULL!": 0,
           "#DIV/0!": 7,

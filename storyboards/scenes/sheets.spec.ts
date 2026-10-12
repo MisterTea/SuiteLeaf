@@ -852,7 +852,7 @@ test("18-highlight-and-check-off", async ({ page }) => {
   await page.getByRole("button", { name: "Insert", exact: true }).click();
   await beat(page, 600);
   await page.getByRole("menuitem", { name: "Checkbox", exact: true }).click();
-  await caption(page, "Every task gets a checkbox.", 1300);
+  await caption(page, "Every task gets an unticked checkbox. Like Google Sheets, each one holds FALSE.", 1800);
 
   await caption(page, "Now a rule so finished tasks fade out. She selects the tasks and opens Format › Conditional formatting.", 1300);
   await selectCells(page, "A2:D6");
@@ -865,13 +865,13 @@ test("18-highlight-and-check-off", async ({ page }) => {
   await sidebar.locator("svg.univerjs-icon-increase-icon").click();
   await expect(sidebar.getByText("Apply Range")).toBeVisible();
 
-  await caption(page, "A custom formula looks at column A of each row: =$A2=1 means \"this row is ticked\".", 1200);
+  await caption(page, "The usual Sheets recipe: the custom formula =$A2=TRUE means \"this row is ticked\".", 1200);
   await sidebar.locator('[data-u-comp="select"]').filter({ hasText: "Highlight Cell" }).click();
   await beat(page, 500);
   await page.getByText("Custom Formula", { exact: true }).last().click();
   await beat(page, 500);
   await sidebar.locator("canvas").nth(1).click();
-  await typeSlowly(page, "$A2=1", 90);
+  await typeSlowly(page, "$A2=TRUE", 90);
   await beat(page, 500);
   await caption(page, "Style: strikethrough and a soft green fill.", 1000);
   await sidebar.locator("svg.univerjs-icon-strikethrough-icon").click();
@@ -889,7 +889,7 @@ test("18-highlight-and-check-off", async ({ page }) => {
 
   await caption(page, "The hall is booked. Tick!", 900);
   await pointAt(page, await cellPoint(page, "A2", widths));
-  await beat(page, 1200);
+  await caption(page, "The ticked box now holds TRUE, as the formula bar shows.", 1800);
   await caption(page, "Bags are ordered too.", 800);
   await pointAt(page, await cellPoint(page, "A3", widths));
   await beat(page, 600);
@@ -898,13 +898,16 @@ test("18-highlight-and-check-off", async ({ page }) => {
 
   const file = await native(page);
   const cells = cellsOf(file);
-  expect(cells[1][0].v).toBe(1);
-  expect(cells[2][0].v).toBe(1);
-  expect(cells[3]?.[0]?.v ?? 0).not.toBe(1);
-  expect(resource(file, "SHEET_DATA_VALIDATION_PLUGIN")).toContain('"type":"checkbox"');
+  expect(cells[1][0]).toMatchObject({ v: 1, t: 3 });
+  expect(cells[2][0]).toMatchObject({ v: 1, t: 3 });
+  expect(cells[3][0]).toMatchObject({ v: 0, t: 3 });
+  const validation = resource(file, "SHEET_DATA_VALIDATION_PLUGIN");
+  expect(validation).toContain('"type":"checkbox"');
+  expect(validation).toContain('"formula1":"TRUE"');
   const rules = resource(file, "SHEET_CONDITIONAL_FORMATTING_PLUGIN");
-  expect(rules).toContain("$A2=1");
+  expect(rules).toContain("$A2=TRUE");
   expect(rules).toContain('"st"');
+  expect(rules).not.toContain('"cl"');
   await caption(page, "A task list that shows progress at a glance.", 1600);
 });
 

@@ -1795,9 +1795,29 @@ export default function Sheets({
           const range = book.current?.getActiveRange();
           if (range) {
             range.setDataValidation(
-              api.current.newDataValidation().requireCheckbox().build(),
+              api.current
+                .newDataValidation()
+                .requireCheckbox("TRUE", "FALSE")
+                .build(),
             );
-            persist.current();
+            const { startRow, startColumn } = range.getRange();
+            const unticked: Record<number, Record<number, { v: boolean }>> =
+              {};
+            range.getCellDatas().forEach((row: any[], r: number) =>
+              row.forEach((cell, c) => {
+                if (!cell?.f && !cell?.p && (cell?.v ?? "") === "")
+                  (unticked[startRow + r] ??= {})[startColumn + c] = {
+                    v: false,
+                  };
+              }),
+            );
+            void (
+              Object.keys(unticked).length
+                ? api.current.executeCommand("sheet.command.set-range-values", {
+                    value: unticked,
+                  })
+                : Promise.resolve()
+            ).then(() => persist.current());
           }
         },
         undo: () => void api.current?.undo(),
