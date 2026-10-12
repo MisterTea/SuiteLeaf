@@ -26,11 +26,15 @@ async function backToFiles(page: Page) {
   await expect(page.getByLabel("Search files")).toBeVisible();
 }
 
+/** Move the caret to the end of the line (End does not on macOS). */
+const lineEnd = (page: Page) =>
+  page.keyboard.press(process.platform === "darwin" ? "Meta+ArrowRight" : "End");
+
 /** Type a line, then give it a paragraph style from the toolbar menu. */
 async function styledLine(page: Page, text: string, style: string) {
   await typeSlowly(page, text);
   await page.getByRole("combobox", { name: "Paragraph style" }).selectOption({ label: style });
-  await page.keyboard.press("End");
+  await lineEnd(page);
   await page.keyboard.press("Enter");
 }
 
@@ -96,7 +100,6 @@ function gardenPicture(width = 360, height = 200) {
 }
 
 test("02-find-and-organize-files", async ({ page }) => {
-  page.on("dialog", (dialog) => void dialog.accept());
   await page.goto("/");
   await caption(page, "Maya's library is empty, so she starts with a sample document.");
   await page.getByRole("button", { name: "Sample document" }).click();
@@ -106,13 +109,12 @@ test("02-find-and-organize-files", async ({ page }) => {
 
   await caption(page, "She adds the garden club's files: a budget…", 1000);
   await page.getByRole("button", { name: "New spreadsheet" }).click();
-  await page.locator(".sheet-host input.univer-size-full").waitFor();
-  await expect(page.getByRole("status")).toContainText("Saved");
-  await beat(page, 600);
   const title = page.getByLabel("File title");
   await title.click();
   await title.press("ControlOrMeta+A");
   await typeSlowly(page, "Garden club budget");
+  await page.locator(".sheet-host input.univer-size-full").waitFor();
+  await caption(page, "She names it while the grid is still loading, and every letter stays in the title.", 1600);
   await expect(title).toHaveValue("Garden club budget");
   await expect(page.getByRole("status")).toContainText("Saved");
   await backToFiles(page);
@@ -134,25 +136,24 @@ test("02-find-and-organize-files", async ({ page }) => {
 
   const rows = page.locator(".file-row");
   await expect(rows).toHaveCount(4);
-  await scrollTo(page, ".file-section");
-  await caption(page, "Four files now.", 1200);
+  await scrollTo(page, ".sample-strip");
+  await caption(page, "Four files now, newest first, and the samples are still on offer below.", 2000);
   const search = page.getByLabel("Search files");
   await scrollTo(page, ".home-top");
-  await caption(page, "Search narrows the list as she types.", 600);
+  await caption(page, "Search narrows the list as she types…", 600);
   await search.click();
   await typeSlowly(page, "garden", 90);
+  await expect(page.getByRole("heading", { name: "Results for “garden”" })).toBeVisible();
   await expect(rows).toHaveCount(3);
-  await scrollTo(page, ".file-section");
-  await caption(page, "\"garden\" matches the three club files.", 1400);
-  await scrollTo(page, ".home-top");
+  await caption(page, "…and the results move up, right under the search box.", 1800);
   await search.fill("");
-  await typeSlowly(page, "talk", 90);
+  await typeSlowly(page, "harvest", 90);
   await expect(rows).toHaveCount(1);
-  await expect(page.getByRole("link", { name: "Garden club talk", exact: true })).toBeVisible();
-  await scrollTo(page, ".file-section");
-  await caption(page, "\"talk\" finds just the presentation.", 1400);
-  await search.fill("");
-  await scrollTo(page, ".file-section");
+  await expect(rows.first().locator(".file-snippet")).toContainText("Harvest supper on Saturday");
+  await caption(page, "\"harvest\" is only inside the newsletter, so it's found and quoted.", 2200);
+  await search.press("Escape");
+  await expect(rows).toHaveCount(4);
+  await caption(page, "Escape clears the search and brings the home screen back.", 1400);
 
   await caption(page, "The sidebar filters by type: Documents…", 900);
   await page.getByRole("button", { name: "Documents", exact: true }).click();
@@ -170,30 +171,44 @@ test("02-find-and-organize-files", async ({ page }) => {
   await page.getByRole("button", { name: "All files", exact: true }).click();
   await expect(rows).toHaveCount(4);
 
+  await caption(page, "Click the Name column to sort A to Z.", 900);
+  await page.getByRole("button", { name: "Sort by name" }).click();
+  await expect(rows.first()).toContainText("Garden club budget");
+  await expect(rows.last()).toContainText("Welcome to SuiteLeaf");
+  await beat(page, 1200);
+  await page.getByRole("button", { name: "Sort by last edited" }).click();
+  await expect(rows.first()).toContainText("Garden club newsletter");
+
   await caption(page, "Duplicate the newsletter to start next month's issue.", 1100);
   await page.getByRole("button", { name: "Duplicate Garden club newsletter", exact: true }).click();
   const copy = page.getByRole("link", { name: "Garden club newsletter copy", exact: true });
   await expect(copy).toBeVisible();
   await beat(page);
-  await copy.click();
-  await caption(page, "Open the copy and give it its own name.", 900);
-  await title.click();
-  await title.press("ControlOrMeta+A");
+  await caption(page, "Rename the copy right from the list.", 900);
+  await page.getByRole("button", { name: "Rename Garden club newsletter copy", exact: true }).click();
+  const rename = page.getByRole("dialog", { name: "Rename" });
+  const name = rename.getByLabel("Name");
+  await expect(name).toHaveValue("Garden club newsletter copy");
+  await name.press("ControlOrMeta+A");
   await typeSlowly(page, "Garden club newsletter - November");
-  await expect(page.getByRole("status")).toContainText("Saved");
-  await backToFiles(page);
-  await scrollTo(page, ".file-section");
+  await beat(page, 500);
+  await rename.getByRole("button", { name: "OK" }).click();
   await expect(
     page.getByRole("link", { name: "Garden club newsletter - November", exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "Garden club newsletter", exact: true })).toBeVisible();
+  await scrollTo(page, ".file-section");
+  await caption(page, "Both newsletters are listed, each with its own name.", 1600);
 
   await caption(page, "Finally, remove the sample she no longer needs.", 1100);
   await page.getByRole("button", { name: "Remove Welcome to SuiteLeaf", exact: true }).click();
+  const confirm = page.getByRole("dialog", { name: "Delete this file?" });
+  await expect(confirm).toContainText("“Welcome to SuiteLeaf” will be deleted from this browser.");
+  await caption(page, "SuiteLeaf asks first, and says exactly what will go.", 2000);
+  await confirm.getByRole("button", { name: "Delete" }).click();
   await expect(page.getByRole("link", { name: "Welcome to SuiteLeaf", exact: true })).toHaveCount(0);
   await expect(rows).toHaveCount(4);
-  await caption(page, "SuiteLeaf asked to confirm first. Removing deletes it from this browser.", 1800);
-  await caption(page, "Four garden club files, easy to find by name or type.", 1800);
+  await caption(page, "Four garden club files, easy to find by name, by what's inside, or by type.", 2200);
 });
 
 test("03-import-word-document", async ({ page }) => {
@@ -225,10 +240,18 @@ test("03-import-word-document", async ({ page }) => {
   await notes.locator("summary").click();
 
   await caption(page, "Now it's just a document. Lena adds a note at the end.", 1000);
-  await editor.click();
-  await editor.press("ControlOrMeta+End");
+  await editor.locator(":scope > p").last().click();
+  await lineEnd(page);
   await page.keyboard.press("Enter");
   await typeSlowly(page, "Reviewed by Lena: figures confirmed with the North team.");
+  const note = editor.locator(":scope > p").last();
+  await expect(note).toHaveText("Reviewed by Lena: figures confirmed with the North team.");
+  await caption(page, "The new line kept the tiny superscript style of the \"2\" above. Select it, then Clear formatting.", 1600);
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+Shift+ArrowLeft" : "Shift+Home");
+  await page.getByRole("button", { name: "Clear formatting", exact: true }).click();
+  await expect(note.locator("sup")).toHaveCount(0);
+  await lineEnd(page);
+  await beat(page);
   await expect(page.getByRole("status")).toContainText("Saved");
   await caption(page, "Her edits save automatically. The original .docx is never changed.", 1600);
 
@@ -281,7 +304,7 @@ test("04-long-report-with-outline", async ({ page }) => {
   await jump("Summary");
   await caption(page, "…or straight to Volunteers to add a thank-you.", 700);
   await jump("Volunteers");
-  await page.keyboard.press("End");
+  await lineEnd(page);
   await page.keyboard.press("Enter");
   await typeSlowly(page, "A special thank-you to the Saturday tea rota!");
   await expect(
@@ -351,7 +374,7 @@ test("05-tables-images-and-links", async ({ page }) => {
   await page.getByRole("button", { name: "Insert link", exact: true }).click();
   const link = editor.locator('a[href="https://example.org/seed-swap"]');
   await expect(link).toHaveText("club website");
-  await page.keyboard.press("End");
+  await lineEnd(page);
   await caption(page, "The browser asks for the address; the words become a link.", 1800);
   await expect(page.getByRole("status")).toContainText("Saved");
   await showDocumentTop(page);
@@ -456,10 +479,12 @@ test("07-page-setup-and-export", async ({ page }) => {
   await expect(headers).toHaveCount(3);
   await expect(headers.first()).toHaveText("Riverside Garden Club");
   await expect(page.locator(".page-footer").first()).toContainText("1 / 3");
-  await caption(page, "Jump to Appendix A in the outline to see where the pages meet…", 900);
-  await page.locator(".outline").getByRole("button", { name: "Appendix A: plot assignments" }).click();
-  await expect(headers.nth(1)).toBeInViewport();
-  await caption(page, "…page 1 ends with the footer and \"1 / 3\"; page 2 starts with the header.", 2400);
+  await page
+    .locator(".page-footer")
+    .first()
+    .evaluate((el) => el.scrollIntoView({ behavior: "smooth", block: "center" }));
+  await beat(page, 700);
+  await caption(page, "Where pages meet: page 1 ends with the footer and \"1 / 3\"; page 2 starts with the header.", 2600);
 
   await caption(page, "File, Export DOCX makes a Word copy.", 900);
   const docx = await fileMenu(page, "Export DOCX");
@@ -522,7 +547,7 @@ test("08-carry-a-file-to-another-computer", async ({ page }) => {
   await expect(page.getByLabel("File title")).toHaveValue("Lisbon trip packing list");
   await caption(page, "Everything is back: the title, the heading and all four items.", 1600);
   await editor.locator("li").last().click();
-  await page.keyboard.press("End");
+  await lineEnd(page);
   await page.keyboard.press("Enter");
   await typeSlowly(page, "Sunglasses");
   await expect(editor.locator("li")).toHaveCount(5);

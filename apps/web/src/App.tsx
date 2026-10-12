@@ -40,6 +40,9 @@ import {
   LogIn,
   LogOut,
   Unplug,
+  Pencil,
+  ArrowDown,
+  ArrowUp,
 } from "lucide-react";
 import {
   createFile,
@@ -70,9 +73,10 @@ import {
   uploadDriveFile,
   type DriveItem,
 } from "./node-client";
-import { DriveBrowser } from "./drive/DriveBrowser";
+import { DriveBrowser, DriveDialog, NameDialog } from "./drive/DriveBrowser";
+import { searchFile } from "./library-search";
 import { ConnectDialog, SignInScreen, useNodeSession } from "./drive/SignIn";
-import { syncSummary, useServerSync } from "./drive/status";
+import { formatModified, syncSummary, useServerSync } from "./drive/status";
 import { completeHandoff } from "./node-client";
 import {
   ModeContext,
@@ -316,7 +320,15 @@ function LocalHome() {
   const [records, setRecords] = useState<FileRecord[]>([]),
     [query, setQuery] = useState(""),
     [error, setError] = useState(""),
-    [filter, setFilter] = useState("all");
+    [filter, setFilter] = useState("all"),
+    [sort, setSort] = useState<{ by: "name" | "edited"; desc: boolean }>({
+      by: "edited",
+      desc: true,
+    }),
+    [asking, setAsking] = useState<{
+      action: "rename" | "remove";
+      record: FileRecord;
+    } | null>(null);
   const refresh = useCallback(
     () =>
       storage
@@ -358,6 +370,102 @@ function LocalHome() {
     [make, open],
   );
   useEffect(() => window.suiteleaf?.onMenu(menu), [menu]);
+  const rename = async (r: FileRecord, title: string) => {
+    const write = async () => {
+      const latest = (await storage.get(r.file.id)) ?? r;
+      await storage.save({
+        ...latest,
+        file: {
+          ...latest.file,
+          title: title.slice(0, 200),
+          updatedAt: new Date().toISOString(),
+        },
+      });
+      return true;
+    };
+    // An editor holding the file would save its old title over the new one.
+    const done = navigator.locks
+      ? await navigator.locks.request(
+          `suiteleaf:${r.file.id}`,
+          { ifAvailable: true },
+          (lock) => (lock ? write() : false),
+        )
+      : await write();
+    if (!done)
+      throw new Error(
+        `"${r.file.title}" is open in another tab. Rename it there, or close it first.`,
+      );
+    await refresh();
+  };
+  const searching = query.trim() !== "",
+    kindLabel =
+      filter === "all"
+        ? "Your files"
+        : filter === "doc"
+          ? "Documents"
+          : filter === "sheet"
+            ? "Spreadsheets"
+            : "Presentations",
+    heading = !searching
+      ? kindLabel
+      : filter === "all"
+        ? `Results for “${query.trim()}”`
+        : `${kindLabel} matching “${query.trim()}”`;
+  const shown = records
+    .filter((r) => filter === "all" || r.file.kind === filter)
+    .flatMap((r) => {
+      const hit = searchFile(r.file, query);
+      return hit ? [{ r, snippet: hit.snippet }] : [];
+    })
+    .sort((a, b) => {
+      const order =
+        sort.by === "name"
+          ? a.r.file.title.localeCompare(b.r.file.title, undefined, {
+              numeric: true,
+              sensitivity: "base",
+            })
+          : a.r.file.updatedAt.localeCompare(b.r.file.updatedAt);
+      return sort.desc ? -order : order;
+    });
+  const sortBy = (by: "name" | "edited", label: string) => (
+    <button
+      className={`sort-head ${sort.by === by ? "active" : ""}`}
+      aria-label={`Sort by ${label.toLowerCase()}`}
+      title={`Sort by ${label.toLowerCase()}`}
+      onClick={() =>
+        setSort(
+          sort.by === by
+            ? { by, desc: !sort.desc }
+            : { by, desc: by === "edited" },
+        )
+      }
+    >
+      {label}
+      {sort.by === by ? (
+        sort.desc ? (
+          <ArrowDown size={12} />
+        ) : (
+          <ArrowUp size={12} />
+        )
+      ) : null}
+    </button>
+  );
+  const samples = (
+    [
+      ["Sample document", sampleDoc],
+      ["Sample budget", sampleSheet],
+      ["Sample presentation", sampleSlide],
+    ] as const
+  ).map(([label, sample]) => (
+    <button
+      key={label}
+      onClick={() =>
+        void open({ file: sample() }).catch((e) => setError(message(e)))
+      }
+    >
+      {label}
+    </button>
+  ));
   return (
     <div className="home">
       <aside className="sidebar">
@@ -424,149 +532,165 @@ function LocalHome() {
               placeholder="Search your files"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setQuery("");
+              }}
             />
           </label>
           <span className="version">OPEN SOURCE · v0.1</span>
         </header>
         <LeftServerNotice />
-        <section className="welcome">
-          <p className="eyebrow">YOUR EVERYDAY WORKSPACE</p>
-          <h1>Good ideas start here.</h1>
-          <p>Write something. Work out the numbers. Make it yours.</p>
-        </section>
-        <NewCards onCreate={make} />
+        {searching ? null : (
+          <>
+            <section className="welcome">
+              <p className="eyebrow">YOUR EVERYDAY WORKSPACE</p>
+              <h1>Good ideas start here.</h1>
+              <p>Write something. Work out the numbers. Make it yours.</p>
+            </section>
+            <NewCards onCreate={make} />
+          </>
+        )}
         <ErrorBanner error={error} onDismiss={() => setError("")} />
         {connecting ? (
           <ConnectDialog onClose={() => setConnecting(false)} />
         ) : null}
-        <section className="file-section">
+        <section className={`file-section ${searching ? "searching" : ""}`}>
           <header>
-            <h2>
-              {filter === "all"
-                ? "Your files"
-                : filter === "doc"
-                  ? "Documents"
-                  : filter === "sheet"
-                    ? "Spreadsheets"
-                    : "Presentations"}
-            </h2>
-            <ImportButton onImport={open} onError={setError} />
+            <h2>{heading}</h2>
+            {searching ? (
+              <button onClick={() => setQuery("")}>Clear search</button>
+            ) : (
+              <ImportButton onImport={open} onError={setError} />
+            )}
           </header>
-          {records.length === 0 ? (
+          {records.length === 0 && !searching ? (
             <div className="empty">
               <FolderOpen size={34} />
               <h3>A workspace waiting for you</h3>
               <p>Create your first file, or explore a sample.</p>
-              <div>
-                <button
-                  onClick={() =>
-                    void open({ file: sampleDoc() }).catch((e) =>
-                      setError(message(e)),
-                    )
-                  }
-                >
-                  Sample document
-                </button>
-                <button
-                  onClick={() =>
-                    void open({ file: sampleSheet() }).catch((e) =>
-                      setError(message(e)),
-                    )
-                  }
-                >
-                  Sample budget
-                </button>
-                <button
-                  onClick={() =>
-                    void open({ file: sampleSlide() }).catch((e) =>
-                      setError(message(e)),
-                    )
-                  }
-                >
-                  Sample presentation
-                </button>
-              </div>
+              <div>{samples}</div>
+            </div>
+          ) : shown.length === 0 ? (
+            <div className="empty">
+              {searching ? <Search size={30} /> : <FolderOpen size={34} />}
+              <h3>
+                {searching
+                  ? `No files match “${query.trim()}”`
+                  : `No ${kindLabel.toLowerCase()} yet`}
+              </h3>
+              <p>
+                {searching
+                  ? "Search looks at file names and the words inside them."
+                  : "Files you create or import appear here."}
+              </p>
             </div>
           ) : (
             <div className="file-list">
               <div className="file-list-head">
-                <span>Name</span>
-                <span>Last edited</span>
+                {sortBy("name", "Name")}
+                {sortBy("edited", "Last edited")}
                 <span />
               </div>
-              {records
-                .filter(
-                  (r) =>
-                    (filter === "all" || r.file.kind === filter) &&
-                    r.file.title.toLowerCase().includes(query.toLowerCase()),
-                )
-                .sort((a, b) =>
-                  b.file.updatedAt.localeCompare(a.file.updatedAt),
-                )
-                .map((r) => (
-                  <div className="file-row" key={r.file.id}>
-                    <Link to={`/file/${r.file.id}`}>
-                      <span className={`file-icon ${r.file.kind}`}>
-                        {r.file.kind === "doc" ? (
-                          <FileText size={21} />
-                        ) : r.file.kind === "sheet" ? (
-                          <Sheet size={21} />
-                        ) : (
-                          <Presentation size={21} />
-                        )}
-                      </span>
-                      <span>
-                        {r.file.title}
-                        {r.recovery ? (
-                          <small>Recovery draft available</small>
-                        ) : r.path ? (
-                          <small>{r.path}</small>
-                        ) : null}
-                      </span>
-                    </Link>
-                    <time>
-                      {new Date(r.file.updatedAt).toLocaleDateString(
-                        undefined,
-                        { month: "short", day: "numeric" },
+              {shown.map(({ r, snippet }) => (
+                <div className="file-row" key={r.file.id}>
+                  <Link to={`/file/${r.file.id}`}>
+                    <span className={`file-icon ${r.file.kind}`}>
+                      {r.file.kind === "doc" ? (
+                        <FileText size={21} />
+                      ) : r.file.kind === "sheet" ? (
+                        <Sheet size={21} />
+                      ) : (
+                        <Presentation size={21} />
                       )}
-                    </time>
-                    <div className="file-controls">
-                      <button
-                        title="Duplicate"
-                        aria-label={`Duplicate ${r.file.title}`}
-                        onClick={() =>
-                          void storage
-                            .save({ file: duplicateFile(r.file) })
-                            .then(refresh)
-                            .catch((e) => setError(message(e)))
-                        }
-                      >
-                        <Copy size={16} />
-                      </button>
-                      <button
-                        title="Remove from library"
-                        aria-label={`Remove ${r.file.title}`}
-                        onClick={() => {
-                          if (
-                            window.confirm(
-                              window.suiteleaf
-                                ? "Remove this entry and its recovery draft? Your saved file remains on disk."
-                                : "Delete this file from this browser?",
-                            )
-                          )
-                            void storage
-                              .remove(r.file.id)
-                              .then(refresh)
-                              .catch((e) => setError(message(e)));
-                        }}
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
+                    </span>
+                    <span>
+                      {r.file.title}
+                      {snippet ? (
+                        <small className="file-snippet">{snippet}</small>
+                      ) : r.recovery ? (
+                        <small>Recovery draft available</small>
+                      ) : r.path ? (
+                        <small>{r.path}</small>
+                      ) : null}
+                    </span>
+                  </Link>
+                  <time
+                    dateTime={r.file.updatedAt}
+                    title={new Date(r.file.updatedAt).toLocaleString()}
+                  >
+                    {formatModified(r.file.updatedAt)}
+                  </time>
+                  <div className="file-controls">
+                    <button
+                      title="Rename"
+                      aria-label={`Rename ${r.file.title}`}
+                      onClick={() => setAsking({ action: "rename", record: r })}
+                    >
+                      <Pencil size={16} />
+                    </button>
+                    <button
+                      title="Make a copy"
+                      aria-label={`Duplicate ${r.file.title}`}
+                      onClick={() =>
+                        void storage
+                          .save({ file: duplicateFile(r.file) })
+                          .then(refresh)
+                          .catch((e) => setError(message(e)))
+                      }
+                    >
+                      <Copy size={16} />
+                    </button>
+                    <button
+                      title="Remove from library"
+                      aria-label={`Remove ${r.file.title}`}
+                      onClick={() => setAsking({ action: "remove", record: r })}
+                    >
+                      <Trash2 size={16} />
+                    </button>
                   </div>
-                ))}
+                </div>
+              ))}
             </div>
           )}
+          {records.length > 0 && !searching ? (
+            <p className="sample-strip">Explore a sample: {samples}</p>
+          ) : null}
+          {asking?.action === "rename" ? (
+            <NameDialog
+              title="Rename"
+              submitLabel="OK"
+              initial={asking.record.file.title}
+              onClose={() => setAsking(null)}
+              onSubmit={(title) => {
+                const { record } = asking;
+                setAsking(null);
+                if (title !== record.file.title)
+                  void rename(record, title).catch((e) => setError(message(e)));
+              }}
+            />
+          ) : asking?.action === "remove" ? (
+            <DriveDialog
+              title={
+                window.suiteleaf ? "Remove from library?" : "Delete this file?"
+              }
+              submitLabel={window.suiteleaf ? "Remove" : "Delete"}
+              onClose={() => setAsking(null)}
+              onSubmit={() => {
+                const { record } = asking;
+                setAsking(null);
+                void storage
+                  .remove(record.file.id)
+                  .then(refresh)
+                  .catch((e) => setError(message(e)));
+              }}
+            >
+              <p className="dialog-note">
+                {window.suiteleaf
+                  ? `“${asking.record.file.title}” and its recovery draft leave the library. Your saved file remains on disk.`
+                  : `“${asking.record.file.title}” will be deleted from this browser. This can't be undone.`}
+              </p>
+            </DriveDialog>
+          ) : null}
         </section>
         <footer className="home-footer">
           A calmer place to get things done.<span>SuiteLeaf · Apache-2.0</span>
