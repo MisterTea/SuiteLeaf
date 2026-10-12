@@ -459,7 +459,7 @@ test.describe("cluster mode", () => {
     const server = await startServer();
     try {
       await page.goto(server.url);
-      await caption(page, "Sam is writing the bake sale flyer in SuiteDrive.");
+      await caption(page, "Sam signs in to the garden club's server to write the bake sale flyer.");
       await createAccount(page, "Sam Okafor", "sam@riverside-garden.org");
       await page.getByRole("button", { name: "New document" }).click();
       const title = page.getByLabel("File title");
@@ -500,7 +500,9 @@ test.describe("cluster mode", () => {
       const banner = page.getByText("This file was changed in SuiteDrive after you opened it");
       await expect(banner).toBeVisible({ timeout: 20000 });
       await expect(status).toHaveText("SuiteDrive has a newer version");
-      await caption(page, "SuiteLeaf won't overwrite Jordan's version. Sam's edits are safe on this device.", 2200);
+      await expect(page.getByRole("alert")).toContainText("A newer version was saved at");
+      await caption(page, "SuiteLeaf won't overwrite Jordan's version. Sam's edits are safe on this device.", 2600);
+      await caption(page, "The banner says when Jordan saved and what each choice does.", 3000);
 
       await caption(page, "Sam keeps both: Save as copy.", 1000);
       await page.getByRole("button", { name: "Save as copy" }).click();
@@ -521,7 +523,7 @@ test.describe("cluster mode", () => {
       await expect(driveItem(page, "Bake sale flyer (Sam's draft).sldoc")).toBeVisible();
       await caption(page, "SuiteDrive now has Jordan's version and Sam's copy.", 2000);
 
-      await caption(page, "Sam opens Jordan's version to compare.", 1000);
+      await caption(page, "Sam opens Jordan's version, with the new time.", 1000);
       const jordans = driveItem(page, "Bake sale flyer.sldoc");
       await jordans.click();
       await expect(editor).toContainText("9 am to 1 pm");
@@ -531,13 +533,19 @@ test.describe("cluster mode", () => {
       await saveElsewhere("Bake sale flyer.sldoc", "Saturday", "Saturday 14 June");
       await typeAtEnd(page, editor, " Bring a cake!");
       await expect(banner).toBeVisible({ timeout: 20000 });
-      await caption(page, "This time Jordan's version is the one to keep: Reload from SuiteDrive.", 1600);
-      page.once("dialog", (d) => void d.accept());
+      await caption(page, "This time Jordan's version is the one to keep: Reload from SuiteDrive.", 1800);
+      await caption(page, "Reloading discards Sam's unsaved line, so SuiteLeaf asks him to confirm first.", 2200);
+      let asked = "";
+      page.once("dialog", (d) => {
+        asked = d.message();
+        void d.accept();
+      });
       await page.getByRole("button", { name: "Reload from SuiteDrive" }).click();
+      await expect.poll(() => asked).toContain("Your edits will be lost");
       await expect(editor).toContainText("Saturday 14 June");
       await expect(editor).not.toContainText("Bring a cake!");
       await expect(status).toHaveText("Saved to SuiteDrive");
-      await caption(page, "Nothing was overwritten without Sam choosing.", 1800);
+      await caption(page, "Nothing was overwritten without Sam choosing.", 2400);
     } finally {
       server.stop();
     }
