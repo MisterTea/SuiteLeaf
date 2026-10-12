@@ -357,9 +357,15 @@ test.describe("cluster mode", () => {
       await expect(page.getByRole("heading", { name: "SuiteDrive" })).toBeVisible();
       await showDrive(page);
 
-      await caption(page, "She makes a folder for the garden club. (SuiteLeaf asks for the name.)", 1400);
-      page.once("dialog", (d) => void d.accept("Garden club"));
+      await caption(page, "She makes a folder for the garden club.", 1000);
       await page.getByRole("button", { name: "New folder" }).click();
+      const dialog = page.getByRole("dialog", { name: "New folder" });
+      await expect(dialog.getByLabel("Name")).toBeFocused();
+      await beat(page, 500);
+      await typeSlowly(page, "Garden club");
+      await beat(page, 400);
+      await dialog.getByRole("button", { name: "Create" }).click();
+      await expect(dialog).toHaveCount(0);
       await expect(driveItem(page, "Garden club")).toBeVisible();
       await beat(page);
 
@@ -367,9 +373,11 @@ test.describe("cluster mode", () => {
       await driveItem(page, "Garden club").click();
       await expect(page.getByLabel("Folder path")).toContainText("Garden club");
       await expect(page.getByText("This folder is empty.")).toBeVisible();
-      await beat(page, 600);
-      await caption(page, "…and starts a new document inside it.", 900);
-      await page.getByRole("button", { name: "New document" }).click();
+      const newDocument = page.getByRole("button", { name: /New document/ });
+      await expect(newDocument).toContainText("In Garden club");
+      await caption(page, "…and the New buttons now say \"In Garden club\".", 1600);
+      await caption(page, "She starts a new document there.", 900);
+      await newDocument.click();
 
       const editor = page.getByRole("textbox", { name: "Document content" });
       await expect(editor).toBeVisible();
@@ -387,10 +395,10 @@ test.describe("cluster mode", () => {
       await expect(status).toHaveText("Saved to SuiteDrive", { timeout: 20000 });
       await beat(page);
 
-      await caption(page, "Back in SuiteDrive, she opens the folder again.", 1000);
+      await caption(page, "Back to files takes her to the folder she came from.", 1000);
       await page.getByRole("button", { name: "Back to files" }).click();
       await showDrive(page);
-      await driveItem(page, "Garden club").click();
+      await expect(page.getByLabel("Folder path")).toContainText("Garden club");
       await expect(driveItem(page, "Watering rota.sldoc")).toBeVisible();
       await caption(page, "The document is there under its new name, ready for the rest of the team.", 2200);
     } finally {

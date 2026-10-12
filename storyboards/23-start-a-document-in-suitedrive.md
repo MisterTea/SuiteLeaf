@@ -15,12 +15,12 @@ Rosa coordinates the garden club's watering rota. She opens the team's SuiteLeaf
 ## Scenes
 
 1. **Open the server.** Rosa goes to the server's address. Because the server serves the app, it opens straight to sign-in, with no "work on this computer" option. She creates her account.
-2. **New folder.** In SuiteDrive she clicks "New folder" and names it "Garden club". It appears in My Drive.
-3. **Open the folder.** She clicks it. The path reads "My Drive › Garden club" and the folder is empty.
+2. **New folder.** In SuiteDrive she clicks "New folder". A small SuiteLeaf dialog asks for the name, with "Untitled folder" selected. She types "Garden club" and clicks Create. It appears in My Drive.
+3. **Open the folder.** She clicks it. The path reads "My Drive › Garden club" and the folder is empty. The New document, New spreadsheet, and New presentation buttons now read "In Garden club".
 4. **New document.** She clicks "New document". A blank document opens, and she types the rota.
 5. **Saved to SuiteDrive.** The status next to the title changes to "Saved to SuiteDrive". There's no Save button.
 6. **Rename.** She types "Watering rota" in the title box. The status returns to "Saved to SuiteDrive".
-7. **Find it again.** Back to files, she opens "Garden club" and sees "Watering rota.sldoc".
+7. **Find it again.** "Back to files" returns her to the Garden club folder, where "Watering rota.sldoc" is waiting.
 
 ## Success looks like
 
@@ -29,6 +29,9 @@ Rosa coordinates the garden club's watering rota. She opens the team's SuiteLeaf
 
 ## Gaps and notes
 
-- "New folder", the Rename pencil, and Move to trash use the browser's own prompt and confirm pop-ups rather than in-app dialogs. They look out of place, and they don't show in the recordings, which is why the video only captions the folder name.
-- After "Back to files", SuiteDrive returns to the top of My Drive instead of the folder Rosa came from, so she has to open "Garden club" again.
-- SuiteDrive shows file extensions (`.sldoc`, `.slslides`). Google Drive shows document titles only.
+- "New folder", the Rename pencil, and Move to trash now use in-app dialogs in SuiteLeaf's dialog style instead of the browser's prompt and confirm pop-ups. Rename selects the title but not the extension, so typing a new name keeps `.sldoc`.
+- The home screen remembers the open folder for the signed-in account for the rest of the browser session, so "Back to files" (and reloading) returns to it. If that folder is gone, SuiteDrive starts at My Drive.
+- SuiteDrive shows file extensions (`.sldoc`, `.slslides`). Google Drive shows document titles only. Hiding them changes the names tests and other storyboards look for, so it's left for a separate change.
+- Inside the editor, nothing shows which folder the document is in. Google Docs shows the folder next to the title and lets you move the file from there.
+- Move to trash has no Trash view to restore from, and no "Undo" notice like Google Drive's. That's why SuiteLeaf still asks before trashing.
+- In the editor's File menu, New and Make a copy put the new file at the top of My Drive, and Open and Save as start browsing there. Google Docs uses the current file's folder.

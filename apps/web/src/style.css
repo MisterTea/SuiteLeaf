@@ -2569,6 +2569,7 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
   color: inherit;
 }
 .drive-crumbs button:disabled {
+  opacity: 1;
   color: var(--text-primary);
   font-weight: 600;
   cursor: default;
