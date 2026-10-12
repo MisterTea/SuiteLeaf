@@ -579,6 +579,11 @@ test("15-summarize-with-a-pivot", async ({ page }) => {
     ],
   );
 
+  await caption(page, "The amounts are dollars, so she formats the column as currency.", 1000);
+  await selectCells(page, "D2:D13");
+  await page.getByRole("button", { name: "Format as currency", exact: true }).click();
+  await beat(page, 700);
+
   await caption(page, "Ana selects the log and chooses Insert › Pivot table.", 1100);
   await selectCells(page, "A1:D13");
   await beat(page, 500);
@@ -595,57 +600,68 @@ test("15-summarize-with-a-pivot", async ({ page }) => {
   await beat(page, 600);
   await panel.getByLabel("Columns (optional)").selectOption({ label: "Paid by" });
   await beat(page, 600);
-  await caption(page, "…and add up the Amount.", 900);
-  await panel.getByLabel("Value field").selectOption({ label: "Amount" });
-  await panel.getByLabel("Summarize by").selectOption("SUM");
-  await beat(page, 600);
+  await panel.getByLabel("Summarize by").scrollIntoViewIfNeeded();
+  await expect(panel.getByLabel("Value field").locator("option:checked")).toHaveText("Amount");
+  await expect(panel.getByLabel("Summarize by")).toHaveValue("SUM");
+  await caption(page, "…and the Amount column is already picked, summed.", 1600);
   await page.getByRole("button", { name: "Create pivot", exact: true }).click();
   await expect(panel).toHaveCount(0);
-  await caption(page, "The summary lands on its own tab. The lock means it's protected from accidental edits.", 2400);
+  const tab = (name: string) => page.getByRole("tab", { name, exact: true });
+  await expect(tab("October by category")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Pivot table details" })).toContainText("Sheet1 A1:D13");
+  await caption(page, "The summary lands on its own locked tab, with grand totals and the dollar format.", 2600);
 
   let file = await native(page);
   const pivot = file.content.pivots[0];
+  const pivotCells = (f: Native) => f.content.workbook.sheets[pivot.targetSheetId].cellData;
   const table = (f: Native) => {
-    const cells = f.content.workbook.sheets[pivot.targetSheetId].cellData;
+    const cells = pivotCells(f);
     const rows = Object.keys(cells).map(Number).sort((a, b) => a - b);
-    return rows.map((r) => [0, 1, 2].map((c) => cells[r][c]?.v ?? null));
+    return rows.map((r) => [0, 1, 2, 3].map((c) => cells[r][c]?.v ?? null));
   };
-  const groceries = (f: Native) => table(f).find((r) => r[0] === "Groceries");
-  expect(table(file)[0]).toEqual(["Category", "Ana", "Ben"]);
-  expect(groceries(file)![1]).toBeCloseTo(245.05);
-  expect(groceries(file)![2]).toBeCloseTo(117.8);
+  const groceries = (f: Native) => table(f).find((r) => r[0] === "Groceries")!;
+  expect(table(file)[0]).toEqual(["Category", "Ana", "Ben", "Grand Total"]);
+  expect(groceries(file)[1]).toBeCloseTo(245.05);
+  expect(groceries(file)[2]).toBeCloseTo(117.8);
+  expect(groceries(file)[3]).toBeCloseTo(362.85);
+  expect(table(file).at(-1)![0]).toBe("Grand Total");
+  expect(table(file).at(-1)![3]).toBeCloseTo(760.74);
+  const sourcePattern = styleOf(file, cellsOf(file)[1][3]).n.pattern;
+  expect(styleOf(file, pivotCells(file)[2][1]).n.pattern).toBe(sourcePattern);
+  expect(styleOf(file, pivotCells(file)[0][0]).bl).toBe(1);
 
   await caption(page, "Ben spots a typo: the Oct 1 grocery run was $148.20, not $84.20.", 1100);
-  await page.getByText("Sheet1", { exact: true }).click();
+  await tab("Sheet1").click();
   await beat(page, 500);
   await selectCells(page, "D2");
   await typeSlowly(page, "148.2", 120);
   await page.keyboard.press("Enter");
   await beat(page, 600);
 
-  await caption(page, "Pivots refresh when you ask. Charts & pivots › Refresh.", 1100);
-  await page.locator(".sheet-analyses-dropdown summary").click();
-  await beat(page, 700);
-  await page.getByRole("button", { name: "Refresh October by category" }).click();
-  await beat(page, 600);
-  await page.getByText("October by category 1", { exact: true }).click();
-  await caption(page, "Ana's groceries go from $245.05 to $309.05.", 2200);
+  await caption(page, "Back on the pivot, there's nothing to refresh…", 900);
+  await tab("October by category").click();
+  await selectCells(page, "B3");
+  await caption(page, "…Ana's groceries already went from $245.05 to $309.05.", 2400);
 
   file = await native(page);
-  expect(groceries(file)![1]).toBeCloseTo(309.05);
+  expect(groceries(file)[1]).toBeCloseTo(309.05);
+  expect(table(file).at(-1)![3]).toBeCloseTo(824.74);
 
   await caption(page, "To add notes beside the numbers, she makes an editable copy.", 1100);
-  const list = page.locator(".sheet-analyses-dropdown");
-  if (!(await list.evaluate((d) => (d as HTMLDetailsElement).open))) await list.locator("summary").click();
-  await beat(page, 600);
-  await page.getByTitle("Make editable copy").click();
-  await expect(page.getByText(/^Pivot copy/)).toBeVisible();
-  await caption(page, "The copy is a plain worksheet she can format and annotate freely.", 2000);
+  await page.getByRole("button", { name: "Make editable copy", exact: true }).click();
+  await expect(tab("October by category (copy)")).toBeVisible();
+  await selectCells(page, "E3");
+  await typeSlowly(page, "Includes the big Oct 1 shop", 40);
+  await page.keyboard.press("Enter");
+  await caption(page, "The copy keeps the formatting, and she can annotate it freely.", 2200);
 
   file = await native(page);
   expect(file.content.workbook.sheetOrder).toHaveLength(3);
   const copy = cellsOf(file, 2);
   expect(copy[0][1].v).toBe("Ana");
+  expect(copy[2][4].v).toBe("Includes the big Oct 1 shop");
+  expect(styleOf(file, copy[0][0]).bl).toBe(1);
+  expect(styleOf(file, copy[2][1]).n.pattern).toBe(sourcePattern);
   await caption(page, "Twelve receipts, one clear summary.", 1600);
 });
 

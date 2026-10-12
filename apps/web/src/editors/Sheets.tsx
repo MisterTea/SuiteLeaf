@@ -94,6 +94,7 @@ import {
   MessageSquarePlus,
   ChevronDown,
   EllipsisVertical,
+  Lock,
 } from "lucide-react";
 import {
   filename,
@@ -105,8 +106,13 @@ import {
   type SourceRange,
 } from "@suiteleaf/core";
 import {
+  copySheetName,
+  defaultValueField,
+  pivotCells,
   pivotResult,
   shiftRange,
+  uniqueSheetName,
+  valueFormat,
   valueTicks,
   type CellValue,
 } from "../analysis";
@@ -787,7 +793,13 @@ export default function Sheets({
   const persist = useRef<() => void>(() => {}),
     refreshCharts = useRef<() => void>(() => {}),
     syncTextStyle = useRef<() => void>(() => {}),
-    editChart = useRef<(id: string) => void>(() => {});
+    editChart = useRef<(id: string) => void>(() => {}),
+    refreshPivots = useRef<(sheetIds: Set<string>) => void>(() => {});
+  /** Last result written per pivot, so unchanged recalculations leave the sheet alone. */
+  const pivotWrites = useRef(new Map<string, string>()),
+    writingPivot = useRef(false),
+    pivotErrors = useRef(new Map<string, string>()),
+    valueChosen = useRef(false);
   const readRange = (r: SourceRange): CellValue[][] => {
     const s = book.current?.getSheetBySheetId(r.sheetId);
     if (!s || r.endRow >= s.getMaxRows() || r.endColumn >= s.getMaxColumns())
@@ -869,6 +881,7 @@ export default function Sheets({
         book.current = null;
         persist.current = () => {};
         refreshCharts.current = () => {};
+        refreshPivots.current = () => {};
         for (const c of sessionContent.charts) charts.delete(c.id);
         univer.dispose();
       };
@@ -1152,6 +1165,7 @@ export default function Sheets({
         setIsItalic(style?.it === 1);
         setIsStrike(style?.st?.s === 1);
       };
+      const changedSheets = new Set<string>();
       const listener = workbook.onCommandExecuted((command: any) => {
         if (
           !disposed &&
@@ -1162,6 +1176,12 @@ export default function Sheets({
         if (busy || disposed || !command.id.includes("mutation")) return;
         pending.current = true;
         const p = command.params ?? {};
+        // A pivot's own output never triggers further pivot refreshes, so pivots of pivots cannot loop.
+        if (!writingPivot.current) {
+          if (typeof p.subUnitId === "string") changedSheets.add(p.subUnitId);
+          for (const unit of Object.values(p.unitData ?? {}))
+            for (const id of Object.keys(unit ?? {})) changedSheets.add(id);
+        }
         const structural = /sheet\.mutation\.(insert|remove)-(row|col)$/.exec(
           command.id,
         );
@@ -1213,6 +1233,10 @@ export default function Sheets({
         timer = setTimeout(() => {
           refreshCharts.current();
           persist.current();
+          if (changedSheets.size) {
+            refreshPivots.current(new Set(changedSheets));
+            changedSheets.clear();
+          }
         }, 180);
       });
       // Univer's status bar only recalculates when the selection changes, so a filter
@@ -1767,6 +1791,7 @@ export default function Sheets({
     if (type === "chart") setChartType((c as ChartDefinition)?.type ?? "bar");
     else {
       const p = c as PivotDefinition | undefined;
+      valueChosen.current = !!p;
       setRowFields(p?.rows.join(",") ?? "0");
       setColumnFields(p?.columns.join(",") ?? "");
       setValueField(p?.value ?? 1);
@@ -1817,35 +1842,105 @@ export default function Sheets({
     setSourceSheet(book.current.getActiveSheet().getSheetId());
     setRange(r.getA1Notation());
   };
-  const refreshPivot = async (p: PivotDefinition) => {
+  const refreshPivot = async (p: PivotDefinition, onlyIfChanged = false) => {
     await api.current.getFormula().onCalculationResultApplied(10000);
-    const values = readRange(p.source);
-    const result = pivotResult(values, p);
     const s = book.current.getSheetBySheetId(p.targetSheetId);
     if (!s) throw new Error("The pivot worksheet has been deleted.");
+    const values = readRange(p.source);
+    const result = pivotResult(values, p);
+    const numberFormat =
+      p.aggregate === "COUNT"
+        ? undefined
+        : valueFormat(
+            values,
+            book.current
+              .getSheetBySheetId(p.source.sheetId)
+              .getRange(rangeLabel(p.source))
+              .getNumberFormats(),
+            p.value,
+          );
+    const signature = JSON.stringify([result, numberFormat]);
+    pivotErrors.current.delete(p.id);
+    if (onlyIfChanged && pivotWrites.current.get(p.id) === signature) return;
     const permission = s.getWorksheetPermission();
-    if (permission.isProtected()) await permission.setEditable();
+    const grow =
+      result.length > s.getMaxRows() || result[0].length > s.getMaxColumns();
     try {
-      s.clear({ contentsOnly: true });
-      if (result.length > s.getMaxRows())
-        s.insertRows(s.getMaxRows() - 1, result.length - s.getMaxRows() + 1);
-      if (result[0].length > s.getMaxColumns())
-        s.insertColumns(
-          s.getMaxColumns() - 1,
-          result[0].length - s.getMaxColumns() + 1,
-        );
-      s.getRange(0, 0, result.length, result[0].length).setValues(
-        result.map((row) =>
-          row.map((v) => (typeof v === "string" ? { v, t: 1 } : v)),
-        ),
-      );
-      s.getRange(0, 0, 1, result[0].length).setFontWeight("bold");
+      if (grow) {
+        if (permission.isProtected()) await permission.setEditable();
+        if (result.length > s.getMaxRows())
+          s.insertRows(s.getMaxRows() - 1, result.length - s.getMaxRows() + 1);
+        if (result[0].length > s.getMaxColumns())
+          s.insertColumns(
+            s.getMaxColumns() - 1,
+            result[0].length - s.getMaxColumns() + 1,
+          );
+      }
+      // A direct mutation keeps recalculation out of the undo stack, so Cmd+Z after a
+      // source edit undoes the edit itself; the pivot then follows it back.
+      writingPivot.current = true;
+      try {
+        api.current.syncExecuteCommand("sheet.mutation.set-range-values", {
+          unitId: book.current.getId(),
+          subUnitId: p.targetSheetId,
+          cellValue: pivotCells(result, {
+            rowFields: p.rows.length,
+            numberFormat,
+            previous: {
+              rows: s.getLastRow() + 1,
+              columns: s.getLastColumn() + 1,
+            },
+          }),
+          isOverrideStyle: true,
+        });
+      } finally {
+        writingPivot.current = false;
+      }
+      pivotWrites.current.set(p.id, signature);
       p.invalid = false;
     } finally {
-      if (!permission.isProtected())
-        await permission.protect({ name: "Generated pivot" });
-      await permission.setReadOnly();
+      if (grow || !permission.isProtected()) {
+        if (!permission.isProtected())
+          await permission.protect({ name: "Generated pivot" });
+        await permission.setReadOnly();
+      }
     }
+    persist.current();
+  };
+  refreshPivots.current = (sheetIds) => {
+    for (const p of content.current.pivots)
+      if (
+        !p.invalid &&
+        p.source.sheetId !== p.targetSheetId &&
+        sheetIds.has(p.source.sheetId)
+      )
+        void refreshPivot(p, true).catch((e) => {
+          pivotErrors.current.set(
+            p.id,
+            e instanceof Error ? e.message : String(e),
+          );
+          setRevision((v) => v + 1);
+        });
+  };
+  const copyPivot = (p: PivotDefinition) => {
+    const s = book.current.getSheetBySheetId(p.targetSheetId);
+    if (!s) return;
+    const rows = s.getLastRow() + 1,
+      columns = s.getLastColumn() + 1;
+    if (rows < 1 || columns < 1) return;
+    const cells = s.getRange(0, 0, rows, columns).getCellDatas();
+    const copy = book.current.create(
+      copySheetName(
+        p.title,
+        book.current.getSheets().map((x: any) => x.getSheetName()),
+      ),
+      Math.max(1000, rows),
+      Math.max(26, columns),
+    );
+    copy
+      .getRange(0, 0, rows, columns)
+      .setValues(cells.map((r: any[]) => r.map((c) => c ?? {})));
+    book.current.setActiveSheet(copy.getSheetId());
     persist.current();
   };
   const submit = async () => {
@@ -1893,28 +1988,35 @@ export default function Sheets({
         const config = {
           rows,
           columns,
-          value: valueField,
+          value: valueChosen.current
+            ? valueField
+            : defaultValueField(values, rows),
           aggregate,
           filterColumn,
           filterValue,
         };
         const result = pivotResult(values, config);
+        const name = title.trim() || "Pivot table";
         let p = content.current.pivots.find((p) => p.id === editing);
         if (!p) {
           const target = book.current.create(
-            `${title.slice(0, 20)} ${content.current.pivots.length + 1}`,
+            uniqueSheetName(
+              name.slice(0, 31),
+              book.current.getSheets().map((s: any) => s.getSheetName()),
+            ),
             Math.max(1000, result.length),
             Math.max(26, result[0].length),
           );
           p = {
             id: crypto.randomUUID(),
-            title,
+            title: name,
             source,
             targetSheetId: target.getSheetId(),
             ...config,
           };
           content.current.pivots.push(p);
-        } else Object.assign(p, { title, source, ...config, invalid: false });
+        } else
+          Object.assign(p, { title: name, source, ...config, invalid: false });
         await refreshPivot(p);
         book.current.setActiveSheet(p.targetSheetId);
       }
@@ -1923,13 +2025,30 @@ export default function Sheets({
       onError(e instanceof Error ? e.message : String(e));
     }
   };
-  let fields: CellValue[] = [];
+  let fields: CellValue[] = [],
+    shownValueField = valueField;
   try {
-    fields = readRange(parseRange(range, sourceSheet))[0] ?? [];
+    const values = readRange(parseRange(range, sourceSheet));
+    fields = values[0] ?? [];
+    // Until a value field is chosen, follow the range and rows to the first numeric field.
+    if (panel === "pivot" && !valueChosen.current)
+      shownValueField = defaultValueField(
+        values,
+        rowFields ? rowFields.split(",").map(Number) : [],
+      );
   } catch {
     /* The inline editor allows temporarily incomplete ranges. */
   }
   const items = content.current;
+  const activePivot = ready
+    ? items.pivots.find(
+        (p) =>
+          p.targetSheetId === book.current?.getActiveSheet()?.getSheetId(),
+      )
+    : undefined;
+  const activePivotError = activePivot
+    ? pivotErrors.current.get(activePivot.id)
+    : undefined;
   return (
     <div className="sheets-editor">
       {notice ? (
@@ -2313,7 +2432,11 @@ export default function Sheets({
               <div key={p.id}>
                 <button onClick={() => startPanel("pivot", p.id)}>
                   {p.title}
-                  {p.invalid ? " · source missing" : ""}
+                  {p.invalid
+                    ? " · source missing"
+                    : pivotErrors.current.has(p.id)
+                      ? " · not updated"
+                      : ""}
                 </button>
                 <button
                   title="Refresh pivot"
@@ -2326,27 +2449,7 @@ export default function Sheets({
                 </button>
                 <button
                   title="Make editable copy"
-                  onClick={() => {
-                    const s = book.current.getSheetBySheetId(p.targetSheetId);
-                    if (!s) return;
-                    const v = s.getDataRange().getValues();
-                    const copy = book.current.create(
-                      `Pivot copy ${Date.now().toString().slice(-5)}`,
-                      Math.max(1000, v.length),
-                      Math.max(26, v[0].length),
-                    );
-                    copy
-                      .getRange(0, 0, v.length, v[0].length)
-                      .setValues(
-                        v.map((r: any[]) =>
-                          r.map((v) =>
-                            typeof v === "string" ? { v, t: 1 } : v,
-                          ),
-                        ),
-                      );
-                    book.current.setActiveSheet(copy.getSheetId());
-                    persist.current();
-                  }}
+                  onClick={() => copyPivot(p)}
                 >
                   Copy
                 </button>
@@ -2368,6 +2471,48 @@ export default function Sheets({
           <EllipsisVertical size={16} />
         </button>
       </div>
+      {activePivot ? (
+        <div
+          className="pivot-bar"
+          role="region"
+          aria-label="Pivot table details"
+        >
+          <Lock size={14} aria-hidden="true" />
+          <span className="pivot-bar-text">
+            <strong>Pivot table</strong> from{" "}
+            {book.current
+              ?.getSheetBySheetId(activePivot.source.sheetId)
+              ?.getSheetName() ?? "a deleted sheet"}{" "}
+            {rangeLabel(activePivot.source)} ·{" "}
+            {activePivot.invalid ? (
+              <span className="pivot-bar-warning">
+                Source missing. Edit the pivot to choose a new range.
+              </span>
+            ) : activePivotError ? (
+              <span className="pivot-bar-warning">
+                Not updated: {activePivotError}
+              </span>
+            ) : (
+              "Updates when the source changes"
+            )}
+          </span>
+          <button onClick={() => startPanel("pivot", activePivot.id)}>
+            Edit
+          </button>
+          <button
+            title="Refresh pivot"
+            aria-label="Refresh pivot"
+            onClick={() =>
+              void refreshPivot(activePivot).catch((e) => onError(String(e)))
+            }
+          >
+            <RefreshCw size={14} />
+          </button>
+          <button onClick={() => copyPivot(activePivot)}>
+            Make editable copy
+          </button>
+        </div>
+      ) : null}
       <div
         className="sheet-host"
         ref={host}
@@ -2508,8 +2653,11 @@ export default function Sheets({
               <label>
                 Value field
                 <select
-                  value={valueField}
-                  onChange={(e) => setValueField(+e.target.value)}
+                  value={shownValueField}
+                  onChange={(e) => {
+                    valueChosen.current = true;
+                    setValueField(+e.target.value);
+                  }}
                 >
                   {fields.map((v, i) => (
                     <option key={i} value={i}>
@@ -2555,8 +2703,9 @@ export default function Sheets({
                 </label>
               ) : null}
               <p className="hint">
-                Pivot results appear in a protected worksheet. Refresh after
-                source edits, or make an editable copy.
+                Pivot results appear in a protected worksheet with grand totals
+                and update when the source changes. Make an editable copy to
+                annotate them.
               </p>
             </>
           )}

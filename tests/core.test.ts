@@ -14,7 +14,15 @@ import {
   parseNamedFile,
   type DocFile,
 } from "../packages/core/src";
-import { pivotResult, shiftRange } from "../apps/web/src/analysis";
+import {
+  copySheetName,
+  defaultValueField,
+  pivotCells,
+  pivotResult,
+  shiftRange,
+  uniqueSheetName,
+  valueFormat,
+} from "../apps/web/src/analysis";
 describe("portable files", () => {
   it("round trips rich documents, embedded images, and workbook formulas", () => {
     const d = createFile("doc") as DocFile;
@@ -209,38 +217,121 @@ describe("analytics", () => {
   const c = { rows: [0], columns: [1], value: 2, aggregate: "SUM" as const };
   it("groups across row and column fields, ignoring nonnumeric aggregate values", () => {
     expect(pivotResult(data, c)).toEqual([
-      ["Team", "Q1", "Q2"],
-      ["North", 30, 40],
-      ["South", 50, null],
+      ["Team", "Q1", "Q2", "Grand Total"],
+      ["North", 30, 40, 70],
+      ["South", 50, null, 50],
+      ["Grand Total", 80, 40, 120],
     ]);
   });
-  it("computes average/min/max/count and exact-match filters", () => {
-    expect(pivotResult(data, { ...c, aggregate: "AVERAGE" })[1]).toEqual([
-      "North",
-      15,
-      40,
+  it("adds a Grand Total row, and a Grand Total column only when columns split the values", () => {
+    expect(pivotResult(data, { ...c, columns: [] })).toEqual([
+      ["Team", "SUM Revenue"],
+      ["North", 70],
+      ["South", 50],
+      ["Grand Total", 120],
     ]);
+    expect(
+      pivotResult(data, { ...c, rows: [0, 1], columns: [] }).at(-1),
+    ).toEqual(["Grand Total", null, 120]);
+  });
+  it("computes totals from the underlying records, not from the subtotals", () => {
+    const avg = pivotResult(data, { ...c, aggregate: "AVERAGE" });
+    expect(avg[1].slice(0, 3)).toEqual(["North", 15, 40]);
+    expect(avg[1][3]).toBeCloseTo(70 / 3);
+    expect(avg.at(-1)![0]).toBe("Grand Total");
+    expect(avg.at(-1)![1]).toBeCloseTo(80 / 3);
+    expect(avg.at(-1)!.slice(2)).toEqual([40, 30]);
+    expect(pivotResult(data, { ...c, aggregate: "COUNT" }).at(-1)).toEqual([
+      "Grand Total",
+      3,
+      2,
+      5,
+    ]);
+  });
+  it("sorts numeric group keys numerically", () => {
+    const years = [["Year", "N"], [10, 1], [9, 2], [100, 3]];
+    expect(
+      pivotResult(years, { rows: [0], columns: [], value: 1, aggregate: "SUM" })
+        .slice(1, -1)
+        .map((r) => r[0]),
+    ).toEqual([9, 10, 100]);
+  });
+  it("computes average/min/max/count and exact-match filters", () => {
+    expect(
+      pivotResult(data, { ...c, aggregate: "AVERAGE" })[1].slice(0, 3),
+    ).toEqual(["North", 15, 40]);
     expect(pivotResult(data, { ...c, aggregate: "MIN" })[1]).toEqual([
       "North",
       10,
       40,
+      10,
     ]);
     expect(pivotResult(data, { ...c, aggregate: "MAX" })[1]).toEqual([
       "North",
       20,
+      40,
       40,
     ]);
     expect(pivotResult(data, { ...c, aggregate: "COUNT" })[2]).toEqual([
       "South",
       1,
       1,
+      2,
     ]);
     expect(
       pivotResult(data, { ...c, filterColumn: 0, filterValue: "South" }),
     ).toEqual([
-      ["Team", "Q1"],
-      ["South", 50],
+      ["Team", "Q1", "Grand Total"],
+      ["South", 50, 50],
+      ["Grand Total", 50, 50],
     ]);
+  });
+  it("formats pivot cells: bold header and totals, source number format on values, stale cells cleared", () => {
+    const cells = pivotCells(pivotResult(data, c), {
+      rowFields: 1,
+      numberFormat: '"$"#,##0.00',
+      previous: { rows: 6, columns: 5 },
+    });
+    expect(cells[0][0]).toEqual({ v: "Team", t: 1, s: { bl: 1 } });
+    expect(cells[1][0]).toEqual({ v: "North", t: 1, s: null });
+    expect(cells[1][1]).toEqual({
+      v: 30,
+      t: 2,
+      s: { n: { pattern: '"$"#,##0.00' } },
+    });
+    expect(cells[1][3]).toEqual({
+      v: 70,
+      t: 2,
+      s: { bl: 1, n: { pattern: '"$"#,##0.00' } },
+    });
+    expect(cells[2][2]).toBeNull();
+    expect(cells[3][0]).toEqual({ v: "Grand Total", t: 1, s: { bl: 1 } });
+    expect(cells[3][3]?.s).toEqual({ bl: 1, n: { pattern: '"$"#,##0.00' } });
+    expect(cells[0][4]).toBeNull();
+    expect(cells[5][0]).toBeNull();
+  });
+  it("finds the source number format and a numeric default value field", () => {
+    const formats = [[], [null, null, "0.0%"], [null, null, "0.0%"]];
+    expect(valueFormat(data, formats, 2)).toBe("0.0%");
+    expect(valueFormat(data, formats, 0)).toBeUndefined();
+    const log = [
+      ["Date", "Category", "Paid by", "Amount"],
+      ["Oct 1", "Groceries", "Ana", 84.2],
+    ];
+    expect(defaultValueField(log, [0])).toBe(3);
+    expect(defaultValueField([["A", "B"], ["x", "y"]], [0])).toBe(1);
+  });
+  it("names pivot tabs and editable copies after the pivot", () => {
+    expect(uniqueSheetName("October", ["Sheet1"])).toBe("October");
+    expect(uniqueSheetName("October", ["october", "October 2"])).toBe(
+      "October 3",
+    );
+    expect(copySheetName("October by category", ["October by category"])).toBe(
+      "October by category (copy)",
+    );
+    expect(
+      copySheetName("October by category", ["October by category (copy)"]),
+    ).toBe("October by category (copy 2)");
   });
   it("rejects overlapping fields and handles empty selections", () => {
     expect(() => pivotResult(data, { ...c, columns: [0] })).toThrow();
