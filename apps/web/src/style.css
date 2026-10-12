@@ -1347,6 +1347,39 @@ a {
   min-height: 0;
   overflow: hidden;
 }
+.pivot-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin: 0 16px 6px;
+  padding: 4px 6px 4px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  font-family: var(--font-google);
+  font-size: 12px;
+}
+.pivot-bar-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.pivot-bar-text strong {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.pivot-bar-warning {
+  color: var(--google-red);
+}
+.pivot-bar button {
+  padding: 3px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
 .analysis-list {
   position: absolute;
   right: 0;

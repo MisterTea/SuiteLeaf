@@ -88,6 +88,15 @@ test("spreadsheet formulas → embedded chart → pivot worksheet → save and r
     edited.content.workbook.sheets[edited.content.workbook.sheetOrder[0]]
       .cellData[1][3].v,
   ).toBe(1800);
+  const pivotCell = async (row: number) =>
+    (await exported(page)).content.workbook.sheets[
+      file.content.pivots[0].targetSheetId
+    ].cellData[row][1].v;
+  await expect.poll(() => pivotCell(1)).toBe(7000);
+  expect(await pivotCell(5)).toBe(24000);
+  await page.getByRole("button", { name: /^Undo/ }).first().click();
+  await expect.poll(() => pivotCell(1)).toBe(6000);
+  expect(await pivotCell(5)).toBe(23000);
   await page.getByText("Charts & pivots (2)", { exact: true }).click();
   await page
     .getByRole("button", { name: "Delete Studio costs", exact: true })
