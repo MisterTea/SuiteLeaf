@@ -1,5 +1,6 @@
 import { createContext, useContext } from "react";
 import { appModeSchema, type AppMode } from "@suiteleaf/core";
+import { signOut } from "./node-client";
 
 export interface ResolvedMode {
   mode: AppMode;
@@ -89,6 +90,21 @@ export async function switchMode(mode: AppMode) {
   else localStorage.setItem(KEY, JSON.stringify(mode));
   location.hash = "#/";
   location.reload();
+}
+
+const LEFT_KEY = "suiteleaf:left-server";
+/** Sign out of `serverUrl` and return to single-node mode. */
+export async function disconnect(serverUrl: string) {
+  await signOut();
+  sessionStorage.setItem(LEFT_KEY, new URL(serverUrl).host);
+  await switchMode({ kind: "single" });
+}
+/** The server this window just disconnected from, shown once. */
+export function leftServer() {
+  return sessionStorage.getItem(LEFT_KEY);
+}
+export function forgetLeftServer() {
+  sessionStorage.removeItem(LEFT_KEY);
 }
 
 export const ModeContext = createContext<ResolvedMode>({

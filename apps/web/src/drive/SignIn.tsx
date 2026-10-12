@@ -5,12 +5,13 @@ import {
   getSession,
   onSession,
   providers as loadProviders,
+  sessionEndReason,
   signIn,
   signUp,
   socialStartUrl,
   type AuthProviders,
 } from "../node-client";
-import { probeServer, switchMode } from "../mode";
+import { disconnect, probeServer, switchMode } from "../mode";
 
 export function useNodeSession() {
   const [session, setSession] = useState(getSession);
@@ -45,6 +46,8 @@ export function SignInScreen({
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [ended] = useState(sessionEndReason);
+  const host = new URL(serverUrl).host;
 
   useEffect(() => {
     loadProviders(serverUrl)
@@ -109,10 +112,17 @@ export function SignInScreen({
         <div className="dialog-header">
           <h2>
             {mode === "signin" ? "Sign in" : "Create an account"}
-            <small>{new URL(serverUrl).host}</small>
+            <small>{host}</small>
           </h2>
         </div>
         <div className="dialog-body">
+          {ended && mode === "signin" ? (
+            <p className="sign-in-ended" role="status">
+              {ended === "signed-out"
+                ? `You signed out of ${host}. Your SuiteDrive files stay on the server.`
+                : "Your session ended. Sign in again to keep working in SuiteDrive. Changes you made are safe on this device."}
+            </p>
+          ) : null}
           {available?.providers.length ? (
             <div className="provider-buttons">
               {available.providers.map((p) => (
@@ -210,7 +220,7 @@ export function SignInScreen({
           <button
             type="button"
             className="dialog-text-btn sign-in-disconnect"
-            onClick={() => void switchMode({ kind: "single" })}
+            onClick={() => void disconnect(serverUrl)}
           >
             Work on this computer without a server
           </button>

@@ -36,7 +36,11 @@ async function run(args: string[]) {
   );
 }
 
-async function startNode(dataDir: string, bootstrap?: string): Promise<Node> {
+async function startNode(
+  dataDir: string,
+  bootstrap?: string,
+  corsOrigins: string[] = [],
+): Promise<Node> {
   const port = await freePort();
   const url = `http://127.0.0.1:${port}`;
   const config = join(dataDir, "node.toml");
@@ -61,6 +65,7 @@ async function startNode(dataDir: string, bootstrap?: string): Promise<Node> {
     "--sync-interval",
     "1",
     ...(bootstrap ? ["--bootstrap", bootstrap] : []),
+    ...corsOrigins.flatMap((origin) => ["--cors-origin", origin]),
   ];
   const child = spawn(binary, args, {
     env: {
@@ -113,8 +118,10 @@ test.describe("SuiteDrive across two nodes", () => {
       "--swarm-key",
       join(dirs[0], "swarm.key"),
     ]);
+    // The web app served by Playwright connects to node B as a client.
+    const app = new URL(test.info().project.use.baseURL!).origin;
     a = await startNode(dirs[0]);
-    b = await startNode(dirs[1], a.p2p);
+    b = await startNode(dirs[1], a.p2p, [app]);
   });
   test.afterAll(() => {
     for (const child of processes) child.kill();
@@ -544,5 +551,117 @@ test.describe("SuiteDrive across two nodes", () => {
       ).toHaveCount(0);
       await page.getByRole("button", { name: "Back to files" }).click();
     }
+  });
+
+  test("signing out and disconnecting end the session and protect unuploaded edits", async ({
+    page,
+  }) => {
+    const host = new URL(b.url).host;
+    const session = () =>
+      page.evaluate(() => localStorage.getItem("suiteleaf:node-session"));
+    const connect = async () => {
+      await page.getByRole("button", { name: "Connect to a server" }).click();
+      const dialog = page.getByRole("dialog", {
+        name: "Connect to a SuiteLeaf server",
+      });
+      await dialog.getByLabel("Server address").fill(b.url);
+      await dialog
+        .getByRole("button", { name: "Connect", exact: true })
+        .click();
+    };
+    await page.goto("/");
+    await connect();
+    const card = page.getByLabel("Sign in to SuiteLeaf");
+    await card.getByRole("button", { name: "Create an account" }).click();
+    await card.getByLabel("Name", { exact: true }).fill("Leo Example");
+    await card.getByLabel("Email", { exact: true }).fill("leo@example.com");
+    await card
+      .getByLabel("Password", { exact: true })
+      .fill("correct-horse-battery");
+    await card.getByRole("button", { name: "Create account" }).click();
+    const signOut = page.getByRole("button", { name: "Sign out" });
+    await expect(signOut).toBeVisible();
+
+    await page.getByRole("button", { name: "New document" }).click();
+    await page.getByLabel("File title").fill("Shed inventory");
+    const editor = page.getByRole("textbox", { name: "Document content" });
+    await editor.fill("3 spades");
+    const status = page.getByRole("status");
+    await expect(status).toHaveText("Saved to SuiteDrive", { timeout: 20000 });
+    await page.route("**/api/drive/items/*/content", (route) =>
+      route.request().method() === "PUT" ? route.abort() : route.continue(),
+    );
+    await editor.fill("3 spades, 2 rakes");
+    await expect(status).toContainText("SuiteDrive is unreachable", {
+      timeout: 20000,
+    });
+    await page.getByRole("button", { name: "Back to files" }).click();
+
+    const prompts: string[] = [];
+    page.on("dialog", (d) => {
+      prompts.push(d.message());
+      void d.dismiss();
+    });
+    await signOut.click();
+    await expect.poll(() => prompts.length).toBe(1);
+    expect(prompts[0]).toContain("Shed inventory");
+    await expect(signOut).toBeVisible();
+
+    await page.unroute("**/api/drive/items/*/content");
+    await page
+      .getByRole("button", { name: "Shed inventory.sldoc", exact: true })
+      .click();
+    await expect(status).toHaveText("Saved to SuiteDrive", { timeout: 20000 });
+    await page.getByRole("button", { name: "Back to files" }).click();
+
+    const { token } = JSON.parse((await session())!);
+    await page.getByRole("button", { name: "Disconnect from server" }).click();
+    await expect(
+      page.getByText("Your workspace, in this browser."),
+    ).toBeVisible();
+    await expect(page.getByRole("status")).toContainText(
+      `Disconnected from ${host} and signed out.`,
+    );
+    expect(prompts).toHaveLength(1);
+    expect(await session()).toBeNull();
+    const revoked = await fetch(`${b.url}/api/drive/items`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(revoked.status).toBe(401);
+
+    await connect();
+    await expect(card).toBeVisible();
+    await card
+      .getByLabel("Email or username", { exact: true })
+      .fill("leo@example.com");
+    await card
+      .getByLabel("Password", { exact: true })
+      .fill("correct-horse-battery");
+    await card.getByRole("button", { name: "Sign in", exact: true }).click();
+    await signOut.click();
+    await expect(card.getByRole("status")).toHaveText(
+      `You signed out of ${host}. Your SuiteDrive files stay on the server.`,
+    );
+
+    // A session left behind by a disconnect outside the app is dropped.
+    await card
+      .getByRole("button", { name: "Work on this computer without a server" })
+      .click();
+    await expect(
+      page.getByText("Your workspace, in this browser."),
+    ).toBeVisible();
+    await page.evaluate(
+      ([url, token]) =>
+        localStorage.setItem(
+          "suiteleaf:node-session",
+          JSON.stringify({ url, token, user: { id: "leo" } }),
+        ),
+      [b.url, token],
+    );
+    await page.reload();
+    await expect(
+      page.getByText("Your workspace, in this browser."),
+    ).toBeVisible();
+    await expect.poll(session).toBeNull();
   });
 });

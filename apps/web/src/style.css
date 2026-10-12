@@ -2641,13 +2641,27 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 }
 .account-chip {
   margin-top: auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  display: grid;
+  gap: 8px;
   padding: 10px;
   border-radius: 10px;
   background: var(--sidebar-selected);
   color: var(--sidebar-selected-text);
+}
+.account-who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.account-actions {
+  display: flex;
+  gap: 4px;
+}
+.account-error {
+  margin: 0;
+  font-size: 11px;
+  color: #963b21;
 }
 .account-avatar {
   display: grid;
@@ -2675,11 +2689,54 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
   font-size: 11px;
   opacity: 0.8;
 }
-.account-chip button {
-  padding: 6px;
+.account-actions button {
+  flex: 1;
+  gap: 5px;
+  padding: 5px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.account-actions button:hover {
+  border-color: var(--border);
+  background: var(--surface);
+}
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 24px;
+  padding: 12px 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--sidebar-selected);
+  color: var(--sidebar-selected-text);
+  font-size: 13px;
+}
+.notice svg {
+  flex-shrink: 0;
+}
+.notice button {
+  margin-left: auto;
+  padding: 4px 8px;
   border: 0;
   background: transparent;
   color: inherit;
+}
+.notice + .welcome {
+  margin-top: 36px;
+}
+.sign-in-ended {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--sidebar-selected);
+  color: var(--sidebar-selected-text);
+  font-size: 13px;
+  line-height: 1.45;
 }
 .sign-in-link {
   margin-top: 10px;
@@ -2759,11 +2816,15 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
   }
   .account-chip {
     margin-top: auto;
-    flex-direction: column;
+    justify-items: center;
     gap: 6px;
     padding: 6px 0;
   }
-  .account-name {
+  .account-name,
+  .account-action-label {
     display: none;
+  }
+  .account-actions {
+    flex-direction: column;
   }
 }
