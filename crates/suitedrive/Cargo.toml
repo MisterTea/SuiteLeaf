@@ -1,0 +1,25 @@
+[package]
+name = "suitedrive"
+description = "A blob store replicated to every SuiteLeaf node, with metadata in SuiteDB"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+blake3.workspace = true
+ciborium.workspace = true
+hex.workspace = true
+serde.workspace = true
+serde_bytes.workspace = true
+suitedb.workspace = true
+thiserror.workspace = true
+tokio = { version = "1", features = ["sync", "time", "rt", "macros"] }
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+libp2p-identity = { version = "0.3", features = ["ed25519", "rand"] }
+tempfile.workspace = true
+tokio = { version = "1", features = ["full"] }

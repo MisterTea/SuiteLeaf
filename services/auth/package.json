@@ -1,0 +1,24 @@
+{
+  "name": "@suiteleaf/auth",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "exports": {
+    ".": "./src/options.ts",
+    "./adapter": "./src/adapter.ts",
+    "./schema": "./src/schema.ts"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "node dist/server.mjs",
+    "generate-schema": "tsx scripts/generate-schema.ts"
+  },
+  "dependencies": {
+    "better-auth": "1.7.7"
+  },
+  "devDependencies": {
+    "@better-auth/test-utils": "1.7.7",
+    "esbuild": "^0.25.0"
+  }
+}

@@ -2738,3 +2738,32 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 .account-chip {
   margin-top: 0;
 }
+/* On phones the sidebar is an icon rail; keep the mode controls as icons. */
+@media (max-width: 700px) {
+  .local-note {
+    display: block;
+    margin-top: auto;
+    font-size: 0;
+  }
+  .local-note .local-dot,
+  .local-note small,
+  .cluster-note {
+    display: none;
+  }
+  .sign-in-link {
+    justify-content: center;
+    width: 100%;
+    padding: 10px 0;
+    font-size: 0;
+    gap: 0;
+  }
+  .account-chip {
+    margin-top: auto;
+    flex-direction: column;
+    gap: 6px;
+    padding: 6px 0;
+  }
+  .account-name {
+    display: none;
+  }
+}
