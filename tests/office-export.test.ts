@@ -83,6 +83,35 @@ describe("local Office export", () => {
     );
     expect(parseFile(serializeFile(file)).content).toEqual(file.content);
   });
+  it("marks a document table's header row as a repeating Word header row", async () => {
+    const file = createFile("doc", "Sign-up");
+    if (file.kind !== "doc") throw new Error();
+    const row = (type: string, texts: string[]) => ({
+      type: "tableRow",
+      content: texts.map((text) => ({
+        type,
+        content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+      })),
+    });
+    file.content = {
+      type: "doc",
+      content: [
+        {
+          type: "table",
+          content: [
+            row("tableHeader", ["Name", "Bringing"]),
+            row("tableCell", ["Asha", "Beans"]),
+          ],
+        },
+      ],
+    };
+    const zip = await JSZip.loadAsync(await exportDocx(file));
+    const doc = await zip.file("word/document.xml")!.async("string");
+    const rows = doc.match(/<w:tr>[\s\S]*?<\/w:tr>/g) ?? [];
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toContain("<w:tblHeader");
+    expect(rows[1]).not.toContain("<w:tblHeader");
+  });
   it("exports all sheets with formulas, cached values, styles, notes, validation and conditional rules", async () => {
     const file = createFile("sheet", "Budget");
     if (file.kind !== "sheet") throw new Error();

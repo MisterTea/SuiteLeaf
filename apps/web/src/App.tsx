@@ -59,7 +59,13 @@ import {
 import { storage, SaveQueue, exportText } from "./storage";
 import { importFile } from "./imports";
 import { sampleDoc, sampleSheet, sampleSlide } from "./samples";
-import { Menu, MenuItem, type EditorActions } from "./ui";
+import {
+  Menu,
+  MenuItem,
+  SubMenu,
+  TableMenuItems,
+  type EditorActions,
+} from "./ui";
 import {
   DriveConflict,
   getSession,
@@ -1427,6 +1433,13 @@ function Workspace() {
                   >
                     Numbered list
                   </MenuItem>
+                  <SubMenu label="Table">
+                    <TableMenuItems
+                      actions={() =>
+                        actions.current?.docActions?.tableActions() ?? []
+                      }
+                    />
+                  </SubMenu>
                   <MenuItem
                     shortcut="Cmd+\"
                     onSelect={() =>
