@@ -36,6 +36,28 @@ function resource(workbook: Data, name: string): Data {
   if (!item?.data) return {};
   return JSON.parse(item.data);
 }
+/** Imported sheets write back the workbook's stored Excel character widths;
+ * columns resized in SuiteLeaf use the pixels per character from import. */
+function excelWidths(s: Data) {
+  const layout = s.custom?.excelLayout;
+  const unit = Number(layout?.characterPixels);
+  if (!(unit > 0)) return undefined;
+  const stored = new Map<number, number>();
+  for (const [c, px] of Object.entries(layout.columnPixels ?? {}))
+    if (Number.isFinite(layout.columnWidths?.[c]))
+      stored.set(Number(px), layout.columnWidths[c]);
+  const chars = (px: number) =>
+    stored.get(px) ?? Math.round((px / unit) * 256) / 256;
+  const defaultPixels = Number(s.defaultColumnWidth);
+  return {
+    chars,
+    base: Number(layout.baseColumnWidthChars) || 8,
+    default:
+      !(defaultPixels > 0) || defaultPixels === layout.defaultColumnPixels
+        ? layout.defaultColumnWidthChars
+        : chars(defaultPixels),
+  };
+}
 function font(s: Data) {
   return `<font><sz val="${Number(s.fs) || 11}"/><name val="${esc(s.ff || "Arial")}"/>${s.bl ? "<b/>" : ""}${s.it ? "<i/>" : ""}${s.ul?.s ? "<u/>" : ""}${s.st?.s ? "<strike/>" : ""}${s.cl ? `<color rgb="${rgb(s.cl.rgb)}"/>` : ""}</font>`;
 }
@@ -313,11 +335,16 @@ export async function exportXlsx(
         hpx: (data as Data).h,
         hidden: !!(data as Data).hd,
       };
-    for (const [c, data] of Object.entries(s.columnData ?? {}))
+    const widths = excelWidths(s);
+    for (const [c, data] of Object.entries(s.columnData ?? {})) {
+      const w = (data as Data).w;
       sheet["!cols"][+c] = {
-        wpx: (data as Data).w,
+        ...(widths && typeof w === "number"
+          ? { width: widths.chars(w) }
+          : { wpx: w }),
         hidden: !!(data as Data).hd,
       };
+    }
     XLSX.utils.book_append_sheet(book, sheet, s.name);
     sheetStyles.push(cellStyles);
   }
@@ -355,21 +382,23 @@ export async function exportXlsx(
         ? `<c${attrs.replace(/\s+s="[^"]*"/, "")} s="${sheetStyles[i].get(ref)}">`
         : tag;
     });
+    const widths = excelWidths(s);
     if (
       s.custom?.suiteleafProtection?.sheet ||
       (rangeProtections[id] ?? []).length
     ) {
       const columns: string[] = [];
       let nextColumn = 0;
+      const chars = (px: number) => widths?.chars(px) ?? (px - 5) / 7;
       const defaultColumn = (start: number, end: number) =>
-        `<col min="${start + 1}" max="${end + 1}" width="${((s.defaultColumnWidth || 100) - 5) / 7}" style="${sheetDefaults[i]}"/>`;
+        `<col min="${start + 1}" max="${end + 1}" width="${widths?.default ?? chars(s.defaultColumnWidth || 100)}" style="${sheetDefaults[i]}"/>`;
       for (const c of Object.keys(s.columnData ?? {})
         .map(Number)
         .sort((a, b) => a - b)) {
         if (c > nextColumn) columns.push(defaultColumn(nextColumn, c - 1));
         const data = s.columnData[c];
         columns.push(
-          `<col min="${c + 1}" max="${c + 1}" width="${((data.w ?? s.defaultColumnWidth ?? 100) - 5) / 7}" customWidth="1" hidden="${data.hd ? 1 : 0}" style="${sheetDefaults[i]}"/>`,
+          `<col min="${c + 1}" max="${c + 1}" width="${chars(data.w ?? s.defaultColumnWidth ?? 100)}" customWidth="1" hidden="${data.hd ? 1 : 0}" style="${sheetDefaults[i]}"/>`,
         );
         nextColumn = c + 1;
       }
@@ -378,6 +407,13 @@ export async function exportXlsx(
       if (/<cols>/.test(text))
         text = text.replace(/<cols>[\s\S]*?<\/cols>/, cols);
       else text = text.replace("<sheetData", `${cols}<sheetData`);
+    }
+    if (widths && (widths.default !== undefined || widths.base !== 8)) {
+      const height = ((Number(s.defaultRowHeight) || 20) * 72) / 96;
+      const format = `<sheetFormatPr${widths.base !== 8 ? ` baseColWidth="${widths.base}"` : ""}${widths.default !== undefined ? ` defaultColWidth="${widths.default}"` : ""} defaultRowHeight="${height}"/>`;
+      text = text
+        .replace(/<sheetFormatPr\b[^>]*\/>/, "")
+        .replace(/<(cols|sheetData)\b/, `${format}<$1`);
     }
     const freeze = s.freeze;
     const sheetPr = `<sheetPr>${s.tabColor ? `<tabColor rgb="${rgb(s.tabColor)}"/>` : ""}</sheetPr>`;

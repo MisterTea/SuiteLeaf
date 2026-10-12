@@ -1905,7 +1905,7 @@ function Workspace() {
             Imported {f.importInfo.sourceFormat.toUpperCase()}:{" "}
             {f.importInfo.sourceName}
             {f.importInfo.warnings.length
-              ? ` · ${f.importInfo.warnings.length} compatibility notes`
+              ? ` · ${f.importInfo.warnings.length} compatibility ${f.importInfo.warnings.length === 1 ? "note" : "notes"}`
               : ""}
           </summary>
           {f.importInfo.warnings.length ? (

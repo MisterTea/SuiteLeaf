@@ -989,7 +989,7 @@ test("19-open-an-excel-workbook", async ({ page }) => {
   await caption(page, "A note explains what was converted: formulas and their results are kept.", 2200);
   await notes.locator("summary").click();
 
-  await caption(page, "The peach header, the bold totals and the dollar formats came across.", 1800);
+  await caption(page, "The peach header, bold totals, dollar formats and column widths came across.", 1800);
   await selectCells(page, "D3");
   await caption(page, "So did the formulas: Revenue is still =B3*C3.", 1800);
 
@@ -1009,7 +1009,8 @@ test("19-open-an-excel-workbook", async ({ page }) => {
   await beat(page, 700);
   const download = page.waitForEvent("download");
   await page.getByRole("menuitem", { name: "Export XLSX" }).click();
-  const zip = await JSZip.loadAsync(await readFile((await (await download).path())!));
+  const exported = await readFile((await (await download).path())!);
+  const zip = await JSZip.loadAsync(exported);
   const sales = await zip.file("xl/worksheets/sheet1.xml")!.async("string");
   const summary = await zip.file("xl/worksheets/sheet2.xml")!.async("string");
   expect(sales).toContain('<pane xSplit="0" ySplit="1"');
@@ -1017,5 +1018,21 @@ test("19-open-an-excel-workbook", async ({ page }) => {
   expect(sales).toMatch(/<c r="D3"[^>]*><f>B3\*C3<\/f><v>3315<\/v>/);
   expect(sales).toMatch(/<c r="D6"[^>]*><f>SUM\(D2:D5\)<\/f><v>10331.75<\/v>/);
   expect(summary).toContain("<f>&apos;Q3 sales&apos;!D6</f><v>10331.75</v>");
-  await caption(page, "Formulas, formatting, the frozen header and both tabs go back to Excel intact.", 2000);
+  const width = (xml: string, column: number) =>
+    new RegExp(`<col min="${column}" max="${column}"[^>]*\\bwidth="([^"]+)"`).exec(xml)?.[1];
+  expect([1, 2, 3, 4].map((c) => width(sales, c))).toEqual(["22", "14", "14", "14"]);
+  expect([1, 2].map((c) => width(summary, c))).toEqual(["24", "14"]);
+  await caption(page, "Formulas, formatting, column widths, the frozen header and both tabs go back to Excel intact.", 1800);
+
+  await caption(page, "Before sending it, Kemi opens the exported file once more to check.", 1000);
+  await page.getByRole("button", { name: "Back to files" }).click();
+  await page.locator("input[type=file]").setInputFiles({
+    name: "Q3 bakery sales (to accountant).xlsx",
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    buffer: exported,
+  });
+  await ready(page);
+  await expect(page.locator("details.import-notes")).toContainText("Q3 bakery sales (to accountant).xlsx");
+  await selectCells(page, "D6");
+  await caption(page, "Same columns, same frozen header, and the corrected total of $10,331.75.", 2200);
 });
