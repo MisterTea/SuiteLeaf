@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { resolve, extname, sep } from "node:path";
@@ -438,14 +439,15 @@ test("presentation lifecycle → slide creation, editing, thumbnail selection, p
 test("PowerPoint presentation import via drag/upload into workspace", async ({
   page,
 }) => {
-  const errors: string[] = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto("/");
-
   const samplePath = resolve(
     process.cwd(),
     "datasets/apache-poi/files/test-data/slideshow/sample.pptx",
   );
+  test.skip(!existsSync(samplePath), "Downloaded corpus is local-only.");
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/");
+
   const sampleBuf = await readFile(samplePath);
 
   await page.locator('input[type="file"]').setInputFiles({
