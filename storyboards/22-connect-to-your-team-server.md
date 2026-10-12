@@ -14,21 +14,26 @@ Leo has been using SuiteLeaf on his own, with files on his computer. The garden 
 
 ## Scenes
 
-1. **Home on this computer.** The sidebar says "Your workspace, in this browser." with a "Connect to a server" link.
-2. **Connect.** Leo clicks it. The "Connect to a SuiteLeaf server" dialog explains that files on this computer stay put.
-3. **Server address.** He types the address he was given and clicks Connect.
+1. **Home on this computer.** Leo's own files ("Tomato planting notes", "Allotment wish list") are listed under Your files. The sidebar says "Your workspace, in this browser." with a "Connect to a server" button.
+2. **Connect.** Leo clicks it. The "Connect to a SuiteLeaf server" dialog explains that files on this computer stay here.
+3. **Server address.** He types the address he was given, without `http://`, and clicks Connect. SuiteLeaf tries `https://` first, then `http://`.
 4. **Sign in.** The app reloads to a sign-in card showing the server's host name. It's his first time, so he clicks "Create an account".
 5. **Create an account.** He enters his name, email, and a password, then clicks "Create account".
-6. **SuiteDrive.** He lands on the team home screen ("YOUR TEAM WORKSPACE"). Below the New cards, SuiteDrive shows "This folder is empty."
-7. **Who and where.** The sidebar shows his name and the server, with Sign out and Disconnect buttons. "Connect to a server" is gone.
+6. **Team home.** He lands on the team home screen ("YOUR TEAM WORKSPACE"). "Connect to a server" is gone.
+7. **Who and where.** The sidebar shows his full name and the server, with labeled Sign out and Disconnect buttons. A note says files are saved to SuiteDrive on the server and that his files on this computer are kept for when he disconnects.
+8. **SuiteDrive.** Below the New cards, SuiteDrive shows "This folder is empty." His local files are not mixed in.
 
 ## Success looks like
 
 - The app is in cluster mode and signed in to the team server.
 - The home screen lists SuiteDrive, and new files will be saved there.
+- Leo can see who he's signed in as and which server he's on, and knows his local files are still on his computer.
 
 ## Gaps and notes
 
-- The server address must include `http://` or `https://`. A bare host such as `suiteleaf.example.com` is rejected with "Enter a server address such as https://suiteleaf.example.com." Nextcloud's client accepts a bare host.
-- In the sidebar, the account name is cut off ("Leo Ma…") when the Disconnect button is shown.
-- The SuiteDrive list sits below the New cards, so on a 1280×800 window it is mostly below the fold after signing in.
+- An address without a scheme is tried with `https://` and then `http://`. The `http://` fallback is silent; the sign-in card shows only the host name, so it doesn't say whether the connection is encrypted.
+- The SuiteDrive list sits below the New cards, so on a 1280×800 window it is mostly below the fold after signing in. The script scrolls to it.
+- While connected, local files are hidden rather than listed separately. The sidebar note says they are kept, but there's no way to open one without disconnecting ([26](26-sign-out-and-disconnect.md)).
+- The cluster home has no file search box; the single-node home does.
+- Very long names still end in "…" in the sidebar. The full name, email, and server appear in its tooltip.
+- The storyboard seeds Leo's two local files into browser storage before the first scene, so the empty home screen flashes for under a second at the start.

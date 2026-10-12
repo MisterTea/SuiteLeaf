@@ -2717,13 +2717,24 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 }
 .account-chip {
   margin-top: auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  display: grid;
+  gap: 8px;
   padding: 10px;
   border-radius: 10px;
   background: var(--sidebar-selected);
   color: var(--sidebar-selected-text);
+}
+.account-who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin: 0 -4px -4px;
 }
 .account-avatar {
   display: grid;
@@ -2752,10 +2763,18 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
   opacity: 0.8;
 }
 .account-chip button {
-  padding: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 6px;
   border: 0;
+  border-radius: 6px;
   background: transparent;
   color: inherit;
+  font-size: 12px;
+}
+.account-chip button:hover {
+  background: color-mix(in srgb, currentColor 10%, transparent);
 }
 .sign-in-link {
   margin-top: 10px;
@@ -2835,11 +2854,16 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
   }
   .account-chip {
     margin-top: auto;
-    flex-direction: column;
+    justify-items: center;
     gap: 6px;
     padding: 6px 0;
   }
-  .account-name {
+  .account-actions {
+    flex-direction: column;
+    margin: 0;
+  }
+  .account-name,
+  .account-actions span {
     display: none;
   }
 }

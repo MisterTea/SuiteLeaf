@@ -557,33 +557,40 @@ function AccountChip({ serverUrl }: { serverUrl: string }) {
   const session = useNodeSession();
   const { locked } = useMode();
   if (!session) return null;
+  const name = session.user.name || session.user.username || session.user.email;
+  const host = new URL(serverUrl).host;
   return (
     <div className="account-chip">
-      <span className="account-avatar" aria-hidden="true">
-        {(session.user.name || session.user.email || "?")
-          .slice(0, 1)
-          .toUpperCase()}
-      </span>
-      <span className="account-name">
-        {session.user.name || session.user.username || session.user.email}
-        <small>{new URL(serverUrl).host}</small>
-      </span>
-      <button
-        title="Sign out"
-        aria-label="Sign out"
-        onClick={() => void signOut()}
+      <div
+        className="account-who"
+        title={`${name}${session.user.email ? ` (${session.user.email})` : ""} on ${host}`}
       >
-        <LogOut size={16} />
-      </button>
-      {locked ? null : (
-        <button
-          title="Disconnect and work on this computer"
-          aria-label="Disconnect from server"
-          onClick={() => void switchMode({ kind: "single" })}
-        >
-          <Unplug size={16} />
+        <span className="account-avatar" aria-hidden="true">
+          {(session.user.name || session.user.email || "?")
+            .slice(0, 1)
+            .toUpperCase()}
+        </span>
+        <span className="account-name">
+          {name}
+          <small>{host}</small>
+        </span>
+      </div>
+      <div className="account-actions">
+        <button title="Sign out" onClick={() => void signOut()}>
+          <LogOut size={15} />
+          <span>Sign out</span>
         </button>
-      )}
+        {locked ? null : (
+          <button
+            title="Disconnect and work on this computer"
+            aria-label="Disconnect from server"
+            onClick={() => void switchMode({ kind: "single" })}
+          >
+            <Unplug size={15} />
+            <span>Disconnect</span>
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -591,6 +598,7 @@ function AccountChip({ serverUrl }: { serverUrl: string }) {
  * as the file list. */
 function ClusterHome({ serverUrl }: { serverUrl: string }) {
   const navigate = useNavigate();
+  const { locked } = useMode();
   const [error, setError] = useState("");
   const folder = useRef<string | null>(null);
   const make = useCallback(
@@ -618,6 +626,9 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
           Your organization&apos;s workspace.
           <small>
             Files are saved to SuiteDrive on {new URL(serverUrl).host}.
+            {locked
+              ? null
+              : " Your files on this computer are kept for when you disconnect."}
           </small>
         </div>
         <AccountChip serverUrl={serverUrl} />
@@ -631,8 +642,8 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
           <p className="eyebrow">YOUR TEAM WORKSPACE</p>
           <h1>Good ideas start here.</h1>
           <p>
-            Everything you create is saved to SuiteDrive and shared with your
-            servers.
+            Everything you create is saved to SuiteDrive, on your team&apos;s
+            server.
           </p>
         </section>
         <NewCards onCreate={make} />
