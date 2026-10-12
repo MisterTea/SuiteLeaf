@@ -31,13 +31,13 @@ import {
   Search,
   Highlighter,
   Printer,
-  PaintRoller,
   Minus,
   Plus,
   RemoveFormatting,
   Indent,
   Outdent,
-  MessageSquarePlus,
+  FileCog,
+  SeparatorHorizontal,
   X,
 } from "lucide-react";
 import {
@@ -506,16 +506,6 @@ export default function Docs({
   return (
     <div className="docs-editor">
       <div className="toolbar" role="toolbar" aria-label="Document formatting">
-        <button
-          type="button"
-          className="menu-search-pill"
-          title="Search the menus (Option+/)"
-          onClick={() => setFindOpen(true)}
-        >
-          <Search size={14} className="menu-search-icon" />
-          <span>Menus</span>
-        </button>
-
         <Tool label="Undo" onClick={() => editor.commands.undo()}>
           <Undo2 size={16} />
         </Tool>
@@ -524,9 +514,6 @@ export default function Docs({
         </Tool>
         <Tool label="Print" onClick={() => printDocument(file.title)}>
           <Printer size={16} />
-        </Tool>
-        <Tool label="Paint format" onClick={() => {}}>
-          <PaintRoller size={16} />
         </Tool>
 
         <select
@@ -545,25 +532,23 @@ export default function Docs({
           <option value="200%">200%</option>
         </select>
 
-        <button
-          type="button"
-          className="menu-trigger"
+        <Tool
+          label="Page setup"
           onClick={() => {
             setPageDraft(pageSettings);
             setPageSetupOpen(true);
           }}
         >
-          Page setup
-        </button>
-        <button
-          type="button"
-          className="menu-trigger"
+          <FileCog size={16} />
+        </Tool>
+        <Tool
+          label="Page break"
           onClick={() =>
             editor.chain().focus().insertContent({ type: "pageBreak" }).run()
           }
         >
-          Page break
-        </button>
+          <SeparatorHorizontal size={16} />
+        </Tool>
         <span className="divider" />
 
         <select
@@ -725,9 +710,6 @@ export default function Docs({
         <Tool label="Insert link" onClick={insertLink}>
           <Link size={16} />
         </Tool>
-        <Tool label="Add comment" onClick={() => {}}>
-          <MessageSquarePlus size={16} />
-        </Tool>
         <Tool label="Insert image" onClick={() => imageInput.current?.click()}>
           <ImagePlus size={16} />
         </Tool>
@@ -776,10 +758,18 @@ export default function Docs({
         >
           <ListOrdered size={16} />
         </Tool>
-        <Tool label="Decrease indent" onClick={() => {}}>
+        <Tool
+          label="Decrease indent"
+          disabled={!editor.can().liftListItem("listItem")}
+          onClick={() => editor.chain().focus().liftListItem("listItem").run()}
+        >
           <Outdent size={16} />
         </Tool>
-        <Tool label="Increase indent" onClick={() => {}}>
+        <Tool
+          label="Increase indent"
+          disabled={!editor.can().sinkListItem("listItem")}
+          onClick={() => editor.chain().focus().sinkListItem("listItem").run()}
+        >
           <Indent size={16} />
         </Tool>
         <Tool
