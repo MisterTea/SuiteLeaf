@@ -61,6 +61,7 @@ import { storage, SaveQueue, exportText } from "./storage";
 import { importFile } from "./imports";
 import { sampleDoc, sampleSheet, sampleSlide } from "./samples";
 import { Menu, MenuItem, type EditorActions } from "./ui";
+import { SheetViewMenu } from "./editors/SheetViewMenu";
 import {
   DriveConflict,
   getSession,
@@ -1406,18 +1407,10 @@ function Workspace() {
                   </MenuItem>
                 </Menu>
                 <Menu label="View">
-                  <MenuItem onSelect={() => void doAction("print")}>
-                    Print layout
-                  </MenuItem>
-                  <MenuItem
-                    onSelect={() =>
-                      actions.current?.sheetActions?.toggleFilter()
-                    }
-                  >
-                    Toggle filter
-                  </MenuItem>
-                  <MenuItem onSelect={() => {}}>Show formula bar</MenuItem>
-                  <MenuItem onSelect={() => {}}>Show gridlines</MenuItem>
+                  <SheetViewMenu
+                    actions={actions}
+                    onPrint={() => void doAction("print")}
+                  />
                 </Menu>
                 <Menu label="Insert">
                   <MenuItem

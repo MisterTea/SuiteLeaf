@@ -105,3 +105,77 @@ test("currency budget charts retain numeric bars, labels, order, formulas and fi
   expect(pivot.cellData[2][1].v).toBe(1200);
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
+
+test("View menu freezes rows and columns, hides gridlines and the formula bar, and keeps them on reopen", async ({
+  page,
+}) => {
+  const file = createFile("sheet", "Freeze regression");
+  if (file.kind !== "sheet") throw new Error("Expected spreadsheet");
+  const id = file.content.workbook.sheetOrder[0];
+  file.content.workbook.sheets[id].cellData = Object.fromEntries(
+    Array.from({ length: 40 }, (_, r) => [
+      r,
+      { 0: { v: r ? `Guest ${r}` : "Guest", t: 1 }, 1: { v: r || "RSVP", t: r ? 2 : 1 } },
+    ]),
+  );
+  await page.goto("/");
+  await page.locator("input[type=file]").setInputFiles({
+    name: "freeze.slsheet",
+    mimeType: "application/json",
+    buffer: Buffer.from(serializeFile(file)),
+  });
+  const box = page.locator(".sheet-host input.univer-size-full");
+  await box.fill("B3");
+  await box.press("Enter");
+  const view = async (submenu: "Show" | "Freeze") => {
+    await page.getByRole("button", { name: "View", exact: true }).click();
+    await page.getByRole("menuitem", { name: submenu }).click();
+  };
+  const choice = (name: string) =>
+    page.getByRole("menuitemcheckbox", { name, exact: true });
+  const freezeOf = async () =>
+    (await snapshot(page)).content.workbook.sheets[id].freeze;
+
+  await view("Freeze");
+  await expect(choice("No rows")).toHaveAttribute("aria-checked", "true");
+  await choice("Up to row 3").click();
+  await expect.poll(freezeOf).toMatchObject({ startRow: 3, ySplit: 3 });
+  await view("Freeze");
+  await expect(choice("Up to row 3")).toHaveAttribute("aria-checked", "true");
+  await choice("1 row").click();
+  await view("Freeze");
+  await choice("Up to column B").click();
+  await expect
+    .poll(freezeOf)
+    .toMatchObject({ startRow: 1, ySplit: 1, startColumn: 2, xSplit: 2 });
+  await view("Freeze");
+  await choice("No columns").click();
+  await expect
+    .poll(freezeOf)
+    .toMatchObject({ startRow: 1, ySplit: 1, startColumn: -1, xSplit: 0 });
+
+  await view("Show");
+  await expect(choice("Gridlines")).toHaveAttribute("aria-checked", "true");
+  await choice("Gridlines").click();
+  await expect
+    .poll(async () => (await snapshot(page)).content.workbook.sheets[id].showGridlines)
+    .toBe(0);
+  await view("Show");
+  await choice("Formula bar").click();
+  await expect(box).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Back to files" }).click();
+  await page.getByRole("link", { name: "Freeze regression" }).click();
+  await expect(page.getByRole("button", { name: "Sheet tools", exact: true })).toBeVisible();
+  await view("Freeze");
+  await expect(choice("1 row")).toHaveAttribute("aria-checked", "true");
+  await expect(choice("No columns")).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("Escape");
+  await view("Show");
+  await expect(choice("Gridlines")).toHaveAttribute("aria-checked", "false");
+  await expect(choice("Formula bar")).toHaveAttribute("aria-checked", "false");
+  await expect(box).toHaveCount(0);
+  await choice("Formula bar").click();
+  await expect(box).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
