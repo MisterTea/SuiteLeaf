@@ -976,7 +976,9 @@ a {
   background: #d4ead6;
 }
 .document-content .doc-search-current {
-  background: #92ce9a;
+  background: #81c995;
+  box-shadow: 0 0 0 1px #188038;
+  border-radius: 2px;
 }
 .document-content img {
   max-width: 100%;
@@ -1129,6 +1131,22 @@ a {
   right: 10px;
   font-size: 12px;
   color: #5f6368;
+}
+.field-input-row input {
+  padding-right: 84px;
+}
+.find-replace-dialog .dialog-header {
+  cursor: move;
+  touch-action: none;
+  user-select: none;
+}
+.find-replace-dialog .dialog-close-btn {
+  cursor: pointer;
+}
+.find-summary {
+  margin: 0;
+  font-size: 12px;
+  color: #188038;
 }
 .options-checkbox-group {
   display: flex;
@@ -2464,6 +2482,7 @@ a {
   }
   .document-content .doc-search-match {
     background: transparent;
+    box-shadow: none;
   }
   .document-content tr,
   img {

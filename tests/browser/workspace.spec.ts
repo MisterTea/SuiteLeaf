@@ -352,6 +352,80 @@ test("document outline, images, tables, find/replace, and print layout", async (
     await page.pdf({ path: "test-results/document-print.pdf" });
 });
 
+test("find and replace keeps the current match in view and reports what is left", async ({
+  page,
+  isMobile,
+}) => {
+  test.skip(isMobile, "the dialog fills the width of a phone screen");
+  const overlaps = (
+    a: { x: number; y: number; width: number; height: number },
+    b: { x: number; y: number; width: number; height: number },
+  ) =>
+    a.x < b.x + b.width &&
+    b.x < a.x + a.width &&
+    a.y < b.y + b.height &&
+    b.y < a.y + a.height;
+  await page.goto("/");
+  await page.getByRole("button", { name: "New document" }).click();
+  const editor = page.getByRole("textbox", { name: "Document content" });
+  await editor.click();
+  await page.keyboard.type("We were happy to recieve so many seed donations.");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type(
+    "Ruth keeps spare gloves at the shed for any volunteer who did not recieve",
+  );
+  const find = page.getByRole("search", { name: "Find and replace" });
+  await page.keyboard.press("ControlOrMeta+f");
+  const usual = (await find.boundingBox())!;
+  await page.keyboard.press("Escape");
+  await expect(find).toBeHidden();
+  await expect(editor).toBeFocused();
+
+  // The selected word fills Find; its match sits where the dialog usually is.
+  for (let i = 0; i < "recieve".length; i++)
+    await page.keyboard.press("Shift+ArrowLeft");
+  await expect
+    .poll(() =>
+      editor.evaluate((el: any) => {
+        const { from, to } = el.editor.state.selection;
+        return el.editor.state.doc.textBetween(from, to);
+      }),
+    )
+    .toBe("recieve");
+  await page.keyboard.press("ControlOrMeta+f");
+  await expect(find.getByLabel("Find text")).toHaveValue("recieve");
+  const counter = find.locator(".match-counter");
+  await expect(counter).toHaveText("2 of 2");
+  const match = (await page.locator(".doc-search-current").boundingBox())!;
+  expect(overlaps(match, usual)).toBe(true);
+  expect(overlaps(match, (await find.boundingBox())!)).toBe(false);
+
+  await find.getByLabel("Find text").press("Shift+Enter");
+  await expect(counter).toHaveText("1 of 2");
+  await find.getByLabel("Find text").press("Enter");
+  await expect(counter).toHaveText("2 of 2");
+
+  const before = (await find.boundingBox())!;
+  const title = (await find.getByRole("heading").boundingBox())!;
+  await page.mouse.move(title.x + 20, title.y + title.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(title.x - 280, title.y + title.height / 2 + 60, {
+    steps: 5,
+  });
+  await page.mouse.up();
+  const after = (await find.boundingBox())!;
+  expect(after.x).toBeCloseTo(before.x - 300, 0);
+  expect(after.y).toBeCloseTo(before.y + 60, 0);
+
+  await find.getByLabel("Replacement text").fill("receive");
+  await find.getByRole("button", { name: "Replace all", exact: true }).click();
+  await expect(counter).toHaveText("No results");
+  await expect(find).toContainText(
+    "Replaced 2 instances of “recieve” with “receive”.",
+  );
+  await expect(editor).not.toContainText("recieve");
+});
+
 test("presentation lifecycle → slide creation, editing, thumbnail selection, presentation mode, notes, and native export", async ({
   page,
 }) => {

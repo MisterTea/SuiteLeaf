@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import { generateJSON, type Extensions } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
@@ -54,6 +60,12 @@ import {
   documentMatches,
   searchKey,
 } from "./doc-search-plugin";
+import {
+  clampToView,
+  matchCounter,
+  positionClearOf,
+  type Point,
+} from "./doc-find";
 import { documentPlainText } from "./doc-text";
 import { slugify, uniqueSlug, anchorHref, isInternalAnchor } from "../anchors";
 
@@ -134,6 +146,12 @@ export default function Docs({
   const [matchCase, setMatchCase] = useState(false);
   const [useRegex, setUseRegex] = useState(false);
   const [ignoreDiacritics, setIgnoreDiacritics] = useState(true);
+  const findDialog = useRef<HTMLDivElement>(null),
+    findInput = useRef<HTMLInputElement>(null),
+    findDrag = useRef<Point | null>(null),
+    findAvoided = useRef("");
+  const [findSpot, setFindSpot] = useState<Point | null>(null);
+  const [replacedCount, setReplacedCount] = useState<number | null>(null);
   const [tableOpen, setTableOpen] = useState(false);
   const [tableRows, setTableRows] = useState(3);
   const [tableColumns, setTableColumns] = useState(3);
@@ -171,6 +189,8 @@ export default function Docs({
         ) {
           event.preventDefault();
           setFindOpen(true);
+          findInput.current?.focus();
+          findInput.current?.select();
           return true;
         }
         return false;
@@ -416,6 +436,54 @@ export default function Docs({
   }, [editor]);
 
   useEffect(() => {
+    if (!findOpen) {
+      setFindSpot(null);
+      return;
+    }
+    if (!editor?.schema) return;
+    const { from, to, empty } = editor.state.selection;
+    const selected = empty ? "" : editor.state.doc.textBetween(from, to, "\n");
+    if (selected.trim() && !selected.includes("\n") && selected.length <= 200)
+      setQuery(selected);
+    // Only when the dialog opens: later selections are the matches themselves.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [findOpen]);
+
+  useEffect(
+    () => setReplacedCount(null),
+    [findOpen, query, replacement, matchCase, useRegex, ignoreDiacritics],
+  );
+
+  // Step the dialog aside whenever a newly selected match would sit under it.
+  useLayoutEffect(() => {
+    const dialog = findDialog.current;
+    if (!dialog || !editor?.schema) {
+      findAvoided.current = "";
+      return;
+    }
+    const parts = [
+      ...editor.view.dom.querySelectorAll(".doc-search-current"),
+    ].map((part) => part.getBoundingClientRect());
+    const key = parts.length
+      ? `${editor.state.selection.from}:${editor.state.selection.to}`
+      : "";
+    if (key === findAvoided.current) return;
+    findAvoided.current = key;
+    if (!parts.length) return;
+    const spot = positionClearOf(
+      dialog.getBoundingClientRect(),
+      {
+        left: Math.min(...parts.map((r) => r.left)),
+        top: Math.min(...parts.map((r) => r.top)),
+        right: Math.max(...parts.map((r) => r.right)),
+        bottom: Math.max(...parts.map((r) => r.bottom)),
+      },
+      { width: window.innerWidth, height: window.innerHeight },
+    );
+    if (spot) setFindSpot(spot);
+  }, [editor, findOpen, state?.revision]);
+
+  useEffect(() => {
     if (!editor?.schema) return;
     const options = { matchCase, regex: useRegex, ignoreDiacritics };
     const activeQuery = findOpen ? query : "";
@@ -501,6 +569,22 @@ export default function Docs({
     for (const m of [...search.matches].reverse())
       tr = tr.insertText(replacement, m.from, m.to);
     editor.view.dispatch(tr);
+    setReplacedCount(search.matches.length);
+  };
+
+  const dragFind = (event: React.PointerEvent<HTMLDivElement>) => {
+    const box = findDialog.current?.getBoundingClientRect();
+    if (!box || !findDrag.current) return;
+    setFindSpot(
+      clampToView(
+        {
+          left: event.clientX - findDrag.current.left,
+          top: event.clientY - findDrag.current.top,
+        },
+        box,
+        { width: window.innerWidth, height: window.innerHeight },
+      ),
+    );
   };
 
   return (
@@ -913,15 +997,42 @@ export default function Docs({
       {findOpen ? (
         <div className="gdocs-modal-overlay" onClick={closeFind}>
           <div
+            ref={findDialog}
             className="gdocs-dialog find-replace-dialog"
             role="search"
             aria-label="Find and replace"
+            style={
+              findSpot
+                ? { position: "fixed", margin: 0, ...findSpot }
+                : undefined
+            }
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
               if (e.key === "Escape") closeFind();
+              if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
+                e.preventDefault();
+                findInput.current?.focus();
+                findInput.current?.select();
+              }
             }}
           >
-            <div className="dialog-header">
+            <div
+              className="dialog-header"
+              onPointerDown={(e) => {
+                const box = findDialog.current?.getBoundingClientRect();
+                if (!box || e.button || (e.target as Element).closest("button"))
+                  return;
+                e.preventDefault();
+                e.currentTarget.setPointerCapture(e.pointerId);
+                findDrag.current = {
+                  left: e.clientX - box.left,
+                  top: e.clientY - box.top,
+                };
+              }}
+              onPointerMove={dragFind}
+              onPointerUp={() => (findDrag.current = null)}
+              onPointerCancel={() => (findDrag.current = null)}
+            >
               <h2>Find and replace</h2>
               <button
                 type="button"
@@ -939,17 +1050,25 @@ export default function Docs({
                   <label htmlFor="gdocs-find-input">Find</label>
                   <div className="field-input-row">
                     <input
+                      ref={findInput}
                       id="gdocs-find-input"
                       autoFocus
                       aria-label="Find text"
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key !== "Enter") return;
+                        e.preventDefault();
+                        findMatch(e.shiftKey);
+                      }}
                     />
                     <span className="match-counter" role="status">
                       {search.error ??
-                        (query
-                          ? `${selectedMatch >= 0 ? selectedMatch + 1 : 0} of ${search.matches.length}`
-                          : "")}
+                        matchCounter(
+                          query,
+                          search.matches.length,
+                          selectedMatch,
+                        )}
                     </span>
                   </div>
                 </div>
@@ -981,8 +1100,15 @@ export default function Docs({
                     onChange={(e) => setUseRegex(e.target.checked)}
                   />
                   <span>
-                    Use regular expressions (e.g. \n for newline, \t for tab){" "}
-                    <span className="field-help-link">Help</span>
+                    Use regular expressions{" "}
+                    <a
+                      className="field-help-link"
+                      href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_expressions/Cheatsheet"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Help
+                    </a>
                   </span>
                 </label>
                 <label className="checkbox-row">
@@ -994,6 +1120,13 @@ export default function Docs({
                   <span>Ignore diacritics (e.g. ä = a, E = É, א = אַ)</span>
                 </label>
               </div>
+              {replacedCount !== null ? (
+                <p className="find-summary">
+                  Replaced {replacedCount}{" "}
+                  {replacedCount === 1 ? "instance" : "instances"} of “{query}”
+                  with “{replacement}”.
+                </p>
+              ) : null}
             </div>
 
             <div className="dialog-footer">
