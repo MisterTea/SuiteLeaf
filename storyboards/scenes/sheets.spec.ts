@@ -213,34 +213,38 @@ test("10-sort-without-the-header", async ({ page }) => {
   ]);
   await caption(page, "…but in other apps, sorting dragged the \"Hours\" header down into the list.", 1800);
 
+  const press = async (target: ReturnType<Page["locator"]>) => {
+    const box = (await target.boundingBox())!;
+    await pointAt(page, { x: box.x + box.width / 2, y: box.y + box.height / 2 });
+  };
+
   await caption(page, "She selects the whole table, header included, so each row stays together.", 1200);
-  await selectCells(page, "A1:C9");
+  await dragSelect(page, "A1", "C9");
   await beat(page);
-  await pointAt(page, await cellPoint(page, "B4"), "right");
-  await page.getByText("Sort", { exact: true }).hover();
+  await caption(page, "Data › Sort range.", 900);
+  await press(page.getByRole("button", { name: "Data", exact: true }));
   await beat(page, 500);
-  await caption(page, "Right-click › Sort › Custom Sort.", 900);
-  await page.getByText("Custom Sort", { exact: true }).click();
+  await press(page.getByRole("menuitem", { name: "Sort range", exact: true }));
 
-  const reminder = page.getByRole("dialog", { name: "Sort Reminder" });
-  await expect(reminder).toBeVisible();
-  await caption(page, "\"Keep range sorting\" sorts just the table she selected.", 1500);
-  await reminder.getByRole("button", { name: "Confirm" }).click();
-
-  const dialog = page.getByRole("dialog", { name: /Custom Sort/ });
+  const dialog = page.getByRole("dialog", { name: "Sort range from A1 to C9" });
   await expect(dialog).toBeVisible();
-  await caption(page, "The key step: tell it the first row is a header.", 1300);
-  await dialog.getByText("First row does not participate in sorting").click();
-  await beat(page, 700);
-  await caption(page, "Now the columns are listed by name. Sort by Hours, largest first.", 1200);
-  await dialog.getByText("Name", { exact: true }).click();
+  const header = dialog.getByRole("checkbox", { name: "Data has header row" });
+  await expect(header).toBeChecked();
+  await caption(page, "Row 1 looks like a header, so \"Data has header row\" is already ticked.", 2000);
+  await caption(page, "The header row stays out of the sort, and the columns are listed by name.", 1600);
+  const column = dialog.getByRole("combobox");
+  await expect(column.locator("option")).toHaveText(["Name", "Team", "Hours"]);
+  const picker = (await column.boundingBox())!;
+  await page.mouse.move(picker.x + picker.width / 2, picker.y + picker.height / 2, { steps: 12 });
+  await column.selectOption("Hours");
   await beat(page, 500);
-  await page.getByText("Hours", { exact: true }).last().click();
-  await dialog.getByText("Descending", { exact: true }).click();
+  await caption(page, "She sorts by Hours, Z → A, so the largest numbers come first.", 1000);
+  await press(dialog.getByRole("radio", { name: "Z → A" }));
   await beat(page, 700);
-  await dialog.getByRole("button", { name: "Confirm" }).click();
+  await press(dialog.getByRole("button", { name: "Sort", exact: true }));
   await expect(dialog).toBeHidden();
-  await selectCells(page, "A1");
+  await beat(page, 400);
+  await pointAt(page, await cellPoint(page, "F14"));
   await caption(page, "The header stays put, and Wen's 31 hours are on top. Every name kept its own team and hours.", 2600);
 
   const file = await native(page);

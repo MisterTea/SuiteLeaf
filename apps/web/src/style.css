@@ -2594,6 +2594,57 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
   color: var(--google-red);
   font-size: 13px;
 }
+.sort-range-dialog .checkbox-row {
+  font-size: 13px;
+  color: inherit;
+}
+.sort-rule {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 13px;
+}
+.sort-rule > label {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+}
+.sort-rule > label span {
+  min-width: 52px;
+}
+.sort-rule select {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--input-bg);
+  color: inherit;
+  font: inherit;
+}
+.sort-order {
+  display: flex;
+  gap: 12px;
+}
+.sort-order label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.sort-order input,
+.sort-range-dialog .checkbox-row input {
+  accent-color: #1a73e8;
+}
+.sort-add-rule {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 4px;
+}
 .provider-buttons {
   display: grid;
   gap: 8px;
