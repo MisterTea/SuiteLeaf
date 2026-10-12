@@ -91,7 +91,11 @@ import {
   type SourceRange,
 } from "@suiteleaf/core";
 import { pivotResult, shiftRange, type CellValue } from "../analysis";
-import { numberFormatsByGroup, applyNamedFormat } from "../formats";
+import {
+  numberFormatsByGroup,
+  applyNamedFormat,
+  numberFormatById,
+} from "../formats";
 import { exportBinary, exportText, printDocument } from "../storage";
 import { Tool, type EditorActions } from "../ui";
 import "../excel-overflow";
@@ -101,6 +105,8 @@ import "../excel-cell";
 import { resolveExcelColumnWidths } from "../excel-layout";
 import { useTheme } from "../theme";
 
+const shortcut = (key: string) =>
+  `${navigator.platform.includes("Mac") ? "⌘" : "Ctrl+"}${key}`;
 type ChartState = {
   definition: ChartDefinition;
   values: CellValue[][];
@@ -691,11 +697,13 @@ export default function Sheets({
     [fillColor, setFillColor] = useState("#ffffff"),
     [hAlign, setHAlign] = useState<"left" | "center" | "right">("left"),
     [vAlign, setVAlign] = useState<"top" | "middle" | "bottom">("middle"),
-    [isWrap, setIsWrap] = useState(false);
+    [isWrap, setIsWrap] = useState(false),
+    [notice, setNotice] = useState("");
   const pending = useRef(false);
   const tabSettings = useRef<{ openTabs: () => void }>(null);
   const persist = useRef<() => void>(() => {}),
-    refreshCharts = useRef<() => void>(() => {});
+    refreshCharts = useRef<() => void>(() => {}),
+    syncTextStyle = useRef<() => void>(() => {});
   const readRange = (r: SourceRange): CellValue[][] => {
     const s = book.current?.getSheetBySheetId(r.sheetId);
     if (!s || r.endRow >= s.getMaxRows() || r.endColumn >= s.getMaxColumns())
@@ -730,6 +738,16 @@ export default function Sheets({
             ConditionalEnUS,
             CommentEnUS,
             NoteEnUS,
+            {
+              ui: {
+                clipboard: {
+                  authentication: {
+                    title: "Clipboard access blocked",
+                    content: `Use ${shortcut("C")}, ${shortcut("X")} and ${shortcut("V")} to copy, cut and paste.`,
+                  },
+                },
+              },
+            },
           ),
         },
         presets: [
@@ -1028,7 +1046,19 @@ export default function Sheets({
         changes.current(structuredClone(content.current));
         setRevision((v) => v + 1);
       };
+      syncTextStyle.current = () => {
+        const style = workbook.getActiveRange()?.getCellStyleData();
+        setIsBold(style?.bl === 1);
+        setIsItalic(style?.it === 1);
+        setIsStrike(style?.st?.s === 1);
+      };
       const listener = workbook.onCommandExecuted((command: any) => {
+        if (
+          !disposed &&
+          (command.id === "sheet.operation.set-selections" ||
+            command.id === "sheet.mutation.set-range-values")
+        )
+          syncTextStyle.current();
         if (busy || disposed || !command.id.includes("mutation")) return;
         pending.current = true;
         const p = command.params ?? {};
@@ -1213,15 +1243,26 @@ export default function Sheets({
     // The workspace mounts a fresh editor per file. Changes must not recreate the engine.
   }, []);
   useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(""), 8000);
+    return () => clearTimeout(t);
+  }, [notice]);
+  useEffect(() => {
     if (!api.current) return;
     try {
       api.current.toggleDarkMode?.(isDark);
       api.current.setTheme?.(isDark ? darkBlueTheme : defaultTheme);
     } catch {}
   }, [isDark]);
+  // Univer's own currency command applies an accounting pattern with red
+  // parentheses; the toolbar $ follows Sheets' plain currency instead.
   const formatCurrency = () => {
+    const ranges =
+      book.current?.getActiveSheet()?.getSelection()?.getActiveRangeList() ??
+      [];
     try {
-      api.current?.executeCommand("sheet.command.numfmt.set.currency");
+      for (const r of ranges)
+        r.setNumberFormat(numberFormatById("currency2")!.code);
     } catch {}
     persist.current();
   };
@@ -1258,32 +1299,39 @@ export default function Sheets({
     });
     if (applied.ok) persist.current();
   };
-  const toggleBold = () => {
-    const r = book.current?.getActiveRange();
-    if (r) {
-      const next = r.getFontWeight() !== "bold";
-      r.setFontWeight(next ? "bold" : "normal");
-      setIsBold(next);
-      persist.current();
-    }
+  // The same commands as Cmd+B/I and Alt+Shift+5: they toggle from the active
+  // cell's style and also format the text being edited inside a cell.
+  const toggleTextStyle = (command: string) =>
+    void Promise.resolve(api.current?.executeCommand(command))
+      .then(() => {
+        syncTextStyle.current();
+        persist.current();
+      })
+      .catch((e) => onError(e instanceof Error ? e.message : String(e)));
+  const toggleBold = () => toggleTextStyle("sheet.command.set-range-bold");
+  const toggleItalic = () => toggleTextStyle("sheet.command.set-range-italic");
+  const toggleStrike = () => toggleTextStyle("sheet.command.set-range-stroke");
+  const clipboard = async (action: "cut" | "copy" | "paste") => {
+    let done = false;
+    try {
+      done = !!(await api.current?.executeCommand(`univer.command.${action}`));
+    } catch {}
+    if (done) return;
+    const key = shortcut({ cut: "X", copy: "C", paste: "V" }[action]);
+    setNotice(
+      `Your browser doesn't let the Edit menu ${action} here. Use ${key} to ${action}.`,
+    );
   };
-  const toggleItalic = () => {
-    const r = book.current?.getActiveRange();
-    if (r) {
-      const next = r.getFontStyle() !== "italic";
-      r.setFontStyle(next ? "italic" : "normal");
-      setIsItalic(next);
-      persist.current();
+  const deleteValues = () => {
+    const ranges =
+      book.current?.getActiveSheet()?.getSelection()?.getActiveRangeList() ??
+      [];
+    try {
+      for (const r of ranges) r.clearContent();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
     }
-  };
-  const toggleStrike = () => {
-    const r = book.current?.getActiveRange();
-    if (r) {
-      const next = r.getFontLine() !== "line-through";
-      r.setFontLine(next ? "line-through" : "none");
-      setIsStrike(next);
-      persist.current();
-    }
+    persist.current();
   };
   const handleTextColor = (color: string) => {
     setTextColor(color);
@@ -1494,6 +1542,10 @@ export default function Sheets({
         },
         undo: () => void api.current?.undo(),
         redo: () => void api.current?.redo(),
+        cut: () => void clipboard("cut"),
+        copy: () => void clipboard("copy"),
+        paste: () => void clipboard("paste"),
+        deleteValues,
         insertChart: () => startPanel("chart"),
         insertPivot: () => startPanel("pivot"),
         toggleFilter,
@@ -1656,6 +1708,18 @@ export default function Sheets({
   const items = content.current;
   return (
     <div className="sheets-editor">
+      {notice ? (
+        <div className="sheet-notice" role="status">
+          {notice}
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={() => setNotice("")}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      ) : null}
       {ready && api.current ? (
         <SheetFeatures
           ref={tabSettings}
