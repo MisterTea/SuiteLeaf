@@ -1,5 +1,6 @@
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
-import type { ReactNode } from "react";
+import { Check } from "lucide-react";
+import { Fragment, type ReactNode } from "react";
 export function Menu({
   label,
   children,
@@ -91,6 +92,47 @@ export function MenuCheckItem({
     </Dropdown.CheckboxItem>
   );
 }
+/** A table command, shared by the Format menu and the table's right-click menu. */
+export type TableAction = {
+  label: string;
+  run: () => void;
+  disabled: boolean;
+  checked?: boolean;
+  separatorBefore?: boolean;
+};
+/** Rendered when the submenu opens, so `actions()` reads the current selection. */
+export function TableMenuItems({ actions }: { actions: () => TableAction[] }) {
+  return (
+    <>
+      {actions().map((action) => (
+        <Fragment key={action.label}>
+          {action.separatorBefore ? (
+            <Dropdown.Separator className="menu-separator" />
+          ) : null}
+          {action.checked === undefined ? (
+            <Dropdown.Item
+              className="menu-item"
+              disabled={action.disabled}
+              onSelect={action.run}
+            >
+              <span className="menu-item-label">{action.label}</span>
+            </Dropdown.Item>
+          ) : (
+            <Dropdown.CheckboxItem
+              className="menu-item"
+              disabled={action.disabled}
+              checked={action.checked}
+              onSelect={action.run}
+            >
+              <span className="menu-item-label">{action.label}</span>
+              {action.checked ? <Check size={14} /> : null}
+            </Dropdown.CheckboxItem>
+          )}
+        </Fragment>
+      ))}
+    </>
+  );
+}
 export function Tool({
   label,
   children,
@@ -143,12 +185,7 @@ export type EditorActions = {
     toggleSubscript: () => void;
     toggleBulletList: () => void;
     toggleOrderedList: () => void;
-    tableAddRow: () => void;
-    tableAddColumn: () => void;
-    tableDeleteRow: () => void;
-    tableDeleteColumn: () => void;
-    tableDelete: () => void;
-    hasTable: boolean;
+    tableActions: () => TableAction[];
   };
   sheetActions?: {
     dataValidation?: () => void;

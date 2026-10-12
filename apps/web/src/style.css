@@ -684,6 +684,33 @@ a {
   opacity: 0.38;
   cursor: default;
 }
+.menu-separator {
+  height: 1px;
+  margin: 6px 0;
+  background: var(--border);
+}
+.context-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+}
+.table-context-menu {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+}
+.table-context-menu .menu-item {
+  border: 0;
+  background: transparent;
+  text-align: start;
+  font: inherit;
+  font-size: 13px;
+}
+.table-context-menu .menu-item:hover,
+.table-context-menu .menu-item:focus-visible {
+  background: var(--surface-hover);
+  outline: none;
+}
 .save-status {
   display: flex;
   gap: 4px;
@@ -1052,6 +1079,47 @@ a {
   max-width: 100%;
   height: auto;
 }
+.document-content a {
+  color: #1155cc;
+  text-decoration: underline;
+}
+.document-content [data-resize-wrapper] {
+  max-width: 100%;
+  min-width: 0;
+  line-height: 0;
+}
+/* Keeps the photo's proportions even when the page is narrower than the drag. */
+.document-content [data-resize-container] img {
+  display: block;
+  height: auto !important;
+}
+.document-content [data-resize-handle] {
+  width: 10px;
+  height: 10px;
+  margin: -5px;
+  box-sizing: border-box;
+  background: #ffffff;
+  border: 1px solid #1a73e8;
+  z-index: 1;
+  opacity: 0;
+}
+.document-content [data-resize-handle="top-left"],
+.document-content [data-resize-handle="bottom-right"] {
+  cursor: nwse-resize;
+}
+.document-content [data-resize-handle="top-right"],
+.document-content [data-resize-handle="bottom-left"] {
+  cursor: nesw-resize;
+}
+.document-content [data-resize-container]:hover [data-resize-handle],
+.document-content .ProseMirror-selectednode [data-resize-handle],
+.document-content [data-resize-state="true"] [data-resize-handle] {
+  opacity: 1;
+}
+.document-content .ProseMirror-selectednode > [data-resize-wrapper],
+.document-content [data-resize-state="true"] > [data-resize-wrapper] {
+  outline: 1px solid #1a73e8;
+}
 .document-content hr {
   border: none;
   border-top: 1.5px solid #4f81bd;
@@ -1074,6 +1142,8 @@ a {
 }
 .document-content th {
   background: #edf3ec;
+  font-weight: 700;
+  text-align: start;
 }
 .document-content .selectedCell {
   background: #dce9d9;
@@ -1199,6 +1269,11 @@ a {
   right: 10px;
   font-size: 12px;
   color: #5f6368;
+}
+.dialog-error {
+  margin: -4px 0 0;
+  font-size: 12px;
+  color: #b3261e;
 }
 .options-checkbox-group {
   display: flex;
@@ -2659,6 +2734,12 @@ a {
   }
   .document-content .doc-search-match {
     background: transparent;
+  }
+  .document-content [data-resize-handle] {
+    display: none;
+  }
+  .document-content [data-resize-wrapper] {
+    outline: none !important;
   }
   .document-content tr,
   img {

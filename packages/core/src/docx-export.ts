@@ -144,6 +144,10 @@ function blocks(
           rows: (n.content ?? []).map(
             (row) =>
               new TableRow({
+                tableHeader:
+                  (!!row.content?.length &&
+                    row.content.every((cell) => cell.type === "tableHeader")) ||
+                  undefined,
                 children: (row.content ?? []).map(
                   (cell) =>
                     new TableCell({

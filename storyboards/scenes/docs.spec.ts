@@ -341,7 +341,6 @@ test("04-long-report-with-outline", async ({ page }) => {
 });
 
 test("05-tables-images-and-links", async ({ page }) => {
-  page.on("dialog", (dialog) => void dialog.accept("https://example.org/seed-swap"));
   await page.goto("/");
   await caption(page, "Asha is making a sign-up sheet for the seed swap.");
   const editor = await newDocument(page, "Seed swap sign-up");
@@ -349,16 +348,19 @@ test("05-tables-images-and-links", async ({ page }) => {
   await typeSlowly(page, "Bring seeds to share on Saturday 14 November at the garden shed.");
   await page.keyboard.press("Enter");
 
-  await caption(page, "Insert a table and choose its size: 3 rows by 3 columns.", 1000);
+  await caption(page, "Insert a table and choose its size: 3 rows by 3 columns, with a header row.", 1000);
   await page.getByRole("button", { name: "Insert table", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Insert table" });
   await dialog.getByLabel("Table rows").fill("3");
   await dialog.getByLabel("Table columns").fill("3");
-  await beat(page, 800);
+  await expect(dialog.getByRole("checkbox", { name: "Header row" })).toBeChecked();
+  await beat(page, 1200);
   await dialog.getByRole("button", { name: "Create table" }).click();
   const table = editor.locator("table");
-  await expect(table.locator("tr")).toHaveCount(3);
-  await expect(table.locator("tr").first().locator("td, th")).toHaveCount(3);
+  const rows = table.locator("tr");
+  await expect(rows).toHaveCount(3);
+  await expect(rows.first().locator("th")).toHaveCount(3);
+  await beat(page, 300);
 
   await caption(page, "Fill it in, pressing Tab to move from cell to cell.", 900);
   const cells = [
@@ -371,14 +373,33 @@ test("05-tables-images-and-links", async ({ page }) => {
     if (i < cells.length - 1) await page.keyboard.press("Tab");
   }
   await showDocumentTop(page);
-  await caption(page, "Tab in the last cell adds a new row.", 900);
+  await caption(page, "The first row is a bold, shaded header. Tab in the last cell adds a new row.", 1200);
   await page.keyboard.press("Tab");
-  await expect(table.locator("tr")).toHaveCount(4);
+  await expect(rows).toHaveCount(4);
   for (const [i, text] of ["Joy", "Sweet peas", "Anything!"].entries()) {
     await typeSlowly(page, text, 25);
     if (i < 2) await page.keyboard.press("Tab");
   }
   await beat(page);
+
+  await caption(page, "Priya signed up before Joy. Right-click Marek's row for the table options.", 1200);
+  await table.getByText("Marek", { exact: true }).click({ button: "right" });
+  const menu = page.getByRole("menu", { name: "Table options" });
+  await expect(menu).toBeVisible();
+  await caption(page, "Insert rows above or below, columns left or right, or delete them.", 2000);
+  await menu.getByRole("menuitem", { name: "Insert row below" }).hover();
+  await beat(page, 500);
+  await menu.getByRole("menuitem", { name: "Insert row below" }).click();
+  await expect(rows).toHaveCount(5);
+  await beat(page, 500);
+  await rows.nth(3).locator("td").first().click();
+  for (const [i, text] of ["Priya", "Tomatoes", "Herbs"].entries()) {
+    await typeSlowly(page, text, 25);
+    if (i < 2) await page.keyboard.press("Tab");
+  }
+  await expect(rows.nth(3)).toHaveText("PriyaTomatoesHerbs");
+  await expect(rows.nth(4).locator("td").first()).toHaveText("Joy");
+  await caption(page, "Priya's row lands right under Marek's.", 1400);
 
   await caption(page, "Click below the table to keep writing.", 900);
   await editor.locator(":scope > p").last().click();
@@ -388,23 +409,46 @@ test("05-tables-images-and-links", async ({ page }) => {
   const chooser = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: "Insert image", exact: true }).click();
   await (await chooser).setFiles({ name: "garden.png", mimeType: "image/png", buffer: gardenPicture() });
-  await expect(editor.locator("img")).toBeVisible();
+  const image = editor.locator("img");
+  await expect(image).toBeVisible();
   await expect(table.locator("img")).toHaveCount(0);
   await beat(page, 1400);
 
-  await page.keyboard.press("Enter");
   await typeSlowly(page, "Full rules are on the club website.");
-  await caption(page, "Select \"club website\" and use Insert link to add the address.", 1000);
+  await expect(image).toBeVisible();
+  await caption(page, "Select \"club website\" and click Insert link.", 1000);
   await page.keyboard.press("ArrowLeft");
   for (let i = 0; i < "club website".length; i++) await page.keyboard.press("Shift+ArrowLeft");
   await page.getByRole("button", { name: "Insert link", exact: true }).click();
+  const linkDialog = page.getByRole("dialog", { name: "Insert link" });
+  await expect(linkDialog.getByLabel("Link text")).toHaveValue("club website");
+  await caption(page, "The link dialog shows the words; she types the address. No need for https://.", 900);
+  await typeSlowly(page, "example.org/seed-swap", 45);
+  await beat(page, 700);
+  await linkDialog.getByRole("button", { name: "Apply" }).click();
   const link = editor.locator('a[href="https://example.org/seed-swap"]');
   await expect(link).toHaveText("club website");
-  await page.keyboard.press("End");
-  await caption(page, "The browser asks for the address; the words become a link.", 1800);
+  await lineEnd(page);
+  await caption(page, "The words become a link to https://example.org/seed-swap.", 1800);
+
+  await caption(page, "The photo is a bit big. Click it, then drag a corner to shrink it.", 1000);
+  await image.click();
+  const corner = editor.locator('[data-resize-handle="bottom-right"]');
+  await expect(corner).toBeVisible();
+  await beat(page, 600);
+  const start = (await corner.boundingBox())!;
+  const from = { x: start.x + start.width / 2, y: start.y + start.height / 2 };
+  await page.mouse.move(from.x, from.y, { steps: 5 });
+  await page.mouse.down();
+  await page.mouse.move(from.x - 110, from.y - 61, { steps: 20 });
+  await page.mouse.up();
+  await expect.poll(async () => (await image.boundingBox())!.width).toBeLessThan(300);
+  await caption(page, "It keeps its shape, and the new size is saved with the document.", 1600);
+  await editor.locator(":scope > p").last().click();
+  await lineEnd(page);
   await expect(page.getByRole("status")).toContainText("Saved");
   await showDocumentTop(page);
-  await caption(page, "A table with an extra row, a photo and a link, all saved.", 2000);
+  await caption(page, "A header row, a row added in the middle, a resized photo and a link, all saved.", 2200);
 });
 
 const letter = [

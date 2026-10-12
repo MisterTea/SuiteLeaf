@@ -64,7 +64,13 @@ import { importFile, type DelimitedDraft } from "./imports";
 import { CsvImportDialog } from "./csv-import";
 import type { DelimitedOptions } from "./csv";
 import { sampleDoc, sampleSheet, sampleSlide } from "./samples";
-import { Menu, MenuItem, type EditorActions } from "./ui";
+import {
+  Menu,
+  MenuItem,
+  SubMenu,
+  TableMenuItems,
+  type EditorActions,
+} from "./ui";
 import { SheetViewMenu } from "./editors/SheetViewMenu";
 import {
   DriveConflict,
@@ -1592,6 +1598,13 @@ function Workspace() {
                   >
                     Numbered list
                   </MenuItem>
+                  <SubMenu label="Table">
+                    <TableMenuItems
+                      actions={() =>
+                        actions.current?.docActions?.tableActions() ?? []
+                      }
+                    />
+                  </SubMenu>
                   <MenuItem
                     shortcut="Cmd+\"
                     onSelect={() =>

@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  Fragment,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import { generateJSON, type Extensions } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
@@ -9,7 +15,8 @@ import Image from "@tiptap/extension-image";
 import { TableKit } from "@tiptap/extension-table";
 import Superscript from "@tiptap/extension-superscript";
 import Subscript from "@tiptap/extension-subscript";
-import { Extension } from "@tiptap/core";
+import { Extension, findParentNode } from "@tiptap/core";
+import { CellSelection } from "@tiptap/pm/tables";
 import CharacterCount from "@tiptap/extension-character-count";
 import DOMPurify from "dompurify";
 import {
@@ -40,6 +47,7 @@ import {
   Outdent,
   FileCog,
   SeparatorHorizontal,
+  Check,
   X,
 } from "lucide-react";
 import {
@@ -49,8 +57,9 @@ import {
   type JsonNode,
 } from "@suiteleaf/core";
 import { exportBinary, exportText, printDocument } from "../storage";
-import { Tool, type EditorActions } from "../ui";
-import { TextSelection } from "@tiptap/pm/state";
+import { Tool, type EditorActions, type TableAction } from "../ui";
+import { linkTarget } from "./doc-links";
+import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import {
   DocumentSearchHighlight,
   documentMatches,
@@ -75,7 +84,16 @@ export const extensions: Extensions = [
   TextStyleKit,
   Highlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ["heading", "paragraph"] }),
-  Image.configure({ allowBase64: true }),
+  Image.configure({
+    allowBase64: true,
+    resize: {
+      enabled: true,
+      directions: ["top-left", "top-right", "bottom-left", "bottom-right"],
+      minWidth: 32,
+      minHeight: 32,
+      alwaysPreserveAspectRatio: true,
+    },
+  }),
   TableKit.configure({ table: { resizable: true } }),
   CharacterCount,
   DocumentSearchHighlight,
@@ -139,6 +157,20 @@ export default function Docs({
   const [tableOpen, setTableOpen] = useState(false);
   const [tableRows, setTableRows] = useState(3);
   const [tableColumns, setTableColumns] = useState(3);
+  const [tableHeaderRow, setTableHeaderRow] = useState(true);
+  const [tableMenu, setTableMenu] = useState<{ x: number; y: number } | null>(
+    null,
+  );
+  const [link, setLink] = useState<{
+    from: number;
+    to: number;
+    original: string;
+    text: string;
+    url: string;
+    editing: boolean;
+    error: string;
+  } | null>(null);
+  const openLink = useRef(() => {});
   const [zoomLevel, setZoomLevel] = useState(() =>
     window.innerWidth < 700 ? "Fit" : "100%",
   );
@@ -208,6 +240,15 @@ export default function Docs({
           setFindOpen(true);
           return true;
         }
+        if (
+          (event.metaKey || event.ctrlKey) &&
+          !event.shiftKey &&
+          event.key.toLowerCase() === "k"
+        ) {
+          event.preventDefault();
+          openLink.current();
+          return true;
+        }
         return false;
       },
       handlePaste: (_view, event) => {
@@ -246,6 +287,29 @@ export default function Docs({
             .setTextSelection(matched + 1)
             .scrollIntoView()
             .run();
+          return true;
+        },
+        contextmenu: (view, event) => {
+          const target = event.target as HTMLElement | null;
+          const cell = target?.closest?.("td, th");
+          if (!cell || cell.closest(".doc-page-spacer")) return false;
+          const hit = view.posAtCoords({
+            left: event.clientX,
+            top: event.clientY,
+          });
+          const { selection } = view.state;
+          if (
+            hit &&
+            !(selection instanceof CellSelection) &&
+            (hit.pos < selection.from || hit.pos > selection.to)
+          )
+            view.dispatch(
+              view.state.tr.setSelection(
+                TextSelection.create(view.state.doc, hit.pos),
+              ),
+            );
+          event.preventDefault();
+          setTableMenu({ x: event.clientX, y: event.clientY });
           return true;
         },
       },
@@ -323,29 +387,102 @@ export default function Docs({
       .insertTable({
         rows: tableRows,
         cols: tableColumns,
-        withHeaderRow: false,
+        withHeaderRow: tableHeaderRow,
       })
       .run();
     setTableOpen(false);
   };
 
-  const insertLink = () => {
-    const url = window.prompt("Link URL (https://…)");
-    if (url === null) return;
-    if (!url) {
-      editor?.chain().focus().unsetLink().run();
+  const tableActions = (): TableAction[] => {
+    const table = editor
+      ? findParentNode((n) => n.type.name === "table")(editor.state.selection)
+      : undefined;
+    const run = (command: () => void) => () => {
+      setTableMenu(null);
+      command();
+    };
+    const chain = () => editor!.chain().focus();
+    const firstRow = table?.node.firstChild;
+    const commands: [string, () => boolean][] = [
+      ["Insert row above", () => chain().addRowBefore().run()],
+      ["Insert row below", () => chain().addRowAfter().run()],
+      ["Insert column left", () => chain().addColumnBefore().run()],
+      ["Insert column right", () => chain().addColumnAfter().run()],
+      ["Delete row", () => chain().deleteRow().run()],
+      ["Delete column", () => chain().deleteColumn().run()],
+      ["Delete table", () => chain().deleteTable().run()],
+      ["Header row", () => chain().toggleHeaderRow().run()],
+    ];
+    return commands.map(([label, command], i) => ({
+      label,
+      run: run(command),
+      disabled: !table,
+      separatorBefore: i === 4 || i === 7,
+      checked:
+        label === "Header row"
+          ? !!firstRow?.childCount &&
+            firstRow.content.content.every(
+              (cell) => cell.type.name === "tableHeader",
+            )
+          : undefined,
+    }));
+  };
+
+  const openLinkDialog = () => {
+    if (!editor) return;
+    const editing = editor.isActive("link");
+    if (editing) editor.chain().extendMarkRange("link").run();
+    const { from, to } = editor.state.selection;
+    const original = editor.state.doc.textBetween(from, to, "\n");
+    setLink({
+      from,
+      to,
+      original,
+      text: original,
+      url: editing ? String(editor.getAttributes("link").href ?? "") : "",
+      editing,
+      error: "",
+    });
+  };
+  openLink.current = openLinkDialog;
+
+  const closeLink = () => {
+    setLink(null);
+    editor?.view.focus();
+  };
+
+  const applyLink = () => {
+    if (!editor || !link) return;
+    const href = linkTarget(link.url);
+    if (!href) {
+      setLink({
+        ...link,
+        error: "Enter a web address, an email address, or a mailto: or tel: link.",
+      });
       return;
     }
-    if (!safeLink(url)) {
-      onError("Use an https, http, mailto, or tel link.");
-      return;
+    const { from, to, original } = link;
+    const text = link.text || original || link.url.trim();
+    const type = editor.schema.marks.link;
+    const tr = editor.state.tr;
+    let end = to;
+    if (text !== original || from === to) {
+      tr.insertText(text, from, to);
+      end = from + text.length;
     }
-    editor
-      ?.chain()
-      .focus()
-      .extendMarkRange("link")
-      .setLink({ href: url })
-      .run();
+    tr.removeMark(from, end, type).addMark(from, end, type.create({ href }));
+    tr.setSelection(TextSelection.create(tr.doc, end));
+    tr.setStoredMarks(tr.doc.resolve(end).marks().filter((m) => m.type !== type));
+    editor.view.dispatch(tr);
+    closeLink();
+  };
+
+  const removeLink = () => {
+    if (!editor || !link) return;
+    editor.view.dispatch(
+      editor.state.tr.removeMark(link.from, link.to, editor.schema.marks.link),
+    );
+    closeLink();
   };
 
   const copyHeadingLink = async (slug: string) => {
@@ -372,7 +509,20 @@ export default function Docs({
         r.onerror = reject;
         r.readAsDataURL(f);
       });
-      editor?.chain().focus().setImage({ src, alt: f.name }).run();
+      editor
+        ?.chain()
+        .focus()
+        .setImage({ src, alt: f.name })
+        .command(({ tr, state }) => {
+          // Typing must continue after the photo, not replace it.
+          if (!(tr.selection instanceof NodeSelection)) return true;
+          const after = tr.selection.to;
+          if (!tr.doc.resolve(after).nodeAfter?.isTextblock)
+            tr.insert(after, state.schema.nodes.paragraph.create());
+          tr.setSelection(TextSelection.create(tr.doc, after + 1));
+          return true;
+        })
+        .run();
     } catch {
       onError("Could not read that image.");
     }
@@ -418,7 +568,7 @@ export default function Docs({
         redo: () => editor.commands.redo(),
         openFind: () => setFindOpen(true),
         selectAll: () => editor.chain().focus().selectAll().run(),
-        insertLink,
+        insertLink: () => openLink.current(),
         insertImage: () => imageInput.current?.click(),
         insertTable: () => setTableOpen(true),
         insertHorizontalRule: () =>
@@ -437,12 +587,7 @@ export default function Docs({
         toggleBulletList: () => editor.chain().focus().toggleBulletList().run(),
         toggleOrderedList: () =>
           editor.chain().focus().toggleOrderedList().run(),
-        tableAddRow: () => editor.chain().focus().addRowAfter().run(),
-        tableAddColumn: () => editor.chain().focus().addColumnAfter().run(),
-        tableDeleteRow: () => editor.chain().focus().deleteRow().run(),
-        tableDeleteColumn: () => editor.chain().focus().deleteColumn().run(),
-        tableDelete: () => editor.chain().focus().deleteTable().run(),
-        hasTable: editor.isActive("table"),
+        tableActions,
       },
     });
   }, [editor, file.title, onActions]);
@@ -817,7 +962,11 @@ export default function Docs({
 
         <span className="divider" />
 
-        <Tool label="Insert link" onClick={insertLink}>
+        <Tool
+          label="Insert link"
+          active={editor.isActive("link")}
+          onClick={openLinkDialog}
+        >
           <Link size={16} />
         </Tool>
         <Tool label="Insert image" onClick={() => imageInput.current?.click()}>
@@ -1154,6 +1303,9 @@ export default function Docs({
             role="dialog"
             aria-label="Insert table"
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setTableOpen(false);
+            }}
           >
             <div className="dialog-header">
               <h2>Insert table</h2>
@@ -1191,6 +1343,14 @@ export default function Docs({
                   />
                 </div>
               </div>
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={tableHeaderRow}
+                  onChange={(e) => setTableHeaderRow(e.target.checked)}
+                />
+                <span>Header row</span>
+              </label>
             </div>
             <div className="dialog-footer">
               <button
@@ -1216,6 +1376,160 @@ export default function Docs({
                 Create table
               </button>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {link ? (
+        <div className="gdocs-modal-overlay" onClick={closeLink}>
+          <form
+            className="gdocs-dialog insert-link-dialog"
+            role="dialog"
+            aria-label={link.editing ? "Edit link" : "Insert link"}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") closeLink();
+            }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              applyLink();
+            }}
+          >
+            <div className="dialog-header">
+              <h2>{link.editing ? "Edit link" : "Insert link"}</h2>
+              <button
+                type="button"
+                className="dialog-close-btn"
+                aria-label="Close link dialog"
+                onClick={closeLink}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="dialog-body">
+              <div className="form-field-group">
+                {link.original.includes("\n") ? null : (
+                  <div className="floating-field">
+                    <label htmlFor="doc-link-text">Text</label>
+                    <input
+                      id="doc-link-text"
+                      aria-label="Link text"
+                      autoFocus={!link.original}
+                      value={link.text}
+                      onChange={(e) =>
+                        setLink({ ...link, text: e.target.value })
+                      }
+                    />
+                  </div>
+                )}
+                <div className="floating-field">
+                  <label htmlFor="doc-link-url">Link</label>
+                  <input
+                    id="doc-link-url"
+                    aria-label="Link address"
+                    aria-invalid={!!link.error}
+                    aria-describedby={link.error ? "doc-link-error" : undefined}
+                    autoFocus={!!link.original}
+                    placeholder="Paste a web address or email"
+                    value={link.url}
+                    onChange={(e) =>
+                      setLink({ ...link, url: e.target.value, error: "" })
+                    }
+                  />
+                </div>
+                {link.error ? (
+                  <p id="doc-link-error" className="dialog-error" role="alert">
+                    {link.error}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+            <div className="dialog-footer">
+              {link.editing ? (
+                <button
+                  type="button"
+                  className="dialog-text-btn"
+                  onClick={removeLink}
+                >
+                  Remove link
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="dialog-text-btn"
+                onClick={closeLink}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="dialog-primary-btn"
+                disabled={!link.url.trim()}
+              >
+                Apply
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
+      {tableMenu ? (
+        <div
+          className="context-menu-backdrop"
+          onMouseDown={() => setTableMenu(null)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setTableMenu(null);
+          }}
+        >
+          <div
+            className="menu-content table-context-menu"
+            role="menu"
+            aria-label="Table options"
+            style={{
+              left: Math.min(tableMenu.x, window.innerWidth - 230),
+              top: Math.min(tableMenu.y, window.innerHeight - 300),
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              const items = [
+                ...e.currentTarget.querySelectorAll<HTMLElement>(
+                  "[role^=menuitem]",
+                ),
+              ];
+              const at = items.indexOf(document.activeElement as HTMLElement);
+              if (e.key === "Escape") {
+                setTableMenu(null);
+                editor.commands.focus();
+              } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                e.preventDefault();
+                const step = e.key === "ArrowDown" ? 1 : -1;
+                items[(at + step + items.length) % items.length]?.focus();
+              }
+            }}
+          >
+            {tableActions().map((action) => (
+              <Fragment key={action.label}>
+                {action.separatorBefore ? (
+                  <div className="menu-separator" role="separator" />
+                ) : null}
+                <button
+                  type="button"
+                  className="menu-item"
+                  role={
+                    action.checked === undefined
+                      ? "menuitem"
+                      : "menuitemcheckbox"
+                  }
+                  aria-checked={action.checked}
+                  autoFocus={action.label === "Insert row above"}
+                  onClick={action.run}
+                >
+                  <span className="menu-item-label">{action.label}</span>
+                  {action.checked ? <Check size={14} /> : null}
+                </button>
+              </Fragment>
+            ))}
           </div>
         </div>
       ) : null}
