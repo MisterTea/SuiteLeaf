@@ -124,6 +124,11 @@ test("View menu freezes rows and columns, hides gridlines and the formula bar, a
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),
   });
+  // The name box ignores Enter until the grid has finished starting.
+  await expect(page.getByLabel("Spreadsheet grid")).toHaveAttribute(
+    "aria-busy",
+    "false",
+  );
   const box = page.locator(".sheet-host input.univer-size-full");
   await box.fill("B3");
   await box.press("Enter");
