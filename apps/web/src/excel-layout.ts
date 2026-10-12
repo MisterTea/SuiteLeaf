@@ -44,6 +44,9 @@ type ExcelLayout = {
   defaultColumnWidthChars?: number;
   baseColumnWidthChars: number;
   columnWidths: Record<string, number>;
+  columnPixels?: Record<string, number>;
+  characterPixels?: number;
+  defaultColumnPixels?: number;
   resolved?: boolean;
 };
 
@@ -66,22 +69,45 @@ export async function resolveExcelColumnWidths(workbook: IWorkbookData) {
   const nativeMac = navigator.platform.includes("Mac");
   for (const { sheet, layout } of pending) {
     context.font = fontSpec(layout);
-    const digitWidth = Math.max(
-      ...Array.from("0123456789", (digit) => context.measureText(digit).width),
-    );
-    sheet.defaultColumnWidth = excelColumnWidthPixels(
-      digitWidth,
-      layout.defaultColumnWidthChars,
-      layout.baseColumnWidthChars,
+    applyExcelColumnWidths(
+      sheet,
+      Math.max(
+        ...Array.from(
+          "0123456789",
+          (digit) => context.measureText(digit).width,
+        ),
+      ),
       nativeMac,
     );
-    for (const [column, characters] of Object.entries(layout.columnWidths)) {
-      sheet.columnData ??= {};
-      sheet.columnData[Number(column)] = {
-        ...sheet.columnData[Number(column)],
-        w: excelColumnWidthPixels(digitWidth, characters, 8, nativeMac),
-      };
-    }
-    layout.resolved = true;
   }
+}
+
+/** Apply an imported sheet's character widths for a measured Normal font digit. */
+export function applyExcelColumnWidths(
+  sheet: IWorkbookData["sheets"][string],
+  digitWidth: number,
+  nativeMac: boolean,
+) {
+  const layout = sheet.custom!.excelLayout as ExcelLayout;
+  sheet.defaultColumnWidth = excelColumnWidthPixels(
+    digitWidth,
+    layout.defaultColumnWidthChars,
+    layout.baseColumnWidthChars,
+    nativeMac,
+  );
+  // XLSX export converts widths back to characters with the same metrics.
+  layout.defaultColumnPixels = sheet.defaultColumnWidth;
+  layout.characterPixels =
+    excelColumnWidthPixels(digitWidth, 256, 8, nativeMac) / 256;
+  layout.columnPixels = {};
+  for (const [column, characters] of Object.entries(layout.columnWidths)) {
+    const w = excelColumnWidthPixels(digitWidth, characters, 8, nativeMac);
+    layout.columnPixels[column] = w;
+    sheet.columnData ??= {};
+    sheet.columnData[Number(column)] = {
+      ...sheet.columnData[Number(column)],
+      w,
+    };
+  }
+  layout.resolved = true;
 }

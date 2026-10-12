@@ -827,6 +827,7 @@ export async function importXlsx(
     const rowData: Record<string, any> = {},
       columnData: Record<string, any> = {};
     const columnWidths: Record<string, number> = {};
+    const columnPixels: Record<string, number> = {};
     for (const m of raw.matchAll(/<(?:\w+:)?row\b([^>]*?)(?:\/?>)/g)) {
       const a = attrParser(m[1]);
       const r = Number(a.r) - 1;
@@ -850,6 +851,7 @@ export async function importXlsx(
           // OOXML widths already include padding; apply the stored-width formula.
           // The browser refines dimensions after loading the workbook Normal font.
           d.w = Math.floor(((256 * +a.width + Math.floor(128 / 7)) / 256) * 7);
+          columnPixels[c] = d.w;
         }
         if (a.hidden === "1" || a.hidden === "true") d.hd = 1;
         if (a.style !== undefined && styles["excel-" + a.style])
@@ -921,6 +923,10 @@ export async function importXlsx(
               ? Number(sheetFormat.baseColWidth)
               : 8,
           columnWidths,
+          // Export maps these pixel widths back to the stored character widths.
+          columnPixels,
+          characterPixels: 7,
+          defaultColumnPixels: defaultColumnWidth,
         },
       },
       defaultStyle: styles["excel-0"] ? "excel-0" : undefined,
@@ -1046,7 +1052,7 @@ export async function importXlsx(
   if (stats.formulas) {
     features.push("formulas");
     warnings.push(
-      "Excel formulas and cached results are retained; recalculation uses the available Univer functions and may differ for Excel-specific functions.",
+      `${stats.formulas === 1 ? "1 Excel formula was" : `${stats.formulas} Excel formulas were`} kept with their last calculated results. SuiteLeaf recalculates them with its own formula engine, so results of Excel-only functions may differ.`,
     );
   }
   return {
