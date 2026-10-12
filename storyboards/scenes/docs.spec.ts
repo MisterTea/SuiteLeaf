@@ -26,11 +26,15 @@ async function backToFiles(page: Page) {
   await expect(page.getByLabel("Search files")).toBeVisible();
 }
 
+/** Move the caret to the end of the line (End does not on macOS). */
+const lineEnd = (page: Page) =>
+  page.keyboard.press(process.platform === "darwin" ? "Meta+ArrowRight" : "End");
+
 /** Type a line, then give it a paragraph style from the toolbar menu. */
 async function styledLine(page: Page, text: string, style: string) {
   await typeSlowly(page, text);
   await page.getByRole("combobox", { name: "Paragraph style" }).selectOption({ label: style });
-  await page.keyboard.press("End");
+  await lineEnd(page);
   await page.keyboard.press("Enter");
 }
 
@@ -225,10 +229,18 @@ test("03-import-word-document", async ({ page }) => {
   await notes.locator("summary").click();
 
   await caption(page, "Now it's just a document. Lena adds a note at the end.", 1000);
-  await editor.click();
-  await editor.press("ControlOrMeta+End");
+  await editor.locator(":scope > p").last().click();
+  await lineEnd(page);
   await page.keyboard.press("Enter");
   await typeSlowly(page, "Reviewed by Lena: figures confirmed with the North team.");
+  const note = editor.locator(":scope > p").last();
+  await expect(note).toHaveText("Reviewed by Lena: figures confirmed with the North team.");
+  await caption(page, "The new line kept the tiny superscript style of the \"2\" above. Select it, then Clear formatting.", 1600);
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+Shift+ArrowLeft" : "Shift+Home");
+  await page.getByRole("button", { name: "Clear formatting", exact: true }).click();
+  await expect(note.locator("sup")).toHaveCount(0);
+  await lineEnd(page);
+  await beat(page);
   await expect(page.getByRole("status")).toContainText("Saved");
   await caption(page, "Her edits save automatically. The original .docx is never changed.", 1600);
 
@@ -281,7 +293,7 @@ test("04-long-report-with-outline", async ({ page }) => {
   await jump("Summary");
   await caption(page, "…or straight to Volunteers to add a thank-you.", 700);
   await jump("Volunteers");
-  await page.keyboard.press("End");
+  await lineEnd(page);
   await page.keyboard.press("Enter");
   await typeSlowly(page, "A special thank-you to the Saturday tea rota!");
   await expect(
@@ -351,7 +363,7 @@ test("05-tables-images-and-links", async ({ page }) => {
   await page.getByRole("button", { name: "Insert link", exact: true }).click();
   const link = editor.locator('a[href="https://example.org/seed-swap"]');
   await expect(link).toHaveText("club website");
-  await page.keyboard.press("End");
+  await lineEnd(page);
   await caption(page, "The browser asks for the address; the words become a link.", 1800);
   await expect(page.getByRole("status")).toContainText("Saved");
   await showDocumentTop(page);
@@ -426,40 +438,49 @@ test("07-page-setup-and-export", async ({ page }) => {
     "The committee agreed the budget for the rainwater tanks and set the date of the harvest supper. Ruth will order timber for the shed roof before the end of the month. Asha will run the seed swap in November.",
   );
   await page.keyboard.press("Enter");
-  const pageBreak = async () => {
-    await page.getByRole("button", { name: "Page break", exact: true }).click();
-    await beat(page, 700);
-    await editor.locator("p").last().click();
-  };
-  await caption(page, "The appendices start on new pages: Page break, then click on the new page.", 1200);
-  await pageBreak();
+  await caption(page, "Appendix A starts on a new page: click Page break and keep typing.", 1200);
+  await page.getByRole("button", { name: "Page break", exact: true }).click();
+  await expect(page.locator(".editor-status")).toContainText("2 pages");
+  await beat(page, 500);
   await styledLine(page, "Appendix A: plot assignments", "Heading 1");
   await page.keyboard.insertText("Plots 1 to 12: north beds. Plots 13 to 30: south beds. Plot 31: school gardening club.");
   await page.keyboard.press("Enter");
-  await pageBreak();
+  await caption(page, "Insert, Page break does the same (shortcut: Ctrl+Enter, or ⌘+Enter on a Mac).", 1200);
+  await page.getByRole("button", { name: "Insert", exact: true }).click();
+  await beat(page, 500);
+  await page.getByRole("menuitem", { name: /^Page break/ }).click();
+  await expect(page.locator(".editor-status")).toContainText("3 pages");
+  await beat(page, 500);
   await styledLine(page, "Appendix B: work party rota", "Heading 1");
   await page.keyboard.insertText("Tuesdays: Ruth and Marek. Saturdays: Asha, Joy and Ben.");
-  await expect(page.locator(".editor-status")).toContainText("3 pages");
+  await expect(page.locator(".manual-page-break")).toHaveCount(2);
   await beat(page);
 
-  await caption(page, "Page setup adds a header, a footer and page numbers to every page.", 1000);
-  await page.getByRole("button", { name: "Page setup", exact: true }).click();
+  await caption(page, "File, Page setup adds a header and a footer to every page.", 1000);
+  await page.getByRole("button", { name: "File", exact: true }).click();
+  await beat(page, 500);
+  await page.getByRole("menuitem", { name: "Page setup…", exact: true }).click();
   const setup = page.getByRole("dialog", { name: "Page setup" });
   await setup.getByLabel("Page header").click();
   await typeSlowly(page, "Riverside Garden Club");
   await setup.getByLabel("Page footer").click();
   await typeSlowly(page, "Minutes: draft for members");
-  await setup.getByLabel("Page numbers").check();
+  const numbers = setup.getByLabel("Page numbers");
+  await expect(numbers).not.toBeChecked();
+  await caption(page, "Page numbers are off until you ask for them, as in Docs and Word. Ben turns them on.", 1400);
+  await numbers.check();
   await beat(page, 600);
   await setup.getByRole("button", { name: "Apply", exact: true }).click();
   const headers = page.locator(".page-header");
   await expect(headers).toHaveCount(3);
   await expect(headers.first()).toHaveText("Riverside Garden Club");
   await expect(page.locator(".page-footer").first()).toContainText("1 / 3");
-  await caption(page, "Jump to Appendix A in the outline to see where the pages meet…", 900);
-  await page.locator(".outline").getByRole("button", { name: "Appendix A: plot assignments" }).click();
-  await expect(headers.nth(1)).toBeInViewport();
-  await caption(page, "…page 1 ends with the footer and \"1 / 3\"; page 2 starts with the header.", 2400);
+  await page
+    .locator(".page-footer")
+    .first()
+    .evaluate((el) => el.scrollIntoView({ behavior: "smooth", block: "center" }));
+  await beat(page, 700);
+  await caption(page, "Where pages meet: page 1 ends with the footer and \"1 / 3\"; page 2 starts with the header.", 2600);
 
   await caption(page, "File, Export DOCX makes a Word copy.", 900);
   const docx = await fileMenu(page, "Export DOCX");
@@ -468,6 +489,9 @@ test("07-page-setup-and-export", async ({ page }) => {
   const parts = Object.keys(zip.files);
   const header = await zip.file(parts.find((p) => /word\/header\d*\.xml/.test(p))!)!.async("string");
   expect(header).toContain("Riverside Garden Club");
+  const footer = await zip.file(parts.find((p) => /word\/footer\d*\.xml/.test(p))!)!.async("string");
+  expect(footer).toContain("Minutes: draft for members");
+  expect(footer).toContain("NUMPAGES");
   expect(await zip.file("word/document.xml")!.async("string")).toContain("Appendix B");
   await caption(page, `Saved "${docx.suggestedFilename()}" to Downloads, header and footer included.`, 2000);
 
@@ -475,8 +499,10 @@ test("07-page-setup-and-export", async ({ page }) => {
   const html = await fileMenu(page, "Export HTML");
   const page1 = (await savedBytes(html)).toString("utf8");
   expect(page1).toContain("<h1>Appendix A: plot assignments</h1>");
+  expect(page1).toContain('<header class="page-header">Riverside Garden Club</header>');
+  expect(page1).toContain('<footer class="page-footer">Minutes: draft for members</footer>');
   expect(html.suggestedFilename()).toMatch(/\.html$/);
-  await caption(page, `Saved "${html.suggestedFilename()}" to Downloads too.`, 1800);
+  await caption(page, `Saved "${html.suggestedFilename()}" too: the club name above the minutes, the footer below.`, 2200);
   await expect(editor).toContainText("work party rota");
   await caption(page, "One set of minutes: printed pages for Word users and a web page for everyone else.", 2000);
 });
@@ -522,7 +548,7 @@ test("08-carry-a-file-to-another-computer", async ({ page }) => {
   await expect(page.getByLabel("File title")).toHaveValue("Lisbon trip packing list");
   await caption(page, "Everything is back: the title, the heading and all four items.", 1600);
   await editor.locator("li").last().click();
-  await page.keyboard.press("End");
+  await lineEnd(page);
   await page.keyboard.press("Enter");
   await typeSlowly(page, "Sunglasses");
   await expect(editor.locator("li")).toHaveCount(5);

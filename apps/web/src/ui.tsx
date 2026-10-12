@@ -1,5 +1,6 @@
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
-import type { ReactNode } from "react";
+import { createContext, useContext, useRef, type ReactNode } from "react";
+const AfterClose = createContext<{ current: (() => void) | null } | null>(null);
 export function Menu({
   label,
   children,
@@ -7,12 +8,25 @@ export function Menu({
   label: string;
   children: ReactNode;
 }) {
+  const afterClose = useRef<(() => void) | null>(null);
   return (
     <Dropdown.Root>
       <Dropdown.Trigger className="menu-trigger">{label}</Dropdown.Trigger>
       <Dropdown.Portal>
-        <Dropdown.Content className="menu-content" sideOffset={4}>
-          {children}
+        <Dropdown.Content
+          className="menu-content"
+          sideOffset={4}
+          onCloseAutoFocus={(e) => {
+            const run = afterClose.current;
+            afterClose.current = null;
+            if (!run) return;
+            e.preventDefault();
+            run();
+          }}
+        >
+          <AfterClose.Provider value={afterClose}>
+            {children}
+          </AfterClose.Provider>
         </Dropdown.Content>
       </Dropdown.Portal>
     </Dropdown.Root>
@@ -23,17 +37,25 @@ export function MenuItem({
   onSelect,
   disabled = false,
   shortcut,
+  focusesTarget = false,
 }: {
   children: ReactNode;
   onSelect: () => void;
   disabled?: boolean;
   shortcut?: string;
+  /** Run after the menu closes, so focus can go to the editor or a dialog. */
+  focusesTarget?: boolean;
 }) {
+  const afterClose = useContext(AfterClose);
   return (
     <Dropdown.Item
       className="menu-item"
       disabled={disabled}
-      onSelect={onSelect}
+      onSelect={
+        focusesTarget && afterClose
+          ? () => (afterClose.current = onSelect)
+          : onSelect
+      }
     >
       <span className="menu-item-label">{children}</span>
       {shortcut ? <span className="menu-item-shortcut">{shortcut}</span> : null}
@@ -82,6 +104,8 @@ export type EditorActions = {
     insertImage: () => void;
     insertTable: () => void;
     insertHorizontalRule: () => void;
+    insertPageBreak: () => void;
+    openPageSetup: () => void;
     clearFormatting: () => void;
     align: (alignment: "left" | "center" | "right" | "justify") => void;
     toggleBold: () => void;

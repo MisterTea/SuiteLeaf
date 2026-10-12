@@ -59,6 +59,7 @@ import { slugify, uniqueSlug, anchorHref, isInternalAnchor } from "../anchors";
 
 import { DocumentPagination, PageBreak } from "./doc-pagination";
 import {
+  documentHtml,
   documentPageSettings,
   pageDimensions,
   type PageSettings,
@@ -163,7 +164,7 @@ export default function Docs({
         spellcheck: "true",
         "aria-label": "Document content",
       },
-      handleKeyDown: (_view, event) => {
+      handleKeyDown: (_view, event): boolean => {
         if (
           (event.metaKey || event.ctrlKey) &&
           (event.key.toLowerCase() === "f" ||
@@ -173,6 +174,13 @@ export default function Docs({
           setFindOpen(true);
           return true;
         }
+        if (
+          (event.metaKey || event.ctrlKey) &&
+          !event.shiftKey &&
+          !event.altKey &&
+          event.key === "Enter"
+        )
+          return editor?.commands.setPageBreak() ?? false;
         return false;
       },
       handlePaste: (_view, event) => {
@@ -311,6 +319,16 @@ export default function Docs({
       .run();
   };
 
+  const openPageSetup = () => {
+    if (!editor) return;
+    setPageDraft(documentPageSettings(editor.getJSON() as JsonNode));
+    setPageSetupOpen(true);
+  };
+  const closePageSetup = () => {
+    setPageSetupOpen(false);
+    editor?.commands.focus();
+  };
+
   const copyHeadingLink = async (slug: string) => {
     try {
       await navigator.clipboard.writeText(anchorHref(slug));
@@ -366,7 +384,11 @@ export default function Docs({
         } else if (format === "html")
           await exportText(
             filename(file.title, "html"),
-            `<!doctype html><html><head><meta charset="utf-8"><title>${file.title.replace(/[<>&"]/g, "")}</title></head><body>${editor.getHTML()}</body></html>`,
+            documentHtml(
+              file.title,
+              editor.getHTML(),
+              documentPageSettings(editor.getJSON() as JsonNode),
+            ),
             "text/html",
           );
         else
@@ -386,6 +408,8 @@ export default function Docs({
         insertTable: () => setTableOpen(true),
         insertHorizontalRule: () =>
           editor.chain().focus().setHorizontalRule().run(),
+        insertPageBreak: () => editor.chain().focus().setPageBreak().run(),
+        openPageSetup,
         clearFormatting: () =>
           editor.chain().focus().unsetAllMarks().clearNodes().run(),
         align: (alignment) =>
@@ -438,6 +462,10 @@ export default function Docs({
     return <div className="loading">Opening document…</div>;
 
   const pageSettings = documentPageSettings(editor.getJSON() as JsonNode);
+  const pageDraftValid =
+    Number.isFinite(pageDraft.margin) &&
+    pageDraft.margin >= 24 &&
+    pageDraft.margin <= 144;
   const dimensions = pageDimensions(pageSettings);
   const pageZoom =
     zoomLevel === "Fit"
@@ -532,20 +560,12 @@ export default function Docs({
           <option value="200%">200%</option>
         </select>
 
-        <Tool
-          label="Page setup"
-          onClick={() => {
-            setPageDraft(pageSettings);
-            setPageSetupOpen(true);
-          }}
-        >
+        <Tool label="Page setup" onClick={openPageSetup}>
           <FileCog size={16} />
         </Tool>
         <Tool
           label="Page break"
-          onClick={() =>
-            editor.chain().focus().insertContent({ type: "pageBreak" }).run()
-          }
+          onClick={() => editor.chain().focus().setPageBreak().run()}
         >
           <SeparatorHorizontal size={16} />
         </Tool>
@@ -787,31 +807,41 @@ export default function Docs({
 
       {pageSetupOpen ? (
         <div
-          className="gdocs-modal-overlay"
-          onClick={() => setPageSetupOpen(false)}
+          className="gdocs-modal-overlay page-setup-overlay"
+          onClick={closePageSetup}
         >
-          <section
-            className="gdocs-dialog feature-dialog"
+          <form
+            className="gdocs-dialog page-setup-dialog"
             role="dialog"
             aria-modal="true"
             aria-label="Page setup"
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
-              if (e.key === "Escape") setPageSetupOpen(false);
+              if (e.key === "Escape") closePageSetup();
+            }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!pageDraftValid) return;
+              editor.view.dispatch(
+                editor.state.tr.setDocAttribute("pageSettings", pageDraft),
+              );
+              closePageSetup();
             }}
           >
             <div className="dialog-header">
               <h2>Page setup</h2>
               <button
+                type="button"
+                className="dialog-close-btn"
                 aria-label="Close page setup"
-                onClick={() => setPageSetupOpen(false)}
+                onClick={closePageSetup}
               >
-                ×
+                <X size={18} />
               </button>
             </div>
             <div className="dialog-body page-setup-fields">
               <label>
-                Paper size{" "}
+                <span>Paper size</span>
                 <select
                   autoFocus
                   aria-label="Paper size"
@@ -823,22 +853,31 @@ export default function Docs({
                     })
                   }
                 >
-                  <option value="letter">Letter</option>
-                  <option value="a4">A4</option>
+                  <option value="letter">Letter (8.5 × 11 in)</option>
+                  <option value="a4">A4 (21 × 29.7 cm)</option>
                 </select>
               </label>
+              <fieldset className="page-setup-orientation">
+                <legend>Orientation</legend>
+                {(["Portrait", "Landscape"] as const).map((name) => (
+                  <label key={name}>
+                    <input
+                      type="radio"
+                      name="page-orientation"
+                      checked={pageDraft.landscape === (name === "Landscape")}
+                      onChange={() =>
+                        setPageDraft({
+                          ...pageDraft,
+                          landscape: name === "Landscape",
+                        })
+                      }
+                    />
+                    {name}
+                  </label>
+                ))}
+              </fieldset>
               <label>
-                <input
-                  type="checkbox"
-                  checked={pageDraft.landscape}
-                  onChange={(e) =>
-                    setPageDraft({ ...pageDraft, landscape: e.target.checked })
-                  }
-                />
-                Landscape
-              </label>
-              <label>
-                Margins (inches){" "}
+                <span>Margins (inches)</span>
                 <input
                   aria-label="Page margins"
                   type="number"
@@ -855,9 +894,10 @@ export default function Docs({
                 />
               </label>
               <label>
-                Header{" "}
+                <span>Header</span>
                 <input
                   aria-label="Page header"
+                  placeholder="Text at the top of every page"
                   value={pageDraft.header}
                   maxLength={500}
                   onChange={(e) =>
@@ -866,9 +906,10 @@ export default function Docs({
                 />
               </label>
               <label>
-                Footer{" "}
+                <span>Footer</span>
                 <input
                   aria-label="Page footer"
+                  placeholder="Text at the bottom of every page"
                   value={pageDraft.footer}
                   maxLength={500}
                   onChange={(e) =>
@@ -876,38 +917,43 @@ export default function Docs({
                   }
                 />
               </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={pageDraft.pageNumbers}
-                  onChange={(e) =>
-                    setPageDraft({
-                      ...pageDraft,
-                      pageNumbers: e.target.checked,
-                    })
-                  }
-                />
-                Page numbers
-              </label>
+              <div className="page-setup-check">
+                <label>
+                  <input
+                    type="checkbox"
+                    aria-describedby="page-numbers-hint"
+                    checked={pageDraft.pageNumbers}
+                    onChange={(e) =>
+                      setPageDraft({
+                        ...pageDraft,
+                        pageNumbers: e.target.checked,
+                      })
+                    }
+                  />
+                  Page numbers
+                </label>
+                <span id="page-numbers-hint" className="page-setup-hint">
+                  Bottom right of every page, as “1 / 3”
+                </span>
+              </div>
             </div>
             <div className="dialog-footer">
               <button
-                disabled={
-                  !Number.isFinite(pageDraft.margin) ||
-                  pageDraft.margin < 24 ||
-                  pageDraft.margin > 144
-                }
-                onClick={() => {
-                  editor.view.dispatch(
-                    editor.state.tr.setDocAttribute("pageSettings", pageDraft),
-                  );
-                  setPageSetupOpen(false);
-                }}
+                type="button"
+                className="dialog-text-btn"
+                onClick={closePageSetup}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="dialog-primary-btn"
+                disabled={!pageDraftValid}
               >
                 Apply
               </button>
             </div>
-          </section>
+          </form>
         </div>
       ) : null}
       {findOpen ? (
