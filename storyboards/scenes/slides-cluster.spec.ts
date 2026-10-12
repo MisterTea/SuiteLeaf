@@ -312,39 +312,88 @@ test("21-present-with-speaker-notes", async ({ page }) => {
 test.describe("cluster mode", () => {
   test.skip(!clusterReady, "Needs the suiteleaf-node binary and auth bundle.");
 
-  test("22-connect-to-your-team-server", async ({ page }) => {
-    await page.goto("/");
-    const server = await startServer(undefined, [new URL(page.url()).origin]);
+  test("22-connect-to-your-team-server", async ({ page, baseURL }) => {
+    const starting = startServer(undefined, [new URL(baseURL!).origin]);
     try {
+      await page.goto("/");
+      await expect(page.getByText("A workspace waiting for you")).toBeVisible();
+      await page.evaluate(async () => {
+        const doc = (title: string, text: string, daysAgo: number) => {
+          const at = new Date(Date.now() - daysAgo * 86_400_000).toISOString();
+          return {
+            format: "suiteleaf",
+            version: 1,
+            id: crypto.randomUUID(),
+            title,
+            createdAt: at,
+            updatedAt: at,
+            kind: "doc",
+            content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text }] }] },
+          };
+        };
+        const files = [
+          doc("Tomato planting notes", "Start seeds indoors in March.", 2),
+          doc("Allotment wish list", "Rhubarb, a second water butt, a bench.", 5),
+        ];
+        const db = await new Promise<IDBDatabase>((done, fail) => {
+          const open = indexedDB.open("SuiteLeaf");
+          open.onsuccess = () => done(open.result);
+          open.onerror = () => fail(open.error);
+        });
+        const tx = db.transaction("encoded", "readwrite");
+        for (const f of files)
+          tx.objectStore("encoded").put({ id: f.id, title: f.title, updatedAt: f.updatedAt, native: JSON.stringify(f) });
+        await new Promise((done, fail) => {
+          tx.oncomplete = done;
+          tx.onerror = () => fail(tx.error);
+        });
+        db.close();
+      });
+      await page.reload();
       await expect(page.getByText("Your workspace, in this browser.")).toBeVisible();
-      await caption(page, "Leo has used SuiteLeaf on his own. Now his team has a SuiteLeaf server.");
-      await caption(page, "In the sidebar: Connect to a server.", 900);
+      await page
+        .getByRole("heading", { name: "Your files" })
+        .evaluate((el) => el.scrollIntoView({ behavior: "smooth", block: "center" }));
+      await expect(page.getByRole("link", { name: /Tomato planting notes/ })).toBeVisible();
+      await caption(page, "Leo keeps his own files in SuiteLeaf, on this computer.", 1800);
+      await caption(page, "Now the garden club has a SuiteLeaf server. In the sidebar: Connect to a server.", 1600);
+      const host = new URL((await starting).url).host;
       await page.getByRole("button", { name: "Connect to a server" }).click();
 
       const dialog = page.getByRole("dialog", { name: "Connect to a SuiteLeaf server" });
       await expect(dialog).toBeVisible();
-      await caption(page, "He types the address his team gave him.", 900);
+      await caption(page, "Files on this computer stay put. He types the address the coordinator sent.", 1600);
       await dialog.getByLabel("Server address").click();
-      await typeSlowly(page, server.url);
+      await typeSlowly(page, host);
       await beat(page, 500);
       await dialog.getByRole("button", { name: "Connect", exact: true }).click();
 
       const card = page.getByLabel("Sign in to SuiteLeaf");
       await expect(card).toBeVisible();
-      await expect(card).toContainText(new URL(server.url).host);
-      await caption(page, "The server asks him to sign in. It's his first time, so he creates an account.", 1600);
+      await expect(card).toContainText(host);
+      await caption(page, "No need to type http:// first. The server asks him to sign in.", 1600);
+      await caption(page, "It's his first time, so he creates an account.", 900);
       await createAccount(page, "Leo Martins", "leo@riverside-garden.org");
 
       await expect(page.getByRole("heading", { name: "SuiteDrive" })).toBeVisible();
-      await caption(page, "He lands on the team home screen.", 1200);
+      await expect(page.getByText("YOUR TEAM WORKSPACE")).toBeVisible();
+      await caption(page, "He lands on his team's home screen.", 1400);
+
+      const chip = page.locator(".account-chip");
+      await expect(chip).toContainText("Leo Martins");
+      await expect(chip).toContainText(host);
+      await expect(page.getByText("Connect to a server")).toHaveCount(0);
+      const chipBox = (await chip.boundingBox())!;
+      await page.mouse.move(chipBox.x + chipBox.width - 16, chipBox.y + 20, { steps: 15 });
+      await caption(page, "The sidebar shows who he is and which server he's on, with Sign out and Disconnect.", 2400);
+
       await showDrive(page);
       await expect(page.getByText("This folder is empty.")).toBeVisible();
-      await expect(page.getByText("Leo Martins")).toBeVisible();
-      await caption(page, "Below is SuiteDrive, the team's shared drive. Files he makes here live on the server.", 2400);
-      await expect(page.getByText("Connect to a server")).toHaveCount(0);
-      await caption(page, "His name and the server are in the sidebar.", 1800);
+      await caption(page, "Below is SuiteDrive, his drive on the server. New files he makes are saved here.", 2200);
+      await expect(page.getByText("Tomato planting notes")).toHaveCount(0);
+      await caption(page, "His own files aren't mixed in. They stay on this computer for when he disconnects.", 2400);
     } finally {
-      server.stop();
+      (await starting).stop();
     }
   });
 

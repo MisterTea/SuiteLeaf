@@ -269,7 +269,11 @@ export function ConnectDialog({ onClose }: { onClose: () => void }) {
               id="server-url"
               autoFocus
               required
-              placeholder="https://suiteleaf.example.com"
+              inputMode="url"
+              autoComplete="url"
+              autoCapitalize="none"
+              spellCheck={false}
+              placeholder="suiteleaf.example.com"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
             />

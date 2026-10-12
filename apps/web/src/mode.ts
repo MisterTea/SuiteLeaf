@@ -19,32 +19,49 @@ interface NodeInfo {
   auth?: { enabled?: boolean };
 }
 
-async function nodeInfo(url: string): Promise<NodeInfo | null> {
+async function nodeInfo(
+  url: string,
+  timeout?: number,
+): Promise<NodeInfo | null> {
   try {
-    const response = await fetch(`${url}/api/node/info`);
+    const response = await fetch(`${url}/api/node/info`, {
+      signal: timeout ? AbortSignal.timeout(timeout) : undefined,
+    });
     return response.ok ? await response.json() : null;
   } catch {
     return null;
   }
 }
 
-/** Validate a SuiteLeaf server address and return its normalized form. */
+const isClusterNode = (info: NodeInfo | null) =>
+  info?.name === "SuiteLeaf node" && info.mode === "cluster";
+
+/** Validate a SuiteLeaf server address and return its normalized form. An
+ * address without a scheme, such as `suiteleaf.example.com`, is tried with
+ * https first and then http. */
 export async function probeServer(input: string): Promise<string> {
+  const text = input.trim();
+  const bare = !/^[a-z][a-z0-9+.-]*:\/\//i.test(text);
   let url: URL;
   try {
-    url = new URL(input.trim());
+    url = new URL(bare ? `https://${text}` : text);
   } catch {
-    throw new Error(
-      "Enter a server address such as https://suiteleaf.example.com.",
-    );
+    throw new Error("Enter a server address such as suiteleaf.example.com.");
   }
   if (url.protocol !== "https:" && url.protocol !== "http:")
     throw new Error("Use an http:// or https:// address.");
-  const server = url.origin + url.pathname.replace(/\/+$/, "");
-  const info = await nodeInfo(server);
-  if (info?.name !== "SuiteLeaf node" || info.mode !== "cluster")
+  const candidates = [url.origin + url.pathname.replace(/\/+$/, "")];
+  if (bare) candidates.push(candidates[0].replace(/^https:/, "http:"));
+  let server = "";
+  let info: NodeInfo | null = null;
+  for (const candidate of candidates) {
+    info = await nodeInfo(candidate, 10000);
+    server = candidate;
+    if (isClusterNode(info)) break;
+  }
+  if (!isClusterNode(info))
     throw new Error("No SuiteLeaf server answered at that address.");
-  if (!info.auth?.enabled)
+  if (!info?.auth?.enabled)
     throw new Error(
       "That server's sign-in service is not running yet. Try again shortly.",
     );
@@ -60,8 +77,7 @@ export async function resolveMode(): Promise<ResolvedMode> {
       demo: false,
     };
   if (location.protocol.startsWith("http")) {
-    const info = await nodeInfo(location.origin);
-    if (info?.name === "SuiteLeaf node" && info.mode === "cluster")
+    if (isClusterNode(await nodeInfo(location.origin)))
       return {
         mode: { kind: "cluster", serverUrl: location.origin },
         locked: true,
