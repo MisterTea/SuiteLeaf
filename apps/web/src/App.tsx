@@ -143,6 +143,10 @@ class ErrorBoundary extends Component<
     );
   }
 }
+/** Menu content mounts each time the menu opens, so this label reads current state. */
+function LiveLabel({ text }: { text: () => string }) {
+  return <>{text()}</>;
+}
 function Logo() {
   return (
     <span className="logo">
@@ -1533,7 +1537,13 @@ function Workspace() {
                       actions.current?.sheetActions?.toggleFilter()
                     }
                   >
-                    Create a filter
+                    <LiveLabel
+                      text={() =>
+                        actions.current?.sheetActions?.hasFilter?.()
+                          ? "Remove filter"
+                          : "Create a filter"
+                      }
+                    />
                   </MenuItem>
                   <MenuItem
                     onSelect={() =>

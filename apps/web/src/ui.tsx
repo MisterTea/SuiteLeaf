@@ -109,6 +109,7 @@ export type EditorActions = {
     insertChart: () => void;
     insertPivot: () => void;
     toggleFilter: () => void;
+    hasFilter?: () => boolean;
     formatCurrency: () => void;
     formatPercent: () => void;
     toggleBold: () => void;
