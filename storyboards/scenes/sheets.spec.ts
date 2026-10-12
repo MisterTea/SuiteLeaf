@@ -478,10 +478,21 @@ test("14-chart-from-a-table", async ({ page }) => {
   await ready(page);
 
   await caption(page, "She selects the categories with their Budget and Actual columns, headers included.", 1200);
-  await selectCells(page, "A1:C5");
+  const a1 = await cellPoint(page, "A1"),
+    c5 = await cellPoint(page, "C5");
+  await page.mouse.move(a1.x, a1.y, { steps: 12 });
+  await page.mouse.down();
+  await page.mouse.move(c5.x, c5.y, { steps: 25 });
+  await page.mouse.up();
+  await expect(page.locator(".sheet-host input.univer-size-full")).toHaveValue("A1:C5");
   await beat(page);
   await caption(page, "Insert chart reads the selection; the headers become the legend.", 1000);
-  await page.getByRole("button", { name: "Insert chart", exact: true }).click();
+  const insertChart = page.getByRole("button", { name: "Insert chart", exact: true });
+  const insertBox = (await insertChart.boundingBox())!;
+  expect(insertBox.x + insertBox.width).toBeLessThanOrEqual(1280);
+  await page.mouse.move(insertBox.x + insertBox.width / 2, insertBox.y + insertBox.height / 2, { steps: 15 });
+  await beat(page, 300);
+  await insertChart.click();
   const panel = page.locator(".analysis-panel");
   await expect(panel.getByLabel("Source range")).toHaveValue("A1:C5");
   await expect(panel.getByLabel("Title")).toHaveAttribute("placeholder", "Budget and Actual");
@@ -496,41 +507,53 @@ test("14-chart-from-a-table", async ({ page }) => {
   await expect(chart.locator(".recharts-bar-rectangle")).toHaveCount(8);
   await caption(page, "A column chart appears below the table, with a legend and labelled axes.", 2000);
 
-  const placed = await native(page);
-  const start = placed.content.charts[0];
-
-  await caption(page, "She drags it beside the table…", 900);
-  let box = (await chart.boundingBox())!;
-  await page.mouse.move(box.x + box.width / 2, box.y + 40, { steps: 10 });
+  await caption(page, "She drags it up beside the table…", 900);
+  const start = (await chart.boundingBox())!;
+  const e1 = await cellPoint(page, "E1");
+  const target = { x: e1.x - columnWidth / 2 + 12, y: e1.y - rowHeight / 2 + 4 };
+  await page.mouse.move(start.x + start.width / 2, start.y + 12, { steps: 10 });
   await page.mouse.down();
-  await page.mouse.move(box.x + box.width / 2 + 300, box.y - 10, { steps: 25 });
+  await page.mouse.move(target.x + start.width / 2, target.y + 12, { steps: 30 });
   await page.mouse.up();
   await beat(page, 600);
   await caption(page, "…and pulls the corner in to make it a little smaller.", 900);
-  box = (await chart.boundingBox())!;
+  let box = (await chart.boundingBox())!;
+  expect(Math.abs(box.y - target.y)).toBeLessThan(20);
   await page.mouse.move(box.x + box.width + 1, box.y + box.height + 1, { steps: 10 });
   await page.mouse.down();
-  await page.mouse.move(box.x + box.width - 90, box.y + box.height - 55, { steps: 20 });
+  await page.mouse.move(box.x + box.width - 110, box.y + box.height - 55, { steps: 20 });
   await page.mouse.up();
   await beat(page);
+  box = (await chart.boundingBox())!;
+  expect(box.width).toBeLessThan(start.width - 50);
 
   const heights = async () =>
     chart.locator(".recharts-bar-rectangle").evaluateAll((bars) => bars.map((b) => Math.round(b.getBoundingClientRect().height)));
   const before = await heights();
   await caption(page, "Engineering's final invoices came in higher. She updates its Actual…", 1000);
-  await selectCells(page, "C3");
+  await pointAt(page, await cellPoint(page, "C3"));
   await typeSlowly(page, "13500", 120);
   await page.keyboard.press("Enter");
   await expect.poll(heights).not.toEqual(before);
   await caption(page, "…and the chart redraws on its own: Engineering is now over budget.", 2600);
 
+  await caption(page, "Double-clicking the chart reopens its editor, for when the range needs to grow.", 900);
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 12 });
+  await page.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(panel.getByRole("heading", { name: "Edit chart" })).toBeVisible();
+  await expect(panel.getByLabel("Source range")).toHaveValue("A1:C5");
+  await beat(page, 1800);
+  await page.getByRole("button", { name: "Close analysis panel" }).click();
+
   const file = await native(page);
   const moved = file.content.charts[0];
   expect(moved.title).toBe("Studio costs by team");
-  expect(moved.x).toBeGreaterThan(start.x + 150);
-  expect(moved.width).toBeLessThan(start.width);
+  // Beside the table (columns A–D, rows 1–6) rather than below it.
+  expect(moved.x).toBeGreaterThan(rowHeader + 4 * columnWidth);
+  expect(moved.y).toBeLessThan(6 * rowHeight);
+  expect(moved.width).toBeLessThan(start.width - 50);
   expect(cellsOf(file)[2][2].v).toBe(13500);
-  await caption(page, "The chart lives in the spreadsheet and stays in step with the numbers.", 1800);
+  await caption(page, "Saved with the workbook in its new place and size, and in step with the numbers.", 1800);
 });
 
 test("15-summarize-with-a-pivot", async ({ page }) => {

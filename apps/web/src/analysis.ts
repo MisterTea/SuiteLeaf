@@ -108,3 +108,21 @@ export function shiftRange(
   out[hi] -= before + overlap;
   return out;
 }
+/** Value-axis ticks on 1, 2, 2.5 or 5 × 10ⁿ steps, as Sheets and Excel choose them. */
+export function valueTicks(values: unknown[]): number[] | undefined {
+  const numbers = values.filter(
+    (v): v is number => typeof v === "number" && Number.isFinite(v),
+  );
+  const low = Math.min(0, ...numbers),
+    high = Math.max(0, ...numbers);
+  if (low === high) return undefined;
+  const magnitude = 10 ** Math.floor(Math.log10((high - low) / 6));
+  const step = [1, 2, 2.5, 5, 10, 20]
+    .map((m) => m * magnitude)
+    .find((s) => Math.ceil(high / s) - Math.floor(low / s) <= 6)!;
+  const first = Math.floor(low / step),
+    last = Math.ceil(high / step);
+  return Array.from({ length: last - first + 1 }, (_, i) =>
+    Number(((first + i) * step).toPrecision(12)),
+  );
+}

@@ -44,6 +44,7 @@ import {
   rankFormulaSuggestions,
 } from "./formula-suggestions";
 import SortRangeDialog from "./SortRangeDialog";
+import { useToolbarOverflow } from "./toolbar-overflow";
 import "@univerjs/preset-sheets-core/lib/index.css";
 import "@univerjs/preset-sheets-drawing/lib/index.css";
 import "@univerjs/preset-sheets-filter/lib/index.css";
@@ -92,6 +93,7 @@ import {
   Link,
   MessageSquarePlus,
   ChevronDown,
+  EllipsisVertical,
 } from "lucide-react";
 import {
   filename,
@@ -102,7 +104,12 @@ import {
   type PivotDefinition,
   type SourceRange,
 } from "@suiteleaf/core";
-import { pivotResult, shiftRange, type CellValue } from "../analysis";
+import {
+  pivotResult,
+  shiftRange,
+  valueTicks,
+  type CellValue,
+} from "../analysis";
 import { sortBody, type GridRange, type SortRule } from "../sort-range";
 import {
   numberFormatsByGroup,
@@ -572,7 +579,7 @@ function EmbeddedChart({ data }: { data?: { chartId: string } }) {
   };
   if (c.invalid)
     return (
-      <div className="suiteleaf-chart">
+      <div className="suiteleaf-chart" data-chart-id={c.id}>
         <strong>{c.title}</strong>
         <p>Source range unavailable. Edit this chart to select a new range.</p>
       </div>
@@ -595,10 +602,23 @@ function EmbeddedChart({ data }: { data?: { chartId: string } }) {
     "#2C4D75",
     "#267C60",
   ];
+  const ticks = valueTicks(values.slice(1).flatMap((r) => r.slice(1)));
+  const valueAxis = {
+    tickFormatter: formatAxis,
+    ...(ticks && { ticks, domain: [ticks[0], ticks.at(-1)!] }),
+    width: Math.max(
+      36,
+      12 + 7 * Math.max(0, ...(ticks ?? []).map((t) => formatAxis(t).length)),
+    ),
+  };
   return (
-    <div className="suiteleaf-chart" aria-label={`Chart: ${c.title}`}>
+    <div
+      className="suiteleaf-chart"
+      aria-label={`Chart: ${c.title}`}
+      data-chart-id={c.id}
+    >
       <strong>{c.title}</strong>
-      <ResponsiveContainer width="100%" height="88%">
+      <ResponsiveContainer width="100%" height="100%">
         {c.type === "pie" ? (
           <PieChart>
             <Pie
@@ -651,13 +671,17 @@ function EmbeddedChart({ data }: { data?: { chartId: string } }) {
               label={{
                 value: String(headers[0] ?? ""),
                 position: "insideBottom",
-                offset: -5,
+                offset: 0,
               }}
-              height={48}
+              height={44}
             />
-            <YAxis tickFormatter={formatAxis} width={85} />
+            <YAxis {...valueAxis} />
             <Tooltip formatter={formatTooltip} />
-            <Legend itemSorter={null} verticalAlign="top" />
+            <Legend
+              itemSorter={null}
+              verticalAlign="top"
+              wrapperStyle={{ paddingBottom: 8 }}
+            />
             {keys.map((k, i) => (
               <Line
                 key={k}
@@ -677,13 +701,17 @@ function EmbeddedChart({ data }: { data?: { chartId: string } }) {
               label={{
                 value: String(headers[0] ?? ""),
                 position: "insideBottom",
-                offset: -5,
+                offset: 0,
               }}
-              height={48}
+              height={44}
             />
-            <YAxis tickFormatter={formatAxis} width={85} />
+            <YAxis {...valueAxis} />
             <Tooltip formatter={formatTooltip} />
-            <Legend itemSorter={null} verticalAlign="top" />
+            <Legend
+              itemSorter={null}
+              verticalAlign="top"
+              wrapperStyle={{ paddingBottom: 8 }}
+            />
             {keys.map((k, i) => (
               <Bar
                 key={k}
@@ -751,9 +779,15 @@ export default function Sheets({
     [notice, setNotice] = useState("");
   const pending = useRef(false);
   const tabSettings = useRef<{ openTabs: () => void }>(null);
+  const toolbar = useRef<HTMLDivElement>(null);
+  const moreTools = useToolbarOverflow(
+    toolbar,
+    '[aria-label^="Insert comment"], .chart-btn, .filter-btn, .pivot-btn, .sheet-analyses-dropdown',
+  );
   const persist = useRef<() => void>(() => {}),
     refreshCharts = useRef<() => void>(() => {}),
-    syncTextStyle = useRef<() => void>(() => {});
+    syncTextStyle = useRef<() => void>(() => {}),
+    editChart = useRef<(id: string) => void>(() => {});
   const readRange = (r: SourceRange): CellValue[][] => {
     const s = book.current?.getSheetBySheetId(r.sheetId);
     if (!s || r.endRow >= s.getMaxRows() || r.endColumn >= s.getMaxColumns())
@@ -1715,6 +1749,7 @@ export default function Sheets({
     });
   }, [ready, file.title, onActions]);
   const startPanel = (type: "chart" | "pivot", id?: string) => {
+    moreTools.setOpen(false);
     setPanel(type);
     setEditing(id);
     const c =
@@ -1739,6 +1774,48 @@ export default function Sheets({
       setFilterColumn(p?.filterColumn ?? -1);
       setFilterValue(p?.filterValue ?? "");
     }
+  };
+  editChart.current = (id) => startPanel("chart", id);
+  useEffect(() => {
+    const container = host.current;
+    if (!container) return;
+    // Like Sheets, double-clicking a chart opens its editor. Univer hands a
+    // selected chart's pointer events to the canvas (re-dispatching each
+    // press), so no native dblclick reaches the chart element.
+    let last = { id: "", time: 0, x: 0, y: 0 };
+    const pointerDown = (e: PointerEvent) => {
+      if (e.button !== 0 || !e.isTrusted) return;
+      const id =
+        [...container.querySelectorAll<HTMLElement>("[data-chart-id]")].find(
+          (el) => {
+            const r = el.getBoundingClientRect();
+            return (
+              e.clientX >= r.left &&
+              e.clientX <= r.right &&
+              e.clientY >= r.top &&
+              e.clientY <= r.bottom
+            );
+          },
+        )?.dataset.chartId ?? "";
+      if (
+        id &&
+        id === last.id &&
+        e.timeStamp - last.time < 500 &&
+        Math.hypot(e.clientX - last.x, e.clientY - last.y) < 8
+      ) {
+        last = { id: "", time: 0, x: 0, y: 0 };
+        editChart.current(id);
+      } else last = { id, time: e.timeStamp, x: e.clientX, y: e.clientY };
+    };
+    container.addEventListener("pointerdown", pointerDown, true);
+    return () =>
+      container.removeEventListener("pointerdown", pointerDown, true);
+  }, []);
+  const takeSelection = () => {
+    const r = book.current?.getActiveRange();
+    if (!r) return;
+    setSourceSheet(book.current.getActiveSheet().getSheetId());
+    setRange(r.getA1Notation());
   };
   const refreshPivot = async (p: PivotDefinition) => {
     await api.current.getFormula().onCalculationResultApplied(10000);
@@ -1878,7 +1955,8 @@ export default function Sheets({
         <div className="sheet-features" aria-hidden="true" />
       )}
       <div
-        className="sheets-toolbar"
+        ref={toolbar}
+        className={`sheets-toolbar${moreTools.overflowing ? " has-overflow" : ""}${moreTools.open ? " show-more" : ""}`}
         role="toolbar"
         aria-label="Spreadsheet formatting"
       >
@@ -2276,6 +2354,19 @@ export default function Sheets({
             ))}
           </div>
         </details>
+        {moreTools.open ? (
+          <span className="toolbar-break" aria-hidden="true" />
+        ) : null}
+        <button
+          type="button"
+          className="tool more-tools"
+          title="More tools"
+          aria-label="More tools"
+          aria-expanded={moreTools.open}
+          onClick={() => moreTools.setOpen(!moreTools.open)}
+        >
+          <EllipsisVertical size={16} />
+        </button>
       </div>
       <div
         className="sheet-host"
@@ -2292,7 +2383,10 @@ export default function Sheets({
         />
       ) : null}
       {panel ? (
-        <aside className="analysis-panel">
+        <aside
+          className="analysis-panel"
+          style={{ top: host.current?.offsetTop }}
+        >
           <header>
             <h2>
               {editing ? "Edit" : "Insert"}{" "}
@@ -2329,14 +2423,23 @@ export default function Sheets({
               ))}
             </select>
           </label>
-          <label>
-            Source range
-            <input
-              value={range}
-              onChange={(e) => setRange(e.target.value)}
-              placeholder="A1:D20"
-            />
-          </label>
+          <div className="range-field">
+            <label>
+              Source range
+              <input
+                value={range}
+                onChange={(e) => setRange(e.target.value)}
+                placeholder="A1:D20"
+              />
+            </label>
+            <button
+              type="button"
+              title="Use the cells selected in the grid"
+              onClick={takeSelection}
+            >
+              Use selection
+            </button>
+          </div>
           <p className="hint">
             First row supplies field names. The full source range is used,
             including filtered rows.
