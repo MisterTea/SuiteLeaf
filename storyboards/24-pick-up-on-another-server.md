@@ -14,19 +14,24 @@ The garden club runs two SuiteLeaf servers in one cluster: one at the office and
 
 ## Scenes
 
-1. **At the office.** Priya opens the office server and creates her account.
-2. **Make a slide.** She creates a new presentation, names it "Budget update", and fills in the title slide. The status reads "Saved to SuiteDrive".
-3. **Switch servers.** That evening she opens the library server's address. It's a different address, so she sees its sign-in card with its own host name.
-4. **Sign in.** She signs in with the email and password she created at the office. Her account was copied to this server.
-5. **Her file is there.** SuiteDrive lists "Budget update.slslides".
-6. **Keep working.** She opens it, sees the subtitle she wrote at the office, and adds "· Hoses $40". It saves to SuiteDrive on the library server.
+1. **At the office.** While the servers start, a caption sets the scene. Priya opens the office server and creates her account. The sign-in card says the server shares accounts and files with the organization's other servers.
+2. **Which server.** On the home screen, the sidebar names the server ("Files are saved to SuiteDrive on …") and reads "Connected to 1 other server".
+3. **Make a slide.** She creates a new presentation, names it "Budget update", and fills in the title slide. The top bar shows the office server's address next to a cloud icon, and the status reads "Saved to SuiteDrive".
+4. **Switch servers.** That evening she opens the library server's address. It's a different address, so she sees its sign-in card with its own host name and the note that an account made on any of the organization's servers works here.
+5. **Sign in.** She signs in with the email and password she created at the office.
+6. **Her file is there.** SuiteDrive lists "Budget update.slslides", with the time she saved it at the office.
+7. **Keep working.** She opens it. The top bar now shows the library server's address. She sees the subtitle she wrote at the office and adds "· Hoses $40". It saves to SuiteDrive on the library server.
 
 ## Success looks like
 
-- One account works on both servers.
+- One account works on both servers, and the sign-in card says so.
+- She can always see which server she's on: in the sidebar on the home screen and in the top bar of the editor.
 - The presentation saved on one server opens, with the same content, on the other, and new edits save there.
 
 ## Gaps and notes
 
-- Sign-in is per server address, so moving between servers means signing in again. This is expected (sessions are per origin), but there's no hint that it's the same account on a different server.
-- Neither server shows whether replication is up to date. The script waits until both servers report the same database heads and no files still replicating. A user who switched sooner could see an older list. Items still copying show a small "Replicating" icon, but there's no overall indicator.
+- Sign-in is per server address, so moving between servers means signing in again. This is expected (sessions are per origin). The sign-in card now explains that the account is shared, but there's no single sign-on across the cluster.
+- The sidebar shows how many other servers this one is connected to, and "Copying N files from other servers…" while file contents are still on their way. Items still copying show "Copying…" in the SuiteDrive list. While the home screen is open, the list refreshes in place when the server receives changes, so a file saved elsewhere appears without reloading.
+- "Connected" doesn't promise the database has caught up: a server can't tell from its own state whether a peer has changes it hasn't pulled yet. The script still waits until both servers report the same database heads and nothing left to copy before switching. Showing "up to date as of …" would need the servers to compare heads with each other.
+- There's no "Recent" or "Suggested" list across folders like Google Drive or OneDrive have. A file saved in a subfolder on another server has to be found by browsing. This needs a server endpoint for recently changed items, so it's left for later.
+- The first seconds of the video are the two servers starting. The script shows an intro caption over the blank page meanwhile.

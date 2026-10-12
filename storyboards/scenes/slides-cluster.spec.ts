@@ -399,13 +399,20 @@ test.describe("cluster mode", () => {
   });
 
   test("24-pick-up-on-another-server", async ({ page }) => {
+    await caption(page, "The garden club runs two SuiteLeaf servers: one at the office, one at the library.", 0);
     const office = await startServer();
     const library = await startServer({ dataDir: office.dataDir, p2p: office.p2p });
+    const officeHost = new URL(office.url).host;
+    const libraryHost = new URL(library.url).host;
     try {
       await page.goto(office.url);
-      await caption(page, `Priya works on her talk at the office, on server ${new URL(office.url).host}.`);
+      await caption(page, `Priya works on her talk at the office, on server ${officeHost}.`);
       await createAccount(page, "Priya Shah", "priya@riverside-garden.org");
+      await expect(page.getByText("Connected to 1 other server")).toBeVisible({ timeout: 20000 });
+      await caption(page, "The sidebar shows which server she's on, and that it shares files with one other.", 2200);
       await page.getByRole("button", { name: "New presentation" }).click();
+      await expect(page.getByTitle(`Saving to SuiteDrive on ${officeHost}`)).toBeVisible();
+      await caption(page, "She starts a presentation called \"Budget update\".", 900);
       const title = page.getByLabel("File title");
       await title.click();
       await title.press("ControlOrMeta+A");
@@ -414,7 +421,7 @@ test.describe("cluster mode", () => {
       await retype(page, boxes.nth(0), "Budget update");
       await retype(page, boxes.nth(1), "Seeds $120 · Tools $85 · Compost $60");
       await expect(page.getByRole("status")).toHaveText("Saved to SuiteDrive", { timeout: 20000 });
-      await caption(page, "Saved to SuiteDrive. She heads home.", 1400);
+      await caption(page, `Saved to SuiteDrive on ${officeHost}, as the top bar shows. She heads home.`, 2000);
 
       const heads = async (url: string) =>
         (await (await fetch(`${url}/api/node/info`)).json()).suitedb.heads.join();
@@ -430,17 +437,21 @@ test.describe("cluster mode", () => {
         .toBe(0);
 
       await page.goto(library.url);
-      await caption(page, `That evening she opens the team's other server, ${new URL(library.url).host}.`, 1600);
-      await caption(page, "It's a new address, so she signs in. Her account is already there.", 1200);
+      const card = page.getByLabel("Sign in to SuiteLeaf");
+      await expect(card).toContainText(libraryHost);
+      await expect(card).toContainText("An account made on any of them works here.");
+      await caption(page, `That evening she opens the team's other server, ${libraryHost}.`, 1600);
+      await caption(page, "It's a new address, so she signs in. The card says her office account works here too.", 2200);
       await signIn(page, "priya@riverside-garden.org");
-      await expect(page.getByText(new URL(library.url).host).first()).toBeVisible();
+      await expect(page.getByText(libraryHost).first()).toBeVisible();
 
       await showDrive(page);
       await expect(driveItem(page, "Budget update.slslides")).toBeVisible();
-      await caption(page, "So is her presentation.", 1400);
+      await caption(page, "She's in, and her presentation is already here, showing the time she saved it at the office.", 2200);
       await driveItem(page, "Budget update.slslides").click();
       await expect(page.locator(".slide-canvas")).toContainText("Seeds $120");
-      await caption(page, "She picks up where she left off.", 900);
+      await expect(page.getByTitle(`Saving to SuiteDrive on ${libraryHost}`)).toBeVisible();
+      await caption(page, `She picks up where she left off. The top bar now shows ${libraryHost}.`, 1800);
       const subtitle = page.locator(".slide-canvas .slide-element textarea").nth(1);
       await subtitle.click();
       await subtitle.evaluate((el: HTMLTextAreaElement) =>
@@ -448,7 +459,7 @@ test.describe("cluster mode", () => {
       );
       await typeSlowly(page, " · Hoses $40");
       await expect(page.getByRole("status")).toHaveText("Saved to SuiteDrive", { timeout: 20000 });
-      await caption(page, "Every server in the cluster keeps a full copy of accounts and files.", 2000);
+      await caption(page, "Saved on the library server. Every server in the cluster keeps a full copy.", 2200);
     } finally {
       library.stop();
       office.stop();

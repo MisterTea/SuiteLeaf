@@ -662,6 +662,10 @@ a {
   color: var(--text-secondary);
   margin-left: 4px;
 }
+.workspace-server {
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
 .save-copy {
   background: var(--surface-muted);
   color: var(--google-blue);
@@ -2734,6 +2738,25 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 }
 .cluster-note small {
   padding-left: 0;
+}
+.cluster-note .cluster-sync {
+  display: flex;
+  align-items: center;
+  font-weight: 500;
+}
+.cluster-sync.copying .local-dot {
+  background: #d29a1e;
+}
+.drive-copying {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.sign-in-cluster-note {
+  margin: 0 0 14px;
 }
 .account-chip {
   margin-top: 0;

@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import {
   ChevronRight,
   CloudOff,
@@ -14,6 +20,7 @@ import {
 } from "lucide-react";
 import { isNativeName, kindFromName } from "@suiteleaf/core";
 import { drive, type DriveItem } from "../node-client";
+import { formatModified } from "./status";
 
 type Crumb = { id: string | null; name: string };
 
@@ -43,6 +50,7 @@ export function DriveBrowser({
   onSave,
   onClose,
   onFolderChange,
+  refreshKey,
 }: {
   mode: "open" | "save";
   defaultName?: string;
@@ -52,6 +60,9 @@ export function DriveBrowser({
   onClose?: () => void;
   /** The folder new items should go in; `null` is the top of My Drive. */
   onFolderChange?: (folderId: string | null) => void;
+  /** Changing this re-lists the folder in place, e.g. when replication
+   * brings in changes from another server. */
+  refreshKey?: string;
 }) {
   const [view, setView] = useState<"mine" | "shared">("mine");
   const [path, setPath] = useState<Crumb[]>([{ id: null, name: "My Drive" }]);
@@ -61,23 +72,31 @@ export function DriveBrowser({
   const [error, setError] = useState("");
   const [name, setName] = useState(defaultName);
   const folder = path[path.length - 1];
+  const shown = useRef(""),
+    request = useRef(0);
 
   const refresh = useCallback(async () => {
-    setLoading(true);
+    const key = `${view}:${folder.id}`;
+    const n = ++request.current;
+    // Re-listing the folder already on screen keeps it there meanwhile.
+    if (shown.current !== key) setLoading(true);
     try {
-      setItems(
+      const next =
         view === "shared" && folder.id === null
           ? await drive.shared()
-          : await drive.list(folder.id),
-      );
+          : await drive.list(folder.id);
+      if (n !== request.current) return;
+      setItems(next);
+      shown.current = key;
       setError("");
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (n === request.current)
+        setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoading(false);
+      if (n === request.current) setLoading(false);
     }
   }, [folder.id, view]);
-  useEffect(() => void refresh(), [refresh]);
+  useEffect(() => void refresh(), [refresh, refreshKey]);
   useEffect(() => {
     onFolderChange?.(folder.id);
   }, [folder.id, onFolderChange]);
@@ -209,13 +228,16 @@ export function DriveBrowser({
                 <ItemIcon item={item} />
                 <span>{item.name}</span>
                 {!item.available ? (
-                  <CloudOff size={14} aria-label="Replicating" />
+                  <small className="drive-copying">
+                    <CloudOff size={14} aria-label="Replicating" />
+                    Copying…
+                  </small>
                 ) : null}
-                <time>
-                  {new Date(item.updatedAt).toLocaleDateString(undefined, {
-                    month: "short",
-                    day: "numeric",
-                  })}
+                <time
+                  dateTime={item.updatedAt}
+                  title={new Date(item.updatedAt).toLocaleString()}
+                >
+                  {formatModified(item.updatedAt)}
                 </time>
               </button>
               {item.role === "owner" || item.role === "editor" ? (
