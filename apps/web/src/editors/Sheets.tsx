@@ -9,7 +9,13 @@ import {
   numfmt,
   type IWorkbookData,
 } from "@univerjs/presets";
-import { UniverSheetsCorePreset } from "@univerjs/preset-sheets-core";
+import {
+  IDescriptionService,
+  IEditorService,
+  IShortcutService,
+  KeyCode,
+  UniverSheetsCorePreset,
+} from "@univerjs/preset-sheets-core";
 import CoreEnUS from "@univerjs/preset-sheets-core/locales/en-US";
 import { UniverSheetsDrawingPreset } from "@univerjs/preset-sheets-drawing";
 import DrawingEnUS from "@univerjs/preset-sheets-drawing/locales/en-US";
@@ -32,6 +38,10 @@ import { UniverSheetsNotePreset } from "@univerjs/preset-sheets-note";
 import NoteEnUS from "@univerjs/preset-sheets-note/locales/en-US";
 import "@univerjs/preset-sheets-note/lib/index.css";
 import SheetFeatures from "./sheet-features";
+import {
+  guardFormulaSuggestions,
+  rankFormulaSuggestions,
+} from "./formula-suggestions";
 import "@univerjs/preset-sheets-core/lib/index.css";
 import "@univerjs/preset-sheets-drawing/lib/index.css";
 import "@univerjs/preset-sheets-filter/lib/index.css";
@@ -748,7 +758,14 @@ export default function Sheets({
           UniverSheetsNotePreset(),
         ],
       });
+      const injector = univer.__getInjector();
+      const stopSuggestionGuard = guardFormulaSuggestions(
+        injector.get(IShortcutService),
+        injector.get(IEditorService),
+        [KeyCode.ENTER, KeyCode.TAB],
+      );
       partialCleanup = () => {
+        stopSuggestionGuard();
         clearTimeout(timer);
         api.current = null;
         book.current = null;
@@ -763,6 +780,7 @@ export default function Sheets({
         content.current.workbook as unknown as IWorkbookData,
       );
       book.current = workbook;
+      rankFormulaSuggestions(injector.get(IDescriptionService));
       // Excel stores a cached result for every formula cell but recalculates formulas on
       // open. An imported snapshot can carry a stale or missing cached value that would
       // display 0 while the formula resolves to a real number, so force one explicit full
@@ -1663,7 +1681,9 @@ export default function Sheets({
           persist={() => persist.current()}
           onError={onError}
         />
-      ) : null}
+      ) : (
+        <div className="sheet-features" aria-hidden="true" />
+      )}
       <div
         className="sheets-toolbar"
         role="toolbar"
