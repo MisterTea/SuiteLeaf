@@ -336,9 +336,23 @@ test.describe("SuiteDrive across two nodes", () => {
     await expect(editor).toContainText("Edits only on this device");
     await expect(banner).toBeVisible({ timeout: 20000 });
 
-    page.once("dialog", (d) => void d.accept());
+    // The banner says when the newer version was saved and what each choice does.
+    const alert = page.getByRole("alert").filter({ has: banner });
+    await expect(alert).toContainText(/A newer version was saved at \d/);
+    await expect(alert).toContainText("Save them as a copy to keep both");
+    await expect(alert.getByRole("button")).toHaveText([
+      "Save as copy",
+      "Reload from SuiteDrive",
+    ]);
+
+    let asked = "";
+    page.once("dialog", (d) => {
+      asked = d.message();
+      void d.accept();
+    });
     await page.getByRole("button", { name: "Reload from SuiteDrive" }).click();
     await expect(editor).toContainText("Saved elsewhere");
+    expect(asked).toContain("Your edits will be lost");
 
     // With nothing left to upload, the local copy follows newer versions.
     await saveElsewhere("Saved elsewhere", "Saved again elsewhere");

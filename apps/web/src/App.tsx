@@ -123,6 +123,20 @@ async function openFromDrive(item: DriveItem, navigate: NavigateFunction) {
 function driveName(name: string, kind: SuiteFile["kind"]) {
   return kindFromName(name) === kind ? name : `${name}.${extensionFor(kind)}`;
 }
+/** "A newer version was saved at 2:14 PM." (or "on Oct 12 at 2:14 PM."). */
+function savedWhen(iso: string) {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "";
+  const time = at.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  const day =
+    at.toDateString() === new Date().toDateString()
+      ? ""
+      : `on ${at.toLocaleDateString(undefined, { month: "short", day: "numeric" })} `;
+  return `A newer version was saved ${day}at ${time}.`;
+}
 class ErrorBoundary extends Component<
   { children: ReactNode },
   { error: string }
@@ -1756,27 +1770,37 @@ function Workspace() {
       {driveConflict ? (
         <div className="error drive-conflict" role="alert">
           <CircleAlert size={18} />
-          This file was changed in SuiteDrive after you opened it. Your edits
-          are saved on this device.
-          <button
-            onClick={() => {
-              if (
-                window.confirm(
-                  "Replace your edits with the SuiteDrive version?",
+          <span className="drive-conflict-text">
+            <strong>
+              This file was changed in SuiteDrive after you opened it.
+            </strong>{" "}
+            {savedWhen(driveConflict.updatedAt)} Your edits weren't uploaded and are safe on this device. Save them
+            as a copy to keep both versions, or reload the SuiteDrive version
+            and discard your edits.
+          </span>
+          <span className="drive-conflict-actions">
+            <button
+              title="Upload your edits as a new file and leave the SuiteDrive version as it is"
+              onClick={() =>
+                void saveDriveCopy().catch((e) => setError(message(e)))
+              }
+            >
+              Save as copy
+            </button>
+            <button
+              title="Discard your edits and open the newer SuiteDrive version"
+              onClick={() => {
+                if (
+                  window.confirm(
+                    "Discard your edits and open the newer version from SuiteDrive? Your edits will be lost.",
+                  )
                 )
-              )
-                void reloadFromDrive().catch((e) => setError(message(e)));
-            }}
-          >
-            Reload from SuiteDrive
-          </button>
-          <button
-            onClick={() =>
-              void saveDriveCopy().catch((e) => setError(message(e)))
-            }
-          >
-            Save as copy
-          </button>
+                  void reloadFromDrive().catch((e) => setError(message(e)));
+              }}
+            >
+              Reload from SuiteDrive
+            </button>
+          </span>
         </div>
       ) : null}
       {driveDialog ? (
