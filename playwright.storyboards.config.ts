@@ -13,6 +13,9 @@ export default defineConfig({
   workers: 1,
   use: {
     ...devices["Desktop Chrome"],
+    // Full Chromium in new headless mode: the default headless shell has no
+    // spellchecker, so misspellings were never underlined in recordings.
+    channel: "chromium",
     baseURL: `http://127.0.0.1:${port}`,
     viewport: { width: 1280, height: 800 },
     actionTimeout: 15000,

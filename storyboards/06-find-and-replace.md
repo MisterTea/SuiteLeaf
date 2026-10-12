@@ -38,6 +38,6 @@ Priya wrote a thank-you letter to the garden volunteers and spelled "receive" as
 
 ## Gaps and notes
 
-- Spellcheck works. The editor's text box has `spellcheck="true"`, and full Chromium underlines each "recieve" in red. The recording shows no underlines because Playwright's default headless shell has no spellchecker (a plain `<textarea>` gets none either). To show them, `playwright.storyboards.config.ts` would need `channel: "chromium"`. That setting applies to every storyboard, so it isn't changed here.
+- Spellcheck works: the editor's text box has `spellcheck="true"`, and the browser underlines each "recieve" in red. Recordings use full Chromium (`channel: "chromium"` in `playwright.storyboards.config.ts`) because Playwright's default headless shell has no spellchecker.
 - The dialog opens over the right-hand end of the toolbar. It moves only when the current match would be hidden, not to uncover other text.
 - With regular expressions on, the replacement is literal: `$1` group references aren't supported yet.
