@@ -106,13 +106,31 @@ import { pivotResult, shiftRange, type CellValue } from "../analysis";
 import { sortBody, type GridRange, type SortRule } from "../sort-range";
 import { numberFormatsByGroup, applyNamedFormat } from "../formats";
 import { exportBinary, exportText, printDocument } from "../storage";
-import { Tool, type EditorActions } from "../ui";
+import { Tool, type EditorActions, type SheetView } from "../ui";
 import "../excel-overflow";
 import "../excel-number-display";
 import "../excel-wrap";
 import "../excel-cell";
 import { resolveExcelColumnWidths } from "../excel-layout";
 import { useTheme } from "../theme";
+
+const FORMULA_BAR_KEY = "suiteleaf_sheets_formula_bar";
+/** Formula bar visibility is a per-person preference, not part of the workbook. */
+function formulaBarVisible() {
+  try {
+    return localStorage.getItem(FORMULA_BAR_KEY) !== "hidden";
+  } catch {
+    return true;
+  }
+}
+function setFormulaBarVisible(visible: boolean) {
+  try {
+    if (visible) localStorage.removeItem(FORMULA_BAR_KEY);
+    else localStorage.setItem(FORMULA_BAR_KEY, "hidden");
+  } catch {
+    // ignore localStorage failures
+  }
+}
 
 type ChartState = {
   definition: ChartDefinition;
@@ -803,6 +821,8 @@ export default function Sheets({
         univer.dispose();
       };
       api.current = univerAPI;
+      if (!formulaBarVisible())
+        univerAPI.setUIVisible(univerAPI.Enum.BuiltInUIPart.HEADER, false);
       univerAPI.registerComponent("suiteleaf-chart", EmbeddedChart);
       const workbook = univerAPI.createWorkbook(
         content.current.workbook as unknown as IWorkbookData,
@@ -1482,6 +1502,35 @@ export default function Sheets({
       onError(e instanceof Error ? e.message : String(e));
     }
   };
+  const view = (): SheetView => {
+    const sheet = book.current?.getActiveSheet();
+    const freeze = sheet?.getFreeze();
+    const cell = book.current?.getActiveCell();
+    const frozenRows = freeze?.ySplit ? freeze.startRow : 0;
+    const frozenColumns = freeze?.xSplit ? freeze.startColumn : 0;
+    // The main viewport excludes frozen panes; keep at least two of its rows/columns scrollable.
+    const visible = sheet?.getVisibleRange();
+    return {
+      frozenRows,
+      frozenColumns,
+      row: (cell?.getRow() ?? 0) + 1,
+      column: (cell?.getColumn() ?? 0) + 1,
+      maxFrozenRows: visible
+        ? frozenRows + visible.endRow - visible.startRow - 1
+        : 0,
+      maxFrozenColumns: visible
+        ? frozenColumns + visible.endColumn - visible.startColumn - 1
+        : 0,
+      gridlines: !sheet?.hasHiddenGridLines(),
+      formulaBar: formulaBarVisible(),
+    };
+  };
+  const setFrozen = (axis: "rows" | "columns", count: number) => {
+    const sheet = book.current?.getActiveSheet();
+    if (!sheet) return;
+    if (axis === "rows") sheet.setFrozenRows(count);
+    else sheet.setFrozenColumns(count);
+  };
   useEffect(() => {
     if (!ready) return;
     onActions({
@@ -1597,6 +1646,18 @@ export default function Sheets({
           setHAlign(al);
           book.current?.getActiveRange()?.setHorizontalAlignment(al);
           persist.current();
+        },
+        view,
+        freezeRows: (count) => setFrozen("rows", count),
+        freezeColumns: (count) => setFrozen("columns", count),
+        showGridlines: (visible) =>
+          void book.current?.getActiveSheet()?.setHiddenGridlines(!visible),
+        showFormulaBar: (visible) => {
+          setFormulaBarVisible(visible);
+          api.current?.setUIVisible(
+            api.current.Enum.BuiltInUIPart.HEADER,
+            visible,
+          );
         },
       },
     });

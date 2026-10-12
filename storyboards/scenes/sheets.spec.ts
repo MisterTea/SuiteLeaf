@@ -357,38 +357,49 @@ test("12-freeze-the-header-row", async ({ page }) => {
       meals[(i * 5) % meals.length],
       i % 9 === 4 ? "Maybe" : i % 7 === 3 ? "No" : "Yes",
     ]);
+  /** Glides the visible pointer onto a menu item, so viewers can follow it. */
+  const glide = async (item: ReturnType<Page["getByRole"]>, click = true) => {
+    const box = (await item.boundingBox())!;
+    await page.mouse.move(box.x + 40, box.y + box.height / 2, { steps: 10 });
+    await beat(page, 350);
+    if (click) await item.click();
+  };
   await page.goto("/");
   await caption(page, "Chris is checking a 60-guest wedding list for the caterer.");
   await openWorkbook(page, "Wedding guest list", rows, [160, 100, 110, 90]);
 
-  await pointAt(page, await cellPoint(page, "F8", [160, 100, 110, 90]));
   await caption(page, "Scrolling down, the header row disappears…", 900);
-  await scrollGrid(page, 120, 8);
-  await caption(page, "…and it's hard to tell which column is which.", 1800);
-  await scrollGrid(page, -120, 10);
-  await selectCells(page, "A1");
+  await scrollGrid(page, 120, 7);
+  await caption(page, "…and it's hard to tell which column is Meal and which is RSVP.", 1800);
+  await scrollGrid(page, -120, 8);
 
-  await caption(page, "Google Sheets keeps Freeze in the View menu. SuiteLeaf's View menu doesn't have it yet…", 900);
-  await page.getByRole("button", { name: "View", exact: true }).click();
-  await beat(page, 1600);
-  await page.keyboard.press("Escape");
-  await caption(page, "…so Chris right-clicks a cell in the header row instead.", 1000);
-  await pointAt(page, await cellPoint(page, "A1", [160, 100, 110, 90]), "right");
-  await page.getByText("Freeze", { exact: true }).hover();
-  await beat(page, 700);
-  await caption(page, "Freeze › Freeze first row.", 1000);
-  await page.getByText("Freeze first row", { exact: true }).click();
+  await caption(page, "As in Google Sheets, Freeze is in the View menu.", 900);
+  await glide(page.getByRole("button", { name: "View", exact: true }));
+  await glide(page.getByRole("menuitem", { name: "Freeze" }), false);
+  await expect(page.getByRole("menuitemcheckbox", { name: "No rows" })).toHaveAttribute("aria-checked", "true");
+  await caption(page, "View › Freeze › 1 row.", 1300);
+  await glide(page.getByRole("menuitemcheckbox", { name: "1 row", exact: true }));
   await beat(page);
 
-  await caption(page, "A grey line now sits under row 1. Scroll down…", 900);
-  await scrollGrid(page, 120, 10);
-  await caption(page, "…and Guest, Party size, Meal and RSVP stay in view, all the way down.", 2400);
-  await scrollGrid(page, 120, 6);
-  await beat(page, 1200);
+  await caption(page, "A grey line now sits under row 1. Scroll down…", 1000);
+  await scrollGrid(page, 120, 8);
+  await caption(page, "…and Guest, Party size, Meal and RSVP stay in view, right down to the last guest.", 2400);
 
   const file = await native(page);
   expect(sheetOf(file).freeze).toMatchObject({ startRow: 1, ySplit: 1 });
-  await caption(page, "The frozen header is saved with the file.", 1600);
+  await caption(page, "The freeze is saved with the workbook. Chris closes it and opens it again…", 1200);
+  await page.getByRole("button", { name: "Back to files" }).click();
+  await beat(page, 600);
+  await page.getByRole("link", { name: "Wedding guest list" }).click();
+  await ready(page);
+  await scrollGrid(page, 120, 6);
+  await caption(page, "…and the header row is still frozen.", 1600);
+  await page.getByRole("button", { name: "View", exact: true }).click();
+  await glide(page.getByRole("menuitem", { name: "Freeze" }), false);
+  await expect(page.getByRole("menuitemcheckbox", { name: "1 row", exact: true })).toHaveAttribute("aria-checked", "true");
+  await caption(page, "View › Freeze shows the tick next to 1 row; \"No rows\" undoes it.", 2000);
+  await page.keyboard.press("Escape");
+  await beat(page, 600);
 });
 
 test("13-format-money-and-percentages", async ({ page }) => {

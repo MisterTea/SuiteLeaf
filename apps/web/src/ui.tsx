@@ -40,6 +40,57 @@ export function MenuItem({
     </Dropdown.Item>
   );
 }
+export function SubMenu({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <Dropdown.Sub>
+      <Dropdown.SubTrigger className="menu-item">
+        <span className="menu-item-label">{label}</span>
+        <span className="menu-item-shortcut" aria-hidden="true">
+          ›
+        </span>
+      </Dropdown.SubTrigger>
+      <Dropdown.Portal>
+        <Dropdown.SubContent className="menu-content" sideOffset={6}>
+          {children}
+        </Dropdown.SubContent>
+      </Dropdown.Portal>
+    </Dropdown.Sub>
+  );
+}
+export function MenuSeparator() {
+  return <Dropdown.Separator className="menu-separator" />;
+}
+export function MenuCheckItem({
+  children,
+  checked,
+  onSelect,
+  disabled = false,
+}: {
+  children: ReactNode;
+  checked: boolean;
+  onSelect: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <Dropdown.CheckboxItem
+      className="menu-item menu-check-item"
+      checked={checked}
+      disabled={disabled}
+      onSelect={onSelect}
+    >
+      <span className="menu-item-check" aria-hidden="true">
+        {checked ? "✓" : ""}
+      </span>
+      <span className="menu-item-label">{children}</span>
+    </Dropdown.CheckboxItem>
+  );
+}
 export function Tool({
   label,
   children,
@@ -118,5 +169,22 @@ export type EditorActions = {
     toggleStrike: () => void;
     clearFormatting: () => void;
     align: (alignment: "left" | "center" | "right") => void;
+    view: () => SheetView;
+    freezeRows: (count: number) => void;
+    freezeColumns: (count: number) => void;
+    showGridlines: (visible: boolean) => void;
+    showFormulaBar: (visible: boolean) => void;
   };
+};
+export type SheetView = {
+  frozenRows: number;
+  frozenColumns: number;
+  /** 1-based row and column of the active cell. */
+  row: number;
+  column: number;
+  /** The most rows or columns that can be frozen and still leave room to scroll. */
+  maxFrozenRows: number;
+  maxFrozenColumns: number;
+  gridlines: boolean;
+  formulaBar: boolean;
 };
