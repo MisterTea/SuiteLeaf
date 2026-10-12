@@ -81,11 +81,13 @@ export function nextcloudProvider(config: NonNullable<AuthEnv["nextcloud"]>) {
         }
       ).ocs?.data;
       if (!data?.id) return null;
+      // Nextcloud users set their profile email without verification, so it
+      // must never link to an existing account.
       return {
         id: data.id,
         email: data.email || `${data.id}@nextcloud.invalid`,
         name: data.displayname || data.id,
-        emailVerified: !!data.email,
+        emailVerified: false,
       };
     },
   };
@@ -141,7 +143,7 @@ export function authOptions(
       encryptOAuthTokens: true,
       accountLinking: {
         enabled: true,
-        trustedProviders: ["google", "github", "nextcloud"],
+        trustedProviders: ["google", "github"],
       },
     },
     rateLimit: { enabled: true, storage: "memory" },

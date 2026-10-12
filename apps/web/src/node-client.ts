@@ -281,9 +281,16 @@ export const drive = {
 export async function openDriveFile(item: DriveItem): Promise<FileRecord> {
   const { url } = requireSession();
   const { text, versionId } = await drive.read(item.id);
+  const file = parseNamedFile(item.name, text);
   return {
-    file: parseNamedFile(item.name, text),
-    drive: { nodeUrl: url, itemId: item.id, versionId, name: item.name },
+    file,
+    drive: {
+      nodeUrl: url,
+      itemId: item.id,
+      versionId,
+      syncedAt: file.updatedAt,
+      name: item.name,
+    },
   };
 }
 
@@ -305,6 +312,7 @@ export async function uploadDriveFile(
   return {
     ...link,
     versionId: item.headVersionId ?? undefined,
+    syncedAt: file.updatedAt,
     name: item.name,
   };
 }

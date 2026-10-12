@@ -46,6 +46,7 @@ import {
   createFile,
   duplicateFile,
   extensionFor,
+  hasUnsyncedEdits,
   kindFromName,
   nativeFilename,
   mimeFor,
@@ -86,13 +87,30 @@ const Docs = lazy(() => import("./editors/Docs")),
 function message(e: unknown) {
   return e instanceof Error ? e.message : String(e);
 }
+/** SuiteDrive uploads by file ID, shared by every editor of a file so one
+ * opened while an earlier editor's upload is in flight reads the version that
+ * upload produces instead of uploading on top of the same base again. */
+const driveQueues = new Map<string, SaveQueue>();
+function driveQueueFor(id: string) {
+  let queue = driveQueues.get(id);
+  if (!queue) driveQueues.set(id, (queue = new SaveQueue()));
+  return queue;
+}
 /** Cache a SuiteDrive file locally and open it in the editor. A local file
- * that merely shares the ID gets a fresh one instead of being replaced. */
+ * that merely shares the ID gets a fresh one instead of being replaced, and
+ * a cached copy with unuploaded edits is kept so the editor can resolve them. */
 async function openFromDrive(item: DriveItem, navigate: NavigateFunction) {
+  // An upload finishing after the read below would be replaced by the older version.
+  await Promise.all(
+    [...driveQueues.values()].map((q) => q.flush().catch(() => {})),
+  );
   const record = await openDriveFile(item);
   const existing = await storage.get(record.file.id);
   if (existing?.drive?.itemId === item.id) {
-    if (existing.drive.versionId === record.drive?.versionId) {
+    if (
+      existing.drive.versionId === record.drive?.versionId ||
+      hasUnsyncedEdits(existing)
+    ) {
       navigate(`/file/${existing.file.id}`);
       return;
     }
@@ -660,7 +678,7 @@ function Workspace() {
     actions = useRef<EditorActions>(undefined),
     alive = useRef(true),
     saveError = useRef(""),
-    driveQueue = useRef(new SaveQueue()),
+    driveQueue = useRef(driveQueueFor(id!)),
     driveTimer = useRef<ReturnType<typeof setTimeout>>(undefined),
     driveConflictRef = useRef<DriveItem | null>(null);
   const [driveConflict, setDriveConflictState] = useState<DriveItem | null>(
@@ -685,7 +703,10 @@ function Workspace() {
     const snapshot = structuredClone(current.current.file);
     try {
       await driveQueue.current.enqueue(async () => {
-        const link = await uploadDriveFile(snapshot, current.current!.drive!);
+        const base = current.current!.drive!;
+        const link = await uploadDriveFile(snapshot, base);
+        // Saving to a new SuiteDrive item may have relinked the file meanwhile.
+        if (current.current!.drive?.itemId !== base.itemId) return;
         current.current = { ...current.current!, drive: link };
         await storage.save(current.current);
       });
@@ -693,6 +714,7 @@ function Workspace() {
         setStatus("Saved to SuiteDrive");
     } catch (e) {
       if (e instanceof DriveConflict) {
+        if (e.item.id !== current.current?.drive?.itemId) return;
         setDriveConflict(e.item);
         setStatus("SuiteDrive has a newer version");
       } else setStatus(`Saved on this device · ${message(e)}`);
@@ -710,17 +732,25 @@ function Workspace() {
     if (!current.current) return;
     const at = version.current;
     const snapshot = structuredClone(current.current.file);
-    snapshot.updatedAt = new Date().toISOString();
     setStatus("Saving…");
     try {
       await queue.current.enqueue(async () => {
-        const latest = current.current!;
-        const saved = await storage.save({ ...latest, file: snapshot });
-        current.current = { ...saved, file: current.current!.file };
+        const saved = await storage.save({
+          ...current.current!,
+          file: snapshot,
+        });
+        // SuiteDrive uploads and copies replace `drive` while the write is in flight.
+        current.current = {
+          ...saved,
+          file: current.current!.file,
+          drive: current.current!.drive,
+        };
         if (alive.current) setRecord(current.current);
       });
       savedVersion.current = Math.max(savedVersion.current, at);
-      if (current.current.drive && !driveConflictRef.current) {
+      // Once unmounted, the cleanup has already uploaded the latest content
+      // and a reopened editor may hold the link a later upload would replace.
+      if (alive.current && current.current.drive && !driveConflictRef.current) {
         clearTimeout(driveTimer.current);
         driveTimer.current = setTimeout(() => void syncDrive(), 1500);
       }
@@ -758,11 +788,16 @@ function Workspace() {
       cancel = false;
     const load = async () => {
       try {
-        const r = await storage.get(id!);
+        const r = await driveQueue.current.enqueue(() => storage.get(id!));
         if (cancel) return;
         if (!r) throw new Error("This file could not be found.");
         current.current = r;
         setRecord(r);
+        if (hasUnsyncedEdits(r)) {
+          setStatus("Saving to SuiteDrive…");
+          void syncDrive();
+          return;
+        }
         setStatus(
           r.drive
             ? "Saved to SuiteDrive"
@@ -799,13 +834,16 @@ function Workspace() {
       cancel = true;
       alive.current = false;
       clearTimeout(timer.current);
-      if (current.current && version.current > savedVersion.current) {
-        const snapshot = structuredClone(current.current);
+      const unsaved =
+        !!current.current && version.current > savedVersion.current;
+      if (unsaved) {
+        const file = structuredClone(current.current!.file);
         void saveQueue
-          .enqueue(() => storage.save(snapshot))
-          .then(() => snapshot.drive && syncDrive())
+          .enqueue(() => storage.save({ ...current.current!, file }))
           .catch(() => {});
-      } else if (driveTimer.current) void syncDrive();
+      }
+      // Queued before the next editor of this file can read the cached record.
+      if (unsaved || driveTimer.current) void syncDrive();
       release?.();
     };
   }, [id, syncDrive]);
@@ -844,7 +882,11 @@ function Workspace() {
       const at = version.current;
       const saved = await storage.saveAs(structuredClone(current.current));
       if (saved) {
-        current.current = { ...saved, file: current.current.file };
+        current.current = {
+          ...saved,
+          file: current.current.file,
+          drive: current.current.drive,
+        };
         setRecord(current.current);
         if (at === version.current) await save();
         else void save().catch(() => {});
@@ -858,7 +900,7 @@ function Workspace() {
       try {
         if (action === "save") {
           await save();
-          await syncDrive();
+          if (alive.current) await syncDrive();
         } else if (action === "save-as") {
           if (cluster) setDriveDialog("save");
           else await saveAs();

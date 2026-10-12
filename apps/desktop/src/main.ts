@@ -176,6 +176,8 @@ async function openFile() {
 function send(action: string) {
   window?.webContents.send("menu", action);
 }
+/** Automated tests keep the app off screen so it does not take focus. */
+const hideWindows = process.env.SUITELEAF_HIDE_WINDOWS === "1";
 function createWindow() {
   window = new BrowserWindow({
     width: 1400,
@@ -184,6 +186,7 @@ function createWindow() {
     minHeight: 600,
     title: "SuiteLeaf",
     show: false,
+    skipTaskbar: hideWindows,
     webPreferences: {
       preload: join(import.meta.dirname, "../preload/index.cjs"),
       contextIsolation: true,
@@ -218,7 +221,13 @@ function createWindow() {
       },
     }),
   );
-  window.once("ready-to-show", () => window?.show());
+  window.once("ready-to-show", () => {
+    if (!hideWindows) return window?.show();
+    // Rendered and scriptable, but invisible, click-through, and unfocused.
+    window?.setOpacity(0);
+    window?.setIgnoreMouseEvents(true);
+    window?.showInactive();
+  });
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//.test(url)) void shell.openExternal(url);
     return { action: "deny" };
@@ -343,6 +352,7 @@ else {
     window?.focus();
   });
   void app.whenReady().then(async () => {
+    if (hideWindows) app.dock?.hide();
     store = new FileStore(
       process.env.SUITELEAF_TEST_DATA ??
         join(app.getPath("userData"), "library"),

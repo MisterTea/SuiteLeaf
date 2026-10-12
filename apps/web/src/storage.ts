@@ -61,7 +61,9 @@ export class SaveQueue {
   private tail: Promise<unknown> = Promise.resolve();
   enqueue<T>(work: () => Promise<T>): Promise<T> {
     const next = this.tail.catch(() => {}).then(work);
-    this.tail = next;
+    // Holding `next` itself would keep its result alive as long as the queue.
+    this.tail = next.then(() => {});
+    this.tail.catch(() => {});
     return next;
   }
   async flush() {
