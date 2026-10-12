@@ -31,6 +31,9 @@ test("docs toolbar fits one row, outline entries align left, indent works in lis
   const style = page.getByRole("combobox", { name: "Paragraph style" });
   await style.selectOption({ label: "Heading 1" });
   await editor.getByText("Plan", { exact: true }).click();
+  // The caret reaches the editor on the browser's next selectionchange, so
+  // pick the style once the menu shows the clicked line's.
+  await expect(style).toHaveValue("0");
   await style.selectOption({ label: "Heading 1" });
 
   const entries = page.locator(".outline-item-text");
