@@ -11,6 +11,7 @@ import {
   type AuthProviders,
 } from "../node-client";
 import { probeServer, switchMode } from "../mode";
+import { useServerSync } from "./status";
 
 export function useNodeSession() {
   const [session, setSession] = useState(getSession);
@@ -45,6 +46,7 @@ export function SignInScreen({
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const clustered = Boolean(useServerSync(serverUrl)?.peers);
 
   useEffect(() => {
     loadProviders(serverUrl)
@@ -113,6 +115,13 @@ export function SignInScreen({
           </h2>
         </div>
         <div className="dialog-body">
+          {mode === "signin" && clustered ? (
+            <p className="dialog-note sign-in-cluster-note">
+              This server shares accounts and files with your
+              organization&apos;s other SuiteLeaf servers. An account made on
+              any of them works here.
+            </p>
+          ) : null}
           {available?.providers.length ? (
             <div className="provider-buttons">
               {available.providers.map((p) => (

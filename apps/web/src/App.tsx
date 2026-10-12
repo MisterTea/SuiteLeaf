@@ -72,6 +72,7 @@ import {
 } from "./node-client";
 import { DriveBrowser } from "./drive/DriveBrowser";
 import { ConnectDialog, SignInScreen, useNodeSession } from "./drive/SignIn";
+import { syncSummary, useServerSync } from "./drive/status";
 import { completeHandoff } from "./node-client";
 import {
   ModeContext,
@@ -610,6 +611,8 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
     folder.current = id;
     setFolderName(id ? name : undefined);
   }, []);
+  const sync = useServerSync(serverUrl);
+  const summary = syncSummary(sync);
   const make = useCallback(
     (kind: SuiteFile["kind"]) =>
       void createInDrive(createFile(kind), folder.current, navigate).catch(
@@ -639,6 +642,15 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
               ? null
               : " Your files on this computer are kept for when you disconnect."}
           </small>
+          {summary ? (
+            <small
+              className={`cluster-sync ${sync?.replicating ? "copying" : ""}`}
+              aria-live="polite"
+            >
+              <span className="local-dot" />
+              {summary}
+            </small>
+          ) : null}
         </div>
         <AccountChip serverUrl={serverUrl} />
       </aside>
@@ -671,6 +683,7 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
             mode="open"
             onFolderChange={onFolderChange}
             onOpen={(item) => openFromDrive(item, navigate)}
+            refreshKey={sync ? `${sync.heads}:${sync.replicating}` : undefined}
           />
         </section>
         <footer className="home-footer">
@@ -704,7 +717,8 @@ function Workspace() {
       null,
     ),
     [driveDialog, setDriveDialog] = useState<"open" | "save" | null>(null),
-    cluster = useMode().mode.kind === "cluster";
+    { mode } = useMode(),
+    cluster = mode.kind === "cluster";
   const setDriveConflict = (item: DriveItem | null) => {
     driveConflictRef.current = item;
     setDriveConflictState(item);
@@ -1679,10 +1693,20 @@ function Workspace() {
           >
             <MessageSquare size={18} />
           </button>
-          <span className="workspace-brand">
-            <Leaf size={16} />
-            SuiteLeaf
-          </span>
+          {mode.kind === "cluster" ? (
+            <span
+              className="workspace-brand workspace-server"
+              title={`Saving to SuiteDrive on ${new URL(mode.serverUrl).host}`}
+            >
+              <Cloud size={16} />
+              {new URL(mode.serverUrl).host}
+            </span>
+          ) : (
+            <span className="workspace-brand">
+              <Leaf size={16} />
+              SuiteLeaf
+            </span>
+          )}
           <button
             className="save-copy"
             disabled={!actionsReady}

@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { isNativeName, kindFromName } from "@suiteleaf/core";
 import { drive, getSession, type DriveItem } from "../node-client";
+import { formatModified } from "./status";
 
 type Crumb = { id: string | null; name: string };
 type View = "mine" | "shared";
@@ -202,6 +203,7 @@ export function DriveBrowser({
   onSave,
   onClose,
   onFolderChange,
+  refreshKey,
 }: {
   mode: "open" | "save";
   defaultName?: string;
@@ -211,6 +213,9 @@ export function DriveBrowser({
   onClose?: () => void;
   /** The folder new items should go in; `null` is the top of My Drive. */
   onFolderChange?: (folderId: string | null, name: string) => void;
+  /** Changing this re-lists the folder in place, e.g. when replication
+   * brings in changes from another server. */
+  refreshKey?: string;
 }) {
   const [initial] = useState(() => (inline && place.load()) || rootOf("mine"));
   const [view, setView] = useState<View>(initial.view);
@@ -227,26 +232,37 @@ export function DriveBrowser({
   >(null);
   const restored = useRef(initial.path.length > 1);
   const folder = path[path.length - 1];
+  const shown = useRef(""),
+    request = useRef(0);
 
   const refresh = useCallback(async () => {
-    setLoading(true);
+    const key = `${view}:${folder.id}`;
+    const n = ++request.current;
+    // Re-listing the folder already on screen keeps it there meanwhile.
+    if (shown.current !== key) setLoading(true);
     try {
-      setItems(
+      const next =
         view === "shared" && folder.id === null
           ? await drive.shared()
-          : await drive.list(folder.id),
-      );
+          : await drive.list(folder.id);
+      if (n !== request.current) return;
+      setItems(next);
+      shown.current = key;
       setError("");
     } catch (e) {
-      // A remembered folder may have gone; start from the top instead.
-      if (restored.current) setPath(rootOf(view).path);
-      else setError(e instanceof Error ? e.message : String(e));
+      if (n === request.current) {
+        // A remembered folder may have gone; start from the top instead.
+        if (restored.current) setPath(rootOf(view).path);
+        else setError(e instanceof Error ? e.message : String(e));
+      }
     } finally {
-      restored.current = false;
-      setLoading(false);
+      if (n === request.current) {
+        restored.current = false;
+        setLoading(false);
+      }
     }
   }, [folder.id, view]);
-  useEffect(() => void refresh(), [refresh]);
+  useEffect(() => void refresh(), [refresh, refreshKey]);
   useEffect(() => {
     onFolderChange?.(folder.id, folder.name);
     if (inline) place.save({ view, path });
@@ -366,13 +382,16 @@ export function DriveBrowser({
                 <ItemIcon item={item} />
                 <span>{item.name}</span>
                 {!item.available ? (
-                  <CloudOff size={14} aria-label="Replicating" />
+                  <small className="drive-copying">
+                    <CloudOff size={14} aria-label="Replicating" />
+                    Copying…
+                  </small>
                 ) : null}
-                <time>
-                  {new Date(item.updatedAt).toLocaleDateString(undefined, {
-                    month: "short",
-                    day: "numeric",
-                  })}
+                <time
+                  dateTime={item.updatedAt}
+                  title={new Date(item.updatedAt).toLocaleString()}
+                >
+                  {formatModified(item.updatedAt)}
                 </time>
               </button>
               {item.role === "owner" || item.role === "editor" ? (

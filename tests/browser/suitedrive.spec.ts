@@ -161,7 +161,13 @@ test.describe("SuiteDrive across two nodes", () => {
       pageA.getByRole("heading", { name: "SuiteDrive" }),
     ).toBeVisible();
     await expect(pageA.getByText("Connect to a server")).toHaveCount(0);
+    await expect(pageA.getByText("Connected to 1 other server")).toBeVisible({
+      timeout: 15000,
+    });
     await pageA.getByRole("button", { name: "New document" }).click();
+    await expect(
+      pageA.getByTitle(`Saving to SuiteDrive on ${new URL(a.url).host}`),
+    ).toBeVisible();
     await pageA.getByLabel("File title").fill("Field report");
     const editorA = pageA.getByRole("textbox", { name: "Document content" });
     await editorA.fill("Written on node A");
@@ -186,6 +192,9 @@ test.describe("SuiteDrive across two nodes", () => {
         },
       )
       .toBe(0);
+    await expect(pageB.getByLabel("Sign in to SuiteLeaf")).toContainText(
+      "An account made on any of them works here.",
+    );
     await signIn(pageB, false);
     await pageB.screenshot({ path: "test-results/cluster-home.png" });
     await pageB
@@ -193,6 +202,9 @@ test.describe("SuiteDrive across two nodes", () => {
       .click();
     const editorB = pageB.getByRole("textbox", { name: "Document content" });
     await expect(editorB).toContainText("Written on node A");
+    await expect(
+      pageB.getByTitle(`Saving to SuiteDrive on ${new URL(b.url).host}`),
+    ).toBeVisible();
 
     await editorB.fill("Rewritten on node B");
     await expect(pageB.getByRole("status")).toHaveText("Saved to SuiteDrive", {
@@ -245,6 +257,27 @@ test.describe("SuiteDrive across two nodes", () => {
       path: "test-results/suitedrive.png",
       fullPage: true,
     });
+
+    // Node B's file list picks up a file made on node A without a reload.
+    await pageB.getByRole("button", { name: "Back to files" }).click();
+    await expect(
+      pageB.getByRole("button", { name: "Field report.sldoc", exact: true }),
+    ).toBeVisible();
+    await pageA.evaluate(async () => {
+      const s = JSON.parse(localStorage.getItem("suiteleaf:node-session")!);
+      const r = await fetch(`${s.url}/api/drive/items`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${s.token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ name: "Made on A.sldoc", kind: "file" }),
+      });
+      if (!r.ok) throw new Error(`create failed: ${r.status}`);
+    });
+    await expect(
+      pageB.getByRole("button", { name: "Made on A.sldoc", exact: true }),
+    ).toBeVisible({ timeout: 20000 });
   });
 
   test("reopening a file from SuiteDrive keeps edits that were never uploaded", async ({
