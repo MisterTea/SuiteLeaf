@@ -243,7 +243,10 @@ test.describe("Desktop & Mobile End-to-End Responsive Suite", () => {
     expect(canvasBox.x + canvasBox.width).toBeLessThanOrEqual(viewport.width);
 
     // Test presentation mode
-    const presentBtn = page.getByRole("button", { name: "Present", exact: true });
+    const presentBtn = page.getByRole("button", {
+      name: "Slideshow",
+      exact: true,
+    });
     await presentBtn.scrollIntoViewIfNeeded();
     await presentBtn.click();
 

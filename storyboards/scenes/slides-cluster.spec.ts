@@ -270,6 +270,22 @@ test("20-build-a-presentation", async ({ page }) => {
 });
 
 test("21-present-with-speaker-notes", async ({ page }) => {
+  // Real fullscreen resizes the headless window and ruins the recording, so
+  // stand in for the Fullscreen API and check the calls instead of pixels.
+  await page.addInitScript(() => {
+    let current: Element | null = null;
+    const change = (el: Element | null) => {
+      current = el;
+      document.dispatchEvent(new Event("fullscreenchange"));
+      return Promise.resolve();
+    };
+    Object.defineProperty(document, "fullscreenElement", { get: () => current });
+    Element.prototype.requestFullscreen = function () {
+      return change(this);
+    };
+    document.exitFullscreen = () => change(null);
+  });
+  const fullscreen = () => page.evaluate(() => document.fullscreenElement !== null);
   await page.goto("/");
   await caption(page, "It's Saturday. Priya opens the slides she saved last night.");
   const chooser = page.waitForEvent("filechooser");
@@ -298,36 +314,54 @@ test("21-present-with-speaker-notes", async ({ page }) => {
   await expect(notes).toHaveValue("Pass the sign-up sheet around now.");
   await beat(page);
 
-  await caption(page, "Time to start. Back to the first slide, then Slideshow.", 1200);
-  await page.locator(".thumbnail-row").nth(0).click();
-  await beat(page, 500);
-  await page.getByRole("button", { name: "Present", exact: true }).click();
+  await caption(page, "Time for a run-through. The arrow next to Slideshow has more ways to start.", 1200);
+  await page.getByRole("button", { name: "Slideshow options" }).click();
+  const fromStart = page.getByRole("menuitem", { name: /Present from beginning/ });
+  await expect(fromStart).toBeVisible();
+  await caption(page, "She's on slide 3, but picks Present from beginning.", 1600);
+  await fromStart.click();
   const show = page.locator(".presenter-overlay");
   await expect(show).toBeVisible();
   await expect(show).toContainText("Spring Garden Kickoff");
-  await caption(page, "The slide fills the window, on a black background.", 1800);
+  await expect.poll(fullscreen).toBe(true);
+  await caption(page, "The show opens in full screen, starting on slide 1.", 1800);
+  await expect(show.locator(".presenter-controls")).toHaveClass(/hidden/);
 
-  await caption(page, "The right arrow key moves to the next slide…", 1000);
+  const notesPanel = show.getByRole("complementary", { name: "Speaker notes" });
+  await caption(page, "She presses S to see her notes beside the slide, with a timer and what's next.", 900);
+  await page.keyboard.press("s");
+  await expect(notesPanel).toContainText("Welcome everyone. Thank the library for the room.");
+  await expect(notesPanel).toContainText("Next: This season's plan");
+  await beat(page, 2200);
+
+  await caption(page, "The right arrow key moves on. The notes follow the slide.", 900);
   await page.keyboard.press("ArrowRight");
   await expect(show).toContainText("This season's plan");
-  await beat(page, 1600);
+  await expect(notesPanel).toContainText("Mention the compost delivery on Friday.");
+  await beat(page, 1800);
   await page.keyboard.press("ArrowRight");
-  await expect(show).toContainText("How you can help");
+  await expect(notesPanel).toContainText("Pass the sign-up sheet around now.");
+  await beat(page, 1800);
+
+  await caption(page, "Ready. S again hides the notes, so the slide fills the screen.", 900);
+  await page.keyboard.press("s");
+  await expect(notesPanel).toHaveCount(0);
   await beat(page, 1200);
 
-  await caption(page, "…or use the controls that appear when she moves the mouse.", 1000);
+  await caption(page, "The mouse brings back the controls.", 900);
   await page.mouse.move(640, 700, { steps: 10 });
   await expect(show.getByText("Slide 3 of 4")).toBeVisible();
-  await beat(page, 600);
+  await expect(show.getByRole("button", { name: "Notes" })).toBeVisible();
+  await beat(page, 700);
   await show.getByRole("button", { name: "Next" }).click();
   await expect(show).toContainText("Questions?");
   await expect(show.getByText("Slide 4 of 4")).toBeVisible();
-  await beat(page, 1200);
-  await caption(page, "Her notes don't appear during the show, so she reviewed them beforehand.", 2000);
+  await beat(page, 1400);
 
   await caption(page, "Escape ends the show.", 1000);
   await page.keyboard.press("Escape");
   await expect(show).toHaveCount(0);
+  await expect.poll(fullscreen).toBe(false);
   await page.locator(".thumbnail-row").nth(0).click();
   await expect(notes).toHaveValue("Welcome everyone. Thank the library for the room.");
   await caption(page, "Her notes stay with each slide and save with the presentation.", 2000);

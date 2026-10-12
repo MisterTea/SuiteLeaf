@@ -17,19 +17,25 @@ It's Saturday morning. Priya opens the garden kickoff slides she saved last nigh
 1. **Open the deck.** On the home screen Priya clicks "Open / import" and picks "Spring Garden Kickoff.slslides". It opens with four slides.
 2. **Speaker notes.** Under the slide she clicks "Click to add speaker notes" and types "Welcome everyone. Thank the library for the room."
 3. **A note per slide.** She selects slides 2 and 3 in the thumbnails and adds a reminder to each.
-4. **Start the show.** She selects the first slide and clicks Slideshow. The slide fills the window on a black background.
-5. **Advance.** The right arrow key moves to "This season's plan", then "How you can help".
-6. **On-screen controls.** Moving the mouse shows Previous, "Slide 3 of 4", Next, and Exit. She clicks Next to reach "Questions?".
-7. **End.** Escape closes the show. Back in the editor, the first slide's note is still there.
+4. **Start from the beginning.** Still on slide 3, she opens the arrow next to Slideshow. The menu offers "Present from beginning" (Cmd+Shift+Enter), "Present from current slide" (Cmd+Enter), and "Present with speaker notes". She picks Present from beginning. The show opens in full screen on slide 1, and the controls fade after a moment.
+5. **Rehearse with notes.** She presses S. Her note for the slide appears beside it, with a timer and a preview of the next slide ("Next: This season's plan").
+6. **Advance.** The right arrow key moves to "This season's plan", then "How you can help". The notes change with the slide.
+7. **Present.** When people arrive, she presses S again so the slide fills the screen. Moving the mouse brings back Previous, "Slide 3 of 4", Next, Notes, and Exit. She clicks Next to reach "Questions?".
+8. **End.** Escape ends the show and leaves full screen. Back in the editor, the first slide's note is still there.
 
 ## Success looks like
 
 - Each slide has its own speaker notes, saved with the presentation.
-- The slide show starts from the chosen slide and advances with the keyboard and the on-screen controls.
+- The show can start from the beginning or from the current slide, from the menu or the keyboard.
+- The show asks the browser (or the desktop app's window) for real full screen, and leaving full screen ends the show.
+- Speaker notes, elapsed time, and the next slide are one key (S) or click (Notes) away during the show.
+- Slide text keeps the same proportions as in the editor at any screen size.
+- Keyboard: arrows, Space, Page Up/Down, Home/End to move; B or W for a black or white screen; S for notes; Escape to exit. Clicking the slide also advances.
 
 ## Gaps and notes
 
-- There is no presenter view. Speaker notes don't appear anywhere during the slide show, so Priya can't read them while presenting. PowerPoint and Google Slides show notes, a timer, and the next slide on the presenter's screen.
-- The slide show fills the browser window but doesn't enter real fullscreen, so on the web the browser's tabs and address bar stay visible unless the user presses F11 or uses the browser's own fullscreen.
-- Slideshow always starts from the selected slide. There is no "From beginning" option. The chevron on the Slideshow button looks like a menu but is part of the same button.
-- No blank-screen key (B/W), slide-number jump, or laser pointer during the show.
+- Notes appear in the same window as the slide, like PowerPoint's presenter view on a single screen. If the laptop is mirrored to a projector, the audience sees them too. A separate presenter window for a second screen (Google Slides' "Presenter view", PowerPoint's dual-monitor mode) is a follow-up.
+- The recording replaces the browser's Fullscreen API with a stand-in, because real full screen resizes the headless recording window. The script checks that SuiteLeaf asks for full screen and leaves it on Escape; the browser tests check the real API.
+- In the editor on narrow (phone-sized) screens, slide text is drawn at a fixed pixel size, so it looks larger relative to the slide than it does in the show. The show itself scales correctly.
+- The HTML export still draws text at 1.5× the deck size, so exported slides don't match the editor or the show.
+- No end-of-show screen, slide-number jump, or laser pointer during the show.

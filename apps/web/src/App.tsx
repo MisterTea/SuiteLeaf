@@ -36,7 +36,6 @@ import {
   Star,
   Clock,
   MessageSquare,
-  Play,
   Cloud,
   LogIn,
   LogOut,
@@ -1660,18 +1659,6 @@ function Workspace() {
           >
             <MessageSquare size={18} />
           </button>
-          {f.kind === "slide" ? (
-            <button
-              type="button"
-              className="slideshow-header-btn"
-              aria-label="Slideshow"
-              title="Slideshow"
-              onClick={() => void actions.current?.present?.()}
-            >
-              <Play size={14} fill="currentColor" />
-              <span>Slideshow</span>
-            </button>
-          ) : null}
           <span className="workspace-brand">
             <Leaf size={16} />
             SuiteLeaf
