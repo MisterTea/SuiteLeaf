@@ -14,6 +14,7 @@ import {
   IEditorService,
   IShortcutService,
   KeyCode,
+  SheetsSelectionsService,
   UniverSheetsCorePreset,
 } from "@univerjs/preset-sheets-core";
 import CoreEnUS from "@univerjs/preset-sheets-core/locales/en-US";
@@ -498,6 +499,21 @@ function suggestedChartTitle(headers: CellValue[]) {
     ? names[0]
     : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 }
+const rowVisibilityMutation =
+  /^sheet\.mutation\.(set-filter-criteria|set-filter-range|re-calc-filter|remove-filter|set-row-hidden|set-row-visible)$/;
+/**
+ * Univer's filter list toggles a value only from its small checkbox. As in Sheets and
+ * Excel, clicking the value's label or count toggles it too. Rows with an expand arrow
+ * (date groups) keep expanding on a label click.
+ */
+function toggleFilterValueFromLabel(event: MouseEvent) {
+  const target = event.target instanceof Element ? event.target : null;
+  if (!target?.closest('[data-u-comp="sheets-filter-panel"]')) return;
+  if (target.closest('label[data-u-comp="checkbox"], a')) return;
+  const row = target.closest('div:has(> label[data-u-comp="checkbox"])');
+  if (!row || row.firstElementChild?.tagName !== "LABEL") return;
+  row.querySelector<HTMLInputElement>("input[type=checkbox]")?.click();
+}
 const charts = new Map<string, ChartState>();
 const emptyChart: ChartState | undefined = undefined;
 function EmbeddedChart({ data }: { data?: { chartId: string } }) {
@@ -718,6 +734,12 @@ export default function Sheets({
       throw new Error("Source range is unavailable.");
     return s.getRange(rangeLabel(r)).getRawValues();
   };
+  useEffect(() => {
+    // Capture phase: the filter list's label stops click propagation in React.
+    document.addEventListener("click", toggleFilterValueFromLabel, true);
+    return () =>
+      document.removeEventListener("click", toggleFilterValueFromLabel, true);
+  }, []);
   useEffect(() => {
     if (!host.current) return;
     const container = host.current;
@@ -1109,6 +1131,15 @@ export default function Sheets({
           persist.current();
         }, 180);
       });
+      // Univer's status bar only recalculates when the selection changes, so a filter
+      // that hides or reveals rows under the selection would leave Sum and Average
+      // counting rows that are no longer visible.
+      const selections = univer.__getInjector().get(SheetsSelectionsService);
+      const rowsShown = workbook.onCommandExecuted((command: any) => {
+        if (!rowVisibilityMutation.test(command.id)) return;
+        const current = selections.getCurrentSelections();
+        if (current.length) selections.setSelections([...current]);
+      });
       const activeSheetChanged = univerAPI.addEvent(
         univerAPI.Event.ActiveSheetChanged,
         () => {
@@ -1178,6 +1209,7 @@ export default function Sheets({
         clearTimeout(timer);
         clearTimeout(chartHydrationTimer);
         listener.dispose();
+        rowsShown.dispose();
         lifecycleReady.dispose();
         removed.dispose();
         activeSheetChanged.dispose();
@@ -1550,6 +1582,7 @@ export default function Sheets({
         insertPivot: () => startPanel("pivot"),
         toggleFilter,
         sortRange: openSortRange,
+        hasFilter: () => !!book.current?.getActiveSheet()?.getFilter(),
         formatCurrency,
         formatPercent,
         toggleBold,

@@ -1358,6 +1358,9 @@ a {
 .sheet-host [data-u-comp="sheet-bar-append-button"] button:hover {
   background: rgba(0, 0, 0, 0.06) !important;
 }
+[data-u-comp="sheets-filter-panel"] label[data-u-comp="checkbox"] ~ * {
+  cursor: pointer;
+}
 
 .sheet-host {
   flex: 1;

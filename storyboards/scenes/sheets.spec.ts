@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import JSZip from "jszip";
 import Papa from "papaparse";
 import { createFile, serializeFile } from "../../packages/core/src";
@@ -279,6 +279,14 @@ test("11-filter-to-what-matters", async ({ page }) => {
     widths,
   );
 
+  const sum = page.getByText(/^Sum:/);
+  const pointTo = async (target: Locator, click = true) => {
+    const box = (await target.boundingBox())!;
+    const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    if (click) await pointAt(page, point);
+    else await page.mouse.move(point.x, point.y, { steps: 12 });
+  };
+
   await caption(page, "She selects the table and clicks the funnel to create a filter.", 1200);
   await selectCells(page, "A1:D11");
   await page.getByRole("button", { name: "Create a filter", exact: true }).click();
@@ -286,17 +294,31 @@ test("11-filter-to-what-matters", async ({ page }) => {
   await selectCells(page, "A1");
   await caption(page, "Each header now has a filter button.", 1300);
 
+  await dragSelect(page, "D2", "D11", widths);
+  await expect(sum).toHaveText("Sum: 615.44");
+  await pointTo(sum, false);
+  await caption(page, "Selecting the totals shows their sum: 615.44 for all ten orders.", 1800);
+
   await pointAt(page, await cellPoint(page, "C1", widths, true));
   await expect(page.getByText("By Values", { exact: true })).toBeVisible();
   await caption(page, "The Status filter lists every value with a count.", 1500);
+  const checked = page.getByText(/^\(\d+\/10\)$/);
+  await caption(page, "Clicking a name ticks or unticks it…", 600);
+  await pointTo(page.getByText("Shipped", { exact: true }).last());
+  await expect(checked).toHaveText("(6/10)");
+  await beat(page, 700);
   const pending = page.getByText("Pending", { exact: true }).last();
   await pending.hover();
-  await beat(page, 600);
-  await caption(page, "\"Filter Only\" keeps just the Pending orders.", 1100);
+  await beat(page, 400);
+  await caption(page, "…and \"Filter Only\" keeps just the Pending orders in one click.", 1300);
   await pending.locator("xpath=ancestor::*[.//a[normalize-space()='Filter Only']][1]").getByText("Filter Only").click();
+  await expect(checked).toHaveText("(4/10)");
   await beat(page, 600);
   await page.getByRole("button", { name: "Confirm", exact: true }).click();
-  await caption(page, "Four orders to pack. Row numbers skip because the others are hidden, not deleted.", 2600);
+  await caption(page, "Four orders to pack. Row numbers skip because the others are hidden, not deleted.", 2400);
+  await expect(sum).toHaveText("Sum: 228.44");
+  await pointTo(sum, false);
+  await caption(page, "The sum now counts only what's showing: 228.44 still to ship.", 2200);
 
   const saved = await native(page);
   const filter = Object.values(JSON.parse(resource(saved, "SHEET_FILTER_PLUGIN")))[0] as Native;
@@ -309,9 +331,12 @@ test("11-filter-to-what-matters", async ({ page }) => {
   await expect(page.getByText("Clear Filter", { exact: true })).toBeVisible();
   await beat(page, 500);
   await page.getByText("Clear Filter", { exact: true }).click();
-  await caption(page, "All ten orders are back.", 1500);
-  await caption(page, "Clicking the funnel again removes the filter buttons altogether.", 1100);
-  await page.getByRole("button", { name: "Remove filter", exact: true }).click();
+  await expect(sum).toHaveText("Sum: 615.44");
+  await caption(page, "All ten orders are back, and so is the full 615.44.", 1800);
+  await caption(page, "Data › Remove filter (or the funnel) takes the filter buttons away.", 1100);
+  await pointTo(page.getByText("Data", { exact: true }));
+  await beat(page, 600);
+  await page.getByRole("menuitem", { name: "Remove filter" }).click();
   await expect(page.getByRole("button", { name: "Create a filter", exact: true })).toHaveAttribute("aria-pressed", "false");
   await beat(page);
 
