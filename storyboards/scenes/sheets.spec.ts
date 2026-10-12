@@ -116,34 +116,75 @@ test("09-household-budget-with-formulas", async ({ page }) => {
   await ready(page);
 
   const title = page.getByLabel("File title");
+  const nameBox = page.locator(".sheet-host input.univer-size-full");
+  const suggestions = page.locator('ul[data-u-comp="sheets-formula-editor"] li');
+  /** Clicks left of centre, so the pointer doesn't cover a right-aligned amount. */
+  const clickCell = async (ref: string) => {
+    const point = await cellPoint(page, ref);
+    await pointAt(page, { x: point.x - 30, y: point.y });
+  };
   await caption(page, "She names the new spreadsheet.", 900);
   await title.click();
   await title.press("ControlOrMeta+A");
   await typeSlowly(page, "October budget");
 
-  await caption(page, "She types the categories and amounts, pressing Tab to move across.", 1000);
-  await typeRow(page, "A1", ["Category", "Planned", "Spent"]);
-  await typeRow(page, "A2", ["Rent", "1400", "1400"]);
-  await typeRow(page, "A3", ["Groceries", "450", "380"]);
-  await typeRow(page, "A4", ["Utilities", "160", "142"]);
-  await typeRow(page, "A5", ["Transport", "120", "95"]);
-  await typeRow(page, "A6", ["Fun money", "150", "60"]);
+  await caption(page, "She types the table: Tab moves across, Enter starts the next row.", 1000);
+  await clickCell("A1");
+  const aside = await cellPoint(page, "F12");
+  await page.mouse.move(aside.x, aside.y, { steps: 10 });
+  for (const row of [
+    ["Category", "Planned", "Spent"],
+    ["Rent", "1400", "1400"],
+    ["Groceries", "450", "380"],
+    ["Utilities", "160", "142"],
+    ["Transport", "120", "95"],
+    ["Fun money", "150", "60"],
+  ]) {
+    for (const [i, value] of row.entries()) {
+      await typeSlowly(page, value, 25);
+      await page.keyboard.press(i < row.length - 1 ? "Tab" : "Enter");
+    }
+  }
+  await expect(nameBox).toHaveValue("A7");
 
-  await caption(page, "A SUM formula adds up each column.", 1000);
-  await typeRow(page, "A7", ["Total", "=SUM(B2:B6)", "=SUM(C2:C6)"], 45);
+  await caption(page, "For the totals, suggestions appear as she types. Tab picks SUM.", 1000);
+  await typeSlowly(page, "Total", 45);
+  await page.keyboard.press("Tab");
+  await typeSlowly(page, "=su", 150);
+  await expect(suggestions.first()).toContainText("SUM");
+  await beat(page, 1200);
+  await page.keyboard.press("Tab");
+  await beat(page, 700);
+  await typeSlowly(page, "B2:B6)", 110);
+  await page.keyboard.press("Tab");
+
+  await caption(page, "When she types a formula in full, a suggestion never changes what she typed.", 900);
+  await typeSlowly(page, "=SUM(C2:C", 90);
+  await expect(suggestions.first()).toBeVisible();
+  await beat(page, 600);
+  await typeSlowly(page, "6)", 60);
+  await page.keyboard.press("Enter");
+  await expect(nameBox).toHaveValue("A8");
   await beat(page);
 
   await caption(page, "One subtraction answers the real question: how much is left to spend?", 1200);
-  await typeRow(page, "A9", ["Left to spend", "=B7-C7"], 45);
-  await selectCells(page, "B9");
+  await page.keyboard.press("ArrowDown");
+  await typeSlowly(page, "Left to spend", 45);
+  await page.keyboard.press("Tab");
+  await typeSlowly(page, "=B7-C7", 110);
+  await page.keyboard.press("Enter");
+  await clickCell("B9");
   await caption(page, "The formula bar shows how the number is worked out.", 1800);
 
   await caption(page, "After a big grocery run, she updates what she spent…", 1000);
-  await selectCells(page, "C3");
-  await typeSlowly(page, "455", 120);
+  await clickCell("C3");
+  await typeSlowly(page, "455", 150);
   await page.keyboard.press("Enter");
-  await selectCells(page, "C7:B9");
-  await caption(page, "…and the total and the money left update instantly: 2152 spent, 128 left.", 2400);
+  await beat(page, 700);
+  await clickCell("C7");
+  await caption(page, "…and the Spent total updates instantly to 2152…", 1600);
+  await clickCell("B9");
+  await caption(page, "…so she knows she has 128 left to spend this month.", 2000);
 
   await expect(page.getByRole("status")).toContainText("Saved");
   await caption(page, "Everything autosaves on this device. Download keeps a copy she can open anywhere.", 1600);

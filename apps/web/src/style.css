@@ -2547,7 +2547,7 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 .feature-dialog button { margin: 4px; padding: 6px 10px; }
 .page-setup-fields { display: grid; gap: 16px; }
 .page-setup-fields label { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
-.sheet-features { display: flex; align-items: center; gap: 12px; padding: 4px 16px; border-bottom: 1px solid var(--border); }
+.sheet-features { display: flex; align-items: center; gap: 12px; min-height: 31px; padding: 4px 16px; border-bottom: 1px solid var(--border); }
 .tab-group { position: relative; }
 .tab-group[open] { padding: 6px; background: var(--surface); }
 .tab-group button { margin: 4px; }
