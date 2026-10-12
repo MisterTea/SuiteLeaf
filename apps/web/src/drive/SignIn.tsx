@@ -5,12 +5,13 @@ import {
   getSession,
   onSession,
   providers as loadProviders,
+  sessionEndReason,
   signIn,
   signUp,
   socialStartUrl,
   type AuthProviders,
 } from "../node-client";
-import { probeServer, switchMode } from "../mode";
+import { disconnect, probeServer, switchMode } from "../mode";
 import { useServerSync } from "./status";
 
 export function useNodeSession() {
@@ -47,6 +48,8 @@ export function SignInScreen({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const clustered = Boolean(useServerSync(serverUrl)?.peers);
+  const [ended] = useState(sessionEndReason);
+  const host = new URL(serverUrl).host;
 
   useEffect(() => {
     loadProviders(serverUrl)
@@ -111,10 +114,17 @@ export function SignInScreen({
         <div className="dialog-header">
           <h2>
             {mode === "signin" ? "Sign in" : "Create an account"}
-            <small>{new URL(serverUrl).host}</small>
+            <small>{host}</small>
           </h2>
         </div>
         <div className="dialog-body">
+          {ended && mode === "signin" ? (
+            <p className="sign-in-ended" role="status">
+              {ended === "signed-out"
+                ? `You signed out of ${host}. Your SuiteDrive files stay on the server.`
+                : "Your session ended. Sign in again to keep working in SuiteDrive. Changes you made are safe on this device."}
+            </p>
+          ) : null}
           {mode === "signin" && clustered ? (
             <p className="dialog-note sign-in-cluster-note">
               This server shares accounts and files with your
@@ -219,7 +229,7 @@ export function SignInScreen({
           <button
             type="button"
             className="dialog-text-btn sign-in-disconnect"
-            onClick={() => void switchMode({ kind: "single" })}
+            onClick={() => void disconnect(serverUrl)}
           >
             Work on this computer without a server
           </button>

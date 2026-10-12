@@ -76,8 +76,10 @@ import { syncSummary, useServerSync } from "./drive/status";
 import { completeHandoff } from "./node-client";
 import {
   ModeContext,
+  disconnect,
+  forgetLeftServer,
+  leftServer,
   resolveMode,
-  switchMode,
   useMode,
   type ResolvedMode,
 } from "./mode";
@@ -426,6 +428,7 @@ function LocalHome() {
           </label>
           <span className="version">OPEN SOURCE · v0.1</span>
         </header>
+        <LeftServerNotice />
         <section className="welcome">
           <p className="eyebrow">YOUR EVERYDAY WORKSPACE</p>
           <h1>Good ideas start here.</h1>
@@ -572,12 +575,34 @@ function LocalHome() {
     </div>
   );
 }
+/** Ask before leaving `serverUrl` while SuiteDrive edits exist only on this
+ * device; with none, leaving needs no confirmation. */
+async function confirmLeave(serverUrl: string, action: string) {
+  await Promise.all(
+    [...driveQueues.values()].map((q) => q.flush().catch(() => {})),
+  );
+  const unsynced = (await storage.list()).filter(
+    (r) => r.drive?.nodeUrl === serverUrl && hasUnsyncedEdits(r),
+  );
+  if (!unsynced.length) return true;
+  return window.confirm(
+    `${unsynced.length === 1 ? "1 file has" : `${unsynced.length} files have`} changes that haven't reached SuiteDrive yet:\n\n` +
+      unsynced.map((r) => `• ${r.file.title}`).join("\n") +
+      `\n\nThe changes stay on this device and upload when you sign in again and open the file. ${action} anyway?`,
+  );
+}
 function AccountChip({ serverUrl }: { serverUrl: string }) {
   const session = useNodeSession();
   const { locked } = useMode();
+  const [error, setError] = useState("");
   if (!session) return null;
-  const name = session.user.name || session.user.username || session.user.email;
+  const name =
+    session.user.name || session.user.username || session.user.email || "";
   const host = new URL(serverUrl).host;
+  const leave = (action: string, work: () => Promise<unknown>) =>
+    void confirmLeave(serverUrl, action)
+      .then((ok) => ok && work())
+      .catch((e) => setError(message(e)));
   return (
     <div className="account-chip">
       <div
@@ -585,9 +610,7 @@ function AccountChip({ serverUrl }: { serverUrl: string }) {
         title={`${name}${session.user.email ? ` (${session.user.email})` : ""} on ${host}`}
       >
         <span className="account-avatar" aria-hidden="true">
-          {(session.user.name || session.user.email || "?")
-            .slice(0, 1)
-            .toUpperCase()}
+          {(name || "?").slice(0, 1).toUpperCase()}
         </span>
         <span className="account-name">
           {name}
@@ -595,23 +618,49 @@ function AccountChip({ serverUrl }: { serverUrl: string }) {
         </span>
       </div>
       <div className="account-actions">
-        <button title="Sign out" onClick={() => void signOut()}>
-          <LogOut size={15} />
-          <span>Sign out</span>
+        <button
+          title={`Sign out of ${host}`}
+          aria-label="Sign out"
+          onClick={() => leave("Sign out", signOut)}
+        >
+          <LogOut size={14} />
+          <span className="account-action-label">Sign out</span>
         </button>
         {locked ? null : (
           <button
-            title="Disconnect and work on this computer"
+            title="Sign out and work on this computer without a server"
             aria-label="Disconnect from server"
-            onClick={() => void switchMode({ kind: "single" })}
+            onClick={() => leave("Disconnect", () => disconnect(serverUrl))}
           >
-            <Unplug size={15} />
-            <span>Disconnect</span>
+            <Unplug size={14} />
+            <span className="account-action-label">Disconnect</span>
           </button>
         )}
       </div>
+      {error ? (
+        <p className="account-error" role="alert">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
+}
+/** One-time confirmation after disconnecting, like a "signed out" page. */
+function LeftServerNotice() {
+  const [host, setHost] = useState(leftServer);
+  useEffect(forgetLeftServer, []);
+  return host ? (
+    <div className="notice" role="status">
+      <Unplug size={18} />
+      <span>
+        Disconnected from {host} and signed out. Files in SuiteDrive stay on the
+        server; connect again to open them.
+      </span>
+      <button aria-label="Dismiss" onClick={() => setHost(null)}>
+        ×
+      </button>
+    </div>
+  ) : null;
 }
 /** Cluster mode: a signed-in client of a SuiteLeaf server, with SuiteDrive
  * as the file list. */
@@ -1940,7 +1989,11 @@ function ClusterGate({ children }: { children: ReactNode }) {
 export default function App() {
   const [mode, setMode] = useState<ResolvedMode>();
   useEffect(() => {
-    void resolveMode().then(setMode);
+    void resolveMode().then((resolved) => {
+      // Disconnecting can happen outside the app (the desktop Server menu).
+      if (resolved.mode.kind === "single" && getSession()) void signOut();
+      setMode(resolved);
+    });
   }, []);
   if (!mode) return <div className="loading">Opening SuiteLeaf…</div>;
   return (

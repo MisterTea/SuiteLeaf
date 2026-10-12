@@ -706,22 +706,35 @@ test.describe("cluster mode", () => {
       await caption(page, "SuiteDrive shows the team's files. His personal list isn't mixed in.", 1600);
       await expect(page.getByText("Personal to-do")).toHaveCount(0);
 
-      await caption(page, "Done for the day: Sign out, next to his name.", 1000);
-      await page.getByRole("button", { name: "Sign out" }).click();
+      const host = new URL(server.url).host;
+      const signOut = page.getByRole("button", { name: "Sign out" });
+      await signOut.hover();
+      await caption(page, "Done for the day. Under his name: Sign out.", 1400);
+      await page.getByRole("button", { name: "Disconnect from server" }).hover();
+      await caption(page, "(Disconnect, next to it, signs out and leaves the server in one step.)", 1800);
+      await signOut.click();
       const card = page.getByLabel("Sign in to SuiteLeaf");
       await expect(card).toBeVisible();
-      await caption(page, "The server's files are now behind the sign-in page.", 1400);
+      await expect(card.getByRole("status")).toHaveText(
+        `You signed out of ${host}. Your SuiteDrive files stay on the server.`,
+      );
+      await caption(page, "The sign-in page confirms he signed out. The server's files are behind it.", 2200);
 
-      await caption(page, "To go back to working on this computer only, he leaves the server.", 1200);
-      await card.getByRole("button", { name: "Work on this computer without a server" }).click();
+      const leave = card.getByRole("button", { name: "Work on this computer without a server" });
+      await leave.hover();
+      await caption(page, "To go back to working on this computer only, he leaves the server.", 1400);
+      await leave.click();
       await expect(page.getByText("Your workspace, in this browser.")).toBeVisible();
+      await expect(page.getByRole("status")).toContainText(`Disconnected from ${host} and signed out.`);
+      await caption(page, "SuiteLeaf says where he is now, and that SuiteDrive files stayed on the server.", 2400);
       await page
         .getByRole("heading", { name: "Your files" })
-        .evaluate((el) => el.scrollIntoView({ behavior: "smooth", block: "start" }));
+        .evaluate((el) => el.scrollIntoView({ behavior: "smooth", block: "center" }));
       await beat(page, 700);
       await expect(page.getByRole("link", { name: /Personal to-do/ })).toBeVisible();
       await expect(page.getByText("Shed inventory")).toHaveCount(0);
       await caption(page, "His personal list is right where he left it. Shed inventory stays on the server.", 2200);
+      expect(await page.evaluate(() => localStorage.getItem("suiteleaf:node-session"))).toBeNull();
     } finally {
       server.stop();
     }
