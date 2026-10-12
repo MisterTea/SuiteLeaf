@@ -13,7 +13,7 @@ export const defaultPageSettings: PageSettings = {
   margin: 72,
   header: "",
   footer: "",
-  pageNumbers: true,
+  pageNumbers: false,
 };
 export function documentPageSettings(content: JsonNode): PageSettings {
   const a = content.attrs?.pageSettings as Partial<PageSettings> | undefined;
@@ -26,7 +26,9 @@ export function documentPageSettings(content: JsonNode): PageSettings {
         : 72,
     header: typeof a?.header === "string" ? a.header : "",
     footer: typeof a?.footer === "string" ? a.footer : "",
-    pageNumbers: a?.pageNumbers !== false,
+    // Like Docs and Word, page numbers are off until chosen; settings saved
+    // before that default changed keep numbering unless it was turned off.
+    pageNumbers: a ? a.pageNumbers !== false : false,
   };
 }
 export function pageDimensions(settings: PageSettings) {
@@ -35,4 +37,53 @@ export function pageDimensions(settings: PageSettings) {
     width: settings.landscape ? height : width,
     height: settings.landscape ? width : height,
   };
+}
+const escapeHtml = (text: string) =>
+  text.replace(
+    /[&<>"]/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!,
+  );
+/**
+ * A standalone web page for a document. The header and footer appear once,
+ * above and below the text; printing uses the paper size, margins, manual
+ * page breaks and (where the browser supports page margin boxes) page numbers.
+ */
+export function documentHtml(
+  title: string,
+  bodyHtml: string,
+  settings: PageSettings,
+) {
+  const { width, height } = pageDimensions(settings);
+  const pageRule = [
+    `size: ${width / 96}in ${height / 96}in;`,
+    `margin: ${settings.margin / 96}in;`,
+    settings.pageNumbers
+      ? `@bottom-right { content: counter(page) " / " counter(pages); font: 10pt Arial, sans-serif; color: #555; }`
+      : "",
+  ].join(" ");
+  const furniture = (tag: "header" | "footer", text: string) =>
+    text ? `<${tag} class="page-${tag}">${escapeHtml(text)}</${tag}>` : "";
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(title)}</title>
+<style>
+body { max-width: ${width / 96}in; margin: 0 auto; padding: ${settings.margin / 96}in; box-sizing: border-box; font: 11pt/1.5 Arial, sans-serif; }
+.page-header, .page-footer { color: #555; font-size: 10pt; white-space: pre-wrap; }
+.page-header { margin-bottom: 2em; }
+.page-footer { margin-top: 2em; }
+[data-page-break] { break-before: page; }
+@page { ${pageRule} }
+@media print { body { max-width: none; padding: 0; } }
+</style>
+</head>
+<body>
+${furniture("header", settings.header)}
+<main>${bodyHtml}</main>
+${furniture("footer", settings.footer)}
+</body>
+</html>
+`;
 }

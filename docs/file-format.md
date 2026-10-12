@@ -32,7 +32,7 @@ Every file shares one envelope, validated by `fileSchema` in [`packages/core/src
 
 ## Content by kind
 
-- **`doc`**: a Tiptap/ProseMirror JSON tree rooted at `{ "type": "doc" }`. Images are embedded `data:image/(png|jpeg|gif|webp);base64,` URLs. Links must be `http(s):`, `mailto:`, `tel:`, or `#` fragments.
+- **`doc`**: a Tiptap/ProseMirror JSON tree rooted at `{ "type": "doc" }`. Images are embedded `data:image/(png|jpeg|gif|webp);base64,` URLs. Links must be `http(s):`, `mailto:`, `tel:`, or `#` fragments. Page setup is stored in `attrs.pageSettings` (`size`, `landscape`, `margin` in CSS pixels, `header`, `footer`, `pageNumbers`). Without it a document is Letter, portrait, with 0.75 in margins and no header, footer or page numbers. Saved settings that lack `pageNumbers` show page numbers, as older versions did.
 - **`sheet`**: `{ workbook, images?, charts, pivots }`. `workbook` is a Univer workbook snapshot with `sheetOrder` and `sheets` keyed by worksheet ID; cells live in `cellData[row][column]` as `{ v, f, t, s }`. Charts and pivots refer to worksheets by ID.
 - **`slide`**: `{ id, width, height, slideOrder, slides }`. Each slide has `elements` (text, shape, image, or table) positioned in presentation pixels, plus optional `background`, `layout`, and `notes`.
 

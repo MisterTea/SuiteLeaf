@@ -1456,6 +1456,15 @@ function Workspace() {
               >
                 Make a copy
               </MenuItem>
+              {f.kind === "doc" ? (
+                <MenuItem
+                  disabled={!actionsReady}
+                  focusesTarget
+                  onSelect={() => actions.current?.docActions?.openPageSetup()}
+                >
+                  Page setup…
+                </MenuItem>
+              ) : null}
               <MenuItem onSelect={() => void doAction("print")}>
                 Print / Save as PDF
               </MenuItem>
@@ -1510,6 +1519,15 @@ function Workspace() {
                     }
                   >
                     Horizontal line
+                  </MenuItem>
+                  <MenuItem
+                    shortcut="Cmd+Enter"
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.docActions?.insertPageBreak()
+                    }
+                  >
+                    Page break
                   </MenuItem>
                   <MenuItem
                     shortcut="Cmd+K"
