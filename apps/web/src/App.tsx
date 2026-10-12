@@ -1542,7 +1542,13 @@ function Workspace() {
                   >
                     Pivot table
                   </MenuItem>
-                  <MenuItem onSelect={() => {}}>Sort range</MenuItem>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.sheetActions?.sortRange?.()
+                    }
+                  >
+                    Sort range
+                  </MenuItem>
                   <MenuItem
                     onSelect={() =>
                       actions.current?.sheetActions?.dataValidation?.()

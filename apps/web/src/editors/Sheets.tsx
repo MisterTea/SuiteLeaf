@@ -32,6 +32,7 @@ import { UniverSheetsNotePreset } from "@univerjs/preset-sheets-note";
 import NoteEnUS from "@univerjs/preset-sheets-note/locales/en-US";
 import "@univerjs/preset-sheets-note/lib/index.css";
 import SheetFeatures from "./sheet-features";
+import SortRangeDialog from "./SortRangeDialog";
 import "@univerjs/preset-sheets-core/lib/index.css";
 import "@univerjs/preset-sheets-drawing/lib/index.css";
 import "@univerjs/preset-sheets-filter/lib/index.css";
@@ -91,6 +92,7 @@ import {
   type SourceRange,
 } from "@suiteleaf/core";
 import { pivotResult, shiftRange, type CellValue } from "../analysis";
+import { sortBody, type GridRange, type SortRule } from "../sort-range";
 import { numberFormatsByGroup, applyNamedFormat } from "../formats";
 import { exportBinary, exportText, printDocument } from "../storage";
 import { Tool, type EditorActions } from "../ui";
@@ -691,7 +693,11 @@ export default function Sheets({
     [fillColor, setFillColor] = useState("#ffffff"),
     [hAlign, setHAlign] = useState<"left" | "center" | "right">("left"),
     [vAlign, setVAlign] = useState<"top" | "middle" | "bottom">("middle"),
-    [isWrap, setIsWrap] = useState(false);
+    [isWrap, setIsWrap] = useState(false),
+    [sorting, setSorting] = useState<{
+      range: GridRange;
+      values: CellValue[][];
+    } | null>(null);
   const pending = useRef(false);
   const tabSettings = useRef<{ openTabs: () => void }>(null);
   const persist = useRef<() => void>(() => {}),
@@ -1398,6 +1404,34 @@ export default function Sheets({
       onError(e instanceof Error ? e.message : String(e));
     }
   };
+  const openSortRange = () => {
+    const sheet = book.current?.getActiveSheet();
+    if (!sheet) return;
+    const selected = book.current?.getActiveRange();
+    const target =
+      selected && selected.getRange().endRow > selected.getRange().startRow
+        ? selected
+        : sheet.getDataRange();
+    setSorting({ range: target.getRange(), values: target.getValues() });
+  };
+  const sortRange = (rules: SortRule[], hasHeader: boolean) => {
+    try {
+      const body = sortBody(sorting!.range, hasHeader);
+      book.current
+        .getActiveSheet()
+        .getRange(
+          body.startRow,
+          body.startColumn,
+          body.endRow - body.startRow + 1,
+          body.endColumn - body.startColumn + 1,
+        )
+        .sort(rules);
+      persist.current();
+      setSorting(null);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+    }
+  };
   useEffect(() => {
     if (!ready) return;
     onActions({
@@ -1497,6 +1531,7 @@ export default function Sheets({
         insertChart: () => startPanel("chart"),
         insertPivot: () => startPanel("pivot"),
         toggleFilter,
+        sortRange: openSortRange,
         formatCurrency,
         formatPercent,
         toggleBold,
@@ -2071,6 +2106,13 @@ export default function Sheets({
         aria-busy={!ready}
         style={{ pointerEvents: ready ? undefined : "none" }}
       />
+      {sorting ? (
+        <SortRangeDialog
+          {...sorting}
+          onSort={sortRange}
+          onClose={() => setSorting(null)}
+        />
+      ) : null}
       {panel ? (
         <aside className="analysis-panel">
           <header>
