@@ -203,6 +203,79 @@ test("cell comment threads can be authored and reopened locally", async ({
   await expect(page.locator("body")).toContainText("Please review this budget");
   expect(errors).toEqual([]);
 });
+test("an open cell note closes when the name box moves the selection", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Sample budget" }).click();
+  await page
+    .getByRole("button", { name: "Sheet tools", exact: true })
+    .waitFor();
+  const box = page.locator(".sheet-host input.univer-size-full");
+  await box.fill("C3");
+  await box.press("Enter");
+  await page.getByRole("button", { name: "Sheet tools", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Add or edit cell note" }).click();
+  const note = page.locator('[data-u-comp="note-textarea"]');
+  await note.fill("Includes the September invoice");
+  await box.fill("G12");
+  await box.press("Enter");
+  await expect(note).toBeHidden();
+});
+test("comments are signed with the local name and keep it on another computer", async ({
+  page,
+  browser,
+  baseURL,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.stack || e.message));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Sample budget" }).click();
+  await page
+    .getByRole("button", { name: "Sheet tools", exact: true })
+    .waitFor();
+  await page.getByRole("button", { name: "Sheet tools", exact: true }).click();
+  await page
+    .getByRole("menuitem", { name: "Your name on comments…" })
+    .click();
+  const dialog = page.getByRole("dialog", { name: "Your name on comments" });
+  await dialog.getByRole("textbox", { name: "Your name" }).fill("Alex");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await page
+    .getByRole("button", { name: "Insert comment (Cmd+Option+M)" })
+    .click();
+  await page.locator("canvas#univer-doc-main-canvas:visible").last().click();
+  await page.keyboard.type("Can Research use $600?");
+  await page.getByRole("button", { name: "Comment", exact: true }).click();
+  await page.getByRole("button", { name: "Comments", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "Sidebar panel" });
+  await expect(panel.getByText("Alex", { exact: true })).toBeVisible();
+  const saved = await native(page);
+  const thread = saved.content.workbook.resources.find(
+    (r: { name: string }) => r.name === "SHEET_UNIVER_THREAD_COMMENT_PLUGIN",
+  );
+  expect(thread.data).toContain('"authorName":"Alex"');
+
+  const other = await browser.newContext({ baseURL });
+  const jordan = await other.newPage();
+  await jordan.goto("/");
+  await jordan.locator("input[type=file]").setInputFiles({
+    name: "budget.slsheet",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(saved)),
+  });
+  await jordan
+    .getByRole("button", { name: "Sheet tools", exact: true })
+    .waitFor();
+  await jordan.getByRole("button", { name: "Comments", exact: true }).click();
+  const jordanPanel = jordan.getByRole("complementary", {
+    name: "Sidebar panel",
+  });
+  await expect(jordanPanel.getByText("Can Research use $600?")).toBeVisible();
+  await expect(jordanPanel.getByText("Alex", { exact: true })).toBeVisible();
+  await other.close();
+  expect(errors).toEqual([]);
+});
 
 test("checkbox validation can be created from the Insert menu and reopened", async ({
   page,

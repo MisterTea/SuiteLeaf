@@ -726,7 +726,7 @@ test("16-import-and-export-csv", async ({ page }) => {
   await caption(page, `The downloaded file keeps every leading zero. Mei's line now reads: ${csv.split(/\r?\n/)[3]}`, 2800);
 });
 
-test("17-review-a-budget-with-notes-and-comments", async ({ page }) => {
+test("17-review-a-budget-with-notes-and-comments", async ({ page, browser, baseURL }) => {
   await page.goto("/");
   await caption(page, "Alex is reviewing the studio budget before passing it to Jordan, who owns Research.");
   await page.getByRole("button", { name: "Sample budget" }).click();
@@ -741,34 +741,92 @@ test("17-review-a-budget-with-notes-and-comments", async ({ page }) => {
   await note.click();
   await typeSlowly(page, "Includes the contractor invoice from September.", 30);
   await beat(page, 600);
-  await pointAt(page, await cellPoint(page, "G12"));
-  await caption(page, "A small corner marker shows C3 has a note. Hovering reads it.", 900);
+  await caption(page, "Alex jumps to G12 with the name box. The note closes, leaving a small corner marker on C3.", 300);
+  await selectCells(page, "G12");
+  await expect(note).toBeHidden();
+  await beat(page, 1600);
+  await caption(page, "Hovering C3 reads the note back.", 300);
   const c3 = await cellPoint(page, "C3");
   await page.mouse.move(c3.x - 10, c3.y, { steps: 12 });
-  await beat(page, 1800);
+  await expect(note).toBeVisible();
+  await beat(page, 1600);
+  await page.mouse.move(c3.x + 300, c3.y + 260, { steps: 10 });
+  await expect(note).toBeHidden();
 
-  await caption(page, "Next, a question for Jordan. Comments are for conversations.", 1200);
+  await caption(page, "Comments carry the writer's name, so Alex sets it once on this computer.", 1000);
+  await page.getByRole("button", { name: "Sheet tools", exact: true }).click();
+  await beat(page, 600);
+  await page.getByRole("menuitem", { name: "Your name on comments…" }).click();
+  const naming = page.getByRole("dialog", { name: "Your name on comments" });
+  await naming.getByRole("textbox", { name: "Your name" }).click();
+  await typeSlowly(page, "Alex", 80);
+  await beat(page, 500);
+  await naming.getByRole("button", { name: "Save" }).click();
+
+  await caption(page, "Next, a question for Jordan. Comments are for conversations.", 1000);
   await selectCells(page, "D3");
   await page.getByRole("button", { name: "Insert comment (Cmd+Option+M)" }).click();
+  await expect(page.getByText("Alex", { exact: true })).toBeVisible();
   await page.locator("canvas#univer-doc-main-canvas:visible").last().click();
-  await typeSlowly(page, "Jordan: Engineering is $1,200 under budget. Can Research use $600 of it for the user study?", 25);
+  await typeSlowly(page, "Jordan, Engineering is $1,200 under budget. Can Research use $600 of it for the user study?", 25);
   await beat(page, 600);
   await page.getByRole("button", { name: "Comment", exact: true }).click();
   await beat(page, 600);
   await pointAt(page, await cellPoint(page, "G12"));
 
-  await caption(page, "The Comments panel collects every thread in the workbook.", 1000);
+  await caption(page, "The Comments panel lists the thread with its cell, signed by Alex.", 300);
   await page.getByRole("button", { name: "Comments", exact: true }).click();
-  await expect(page.getByText(/Can Research use \$600/)).toBeVisible();
-  await caption(page, "Clicking the thread highlights its cell and opens a reply box. The tick resolves it.", 900);
-  await page.getByText(/Can Research use \$600/).click();
-  await expect(page.getByRole("complementary", { name: "Sidebar panel" }).getByText("Reply or add others with @")).toBeVisible();
-  await beat(page, 2200);
+  const sidebar = page.getByRole("complementary", { name: "Sidebar panel" });
+  await expect(sidebar.getByText(/Can Research use \$600/)).toBeVisible();
+  await expect(sidebar.getByText("Alex", { exact: true })).toBeVisible();
+  await beat(page, 1800);
 
   const file = await native(page);
   expect(resource(file, "SHEET_NOTE_PLUGIN")).toContain("Includes the contractor invoice from September.");
-  expect(resource(file, "SHEET_UNIVER_THREAD_COMMENT_PLUGIN")).toContain("Can Research use $600 of it for the user study?");
-  await caption(page, "Alex downloads the file for Jordan. The note and the comment travel with it.", 2000);
+  const thread = resource(file, "SHEET_UNIVER_THREAD_COMMENT_PLUGIN");
+  expect(thread).toContain("Can Research use $600 of it for the user study?");
+  expect(thread).toContain('"authorName":"Alex"');
+  await caption(page, "Alex downloads the file and sends it to Jordan. The note and the comment travel with it.", 2200);
+  await caption(page, "Jordan opens the copy on their own computer, replies, and sends it back.", 300);
+
+  // Jordan works on their own computer; only Alex's screen is recorded.
+  const jordanContext = await browser.newContext({ baseURL, acceptDownloads: true });
+  await jordanContext.addInitScript(() => localStorage.setItem("suiteleaf:display-name", "Jordan"));
+  const jordan = await jordanContext.newPage();
+  await jordan.goto("/");
+  await jordan.locator("input[type=file]").setInputFiles({
+    name: "Quarterly studio budget.slsheet",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(file)),
+  });
+  await ready(jordan);
+  await jordan.getByRole("button", { name: "Comments", exact: true }).click();
+  const jordanPanel = jordan.getByRole("complementary", { name: "Sidebar panel" });
+  await expect(jordanPanel.getByText("Alex", { exact: true })).toBeVisible();
+  await jordanPanel.getByText(/Can Research use \$600/).click();
+  await jordanPanel.locator("canvas#univer-doc-main-canvas").click();
+  await jordan.keyboard.type("Yes, Research will take the $600. Thanks!");
+  await jordanPanel.getByRole("button", { name: "Comment", exact: true }).click();
+  await expect(jordanPanel.getByText("Jordan", { exact: true })).toBeVisible();
+  const reply = await native(jordan);
+  await jordanContext.close();
+
+  await page.getByRole("button", { name: "Back to files" }).click();
+  await page.locator("input[type=file]").setInputFiles({
+    name: "Quarterly studio budget.slsheet",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(reply)),
+  });
+  await ready(page);
+  await caption(page, "Alex opens Jordan's copy. The reply sits under the question, signed by Jordan.", 300);
+  await page.getByRole("button", { name: "Comments", exact: true }).click();
+  await expect(sidebar.getByText("Yes, Research will take the $600. Thanks!")).toBeVisible();
+  await expect(sidebar.getByText("Jordan", { exact: true })).toBeVisible();
+  await expect(sidebar.getByText("Alex", { exact: true })).toBeVisible();
+  await beat(page, 1600);
+  await caption(page, "Clicking the thread highlights D3. The tick resolves it once it's settled.", 300);
+  await sidebar.getByText(/Can Research use \$600/).click();
+  await beat(page, 2600);
 });
 
 test("18-highlight-and-check-off", async ({ page }) => {
