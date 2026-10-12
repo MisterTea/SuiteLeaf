@@ -435,6 +435,76 @@ test("presentation lifecycle → slide creation, editing, thumbnail selection, p
   expect(errors).toEqual([]);
 });
 
+test("slides use placeholders, re-apply layouts, and reorder by dragging thumbnails", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/");
+  await page.getByRole("button", { name: "New presentation" }).click();
+
+  const boxes = page.locator(".slide-canvas .slide-element textarea");
+  await expect(boxes).toHaveCount(2);
+  await expect(boxes.nth(0)).toHaveValue("");
+  await expect(boxes.nth(0)).toHaveAttribute("placeholder", "Click to add title");
+  await expect(boxes.nth(1)).toHaveAttribute("placeholder", "Click to add subtitle");
+  await boxes.nth(0).click();
+  await page.keyboard.type("Kickoff");
+  await expect(boxes.nth(0)).toHaveValue("Kickoff");
+
+  for (const label of ["Line", "Grid view", "Zoom"])
+    await expect(page.getByLabel(label, { exact: true })).toHaveCount(0);
+  for (const text of ["Transition", "Menus"])
+    await expect(page.getByRole("button", { name: text, exact: true })).toHaveCount(0);
+
+  // Layout on an existing slide moves its text into the new arrangement.
+  await page.locator(".slide-canvas").click({ position: { x: 10, y: 10 } });
+  await page.getByRole("button", { name: "Layout" }).click();
+  await page.getByRole("menuitem", { name: "Two columns" }).click();
+  await expect(boxes).toHaveCount(3);
+  await expect(boxes.nth(0)).toHaveValue("Kickoff");
+  await expect(boxes.nth(2)).toHaveAttribute("placeholder", "Click to add text");
+  const title = (await boxes.nth(0).boundingBox())!;
+  const canvas = (await page.locator(".slide-canvas").boundingBox())!;
+  expect(title.y - canvas.y).toBeLessThan(canvas.height * 0.2);
+
+  for (const name of ["Title & body", "Section header"]) {
+    await page.getByRole("button", { name: "+ New slide" }).click();
+    await page.getByRole("menuitem", { name }).click();
+  }
+  await boxes.nth(0).fill("Questions?");
+  const rows = page.locator(".thumbnail-row");
+  await expect(rows).toHaveCount(3);
+  await expect(rows.nth(2)).toContainText("Questions?");
+
+  // Drag the last thumbnail above the first.
+  const from = (await rows.nth(2).boundingBox())!;
+  const to = (await rows.nth(0).boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(to.x + to.width / 2, to.y + 4, { steps: 10 });
+  await page.mouse.up();
+  await expect(rows.nth(0)).toContainText("Questions?");
+  await expect(rows.nth(1)).toContainText("Kickoff");
+  await expect(rows.nth(0)).toHaveAttribute("aria-selected", "true");
+
+  // Ctrl/Cmd+Down moves the selected slide back down.
+  await page.getByRole("listbox", { name: "Slides" }).focus();
+  await page.keyboard.press("ControlOrMeta+ArrowDown");
+  await expect(rows.nth(1)).toContainText("Questions?");
+  await expect(rows.nth(0)).toContainText("Kickoff");
+
+  const file = await exported(page);
+  const first = file.content.slides[file.content.slideOrder[0]];
+  expect(first.layout).toBe("two-column");
+  expect(first.elements.map((el: { content: string }) => el.content)).toEqual([
+    "Kickoff",
+    "",
+    "",
+  ]);
+  expect(errors).toEqual([]);
+});
+
 test("PowerPoint presentation import via drag/upload into workspace", async ({
   page,
 }) => {

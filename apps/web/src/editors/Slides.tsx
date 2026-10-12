@@ -31,8 +31,6 @@ import {
   Printer,
   MousePointer2,
   Minus,
-  Search,
-  Grid,
 } from "lucide-react";
 import {
   filename,
@@ -42,6 +40,13 @@ import {
 } from "@suiteleaf/core";
 import { exportText, printDocument } from "../storage";
 import { Menu, MenuItem, Tool, type EditorActions } from "../ui";
+import {
+  applyBackground,
+  applyLayout,
+  newSlide,
+  reorder,
+  type Layout,
+} from "./slide-layouts";
 
 type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
@@ -130,130 +135,9 @@ export default function Slides({
     activeSlide?.elements.find((el) => el.id === selectedElementId) || null;
 
   // Add new slide
-  const addSlide = (layout: Slide["layout"] = "title-body") => {
-    const newId = crypto.randomUUID();
-    const newSlide: Slide = {
-      id: newId,
-      title: layout === "blank" ? "Untitled slide" : "Slide Title",
-      layout,
-      elements: [],
-      notes: "",
-    };
-
-    if (layout === "title") {
-      newSlide.elements.push(
-        {
-          id: crypto.randomUUID(),
-          type: "text",
-          x: 100,
-          y: 160,
-          width: 760,
-          height: 100,
-          content: "Presentation Title",
-          fontSize: 44,
-          bold: true,
-          align: "center",
-          color: "#0f172a",
-        },
-        {
-          id: crypto.randomUUID(),
-          type: "text",
-          x: 100,
-          y: 280,
-          width: 760,
-          height: 60,
-          content: "Click to add subtitle",
-          fontSize: 22,
-          align: "center",
-          color: "#64748b",
-        },
-      );
-    } else if (layout === "title-body") {
-      newSlide.elements.push(
-        {
-          id: crypto.randomUUID(),
-          type: "text",
-          x: 80,
-          y: 50,
-          width: 800,
-          height: 70,
-          content: "Slide Title",
-          fontSize: 34,
-          bold: true,
-          align: "left",
-          color: "#0f172a",
-        },
-        {
-          id: crypto.randomUUID(),
-          type: "text",
-          x: 80,
-          y: 150,
-          width: 800,
-          height: 320,
-          content: "• First key point\n• Second key point\n• Third key point",
-          fontSize: 20,
-          bullet: true,
-          align: "left",
-          color: "#334155",
-        },
-      );
-    } else if (layout === "two-column") {
-      newSlide.elements.push(
-        {
-          id: crypto.randomUUID(),
-          type: "text",
-          x: 80,
-          y: 50,
-          width: 800,
-          height: 70,
-          content: "Comparison Title",
-          fontSize: 34,
-          bold: true,
-          align: "left",
-          color: "#0f172a",
-        },
-        {
-          id: crypto.randomUUID(),
-          type: "text",
-          x: 80,
-          y: 150,
-          width: 380,
-          height: 320,
-          content: "Column 1 Details\n• Point A\n• Point B",
-          fontSize: 18,
-          align: "left",
-          color: "#334155",
-        },
-        {
-          id: crypto.randomUUID(),
-          type: "text",
-          x: 500,
-          y: 150,
-          width: 380,
-          height: 320,
-          content: "Column 2 Details\n• Point C\n• Point D",
-          fontSize: 18,
-          align: "left",
-          color: "#334155",
-        },
-      );
-    } else if (layout === "section") {
-      newSlide.background = { color: "#1e293b" };
-      newSlide.elements.push({
-        id: crypto.randomUUID(),
-        type: "text",
-        x: 100,
-        y: 200,
-        width: 760,
-        height: 120,
-        content: "Section Header",
-        fontSize: 46,
-        bold: true,
-        align: "center",
-        color: "#f8fafc",
-      });
-    }
-
+  const addSlide = (layout: Layout = "title-body") => {
+    const slide = newSlide(layout);
+    const newId = slide.id;
     const currentIdx = deck.slideOrder.indexOf(activeSlideId);
     const newOrder = [...deck.slideOrder];
     newOrder.splice(currentIdx + 1, 0, newId);
@@ -261,7 +145,7 @@ export default function Slides({
     const updated = {
       ...deck,
       slideOrder: newOrder,
-      slides: { ...deck.slides, [newId]: newSlide },
+      slides: { ...deck.slides, [newId]: slide },
     };
     commit(updated);
     setActiveSlideId(newId);
@@ -274,7 +158,7 @@ export default function Slides({
     const newId = crypto.randomUUID();
     const clonedSlide: Slide = structuredClone(activeSlide);
     clonedSlide.id = newId;
-    clonedSlide.title = `${activeSlide.title || "Slide"} (copy)`;
+    if (activeSlide.title) clonedSlide.title = `${activeSlide.title} (copy)`;
     clonedSlide.elements = clonedSlide.elements.map((el) => ({
       ...el,
       id: crypto.randomUUID(),
@@ -316,14 +200,69 @@ export default function Slides({
     const idx = deck.slideOrder.indexOf(activeSlideId);
     if (direction === "up" && idx <= 0) return;
     if (direction === "down" && idx >= deck.slideOrder.length - 1) return;
-
-    const targetIdx = direction === "up" ? idx - 1 : idx + 1;
-    const newOrder = [...deck.slideOrder];
-    const [moved] = newOrder.splice(idx, 1);
-    newOrder.splice(targetIdx, 0, moved);
-
-    commit({ ...deck, slideOrder: newOrder });
+    moveSlideTo(idx, direction === "up" ? idx - 1 : idx + 1);
   };
+
+  const moveSlideTo = (from: number, to: number) => {
+    if (from === to) return;
+    commit({ ...deck, slideOrder: reorder(deck.slideOrder, from, to) });
+  };
+
+  // Drag a thumbnail to reorder: `over` is the gap index (0..n) it would land in
+  const [slideDrag, setSlideDrag] = useState<{
+    from: number;
+    startY: number;
+    over: number | null;
+  } | null>(null);
+  const thumbnailsRef = useRef<HTMLDivElement>(null);
+  const suppressThumbnailClick = useRef(false);
+
+  useEffect(() => {
+    if (!slideDrag) return;
+    const gapAt = (y: number) => {
+      const rows = [
+        ...(thumbnailsRef.current?.querySelectorAll(".thumbnail-row") ?? []),
+      ];
+      const i = rows.findIndex((row) => {
+        const r = row.getBoundingClientRect();
+        return y < r.top + r.height / 2;
+      });
+      return i === -1 ? rows.length : i;
+    };
+    const onMove = (e: MouseEvent) => {
+      if (slideDrag.over === null && Math.abs(e.clientY - slideDrag.startY) < 6)
+        return;
+      const over = gapAt(e.clientY);
+      if (over !== slideDrag.over) setSlideDrag({ ...slideDrag, over });
+    };
+    const onUp = () => {
+      const { from, over } = slideDrag;
+      setSlideDrag(null);
+      if (over === null) return;
+      suppressThumbnailClick.current = true;
+      setTimeout(() => (suppressThumbnailClick.current = false));
+      setActiveSlideId(deck.slideOrder[from]);
+      setSelectedElementId(null);
+      moveSlideTo(from, over > from ? over - 1 : over);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  });
+
+  const applyLayoutToSlide = (layout: Layout) => {
+    if (!activeSlide) return;
+    commit({
+      ...deck,
+      slides: { ...deck.slides, [activeSlide.id]: applyLayout(activeSlide, layout) },
+    });
+  };
+
+  const setDeckBackground = (color: string, keepSections: boolean) =>
+    commit({ ...deck, slides: applyBackground(deck.slides, color, keepSections) });
 
   // Update active slide properties
   const updateSlide = useCallback(
@@ -375,7 +314,7 @@ export default function Slides({
       y: 180,
       width: 400,
       height: 80,
-      content: "Click to edit text",
+      content: "",
       fontSize: 22,
       fontFamily: "Arial",
       color: "#1e293b",
@@ -392,8 +331,8 @@ export default function Slides({
       type: "shape",
       x: 150,
       y: 150,
-      width: 220,
-      height: 140,
+      width: shapeType === "ellipse" ? 160 : 220,
+      height: shapeType === "ellipse" ? 160 : 140,
       shapeType,
       fill: "#e2e8f0",
       stroke: "#94a3b8",
@@ -540,7 +479,11 @@ export default function Slides({
     deck.slideOrder.forEach((id, i) => {
       const s = deck.slides[id];
       if (!s) return;
-      lines.push(`--- Slide ${i + 1}: ${s.title || "Untitled"} ---`);
+      const heading = s.elements
+        .find((el) => el.type === "text" && el.content?.trim())
+        ?.content?.trim()
+        .split("\n")[0];
+      lines.push(`--- Slide ${i + 1}: ${s.title || heading || "Untitled"} ---`);
       for (const el of s.elements) {
         if (el.type === "text" && el.content) lines.push(el.content);
         if (el.type === "table" && el.rows) {
@@ -721,8 +664,6 @@ ${slidesHtml}
         className="resize-handle handle-w"
         onMouseDown={(e) => onElementMouseDown(e, elementId, "w")}
       />
-      <div className="rotation-stem" />
-      <div className="rotation-handle" title="Rotate" />
     </div>
   );
 
@@ -734,16 +675,6 @@ ${slidesHtml}
         role="toolbar"
         aria-label="Slides toolbar"
       >
-        <button
-          type="button"
-          className="menu-search-pill"
-          title="Search the menus (Option+/)"
-          onClick={() => {}}
-        >
-          <Search size={14} className="menu-search-icon" />
-          <span>Menus</span>
-        </button>
-
         <div className="tool-group">
           <Menu label="+ New slide">
             <MenuItem onSelect={() => addSlide("title-body")}>
@@ -776,15 +707,6 @@ ${slidesHtml}
           <Tool label="Print (Cmd+P)" onClick={() => printDocument()}>
             <Printer size={16} />
           </Tool>
-          <select
-            className="toolbar-select zoom-select"
-            aria-label="Zoom"
-            defaultValue="Fit"
-          >
-            <option value="Fit">Fit</option>
-            <option value="50%">50%</option>
-            <option value="100%">100%</option>
-          </select>
         </div>
 
         <div className="toolbar-divider" />
@@ -812,9 +734,6 @@ ${slidesHtml}
           <Tool label="Circle" onClick={() => addShape("ellipse")}>
             <Circle size={16} />
           </Tool>
-          <Tool label="Line" onClick={() => {}}>
-            <Minus size={16} />
-          </Tool>
           <input
             hidden
             type="file"
@@ -836,10 +755,15 @@ ${slidesHtml}
                 { label: "White", val: "#ffffff" },
                 { label: "Soft grey", val: "#f1f3f4" },
                 { label: "Slate", val: "#e2e8f0" },
-                { label: "Blue", val: "#d2e3fc" },
-                { label: "Green", val: "#ceead6" },
-                { label: "Yellow", val: "#feefc3" },
-                { label: "Red", val: "#fad2cf" },
+                { label: "Light blue", val: "#d2e3fc" },
+                { label: "Light green", val: "#ceead6" },
+                { label: "Light yellow", val: "#feefc3" },
+                { label: "Light red", val: "#fad2cf" },
+                { label: "Blue", val: "#4285f4" },
+                { label: "Green", val: "#34a853" },
+                { label: "Yellow", val: "#fbbc04" },
+                { label: "Red", val: "#ea4335" },
+                { label: "Dark", val: "#202124" },
               ].map((c) => (
                 <MenuItem
                   key={c.val}
@@ -1044,7 +968,16 @@ ${slidesHtml}
                 <MenuItem
                   key={color.val}
                   onSelect={() =>
-                    updateSlide({ background: { color: color.val } })
+                    commit({
+                      ...deck,
+                      slides: {
+                        ...deck.slides,
+                        ...applyBackground(
+                          { [activeSlide.id]: activeSlide },
+                          color.val,
+                        ),
+                      },
+                    })
                   }
                 >
                   <span
@@ -1054,64 +987,52 @@ ${slidesHtml}
                   {color.label}
                 </MenuItem>
               ))}
+              <MenuItem
+                onSelect={() =>
+                  setDeckBackground(
+                    activeSlide?.background?.color || "#ffffff",
+                    false,
+                  )
+                }
+              >
+                Apply to all slides
+              </MenuItem>
             </Menu>
 
             <Menu label="Layout">
-              <MenuItem onSelect={() => updateSlide({ layout: "title" })}>
-                Title slide
-              </MenuItem>
-              <MenuItem onSelect={() => updateSlide({ layout: "title-body" })}>
-                Title & body
-              </MenuItem>
-              <MenuItem onSelect={() => updateSlide({ layout: "two-column" })}>
-                Two columns
-              </MenuItem>
-              <MenuItem onSelect={() => updateSlide({ layout: "section" })}>
-                Section header
-              </MenuItem>
-              <MenuItem onSelect={() => updateSlide({ layout: "blank" })}>
-                Blank slide
-              </MenuItem>
+              {(
+                [
+                  ["title", "Title slide"],
+                  ["title-body", "Title & body"],
+                  ["two-column", "Two columns"],
+                  ["section", "Section header"],
+                  ["blank", "Blank slide"],
+                ] as const
+              ).map(([layout, label]) => (
+                <MenuItem
+                  key={layout}
+                  onSelect={() => applyLayoutToSlide(layout)}
+                >
+                  {label}
+                </MenuItem>
+              ))}
             </Menu>
 
             <Menu label="Theme">
-              <MenuItem
-                onSelect={() =>
-                  updateSlide({ background: { color: "#ffffff" } })
-                }
-              >
-                Simple Light
-              </MenuItem>
-              <MenuItem
-                onSelect={() =>
-                  updateSlide({ background: { color: "#f8fafc" } })
-                }
-              >
-                Streamline
-              </MenuItem>
-              <MenuItem
-                onSelect={() =>
-                  updateSlide({ background: { color: "#0f172a" } })
-                }
-              >
-                Focus (Dark)
-              </MenuItem>
-              <MenuItem
-                onSelect={() =>
-                  updateSlide({ background: { color: "#fef3c7" } })
-                }
-              >
-                Warm Sand
-              </MenuItem>
+              {[
+                { label: "Simple Light", val: "#ffffff" },
+                { label: "Streamline", val: "#f8fafc" },
+                { label: "Focus (Dark)", val: "#0f172a" },
+                { label: "Warm Sand", val: "#fef3c7" },
+              ].map((theme) => (
+                <MenuItem
+                  key={theme.val}
+                  onSelect={() => setDeckBackground(theme.val, true)}
+                >
+                  {theme.label}
+                </MenuItem>
+              ))}
             </Menu>
-
-            <button
-              type="button"
-              className="toolbar-text-btn"
-              onClick={() => {}}
-            >
-              Transition
-            </button>
           </div>
         )}
 
@@ -1126,7 +1047,6 @@ ${slidesHtml}
           >
             <Play size={14} fill="currentColor" />
             <span>Slideshow</span>
-            <ChevronDown size={12} />
           </button>
         </div>
       </div>
@@ -1175,17 +1095,48 @@ ${slidesHtml}
             </div>
           </div>
 
-          <div className="thumbnails-list">
+          <div
+            className={`thumbnails-list ${slideDrag?.over != null ? "dragging" : ""}`}
+            ref={thumbnailsRef}
+            role="listbox"
+            aria-label="Slides"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+              e.preventDefault();
+              const idx = deck.slideOrder.indexOf(activeSlideId);
+              const to = e.key === "ArrowUp" ? idx - 1 : idx + 1;
+              if (to < 0 || to >= deck.slideOrder.length) return;
+              if (e.metaKey || e.ctrlKey) moveSlideTo(idx, to);
+              else setActiveSlideId(deck.slideOrder[to]);
+              setSelectedElementId(null);
+            }}
+          >
             {deck.slideOrder.map((id, index) => {
               const slide = deck.slides[id];
               const isActive = id === activeSlideId;
               const bg = slide?.background?.color || "#ffffff";
+              const dropClass =
+                slideDrag?.over === index
+                  ? "drop-before"
+                  : slideDrag?.over === index + 1 &&
+                      index === deck.slideOrder.length - 1
+                    ? "drop-after"
+                    : "";
 
               return (
                 <div
                   key={id}
-                  className={`thumbnail-row ${isActive ? "selected" : ""}`}
+                  role="option"
+                  aria-selected={isActive}
+                  aria-label={`Slide ${index + 1}`}
+                  className={`thumbnail-row ${isActive ? "selected" : ""} ${slideDrag?.over != null && slideDrag.from === index ? "drag-source" : ""} ${dropClass}`}
+                  onMouseDown={(e) => {
+                    if (e.button !== 0) return;
+                    setSlideDrag({ from: index, startY: e.clientY, over: null });
+                  }}
                   onClick={() => {
+                    if (suppressThumbnailClick.current) return;
                     setActiveSlideId(id);
                     setSelectedElementId(null);
                   }}
@@ -1267,14 +1218,6 @@ ${slidesHtml}
             >
               <Plus size={16} /> New slide
             </button>
-            <button
-              type="button"
-              className="grid-view-btn"
-              title="Grid view"
-              aria-label="Grid view"
-            >
-              <Grid size={15} />
-            </button>
           </div>
         </aside>
 
@@ -1323,7 +1266,7 @@ ${slidesHtml}
                       <textarea
                         className="element-textarea"
                         value={el.content || ""}
-                        placeholder="Click to type text..."
+                        placeholder={el.placeholder ?? "Click to add text"}
                         onChange={(e) =>
                           updateElement(el.id, { content: e.target.value })
                         }
