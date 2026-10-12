@@ -848,9 +848,12 @@ export default function Sheets({
             ConditionalEnUS,
             CommentEnUS,
             NoteEnUS,
+            // mergeLocales only merges top-level keys, so keep the rest of Univer's ui strings.
             {
               ui: {
+                ...CoreEnUS.ui,
                 clipboard: {
+                  ...CoreEnUS.ui.clipboard,
                   authentication: {
                     title: "Clipboard access blocked",
                     content: `Use ${shortcut("C")}, ${shortcut("X")} and ${shortcut("V")} to copy, cut and paste.`,
