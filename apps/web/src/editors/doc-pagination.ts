@@ -31,6 +31,7 @@ type Boundary = {
   row?: boolean;
   columns?: number;
   manual?: boolean;
+  heading?: boolean;
 };
 
 /** Layout decorations never alter document content or enter undo history. */
@@ -125,7 +126,12 @@ export const DocumentPagination = Extension.create({
                 )
                   return;
                 if (bottom - top <= bodyHeight) {
-                  boundaries.push({ pos, top, bottom });
+                  boundaries.push({
+                    pos,
+                    top,
+                    bottom,
+                    heading: node.type.name === "heading",
+                  });
                   return false;
                 }
                 // A paragraph taller than a page is split at visual line boundaries.
@@ -138,15 +144,25 @@ export const DocumentPagination = Extension.create({
               const decorations: Decoration[] = [];
               let added = 0,
                 page = 0;
-              for (const b of boundaries) {
-                const top = b.top + added,
-                  bottom = b.bottom + added;
-                const end = page * (height + 24) + bodyHeight;
+              for (const [i, next] of boundaries.entries()) {
+                const start = page * (height + 24),
+                  end = start + bodyHeight;
                 if (
-                  (bottom > end + 0.5 && top > page * (height + 24) + 0.5) ||
-                  b.manual
+                  (next.bottom + added > end + 0.5 &&
+                    next.top + added > start + 0.5) ||
+                  next.manual
                 ) {
-                  const gap = Math.max(0, end - top) + 2 * margin + 24;
+                  // Headings move with the block that follows them, as in Word and Docs.
+                  let first = i;
+                  while (
+                    !next.manual &&
+                    boundaries[first - 1]?.heading &&
+                    boundaries[first - 1].top + added > start + 0.5
+                  )
+                    first--;
+                  const b = boundaries[first];
+                  const gap =
+                    Math.max(0, end - (b.top + added)) + 2 * margin + 24;
                   decorations.push(
                     Decoration.widget(
                       b.pos,
