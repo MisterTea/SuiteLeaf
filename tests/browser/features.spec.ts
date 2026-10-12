@@ -122,9 +122,11 @@ test("cell notes and range protection survive reopen and can be removed", async 
   await expect(box).toHaveValue("B2");
   await page.getByRole("button", { name: "Sheet tools", exact: true }).click();
   await page.getByRole("menuitem", { name: "Add or edit cell note" }).click();
-  await page
-    .locator('[data-u-comp="note-textarea"]')
-    .fill("Review this budget amount");
+  // Univer focuses the note box once it has loaded the cell's note; text
+  // typed before then is discarded.
+  const note = page.locator('[data-u-comp="note-textarea"]');
+  await expect(note).toBeFocused();
+  await note.fill("Review this budget amount");
   await page.getByRole("button", { name: "Sheet tools", exact: true }).click();
   await page.getByRole("menuitem", { name: "Tabs and protection…" }).click();
   const dialog = page.getByRole("dialog", { name: "Tabs and protection" });

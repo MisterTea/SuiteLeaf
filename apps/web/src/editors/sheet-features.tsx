@@ -112,7 +112,10 @@ export default function SheetFeatures({
         >
           Conditional formatting
         </MenuItem>
-        <MenuItem onSelect={() => command("sheet.operation.add-note-popup")}>
+        <MenuItem
+          focusesTarget
+          onSelect={() => command("sheet.operation.add-note-popup")}
+        >
           Add or edit cell note
         </MenuItem>
         <MenuItem
