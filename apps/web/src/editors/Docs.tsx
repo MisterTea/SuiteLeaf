@@ -149,6 +149,8 @@ export default function Docs({
   const [textColor, setTextColor] = useState("#202124");
   const [highlightColor, setHighlightColor] = useState("#ffff00");
   const imageInput = useRef<HTMLInputElement>(null);
+  const documentStage = useRef<HTMLDivElement>(null);
+  const [activeHeading, setActiveHeading] = useState<number | null>(null);
   const [pageCount, setPageCount] = useState(1);
   const [pageSetupOpen, setPageSetupOpen] = useState(false);
   const [pageDraft, setPageDraft] = useState<PageSettings>(() =>
@@ -165,7 +167,38 @@ export default function Docs({
         spellcheck: "true",
         "aria-label": "Document content",
       },
-      handleKeyDown: (_view, event) => {
+      // Keep a few lines of context around the caret when typing scrolls the page.
+      scrollMargin: { top: 64, bottom: 64, left: 5, right: 5 },
+      handleKeyDown: (view, event) => {
+        // macOS browsers scroll the page on Home/End; Word and Docs move to the line start/end.
+        if (
+          (event.key === "Home" || event.key === "End") &&
+          !event.metaKey &&
+          !event.ctrlKey &&
+          !event.altKey &&
+          navigator.platform.includes("Mac")
+        ) {
+          event.preventDefault();
+          const selection = view.dom.ownerDocument.getSelection();
+          selection?.modify(
+            event.shiftKey ? "extend" : "move",
+            event.key === "End" ? "forward" : "backward",
+            "lineboundary",
+          );
+          if (selection?.anchorNode && selection.focusNode)
+            view.dispatch(
+              view.state.tr
+                .setSelection(
+                  TextSelection.create(
+                    view.state.doc,
+                    view.posAtDOM(selection.anchorNode, selection.anchorOffset),
+                    view.posAtDOM(selection.focusNode, selection.focusOffset),
+                  ),
+                )
+                .scrollIntoView(),
+            );
+          return true;
+        }
         if (
           (event.metaKey || event.ctrlKey) &&
           (event.key.toLowerCase() === "f" ||
@@ -421,6 +454,62 @@ export default function Docs({
     editor.view.dom.addEventListener("suiteleaf-pages", pages);
     return () => editor.view.dom.removeEventListener("suiteleaf-pages", pages);
   }, [editor]);
+
+  // The outline highlights the section being read: the last heading above a
+  // line near the top of the window (or the first heading), as Word does.
+  useEffect(() => {
+    const stage = documentStage.current;
+    if (!editor?.schema || !stage) return;
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const line = stage.getBoundingClientRect().top + 48;
+      let current: number | null = null;
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name !== "heading") return;
+        const dom = editor.view.nodeDOM(pos);
+        if (
+          current === null ||
+          (dom instanceof HTMLElement && dom.getBoundingClientRect().top <= line)
+        )
+          current = pos;
+        return false;
+      });
+      setActiveHeading(current);
+    };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(update);
+    };
+    stage.addEventListener("scroll", schedule, { passive: true });
+    editor.view.dom.addEventListener("suiteleaf-pages", schedule);
+    editor.on("update", schedule);
+    schedule();
+    return () => {
+      cancelAnimationFrame(frame);
+      stage.removeEventListener("scroll", schedule);
+      editor.view.dom.removeEventListener("suiteleaf-pages", schedule);
+      editor.off("update", schedule);
+    };
+  }, [editor]);
+
+  const jumpToHeading = (pos: number) => {
+    if (!editor) return;
+    editor
+      .chain()
+      .focus(undefined, { scrollIntoView: false })
+      .setTextSelection(pos + 1)
+      .run();
+    const heading = editor.view.nodeDOM(pos);
+    const stage = documentStage.current;
+    if (heading instanceof HTMLElement && stage)
+      stage.scrollTo({
+        top:
+          stage.scrollTop +
+          heading.getBoundingClientRect().top -
+          stage.getBoundingClientRect().top -
+          24,
+      });
+  };
 
   useEffect(() => {
     if (!editor?.schema) return;
@@ -1131,7 +1220,7 @@ export default function Docs({
         </div>
       ) : null}
 
-      <div className="document-stage">
+      <div className="document-stage" ref={documentStage}>
         <aside className="outline">
           <div className="outline-header">
             <span className="outline-tab active">Outline</span>
@@ -1139,19 +1228,16 @@ export default function Docs({
           {state?.headings.length ? (
             <div className="outline-list">
               {state.headings.map((h) => (
-                <span key={h.pos} className={`outline-item level-${h.level}`}>
+                <span
+                  key={h.pos}
+                  className={`outline-item level-${h.level}${h.pos === activeHeading ? " active" : ""}`}
+                >
                   <button
                     type="button"
                     className="outline-item-text"
-                    style={{ paddingLeft: 12 + (h.level - 1) * 12 }}
-                    onClick={() =>
-                      editor
-                        .chain()
-                        .focus()
-                        .setTextSelection(h.pos + 1)
-                        .scrollIntoView()
-                        .run()
-                    }
+                    style={{ paddingLeft: 12 + (h.level - 1) * 18 }}
+                    aria-current={h.pos === activeHeading ? "location" : undefined}
+                    onClick={() => jumpToHeading(h.pos)}
                   >
                     {h.text || "Untitled heading"}
                   </button>

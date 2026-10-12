@@ -940,6 +940,13 @@ a {
 .outline-item:hover {
   background: #f1f3f4;
 }
+.outline-item.active {
+  background: #e8f0fe;
+}
+.outline-item.active .outline-item-text {
+  color: #0b57d0;
+  font-weight: 500;
+}
 .outline-item-text {
   display: block;
   flex: 1;

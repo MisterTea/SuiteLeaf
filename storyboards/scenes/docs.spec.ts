@@ -308,19 +308,29 @@ test("04-long-report-with-outline", async ({ page }) => {
   await caption(page, "The finished report runs over two pages. The outline lists every section and sub-section.", 2000);
 
   const outline = page.locator(".outline");
+  const current = outline.locator("[aria-current=location]");
   const jump = async (name: string) => {
     await outline.getByRole("button", { name, exact: true }).click();
     await expect(editor.getByRole("heading", { name, exact: true })).toBeInViewport();
+    await expect(current).toHaveText(name);
     await beat(page, 1200);
   };
-  await caption(page, "To check the money section, he clicks Expenses in the outline…", 900);
-  await jump("Expenses");
-  await caption(page, "…and the page jumps straight there.", 1200);
-  await caption(page, "Back to the start with Summary…", 700);
+  await caption(page, "Back to the start: he clicks Summary in the outline.", 900);
   await jump("Summary");
-  await caption(page, "…or straight to Volunteers to add a thank-you.", 700);
+  await caption(page, "As he scrolls, the outline highlights the section he's reading.", 600);
+  await page.mouse.move(640, 420);
+  for (let i = 0; i < 9; i++) {
+    await page.mouse.wheel(0, 70);
+    await beat(page, 220);
+  }
+  await expect(current).not.toHaveText("Summary");
+  await beat(page, 1200);
+  await caption(page, "To check the money section, he clicks Expenses…", 900);
+  await jump("Expenses");
+  await caption(page, "…and it opens at the top of the window. The heading starts page 2 with its paragraph.", 2200);
+  await caption(page, "Then Volunteers, to add a thank-you.", 700);
   await jump("Volunteers");
-  await page.keyboard.press("End");
+  await lineEnd(page);
   await page.keyboard.press("Enter");
   await typeSlowly(page, "A special thank-you to the Saturday tea rota!");
   await expect(
