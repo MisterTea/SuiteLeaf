@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { resolve, extname, sep } from "node:path";
@@ -132,6 +133,90 @@ test("safe HTML import and malformed native files", async ({ page }) => {
   await expect(
     page.getByRole("link", { name: "Imported", exact: true }),
   ).toBeVisible();
+});
+test("a downloaded native file says what it is and reopens over its library copy only when asked", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "New document" }).click();
+  await page.getByLabel("File title").fill("Packing list");
+  const editor = page.getByRole("textbox", { name: "Document content" });
+  await editor.fill("Passport");
+  await expect(page.getByRole("status")).toContainText("Saved");
+  const button = page.getByRole("button", { name: "Download", exact: true });
+  await expect(button).toHaveAttribute("title", /Packing list\.sldoc/);
+  await page.getByRole("button", { name: "File", exact: true }).click();
+  await expect(
+    page.getByRole("menuitem", { name: "Download SuiteLeaf file (.sldoc)" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("menuitem", { name: "Export native copy" }),
+  ).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  const downloading = page.waitForEvent("download");
+  await button.click();
+  const path = (await (await downloading).path())!;
+  await expect(page.getByRole("status")).toHaveText(
+    "Downloaded “Packing list.sldoc”",
+  );
+  const chooseDownloaded = () =>
+    page.locator("input[type=file]").setInputFiles({
+      name: "Packing list.sldoc",
+      mimeType: "application/json",
+      buffer: readFileSync(path),
+    });
+  const back = async () => {
+    await page.getByRole("button", { name: "Back to files" }).click();
+    await page.getByRole("button", { name: "Open / import" }).waitFor();
+  };
+  const rows = page.locator(".file-row");
+
+  await back();
+  await chooseDownloaded();
+  await expect(page.getByRole("status")).toContainText(
+    "“Packing list.sldoc” matches the copy here",
+  );
+  await back();
+  await expect(rows).toHaveCount(1);
+
+  await page.getByRole("link", { name: "Packing list" }).click();
+  await editor.press("ControlOrMeta+End");
+  await editor.pressSequentially(" and shoes");
+  await expect(page.getByRole("status")).toContainText("Saved");
+  await back();
+  await chooseDownloaded();
+  const dialog = page.getByRole("dialog", {
+    name: "“Packing list” is already in this browser",
+  });
+  await expect(dialog).toContainText("The one here has newer changes.");
+  await dialog.getByRole("button", { name: "Keep both" }).click();
+  await expect(page.getByLabel("File title")).toHaveValue("Packing list copy");
+  await expect(editor).toContainText("Passport");
+  await expect(editor).not.toContainText("shoes");
+  await back();
+  await expect(rows).toHaveCount(2);
+
+  await chooseDownloaded();
+  await dialog.getByRole("button", { name: "Replace" }).click();
+  await expect(page.getByLabel("File title")).toHaveValue("Packing list");
+  await expect(editor).toContainText("Passport");
+  await expect(editor).not.toContainText("shoes");
+  await expect(page.getByRole("status")).toContainText(
+    "Replaced with “Packing list.sldoc”",
+  );
+  await back();
+  await expect(rows).toHaveCount(2);
+
+  await page
+    .getByRole("button", { name: "Remove Packing list", exact: true })
+    .click();
+  const confirm = page.getByRole("dialog", { name: "Delete this file?" });
+  await expect(confirm).toContainText(
+    "“Packing list” will be deleted from this browser. This can't be undone.",
+  );
+  await expect(confirm).toContainText("open it again with Open / import");
+  await confirm.getByRole("button", { name: "Delete" }).click();
+  await expect(rows).toHaveCount(1);
 });
 test("cached application and local files work offline", async ({ page }) => {
   // Stop a real origin: WebKit's setOffline emulation blocks even SW responses.

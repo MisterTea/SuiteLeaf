@@ -607,7 +607,6 @@ test("07-page-setup-and-export", async ({ page }) => {
 });
 
 test("08-carry-a-file-to-another-computer", async ({ page }) => {
-  page.on("dialog", (dialog) => void dialog.accept());
   await page.goto("/");
   await caption(page, "Sofia writes a packing list on her laptop and wants it on her work computer.");
   const editor = await newDocument(page, "Lisbon trip packing list");
@@ -630,28 +629,52 @@ test("08-carry-a-file-to-another-computer", async ({ page }) => {
   const saved = join(mkdtempSync(join(tmpdir(), "storyboard-08-")), download.suggestedFilename());
   await download.saveAs(saved);
   expect(JSON.parse(readFileSync(saved, "utf8")).title).toBe("Lisbon trip packing list");
-  await caption(page, `Saved "${download.suggestedFilename()}": one file she can email or copy to a USB stick.`, 2200);
+  await expect(page.getByRole("status")).toHaveText("Downloaded “Lisbon trip packing list.sldoc”");
+  await caption(page, "The header confirms what she got: one .sldoc file to email or copy to a USB stick.", 2400);
 
   await backToFiles(page);
-  await caption(page, "To prove the file is all she needs, she removes the list from this browser.", 1000);
+  await caption(page, "To prove the file is all she needs, she removes the list from this browser.", 1200);
   await page.getByRole("button", { name: "Remove Lisbon trip packing list", exact: true }).click();
+  const confirm = page.getByRole("dialog", { name: "Delete this file?" });
+  await expect(confirm).toContainText(
+    "“Lisbon trip packing list” will be deleted from this browser. This can't be undone.",
+  );
+  await expect(confirm).toContainText("A copy you downloaded isn't affected: open it again with Open / import.");
+  await caption(page, "SuiteLeaf asks first, and says the downloaded copy isn't affected.", 2600);
+  await confirm.getByRole("button", { name: "Delete" }).click();
   await expect(page.getByRole("heading", { name: "A workspace waiting for you" })).toBeVisible();
   await caption(page, "The library is empty, as on a computer that has never seen it.", 1600);
 
+  const openDownloaded = async () => {
+    const chooser = page.waitForEvent("filechooser");
+    await page.getByRole("button", { name: "Open / import" }).click();
+    await (await chooser).setFiles(saved);
+  };
   await caption(page, "On the other computer: Open / import, then choose the .sldoc file.", 1000);
-  const chooser = page.waitForEvent("filechooser");
-  await page.getByRole("button", { name: "Open / import" }).click();
-  await (await chooser).setFiles(saved);
+  await openDownloaded();
   await expect(editor.locator("h1")).toHaveText("Lisbon, 3 to 7 November");
   await expect(editor.locator("li")).toHaveCount(4);
   await expect(page.getByLabel("File title")).toHaveValue("Lisbon trip packing list");
-  await caption(page, "Everything is back: the title, the heading and all four items.", 1600);
+  await expect(page.getByRole("status")).toContainText("Opened “Lisbon trip packing list.sldoc”");
+  await caption(page, "It opens straight away: the title, the heading and all four items.", 2000);
   await editor.locator("li").last().click();
-  await page.keyboard.press("End");
+  await lineEnd(page);
   await page.keyboard.press("Enter");
   await typeSlowly(page, "Sunglasses");
   await expect(editor.locator("li")).toHaveCount(5);
   await expect(page.getByRole("status")).toContainText("Saved");
   await showDocumentTop(page);
   await caption(page, "She keeps editing, and it saves on this computer now.", 1800);
+
+  await backToFiles(page);
+  await caption(page, "Later she opens the emailed file again by mistake.", 1000);
+  await openDownloaded();
+  const same = page.getByRole("dialog", { name: "“Lisbon trip packing list” is already in this browser" });
+  await expect(same).toContainText("The one here has newer changes. Replacing it discards them.");
+  await caption(page, "SuiteLeaf sees the list is already here, with newer changes, and asks before replacing it.", 2800);
+  await same.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.locator(".file-row")).toHaveCount(1);
+  await page.getByRole("link", { name: "Lisbon trip packing list" }).click();
+  await expect(editor.locator("li").last()).toHaveText("Sunglasses");
+  await caption(page, "Cancel leaves her list as it was, Sunglasses and all.", 1800);
 });

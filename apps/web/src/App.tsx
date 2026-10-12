@@ -63,6 +63,7 @@ import { storage, SaveQueue, exportText } from "./storage";
 import { importFile, type DelimitedDraft } from "./imports";
 import { CsvImportDialog } from "./csv-import";
 import type { DelimitedOptions } from "./csv";
+import { SameFileDialog, openNotices } from "./same-file";
 import { sampleDoc, sampleSheet, sampleSlide } from "./samples";
 import {
   Menu,
@@ -191,7 +192,8 @@ function ImportButton({
   onError,
   filePicker = false,
 }: {
-  onImport: (r: FileRecord) => Promise<void>;
+  /** `name` is the chosen file's name when it came from the file picker. */
+  onImport: (r: FileRecord, name?: string) => Promise<void>;
   onError: (s: string) => void;
   /** Always use the browser file picker, even on desktop. */
   filePicker?: boolean;
@@ -237,7 +239,7 @@ function ImportButton({
               (draft) =>
                 new Promise((resolve) => setReview({ draft, resolve })),
             );
-            if (file) await onImport({ file });
+            if (file) await onImport({ file }, f.name);
           } catch (e) {
             onError(message(e));
           } finally {
@@ -359,6 +361,11 @@ function LocalHome() {
     [asking, setAsking] = useState<{
       action: "rename" | "remove";
       record: FileRecord;
+    } | null>(null),
+    [sameFile, setSameFile] = useState<{
+      name: string;
+      existing: FileRecord;
+      incoming: FileRecord;
     } | null>(null);
   const refresh = useCallback(
     () =>
@@ -373,14 +380,44 @@ function LocalHome() {
     void refresh();
   }, [refresh]);
   const open = useCallback(
-    async (r: FileRecord) => {
+    async (r: FileRecord, notice?: string) => {
       if (!r.path && !r.recovery && (await storage.get(r.file.id)))
         r = { file: duplicateFile(r.file) };
       const saved = r.path ? r : await storage.save(r);
+      if (notice) openNotices.set(saved.file.id, notice);
       navigate(`/file/${saved.file.id}`);
     },
     [navigate],
   );
+  /** A SuiteLeaf file carries its ID, so opening one already in the library
+   * opens that copy if it is the same, and otherwise asks what to keep. */
+  const importRecord = useCallback(
+    async (r: FileRecord, name?: string) => {
+      if (!name) return open(r);
+      const existing =
+        r.path || r.recovery ? undefined : await storage.get(r.file.id);
+      if (!existing || existing.drive || existing.path)
+        return open(r, `Opened “${name}”`);
+      if (serializeFile(existing.file) !== serializeFile(r.file)) {
+        setSameFile({ name, existing, incoming: r });
+        return;
+      }
+      openNotices.set(r.file.id, `“${name}” matches the copy here`);
+      navigate(`/file/${r.file.id}`);
+    },
+    [open, navigate],
+  );
+  const replaceWith = async (name: string, incoming: FileRecord) => {
+    const id = incoming.file.id;
+    const held = navigator.locks ? (await navigator.locks.query()).held : [];
+    if (held?.some((lock) => lock.name === `suiteleaf:${id}`))
+      throw new Error(
+        `“${incoming.file.title}” is open in another tab. Close it there, then try again.`,
+      );
+    await storage.save({ file: incoming.file });
+    openNotices.set(id, `Replaced with “${name}”`);
+    navigate(`/file/${id}`);
+  };
   const make = useCallback(
     (kind: SuiteFile["kind"]) =>
       void open({ file: createFile(kind) }).catch((e) => setError(message(e))),
@@ -541,7 +578,9 @@ function LocalHome() {
           <small>
             {demo
               ? "Download a copy to keep your work."
-              : "Offline ready. No account needed."}
+              : window.suiteleaf
+                ? "Offline ready. No account needed."
+                : "Offline ready. Download a file to back it up or move it."}
           </small>
           {locked ? null : (
             <button
@@ -591,9 +630,29 @@ function LocalHome() {
             {searching ? (
               <button onClick={() => setQuery("")}>Clear search</button>
             ) : (
-              <ImportButton onImport={open} onError={setError} />
+              <ImportButton onImport={importRecord} onError={setError} />
             )}
           </header>
+          {sameFile ? (
+            <SameFileDialog
+              {...sameFile}
+              where={window.suiteleaf ? "on this computer" : "in this browser"}
+              onClose={() => setSameFile(null)}
+              onReplace={() => {
+                setSameFile(null);
+                void replaceWith(sameFile.name, sameFile.incoming).catch((e) =>
+                  setError(message(e)),
+                );
+              }}
+              onKeepBoth={() => {
+                setSameFile(null);
+                void open(
+                  { file: duplicateFile(sameFile.incoming.file) },
+                  `Opened “${sameFile.name}” as a copy`,
+                ).catch((e) => setError(message(e)));
+              }}
+            />
+          ) : null}
           {records.length === 0 && !searching ? (
             <div className="empty">
               <FolderOpen size={34} />
@@ -720,6 +779,12 @@ function LocalHome() {
                   ? `“${asking.record.file.title}” and its recovery draft leave the library. Your saved file remains on disk.`
                   : `“${asking.record.file.title}” will be deleted from this browser. This can't be undone.`}
               </p>
+              {window.suiteleaf ? null : (
+                <p className="dialog-note">
+                  A copy you downloaded isn&apos;t affected: open it again with
+                  Open / import.
+                </p>
+              )}
             </DriveDialog>
           ) : null}
         </section>
@@ -1049,17 +1114,18 @@ function Workspace() {
           void syncDrive();
           return;
         }
-        setStatus(
-          r.drive
-            ? "Saved to SuiteDrive"
-            : r.recovery
-              ? "Recovered draft · review and save"
-              : r.path
-                ? "Saved to file"
-                : window.suiteleaf
-                  ? "Draft saved · choose Save As"
-                  : "Saved on this device",
-        );
+        const saved = r.drive
+          ? "Saved to SuiteDrive"
+          : r.recovery
+            ? "Recovered draft · review and save"
+            : r.path
+              ? "Saved to file"
+              : window.suiteleaf
+                ? "Draft saved · choose Save As"
+                : "Saved on this device";
+        const notice = openNotices.get(id!);
+        openNotices.delete(id!);
+        setStatus(notice ? `${notice} · ${saved}` : saved);
       } catch (e) {
         if (!cancel) setError(message(e));
       }
@@ -1142,8 +1208,10 @@ function Workspace() {
         if (at === version.current) await save();
         else void save().catch(() => {});
       }
+      return !!saved;
     } catch (e) {
       setError(message(e));
+      return false;
     }
   }, [save]);
   const doAction = useCallback(
@@ -1264,9 +1332,12 @@ function Workspace() {
   };
   /** In cluster mode files live in SuiteDrive, so downloads are copies. */
   const download = () =>
-    void (cluster ? exportNative() : saveAs()).catch((e) =>
-      setError(message(e)),
-    );
+    void (cluster ? exportNative().then(() => true) : saveAs())
+      .then((done) => {
+        if (done && !cluster && !window.suiteleaf && alive.current)
+          setStatus(`Downloaded “${nativeFilename(current.current!.file)}”`);
+      })
+      .catch((e) => setError(message(e)));
   const onActions = useCallback((a: EditorActions) => {
     actions.current = a;
     setActionsReady(true);
@@ -1417,20 +1488,24 @@ function Workspace() {
                 </>
               ) : (
                 <MenuItem disabled={!actionsReady} onSelect={download}>
-                  {window.suiteleaf ? "Save As…" : "Download SuiteLeaf file"}
+                  {window.suiteleaf
+                    ? "Save As…"
+                    : `Download SuiteLeaf file (.${extensionFor(f.kind)})`}
                 </MenuItem>
               )}
               <MenuItem onSelect={() => void save().catch(() => {})}>
                 Save now
               </MenuItem>
-              <MenuItem
-                onSelect={() =>
-                  void exportNative().catch((e) => setError(message(e)))
-                }
-                disabled={!actionsReady}
-              >
-                Export native copy
-              </MenuItem>
+              {window.suiteleaf && !cluster ? (
+                <MenuItem
+                  onSelect={() =>
+                    void exportNative().catch((e) => setError(message(e)))
+                  }
+                  disabled={!actionsReady}
+                >
+                  Export native copy
+                </MenuItem>
+              ) : null}
               {(f.kind === "doc"
                 ? ["docx", "html", "txt"]
                 : f.kind === "sheet"
@@ -1974,6 +2049,11 @@ function Workspace() {
             className="save-copy"
             disabled={!actionsReady}
             onClick={download}
+            title={
+              window.suiteleaf && !cluster
+                ? `Save to a .${extensionFor(f.kind)} file`
+                : `Download “${nativeFilename(f)}”, a SuiteLeaf file you can open again with Open / import`
+            }
           >
             <Download size={16} />
             {window.suiteleaf && !cluster ? "Save As" : "Download"}
