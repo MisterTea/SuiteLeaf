@@ -223,9 +223,13 @@ async function createInDrive(
 }
 function NewCards({
   onCreate,
+  folder,
 }: {
   onCreate: (kind: SuiteFile["kind"]) => void;
+  /** The SuiteDrive folder new files go in, when it isn't the top level. */
+  folder?: string;
 }) {
+  const where = folder ? <small>In {folder}</small> : null;
   return (
     <div className="new-cards">
       <button className="new-card" onClick={() => onCreate("doc")}>
@@ -234,7 +238,7 @@ function NewCards({
         </span>
         <span>
           <strong>New document</strong>
-          <small>A fresh page for your next idea</small>
+          {where ?? <small>A fresh page for your next idea</small>}
         </span>
         <Plus size={22} />
       </button>
@@ -244,7 +248,7 @@ function NewCards({
         </span>
         <span>
           <strong>New spreadsheet</strong>
-          <small>A little structure for the big picture</small>
+          {where ?? <small>A little structure for the big picture</small>}
         </span>
         <Plus size={22} />
       </button>
@@ -254,7 +258,7 @@ function NewCards({
         </span>
         <span>
           <strong>New presentation</strong>
-          <small>A clean canvas for your next pitch</small>
+          {where ?? <small>A clean canvas for your next pitch</small>}
         </span>
         <Plus size={22} />
       </button>
@@ -601,6 +605,11 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
   const { locked } = useMode();
   const [error, setError] = useState("");
   const folder = useRef<string | null>(null);
+  const [folderName, setFolderName] = useState<string>();
+  const onFolderChange = useCallback((id: string | null, name: string) => {
+    folder.current = id;
+    setFolderName(id ? name : undefined);
+  }, []);
   const make = useCallback(
     (kind: SuiteFile["kind"]) =>
       void createInDrive(createFile(kind), folder.current, navigate).catch(
@@ -646,7 +655,7 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
             server.
           </p>
         </section>
-        <NewCards onCreate={make} />
+        <NewCards onCreate={make} folder={folderName} />
         <ErrorBanner error={error} onDismiss={() => setError("")} />
         <section className="file-section">
           <header>
@@ -660,7 +669,7 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
           <DriveBrowser
             inline
             mode="open"
-            onFolderChange={(id) => (folder.current = id)}
+            onFolderChange={onFolderChange}
             onOpen={(item) => openFromDrive(item, navigate)}
           />
         </section>
