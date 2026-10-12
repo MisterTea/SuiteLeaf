@@ -22,7 +22,7 @@ test("docs toolbar fits one row, outline entries align left, indent works in lis
 
   const toolbar = page.getByRole("toolbar", { name: "Document formatting" });
   expect((await toolbar.boundingBox())!.height).toBeLessThanOrEqual(40);
-  for (const name of ["Page setup", "Page break"])
+  for (const name of ["Page setup", "Page break", "Superscript", "Subscript"])
     await expect(toolbar.getByRole("button", { name, exact: true })).toBeVisible();
 
   await page.keyboard.type("Plan");
@@ -64,4 +64,38 @@ test("docs toolbar fits one row, outline entries align left, indent works in lis
   await outdent.click();
   await expect(editor.locator("ul ul")).toHaveCount(0);
   await expect(editor.locator("ul > li")).toHaveCount(2);
+});
+
+test("superscript and subscript buttons and menu items toggle and show the current formatting", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "New document" }).click();
+  const editor = page.getByRole("textbox", { name: "Document content" });
+  await editor.click({ position: { x: 100, y: 80 } });
+  const toolbar = page.getByRole("toolbar", { name: "Document formatting" });
+  const sup = toolbar.getByRole("button", { name: "Superscript", exact: true });
+  const sub = toolbar.getByRole("button", { name: "Subscript", exact: true });
+
+  await page.keyboard.type("E = mc");
+  await sup.click();
+  await expect(sup).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.type("2");
+  await sup.click();
+  await expect(sup).toHaveAttribute("aria-pressed", "false");
+  await page.keyboard.type(" and H");
+  await sub.click();
+  await page.keyboard.type("2");
+  await expect(sub).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("ControlOrMeta+,");
+  await page.keyboard.type("O");
+  await expect(editor.locator("sup")).toHaveText("2");
+  await expect(editor.locator("sub")).toHaveText("2");
+  await expect(editor.locator("p").first()).toHaveText("E = mc2 and H2O");
+
+  await page.keyboard.press("Shift+ArrowLeft");
+  await page.getByRole("button", { name: "Format", exact: true }).click();
+  await page.getByRole("menuitem", { name: /^Superscript/ }).click();
+  await expect(editor.locator("sup")).toHaveText(["2", "O"]);
+  await expect(sup).toHaveAttribute("aria-pressed", "true");
 });

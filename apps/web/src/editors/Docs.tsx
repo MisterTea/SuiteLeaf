@@ -17,6 +17,8 @@ import {
   Italic,
   Underline,
   Strikethrough,
+  Superscript as SuperscriptIcon,
+  Subscript as SubscriptIcon,
   Undo2,
   Redo2,
   List,
@@ -228,6 +230,8 @@ export default function Docs({
         italic: e?.isActive("italic"),
         underline: e?.isActive("underline"),
         strike: e?.isActive("strike"),
+        superscript: e?.isActive("superscript"),
+        subscript: e?.isActive("subscript"),
         fontFamily: e?.getAttributes("textStyle").fontFamily ?? "Arial",
         fontSize: (() => {
           const raw = e?.getAttributes("textStyle").fontSize as
@@ -394,6 +398,9 @@ export default function Docs({
         toggleItalic: () => editor.chain().focus().toggleItalic().run(),
         toggleUnderline: () => editor.chain().focus().toggleUnderline().run(),
         toggleStrike: () => editor.chain().focus().toggleStrike().run(),
+        toggleSuperscript: () =>
+          editor.chain().focus().toggleSuperscript().run(),
+        toggleSubscript: () => editor.chain().focus().toggleSubscript().run(),
         toggleBulletList: () => editor.chain().focus().toggleBulletList().run(),
         toggleOrderedList: () =>
           editor.chain().focus().toggleOrderedList().run(),
@@ -658,6 +665,20 @@ export default function Docs({
           onClick={() => editor.chain().focus().toggleStrike().run()}
         >
           <Strikethrough size={16} />
+        </Tool>
+        <Tool
+          label="Superscript"
+          active={state?.superscript}
+          onClick={() => editor.chain().focus().toggleSuperscript().run()}
+        >
+          <SuperscriptIcon size={16} />
+        </Tool>
+        <Tool
+          label="Subscript"
+          active={state?.subscript}
+          onClick={() => editor.chain().focus().toggleSubscript().run()}
+        >
+          <SubscriptIcon size={16} />
         </Tool>
 
         <label className="color-tool text-color-picker" title="Text color">

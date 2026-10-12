@@ -1539,6 +1539,22 @@ function Workspace() {
                     Strikethrough
                   </MenuItem>
                   <MenuItem
+                    shortcut="Cmd+."
+                    onSelect={() =>
+                      actions.current?.docActions?.toggleSuperscript()
+                    }
+                  >
+                    Superscript
+                  </MenuItem>
+                  <MenuItem
+                    shortcut="Cmd+,"
+                    onSelect={() =>
+                      actions.current?.docActions?.toggleSubscript()
+                    }
+                  >
+                    Subscript
+                  </MenuItem>
+                  <MenuItem
                     onSelect={() => actions.current?.docActions?.align("left")}
                   >
                     Align left
