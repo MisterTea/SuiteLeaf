@@ -411,7 +411,7 @@ a {
 .file-list-head,
 .file-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) 130px 85px;
+  grid-template-columns: minmax(180px, 1fr) 130px 115px;
   align-items: center;
   gap: 15px;
   padding: 15px 22px;
@@ -422,6 +422,22 @@ a {
   text-transform: uppercase;
   color: var(--text-muted);
   background: var(--surface-muted);
+}
+.sort-head {
+  justify-self: start;
+  gap: 4px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  border: 0;
+  background: transparent;
+  font-size: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+}
+.sort-head.active {
+  color: var(--text-primary);
+  font-weight: 600;
 }
 .file-row {
   border-top: 1px solid var(--border-subtle);
@@ -446,6 +462,12 @@ a {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.file-row small.file-snippet {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 .file-row time {
   font-size: 12px;
@@ -490,6 +512,28 @@ a {
   justify-content: center;
   gap: 12px;
   margin-top: 24px;
+}
+.file-section.searching {
+  margin-top: 32px;
+}
+.sample-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 14px 0 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.sample-strip button {
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--green);
+  font-size: 12px;
+}
+.sample-strip button:hover {
+  background: var(--surface-hover);
 }
 .home-footer {
   display: flex;
@@ -1717,13 +1761,18 @@ a {
   }
   .file-row,
   .file-list-head {
-    grid-template-columns: minmax(110px, 1fr) 55px;
+    grid-template-columns: minmax(110px, 1fr) 86px;
     gap: 4px;
     padding: 12px;
   }
   .file-row time,
-  .file-list-head > span:nth-child(2) {
+  .file-list-head > :nth-child(3) {
     display: none;
+  }
+  .file-list-head > .sort-head:nth-child(2) {
+    justify-self: end;
+    margin: -2px 0;
+    white-space: nowrap;
   }
   .file-row a {
     gap: 8px;

@@ -59,7 +59,7 @@ const place = {
 };
 
 /** A small in-app dialog over everything else, including other dialogs. */
-function DriveDialog({
+export function DriveDialog({
   title,
   submitLabel,
   canSubmit = true,
@@ -130,7 +130,7 @@ function DriveDialog({
 
 /** Ask for a folder or file name. Renaming a file selects the name without
  * its extension, so typing replaces just the title. */
-function NameDialog({
+export function NameDialog({
   title,
   submitLabel,
   initial,

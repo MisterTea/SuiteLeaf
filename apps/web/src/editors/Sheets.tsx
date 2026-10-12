@@ -808,6 +808,43 @@ export default function Sheets({
     writingPivot = useRef(false),
     pivotErrors = useRef(new Map<string, string>()),
     valueChosen = useRef(false);
+  const startingUp = useRef(true);
+  // Univer focuses its hidden cell editor while it starts, which would send
+  // keystrokes meant for the file title (or another field) into the grid.
+  useEffect(() => {
+    const container = host.current;
+    if (!container) return;
+    let touched = false;
+    const touch = () => {
+      touched = true;
+    };
+    const keep = (e: FocusEvent) => {
+      const from = e.relatedTarget,
+        to = e.target;
+      if (
+        startingUp.current &&
+        !touched &&
+        from instanceof HTMLElement &&
+        from.isConnected &&
+        !container.contains(from) &&
+        from.matches("input, textarea, select, [contenteditable='true']") &&
+        to instanceof HTMLElement &&
+        (container.contains(to) || !!to.closest('[data-u-comp="editor"]'))
+      )
+        from.focus();
+    };
+    container.addEventListener("pointerdown", touch, true);
+    document.addEventListener("focusin", keep, true);
+    return () => {
+      container.removeEventListener("pointerdown", touch, true);
+      document.removeEventListener("focusin", keep, true);
+    };
+  }, []);
+  useEffect(() => {
+    if (!ready) return;
+    const settled = setTimeout(() => (startingUp.current = false), 1000);
+    return () => clearTimeout(settled);
+  }, [ready]);
   const readRange = (r: SourceRange): CellValue[][] => {
     const s = book.current?.getSheetBySheetId(r.sheetId);
     if (!s || r.endRow >= s.getMaxRows() || r.endColumn >= s.getMaxColumns())
