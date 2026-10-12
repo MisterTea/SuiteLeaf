@@ -1,6 +1,10 @@
 import { useState, useImperativeHandle, type Ref } from "react";
 import type { FUniver } from "@univerjs/core/facade";
+import { X } from "lucide-react";
 
+import { localName, setLocalName } from "../identity";
+import { useMode } from "../mode";
+import { getSession } from "../node-client";
 import { Menu, MenuItem } from "../ui";
 
 /** Local tab organization lives in worksheet metadata and travels with native files. */
@@ -21,6 +25,13 @@ export default function SheetFeatures({
   const [selected, setSelected] = useState<string[]>([]);
   const [rules, setRules] = useState<{ id: string; name: string }[]>([]);
   const [busy, setBusy] = useState(false);
+  const [naming, setNaming] = useState(false);
+  const [name, setName] = useState("");
+  const signedIn = useMode().mode.kind === "cluster" && !!getSession();
+  const saveName = () => {
+    setLocalName(name);
+    setNaming(false);
+  };
   useImperativeHandle(
     ref,
     () => ({
@@ -114,6 +125,16 @@ export default function SheetFeatures({
         >
           Comments and replies
         </MenuItem>
+        {signedIn ? null : (
+          <MenuItem
+            onSelect={() => {
+              setName(localName());
+              setNaming(true);
+            }}
+          >
+            Your name on comments…
+          </MenuItem>
+        )}
         <MenuItem
           onSelect={() => {
             setSelected([active.getSheetId()]);
@@ -147,6 +168,65 @@ export default function SheetFeatures({
             ))}
         </details>
       ))}
+      {naming ? (
+        <div className="gdocs-modal-overlay" onClick={() => setNaming(false)}>
+          <form
+            className="gdocs-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Your name on comments"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setNaming(false);
+            }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              saveName();
+            }}
+          >
+            <div className="dialog-header">
+              <h2>Your name on comments</h2>
+              <button
+                type="button"
+                className="dialog-close-btn"
+                aria-label="Close"
+                onClick={() => setNaming(false)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="dialog-body">
+              <p className="dialog-note">
+                Comments you write are signed with this name so others can see
+                who asked. It is kept on this device.
+              </p>
+              <div className="floating-field">
+                <label htmlFor="comment-author-name">Your name</label>
+                <input
+                  id="comment-author-name"
+                  autoFocus
+                  value={name}
+                  maxLength={80}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Alex Rivera"
+                />
+              </div>
+            </div>
+            <div className="dialog-footer">
+              <button
+                type="button"
+                className="dialog-text-btn"
+                onClick={() => setNaming(false)}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="dialog-primary-btn">
+                Save
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
       {open ? (
         <div className="gdocs-modal-overlay" onClick={() => setOpen(false)}>
           <section

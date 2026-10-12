@@ -7,9 +7,13 @@ import {
   LifecycleStages,
   mergeLocales,
   numfmt,
+  UserManagerService,
   type IWorkbookData,
 } from "@univerjs/presets";
-import { UniverSheetsCorePreset } from "@univerjs/preset-sheets-core";
+import {
+  SheetsSelectionsService,
+  UniverSheetsCorePreset,
+} from "@univerjs/preset-sheets-core";
 import CoreEnUS from "@univerjs/preset-sheets-core/locales/en-US";
 import { UniverSheetsDrawingPreset } from "@univerjs/preset-sheets-drawing";
 import DrawingEnUS from "@univerjs/preset-sheets-drawing/locales/en-US";
@@ -28,7 +32,10 @@ import "@univerjs/preset-sheets-conditional-formatting/lib/index.css";
 import { UniverSheetsThreadCommentPreset } from "@univerjs/preset-sheets-thread-comment";
 import CommentEnUS from "@univerjs/preset-sheets-thread-comment/locales/en-US";
 import "@univerjs/preset-sheets-thread-comment/lib/index.css";
-import { UniverSheetsNotePreset } from "@univerjs/preset-sheets-note";
+import {
+  SheetsNotePopupService,
+  UniverSheetsNotePreset,
+} from "@univerjs/preset-sheets-note";
 import NoteEnUS from "@univerjs/preset-sheets-note/locales/en-US";
 import "@univerjs/preset-sheets-note/lib/index.css";
 import SheetFeatures from "./sheet-features";
@@ -100,6 +107,9 @@ import "../excel-wrap";
 import "../excel-cell";
 import { resolveExcelColumnWidths } from "../excel-layout";
 import { useTheme } from "../theme";
+import { currentAuthor, onAuthorChange } from "../identity";
+import { useMode } from "../mode";
+import { getSession } from "../node-client";
 
 type ChartState = {
   definition: ChartDefinition;
@@ -659,6 +669,7 @@ export default function Sheets({
   onError: (s: string) => void;
 }) {
   const { isDark } = useTheme();
+  const cluster = useMode().mode.kind === "cluster";
   const host = useRef<HTMLDivElement>(null),
     api = useRef<any>(null),
     book = useRef<any>(null),
@@ -759,10 +770,69 @@ export default function Sheets({
       };
       api.current = univerAPI;
       univerAPI.registerComponent("suiteleaf-chart", EmbeddedChart);
+      const injector = univer.__getInjector();
+      const users = injector.get(UserManagerService);
+      const author = () => {
+        const a = currentAuthor(cluster ? getSession()?.user : null);
+        // Univer's local permissions only let user IDs starting with "Owner" edit.
+        return { ...a, userID: `Owner_${a.id}` };
+      };
+      let me = author();
+      const signIn = () =>
+        users.setCurrentUser({ userID: me.userID, name: me.name, avatar: "" });
+      signIn();
+      const stopAuthor = onAuthorChange(() => {
+        me = author();
+        signIn();
+      });
+      const signComments = univerAPI.addEvent(
+        univerAPI.Event.BeforeCommandExecute,
+        ({ id, params }) => {
+          const comment = (params as any)?.comment;
+          if (
+            id === "thread-comment.command.add-comment" &&
+            comment?.personId === me.userID &&
+            me.signature &&
+            !comment.authorName
+          )
+            comment.authorName = me.signature;
+        },
+      );
       const workbook = univerAPI.createWorkbook(
         content.current.workbook as unknown as IWorkbookData,
       );
       book.current = workbook;
+      // Authors from other devices are unknown here; without a profile Univer
+      // hides their name and the reply-to button.
+      for (const thread of workbook.getComments())
+        for (const comment of [thread, ...(thread.getReplies() ?? [])]) {
+          const { personId, authorName } = comment.getCommentData();
+          if (personId && personId !== me.userID && !users.getUser(personId))
+            users.addUser({
+              userID: personId,
+              name: authorName || "Anonymous",
+              avatar: "",
+            });
+        }
+      // Univer closes an open note only when a selection move ends, not when the
+      // name box or a command sets the selection.
+      const notePopups = injector.get(SheetsNotePopupService);
+      const closeNoteOnMove = injector
+        .get(SheetsSelectionsService)
+        .selectionChanged$.subscribe((selections) => {
+          const popup = notePopups.activePopup,
+            range = selections?.[0]?.range;
+          if (
+            popup &&
+            range &&
+            !(
+              popup.subUnitId === workbook.getActiveSheet().getSheetId() &&
+              range.startRow === popup.row &&
+              range.startColumn === popup.col
+            )
+          )
+            notePopups.hidePopup(true);
+        });
       // Excel stores a cached result for every formula cell but recalculates formulas on
       // open. An imported snapshot can carry a stale or missing cached value that would
       // display 0 while the formula resolves to a real number, so force one explicit full
@@ -1157,6 +1227,9 @@ export default function Sheets({
         lifecycleReady.dispose();
         removed.dispose();
         activeSheetChanged.dispose();
+        stopAuthor();
+        signComments.dispose();
+        closeNoteOnMove.unsubscribe();
         partialCleanup?.();
         partialCleanup = undefined;
       };
