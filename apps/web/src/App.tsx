@@ -1481,26 +1481,26 @@ function Workspace() {
                   </MenuItem>
                   <MenuItem
                     shortcut="Cmd+X"
-                    onSelect={() => actions.current?.sheetActions?.toggleBold()}
+                    onSelect={() => actions.current?.sheetActions?.cut()}
                   >
                     Cut
                   </MenuItem>
                   <MenuItem
                     shortcut="Cmd+C"
-                    onSelect={() => actions.current?.sheetActions?.toggleBold()}
+                    onSelect={() => actions.current?.sheetActions?.copy()}
                   >
                     Copy
                   </MenuItem>
                   <MenuItem
                     shortcut="Cmd+V"
-                    onSelect={() => actions.current?.sheetActions?.toggleBold()}
+                    onSelect={() => actions.current?.sheetActions?.paste()}
                   >
                     Paste
                   </MenuItem>
                   <MenuItem
                     shortcut="Delete"
                     onSelect={() =>
-                      actions.current?.sheetActions?.clearFormatting()
+                      actions.current?.sheetActions?.deleteValues()
                     }
                   >
                     Delete values

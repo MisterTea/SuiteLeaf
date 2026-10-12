@@ -179,3 +179,137 @@ test("View menu freezes rows and columns, hides gridlines and the formula bar, a
   await expect(box).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
+
+async function newSheet(page: Page, rows: string[][]) {
+  await page.goto("/");
+  await page.getByRole("button", { name: "New spreadsheet" }).click();
+  await page
+    .getByRole("button", { name: "Sheet tools", exact: true })
+    .waitFor();
+  const box = page.locator(".sheet-host input.univer-size-full");
+  const select = async (ref: string) => {
+    await box.fill(ref);
+    await box.press("Enter");
+  };
+  for (const [r, row] of rows.entries()) {
+    await select(`A${r + 1}`);
+    for (const value of row) {
+      await page.keyboard.type(value);
+      await page.keyboard.press("Tab");
+    }
+    await page.keyboard.press("Enter");
+  }
+  return select;
+}
+const styleOf = (file: any, cell: { s?: unknown }) =>
+  typeof cell.s === "string" ? file.content.workbook.styles[cell.s] : cell.s;
+const cellsOf = (file: any) =>
+  file.content.workbook.sheets[file.content.workbook.sheetOrder[0]].cellData;
+
+test("toolbar and Format menu bold, italic and strikethrough style the selection", async ({
+  page,
+  isMobile,
+}) => {
+  test.skip(isMobile, "The formatting toolbar is a desktop layout.");
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const select = await newSheet(page, [
+    ["Service", "Hours"],
+    ["Logo", "12"],
+  ]);
+  await select("A1:B1");
+  const bold = page.getByRole("button", { name: "Bold (Cmd+B)" });
+  for (const name of [
+    "Bold (Cmd+B)",
+    "Italic (Cmd+I)",
+    "Strikethrough (Alt+Shift+5)",
+  ]) {
+    await page.getByRole("button", { name }).click();
+    await expect(page.getByRole("button", { name })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  }
+  let file = await snapshot(page);
+  for (const column of [0, 1])
+    expect(styleOf(file, cellsOf(file)[0][column])).toMatchObject({
+      bl: 1,
+      it: 1,
+      st: { s: 1 },
+    });
+  await select("A2");
+  await expect(bold).toHaveAttribute("aria-pressed", "false");
+  await select("B1");
+  await expect(bold).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Format", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Bold" }).click();
+  await expect(bold).toHaveAttribute("aria-pressed", "false");
+  file = await snapshot(page);
+  expect(styleOf(file, cellsOf(file)[0][1]).bl ?? 0).toBe(0);
+  expect(styleOf(file, cellsOf(file)[0][0]).bl).toBe(1);
+  expect(errors).toEqual([]);
+});
+
+test("$ applies plain currency and Edit menu cut, copy, paste and delete use the clipboard", async ({
+  page,
+  context,
+}, info) => {
+  test.skip(
+    info.project.name !== "chromium",
+    "Clipboard permissions can only be granted in desktop Chromium.",
+  );
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const select = await newSheet(page, [["-5", "=1020/1880"]]);
+  await select("A1");
+  await page.getByRole("button", { name: "Format as currency" }).click();
+  const edit = async (item: string) => {
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    await page.getByRole("menuitem", { name: item }).click();
+  };
+  // Menu clipboard actions finish asynchronously; wait for each to land
+  // before moving the selection, as a person would.
+  const clipboard = () => page.evaluate(() => navigator.clipboard.readText());
+  const value = async (row: number, column: number) =>
+    cellsOf(await snapshot(page))[row]?.[column]?.v ?? null;
+  await edit("Copy");
+  await expect.poll(clipboard).toBe("-$5.00");
+  await select("A3");
+  await edit("Paste");
+  await expect.poll(() => value(2, 0)).toBe(-5);
+  await select("B1");
+  await edit("Cut");
+  await expect.poll(clipboard).toMatch(/^0\.5425/);
+  await select("B3");
+  await edit("Paste");
+  await expect.poll(() => value(2, 1)).toBeCloseTo(1020 / 1880);
+  await expect.poll(() => value(0, 1)).toBeNull();
+  await select("A1");
+  await edit("Delete values");
+  await expect.poll(() => value(0, 0)).toBeNull();
+  const file = await snapshot(page);
+  const cells = cellsOf(file);
+  expect(styleOf(file, cells[2][0]).n.pattern).toBe('"$"#,##0.00');
+  expect(styleOf(file, cells[0][0]).n.pattern).toBe('"$"#,##0.00');
+  await expect(page.locator(".sheet-notice")).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test("Edit menu paste explains the shortcut when the browser blocks clipboard reads", async ({
+  page,
+}, info) => {
+  test.skip(
+    info.project.name !== "chromium",
+    "Clipboard permissions are denied by default in headless Chromium.",
+  );
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await newSheet(page, [["Hello"]]);
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Paste" }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "paste" }),
+  ).toHaveText(/Use (⌘|Ctrl\+)V to paste\./);
+  expect(errors).toEqual([]);
+});

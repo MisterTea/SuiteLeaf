@@ -403,6 +403,8 @@ test("12-freeze-the-header-row", async ({ page }) => {
 });
 
 test("13-format-money-and-percentages", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
   await caption(page, "Jess, a freelance designer, is turning last month's hours into an invoice summary.");
   await page.getByRole("button", { name: "New spreadsheet" }).click();
@@ -419,7 +421,7 @@ test("13-format-money-and-percentages", async ({ page }) => {
   await typeRow(page, "A3", ["Website copy", "8", "70", "=B3*C3", "=D3/D$5"], 20);
   await typeRow(page, "A4", ["Photo edits", "5", "60", "=B4*C4", "=D4/D$5"], 20);
   await selectCells(page, "G1");
-  await caption(page, "The numbers are right, but they don't look like money: 85, 1020, 5.42553E-01…", 2000);
+  await caption(page, "The numbers are right, but they don't look like money: 85, 1020, 0.5425531915…", 2000);
 
   await caption(page, "Select the money columns and click $ for currency.", 1000);
   await selectCells(page, "C2:D5");
@@ -434,12 +436,14 @@ test("13-format-money-and-percentages", async ({ page }) => {
   await page.getByRole("button", { name: "Increase decimal places" }).click();
   await beat(page);
 
-  await caption(page, "Bold the header and total rows with Ctrl+B.", 1000);
+  await caption(page, "Bold the header and total rows with the B button.", 1000);
+  const bold = page.getByRole("button", { name: "Bold (Cmd+B)" });
   await dragSelect(page, "A1", "E1");
-  await page.keyboard.press("Control+b");
+  await bold.click();
+  await expect(bold).toHaveAttribute("aria-pressed", "true");
   await beat(page, 500);
   await dragSelect(page, "A5", "E5");
-  await page.keyboard.press("Control+b");
+  await bold.click();
   await beat(page, 500);
 
   await caption(page, "Center the headings with Format › Align center.", 1000);
@@ -451,16 +455,19 @@ test("13-format-money-and-percentages", async ({ page }) => {
   await caption(page, "Now it reads like an invoice: $1,880.00 total, and each service's share of it.", 2400);
 
   await selectCells(page, "D2");
+  await expect(bold).toHaveAttribute("aria-pressed", "false");
   await caption(page, "Formatting only changes how numbers look — the cell still holds 1020.", 1800);
 
   const file = await native(page);
   const cells = cellsOf(file);
   expect(cells[1][3]).toMatchObject({ f: "=B2*C2", v: 1020 });
-  expect(styleOf(file, cells[1][3]).n.pattern).toContain("$");
-  expect(styleOf(file, cells[4][3]).n.pattern).toContain("$");
+  expect(styleOf(file, cells[1][2]).n.pattern).toBe('"$"#,##0.00');
+  expect(styleOf(file, cells[1][3]).n.pattern).toBe('"$"#,##0.00');
+  expect(styleOf(file, cells[4][3]).n.pattern).toBe('"$"#,##0.00');
   expect(styleOf(file, cells[1][4]).n.pattern).toBe("0.0%");
   expect(styleOf(file, cells[0][0])).toMatchObject({ bl: 1, ht: 2 });
   expect(styleOf(file, cells[4][3]).bl).toBe(1);
+  expect(errors).toEqual([]);
   await caption(page, "Ready to send.", 1400);
 });
 
