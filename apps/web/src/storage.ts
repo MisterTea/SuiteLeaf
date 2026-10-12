@@ -2,7 +2,8 @@ import { Library } from "./browser-library";
 export { Library } from "./browser-library";
 import {
   serializeFile,
-  filename,
+  nativeFilename,
+  mimeFor,
   type StorageAdapter,
   type DesktopBridge,
 } from "@suiteleaf/core";
@@ -34,7 +35,11 @@ const browserStorage: StorageAdapter = {
     return null;
   },
   async saveAs(record) {
-    download(filename(record.file.title), serializeFile(record.file));
+    download(
+      nativeFilename(record.file),
+      serializeFile(record.file),
+      mimeFor(record.file.kind),
+    );
     return record;
   },
 };

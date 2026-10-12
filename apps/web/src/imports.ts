@@ -2,7 +2,8 @@ import Papa from "papaparse";
 import { csvCell } from "./csv";
 import {
   createFile,
-  parseFile,
+  isNativeName,
+  parseNamedFile,
   type SuiteFile,
   type SheetFile,
 } from "@suiteleaf/core";
@@ -14,14 +15,15 @@ export async function importFile(file: File): Promise<SuiteFile> {
     const { importOfficeFile } = await import("./office-import");
     return importOfficeFile(file);
   }
-  if (file.size > (ext === "suiteleaf" ? 200 : 50) * 1024 * 1024)
+  const native = isNativeName(file.name);
+  if (file.size > (native ? 200 : 50) * 1024 * 1024)
     throw new Error(
-      ext === "suiteleaf"
+      native
         ? "Choose a native file smaller than 200 MB."
         : "Choose a file smaller than 50 MB.",
     );
   const text = await file.text();
-  if (ext === "suiteleaf") return parseFile(text);
+  if (native) return parseNamedFile(file.name, text);
   const title =
     file.name.replace(/\.[^.]+$/, "").slice(0, 200) || "Imported file";
   if (ext === "html" || ext === "htm") {
@@ -94,6 +96,6 @@ export async function importFile(file: File): Promise<SuiteFile> {
     return parsePowerPoint(buffer, title);
   }
   throw new Error(
-    "Supported formats: .suiteleaf, DOCX, Excel (.xlsx, .xls, .xlsm, .xlsb, .xltx), PowerPoint (.pptx, .ppt), HTML, text, CSV, and TSV.",
+    "Supported formats: SuiteLeaf (.sldoc, .slsheet, .slslides, .suiteleaf), DOCX, Excel (.xlsx, .xls, .xlsm, .xlsb, .xltx), PowerPoint (.pptx, .ppt), HTML, text, CSV, and TSV.",
   );
 }

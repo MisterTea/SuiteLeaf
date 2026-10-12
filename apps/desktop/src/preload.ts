@@ -11,6 +11,9 @@ const bridge: DesktopBridge = {
   exportFile: (name, text) => ipcRenderer.invoke("files:export", name, text),
   print: (title) => ipcRenderer.invoke("print", title),
   setDirty: (dirty) => ipcRenderer.send("dirty", dirty),
+  getMode: () => ipcRenderer.invoke("mode:get"),
+  setMode: (mode) => ipcRenderer.invoke("mode:set", mode),
+  authWindow: (url) => ipcRenderer.invoke("auth:window", url),
   onMenu: (callback) => {
     const listener = (_event: unknown, action: string) => callback(action);
     ipcRenderer.on("menu", listener);

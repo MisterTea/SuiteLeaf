@@ -1,7 +1,19 @@
 import { mkdir, readFile, rename, unlink, open } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
-import { parseFile, serializeFile, type FileRecord } from "@suiteleaf/core";
+import {
+  driveLinkSchema,
+  kindFromName,
+  parseFile,
+  serializeFile,
+  type DriveLink,
+  type FileRecord,
+} from "@suiteleaf/core";
+/** A valid SuiteDrive link, or nothing. */
+export function driveLink(value: unknown): DriveLink | undefined {
+  const parsed = driveLinkSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
 export class FileConflict extends Error {
   constructor() {
     super(
@@ -50,6 +62,7 @@ export class FileStore {
             fingerprint:
               typeof r.fingerprint === "string" ? r.fingerprint : undefined,
             recovery: !!r.recovery,
+            drive: driveLink(r.drive),
           });
         } catch {
           /* Ignore a corrupt individual recent entry. */
@@ -87,7 +100,7 @@ export class FileStore {
     return this.transaction(async () => {
       const full = resolve(path),
         text = await readFile(full, "utf8"),
-        file = parseFile(text);
+        file = parseFile(text, kindFromName(full));
       const existing = this.records.get(file.id);
       if (existing?.recovery && existing.path === full)
         return structuredClone(existing);
@@ -107,13 +120,14 @@ export class FileStore {
     return this.transaction(async () => {
       const file = parseFile(serializeFile(input.file));
       const old = this.records.get(file.id);
+      const drive = input.drive ?? old?.drive;
       if (!old) {
-        const draft = { file, recovery: true };
+        const draft = { file, recovery: true, drive };
         this.records.set(file.id, draft);
         await this.persist();
         return structuredClone(draft);
       }
-      const pending = { ...old, file, recovery: true };
+      const pending = { ...old, file, recovery: true, drive };
       this.records.set(file.id, pending);
       await this.persist();
       if (!old.path) return structuredClone(pending);
@@ -133,6 +147,7 @@ export class FileStore {
         path: old.path,
         fingerprint: fingerprint(text),
         recovery: false,
+        drive,
       };
       this.records.set(file.id, saved);
       await this.persist();
@@ -150,6 +165,7 @@ export class FileStore {
         path: full,
         fingerprint: fingerprint(text),
         recovery: false,
+        drive: input.drive ?? this.records.get(file.id)?.drive,
       };
       this.records.set(file.id, r);
       await this.persist();
@@ -166,6 +182,7 @@ export class FileStore {
         path: old.path,
         fingerprint: fingerprint(text),
         recovery: false,
+        drive: old.drive,
       };
       this.records.set(id, r);
       await this.persist();

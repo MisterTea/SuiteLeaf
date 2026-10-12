@@ -302,13 +302,51 @@ function validateTree(n: JsonNode, depth = 0) {
       throw new Error("Unsafe document link.");
   for (const c of n.content ?? []) validateTree(c, depth + 1);
 }
-export function parseFile(text: string): SuiteFile {
+export const LEGACY_EXTENSION = "suiteleaf";
+const nativeExtensions = {
+  doc: "sldoc",
+  sheet: "slsheet",
+  slide: "slslides",
+} as const satisfies Record<Kind, string>;
+const nativeMimes = {
+  doc: "application/vnd.suiteleaf.doc+json",
+  sheet: "application/vnd.suiteleaf.sheet+json",
+  slide: "application/vnd.suiteleaf.slides+json",
+} as const satisfies Record<Kind, string>;
+export const NATIVE_EXTENSIONS = [
+  ...Object.values(nativeExtensions),
+  LEGACY_EXTENSION,
+];
+export function extensionFor(kind: Kind): string {
+  return nativeExtensions[kind];
+}
+export function mimeFor(kind: Kind): string {
+  return nativeMimes[kind];
+}
+/** `null` means a legacy `.suiteleaf` name, which may hold any kind; `undefined` is not native. */
+export function kindFromName(name: string): Kind | null | undefined {
+  const base = name.split(/[/\\]/).pop() ?? "";
+  if (!base.includes(".")) return undefined;
+  const ext = base.split(".").pop()?.toLowerCase();
+  if (ext === LEGACY_EXTENSION) return null;
+  return (Object.keys(nativeExtensions) as Kind[]).find(
+    (k) => nativeExtensions[k] === ext,
+  );
+}
+export function isNativeName(name: string): boolean {
+  return kindFromName(name) !== undefined;
+}
+export function parseFile(text: string, expectedKind?: Kind | null): SuiteFile {
   if (new TextEncoder().encode(text).length > 200 * 1024 * 1024)
     throw new Error("Native files must be smaller than 200 MB.");
   const raw = JSON.parse(text);
   if (raw.version !== 1)
     throw new Error("This SuiteLeaf file version is not supported.");
   const file = fileSchema.parse(raw);
+  if (expectedKind && file.kind !== expectedKind)
+    throw new Error(
+      `This .${nativeExtensions[expectedKind]} file contains a ${file.kind}, not a ${expectedKind}.`,
+    );
   if (file.kind === "doc") {
     if (file.content.type !== "doc") throw new Error("Invalid document root.");
     validateTree(file.content);
@@ -457,10 +495,13 @@ export function createFile(
     },
   };
 }
-export function duplicateFile(file: SuiteFile): SuiteFile {
+export function duplicateFile(
+  file: SuiteFile,
+  title = `${file.title.slice(0, 190)} copy`,
+): SuiteFile {
   const copy = structuredClone(file);
   copy.id = crypto.randomUUID();
-  copy.title = `${file.title.slice(0, 190)} copy`;
+  copy.title = title;
   copy.createdAt = copy.updatedAt = new Date().toISOString();
   if (copy.kind === "sheet") copy.content.workbook.id = copy.id;
   if (copy.kind === "slide") copy.content.id = copy.id;
@@ -475,11 +516,38 @@ export function filename(title: string, extension = "suiteleaf") {
       .slice(0, 150) || "Untitled"
   }.${extension}`;
 }
+export function nativeFilename(file: Pick<SuiteFile, "title" | "kind">) {
+  return filename(file.title, extensionFor(file.kind));
+}
+/** Parse a native file using the kind implied by its name. */
+export function parseNamedFile(name: string, text: string): SuiteFile {
+  const kind = kindFromName(name);
+  if (kind === undefined)
+    throw new Error(
+      `SuiteLeaf files use ${NATIVE_EXTENSIONS.map((e) => `.${e}`).join(", ")}.`,
+    );
+  return parseFile(text, kind);
+}
+/** Where a file lives in SuiteDrive. `versionId` is the head version this
+ * copy was loaded from or last saved as. */
+export interface DriveLink {
+  nodeUrl: string;
+  itemId: string;
+  versionId?: string;
+  name: string;
+}
+export const driveLinkSchema = z.object({
+  nodeUrl: z.string().url(),
+  itemId: z.string().min(1),
+  versionId: z.string().optional(),
+  name: z.string().min(1).max(255),
+});
 export interface FileRecord {
   file: SuiteFile;
   path?: string;
   fingerprint?: string;
   recovery?: boolean;
+  drive?: DriveLink;
 }
 export interface StorageAdapter {
   list(): Promise<FileRecord[]>;
@@ -502,7 +570,26 @@ export interface DesktopBridge {
   print(title?: string): Promise<void>;
   onMenu(callback: (action: string) => void): () => void;
   setDirty(dirty: boolean): void;
+  getMode?(): Promise<AppMode>;
+  /** Persist the mode and reload the app in it. */
+  setMode?(mode: AppMode): Promise<void>;
+  /** Run a social sign-in hand-off in a separate window and resolve with
+   * the one-time token it returns. */
+  authWindow?(startUrl: string): Promise<string | null>;
 }
+/**
+ * `single`: files live on this device; no accounts, no shared storage.
+ * `cluster`: the app is a client of a SuiteLeaf server; people sign in and
+ * files live in SuiteDrive, replicated across the cluster's servers.
+ */
+export type AppMode = { kind: "single" } | { kind: "cluster"; serverUrl: string };
+export const appModeSchema: z.ZodType<AppMode> = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("single") }),
+  z.object({
+    kind: z.literal("cluster"),
+    serverUrl: z.string().regex(/^https?:\/\/[^\s/]+(\/[^\s]*)?$/),
+  }),
+]);
 export function columnName(index: number): string {
   let s = "";
   for (let n = index + 1; n > 0; n = Math.floor((n - 1) / 26))

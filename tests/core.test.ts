@@ -8,6 +8,10 @@ import {
   rangeLabel,
   safeLink,
   filename,
+  nativeFilename,
+  mimeFor,
+  kindFromName,
+  parseNamedFile,
   type DocFile,
 } from "../packages/core/src";
 import { pivotResult, shiftRange } from "../apps/web/src/analysis";
@@ -165,6 +169,25 @@ describe("portable files", () => {
       "My Presentation_ Final _ v1.suiteleaf",
     );
     expect(filename("")).toBe("Untitled.suiteleaf");
+  });
+  it("uses a distinct extension and MIME type for each kind", () => {
+    expect(nativeFilename(createFile("doc", "Notes"))).toBe("Notes.sldoc");
+    expect(nativeFilename(createFile("sheet", "Budget"))).toBe(
+      "Budget.slsheet",
+    );
+    expect(nativeFilename(createFile("slide", "Deck"))).toBe("Deck.slslides");
+    expect(mimeFor("sheet")).toBe("application/vnd.suiteleaf.sheet+json");
+    expect(kindFromName("/a.b/Deck.SLSLIDES")).toBe("slide");
+    expect(kindFromName("old.suiteleaf")).toBeNull();
+    expect(kindFromName("report.docx")).toBeUndefined();
+    expect(kindFromName("/Users/jason.gauci/notes")).toBeUndefined();
+    const sheet = serializeFile(createFile("sheet"));
+    expect(parseNamedFile("budget.slsheet", sheet).kind).toBe("sheet");
+    expect(parseNamedFile("legacy.suiteleaf", sheet).kind).toBe("sheet");
+    expect(() => parseNamedFile("budget.sldoc", sheet)).toThrow(
+      "contains a sheet",
+    );
+    expect(() => parseNamedFile("budget.json", sheet)).toThrow(".sldoc");
   });
   it("rejects payload exceeding 50 MB", () => {
     // Large payload check without allocating 50MB string

@@ -45,7 +45,9 @@ export function getThemeMode(): ThemeMode {
   return currentThemeMode;
 }
 
-export function getEffectiveTheme(mode: ThemeMode = currentThemeMode): "dark" | "light" {
+export function getEffectiveTheme(
+  mode: ThemeMode = currentThemeMode,
+): "dark" | "light" {
   if (mode === "dark") return "dark";
   if (mode === "light") return "light";
   return getSystemPrefersDark() ? "dark" : "light";

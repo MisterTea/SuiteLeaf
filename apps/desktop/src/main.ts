@@ -13,8 +13,18 @@ import { join, resolve, extname, sep, basename } from "node:path";
 import { readFile } from "node:fs/promises";
 import { Worker } from "node:worker_threads";
 import { pathToFileURL } from "node:url";
-import { filename, parseFile, type FileRecord } from "@suiteleaf/core";
-import { FileStore, atomicWrite } from "./store";
+import {
+  extensionFor,
+  filename,
+  kindFromName,
+  nativeFilename,
+  parseFile,
+  NATIVE_EXTENSIONS,
+  appModeSchema,
+  type AppMode,
+  type FileRecord,
+} from "@suiteleaf/core";
+import { FileStore, atomicWrite, driveLink } from "./store";
 protocol.registerSchemesAsPrivileged([
   {
     scheme: "suiteleaf",
@@ -23,7 +33,68 @@ protocol.registerSchemesAsPrivileged([
 ]);
 let window: BrowserWindow | null = null,
   store: FileStore,
+  mode: AppMode = { kind: "single" },
   dirty = false;
+const settingsPath = () =>
+  process.env.SUITELEAF_SETTINGS ??
+  join(app.getPath("userData"), "settings.json");
+async function readSettings(): Promise<{ mode?: unknown }> {
+  try {
+    return JSON.parse(await readFile(settingsPath(), "utf8"));
+  } catch {
+    return {};
+  }
+}
+async function setMode(next: AppMode) {
+  mode = appModeSchema.parse(next);
+  await atomicWrite(
+    settingsPath(),
+    JSON.stringify({ ...(await readSettings()), mode }),
+  );
+  buildMenu();
+  window?.webContents.reload();
+}
+/** Run a provider's sign-in on the node's own origin in a child window, and
+ * resolve with the one-time token it redirects back with. */
+function authWindow(startUrl: string): Promise<string | null> {
+  const start = new URL(startUrl);
+  if (start.protocol !== "https:" && start.protocol !== "http:")
+    throw new Error("Invalid sign-in address.");
+  return new Promise((done) => {
+    const child = new BrowserWindow({
+      parent: window ?? undefined,
+      modal: true,
+      width: 520,
+      height: 720,
+      title: "Sign in",
+      webPreferences: {
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+        partition: "persist:suiteleaf-auth",
+      },
+    });
+    let finished = false;
+    const finish = (token: string | null) => {
+      if (finished) return;
+      finished = true;
+      done(token);
+      if (!child.isDestroyed()) child.close();
+    };
+    const intercept = (event: Electron.Event, url: string) => {
+      const match = /#\/auth-complete\?token=([^&]+)/.exec(url);
+      if (match) {
+        event.preventDefault();
+        finish(decodeURIComponent(match[1]));
+      }
+    };
+    child.webContents.on("will-redirect", intercept);
+    child.webContents.on("will-navigate", intercept);
+    child.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    child.on("closed", () => finish(null));
+    void child.loadURL(start.toString());
+  });
+}
 const root = resolve(import.meta.dirname, "../renderer");
 function authorize(event: IpcMainInvokeEvent) {
   if (
@@ -40,6 +111,7 @@ function register(channel: string, handler: (...args: any[]) => unknown) {
 }
 const checked = (r: FileRecord): FileRecord => ({
   file: parseFile(JSON.stringify(r.file)),
+  drive: driveLink(r.drive),
 });
 async function openFile() {
   const result = await dialog.showOpenDialog(window!, {
@@ -47,7 +119,7 @@ async function openFile() {
       {
         name: "SuiteLeaf and Office files",
         extensions: [
-          "suiteleaf",
+          ...NATIVE_EXTENSIONS,
           "docx",
           "xlsx",
           "xls",
@@ -141,7 +213,7 @@ function createWindow() {
       responseHeaders: {
         ...details.responseHeaders,
         "Content-Security-Policy": [
-          "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+          `default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ${mode.kind === "cluster" ? new URL(mode.serverUrl).origin : ""} https: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`,
         ],
       },
     }),
@@ -175,6 +247,9 @@ function createWindow() {
   if (process.env.ELECTRON_RENDERER_URL)
     void window.loadURL(process.env.ELECTRON_RENDERER_URL);
   else void window.loadURL("suiteleaf://app/index.html");
+  buildMenu();
+}
+function buildMenu() {
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
       {
@@ -215,6 +290,27 @@ function createWindow() {
         ],
       },
       {
+        label: "Server",
+        submenu:
+          mode.kind === "single"
+            ? [
+                {
+                  label: "Connect to a SuiteLeaf server…",
+                  click: () => send("connect-server"),
+                },
+              ]
+            : [
+                {
+                  label: `Connected to ${new URL(mode.serverUrl).host}`,
+                  enabled: false,
+                },
+                {
+                  label: "Disconnect and work on this computer",
+                  click: () => void setMode({ kind: "single" }),
+                },
+              ],
+      },
+      {
         label: "Edit",
         submenu: [
           { role: "undo" },
@@ -252,6 +348,8 @@ else {
         join(app.getPath("userData"), "library"),
     );
     await store.init();
+    const saved = appModeSchema.safeParse((await readSettings()).mode);
+    if (saved.success) mode = saved.data;
     protocol.handle("suiteleaf", (request) => {
       const url = new URL(request.url);
       const path = resolve(root, `.${decodeURIComponent(url.pathname)}`);
@@ -275,15 +373,17 @@ else {
     register("files:open", openFile);
     register("files:save-as", async (input: FileRecord) => {
       const r = checked(input);
+      const ext = extensionFor(r.file.kind);
       const result = await dialog.showSaveDialog(window!, {
-        defaultPath: filename(r.file.title),
-        filters: [{ name: "SuiteLeaf file", extensions: ["suiteleaf"] }],
+        defaultPath: nativeFilename(r.file),
+        filters: [{ name: "SuiteLeaf file", extensions: [ext] }],
       });
       if (result.canceled || !result.filePath) return null;
+      const typed = kindFromName(result.filePath);
       const path =
-        extname(result.filePath).toLowerCase() === ".suiteleaf"
+        typed === r.file.kind || typed === null
           ? result.filePath
-          : `${result.filePath}.suiteleaf`;
+          : `${result.filePath}.${ext}`;
       const saved = await store.saveAs(r, path);
       return saved;
     });
@@ -341,6 +441,12 @@ else {
       }
     });
     register("files:reload", (id) => store.reload(id));
+    register("mode:get", () => mode);
+    register("mode:set", (next) => setMode(next));
+    register("auth:window", (url) => {
+      if (typeof url !== "string") throw new Error("Invalid sign-in address.");
+      return authWindow(url);
+    });
     ipcMain.on("dirty", (event, value) => {
       if (event.sender === window?.webContents && typeof value === "boolean")
         dirty = value;
