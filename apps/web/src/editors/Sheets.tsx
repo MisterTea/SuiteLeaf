@@ -829,7 +829,7 @@ export default function Sheets({
         !container.contains(from) &&
         from.matches("input, textarea, select, [contenteditable='true']") &&
         to instanceof HTMLElement &&
-        (container.contains(to) || !!to.closest('[data-u-comp="editor"]'))
+        !!to.closest('[data-u-comp="editor"]')
       )
         from.focus();
     };

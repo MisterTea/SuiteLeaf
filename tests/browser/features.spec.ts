@@ -220,6 +220,7 @@ test("an open cell note closes when the name box moves the selection", async ({
   await page.getByRole("button", { name: "Sheet tools", exact: true }).click();
   await page.getByRole("menuitem", { name: "Add or edit cell note" }).click();
   const note = page.locator('[data-u-comp="note-textarea"]');
+  await expect(note).toBeFocused();
   await note.fill("Includes the September invoice");
   await box.fill("G12");
   await box.press("Enter");
