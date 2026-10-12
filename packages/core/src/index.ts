@@ -529,17 +529,20 @@ export function parseNamedFile(name: string, text: string): SuiteFile {
   return parseFile(text, kind);
 }
 /** Where a file lives in SuiteDrive. `versionId` is the head version this
- * copy was loaded from or last saved as. */
+ * copy was loaded from or last saved as, and `syncedAt` is the file's
+ * `updatedAt` at that moment. */
 export interface DriveLink {
   nodeUrl: string;
   itemId: string;
   versionId?: string;
+  syncedAt?: string;
   name: string;
 }
 export const driveLinkSchema = z.object({
   nodeUrl: z.string().url(),
   itemId: z.string().min(1),
   versionId: z.string().optional(),
+  syncedAt: z.string().optional(),
   name: z.string().min(1).max(255),
 });
 export interface FileRecord {
@@ -548,6 +551,10 @@ export interface FileRecord {
   fingerprint?: string;
   recovery?: boolean;
   drive?: DriveLink;
+}
+/** Whether a SuiteDrive file has local edits that were never uploaded. */
+export function hasUnsyncedEdits(record: FileRecord) {
+  return !!record.drive && record.drive.syncedAt !== record.file.updatedAt;
 }
 export interface StorageAdapter {
   list(): Promise<FileRecord[]>;

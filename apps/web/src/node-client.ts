@@ -154,13 +154,33 @@ export function pendingHandoffUrl() {
   return url;
 }
 
+/** A signed-out session the server may not have revoked yet. */
+const SIGNING_OUT_KEY = "suiteleaf:signing-out";
+
+async function revoke(pending: string) {
+  const { url, token } = JSON.parse(pending) as NodeSession;
+  // Disconnecting waits for this, so a server that never answers can't hold it up.
+  await authClient(url, token)
+    .signOut({ fetchOptions: { signal: AbortSignal.timeout(5000) } })
+    .catch(() => {});
+  if (localStorage.getItem(SIGNING_OUT_KEY) === pending)
+    localStorage.removeItem(SIGNING_OUT_KEY);
+}
+
 export async function signOut() {
   const current = session;
+  if (!current) return;
+  const pending = JSON.stringify({ url: current.url, token: current.token });
+  localStorage.setItem(SIGNING_OUT_KEY, pending);
   setSession(null);
-  if (current)
-    await authClient(current.url, current.token)
-      .signOut()
-      .catch(() => {});
+  await revoke(pending);
+}
+
+/** Revoke a session whose sign-out the app closed before finishing. */
+export async function finishSignOut() {
+  const pending = localStorage.getItem(SIGNING_OUT_KEY);
+  if (pending)
+    await revoke(pending).catch(() => localStorage.removeItem(SIGNING_OUT_KEY));
 }
 
 function requireSession(): NodeSession {
@@ -281,9 +301,16 @@ export const drive = {
 export async function openDriveFile(item: DriveItem): Promise<FileRecord> {
   const { url } = requireSession();
   const { text, versionId } = await drive.read(item.id);
+  const file = parseNamedFile(item.name, text);
   return {
-    file: parseNamedFile(item.name, text),
-    drive: { nodeUrl: url, itemId: item.id, versionId, name: item.name },
+    file,
+    drive: {
+      nodeUrl: url,
+      itemId: item.id,
+      versionId,
+      syncedAt: file.updatedAt,
+      name: item.name,
+    },
   };
 }
 
@@ -305,6 +332,7 @@ export async function uploadDriveFile(
   return {
     ...link,
     versionId: item.headVersionId ?? undefined,
+    syncedAt: file.updatedAt,
     name: item.name,
   };
 }

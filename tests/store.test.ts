@@ -25,6 +25,20 @@ it("autosaves regular files and reopens from a new store", async () => {
   expect((await reopened.get(f.id))?.file.title).toBe("Edited");
   expect(r.recovery).toBe(false);
 });
+it("remembers which local edits were uploaded to SuiteDrive", async () => {
+  const file = createFile("doc");
+  const drive = {
+    nodeUrl: "http://127.0.0.1:8787",
+    itemId: "item",
+    versionId: "v1",
+    syncedAt: file.updatedAt,
+    name: "Untitled document.sldoc",
+  };
+  await store.save({ file, drive });
+  const reopened = new FileStore(join(dir, "data"));
+  await reopened.init();
+  expect((await reopened.get(file.id))?.drive).toEqual(drive);
+});
 it("preserves external changes and retains the conflicting edit as a recovery draft", async () => {
   const f = createFile("doc"),
     path = join(dir, "document.suiteleaf");

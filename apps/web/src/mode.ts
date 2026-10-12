@@ -84,10 +84,10 @@ export async function resolveMode(): Promise<ResolvedMode> {
 
 /** Persist a mode and restart the app in it. */
 export async function switchMode(mode: AppMode) {
+  location.hash = "#/";
   if (window.suiteleaf?.setMode) return window.suiteleaf.setMode(mode);
   if (mode.kind === "single") localStorage.removeItem(KEY);
   else localStorage.setItem(KEY, JSON.stringify(mode));
-  location.hash = "#/";
   location.reload();
 }
 
