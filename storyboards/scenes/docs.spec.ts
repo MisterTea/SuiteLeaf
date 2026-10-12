@@ -480,7 +480,7 @@ test("06-find-and-replace", async ({ page }) => {
   await typeSlowly(page, "recieve", 70);
   const counter = find.locator(".match-counter");
   await expect(counter).toHaveText("1 of 3");
-  await caption(page, "Three matches, all highlighted. The first is selected.", 1400);
+  await caption(page, "Three matches, all highlighted. The current one is darker and outlined.", 1800);
   await find.getByLabel("Replacement text").click();
   await typeSlowly(page, "receive", 70);
 
@@ -489,18 +489,36 @@ test("06-find-and-replace", async ({ page }) => {
   await expect(counter).toHaveText("1 of 2");
   await expect(editor).toContainText("happy to receive");
   await beat(page, 1200);
-  await caption(page, "Previous and Next step through the rest…", 700);
+  await caption(page, "Next: the last one ends a line, so the dialog steps aside to show it.", 900);
   await find.getByRole("button", { name: "Next", exact: true }).click();
   await expect(counter).toHaveText("2 of 2");
-  await beat(page, 700);
+  const current = (await page.locator(".doc-search-current").boundingBox())!;
+  const dialog = (await find.boundingBox())!;
+  expect(
+    current.x < dialog.x + dialog.width &&
+      dialog.x < current.x + current.width &&
+      current.y < dialog.y + dialog.height &&
+      dialog.y < current.y + current.height,
+  ).toBe(false);
+  await beat(page, 2000);
+  await caption(page, "Previous goes back one.", 700);
   await find.getByRole("button", { name: "Previous", exact: true }).click();
   await expect(counter).toHaveText("1 of 2");
-  await beat(page, 700);
+  await beat(page, 900);
+
+  await caption(page, "Like in Google Docs, she can also drag the dialog by its title.", 900);
+  const title = (await find.getByRole("heading", { name: "Find and replace" }).boundingBox())!;
+  await page.mouse.move(title.x + 40, title.y + title.height / 2, { steps: 8 });
+  await page.mouse.down();
+  await page.mouse.move(title.x - 20, title.y + title.height / 2 + 50, { steps: 20 });
+  await page.mouse.up();
+  await beat(page, 900);
 
   await caption(page, "…then Replace all fixes the remaining two at once.", 900);
   await find.getByRole("button", { name: "Replace all", exact: true }).click();
-  await expect(counter).toHaveText("0 of 0");
-  await beat(page, 1000);
+  await expect(counter).toHaveText("No results");
+  await expect(find).toContainText("Replaced 2 instances of “recieve” with “receive”.");
+  await caption(page, "Nothing left to find, and the dialog says what it changed.", 2200);
   await find.getByRole("button", { name: "Close find" }).click();
   await expect(editor).not.toContainText("recieve");
   await expect(editor.getByText(/receive/)).toHaveCount(3);
