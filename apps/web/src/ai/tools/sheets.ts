@@ -149,12 +149,14 @@ function grid(sheet: any, r: ReturnType<typeof parseA1>, maxRows = 60, maxColumn
   return lines.join("\n") + more;
 }
 
-/** A cell's typed value: numbers stay numbers, '=' starts a formula, leading zeros stay text. */
-function cellInput(value: unknown) {
+/** A cell's typed value: numbers stay numbers, '=' starts a formula, codes with leading zeros stay text. */
+export function cellInput(value: unknown): unknown {
   if (typeof value === "number" || typeof value === "boolean") return value;
   const s = String(value ?? "");
   if (s.startsWith("=")) return s;
-  if (/^-?(\d+\.?\d*|\.\d+)$/.test(s) && !/^-?0\d/.test(s)) return Number(s);
+  // Univer would read "007" as the number 7; store it as text (t: 1).
+  if (/^-?0\d+$/.test(s)) return { v: s, t: 1 };
+  if (/^-?(\d+\.?\d*|\.\d+)$/.test(s)) return Number(s);
   const money = /^\$(-?[\d,]+(\.\d+)?)$/.exec(s);
   if (money) return Number(money[1].replace(/,/g, ""));
   return s;

@@ -87,31 +87,31 @@ async function writeLines(editor: Editor, text: string, animate: boolean) {
   for (let i = 0; i < lines.length; i++) {
     let line = lines[i];
     if (i > 0) {
-      if (editor.isActive("listItem")) editor.chain().focus().splitListItem("listItem").run();
-      else editor.chain().focus().splitBlock().run();
+      if (editor.isActive("listItem")) editor.chain().splitListItem("listItem").run();
+      else editor.chain().splitBlock().run();
     }
     const heading = /^(#{1,3})\s+(.*)$/.exec(line);
     const bullet = /^\s*[-*•]\s+(.*)$/.exec(line);
     const numbered = /^\s*\d+[.)]\s+(.*)$/.exec(line);
     const leaveList = () => {
-      while (editor.isActive("listItem") && editor.chain().focus().liftListItem("listItem").run());
+      while (editor.isActive("listItem") && editor.chain().liftListItem("listItem").run());
     };
     if (heading) {
       leaveList();
-      editor.chain().focus().setHeading({ level: heading[1].length as 1 | 2 | 3 }).run();
+      editor.chain().setHeading({ level: heading[1].length as 1 | 2 | 3 }).run();
       line = heading[2];
     } else if (bullet || numbered) {
       const want = bullet ? "bulletList" : "orderedList";
       if (!editor.isActive(want)) {
         leaveList();
-        editor.chain().focus().setParagraph().run();
-        if (bullet) editor.chain().focus().toggleBulletList().run();
-        else editor.chain().focus().toggleOrderedList().run();
+        editor.chain().setParagraph().run();
+        if (bullet) editor.chain().toggleBulletList().run();
+        else editor.chain().toggleOrderedList().run();
       }
       line = (bullet ?? numbered)![1];
     } else {
       leaveList();
-      editor.chain().focus().setParagraph().run();
+      editor.chain().setParagraph().run();
     }
     for (const [index, part] of line.split(/\*\*/).entries()) {
       if (!part) continue;
@@ -134,7 +134,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
   const { editor } = ctx;
   const selectMatch = (text: string, occurrence?: number) => {
     const m = locate(editor, text, occurrence);
-    editor.chain().focus().setTextSelection(m).scrollIntoView().run();
+    editor.chain().setTextSelection(m).scrollIntoView().run();
     return m;
   };
   const blockOf = (text?: string, occurrence?: number) => {
@@ -173,18 +173,28 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         }
       },
       async execute({ text, after, replace_document }) {
-        if (replace_document) editor.chain().focus().clearContent().run();
+        if (replace_document) editor.chain().clearContent().run();
         const list = blocks(editor);
         const empty = list.length === 1 && !list[0].text;
         if (after) {
           const block = list.find((b) => b.text.includes(after)) ?? list.find((b) => b.text.toLowerCase().includes(after.toLowerCase()));
           if (!block) throw new ToolError(`No paragraph contains "${after}".`);
-          editor.chain().focus().setTextSelection(block.end - 1).splitBlock().setParagraph().run();
+          editor.chain().setTextSelection(block.end - 1).splitBlock().run();
+          editor.chain().setParagraph().run();
         } else {
-          editor.chain().focus().setTextSelection(endOfDocument(editor)).run();
-          if (!empty && !replace_document) editor.chain().focus().splitBlock().setParagraph().run();
+          const last = blocks(editor).at(-1);
+          editor.chain().setTextSelection(endOfDocument(editor)).run();
+          // Type into an empty last paragraph rather than after it.
+          if (!empty && !replace_document && (last?.text || last?.type !== "paragraph")) {
+            editor.chain().splitBlock().run();
+            editor.chain().setParagraph().run();
+          }
         }
         await writeLines(editor, text, text.length < 1500);
+        // Typing in the middle can leave the old empty last paragraph behind.
+        const [prev, last] = blocks(editor).slice(-2);
+        if (last && prev && !last.text && last.type === "paragraph" && prev.label === "Paragraph" && last.pos > editor.state.selection.to)
+          editor.view.dispatch(editor.state.tr.delete(last.pos, last.end));
         const typed = text.split("\n").filter((l) => l.trim()).length;
         return `Typed ${typed} paragraph(s). The document now has ${blocks(editor).length} paragraph(s).`;
       },
@@ -201,8 +211,8 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       execute({ text, style }) {
         blockOf(text);
         const level = /Heading (\d)/.exec(style)?.[1];
-        if (level) editor.chain().focus().setHeading({ level: Number(level) as 1 | 2 | 3 }).run();
-        else editor.chain().focus().setParagraph().run();
+        if (level) editor.chain().setHeading({ level: Number(level) as 1 | 2 | 3 }).run();
+        else editor.chain().setParagraph().run();
         return `The paragraph containing "${text}" is now ${style}.`;
       },
     }),
@@ -233,7 +243,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         selectMatch(args.text, args.occurrence);
         const set = (on: boolean | undefined, mark: string) => {
           if (on === undefined) return;
-          const chain = editor.chain().focus();
+          const chain = editor.chain();
           (on ? chain.setMark(mark) : chain.unsetMark(mark)).run();
         };
         set(args.bold, "bold");
@@ -242,11 +252,11 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         set(args.strikethrough, "strike");
         set(args.superscript, "superscript");
         set(args.subscript, "subscript");
-        if (args.color) editor.chain().focus().setColor(args.color).run();
-        if (args.highlight === "none") editor.chain().focus().unsetHighlight().run();
-        else if (args.highlight) editor.chain().focus().setHighlight({ color: args.highlight }).run();
-        if (args.font) editor.chain().focus().setFontFamily(args.font).run();
-        if (args.size) editor.chain().focus().setFontSize(`${args.size}pt`).run();
+        if (args.color) editor.chain().setColor(args.color).run();
+        if (args.highlight === "none") editor.chain().unsetHighlight().run();
+        else if (args.highlight) editor.chain().setHighlight({ color: args.highlight }).run();
+        if (args.font) editor.chain().setFontFamily(args.font).run();
+        if (args.size) editor.chain().setFontSize(`${args.size}pt`).run();
         return `Formatted "${args.text}".`;
       },
     }),
@@ -264,10 +274,10 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       execute({ from_text, to_text, list }) {
         const start = locate(editor, from_text);
         const end = to_text ? locate(editor, to_text) : start;
-        editor.chain().focus().setTextSelection({ from: start.from, to: Math.max(start.to, end.to) }).run();
+        editor.chain().setTextSelection({ from: start.from, to: Math.max(start.to, end.to) }).run();
         const bullet = editor.isActive("bulletList"),
           numbered = editor.isActive("orderedList");
-        const chain = editor.chain().focus();
+        const chain = editor.chain();
         if (list === "bullet" && !bullet) chain.toggleBulletList().run();
         else if (list === "numbered" && !numbered) chain.toggleOrderedList().run();
         else if (list === "none") {
@@ -286,7 +296,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         document.querySelector(`[aria-label="${alignment === "justify" ? "Justify" : `Align ${alignment}`}"]`),
       execute({ text, alignment }) {
         blockOf(text);
-        editor.chain().focus().setTextAlign(alignment).run();
+        editor.chain().setTextAlign(alignment).run();
         return `Aligned the paragraph ${alignment}.`;
       },
     }),
@@ -307,16 +317,17 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         const list = blocks(editor);
         const block = after ? list.find((b) => b.text.includes(after)) : list.at(-1);
         if (after && !block) throw new ToolError(`No paragraph contains "${after}".`);
-        editor.chain().focus().setTextSelection((block?.end ?? 1) - 1).run();
-        if (block?.text) editor.chain().focus().splitBlock().setParagraph().run();
-        editor.chain().focus().insertTable({ rows, cols, withHeaderRow: header_row }).run();
+        editor.chain().setTextSelection((block?.end ?? 1) - 1).run();
+        if (block?.text) editor.chain().splitBlock().run();
+          editor.chain().setParagraph().run();
+        editor.chain().insertTable({ rows, cols, withHeaderRow: header_row }).run();
         // Fill cell by cell, moving with Tab like a person would.
         for (let r = 0; r < rows; r++)
           for (let c = 0; c < cols; c++) {
             const value = cells[r]?.[c] ?? "";
-            if (value) editor.chain().focus().insertContent(value).run();
+            if (value) editor.chain().insertContent(value).run();
             await wait(25);
-            if (r < rows - 1 || c < cols - 1) editor.chain().focus().goToNextCell().run();
+            if (r < rows - 1 || c < cols - 1) editor.chain().goToNextCell().run();
           }
         return `Inserted a ${rows}×${cols} table.`;
       },
@@ -339,12 +350,12 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         try {
           range = selectMatch(text);
         } catch {
-          editor.chain().focus().setTextSelection(endOfDocument(editor)).insertContent(" ").run();
+          editor.chain().setTextSelection(endOfDocument(editor)).insertContent(" ").run();
           const from = editor.state.selection.from;
-          editor.chain().focus().insertContent(text).run();
+          editor.chain().insertContent(text).run();
           range = { from, to: from + text.length };
         }
-        editor.chain().focus().setTextSelection(range).setLink({ href }).run();
+        editor.chain().setTextSelection(range).setLink({ href }).run();
         editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, range.to)));
         return `Linked "${text}" to ${href}.`;
       },
@@ -362,7 +373,8 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         if (after) {
           const block = blocks(editor).find((b) => b.text.includes(after));
           if (!block) throw new ToolError(`No paragraph contains "${after}".`);
-          editor.chain().focus().setTextSelection(block.end - 1).splitBlock().setParagraph().run();
+          editor.chain().setTextSelection(block.end - 1).splitBlock().run();
+          editor.chain().setParagraph().run();
         }
         await ctx.insertImage(file);
         return `Inserted the photo "${file.name}".`;
@@ -464,7 +476,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       execute({ before_text }) {
         const block = blocks(editor).find((b) => b.text.includes(before_text));
         if (!block) throw new ToolError(`No paragraph contains "${before_text}".`);
-        editor.chain().focus().setTextSelection(block.pos + 1).setPageBreak().run();
+        editor.chain().setTextSelection(block.pos + 1).setPageBreak().run();
         return `Inserted a page break before "${before_text}".`;
       },
     }),

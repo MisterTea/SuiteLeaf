@@ -375,12 +375,26 @@ export const agentSession = new AgentSession();
 
 declare global {
   interface Window {
-    /** Read-only view for automated recordings: transcript and run metrics. */
-    __suiteleafAgent?: { state: () => AgentUiState; metrics: () => AgentMetrics; items: () => TranscriptItem[] };
+    /** For automated recordings and tool tests: transcript, run metrics, and the tools themselves. */
+    __suiteleafAgent?: {
+      state: () => AgentUiState;
+      metrics: () => AgentMetrics;
+      items: () => TranscriptItem[];
+      tools: () => string[];
+      /** Run one tool directly, as the agent would (tests the tool, not the model). */
+      callTool: (name: string, args: unknown) => Promise<string>;
+    };
   }
 }
 window.__suiteleafAgent = {
   state: () => agentSession.state,
   metrics: () => structuredClone(agentSession.metrics),
   items: () => structuredClone(agentSession.items),
+  tools: () => currentSuiteTools().map((t) => t.name),
+  async callTool(name, args) {
+    const t = currentSuiteTools().find((x) => x.name === name);
+    if (!t) throw new Error(`No tool ${name} here.`);
+    const result = await toAgentTool(t).execute("test", args as never);
+    return result.content.map((c) => (c.type === "text" ? c.text : "")).join("");
+  },
 };
