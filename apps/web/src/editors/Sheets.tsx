@@ -2445,6 +2445,7 @@ export default function Sheets({
           ref={spelling}
           bookRef={book}
           hostRef={host}
+          engineRef={engine}
           fileId={file.id}
           ready={ready}
           persist={() => persist.current()}
@@ -2725,7 +2726,11 @@ export default function Sheets({
 
         <span className="toolbar-divider" />
 
-        <Tool label="Insert link (Cmd+K)" disabled={readOnly} onClick={() => links.current?.open()}>
+        <Tool
+          label="Insert link (Cmd+K)"
+          disabled={readOnly}
+          onClick={() => links.current?.open()}
+        >
           <Link size={16} />
         </Tool>
         <Tool

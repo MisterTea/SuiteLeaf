@@ -1,13 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
+  applySuggestionCase,
+  boxesOverlap,
+  changeAllCells,
+  changeAllValues,
   collectSheetIssues,
   collectSlideIssues,
   misspellingsInText,
   plainCellText,
   replaceSlideWord,
   replaceWordAt,
+  spellingMenuPosition,
   suggestionsFor,
+  textAfterChangeAll,
+  withIgnoredCell,
+  withoutIgnoredCells,
   wordBand,
+  type Box,
+  type SheetIssue,
 } from "../apps/web/src/editors/grid-spelling";
 import { addToPersonalDictionary, type PersonalDictionary } from "../apps/web/src/editors/doc-spelling";
 
@@ -99,5 +109,101 @@ describe("grid spelling", () => {
       x: 2 + 8 * 8,
       width: 7 * 8,
     });
+  });
+
+  it("places the right-click menu beside the cell without covering the word", () => {
+    const menu = { width: 220, height: 132 };
+    const covers = (pos: { left: number; top: number }, word: Box) =>
+      boxesOverlap({ left: pos.left, top: pos.top, width: menu.width, height: menu.height }, word);
+
+    const word = { left: 220, top: 210, width: 54, height: 24 };
+    const cell = { left: 160, top: 210, width: 300, height: 24 };
+    const beside = spellingMenuPosition(cell, word, menu, { width: 1280, height: 800 });
+    expect(beside.left).toBeGreaterThanOrEqual(cell.left + cell.width);
+    expect(covers(beside, word)).toBe(false);
+
+    const wideCell = { left: 16, top: 180, width: 1000, height: 24 };
+    const wideWord = { left: 400, top: 180, width: 54, height: 24 };
+    const below = spellingMenuPosition(wideCell, wideWord, menu, { width: 1100, height: 800 });
+    expect(below.top).toBeGreaterThanOrEqual(wideCell.top + wideCell.height);
+    expect(covers(below, wideWord)).toBe(false);
+
+    const phoneWord = { left: 80, top: 180, width: 48, height: 22 };
+    const phoneCell = { left: 40, top: 180, width: 200, height: 22 };
+    const phone = spellingMenuPosition(phoneCell, phoneWord, menu, { width: 390, height: 700 });
+    expect(phone.left).toBeGreaterThanOrEqual(8);
+    expect(phone.left + menu.width).toBeLessThanOrEqual(382);
+    expect(covers(phone, phoneWord)).toBe(false);
+    expect(suggestionsFor("recieve")[0]).toBe("receive");
+  });
+
+  it("change all lists the same misspelling and skips a different typo or an ignored cell", () => {
+    const recieve = (label: string, row: number, text: string, from: number): SheetIssue => ({
+      key: `${label}:${from}`,
+      label,
+      text,
+      word: "recieve",
+      from,
+      to: from + 7,
+      sheetId: "s1",
+      row,
+      column: 1,
+    });
+    const issues = [
+      recieve("B2", 1, "We will recieve the grant", 8),
+      recieve("B4", 3, "Please recieve the keys", 7),
+      {
+        key: "B6",
+        label: "B6",
+        text: "seperate the copies",
+        word: "seperate",
+        from: 0,
+        to: 8,
+        sheetId: "s1",
+        row: 5,
+        column: 1,
+      },
+    ];
+    expect(changeAllCells(issues, "recieve").map((cell) => cell.label)).toEqual(["B2", "B4"]);
+    const ignored = withIgnoredCell([], { sheetId: "s1", row: 3, column: 1, word: "Recieve" });
+    expect(withIgnoredCell(ignored, ignored[0]!).map((cell) => cell.row)).toEqual([3]);
+    const visible = withoutIgnoredCells(issues, ignored);
+    expect(changeAllCells(visible, "recieve").map((cell) => cell.label)).toEqual(["B2"]);
+    expect(visible.map((issue) => issue.label)).toEqual(["B2", "B6"]);
+  });
+
+  it("rewrites every copy in a cell and keeps the surrounding words", () => {
+    expect(applySuggestionCase("Recieve", "receive")).toBe("Receive");
+    expect(applySuggestionCase("RECIEVE", "receive")).toBe("RECEIVE");
+    expect(
+      textAfterChangeAll(
+        "recieve the recieve keys",
+        [
+          { from: 0, to: 7, word: "recieve" },
+          { from: 12, to: 19, word: "recieve" },
+        ],
+        "receive",
+      ),
+    ).toBe("receive the receive keys");
+    expect(textAfterChangeAll("recieve", [{ from: 0, to: 7, word: "receive" }], "receive")).toBeNull();
+    const cells = changeAllCells(
+      [
+        {
+          key: "a",
+          label: "B2",
+          text: "We will recieve the grant",
+          word: "recieve",
+          from: 8,
+          to: 15,
+          sheetId: "s1",
+          row: 1,
+          column: 1,
+        },
+      ],
+      "recieve",
+    );
+    const values = changeAllValues(cells, () => "We will recieve the grant", "receive");
+    expect(values.get("s1")?.[1]?.[1]).toBe("We will receive the grant");
+    expect(changeAllValues(cells, () => "already receive", "receive").size).toBe(0);
   });
 });

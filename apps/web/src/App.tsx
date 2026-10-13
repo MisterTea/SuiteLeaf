@@ -90,9 +90,9 @@ import {
   type DriveRole,
 } from "./node-client";
 import { DriveBrowser, DriveDialog, NameDialog } from "./drive/DriveBrowser";
+import { FileComments } from "./drive/file-comments";
 import { LastEdited } from "./drive/LastEdited";
 import { requestLastEditRefresh } from "./drive/last-edit";
-import { FileComments } from "./drive/file-comments";
 import { ShareDialog } from "./drive/ShareDialog";
 import { ShareNotices } from "./drive/share-notices";
 import { searchFile } from "./library-search";
