@@ -109,7 +109,11 @@ export function driveTools(ctx: DriveAgentContext): SuiteTool[] {
       throw new ToolError(`Nothing called "${name}" in ${control().path.join(" › ")}. Here: ${items.map(describeItem).join(", ") || "nothing"}.`);
     return item;
   };
-  const row = (name: string) => document.querySelector(`.drive-item[aria-label="${CSS.escape(name)}"]`);
+  const row = (name: string) => {
+    const el = document.querySelector(`.drive-item[aria-label="${CSS.escape(name)}"]`);
+    el?.scrollIntoView({ block: "nearest" });
+    return el;
+  };
   return [
     tool({
       name: "list_drive",
