@@ -26,7 +26,14 @@ const rgb = (v: unknown) =>
         .toUpperCase()}`
     : /^#[\da-f]{6}$/i.test(String(v))
       ? `FF${String(v).slice(1).toUpperCase()}`
-      : "FF000000";
+      : /^rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+/i.test(String(v))
+        ? `FF${String(v)
+            .match(/\d+/g)!
+            .slice(0, 3)
+            .map((n) => Math.min(255, Number(n)).toString(16).padStart(2, "0"))
+            .join("")
+            .toUpperCase()}`
+        : "FF000000";
 const rangeRef = (r: Data) =>
   `${columnName(r.startColumn)}${r.startRow + 1}:${columnName(r.endColumn)}${r.endRow + 1}`;
 const xml = (body: string) =>
