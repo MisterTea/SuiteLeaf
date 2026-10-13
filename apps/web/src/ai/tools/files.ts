@@ -230,7 +230,7 @@ export function homeTools(ctx: HomeAgentContext): SuiteTool[] {
       name: "open_from_computer",
       label: "Open / import",
       description:
-        "Open the file picker so the user can choose a file from their computer (SuiteLeaf files, Word, Excel, PowerPoint, CSV, HTML). The chosen file opens in an editor.",
+        "Open or import a file that is not in the library: an email attachment, a download or any Word, Excel, PowerPoint, CSV, HTML or SuiteLeaf file on the user's computer. The user picks it in a file picker, so you don't need its name. The chosen file opens in an editor.",
       parameters: Type.Object({}),
       target: () => [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Open / import")),
       async execute() {
