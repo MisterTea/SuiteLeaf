@@ -173,6 +173,18 @@ export function createGemmaStreamFn(model: LocalModel, options: GemmaStreamOptio
     const pump = (final: boolean) => {
       for (;;) {
         if (mode === "text") {
+          // Gemma sometimes starts a reply with a call but leaves out the opening <|tool_call>.
+          if (!output.content.some((c) => c.type === "text")) {
+            const rest = raw.slice(done).trimStart();
+            if (rest.startsWith("call:")) {
+              const at = raw.indexOf("call:", done);
+              raw = raw.slice(0, at) + TOOL_CALL + raw.slice(at);
+              done = at + TOOL_CALL.length;
+              mode = "tool";
+              continue;
+            }
+            if (!final && "call:".startsWith(rest)) return;
+          }
           let at = -1,
             marker = "";
           for (const m of MARKERS) {
