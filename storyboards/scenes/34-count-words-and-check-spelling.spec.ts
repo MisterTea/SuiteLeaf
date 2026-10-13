@@ -51,7 +51,17 @@ async function wordPoint(page: Page, word: string, edge: "center" | "end" = "cen
             range.setStart(node, at);
             range.setEnd(node, at + value.word.length);
             const rect = range.getBoundingClientRect();
-            if (rect.width > 0) {
+            const stage = root.closest(".document-stage");
+            const bounds = stage?.getBoundingClientRect();
+            const visible =
+              rect.width > 0 &&
+              rect.height > 0 &&
+              (!bounds ||
+                (rect.top >= bounds.top &&
+                  rect.bottom <= bounds.bottom &&
+                  rect.left >= bounds.left &&
+                  rect.right <= bounds.right));
+            if (visible) {
               found = {
                 x: value.edge === "end" ? rect.right + 4 : rect.x + rect.width / 2,
                 y: rect.y + rect.height / 2,

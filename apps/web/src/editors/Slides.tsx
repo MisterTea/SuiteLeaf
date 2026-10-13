@@ -1981,7 +1981,7 @@ ${slidesHtml}
                   role="option"
                   data-slide-id={id}
                   aria-selected={isChosen}
-                  aria-label={`Slide ${index + 1}${heading ? `: ${heading}` : ""}${slide?.transition && slide.transition.type !== "none" ? `, ${slide.transition.type} transition` : ""}`}
+                  aria-label={`Slide ${index + 1}${slide?.transition && slide.transition.type !== "none" ? `, ${slide.transition.type} transition` : ""}${heading ? `: ${heading}` : ""}`}
                   className={`thumbnail-row ${isChosen ? "selected" : ""} ${isActive ? "active" : ""} ${slideDrag?.over != null && slideDrag.ids.includes(id) ? "drag-source" : ""} ${dropClass}`}
                   onMouseDown={(e) => {
                     if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey)
@@ -2001,11 +2001,9 @@ ${slidesHtml}
                     if (suppressThumbnailClick.current) return;
                     thumbnailsRef.current?.focus();
                     if (e.shiftKey) {
-                      applySelection(
-                        id,
-                        rangeIds(deck.slideOrder, anchorRef.current, id),
-                        null,
-                      );
+                      const ids = rangeIds(deck.slideOrder, anchorRef.current, id);
+                      applySelection(id, ids, null);
+                      if (ids.length > 1) setTransitionScope("selected");
                       return;
                     }
                     if (e.metaKey || e.ctrlKey) {

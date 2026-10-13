@@ -392,9 +392,9 @@ test("32-give-a-deck-a-theme-and-transitions", async ({ page }) => {
   await page.getByRole("option", { name: "Slide 6, fade transition" }).click({ modifiers: ["Shift"] });
   await expect(page.getByRole("button", { name: /Selected \(3\)/ })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "None", exact: true }).click();
-  await expect(page.getByRole("option", { name: "Slide 4", exact: true })).toBeVisible();
-  await expect(page.getByRole("option", { name: "Slide 5", exact: true })).toBeVisible();
-  await expect(page.getByRole("option", { name: "Slide 6", exact: true })).toBeVisible();
+  await expect(page.getByRole("option", { name: "Slide 4: The evening" })).toBeVisible();
+  await expect(page.getByRole("option", { name: "Slide 5: Who it's for" })).toBeVisible();
+  await expect(page.getByRole("option", { name: "Slide 6: What we need" })).toBeVisible();
   await expect(page.getByRole("option", { name: "Slide 3, fade transition" })).toBeVisible();
   await expect(page.getByRole("option", { name: "Slide 7, fade transition" })).toBeVisible();
   await expect(page.locator(".thumbnail-transition")).toHaveCount(8);
