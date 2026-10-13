@@ -18,7 +18,7 @@
 .page-setup-dialog .dialog-body.page-setup-fields {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
   max-height: none;
   flex: 1 1 auto;
   min-height: 0;
@@ -27,6 +27,21 @@
 }
 .page-setup-dialog .dialog-footer {
   margin-top: 0;
+}
+.measure-gutter {
+  display: grid;
+  grid-template-columns: 6.2em 7em minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+.measure-gutter > label {
+  display: contents;
+}
+.measure-gutter > p {
+  margin: 0;
+}
+.measure-gutter .gutter-preview {
+  grid-column: 1 / -1;
 }
 
 .page-setup-basics {

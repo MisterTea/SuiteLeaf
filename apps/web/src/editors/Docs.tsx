@@ -108,6 +108,7 @@ import {
   documentHtml,
   documentPageSettings,
   edgeDistancesValid,
+  gutterAccepted,
   pageDimensions,
   pageMarginsValid,
   type PageSettings,
@@ -1097,6 +1098,7 @@ export default function Docs({
   const pageDraftValid =
     pageMarginsValid(pageDraft) &&
     edgeDistancesValid(pageDraft) &&
+    gutterAccepted(pageDraft.gutter) &&
     Number.isInteger(pageDraft.pageNumberStart) &&
     pageDraft.pageNumberStart >= 1 &&
     pageDraft.pageNumberStart <= 9999;

@@ -153,10 +153,12 @@ export function PageSetupFit({
           {field("marginLeft")}
           {field("marginRight")}
         </div>
-        <GutterField
-          px={draft.gutter}
-          onPx={(gutter) => onChange({ ...draft, gutter })}
-        />
+        <div className="measure-gutter">
+          <GutterField
+            px={draft.gutter}
+            onPx={(gutter) => onChange({ ...draft, gutter })}
+          />
+        </div>
         <p
           className="page-margin-note"
           aria-live="polite"
