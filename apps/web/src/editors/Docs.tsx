@@ -107,10 +107,12 @@ import {
 } from "@suiteleaf/core/document-layout";
 import { PageSetupFields } from "./page-setup";
 import { PageFurniture } from "./doc-header-editor";
+import { columnLayout } from "./doc-columns";
 
 export const extensions: Extensions = [
   DocumentPagination,
   PageBreak,
+  columnLayout,
   ...documentNotes,
   ...documentCitations,
   StarterKit.configure({
@@ -734,6 +736,9 @@ export default function Docs({
           editor.chain().focus().unsetAllMarks().clearNodes().run(),
         align: (alignment) =>
           editor.chain().focus().setTextAlign(alignment).run(),
+        setColumns: (columns: 1 | 2) =>
+          editor.chain().focus().setColumns(columns).run(),
+        columnCount: () => (editor.isActive("columnLayout") ? 2 : 1),
         toggleBold: () => editor.chain().focus().toggleBold().run(),
         toggleItalic: () => editor.chain().focus().toggleItalic().run(),
         toggleUnderline: () => editor.chain().focus().toggleUnderline().run(),

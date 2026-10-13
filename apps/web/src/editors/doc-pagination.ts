@@ -176,6 +176,12 @@ export const DocumentPagination = Extension.create({
                   boundaries.push({ pos, top, bottom });
                   return false;
                 }
+                if (node.type.name === "columnLayout") {
+                  // The two columns share one vertical band, so a page break
+                  // belongs to the group rather than to each paragraph.
+                  boundaries.push({ pos, top, bottom });
+                  return false;
+                }
                 if (
                   !node.isTextblock ||
                   parent?.type.name === "tableCell" ||
