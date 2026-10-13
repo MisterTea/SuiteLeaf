@@ -450,6 +450,10 @@ function blocks(
       n.type === "image"
         ? runs({ type: "paragraph", content: [n] }, plan, notes, library)
         : runs(n, plan, notes, library);
+    const caption =
+      n.type === "image" && typeof n.attrs?.caption === "string"
+        ? n.attrs.caption.trim()
+        : "";
     const spacing =
       n.type === "paragraph" || n.type === "heading"
         ? { ...docxLineSpacing(n.attrs?.lineSpacing), ...docxParagraphGap(n.attrs) }
@@ -490,6 +494,14 @@ function blocks(
             : { bullet: { level: list.level } }
           : {}),
       }),
+      // The caption is the next paragraph. The description stays on the drawing.
+      ...(caption
+        ? [
+            new Paragraph({
+              children: [new TextRun({ text: caption, size: 18 })],
+            }),
+          ]
+        : []),
     ];
   });
 }

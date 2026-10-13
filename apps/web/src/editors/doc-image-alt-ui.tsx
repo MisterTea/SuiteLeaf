@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
 import { useEditorState } from "@tiptap/react";
 import { X } from "lucide-react";
-import { applyImageAlt, placeImageAltCard, selectedImage } from "./doc-image-alt";
+import { applyImageAlt, applyImageCaption, placeImageAltCard, selectedImage } from "./doc-image-alt";
 
 /** Alt text for the selected photo, beside the image and clear of the resize handles. */
 export function DocImageAlt({ editor }: { editor: Editor | null }) {
@@ -16,10 +16,16 @@ export function DocImageAlt({ editor }: { editor: Editor | null }) {
   });
   const [openFor, setOpenFor] = useState<number | null>(null);
   const [draft, setDraft] = useState("");
+  const [captionFor, setCaptionFor] = useState<number | null>(null);
+  const [captionDraft, setCaptionDraft] = useState("");
   const [box, setBox] = useState<{ top: number; left: number } | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const fieldRef = useRef<HTMLTextAreaElement>(null);
   const open = selection != null && openFor === selection.pos;
+  if (selection && captionFor !== selection.pos) {
+    setCaptionFor(selection.pos);
+    setCaptionDraft(selection.caption);
+  }
 
   useEffect(() => {
     if (open) fieldRef.current?.focus();
@@ -82,12 +88,20 @@ export function DocImageAlt({ editor }: { editor: Editor | null }) {
         visibility: box ? "visible" : "hidden",
       }}
       onMouseDown={(event) => {
-        const field = (event.target as HTMLElement).closest("textarea");
-        if (field instanceof HTMLTextAreaElement) {
+        const target = event.target as HTMLElement;
+        const field = target.closest("textarea, input");
+        if (field instanceof HTMLTextAreaElement || field instanceof HTMLInputElement) {
           if (document.activeElement !== field) {
             event.preventDefault();
             field.focus();
           }
+          return;
+        }
+        const label = target.closest("label");
+        const labeled = label?.querySelector("input, textarea");
+        if (labeled instanceof HTMLInputElement || labeled instanceof HTMLTextAreaElement) {
+          event.preventDefault();
+          labeled.focus();
           return;
         }
         event.preventDefault();
@@ -150,6 +164,23 @@ export function DocImageAlt({ editor }: { editor: Editor | null }) {
           </p>
         </>
       )}
+      <label className="image-caption-field">
+        <span>Caption</span>
+        <input
+          aria-label="Caption"
+          placeholder="Line under the photo"
+          spellCheck={false}
+          value={captionDraft}
+          onChange={(event) => {
+            const next = event.target.value;
+            setCaptionDraft(next);
+            if (editor) applyImageCaption(editor, selection.pos, next);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") event.preventDefault();
+          }}
+        />
+      </label>
     </div>,
     document.body,
   );

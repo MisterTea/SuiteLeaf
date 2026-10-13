@@ -67,6 +67,15 @@ export const croppableImage = Image.extend({
   addAttributes() {
     return {
       ...this.parent?.(),
+      // Optional. Older documents omit it and still open.
+      caption: {
+        default: "",
+        parseHTML: (element: HTMLElement) => element.getAttribute("data-caption") ?? "",
+        renderHTML: (attributes: Record<string, unknown>) => {
+          const caption = typeof attributes.caption === "string" ? attributes.caption : "";
+          return caption ? { "data-caption": caption } : {};
+        },
+      },
       cropLeft: cropAttribute("cropLeft", "data-crop-left"),
       cropTop: cropAttribute("cropTop", "data-crop-top"),
       cropRight: cropAttribute("cropRight", "data-crop-right"),
@@ -290,6 +299,17 @@ export const croppableImage = Image.extend({
         });
       };
 
+      const captionEl = document.createElement("p");
+      captionEl.className = "doc-image-caption";
+      captionEl.contentEditable = "false";
+      const syncCaption = (attrs: Record<string, unknown> | null | undefined) => {
+        const text = typeof attrs?.caption === "string" ? attrs.caption : "";
+        captionEl.textContent = text;
+        // A blank caption leaves no line. The description stays on the image.
+        captionEl.hidden = text.trim() === "";
+      };
+      syncCaption(start.attrs);
+
       const syncSource = (src: unknown) => {
         if (typeof src === "string" && src !== "") {
           if (img.getAttribute("src") !== src) img.src = src;
@@ -329,6 +349,7 @@ export const croppableImage = Image.extend({
         }
         paint(imageCrop(updated.attrs));
         syncImageWrap(host, updated.attrs);
+        syncCaption(updated.attrs);
         return true;
       };
 
@@ -377,6 +398,7 @@ export const croppableImage = Image.extend({
         host.dataset.inline = "true";
         img.setAttribute("data-inline", "true");
       }
+      host.appendChild(captionEl);
       host.appendChild(actions);
       host.addEventListener("mousedown", (event) => {
         if (event.button !== 0) return;
@@ -402,6 +424,7 @@ export const croppableImage = Image.extend({
           // Reopening mounts this view before the editor view exists.
         }
         paint(imageCrop(attrs));
+        syncCaption(attrs);
         syncImageWrap(host, attrs);
       };
       host.style.visibility = "hidden";

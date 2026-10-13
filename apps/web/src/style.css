@@ -1809,6 +1809,21 @@ a {
   max-width: 100%;
   margin-top: 8px;
 }
+/* Smaller than the 11pt body. Hidden when the caption is cleared. */
+.document-content .doc-image-caption {
+  display: block;
+  max-width: 100%;
+  margin: 4px 0 0;
+  color: #3c4043;
+  font-family: Arial, sans-serif;
+  font-size: 9pt;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.document-content p.doc-image-caption[hidden] {
+  display: none;
+}
 .ProseMirror-selectednode.doc-image-host > .doc-image-actions,
 .doc-image-host[data-cropping="true"] > .doc-image-actions,
 .doc-image-host:focus-within > .doc-image-actions {
@@ -1981,6 +1996,25 @@ a {
   display: flex;
   justify-content: flex-end;
   margin-top: 8px;
+}
+.image-caption-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+}
+.image-caption-field span {
+  font-size: 12px;
+  font-weight: 600;
+}
+.image-caption-field input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #c4c7c5;
+  border-radius: 8px;
+  padding: 8px;
+  font: 14px/1.4 Arial, sans-serif;
+  color: #1f1f1f;
 }
 @media print {
   .image-alt-card {
