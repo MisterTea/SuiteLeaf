@@ -109,3 +109,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 51 | [Hand over a file, and let a share expire](51-transfer-ownership-and-expire-a-share.md) | cluster | Docs |
 | 52 | [Restore one paragraph](52-restore-one-paragraph.md) | cluster | Docs |
 | 53 | [Link a cell](53-link-a-cell.md) | single-node | Sheets |
+| 54 | [Spell a sheet and a deck](54-spell-a-sheet-and-a-deck.md) | single-node | Sheets, Slides |
