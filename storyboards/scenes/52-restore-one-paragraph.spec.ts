@@ -21,6 +21,20 @@ function at(daysAgo: number, hour: number, minute: number) {
   return d.toISOString();
 }
 
+/** A time earlier today, so it stays above "now" no matter when the scene is recorded. */
+function earlierToday() {
+  const now = new Date();
+  const d = new Date(now.getTime() - 30 * 60 * 1000);
+  if (d.toDateString() !== now.toDateString()) d.setHours(0, 1, 0, 0);
+  return d.toISOString();
+}
+
+function todayClock(iso: string) {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `Today ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function text(value: string, marks?: { type: string }[]) {
   return marks ? { type: "text", text: value, marks } : { type: "text", text: value };
 }
@@ -108,7 +122,8 @@ test("52-restore-one-paragraph", async ({ page }) => {
   const office = await startServer();
   const library = await startServer({ dataDir: office.dataDir, p2p: office.p2p });
   const yesterday = at(1, 18, 2);
-  const morning = at(0, 9, 14);
+  const morning = earlierToday();
+  const samClock = todayClock(morning);
   const fileId = crypto.randomUUID();
   const agreed = document(fileId, [
     paragraph("North bed: 6am"),
@@ -247,7 +262,7 @@ con.commit()`,
     await page.getByRole("button", { name: "Version history", exact: true }).click();
     await expect(panel.getByText("Restored the north-bed paragraph", { exact: true })).toBeVisible();
     await expect(panel.getByText("Agreed rota", { exact: true })).toBeVisible();
-    await expect(panel.getByText("Today 09:14 · Sam Okafor")).toBeVisible();
+    await expect(panel.getByText(`${samClock} · Sam Okafor`)).toBeVisible();
     await expect(editor).toContainText("North bed: 6am");
     await expect(editor).toContainText("Thursday: ask Alex to cover.");
     await beat(page, 1600);
