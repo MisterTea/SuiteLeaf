@@ -159,10 +159,12 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       name: "write_text",
       label: "Type text",
       description:
-        "Type text into the document. Each line becomes a paragraph. Start a line with '# ', '## ' or '### ' for a heading, '- ' for a bullet, '1. ' for a numbered item; wrap words in **double asterisks** for bold. By default the text goes at the end of the document; give `after` to put it after a paragraph containing that text, or set `replace_document` to start over.",
+        "Type text into the document. Each line becomes a paragraph. Start a line with '# ', '## ' or '### ' for a heading, '- ' for a bullet, '1. ' for a numbered item; wrap words in **double asterisks** for bold. By default the text goes at the end of the document; give `after` to put it after a paragraph containing that text (a heading's text puts it right under that heading), or set `replace_document` to start over.",
       parameters: Type.Object({
         text: Type.String({ description: "The text to type." }),
-        after: Type.Optional(Type.String({ description: "Put the text in a new paragraph after the paragraph containing this text." })),
+        after: Type.Optional(
+          Type.String({ description: "Put the text in a new paragraph after the paragraph or heading containing this text." }),
+        ),
         replace_document: Type.Optional(Type.Boolean({ description: "Replace everything in the document." })),
       }),
       target: ({ after }) => {
@@ -177,7 +179,10 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         const list = blocks(editor);
         const empty = list.length === 1 && !list[0].text;
         if (after) {
-          const block = list.find((b) => b.text.includes(after)) ?? list.find((b) => b.text.toLowerCase().includes(after.toLowerCase()));
+          const block =
+            list.find((b) => b.text.trim() === after.trim()) ??
+            list.find((b) => b.text.includes(after)) ??
+            list.find((b) => b.text.toLowerCase().includes(after.toLowerCase()));
           if (!block) throw new ToolError(`No paragraph contains "${after}".`);
           editor.chain().setTextSelection(block.end - 1).splitBlock().run();
           editor.chain().setParagraph().run();
@@ -394,13 +399,17 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       }),
       target: () => document.querySelector('[aria-label="Find and replace"]') ?? editor.view.dom,
       async execute({ find, replace, all = true, match_case = false }) {
+        if (/\n/.test(replace))
+          throw new ToolError("find_and_replace changes text within a paragraph. To add a new paragraph, use write_text with `after`.");
         ctx.showFind(find, replace, match_case);
         await wait(700);
         const options = { matchCase: match_case, regex: false, ignoreDiacritics: !match_case };
         const matches = documentMatches(editor.state.doc, find, options).matches;
         if (!matches.length) {
           ctx.closeFind();
-          throw new ToolError(`"${find}" was not found.`);
+          throw new ToolError(
+            `"${find}" was not found.${/[#*]/.test(find) ? " The document's text has no Markdown marks such as # or **; use read_document to see the exact text." : ""}`,
+          );
         }
         let tr = editor.state.tr;
         const chosen = all ? [...matches].reverse() : [matches[0]];
@@ -484,7 +493,8 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
     tool({
       name: "go_to_heading",
       label: "Go to heading",
-      description: "Scroll to a heading using the outline.",
+      description:
+        "Go to a section: shows the heading at the top of the window, as clicking it in the outline does, and puts the cursor there. Use when the user asks to go to, jump to or show a section.",
       parameters: Type.Object({ heading: Type.String() }),
       target: ({ heading }) =>
         [...document.querySelectorAll(".outline-item")].find((el) => el.textContent?.includes(heading)),
