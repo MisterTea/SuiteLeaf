@@ -10,7 +10,7 @@ import {
   renderSystem,
   templateTools,
 } from "../apps/web/src/ai/gemma";
-import { PARSE_ERROR, createGemmaStreamFn, gemmaModel } from "../apps/web/src/ai/gemma-stream";
+import { PARSE_ERROR, createGemmaStreamFn, gemmaModel } from "../apps/web/src/ai/model-stream";
 
 const official = new Template(
   readFileSync(new URL("../apps/web/src/ai/gemma4-chat-template.jinja", import.meta.url), "utf8"),

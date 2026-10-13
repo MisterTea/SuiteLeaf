@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { Static, TSchema } from "@earendil-works/pi-ai";
 import { moveCursor, type Target } from "./cursor";
-import { PARSE_ERROR } from "./gemma-stream";
+import { PARSE_ERROR } from "./model-stream";
 
 /** What a SuiteLeaf tool returns to the model. */
 export type ToolOutput = string | { text: string; details?: unknown };

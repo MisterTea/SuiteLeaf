@@ -1,4 +1,5 @@
-// Electron utility process that runs Gemma 4 E4B with llama.cpp (Metal on
+// Electron utility process that runs the on-device model (a Gemma 4 E4B or
+// FrogNano GGUF, chosen by SUITELEAF_MODEL_PATH) with llama.cpp (Metal on
 // macOS) so loading and generating never block the main process or window.
 import { createWriteStream } from "node:fs";
 import { mkdir, rename, stat } from "node:fs/promises";
@@ -12,7 +13,7 @@ import type {
   LlamaModel,
   Token,
 } from "node-llama-cpp";
-import type { AiGenerateRequest, AiStatus } from "@suiteleaf/core/ai";
+import { AI_MODELS, modelIdForFile, type AiGenerateRequest, type AiStatus } from "@suiteleaf/core/ai";
 
 const MODEL_URL =
   "https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_0.gguf";
@@ -25,9 +26,11 @@ type Inbound =
 
 const port = process.parentPort;
 const modelPath = process.env.SUITELEAF_MODEL_PATH!;
-const contextSize = Number(process.env.SUITELEAF_MODEL_CONTEXT ?? 16384);
 const quant = /-(Q\d[\w]*)\.gguf$/i.exec(modelPath ?? "")?.[1] ?? "GGUF";
-let status: AiStatus = { state: "idle", backend: "llama.cpp", model: `Gemma 4 E4B (${quant})` };
+const modelId = modelIdForFile(modelPath ?? "");
+const contextSize = Number(process.env.SUITELEAF_MODEL_CONTEXT ?? AI_MODELS[modelId].contextSize);
+const name = AI_MODELS[modelId].name;
+let status: AiStatus = { state: "idle", backend: "llama.cpp", modelId, model: `${name} (${quant})` };
 let llama: Llama | undefined;
 let model: LlamaModel | undefined;
 let context: LlamaContext | undefined;
@@ -57,7 +60,7 @@ async function download() {
   const body = Readable.fromWeb(response.body as never);
   body.on("data", (chunk: Buffer) => {
     received += chunk.length;
-    if (total) setStatus({ progress: (received / total) * 0.8, message: "Downloading Gemma 4 E4B" });
+    if (total) setStatus({ progress: (received / total) * 0.8, message: `Downloading ${name}` });
   });
   await pipeline(body, createWriteStream(`${modelPath}.part`));
   await rename(`${modelPath}.part`, modelPath);
@@ -67,12 +70,12 @@ async function load() {
   if (status.state === "ready") return;
   loading ??= (async () => {
     const started = performance.now();
-    setStatus({ state: "loading", progress: 0, message: "Preparing Gemma 4 E4B" });
+    setStatus({ state: "loading", progress: 0, message: `Preparing ${name}` });
     try {
       await download();
       const { getLlama } = await import("node-llama-cpp");
       llama = await getLlama();
-      setStatus({ message: "Loading Gemma 4 E4B", progress: 0.8 });
+      setStatus({ message: `Loading ${name}`, progress: 0.8 });
       model = await llama.loadModel({
         modelPath,
         onLoadProgress: (p) => setStatus({ progress: 0.8 + p * 0.2 }),

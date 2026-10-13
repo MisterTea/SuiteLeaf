@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ArrowUp, Check, CircleAlert, FileUp, Loader2, RotateCcw, Sparkles, Square, X } from "lucide-react";
-import { agentSession, type TranscriptItem } from "./agent";
+import { agentSession, currentFormat, type TranscriptItem } from "./agent";
 import { cursorStore } from "./cursor";
 import { fileRequestStore } from "./file-request";
-import { PARSE_ERROR } from "./gemma-stream";
+import { PARSE_ERROR } from "./model-stream";
+
+/** What the panel calls the assistant: the short name of the model it runs ("Gemma", "FrogNano"). */
+const assistantName = () => currentFormat().info.short;
 
 let open = sessionStorage.getItem("suiteleaf.ai.open") === "1";
 const openListeners = new Set<() => void>();
@@ -42,7 +45,7 @@ export function AiButton() {
       className={`ai-button${isOpen ? " active" : ""}`}
       aria-label="AI assistant"
       aria-pressed={isOpen}
-      title="Ask Gemma, the on-device assistant"
+      title={`Ask ${assistantName()}, the on-device assistant`}
       onClick={() => panel.set(!isOpen)}
     >
       <Sparkles size={16} />
@@ -92,7 +95,7 @@ function Item({ item }: { item: TranscriptItem }) {
       <span className="agent-tool-body">
         <strong>{item.label}</strong>
         {garbled(item.args) ? (
-          <span className="agent-tool-result">Gemma wrote this step in a form it couldn't read, so it writes it again.</span>
+          <span className="agent-tool-result">{assistantName()} wrote this step in a form it couldn't read, so it writes it again.</span>
         ) : (
           <>
             <small>{summarize(item.args)}</small>
@@ -162,7 +165,9 @@ export function AgentSidebar() {
         <Sparkles size={18} />
         <div>
           <h2>Assistant</h2>
-          <small>Gemma 4 E4B · on this device{backend ? ` · ${backend}` : ""}</small>
+          <small>
+            {currentFormat().info.name} · on this device{backend ? ` · ${backend}` : ""}
+          </small>
         </div>
         <button type="button" aria-label="New conversation" title="New conversation" onClick={() => session.reset()} disabled={busy}>
           <RotateCcw size={16} />
@@ -182,20 +187,22 @@ export function AgentSidebar() {
         </div>
       ) : model.state === "ready" && model.fallback ? (
         <details className="agent-fallback">
-          <summary>WebNN couldn't run Gemma here, so it runs on {backend}.</summary>
+          <summary>
+            WebNN couldn't run {assistantName()} here, so it runs on {backend}.
+          </summary>
           {model.fallback}
         </details>
       ) : null}
       <div className="agent-log" ref={log} role="log" aria-live="polite">
         {session.items.length === 0 ? (
           <div className="agent-empty">
-            <p>Ask Gemma to do something in this app, like:</p>
+            <p>Ask {assistantName()} to do something in this app, like:</p>
             <ul>
               <li>“Write a short welcome letter with a heading”</li>
               <li>“Total each column and chart Budget vs Actual”</li>
               <li>“Add a slide titled Next steps”</li>
             </ul>
-            <p className="agent-note">Gemma runs entirely on this device. It can make mistakes; check its work.</p>
+            <p className="agent-note">{assistantName()} runs entirely on this device. It can make mistakes; check its work.</p>
           </div>
         ) : (
           session.items.map((item, i) => <Item key={i} item={item} />)
@@ -204,13 +211,13 @@ export function AgentSidebar() {
           <div className="agent-working">
             <Loader2 size={14} className="spin" />{" "}
             {session.state === "loading"
-              ? "Starting Gemma…"
+              ? `Starting ${assistantName()}…`
               : session.draft
                 ? `Preparing “${session.draft.label}”…${session.draft.chars > 200 ? ` ${session.draft.chars.toLocaleString()} characters` : ""}`
                 : "Working…"}
           </div>
         ) : session.state === "done" && session.items.at(-1)?.kind === "tool" ? (
-          <p className="agent-note">Gemma finished without a summary. The steps above are what it did.</p>
+          <p className="agent-note">{assistantName()} finished without a summary. The steps above are what it did.</p>
         ) : null}
       </div>
       <FilePrompt />
@@ -223,7 +230,7 @@ export function AgentSidebar() {
       >
         <textarea
           aria-label="Ask the assistant"
-          placeholder="Ask Gemma to do something…"
+          placeholder={`Ask ${assistantName()} to do something…`}
           value={text}
           rows={3}
           onChange={(e) => setText(e.target.value)}
@@ -268,7 +275,9 @@ export function AgentCursor() {
       </svg>
       <span className="agent-cursor-ring" />
       {c.label ? (
-        <span className={`agent-cursor-label${c.y > innerHeight - 48 ? " above" : ""}`}>Gemma · {c.label}</span>
+        <span className={`agent-cursor-label${c.y > innerHeight - 48 ? " above" : ""}`}>
+          {assistantName()} · {c.label}
+        </span>
       ) : null}
     </div>
   );

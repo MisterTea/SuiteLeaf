@@ -11,9 +11,21 @@ const modelPath =
   process.argv[2] ??
   process.env.SUITELEAF_MODEL_PATH ??
   join(homedir(), ".cache/suiteleaf-models/gguf/gemma-4-E4B-it-Q4_0.gguf");
+const frognano = /frognano/i.test(modelPath);
 const template = new Template(
-  readFileSync(new URL("../apps/web/src/ai/gemma4-chat-template.jinja", import.meta.url), "utf8"),
+  readFileSync(
+    new URL(`../apps/web/src/ai/${frognano ? "frognano-chat-template.jinja" : "gemma4-chat-template.jinja"}`, import.meta.url),
+    "utf8",
+  ),
 );
+const sampling = frognano ? { temperature: 0.6, topK: 20, topP: 0.95 } : { temperature: 1, topK: 64, topP: 0.95 };
+/** The first reply, then a tool result, in the model's format. */
+const afterTool = (text) =>
+  frognano
+    ? text.replace(/(<\|im_end\|>|<\|endoftext\|>)$/, "") +
+      "<|im_end|>\n<|im_start|>user\n<tool_response>\nInserted a column chart \"Studio costs by team\" from A1:C5.\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think>\n"
+    : text.replace(/(<\|tool_response>|<eos>|<turn\|>)$/, "") +
+      '<|tool_response>response:insert_chart{value:<|"|>Inserted a column chart "Studio costs by team" from A1:C5.<|"|>}<tool_response|>';
 const tools = [
   {
     type: "function",
@@ -78,9 +90,7 @@ async function run(label, prefixTokens, maxTokens) {
   let first = 0;
   const out = [];
   for await (const token of sequence.evaluate(prefixTokens.slice(cached), {
-    temperature: 1,
-    topK: 64,
-    topP: 0.95,
+    ...sampling,
     yieldEogToken: true,
   })) {
     if (!first) first = performance.now();
@@ -104,15 +114,10 @@ async function run(label, prefixTokens, maxTokens) {
 }
 
 console.log(JSON.stringify({ gpu: llama.gpu, loadMs: Math.round(loadMs), promptTokens: tokens.length }));
-const first = await run("tool call (cold)", tokens, 256);
+const first = await run("tool call (cold)", tokens, 1024);
 console.log("OUTPUT:", first.text);
-const followUp = model.tokenize(
-  prompt +
-    first.text.replace(/(<\|tool_response>|<eos>|<turn\|>)$/, "") +
-    '<|tool_response>response:insert_chart{value:<|"|>Inserted a column chart "Studio costs by team" from A1:C5.<|"|>}<tool_response|>',
-  true,
-);
-const second = await run("after tool result (warm cache)", followUp, 256);
+const followUp = model.tokenize(prompt + afterTool(first.text), true);
+const second = await run("after tool result (warm cache)", followUp, 512);
 console.log("OUTPUT:", second.text);
 const long = model.tokenize(prompt.replace("Make a column chart", "Write a 300 word essay about budgets instead of using tools, then make a column chart"), true);
 await sequence.clearHistory();

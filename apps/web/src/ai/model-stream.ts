@@ -9,18 +9,9 @@ import {
   type Usage,
 } from "@earendil-works/pi-ai";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
-import { GEMMA_SAMPLING, GEMMA_STOP, type AiGenerateEvent } from "@suiteleaf/core/ai";
+import type { AiGenerateEvent, AiModelInfo } from "@suiteleaf/core/ai";
 import type { LocalModel } from "./backend";
-import {
-  THOUGHT,
-  THOUGHT_END,
-  TOOL_CALL,
-  TOOL_CALL_END,
-  parseToolCall,
-  renderConversation,
-  renderSystem,
-  trimStops,
-} from "./gemma";
+import { gemmaFormat, type ChatFormat } from "./chat-format";
 
 /** Per-request numbers, for the sidebar and the storyboard metrics. */
 export interface GenerationStats {
@@ -36,27 +27,26 @@ export interface GenerationStats {
 
 export const PARSE_ERROR = "__parse_error";
 
-/** The pi model descriptor for the on-device model. */
-export const gemmaModel = (backend: string): Model<"suiteleaf-local"> => ({
-  id: "gemma-4-e4b-it",
-  name: `Gemma 4 E4B (${backend})`,
+/** The pi model descriptor for an on-device model. */
+export const localModelDescriptor = (info: AiModelInfo, backend: string): Model<"suiteleaf-local"> => ({
+  id: info.id,
+  name: `${info.name} (${backend})`,
   api: "suiteleaf-local",
   provider: "suiteleaf",
   baseUrl: "",
   input: ["text"],
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   reasoning: false,
-  contextWindow: 16384,
-  maxTokens: 2048,
+  contextWindow: info.contextSize,
+  maxTokens: info.maxTokens,
 });
+export const gemmaModel = (backend: string) => localModelDescriptor(gemmaFormat.info, backend);
 
-const MARKERS = [TOOL_CALL, "<|channel>", ...GEMMA_STOP];
-
-/** Length of the longest suffix of `text` that could start a marker. */
-function heldBack(text: string) {
+/** Length of the longest suffix of `text` that could start one of `markers`. */
+function heldBack(text: string, markers: string[]) {
   for (let n = Math.min(text.length, 18); n > 0; n--) {
     const tail = text.slice(-n);
-    if (MARKERS.some((m) => m.startsWith(tail))) return n;
+    if (markers.some((m) => m.startsWith(tail))) return n;
   }
   return 0;
 }
@@ -70,21 +60,22 @@ const emptyUsage = (): Usage => ({
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 });
 
-export interface GemmaStreamOptions {
-  thinking?: boolean;
+export interface LocalStreamOptions {
+  /** The model's chat format; a function so it can follow the model the backend reports. */
+  format?: ChatFormat | (() => ChatFormat);
   maxTokens?: number;
   onStats?: (stats: GenerationStats) => void;
   /** Called with each request's rendered prompt length and raw output (debugging and tests). */
   onRaw?: (prompt: string, output: string) => void;
-  /** The tool call being written so far (raw, e.g. `call:write_text{…`), then undefined once it is complete. */
-  onDraft?: (body: string | undefined) => void;
+  /** The tool call being written so far (raw, e.g. `call:write_text{…`), and the tool's name once it is out; then undefined. */
+  onDraft?: (body: string | undefined, name?: string) => void;
 }
 
 /**
- * A pi stream function that runs Gemma 4 on a local backend. Tool calls are
- * parsed from Gemma's native syntax into pi tool-call events.
+ * A pi stream function that runs an on-device model on a local backend. Tool
+ * calls are parsed from the model's native syntax into pi tool-call events.
  */
-export function createGemmaStreamFn(model: LocalModel, options: GemmaStreamOptions = {}): StreamFn {
+export function createLocalStreamFn(model: LocalModel, options: LocalStreamOptions = {}): StreamFn {
   const raws = new Map<string, string>();
   // Ids stay unique across page reloads, where a resumed conversation keeps its old calls.
   const prefix = crypto.randomUUID().slice(0, 8);
@@ -102,23 +93,27 @@ export function createGemmaStreamFn(model: LocalModel, options: GemmaStreamOptio
       stopReason: "stop",
       timestamp: Date.now(),
     };
+    const format = typeof options.format === "function" ? options.format() : (options.format ?? gemmaFormat);
+    const [callOpen, callClose] = format.toolCall;
+    const markers = [callOpen, format.thinking.marker, ...format.info.stop];
     const messages = context.messages as Message[];
-    const prompt =
-      renderSystem(getCurrentSystemPrompt(messages), getCurrentTools(messages), options.thinking) +
-      renderConversation(
-        messages.filter((m) => m.role !== "system"),
-        (m) => (m.responseId ? raws.get(m.responseId) : undefined),
-      );
+    const tools = getCurrentTools(messages);
+    const prompt = format.render(
+      getCurrentSystemPrompt(messages),
+      tools,
+      messages.filter((m) => m.role !== "system"),
+      (m) => (m.responseId ? raws.get(m.responseId) : undefined),
+    );
     let raw = "";
     let done = 0;
-    let mode: "text" | "tool" | "thinking" = "text";
+    let mode: "text" | "tool" | "thinking" = format.startsThinking ? "thinking" : "text";
     let block = -1;
     let pending = "";
     let toolCalls = 0;
     let parseErrors = 0;
     let finished = false;
     let cutOff = false;
-    const maxTokens = options.maxTokens ?? piModel.maxTokens;
+    const maxTokens = options.maxTokens ?? format.info.maxTokens;
 
     const closeBlock = () => {
       if (block < 0) return;
@@ -157,7 +152,7 @@ export function createGemmaStreamFn(model: LocalModel, options: GemmaStreamOptio
       closeBlock();
       pending = "";
       options.onDraft?.(undefined);
-      const parsed = parseToolCall(body);
+      const parsed = format.parseCall(body, tools);
       if (parsed.error && cutOff)
         parsed.error = `The reply reached its ${maxTokens}-token limit before this call was finished. Split long text over several calls.`;
       toolCalls++;
@@ -180,61 +175,64 @@ export function createGemmaStreamFn(model: LocalModel, options: GemmaStreamOptio
     const pump = (final: boolean) => {
       for (;;) {
         if (mode === "text") {
-          // Gemma sometimes starts a reply with a call but leaves out the opening <|tool_call>.
+          // Models sometimes start a reply with a call but leave out its opening marker.
           if (!output.content.some((c) => c.type === "text")) {
             const rest = raw.slice(done).trimStart();
-            if (rest.startsWith("call:")) {
-              const at = raw.indexOf("call:", done);
-              raw = raw.slice(0, at) + TOOL_CALL + raw.slice(at);
-              done = at + TOOL_CALL.length;
+            if (rest.startsWith(format.bareCall)) {
+              const at = raw.indexOf(format.bareCall, done);
+              raw = raw.slice(0, at) + callOpen + raw.slice(at);
+              done = at + callOpen.length;
               mode = "tool";
               continue;
             }
-            if (!final && "call:".startsWith(rest)) return;
+            if (!final && format.bareCall.startsWith(rest)) return;
           }
           let at = -1,
             marker = "";
-          for (const m of MARKERS) {
+          for (const m of markers) {
             const i = raw.indexOf(m, done);
             if (i >= 0 && (at < 0 || i < at)) [at, marker] = [i, m];
           }
           if (at < 0) {
-            const end = final ? raw.length : raw.length - heldBack(raw.slice(done));
+            const end = final ? raw.length : raw.length - heldBack(raw.slice(done), markers);
             if (end > done) emitText(raw.slice(done, end));
             done = Math.max(done, end);
             return;
           }
           if (at > done) emitText(raw.slice(done, at));
-          if (marker === TOOL_CALL) {
+          if (marker === callOpen) {
             mode = "tool";
-            done = at + TOOL_CALL.length;
-          } else if (marker === "<|channel>") {
-            if (raw.length < at + THOUGHT.length && !final) {
+            done = at + callOpen.length;
+          } else if (marker === format.thinking.marker) {
+            const { open } = format.thinking;
+            if (raw.length < at + open.length && !final) {
               done = at;
               return;
             }
             mode = "thinking";
-            done = raw.startsWith(THOUGHT, at) ? at + THOUGHT.length : at + "<|channel>".length;
+            done = raw.startsWith(open, at) ? at + open.length : at + marker.length;
           } else done = at + marker.length;
         } else if (mode === "tool") {
-          const end = raw.indexOf(TOOL_CALL_END, done);
+          const end = raw.indexOf(callClose, done);
           if (end < 0) {
-            // A call cut short by the end of the turn has no <tool_call|>, but may carry the stop marker.
-            if (final && trimStops(raw.slice(done)).trim()) emitCall(trimStops(raw.slice(done)));
+            // A call cut short by the end of the turn has no closing marker, but may carry the stop marker.
+            const body = format.trimStops(raw.slice(done));
+            if (final && body.trim()) emitCall(body);
             if (final) done = raw.length;
-            else options.onDraft?.(raw.slice(done));
+            else options.onDraft?.(raw.slice(done), format.draftName(raw.slice(done)));
             return;
           }
           emitCall(raw.slice(done, end));
-          done = end + TOOL_CALL_END.length;
+          done = end + callClose.length;
           mode = "text";
         } else {
-          const end = raw.indexOf(THOUGHT_END, done);
-          const stop = end < 0 ? (final ? raw.length : raw.length - heldBack(raw.slice(done))) : end;
+          const { close } = format.thinking;
+          const end = raw.indexOf(close, done);
+          const stop = end < 0 ? (final ? raw.length : raw.length - heldBack(raw.slice(done), [close, ...markers])) : end;
           if (stop > done) emitThinking(raw.slice(done, stop));
           done = stop;
           if (end < 0) return;
-          done = end + THOUGHT_END.length;
+          done = end + close.length;
           closeBlock();
           mode = "text";
         }
@@ -293,8 +291,8 @@ export function createGemmaStreamFn(model: LocalModel, options: GemmaStreamOptio
       {
         prompt,
         maxTokens,
-        stop: GEMMA_STOP,
-        ...GEMMA_SAMPLING,
+        stop: format.info.stop,
+        ...format.info.sampling,
       },
       (event) => {
         if (event.type === "text") {
@@ -308,3 +306,7 @@ export function createGemmaStreamFn(model: LocalModel, options: GemmaStreamOptio
     return stream;
   };
 }
+
+/** The Gemma 4 stream function (tests, and callers that only run Gemma). */
+export const createGemmaStreamFn = (model: LocalModel, options: Omit<LocalStreamOptions, "format"> = {}) =>
+  createLocalStreamFn(model, { ...options, format: gemmaFormat });

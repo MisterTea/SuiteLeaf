@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-// Runs Gemma 4 E4B in the browser with transformers.js on one device. The
+// Runs the on-device model in the browser with transformers.js on one device. The
 // page (backend.ts) picks the device and moves on to the next one, in a fresh
 // worker, if this one fails or takes too long to compile.
 import {
@@ -12,19 +12,17 @@ import {
   type PreTrainedTokenizer,
   type Tensor,
 } from "@huggingface/transformers";
-import type { AiBackendKind, AiGenerateRequest, AiStatus } from "@suiteleaf/core/ai";
+import { AI_MODELS, type AiBackendKind, type AiGenerateRequest, type AiModelId, type AiStatus } from "@suiteleaf/core/ai";
 // The ONNX runtime ships with the app, so the model works offline once cached.
 import ortWasm from "onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm?url";
 import ortModule from "onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs?url";
 
 if (env.backends.onnx.wasm) env.backends.onnx.wasm.wasmPaths = { wasm: ortWasm, mjs: ortModule };
 
-export const MODEL_ID = "onnx-community/gemma-4-E4B-it-ONNX";
-
 /**
- * Per-device weights. The q4f16 embedding table uses GatherBlockQuantized,
- * which WebNN (and its CPU fallback in onnxruntime-web) has no kernel for, so
- * WebNN uses the uint8 table.
+ * Per-device weights for Gemma. Its q4f16 embedding table uses
+ * GatherBlockQuantized, which WebNN (and its CPU fallback in onnxruntime-web)
+ * has no kernel for, so WebNN uses the uint8 table.
  */
 const DTYPES: Record<string, string | Record<string, string>> = {
   "webnn-gpu": { embed_tokens: "q8", decoder_model_merged: "q4f16" },
@@ -33,12 +31,12 @@ const DTYPES: Record<string, string | Record<string, string>> = {
 };
 
 type Inbound =
-  | { type: "load"; host: string; device?: string; dtype?: string }
+  | { type: "load"; host: string; model: AiModelId; device?: string; dtype?: string }
   | { type: "generate"; id: string; request: AiGenerateRequest }
   | { type: "abort"; id: string };
 
 const post = (message: object) => (self as unknown as Worker).postMessage(message);
-let status: AiStatus = { state: "idle", model: "Gemma 4 E4B" };
+let status: AiStatus = { state: "idle" };
 let tokenizer: PreTrainedTokenizer | undefined;
 let model: PreTrainedModel | undefined;
 let loading: Promise<void> | undefined;
@@ -56,8 +54,10 @@ function setStatus(next: Partial<AiStatus>) {
 const kindOf = (device: string): AiBackendKind =>
   device.startsWith("webnn") ? "webnn" : device === "webgpu" ? "webgpu" : "wasm";
 
-async function load(host: string, forced?: string, forcedDtype?: string) {
+async function load(host: string, modelId: AiModelId, forced?: string, forcedDtype?: string) {
   if (status.state === "ready") return;
+  const info = AI_MODELS[modelId];
+  status = { ...status, modelId, model: info.name };
   loading ??= (async () => {
     const started = performance.now();
     env.allowLocalModels = false;
@@ -77,10 +77,10 @@ async function load(host: string, forced?: string, forcedDtype?: string) {
     };
     const devices = forced ? [forced] : ["webgpu"];
     const failures: string[] = [];
-    setStatus({ state: "loading", progress: 0, message: "Downloading Gemma 4 E4B" });
-    tokenizer = await AutoTokenizer.from_pretrained(MODEL_ID, { progress_callback });
+    setStatus({ state: "loading", progress: 0, message: `Downloading ${info.name}` });
+    tokenizer = await AutoTokenizer.from_pretrained(info.repo, { progress_callback });
     for (const device of devices) {
-      let dtype = DTYPES[device] ?? "q4f16";
+      let dtype = (modelId === "gemma-4-e4b" && DTYPES[device]) || "q4f16";
       if (device.startsWith("webnn") && !("ml" in navigator)) {
         failures.push(`${device}: WebNN is not available in this browser`);
         continue;
@@ -99,11 +99,15 @@ async function load(host: string, forced?: string, forcedDtype?: string) {
           continue;
         }
         // q4f16 computes in 16-bit floats; GPUs without shader-f16 need the 32-bit (q4) export, 0.7 GB larger.
+        if (!adapter.features.has("shader-f16") && modelId !== "gemma-4-e4b" && !forcedDtype) {
+          failures.push(`webgpu: ${info.name} needs shader-f16, which this GPU lacks`);
+          continue;
+        }
         dtype = forcedDtype ?? (adapter.features.has("shader-f16") ? "q4f16" : "q4");
       }
       try {
-        setStatus({ backend: kindOf(device), message: `Loading Gemma 4 E4B on ${device}` });
-        const candidate = await AutoModelForCausalLM.from_pretrained(MODEL_ID, {
+        setStatus({ backend: kindOf(device), message: `Loading ${info.name} on ${device}` });
+        const candidate = await AutoModelForCausalLM.from_pretrained(info.repo, {
           dtype: dtype as "q4f16",
           device: device as "webgpu",
           progress_callback,
@@ -111,11 +115,9 @@ async function load(host: string, forced?: string, forcedDtype?: string) {
             ? { session_options: { freeDimensionOverrides: { batch_size: 1 } } }
             : {}),
         });
-        setStatus({ progress: 0.95, message: `Compiling Gemma 4 E4B on ${device}` });
+        setStatus({ progress: 0.95, message: `Compiling ${info.name} on ${device}` });
         // A one-token generation proves the device can actually run the graph.
-        const probe = tokenizer("<bos><|turn>user\nHi<turn|>\n<|turn>model\n", {
-          add_special_tokens: false,
-        });
+        const probe = tokenizer(info.probe, { add_special_tokens: false });
         await candidate.generate({ ...probe, max_new_tokens: 1, do_sample: false });
         model = candidate;
         setStatus({
@@ -216,7 +218,7 @@ async function generate(id: string, request: AiGenerateRequest) {
 }
 
 self.onmessage = ({ data }: MessageEvent<Inbound>) => {
-  if (data.type === "load") void load(data.host, data.device, data.dtype);
+  if (data.type === "load") void load(data.host, data.model, data.device, data.dtype);
   else if (data.type === "abort") stops.get(data.id)?.interrupt();
   else if (data.type === "generate") {
     stops.set(data.id, new InterruptableStoppingCriteria());

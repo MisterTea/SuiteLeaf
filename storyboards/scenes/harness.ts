@@ -44,8 +44,10 @@ export const electronApps = new WeakMap<Page, ElectronApplication>();
 function assistantScript(baseURL: string | undefined) {
   const models = process.env.STORYBOARD_MODEL_HOST ?? `${baseURL}/models/`;
   const device = process.env.STORYBOARD_AI_DEVICE ?? "webgpu";
+  const model = process.env.STORYBOARD_AI_MODEL ?? "gemma-4-e4b";
   return `(() => {
     localStorage.setItem("suiteleaf.ai.modelHost", ${JSON.stringify(models)});
+    localStorage.setItem("suiteleaf.ai.model", ${JSON.stringify(model)});
     if (${JSON.stringify(device)} === "auto") localStorage.removeItem("suiteleaf.ai.device");
     else localStorage.setItem("suiteleaf.ai.device", ${JSON.stringify(device)});
   })();`;
@@ -174,12 +176,14 @@ export interface AgentRun {
   state: string;
   metrics: Record<string, unknown> & { toolCalls: number; tools: string[] };
   items: { kind: string; name?: string; args?: unknown; status?: string; result?: string; text?: string }[];
+  /** The model's raw output, one entry per request. */
+  raws?: string[];
   seconds: number;
 }
 
 /**
  * Ask the assistant to do something, the way a person would: open the AI
- * panel, type the request, and wait for Gemma to finish. Files the agent asks
+ * panel, type the request, and wait for the model to finish. Files the agent asks
  * for are chosen from `files` (the person picks them). `paste` is text the
  * person pastes after typing the request (it may span lines). The run's
  * transcript and metrics are saved to test-results/ai-metrics/<title>.json.
@@ -223,7 +227,7 @@ export async function askAgent(
   }
   const run = (await page.evaluate(() => {
     const agent = (window as unknown as { __suiteleafAgent: Record<string, () => unknown> }).__suiteleafAgent;
-    return { state: agent.state(), metrics: agent.metrics(), items: agent.items() };
+    return { state: agent.state(), metrics: agent.metrics(), items: agent.items(), raws: agent.raws() };
   })) as Omit<AgentRun, "seconds">;
   const result = { ...run, seconds: Math.round((Date.now() - started) / 1000) };
   const info = base.info();

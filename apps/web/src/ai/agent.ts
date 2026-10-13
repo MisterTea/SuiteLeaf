@@ -1,8 +1,9 @@
 import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AiStatus } from "@suiteleaf/core/ai";
-import { localModel } from "./backend";
+import { localModel, selectedModel } from "./backend";
+import { formatFor } from "./chat-format";
 import { hideCursor, showCursor } from "./cursor";
-import { PARSE_ERROR, createGemmaStreamFn, gemmaModel, type GenerationStats } from "./gemma-stream";
+import { PARSE_ERROR, createLocalStreamFn, localModelDescriptor, type GenerationStats } from "./model-stream";
 import { activeHost, currentSnapshot, currentSuiteTools, toAgentTool, toolScreen } from "./host";
 
 export const SYSTEM_PROMPT = `You are the assistant built into SuiteLeaf, an office suite with documents, spreadsheets and presentations. You do the user's task yourself by calling tools; each tool acts in the app the user is looking at, and they watch you work.
@@ -16,6 +17,9 @@ How to work:
 - When the task is done, reply in one or two short sentences saying what you changed, in the user's words (never tool or argument names). Do not call more tools after that.
 - Leave the file you worked on open when you finish, so the user sees the result; files save by themselves. Only go back to the file list when the user asked or the task needs another file.
 - Never ask for or type passwords. If the user must sign in, tell them to sign in themselves.`;
+
+/** The chat format of the model the backend runs (the desktop app reports it; the browser uses the chosen one). */
+export const currentFormat = () => formatFor(localModel().status().modelId ?? selectedModel());
 
 export type AgentUiState = "idle" | "loading" | "working" | "done" | "error";
 
@@ -122,6 +126,8 @@ class AgentSession {
   state: AgentUiState = "idle";
   items: TranscriptItem[] = [];
   metrics = emptyMetrics();
+  /** The model's raw output for each request, for transcripts and debugging. */
+  raws: string[] = [];
   model: AiStatus = localModel().status();
   /** The tool call Gemma is still writing (long text takes a while). */
   draft?: { label: string; chars: number };
@@ -170,16 +176,19 @@ class AgentSession {
     const agent = new Agent({
       initialState: {
         systemPrompt: SYSTEM_PROMPT,
-        model: gemmaModel(this.model.backend ?? "local"),
+        model: localModelDescriptor(currentFormat().info, this.model.backend ?? "local"),
         tools: currentSuiteTools().map(toAgentTool),
       },
-      streamFn: createGemmaStreamFn(localModel(), {
+      streamFn: createLocalStreamFn(localModel(), {
+        format: currentFormat,
         onStats: this.onStats,
-        onRaw: localStorage.getItem("suiteleaf.ai.debug")
-          ? (prompt, output) => console.debug("[suiteleaf-ai] prompt\n" + prompt + "\n[suiteleaf-ai] output\n" + output)
-          : undefined,
-        onDraft: (body) => {
-          const name = body && /^\s*call:([\w.-]+)/.exec(body)?.[1];
+        onRaw: (prompt, output) => {
+          this.raws = [...this.raws.slice(-199), output];
+          if (localStorage.getItem("suiteleaf.ai.debug"))
+            console.debug("[suiteleaf-ai] prompt\n" + prompt + "\n[suiteleaf-ai] output\n" + output);
+        },
+        onDraft: (body, toolName) => {
+          const name = body && toolName;
           if (!name && !this.draft) return;
           this.draft = name ? { label: currentSuiteTools().find((t) => t.name === name)?.label ?? name, chars: body.length } : undefined;
           this.emit();
@@ -406,6 +415,7 @@ class AgentSession {
     this.agent = undefined;
     this.explained.clear();
     this.items = [];
+    this.raws = [];
     this.metrics = { ...emptyMetrics(), backend: this.metrics.backend, model: this.metrics.model, loadMs: this.metrics.loadMs };
     this.state = "idle";
     this.emit();
@@ -426,6 +436,7 @@ declare global {
       state: () => AgentUiState;
       metrics: () => AgentMetrics;
       items: () => TranscriptItem[];
+      raws: () => string[];
       tools: () => string[];
       /** Run one tool directly, as the agent would (tests the tool, not the model). */
       callTool: (name: string, args: unknown) => Promise<string>;
@@ -436,6 +447,7 @@ window.__suiteleafAgent = {
   state: () => agentSession.state,
   metrics: () => structuredClone(agentSession.metrics),
   items: () => structuredClone(agentSession.items),
+  raws: () => [...agentSession.raws],
   tools: () => currentSuiteTools().map((t) => t.name),
   async callTool(name, args) {
     const t = currentSuiteTools().find((x) => x.name === name);

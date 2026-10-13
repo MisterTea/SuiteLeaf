@@ -1,4 +1,4 @@
-import type { AiBridge, AiGenerateEvent, AiGenerateRequest, AiStatus } from "@suiteleaf/core/ai";
+import { AI_MODELS, type AiBridge, type AiGenerateEvent, type AiGenerateRequest, type AiModelId, type AiStatus } from "@suiteleaf/core/ai";
 
 /** The on-device model, wherever it runs. */
 export interface LocalModel {
@@ -15,6 +15,12 @@ export function modelHost() {
     import.meta.env.VITE_SUITELEAF_MODEL_HOST ??
     "https://huggingface.co/"
   );
+}
+
+/** The model the browser runs ("gemma-4-e4b", the default, or "frognano-4b"). */
+export function selectedModel(): AiModelId {
+  const chosen = localStorage.getItem("suiteleaf.ai.model");
+  return chosen && chosen in AI_MODELS ? (chosen as AiModelId) : "gemma-4-e4b";
 }
 
 /** Force a browser device ("webnn-gpu", "webgpu", "wasm"); otherwise WebNN, then WebGPU. */
@@ -38,7 +44,7 @@ function statusHub(initial: AiStatus) {
   };
 }
 
-/** Gemma running in the Electron main process (llama.cpp). */
+/** The model running in the Electron main process (llama.cpp). */
 function electronModel(bridge: AiBridge): LocalModel {
   const hub = statusHub({ state: "idle", backend: "llama.cpp" });
   void bridge.status().then(hub.set);
@@ -71,20 +77,30 @@ const COMPILE_BUDGET_MS: Record<string, number> = {
  * device worked, later loads skip it until the browser (its user agent) changes.
  */
 const WEBNN_FAILURE = "suiteleaf.ai.webnnFailure";
-function knownWebnnFailure(): { message: string; at: string } | undefined {
+function knownWebnnFailure(model: AiModelId): { message: string; at: string } | undefined {
   try {
-    const saved = JSON.parse(localStorage.getItem(WEBNN_FAILURE) ?? "null");
+    const saved = JSON.parse(localStorage.getItem(WEBNN_FAILURE) ?? "null")?.[model];
     return saved?.browser === navigator.userAgent ? saved : undefined;
   } catch {
     return undefined;
   }
 }
-const rememberWebnnFailure = (message: string) =>
-  localStorage.setItem(WEBNN_FAILURE, JSON.stringify({ message, at: new Date().toISOString(), browser: navigator.userAgent }));
+function rememberWebnnFailure(model: AiModelId, message: string) {
+  let saved: Record<string, unknown> = {};
+  try {
+    saved = JSON.parse(localStorage.getItem(WEBNN_FAILURE) ?? "{}") ?? {};
+  } catch {
+    // Start over.
+  }
+  saved[model] = { message, at: new Date().toISOString(), browser: navigator.userAgent };
+  localStorage.setItem(WEBNN_FAILURE, JSON.stringify(saved));
+}
 
-/** Gemma running in a Web Worker: WebNN first, then WebGPU, each in its own worker. */
+/** The model running in a Web Worker: WebNN first, then WebGPU, each in its own worker. */
 function workerModel(): LocalModel {
-  const hub = statusHub({ state: "idle" });
+  const modelId = selectedModel();
+  const name = AI_MODELS[modelId].name;
+  const hub = statusHub({ state: "idle", modelId, model: name });
   let worker: Worker | undefined;
   let loading: Promise<AiStatus> | undefined;
   const handlers = new Map<string, (event: AiGenerateEvent) => void>();
@@ -136,15 +152,15 @@ function workerModel(): LocalModel {
         }
         done({ state: "error", message: `${device}: ${message}` });
       };
-      candidate.postMessage({ type: "load", host: modelHost(), device, dtype: forcedDtype() });
+      candidate.postMessage({ type: "load", host: modelHost(), model: modelId, device, dtype: forcedDtype() });
     });
 
   const load = async () => {
     const forced = forcedDevice();
     const devices = forced ? [forced] : ["webnn-gpu", "webgpu"];
     const failures: string[] = [];
-    const known = forced ? undefined : knownWebnnFailure();
-    hub.set({ state: "loading", progress: 0, message: "Starting Gemma 4 E4B" });
+    const known = forced ? undefined : knownWebnnFailure(modelId);
+    hub.set({ state: "loading", progress: 0, modelId, model: name, message: `Starting ${name}` });
     for (const device of devices) {
       if (device.startsWith("webnn") && !("ml" in navigator)) {
         failures.push(`${device}: WebNN is not available in this browser`);
@@ -161,14 +177,14 @@ function workerModel(): LocalModel {
       const status = await tryDevice(device, failures);
       if (status.state === "ready") {
         const webnn = failures.find((f) => f.startsWith("webnn") && !f.includes("not available"));
-        if (webnn && !known && !forced) rememberWebnnFailure(webnn);
+        if (webnn && !known && !forced) rememberWebnnFailure(modelId, webnn);
         return status;
       }
       console.warn(`[suiteleaf-ai] ${status.message}`);
       failures.push(status.message ?? device);
     }
     loading = undefined;
-    const status: AiStatus = { state: "error", message: `Gemma 4 E4B could not run here. ${failures.join("; ")}` };
+    const status: AiStatus = { state: "error", modelId, model: name, message: `${name} could not run here. ${failures.join("; ")}` };
     hub.set(status);
     return status;
   };

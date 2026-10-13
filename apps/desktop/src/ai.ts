@@ -1,6 +1,6 @@
 import { app, ipcMain, utilityProcess, type UtilityProcess, type WebContents } from "electron";
 import { join } from "node:path";
-import type { AiGenerateRequest, AiStatus } from "@suiteleaf/core/ai";
+import { modelIdForFile, type AiGenerateRequest, type AiStatus } from "@suiteleaf/core/ai";
 
 let host: UtilityProcess | undefined;
 let status: AiStatus = { state: "idle", backend: "llama.cpp" };
@@ -36,7 +36,7 @@ function start(owner: () => WebContents | undefined) {
   });
   host.on("exit", (code) => {
     host = undefined;
-    status = { state: "error", backend: "llama.cpp", message: `The model host exited (${code}).` };
+    status = { state: "error", backend: "llama.cpp", modelId: status.modelId, message: `The model host exited (${code}).` };
     owner()?.send("ai:status", status);
     statusWaiters.splice(0).forEach((done) => done(status));
     for (const [id, target] of generations)
@@ -68,6 +68,7 @@ export function registerAi(
   owner: () => WebContents | undefined,
   isOwner: (sender: WebContents) => boolean,
 ) {
+  status = { ...status, modelId: modelIdForFile(modelPath()) };
   register("ai:status", () => status);
   register("ai:load", () => {
     if (status.state === "ready") return status;
