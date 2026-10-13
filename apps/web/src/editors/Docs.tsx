@@ -116,6 +116,7 @@ import { PageFurniture, PageSetupFields } from "./page-setup";
 import { ArabicNumberStart, ArabicStartControl } from "./doc-arabic-start";
 import { paragraphLineSpacing } from "./doc-line-spacing";
 import { LineSpacingControl } from "./doc-line-spacing-ui";
+import { paragraphSpacing } from "./doc-paragraph-spacing";
 import { DocWatermarkField, pageSetupToSave } from "./doc-watermark";
 import { columnLayout } from "./doc-columns";
 import { PageMarginFields } from "./page-setup-margins";
@@ -138,6 +139,7 @@ export const extensions: Extensions = [
   Highlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ["heading", "paragraph"] }),
   paragraphLineSpacing,
+  paragraphSpacing,
   KeepWithNext,
   WidowControl,
   KeepLines,
