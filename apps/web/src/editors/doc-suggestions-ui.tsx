@@ -341,7 +341,7 @@ export function SuggestionModeSwitch() {
       <label className="mode-author">
         as
         <input
-          aria-label="Your name"
+          aria-label="Suggesting as"
           value={author}
           placeholder="Your name"
           maxLength={80}

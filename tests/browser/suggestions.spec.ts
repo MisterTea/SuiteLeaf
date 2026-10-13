@@ -37,7 +37,7 @@ test("suggesting mode records, reviews, and restores changes", async ({ page }) 
   const editor = editorOf(page);
   await editor.click();
   await page.keyboard.type("We now serve very 40 customers and the project is on budget.");
-  await page.getByLabel("Your name").fill("Jordan");
+  await page.getByLabel("Suggesting as").fill("Jordan");
   await page.getByRole("button", { name: "Suggesting", exact: true }).click();
   await expect(page.getByRole("button", { name: "Suggesting", exact: true })).toHaveAttribute(
     "aria-pressed",

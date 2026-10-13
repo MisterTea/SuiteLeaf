@@ -19,7 +19,7 @@ test("command search runs strikethrough and explains commands that cannot run", 
   await expect(search).toBeHidden();
   await expect(editor.locator("s")).toHaveText("Quarterly report");
 
-  await page.keyboard.press("ArrowRight");
+  await editor.press("ArrowRight");
   await page.keyboard.press("Alt+/");
   await page.keyboard.type("link");
   await expect(search.getByRole("option").first()).toContainText(

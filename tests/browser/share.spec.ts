@@ -170,7 +170,7 @@ test("sharing suggests accounts, enforces commenter and viewer, and updates Shar
     await page.waitForTimeout(5000);
     await expect(undo).toBeVisible();
     await undo.click();
-    await expect(dialog.getByText("Sam Okafor")).toBeVisible();
+    await expect(dialog.getByText("Sam Okafor", { exact: true })).toBeVisible();
 
     await expect(samPage.getByRole("button", { name: "Watering rota.sldoc" })).toContainText("Rosa Diaz", {
       timeout: 15000,

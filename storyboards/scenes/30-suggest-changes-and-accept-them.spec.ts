@@ -84,7 +84,7 @@ test("30-suggest-changes-and-accept-them", async ({ page }) => {
   );
 
   await caption(page, "Suggestions are signed with Jordan's name. One click turns Suggesting on.", 1200);
-  await page.getByLabel("Your name").fill("Jordan");
+  await page.getByLabel("Suggesting as").fill("Jordan");
   await beat(page, 300);
   await page.getByRole("button", { name: "Suggesting", exact: true }).click();
   await expect(page.locator(".mode-switch.suggesting")).toBeVisible();

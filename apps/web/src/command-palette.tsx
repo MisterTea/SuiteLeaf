@@ -267,8 +267,6 @@ export function CommandPalette({
     setQuery("");
     window.setTimeout(() => live.run(), 0);
   };
-  const runRef = useRef(runCommand);
-  runRef.current = runCommand;
 
   useEffect(() => {
     if (mode === "search") searchInput.current?.focus();
@@ -330,7 +328,13 @@ export function CommandPalette({
           event.preventDefault();
           event.stopPropagation();
           const command = resultsRef.current[highlightRef.current];
-          if (command) runRef.current(command);
+          if (!command || command.disabledReason) return;
+          const live = listRef.current().find((item) => item.id === command.id);
+          if (!live || live.disabledReason) return;
+          setRecent(rememberCommand(command.id));
+          setMode(null);
+          setQuery("");
+          live.run();
         }
         return;
       }
