@@ -163,3 +163,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 135 | [Keep the size from Word](135-keep-the-size-from-word.md) | single-node | Docs |
 | 137 | [Keep the font from Word](137-keep-the-font-from-word.md) | single-node | Docs |
 | 138 | [Line up the boxes](138-line-up-the-boxes.md) | single-node | Slides |
+| 139 | [Line up the right edges](139-line-up-the-right-edges.md) | single-node | Slides |
