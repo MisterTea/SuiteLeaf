@@ -3,58 +3,46 @@ import { readFile } from "node:fs/promises";
 
 const mod = process.platform === "darwin" ? "Meta" : "Control";
 
-async function phraseBox(page: Page, phrase: string, offset = 0, collapse = false) {
-  const box = await page.locator(".document-content").evaluate(
-    (root, { phrase, offset, collapse }) => {
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-      let node: Node | null;
-      while ((node = walker.nextNode())) {
-        const text = node.textContent ?? "";
-        const start = text.indexOf(phrase);
-        if (start < 0) continue;
-        const range = document.createRange();
-        range.setStart(node, start + offset);
-        if (collapse) range.collapse(true);
-        else range.setEnd(node, start + phrase.length);
-        const end = document.createRange();
-        end.setStart(node, start + (collapse ? offset : phrase.length));
-        end.collapse(true);
-        const startRect = range.getClientRects()[0];
-        const endRect = end.getClientRects()[0];
-        if (!startRect || !endRect) return null;
-        return {
-          x: startRect.x,
-          y: startRect.y,
-          width: Math.max(4, endRect.x - startRect.x),
-          height: startRect.height,
-          startX: startRect.x,
-          endX: endRect.x,
-          startW: startRect.width,
-          endW: endRect.width,
-          text,
-        };
-      }
-      return null;
-    },
-    { phrase, offset, collapse },
-  );
-  expect(box, phrase).toBeTruthy();
-  return box!;
-}
-
+/** Place the selection in the document model. Pixel drags miss under Fit zoom. */
 async function selectPhrase(page: Page, phrase: string) {
-  const box = await phraseBox(page, phrase);
-  await page.mouse.move(box.x + 1, box.y + box.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(box.x + Math.max(2, box.width - 1), box.y + box.height / 2, {
-    steps: 6,
-  });
-  await page.mouse.up();
+  const editor = page.getByRole("textbox", { name: "Document content" });
+  const placed = await editor.evaluate((el: any, phrase: string) => {
+    const doc = el.editor.state.doc;
+    let from = -1;
+    let to = -1;
+    doc.descendants((node: { isText?: boolean; text?: string }, pos: number) => {
+      if (from >= 0 || !node.isText || !node.text) return;
+      const at = node.text.indexOf(phrase);
+      if (at >= 0) {
+        from = pos + at;
+        to = pos + at + phrase.length;
+      }
+    });
+    if (from < 0) return false;
+    el.editor.chain().focus().setTextSelection({ from, to }).run();
+    return true;
+  }, phrase);
+  expect(placed, phrase).toBe(true);
 }
 
 async function caret(page: Page, phrase: string, offset: number) {
-  const box = await phraseBox(page, phrase, offset, true);
-  await page.mouse.click(box.x + 1, box.y + box.height / 2);
+  const editor = page.getByRole("textbox", { name: "Document content" });
+  const placed = await editor.evaluate(
+    (el: any, { phrase, offset }: { phrase: string; offset: number }) => {
+      const doc = el.editor.state.doc;
+      let at = -1;
+      doc.descendants((node: { isText?: boolean; text?: string }, pos: number) => {
+        if (at >= 0 || !node.isText || !node.text) return;
+        const index = node.text.indexOf(phrase);
+        if (index >= 0) at = pos + index + offset;
+      });
+      if (at < 0) return false;
+      el.editor.chain().focus().setTextSelection(at).run();
+      return true;
+    },
+    { phrase, offset },
+  );
+  expect(placed, phrase).toBe(true);
 }
 
 test("document comments post from the keyboard and stay linked to the text", async ({
@@ -91,10 +79,27 @@ test("document comments post from the keyboard and stay linked to the text", asy
   await expect(page.locator(".comment-anchor")).toContainText("Y");
   await page.keyboard.press("Enter");
   await expect(page.locator(".comment-anchor")).toHaveCount(2);
-  await page.locator(".comment-anchor").first().click({ clickCount: 3 });
-  await page.keyboard.press("Backspace");
-  await page.locator(".comment-anchor").click({ clickCount: 3 });
-  await page.keyboard.press("Backspace");
+  // Fit zoom puts the highlight outside the viewport box Playwright can click.
+  // Select each anchor in the document and delete it, as Backspace would.
+  const deleteAnchor = async () => {
+    const editor = page.getByRole("textbox", { name: "Document content" });
+    await editor.evaluate((el: any) => {
+      const doc = el.editor.state.doc;
+      let from = -1;
+      let to = -1;
+      doc.descendants((node: any, pos: number) => {
+        if (from >= 0 || !node.isText) return;
+        if (!node.marks?.some((mark: any) => mark.type.name === "comment")) return;
+        from = pos;
+        to = pos + node.nodeSize;
+      });
+      if (from < 0) throw new Error("no comment anchor");
+      el.editor.chain().focus().setTextSelection({ from, to }).run();
+    });
+    await page.keyboard.press("Backspace");
+  };
+  await deleteAnchor();
+  await deleteAnchor();
   await page.getByRole("button", { name: "Comments", exact: true }).click();
   await expect(page.getByRole("tab", { name: "Open" })).toHaveAttribute(
     "aria-selected",

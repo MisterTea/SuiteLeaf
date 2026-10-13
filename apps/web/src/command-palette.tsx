@@ -304,9 +304,16 @@ export function CommandPalette({
         setMode((current) => (current === "search" ? null : "search"));
         return;
       }
+      const inDocument =
+        event.target instanceof Element &&
+        !!event.target.closest(".document-content");
+      // Ctrl+Alt+M focuses the menu bar, except in a document on keyboards
+      // where that chord is also the comment shortcut. Commenting wins there.
+      // F10 focuses the menu bar everywhere.
       if (
-        eventMatchesShortcut("Ctrl+Alt+M", keyEvent, mac) ||
-        eventMatchesShortcut("F10", keyEvent, mac)
+        eventMatchesShortcut("F10", keyEvent, mac) ||
+        (eventMatchesShortcut("Ctrl+Alt+M", keyEvent, mac) &&
+          (mac || !inDocument))
       ) {
         event.preventDefault();
         event.stopPropagation();

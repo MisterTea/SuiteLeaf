@@ -66,7 +66,7 @@ test("trash keeps a file for undo, restore, search, and starring", async ({ page
 
   await ageTrash(page, "Lasagne", 7);
   await page.getByRole("button", { name: "Trash", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Trash" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Trash", exact: true })).toBeVisible();
   await expect(row).toContainText("Deleted 7 days ago · deleted forever in 23 days");
   await page.getByRole("button", { name: "All files", exact: true }).click();
   await page.getByLabel("Search files").fill("lasagne");
