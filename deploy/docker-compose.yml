@@ -1,0 +1,50 @@
+# A three-node SuiteLeaf cluster on one machine. Run ./init-cluster.sh first;
+# it creates each node's identity, a shared swarm.key, and .env.
+#
+#   cd deploy && ./init-cluster.sh && docker compose up --build
+#
+# Then open http://localhost:8781, :8782, or :8783. Accounts and SuiteDrive
+# files created on any node appear on the others.
+
+x-node: &node
+  build:
+    context: ..
+    dockerfile: deploy/Dockerfile
+  image: suiteleaf-node
+  restart: unless-stopped
+  environment:
+    SUITELEAF_AUTH_SECRET: ${SUITELEAF_AUTH_SECRET:?run ./init-cluster.sh}
+    GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+    GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+    GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+    GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+    NEXTCLOUD_URL: ${NEXTCLOUD_URL:-}
+    NEXTCLOUD_CLIENT_ID: ${NEXTCLOUD_CLIENT_ID:-}
+    NEXTCLOUD_CLIENT_SECRET: ${NEXTCLOUD_CLIENT_SECRET:-}
+
+services:
+  node1:
+    <<: *node
+    volumes: ["./data/node1:/data"]
+    ports: ["8781:8787"]
+    command: ["--public-url", "http://localhost:8781"]
+  node2:
+    <<: *node
+    volumes: ["./data/node2:/data"]
+    ports: ["8782:8787"]
+    command:
+      - --public-url
+      - http://localhost:8782
+      - --bootstrap
+      - /dns4/node1/tcp/4001/p2p/${NODE1_ID}
+  node3:
+    <<: *node
+    volumes: ["./data/node3:/data"]
+    ports: ["8783:8787"]
+    command:
+      - --public-url
+      - http://localhost:8783
+      - --bootstrap
+      - /dns4/node1/tcp/4001/p2p/${NODE1_ID}
+      - --bootstrap
+      - /dns4/node2/tcp/4001/p2p/${NODE2_ID}

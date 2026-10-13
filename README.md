@@ -2,6 +2,13 @@
 
 An open source workspace for documents and spreadsheets, written in React and TypeScript. Run the same editors as a static website or an Electron desktop application. Apache-2.0 licensed, with permissive production dependencies and no required account or paid editor service.
 
+SuiteLeaf runs in one of two modes:
+
+- **Single-node mode (default).** Like LibreOffice or desktop Office: you read and write files on your own computer. There are no accounts, no shared storage, and nothing to sign in to. The desktop app saves to files on disk. The web app, including the [online demo](https://mistertea.github.io/SuiteLeaf/), saves in this browser's storage.
+- **Cluster mode.** Like Microsoft 365 or Google Workspace: people sign in, and files live in SuiteDrive, a shared drive for all users. A cluster is one or more self-hosted SuiteLeaf servers that keep a fully synced copy of every account and file. The web and desktop apps are clients that connect to one server.
+
+The web app is in cluster mode when a SuiteLeaf server serves it. The desktop app and a statically hosted web app start in single-node mode, and **Connect to a server** switches them to cluster mode. The online demo is always in single-node mode.
+
 ## Run locally
 
 Use Node.js 22.12+ (Node 24 recommended) and npm.
@@ -29,20 +36,67 @@ npm run dev:desktop
 - **Charts:** embedded column/bar, line, pie, and scatter charts. Select a range with headers, then **Insert chart**. Move and resize on the grid; edit or remove using **Charts & pivots**. Charts update from calculated source values.
 - **Pivots:** select row/column/value fields, an optional equality filter, and SUM/COUNT/AVERAGE/MIN/MAX. Results appear in a protected worksheet. Use **Charts & pivots → Refresh** after changing source data, or **Copy** to create an editable worksheet.
 - **Slides:** multi-slide presentations with thumbnail reordering, slide layouts (Title, Title & Body, Two Column, Section, Blank), customizable slide backgrounds, rich text formatting, shapes (rectangles, rounded rectangles, ellipses), image insertion, tables, speaker notes, and a fullscreen slide show presentation mode.
+- **Accounts (cluster mode):** sign in with email or username and password, Google, GitHub, or Nextcloud. Accounts and sessions replicate to every server in the cluster.
+- **SuiteDrive (cluster mode):** browse folders and create, open, and save documents, spreadsheets, and presentations from any server. Files and version history replicate to every server. Edits autosave to SuiteDrive, and a conflicting edit from another device offers **Reload from SuiteDrive** or **Save as copy**. Folders and files can be shared with users or organizations.
 - **PowerPoint import:** native, offline import of `.pptx`, `.ppt`, `.ppsx`, `.pptm`, `.potx`, and `.ppsm` files from disk or drag-and-drop, preserving slide dimensions, shape and text styles, bullet hierarchies, tables, and speaker notes into valid `.suiteleaf` presentations.
 
-Native `.suiteleaf` files preserve supported document content, embedded images, workbook formulas/styles, chart placement, pivot definitions, and presentation slides. Both platforms read the same versioned format. Page settings, rule resources, comments/notes, protection and tab groups also survive native saves. DOCX/XLSX exports run locally on both platforms. Accounts, cloud sync, and shared editing remain deferred; comments are local to the file.
+Native SuiteLeaf files are JSON with a distinct extension per kind: `.sldoc` for documents, `.slsheet` for spreadsheets, and `.slslides` for presentations (older `.suiteleaf` files still open). See [file format](docs/file-format.md). They preserve supported document content, embedded images, workbook formulas/styles, chart placement, pivot definitions, and presentation slides. Both platforms read the same versioned format. Page settings, rule resources, comments/notes, protection and tab groups also survive native saves. DOCX/XLSX exports run locally on both platforms. Real-time shared editing remains deferred; comments are local to the file.
 
 ## Saving and portability
 
-The website autosaves locally in the browser using localForage (IndexedDB with fallback) on the current browser/device and origin. **Download** saves a portable `.suiteleaf` copy; **Open / import** restores it. A second tab cannot edit a file already open in another tab. Browser data is local: download copies before clearing site data or moving between devices.
-An online demo is hosted via GitHub Pages at https://mistertea.github.io/SuiteLeaf/ .
+In single-node mode, the website autosaves locally in the browser using localForage (IndexedDB with fallback) on the current browser/device and origin. **Download** saves a portable `.sldoc`, `.slsheet`, or `.slslides` copy; **Open / import** restores it. A second tab cannot edit a file already open in another tab. Browser data is local: download copies before clearing site data or moving between devices.
+An online demo is hosted via GitHub Pages at https://mistertea.github.io/SuiteLeaf/. It is built with `VITE_SUITELEAF_DEMO=1`, which locks it to single-node mode with browser storage.
 
 Electron starts new files as recovery drafts. After **Save As**, changes autosave to that regular file. File writes are serialized and replaced atomically. If another program changes the file, SuiteLeaf keeps a recovery draft and offers **Reload saved** or **Save As** instead of overwriting the external change. Removing a desktop recent-file entry also removes its recovery draft; the saved file stays on disk. Recovery data lives in the application’s user-data directory under `library/library.json`.
 
 Use **File → Export** for HTML/plain text documents or CSV/TSV spreadsheets. Delimited imports preview their delimiter and rows, retain the header row, infer ordinary numbers and booleans, and preserve formulas, leading-zero identifiers, and high-precision numbers as text. CSV/TSV exports contain the active worksheet’s calculated values; formula-looking text receives a protective apostrophe. HTML imports sanitize executable content and accept embedded images only. Image uploads support PNG/JPEG/GIF/WebP up to 5 MB; Office inputs are limited to 120 MB; native inputs to 200 MB; other imports to 50 MB; CSV ranges to 200,000 cells. Office packages may expand to 1 GB, and spreadsheet imports allow up to 10 million stored cells and 100 MB of cell text. Files outside these limits produce explicit capacity errors.
 
 **File → Print / Save as PDF** prints documents or a table of the active worksheet with its visible charts. Spreadsheet printing is limited to 10,000 cells. Browser or operating-system print dialogs provide PDF output. On desktop, when no printer is available, the command opens a PDF save dialog and generates the PDF directly.
+
+## Cluster mode: SuiteLeaf servers
+
+A server (also called a node) is the `suiteleaf-node` Rust binary plus a better-auth sidecar. It serves the web app in cluster mode, the SuiteDrive API, and sign-in, and it replicates its database ([SuiteDB](docs/suitedb.md)) and files to the other servers over libp2p. Every server stores a complete copy of all accounts and files, so only run servers on machines you trust. See [architecture](docs/architecture.md#nodes-suitedb-auth-and-suitedrive).
+
+Run a node locally with Rust (stable) installed:
+
+```sh
+npm run build:web && npm run build:auth
+cargo run -p suiteleaf-node -- init --data-dir node-a
+export SUITELEAF_AUTH_SECRET=$(openssl rand -hex 32)   # identical on every node
+cargo run -p suiteleaf-node -- run --data-dir node-a --web-root apps/web/dist
+```
+
+Open http://127.0.0.1:8787 and create an account. To add a second node to the same cluster, give it a copy of the first node's `swarm.key` and the address the first node prints in its `SUITELEAF_NODE_READY` line:
+
+```sh
+cargo run -p suiteleaf-node -- init --data-dir node-b --swarm-key node-a/swarm.key
+cargo run -p suiteleaf-node -- run --data-dir node-b --http 127.0.0.1:8788 \
+  --listen /ip4/127.0.0.1/tcp/4002 --web-root apps/web/dist \
+  --bootstrap /ip4/127.0.0.1/tcp/4001/p2p/<node-a peer id>
+```
+
+[`deploy/`](deploy) has a Dockerfile and a three-node `docker compose` cluster (`cd deploy && ./init-cluster.sh && docker compose up --build`). Options can also go in a TOML file passed with `--config`:
+
+| Setting | Meaning |
+| --- | --- |
+| `data_dir` | Holds `identity.key`, `swarm.key`, `suitedb.sqlite`, and `blobs/`. |
+| `http_addr` | The HTTP listener for the web app and APIs. |
+| `public_url` | The URL browsers use for this node. OAuth callbacks are built from it. |
+| `listen` | libp2p listen addresses. |
+| `bootstrap` | Peers to keep connected, as `/ip4/…/tcp/…/p2p/<peer id>`. |
+| `allowlist` | Peer IDs allowed to connect and author changes. Empty means anyone with the swarm key. |
+| `mdns` | Discover peers on the local network. |
+| `web_root` | A built web app to serve. |
+| `cors_origins` | Other origins that may call the API, such as `suiteleaf://app` or a separately hosted web build. |
+| `[auth]` | The sidecar `command`, an external sidecar `url`, a shared `secret`, and extra sidecar `env`. |
+
+To enable social sign-in, set these in the node's environment and register `<public_url>/api/auth/callback/<provider>` (`google`, `github`, or `nextcloud`) as the redirect URI with each provider.
+
+- `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`
+- `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`
+- `NEXTCLOUD_URL`, `NEXTCLOUD_CLIENT_ID`, and `NEXTCLOUD_CLIENT_SECRET`
+
+To use the desktop app as a client, choose **Server → Connect to a SuiteLeaf server…** and enter the server's address. **Server → Disconnect** returns it to single-node mode; files on the computer are untouched, and SuiteDrive files stay on the server. A web build hosted elsewhere can connect the same way if the server lists its origin in `cors_origins`.
 
 ## Build and host
 
@@ -66,6 +120,10 @@ Outputs appear in `apps/desktop/release/`: macOS DMG/ZIP, Windows NSIS, and Linu
 ```sh
 npm run typecheck
 npm run lint
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+cargo build -p suiteleaf-node && npm run build:auth
 npm test
 npm run build
 npx playwright install chromium firefox webkit
@@ -80,10 +138,18 @@ macOS runs Chromium and WebKit by default. Firefox is included on Linux/Windows 
 
 Linux Electron tests need a graphical display; CI uses `xvfb-run --auto-servernum npm run test:electron`. Playwright tests use isolated browser storage and temporary desktop data, covering editing, formulas, charts/pivots, import sanitization, offline reload, concurrent-tab protection, native saves, conflicts, and recovery. `npm run format` formats application sources and tests.
 
-The repository uses npm workspaces: `apps/web` is the shared React UI, `apps/desktop` is the Electron main/preload wrapper, and `packages/core` contains the file schema and platform contracts. Heavy editors load independently. See [architecture](docs/architecture.md) and [reference workflow coverage](docs/workflows.md).
+The repository uses npm workspaces and a Cargo workspace:
+
+- `apps/web` is the shared React UI.
+- `apps/desktop` is the Electron main/preload wrapper.
+- `packages/core` contains the file schema and platform contracts.
+- `services/auth` is the better-auth sidecar.
+- `crates/` holds the node: `suiteleaf-net`, `suitedb`, `suitedrive`, and `suiteleaf-node`.
+
+`npm test` includes better-auth's adapter test suite, run against a real node. `tests/browser/suitedrive.spec.ts` starts two nodes and checks saving, cross-node opening, and conflict handling in the browser. Both need `cargo build -p suiteleaf-node` and `npm run build:auth` first. Heavy editors load independently. See [architecture](docs/architecture.md) and [reference workflow coverage](docs/workflows.md).
 
 ## Dependencies and references
 
-Office imports use Mammoth (BSD-2-Clause), SheetJS Community 0.20.3 from its official distribution (Apache-2.0), JSZip, fast-xml-parser, and htmlparser2. Word pagination/floating objects and some Excel features differ; see [Office compatibility and corpus validation](docs/office-imports.md). Docs uses Tiptap/ProseMirror. Sheets uses Univer’s Apache-2.0 packages; charts use Recharts and pivots use Arquero. Radix supplies menus, localForage supplies browser client storage, Papa Parse handles delimited files, DOMPurify sanitizes HTML, and Zod validates native files. DOMPurify’s Apache-2.0 license option is selected. See [third-party notices](THIRD_PARTY_NOTICES.md).
+Office imports use Mammoth (BSD-2-Clause), SheetJS Community 0.20.3 from its official distribution (Apache-2.0), JSZip, fast-xml-parser, and htmlparser2. Word pagination/floating objects and some Excel features differ; see [Office compatibility and corpus validation](docs/office-imports.md). Docs uses Tiptap/ProseMirror. Sheets uses Univer’s Apache-2.0 packages; charts use Recharts and pivots use Arquero. Nodes use rust-libp2p, SQLite through rusqlite, axum, and BLAKE3. Accounts use better-auth. Radix supplies menus, localForage supplies browser client storage, Papa Parse handles delimited files, DOMPurify sanitizes HTML, and Zod validates native files. DOMPurify’s Apache-2.0 license option is selected. See [third-party notices](THIRD_PARTY_NOTICES.md).
 
 The books in `docs/` guide workflow selection and test scenarios. They remain local reference files, are gitignored, and are excluded from application and installer bundles. SuiteLeaf includes original branding, sample content, and code.

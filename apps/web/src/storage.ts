@@ -2,7 +2,8 @@ import { Library } from "./browser-library";
 export { Library } from "./browser-library";
 import {
   serializeFile,
-  filename,
+  nativeFilename,
+  mimeFor,
   type StorageAdapter,
   type DesktopBridge,
 } from "@suiteleaf/core";
@@ -34,7 +35,11 @@ const browserStorage: StorageAdapter = {
     return null;
   },
   async saveAs(record) {
-    download(filename(record.file.title), serializeFile(record.file));
+    download(
+      nativeFilename(record.file),
+      serializeFile(record.file),
+      mimeFor(record.file.kind),
+    );
     return record;
   },
 };
@@ -56,7 +61,9 @@ export class SaveQueue {
   private tail: Promise<unknown> = Promise.resolve();
   enqueue<T>(work: () => Promise<T>): Promise<T> {
     const next = this.tail.catch(() => {}).then(work);
-    this.tail = next;
+    // Holding `next` itself would keep its result alive as long as the queue.
+    this.tail = next.then(() => {});
+    this.tail.catch(() => {});
     return next;
   }
   async flush() {

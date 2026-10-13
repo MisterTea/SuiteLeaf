@@ -1,0 +1,46 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+rust-version = "1.88"
+
+[workspace.dependencies]
+suiteleaf-net = { path = "crates/suiteleaf-net" }
+suitedb = { path = "crates/suitedb" }
+suitedrive = { path = "crates/suitedrive" }
+anyhow = "1"
+thiserror = "2"
+async-trait = "0.1"
+axum = { version = "0.8", features = ["macros"] }
+base64 = "0.22"
+blake3 = "1"
+bytes = "1"
+ciborium = "0.2"
+clap = { version = "4", features = ["derive", "env"] }
+futures = "0.3"
+hex = "0.4"
+jsonwebtoken = { version = "10", default-features = false, features = ["rust_crypto"] }
+libp2p = { version = "0.57", default-features = false, features = [
+  "tokio", "tcp", "dns", "noise", "yamux", "pnet", "identify", "ping", "kad",
+  "gossipsub", "mdns", "request-response", "cbor", "macros", "ed25519", "serde",
+] }
+proptest = "1"
+rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_bytes = "0.11"
+serde_json = "1"
+tempfile = "3"
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["io"] }
+toml = "0.9"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "fs", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4", "v7"] }

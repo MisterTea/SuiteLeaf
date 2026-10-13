@@ -1,5 +1,11 @@
 import Dexie, { type Table } from "dexie";
-import { parseFile, serializeFile, type FileRecord } from "@suiteleaf/core";
+import {
+  driveLinkSchema,
+  parseFile,
+  serializeFile,
+  type DriveLink,
+  type FileRecord,
+} from "@suiteleaf/core";
 interface EncodedRecord {
   id: string;
   title: string;
@@ -7,6 +13,7 @@ interface EncodedRecord {
   native?: Blob | string;
   count?: number;
   revision?: string;
+  drive?: DriveLink;
 }
 interface Chunk {
   key: string;
@@ -61,7 +68,10 @@ export class Library extends Dexie {
         throw new Error("A stored file is missing a data chunk.");
       text = parts.map((p) => p!.data).join("");
     }
-    return { file: parseFile(text) };
+    const drive = driveLinkSchema.safeParse(row.drive);
+    return drive.success
+      ? { file: parseFile(text), drive: drive.data }
+      : { file: parseFile(text) };
   }
   async list(): Promise<FileRecord[]> {
     return Promise.all(
@@ -81,6 +91,7 @@ export class Library extends Dexie {
         id,
         title: record.file.title,
         updatedAt: record.file.updatedAt,
+        drive: record.drive,
       };
       if (native.length < 16 * 1024 * 1024)
         await this.encoded.put({ ...meta, native });
@@ -97,7 +108,9 @@ export class Library extends Dexie {
         await this.encoded.put({ ...meta, revision, count });
       }
     });
-    return { file: record.file };
+    return record.drive
+      ? { file: record.file, drive: record.drive }
+      : { file: record.file };
   }
   async remove(id: string) {
     await this.transaction("rw", this.encoded, this.chunks, async () => {

@@ -12,6 +12,22 @@ extraResources:
     to: THIRD_PARTY_NOTICES.txt
 icon: resources/icon.png
 asar: true
+fileAssociations:
+  - ext: sldoc
+    name: SuiteLeaf Document
+    mimeType: application/vnd.suiteleaf.doc+json
+    role: Editor
+  - ext: slsheet
+    name: SuiteLeaf Spreadsheet
+    mimeType: application/vnd.suiteleaf.sheet+json
+    role: Editor
+  - ext: slslides
+    name: SuiteLeaf Presentation
+    mimeType: application/vnd.suiteleaf.slides+json
+    role: Editor
+  - ext: suiteleaf
+    name: SuiteLeaf File (legacy)
+    role: Editor
 mac:
   icon: resources/icon.icns
   identity: null
@@ -26,6 +42,7 @@ win:
 linux:
   executableName: suiteleaf
   category: Office
+  maintainer: SuiteLeaf contributors
   target:
     - AppImage
     - deb

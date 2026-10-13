@@ -1,10 +1,17 @@
 # Architecture
 
-SuiteLeaf v1 has no backend. A React renderer is shared by Vite’s static build and electron-vite’s renderer build. Hash routing supports arbitrary static hosts and the desktop `suiteleaf://app/` protocol. The home screen loads file metadata; editor modules are loaded only when a document or spreadsheet opens.
+A React renderer is shared by Vite’s static build and electron-vite’s renderer build. It runs in one of two modes, resolved at startup by [`apps/web/src/mode.ts`](../apps/web/src/mode.ts):
+
+| Mode | Storage | How it is chosen |
+| --- | --- | --- |
+| Single-node (default) | Desktop: files on disk. Web: browser storage. | Default for the desktop app and static web builds. The GitHub Pages demo is built with `VITE_SUITELEAF_DEMO=1`, which locks it here. |
+| Cluster | SuiteDrive on a SuiteLeaf server, with a local offline cache. | Automatic when a server serves the web app. Otherwise **Connect to a server**, saved in the desktop settings file or browser storage. |
+
+Single-node mode needs no backend and shows no account or SuiteDrive UI. In cluster mode every route sits behind sign-in, the home screen lists SuiteDrive, and New, Open, and Save as work in SuiteDrive; see [Nodes, SuiteDB, auth, and SuiteDrive](#nodes-suitedb-auth-and-suitedrive). Hash routing supports arbitrary static hosts and the desktop `suiteleaf://app/` protocol. The home screen loads file metadata; editor modules are loaded only when a document or spreadsheet opens.
 
 ## Portable files
 
-`packages/core` defines the version-1 `.suiteleaf` JSON envelope: `format`, `version`, `id`, `kind`, `title`, `createdAt`, `updatedAt`, and `content`. Docs content is Tiptap JSON with embedded image data. Sheets content includes a Univer workbook snapshot, chart definitions, and pivot definitions. Editor snapshots retain their native styles, formula expressions/results, plugin resources, and worksheet IDs. Definitions reference worksheets by ID rather than their editable names.
+`packages/core` defines the version-1 JSON envelope, saved as `.sldoc`, `.slsheet`, or `.slslides` by kind (legacy `.suiteleaf` still opens; see [file format](file-format.md)): `format`, `version`, `id`, `kind`, `title`, `createdAt`, `updatedAt`, and `content`. Docs content is Tiptap JSON with embedded image data. Sheets content includes a Univer workbook snapshot, chart definitions, and pivot definitions. Editor snapshots retain their native styles, formula expressions/results, plugin resources, and worksheet IDs. Definitions reference worksheets by ID rather than their editable names.
 
 Zod validates the envelope and essential workbook/cell structure. Native imports reject newer versions, malformed ranges, missing worksheets, unsafe document links, and external image references before persistence. Version 1 is the initial schema; future incompatible changes must introduce an explicit migration. JSON exports are portable data, not executable editor extensions.
 
@@ -28,7 +35,7 @@ Pivots use Arquero aggregation with named field selections. Numeric aggregates i
 
 Electron runs a sandboxed renderer with Node integration disabled and context isolation enabled. The main process validates IPC provenance and native file content. A scoped protocol serves bundled assets, navigation is restricted, and only clipboard permissions needed by the trusted editor are allowed. The content policy permits local assets, inline styles required by editors, and JavaScript evaluation required by spreadsheet/data engines; imported document content is sanitized and cannot supply scripts.
 
-Production dependency notices accompany web assets and desktop packages. Books and research materials are excluded. Static hosting does not provide user accounts or cross-device synchronization. Signing, notarization, deployment, and automatic updates remain separate release tasks.
+Production dependency notices accompany web assets and desktop packages. Books and research materials are excluded. Static hosting alone does not provide user accounts or cross-device synchronization; a SuiteLeaf node does. Signing, notarization, deployment, and automatic updates remain separate release tasks.
 
 ## Office conversion
 
@@ -39,3 +46,60 @@ Mammoth handles Word semantics, while a whitelist HTML-to-Tiptap adapter strips 
 SheetJS supplies cell types, Unicode, shared/array formulas and caches. OOXML styles and worksheet metadata provide fonts, fills, borders, alignment, number formats, dimensions, merges, hidden sheets, frozen panes, the date system and named ranges. Dense parsing and releasing source cell structures keep large imports within bounded memory. ZIP headers are normalized through JSZip and a Pako adapter replaces the spreadsheet library’s inflater to avoid hangs on valid archive layouts. Spreadsheet cell validation checks the graph in place rather than deep-cloning millions of cells during every native save. Basic charts are recreated when their cell ranges are representable; unsupported Excel features are recorded rather than claimed as preserved.
 
 Corpus verification uses the identical converter and native validator in isolated processes, with immutable source snapshots and per-file original hash checks. Successful conversion/native round trip is distinct from visual or calculation parity with Word/Excel. Corrupt/encrypted rejection, capacity rejection and unexpected failure have separate result categories.
+
+## Nodes, SuiteDB, auth, and SuiteDrive
+
+A SuiteLeaf node is one Rust binary, `suiteleaf-node`, plus a small better-auth sidecar. Nodes form a private libp2p cluster and each holds a complete copy of everything.
+
+```mermaid
+flowchart LR
+  Browser["Web or desktop app"] -->|"HTTPS, bearer token"| Http
+  subgraph node [suiteleaf-node]
+    Http["axum: /api/drive, /api/node, web app"]
+    Proxy["/api/auth proxy"]
+    DB["SuiteDB: signed op-log + SQLite"]
+    Blobs["SuiteDrive: BLAKE3 blobs"]
+    Swarm["libp2p: TCP + pnet + Noise + Yamux"]
+  end
+  Sidecar["better-auth sidecar"]
+  Http --> Proxy --> Sidecar
+  Sidecar -->|"loopback /internal/db"| DB
+  Http --> DB
+  Http --> Blobs
+  DB <--> Swarm
+  Blobs <--> Swarm
+  Swarm <-->|"gossip, sync, blob fetch"| Peers["Other nodes"]
+```
+
+| Crate or package | Role |
+| --- | --- |
+| [`crates/suiteleaf-net`](../crates/suiteleaf-net) | The swarm. TCP inside a private network (shared `swarm.key`), then Noise and Yamux, with identify, ping, Kademlia, optional mDNS, gossipsub, and two request/response protocols. |
+| [`crates/suitedb`](../crates/suitedb) | The replicated database. See [SuiteDB](suitedb.md). |
+| [`crates/suitedrive`](../crates/suitedrive) | Content-addressed file storage plus SuiteDB metadata tables. |
+| [`crates/suiteleaf-node`](../crates/suiteleaf-node) | The binary. It holds config, keys, replication wiring, the HTTP API, and auth sidecar supervision. |
+| [`services/auth`](../services/auth) | better-auth with a SuiteDB adapter. |
+
+**Authentication.** better-auth handles email/password and username login, Google, GitHub, and Nextcloud (through `genericOAuth`). Its admin and organization plugins provide roles and teams. The sidecar never touches SQLite: its adapter sends every read and write to the node over loopback, so accounts, sessions, and signing keys replicate like any other table. better-auth's own adapter test suite runs against a live node.
+
+Any node can authenticate a request from its local copy, without contacting the sidecar:
+
+- A bearer JWT is verified against the Ed25519 public keys in the replicated `jwks` table.
+- A bearer session token or session cookie is looked up in the replicated `session` table.
+
+Social sign-in has to start on the node's own origin so the OAuth state cookie lands there. The app opens `/api/auth/suiteleaf/start`, which redirects to the provider. When the provider returns, the node redirects back to the app's `#/auth-complete` route with a one-time token, and the app exchanges that token for a session. Electron runs this hand-off in a child window.
+
+**SuiteDrive.** File content is split into 1 MiB chunks, each stored under its BLAKE3 hash. A manifest lists the chunks, and the manifest's hash is the content hash. Three SuiteDB tables hold the metadata:
+
+- `drive_item`: files and folders, including each file's head version.
+- `drive_version`: every saved version.
+- `drive_acl`: sharing with users or organizations, inherited down the folder tree.
+
+When a `drive_version` row arrives from a peer, the node fetches the missing blobs over `/suiteleaf/drive/blob/1` and verifies every hash. A read that arrives before replication finishes fetches the blobs on demand.
+
+Saves send `If-Match` with the version the editor loaded. A stale save returns 409, and the editor then offers to reload the SuiteDrive version or save a copy. If two nodes accept saves at the same moment, last-writer-wins picks the head, and the other version stays in the file's history.
+
+**Editors and storage.** A file opened from SuiteDrive is cached in the local library with a `drive` link that records the node, item, and version. Autosave writes locally first, then uploads to SuiteDrive about 1.5 seconds after editing stops. If the upload fails, the edits stay safe on the device.
+
+**Clients.** The web and desktop apps are cluster clients; they never run a server. The desktop app stores its mode in the user-data `settings.json`, switches with **Server → Connect / Disconnect**, and runs social sign-in in a child window. Files from single-node mode stay on the computer and are hidden in cluster mode; cached copies of SuiteDrive files are hidden in single-node mode.
+
+**Deployment.** [`deploy/`](../deploy) has a Dockerfile and a three-node compose cluster.

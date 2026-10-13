@@ -1,0 +1,13 @@
+**/node_modules
+**/dist
+**/out
+**/release
+target
+test-results
+playwright-report
+datasets
+research-library
+artifacts
+deploy/data
+deploy/.env
+.git

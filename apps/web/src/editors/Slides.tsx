@@ -776,7 +776,11 @@ ${slidesHtml}
           <Tool label="Print (Cmd+P)" onClick={() => printDocument()}>
             <Printer size={16} />
           </Tool>
-          <select className="toolbar-select zoom-select" aria-label="Zoom" defaultValue="Fit">
+          <select
+            className="toolbar-select zoom-select"
+            aria-label="Zoom"
+            defaultValue="Fit"
+          >
             <option value="Fit">Fit</option>
             <option value="50%">50%</option>
             <option value="100%">100%</option>
@@ -909,7 +913,10 @@ ${slidesHtml}
                     aria-label="Decrease font size"
                     onClick={() =>
                       updateElement(selectedElement.id, {
-                        fontSize: Math.max(6, (selectedElement.fontSize || 20) - 1),
+                        fontSize: Math.max(
+                          6,
+                          (selectedElement.fontSize || 20) - 1,
+                        ),
                       })
                     }
                   >
@@ -934,7 +941,10 @@ ${slidesHtml}
                     aria-label="Increase font size"
                     onClick={() =>
                       updateElement(selectedElement.id, {
-                        fontSize: Math.min(96, (selectedElement.fontSize || 20) + 1),
+                        fontSize: Math.min(
+                          96,
+                          (selectedElement.fontSize || 20) + 1,
+                        ),
                       })
                     }
                   >

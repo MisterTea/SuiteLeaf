@@ -1,0 +1,10 @@
+# Container defaults. Pass `--public-url` and `--bootstrap` on the command
+# line, and SUITELEAF_AUTH_SECRET (identical on every node) in the environment.
+data_dir = "/data"
+http_addr = "0.0.0.0:8787"
+listen = ["/ip4/0.0.0.0/tcp/4001"]
+web_root = "/opt/suiteleaf/web"
+cors_origins = ["suiteleaf://app"]
+
+[auth]
+command = ["node", "/opt/suiteleaf/auth/server.mjs"]

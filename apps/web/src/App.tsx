@@ -15,6 +15,8 @@ import {
   Routes,
   useNavigate,
   useParams,
+  useSearchParams,
+  type NavigateFunction,
 } from "react-router-dom";
 import {
   Leaf,
@@ -35,11 +37,19 @@ import {
   Clock,
   MessageSquare,
   Play,
+  Cloud,
+  LogIn,
+  LogOut,
+  Unplug,
 } from "lucide-react";
 import {
   createFile,
   duplicateFile,
-  filename,
+  extensionFor,
+  hasUnsyncedEdits,
+  kindFromName,
+  nativeFilename,
+  mimeFor,
   serializeFile,
   type SuiteFile,
   type FileRecord,
@@ -51,11 +61,101 @@ import { storage, SaveQueue, exportText } from "./storage";
 import { importFile } from "./imports";
 import { sampleDoc, sampleSheet, sampleSlide } from "./samples";
 import { Menu, MenuItem, type EditorActions } from "./ui";
+import {
+  DriveConflict,
+  finishSignOut,
+  getSession,
+  openDriveFile,
+  pendingHandoffUrl,
+  saveNewDriveFile,
+  signOut,
+  uploadDriveFile,
+  type DriveItem,
+} from "./node-client";
+import { DriveBrowser } from "./drive/DriveBrowser";
+import { ConnectDialog, SignInScreen, useNodeSession } from "./drive/SignIn";
+import { completeHandoff } from "./node-client";
+import {
+  ModeContext,
+  resolveMode,
+  switchMode,
+  useMode,
+  type ResolvedMode,
+} from "./mode";
 const Docs = lazy(() => import("./editors/Docs")),
   Sheets = lazy(() => import("./editors/Sheets")),
   Slides = lazy(() => import("./editors/Slides"));
 function message(e: unknown) {
   return e instanceof Error ? e.message : String(e);
+}
+/** SuiteDrive uploads by file ID, shared by every editor of a file so one
+ * opened while an earlier editor's upload is in flight reads the version that
+ * upload produces instead of uploading on top of the same base again. */
+const driveQueues = new Map<string, SaveQueue>();
+function driveQueueFor(id: string) {
+  let queue = driveQueues.get(id);
+  if (!queue) driveQueues.set(id, (queue = new SaveQueue()));
+  return queue;
+}
+/** Each open editor's "save and upload now". */
+const openEditors = new Set<() => Promise<void>>();
+/** Remove cached SuiteDrive files from this device once open editors and
+ * pending uploads finish. Resolves false if edits never reached SuiteDrive
+ * and the user chooses to keep them. */
+async function forgetDriveFiles() {
+  const flushed = await Promise.all(
+    [...openEditors].map((flush) =>
+      flush().then(
+        () => true,
+        () => false,
+      ),
+    ),
+  );
+  await Promise.all(
+    [...driveQueues.values()].map((q) => q.flush().catch(() => {})),
+  );
+  const cached = (await storage.list()).filter((r) => r.drive);
+  if (
+    (flushed.includes(false) || cached.some(hasUnsyncedEdits)) &&
+    !window.confirm(
+      "Some changes haven't reached SuiteDrive and are only saved on this device. Remove them from this device anyway?",
+    )
+  )
+    return false;
+  for (const r of cached) await storage.remove(r.file.id);
+  return true;
+}
+async function disconnect() {
+  if (!(await forgetDriveFiles())) return;
+  await signOut();
+  await switchMode({ kind: "single" });
+}
+/** Cache a SuiteDrive file locally and open it in the editor. A local file
+ * that merely shares the ID gets a fresh one instead of being replaced, and
+ * a cached copy with unuploaded edits is kept so the editor can resolve them. */
+async function openFromDrive(item: DriveItem, navigate: NavigateFunction) {
+  // An upload finishing after the read below would be replaced by the older version.
+  await Promise.all(
+    [...driveQueues.values()].map((q) => q.flush().catch(() => {})),
+  );
+  const record = await openDriveFile(item);
+  const existing = await storage.get(record.file.id);
+  if (existing?.drive?.itemId === item.id) {
+    if (
+      existing.drive.versionId === record.drive?.versionId ||
+      hasUnsyncedEdits(existing)
+    ) {
+      navigate(`/file/${existing.file.id}`);
+      return;
+    }
+  } else if (existing)
+    record.file = duplicateFile(record.file, record.file.title);
+  const saved = await storage.save(record);
+  navigate(`/file/${saved.file.id}`);
+}
+/** Use the file's native extension unless the user typed it. */
+function driveName(name: string, kind: SuiteFile["kind"]) {
+  return kindFromName(name) === kind ? name : `${name}.${extensionFor(kind)}`;
 }
 class ErrorBoundary extends Component<
   { children: ReactNode },
@@ -90,16 +190,19 @@ function Logo() {
 function ImportButton({
   onImport,
   onError,
+  filePicker = false,
 }: {
   onImport: (r: FileRecord) => Promise<void>;
   onError: (s: string) => void;
+  /** Always use the browser file picker, even on desktop. */
+  filePicker?: boolean;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const open = async () => {
     setImporting(true);
     try {
-      if (window.suiteleaf) {
+      if (window.suiteleaf && !filePicker) {
         const r = await storage.open();
         if (r) await onImport(r);
       } else input.current?.click();
@@ -119,7 +222,7 @@ function ImportButton({
         hidden
         type="file"
         ref={input}
-        accept=".suiteleaf,.docx,.xlsx,.xls,.xlsm,.xlsb,.xltx,.pptx,.ppt,.ppsx,.pptm,.potx,.ppsm,.html,.htm,.txt,.csv,.tsv"
+        accept=".sldoc,.slsheet,.slslides,.suiteleaf,.docx,.xlsx,.xls,.xlsm,.xlsb,.xltx,.pptx,.ppt,.ppsx,.pptm,.potx,.ppsm,.html,.htm,.txt,.csv,.tsv"
         onChange={async (e) => {
           const f = e.target.files?.[0];
           e.target.value = "";
@@ -134,7 +237,7 @@ function ImportButton({
           }
         }}
       />
-      {window.suiteleaf ? (
+      {window.suiteleaf && !filePicker ? (
         <button onClick={() => input.current?.click()}>
           Import Office / HTML / CSV
         </button>
@@ -142,8 +245,88 @@ function ImportButton({
     </>
   );
 }
+/** Upload a new file to SuiteDrive, cache it locally, and open it. */
+async function createInDrive(
+  file: SuiteFile,
+  folderId: string | null,
+  navigate: NavigateFunction,
+) {
+  if (await storage.get(file.id)) file = duplicateFile(file, file.title);
+  const drive = await saveNewDriveFile(file, folderId, nativeFilename(file));
+  const saved = await storage.save({ file, drive });
+  navigate(`/file/${saved.file.id}`);
+}
+function NewCards({
+  onCreate,
+}: {
+  onCreate: (kind: SuiteFile["kind"]) => void;
+}) {
+  return (
+    <div className="new-cards">
+      <button className="new-card" onClick={() => onCreate("doc")}>
+        <span className="app-icon doc">
+          <FileText size={30} />
+        </span>
+        <span>
+          <strong>New document</strong>
+          <small>A fresh page for your next idea</small>
+        </span>
+        <Plus size={22} />
+      </button>
+      <button className="new-card" onClick={() => onCreate("sheet")}>
+        <span className="app-icon sheet">
+          <Sheet size={30} />
+        </span>
+        <span>
+          <strong>New spreadsheet</strong>
+          <small>A little structure for the big picture</small>
+        </span>
+        <Plus size={22} />
+      </button>
+      <button className="new-card" onClick={() => onCreate("slide")}>
+        <span className="app-icon slide">
+          <Presentation size={30} />
+        </span>
+        <span>
+          <strong>New presentation</strong>
+          <small>A clean canvas for your next pitch</small>
+        </span>
+        <Plus size={22} />
+      </button>
+    </div>
+  );
+}
+function ErrorBanner({
+  error,
+  onDismiss,
+}: {
+  error: string;
+  onDismiss: () => void;
+}) {
+  return error ? (
+    <div className="error" role="alert">
+      <CircleAlert size={18} />
+      {error}
+      <button aria-label="Dismiss error" onClick={onDismiss}>
+        ×
+      </button>
+    </div>
+  ) : null;
+}
 function Home() {
+  const { mode } = useMode();
+  return mode.kind === "cluster" ? (
+    <ClusterHome serverUrl={mode.serverUrl} />
+  ) : (
+    <LocalHome />
+  );
+}
+/** Single-node mode: files on this computer (or, for the web app, in this
+ * browser's storage). */
+function LocalHome() {
   const navigate = useNavigate();
+  const { locked, demo } = useMode();
+  const [connecting, setConnecting] = useState(false);
   const [records, setRecords] = useState<FileRecord[]>([]),
     [query, setQuery] = useState(""),
     [error, setError] = useState(""),
@@ -152,7 +335,8 @@ function Home() {
     () =>
       storage
         .list()
-        .then(setRecords)
+        // Cached copies of server files belong to cluster mode.
+        .then((all) => setRecords(all.filter((r) => !r.drive)))
         .catch((e) => setError(message(e))),
     [],
   );
@@ -169,7 +353,7 @@ function Home() {
     [navigate],
   );
   const make = useCallback(
-    (kind: "doc" | "sheet" | "slide") =>
+    (kind: SuiteFile["kind"]) =>
       void open({ file: createFile(kind) }).catch((e) => setError(message(e))),
     [open],
   );
@@ -178,6 +362,7 @@ function Home() {
       if (action === "new-doc") make("doc");
       if (action === "new-sheet") make("sheet");
       if (action === "new-slide") make("slide");
+      if (action === "connect-server") setConnecting(true);
       if (action === "open")
         void storage
           .open()
@@ -223,8 +408,25 @@ function Home() {
         </div>
         <div className="local-note">
           <span className="local-dot" />
-          Your workspace, on this device.
-          <small>Offline ready. No account needed.</small>
+          {demo
+            ? "Demo: files are saved in this browser."
+            : window.suiteleaf
+              ? "Your files, on this computer."
+              : "Your workspace, in this browser."}
+          <small>
+            {demo
+              ? "Download a copy to keep your work."
+              : "Offline ready. No account needed."}
+          </small>
+          {locked ? null : (
+            <button
+              className="sign-in-link"
+              onClick={() => setConnecting(true)}
+            >
+              <LogIn size={14} />
+              Connect to a server
+            </button>
+          )}
         </div>
       </aside>
       <main className="home-main">
@@ -245,46 +447,10 @@ function Home() {
           <h1>Good ideas start here.</h1>
           <p>Write something. Work out the numbers. Make it yours.</p>
         </section>
-        <div className="new-cards">
-          <button className="new-card" onClick={() => make("doc")}>
-            <span className="app-icon doc">
-              <FileText size={30} />
-            </span>
-            <span>
-              <strong>New document</strong>
-              <small>A fresh page for your next idea</small>
-            </span>
-            <Plus size={22} />
-          </button>
-          <button className="new-card" onClick={() => make("sheet")}>
-            <span className="app-icon sheet">
-              <Sheet size={30} />
-            </span>
-            <span>
-              <strong>New spreadsheet</strong>
-              <small>A little structure for the big picture</small>
-            </span>
-            <Plus size={22} />
-          </button>
-          <button className="new-card" onClick={() => make("slide")}>
-            <span className="app-icon slide">
-              <Presentation size={30} />
-            </span>
-            <span>
-              <strong>New presentation</strong>
-              <small>A clean canvas for your next pitch</small>
-            </span>
-            <Plus size={22} />
-          </button>
-        </div>
-        {error ? (
-          <div className="error" role="alert">
-            <CircleAlert size={18} />
-            {error}
-            <button aria-label="Dismiss error" onClick={() => setError("")}>
-              ×
-            </button>
-          </div>
+        <NewCards onCreate={make} />
+        <ErrorBanner error={error} onDismiss={() => setError("")} />
+        {connecting ? (
+          <ConnectDialog onClose={() => setConnecting(false)} />
         ) : null}
         <section className="file-section">
           <header>
@@ -422,6 +588,132 @@ function Home() {
     </div>
   );
 }
+function AccountChip({
+  serverUrl,
+  onError,
+}: {
+  serverUrl: string;
+  onError: (error: string) => void;
+}) {
+  const session = useNodeSession();
+  const { locked } = useMode();
+  const [busy, setBusy] = useState(false);
+  const leave = (work: () => Promise<unknown>) => {
+    setBusy(true);
+    void work()
+      .catch((e) => onError(message(e)))
+      .finally(() => setBusy(false));
+  };
+  if (!session) return null;
+  return (
+    <div className="account-chip">
+      <span className="account-avatar" aria-hidden="true">
+        {(session.user.name || session.user.email || "?")
+          .slice(0, 1)
+          .toUpperCase()}
+      </span>
+      <span className="account-name">
+        {session.user.name || session.user.username || session.user.email}
+        <small>{new URL(serverUrl).host}</small>
+      </span>
+      <button
+        title="Sign out"
+        aria-label="Sign out"
+        disabled={busy}
+        onClick={() =>
+          leave(async () => {
+            if (await forgetDriveFiles()) await signOut();
+          })
+        }
+      >
+        <LogOut size={16} />
+      </button>
+      {locked ? null : (
+        <button
+          title="Disconnect and work on this computer"
+          aria-label="Disconnect from server"
+          disabled={busy}
+          onClick={() => leave(disconnect)}
+        >
+          <Unplug size={16} />
+        </button>
+      )}
+    </div>
+  );
+}
+/** Cluster mode: a signed-in client of a SuiteLeaf server, with SuiteDrive
+ * as the file list. */
+function ClusterHome({ serverUrl }: { serverUrl: string }) {
+  const navigate = useNavigate();
+  const [error, setError] = useState("");
+  const folder = useRef<string | null>(null);
+  const make = useCallback(
+    (kind: SuiteFile["kind"]) =>
+      void createInDrive(createFile(kind), folder.current, navigate).catch(
+        (e) => setError(message(e)),
+      ),
+    [navigate],
+  );
+  const menu = useCallback(
+    (action: string) => {
+      if (action === "new-doc") make("doc");
+      if (action === "new-sheet") make("sheet");
+      if (action === "new-slide") make("slide");
+    },
+    [make],
+  );
+  useEffect(() => window.suiteleaf?.onMenu(menu), [menu]);
+  return (
+    <div className="home">
+      <aside className="sidebar">
+        <Logo />
+        <div className="local-note cluster-note">
+          <Cloud size={16} />
+          Your organization&apos;s workspace.
+          <small>
+            Files are saved to SuiteDrive on {new URL(serverUrl).host}.
+          </small>
+        </div>
+        <AccountChip serverUrl={serverUrl} onError={setError} />
+      </aside>
+      <main className="home-main">
+        <header className="home-top">
+          <span />
+          <span className="version">OPEN SOURCE · v0.1</span>
+        </header>
+        <section className="welcome">
+          <p className="eyebrow">YOUR TEAM WORKSPACE</p>
+          <h1>Good ideas start here.</h1>
+          <p>
+            Everything you create is saved to SuiteDrive and shared with your
+            servers.
+          </p>
+        </section>
+        <NewCards onCreate={make} />
+        <ErrorBanner error={error} onDismiss={() => setError("")} />
+        <section className="file-section">
+          <header>
+            <h2>SuiteDrive</h2>
+            <ImportButton
+              filePicker
+              onImport={(r) => createInDrive(r.file, folder.current, navigate)}
+              onError={setError}
+            />
+          </header>
+          <DriveBrowser
+            inline
+            mode="open"
+            onFolderChange={(id) => (folder.current = id)}
+            onOpen={(item) => openFromDrive(item, navigate)}
+          />
+        </section>
+        <footer className="home-footer">
+          A calmer place to get things done.<span>SuiteLeaf · Apache-2.0</span>
+        </footer>
+      </main>
+    </div>
+  );
+}
 function Workspace() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -438,7 +730,49 @@ function Workspace() {
     timer = useRef<ReturnType<typeof setTimeout>>(undefined),
     actions = useRef<EditorActions>(undefined),
     alive = useRef(true),
-    saveError = useRef("");
+    saveError = useRef(""),
+    driveQueue = useRef(driveQueueFor(id!)),
+    driveTimer = useRef<ReturnType<typeof setTimeout>>(undefined),
+    driveConflictRef = useRef<DriveItem | null>(null);
+  const [driveConflict, setDriveConflictState] = useState<DriveItem | null>(
+      null,
+    ),
+    [driveDialog, setDriveDialog] = useState<"open" | "save" | null>(null),
+    cluster = useMode().mode.kind === "cluster";
+  const setDriveConflict = (item: DriveItem | null) => {
+    driveConflictRef.current = item;
+    setDriveConflictState(item);
+  };
+  /** Upload the current file to SuiteDrive as a new version. */
+  const syncDrive = useCallback(async () => {
+    clearTimeout(driveTimer.current);
+    driveTimer.current = undefined;
+    if (!current.current?.drive || driveConflictRef.current) return;
+    if (!getSession()) {
+      setStatus("Saved on this device · sign in to sync with SuiteDrive");
+      return;
+    }
+    const at = version.current;
+    const snapshot = structuredClone(current.current.file);
+    try {
+      await driveQueue.current.enqueue(async () => {
+        const base = current.current!.drive!;
+        const link = await uploadDriveFile(snapshot, base);
+        // Saving to a new SuiteDrive item may have relinked the file meanwhile.
+        if (current.current!.drive?.itemId !== base.itemId) return;
+        current.current = { ...current.current!, drive: link };
+        await storage.save(current.current);
+      });
+      if (alive.current && version.current === at)
+        setStatus("Saved to SuiteDrive");
+    } catch (e) {
+      if (e instanceof DriveConflict) {
+        if (e.item.id !== current.current?.drive?.itemId) return;
+        setDriveConflict(e.item);
+        setStatus("SuiteDrive has a newer version");
+      } else setStatus(`Saved on this device · ${message(e)}`);
+    }
+  }, []);
   const save = useCallback(async () => {
     clearTimeout(timer.current);
     try {
@@ -451,23 +785,39 @@ function Workspace() {
     if (!current.current) return;
     const at = version.current;
     const snapshot = structuredClone(current.current.file);
-    snapshot.updatedAt = new Date().toISOString();
     setStatus("Saving…");
     try {
       await queue.current.enqueue(async () => {
-        const latest = current.current!;
-        const saved = await storage.save({ ...latest, file: snapshot });
-        current.current = { ...saved, file: current.current!.file };
+        const saved = await storage.save({
+          ...current.current!,
+          file: snapshot,
+        });
+        // SuiteDrive uploads and copies replace `drive` while the write is in flight.
+        current.current = {
+          ...saved,
+          file: current.current!.file,
+          drive: current.current!.drive,
+        };
         if (alive.current) setRecord(current.current);
       });
       savedVersion.current = Math.max(savedVersion.current, at);
+      // Once unmounted, the cleanup has already uploaded the latest content
+      // and a reopened editor may hold the link a later upload would replace.
+      if (alive.current && current.current.drive && !driveConflictRef.current) {
+        clearTimeout(driveTimer.current);
+        driveTimer.current = setTimeout(() => void syncDrive(), 1500);
+      }
       if (version.current === at) {
         setStatus(
-          current.current.path
-            ? "Saved to file"
-            : window.suiteleaf
-              ? "Draft saved · choose Save As"
-              : "Saved on this device",
+          current.current.drive
+            ? driveConflictRef.current
+              ? "SuiteDrive has a newer version"
+              : "Saving to SuiteDrive…"
+            : current.current.path
+              ? "Saved to file"
+              : window.suiteleaf
+                ? "Draft saved · choose Save As"
+                : "Saved on this device",
         );
         window.suiteleaf?.setDirty(false);
         setError((previous) =>
@@ -481,7 +831,7 @@ function Workspace() {
       setError(saveError.current);
       throw e;
     }
-  }, []);
+  }, [syncDrive]);
   useEffect(() => {
     alive.current = true;
     setActionsReady(false);
@@ -491,19 +841,26 @@ function Workspace() {
       cancel = false;
     const load = async () => {
       try {
-        const r = await storage.get(id!);
+        const r = await driveQueue.current.enqueue(() => storage.get(id!));
         if (cancel) return;
         if (!r) throw new Error("This file could not be found.");
         current.current = r;
         setRecord(r);
+        if (hasUnsyncedEdits(r)) {
+          setStatus("Saving to SuiteDrive…");
+          void syncDrive();
+          return;
+        }
         setStatus(
-          r.recovery
-            ? "Recovered draft · review and save"
-            : r.path
-              ? "Saved to file"
-              : window.suiteleaf
-                ? "Draft saved · choose Save As"
-                : "Saved on this device",
+          r.drive
+            ? "Saved to SuiteDrive"
+            : r.recovery
+              ? "Recovered draft · review and save"
+              : r.path
+                ? "Saved to file"
+                : window.suiteleaf
+                  ? "Draft saved · choose Save As"
+                  : "Saved on this device",
         );
       } catch (e) {
         if (!cancel) setError(message(e));
@@ -530,13 +887,27 @@ function Workspace() {
       cancel = true;
       alive.current = false;
       clearTimeout(timer.current);
-      if (current.current && version.current > savedVersion.current) {
-        const snapshot = structuredClone(current.current);
-        void saveQueue.enqueue(() => storage.save(snapshot)).catch(() => {});
+      const unsaved =
+        !!current.current && version.current > savedVersion.current;
+      if (unsaved) {
+        const file = structuredClone(current.current!.file);
+        void saveQueue
+          .enqueue(() => storage.save({ ...current.current!, file }))
+          .catch(() => {});
       }
+      // Queued before the next editor of this file can read the cached record.
+      if (unsaved || driveTimer.current) void syncDrive();
       release?.();
     };
-  }, [id]);
+  }, [id, syncDrive]);
+  useEffect(() => {
+    const flush = async () => {
+      await save();
+      if (alive.current) await syncDrive();
+    };
+    openEditors.add(flush);
+    return () => void openEditors.delete(flush);
+  }, [save, syncDrive]);
   const update = useCallback(
     (content: SuiteFile["content"]) => {
       if (!current.current) return;
@@ -572,7 +943,11 @@ function Workspace() {
       const at = version.current;
       const saved = await storage.saveAs(structuredClone(current.current));
       if (saved) {
-        current.current = { ...saved, file: current.current.file };
+        current.current = {
+          ...saved,
+          file: current.current.file,
+          drive: current.current.drive,
+        };
         setRecord(current.current);
         if (at === version.current) await save();
         else void save().catch(() => {});
@@ -584,36 +959,87 @@ function Workspace() {
   const doAction = useCallback(
     async (action: string) => {
       try {
-        if (action === "save") await save();
-        else if (action === "save-as") await saveAs();
-        else if (action === "print") await actions.current?.print();
+        if (action === "save") {
+          await save();
+          if (alive.current) await syncDrive();
+        } else if (action === "save-as") {
+          if (cluster) setDriveDialog("save");
+          else await saveAs();
+        } else if (action === "print") await actions.current?.print();
         else if (action === "open") {
           await save();
-          const r = await storage.open();
-          if (r) navigate(`/file/${r.file.id}`);
+          if (cluster) setDriveDialog("open");
+          else {
+            const r = await storage.open();
+            if (r) navigate(`/file/${r.file.id}`);
+          }
         } else if (
           action === "new-doc" ||
           action === "new-sheet" ||
           action === "new-slide"
         ) {
           await save();
-          const r = await storage.save({
-            file: createFile(
-              action === "new-doc"
-                ? "doc"
-                : action === "new-sheet"
-                  ? "sheet"
-                  : "slide",
-            ),
-          });
-          navigate(`/file/${r.file.id}`);
+          const file = createFile(
+            action === "new-doc"
+              ? "doc"
+              : action === "new-sheet"
+                ? "sheet"
+                : "slide",
+          );
+          if (cluster) await createInDrive(file, null, navigate);
+          else navigate(`/file/${(await storage.save({ file })).file.id}`);
         }
       } catch (e) {
         setError(message(e));
       }
     },
-    [save, saveAs, navigate],
+    [save, saveAs, navigate, syncDrive, cluster],
   );
+  const saveToDrive = async (folderId: string | null, name: string) => {
+    await actions.current?.flush();
+    const named = driveName(name, current.current!.file.kind);
+    current.current!.file.title =
+      named.replace(/\.[^.]+$/, "").slice(0, 200) || "Untitled";
+    await save();
+    const file = current.current!.file;
+    const link = await saveNewDriveFile(file, folderId, named);
+    current.current = { ...current.current!, drive: link };
+    await storage.save(current.current);
+    setDriveConflict(null);
+    setRecord(current.current);
+    setDriveDialog(null);
+    setStatus("Saved to SuiteDrive");
+  };
+  const reloadFromDrive = async () => {
+    const conflict = driveConflictRef.current;
+    if (!conflict || !current.current) return;
+    const fresh = await openDriveFile(conflict);
+    const file = { ...fresh.file, id: current.current.file.id } as SuiteFile;
+    version.current = savedVersion.current = 0;
+    await storage.save({ ...current.current, file, drive: fresh.drive });
+    window.location.reload();
+  };
+  const saveDriveCopy = async () => {
+    const conflict = driveConflictRef.current;
+    if (!conflict) return;
+    // Uploads rename SuiteDrive files after their title, so the copy gets its own.
+    const title = `${current.current!.file.title} (copy)`.slice(0, 200);
+    const file = { ...current.current!.file, title } as SuiteFile;
+    setDriveConflict(null);
+    const link = await saveNewDriveFile(
+      file,
+      conflict.parentId,
+      nativeFilename(file),
+    );
+    current.current = {
+      ...current.current!,
+      file: { ...current.current!.file, title } as SuiteFile,
+      drive: link,
+    };
+    await storage.save(current.current);
+    setRecord(current.current);
+    setStatus("Saved a copy to SuiteDrive");
+  };
   useEffect(() => {
     const unsub = window.suiteleaf?.onMenu((a) => void doAction(a));
     const key = (e: KeyboardEvent) => {
@@ -639,18 +1065,23 @@ function Workspace() {
   const exportNative = async () => {
     await actions.current?.flush();
     await exportText(
-      filename(current.current!.file.title),
+      nativeFilename(current.current!.file),
       serializeFile(current.current!.file),
+      mimeFor(current.current!.file.kind),
     );
   };
   const makeCopy = async () => {
     await actions.current?.flush();
     await save();
-    const r = await storage.save({
-      file: duplicateFile(current.current!.file),
-    });
-    navigate(`/file/${r.file.id}`);
+    const copy = duplicateFile(current.current!.file);
+    if (cluster) await createInDrive(copy, null, navigate);
+    else navigate(`/file/${(await storage.save({ file: copy })).file.id}`);
   };
+  /** In cluster mode files live in SuiteDrive, so downloads are copies. */
+  const download = () =>
+    void (cluster ? exportNative() : saveAs()).catch((e) =>
+      setError(message(e)),
+    );
   const onActions = useCallback((a: EditorActions) => {
     actions.current = a;
     setActionsReady(true);
@@ -787,9 +1218,23 @@ function Workspace() {
               <MenuItem onSelect={() => void doAction("new-slide")}>
                 New presentation
               </MenuItem>
-              <MenuItem disabled={!actionsReady} onSelect={() => void saveAs()}>
-                {window.suiteleaf ? "Save As…" : "Download SuiteLeaf file"}
-              </MenuItem>
+              {cluster ? (
+                <>
+                  <MenuItem onSelect={() => void doAction("open")}>
+                    Open…
+                  </MenuItem>
+                  <MenuItem onSelect={() => setDriveDialog("save")}>
+                    Save as…
+                  </MenuItem>
+                  <MenuItem disabled={!actionsReady} onSelect={download}>
+                    Download a copy
+                  </MenuItem>
+                </>
+              ) : (
+                <MenuItem disabled={!actionsReady} onSelect={download}>
+                  {window.suiteleaf ? "Save As…" : "Download SuiteLeaf file"}
+                </MenuItem>
+              )}
               <MenuItem onSelect={() => void save().catch(() => {})}>
                 Save now
               </MenuItem>
@@ -1300,10 +1745,10 @@ function Workspace() {
           <button
             className="save-copy"
             disabled={!actionsReady}
-            onClick={() => void saveAs()}
+            onClick={download}
           >
             <Download size={16} />
-            {window.suiteleaf ? "Save As" : "Download"}
+            {window.suiteleaf && !cluster ? "Save As" : "Download"}
           </button>
         </div>
       </header>
@@ -1314,7 +1759,9 @@ function Workspace() {
           <button onClick={() => void save().catch(() => {})}>
             Retry save
           </button>
-          <button onClick={() => void saveAs()}>Save As</button>
+          {cluster ? null : (
+            <button onClick={() => void saveAs()}>Save As</button>
+          )}
           <button
             onClick={() => {
               if (
@@ -1340,6 +1787,50 @@ function Workspace() {
             ×
           </button>
         </div>
+      ) : null}
+      {driveConflict ? (
+        <div className="error drive-conflict" role="alert">
+          <CircleAlert size={18} />
+          This file was changed in SuiteDrive after you opened it. Your edits
+          are saved on this device.
+          <button
+            onClick={() => {
+              if (
+                window.confirm(
+                  "Replace your edits with the SuiteDrive version?",
+                )
+              )
+                void reloadFromDrive().catch((e) => setError(message(e)));
+            }}
+          >
+            Reload from SuiteDrive
+          </button>
+          <button
+            onClick={() =>
+              void saveDriveCopy().catch((e) => setError(message(e)))
+            }
+          >
+            Save as copy
+          </button>
+        </div>
+      ) : null}
+      {driveDialog ? (
+        <DriveBrowser
+          mode={driveDialog}
+          defaultName={driveName(f.title, f.kind)}
+          onClose={() => setDriveDialog(null)}
+          onOpen={async (item) => {
+            await save();
+            setDriveDialog(null);
+            await openFromDrive(item, navigate);
+          }}
+          onSave={(folderId, name) =>
+            saveToDrive(folderId, name).catch((e) => {
+              setError(message(e));
+              setDriveDialog(null);
+            })
+          }
+        />
       ) : null}
       {f.importInfo ? (
         <details className="import-notes">
@@ -1407,18 +1898,102 @@ function Workspace() {
     </div>
   );
 }
+const handledTokens = new Set<string>();
+function AuthComplete() {
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const { mode } = useMode();
+  const [error, setError] = useState("");
+  useEffect(() => {
+    const token = params.get("token");
+    if (!token) {
+      void navigate("/", { replace: true });
+      return;
+    }
+    if (handledTokens.has(token)) return;
+    handledTokens.add(token);
+    const server =
+      pendingHandoffUrl() ?? (mode.kind === "cluster" ? mode.serverUrl : null);
+    if (!server) {
+      setError("This app is not connected to a SuiteLeaf server.");
+      return;
+    }
+    completeHandoff(server, token)
+      .then(() => navigate("/", { replace: true }))
+      .catch((e) => setError(message(e)));
+  }, [params, navigate, mode]);
+  return (
+    <div className="loading">
+      {error ? (
+        <>
+          <h2>Sign-in did not complete</h2>
+          <p>{error}</p>
+          <Link to="/">Return to files</Link>
+        </>
+      ) : (
+        "Signing you in…"
+      )}
+    </div>
+  );
+}
 function FileRoute() {
   const { id } = useParams();
   return <Workspace key={id} />;
 }
-export default function App() {
+/** Cluster mode requires a session with this server. */
+function ClusterGate({ children }: { children: ReactNode }) {
+  const { mode, locked } = useMode();
+  const session = useNodeSession();
+  const cluster = mode.kind === "cluster";
+  useEffect(
+    () =>
+      cluster
+        ? window.suiteleaf?.onMenu((action) => {
+            if (action === "disconnect")
+              void disconnect().catch((e) => window.alert(message(e)));
+          })
+        : undefined,
+    [cluster],
+  );
+  if (mode.kind !== "cluster" || session?.url === mode.serverUrl)
+    return <>{children}</>;
   return (
-    <HashRouter>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/file/:id" element={<FileRoute />} />
-        <Route path="*" element={<Home />} />
-      </Routes>
-    </HashRouter>
+    <SignInScreen
+      serverUrl={mode.serverUrl}
+      onDisconnect={locked ? undefined : disconnect}
+    />
+  );
+}
+export default function App() {
+  const [mode, setMode] = useState<ResolvedMode>();
+  useEffect(() => {
+    void finishSignOut();
+    void resolveMode().then(setMode);
+  }, []);
+  if (!mode) return <div className="loading">Opening SuiteLeaf…</div>;
+  return (
+    <ModeContext.Provider value={mode}>
+      <HashRouter>
+        <Routes>
+          <Route path="/auth-complete" element={<AuthComplete />} />
+          <Route
+            path="/file/:id"
+            element={
+              <ClusterGate>
+                <FileRoute />
+              </ClusterGate>
+            }
+          />
+          <Route
+            path="*"
+            element={
+              <ClusterGate>
+                <Home />
+              </ClusterGate>
+            }
+          />
+        </Routes>
+      </HashRouter>
+    </ModeContext.Provider>
   );
 }

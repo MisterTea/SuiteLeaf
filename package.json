@@ -6,7 +6,8 @@
   "type": "module",
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "services/*"
   ],
   "engines": {
     "node": ">=22.12.0"
@@ -18,7 +19,7 @@
     "build:web": "npm run build -w @suiteleaf/web",
     "build:desktop": "npm run build -w @suiteleaf/desktop",
     "package:desktop": "npm run package -w @suiteleaf/desktop",
-    "typecheck": "tsc --noEmit -p apps/web && tsc --noEmit -p apps/desktop && tsc --noEmit -p packages/core",
+    "typecheck": "tsc --noEmit -p apps/web && tsc --noEmit -p apps/desktop && tsc --noEmit -p packages/core && tsc --noEmit -p services/auth",
     "lint": "eslint .",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
@@ -29,8 +30,11 @@
     "test:electron": "playwright test --config playwright.electron.config.ts",
     "notices": "node scripts/notices.mjs",
     "setup:electron": "node node_modules/electron/install.js",
-    "format": "prettier --write apps/*/src packages/*/src tests",
-    "test:office-corpus": "node scripts/verify-office-imports.mjs"
+    "format": "prettier --write apps/*/src packages/*/src services/*/src services/*/test tests",
+    "test:office-corpus": "node scripts/verify-office-imports.mjs",
+    "build:auth": "npm run build -w @suiteleaf/auth",
+    "build:node": "cargo build --release -p suiteleaf-node",
+    "test:rust": "cargo test --workspace"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
