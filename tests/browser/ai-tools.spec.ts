@@ -36,6 +36,12 @@ test("document tools write, style, find, replace and check spelling", async ({ p
   expect(await call(page, "find_and_replace", { find: "recieve", replace: "receive", all: true })).toContain("Replaced 2 of 2");
   await expect(doc).not.toContainText("recieve");
 
+  expect(await call(page, "write_text", { text: "Thanks for the **seedlings**." })).toContain('in bold: "seedlings"');
+  expect(await call(page, "find_and_replace", { find: "seedlings", replace: "**seed trays**" })).toContain('"seed trays" in bold');
+  await expect(doc.locator("strong")).toHaveText("seed trays");
+  await expect(doc).not.toContainText("**");
+  await call(page, "undo");
+  await call(page, "undo");
   await call(page, "format_text", { text: "so much help", bold: true });
   await expect(doc.locator("strong")).toHaveText("so much help");
   await call(page, "set_style", { text: "More beds", style: "Heading 3" });
