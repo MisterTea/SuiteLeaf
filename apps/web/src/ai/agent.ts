@@ -375,6 +375,7 @@ class AgentSession {
       item.status = "ok";
       item.result = saved.result;
     }
+    this.state = "loading";
     this.emit();
     // Give the new screen a moment to register its tools.
     await new Promise((r) => setTimeout(r, 1500));
