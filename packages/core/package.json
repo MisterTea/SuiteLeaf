@@ -7,7 +7,8 @@
     "./office": "./src/office.ts",
     "./docx-export": "./src/docx-export.ts",
     "./xlsx-export": "./src/xlsx-export.ts",
-    "./document-layout": "./src/document-layout.ts"
+    "./document-layout": "./src/document-layout.ts",
+    "./suggestions": "./src/suggestions.ts"
   },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",

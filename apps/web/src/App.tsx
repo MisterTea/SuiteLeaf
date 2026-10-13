@@ -1760,6 +1760,13 @@ function Workspace() {
                   >
                     Spelling and grammar
                   </MenuItem>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.docActions?.openSuggestions?.()
+                    }
+                  >
+                    Review suggestions
+                  </MenuItem>
                 </Menu>
                 <Menu label="Help">
                   <MenuItem
@@ -2195,9 +2202,15 @@ function Workspace() {
           <summary>
             Imported {f.importInfo.sourceFormat.toUpperCase()}:{" "}
             {f.importInfo.sourceName}
-            {f.importInfo.warnings.length
-              ? ` · ${f.importInfo.warnings.length} compatibility ${f.importInfo.warnings.length === 1 ? "note" : "notes"}`
-              : ""}
+            {(() => {
+              const imported = f.importInfo?.warnings.find((warning) =>
+                /^\d+ suggestions? imported$/.test(warning),
+              );
+              if (imported) return ` · ${imported}`;
+              return f.importInfo?.warnings.length
+                ? ` · ${f.importInfo.warnings.length} compatibility ${f.importInfo.warnings.length === 1 ? "note" : "notes"}`
+                : "";
+            })()}
           </summary>
           {f.importInfo.warnings.length ? (
             <ul>

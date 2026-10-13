@@ -23,6 +23,7 @@ import {
 import type { DocFile, JsonNode } from "./index";
 
 import { documentPageSettings } from "./document-layout";
+import { embedSuggestionMarkers, revisionizeDocx } from "./suggestions";
 
 const color = (v: unknown) =>
   typeof v === "string" && /^#[\da-f]{6}$/i.test(v) ? v.slice(1) : undefined;
@@ -200,7 +201,7 @@ function blocks(
 export async function exportDocx(
   file: Pick<DocFile, "title" | "content">,
 ): Promise<Uint8Array> {
-  const content = structuredClone(file.content);
+  const content = embedSuggestionMarkers(structuredClone(file.content));
   const prepareImages = async (node: JsonNode): Promise<void> => {
     if (
       node.type === "image" &&
@@ -295,5 +296,5 @@ export async function exportDocx(
       },
     ],
   });
-  return new Uint8Array(await Packer.toArrayBuffer(doc));
+  return revisionizeDocx(new Uint8Array(await Packer.toArrayBuffer(doc)));
 }

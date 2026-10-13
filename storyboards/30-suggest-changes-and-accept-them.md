@@ -16,16 +16,18 @@ Jordan is editing Alex's "Quarterly Report", but it's Alex's report, so Jordan w
 
 ## Scenes
 
-1. **Open the report.** Jordan opens "Quarterly Report". A mode menu at the right of the toolbar reads "Editing".
-2. **Switch to Suggesting.** Jordan picks **Suggesting** from the menu (Cmd/Ctrl+Alt+Shift+X does the same). The label turns green, reads "Suggesting", and stays visible while Jordan scrolls.
+1. **Open the report.** Jordan opens "Quarterly Report". A mode switch at the right of the toolbar reads "Editing", next to a name field.
+2. **Switch to Suggesting.** Jordan types the name Jordan and clicks **Suggesting** (Cmd/Ctrl+Alt+Shift+X does the same). The label turns green, reads "Suggesting", and stays in the toolbar and the status bar while Jordan scrolls.
 3. **Suggest a few changes.** Jordan types "approximately " before "40 customers" (green and underlined), deletes "very" (struck through in red), and makes "on budget" bold (a dotted underline).
-4. **Suggestion cards.** Each change has a card in the margin: "Jordan · Add "approximately "", "Delete "very"", "Format: bold". Each card has ✓ and ✗.
-5. **Export to Word.** File › Export DOCX. In Word, with All Markup, the three changes appear as tracked changes by Jordan: an insertion, a deletion, and a formatting change.
-6. **Manager adds one.** In Word the manager accepts the deletion and adds a tracked insertion, "(unaudited)". The file comes back.
-7. **Import.** Jordan opens the returned .docx. The import summary says "2 suggestions imported". Cards show Jordan's remaining insertion and formatting change, and the manager's insertion signed with the manager's name.
-8. **Review.** Alex opens Tools › Review suggestions. The panel reads "3 suggestions". Alex accepts "approximately" and rejects the bold.
-9. **Preview and accept the rest.** Alex hovers **Accept all**, the page shows the result with markup hidden, and Alex clicks it. Cmd/Ctrl+Z brings the accepted suggestion back as a suggestion, and Alex accepts it again.
-10. **Back to editing.** Alex switches to Editing. Reopening the file later opens in Editing, because that was the last mode used.
+4. **Suggestion cards.** Each change has a card in the margin, with the author and time: "Jordan · Add “approximately”", "Delete “very”", "Format: bold". Each card has ✓ and ✗. Accept all and Reject all sit above the cards, so either is one click, and hovering previews the page.
+5. **Still there after a reopen.** Jordan goes back to the files and opens the report again. The three cards are still Jordan's, and the file is still in Suggesting.
+6. **Plain text asks.** File › Export TXT opens "Pending suggestions" and asks for the original text or the text with suggestions accepted. Nothing is chosen silently.
+7. **Export to Word.** File › Export DOCX. The file contains Jordan's insertion, deletion, and bold as Word tracked changes.
+8. **Manager adds one.** In Word the manager accepts the deletion and adds a tracked insertion, "(unaudited)". The file comes back.
+9. **Import.** Jordan opens the returned .docx. The import summary says "3 suggestions imported", and the file opens in Suggesting. Cards show Jordan's remaining insertion and formatting change, and the manager's insertion signed "Alex's manager".
+10. **Review.** Alex opens Tools › Review suggestions. The panel reads "3 suggestions". Alex accepts "approximately" and rejects the bold, one click each.
+11. **Preview and accept the rest.** Alex hovers **Accept all**, the page shows "Preview: suggestions accepted" with the markup hidden, and Alex clicks it. Cmd/Ctrl+Z brings the accepted suggestion back, and Alex accepts it again.
+12. **Back to editing.** Alex switches to Editing. Reopening the file later opens in Editing, because that was the last mode used. The report reads "We now serve approximately 40 customers and the project is on budget. (unaudited)".
 
 ## Google Workspace benchmark
 
@@ -51,12 +53,25 @@ Known pain points:
 ## Success looks like
 
 - The report contains the accepted wording, no pending suggestions, and no formatting the reviewers rejected.
-- A .docx exported mid-review opened in Word with every pending suggestion as a tracked change.
+- A .docx exported mid-review contains every pending suggestion as a Word tracked change, with the author and date.
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| 1. Suggesting is one click or one shortcut, and the label stays visible | Met | Video 0:08–0:40: green "Suggesting" in the toolbar and the status bar. Shortcut covered by `tests/browser/suggestions.spec.ts`. |
+| 2. Insertions, deletions, and formatting changes are separate suggestions, inline and on a card with author and time | Met | Video 0:18: green underline, red strike, dotted underline; cards "Jordan · 8:59 PM". Heading level covered by `tests/suggestions.test.ts`. |
+| 3. One click accepts or rejects one suggestion; Accept all or Reject all is at most two clicks and previews first | Met | Video 0:34 one-click accept and reject. Video 0:38 hover shows "Preview: suggestions accepted"; Accept all is on the page. |
+| 4. Undo after Accept all or Reject all restores every suggestion it affected | Met | Video 0:40 and `tests/suggestions.test.ts` ("undo restores an accept-all"). |
+| 5. Suggestions, with authors and times, survive save, close, and reopen | Met | Video 0:20–0:24, reopened with the same three cards. |
+| 6. Export DOCX writes `w:ins`, `w:del`, and `w:rPrChange` with author and date, and accepting all matches SuiteLeaf | Met | `tests/suggestions.test.ts` ("writes revisions and imports them with their authors"). |
+| 7. Opening a .docx keeps tracked changes as suggestions with their authors, and the import summary counts them | Met | Video 0:32: "3 suggestions imported", cards for Jordan and Alex's manager. |
+| 8. TXT or HTML export asks whether to use the accepted text or the original | Met | Video 0:24: "Pending suggestions" dialog, Original text or Suggestions accepted. |
 
 ## Gaps and notes
 
-- **No suggesting mode.** There's no mode menu, no tracked-change marks in the Tiptap schema, and no review panel. Tiptap has no built-in track changes, so this needs an extension that records insertions, deletions, and formatting changes as marks with author and time.
-- **Word import accepts tracked changes.** `word.ts` detects `<w:ins>`/`<w:del>` and warns "Tracked changes are imported as accepted text; review history is not retained."
-- **DOCX export writes no revisions.** `docx-export.ts` has no `w:ins`, `w:del`, or `w:rPrChange` output.
-- Suggestion cards share the margin with comments, which also don't exist yet in Docs (storyboard [29](29-comment-on-a-document.md)). Building the margin once for both would avoid two layouts.
-- There's no Viewing mode either. In single-node mode it's mainly useful as a "read without accidentally typing" switch, and it would also be the view-only state that cluster viewers need (storyboard [27](27-share-a-document-with-a-teammate.md)).
+- The recording does not open Microsoft Word. The exported file is checked for `w:ins`, `w:del`, and `w:rPrChange`, and a returned file is built by accepting the deletion and adding the manager's insertion.
+- Heading-level suggestions are stored, shown, and exported as `w:pPrChange`. This story uses bold; the heading case is in `tests/suggestions.test.ts`.
+- A file imported with tracked changes opens in Suggesting, so the next keystroke stays a proposal.
+- Suggestion cards use the right margin. Comments (storyboard [29](29-comment-on-a-document.md)) are not built here.
+- There is still no Viewing mode. In single-node mode it would be a "read without accidentally typing" switch, and it is the view-only state cluster viewers need (storyboard [27](27-share-a-document-with-a-teammate.md)).
