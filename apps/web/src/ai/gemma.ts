@@ -183,6 +183,9 @@ export function parseValue(src: string, i: number): [unknown, number] {
     while (j < src.length && src[j] !== '"') j += src[j] === "\\" ? 2 : 1;
     return [JSON.parse(src.slice(i, j + 1)), j + 1];
   }
+  // Python-style 'text', which Gemma sometimes writes instead of <|"|>text<|"|>.
+  const single = c === "'" ? /^'([^']*)'(?=\s*(?:[,}\]]|$))/.exec(src.slice(i)) : null;
+  if (single) return [single[1], i + single[0].length];
   if (c === "{") {
     const obj: Record<string, unknown> = {};
     i++;
