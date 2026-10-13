@@ -229,7 +229,7 @@ export function AgentSidebar() {
       </form>
       {m.requests ? (
         <footer className="agent-metrics">
-          {m.toolCalls} tool calls · {m.requests} requests · {rate(m.outputTokens, m.generateMs)} tok/s ·{" "}
+          {m.toolCalls} tool call{m.toolCalls === 1 ? "" : "s"} · {m.requests} request{m.requests === 1 ? "" : "s"} · {rate(m.outputTokens, m.generateMs)} tok/s ·{" "}
           {Math.round(m.wallMs / 1000)}s
         </footer>
       ) : null}
