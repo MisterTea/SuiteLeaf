@@ -14,12 +14,13 @@ Amara is writing a short methods note. She needs `x²` as a real equation, not a
 
 ## Scenes
 
-1. **The note.** Amara opens "Methods" and puts the caret in a sentence.
-2. **A square.** Insert › Equation, type `x^2`, and close the editor. The page shows x with a raised 2, as math, not as two characters she formatted.
-3. **A fraction.** She inserts `(a+b)/c` as a fraction. The numerator sits above a bar and the denominator below it.
-4. **Edit.** She clicks the equation and changes `c` to `d`. The rest of the sentence is unchanged.
-5. **From Word.** She opens a .docx that contains one equation. It is still an equation she can edit, and the compatibility note does not say equation layout is unsupported.
-6. **Back to Word.** She exports .docx and the equation is an Office math equation, not a picture and not plain text.
+1. **The note.** Amara opens "Methods" and writes "The model fits", with the caret still in the sentence.
+2. **A square.** Insert › Equation, type `x^2`. The preview shows a power. Inserting it puts x with a raised 2 in the sentence, as math.
+3. **A fraction.** She keeps writing and types `(a+b)/c`. The numerator sits on a bar and c sits under it. Both equations stay in the sentence, and the words around them keep their font.
+4. **Edit.** She clicks the denominator. Only that symbol is selected. She types `d`. The numerator and the rest of the sentence stay put.
+5. **The file.** She leaves and opens Methods again. The square and the fraction are still math.
+6. **From Word.** She opens a .docx that already contains n². It is an equation. The compatibility note is about page layout. It does not say equation layout is unsupported. She changes the exponent from 2 to 3.
+7. **Back to Word.** She exports .docx. Opening that file again still shows n³ as math, not a picture and not recovered text.
 
 ## Google Workspace benchmark
 
@@ -37,11 +38,22 @@ In Google Docs, Insert › Equation opens a toolbar of structures, then you type
 
 ## Success looks like
 
-The methods note shows a square and a fraction. Amara edits the denominator. The Word round trip still has an equation, not a sentence of recovered symbols.
+The methods note shows a square and a fraction, and the denominator is d. The Word file's equation is still math after export and reopen.
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| Insert › Equation inserts math at the caret | Met | Video 4s–10s; `insert an equation, edit one symbol, and round-trip Office math` |
+| `x^2` is a superscript inside the equation, and `(a+b)/c` is a stacked fraction | Met | Video 8s and 16s–18s; browser test checks the exponent sits above the base and the numerator sits above the denominator |
+| Clicking the equation edits one symbol | Met | Video 20s–23s, c becomes d; video 33s–35s, 2 becomes 3 |
+| The surrounding sentence keeps its font and position | Met | Video 18s; browser test compares the sentence font with the equation font and checks they share a line |
+| A Word equation imports as an editable equation, and the note does not say layout is unsupported | Met | Video 30s–33s; `imports a Word equation as editable math and skips the unsupported note` |
+| Export writes Office math (`m:oMath`), not a picture or recovered text | Met | Video 36s–39s, the reopened file is still n³; vitest `writes Office math on export and reads it back` |
+| The equation survives save and reopen | Met | Video 24s–28s |
 
 ## Gaps and notes
 
-- Word import keeps equation text when it can and says editable layout is not supported.
-- There is no Insert › Equation.
-- A full equation toolbar is not required. Superscript and a stacked fraction are enough for this story.
-- Do not rebuild citations, footnotes, or spelling.
+- Powers and stacked fractions are enough for this story. Radicals, sums, matrices, and a structure toolbar are not included.
+- Linear typing (`x^2`, `(a+b)/c`) is the way in. Office math that is not a power, a subscript, or a fraction comes back as an editable run of its text.
+- Citations, footnotes, and spelling were left alone.

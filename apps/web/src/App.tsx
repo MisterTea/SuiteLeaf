@@ -58,7 +58,6 @@ import {
   type DocFile,
   type SheetFile,
   type SlideFile,
-  type JsonNode,
 } from "@suiteleaf/core";
 import { storage, SaveQueue, exportText } from "./storage";
 import { importFile, type DelimitedDraft } from "./imports";
@@ -75,6 +74,7 @@ import {
 } from "./ui";
 import { FunctionMenu } from "./editors/function-help-ui";
 import { SheetViewMenu } from "./editors/SheetViewMenu";
+import { FilterViewChoices } from "./editors/sheet-filter-view";
 import { CommandPalette, useCommandPalette } from "./command-palette";
 import {
   DriveConflict,
@@ -90,7 +90,11 @@ import {
   type DriveRole,
 } from "./node-client";
 import { DriveBrowser, DriveDialog, NameDialog } from "./drive/DriveBrowser";
+import { LastEdited } from "./drive/LastEdited";
+import { requestLastEditRefresh } from "./drive/last-edit";
+import { FileComments } from "./drive/file-comments";
 import { ShareDialog } from "./drive/ShareDialog";
+import { ShareNotices } from "./drive/share-notices";
 import { searchFile } from "./library-search";
 import { FileLibraryRow, TrashToast } from "./library-trash-ui";
 import {
@@ -110,6 +114,11 @@ import {
 import { ConnectDialog, SignInScreen, useNodeSession } from "./drive/SignIn";
 import { syncSummary, useServerSync } from "./drive/status";
 import { VersionHistory, VersionPreview } from "./editors/version-history";
+import {
+  SheetVersionPreview,
+  SlideVersionPreview,
+  type HistoryPreview,
+} from "./editors/version-compare";
 import { noteLocalSnapshot } from "./editors/local-versions";
 import { completeHandoff } from "./node-client";
 import {
@@ -134,7 +143,7 @@ function message(e: unknown) {
 }
 function isImportFeature(warning: string): boolean {
   return (
-    /^\d+ (?:footnote|endnote|table)/.test(warning) ||
+    /^\d+ (?:footnote|endnote|table|citation|bibliography)/.test(warning) ||
     /^\d+ comment threads? imported$/.test(warning) ||
     /^\d+ suggestions? imported$/.test(warning)
   );
@@ -1186,10 +1195,8 @@ function Workspace() {
     snapshotExplicit = useRef(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [editorEpoch, setEditorEpoch] = useState(0);
-  const [historyPreview, setHistoryPreview] = useState<{
-    content: JsonNode;
-    label: string;
-  } | null>(null);
+  const [historyPreview, setHistoryPreview] = useState<HistoryPreview | null>(null);
+  const restoreParagraph = useRef<(key: string) => void>(() => {});
   const [driveConflict, setDriveConflictState] = useState<DriveItem | null>(
       null,
     ),
@@ -1255,8 +1262,10 @@ function Workspace() {
         current.current = { ...current.current!, drive: link };
         await storage.save(current.current);
       });
-      if (alive.current && version.current === at)
+      if (alive.current && version.current === at) {
         setStatus("Saved to SuiteDrive");
+        requestLastEditRefresh();
+      }
     } catch (e) {
       if (e instanceof DriveConflict) {
         if (e.item.id !== current.current?.drive?.itemId) return;
@@ -1354,7 +1363,11 @@ function Workspace() {
         if (r.drive && getSession()) {
           try {
             role = (await drive.get(r.drive.itemId)).role ?? "viewer";
-          } catch {
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            if (/do not have access|not found/i.test(msg)) {
+              throw new Error("You no longer have access to this file.");
+            }
             role = "viewer";
           }
         }
@@ -1430,6 +1443,8 @@ function Workspace() {
   const update = useCallback(
     (content: SuiteFile["content"]) => {
       if (!canEditRef.current || !current.current) return;
+      if (JSON.stringify(content) === JSON.stringify(current.current.file.content))
+        return;
       current.current = {
         ...current.current,
         file: {
@@ -1543,6 +1558,7 @@ function Workspace() {
     setRecord(current.current);
     setDriveDialog(null);
     setStatus("Saved to SuiteDrive");
+    requestLastEditRefresh();
   };
   const reloadFromDrive = async () => {
     const conflict = driveConflictRef.current;
@@ -1644,7 +1660,13 @@ function Workspace() {
   if (!record)
     return (
       <div className="loading">
-        {error || "Opening your file…"}
+        {error ? (
+          <p className="access-refused" role="alert">
+            {error}
+          </p>
+        ) : (
+          "Opening your file…"
+        )}
         <p>
           <Link to="/">Return to files</Link>
         </p>
@@ -1655,6 +1677,12 @@ function Workspace() {
   return (
     <CommandPalette kind={f.kind}>
     <div className="workspace">
+      {cluster ? (
+        <ShareNotices
+          floating
+          onOpen={(item) => openFromDrive(item, navigate)}
+        />
+      ) : null}
       <header className="workspace-header">
         <button
           className="back"
@@ -1763,6 +1791,7 @@ function Workspace() {
               {status}
             </span>
           </div>
+          {record.drive ? <LastEdited itemId={record.drive.itemId} /> : null}
           <div className="file-menu" role="menubar">
             <Menu label="File">
               <SubMenu label="New">
@@ -1868,6 +1897,22 @@ function Workspace() {
                   Page setup…
                 </MenuItem>
               ) : null}
+              {f.kind === "sheet" ? (
+                <MenuItem
+                  synonyms={[
+                    "print settings",
+                    "repeat row",
+                    "repeat header",
+                    "repeating header",
+                    "print header",
+                  ]}
+                  onSelect={() =>
+                    actions.current?.sheetActions?.openPrintSettings?.()
+                  }
+                >
+                  Print settings
+                </MenuItem>
+              ) : null}
               <MenuItem onSelect={() => void doAction("print")}>
                 Print / Save as PDF
               </MenuItem>
@@ -1915,6 +1960,15 @@ function Workspace() {
                     onSelect={() => actions.current?.docActions?.insertTable()}
                   >
                     Table
+                  </MenuItem>
+                  <MenuItem
+                    synonyms={["equation", "math", "formula", "insert equation"]}
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.docActions?.insertEquation()
+                    }
+                  >
+                    Equation
                   </MenuItem>
                   <MenuItem
                     onSelect={() =>
@@ -2117,12 +2171,48 @@ function Workspace() {
                     Spelling
                   </MenuItem>
                   <MenuItem
+                    synonyms={[
+                      "grammar",
+                      "grammar check",
+                      "check grammar",
+                      "spelling and grammar",
+                    ]}
+                    focusesTarget
+                    onSelect={() => actions.current?.docActions?.openGrammar()}
+                  >
+                    Grammar
+                  </MenuItem>
+                  <MenuItem
+                    synonyms={["ignored grammar", "restore grammar"]}
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.docActions?.openIgnoredGrammar()
+                    }
+                  >
+                    Ignored grammar
+                  </MenuItem>
+                  <MenuItem
                     focusesTarget
                     onSelect={() =>
                       actions.current?.docActions?.openDictionary()
                     }
                   >
                     Personal dictionary
+                  </MenuItem>
+                  <MenuItem
+                    synonyms={[
+                      "citations",
+                      "cite",
+                      "bibliography",
+                      "references",
+                      "sources",
+                    ]}
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.docActions?.openCitations()
+                    }
+                  >
+                    Citations
                   </MenuItem>
                   <MenuItem
                     onSelect={() => actions.current?.docActions?.openFind()}
@@ -2197,6 +2287,21 @@ function Workspace() {
                     Image
                   </MenuItem>
                   <MenuItem
+                    synonyms={[
+                      "page break",
+                      "page break above",
+                      "row break",
+                      "insert page break",
+                      "insert break",
+                    ]}
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.sheetActions?.insertPageBreak?.()
+                    }
+                  >
+                    Page break above
+                  </MenuItem>
+                  <MenuItem
                     onSelect={() =>
                       actions.current?.sheetActions?.insertChart()
                     }
@@ -2225,7 +2330,13 @@ function Workspace() {
                       }
                     />
                   </SubMenu>
-                  <MenuItem shortcut="Cmd+K" onSelect={() => {}}>
+                  <MenuItem
+                    shortcut="Cmd+K"
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.sheetActions?.insertLink?.()
+                    }
+                  >
                     Link
                   </MenuItem>
                   <MenuItem
@@ -2325,8 +2436,29 @@ function Workspace() {
                   </MenuItem>
                 </Menu>
                 <Menu label="Data">
+                  {!canEdit ? (
+                    <SubMenu label="Filter views">
+                      <MenuItem
+                        onSelect={() =>
+                          actions.current?.sheetActions?.createFilterView?.()
+                        }
+                      >
+                        Create a filter view
+                      </MenuItem>
+                      <FilterViewChoices
+                        load={() =>
+                          actions.current?.sheetActions?.filterViewChoices?.() ??
+                          []
+                        }
+                        onPick={(value) =>
+                          actions.current?.sheetActions?.applyFilterView?.(value)
+                        }
+                      />
+                    </SubMenu>
+                  ) : null}
                   <MenuItem
                     searchLabel="Create a filter"
+                    disabled={!canEdit}
                     onSelect={() =>
                       actions.current?.sheetActions?.toggleFilter()
                     }
@@ -2352,6 +2484,28 @@ function Workspace() {
                     }
                   >
                     Sort range
+                  </MenuItem>
+                  <MenuItem
+                    focusesTarget
+                    synonyms={[
+                      "named range",
+                      "define name",
+                      "name a range",
+                      "defined name",
+                    ]}
+                    onSelect={() =>
+                      actions.current?.sheetActions?.namedRanges?.()
+                    }
+                  >
+                    Named ranges
+                  </MenuItem>
+                  <MenuItem
+                    synonyms={["group", "outline", "collapse rows"]}
+                    onSelect={() =>
+                      actions.current?.sheetActions?.groupRows?.()
+                    }
+                  >
+                    Group rows
                   </MenuItem>
                   <SubMenu label="Data cleanup">
                     <MenuItem
@@ -2400,7 +2554,14 @@ function Workspace() {
                   </MenuItem>
                 </Menu>
                 <Menu label="Tools">
-                  <MenuItem onSelect={() => {}}>Spelling</MenuItem>
+                  <MenuItem
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.sheetActions?.openSpelling?.()
+                    }
+                  >
+                    Spelling
+                  </MenuItem>
                 </Menu>
                 <EditorHelp />
               </>
@@ -2496,6 +2657,25 @@ function Workspace() {
                       }
                     >
                       Ellipse
+                    </MenuItem>
+                  </SubMenu>
+                  <SubMenu label="Animation">
+                    <MenuItem
+                      synonyms={[
+                        "fade in",
+                        "fade in on click",
+                        "appear on click",
+                        "animation",
+                      ]}
+                      availability={() =>
+                        actions.current?.slideActions?.fadeOnClickReason?.() ??
+                        true
+                      }
+                      onSelect={() =>
+                        actions.current?.slideActions?.fadeOnClick?.()
+                      }
+                    >
+                      Fade in on click
                     </MenuItem>
                   </SubMenu>
                   <MenuItem
@@ -2654,8 +2834,40 @@ function Workspace() {
                     Transition
                   </MenuItem>
                 </Menu>
+                <Menu label="Comments">
+                  <MenuItem
+                    shortcut="Cmd+Alt+M"
+                    synonyms={["comment", "comments", "add comment"]}
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.slideActions?.insertComment?.()
+                    }
+                  >
+                    Comment
+                  </MenuItem>
+                  <MenuItem
+                    synonyms={[
+                      "resolved",
+                      "resolved comments",
+                      "reopen",
+                      "comment history",
+                    ]}
+                    onSelect={() =>
+                      actions.current?.slideActions?.openResolved?.()
+                    }
+                  >
+                    Resolved
+                  </MenuItem>
+                </Menu>
                 <Menu label="Tools">
-                  <MenuItem onSelect={() => {}}>Spelling</MenuItem>
+                  <MenuItem
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.slideActions?.openSpelling?.()
+                    }
+                  >
+                    Spelling
+                  </MenuItem>
                 </Menu>
                 <EditorHelp />
               </>
@@ -2684,7 +2896,14 @@ function Workspace() {
             aria-label="Comments"
             onClick={() => {
               actions.current?.docActions?.openComments?.();
-              actions.current?.sheetActions?.openComments?.();
+              if (f.kind === "sheet") {
+                // Opening and the header event both toggle the panel, so only one runs.
+                const open = actions.current?.sheetActions?.openComments;
+                if (open) open();
+                else
+                  window.dispatchEvent(new Event("suiteleaf:open-sheet-comments"));
+              }
+              actions.current?.slideActions?.openComments?.();
             }}
           >
             <MessageSquare size={18} />
@@ -2861,12 +3080,18 @@ function Workspace() {
       ) : null}
       <div className={`editor-and-history${historyOpen ? " history-open" : ""}`}>
         <div className="editor-and-history-main">
-          {historyPreview ? (
+          {historyPreview?.kind === "doc" ? (
             <VersionPreview
               key={JSON.stringify(historyPreview.content)}
               content={historyPreview.content}
               label={historyPreview.label}
+              offers={historyPreview.offers}
+              onRestoreParagraph={(key) => restoreParagraph.current(key)}
             />
+          ) : historyPreview?.kind === "sheet" ? (
+            <SheetVersionPreview diff={historyPreview.diff} label={historyPreview.label} />
+          ) : historyPreview?.kind === "slide" ? (
+            <SlideVersionPreview diff={historyPreview.diff} label={historyPreview.label} />
           ) : null}
           <div
             className={`live-editor${historyPreview ? " previewing" : ""}`}
@@ -2886,6 +3111,9 @@ function Workspace() {
                   </div>
                 }
               >
+                {driveRole === "commenter" && record.drive ? (
+                  <FileComments itemId={record.drive.itemId} />
+                ) : null}
                 {f.kind === "doc" ? (
                   <Docs
                     key={`${id}:${editorEpoch}`}
@@ -2899,6 +3127,8 @@ function Workspace() {
                   <Sheets
                     key={`${id}:${editorEpoch}`}
                     file={f as SheetFile}
+                    readOnly={!canEdit}
+                    canComment={driveRole === "commenter"}
                     onChange={update}
                     onActions={onActions}
                     onError={setError}
@@ -2907,6 +3137,7 @@ function Workspace() {
                   <Slides
                     key={`${id}:${editorEpoch}`}
                     file={f as SlideFile}
+                    readOnly={!canEdit}
                     onChange={update}
                     onActions={onActions}
                     onError={setError}
@@ -2924,9 +3155,8 @@ function Workspace() {
               setHistoryOpen(false);
               setHistoryPreview(null);
             }}
-            onPreview={(content, label) =>
-              setHistoryPreview(content ? { content, label } : null)
-            }
+            onPreview={setHistoryPreview}
+            bindParagraphRestore={restoreParagraph}
             onStatus={setStatus}
             onRestored={(next) => {
               clearTimeout(timer.current);

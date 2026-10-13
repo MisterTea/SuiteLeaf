@@ -19,11 +19,11 @@ Lena's Status column on "Volunteer roster" is already a dropdown (storyboard 37)
 
 1. **The source list.** "Statuses" column A holds Confirmed, Maybe, Can't make it, and Waitlist, the same names as storyboard 37, with no blanks in between. "Volunteer roster" column C is the old fixed dropdown.
 2. **Switch to the range.** Lena selects C2:C41, opens the dropdown editor, chooses **From a range**, and sets Statuses!A2:A5. Done. The chips still show the four colors. C5 still says Maybe.
-3. **The list grows.** On Statuses she types "Training" in A6 and gives it a purple chip from the rule. C2:C41 now offer Training. She sets Priya to Training. The Maybe chips stay amber.
-4. **Rename at the source.** She renames Maybe to Perhaps on Statuses. Every Perhaps chip stays amber. A blank she inserts in the range does not become an option.
+3. **The list grows.** On Statuses she types "Training" in the cell under the range. The dropdown follows it. She gives Training a purple chip from the rule and sets Priya to Training. The Maybe chips stay amber.
+4. **Rename at the source.** She renames Maybe to Perhaps on Statuses. Every Perhaps chip stays amber. She inserts a row inside the range. The blank cell is not an option, and Training stays on the list.
 5. **More than one role.** Roles, column D, has Helper, Driver, and Cook on a small list. She selects D2:D41, Insert › Dropdown, and turns on **Allow more than one**. Reject other values stays on.
 6. **Pick two.** In D5 she types "dr". Driver is the match. Enter adds the Driver chip and leaves the list open. She adds Cook. The cell shows both chips. Escape closes the list.
-7. **A bad extra value.** She pastes "Driver, Cook, Boss" into D6. Boss is refused, D6 is marked, and the message names Helper, Driver, and Cook. "Driver " with a trailing space still matches Driver and keeps its color.
+7. **A bad extra value.** She enters "Driver, Cook, Boss" in D6. Boss is refused, the message names Helper, Driver, and Cook, and D6 keeps Driver and Cook. "Driver " with a trailing space still matches Driver and keeps its color.
 8. **Round trip.** File › Export XLSX. Column C's validation points at the Statuses range. Opening that workbook restores From a range. Excel has no multi-select, so column D's roles are text there. The downloaded SuiteLeaf file restores the colors, From a range, and Allow more than one. A fixed list from storyboard 37, left on another column, still renames and rejects as before.
 
 ## Google Workspace benchmark
@@ -54,7 +54,20 @@ Known pain points:
 
 ## Gaps and notes
 
-- Options are a static list. `optionsFromRule` reads `formula1` as JSON or comma-separated labels, and the draft is options, reject, and notation. Nothing stores a source range or reads live cells.
-- The editor only treats a rule whose criteria type is `list`. There is no From a range choice and no Allow more than one flag.
-- Excel has no multi-select dropdown. The XLSX file should keep the range validation for column C. Allow more than one has to come back from the SuiteLeaf file; the gap to accept in the recording is that Excel itself will show the chosen roles as text.
-- A comma still cannot be part of one option (storyboard 37), because a fixed list is comma-separated on the way through Excel. A range source does not have that limit, because the option is the cell's text.
+- Excel has no multi-select. Export keeps column C as a list whose source is the Statuses range. Column D's chosen roles are text in the workbook, and opening that file marks a cell that holds two roles because Excel stored an ordinary list. Allow more than one, and the chip colours, come back from the SuiteLeaf file.
+- Chip colours for a range are kept with each name in the SuiteLeaf file. After an XLSX round trip the range comes back and the colours are the palette for the current order.
+- A comma still cannot be part of one option on a fixed list (storyboard 37). A range source does not have that limit, because the option is the cell's text.
+- Typing a new value in the cell directly under a single-column source extends the range, so the list grows without editing the reference by hand. Inserting a row inside the range does the same for a value that slides just past the end. A blank cell in the middle is skipped.
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| 1. The editor can switch a list to From a range, and cells offer the non-blank values | Met | Video ~18–24s: Insert › Dropdown, From a range, Statuses!A2:A5, four coloured options. Test `dropdowns can read a range and accept more than one choice`. |
+| 2. Adding a value adds the option. Renaming a source cell renames the chips and keeps the colour | Met | Video ~30s: Training appears and is set to purple. Video ~40s: Maybe becomes Perhaps and stays amber. |
+| 3. A blank cell in the range is not an option | Met | Video ~42–48s: a row inserted in the range is not listed; the five names remain. Test `renaming a source cell keeps its colour and a blank is not an option`. |
+| 4. Allow more than one stores several chips. Enter adds one and leaves the list open. Escape closes it | Met | Video ~54–60s: "dr" then Enter leaves the list open, Cook is added, Escape closes it. D5 shows Driver and Cook. |
+| 5. Reject refuses a bad token among valid ones, names the options, and ignores surrounding spaces | Met | Video ~64s: "D6 is marked. Boss isn't an option. Choose Helper, Driver, or Cook." D6 keeps Driver and Cook. "Driver " becomes a Driver chip. Test `a bad token is refused and a trailing space still matches`. |
+| 6. From a range survives save, reopen, and an XLSX round trip as a list whose source is that range | Met | Video ~74–78s: the re-imported workbook opens Data › Data validation on From a range, Statuses!A2:A7. Test `a from-a-range rule round-trips through Excel as that range`. |
+| 7. Allow more than one and the chip colours survive save, reopen, and the native file | Met | Video ~85–90s: Perhaps is amber, Training is purple, Driver and Cook are chips, and the native file still allows more than one role. |
+| 8. A fixed list from storyboard 37 still renames cells and rejects other values | Met | Video ~66–70s: Evening becomes Night across the Shift column, and "nope" is refused with "Choose Morning, Afternoon, or Night." |

@@ -49,6 +49,45 @@ export async function nameLocalVersion(id: string, name: string) {
   await db.versions.update(id, { name: trimmed || null });
 }
 
+function contentJson(file: SuiteFile) {
+  return JSON.stringify(file.content);
+}
+
+/**
+ * Keep the open document in the snapshot list, then store the mixed result
+ * of putting one paragraph back. The previous snapshot stays restorable.
+ */
+export async function recordLocalParagraphRestore(
+  previous: SuiteFile,
+  next: SuiteFile,
+  name: string,
+) {
+  const latest = (await localVersions(previous.id))[0];
+  const now = Date.now();
+  if (!latest || contentJson(parseFile(latest.native)) !== contentJson(previous)) {
+    await db.versions.add({
+      id: crypto.randomUUID(),
+      fileId: previous.id,
+      createdAt: new Date(now).toISOString(),
+      authorId: "local",
+      authorName: "You",
+      name: null,
+      restoredFrom: null,
+      native: serializeFile(previous),
+    });
+  }
+  await db.versions.add({
+    id: crypto.randomUUID(),
+    fileId: next.id,
+    createdAt: new Date(now + 1).toISOString(),
+    authorId: "local",
+    authorName: "You",
+    name,
+    restoredFrom: null,
+    native: serializeFile(next),
+  });
+}
+
 /** Remember the restored bytes as a new snapshot and return the file they hold. */
 export async function restoreLocalVersion(version: LocalVersion): Promise<SuiteFile> {
   await db.versions.add({

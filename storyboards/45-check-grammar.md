@@ -1,6 +1,6 @@
 # 45 · Check grammar while you write
 
-**Mode:** single-node · **App:** Docs · **Video:** [videos/45-check-grammar.mp4](videos/45-check-grammar.mp4) · **Script:** [scenes/45-check-grammar.spec.ts](scenes/45-check-grammar.spec.ts)
+**Mode:** single-node · **App:** Docs · **Video:** [videos/45-check-grammar-on-the-device.mp4](videos/45-check-grammar-on-the-device.mp4) · **Script:** [scenes/45-check-grammar-on-the-device.spec.ts](scenes/45-check-grammar-on-the-device.spec.ts)
 
 ## Who and why
 
@@ -47,12 +47,25 @@ Known pain points:
 
 ## Success looks like
 
-- The essay reads "the movement was", "it's the reason", and "they were ready". The ignored "they was" is corrected after she restores it from Ignored grammar.
-- "Nkrumah" is not marked as grammar. Bold text stayed bold. Nothing left the computer.
+- The essay reads "the movement was", "it's the reason", "they were ready", and "They were late". She typed a second "they was", ignored it, restored it from Ignored grammar, and fixed it.
+- With the network off, "They was next" is still underlined in blue. "movment" is still a spelling underline. "Nkrumah" is not grammar. "movement" stayed bold, "strong" stayed italic, and Ghana stayed a link. The count still starts at 1,488 words, excluding References.
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| 1. Grammar underlines differ from spelling and appear as you type | Met | Video 0:07: red wavy "movment", blue dotted "were", "its", and "was". Video 0:36: "They was next" gains a blue underline while she types. Browser test `grammar underlines a different way from spelling and leaves formatting alone` expects `text-decoration-style` dotted versus wavy. |
+| 2. Right-click offers the suggestion first, then Ignore, and one click replaces only that word | Met | Video 0:07: menu on "were" shows "was", then Ignore. Video 0:10: the sentence is "the movement was" and bold "movement" is unchanged. The same browser test expects the first menuitem to be "was" and exactly two items. |
+| 3. Tools › Grammar steps through grammar with Change and Ignore from the keyboard, and spelling stays separate | Met | Video 0:18: "1 of 1 · was → were", Change and Ignore. Enter makes "they were ready" (video 0:22). Video 0:22: Tools › Spelling shows "1 of 2 · movment → movement" and does not list "was". Browser test `ignored grammar comes back, stays in the file, and still runs offline` focuses Ignore and presses Enter. |
+| 4. Tools › Ignored grammar lists skipped issues, and removing one restores the underline | Met | Video 0:30: the panel lists "they was → were" with Remove. The blue underline returns and she changes it to "They were late" (video 0:33). The browser test reloads, finds the phrase still ignored, and Remove puts the underline back. |
+| 5. The fixture suggests was, it's, and were, and Nkrumah is not grammar | Met | `tests/doc-grammar.test.ts` "flags the closed set" and "keeps the independence essay's word count". Video 0:14: Nkrumah has only the red spelling underline. |
+| 6. Accepting or ignoring leaves bold, italic, and links alone | Met | Video 0:10 and 0:36: "movement" is bold, "strong" is italic, Ghana is a link. The browser test checks `strong`, `em`, and the Ghana href after Change and after Ignore. |
+| 7. Grammar still runs with the network blocked, and no request contains the document text | Met | Video 0:33–0:36: the caption says the network is off, and "They was next" is underlined. The scene test and the browser test collect requests and expect none to contain the essay's words. |
+| 8. Storyboard 34's word count and "movment" still hold | Met | Video 0:05: "1,488 words (excludes References)". Video 0:36: "movment" is still a spelling underline; the count is 1,494 after the six words she typed. `tests/doc-grammar.test.ts` expects 1,612 / 318 / 1,488 and `misspelledWords` of `movment`, `Nkrumah`. `tests/doc-proofing.test.ts` still passes. |
 
 ## Gaps and notes
 
-- `doc-spelling.ts` underlines misspellings, suggests replacements, and stores the personal dictionary on this device. There is no grammar pass and no second underline.
-- The Tools item is Spelling (storyboard 34). `commands.ts` still has a leftover "Spelling and grammar" pending reason from before spelling shipped; the menu does not run a grammar check.
-- This story is a closed set of issues the fixture can assert: subject-verb agreement of the kind "were" / "was", and "its" before a verb where "it's" is required. A general grammar model is not required.
-- Ignored spellings already live in the file (storyboard 34). Ignored grammar should be stored the same way so it survives reopen, and should be removable.
+- Grammar is a closed on-device pass next to spelling: a singular noun after the/a/an plus "were" suggests "was"; they/we/these/those (and a few irregular plurals) plus "was" suggests "were"; "its" before a word that cannot follow a possessive, such as "the", suggests "it's". "its future", "the people were", "if it were", and names such as Nkrumah are not grammar issues.
+- Ignored grammar is a list of phrases on the document (`they was → were`), separate from ignored spellings and from the personal dictionary. Removing a phrase brings every match back. Ignoring one "they was" hides every "they was" until that row is removed.
+- The personal dictionary is unchanged. Sheet and slide Tools › Spelling are still empty items, so the old "Spelling" pending reason remains for those menus.
+- There is no Accept all, and the panel does not explain the rule beyond the suggestion. A general grammar model is still out of scope.
