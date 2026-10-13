@@ -372,4 +372,63 @@ describe("local Office export", () => {
       /sqref="B2:B3"[^>]*><formula1>&quot;1,0&quot;<\/formula1>/,
     );
   });
+  it("writes merge metadata, so an unmerged title is not an A1:C1 merge", async () => {
+    const file = createFile("sheet", "October budget");
+    if (file.kind !== "sheet") throw new Error();
+    const sheet = file.content.workbook.sheets[file.content.workbook.sheetOrder[0]];
+    sheet.cellData = {
+      0: {
+        0: { v: "October budget", t: 1 },
+        1: { v: "draft", t: 1 },
+        3: { v: "Notes", t: 1 },
+        5: { v: "Kept", t: 1 },
+      },
+      1: { 0: { v: "Rent", t: 1 } },
+    };
+    sheet.columnData = {
+      0: { w: 168 },
+      1: { w: 110 },
+      5: { w: 90 },
+      6: { w: 90 },
+    };
+    sheet.mergeData = [
+      { startRow: 0, endRow: 0, startColumn: 3, endColumn: 4 },
+    ];
+    sheet.custom = {
+      suiteleafColumnGroups: [
+        { id: "fg", startColumn: 5, endColumn: 6, collapsed: [] },
+      ],
+      suiteleafRowGroups: [
+        { id: "rows", startRow: 1, endRow: 2, collapsed: [] },
+      ],
+    };
+    const bytes = await exportXlsx(file);
+    const exported = XLSX.read(bytes, { type: "array" }).Sheets.Sheet1;
+    expect(exported.A1.v).toBe("October budget");
+    expect(exported.B1.v).toBe("draft");
+    expect(exported.A2.v).toBe("Rent");
+    expect(exported.D1.v).toBe("Notes");
+    expect(exported.F1.v).toBe("Kept");
+    expect(exported["!merges"]).toEqual([
+      { s: { r: 0, c: 3 }, e: { r: 0, c: 4 } },
+    ]);
+    const xml = await (await JSZip.loadAsync(bytes))
+      .file("xl/worksheets/sheet1.xml")!
+      .async("string");
+    expect(xml).not.toContain("A1:C1");
+    expect(xml).toContain('ref="D1:E1"');
+    expect(xml).toContain('outlineLevel="1"');
+
+    sheet.mergeData = [
+      { startRow: 0, endRow: 0, startColumn: 0, endColumn: 2 },
+      { startRow: 0, endRow: 0, startColumn: 3, endColumn: 4 },
+    ];
+    const merged = XLSX.read(await exportXlsx(file), { type: "array" }).Sheets
+      .Sheet1;
+    expect(merged.A1.v).toBe("October budget");
+    expect(merged["!merges"]).toEqual([
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } },
+      { s: { r: 0, c: 3 }, e: { r: 0, c: 4 } },
+    ]);
+  });
 });

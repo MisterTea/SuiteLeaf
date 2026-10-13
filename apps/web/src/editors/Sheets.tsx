@@ -55,6 +55,7 @@ import {
   shiftRowGroups,
   shrinkRowGroups,
 } from "./sheet-row-groups";
+import { applyMergeButton, mergeButtonLabel } from "./sheet-merge";
 import SheetColumnGroups, { type SheetColumnGroupsHandle } from "./sheet-column-groups-ui";
 import {
   contiguousColumnRanges,
@@ -829,6 +830,9 @@ export default function Sheets({
     [hAlign, setHAlign] = useState<"left" | "center" | "right">("left"),
     [vAlign, setVAlign] = useState<"top" | "middle" | "bottom">("middle"),
     [isWrap, setIsWrap] = useState(false),
+    [mergeLabel, setMergeLabel] = useState<"Merge cells" | "Unmerge">(
+      "Merge cells",
+    ),
     [sorting, setSorting] = useState<{
       range: GridRange;
       values: CellValue[][];
@@ -855,7 +859,7 @@ export default function Sheets({
   const toolbar = useRef<HTMLDivElement>(null);
   const moreTools = useToolbarOverflow(
     toolbar,
-    '[aria-label^="Insert comment"], [aria-label="Undo (Cmd+Z)"], [aria-label="Redo (Cmd+Y)"], .menu-search-pill, .chart-btn, .filter-btn, .functions-btn, .pivot-btn, .sheet-analyses-dropdown',
+    '[aria-label^="Insert comment"], [aria-label="Undo (Cmd+Z)"], [aria-label="Redo (Cmd+Y)"], .menu-search-pill, .chart-btn, .filter-btn, .functions-btn, .pivot-btn, .sheet-analyses-dropdown, .merge-btn',
     { foldNarrow: true },
   );
   const functionActions = useRef<{
@@ -868,6 +872,7 @@ export default function Sheets({
   const persist = useRef<() => void>(() => {}),
     refreshCharts = useRef<() => void>(() => {}),
     syncTextStyle = useRef<() => void>(() => {}),
+    syncMergeButton = useRef<() => void>(() => {}),
     editChart = useRef<(id: string) => void>(() => {}),
     refreshPivots = useRef<(sheetIds: Set<string>) => void>(() => {}),
     insertImage = useRef<(src: string) => Promise<void>>(async () => {});
@@ -1387,6 +1392,18 @@ export default function Sheets({
         setIsItalic(style?.it === 1);
         setIsStrike(style?.st?.s === 1);
       };
+      syncMergeButton.current = () => {
+        let label: "Merge cells" | "Unmerge" = "Merge cells";
+        try {
+          const ranges =
+            workbook.getActiveSheet()?.getSelection()?.getActiveRangeList() ??
+            [];
+          label = mergeButtonLabel(ranges);
+        } catch {
+          label = "Merge cells";
+        }
+        setMergeLabel(label);
+      };
       const changedSheets = new Set<string>();
       const publishValue = () => {
         try {
@@ -1397,6 +1414,7 @@ export default function Sheets({
         }
       };
       publishValue();
+      syncMergeButton.current();
       const shiftGroupsForInsertedRows = (
         at: number,
         count: number,
@@ -1536,10 +1554,13 @@ export default function Sheets({
         if (
           !disposed &&
           (command.id === "sheet.operation.set-selections" ||
-            command.id === "sheet.mutation.set-range-values")
+            command.id === "sheet.mutation.set-range-values" ||
+            command.id === "sheet.mutation.add-worksheet-merge" ||
+            command.id === "sheet.mutation.remove-worksheet-merge")
         ) {
           syncTextStyle.current();
           publishValue();
+          syncMergeButton.current();
         }
         if (busy || disposed || !command.id.includes("mutation")) return;
         pending.current = true;
@@ -1884,13 +1905,16 @@ export default function Sheets({
     }
   };
   const mergeCells = () => {
-    const r = book.current?.getActiveRange();
-    if (r) {
-      try {
-        r.merge();
-      } catch {}
-      persist.current();
-    }
+    const ranges =
+      book.current?.getActiveSheet()?.getSelection()?.getActiveRangeList() ??
+      [];
+    const active = book.current?.getActiveRange() ?? null;
+    if (!active && mergeButtonLabel(ranges) !== "Unmerge") return;
+    try {
+      applyMergeButton(ranges, active);
+    } catch {}
+    persist.current();
+    syncMergeButton.current();
   };
   const cycleHorizontalAlign = () => {
     const next =
@@ -2853,13 +2877,13 @@ export default function Sheets({
         <button
           type="button"
           className="tool merge-btn"
-          title="Merge cells"
-          aria-label="Merge cells"
+          title={mergeLabel}
+          aria-label={mergeLabel}
           disabled={readOnly}
           onClick={mergeCells}
         >
           <Split size={16} />
-          <ChevronDown size={10} />
+          <span className="merge-label">{mergeLabel}</span>
         </button>
 
         <span className="toolbar-divider" />

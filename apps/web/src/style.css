@@ -2539,6 +2539,15 @@ a {
 .sheets-toolbar .functions-btn {
   gap: 2px;
 }
+.sheets-toolbar .merge-btn {
+  gap: 4px;
+  padding-inline: 8px;
+}
+.sheets-toolbar .merge-btn .merge-label {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
 .sheets-toolbar select.toolbar-select {
   background: transparent;
   border: 0;
