@@ -26,8 +26,52 @@ export type ShowCursor = {
 
 export type ShowMove = "next" | "prev" | "home" | "end";
 
-export function startOfShow(slideIndex = 0): ShowCursor {
-  return { slideIndex, revealed: 0, enteringId: null };
+/**
+ * Where a show opens. A skipped slide is passed over for the next one that
+ * is not skipped. Returns slideIndex -1 when every later slide is skipped,
+ * so the caller can end instead of opening the draft.
+ */
+export function startOfShow(
+  slideIndex = 0,
+  skippedAt: (index: number) => boolean = () => false,
+  slideCount = slideIndex + 1,
+): ShowCursor {
+  if (!skippedAt(slideIndex)) {
+    return { slideIndex, revealed: 0, enteringId: null };
+  }
+  for (let i = slideIndex + 1; i < slideCount; i++) {
+    if (!skippedAt(i)) return { slideIndex: i, revealed: 0, enteringId: null };
+  }
+  return { slideIndex: -1, revealed: 0, enteringId: null };
+}
+
+/** Audience size, before the show starts. Skipped slides are named, not hidden from the count. */
+export function showSizeLabel(
+  slideCount: number,
+  skippedAt: (index: number) => boolean = () => false,
+): string {
+  let skipped = 0;
+  for (let i = 0; i < slideCount; i++) if (skippedAt(i)) skipped += 1;
+  const shown = slideCount - skipped;
+  const slides = shown === 1 ? "1 slide" : `${shown} slides`;
+  if (skipped === 0) return slides;
+  return `${slides}, ${skipped} skipped`;
+}
+
+/** 1-based place among slides the audience will see. */
+export function showPosition(
+  slideIndex: number,
+  slideCount: number,
+  skippedAt: (index: number) => boolean = () => false,
+): { position: number; shown: number } {
+  let shown = 0;
+  let position = 0;
+  for (let i = 0; i < slideCount; i++) {
+    if (skippedAt(i)) continue;
+    shown += 1;
+    if (i === slideIndex) position = shown;
+  }
+  return { position, shown };
 }
 
 export function samePlace(a: ShowCursor, b: ShowCursor): boolean {
@@ -42,16 +86,17 @@ export function nextCursor(
   cursor: ShowCursor,
   fadeIds: readonly string[],
   slideCount: number,
+  skippedAt: (index: number) => boolean = () => false,
 ): ShowCursor {
-  if (cursor.revealed < fadeIds.length) {
+  if (!skippedAt(cursor.slideIndex) && cursor.revealed < fadeIds.length) {
     return {
       slideIndex: cursor.slideIndex,
       revealed: cursor.revealed + 1,
       enteringId: fadeIds[cursor.revealed] ?? null,
     };
   }
-  if (cursor.slideIndex < slideCount - 1) {
-    return { slideIndex: cursor.slideIndex + 1, revealed: 0, enteringId: null };
+  for (let i = cursor.slideIndex + 1; i < slideCount; i++) {
+    if (!skippedAt(i)) return { slideIndex: i, revealed: 0, enteringId: null };
   }
   return { ...cursor, enteringId: null };
 }
@@ -60,17 +105,19 @@ export function nextCursor(
 export function prevCursor(
   cursor: ShowCursor,
   fadeIdsAt: (slideIndex: number) => readonly string[],
+  skippedAt: (index: number) => boolean = () => false,
 ): ShowCursor {
-  if (cursor.revealed > 0) {
+  if (!skippedAt(cursor.slideIndex) && cursor.revealed > 0) {
     return { ...cursor, revealed: cursor.revealed - 1, enteringId: null };
   }
-  if (cursor.slideIndex > 0) {
-    const slideIndex = cursor.slideIndex - 1;
-    return {
-      slideIndex,
-      revealed: fadeIdsAt(slideIndex).length,
-      enteringId: null,
-    };
+  for (let i = cursor.slideIndex - 1; i >= 0; i--) {
+    if (!skippedAt(i)) {
+      return {
+        slideIndex: i,
+        revealed: fadeIdsAt(i).length,
+        enteringId: null,
+      };
+    }
   }
   return { ...cursor, enteringId: null };
 }
@@ -80,18 +127,26 @@ export function moveShowCursor(
   where: ShowMove,
   fadeIdsAt: (slideIndex: number) => readonly string[],
   slideCount: number,
+  skippedAt: (index: number) => boolean = () => false,
 ): ShowCursor {
-  if (where === "home") return startOfShow(0);
-  if (where === "end") {
-    const slideIndex = Math.max(0, slideCount - 1);
-    return {
-      slideIndex,
-      revealed: fadeIdsAt(slideIndex).length,
-      enteringId: null,
-    };
+  if (where === "home") {
+    const next = startOfShow(0, skippedAt, slideCount);
+    return next.slideIndex < 0 ? { ...cursor, enteringId: null } : next;
   }
-  if (where === "prev") return prevCursor(cursor, fadeIdsAt);
-  return nextCursor(cursor, fadeIdsAt(cursor.slideIndex), slideCount);
+  if (where === "end") {
+    for (let i = slideCount - 1; i >= 0; i--) {
+      if (!skippedAt(i)) {
+        return {
+          slideIndex: i,
+          revealed: fadeIdsAt(i).length,
+          enteringId: null,
+        };
+      }
+    }
+    return { ...cursor, enteringId: null };
+  }
+  if (where === "prev") return prevCursor(cursor, fadeIdsAt, skippedAt);
+  return nextCursor(cursor, fadeIdsAt(cursor.slideIndex), slideCount, skippedAt);
 }
 
 export type AudiencePhase = "plain" | "shown" | "entering" | "hidden";

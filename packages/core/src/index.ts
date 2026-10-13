@@ -205,6 +205,8 @@ export const slideSchema = z.object({
     .optional(),
   elements: z.array(slideElementSchema),
   notes: z.string().optional(),
+  /** Left out of the show. Older decks omit it and still present this slide. */
+  skipped: z.boolean().optional(),
   comments: z.array(slideCommentThreadSchema).max(40).optional(),
   transition: slideTransitionSchema.optional(),
 });

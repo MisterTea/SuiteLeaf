@@ -16,6 +16,7 @@ import {
   moveShowCursor,
   nextCursor,
   prevCursor,
+  showSizeLabel,
   startOfShow,
 } from "../apps/web/src/editors/slide-fade-in";
 
@@ -116,6 +117,77 @@ describe("fade in on click", () => {
     expect(audiencePhase({ id: "september", animation: FADE_ON_CLICK }, back.revealed, ids, null)).toBe(
       "shown",
     );
+  });
+
+  it("passes over a skipped middle slide without removing it", () => {
+    const none = () => [] as const;
+    const middle = (index: number) => index === 1;
+    expect(moveShowCursor(startOfShow(0), "next", none, 3, middle).slideIndex).toBe(2);
+    expect(moveShowCursor(startOfShow(2), "prev", none, 3, middle).slideIndex).toBe(0);
+    expect(startOfShow(1, middle, 3).slideIndex).toBe(2);
+    expect(moveShowCursor(startOfShow(0), "next", none, 3).slideIndex).toBe(1);
+    expect(showSizeLabel(3, middle)).toBe("2 slides, 1 skipped");
+    expect(showSizeLabel(3)).toBe("3 slides");
+
+    const atThanks = moveShowCursor(startOfShow(0), "next", none, 3, middle);
+    expect(moveShowCursor(atThanks, "next", none, 3, middle).slideIndex).toBe(2);
+    expect(moveShowCursor(startOfShow(2), "home", none, 3, (index) => index === 0).slideIndex).toBe(
+      1,
+    );
+    expect(moveShowCursor(startOfShow(0), "end", none, 3, (index) => index === 2).slideIndex).toBe(
+      1,
+    );
+
+    const ids = ["callout"];
+    const fadeAt = (index: number) => (index === 0 ? ids : []);
+    const revealed = moveShowCursor(startOfShow(0), "next", fadeAt, 3, middle);
+    expect(revealed).toEqual({ slideIndex: 0, revealed: 1, enteringId: "callout" });
+    expect(moveShowCursor(revealed, "next", fadeAt, 3, middle).slideIndex).toBe(2);
+
+    const file = createFile("slide", "Town hall") as SlideFile;
+    const welcome = file.content.slideOrder[0];
+    file.content.slides[welcome].title = "Welcome";
+    file.content.slideOrder.push("prices", "thanks");
+    file.content.slides.prices = {
+      id: "prices",
+      title: "Prices",
+      notes: "Finish the draft later.",
+      skipped: true,
+      elements: [
+        {
+          id: "p",
+          type: "text",
+          x: 40,
+          y: 40,
+          width: 400,
+          height: 80,
+          content: "Prices",
+        },
+      ],
+    };
+    file.content.slides.thanks = {
+      id: "thanks",
+      title: "Thanks",
+      elements: [
+        {
+          id: "t",
+          type: "text",
+          x: 40,
+          y: 40,
+          width: 400,
+          height: 80,
+          content: "Thanks",
+        },
+      ],
+    };
+    const again = parseFile(serializeFile(file)) as SlideFile;
+    expect(again.content.slideOrder).toEqual([welcome, "prices", "thanks"]);
+    expect(again.content.slides.prices.skipped).toBe(true);
+    expect(again.content.slides.prices.title).toBe("Prices");
+    expect(again.content.slides.prices.notes).toBe("Finish the draft later.");
+    expect(again.content.slides.prices.elements).toHaveLength(1);
+    const older = parseFile(serializeFile(createFile("slide", "Old"))) as SlideFile;
+    expect(older.content.slides[older.content.slideOrder[0]].skipped).toBeUndefined();
   });
 
   it("does not reveal an object that was not marked", () => {

@@ -133,6 +133,8 @@ import {
   fadeOnClickReason,
   moveShowCursor,
   samePlace,
+  showPosition,
+  showSizeLabel,
   startOfShow,
   type ShowCursor,
   type ShowMove,
@@ -586,6 +588,19 @@ export default function Slides({
     setTransitionStatus(describeTransition(type, ids.length));
   };
 
+
+  const toggleSkipSlide = () => {
+    const prev = deckRef.current;
+    const slide = prev.slides[activeRef.current];
+    if (!slide || readOnlyRef.current) return;
+    const nextSlide: Slide = { ...slide };
+    if (slide.skipped) delete nextSlide.skipped;
+    else nextSlide.skipped = true;
+    commit({
+      ...prev,
+      slides: { ...prev.slides, [slide.id]: nextSlide },
+    });
+  };
 
   // Update active slide properties. `coalesce` folds repeated edits (typing) into one undo.
   const updateSlide = useCallback((partial: Partial<Slide>, coalesce?: string) => {
@@ -1333,7 +1348,13 @@ ${slidesHtml}
   const overlayRef = useRef<HTMLDivElement>(null);
 
   const beginShow = useCallback((fromIndex: number, withNotes?: boolean) => {
-    const next = startOfShow(fromIndex);
+    const order = deckRef.current.slideOrder;
+    const next = startOfShow(
+      fromIndex,
+      (index) => Boolean(deckRef.current.slides[order[index]]?.skipped),
+      order.length,
+    );
+    if (next.slideIndex < 0) return;
     showCursorRef.current = next;
     setShowCursor(next);
     if (withNotes !== undefined) setShowSpeakerNotes(withNotes);
@@ -1369,6 +1390,7 @@ ${slidesHtml}
       (index) =>
         fadeOnClickIds(deckRef.current.slides[order[index]]?.elements ?? []),
       order.length,
+      (index) => Boolean(deckRef.current.slides[order[index]]?.skipped),
     );
     if (samePlace(current, next) && current.enteringId === next.enteringId)
       return;
@@ -1673,16 +1695,43 @@ ${slidesHtml}
 
   const presentSlide =
     deck.slides[deck.slideOrder[presentSlideIndex]] || activeSlide;
-  const nextPresentSlide = deck.slides[deck.slideOrder[presentSlideIndex + 1]];
+  const skippedAt = (index: number) =>
+    Boolean(deck.slides[deck.slideOrder[index]]?.skipped);
+  let nextShownIndex = presentSlideIndex + 1;
+  while (
+    nextShownIndex < deck.slideOrder.length &&
+    skippedAt(nextShownIndex)
+  ) {
+    nextShownIndex += 1;
+  }
+  const nextPresentSlide = deck.slides[deck.slideOrder[nextShownIndex]];
+  const audienceLabel = showSizeLabel(deck.slideOrder.length, skippedAt);
+  const audiencePlace = showPosition(
+    presentSlideIndex,
+    deck.slideOrder.length,
+    skippedAt,
+  );
   const fadeIdsAt = (index: number) =>
     fadeOnClickIds(deck.slides[deck.slideOrder[index]]?.elements ?? []);
   const cannotAdvance = samePlace(
     showCursor,
-    moveShowCursor(showCursor, "next", fadeIdsAt, deck.slideOrder.length),
+    moveShowCursor(
+      showCursor,
+      "next",
+      fadeIdsAt,
+      deck.slideOrder.length,
+      skippedAt,
+    ),
   );
   const cannotRetreat = samePlace(
     showCursor,
-    moveShowCursor(showCursor, "prev", fadeIdsAt, deck.slideOrder.length),
+    moveShowCursor(
+      showCursor,
+      "prev",
+      fadeIdsAt,
+      deck.slideOrder.length,
+      skippedAt,
+    ),
   );
   const fadeWaiting = showCursor.revealed < fadeIdsAt(presentSlideIndex).length;
   const elapsedSeconds = Math.max(
@@ -2382,11 +2431,13 @@ ${slidesHtml}
             <button
               type="button"
               className="slideshow-btn"
+              aria-label="Slideshow"
               onClick={() => beginShow(currentSlideIndex)}
-              title="Present from current slide (Cmd+Enter)"
+              title={`Present from current slide (Cmd+Enter). Audience will see ${audienceLabel}.`}
             >
               <Play size={14} fill="currentColor" />
               <span>Slideshow</span>
+              <span className="slideshow-audience">{audienceLabel}</span>
             </button>
             <Dropdown.Root>
               <Dropdown.Trigger
@@ -2544,8 +2595,8 @@ ${slidesHtml}
                   role="option"
                   data-slide-id={id}
                   aria-selected={isChosen}
-                  aria-label={`Slide ${index + 1}${slide?.transition && slide.transition.type !== "none" ? `, ${slide.transition.type} transition` : ""}${heading ? `: ${heading}` : ""}`}
-                  className={`thumbnail-row ${isChosen ? "selected" : ""} ${isActive ? "active" : ""} ${slideDrag?.over != null && slideDrag.ids.includes(id) ? "drag-source" : ""} ${dropClass}`}
+                  aria-label={`Slide ${index + 1}${slide?.skipped ? ", Skipped" : ""}${slide?.transition && slide.transition.type !== "none" ? `, ${slide.transition.type} transition` : ""}${heading ? `: ${heading}` : ""}`}
+                  className={`thumbnail-row ${isChosen ? "selected" : ""} ${isActive ? "active" : ""} ${slide?.skipped ? "is-skipped" : ""} ${slideDrag?.over != null && slideDrag.ids.includes(id) ? "drag-source" : ""} ${dropClass}`}
                   onMouseDown={(e) => {
                     if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey)
                       return;
@@ -2599,6 +2650,7 @@ ${slidesHtml}
                   }}
                 >
                   <span className="thumbnail-num">{index + 1}</span>
+                  <div className="thumbnail-body">
                   <div
                     className="thumbnail-card"
                     style={{ backgroundColor: bg }}
@@ -2675,12 +2727,24 @@ ${slidesHtml}
                       </span>
                     ) : null}
                   </div>
+                  {slide?.skipped ? (
+                    <span className="thumbnail-skipped">Skipped</span>
+                  ) : null}
+                  </div>
                 </div>
               );
             })}
           </div>
 
           <div className="slides-sidebar-footer">
+            <button
+              type="button"
+              className="skip-slide-btn"
+              disabled={readOnly || !activeSlide}
+              onClick={toggleSkipSlide}
+            >
+              {activeSlide?.skipped ? "Unskip" : "Skip slide"}
+            </button>
             <button
               type="button"
               className="add-slide-sidebar-btn"
@@ -3068,7 +3132,7 @@ ${slidesHtml}
                     <span>
                       Next:{" "}
                       {slideHeading(nextPresentSlide) ||
-                        `Slide ${presentSlideIndex + 2}`}
+                        `Slide ${showPosition(nextShownIndex, deck.slideOrder.length, skippedAt).position}`}
                     </span>
                     <div
                       className="presenter-next-slide show-slide"
@@ -3112,7 +3176,8 @@ ${slidesHtml}
               Previous
             </button>
             <span className="presenter-counter">
-              Slide {presentSlideIndex + 1} of {deck.slideOrder.length}
+              Slide {audiencePlace.position || 1} of{" "}
+              {audiencePlace.shown || deck.slideOrder.length}
             </span>
             <button
               type="button"
