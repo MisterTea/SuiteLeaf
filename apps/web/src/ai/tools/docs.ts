@@ -472,9 +472,11 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         const matches = documentMatches(editor.state.doc, find, options).matches;
         if (!matches.length) {
           ctx.closeFind();
-          const already = replace ? documentMatches(editor.state.doc, replace, options).matches.length : 0;
+          const already = replace.trim() ? documentMatches(editor.state.doc, replace, options).matches.length : 0;
+          if (already)
+            return `Nothing to replace: "${find}" is not in the document, and "${replace}" is there ${already} time(s), so it is already replaced.`;
           throw new ToolError(
-            `"${find}" was not found.${already ? ` "${replace}" is in the document ${already} time(s), so it is probably already replaced; nothing changed.` : ""}${/[#*]/.test(find) ? " The document's text has no Markdown marks such as # or **; use read_document to see the exact text." : ""}`,
+            `"${find}" was not found.${/[#*]/.test(find) ? " The document's text has no Markdown marks such as # or **; use read_document to see the exact text." : ""}`,
           );
         }
         let tr = editor.state.tr;

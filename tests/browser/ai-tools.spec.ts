@@ -38,9 +38,10 @@ test("document tools write, style, find, replace and check spelling", async ({ p
   expect(replaced).toContain('Replaced 2 of 2 "recieve" with "receive", in: "We receive so much help.", "We receive it gladly."');
   expect(replaced).toContain('No "recieve" is left');
   await expect(doc).not.toContainText("recieve");
-  await expect(call(page, "find_and_replace", { find: "recieve", replace: "receive" })).rejects.toThrow(
-    /"receive" is in the document 2 time\(s\), so it is probably already replaced/,
+  expect(await call(page, "find_and_replace", { find: "recieve", replace: "receive" })).toContain(
+    '"receive" is there 2 time(s), so it is already replaced',
   );
+  await expect(call(page, "find_and_replace", { find: "recieve", replace: "obtain" })).rejects.toThrow('"recieve" was not found.');
 
   await expect(call(page, "write_text", { text: "Thanks.", after: "Nowhere" })).rejects.toThrow(/paragraphs are: "Thank you"/);
   expect(await call(page, "write_text", { text: "Thanks for the **seedlings**.", after: "# Thank you" })).toContain('in bold: "seedlings"');
