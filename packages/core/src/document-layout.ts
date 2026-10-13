@@ -50,6 +50,16 @@ export type PageSettings = {
    * pages still number on the outside edge.
    */
   pageNumberPositionSet: boolean;
+  /**
+   * The number on the first page of the file. A cover does not use it, and
+   * turning the cover off puts it back. Older files omit it and start at 1.
+   */
+  pageNumberStart: number;
+  /**
+   * The first page has no number and is not counted, so the second page is
+   * page 1 rather than page 2. Footer text stays. The start number is kept.
+   */
+  coverHasNoNumber: boolean;
   /** Page 1 uses firstHeader and firstFooter and has no page number. */
   differentFirstPage: boolean;
   firstHeader: string;
@@ -92,6 +102,8 @@ export const defaultPageSettings: PageSettings = {
   pageNumberFormat: "fraction",
   pageNumberPosition: "bottom-right",
   pageNumberPositionSet: false,
+  pageNumberStart: 1,
+  coverHasNoNumber: false,
   differentFirstPage: false,
   firstHeader: "",
   firstFooter: "",
@@ -190,6 +202,8 @@ export function documentPageSettings(content: JsonNode): PageSettings {
       ? (a?.pageNumberPosition as PageNumberPosition)
       : "bottom-right",
     pageNumberPositionSet: a?.pageNumberPositionSet === true,
+    pageNumberStart: pageNumberStartValue(a?.pageNumberStart),
+    coverHasNoNumber: a?.coverHasNoNumber === true,
     differentFirstPage: a?.differentFirstPage === true,
     firstHeader: pageText(a?.firstHeader),
     firstFooter: pageText(a?.firstFooter),
@@ -218,6 +232,42 @@ export function pageNumberText(
 ): string {
   const total = Math.max(pageCount, 1);
   return format === "page" ? `Page ${page}` : `${page} / ${total}`;
+}
+/** A start number is a whole page from 1 through 9999. Anything else starts at 1. */
+export const PAGE_NUMBER_START_MAX = 9999;
+export function pageNumberStartValue(value: unknown): number {
+  if (typeof value !== "number" || !Number.isInteger(value)) return 1;
+  if (value < 1 || value > PAGE_NUMBER_START_MAX) return 1;
+  return value;
+}
+/**
+ * The number drawn on a page, and the last number in the file.
+ * A cover is not counted: the second page is 1, and Start at waits until the
+ * cover is turned off.
+ */
+export function pageNumberAt(
+  settings: PageSettings,
+  pageIndex: number,
+  pageCount: number,
+): { page: number; total: number } {
+  const cover = settings.coverHasNoNumber;
+  const start = cover ? 1 : settings.pageNumberStart;
+  const skip = cover ? 1 : 0;
+  const count = Math.max(1, pageCount - skip);
+  return {
+    page: start + pageIndex - skip,
+    total: start + count - 1,
+  };
+}
+/**
+ * Word's `w:start`, or null when the section still begins at 1.
+ * A cover hides page 0, so the second page displays as 1.
+ */
+export function wordPageNumberStart(settings: PageSettings): number | null {
+  if (!settings.pageNumbers) return null;
+  if (settings.coverHasNoNumber) return 0;
+  if (settings.pageNumberStart === 1) return null;
+  return settings.pageNumberStart;
 }
 function chosenNumberSide(settings: PageSettings): PageNumberSide {
   if (settings.pageNumberPosition === "bottom-center") return "center";
@@ -259,13 +309,18 @@ export function pageFace(
     if (settings.pageNumbers && !settings.pageNumberPositionSet)
       numberSide = even ? "left" : "right";
   }
+  // A cover keeps its footer and drops only the number. It is not page 1.
+  if (page === 1 && settings.coverHasNoNumber) numberSide = "none";
+  const shown = pageNumberAt(settings, pageIndex, pageCount);
   return {
     header,
     footer,
     headerAlign,
     numberSide,
     pageNumber:
-      numberSide === "none" ? "" : pageNumberText(settings.pageNumberFormat, page, pageCount),
+      numberSide === "none"
+        ? ""
+        : pageNumberText(settings.pageNumberFormat, shown.page, shown.total),
   };
 }
 /** Copy the shared header into the even and odd fields the first time they are used. */
@@ -295,9 +350,47 @@ export function setDifferentFirstPage(
 ): PageSettings {
   return { ...settings, differentFirstPage: on };
 }
+function numberPlace(settings: PageSettings): string {
+  return settings.pageNumberPositionSet && settings.pageNumberPosition === "bottom-center"
+    ? "Bottom center"
+    : settings.pageNumberPositionSet && settings.pageNumberPosition === "top-right"
+      ? "Top right"
+      : "Bottom right";
+}
 export function pageNumberHint(settings: PageSettings, pageCount = 2): string {
   if (!settings.pageNumbers)
-    return "Off on every page. Turn them on to choose a format and a position.";
+    return "Off on every page. Start at and the cover choice stay until you turn numbers on.";
+  const kept = "Editing the footer leaves it in place.";
+  if (settings.coverHasNoNumber) {
+    const next = pageNumberAt(settings, 1, pageCount);
+    const counted = pageNumberAt(
+      { ...settings, coverHasNoNumber: false, pageNumberStart: 1 },
+      1,
+      pageCount,
+    );
+    const shown = pageNumberText(settings.pageNumberFormat, next.page, next.total);
+    const asTwo = pageNumberText(
+      settings.pageNumberFormat,
+      counted.page,
+      counted.total,
+    );
+    return `No number on the cover. The next page is “${shown}”, not “${asTwo}”. Start at stays for when the cover has a number. ${kept}`;
+  }
+  if (settings.pageNumberStart !== 1) {
+    const first = pageNumberAt(settings, 0, pageCount);
+    const second = pageNumberAt(settings, 1, pageCount);
+    const started = pageNumberText(
+      settings.pageNumberFormat,
+      first.page,
+      first.total,
+    );
+    const next = pageNumberText(
+      settings.pageNumberFormat,
+      second.page,
+      second.total,
+    );
+    return `${numberPlace(settings)} of every page, starting at “${started}”. The next page is “${next}”. ${kept}`;
+  }
   if (!settings.pageNumberPositionSet && settings.differentOddEven)
     return settings.differentFirstPage
       ? "No number on page 1. Left on even pages, right on odd pages."
@@ -312,13 +405,7 @@ export function pageNumberHint(settings: PageSettings, pageCount = 2): string {
     settings.pageNumberFormat === "page"
       ? "Page 1"
       : pageNumberText("fraction", 1, pageCount);
-  const place =
-    settings.pageNumberPositionSet && settings.pageNumberPosition === "bottom-center"
-      ? "Bottom center"
-      : settings.pageNumberPositionSet && settings.pageNumberPosition === "top-right"
-        ? "Top right"
-        : "Bottom right";
-  const kept = "Editing the footer leaves it in place.";
+  const place = numberPlace(settings);
   if (settings.differentFirstPage)
     return `No number on page 1. ${place} on later pages, as “${sample}”. ${kept}`;
   return `${place} of every page, as “${sample}”. ${kept}`;
@@ -414,6 +501,16 @@ function pageNumberMarginBox(settings: PageSettings): string {
       : 'counter(page) " / " counter(pages)';
   return `@${slot} { content: ${content}; font: 10pt Arial, sans-serif; color: #555; }`;
 }
+/** Print the same start the screen uses. A cover's hidden first page is 0. */
+function printedPageStart(settings: PageSettings): string {
+  const start = wordPageNumberStart(settings);
+  if (start == null) return "";
+  return `counter-reset: page ${start - 1};`;
+}
+function printedCoverRule(settings: PageSettings): string {
+  if (!settings.pageNumbers || !settings.coverHasNoNumber) return "";
+  return "@page:first { @top-left { content: none; } @top-center { content: none; } @top-right { content: none; } @bottom-left { content: none; } @bottom-center { content: none; } @bottom-right { content: none; } }";
+}
 const escapeHtml = (text: string) =>
   text.replace(
     /[&<>"]/g,
@@ -439,8 +536,11 @@ export function documentHtml(
   const pageRule = [
     `size: ${width / 96}in ${height / 96}in;`,
     `margin: ${box};`,
+    printedPageStart(settings),
     pageNumberMarginBox(settings),
-  ].join(" ");
+  ]
+    .filter(Boolean)
+    .join(" ");
   // The web page starts on page 1, so a different first page shows its letterhead
   // and prints no number there. Later running heads still appear once.
   const bannerHeader = settings.differentFirstPage
@@ -464,6 +564,7 @@ export function documentHtml(
     gutter > 0
       ? `@page :right { margin-left: ${left + gutter}in; margin-right: ${right}in; } @page :left { margin-left: ${left}in; margin-right: ${right + gutter}in; }`
       : "";
+  const coverRule = printedCoverRule(settings);
   const furniture = (tag: "header" | "footer", text: string) =>
     text ? `<${tag} class="page-${tag}">${escapeHtml(text)}</${tag}>` : "";
   const mark = watermarkText(settings.watermark);
@@ -491,6 +592,7 @@ ${watermarkCss}
 .doc-columns { column-count: 2; column-gap: 0.5in; }
 @page { ${pageRule} }
 ${firstPageRule}
+${coverRule}
 ${mirror}
 @media print { body { max-width: none; padding: 0; } }
 </style>

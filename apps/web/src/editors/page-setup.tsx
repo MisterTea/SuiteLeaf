@@ -1,7 +1,9 @@
 import type { CSSProperties } from "react";
 import {
+  PAGE_NUMBER_START_MAX,
   pageFace,
   pageNumberHint,
+  pageNumberStartValue,
   pageNumberText,
   setDifferentFirstPage,
   setDifferentOddEven,
@@ -55,6 +57,7 @@ function Preview({
     >
       {Array.from({ length: count }, (_, index) => {
         const face = pageFace(draft, index, total);
+        const shifted = draft.coverHasNoNumber || draft.pageNumberStart !== 1;
         const where =
           face.numberSide === "none"
             ? "No number"
@@ -68,7 +71,7 @@ function Preview({
         return (
           <div key={index} className="page-setup-preview-page">
             <span className="page-setup-preview-label">
-              Page {index + 1}
+              {shifted ? "File page" : "Page"} {index + 1}
               {index === 0 ? "" : index % 2 === 1 ? " · even" : " · odd"}
             </span>
             <span className={`page-setup-preview-header align-${face.headerAlign}`}>
@@ -193,6 +196,44 @@ export function PageSetupFields({
             </label>
           ))}
         </fieldset>
+        <fieldset
+          className="page-number-choice page-number-start"
+          disabled={!draft.pageNumbers || draft.coverHasNoNumber}
+        >
+          <legend>Start at</legend>
+          <input
+            aria-label="Start at"
+            aria-describedby="page-numbers-hint"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={PAGE_NUMBER_START_MAX}
+            step={1}
+            value={draft.pageNumberStart}
+            onChange={(e) => {
+              const raw = e.target.value.trim();
+              if (!raw) return;
+              const next = Number(raw);
+              if (!Number.isInteger(next)) return;
+              onChange({
+                ...draft,
+                pageNumberStart: pageNumberStartValue(next),
+              });
+            }}
+          />
+        </fieldset>
+        <label className="page-number-cover">
+          <input
+            type="checkbox"
+            aria-describedby="page-numbers-hint"
+            checked={draft.coverHasNoNumber}
+            disabled={!draft.pageNumbers}
+            onChange={(e) =>
+              onChange({ ...draft, coverHasNoNumber: e.target.checked })
+            }
+          />
+          Cover has no number
+        </label>
         <p id="page-numbers-hint" className="page-setup-hint">
           {pageNumberHint(draft, pageCount)}
         </p>

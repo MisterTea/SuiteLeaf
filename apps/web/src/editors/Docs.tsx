@@ -971,7 +971,11 @@ export default function Docs({
 
   const pageSettings = documentPageSettings(editor.getJSON() as JsonNode);
   const pageDraftValid =
-    marginsValid(pageDraft) && gutterAccepted(pageDraft.gutter);
+    marginsValid(pageDraft) &&
+    gutterAccepted(pageDraft.gutter) &&
+    Number.isInteger(pageDraft.pageNumberStart) &&
+    pageDraft.pageNumberStart >= 1 &&
+    pageDraft.pageNumberStart <= 9999;
   const dimensions = pageDimensions(pageSettings);
   const requestedZoom =
     zoomLevel === "Fit" ? 1 : Number.parseInt(zoomLevel, 10) / 100;
