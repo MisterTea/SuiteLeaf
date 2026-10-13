@@ -12,7 +12,7 @@ import StarterKit from "@tiptap/starter-kit";
 import { TextStyleKit } from "@tiptap/extension-text-style";
 import Highlight from "@tiptap/extension-highlight";
 import TextAlign from "@tiptap/extension-text-align";
-import Image from "@tiptap/extension-image";
+import { croppableImage } from "./doc-image-crop";
 import { TableKit } from "@tiptap/extension-table";
 import Superscript from "@tiptap/extension-superscript";
 import Subscript from "@tiptap/extension-subscript";
@@ -94,15 +94,18 @@ import { Grammar } from "./doc-grammar";
 import { useDocGrammar } from "./doc-grammar-ui";
 import { Proofing } from "./doc-spelling";
 import { useDocProofing, type ProofingContext } from "./doc-proofing";
+import { DocImageAlt } from "./doc-image-alt-ui";
 import { documentNotes } from "./doc-notes";
 import { documentCitations } from "./doc-citations";
 import { DocCitations } from "./doc-citations-panel";
+import { Equation, EquationDialog } from "./doc-equations";
 import {
   documentHtml,
   documentPageSettings,
   pageDimensions,
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
+import { PageFurniture, PageSetupFields } from "./page-setup";
 
 export const extensions: Extensions = [
   DocumentPagination,
@@ -115,16 +118,7 @@ export const extensions: Extensions = [
   TextStyleKit,
   Highlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ["heading", "paragraph"] }),
-  Image.configure({
-    allowBase64: true,
-    resize: {
-      enabled: true,
-      directions: ["top-left", "top-right", "bottom-left", "bottom-right"],
-      minWidth: 32,
-      minHeight: 32,
-      alwaysPreserveAspectRatio: true,
-    },
-  }),
+  croppableImage,
   TableKit.configure({ table: { resizable: true } }),
   CharacterCount,
   DocumentSearchHighlight,
@@ -134,6 +128,7 @@ export const extensions: Extensions = [
   Grammar,
   Superscript,
   Subscript,
+  Equation,
   Extension.create({
     name: "suiteleafStrikeShortcut",
     addKeyboardShortcuts() {
@@ -247,6 +242,7 @@ export default function Docs({
   const [activeHeading, setActiveHeading] = useState<number | null>(null);
   const [pageCount, setPageCount] = useState(1);
   const [pageSetupOpen, setPageSetupOpen] = useState(false);
+  const [equationOpen, setEquationOpen] = useState(false);
   const [pageDraft, setPageDraft] = useState<PageSettings>(() =>
     documentPageSettings(file.content),
   );
@@ -416,7 +412,9 @@ export default function Docs({
         },
       },
     },
-    onUpdate: ({ editor }) => {
+    onUpdate: ({ editor, transaction }) => {
+      if (!transaction.docChanged || transaction.getMeta("addToHistory") === false)
+        return;
       if (!readOnlyRef.current) changes.current(editor.getJSON() as JsonNode);
     },
   });
@@ -632,7 +630,7 @@ export default function Docs({
       editor
         ?.chain()
         .focus()
-        .setImage({ src, alt: f.name })
+        .setImage({ src, alt: "" })
         .command(({ tr, state }) => {
           // Typing must continue after the photo, not replace it.
           if (!(tr.selection instanceof NodeSelection)) return true;
@@ -723,6 +721,9 @@ export default function Docs({
           editor.chain().focus().insertTableOfContents(pageNumbers).run(),
         insertFootnote: () => editor.chain().focus().insertFootnote().run(),
         insertEndnote: () => editor.chain().focus().insertEndnote().run(),
+        insertEquation: () => {
+          if (!readOnlyRef.current) setEquationOpen(true);
+        },
         openPageSetup,
         openWordCount: proofing.openWordCount,
         openSpelling: proofing.openSpelling,
@@ -1361,49 +1362,11 @@ export default function Docs({
                   }
                 />
               </label>
-              <label>
-                <span>Header</span>
-                <input
-                  aria-label="Page header"
-                  placeholder="Text at the top of every page"
-                  value={pageDraft.header}
-                  maxLength={500}
-                  onChange={(e) =>
-                    setPageDraft({ ...pageDraft, header: e.target.value })
-                  }
-                />
-              </label>
-              <label>
-                <span>Footer</span>
-                <input
-                  aria-label="Page footer"
-                  placeholder="Text at the bottom of every page"
-                  value={pageDraft.footer}
-                  maxLength={500}
-                  onChange={(e) =>
-                    setPageDraft({ ...pageDraft, footer: e.target.value })
-                  }
-                />
-              </label>
-              <div className="page-setup-check">
-                <label>
-                  <input
-                    type="checkbox"
-                    aria-describedby="page-numbers-hint"
-                    checked={pageDraft.pageNumbers}
-                    onChange={(e) =>
-                      setPageDraft({
-                        ...pageDraft,
-                        pageNumbers: e.target.checked,
-                      })
-                    }
-                  />
-                  Page numbers
-                </label>
-                <span id="page-numbers-hint" className="page-setup-hint">
-                  Bottom right of every page, as “1 / 3”
-                </span>
-              </div>
+              <PageSetupFields
+                draft={pageDraft}
+                pageCount={pageCount}
+                onChange={setPageDraft}
+              />
             </div>
             <div className="dialog-footer">
               <button
@@ -1595,6 +1558,10 @@ export default function Docs({
             </div>
           </div>
         </div>
+      ) : null}
+
+      {equationOpen && editor ? (
+        <EquationDialog editor={editor} onClose={() => setEquationOpen(false)} />
       ) : null}
 
       {tableOpen ? (
@@ -1904,25 +1871,7 @@ export default function Docs({
               } as CSSProperties
             }
           >
-            <div className="page-furniture" aria-hidden="true">
-              {Array.from({ length: pageCount }, (_, i) => (
-                <div
-                  key={i}
-                  className="page-furniture-page"
-                  style={{ "--page-index": i } as CSSProperties}
-                >
-                  <div className="page-header">{pageSettings.header}</div>
-                  <div className="page-footer">
-                    <span>{pageSettings.footer}</span>
-                    {pageSettings.pageNumbers ? (
-                      <span>
-                        {i + 1} / {pageCount}
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <PageFurniture settings={pageSettings} pageCount={pageCount} />
             <EditorContent editor={editor} />
           </div>
         </div>
@@ -1951,6 +1900,7 @@ export default function Docs({
           {pageCount} {pageCount === 1 ? "page" : "pages"} · English
         </span>
       </footer>
+      <DocImageAlt editor={editor} />
       <input
         ref={imageInput}
         type="file"

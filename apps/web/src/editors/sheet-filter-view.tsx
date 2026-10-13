@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
 import { MenuItem } from "../ui";
 
-/** Reads filter-view choices when the submenu opens, not when the menu bar last rendered. */
+/** Reads filter-view choices when this submenu renders, so the first open already lists them. */
 export function FilterViewChoices({
   load,
   onPick,
@@ -9,10 +8,7 @@ export function FilterViewChoices({
   load: () => { label: string; value: string }[];
   onPick: (value: string) => void;
 }) {
-  const [items, setItems] = useState<{ label: string; value: string }[]>([]);
-  useEffect(() => {
-    setItems(load());
-  }, [load]);
+  const items = load();
   return (
     <>
       {items.map((choice) => (

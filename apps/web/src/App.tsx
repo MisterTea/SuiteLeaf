@@ -1443,6 +1443,8 @@ function Workspace() {
   const update = useCallback(
     (content: SuiteFile["content"]) => {
       if (!canEditRef.current || !current.current) return;
+      if (JSON.stringify(content) === JSON.stringify(current.current.file.content))
+        return;
       current.current = {
         ...current.current,
         file: {
@@ -1895,6 +1897,22 @@ function Workspace() {
                   Page setup…
                 </MenuItem>
               ) : null}
+              {f.kind === "sheet" ? (
+                <MenuItem
+                  synonyms={[
+                    "print settings",
+                    "repeat row",
+                    "repeat header",
+                    "repeating header",
+                    "print header",
+                  ]}
+                  onSelect={() =>
+                    actions.current?.sheetActions?.openPrintSettings?.()
+                  }
+                >
+                  Print settings
+                </MenuItem>
+              ) : null}
               <MenuItem onSelect={() => void doAction("print")}>
                 Print / Save as PDF
               </MenuItem>
@@ -1942,6 +1960,15 @@ function Workspace() {
                     onSelect={() => actions.current?.docActions?.insertTable()}
                   >
                     Table
+                  </MenuItem>
+                  <MenuItem
+                    synonyms={["equation", "math", "formula", "insert equation"]}
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.docActions?.insertEquation()
+                    }
+                  >
+                    Equation
                   </MenuItem>
                   <MenuItem
                     onSelect={() =>
@@ -2260,6 +2287,21 @@ function Workspace() {
                     Image
                   </MenuItem>
                   <MenuItem
+                    synonyms={[
+                      "page break",
+                      "page break above",
+                      "row break",
+                      "insert page break",
+                      "insert break",
+                    ]}
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.sheetActions?.insertPageBreak?.()
+                    }
+                  >
+                    Page break above
+                  </MenuItem>
+                  <MenuItem
                     onSelect={() =>
                       actions.current?.sheetActions?.insertChart()
                     }
@@ -2443,6 +2485,28 @@ function Workspace() {
                   >
                     Sort range
                   </MenuItem>
+                  <MenuItem
+                    focusesTarget
+                    synonyms={[
+                      "named range",
+                      "define name",
+                      "name a range",
+                      "defined name",
+                    ]}
+                    onSelect={() =>
+                      actions.current?.sheetActions?.namedRanges?.()
+                    }
+                  >
+                    Named ranges
+                  </MenuItem>
+                  <MenuItem
+                    synonyms={["group", "outline", "collapse rows"]}
+                    onSelect={() =>
+                      actions.current?.sheetActions?.groupRows?.()
+                    }
+                  >
+                    Group rows
+                  </MenuItem>
                   <SubMenu label="Data cleanup">
                     <MenuItem
                       onSelect={() =>
@@ -2593,6 +2657,25 @@ function Workspace() {
                       }
                     >
                       Ellipse
+                    </MenuItem>
+                  </SubMenu>
+                  <SubMenu label="Animation">
+                    <MenuItem
+                      synonyms={[
+                        "fade in",
+                        "fade in on click",
+                        "appear on click",
+                        "animation",
+                      ]}
+                      availability={() =>
+                        actions.current?.slideActions?.fadeOnClickReason?.() ??
+                        true
+                      }
+                      onSelect={() =>
+                        actions.current?.slideActions?.fadeOnClick?.()
+                      }
+                    >
+                      Fade in on click
                     </MenuItem>
                   </SubMenu>
                   <MenuItem
@@ -2751,6 +2834,31 @@ function Workspace() {
                     Transition
                   </MenuItem>
                 </Menu>
+                <Menu label="Comments">
+                  <MenuItem
+                    shortcut="Cmd+Alt+M"
+                    synonyms={["comment", "comments", "add comment"]}
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.slideActions?.insertComment?.()
+                    }
+                  >
+                    Comment
+                  </MenuItem>
+                  <MenuItem
+                    synonyms={[
+                      "resolved",
+                      "resolved comments",
+                      "reopen",
+                      "comment history",
+                    ]}
+                    onSelect={() =>
+                      actions.current?.slideActions?.openResolved?.()
+                    }
+                  >
+                    Resolved
+                  </MenuItem>
+                </Menu>
                 <Menu label="Tools">
                   <MenuItem
                     focusesTarget
@@ -2788,9 +2896,14 @@ function Workspace() {
             aria-label="Comments"
             onClick={() => {
               actions.current?.docActions?.openComments?.();
-              actions.current?.sheetActions?.openComments?.();
-              if (f.kind === "sheet")
-                window.dispatchEvent(new Event("suiteleaf:open-sheet-comments"));
+              if (f.kind === "sheet") {
+                // Opening and the header event both toggle the panel, so only one runs.
+                const open = actions.current?.sheetActions?.openComments;
+                if (open) open();
+                else
+                  window.dispatchEvent(new Event("suiteleaf:open-sheet-comments"));
+              }
+              actions.current?.slideActions?.openComments?.();
             }}
           >
             <MessageSquare size={18} />

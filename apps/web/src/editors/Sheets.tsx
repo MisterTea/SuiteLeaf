@@ -44,7 +44,10 @@ import NoteEnUS from "@univerjs/preset-sheets-note/locales/en-US";
 import "@univerjs/preset-sheets-note/lib/index.css";
 import SheetCleanup from "./sheet-cleanup-ui";
 import { SheetSpelling } from "./grid-spelling-ui";
+import SheetRowGroups, { type SheetRowGroupsHandle } from "./sheet-row-groups-ui";
 import SheetFeatures from "./sheet-features";
+import SheetPrint, { type SheetPrintHandle } from "./sheet-print-ui";
+import { printMarkup, printedPages, readSheetPrint } from "./sheet-print";
 import SheetDropdowns, { type SheetDropdownHandle } from "./sheet-dropdown-panel";
 import SheetLinks, { type SheetLinkHandle } from "./sheet-links";
 import {
@@ -53,6 +56,7 @@ import {
 } from "./formula-suggestions";
 import { useSheetFunctions } from "./function-help-ui";
 import SortRangeDialog from "./SortRangeDialog";
+import NamedRanges, { type NamedRangesHandle } from "./named-ranges-ui";
 import { useToolbarOverflow } from "./toolbar-overflow";
 import {
   attachSheetViewLock,
@@ -783,6 +787,7 @@ export default function Sheets({
   changes.current = onChange;
   error.current = onError;
   const [ready, setReady] = useState(false),
+    [booted, setBooted] = useState(false),
     [panel, setPanel] = useState<"chart" | "pivot" | null>(null),
     [editing, setEditing] = useState<string>(),
     [range, setRange] = useState("A1:B5"),
@@ -824,6 +829,10 @@ export default function Sheets({
   const dropdownEngine = useRef<{ api: any; injector: any } | null>(null);
   const cleanup = useRef<{ trim: () => void; duplicates: () => void; split: () => void }>(null);
   const spelling = useRef<{ open: () => void }>(null);
+  const names = useRef<NamedRangesHandle>(null);
+  const rowGroups = useRef<SheetRowGroupsHandle>(null);
+  const printing = useRef<SheetPrintHandle>(null);
+  const printSheet = useRef<() => Promise<void>>(async () => {});
   const engine = useRef<any>(null);
   const toolbar = useRef<HTMLDivElement>(null);
   const moreTools = useToolbarOverflow(
@@ -1053,6 +1062,7 @@ export default function Sheets({
         persist.current();
       };
       book.current = workbook;
+      setBooted(true);
       rankFormulaSuggestions(injector.get(IDescriptionService));
       // Authors from other devices are unknown here; without a profile Univer
       // hides their name and the reply-to button.
@@ -1904,7 +1914,36 @@ export default function Sheets({
     else sheet.setFrozenColumns(count);
   };
   useEffect(() => {
-    if (!ready) return;
+    // Menus register once the workbook exists. Permission restore can fail
+    // without ever reaching the steady lifecycle, and viewers still need them.
+    if (!booted) return;
+    printSheet.current = async () => {
+      await api.current.getFormula().onCalculationResultApplied(10000);
+      const s = book.current.getActiveSheet();
+      const values = s.getDataRange().getValues() as CellValue[][];
+      if (values.length * (values[0]?.length ?? 0) > 10000)
+        throw new Error("Print a sheet with at most 10,000 cells.");
+      const settings = readSheetPrint(content.current, s.getSheetId());
+      const el = document.createElement("section");
+      el.className = "sheet-print";
+      el.innerHTML = printMarkup(
+        file.title,
+        s.getSheetName(),
+        printedPages(values, settings),
+        settings.repeatFirstRow,
+      );
+      document
+        .querySelectorAll(".suiteleaf-chart")
+        .forEach((c) => el.append(c.cloneNode(true)));
+      document.body.append(el);
+      document.body.classList.add("printing-sheet");
+      try {
+        await printDocument();
+      } finally {
+        document.body.classList.remove("printing-sheet");
+        el.remove();
+      }
+    };
     onActions({
       flush: async () => {
         await api.current?.getFormula().onCalculationResultApplied(10000);
@@ -1934,37 +1973,7 @@ export default function Sheets({
         );
       },
       async print() {
-        await api.current.getFormula().onCalculationResultApplied(10000);
-        const s = book.current.getActiveSheet();
-        const values = s.getDataRange().getValues() as CellValue[][];
-        if (values.length * (values[0]?.length ?? 0) > 10000)
-          throw new Error("Print a sheet with at most 10,000 cells.");
-        const escape = (v: unknown) =>
-          String(v ?? "").replace(
-            /[&<>"']/g,
-            (c) =>
-              ({
-                "&": "&amp;",
-                "<": "&lt;",
-                ">": "&gt;",
-                '"': "&quot;",
-                "'": "&#39;",
-              })[c]!,
-          );
-        const el = document.createElement("section");
-        el.className = "sheet-print";
-        el.innerHTML = `<h1>${escape(file.title)} — ${escape(s.getSheetName())}</h1><table>${values.map((r) => `<tr>${r.map((v) => `<td>${escape(v)}</td>`).join("")}</tr>`).join("")}</table>`;
-        document
-          .querySelectorAll(".suiteleaf-chart")
-          .forEach((c) => el.append(c.cloneNode(true)));
-        document.body.append(el);
-        document.body.classList.add("printing-sheet");
-        try {
-          await printDocument();
-        } finally {
-          document.body.classList.remove("printing-sheet");
-          el.remove();
-        }
+        await printSheet.current();
       },
       sheetActions: {
         insertImage: () => {
@@ -2059,6 +2068,8 @@ export default function Sheets({
           }
         },
         sortRange: openSortRange,
+        namedRanges: () => names.current?.open(),
+        groupRows: () => rowGroups.current?.groupRows(),
         trimWhitespace: () => cleanup.current?.trim(),
         removeDuplicates: () => cleanup.current?.duplicates(),
         splitTextToColumns: () => cleanup.current?.split(),
@@ -2083,6 +2094,8 @@ export default function Sheets({
         freezeColumns: (count) => setFrozen("columns", count),
         showGridlines: (visible) =>
           void book.current?.getActiveSheet()?.setHiddenGridlines(!visible),
+        insertPageBreak: () => printing.current?.insertPageBreak(),
+        openPrintSettings: () => printing.current?.openPrintSettings(),
         showFormulaBar: (visible) => {
           setFormulaBarVisible(visible);
           api.current?.setUIVisible(
@@ -2093,7 +2106,7 @@ export default function Sheets({
         openSpelling: () => spelling.current?.open(),
       },
     });
-  }, [ready, file.title, onActions]);
+  }, [booted, file.title, onActions]);
   const startPanel = (type: "chart" | "pivot", id?: string) => {
     moreTools.setOpen(false);
     setPanel(type);
@@ -2401,6 +2414,24 @@ export default function Sheets({
         </div>
       ) : null}
       {ready && api.current && engine.current ? (
+        <NamedRanges
+          ref={names}
+          api={api.current}
+          engine={engine.current}
+          persist={() => persist.current()}
+        />
+      ) : null}
+      {ready && api.current && engine.current ? (
+        <SheetPrint
+          ref={printing}
+          api={api.current}
+          engine={engine.current}
+          content={content}
+          persist={() => persist.current()}
+          onPrint={() => printSheet.current()}
+        />
+      ) : null}
+      {ready && api.current && engine.current ? (
         <SheetCleanup
           ref={cleanup}
           api={api.current}
@@ -2417,6 +2448,14 @@ export default function Sheets({
           engineRef={engine}
           fileId={file.id}
           ready={ready}
+          persist={() => persist.current()}
+        />
+      ) : null}
+      {ready && api.current && engine.current ? (
+        <SheetRowGroups
+          ref={rowGroups}
+          api={api.current}
+          engine={engine.current}
           persist={() => persist.current()}
         />
       ) : null}
@@ -2455,7 +2494,9 @@ export default function Sheets({
         <Tool
           label="Print (Cmd+P)"
           onClick={() => {
-            void printDocument(file.title);
+            void printSheet.current().catch((e: unknown) =>
+              onError(e instanceof Error ? e.message : String(e)),
+            );
           }}
         >
           <Printer size={16} />

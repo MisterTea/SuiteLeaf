@@ -64,6 +64,8 @@ export const COMMAND_SYNONYMS: Record<string, string[]> = {
     "margins",
     "header",
     "footer",
+    "different first page",
+    "first page",
   ],
   "Cell comment": ["comment", "comments", "note", "annotation"],
   "1 row": [
@@ -344,7 +346,8 @@ export function extraShortcuts(kind: "doc" | "sheet" | "slide", mac: boolean): S
     ];
   if (kind === "slide")
     return [
-      ...common,
+      ...common.filter((row) => row.shortcut !== "Ctrl+Alt+M"),
+      { label: "Comment", shortcut: "Cmd+Alt+M", group: "Review" },
       { label: "Next slide", shortcut: "ArrowRight", group: "Slideshow" },
       { label: "Previous slide", shortcut: "ArrowLeft", group: "Slideshow" },
       { label: "Black screen", shortcut: "B", group: "Slideshow" },
@@ -365,6 +368,7 @@ const GROUP_ORDER = [
   "Editing",
   "Formulas",
   "Slideshow",
+  "Review",
   "Filmstrip",
   "Navigation",
   "Files",
