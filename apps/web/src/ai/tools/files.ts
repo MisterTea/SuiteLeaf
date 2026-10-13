@@ -191,7 +191,13 @@ export function homeTools(ctx: HomeAgentContext): SuiteTool[] {
       parameters: Type.Object({ name: Type.String() }),
       target: async ({ name }) => (await revealRow(ctx, name))?.querySelector("a"),
       async execute({ name }) {
-        const r = findRecord(ctx.records, name);
+        let r: FileRecord;
+        try {
+          r = findRecord(ctx.records, name);
+        } catch (e) {
+          if (!(e instanceof ToolError)) throw e;
+          throw new ToolError(`${e.message} If the user saved or downloaded it on their computer, open_from_computer lets them pick it.`);
+        }
         ctx.open(r);
         return opened(r.file.kind, `Opened "${r.file.title}".`);
       },

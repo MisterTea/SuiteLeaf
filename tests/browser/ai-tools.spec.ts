@@ -406,6 +406,7 @@ test("file list tools search, filter, copy, rename and remove", async ({ page })
   expect(await call(page, "show_files", { show: "all" })).toBe(
     'Showing all.\n- "Club newsletter"\n- "Club newsletter - November"',
   );
+  await expect(call(page, "open_file", { name: "Garden slides" })).rejects.toThrow(/No file is called "Garden slides".*open_from_computer lets them pick it/);
 });
 
 test("a CSV opens through its import preview, with codes kept as text, and exports back", async ({ page }) => {
