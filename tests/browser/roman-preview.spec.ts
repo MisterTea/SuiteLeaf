@@ -102,10 +102,10 @@ test("the page preview shows the roman ends and keeps them after reopen", async 
   await expect(dialog.getByRole("radio", { name: "4 / 8", exact: true })).toBeVisible();
   await expect(sheets(page)).toHaveCount(2);
   await expect(sheets(page).nth(0).locator(".page-setup-preview-number")).toHaveText(
-    "iv at the top right",
+    "iv",
   );
   await expect(sheets(page).nth(1).locator(".page-setup-preview-number")).toHaveText(
-    "viii at the top right",
+    "viii",
   );
   await expect(preview.locator(".page-setup-preview-skip-label")).toHaveText(
     "Pages v\u2013vii skipped",
@@ -125,10 +125,10 @@ test("the page preview shows the roman ends and keeps them after reopen", async 
   await expect(dialog.getByRole("radio", { name: "4 / 8", exact: true })).toBeVisible();
   await expect(sheets(page)).toHaveCount(2);
   await expect(sheets(page).nth(0).locator(".page-setup-preview-number")).toHaveText(
-    "iv at the top right",
+    "iv",
   );
   await expect(sheets(page).nth(1).locator(".page-setup-preview-number")).toHaveText(
-    "viii at the top right",
+    "viii",
   );
   await expect(dialog.locator(".page-setup-preview-skip-label")).toHaveText(
     "Pages v\u2013vii skipped",
@@ -151,10 +151,10 @@ test("a two-page file previews two sheets and a three-page file previews the chi
   await expect(sheets(page)).toHaveCount(2);
   await expect(dialog.locator(".page-setup-preview-skip")).toHaveCount(0);
   await expect(sheets(page).nth(0).locator(".page-setup-preview-number")).toHaveText(
-    "iv at the top right",
+    "iv",
   );
   await expect(sheets(page).nth(1).locator(".page-setup-preview-number")).toHaveText(
-    "v at the top right",
+    "v",
   );
   await closeSetup(page);
 
@@ -177,12 +177,12 @@ test("a two-page file previews two sheets and a three-page file previews the chi
   await expect(sheets(page)).toHaveCount(3);
   await expect(dialog.locator(".page-setup-preview-skip")).toHaveCount(0);
   await expect(sheets(page).nth(0).locator(".page-setup-preview-number")).toHaveText(
-    "iv at the top right",
+    "iv",
   );
   await expect(sheets(page).nth(1).locator(".page-setup-preview-number")).toHaveText(
-    "v at the top right",
+    "v",
   );
   await expect(sheets(page).nth(2).locator(".page-setup-preview-number")).toHaveText(
-    "vi at the top right",
+    "vi",
   );
 });

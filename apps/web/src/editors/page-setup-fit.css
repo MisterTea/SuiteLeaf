@@ -149,9 +149,11 @@
   grid-column: auto;
 }
 .page-setup-dialog .page-setup-preview-page {
-  min-height: 44px;
-  gap: 2px;
-  padding: 4px 8px;
+  min-height: 0;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 .page-setup-dialog .page-setup-text {
   display: grid;

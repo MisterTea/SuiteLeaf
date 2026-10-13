@@ -299,10 +299,10 @@ test("124-preview-the-roman-ends", async ({ page }) => {
   const miniature = preview.locator(".page-setup-preview-page");
   await expect(miniature).toHaveCount(2);
   await expect(miniature.nth(0).locator(".page-setup-preview-number")).toHaveText(
-    "iv at the top right",
+    "iv",
   );
   await expect(miniature.nth(1).locator(".page-setup-preview-number")).toHaveText(
-    "viii at the top right",
+    "viii",
   );
   await expect(preview.locator(".page-setup-preview-skip-label")).toHaveText(
     "Pages v\u2013vii skipped",
@@ -346,10 +346,10 @@ test("124-preview-the-roman-ends", async ({ page }) => {
   await expect(preview.locator(".page-setup-preview-skip")).toHaveCount(0);
   await expect(
     preview.locator(".page-setup-preview-number").nth(0),
-  ).toHaveText("iv at the top right");
+  ).toHaveText("iv");
   await expect(
     preview.locator(".page-setup-preview-number").nth(1),
-  ).toHaveText("v at the top right");
+  ).toHaveText("v");
   await miniatureClear(page, "iv, v", "4 / 5");
   await preview.locator(".page-setup-preview-page").nth(1).hover();
   await say(page, "Exactly two sheets. iv and v. There is no third.", 2800);
@@ -367,9 +367,9 @@ test("124-preview-the-roman-ends", async ({ page }) => {
   await expect(preview.locator(".page-setup-preview-page")).toHaveCount(3);
   await expect(preview.locator(".page-setup-preview-skip")).toHaveCount(0);
   await expect(preview.locator(".page-setup-preview-number")).toHaveText([
-    "iv at the top right",
-    "v at the top right",
-    "vi at the top right",
+    "iv",
+    "v",
+    "vi",
   ]);
   await miniatureClear(page, "iv, v, vi", "4 / 6");
   await threeChip.hover();
@@ -390,8 +390,8 @@ test("124-preview-the-roman-ends", async ({ page }) => {
   await expect(setup.getByRole("radio", { name: "iv … viii", exact: true })).toBeChecked();
   await expect(setup.getByRole("radio", { name: "4 / 8", exact: true })).toBeVisible();
   await expect(preview.locator(".page-setup-preview-number")).toHaveText([
-    "iv at the top right",
-    "viii at the top right",
+    "iv",
+    "viii",
   ]);
   await expect(preview.locator(".page-setup-preview-skip-label")).toHaveText(
     "Pages v\u2013vii skipped",
@@ -420,8 +420,8 @@ test("124-preview-the-roman-ends", async ({ page }) => {
   await expect(kept).toBeChecked();
   await expect(setup.getByRole("radio", { name: "4 / 8", exact: true })).toBeVisible();
   await expect(preview.locator(".page-setup-preview-number")).toHaveText([
-    "iv at the top right",
-    "viii at the top right",
+    "iv",
+    "viii",
   ]);
   await expect(preview.locator(".page-setup-preview-skip-label")).toHaveText(
     "Pages v\u2013vii skipped",

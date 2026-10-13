@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   documentPageSettings,
+  pageFace,
   pageNumberFormatChips,
   romanPageChip,
   type PageSettings,
 } from "../packages/core/src/document-layout";
 import {
+  previewNumberCorner,
   previewPlan,
   previewSheetNumbers,
   previewSkipLabel,
@@ -85,6 +87,35 @@ describe("page preview ends", () => {
     ]);
     expect(previewPlan(4, true).total).toBe(4);
     expect(previewSheetNumbers(settings, 4)).toEqual(["1 / 4", "2 / 4", "3 / 4"]);
+  });
+
+  it("draws iv and viii in the selected corner, and a two-page file has two sheets", () => {
+    const top = pages();
+    const first = pageFace(top, 0, 5);
+    const last = pageFace(top, 4, 5);
+    expect(first.pageNumber).toBe("iv");
+    expect(last.pageNumber).toBe("viii");
+    expect(previewNumberCorner(first.numberSide)).toBe("top-right");
+    expect(previewNumberCorner(last.numberSide)).toBe("top-right");
+    expect(previewSheetNumbers(top, 5)).toEqual(["iv", "viii"]);
+    const bottom = pages({ pageNumberPosition: "bottom-center" });
+    expect(previewNumberCorner(pageFace(bottom, 0, 5).numberSide)).toBe(
+      "bottom-center",
+    );
+    expect(previewNumberCorner(pageFace(bottom, 4, 5).numberSide)).toBe(
+      "bottom-center",
+    );
+    expect(previewSheetNumbers(bottom, 5)).toEqual(["iv", "viii"]);
+    expect(previewPlan(2, false).slots).toEqual([
+      { kind: "page", index: 0 },
+      { kind: "page", index: 1 },
+    ]);
+    expect(previewSheetNumbers(top, 2)).toEqual(["iv", "v"]);
+    expect(pageNumberFormatChips(4, 5)).toEqual({
+      fraction: "4 / 8",
+      page: "Page 4",
+      roman: "iv … viii",
+    });
   });
 
   it("names a fraction file's skipped pages by number, not by a third sheet", () => {

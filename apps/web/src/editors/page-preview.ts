@@ -2,6 +2,7 @@ import {
   pageFace,
   pageNumberAt,
   pageNumberText,
+  type PageNumberSide,
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
 
@@ -43,6 +44,26 @@ export function previewPlan(
     ],
     total: count,
   };
+}
+
+export type PreviewNumberCorner =
+  | "top-right"
+  | "bottom-center"
+  | "bottom-right"
+  | "bottom-left"
+  | "none";
+
+/**
+ * Where the numeral is drawn on the miniature page.
+ * Top right is the top-right corner. Center is the bottom center.
+ * The glyph is the page number itself, not a caption about the corner.
+ */
+export function previewNumberCorner(side: PageNumberSide): PreviewNumberCorner {
+  if (side === "top-right") return "top-right";
+  if (side === "center") return "bottom-center";
+  if (side === "left") return "bottom-left";
+  if (side === "right") return "bottom-right";
+  return "none";
 }
 
 /** The numerals on the miniature sheets, in order. Skipped pages are omitted. */

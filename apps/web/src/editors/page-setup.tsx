@@ -13,6 +13,7 @@ import "./page-setup.css";
 import { DocWatermark } from "./doc-watermark";
 import { acceptPageNumberStart } from "./page-number-live";
 import {
+  previewNumberCorner,
   previewPlan,
   previewSkipLabel,
   type PreviewSlot,
@@ -58,6 +59,18 @@ function sheetLabel(
   return `${name}${index % 2 === 1 ? " · even" : " · odd"}`;
 }
 
+function numberPlacePhrase(face: {
+  numberSide: string;
+  pageNumber: string;
+}): string {
+  if (face.numberSide === "none") return "No number";
+  if (face.numberSide === "left") return `${face.pageNumber} on the left`;
+  if (face.numberSide === "center") return `${face.pageNumber} in the center`;
+  if (face.numberSide === "top-right")
+    return `${face.pageNumber} at the top right`;
+  return `${face.pageNumber} on the right`;
+}
+
 function PreviewSheet({
   draft,
   index,
@@ -70,28 +83,31 @@ function PreviewSheet({
   ends: boolean;
 }) {
   const face = pageFace(draft, index, total);
+  const corner = previewNumberCorner(face.numberSide);
   const shifted = draft.coverHasNoNumber || draft.pageNumberStart !== 1;
-  const where =
-    face.numberSide === "none"
-      ? "No number"
-      : face.numberSide === "left"
-        ? `${face.pageNumber} on the left`
-        : face.numberSide === "center"
-          ? `${face.pageNumber} in the center`
-          : face.numberSide === "top-right"
-            ? `${face.pageNumber} at the top right`
-            : `${face.pageNumber} on the right`;
+  const phrase = numberPlacePhrase(face);
   return (
     <div className="page-setup-preview-page" data-preview-index={index}>
+      <div className="page-setup-preview-sheet" data-number-corner={corner}>
+        {face.header ? (
+          <span className={`page-setup-preview-header align-${face.headerAlign}`}>
+            {face.header}
+          </span>
+        ) : null}
+        {face.numberSide === "none" ? (
+          <span className="page-setup-preview-number side-none">No number</span>
+        ) : (
+          <span className={`page-setup-preview-number side-${face.numberSide}`}>
+            {face.pageNumber}
+          </span>
+        )}
+      </div>
       <span className="page-setup-preview-label">
         {sheetLabel(index, shifted, ends, total)}
       </span>
-      <span className={`page-setup-preview-header align-${face.headerAlign}`}>
-        {face.header || "No header"}
-      </span>
-      <span className={`page-setup-preview-number side-${face.numberSide}`}>
-        {where}
-      </span>
+      {face.numberSide === "none" ? null : (
+        <span className="page-setup-preview-place">{phrase}</span>
+      )}
     </div>
   );
 }
