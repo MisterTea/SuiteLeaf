@@ -360,6 +360,7 @@ export type EditorActions = {
     toggleFilter: () => void;
     sortRange?: () => void;
     namedRanges?: () => void;
+    groupRows?: () => void;
     trimWhitespace?: () => void;
     removeDuplicates?: () => void;
     splitTextToColumns?: () => void;
