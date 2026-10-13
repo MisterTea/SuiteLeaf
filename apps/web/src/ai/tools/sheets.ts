@@ -58,6 +58,16 @@ export function parseCell(a1: string) {
 /** "A1:C5", "B2", "A:A" or "Sheet1!A1:B3". */
 export function parseA1(input: string) {
   const text = input.replace(/^.*!/, "").replace(/\$/g, "").trim();
+  if (text.includes(",")) {
+    const parts = text.split(",").filter((p) => p.trim()).map(parseA1);
+    const cover = parts.reduce((x, y) => ({
+      startRow: Math.min(x.startRow, y.startRow),
+      endRow: Math.max(x.endRow, y.endRow),
+      startColumn: Math.min(x.startColumn, y.startColumn),
+      endColumn: Math.max(x.endColumn, y.endColumn),
+    }));
+    throw new ToolError(`"${input}" is ${parts.length} ranges; give one range, e.g. ${a1(cover)} to cover them all, or make one call per range.`);
+  }
   const whole = /^([A-Za-z]{1,3}):([A-Za-z]{1,3})$/.exec(text);
   if (whole) return { startRow: 0, endRow: 999, startColumn: columnIndex(whole[1]), endColumn: columnIndex(whole[2]) };
   const [a, b = a] = text.split(":");
@@ -313,7 +323,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         ctx.persist();
         await ctx.settle();
         const sample = range.getRange();
-        return `Formatted ${args.range}: ${done.join(", ") || "nothing changed"}. Shown as:\n${grid(sheet(), { ...sample, endRow: Math.min(sample.endRow, sample.startRow + 5) }, 6, 8)}`;
+        return `Formatted ${args.range}: ${done.join(", ") || "nothing changed"}. Shown as:\n${grid(sheet(), { ...sample, endRow: Math.min(sample.endRow, sample.startRow + 11) }, 12, 8)}`;
       },
     }),
     tool({
