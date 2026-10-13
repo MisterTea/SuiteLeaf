@@ -142,7 +142,7 @@
 }
 
 .page-setup-dialog .page-setup-variants {
-  padding: 6px 10px;
+  padding: 0 8px;
   gap: 2px 16px;
 }
 .page-setup-dialog .page-setup-check.page-setup-numbers {

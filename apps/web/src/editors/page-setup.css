@@ -244,6 +244,15 @@
     aspect-ratio: 136 / 176;
   }
 }
+.page-setup-dialog .page-setup-preview .page-setup-preview-sheet {
+  width: 96px;
+  height: 120px;
+  min-width: 96px;
+  min-height: 120px;
+  max-width: none;
+  aspect-ratio: auto;
+  flex-shrink: 0;
+}
 .page-setup-preview-skip {
   display: flex;
   flex-direction: column;
