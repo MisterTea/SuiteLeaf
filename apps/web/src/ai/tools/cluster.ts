@@ -56,7 +56,8 @@ export function signInTools(ctx: {
           if (ctx.signedIn()) {
             await waitForHost("home", 30000).catch(() => {});
             for (let j = 0; j < 50 && currentSnapshot().includes(DRIVE_LOADING); j++) await wait(100);
-            await moveCursor(document.querySelector(".account-chip"), "Signed in");
+            const chip = document.querySelector(".account-chip")?.getBoundingClientRect();
+            await moveCursor(chip && { x: chip.right - 20, y: chip.top + 18 }, "Signed in");
             return `The user signed in to ${ctx.host}. New files are saved to SuiteDrive on that server; the files on this computer are kept and come back when they disconnect.\n${currentSnapshot()}`;
           }
           await wait(200);
