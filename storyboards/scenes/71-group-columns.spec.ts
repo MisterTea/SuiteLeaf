@@ -73,7 +73,8 @@ test("71-group-columns", async ({ page }) => {
   const collapse = page.getByRole("button", { name: "Collapse columns B to M" });
   await expect(collapse).toBeVisible();
   await expect(page.locator(".column-group-controls")).toHaveAttribute("data-span", "1-12");
-  await caption(page, "A minus appears above the months. Category and the year total stay out.", 1800);
+  await selectCells(page, "A1");
+  await caption(page, "A minus appears above January. The category stays out of the group.", 1800);
 
   await collapse.click();
   const expand = page.getByRole("button", { name: "Expand columns B to M" });
