@@ -3753,12 +3753,45 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 .spelling-suggestions button.active { border-color: #1a73e8; background: #e8f0fe; color: #174ea6; }
 .spelling-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .spelling-actions .dialog-text-btn { margin: 0; }
-.document-content .spelling-misspelling { text-decoration: underline wavy #d93025; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+.document-content .spelling-misspelling,
+.slide-spell-mirror .spelling-misspelling { text-decoration: underline wavy #d93025; text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
 .document-content .spelling-current { background: #fce8e6; border-radius: 2px; }
 .document-content .grammar-issue { text-decoration: underline dotted #1a73e8; text-decoration-thickness: 2px; text-underline-offset: 3px; }
 .document-content .grammar-current { background: #e8f0fe; border-radius: 2px; }
 .grammar-panel { border-top: 3px solid #1a73e8; }
 .grammar-suggestion { font-weight: 600; }
+.spelling-quote { margin: 0; font-size: 15px; line-height: 1.45; color: #1f1f1f; }
+.spelling-quote mark { background: #fce8e6; color: inherit; border-radius: 2px; text-decoration: underline wavy #d93025; text-underline-offset: 2px; }
+.slide-spell-mirror {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  box-sizing: border-box;
+  padding: 4px;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  pointer-events: none;
+  font: inherit;
+  line-height: normal;
+  text-align: inherit;
+  color: inherit;
+}
+.slide-text:has(.slide-spell-mirror) .element-textarea {
+  position: relative;
+  z-index: 2;
+  color: transparent;
+  caret-color: var(--spell-caret, #1e293b);
+}
+.sheet-spell-mark {
+  position: fixed;
+  z-index: 40;
+  height: 4px;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='4' viewBox='0 0 8 4'%3E%3Cpath d='M0 3 C1 3 1 1 2 1 C3 1 3 3 4 3 C5 3 5 1 6 1 C7 1 7 3 8 3' fill='none' stroke='%23d93025' stroke-width='1.3'/%3E%3C/svg%3E");
+  background-repeat: repeat-x;
+  background-size: 8px 4px;
+}
 .dictionary-section h3 { margin: 0 0 6px; font-size: 13px; font-weight: 500; color: #1f1f1f; }
 .dictionary-section { display: grid; gap: 8px; }
 .dictionary-section ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
@@ -3768,7 +3801,7 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 .dictionary-flag input { flex: 1; }
 @media (max-width: 700px) {
   .editor-status { flex-wrap: wrap; gap: 4px 12px; }
-  .spelling-layer { padding: 0 12px 64px 12px; }
+  .spelling-layer { align-items: flex-end; justify-content: center; padding: 0 12px 72px; }
   .spelling-actions { display: grid; }
 }
 .sheet-features { display: flex; align-items: center; gap: 12px; min-height: 31px; padding: 4px 16px; border-bottom: 1px solid var(--border); }
