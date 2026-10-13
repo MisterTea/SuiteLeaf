@@ -6,6 +6,7 @@ import {
   AutoModelForCausalLM,
   AutoTokenizer,
   InterruptableStoppingCriteria,
+  LogitsProcessor,
   TextStreamer,
   env,
   type PreTrainedModel,
@@ -13,6 +14,7 @@ import {
   type Tensor,
 } from "@huggingface/transformers";
 import { AI_MODELS, type AiBackendKind, type AiGenerateRequest, type AiModelId, type AiStatus } from "@suiteleaf/core/ai";
+import { keepTopKTopP } from "./nucleus";
 // The ONNX runtime ships with the app, so the model works offline once cached.
 import ortWasm from "onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm?url";
 import ortModule from "onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs?url";
@@ -139,6 +141,22 @@ async function load(host: string, modelId: AiModelId, forced?: string, forcedDty
   await loading;
 }
 
+/** Top-k then top-p over the temperature-scaled logits; transformers.js has no top-p of its own. */
+class TopKTopP extends LogitsProcessor {
+  constructor(
+    private k: number,
+    private p: number,
+  ) {
+    super();
+  }
+  _call(_inputIds: bigint[][], logits: Tensor) {
+    const vocab = logits.dims.at(-1)!;
+    const data = logits.data as Float32Array;
+    for (let row = 0; row < data.length; row += vocab) keepTopKTopP(data.subarray(row, row + vocab), this.k, this.p);
+    return logits;
+  }
+}
+
 const startsWith = (ids: bigint[], prefix: bigint[]) =>
   prefix.length > 0 && prefix.length < ids.length && prefix.every((id, i) => ids[i] === id);
 
@@ -182,8 +200,9 @@ async function generate(id: string, request: AiGenerateRequest) {
       max_new_tokens: request.maxTokens,
       do_sample: (request.temperature ?? 1) > 0,
       temperature: request.temperature,
+      // The sampler's own top-k only bounds its sort; TopKTopP has already narrowed the choice.
       top_k: request.topK,
-      top_p: request.topP,
+      ...((request.temperature ?? 1) > 0 ? { logits_processor: [new TopKTopP(request.topK ?? 0, request.topP ?? 1)] } : {}),
       streamer,
       stopping_criteria: stopping,
       return_dict_in_generate: true,
