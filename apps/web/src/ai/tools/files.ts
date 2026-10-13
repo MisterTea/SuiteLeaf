@@ -196,7 +196,9 @@ export function homeTools(ctx: HomeAgentContext): SuiteTool[] {
           r = findRecord(ctx.records, name);
         } catch (e) {
           if (!(e instanceof ToolError)) throw e;
-          throw new ToolError(`${e.message} If the user saved or downloaded it on their computer, open_from_computer lets them pick it.`);
+          throw new ToolError(
+            `${e.message} So it is on the user's computer (saved, downloaded or attached to an email): call open_from_computer now, which asks them to pick it. Don't ask them first.`,
+          );
         }
         ctx.open(r);
         return opened(r.file.kind, `Opened "${r.file.title}".`);
