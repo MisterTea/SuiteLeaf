@@ -42,6 +42,7 @@ import {
 } from "@univerjs/preset-sheets-note";
 import NoteEnUS from "@univerjs/preset-sheets-note/locales/en-US";
 import "@univerjs/preset-sheets-note/lib/index.css";
+import SheetCleanup from "./sheet-cleanup-ui";
 import SheetFeatures from "./sheet-features";
 import {
   guardFormulaSuggestions,
@@ -793,6 +794,8 @@ export default function Sheets({
     [notice, setNotice] = useState("");
   const pending = useRef(false);
   const tabSettings = useRef<{ openTabs: () => void }>(null);
+  const cleanup = useRef<{ trim: () => void; duplicates: () => void; split: () => void }>(null);
+  const engine = useRef<any>(null);
   const toolbar = useRef<HTMLDivElement>(null);
   const moreTools = useToolbarOverflow(
     toolbar,
@@ -917,6 +920,7 @@ export default function Sheets({
         ],
       });
       const injector = univer.__getInjector();
+      engine.current = injector;
       const stopSuggestionGuard = guardFormulaSuggestions(
         injector.get(IShortcutService),
         injector.get(IEditorService),
@@ -927,6 +931,7 @@ export default function Sheets({
         clearTimeout(timer);
         api.current = null;
         book.current = null;
+        engine.current = null;
         persist.current = () => {};
         refreshCharts.current = () => {};
         refreshPivots.current = () => {};
@@ -1870,6 +1875,9 @@ export default function Sheets({
         insertPivot: () => startPanel("pivot"),
         toggleFilter,
         sortRange: openSortRange,
+        trimWhitespace: () => cleanup.current?.trim(),
+        removeDuplicates: () => cleanup.current?.duplicates(),
+        splitTextToColumns: () => cleanup.current?.split(),
         hasFilter: () => !!book.current?.getActiveSheet()?.getFilter(),
         formatCurrency,
         formatPercent,
@@ -2191,6 +2199,15 @@ export default function Sheets({
             <X size={14} />
           </button>
         </div>
+      ) : null}
+      {ready && api.current && engine.current ? (
+        <SheetCleanup
+          ref={cleanup}
+          api={api.current}
+          engine={engine.current}
+          persist={() => persist.current()}
+          onError={onError}
+        />
       ) : null}
       {ready && api.current ? (
         <SheetFeatures
