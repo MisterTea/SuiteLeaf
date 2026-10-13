@@ -311,7 +311,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         const list = blocks(editor);
         const empty = list.length === 1 && !list[0].text;
         const quote = (b: { text: string; label: string }) => `"${b.text.length > 60 ? `${b.text.slice(0, 60)}…` : b.text}" (${b.label})`;
-        let where = "at the end of the document";
+        let where = replace_document ? "in place of everything that was in the document" : "at the end of the document";
         let listKind = "";
         if (after) {
           const want = unmark(unlabel(after)).trim();

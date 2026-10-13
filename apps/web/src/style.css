@@ -3815,6 +3815,17 @@ body.agent-open .spelling-panel {
 body.agent-open .home-main {
   min-width: 0;
 }
+/* The header is narrower beside the panel: the title shrinks before the save status does. */
+body.agent-open .title-block input {
+  field-sizing: content;
+  width: auto;
+  min-width: 8ch;
+  max-width: min(45vw, 450px);
+  flex: 0 1 auto;
+}
+body.agent-open .save-status {
+  flex-shrink: 0;
+}
 body.agent-open .new-cards {
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
 }

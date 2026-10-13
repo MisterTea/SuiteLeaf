@@ -110,13 +110,30 @@ export function driveTools(ctx: DriveAgentContext): SuiteTool[] {
     return item;
   };
   const row = (name: string) => document.querySelector(`.drive-item[aria-label="${CSS.escape(name)}"]`);
+  const offScreen = (el?: Element | null) => {
+    const r = el?.getBoundingClientRect();
+    return !!r && (r.top < 0 || r.bottom > innerHeight);
+  };
+  /** SuiteDrive sits below the New buttons: scroll it (then `el`) into view, so the user sees the pointer and the change. */
+  const onScreen = async <T extends Element | null | undefined>(el: T, drive = true): Promise<T> => {
+    const section = document.querySelector(".drive-browser")?.closest("section");
+    if (drive && offScreen(section)) {
+      section!.scrollIntoView({ behavior: "smooth", block: "start" });
+      await wait(500);
+    }
+    if (offScreen(el)) {
+      el!.scrollIntoView({ behavior: "smooth", block: "center" });
+      await wait(500);
+    }
+    return el;
+  };
   return [
     tool({
       name: "list_drive",
       label: "SuiteDrive",
       description: "List the folders and files in the SuiteDrive folder on screen.",
       parameters: Type.Object({}),
-      target: () => document.querySelector(".drive-list"),
+      target: () => onScreen(document.querySelector(".drive-list")),
       execute() {
         const c = control();
         return `${c.path.join(" › ")}: ${c.items.map(describeItem).join(", ") || "empty"}`;
@@ -128,9 +145,11 @@ export function driveTools(ctx: DriveAgentContext): SuiteTool[] {
       description: "Open a folder in SuiteDrive. Use the name \"My Drive\" to go back to the top.",
       parameters: Type.Object({ name: Type.String() }),
       target: ({ name }) =>
-        name === "My Drive"
-          ? document.querySelector(".drive-crumbs button")
-          : row(find(name, "folder").name),
+        onScreen(
+          name.toLowerCase() === "my drive"
+            ? document.querySelector(".drive-crumbs button")
+            : row(find(name, "folder").name),
+        ),
       async execute({ name }) {
         const c = control();
         if (name.toLowerCase() === "my drive") c.goTo(1);
@@ -146,7 +165,7 @@ export function driveTools(ctx: DriveAgentContext): SuiteTool[] {
       label: "New folder",
       description: "Make a new folder in the SuiteDrive folder on screen.",
       parameters: Type.Object({ name: Type.String() }),
-      target: () => document.querySelector(".drive-new-folder"),
+      target: () => onScreen(document.querySelector(".drive-new-folder")),
       async execute({ name }) {
         await control().newFolder(name);
         return `Made the folder "${name}" in ${control().path.join(" › ")}.`;
@@ -162,7 +181,10 @@ export function driveTools(ctx: DriveAgentContext): SuiteTool[] {
         title: Type.Optional(Type.String()),
       }),
       target: ({ kind }) =>
-        [...document.querySelectorAll(".new-card")].find((b) => b.textContent?.toLowerCase().includes(`new ${kind}`)),
+        onScreen(
+          [...document.querySelectorAll(".new-card")].find((b) => b.textContent?.toLowerCase().includes(`new ${kind}`)),
+          false,
+        ),
       async execute({ kind, title }) {
         const k = KINDS[kind];
         if (!k) throw new ToolError(`Unknown kind "${kind}".`);
@@ -179,7 +201,7 @@ export function driveTools(ctx: DriveAgentContext): SuiteTool[] {
       parameters: Type.Object({ name: Type.String() }),
       target: ({ name }) => {
         try {
-          return row(find(name).name);
+          return onScreen(row(find(name).name));
         } catch {
           return undefined;
         }
