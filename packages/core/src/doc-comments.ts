@@ -76,6 +76,7 @@ function initials(name: string) {
 function eachText(node: JsonNode, visit: (text: JsonNode, index: number) => void) {
   let index = 0;
   const walk = (current: JsonNode) => {
+    if (current.type === "note") return;
     if (current.type === "text") {
       visit(current, index);
       index += 1;

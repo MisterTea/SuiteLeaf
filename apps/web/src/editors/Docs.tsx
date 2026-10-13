@@ -91,6 +91,7 @@ import {
 import { DocumentPagination, PageBreak } from "./doc-pagination";
 import { Proofing } from "./doc-spelling";
 import { useDocProofing, type ProofingContext } from "./doc-proofing";
+import { documentNotes } from "./doc-notes";
 import {
   documentHtml,
   documentPageSettings,
@@ -101,6 +102,7 @@ import {
 export const extensions: Extensions = [
   DocumentPagination,
   PageBreak,
+  ...documentNotes,
   StarterKit.configure({
     link: { openOnClick: false, isAllowedUri: (url) => safeLink(url) },
   }),
@@ -279,6 +281,16 @@ export default function Docs({
         }
         if (
           (event.metaKey || event.ctrlKey) &&
+          event.altKey &&
+          !event.shiftKey &&
+          event.code === "KeyF"
+        ) {
+          event.preventDefault();
+          return editor?.commands.insertFootnote() ?? false;
+        }
+        if (
+          (event.metaKey || event.ctrlKey) &&
+          !event.altKey &&
           (event.key.toLowerCase() === "f" ||
             (event.shiftKey && event.key.toLowerCase() === "h"))
         ) {
@@ -679,6 +691,10 @@ export default function Docs({
         insertPageBreak: () => editor.chain().focus().setPageBreak().run(),
         insertComment: () => insertComment.current(),
         openComments: () => openComments.current(),
+        insertTableOfContents: (pageNumbers = true) =>
+          editor.chain().focus().insertTableOfContents(pageNumbers).run(),
+        insertFootnote: () => editor.chain().focus().insertFootnote().run(),
+        insertEndnote: () => editor.chain().focus().insertEndnote().run(),
         openPageSetup,
         openWordCount: proofing.openWordCount,
         openSpelling: proofing.openSpelling,

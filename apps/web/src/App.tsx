@@ -110,6 +110,19 @@ const Docs = lazy(() => import("./editors/Docs")),
 function message(e: unknown) {
   return e instanceof Error ? e.message : String(e);
 }
+function isImportFeature(warning: string): boolean {
+  return (
+    /^\d+ (?:footnote|endnote|table)/.test(warning) ||
+    /^\d+ comment threads? imported$/.test(warning) ||
+    /^\d+ suggestions? imported$/.test(warning)
+  );
+}
+function importFeatureLine(warnings: string[]): string {
+  return warnings.filter(isImportFeature).join(" · ");
+}
+function importCompatibilityNotes(warnings: string[]): string[] {
+  return warnings.filter((warning) => !isImportFeature(warning));
+}
 /** SuiteDrive uploads by file ID, shared by every editor of a file so one
  * opened while an earlier editor's upload is in flight reads the version that
  * upload produces instead of uploading on top of the same base again. */
@@ -1450,18 +1463,6 @@ function Workspace() {
       </div>
     );
   const f = record.file;
-  const commentNote = f.importInfo?.warnings.find((w) =>
-    /^\d+ comment threads? imported$/.test(w),
-  );
-  const suggestionNote = f.importInfo?.warnings.find((w) =>
-    /^\d+ suggestions? imported$/.test(w),
-  );
-  const importNotes =
-    f.importInfo?.warnings.filter(
-      (w) =>
-        !/^\d+ comment threads? imported$/.test(w) &&
-        !/^\d+ suggestions? imported$/.test(w),
-    ) ?? [];
   return (
     <div className="workspace">
       <header className="workspace-header">
@@ -1720,6 +1721,43 @@ function Workspace() {
                     }
                   >
                     Page break
+                  </MenuItem>
+                  <SubMenu label="Table of contents">
+                    <MenuItem
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.docActions?.insertTableOfContents(true)
+                      }
+                    >
+                      With page numbers
+                    </MenuItem>
+                    <MenuItem
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.docActions?.insertTableOfContents(
+                          false,
+                        )
+                      }
+                    >
+                      With links
+                    </MenuItem>
+                  </SubMenu>
+                  <MenuItem
+                    shortcut="Cmd+Alt+F"
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.docActions?.insertFootnote()
+                    }
+                  >
+                    Footnote
+                  </MenuItem>
+                  <MenuItem
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.docActions?.insertEndnote()
+                    }
+                  >
+                    Endnote
                   </MenuItem>
                   <MenuItem
                     shortcut="Cmd+K"
@@ -2327,15 +2365,16 @@ function Workspace() {
           <summary>
             Imported {f.importInfo.sourceFormat.toUpperCase()}:{" "}
             {f.importInfo.sourceName}
-            {commentNote ? ` · ${commentNote}` : ""}
-            {suggestionNote ? ` · ${suggestionNote}` : ""}
-            {importNotes.length
-              ? ` · ${importNotes.length} compatibility ${importNotes.length === 1 ? "note" : "notes"}`
+            {importFeatureLine(f.importInfo.warnings)
+              ? ` · ${importFeatureLine(f.importInfo.warnings)}`
+              : ""}
+            {importCompatibilityNotes(f.importInfo.warnings).length
+              ? ` · ${importCompatibilityNotes(f.importInfo.warnings).length} compatibility ${importCompatibilityNotes(f.importInfo.warnings).length === 1 ? "note" : "notes"}`
               : ""}
           </summary>
-          {importNotes.length ? (
+          {importCompatibilityNotes(f.importInfo.warnings).length ? (
             <ul>
-              {importNotes.map((w, i) => (
+              {importCompatibilityNotes(f.importInfo.warnings).map((w, i) => (
                 <li key={i}>{w}</li>
               ))}
             </ul>
