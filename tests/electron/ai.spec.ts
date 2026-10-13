@@ -42,6 +42,12 @@ test("the assistant writes a document with Gemma in the main process", async () 
     expect(metrics.toolCalls).toBeGreaterThan(0);
     await expect(page.getByRole("textbox", { name: "Document content" })).toContainText("tent");
   } finally {
+    // Closing within the autosave delay would wait on the "Changes are still being saved" prompt.
+    const settled = await app
+      .windows()[0]
+      ?.waitForFunction(() => !/Unsaved|Saving/.test(document.querySelector(".save-status")?.textContent ?? ""), null, { timeout: 10000 })
+      .then(() => true, () => false);
+    if (settled === false) await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().forEach((w) => w.destroy()));
     await app.close();
     await rm(dir, { recursive: true, force: true });
   }
