@@ -1,31 +1,40 @@
-import { createFile, serializeFile } from "@suiteleaf/core";
-import type { Locator, Page } from "@playwright/test";
-import { beat, caption, expect, selectCells, test } from "./harness";
+import { createFile, serializeFile, type DocFile, type JsonNode } from "@suiteleaf/core";
+import type { Page } from "@playwright/test";
+import { beat, caption, expect, test } from "./harness";
 
-function decisionsSheet() {
-  const file = createFile("sheet", "Decisions");
-  if (file.kind !== "sheet") throw new Error("Expected a spreadsheet");
-  const id = file.content.workbook.sheetOrder[0]!;
-  const sheet = file.content.workbook.sheets[id]!;
-  sheet.cellData = {
-    0: { 0: { v: "Decision", t: 1 }, 1: { v: "Note", t: 1 } },
-    1: { 0: { v: "Grant", t: 1 }, 1: { v: "We will recieve the grant", t: 1 } },
-    3: { 0: { v: "Keys", t: 1 }, 1: { v: "Please recieve the keys", t: 1 } },
-    5: { 0: { v: "Copies", t: 1 }, 1: { v: "seperate the copies", t: 1 } },
-    6: { 0: { v: "Minutes", t: 1 }, 1: { v: "They recieve the minutes", t: 1 } },
-    8: { 0: { v: "Guests", t: 1 }, 1: { v: "Guests recieve a note", t: 1 } },
+const editorOf = (page: Page) => page.getByRole("textbox", { name: "Document content" });
+
+function launchNotes() {
+  const file = createFile("doc", "Launch notes") as DocFile;
+  const line = (text: string, boldAt?: string): JsonNode => {
+    if (!boldAt) return { type: "paragraph", content: [{ type: "text", text }] };
+    const at = text.indexOf(boldAt);
+    return {
+      type: "paragraph",
+      content: [
+        { type: "text", text: text.slice(0, at) },
+        { type: "text", text: boldAt, marks: [{ type: "bold" }] },
+        { type: "text", text: text.slice(at + boldAt.length) },
+      ],
+    };
   };
-  (sheet as { columnData: Record<number, { w: number }> }).columnData = {
-    0: { w: 110 },
-    1: { w: 280 },
+  file.content = {
+    type: "doc",
+    content: [
+      line("We will recieve the keys on Monday.", "recieve"),
+      line("The team will recieve a note."),
+      line("Please recieve the guest at noon."),
+      line("Ask them to seperate the name tags."),
+      line("Then recieve the signed form."),
+    ],
   };
   return file;
 }
 
 async function seed(page: Page) {
+  const file = launchNotes();
   await page.goto("/");
   await page.getByRole("button", { name: "New document" }).waitFor();
-  const file = decisionsSheet();
   await page.evaluate(async (record) => {
     await new Promise<void>((resolve, reject) => {
       const open = indexedDB.open("SuiteLeaf");
@@ -45,139 +54,79 @@ async function seed(page: Page) {
     native: serializeFile(file),
   });
   await page.reload();
-  await page.getByRole("link", { name: "Decisions", exact: true }).waitFor();
+  await page.getByRole("link", { name: "Launch notes" }).click();
+  await expect(editorOf(page)).toContainText("signed form");
 }
 
-async function rightClick(page: Page, locator: Locator) {
-  const box = await locator.boundingBox();
-  if (!box) throw new Error("Missing spelling target");
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button: "right" });
-}
-
-function spellMenu(page: Page) {
-  return page.getByRole("menu", { name: "Spelling for recieve" });
-}
-
-function changeAll(page: Page) {
-  return page.getByRole("dialog", { name: "Change all to receive" });
-}
+const typos = (page: Page) => page.locator(".document-content .spelling-misspelling", { hasText: "recieve" });
 
 test("64-change-every-copy-of-a-typo", async ({ page }) => {
   await seed(page);
-  await caption(page, "Four cells say recieve. Sam wants to keep seperate in B6.");
-  await page.getByRole("link", { name: "Decisions", exact: true }).click();
-  const grid = page.getByLabel("Spreadsheet grid");
-  await expect(grid).toHaveAttribute("aria-busy", "false");
-  await expect(page.locator(".sheet-spell-hit[data-spell-word='recieve']")).toHaveCount(4);
-  await expect(page.locator(".sheet-spell-hit[data-spell-cell='B6']")).toBeVisible();
+  await caption(page, "Sam's launch notes say “recieve” four times. One is bold. “seperate” stays.", 1600);
+  await expect(typos(page)).toHaveCount(4);
+  await caption(page, "The suggestion can fix every copy, not just this word.", 500);
+  await typos(page).first().click({ button: "right" });
   await beat(page, 1400);
-
-  await caption(page, "Right-click offers receive, and Change all to receive.");
-  await rightClick(page, page.locator(".sheet-spell-hit[data-spell-cell='B2']"));
-  const menu = spellMenu(page);
+  const menu = page.getByRole("menu", { name: "Spelling for recieve" });
   await expect(menu.getByRole("menuitem", { name: "receive", exact: true })).toBeVisible();
-  await expect(menu.getByRole("menuitem", { name: "Change all to receive" })).toBeVisible();
-  await beat(page, 1400);
-
-  await caption(page, "Change all lists the four cells first. seperate is not there. He can cancel.");
   await menu.getByRole("menuitem", { name: "Change all to receive" }).click();
-  const preview = changeAll(page);
-  await expect(preview).toContainText("4 cells will change");
-  await expect(preview.locator("[data-change-cell='B2']")).toBeVisible();
-  await expect(preview.locator("[data-change-cell='B4']")).toBeVisible();
-  await expect(preview.locator("[data-change-cell='B7']")).toBeVisible();
-  await expect(preview.locator("[data-change-cell='B9']")).toBeVisible();
-  await expect(preview.locator("[data-change-cell='B6']")).toHaveCount(0);
-  await expect(page.locator(".sheet-spell-preview")).toHaveCount(4);
-  await beat(page, 1800);
+  const preview = page.getByRole("dialog", { name: "Change every copy?" });
+  await expect(preview).toContainText("4 copies of “recieve”");
+  await expect(preview.locator("mark")).toHaveCount(4);
+  await caption(page, "Four copies are listed. “seperate” is not. Nothing has changed yet.", 2000);
   await preview.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(preview).toHaveCount(0);
-  await selectCells(page, "B2");
-  await expect(grid).toHaveAttribute("data-active-value", "We will recieve the grant");
-  await beat(page, 900);
+  await expect(typos(page)).toHaveCount(4);
+  await caption(page, "Cancel leaves the notes alone.", 1200);
 
-  await caption(page, "Tools › Spelling has the same Change all. He confirms.");
+  await typos(page).first().click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Change all to receive" }).click();
+  await beat(page, 500);
+  await page.getByRole("button", { name: "Change 4 copies" }).click();
+  await expect(typos(page)).toHaveCount(0);
+  await expect(editorOf(page).locator("strong")).toHaveText("receive");
+  await caption(page, "One confirm fixes every copy. The bold word is still bold.", 1600);
+
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(typos(page)).toHaveCount(4);
+  await caption(page, "One Undo puts every copy back.", 1400);
+  await page.getByRole("button", { name: "Redo", exact: true }).click();
+  await expect(typos(page)).toHaveCount(0);
+  await caption(page, "Redo fixes them again.", 1200);
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(typos(page)).toHaveCount(4);
+  await caption(page, "Back to the typos, so Sam can keep one on purpose.", 1400);
+
+  await typos(page).nth(3).click({ button: "right" });
+  await beat(page, 300);
+  await page.getByRole("menuitem", { name: "Ignore this one" }).click();
+  await expect(typos(page)).toHaveCount(3);
+  await expect(editorOf(page)).toContainText("Then recieve the signed form");
+  await caption(page, "Ignore this one leaves that copy and clears its underline.", 1600);
+
   await page.getByRole("button", { name: "Tools", exact: true }).click();
-  await beat(page, 400);
+  await beat(page, 300);
   await page.getByRole("menuitem", { name: "Spelling", exact: true }).click();
   const spelling = page.getByRole("dialog", { name: "Spelling" });
   await expect(spelling.getByRole("button", { name: "Change all", exact: true })).toBeVisible();
-  await beat(page, 900);
+  await caption(page, "Tools › Spelling can change all of the rest.", 1400);
   await spelling.getByRole("button", { name: "Change all", exact: true }).click();
-  await expect(changeAll(page)).toContainText("4 cells will change");
-  await beat(page, 1200);
-  await changeAll(page).getByRole("button", { name: "Change all", exact: true }).click();
-  await expect(spelling).toContainText("seperate");
-  await selectCells(page, "B2");
-  await expect(grid).toHaveAttribute("data-active-value", "We will receive the grant");
-  await selectCells(page, "B9");
-  await expect(grid).toHaveAttribute("data-active-value", "Guests receive a note");
-  await selectCells(page, "B6");
-  await expect(grid).toHaveAttribute("data-active-value", "seperate the copies");
-  await beat(page, 1200);
-  await spelling.getByRole("button", { name: "Close spelling" }).click();
+  const again = page.getByRole("dialog", { name: "Change every copy?" });
+  await expect(again).toContainText("3 copies of “recieve”");
+  await caption(page, "The ignored copy and “seperate” stay off the list.", 1800);
+  await again.getByRole("button", { name: "Change 3 copies" }).click();
+  await expect(typos(page)).toHaveCount(0);
+  await expect(editorOf(page)).toContainText("Then recieve the signed form");
+  await caption(page, "Three copies change. The one he ignored stays “recieve”.", 1600);
 
-  await caption(page, "One undo restores every cell. Redo fixes them again.");
-  await page.getByRole("button", { name: "Undo (Cmd+Z)" }).click();
-  await selectCells(page, "B2");
-  await expect(grid).toHaveAttribute("data-active-value", "We will recieve the grant");
-  await selectCells(page, "B4");
-  await expect(grid).toHaveAttribute("data-active-value", "Please recieve the keys");
-  await selectCells(page, "B7");
-  await expect(grid).toHaveAttribute("data-active-value", "They recieve the minutes");
-  await selectCells(page, "B9");
-  await expect(grid).toHaveAttribute("data-active-value", "Guests recieve a note");
-  await beat(page, 1400);
-  await page.getByRole("button", { name: "Redo (Cmd+Y)" }).click();
-  await selectCells(page, "B2");
-  await expect(grid).toHaveAttribute("data-active-value", "We will receive the grant");
-  await selectCells(page, "B9");
-  await expect(grid).toHaveAttribute("data-active-value", "Guests receive a note");
-  await beat(page, 1200);
-
-  await caption(page, "He undoes that, then ignores B9. The other copies stay underlined.");
-  await page.getByRole("button", { name: "Undo (Cmd+Z)" }).click();
-  await expect(page.locator(".sheet-spell-hit[data-spell-cell='B9']")).toBeVisible();
-  await rightClick(page, page.locator(".sheet-spell-hit[data-spell-cell='B9']"));
-  await beat(page, 700);
-  await spellMenu(page).getByRole("menuitem", { name: "Ignore this cell" }).click();
-  await expect(page.locator(".sheet-spell-hit[data-spell-cell='B9']")).toHaveCount(0);
-  await expect(page.locator(".sheet-spell-hit[data-spell-cell='B2']")).toBeVisible();
-  await expect(page.locator(".sheet-spell-hit[data-spell-cell='B4']")).toBeVisible();
-  await expect(page.locator(".sheet-spell-hit[data-spell-cell='B7']")).toBeVisible();
-  await expect(page.locator(".sheet-spell-hit[data-spell-word='seperate']")).toBeVisible();
-  await beat(page, 1200);
-
-  await caption(page, "Change all from B2 fixes the others and leaves B9.");
-  await rightClick(page, page.locator(".sheet-spell-hit[data-spell-cell='B2']"));
-  await beat(page, 600);
-  await spellMenu(page).getByRole("menuitem", { name: "Change all to receive" }).click();
-  await expect(changeAll(page)).toContainText("3 cells will change");
-  await expect(changeAll(page).locator("[data-change-cell='B9']")).toHaveCount(0);
-  await expect(changeAll(page).locator("[data-change-cell='B6']")).toHaveCount(0);
-  await expect(page.locator(".sheet-spell-preview")).toHaveCount(3);
-  await beat(page, 1600);
-  await changeAll(page).getByRole("button", { name: "Change all", exact: true }).click();
-  await selectCells(page, "B2");
-  await expect(grid).toHaveAttribute("data-active-value", "We will receive the grant");
-  await selectCells(page, "B7");
-  await expect(grid).toHaveAttribute("data-active-value", "They receive the minutes");
-  await selectCells(page, "B9");
-  await expect(grid).toHaveAttribute("data-active-value", "Guests recieve a note");
-  await expect(page.locator(".sheet-spell-mark[data-spell-cell='B9']")).toHaveCount(0);
-  await beat(page, 1400);
-
-  await caption(page, "He reopens the file. Three corrections remain, and B9 is still recieve, not underlined.");
+  await page.getByRole("button", { name: "File", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Save now" }).click();
   await expect(page.getByRole("status")).toContainText("Saved");
+  await beat(page, 600);
   await page.getByRole("button", { name: "Back to files" }).click();
-  await page.getByRole("link", { name: "Decisions", exact: true }).click();
-  await expect(grid).toHaveAttribute("aria-busy", "false");
-  await selectCells(page, "B4");
-  await expect(grid).toHaveAttribute("data-active-value", "Please receive the keys");
-  await selectCells(page, "B9");
-  await expect(grid).toHaveAttribute("data-active-value", "Guests recieve a note");
-  await expect(page.locator(".sheet-spell-mark[data-spell-word='recieve']")).toHaveCount(0);
-  await expect(page.locator(".sheet-spell-mark[data-spell-cell='B9']")).toHaveCount(0);
-  await expect(page.locator(".sheet-spell-mark[data-spell-word='seperate']")).toBeVisible();
-  await beat(page, 1600);
+  await beat(page, 500);
+  await page.getByRole("link", { name: "Launch notes" }).click();
+  await expect(editorOf(page)).toContainText("We will receive the keys");
+  await expect(editorOf(page)).toContainText("Then recieve the signed form");
+  await expect(page.locator(".document-content .spelling-misspelling", { hasText: "seperate" })).toHaveCount(1);
+  await caption(page, "Reopened: three corrections remain, and the ignored copy is still not underlined.", 2000);
 });

@@ -4,7 +4,9 @@ import {
   eventMatchesShortcut,
   formatShortcut,
   isUnimplemented,
+  COMMAND_SYNONYMS,
   searchCommands,
+  synonymsFor,
   type CommandView,
 } from "../apps/web/src/commands";
 
@@ -85,6 +87,20 @@ describe("command search", () => {
 
   it("finds page setup from page numbers", () => {
     expect(searchCommands(commands, "page numbers")[0].label).toBe("Page setup…");
+  });
+
+  it("finds page setup from watermark", () => {
+    const [top] = searchCommands(
+      [{ ...pageSetup, synonyms: synonymsFor("Page setup…") }],
+      "watermark",
+    );
+    expect(top.label).toBe("Page setup…");
+  });
+
+  it("offers gutter as another way to say page setup", () => {
+    expect(COMMAND_SYNONYMS["Page setup…"]).toEqual(
+      expect.arrayContaining(["gutter", "binding"]),
+    );
   });
 
   it("ranks freeze 1 row ahead of the other freeze commands", () => {

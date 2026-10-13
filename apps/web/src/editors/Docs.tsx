@@ -12,7 +12,8 @@ import StarterKit from "@tiptap/starter-kit";
 import { TextStyleKit } from "@tiptap/extension-text-style";
 import Highlight from "@tiptap/extension-highlight";
 import TextAlign from "@tiptap/extension-text-align";
-import Image from "@tiptap/extension-image";
+import { wrappedImage } from "./doc-image-crop";
+import { inlineImage } from "./doc-image-inline";
 import { TableKit } from "@tiptap/extension-table";
 import Superscript from "@tiptap/extension-superscript";
 import Subscript from "@tiptap/extension-subscript";
@@ -96,19 +97,33 @@ import { Grammar } from "./doc-grammar";
 import { useDocGrammar } from "./doc-grammar-ui";
 import { Proofing } from "./doc-spelling";
 import { useDocProofing, type ProofingContext } from "./doc-proofing";
+import { DocImageAlt } from "./doc-image-alt-ui";
 import { documentNotes } from "./doc-notes";
 import { documentCitations } from "./doc-citations";
 import { DocCitations } from "./doc-citations-panel";
+import { Equation, EquationDialog } from "./doc-equations";
 import {
   documentHtml,
   documentPageSettings,
+  gutterAccepted,
+  marginsValid,
   pageDimensions,
+  pageMarginVars,
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
+import { PageSetupFields } from "./page-setup";
+import { PageFurniture } from "./doc-header-editor";
+import { paragraphLineSpacing } from "./doc-line-spacing";
+import { LineSpacingControl } from "./doc-line-spacing-ui";
+import { pageSetupToSave } from "./doc-watermark";
+import { columnLayout } from "./doc-columns";
+import { GutterField, PageGutterBands } from "./page-gutter";
+import { PageMarginFields } from "./page-margins";
 
 export const extensions: Extensions = [
   DocumentPagination,
   PageBreak,
+  columnLayout,
   ...documentNotes,
   ...documentCitations,
   StarterKit.configure({
@@ -117,16 +132,9 @@ export const extensions: Extensions = [
   TextStyleKit,
   Highlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ["heading", "paragraph"] }),
-  Image.configure({
-    allowBase64: true,
-    resize: {
-      enabled: true,
-      directions: ["top-left", "top-right", "bottom-left", "bottom-right"],
-      minWidth: 32,
-      minHeight: 32,
-      alwaysPreserveAspectRatio: true,
-    },
-  }),
+  paragraphLineSpacing,
+  wrappedImage,
+  inlineImage,
   TableKit.configure({ table: { resizable: true } }),
   CharacterCount,
   DocumentSearchHighlight,
@@ -136,6 +144,7 @@ export const extensions: Extensions = [
   Grammar,
   Superscript,
   Subscript,
+  Equation,
   Extension.create({
     name: "suiteleafStrikeShortcut",
     addKeyboardShortcuts() {
@@ -254,6 +263,7 @@ export default function Docs({
   const [activeHeading, setActiveHeading] = useState<number | null>(null);
   const [pageCount, setPageCount] = useState(1);
   const [pageSetupOpen, setPageSetupOpen] = useState(false);
+  const [equationOpen, setEquationOpen] = useState(false);
   const [pageDraft, setPageDraft] = useState<PageSettings>(() =>
     documentPageSettings(file.content),
   );
@@ -445,13 +455,23 @@ export default function Docs({
       },
       handlePaste: (_view, event) => {
         if (readOnlyRef.current) return true;
-        if (event.clipboardData?.getData("text/html")) {
-          editor?.commands.insertContent(
-            importHTML(event.clipboardData.getData("text/html")),
-          );
-          return true;
-        }
-        return false;
+        const html = event.clipboardData?.getData("text/html");
+        if (!html) return false;
+        const content = importHTML(html);
+        const blocks = content.content ?? [];
+        const only = blocks.length === 1 ? blocks[0] : null;
+        const picture =
+          only?.type === "inlineImage"
+            ? only
+            : only?.type === "paragraph" &&
+                only.content?.length === 1 &&
+                only.content[0].type === "inlineImage"
+              ? only.content[0]
+              : null;
+        // A copied in-line picture is one node. Inserting the wrapped paragraph
+        // would split the sentence and leave the picture on its own line.
+        editor?.commands.insertContent(picture ?? content);
+        return true;
       },
       // Internal "#anchor" links scroll to the heading that owns that slug.
       handleDOMEvents: {
@@ -758,7 +778,7 @@ export default function Docs({
       editor
         ?.chain()
         .focus()
-        .setImage({ src, alt: f.name })
+        .setImage({ src, alt: "" })
         .command(({ tr, state }) => {
           // Typing must continue after the photo, not replace it.
           if (!(tr.selection instanceof NodeSelection)) return true;
@@ -849,6 +869,9 @@ export default function Docs({
           editor.chain().focus().insertTableOfContents(pageNumbers).run(),
         insertFootnote: () => editor.chain().focus().insertFootnote().run(),
         insertEndnote: () => editor.chain().focus().insertEndnote().run(),
+        insertEquation: () => {
+          if (!readOnlyRef.current) setEquationOpen(true);
+        },
         openPageSetup,
         openWordCount: proofing.openWordCount,
         openSpelling: proofing.openSpelling,
@@ -860,6 +883,9 @@ export default function Docs({
           editor.chain().focus().unsetAllMarks().clearNodes().run(),
         align: (alignment) =>
           editor.chain().focus().setTextAlign(alignment).run(),
+        setColumns: (columns: 1 | 2) =>
+          editor.chain().focus().setColumns(columns).run(),
+        columnCount: () => (editor.isActive("columnLayout") ? 2 : 1),
         toggleBold: () => editor.chain().focus().toggleBold().run(),
         toggleItalic: () => editor.chain().focus().toggleItalic().run(),
         toggleUnderline: () => editor.chain().focus().toggleUnderline().run(),
@@ -1012,9 +1038,11 @@ export default function Docs({
 
   const pageSettings = documentPageSettings(editor.getJSON() as JsonNode);
   const pageDraftValid =
-    Number.isFinite(pageDraft.margin) &&
-    pageDraft.margin >= 24 &&
-    pageDraft.margin <= 144;
+    marginsValid(pageDraft) &&
+    gutterAccepted(pageDraft.gutter) &&
+    Number.isInteger(pageDraft.pageNumberStart) &&
+    pageDraft.pageNumberStart >= 1 &&
+    pageDraft.pageNumberStart <= 9999;
   const dimensions = pageDimensions(pageSettings);
   const requestedZoom =
     zoomLevel === "Fit" ? 1 : Number.parseInt(zoomLevel, 10) / 100;
@@ -1172,6 +1200,7 @@ export default function Docs({
           <option value="2">Heading 2</option>
           <option value="3">Heading 3</option>
         </select>
+        <LineSpacingControl editor={editor} />
 
         <span className="divider" />
 
@@ -1426,6 +1455,7 @@ export default function Docs({
             role="dialog"
             aria-modal="true"
             aria-label="Page setup"
+            noValidate
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
               if (e.key === "Escape") closePageSetup();
@@ -1434,7 +1464,10 @@ export default function Docs({
               e.preventDefault();
               if (!pageDraftValid) return;
               editor.view.dispatch(
-                editor.state.tr.setDocAttribute("pageSettings", pageDraft),
+                editor.state.tr.setDocAttribute(
+                  "pageSettings",
+                  pageSetupToSave(pageDraft),
+                ),
               );
               closePageSetup();
             }}
@@ -1487,66 +1520,16 @@ export default function Docs({
                   </label>
                 ))}
               </fieldset>
-              <label>
-                <span>Margins (inches)</span>
-                <input
-                  aria-label="Page margins"
-                  type="number"
-                  min="0.25"
-                  max="1.5"
-                  step="0.125"
-                  value={pageDraft.margin / 96}
-                  onChange={(e) =>
-                    setPageDraft({
-                      ...pageDraft,
-                      margin: Number(e.target.value) * 96,
-                    })
-                  }
-                />
-              </label>
-              <label>
-                <span>Header</span>
-                <input
-                  aria-label="Page header"
-                  placeholder="Text at the top of every page"
-                  value={pageDraft.header}
-                  maxLength={500}
-                  onChange={(e) =>
-                    setPageDraft({ ...pageDraft, header: e.target.value })
-                  }
-                />
-              </label>
-              <label>
-                <span>Footer</span>
-                <input
-                  aria-label="Page footer"
-                  placeholder="Text at the bottom of every page"
-                  value={pageDraft.footer}
-                  maxLength={500}
-                  onChange={(e) =>
-                    setPageDraft({ ...pageDraft, footer: e.target.value })
-                  }
-                />
-              </label>
-              <div className="page-setup-check">
-                <label>
-                  <input
-                    type="checkbox"
-                    aria-describedby="page-numbers-hint"
-                    checked={pageDraft.pageNumbers}
-                    onChange={(e) =>
-                      setPageDraft({
-                        ...pageDraft,
-                        pageNumbers: e.target.checked,
-                      })
-                    }
-                  />
-                  Page numbers
-                </label>
-                <span id="page-numbers-hint" className="page-setup-hint">
-                  Bottom right of every page, as “1 / 3”
-                </span>
-              </div>
+              <PageMarginFields draft={pageDraft} onChange={setPageDraft} />
+              <GutterField
+                px={pageDraft.gutter}
+                onPx={(gutter) => setPageDraft({ ...pageDraft, gutter })}
+              />
+              <PageSetupFields
+                draft={pageDraft}
+                pageCount={pageCount}
+                onChange={setPageDraft}
+              />
             </div>
             <div className="dialog-footer">
               <button
@@ -1738,6 +1721,10 @@ export default function Docs({
             </div>
           </div>
         </div>
+      ) : null}
+
+      {equationOpen && editor ? (
+        <EquationDialog editor={editor} onClose={() => setEquationOpen(false)} />
       ) : null}
 
       {tableOpen ? (
@@ -2040,7 +2027,8 @@ export default function Docs({
               {
                 "--page-width": `${dimensions.width}px`,
                 "--page-height": `${dimensions.height}px`,
-                "--page-margin": `${pageSettings.margin}px`,
+                ...pageMarginVars(pageSettings),
+                "--page-gutter": `${pageSettings.gutter}px`,
                 "--page-stride": `${dimensions.height + 24}px`,
                 minHeight: `${pageCount * dimensions.height + (pageCount - 1) * 24}px`,
                 // zoom: 1 still makes WebKit a zoom container, and then a
@@ -2049,25 +2037,12 @@ export default function Docs({
               } as CSSProperties
             }
           >
-            <div className="page-furniture" aria-hidden="true">
-              {Array.from({ length: pageCount }, (_, i) => (
-                <div
-                  key={i}
-                  className="page-furniture-page"
-                  style={{ "--page-index": i } as CSSProperties}
-                >
-                  <div className="page-header">{pageSettings.header}</div>
-                  <div className="page-footer">
-                    <span>{pageSettings.footer}</span>
-                    {pageSettings.pageNumbers ? (
-                      <span>
-                        {i + 1} / {pageCount}
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <PageGutterBands settings={pageSettings} pageCount={pageCount} />
+            <PageFurniture
+              editor={editor}
+              pageCount={pageCount}
+              readOnly={readOnly}
+            />
             <EditorContent editor={editor} />
           </div>
         </div>
@@ -2096,6 +2071,7 @@ export default function Docs({
           {pageCount} {pageCount === 1 ? "page" : "pages"} · English
         </span>
       </footer>
+      <DocImageAlt editor={editor} />
       <input
         ref={imageInput}
         type="file"

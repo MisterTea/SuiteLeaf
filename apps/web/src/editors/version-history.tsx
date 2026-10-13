@@ -5,10 +5,13 @@ import StarterKit from "@tiptap/starter-kit";
 import { TextStyleKit } from "@tiptap/extension-text-style";
 import Highlight from "@tiptap/extension-highlight";
 import TextAlign from "@tiptap/extension-text-align";
-import Image from "@tiptap/extension-image";
+import { wrappedImage } from "./doc-image-crop";
+import { inlineImage } from "./doc-image-inline";
 import { TableKit } from "@tiptap/extension-table";
 import Superscript from "@tiptap/extension-superscript";
 import Subscript from "@tiptap/extension-subscript";
+import { columnLayout } from "./doc-columns";
+import { Equation } from "./doc-equations";
 import { MoreHorizontal, X } from "lucide-react";
 import {
   applyParagraphRestore,
@@ -59,10 +62,13 @@ const previewExtensions: Extensions = [
   TextStyleKit,
   Highlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ["heading", "paragraph"] }),
-  Image.configure({ allowBase64: true }),
+  wrappedImage,
+  inlineImage,
   TableKit,
   Superscript,
   Subscript,
+  Equation,
+  columnLayout,
 ];
 
 function message(error: unknown) {
@@ -295,12 +301,8 @@ export function VersionHistory({
           setViewSummary("");
           return;
         }
-        const docPair = before.kind === "doc" && current.kind === "doc";
-        const againstCurrent = docPair
-          ? compareParagraphs(before.content, current.content)
-          : null;
-        setChangeCount(againstCurrent ? againstCurrent.changedParagraphs : against.count);
-        setChangeUnit(againstCurrent ? "paragraph" : against.unit);
+        setChangeCount(against.count);
+        setChangeUnit(against.unit);
         if (mode === "previous") {
           const index = versions.findIndex((version) => version.id === selected.id);
           const older = versions[index + 1];
@@ -318,17 +320,26 @@ export function VersionHistory({
           preview.current(step.preview);
           return;
         }
-        if (againstCurrent && against.preview.kind === "doc") {
+        if (
+          before.kind === "doc" &&
+          current.kind === "doc" &&
+          against.preview.kind === "doc"
+        ) {
+          const againstCurrent = compareParagraphs(before.content, current.content);
           const source = selected.name
             ? `"${selected.name}"`
             : versionWhen(selected.createdAt);
-          const controls = againstCurrent.offers.map((offer) =>
+          const offers = againstCurrent.offers.map((offer) =>
             offer
               ? { key: offer.key, prompt: paragraphRestorePrompt(offer, source) }
               : null,
           );
-          setViewSummary("");
-          preview.current({ ...against.preview, offers: controls });
+          setViewSummary(against.summary);
+          preview.current({
+            ...against.preview,
+            content: againstCurrent.content,
+            offers,
+          });
           return;
         }
         setViewSummary(against.summary);

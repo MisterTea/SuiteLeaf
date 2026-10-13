@@ -1771,6 +1771,7 @@ setting
 dr
 scale
 stand
+stall
 economy
 highest
 helpful

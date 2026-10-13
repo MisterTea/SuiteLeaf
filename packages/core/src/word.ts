@@ -12,7 +12,12 @@ import {
   annotateTrackedChanges,
   resolveSuggestions,
 } from "./suggestions";
-import { type OfficeImport, parseXml } from "./office";
+import { documentPageSettings } from "./document-layout";
+import { type OfficeImport } from "./office";
+import {
+  importWordPageFurniture,
+  insertWordPageBreaks,
+} from "./word-headers";
 import {
   applyImportedNotes,
   notesImportSummary,
@@ -28,6 +33,28 @@ import {
   rewriteWordCitations,
   type CitationLibrary,
 } from "./citations";
+import {
+  EQUATION_LAYOUT_UNSUPPORTED,
+  extractOfficeMath,
+  spliceEquationTokens,
+} from "./equations";
+import {
+  imageCropActive,
+  imageCropFromSrcRect,
+  type ImageCrop,
+} from "./image-crop";
+import { settleWordPictures } from "./image-inline";
+import {
+  applyImagePageSizes,
+  imagePageSizes,
+  type ImagePageSize,
+} from "./image-extent";
+import {
+  drawingPlacement,
+  layoutNote,
+  type DrawingPlacement,
+  type ImageWrap,
+} from "./image-wrap";
 
 type Mark = NonNullable<JsonNode["marks"]>[number];
 const normalize = (s: string) => s.replace(/[\s\u200b\ufeff]+/gu, "");
@@ -36,6 +63,7 @@ export function documentText(n: JsonNode): string {
 }
 function textOf(n: JsonNode, library: CitationLibrary | undefined): string {
   const next = n.type === "doc" ? citationLibrary(n) : library;
+  if (n.type === "equation") return String(n.attrs?.plain ?? "");
   if (n.type === "noteReference") return String(n.attrs?.label ?? "");
   if (n.type === "tableOfContents" || n.type === "bibliography") return "";
   if (n.type === "citation") {
@@ -162,23 +190,9 @@ export function htmlToDocument(
     content: JsonNode[],
     attributes: Record<string, unknown> = {},
   ): JsonNode[] {
-    const result: JsonNode[] = [];
-    let current: JsonNode[] = [];
-    for (const n of content) {
-      if (n.type === "image") {
-        if (current.length)
-          result.push({
-            type: "paragraph",
-            attrs: attributes,
-            content: current,
-          });
-        current = [];
-        result.push(n);
-      } else current.push(n);
-    }
-    if (current.length || !result.length)
-      result.push({ type: "paragraph", attrs: attributes, content: current });
-    return result;
+    // Pictures stay in the paragraph until wrap is known. settleWordPictures
+    // then keeps a Word inline picture in the sentence and lifts the rest.
+    return [{ type: "paragraph", attrs: attributes, content }];
   }
   const BLOCK_TAGS = new Set([
     "p", "h1", "h2", "h3", "h4", "h5", "h6",
@@ -337,6 +351,144 @@ function detectImageMime(buf: Uint8Array): string | null {
     return "image/webp";
   }
   return null;
+}
+
+const WORD_PICTURE_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+]);
+
+function xmlAttributeMap(source: string): Record<string, string> {
+  const attrs: Record<string, string> = {};
+  for (const match of source.matchAll(/([\w:.-]+)\s*=\s*"([^"]*)"/g))
+    attrs[match[1]] = match[2];
+  return attrs;
+}
+
+/** A relationship target in `word/_rels` is relative to the `word/` part. */
+function wordRelationshipPath(target: string): string {
+  let decoded = target.replace(/&amp;/g, "&");
+  try {
+    decoded = decodeURIComponent(decoded);
+  } catch {
+    // Keep a target that is not percent-encoded.
+  }
+  const relative = decoded.startsWith("/") ? decoded.slice(1) : `word/${decoded}`;
+  const parts: string[] = [];
+  for (const part of relative.split("/")) {
+    if (part === "..") parts.pop();
+    else if (part !== "." && part !== "") parts.push(part);
+  }
+  return parts.join("/");
+}
+
+type PictureLayout = { payload: string; crop: ImageCrop; wrap: ImageWrap | null };
+
+/**
+ * Crops and wrap for the pictures Mammoth will turn into image nodes, in
+ * document order. `a:srcRect` is the hidden edge of the full image. The
+ * drawing extent is the cropped frame, so it is not stored as the picture's
+ * width. Square wrap is kept so the paragraph can sit beside the picture.
+ */
+async function wordPictureLayouts(
+  zip: JSZip,
+  xml: string,
+): Promise<{ pictures: PictureLayout[]; placements: DrawingPlacement[] }> {
+  const relsXml = await zip.file("word/_rels/document.xml.rels")?.async("string");
+  const rels = new Map<string, string>();
+  if (relsXml) {
+    for (const match of relsXml.matchAll(/<Relationship\b([^>]*)\/?>/g)) {
+      const attrs = xmlAttributeMap(match[1]);
+      if (attrs.TargetMode === "External" || !attrs.Id || !attrs.Target) continue;
+      rels.set(attrs.Id, attrs.Target);
+    }
+  }
+  const pictures: PictureLayout[] = [];
+  const placements: DrawingPlacement[] = [];
+  const missed = (placement: DrawingPlacement) => {
+    if (placement.floating) placements.push({ ...placement, represented: false });
+  };
+  for (const fill of xml.matchAll(
+    /<(?:[\w.-]+:)?blipFill\b[^>]*>([\s\S]*?)<\/(?:[\w.-]+:)?blipFill>/g,
+  )) {
+    const placement = drawingPlacement(xml, fill.index ?? 0);
+    const blip = /<(?:[\w.-]+:)?blip\b([^>]*?)\/?>/.exec(fill[1]);
+    if (!blip) {
+      missed(placement);
+      continue;
+    }
+    const blipAttrs = xmlAttributeMap(blip[1]);
+    const embed = blipAttrs["r:embed"] || blipAttrs["r:id"];
+    const target = embed ? rels.get(embed) : undefined;
+    if (!target) {
+      missed(placement);
+      continue;
+    }
+    const media = zip.file(wordRelationshipPath(target));
+    if (!media) {
+      missed(placement);
+      continue;
+    }
+    const bytes = await media.async("uint8array");
+    const mime = detectImageMime(bytes);
+    if (!mime || !WORD_PICTURE_TYPES.has(mime)) {
+      missed(placement);
+      continue;
+    }
+    placements.push(placement);
+    const rect = /<(?:[\w.-]+:)?srcRect\b([^>]*?)\/?>/.exec(fill[1]);
+    pictures.push({
+      payload: uint8ToBase64(bytes),
+      crop: imageCropFromSrcRect(rect ? xmlAttributeMap(rect[1]) : null),
+      wrap: placement.wrap,
+    });
+  }
+  return { pictures, placements };
+}
+
+/** Copy each picture crop and wrap onto the matching image. The source bytes stay whole. */
+function applyWordPictureLayouts(node: JsonNode, pictures: PictureLayout[]): JsonNode {
+  let index = 0;
+  const visit = (current: JsonNode) => {
+    if (current.type === "image") {
+      const src = String(current.attrs?.src ?? "");
+      const comma = src.indexOf(",");
+      const payload =
+        src.startsWith("data:") && comma >= 0
+          ? src.slice(comma + 1).replace(/\s/g, "")
+          : "";
+      let at = index;
+      while (at < pictures.length && pictures[at].payload !== payload) at += 1;
+      if (at < pictures.length) {
+        const picture = pictures[at];
+        const next = { ...current.attrs };
+        let changed = false;
+        if (imageCropActive(picture.crop)) {
+          const round = (value: number) => Math.round(value * 1000) / 1000;
+          // The drawing extent is the cropped frame. Width stays the full
+          // picture, so a srcRect import does not keep that frame as width.
+          delete next.width;
+          delete next.height;
+          next.cropLeft = round(picture.crop.left);
+          next.cropTop = round(picture.crop.top);
+          next.cropRight = round(picture.crop.right);
+          next.cropBottom = round(picture.crop.bottom);
+          changed = true;
+        }
+        if (picture.wrap) {
+          next.wrap = picture.wrap;
+          changed = true;
+        }
+        if (changed) current.attrs = next;
+        index = at + 1;
+      }
+    }
+    current.content?.forEach(visit);
+  };
+  visit(node);
+  return node;
 }
 
 function uint8ToBase64(u8: Uint8Array): string {
@@ -1076,15 +1228,27 @@ export async function importDocx(
       if (at >= 0) source.splice(at, 1);
     }
   }
+  let officeXml = updatedXml;
+  if (annotated !== updatedXml) officeXml = annotated;
+  if (rewritten.changed) officeXml = rewritten.xml;
+  if (cited.changed) officeXml = cited.xml;
+  const extracted = extractOfficeMath(officeXml);
+  if (extracted.equations.length) zip.file("word/document.xml", extracted.xml);
+  const pictureSizes: ImagePageSize[] = [];
   try {
     const input =
       features.includes("strict-ooxml") ||
       modified ||
       annotated !== updatedXml ||
       rewritten.changed ||
-      cited.changed
+      cited.changed ||
+      extracted.equations.length
         ? await zip.generateAsync({ type: "uint8array" })
         : bytes;
+    const documentXml =
+      (await zip.file("word/document.xml")?.async("string")) ?? officeXml;
+    const pageSizes = imagePageSizes(documentXml);
+    let imageCursor = 0;
     const result = await mammoth.convertToHtml(
       { arrayBuffer: input.slice().buffer },
       {
@@ -1098,6 +1262,7 @@ export async function importDocx(
           "p[style-name='Subtitle'] => h2:fresh",
         ],
         convertImage: mammoth.images.imgElement(async (image) => {
+          const pageSize = pageSizes[imageCursor++] ?? null;
           if (
             !["image/png", "image/jpeg", "image/gif", "image/webp"].includes(
               image.contentType,
@@ -1108,6 +1273,7 @@ export async function importDocx(
             );
             return { src: "", alt: `Unsupported ${image.contentType} image` };
           }
+          pictureSizes.push(pageSize);
           return {
             src: `data:${image.contentType};base64,${await image.readAsBase64String()}`,
           };
@@ -1155,6 +1321,7 @@ export async function importDocx(
       })),
     };
   }
+  if (pictureSizes.length) content = applyImagePageSizes(content, pictureSizes);
   const imported = applyImportedNotes(content, rewritten.notes);
   content = imported.content;
   const withCitations = applyImportedCitations(
@@ -1180,6 +1347,8 @@ export async function importDocx(
       ...content,
       attrs: { ...(content.attrs ?? {}), editingMode: "suggesting" },
     };
+  if (extracted.equations.length)
+    content = spliceEquationTokens(content, extracted.equations);
   let output = normalize(
     documentText(
       suggestionCount ? resolveSuggestions(content, "accepted") : content,
@@ -1207,6 +1376,9 @@ export async function importDocx(
     );
     output = normalize(documentText(content));
   }
+  const pictureXml = (await zip.file("word/document.xml")?.async("string")) ?? xml;
+  const pictures = await wordPictureLayouts(zip, pictureXml);
+  content = settleWordPictures(applyWordPictureLayouts(content, pictures.pictures));
   let supplementary = 0;
   const hasTitlePg =
     /<w:titlePg\b(?:\s+[^>]*w:val="(?:true|1|on)")?(?:\/|\s*>)/.test(xml);
@@ -1222,94 +1394,24 @@ export async function importDocx(
   const suppressHeadersFooters =
     (hasTitlePg && isSinglePage && !hasFirstHeaderFooter) || isPureCoverPage;
 
-  const headerFooterPaths = suppressHeadersFooters
-    ? []
-    : Object.keys(zip.files)
-        .filter((p) => /word\/(header\d*|footer\d*)\.xml$/i.test(p))
-        .sort((a, b) => {
-          const aIsH = a.includes("header") ? 0 : 1;
-          const bIsH = b.includes("header") ? 0 : 1;
-          if (aIsH !== bIsH) return aIsH - bIsH;
-          return a.localeCompare(b);
-        });
-  for (const path of headerFooterPaths) {
-    const value = await zip.file(path)!.async("string");
-    if (!value.trim()) continue;
-    try {
-      parseXml(value, path);
-    } catch {
-      warnings.push(`An unreadable header/footer (${path}) was omitted.`);
-      continue;
-    }
-    const imgNodes: JsonNode[] = [];
-    const relsPath = path.replace(/^(.*\/)([^/]+)$/, "$1_rels/$2.rels");
-    const relsFile = zip.file(relsPath);
-    if (relsFile) {
-      const relsXml = await relsFile.async("string");
-      const relsMap = new Map<string, string>();
-      for (const m of relsXml.matchAll(/<Relationship\b([^>]*)\/?>/g)) {
-        const idMatch = m[1].match(/Id="([^"]+)"/);
-        const targetMatch = m[1].match(/Target="([^"]+)"/);
-        if (idMatch && targetMatch) relsMap.set(idMatch[1], targetMatch[1]);
-      }
-      const cleaned = value.replace(
-        /<(?:ve|mc):AlternateContent>[\s\S]*?<(?:ve|mc):Fallback>([\s\S]*?)<\/(?:ve|mc):Fallback>[\s\S]*?<\/(?:ve|mc):AlternateContent>/g,
-        "$1",
-      );
-      for (const m of cleaned.matchAll(
-        /<(?:a:blip|v:imagedata)\b[^>]*(?:r:embed|r:id)="([^"]+)"/g,
-      )) {
-        const target = relsMap.get(m[1]);
-        if (!target) continue;
-        const basePath = path.split("/").slice(0, -1).join("/");
-        const zPath = target.startsWith("/")
-          ? target.slice(1)
-          : `${basePath}/${target}`;
-        const imgFile = zip.file(zPath);
-        if (imgFile) {
-          const imgBytes = await imgFile.async("uint8array");
-          const mime = detectImageMime(imgBytes);
-          if (mime) {
-            const b64 = uint8ToBase64(imgBytes);
-            imgNodes.push({
-              type: "image",
-              attrs: {
-                src: `data:${mime};base64,${b64}`,
-                alt: path.includes("header") ? "Header image" : "Footer image",
-              },
-            });
-          }
-        }
-      }
-    }
-    const ps = wordParagraphs(value);
-    if (ps.length || imgNodes.length) {
-      supplementary += ps.length + imgNodes.length;
-      content.content!.push(
-        {
-          type: "heading",
-          attrs: { level: 2 },
-          content: [
-            {
-              type: "text",
-              text: path.includes("header")
-                ? "Imported header"
-                : "Imported footer",
-            },
-          ],
+  const documentXml =
+    (await zip.file("word/document.xml")?.async("string")) ?? xml;
+  insertWordPageBreaks(content, documentXml);
+  if (!suppressHeadersFooters) {
+    const furniture = await importWordPageFurniture(zip, documentXml);
+    if (furniture) {
+      content.attrs = {
+        ...(content.attrs ?? {}),
+        pageSettings: {
+          ...documentPageSettings(content),
+          ...furniture.settings,
         },
-        ...imgNodes,
-        ...ps.map((text) => ({
-          type: "paragraph",
-          content: [{ type: "text", text }],
-        })),
-      );
+      };
+      content.content!.push(...furniture.blocks);
+      supplementary += furniture.supplementary;
+      warnings.push(...furniture.warnings);
     }
   }
-  if (supplementary)
-    warnings.push(
-      "Header/footer text is retained as document sections rather than repeated page furniture.",
-    );
   const checks: Record<string, RegExp> = {
     tables: /<w:tbl\b/,
     images: /<w:(drawing|pict)\b/,
@@ -1332,10 +1434,8 @@ export async function importDocx(
     warnings.push(
       "Tracked changes are imported as accepted text; review history is not retained.",
     );
-  if (features.includes("math_equations"))
-    warnings.push(
-      "Equations are retained as recovered text when available; editable equation layout is not supported.",
-    );
+  if (features.includes("math_equations") && !extracted.equations.length)
+    warnings.push(EQUATION_LAYOUT_UNSUPPORTED);
   if (features.includes("embedded_objects"))
     warnings.push(
       "Embedded OLE objects are not executed or embedded into the document editor.",
@@ -1354,9 +1454,7 @@ export async function importDocx(
       `${droppedLinks.length} ${one ? "link" : "links"} with an unsafe or unsupported address${schemes.length ? ` (${schemes.join(", ")})` : ""} ${one ? "was" : "were"} removed; ${one ? "its" : "their"} text was kept.`,
     );
   }
-  warnings.push(
-    "SuiteLeaf lays out its own pages, so Word's exact line and page breaks, floating placement and font styling may differ.",
-  );
+  warnings.push(layoutNote(pictures.placements));
   const commentsXml = await zip.file("word/comments.xml")?.async("string");
   if (commentsXml?.includes("<w:comment")) {
     const imported = importWordComments(content, {
@@ -1383,7 +1481,7 @@ export async function importDocx(
   let images = 0,
     tables = 0;
   function count(n: JsonNode) {
-    if (n.type === "image") images++;
+    if (n.type === "image" || n.type === "inlineImage") images++;
     if (n.type === "table") tables++;
     n.content?.forEach(count);
   }

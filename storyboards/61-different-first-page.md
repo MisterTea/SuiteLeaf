@@ -14,11 +14,12 @@ Ben is sending the club minutes on letterhead. Page 1 should show the club logo 
 
 ## Scenes
 
-1. **Two pages.** Ben opens "Minutes". Page setup has the header "Garden club minutes" and page numbers on. Both pages show that header and a number.
-2. **Different first page.** In Page setup he ticks "Different first page". Page 1's header becomes empty. Page 2 still says "Garden club minutes" and "2".
-3. **The letterhead.** He types "Riverside Garden Club" into the first-page header only. Page 2 does not gain that line.
-4. **No number on the cover.** The first-page footer has no number. Page 2 still shows "2".
-5. **Save.** He reopens the file. Page 1 is the letterhead without a number. Page 2 still has the running header and "2".
+1. **Two pages.** Ben opens "Minutes". Page setup already has the header "Garden club minutes" and page numbers on. Page 1 shows that header and "1 / 2". Page 2 repeats the header, and its footer says "2 / 2".
+2. **Different first page.** **Page setup** on the toolbar opens the dialog. He ticks "Different first page". The dialog says page 1 gets no number and page 2 shows 2. He clicks Apply. Page 1's header is empty. Page 2 still says "Garden club minutes" and "2 / 2".
+3. **One step back.** He unticks the box and clicks Apply. Page 1 shows "Garden club minutes" and "1 / 2" again.
+4. **The letterhead.** He ticks the box again and types "Riverside Garden Club" into the first-page header only. Page 2 does not gain that line.
+5. **No number on the cover.** The first-page footer has no number. Page 2 still shows "2 / 2".
+6. **Save.** He reopens the file. Page 1 is still the letterhead, with no number. Page 2 still has the running header and "2 / 2".
 
 ## Google Workspace benchmark
 
@@ -37,8 +38,21 @@ In Google Docs, Insert › Headers & footers, then "Different first page" ([Docs
 
 The first page is letterhead with no page number. The second page says "Garden club minutes" and "2".
 
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| One checkbox, in the Page setup dialog | Met | Video 0:09–0:12; the dialog hint says page 1 has no number and page 2 shows 2 |
+| Ticking clears page 1 and leaves page 2 | Met | Video 0:13–0:17; page 1's header is empty and page 2 still says "Garden club minutes" and "2 / 2" |
+| First-page header text stays off page 2 | Met | Video 0:28–0:31; page 1 says "Riverside Garden Club", page 2 still says "Garden club minutes" |
+| Page 1 has no number and page 2 shows 2 | Met | Video 0:33–0:35 and 0:42–0:43; page 2's footer reads "2 / 2" and page 1's footer is blank |
+| The choice and both headers survive reopen | Met | Video 0:39–0:43; `different-first-page.spec.ts` checks the saved file and the reopened pages |
+| Unticking restores the shared header in one step | Met | Video 0:19–0:23; unchecking and Apply puts "Garden club minutes" and "1 / 2" back on page 1 |
+
 ## Gaps and notes
 
-- Page setup applies one header, one footer, and one page-number choice to every page.
-- Do not rebuild page breaks, footnotes, or equations.
-- A Word round trip of the different-first-page flag is a bonus, not required for this story.
+- Headers and footers are still plain text. The letterhead here is a line of text, not a logo image.
+- Page numbers keep the existing "2 / 2" style. Page 1 omits its number, and page 2 does not restart at 1.
+- **File → Export DOCX** writes a Word title page: the first header and footer are separate, and the first footer has no page number. Importing a Word file still keeps one header and footer for the whole document.
+- HTML export still shows the shared header once, above the text, as in storyboard 07.
+- Different odd and even pages are not part of this story.

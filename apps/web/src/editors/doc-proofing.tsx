@@ -1,6 +1,6 @@
 import { useEditorState, type Editor } from "@tiptap/react";
 import type { EditorView } from "@tiptap/pm/view";
-import { TextSelection } from "@tiptap/pm/state";
+import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import type { JsonNode } from "@suiteleaf/core";
 import { X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
@@ -16,6 +16,15 @@ import {
   wordCountIsVisible,
   type ProofingSettings,
 } from "./doc-word-count";
+import {
+  changeAllTransaction,
+  checkOccurrence,
+  copiesOf,
+  ignoreOccurrence,
+  previewCopies,
+  type CopyPreview,
+} from "./doc-change-all";
+import { ChangeAllDialog } from "./doc-change-all-dialog";
 import {
   addToPersonalDictionary,
   flagWord,
@@ -87,6 +96,11 @@ export function useDocProofing(
   );
   const [choice, setChoice] = useState("");
   const [flagDraft, setFlagDraft] = useState("");
+  const [preview, setPreview] = useState<{
+    word: string;
+    replacement: string;
+    copies: CopyPreview[];
+  } | null>(null);
   const personalRef = useRef(personal);
   personalRef.current = personal;
   const snapshot = useEditorState({
@@ -95,11 +109,15 @@ export function useDocProofing(
       if (!current) return null;
       const json = current.getJSON() as JsonNode;
       const settings = readProofing(json);
-      const { from, to, empty } = current.state.selection;
+      const selection = current.state.selection;
+      const { from, to, empty } = selection;
+      // A selected photo is not a text selection. Counting it says "0 of N words".
+      const image =
+        selection instanceof NodeSelection && selection.node.type.name === "image";
       return {
         settings,
         counts: countDocument(json, settings),
-        selection: empty
+        selection: empty || image
           ? null
           : selectionSnapshot(
               current.state.doc,
@@ -238,6 +256,43 @@ export function useDocProofing(
     if (!editor || !issue || !choice.trim()) return;
     advance(replaceWord(editor, issue.from, issue.to, choice));
   };
+  const openChangeAll = (word: string, replacement: string) => {
+    if (!editor || !replacement.trim()) return;
+    const ignored = readProofing(editor.getJSON() as JsonNode).ignored;
+    const copies = previewCopies(
+      editor.state.doc,
+      copiesOf(editor.state.doc, word, personalRef.current, ignored),
+      replacement,
+    );
+    if (!copies.length) return;
+    setMenu(null);
+    setPreview({ word, replacement: replacement.trim(), copies });
+  };
+  const confirmChangeAll = () => {
+    if (!editor || !preview) return;
+    const ignored = readProofing(editor.getJSON() as JsonNode).ignored;
+    const ranges = copiesOf(editor.state.doc, preview.word, personalRef.current, ignored);
+    if (ranges.length)
+      editor.view.dispatch(changeAllTransaction(editor.state, ranges, preview.replacement));
+    setPreview(null);
+    if (dialog === "spelling") {
+      const found = misspelledRanges(editor.state.doc, personalRef.current, ignored);
+      setSession({ total: found.length, step: 1, after: 0 });
+    }
+  };
+  const ignoreThis = (from: number, to: number) => {
+    if (!editor) return;
+    let tr = ignoreOccurrence(editor.state, from, to);
+    tr = tr.setSelection(TextSelection.near(tr.doc.resolve(Math.min(to, tr.doc.content.size))));
+    editor.view.dispatch(tr);
+    setMenu(null);
+    if (dialog === "spelling") advance(to);
+  };
+  const checkThis = (from: number, to: number) => {
+    if (!editor) return;
+    editor.view.dispatch(checkOccurrence(editor.state, from, to));
+    setMenu(null);
+  };
   const ignoreIssue = () => {
     if (!editor || !issue) return;
     updateSettings(ignoreWord(settings, issue.word));
@@ -282,8 +337,8 @@ export function useDocProofing(
         role="menu"
         aria-label={`Spelling for ${menu.word}`}
         style={{
-          left: Math.min(menu.x, window.innerWidth - 240),
-          top: Math.min(menu.y, window.innerHeight - 280),
+          left: Math.max(8, Math.min(menu.x + 230, window.innerWidth - 248)),
+          top: Math.max(8, Math.min(menu.y - 24, window.innerHeight - 320)),
         }}
         onMouseDown={(event) => event.stopPropagation()}
         onKeyDown={(event) => {
@@ -305,51 +360,85 @@ export function useDocProofing(
           }
         }}
       >
-        {menu.suggestions.length ? (
-          menu.suggestions.map((suggestion, index) => (
+        {menu.kept ? (
+          <button
+            type="button"
+            role="menuitem"
+            className="menu-item"
+            autoFocus
+            onClick={() => checkThis(menu.from, menu.to)}
+          >
+            Check this one again
+          </button>
+        ) : (
+          <>
+            {menu.suggestions.length ? (
+              menu.suggestions.map((suggestion, index) => (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="menu-item"
+                  key={suggestion}
+                  autoFocus={index === 0}
+                  onClick={() => {
+                    if (editor) replaceWord(editor, menu.from, menu.to, suggestion);
+                    setMenu(null);
+                  }}
+                >
+                  {suggestion}
+                </button>
+              ))
+            ) : (
+              <div className="menu-item" aria-disabled="true">
+                No suggestions
+              </div>
+            )}
+            {menu.suggestions[0] &&
+            editor &&
+            copiesOf(editor.state.doc, menu.word, personal, settings.ignored).length > 1 ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="menu-item"
+                onClick={() => openChangeAll(menu.word, menu.suggestions[0]!)}
+              >
+                Change all to {menu.suggestions[0]}
+              </button>
+            ) : null}
+            <div className="menu-separator" role="separator" />
             <button
               type="button"
               role="menuitem"
               className="menu-item"
-              key={suggestion}
-              autoFocus={index === 0}
+              autoFocus={menu.suggestions.length === 0}
               onClick={() => {
-                if (editor) replaceWord(editor, menu.from, menu.to, suggestion);
+                updatePersonal(addToPersonalDictionary(personal, menu.word));
                 setMenu(null);
               }}
             >
-              {suggestion}
+              Add to dictionary
             </button>
-          ))
-        ) : (
-          <div className="menu-item" aria-disabled="true">
-            No suggestions
-          </div>
+            <button
+              type="button"
+              role="menuitem"
+              className="menu-item"
+              onClick={() => {
+                if (editor) updateSettings(ignoreWord(settings, menu.word));
+                setMenu(null);
+              }}
+            >
+              Ignore
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="menu-item"
+              onClick={() => ignoreThis(menu.from, menu.to)}
+            >
+              Ignore this one
+            </button>
+          </>
         )}
-        <div className="menu-separator" role="separator" />
-        <button
-          type="button"
-          role="menuitem"
-          className="menu-item"
-          autoFocus={menu.suggestions.length === 0}
-          onClick={() => {
-            updatePersonal(addToPersonalDictionary(personal, menu.word));
-            setMenu(null);
-          }}
-        >
-          Add to dictionary
-        </button>
-        <button
-          type="button"
-          role="menuitem"
-          className="menu-item"
-          onClick={() => {
-            if (editor) updateSettings(ignoreWord(settings, menu.word));
-            setMenu(null);
-          }}
-        >
-          Ignore
-        </button>
       </div>
     </div>
   ) : null;
@@ -469,7 +558,7 @@ export function useDocProofing(
     ) : null;
 
   const spellingDialog =
-    dialog === "spelling" && session ? (
+    !preview && dialog === "spelling" && session ? (
       <div className="gdocs-modal-overlay spelling-layer">
         <form
           className="gdocs-dialog spelling-panel"
@@ -526,13 +615,34 @@ export function useDocProofing(
               ) : (
                 <p className="word-count-hint">No suggestion. Type a correction, or add the word to your dictionary.</p>
               )}
-              <p className="word-count-hint">Enter changes the word. Tab to Ignore or Add to dictionary.</p>
+              <p className="word-count-hint">
+                Enter changes this copy. Change all lists every copy before it edits them.
+              </p>
               <div className="spelling-actions">
                 <button type="submit" className="dialog-primary-btn" disabled={!choice.trim()}>
                   Change
                 </button>
+                <button
+                  type="button"
+                  className="dialog-text-btn"
+                  disabled={
+                    !choice.trim() ||
+                    !editor ||
+                    copiesOf(editor.state.doc, issue.word, personal, settings.ignored).length < 1
+                  }
+                  onClick={() => openChangeAll(issue.word, choice)}
+                >
+                  Change all
+                </button>
                 <button type="button" className="dialog-text-btn" onClick={ignoreIssue}>
                   Ignore
+                </button>
+                <button
+                  type="button"
+                  className="dialog-text-btn"
+                  onClick={() => ignoreThis(issue.from, issue.to)}
+                >
+                  Ignore this one
                 </button>
                 <button type="button" className="dialog-text-btn" onClick={addIssue}>
                   Add to dictionary
@@ -685,6 +795,15 @@ export function useDocProofing(
       {countDialog}
       {spellingDialog}
       {dictionaryDialog}
+      {preview ? (
+        <ChangeAllDialog
+          word={preview.word}
+          replacement={preview.replacement}
+          copies={preview.copies}
+          onConfirm={confirmChangeAll}
+          onCancel={() => setPreview(null)}
+        />
+      ) : null}
     </>
   );
 
