@@ -754,13 +754,21 @@ export function SheetSpelling({
   issuesRef.current = issues;
   const { index, restart } = useSpellCursor(issues.length, open);
   const issue = open && issues.length ? issues[index] : null;
+  const focusedKey = useRef<string | null>(null);
 
-  useEffect(() => {
-    if (preview || !open || !issue) return;
+  useLayoutEffect(() => {
+    // Focus once per issue, before paint. A later rescan rebuilds the issue
+    // object, and focusing again would undo a name-box selection.
+    if (preview || !open || !issue) {
+      if (!open || preview) focusedKey.current = null;
+      return;
+    }
+    if (focusedKey.current === issue.key) return;
+    focusedKey.current = issue.key;
     focusSheetIssue(bookRef.current, issue);
   }, [open, issue, preview, bookRef]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const first = preview?.cells[0];
     if (!first) return;
     focusSheetIssue(bookRef.current, first);
