@@ -73,5 +73,5 @@ Known pain points:
 - The recording does not open Microsoft Word. The exported file is checked for `w:ins`, `w:del`, and `w:rPrChange`, and a returned file is built by accepting the deletion and adding the manager's insertion.
 - Heading-level suggestions are stored, shown, and exported as `w:pPrChange`. This story uses bold; the heading case is in `tests/suggestions.test.ts`.
 - A file imported with tracked changes opens in Suggesting, so the next keystroke stays a proposal.
-- Suggestion cards use the right margin. Comments (storyboard [29](29-comment-on-a-document.md)) are not built here.
+- Suggestion cards and comment cards sit in separate margin columns, so a document can show both without one covering the other.
 - There is still no Viewing mode. In single-node mode it would be a "read without accidentally typing" switch, and it is the view-only state cluster viewers need (storyboard [27](27-share-a-document-with-a-teammate.md)).

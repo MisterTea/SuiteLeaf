@@ -52,10 +52,8 @@ Known pain points:
 
 ## Gaps and notes
 
-- **Word count, spelling, and remove duplicates are named in search and explained, not built.** Tools › Word count, spelling, and Data › Remove duplicates belong to storyboards [34](34-count-words-and-check-spelling.md) and [38](38-clean-up-messy-data.md). Search says SuiteLeaf doesn't have them yet.
-- **Some Slides and Sheets menu items are still owned elsewhere.** Storyboard [31](31-rearrange-a-deck.md) still owns Insert › Text box, Image, and Shape, Format › Text, and Edit › Cut, Copy, and Paste. Storyboard [39](39-insert-a-function-with-help.md) still owns Insert › Function and the Σ button. Those items stay in the menus and search lists them as not available yet. Slide › Duplicate, Delete, Undo, and Redo are wired to the editor functions that already existed.
-- **Docs comments are not in this app yet.** Search for "comment" in Docs says so. Sheets › Cell comment is a real command.
-- **Ctrl+Alt+M (and F10) focuses the menu bar** instead of Alt+letter, which collides with the browser. Arrow keys move between menus and items.
+- **Word count, spelling, comments, remove duplicates, and Insert function run from search.** Typing “count” opens Word count. Spelling, document comments, Remove duplicates, Insert function, footnotes, the table of contents, Freeze, and the slide duplicate, delete, and insert commands run the real editors. A sheet Link with no selection still says why it cannot run.
+- **Ctrl+Alt+M focuses the menu bar on a Mac, and F10 does it everywhere.** Cmd+Alt+M comments on a document. On other keyboards those two shortcuts share Ctrl+Alt+M, and commenting wins while the caret is in the document. Arrow keys move between menus and items.
 
 ## Result
 
@@ -63,8 +61,8 @@ Known pain points:
 | --- | --- | --- |
 | 1. Cmd/Ctrl+/ and Help › Keyboard shortcuts open a searchable dialog in Docs, Sheets, and Slides, listing menu shortcuts with platform key names | Met | Video ~0:19 (Docs, ⌘⇧X), ~0:36 (Sheets formulas), ~0:42 (Slides slideshow and filmstrip). Test `36-find-any-command`. |
 | 2. Option/Alt+/, Help › Search the menus, and the Sheets Menus pill run a command by name | Met | Video ~0:08 strike, ~0:32 freeze, ~0:39 dup. Browser test `command search runs strikethrough and explains commands that cannot run`. |
-| 3. Synonyms and Google names find the command, or say it isn't in SuiteLeaf yet | Met | Video ~0:12 “count” → Word count (not yet), “page numbers” → Page setup; ~0:32 “freeze”; ~0:39 “dup”. Vitest `command search`. |
-| 4. Commands that can't run are listed greyed, with the reason | Met | Video ~0:18 Insert › Link, “Select text to add a link”. |
-| 5. Listed shortcuts work; inert Help and Extensions items are gone | Met for the shortcuts this storyboard owns | Video ~0:48 ⌘D duplicates a slide; ~0:51 ⌘⇧X strikes “The”. Cut, copy, paste, text formatting in Slides, spelling, and Insert Function remain for storyboards 31, 34, and 39. |
-| 6. An empty search lists the last commands first | Met | Video ~0:45 Recent, Slide › Duplicate slide first. |
-| 7. One shortcut focuses the menu bar; arrows move; Enter runs an item | Met | Video ~0:24 Ctrl+Alt+M, then ArrowRight and ArrowDown open Edit. |
+| 3. Synonyms and Google names find the command, or say it isn't in SuiteLeaf yet | Met | Video: “count” opens Word count; “page numbers” opens Page setup; “freeze” and “dup” run. Vitest `command search` and `runs a real word count command`. |
+| 4. Commands that can't run are listed greyed, with the reason | Met | Video: Insert › Link, “Select text to add a link”. |
+| 5. Listed shortcuts work; inert Help and Extensions items are gone | Met | Video: ⌘D duplicates a slide; ⌘⇧X strikes “The”. Slide insert, spelling, word count, and Insert function run. A sheet Link with no selection stays listed with a reason. |
+| 6. An empty search lists the last commands first | Met | Video: Recent, Slide › Duplicate slide first. |
+| 7. One shortcut focuses the menu bar; arrows move; Enter runs an item | Met | Video: Ctrl+Alt+M, then ArrowRight and ArrowDown open Edit. |
