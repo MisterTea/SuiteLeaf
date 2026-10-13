@@ -16,6 +16,7 @@ export type SlideCommand =
   | { type: "new-slide" }
   | { type: "bold" }
   | { type: "italic" }
+  | { type: "underline" }
   | { type: "move"; where: MoveWhere };
 
 /** Where the key event landed. Title and other fields keep their own keys. */
@@ -47,6 +48,7 @@ export function commandFromKey(
   if (typing === "notes") return null;
   if (mod && key === "b" && !e.shiftKey) return { type: "bold" };
   if (mod && key === "i" && !e.shiftKey) return { type: "italic" };
+  if (mod && key === "u" && !e.shiftKey) return { type: "underline" };
   if (typing === "slide-text") return null;
   if (mod && key === "d" && !e.repeat) return { type: "duplicate" };
   if (mod && key === "c" && !e.shiftKey) return { type: "copy" };
