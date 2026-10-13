@@ -4444,6 +4444,7 @@ tr.doc-page-spacer { display: table-row; }
 tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; background: transparent; }
 .manual-page-break { height: 0; margin: 0; }
 .page-furniture { position: absolute; inset: 0; pointer-events: none; color: #555; font: 10pt Arial, sans-serif; }
+.paginated-paper.is-editing-furniture .document-content { opacity: 0.45; }
 .page-header, .page-footer, .page-header *, .page-footer * { pointer-events: auto; }
 .page-furniture-page { position: absolute; left: var(--page-margin-left, var(--page-margin)); right: var(--page-margin-right, var(--page-margin)); top: calc(var(--page-index) * var(--page-stride)); height: var(--page-height); }
 .page-header { position: absolute; top: var(--header-from-edge, calc(var(--page-margin-top, var(--page-margin)) / 2 - 8px)); line-height: 16px; white-space: pre-wrap; z-index: 2; }
