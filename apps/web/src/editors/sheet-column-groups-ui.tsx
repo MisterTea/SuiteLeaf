@@ -357,8 +357,17 @@ export default function SheetColumnGroups({
       const origin = gridCanvas(host);
       const hostBox = host.getBoundingClientRect();
       const snap = worksheetOf(engine, workbook.getId(), current.sheetId)?.getSnapshot?.();
-      const scrollLeft = Number(snap?.scrollLeft) || 0;
-      const scrollTop = Number(snap?.scrollTop) || 0;
+      let scrollLeft = Number(snap?.scrollLeft) || 0;
+      let scrollTop = Number(snap?.scrollTop) || 0;
+      try {
+        const state = facade.getScrollState?.();
+        if (state) {
+          scrollLeft = Number(state.offsetX) || scrollLeft;
+          scrollTop = Number(state.offsetY) || scrollTop;
+        }
+      } catch {
+        // The snapshot scroll is enough when the facade has no scroll state yet.
+      }
       const zoom = Number(snap?.zoomRatio) || 1;
       const nextButtons: Button[] = [];
       const nextLines: Line[] = [];
@@ -414,18 +423,22 @@ export default function SheetColumnGroups({
             .map((column) => place(0, column))
             .filter((rect): rect is SceneRect => !!rect);
           if (placed.length) {
+            const visibleRect =
+              placed.find(
+                (rect) => rect.right > hostBox.left + 24 && rect.left < hostBox.right - 24,
+              ) ?? placed[0]!;
             const lineLeft = Math.max(placed[0]!.left, hostBox.left + 4);
             const lineRight = Math.min(
               placed[placed.length - 1]!.right,
               hostBox.right - 8,
             );
-            anchorLeft = placed[0]!.left + 6;
-            anchorTop = placed[0]!.top - size - 4;
+            anchorLeft = visibleRect.left + 8;
+            anchorTop = visibleRect.top - size;
             if (lineRight - lineLeft > 8)
               nextLines.push({
                 key: group.id,
                 left: px(lineLeft),
-                top: px(placed[0]!.top - 2),
+                top: px(visibleRect.top - 1),
                 width: px(lineRight - lineLeft),
               });
           }
@@ -433,7 +446,7 @@ export default function SheetColumnGroups({
           const neighbor = place(0, group.startColumn - 1);
           if (neighbor) {
             anchorLeft = neighbor.right - size - 2;
-            anchorTop = neighbor.top - size - 4;
+            anchorTop = neighbor.top - size;
           }
         }
         if (anchorLeft && onScreen(anchorLeft, anchorTop)) {
