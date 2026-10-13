@@ -112,7 +112,11 @@ test("17-review-a-budget-with-notes-and-comments-ai", async ({ page, browser, ba
   await expect(sidebar.getByText("Alex", { exact: true }), saved).toBeVisible();
   await expect(sidebar.getByText(/D3/).first(), saved).toBeVisible();
   await beat(page, 1800);
-  await caption(page, "The file Gemma downloaded carries the note and the signed comment. Alex sends it to Jordan.", 2200);
+  await caption(
+    page,
+    `The file Gemma ${electronMode ? "saved" : "downloaded"} carries the note and the signed comment. Alex sends it to Jordan.`,
+    2200,
+  );
   await caption(page, "Jordan opens the copy on their own computer, replies, and sends it back.", 300);
 
   // Jordan works on their own computer; only Alex's screen is recorded.
@@ -142,10 +146,14 @@ test("17-review-a-budget-with-notes-and-comments-ai", async ({ page, browser, ba
     mimeType: "application/json",
     buffer: Buffer.from(JSON.stringify(reply)),
   });
-  await caption(page, "SuiteLeaf notices the budget is already here. Alex keeps both, to compare.", 300);
-  await beat(page, 1200);
-  await page.getByRole("dialog").getByRole("button", { name: "Keep both" }).click();
+  if (!electronMode) {
+    // The desktop app opens a returned file as a copy without asking.
+    await caption(page, "SuiteLeaf notices the budget is already here. Alex keeps both, to compare.", 300);
+    await beat(page, 1200);
+    await page.getByRole("dialog").getByRole("button", { name: "Keep both" }).click();
+  }
   await ready(page);
+  await expect(page.getByLabel("File title")).toHaveValue("Quarterly studio budget copy");
   await caption(page, "Alex opens Jordan's copy. The reply sits under the question, each signed by its writer.", 300);
   await page.getByRole("button", { name: "Comments", exact: true }).click();
   await expect(sidebar.getByText("Yes, Research will take the $600. Thanks!")).toBeVisible();
