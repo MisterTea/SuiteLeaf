@@ -38,18 +38,8 @@ In Google Docs, Wrap text is an image menu with Inline, Wrap text, and Break tex
 
 The logo sits at the left of "Dear friend,". Lena can move it to the right or back onto its own line without deleting it.
 
-## Result
-
-| Criterion | Met | Evidence |
-| --- | --- | --- |
-| Wrap text › Left, Right, and Break text are on the selected picture, and they are not the corner handles | Met | Video 0:05 and 0:07; `wrap text puts a picture beside the paragraph and keeps corner resize` |
-| Left puts the picture on the left and the paragraph beside it | Met | Video 0:09 |
-| Right mirrors that. Break text puts the picture on its own line | Met | Video 0:11 and 0:12 |
-| A square-wrapped Word picture opens beside the text, and the import note does not say floating placement was dropped | Met | Video 0:15 and 0:17; `a square-wrapped Word picture opens beside the text` |
-| The choice survives save and reopen in a SuiteLeaf file | Met | Video 0:21; the same browser test downloads and reopens `"wrap":"left"` |
-| A picture with no wrap still opens on its own line | Met | Video 0:05; the Word test opens an inline picture underneath the greeting |
-
 ## Gaps and notes
 
-- A picture set behind or in front of the text still gets the floating-placement note. Square wrap is kept, and so are tight and through.
-- The alt-text card can sit across the toolbar when the logo is at the top of the page.
+- Every imported picture becomes a block image.
+- The import warning still mentions floating placement.
+- Do not rebuild page size, crop, or corner resize except to keep them working on a wrapped picture.

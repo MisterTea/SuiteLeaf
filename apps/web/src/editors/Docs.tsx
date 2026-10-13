@@ -12,8 +12,7 @@ import StarterKit from "@tiptap/starter-kit";
 import { TextStyleKit } from "@tiptap/extension-text-style";
 import Highlight from "@tiptap/extension-highlight";
 import TextAlign from "@tiptap/extension-text-align";
-import { wrappedImage } from "./doc-image-crop";
-import { inlineImage } from "./doc-image-inline";
+import { croppableImage } from "./doc-image-crop";
 import { TableKit } from "@tiptap/extension-table";
 import Superscript from "@tiptap/extension-superscript";
 import Subscript from "@tiptap/extension-subscript";
@@ -95,6 +94,8 @@ import {
 import { DocumentPagination, PageBreak } from "./doc-pagination";
 import { Grammar } from "./doc-grammar";
 import { useDocGrammar } from "./doc-grammar-ui";
+import { focusTabStop, TabCharacter, TabStops } from "./doc-tab-stops";
+import { TabStopBar } from "./doc-tab-stops-ui";
 import { Proofing } from "./doc-spelling";
 import { useDocProofing, type ProofingContext } from "./doc-proofing";
 import { DocImageAlt } from "./doc-image-alt-ui";
@@ -103,27 +104,33 @@ import { documentCitations } from "./doc-citations";
 import { DocCitations } from "./doc-citations-panel";
 import { Equation, EquationDialog } from "./doc-equations";
 import {
+  bodyEdgeInsets,
   documentHtml,
   documentPageSettings,
-  gutterAccepted,
-  marginsValid,
+  edgeDistancesValid,
   pageDimensions,
-  pageMarginVars,
+  pageMarginsValid,
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
-import { PageSetupFields } from "./page-setup";
-import { PageFurniture } from "./doc-header-editor";
+import { PageFurniture, PageSetupFields } from "./page-setup";
+import { ArabicNumberStart, ArabicStartControl } from "./doc-arabic-start";
 import { paragraphLineSpacing } from "./doc-line-spacing";
 import { LineSpacingControl } from "./doc-line-spacing-ui";
-import { pageSetupToSave } from "./doc-watermark";
+import { paragraphSpacing } from "./doc-paragraph-spacing";
+import { paragraphIndent } from "./doc-paragraph-indent";
+import { DocWatermarkField, pageSetupToSave } from "./doc-watermark";
 import { columnLayout } from "./doc-columns";
-import { GutterField, PageGutterBands } from "./page-gutter";
-import { PageMarginFields } from "./page-margins";
+import { PageMarginFields } from "./page-setup-margins";
+import { HeaderEdgeFields } from "./header-edge";
+import { KeepWithNext, KeepWithNextControl } from "./doc-keep-next";
+import { DontLeaveOneLineControl, WidowControl } from "./doc-widow-control";
+import { KeepLines, KeepLinesTogetherControl } from "./doc-keep-lines";
 
 export const extensions: Extensions = [
   DocumentPagination,
   PageBreak,
   columnLayout,
+  ArabicNumberStart,
   ...documentNotes,
   ...documentCitations,
   StarterKit.configure({
@@ -133,8 +140,12 @@ export const extensions: Extensions = [
   Highlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ["heading", "paragraph"] }),
   paragraphLineSpacing,
-  wrappedImage,
-  inlineImage,
+  paragraphSpacing,
+  paragraphIndent,
+  KeepWithNext,
+  WidowControl,
+  KeepLines,
+  croppableImage,
   TableKit.configure({ table: { resizable: true } }),
   CharacterCount,
   DocumentSearchHighlight,
@@ -145,6 +156,8 @@ export const extensions: Extensions = [
   Superscript,
   Subscript,
   Equation,
+  TabCharacter,
+  TabStops,
   Extension.create({
     name: "suiteleafStrikeShortcut",
     addKeyboardShortcuts() {
@@ -262,6 +275,7 @@ export default function Docs({
   const grammarContext = useRef<ProofingContext>(() => false);
   const [activeHeading, setActiveHeading] = useState<number | null>(null);
   const [pageCount, setPageCount] = useState(1);
+  const [arabicPage, setArabicPage] = useState<number | null>(null);
   const [pageSetupOpen, setPageSetupOpen] = useState(false);
   const [equationOpen, setEquationOpen] = useState(false);
   const [pageDraft, setPageDraft] = useState<PageSettings>(() =>
@@ -455,23 +469,13 @@ export default function Docs({
       },
       handlePaste: (_view, event) => {
         if (readOnlyRef.current) return true;
-        const html = event.clipboardData?.getData("text/html");
-        if (!html) return false;
-        const content = importHTML(html);
-        const blocks = content.content ?? [];
-        const only = blocks.length === 1 ? blocks[0] : null;
-        const picture =
-          only?.type === "inlineImage"
-            ? only
-            : only?.type === "paragraph" &&
-                only.content?.length === 1 &&
-                only.content[0].type === "inlineImage"
-              ? only.content[0]
-              : null;
-        // A copied in-line picture is one node. Inserting the wrapped paragraph
-        // would split the sentence and leave the picture on its own line.
-        editor?.commands.insertContent(picture ?? content);
-        return true;
+        if (event.clipboardData?.getData("text/html")) {
+          editor?.commands.insertContent(
+            importHTML(event.clipboardData.getData("text/html")),
+          );
+          return true;
+        }
+        return false;
       },
       // Internal "#anchor" links scroll to the heading that owns that slug.
       handleDOMEvents: {
@@ -562,7 +566,9 @@ export default function Docs({
         },
       },
     },
-    onUpdate: ({ editor }) => {
+    onUpdate: ({ editor, transaction }) => {
+      if (!transaction.docChanged || transaction.getMeta("addToHistory") === false)
+        return;
       if (!readOnlyRef.current) changes.current(editor.getJSON() as JsonNode);
     },
   });
@@ -898,14 +904,19 @@ export default function Docs({
           editor.chain().focus().toggleOrderedList().run(),
         tableActions,
         openSuggestions: () => suggestionApi.current?.openReview(),
+        focusTabStop,
       },
     });
   }, [editor, file.title, onActions, proofing.openWordCount, proofing.openSpelling, proofing.openDictionary, grammar.openGrammar, grammar.openIgnoredGrammar]);
 
   useEffect(() => {
     if (!editor) return;
-    const pages = (event: Event) =>
+    const pages = (event: Event) => {
       setPageCount((event as CustomEvent<number>).detail);
+      const raw = editor.view.dom.dataset.arabicPage ?? "";
+      const start = raw === "" ? Number.NaN : Number(raw);
+      setArabicPage(Number.isInteger(start) && start >= 0 ? start : null);
+    };
     editor.view.dom.addEventListener("suiteleaf-pages", pages);
     return () => editor.view.dom.removeEventListener("suiteleaf-pages", pages);
   }, [editor]);
@@ -1038,12 +1049,13 @@ export default function Docs({
 
   const pageSettings = documentPageSettings(editor.getJSON() as JsonNode);
   const pageDraftValid =
-    marginsValid(pageDraft) &&
-    gutterAccepted(pageDraft.gutter) &&
+    pageMarginsValid(pageDraft) &&
+    edgeDistancesValid(pageDraft) &&
     Number.isInteger(pageDraft.pageNumberStart) &&
     pageDraft.pageNumberStart >= 1 &&
     pageDraft.pageNumberStart <= 9999;
   const dimensions = pageDimensions(pageSettings);
+  const edgeInsets = bodyEdgeInsets(pageSettings, dimensions.width);
   const requestedZoom =
     zoomLevel === "Fit" ? 1 : Number.parseInt(zoomLevel, 10) / 100;
   const pageZoom = commentGutter || citationsOpen
@@ -1455,7 +1467,6 @@ export default function Docs({
             role="dialog"
             aria-modal="true"
             aria-label="Page setup"
-            noValidate
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
               if (e.key === "Escape") closePageSetup();
@@ -1521,14 +1532,17 @@ export default function Docs({
                 ))}
               </fieldset>
               <PageMarginFields draft={pageDraft} onChange={setPageDraft} />
-              <GutterField
-                px={pageDraft.gutter}
-                onPx={(gutter) => setPageDraft({ ...pageDraft, gutter })}
-              />
+              <HeaderEdgeFields draft={pageDraft} onChange={setPageDraft} />
               <PageSetupFields
                 draft={pageDraft}
                 pageCount={pageCount}
                 onChange={setPageDraft}
+              />
+              <DocWatermarkField
+                value={pageDraft.watermark}
+                onChange={(watermark) =>
+                  setPageDraft({ ...pageDraft, watermark })
+                }
               />
             </div>
             <div className="dialog-footer">
@@ -1968,6 +1982,7 @@ export default function Docs({
         </div>
       ) : null}
 
+      <TabStopBar editor={editor} readOnly={readOnly} />
       <div
         className={`document-stage${commentGutter ? " with-comments" : ""}${citationsOpen ? " with-citations" : ""}`}
         ref={documentStage}
@@ -2009,7 +2024,9 @@ export default function Docs({
               <span>Headings you add to the document will appear here.</span>
             </div>
           )}
+          <ArabicStartControl editor={editor} readOnly={readOnly} />
         </aside>
+        <ArabicStartControl editor={editor} readOnly={readOnly} phone />
         <div
           className="paper-container"
           ref={paperContainer}
@@ -2027,8 +2044,15 @@ export default function Docs({
               {
                 "--page-width": `${dimensions.width}px`,
                 "--page-height": `${dimensions.height}px`,
-                ...pageMarginVars(pageSettings),
-                "--page-gutter": `${pageSettings.gutter}px`,
+                "--page-margin": `${pageSettings.marginTop}px`,
+                "--page-margin-top": `${pageSettings.marginTop}px`,
+                "--page-margin-right": `${pageSettings.marginRight}px`,
+                "--page-margin-bottom": `${pageSettings.marginBottom}px`,
+                "--page-margin-left": `${pageSettings.marginLeft}px`,
+                "--header-from-edge": `${pageSettings.headerFromEdge}px`,
+                "--footer-from-edge": `${pageSettings.footerFromEdge}px`,
+                "--body-inset-top": `${edgeInsets.top}px`,
+                "--body-inset-bottom": `${edgeInsets.bottom}px`,
                 "--page-stride": `${dimensions.height + 24}px`,
                 minHeight: `${pageCount * dimensions.height + (pageCount - 1) * 24}px`,
                 // zoom: 1 still makes WebKit a zoom container, and then a
@@ -2037,13 +2061,15 @@ export default function Docs({
               } as CSSProperties
             }
           >
-            <PageGutterBands settings={pageSettings} pageCount={pageCount} />
             <PageFurniture
-              editor={editor}
+              settings={pageSettings}
               pageCount={pageCount}
-              readOnly={readOnly}
+              arabicStart={arabicPage}
             />
             <EditorContent editor={editor} />
+            <KeepWithNextControl editor={editor} readOnly={readOnly} />
+            <DontLeaveOneLineControl editor={editor} readOnly={readOnly} />
+            <KeepLinesTogetherControl editor={editor} readOnly={readOnly} />
           </div>
         </div>
         <DocComments

@@ -85,4 +85,66 @@ describe("page number Word export", () => {
     expect(numbered.some((xml) => xml.includes("Committee draft"))).toBe(true);
     expect(numbered.some((xml) => xml.includes("Page "))).toBe(true);
   });
+  it("writes lowercase roman before a heading and arabic 1 from that heading", async () => {
+    const file = createFile("doc", "Field report");
+    if (file.kind !== "doc") throw new Error();
+    file.content = {
+      type: "doc",
+      attrs: {
+        pageSettings: {
+          footer: "Draft",
+          pageNumbers: true,
+          pageNumberFormat: "roman",
+          pageNumberPosition: "bottom-center",
+          pageNumberPositionSet: true,
+        },
+      },
+      content: [
+        {
+          type: "heading",
+          attrs: { level: 1 },
+          content: [{ type: "text", text: "Contents" }],
+        },
+        { type: "paragraph", content: [{ type: "text", text: "Maps." }] },
+        { type: "pageBreak" },
+        {
+          type: "heading",
+          attrs: { level: 1 },
+          content: [{ type: "text", text: "Figures" }],
+        },
+        { type: "pageBreak" },
+        {
+          type: "heading",
+          attrs: { level: 1, startArabic: true },
+          content: [{ type: "text", text: "Chapter 1" }],
+        },
+        { type: "paragraph", content: [{ type: "text", text: "The survey." }] },
+      ],
+    };
+    const zip = await JSZip.loadAsync(await exportDocx(file));
+    const doc = await zip.file("word/document.xml")!.async("string");
+    expect(doc).toContain('w:fmt="lowerRoman"');
+    expect(doc).toContain('w:start="1"');
+    expect(doc).toContain('w:fmt="decimal"');
+    expect(doc).toContain('w:val="nextPage"');
+    const chapter = doc.indexOf("Chapter 1");
+    expect(doc.indexOf("Figures")).toBeGreaterThan(0);
+    expect(doc.indexOf("Figures")).toBeLessThan(chapter);
+    expect(doc.indexOf('w:fmt="lowerRoman"')).toBeLessThan(chapter);
+    expect(doc.indexOf('w:fmt="decimal"')).toBeGreaterThan(chapter);
+    const breaks = doc.match(/w:pageBreakBefore/g) ?? [];
+    expect(breaks).toHaveLength(1);
+    const footers = await Promise.all(
+      Object.keys(zip.files)
+        .filter((name) => /word\/footer\d+\.xml$/.test(name))
+        .map((name) => zip.file(name)!.async("string")),
+    );
+    expect(footers.length).toBeGreaterThan(1);
+    for (const footer of footers) {
+      expect(footer).toContain("Draft");
+      expect(footer).toMatch(/PAGE(?!S)/);
+      expect(footer).not.toContain("Page ");
+      expect(footer).not.toContain("NUMPAGES");
+    }
+  });
 });

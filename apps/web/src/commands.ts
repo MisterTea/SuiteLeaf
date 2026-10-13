@@ -62,10 +62,6 @@ export const COMMAND_SYNONYMS: Record<string, string[]> = {
     "page number",
     "page setup",
     "margins",
-    "top margin",
-    "bottom margin",
-    "left margin",
-    "right margin",
     "header",
     "footer",
     "different first page",
@@ -74,9 +70,8 @@ export const COMMAND_SYNONYMS: Record<string, string[]> = {
     "page number position",
     "watermark",
     "draft",
-    "gutter",
-    "binding",
-    "staple",
+    "header from edge",
+    "footer from edge",
   ],
   "Cell comment": ["comment", "comments", "note", "annotation"],
   "1 row": [
@@ -126,6 +121,7 @@ const PARAGRAPH_LABELS = new Set([
   "Bulleted list",
   "Numbered list",
   "Page break",
+  "Tab stop",
 ]);
 
 export function commandGroup(path: string[], label: string, explicit?: string) {

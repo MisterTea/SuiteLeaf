@@ -39,21 +39,8 @@ In Google Docs, Insert › Image puts the picture inline by default, in the line
 
 "Meet at the" photo "stall on Saturday" reads as one sentence. The photo is not on a line by itself.
 
-## Result
-
-| Criterion | Met | Evidence |
-| --- | --- | --- |
-| In line is a choice on the selected picture, next to Left, Right, and Break text | Met | Video 0:06; `in line puts a picture in the sentence and cut and paste keeps the line` |
-| The picture sits in the sentence. The words before and after stay on that line when they fit | Met | Video 0:08 |
-| A newly in-line picture is about the height of the surrounding text, not the full page width | Met | Video 0:08; the same browser test checks height at most 36px and width under 120px |
-| Corner resize changes that height and the line grows or shrinks with it | Met | Video 0:11 |
-| Cut and paste moves the picture without leaving an empty line | Met | Video 0:14 and 0:18 |
-| A Word inline picture opens in the sentence | Met | Video 0:21; `opens a Word inline picture in the middle of the sentence` |
-| The choice survives save and reopen | Met | Video 0:25; `a Word inline picture opens in the sentence and survives save` |
-
 ## Gaps and notes
 
-- A picture with no wrap, and a Word picture that is the only thing in its paragraph, still opens on its own line. Left, Right, and Break text are unchanged.
-- Choosing In line shrinks a large picture to about one line of text. A Word inline picture keeps the size it had in Word, so a wide one can make that line tall.
-- Insert image still starts on its own line. In line is the step that joins it to the sentence.
-- The alt-text card sits at the top right while an in-line picture is selected, so it does not cover the sentence.
+- Storyboard 70's picture with no wrap is still a block on its own line.
+- Do not remove Left, Right, or Break text.
+- Do not rebuild crop or page size.

@@ -1,10 +1,10 @@
 .gdocs-dialog.page-setup-dialog {
   width: min(640px, calc(100vw - 32px));
-  max-height: calc(100vh - 32px);
+  max-height: calc(100vh - 180px);
   overflow: hidden;
 }
 .page-setup-dialog .dialog-body {
-  max-height: calc(100vh - 168px);
+  max-height: calc(100vh - 300px);
   overflow: auto;
   min-height: 0;
   padding-right: 4px;
@@ -117,19 +117,9 @@
   color: #80868b;
   font-weight: 500;
 }
-.page-setup-check.page-setup-numbers {
-  grid-template-columns: minmax(0, 1fr) minmax(168px, 220px);
-  align-items: start;
-}
-.page-setup-check.page-setup-numbers > label:not(.page-number-cover) {
-  grid-column: 1;
-  grid-row: 1;
-  align-self: center;
+.page-setup-check.page-setup-numbers > label {
+  grid-column: 1 / -1;
   font-weight: 600;
-}
-.page-setup-check.page-setup-numbers > .doc-watermark-field {
-  grid-column: 2;
-  grid-row: 1;
 }
 .page-setup-check.page-setup-numbers > .page-setup-hint {
   grid-column: 1 / -1;
@@ -201,7 +191,6 @@
 }
 .page-setup-check.page-setup-numbers > .page-number-cover {
   grid-column: 1 / -1;
-  grid-row: auto;
   display: flex;
   gap: 8px;
   align-items: flex-start;
@@ -258,8 +247,7 @@
 .page-number-top {
   position: absolute;
   right: 0;
-  top: calc(var(--page-margin) / 2 - 10px);
-  z-index: 2;
+  top: var(--header-from-edge, calc(var(--page-margin) / 2 - 10px));
 }
 .page-number {
   color: #174ea6;
@@ -272,14 +260,8 @@
   white-space: nowrap;
 }
 @media (max-width: 700px) {
-  .page-setup-check.page-setup-numbers,
   .page-setup-variants,
   .page-setup-preview { grid-template-columns: 1fr; }
-  .page-setup-check.page-setup-numbers > label,
-  .page-setup-check.page-setup-numbers > .doc-watermark-field {
-    grid-column: 1;
-    grid-row: auto;
-  }
   .page-setup-fields > label,
   .page-setup-check,
   .page-setup-orientation {
@@ -288,15 +270,4 @@
   .page-setup-check label,
   .page-setup-hint { grid-column: 1; }
   .page-setup-orientation legend { float: none; }
-}
-
-.page-furniture-page[data-letterhead="true"] .page-header {
-  border-bottom: 1px solid #bdc1c6;
-  padding-bottom: 4px;
-}
-.page-furniture-page[data-letterhead="true"] .page-header-text {
-  color: #202124;
-  font-size: 13pt;
-  font-weight: 600;
-  letter-spacing: 0.01em;
 }

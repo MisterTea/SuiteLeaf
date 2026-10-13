@@ -5,8 +5,7 @@ import StarterKit from "@tiptap/starter-kit";
 import { TextStyleKit } from "@tiptap/extension-text-style";
 import Highlight from "@tiptap/extension-highlight";
 import TextAlign from "@tiptap/extension-text-align";
-import { wrappedImage } from "./doc-image-crop";
-import { inlineImage } from "./doc-image-inline";
+import { croppableImage } from "./doc-image-crop";
 import { TableKit } from "@tiptap/extension-table";
 import Superscript from "@tiptap/extension-superscript";
 import Subscript from "@tiptap/extension-subscript";
@@ -62,8 +61,7 @@ const previewExtensions: Extensions = [
   TextStyleKit,
   Highlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ["heading", "paragraph"] }),
-  wrappedImage,
-  inlineImage,
+  croppableImage,
   TableKit,
   Superscript,
   Subscript,
@@ -317,9 +315,34 @@ export function VersionHistory({
           const step = historyPreviewFor(previous, before, "previous");
           if (!step) return;
           setViewSummary(step.summary);
+          setChangeCount(step.count);
+          setChangeUnit(step.unit);
           preview.current(step.preview);
           return;
         }
+        if (before.kind === "doc" && current.kind === "doc") {
+          const againstCurrent = compareParagraphs(before.content, current.content);
+          setChangeCount(againstCurrent.changedParagraphs);
+          setChangeUnit("paragraph");
+          const source = selected.name
+            ? `"${selected.name}"`
+            : versionWhen(selected.createdAt);
+          const controls = againstCurrent.offers.map((offer) =>
+            offer
+              ? { key: offer.key, prompt: paragraphRestorePrompt(offer, source) }
+              : null,
+          );
+          setViewSummary("");
+          preview.current({
+            kind: "doc",
+            content: againstCurrent.content,
+            label:
+              "Comparing with the current version · read-only. Green underline was added later. Red strikethrough was removed.",
+            offers: controls,
+          });
+          return;
+        }
+        setViewSummary(against.summary);
         if (
           before.kind === "doc" &&
           current.kind === "doc" &&
@@ -329,20 +352,21 @@ export function VersionHistory({
           const source = selected.name
             ? `"${selected.name}"`
             : versionWhen(selected.createdAt);
-          const offers = againstCurrent.offers.map((offer) =>
+          const controls = againstCurrent.offers.map((offer) =>
             offer
               ? { key: offer.key, prompt: paragraphRestorePrompt(offer, source) }
               : null,
           );
-          setViewSummary(against.summary);
+          setChangeCount(againstCurrent.changedParagraphs);
+          setChangeUnit("paragraph");
           preview.current({
-            ...against.preview,
+            kind: "doc",
             content: againstCurrent.content,
-            offers,
+            label: against.preview.label,
+            offers: controls,
           });
           return;
         }
-        setViewSummary(against.summary);
         preview.current(against.preview);
       } catch (e) {
         if (!cancel) setError(message(e));

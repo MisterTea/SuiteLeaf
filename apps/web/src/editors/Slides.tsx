@@ -93,8 +93,6 @@ import {
   type TransitionType,
 } from "./slide-theme";
 import { SlideDesignPanel, useReducedMotion } from "./slide-design-panel";
-import { replaceSlideWord } from "./grid-spelling";
-import { SlideSpellMirror, SlideSpelling } from "./grid-spelling-ui";
 import {
   hasTextRuns,
   rangeColor,
@@ -107,6 +105,8 @@ import {
 } from "./slide-runs";
 import { boxFont, RunSpans, SlideTextBody } from "./slide-text";
 import { useSlideThemeLibrary } from "./slide-theme-library";
+import { replaceSlideWord } from "./grid-spelling";
+import { SlideSpellMirror, SlideSpelling } from "./grid-spelling-ui";
 import { useSlideComments } from "./slide-comments-ui";
 import {
   applyFadeOnClick,

@@ -14,11 +14,11 @@ The printer sent Lena a Word letter. The logo is a wide photo that Word shows ab
 
 ## Scenes
 
-1. **The letter.** Lena opens `Letter.docx`. The logo is a small mark at the top, about two inches wide, with the page showing beside it.
-2. **The text stays put.** "Dear friend," is on the first page, directly under the logo.
-3. **She can still resize.** She clicks the logo and drags a corner. The logo gets smaller, keeps its proportions, and stays that size after the document saves.
-4. **A full-width photo.** The shop photo fills the text column, the width Word stored, and the whole picture is on screen.
-5. **Round trip.** File, Export DOCX, then Open / import of that file. The logo is still the size she dragged, and the shop photo is still the width of the text.
+1. **The letter.** Lena opens `Letter.docx`. The logo sits in the first paragraph at about the same width Word used, not edge to edge.
+2. **The text stays put.** The greeting is still on the first page, under the logo, not pushed to page two.
+3. **She can still resize.** Dragging a corner changes the size and keeps the proportions. The logo does not snap back to the pixel size.
+4. **A full-width photo.** A second picture that Word had set to the width of the text column opens at that width, not at a tiny thumbnail and not at thousands of pixels.
+5. **Round trip.** She exports .docx and opens it again. Both pictures keep the size she had on the page.
 
 ## Google Workspace benchmark
 
@@ -35,23 +35,10 @@ Google Docs opens a Word picture at a size close to the page, then often changes
 
 ## Success looks like
 
-Lena's logo is a small mark at the top of the letter. The greeting is on the first page. She does not have to resize the logo before she can read the letter. The shop photo lines up with the text, and both sizes survive a trip back to Word.
-
-## Result
-
-| Criterion | Met | Evidence |
-| --- | --- | --- |
-| A picture whose Word extent is about two inches wide opens within a quarter inch of that width. | Met | Video 0:05. The logo is 192px (2 inches). `opens a two-inch picture at that size` in `tests/image-extent.test.ts`. |
-| The following paragraph stays on the same page it occupied in Word when the only difference was the picture size. | Met | Video 0:06. "Dear friend," is on page 1, under the logo. |
-| Corner resize still works and does not jump back to the pixel size on save. | Met | Video 0:08–0:11. The corner drag shrinks the logo and the saved size stays small. `a Word picture opens at its page size and corner resize does not snap back` in `tests/browser/doc-picture-size.spec.ts`. |
-| A picture Word set to the text width opens at the text width. | Met | Video 0:14. The shop photo is 672px, the text column. |
-| Exporting to .docx and opening that file again keeps both sizes. | Met | Video 0:17 (Export DOCX) and 0:22 (the reopened letter). `keeps a text-width picture through export and a second import` in `tests/image-extent.test.ts`. |
-| A picture with no stored extent still opens, using its pixel size only as a fallback. | Met | `opens a two-inch picture at that size and leaves a picture with no extent unsized` in `tests/image-extent.test.ts`. |
+Lena's logo is a small mark at the top of the letter. The greeting is on the first page. She does not have to resize the logo before she can read the letter.
 
 ## Gaps and notes
 
-- A picture's on-page size now comes from the drawing extent (`wp:extent`), in CSS pixels at 96 per inch. A picture with no extent still opens at its pixel size.
-- Header and footer pictures are still imported without a page size.
-- A stored size is written back to Word as that size. A picture with no stored size is still capped on export so a multi-megapixel photo does not become a huge drawing.
-- Crop import is a separate story. The extent is the box on the page. A crop percentage applied on top of that box would shrink the picture again.
-- Word files with one-inch margins store a text width of 6.5 inches. SuiteLeaf's page margin is 0.75 inch, so that picture sits a quarter inch inside SuiteLeaf's column. The letter in the video uses 0.75 inch margins, and the photo lines up with the text.
+- Import sets `src` and does not set the drawing extent.
+- Do not rebuild crop, equations, or corner-resize behavior except to honor a size that is already stored.
+- Header and footer pictures can stay out of this story.

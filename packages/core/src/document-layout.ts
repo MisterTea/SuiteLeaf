@@ -1,39 +1,49 @@
 import type { JsonNode } from "./index";
-
-/** On-screen pages use CSS pixels: 96px is one inch. */
-export const PX_PER_INCH = 96;
-/** Smallest margin Page setup will apply. */
-export const MIN_MARGIN_PX = 0.25 * PX_PER_INCH;
-/** Largest margin Page setup will apply. */
-export const MAX_MARGIN_PX = 3 * PX_PER_INCH;
-
-export type MarginEdge = "top" | "bottom" | "left" | "right";
-
-export type PageMargins = {
-  top: number;
-  bottom: number;
-  left: number;
-  right: number;
-};
-
-export type PageNumberFormat = "fraction" | "page";
+import { bodyEdgeInsets, resolveEdgePx } from "./header-edge";
+export {
+  bodyEdgeInsets,
+  edgeDistanceError,
+  edgeDistancesValid,
+  edgeIntrusionNote,
+  formatEdgeInches,
+  resolveEdgePx,
+  type EdgeKind,
+} from "./header-edge";
+export type PageNumberFormat = "fraction" | "page" | "roman";
 export type PageNumberPosition = "bottom-right" | "bottom-center" | "top-right";
 const pageNumberPositions: PageNumberPosition[] = [
   "bottom-right",
   "bottom-center",
   "top-right",
 ];
+/** Page setup accepts 0.25–3 inches. CSS pixels at 96 per inch. */
+export const PX_PER_INCH = 96;
+export const MARGIN_MIN_PX = 0.25 * PX_PER_INCH;
+export const MARGIN_MAX_PX = 3 * PX_PER_INCH;
+export const MIN_MARGIN_PX = MARGIN_MIN_PX;
+export const MAX_MARGIN_PX = MARGIN_MAX_PX;
+export const MARGIN_DEFAULT_PX = 72;
+/** A binding gutter above 2 inches is refused so the text stays on the page. */
+export const maxGutter = 2 * PX_PER_INCH;
+export type MarginEdge = "top" | "bottom" | "left" | "right";
+export type PageMargins = {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+};
 export type PageSettings = {
   size: "letter" | "a4";
   landscape: boolean;
-  /**
-   * Legacy uniform margin in CSS pixels. Files saved before each edge had
-   * its own field store only this. When top, bottom, left, and right are
-   * present they win; this value is the fallback for any edge that is missing.
-   */
+  /** Older files stored this one inset, in CSS pixels, for every edge. */
   margin: number;
   /** Extra inside margin, in CSS pixels. 0 means the edges stay equal. */
   gutter: number;
+  marginTop: number;
+  marginBottom: number;
+  marginLeft: number;
+  marginRight: number;
+  /** Same edges, under the names the gutter and margin dialogs read. */
   top: number;
   bottom: number;
   left: number;
@@ -41,7 +51,7 @@ export type PageSettings = {
   header: string;
   footer: string;
   pageNumbers: boolean;
-  /** "1 / 2", or "Page 1" when the total should stay hidden. */
+  /** "1 / 2", "Page 1", or lowercase roman "i". */
   pageNumberFormat: PageNumberFormat;
   /** Where the number sits. Ignored until pageNumberPositionSet is true. */
   pageNumberPosition: PageNumberPosition;
@@ -75,6 +85,14 @@ export type PageSettings = {
   evenFooter: string;
   oddHeader: string;
   oddFooter: string;
+  /**
+   * CSS pixels from the top edge of the paper to the header. One distance for
+   * every header, including a different first page and odd or even pages.
+   * Separate from the top margin.
+   */
+  headerFromEdge: number;
+  /** CSS pixels from the bottom edge of the paper to the footer. One distance for every footer. */
+  footerFromEdge: number;
   /** A short phrase drawn behind the text. Empty means no watermark. */
   watermark: string;
 };
@@ -85,17 +103,19 @@ export function watermarkText(value: unknown): string {
   if (typeof value !== "string") return "";
   return value.replace(/\s+/g, " ").trim().slice(0, WATERMARK_LIMIT);
 }
-/** A binding gutter above 2 inches is refused so the text stays on the page. */
-export const maxGutter = 2 * 96;
 export const defaultPageSettings: PageSettings = {
   size: "letter",
   landscape: false,
-  margin: 72,
+  margin: MARGIN_DEFAULT_PX,
   gutter: 0,
-  top: 72,
-  bottom: 72,
-  left: 72,
-  right: 72,
+  marginTop: MARGIN_DEFAULT_PX,
+  marginBottom: MARGIN_DEFAULT_PX,
+  marginLeft: MARGIN_DEFAULT_PX,
+  marginRight: MARGIN_DEFAULT_PX,
+  top: MARGIN_DEFAULT_PX,
+  bottom: MARGIN_DEFAULT_PX,
+  left: MARGIN_DEFAULT_PX,
+  right: MARGIN_DEFAULT_PX,
   header: "",
   footer: "",
   pageNumbers: false,
@@ -112,90 +132,59 @@ export const defaultPageSettings: PageSettings = {
   evenFooter: "",
   oddHeader: "",
   oddFooter: "",
+  headerFromEdge: MARGIN_DEFAULT_PX,
+  footerFromEdge: MARGIN_DEFAULT_PX,
   watermark: "",
 };
 const pageText = (value: unknown) =>
   typeof value === "string" ? value.slice(0, 500) : "";
-/** True when a gutter, in CSS pixels, can be stored and laid out. */
-export function gutterAccepted(px: number): boolean {
-  return Number.isFinite(px) && px >= 0 && px <= maxGutter;
+function clampMargin(value: unknown, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.min(MARGIN_MAX_PX, Math.max(MARGIN_MIN_PX, value));
 }
-function clampGutter(value: unknown): number {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0)
-    return 0;
-  return Math.min(maxGutter, value);
-}
-function finitePx(value: unknown): number | undefined {
+function storedMargin(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-/** Pull a stored margin into the range the page can actually use. */
-export function clampMarginPx(px: number): number {
-  return Math.min(MAX_MARGIN_PX, Math.max(MIN_MARGIN_PX, px));
-}
-/**
- * Why a margin cannot be applied, or null when it is inside 0.25–3 inches.
- * `px` is CSS pixels. A non-finite value has not been entered as a number.
- */
-export function marginError(px: number): string | null {
-  if (!Number.isFinite(px)) return "Enter each margin in inches.";
-  if (px < MIN_MARGIN_PX) return "A margin must be at least 0.25 inches.";
-  if (px > MAX_MARGIN_PX) return "A margin must be at most 3 inches.";
-  return null;
-}
-/** True when every edge can be applied. One bad edge blocks the whole dialog. */
-export function marginsValid(margins: PageMargins): boolean {
-  return (
-    marginError(margins.top) === null &&
-    marginError(margins.bottom) === null &&
-    marginError(margins.left) === null &&
-    marginError(margins.right) === null
-  );
-}
-/** Replace one edge. The other three stay exactly as they were. */
-export function setPageMargin(
-  settings: PageSettings,
-  edge: MarginEdge,
-  px: number,
-): PageSettings {
-  return { ...settings, [edge]: px };
-}
-export function pageMargins(settings: PageMargins): PageMargins {
-  return {
-    top: settings.top,
-    bottom: settings.bottom,
-    left: settings.left,
-    right: settings.right,
-  };
 }
 export function documentPageSettings(content: JsonNode): PageSettings {
   const a = content.attrs?.pageSettings as Partial<PageSettings> | undefined;
-  const stored = finitePx(a?.margin);
-  const uniform = stored === undefined ? 72 : clampMarginPx(stored);
-  // An edge that was never stored follows the single margin, so older files
-  // open with the same gap on every side.
-  const edge = (value: unknown) => {
-    const px = finitePx(value);
-    return px === undefined ? uniform : clampMarginPx(px);
-  };
-  const top = edge(a?.top);
-  const bottom = edge(a?.bottom);
-  const left = edge(a?.left);
-  const right = edge(a?.right);
+  const uniform = clampMargin(a?.margin, MARGIN_DEFAULT_PX);
+  // A SuiteLeaf file that stored one margin opens with that inset on every
+  // edge. An edge that is present replaces it; Word cannot be stored as one.
+  const edge = (value: unknown) =>
+    storedMargin(value) === undefined ? uniform : clampMargin(value, uniform);
+  const marginTop = edge(a?.marginTop ?? a?.top);
+  const marginBottom = edge(a?.marginBottom ?? a?.bottom);
+  const marginLeft = edge(a?.marginLeft ?? a?.left);
+  const marginRight = edge(a?.marginRight ?? a?.right);
+  const storedGutter = storedMargin(a?.gutter);
+  const gutter =
+    storedGutter === undefined || storedGutter <= 0
+      ? 0
+      : Math.min(maxGutter, storedGutter);
   return {
     size: a?.size === "a4" ? "a4" : "letter",
     landscape: a?.landscape === true,
     margin: uniform,
-    gutter: clampGutter(a?.gutter),
-    top,
-    bottom,
-    left,
-    right,
+    gutter,
+    marginTop,
+    marginBottom,
+    marginLeft,
+    marginRight,
+    top: marginTop,
+    bottom: marginBottom,
+    left: marginLeft,
+    right: marginRight,
+    headerFromEdge: resolveEdgePx(a?.headerFromEdge, marginTop),
+    footerFromEdge: resolveEdgePx(a?.footerFromEdge, marginBottom),
     header: pageText(a?.header),
     footer: pageText(a?.footer),
     // Like Docs and Word, page numbers are off until chosen; settings saved
     // before that default changed keep numbering unless it was turned off.
     pageNumbers: a ? a.pageNumbers !== false : false,
-    pageNumberFormat: a?.pageNumberFormat === "page" ? "page" : "fraction",
+    pageNumberFormat:
+      a?.pageNumberFormat === "page" || a?.pageNumberFormat === "roman"
+        ? a.pageNumberFormat
+        : "fraction",
     pageNumberPosition: pageNumberPositions.includes(
       a?.pageNumberPosition as PageNumberPosition,
     )
@@ -225,13 +214,43 @@ export type PageFace = {
   /** Empty when this page has no number. Otherwise "2 / 3" or "Page 2". */
   pageNumber: string;
 };
+const ROMAN: [number, string][] = [
+  [1000, "m"],
+  [900, "cm"],
+  [500, "d"],
+  [400, "cd"],
+  [100, "c"],
+  [90, "xc"],
+  [50, "l"],
+  [40, "xl"],
+  [10, "x"],
+  [9, "ix"],
+  [5, "v"],
+  [4, "iv"],
+  [1, "i"],
+];
+/** Lowercase roman, as in a contents page. Zero and negatives stay "0". */
+export function lowerRoman(value: number): string {
+  let n = Math.floor(value);
+  if (n <= 0) return "0";
+  let out = "";
+  for (const [amount, glyph] of ROMAN) {
+    while (n >= amount) {
+      out += glyph;
+      n -= amount;
+    }
+  }
+  return out;
+}
 export function pageNumberText(
   format: PageNumberFormat,
   page: number,
   pageCount: number,
 ): string {
   const total = Math.max(pageCount, 1);
-  return format === "page" ? `Page ${page}` : `${page} / ${total}`;
+  if (format === "page") return `Page ${page}`;
+  if (format === "roman") return lowerRoman(page);
+  return `${page} / ${total}`;
 }
 /** A start number is a whole page from 1 through 9999. Anything else starts at 1. */
 export const PAGE_NUMBER_START_MAX = 9999;
@@ -284,6 +303,8 @@ export function pageFace(
   settings: PageSettings,
   pageIndex: number,
   pageCount: number,
+  /** 0-based page where a heading restarts numbering at arabic 1. */
+  arabicStart?: number | null,
 ): PageFace {
   const page = pageIndex + 1;
   const first = page === 1 && settings.differentFirstPage;
@@ -312,6 +333,11 @@ export function pageFace(
   // A cover keeps its footer and drops only the number. It is not page 1.
   if (page === 1 && settings.coverHasNoNumber) numberSide = "none";
   const shown = pageNumberAt(settings, pageIndex, pageCount);
+  const restarted =
+    typeof arabicStart === "number" &&
+    Number.isInteger(arabicStart) &&
+    arabicStart >= 0 &&
+    pageIndex >= arabicStart;
   return {
     header,
     footer,
@@ -320,7 +346,9 @@ export function pageFace(
     pageNumber:
       numberSide === "none"
         ? ""
-        : pageNumberText(settings.pageNumberFormat, shown.page, shown.total),
+        : restarted
+          ? String(pageIndex - arabicStart + 1)
+          : pageNumberText(settings.pageNumberFormat, shown.page, shown.total),
   };
 }
 /** Copy the shared header into the even and odd fields the first time they are used. */
@@ -398,31 +426,57 @@ export function pageNumberHint(settings: PageSettings, pageCount = 2): string {
   if (
     settings.differentFirstPage &&
     !settings.pageNumberPositionSet &&
-    settings.pageNumberFormat !== "page"
+    settings.pageNumberFormat === "fraction"
   )
     return "Page 1 has no number. Page 2 shows 2.";
   const sample =
     settings.pageNumberFormat === "page"
       ? "Page 1"
-      : pageNumberText("fraction", 1, pageCount);
+      : settings.pageNumberFormat === "roman"
+        ? settings.differentFirstPage
+          ? "ii"
+          : "i"
+        : pageNumberText("fraction", 1, pageCount);
   const place = numberPlace(settings);
   if (settings.differentFirstPage)
     return `No number on page 1. ${place} on later pages, as “${sample}”. ${kept}`;
   return `${place} of every page, as “${sample}”. ${kept}`;
 }
-/**
- * Horizontal insets for a 1-based page. Odd pages, including the first, keep
- * the extra space on the left. Even pages keep it on the right. The outside
- * edge stays at `margin`.
- */
-export function pageSideInsets(
-  settings: PageSettings,
-  pageNumber: number,
-): { left: number; right: number } {
-  const odd = Math.abs(pageNumber) % 2 === 1;
-  return odd
-    ? { left: settings.left + settings.gutter, right: settings.right }
-    : { left: settings.left, right: settings.right + settings.gutter };
+export function pageMarginsValid(
+  settings: Pick<
+    PageSettings,
+    "marginTop" | "marginBottom" | "marginLeft" | "marginRight"
+  >,
+): boolean {
+  return pageMarginsError(settings) === null;
+}
+/** Why Apply must stay off, or null when every edge is inside 0.25–3 inches. */
+export function pageMarginError(marginPx: number): string | null {
+  if (!Number.isFinite(marginPx)) return "Enter a margin in inches.";
+  if (marginPx > MARGIN_MAX_PX) return "A margin cannot be more than 3 inches.";
+  if (marginPx < MARGIN_MIN_PX) return "A margin must be at least 0.25 inches.";
+  return null;
+}
+export function pageMarginsError(
+  settings: Pick<
+    PageSettings,
+    "marginTop" | "marginBottom" | "marginLeft" | "marginRight"
+  >,
+): string | null {
+  for (const n of [
+    settings.marginTop,
+    settings.marginBottom,
+    settings.marginLeft,
+    settings.marginRight,
+  ]) {
+    const error = pageMarginError(n);
+    if (error) return error;
+  }
+  return null;
+}
+/** Inches for Page setup, trimmed so 0.75 does not show as a long decimal. */
+export function formatMarginInches(px: number): string {
+  return String(Math.round((px / 96) * 1000) / 1000);
 }
 export function pageDimensions(settings: PageSettings) {
   const [width, height] = settings.size === "a4" ? [794, 1123] : [816, 1056];
@@ -430,62 +484,6 @@ export function pageDimensions(settings: PageSettings) {
     width: settings.landscape ? height : width,
     height: settings.landscape ? width : height,
   };
-}
-/** CSS variables the page, furniture, and notes read. */
-export function pageMarginVars(settings: PageMargins): {
-  "--page-margin": string;
-  "--page-margin-top": string;
-  "--page-margin-right": string;
-  "--page-margin-bottom": string;
-  "--page-margin-left": string;
-} {
-  return {
-    "--page-margin": `${settings.top}px`,
-    "--page-margin-top": `${settings.top}px`,
-    "--page-margin-right": `${settings.right}px`,
-    "--page-margin-bottom": `${settings.bottom}px`,
-    "--page-margin-left": `${settings.left}px`,
-  };
-}
-/** Vertical room for body text between the top and bottom margins. */
-export function bodyTextHeight(pageHeight: number, margins: PageMargins): number {
-  return pageHeight - margins.top - margins.bottom;
-}
-/** Distance from the top of the page, expressed from the top of the body. */
-export function bodyTop(fromPageTop: number, margins: PageMargins): number {
-  return fromPageTop - margins.top;
-}
-/**
- * Spacer that carries a block onto the next page: leftover body, this page's
- * bottom margin, the gap between pages, and the next page's top margin.
- * Left and right do not add to it.
- */
-export function pageBreakSpacer(
-  remainingBody: number,
-  margins: PageMargins,
-  pageGap = 24,
-): number {
-  return Math.max(0, remainingBody) + margins.bottom + pageGap + margins.top;
-}
-/**
- * How many pages a measured body occupies. `contentBottom` is in body
- * coordinates (after the first top margin). `spacers` already includes the
- * margins and gaps of earlier page breaks.
- */
-export function laidOutPageCount(
-  contentBottom: number,
-  spacers: number,
-  pageHeight: number,
-  margins: PageMargins,
-  pageGap = 24,
-): number {
-  return Math.max(
-    1,
-    Math.ceil(
-      (contentBottom + spacers + margins.top + margins.bottom + pageGap) /
-        (pageHeight + pageGap),
-    ),
-  );
 }
 function pageNumberMarginBox(settings: PageSettings): string {
   if (!settings.pageNumbers) return "";
@@ -498,7 +496,9 @@ function pageNumberMarginBox(settings: PageSettings): string {
   const content =
     settings.pageNumberFormat === "page"
       ? '"Page " counter(page)'
-      : 'counter(page) " / " counter(pages)';
+      : settings.pageNumberFormat === "roman"
+        ? "counter(page, lower-roman)"
+        : 'counter(page) " / " counter(pages)';
   return `@${slot} { content: ${content}; font: 10pt Arial, sans-serif; color: #555; }`;
 }
 /** Print the same start the screen uses. A cover's hidden first page is 0. */
@@ -527,43 +527,22 @@ export function documentHtml(
   settings: PageSettings,
 ) {
   const { width, height } = pageDimensions(settings);
-  const top = settings.top / 96;
-  const right = settings.right / 96;
-  const bottom = settings.bottom / 96;
-  const left = settings.left / 96;
-  const gutter = settings.gutter / 96;
-  const box = `${top}in ${right}in ${bottom}in ${left}in`;
+  const layout = {
+    ...settings,
+    headerFromEdge: resolveEdgePx(settings.headerFromEdge, settings.marginTop),
+    footerFromEdge: resolveEdgePx(settings.footerFromEdge, settings.marginBottom),
+  };
+  const insets = bodyEdgeInsets(layout, width);
+  const edges = `${settings.marginTop / 96}in ${settings.marginRight / 96}in ${settings.marginBottom / 96}in ${settings.marginLeft / 96}in`;
+  const padding = `${insets.top / 96}in ${settings.marginRight / 96}in ${insets.bottom / 96}in ${settings.marginLeft / 96}in`;
   const pageRule = [
     `size: ${width / 96}in ${height / 96}in;`,
-    `margin: ${box};`,
+    `margin: ${edges};`,
     printedPageStart(settings),
     pageNumberMarginBox(settings),
   ]
     .filter(Boolean)
     .join(" ");
-  // The web page starts on page 1, so a different first page shows its letterhead
-  // and prints no number there. Later running heads still appear once.
-  const bannerHeader = settings.differentFirstPage
-    ? settings.firstHeader
-    : settings.header;
-  const bannerFooter = settings.differentFirstPage
-    ? settings.firstFooter
-    : settings.footer;
-  const numberSlot =
-    settings.pageNumberPositionSet && settings.pageNumberPosition === "bottom-center"
-      ? "bottom-center"
-      : settings.pageNumberPositionSet && settings.pageNumberPosition === "top-right"
-        ? "top-right"
-        : "bottom-right";
-  const firstPageRule =
-    settings.pageNumbers && settings.differentFirstPage
-      ? `@page :first { @${numberSlot} { content: none; } }`
-      : "";
-  // CSS :right is the odd (recto) page. The gutter swaps onto the inside edge.
-  const mirror =
-    gutter > 0
-      ? `@page :right { margin-left: ${left + gutter}in; margin-right: ${right}in; } @page :left { margin-left: ${left}in; margin-right: ${right + gutter}in; }`
-      : "";
   const coverRule = printedCoverRule(settings);
   const furniture = (tag: "header" | "footer", text: string) =>
     text ? `<${tag} class="page-${tag}">${escapeHtml(text)}</${tag}>` : "";
@@ -582,27 +561,80 @@ main { position: relative; z-index: 1; }`
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title>
 <style>
-body { max-width: ${width / 96}in; margin: 0 auto; padding: ${box}; box-sizing: border-box; font: 11pt/1.5 Arial, sans-serif; }
-.page-header, .page-footer { color: #555; font-size: 10pt; white-space: pre-wrap; }
-.page-header { margin-bottom: 2em; }
-.page-footer { margin-top: 2em; }
+body { position: relative; max-width: ${width / 96}in; margin: 0 auto; padding: ${padding}; box-sizing: border-box; font: 11pt/1.5 Arial, sans-serif; }
+.page-header, .page-footer { color: #555; font-size: 10pt; line-height: 16px; white-space: pre-wrap; }
+.page-header { position: absolute; top: ${layout.headerFromEdge / 96}in; left: ${settings.marginLeft / 96}in; right: ${settings.marginRight / 96}in; margin: 0; }
+.page-footer { position: absolute; bottom: ${layout.footerFromEdge / 96}in; left: ${settings.marginLeft / 96}in; right: ${settings.marginRight / 96}in; margin: 0; }
 ${watermarkCss}
 [data-page-break] { break-before: page; }
 [data-columns="2"] { column-count: 2; column-gap: 0.5in; }
 .doc-columns { column-count: 2; column-gap: 0.5in; }
 @page { ${pageRule} }
-${firstPageRule}
 ${coverRule}
-${mirror}
 @media print { body { max-width: none; padding: 0; } }
 </style>
 </head>
 <body>
 ${watermark}
-${furniture("header", bannerHeader)}
+${furniture("header", settings.header)}
 <main>${bodyHtml}</main>
-${furniture("footer", bannerFooter)}
+${furniture("footer", settings.footer)}
 </body>
 </html>
 `;
+}
+
+/** True when a gutter, in CSS pixels, can be stored and laid out. */
+export function gutterAccepted(px: number): boolean {
+  return Number.isFinite(px) && px >= 0 && px <= maxGutter;
+}
+/** Why a margin cannot be applied, or null when it is inside 0.25–3 inches. */
+export function marginError(px: number): string | null {
+  if (!Number.isFinite(px)) return "Enter each margin in inches.";
+  if (px < MIN_MARGIN_PX) return "A margin must be at least 0.25 inches.";
+  if (px > MAX_MARGIN_PX) return "A margin must be at most 3 inches.";
+  return null;
+}
+const marginField = {
+  top: "marginTop",
+  bottom: "marginBottom",
+  left: "marginLeft",
+  right: "marginRight",
+} as const;
+/** Replace one edge. The named field and the marginTop-style field stay equal. */
+export function setPageMargin(
+  settings: PageSettings,
+  edge: MarginEdge,
+  px: number,
+): PageSettings {
+  return { ...settings, [edge]: px, [marginField[edge]]: px };
+}
+/**
+ * Horizontal insets for a 1-based page. Odd pages keep the extra space on
+ * the left. Even pages keep it on the right.
+ */
+export function pageSideInsets(
+  settings: PageSettings,
+  pageNumber: number,
+): { left: number; right: number } {
+  const odd = Math.abs(pageNumber) % 2 === 1;
+  return odd
+    ? { left: settings.left + settings.gutter, right: settings.right }
+    : { left: settings.left, right: settings.right + settings.gutter };
+}
+/** CSS variables the page, furniture, and notes read. */
+export function pageMarginVars(settings: PageMargins): {
+  "--page-margin": string;
+  "--page-margin-top": string;
+  "--page-margin-right": string;
+  "--page-margin-bottom": string;
+  "--page-margin-left": string;
+} {
+  return {
+    "--page-margin": `${settings.top}px`,
+    "--page-margin-top": `${settings.top}px`,
+    "--page-margin-right": `${settings.right}px`,
+    "--page-margin-bottom": `${settings.bottom}px`,
+    "--page-margin-left": `${settings.left}px`,
+  };
 }

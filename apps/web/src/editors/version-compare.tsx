@@ -23,7 +23,7 @@ export type HistoryPreview =
       kind: "doc";
       content: JsonNode;
       label: string;
-      /** Set when comparing a document with the current version, so one paragraph can be restored. */
+      /** Set while comparing a document with the current version, so one paragraph can be restored. */
       offers?: ({ key: string; prompt: string } | null)[] | null;
     }
   | { kind: "sheet"; diff: SheetDiff; label: string }

@@ -1,0 +1,62 @@
+.header-edge-fields {
+  margin: 0;
+  padding: 10px 12px 12px;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  background: #fff;
+}
+.header-edge-fields legend {
+  padding: 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f1f1f;
+}
+.header-edge-hint {
+  margin: 0;
+  color: #3c4043;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.header-edge-fields label {
+  display: grid;
+  grid-template-columns: minmax(9.5em, 13em) minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+.header-edge-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.header-edge-input input {
+  width: 6.5em;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid #c4c7c5;
+  border-radius: 4px;
+  font: inherit;
+}
+.header-edge-input input[aria-invalid="true"] {
+  border-color: #b3261e;
+}
+.header-edge-note {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #e8f0fe;
+  color: #174ea6;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.header-edge-note.is-error {
+  background: #fce8e6;
+  color: #b3261e;
+}
+@media (max-width: 700px) {
+  .header-edge-fields label {
+    grid-template-columns: 1fr;
+  }
+}

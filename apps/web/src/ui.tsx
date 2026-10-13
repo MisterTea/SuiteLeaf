@@ -382,6 +382,7 @@ export type EditorActions = {
     toggleOrderedList: () => void;
     tableActions: () => TableAction[];
     openSuggestions?: () => void;
+    focusTabStop?: () => void;
   };
   sheetActions?: {
     dataValidation?: () => void;

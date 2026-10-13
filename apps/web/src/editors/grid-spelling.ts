@@ -323,13 +323,38 @@ export function collectSheetIssues(
   return issuesFromCells(cells, personal, ignored);
 }
 
+type SlideRun = { text: string };
 type DeckLike = {
   slideOrder: string[];
   slides: Record<
     string,
-    { elements: Array<{ id: string; type: string; content?: string }> }
+    {
+      elements: Array<{ id: string; type: string; content?: string; runs?: SlideRun[] }>;
+    }
   >;
 };
+
+/** Splice a correction into per-word runs so a styled word keeps its style. */
+function replaceInRuns<T extends SlideRun>(runs: readonly T[], from: number, to: number, replacement: string): T[] {
+  let cursor = 0;
+  let inserted = false;
+  const next: T[] = [];
+  for (const run of runs) {
+    const start = cursor;
+    const end = cursor + run.text.length;
+    cursor = end;
+    if (end <= from || start >= to) {
+      next.push(run);
+      continue;
+    }
+    const left = run.text.slice(0, Math.max(0, from - start));
+    const right = run.text.slice(Math.max(0, to - start));
+    const text = left + (inserted ? "" : replacement) + right;
+    inserted = true;
+    if (text) next.push({ ...run, text });
+  }
+  return next;
+}
 
 export function collectSlideIssues(
   deck: DeckLike,
@@ -376,7 +401,11 @@ export function replaceSlideWord<T extends DeckLike>(
         elements: slide.elements.map((element) => {
           if (element.id !== elementId || typeof element.content !== "string") return element;
           if (element.content.slice(from, to) === "") return element;
-          return { ...element, content: replaceWordAt(element.content, from, to, replacement) };
+          const content = replaceWordAt(element.content, from, to, replacement);
+          const runs = element.runs?.length
+            ? replaceInRuns(element.runs, from, to, replacement)
+            : element.runs;
+          return { ...element, content, runs };
         }),
       },
     },

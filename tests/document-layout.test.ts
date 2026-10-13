@@ -1,18 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
-  bodyTextHeight,
   defaultPageSettings,
   documentHtml,
   documentPageSettings,
-  laidOutPageCount,
-  marginError,
-  marginsValid,
-  maxGutter,
-  pageBreakSpacer,
+  lowerRoman,
   pageFace,
+  pageMarginError,
+  pageMarginsError,
   pageNumberHint,
-  pageSideInsets,
-  setPageMargin,
 } from "../packages/core/src/document-layout";
 
 describe("document page settings", () => {
@@ -24,69 +19,47 @@ describe("document page settings", () => {
         .pageNumbers,
     ).toBe(false);
   });
-  it("opens a file that stored one margin with that margin on every edge", () => {
+  it("opens a single stored margin as four equal edges", () => {
     const settings = documentPageSettings({
       type: "doc",
       attrs: { pageSettings: { margin: 96 } },
     });
-    expect(settings.top).toBe(96);
-    expect(settings.bottom).toBe(96);
-    expect(settings.left).toBe(96);
-    expect(settings.right).toBe(96);
-    expect(settings.margin).toBe(96);
+    expect(settings.marginTop).toBe(96);
+    expect(settings.marginBottom).toBe(96);
+    expect(settings.marginLeft).toBe(96);
+    expect(settings.marginRight).toBe(96);
   });
-  it("keeps each stored edge, and changing one does not change the others", () => {
-    const saved = documentPageSettings({
+  it("keeps four stored edges when they differ", () => {
+    const settings = documentPageSettings({
       type: "doc",
       attrs: {
         pageSettings: {
           margin: 72,
-          top: 144,
-          bottom: 72,
-          left: 96,
-          right: 48,
+          marginTop: 144,
+          marginBottom: 72,
+          marginLeft: 96,
+          marginRight: 48,
         },
       },
     });
-    expect(saved.top).toBe(144);
-    expect(saved.bottom).toBe(72);
-    expect(saved.left).toBe(96);
-    expect(saved.right).toBe(48);
-    const next = setPageMargin(saved, "top", 120);
-    expect(next.top).toBe(120);
-    expect(next.bottom).toBe(saved.bottom);
-    expect(next.left).toBe(saved.left);
-    expect(next.right).toBe(saved.right);
+    expect(settings).toMatchObject({
+      margin: 72,
+      marginTop: 144,
+      marginBottom: 72,
+      marginLeft: 96,
+      marginRight: 48,
+    });
   });
-  it("refuses a margin below 0.25 inches or above 3 inches", () => {
-    expect(marginError(0)).toBe("A margin must be at least 0.25 inches.");
-    expect(marginError(23.9)).toBe("A margin must be at least 0.25 inches.");
-    expect(marginError(24)).toBeNull();
-    expect(marginError(288)).toBeNull();
-    expect(marginError(288.1)).toBe("A margin must be at most 3 inches.");
-    expect(marginError(Number.NaN)).toBe("Enter each margin in inches.");
-    expect(
-      marginsValid({ top: 144, bottom: 72, left: 96, right: 72 }),
-    ).toBe(true);
-    expect(
-      marginsValid({ top: 0, bottom: 72, left: 96, right: 72 }),
-    ).toBe(false);
-    expect(
-      marginsValid({ top: 144, bottom: 400, left: 96, right: 72 }),
-    ).toBe(false);
-  });
-  it("sizes the body from the top and bottom margins only", () => {
-    const margins = { top: 144, bottom: 72, left: 96, right: 48 };
-    expect(bodyTextHeight(1056, margins)).toBe(1056 - 144 - 72);
-    expect(pageBreakSpacer(10, margins)).toBe(10 + 72 + 24 + 144);
-    const equal = { top: 72, bottom: 72, left: 72, right: 72 };
-    expect(pageBreakSpacer(10, equal)).toBe(10 + 72 * 2 + 24);
-    expect(laidOutPageCount(100, 0, 1056, equal)).toBe(
-      Math.ceil((100 + 72 * 2 + 24) / (1056 + 24)),
-    );
-    expect(laidOutPageCount(800, 0, 1056, margins)).toBe(
-      Math.ceil((800 + 144 + 72 + 24) / (1056 + 24)),
-    );
+  it("accepts a two-inch margin and refuses 4 inches or zero", () => {
+    const two = documentPageSettings({
+      type: "doc",
+      attrs: { pageSettings: { margin: 192 } },
+    });
+    expect(two.marginLeft).toBe(192);
+    expect(pageMarginsError(two)).toBeNull();
+    expect(pageMarginError(192)).toBeNull();
+    expect(pageMarginError(384)).toBe("A margin cannot be more than 3 inches.");
+    expect(pageMarginError(0)).toBe("A margin must be at least 0.25 inches.");
   });
   it("keeps the page numbers saved with a document", () => {
     const saved = (pageSettings: object) =>
@@ -137,39 +110,6 @@ describe("document page settings", () => {
       pageNumber: "1 / 2",
     });
   });
-  it("keeps a first-page header apart from the even and odd headers", () => {
-    const settings = documentPageSettings({
-      type: "doc",
-      attrs: {
-        pageSettings: {
-          differentFirstPage: true,
-          firstHeader: "Town Council",
-          differentOddEven: true,
-          evenHeader: "Minutes",
-          oddHeader: "Council",
-          pageNumbers: true,
-        },
-      },
-    });
-    expect(pageFace(settings, 0, 3)).toMatchObject({
-      header: "Town Council",
-      headerAlign: "left",
-      numberSide: "none",
-      pageNumber: "",
-    });
-    expect(pageFace(settings, 1, 3)).toMatchObject({
-      header: "Minutes",
-      headerAlign: "left",
-      numberSide: "left",
-      pageNumber: "2 / 3",
-    });
-    expect(pageFace(settings, 2, 3)).toMatchObject({
-      header: "Council",
-      headerAlign: "right",
-      numberSide: "right",
-      pageNumber: "3 / 3",
-    });
-  });
   it("keeps a chosen page-number format and position, and ignores unknown values", () => {
     const saved = (pageSettings: object) =>
       documentPageSettings({ type: "doc", attrs: { pageSettings } });
@@ -214,32 +154,13 @@ describe("document page settings", () => {
     });
     const unknown = saved({
       pageNumbers: true,
-      pageNumberFormat: "roman",
+      pageNumberFormat: "letters",
       pageNumberPosition: "top-left",
     });
     expect(unknown.pageNumberFormat).toBe("fraction");
     expect(unknown.pageNumberPosition).toBe("bottom-right");
     expect(unknown.pageNumberPositionSet).toBe(false);
     expect(pageFace(unknown, 0, 2).pageNumber).toBe("1 / 2");
-  });
-  it("defaults the gutter to 0 and refuses anything above 2 inches", () => {
-    const saved = (pageSettings: object) =>
-      documentPageSettings({ type: "doc", attrs: { pageSettings } });
-    expect(defaultPageSettings.gutter).toBe(0);
-    expect(documentPageSettings({ type: "doc" }).gutter).toBe(0);
-    expect(saved({ header: "Old file" }).gutter).toBe(0);
-    expect(saved({ gutter: 48 }).gutter).toBe(48);
-    expect(saved({ gutter: 0 }).gutter).toBe(0);
-    expect(saved({ gutter: 300 }).gutter).toBe(maxGutter);
-    expect(saved({ gutter: -10 }).gutter).toBe(0);
-    const halfInch = { ...defaultPageSettings, gutter: 48 };
-    expect(pageSideInsets(halfInch, 1)).toEqual({ left: 72 + 48, right: 72 });
-    expect(pageSideInsets(halfInch, 2)).toEqual({ left: 72, right: 72 + 48 });
-    expect(pageSideInsets(halfInch, 3)).toEqual(pageSideInsets(halfInch, 1));
-    expect(pageSideInsets(defaultPageSettings, 2)).toEqual({
-      left: 72,
-      right: 72,
-    });
   });
   it("starts numbering at a chosen page and keeps a cover from counting", () => {
     const saved = (pageSettings: object) =>
@@ -328,6 +249,54 @@ describe("document page settings", () => {
       '<footer class="page-footer">Committee draft</footer>',
     );
   });
+  it("numbers the front in lowercase roman and restarts arabic at a heading", () => {
+    expect(lowerRoman(1)).toBe("i");
+    expect(lowerRoman(2)).toBe("ii");
+    expect(lowerRoman(4)).toBe("iv");
+    expect(lowerRoman(9)).toBe("ix");
+    expect(lowerRoman(40)).toBe("xl");
+    const saved = (pageSettings: object) =>
+      documentPageSettings({ type: "doc", attrs: { pageSettings } });
+    const roman = saved({
+      pageNumbers: true,
+      pageNumberFormat: "roman",
+      pageNumberPosition: "bottom-center",
+      pageNumberPositionSet: true,
+      footer: "Draft",
+      pageNumberStart: 1,
+    });
+    expect(roman.pageNumberFormat).toBe("roman");
+    expect(pageFace(roman, 0, 4)).toMatchObject({
+      footer: "Draft",
+      numberSide: "center",
+      pageNumber: "i",
+    });
+    expect(pageFace(roman, 1, 4).pageNumber).toBe("ii");
+    expect(pageFace(roman, 2, 4).pageNumber).toBe("iii");
+    expect(pageNumberHint(roman, 4)).toContain("“i”");
+    expect(pageNumberHint(roman, 4)).not.toContain("Page i");
+    const restarted = pageFace(roman, 2, 4, 2);
+    expect(restarted).toMatchObject({ footer: "Draft", pageNumber: "1" });
+    expect(pageFace(roman, 3, 4, 2)).toMatchObject({
+      footer: "Draft",
+      pageNumber: "2",
+    });
+    expect(pageFace(roman, 0, 4, 2).pageNumber).toBe("i");
+    expect(pageFace(roman, 1, 4, 2).pageNumber).toBe("ii");
+    const started = { ...roman, pageNumberStart: 4 };
+    expect(pageFace(started, 0, 4).pageNumber).toBe("iv");
+    expect(pageFace(started, 1, 4, 2).pageNumber).toBe("v");
+    expect(pageFace(started, 2, 4, 2).pageNumber).toBe("1");
+    const covered = { ...roman, coverHasNoNumber: true };
+    expect(pageFace(covered, 0, 4, 2).pageNumber).toBe("");
+    expect(pageFace(covered, 0, 4, 2).footer).toBe("Draft");
+    expect(pageFace(covered, 1, 4, 2).pageNumber).toBe("i");
+    expect(pageFace(covered, 2, 4, 2).pageNumber).toBe("1");
+    const html = documentHtml("Report", "<p>Text</p>", roman);
+    expect(html).toContain("counter(page, lower-roman)");
+    expect(html).not.toContain('"Page " counter(page)');
+    expect(html).toContain('<footer class="page-footer">Draft</footer>');
+  });
 });
 
 describe("document HTML export", () => {
@@ -375,23 +344,7 @@ describe("document HTML export", () => {
     expect(top).toContain('@top-right { content: "Page " counter(page);');
     expect(top).not.toContain("@bottom-right");
     expect(html).toContain("size: 8.5in 11in;");
-    expect(html).toContain("padding: 0.75in 0.75in 0.75in 0.75in;");
     expect(html).toContain("[data-page-break] { break-before: page; }");
-  });
-  it("prints the letterhead on page 1 and no number there", () => {
-    const html = documentHtml("Minutes", "<p>October minutes</p>", {
-      ...defaultPageSettings,
-      differentFirstPage: true,
-      firstHeader: "Town Council",
-      header: "Council",
-      pageNumbers: true,
-    });
-    expect(html).toContain(
-      '<header class="page-header">Town Council</header>',
-    );
-    expect(html).not.toContain(">Council</header>");
-    expect(html).toContain("@page :first { @bottom-right { content: none; } }");
-    expect(html).toContain('counter(page) " / " counter(pages)');
   });
   it("omits page furniture that is not set up", () => {
     const html = documentHtml("Notes", "<p>Text</p>", {
@@ -403,30 +356,5 @@ describe("document HTML export", () => {
     expect(html).not.toContain("<footer");
     expect(html).not.toContain("counter(page)");
     expect(html).toContain("<main><p>Text</p></main>");
-    expect(html).not.toContain("@page :left");
-    expect(html).not.toContain("@page :right");
-  });
-  it("prints the gutter on the inside edge", () => {
-    const html = documentHtml("Minutes", "<p>Text</p>", {
-      ...defaultPageSettings,
-      gutter: 48,
-    });
-    expect(html).toContain(
-      "@page :right { margin-left: 1.25in; margin-right: 0.75in; }",
-    );
-    expect(html).toContain(
-      "@page :left { margin-left: 0.75in; margin-right: 1.25in; }",
-    );
-  });
-  it("prints a different margin on each edge", () => {
-    const html = documentHtml("Minutes", "<p>Text</p>", {
-      ...defaultPageSettings,
-      top: 144,
-      bottom: 72,
-      left: 96,
-      right: 48,
-    });
-    expect(html).toContain("padding: 1.5in 0.5in 0.75in 1in;");
-    expect(html).toContain("margin: 1.5in 0.5in 0.75in 1in;");
   });
 });

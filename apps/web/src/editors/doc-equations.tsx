@@ -3,6 +3,7 @@ import { flushSync } from "react-dom";
 import { X } from "lucide-react";
 import { Node, type Editor } from "@tiptap/core";
 import type { Node as ProseNode } from "@tiptap/pm/model";
+import { Selection } from "@tiptap/pm/state";
 import {
   asEquation,
   plainOf,
@@ -280,41 +281,26 @@ export function EquationDialog({
 
   const insert = () => {
     if (!parsed) return;
+    const expr = parsed;
     editor
       .chain()
       .insertContent({
         type: "equation",
-        attrs: { expr: parsed, plain: plainOf(parsed) },
+        attrs: { expr, plain: plainOf(expr) },
+      })
+      .command(({ tr }) => {
+        const after = tr.selection.to;
+        tr.setSelection(Selection.near(tr.doc.resolve(after), 1));
+        return true;
       })
       .run();
-    // The dialog is aria-modal. Closing it moves focus to the page, and the
-    // browser does that after this click, so a plain focus() here does not
-    // stick. Catch the next typed character if it would otherwise land nowhere.
-    const place = () => {
-      if (editor.isDestroyed) return;
-      editor.commands.focus();
-      editor.view.dom.focus();
-    };
+    // Tiptap's focus() waits for a frame, and removing the dialog on this
+    // click moves focus to the page. Focus the document itself, while it is
+    // already the active element, so the next characters are not dropped.
+    const field = editor.view.dom as HTMLElement;
+    field.focus();
     flushSync(() => onClose());
-    place();
-    const forward = (event: globalThis.KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey || event.isComposing) return;
-      if (event.key.length !== 1) return;
-      const target = event.target;
-      if (
-        target instanceof HTMLElement &&
-        target.closest(".ProseMirror, input, textarea, [contenteditable='true']")
-      ) {
-        window.removeEventListener("keydown", forward, true);
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-      window.removeEventListener("keydown", forward, true);
-      editor.chain().focus().insertContent(event.key).run();
-    };
-    window.addEventListener("keydown", forward, true);
-    window.setTimeout(() => window.removeEventListener("keydown", forward, true), 1500);
+    field.focus();
   };
   const trimmed = value.trim();
   const unfinished =
@@ -389,6 +375,7 @@ export function EquationDialog({
             type="button"
             className="dialog-primary-btn"
             disabled={!parsed}
+            onMouseDown={(event) => event.preventDefault()}
             onClick={insert}
           >
             Insert equation

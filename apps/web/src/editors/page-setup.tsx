@@ -10,7 +10,7 @@ import {
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
 import "./page-setup.css";
-import { DocWatermarkField } from "./doc-watermark";
+import { DocWatermark } from "./doc-watermark";
 
 function TextField({
   span,
@@ -139,10 +139,6 @@ export function PageSetupFields({
           />
           Page numbers
         </label>
-        <DocWatermarkField
-          value={draft.watermark}
-          onChange={(watermark) => onChange({ ...draft, watermark })}
-        />
         <fieldset className="page-number-choice" disabled={!draft.pageNumbers}>
           <legend>Format</legend>
           <label>
@@ -164,6 +160,15 @@ export function PageSetupFields({
               onChange={() => onChange({ ...draft, pageNumberFormat: "page" })}
             />
             Page 1
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="page-number-format"
+              checked={draft.pageNumberFormat === "roman"}
+              onChange={() => onChange({ ...draft, pageNumberFormat: "roman" })}
+            />
+            i, ii, iii
           </label>
         </fieldset>
         <fieldset className="page-number-choice" disabled={!draft.pageNumbers}>
@@ -347,33 +352,30 @@ export function PageSetupFields({
 export function PageFurniture({
   settings,
   pageCount,
+  arabicStart = null,
 }: {
   settings: PageSettings;
   pageCount: number;
+  /** 0-based page where arabic numbering restarts at 1. */
+  arabicStart?: number | null;
 }) {
   return (
     <div className="page-furniture" aria-hidden="true">
       {Array.from({ length: pageCount }, (_, i) => {
-        const face = pageFace(settings, i, pageCount);
+        const face = pageFace(settings, i, pageCount, arabicStart);
         return (
           <div
             key={i}
             className="page-furniture-page"
             data-number-side={face.numberSide}
             data-header-align={face.headerAlign}
-            data-letterhead={
-              i === 0 && settings.differentFirstPage && face.header
-                ? "true"
-                : undefined
-            }
             style={{ "--page-index": i } as CSSProperties}
           >
             {face.numberSide === "top-right" ? (
               <span className="page-number page-number-top">{face.pageNumber}</span>
             ) : null}
-            <div className={`page-header align-${face.headerAlign}`}>
-              <span className="page-header-text">{face.header}</span>
-            </div>
+            <div className={`page-header align-${face.headerAlign}`}>{face.header}</div>
+            <DocWatermark text={settings.watermark} />
             <div
               className={`page-footer number-${face.numberSide === "top-right" ? "none" : face.numberSide}`}
             >

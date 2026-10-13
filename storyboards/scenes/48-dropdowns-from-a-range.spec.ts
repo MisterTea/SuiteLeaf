@@ -354,7 +354,11 @@ test("48-dropdowns-from-a-range", async ({ page }) => {
     mimeType: "application/json",
     buffer: nativeBytes,
   });
-  await page.getByRole("button", { name: "Replace", exact: true }).click();
+  // An identical copy opens directly. A changed copy asks before replacing.
+  const replace = page.getByRole("button", { name: "Replace", exact: true });
+  const opened = page.getByRole("button", { name: "Sheet tools", exact: true });
+  await expect(replace.or(opened)).toBeVisible();
+  if (await replace.isVisible()) await replace.click();
   await ready(page);
   await selectCells(page, "D5");
   await page.getByRole("button", { name: "Data", exact: true }).click();

@@ -10,17 +10,15 @@ Ben is printing the minutes double-sided and stapling them on the left. The text
 
 - [Change page margins](https://support.google.com/docs/answer/86629): Google Docs has no binding gutter. Word does, under Layout › Margins › Custom, and it swaps sides on even pages.
 - Storyboard [62](62-odd-and-even-pages.md): headers already swap sides. The text itself still uses equal margins, so it crowds the staple.
-- Page setup stores one margin. The gutter lives in `packages/core/src/document-layout.ts` and in the Page setup dialog.
+- Page setup stores one margin. There is no gutter field in `packages/core/src/document-layout.ts`.
 
 ## Scenes
 
-1. **Equal margins.** Ben writes "Minutes" across three pages. Every page has the same gap on the left and the right. The first line starts at the same distance from the left edge on page 2 and page 3.
-2. **A header.** Page setup adds "Garden club" and page numbers. Gutter is 0. A facing-page preview shows both pages with the same margins.
-3. **Refused.** He types 3 inches. Apply stays off, and the dialog says a gutter larger than 2 inches is refused.
-4. **A gutter.** He sets Gutter to 0.5 in. The preview shades the staple side: the right of the even page and the left of the odd page. The outside edge stays put. After Apply, page 3 starts further from the left, and page 2 keeps its header on the outside while the extra half inch is on the right.
-5. **The cover.** Page 1 uses the gutter on the left. Different first page is not on this base; page 1 is an odd page, so it is bound on the left anyway.
-6. **Zero.** He sets the gutter back to 0. The shaded room disappears and pages 2 and 3 line up again.
-7. **Save.** He sets 0.5 in again, closes the file, and opens it. The field still says 0.5, and the inside edges are still wider.
+1. **Equal margins.** Ben opens "Minutes". Every page has the same gap on the left and the right. The first line starts at the same distance from the left edge on page 2 and page 3.
+2. **A gutter.** In Page setup he sets Gutter to 0.5 in. Page 3, an odd page, starts further from the left. Page 2, an even page, starts further from the right. The outside edge stays at the original margin.
+3. **The letterhead.** Page 1, if Different first page is on, still uses the gutter on the left, because a cover is bound on the left too.
+4. **Zero.** He sets the gutter back to 0. Pages 2 and 3 line up again.
+5. **Save.** He reopens the file. The 0.5 in gutter is back, and the inside edges are still wider.
 
 ## Google Workspace benchmark
 
@@ -37,24 +35,10 @@ Google Docs does not offer a binding gutter. People fake it by making the left m
 
 ## Success looks like
 
-The staple side of every sheet has an extra half inch, shaded on screen so it is obvious before printing. The outside edge does not. Reopening the file keeps it.
-
-## Result
-
-| Criterion | Met | Evidence |
-| --- | --- | --- |
-| Gutter field, inches, default 0 | Met | Video 0:22. Dialog shows Gutter (inches) at 0 beside Margins. `tests/browser/page-gutter.spec.ts` |
-| Odd left, even right, outside stays | Met | Video 0:33 page 3, 0:39 page 2, 1:00 both. Test measures a 0.5 in shift and an unchanged outside edge |
-| Body moves; outside header does not | Met | Video 0:39. Page 2 header stays on the left; the first line's right edge moves in. Test compares header position before and after |
-| Zero restores equal margins | Met | Video 0:48. One Apply, then the lines line up and the shade is gone |
-| Survives save and reopen | Met | Video 0:54–1:00. Reopen shows 0.5 in and the inside shade. Test reads `pageSettings.gutter === 48` |
-| Above 2 inches is refused | Met | Video 0:27. 3 inches, red message, Apply disabled |
+The staple side of every sheet has an extra half inch. The outside edge does not. Reopening the file keeps it.
 
 ## Gaps and notes
 
-- The shaded band is an on-screen guide. It is hidden when printing. Printed pages keep the extra space as blank margin.
-- Different first page is not on this base. Page 1 still gets the left gutter because it is an odd page.
-- Odd and even headers are not on this base. The gutter still swaps. A header on the left stays put on even pages, which is the outside edge. The page number on the right stays put on odd pages.
-- A paragraph that crosses a page break keeps one inset, so a single block is not split onto both edges.
-- Footnotes still use the original margin and do not follow the gutter.
-- A Word round trip of the gutter is not done. HTML print uses CSS `:left` and `:right` page margins.
+- Margins are one value for every edge.
+- Odd and even headers may not be on this base. The gutter must still swap sides on even pages.
+- A Word round trip of the gutter is a bonus, not required.
