@@ -90,6 +90,8 @@ import {
 } from "@suiteleaf/core/suggestions";
 
 import { DocumentPagination, PageBreak } from "./doc-pagination";
+import { Grammar } from "./doc-grammar";
+import { useDocGrammar } from "./doc-grammar-ui";
 import { Proofing } from "./doc-spelling";
 import { useDocProofing, type ProofingContext } from "./doc-proofing";
 import { documentNotes } from "./doc-notes";
@@ -126,6 +128,7 @@ export const extensions: Extensions = [
   ...commentExtensions,
   Suggestions,
   Proofing,
+  Grammar,
   Superscript,
   Subscript,
   Extension.create({
@@ -236,6 +239,7 @@ export default function Docs({
     openReview: () => void;
   } | null>(null);
   const proofingContext = useRef<ProofingContext>(() => false);
+  const grammarContext = useRef<ProofingContext>(() => false);
   const [activeHeading, setActiveHeading] = useState<number | null>(null);
   const [pageCount, setPageCount] = useState(1);
   const [pageSetupOpen, setPageSetupOpen] = useState(false);
@@ -413,7 +417,8 @@ export default function Docs({
     },
   });
 
-  const proofing = useDocProofing(editor, pageCount, proofingContext);
+  const grammar = useDocGrammar(editor, grammarContext);
+  const proofing = useDocProofing(editor, pageCount, proofingContext, grammarContext);
 
   useEffect(() => {
     if (editor && editor.isEditable === readOnly) editor.setEditable(!readOnly);
@@ -717,6 +722,8 @@ export default function Docs({
         openPageSetup,
         openWordCount: proofing.openWordCount,
         openSpelling: proofing.openSpelling,
+        openGrammar: grammar.openGrammar,
+        openIgnoredGrammar: grammar.openIgnoredGrammar,
         openDictionary: proofing.openDictionary,
         clearFormatting: () =>
           editor.chain().focus().unsetAllMarks().clearNodes().run(),
@@ -736,7 +743,7 @@ export default function Docs({
         openSuggestions: () => suggestionApi.current?.openReview(),
       },
     });
-  }, [editor, file.title, onActions, proofing.openWordCount, proofing.openSpelling, proofing.openDictionary]);
+  }, [editor, file.title, onActions, proofing.openWordCount, proofing.openSpelling, proofing.openDictionary, grammar.openGrammar, grammar.openIgnoredGrammar]);
 
   useEffect(() => {
     if (!editor) return;
@@ -1926,6 +1933,7 @@ export default function Docs({
         <SuggestionRail />
       </div>
       {proofing.ui}
+      {grammar.ui}
       <footer className="editor-status">
         <span className="word-count">{proofing.label}</span> <SuggestionFlag />{" "}
         <span>
