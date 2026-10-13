@@ -29,7 +29,6 @@ import {
   ArrowLeft,
   Check,
   CircleAlert,
-  Copy,
   Trash2,
   FolderOpen,
   Download,
@@ -40,7 +39,6 @@ import {
   LogIn,
   LogOut,
   Unplug,
-  Pencil,
   ArrowDown,
   ArrowUp,
 } from "lucide-react";
@@ -52,6 +50,7 @@ import {
   kindFromName,
   nativeFilename,
   mimeFor,
+  readLibraryMarks,
   serializeFile,
   type SuiteFile,
   type FileRecord,
@@ -86,8 +85,23 @@ import {
 } from "./node-client";
 import { DriveBrowser, DriveDialog, NameDialog } from "./drive/DriveBrowser";
 import { searchFile } from "./library-search";
+import { FileLibraryRow, TrashToast } from "./library-trash-ui";
+import {
+  deleteForeverCopy,
+  emptyTrashCopy,
+  isTrashExpired,
+  movedToTrashText,
+  restoreRecord,
+  starRecord,
+  trashRecord,
+  trashViewNote,
+  TRASH_TOAST_MS,
+  viewHeading,
+  visibleRecords,
+  type LibraryFilter,
+} from "./library-trash";
 import { ConnectDialog, SignInScreen, useNodeSession } from "./drive/SignIn";
-import { formatModified, syncSummary, useServerSync } from "./drive/status";
+import { syncSummary, useServerSync } from "./drive/status";
 import { completeHandoff } from "./node-client";
 import {
   ModeContext,
@@ -387,31 +401,42 @@ function LocalHome() {
   const [records, setRecords] = useState<FileRecord[]>([]),
     [query, setQuery] = useState(""),
     [error, setError] = useState(""),
-    [filter, setFilter] = useState("all"),
+    [filter, setFilter] = useState<LibraryFilter>("all"),
     [sort, setSort] = useState<{ by: "name" | "edited"; desc: boolean }>({
       by: "edited",
       desc: true,
     }),
-    [asking, setAsking] = useState<{
-      action: "rename" | "remove";
-      record: FileRecord;
-    } | null>(null),
+    [renaming, setRenaming] = useState<FileRecord | null>(null),
+    [forever, setForever] = useState<FileRecord | null>(null),
+    [emptying, setEmptying] = useState(false),
+    [undo, setUndo] = useState<{ id: string; title: string } | null>(null),
     [sameFile, setSameFile] = useState<{
       name: string;
       existing: FileRecord;
       incoming: FileRecord;
     } | null>(null);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
   const refresh = useCallback(
     () =>
       storage
         .list()
         // Cached copies of server files belong to cluster mode.
-        .then((all) => setRecords(all.filter((r) => !r.drive)))
+        .then(async (all) => {
+          const local = all.filter((r) => !r.drive);
+          const now = new Date();
+          const expired = local.filter((r) => isTrashExpired(r, now));
+          if (expired.length)
+            await Promise.all(expired.map((r) => storage.remove(r.file.id)));
+          setRecords(local.filter((r) => !isTrashExpired(r, now)));
+        })
         .catch((e) => setError(message(e))),
     [],
   );
   useEffect(() => {
     void refresh();
+    return () => clearTimeout(undoTimer.current);
   }, [refresh]);
   const open = useCallback(
     async (r: FileRecord, notice?: string) => {
@@ -432,6 +457,15 @@ function LocalHome() {
         r.path || r.recovery ? undefined : await storage.get(r.file.id);
       if (!existing || existing.drive || existing.path)
         return open(r, `Opened “${name}”`);
+      if (
+        existing.trashedAt &&
+        serializeFile(existing.file) === serializeFile(r.file)
+      ) {
+        await storage.save(restoreRecord(existing));
+        openNotices.set(r.file.id, `Restored “${name}” from Trash`);
+        navigate(`/file/${r.file.id}`);
+        return;
+      }
       if (serializeFile(existing.file) !== serializeFile(r.file)) {
         setSameFile({ name, existing, incoming: r });
         return;
@@ -499,22 +533,70 @@ function LocalHome() {
       );
     await refresh();
   };
+  const desktop = !!window.suiteleaf;
+  const rememberUndo = (record: FileRecord) => {
+    clearTimeout(undoTimer.current);
+    setUndo({ id: record.file.id, title: record.file.title });
+    undoTimer.current = setTimeout(() => setUndo(null), TRASH_TOAST_MS);
+  };
+  const moveToTrash = (record: FileRecord) => {
+    void (async () => {
+      const latest = (await storage.get(record.file.id)) ?? record;
+      await storage.save(trashRecord(latest));
+      rememberUndo(latest);
+      await refresh();
+    })().catch((e) => setError(message(e)));
+  };
+  const undoTrash = () => {
+    if (!undo) return;
+    const id = undo.id;
+    clearTimeout(undoTimer.current);
+    setUndo(null);
+    void (async () => {
+      const latest = await storage.get(id);
+      if (latest?.trashedAt) await storage.save(restoreRecord(latest));
+      await refresh();
+    })().catch((e) => setError(message(e)));
+  };
+  const restore = (record: FileRecord) => {
+    void (async () => {
+      const latest = (await storage.get(record.file.id)) ?? record;
+      await storage.save(restoreRecord(latest));
+      if (undo?.id === record.file.id) {
+        clearTimeout(undoTimer.current);
+        setUndo(null);
+      }
+      setFilter("all");
+      setQuery("");
+      await refresh();
+    })().catch((e) => setError(message(e)));
+  };
+  const toggleStarred = (record: FileRecord) => {
+    void (async () => {
+      const latest = (await storage.get(record.file.id)) ?? record;
+      await storage.save(starRecord(latest, !latest.starred));
+      await refresh();
+    })().catch((e) => setError(message(e)));
+  };
+  const removeForever = async (ids: string[]) => {
+    if (undo && ids.includes(undo.id)) {
+      clearTimeout(undoTimer.current);
+      setUndo(null);
+    }
+    await Promise.all(ids.map((id) => storage.remove(id)));
+    await refresh();
+  };
   const searching = query.trim() !== "",
-    kindLabel =
-      filter === "all"
-        ? "Your files"
-        : filter === "doc"
-          ? "Documents"
-          : filter === "sheet"
-            ? "Spreadsheets"
-            : "Presentations",
+    kindLabel = viewHeading(filter),
     heading = !searching
       ? kindLabel
       : filter === "all"
         ? `Results for “${query.trim()}”`
-        : `${kindLabel} matching “${query.trim()}”`;
-  const shown = records
-    .filter((r) => filter === "all" || r.file.kind === filter)
+        : `${kindLabel} matching “${query.trim()}”`,
+    kept = records.filter((r) => !r.trashedAt),
+    trashed = records.filter((r) => r.trashedAt),
+    focused = searching || filter === "trash" || filter === "starred";
+  const shown = visibleRecords(records, filter, query)
     .flatMap((r) => {
       const hit = searchFile(r.file, query);
       return hit ? [{ r, snippet: hit.snippet }] : [];
@@ -581,6 +663,16 @@ function LocalHome() {
             All files
           </button>
           <button
+            className={filter === "starred" ? "selected" : ""}
+            onClick={() => {
+              setFilter("starred");
+              setSort({ by: "edited", desc: true });
+            }}
+          >
+            <Star size={18} />
+            Starred
+          </button>
+          <button
             className={filter === "doc" ? "selected" : ""}
             onClick={() => setFilter("doc")}
           >
@@ -600,6 +692,13 @@ function LocalHome() {
           >
             <Presentation size={18} />
             Presentations
+          </button>
+          <button
+            className={filter === "trash" ? "selected" : ""}
+            onClick={() => setFilter("trash")}
+          >
+            <Trash2 size={18} />
+            Trash
           </button>
         </div>
         <div className="local-note">
@@ -644,7 +743,7 @@ function LocalHome() {
           <span className="version">OPEN SOURCE · v0.1</span>
         </header>
         <LeftServerNotice />
-        {searching ? null : (
+        {focused ? null : (
           <>
             <section className="welcome">
               <p className="eyebrow">YOUR EVERYDAY WORKSPACE</p>
@@ -658,7 +757,7 @@ function LocalHome() {
         {connecting ? (
           <ConnectDialog onClose={() => setConnecting(false)} />
         ) : null}
-        <section className={`file-section ${searching ? "searching" : ""}`}>
+        <section className={`file-section ${focused ? "searching" : ""}`}>
           <header>
             <h2>{heading}</h2>
             {searching ? (
@@ -667,6 +766,16 @@ function LocalHome() {
               <ImportButton onImport={importRecord} onError={setError} />
             )}
           </header>
+          {filter === "trash" ? (
+            <div className="trash-banner">
+              <p>{trashViewNote(desktop)}</p>
+              {trashed.length > 0 ? (
+                <button type="button" onClick={() => setEmptying(true)}>
+                  Empty trash
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           {sameFile ? (
             <SameFileDialog
               {...sameFile}
@@ -687,11 +796,16 @@ function LocalHome() {
               }}
             />
           ) : null}
-          {records.length === 0 && !searching ? (
+          {filter === "all" && !searching && kept.length === 0 ? (
             <div className="empty">
               <FolderOpen size={34} />
               <h3>A workspace waiting for you</h3>
-              <p>Create your first file, or explore a sample.</p>
+              <p>
+                Create your first file, or explore a sample.
+                {trashed.length > 0
+                  ? " Anything you deleted is in Trash."
+                  : ""}
+              </p>
               <div>{samples}</div>
             </div>
           ) : shown.length === 0 ? (
@@ -700,12 +814,20 @@ function LocalHome() {
               <h3>
                 {searching
                   ? `No files match “${query.trim()}”`
-                  : `No ${kindLabel.toLowerCase()} yet`}
+                  : filter === "trash"
+                    ? "Trash is empty"
+                    : filter === "starred"
+                      ? "No starred files"
+                      : `No ${kindLabel.toLowerCase()} yet`}
               </h3>
               <p>
                 {searching
-                  ? "Search looks at file names and the words inside them."
-                  : "Files you create or import appear here."}
+                  ? "Search looks at file names and the words inside them, including Trash."
+                  : filter === "trash"
+                    ? "Files you delete wait here for 30 days."
+                    : filter === "starred"
+                      ? "Star a file on its row, or beside its title, and it stays here."
+                      : "Files you create or import appear here."}
               </p>
             </div>
           ) : (
@@ -716,116 +838,114 @@ function LocalHome() {
                 <span />
               </div>
               {shown.map(({ r, snippet }) => (
-                <div className="file-row" key={r.file.id}>
-                  <Link to={`/file/${r.file.id}`}>
-                    <span className={`file-icon ${r.file.kind}`}>
-                      {r.file.kind === "doc" ? (
-                        <FileText size={21} />
-                      ) : r.file.kind === "sheet" ? (
-                        <Sheet size={21} />
-                      ) : (
-                        <Presentation size={21} />
-                      )}
-                    </span>
-                    <span>
-                      {r.file.title}
-                      {snippet ? (
-                        <small className="file-snippet">{snippet}</small>
-                      ) : r.recovery ? (
-                        <small>Recovery draft available</small>
-                      ) : r.path ? (
-                        <small>{r.path}</small>
-                      ) : null}
-                    </span>
-                  </Link>
-                  <time
-                    dateTime={r.file.updatedAt}
-                    title={new Date(r.file.updatedAt).toLocaleString()}
-                  >
-                    {formatModified(r.file.updatedAt)}
-                  </time>
-                  <div className="file-controls">
-                    <button
-                      title="Rename"
-                      aria-label={`Rename ${r.file.title}`}
-                      onClick={() => setAsking({ action: "rename", record: r })}
-                    >
-                      <Pencil size={16} />
-                    </button>
-                    <button
-                      title="Make a copy"
-                      aria-label={`Duplicate ${r.file.title}`}
-                      onClick={() =>
-                        void storage
-                          .save({ file: duplicateFile(r.file) })
-                          .then(refresh)
-                          .catch((e) => setError(message(e)))
-                      }
-                    >
-                      <Copy size={16} />
-                    </button>
-                    <button
-                      title="Remove from library"
-                      aria-label={`Remove ${r.file.title}`}
-                      onClick={() => setAsking({ action: "remove", record: r })}
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </div>
+                <FileLibraryRow
+                  key={r.file.id}
+                  record={r}
+                  snippet={snippet}
+                  view={filter}
+                  desktop={desktop}
+                  onRename={() => setRenaming(r)}
+                  onDuplicate={() =>
+                    void storage
+                      .save({ file: duplicateFile(r.file) })
+                      .then(refresh)
+                      .catch((e) => setError(message(e)))
+                  }
+                  onMoveToTrash={() => moveToTrash(r)}
+                  onRestore={() => restore(r)}
+                  onDeleteForever={() => setForever(r)}
+                  onToggleStar={() => toggleStarred(r)}
+                />
               ))}
             </div>
           )}
-          {records.length > 0 && !searching ? (
+          {kept.length > 0 && !focused ? (
             <p className="sample-strip">Explore a sample: {samples}</p>
           ) : null}
-          {asking?.action === "rename" ? (
+          {renaming ? (
             <NameDialog
               title="Rename"
               submitLabel="OK"
-              initial={asking.record.file.title}
-              onClose={() => setAsking(null)}
+              initial={renaming.file.title}
+              onClose={() => setRenaming(null)}
               onSubmit={(title) => {
-                const { record } = asking;
-                setAsking(null);
+                const record = renaming;
+                setRenaming(null);
                 if (title !== record.file.title)
                   void rename(record, title).catch((e) => setError(message(e)));
               }}
             />
-          ) : asking?.action === "remove" ? (
-            <DriveDialog
-              title={
-                window.suiteleaf ? "Remove from library?" : "Delete this file?"
-              }
-              submitLabel={window.suiteleaf ? "Remove" : "Delete"}
-              onClose={() => setAsking(null)}
-              onSubmit={() => {
-                const { record } = asking;
-                setAsking(null);
-                void storage
-                  .remove(record.file.id)
-                  .then(refresh)
-                  .catch((e) => setError(message(e)));
-              }}
-            >
-              <p className="dialog-note">
-                {window.suiteleaf
-                  ? `“${asking.record.file.title}” and its recovery draft leave the library. Your saved file remains on disk.`
-                  : `“${asking.record.file.title}” will be deleted from this browser. This can't be undone.`}
-              </p>
-              {window.suiteleaf ? null : (
-                <p className="dialog-note">
-                  A copy you downloaded isn&apos;t affected: open it again with
-                  Open / import.
-                </p>
-              )}
-            </DriveDialog>
           ) : null}
+          {forever
+            ? (() => {
+                const copy = deleteForeverCopy(forever, desktop);
+                return (
+                  <DriveDialog
+                    title={copy.title}
+                    submitLabel="Delete forever"
+                    onClose={() => setForever(null)}
+                    onSubmit={() => {
+                      const id = forever.file.id;
+                      setForever(null);
+                      void removeForever([id]).catch((e) =>
+                        setError(message(e)),
+                      );
+                    }}
+                  >
+                    {copy.paragraphs.map((paragraph) => (
+                      <p className="dialog-note" key={paragraph}>
+                        {paragraph}
+                      </p>
+                    ))}
+                  </DriveDialog>
+                );
+              })()
+            : null}
+          {emptying
+            ? (() => {
+                const copy = emptyTrashCopy(trashed.length, desktop);
+                return (
+                  <DriveDialog
+                    title={copy.title}
+                    submitLabel="Delete forever"
+                    onClose={() => setEmptying(false)}
+                    onSubmit={() => {
+                      const ids = trashed.map((r) => r.file.id);
+                      setEmptying(false);
+                      void removeForever(ids).catch((e) =>
+                        setError(message(e)),
+                      );
+                    }}
+                  >
+                    {copy.paragraphs.map((paragraph) => (
+                      <p className="dialog-note" key={paragraph}>
+                        {paragraph}
+                      </p>
+                    ))}
+                    <ul className="trash-name-list">
+                      {trashed.map((r) => (
+                        <li key={r.file.id}>{r.file.title}</li>
+                      ))}
+                    </ul>
+                  </DriveDialog>
+                );
+              })()
+            : null}
         </section>
         <footer className="home-footer">
           A calmer place to get things done.<span>SuiteLeaf · Apache-2.0</span>
         </footer>
       </main>
+      {undo ? (
+        <TrashToast
+          text={movedToTrashText(undo.title, desktop)}
+          onUndo={undoTrash}
+          onDismiss={() => {
+            clearTimeout(undoTimer.current);
+            setUndo(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1009,8 +1129,7 @@ function Workspace() {
   const [record, setRecord] = useState<FileRecord>(),
     [error, setError] = useState(""),
     [status, setStatus] = useState("Opening…"),
-    [locked, setLocked] = useState(false),
-    [starred, setStarred] = useState(false);
+    [locked, setLocked] = useState(false);
   const [actionsReady, setActionsReady] = useState(false);
   const current = useRef<FileRecord>(undefined),
     version = useRef(0),
@@ -1078,16 +1197,22 @@ function Workspace() {
     setStatus("Saving…");
     try {
       await queue.current.enqueue(async () => {
+        const marks = readLibraryMarks(current.current!);
         const saved = await storage.save({
           ...current.current!,
           file: snapshot,
+          ...marks,
         });
-        // SuiteDrive uploads and copies replace `drive` while the write is in flight.
+        // A star or restore clicked while this write was in flight wins.
+        const after = readLibraryMarks(current.current!);
         current.current = {
           ...saved,
           file: current.current!.file,
           drive: current.current!.drive,
+          ...after,
         };
+        if (!after.starred) delete current.current.starred;
+        if (!after.trashedAt) delete current.current.trashedAt;
         if (alive.current) setRecord(current.current);
       });
       savedVersion.current = Math.max(savedVersion.current, at);
@@ -1223,6 +1348,15 @@ function Workspace() {
     current.current.file.title = title || "Untitled";
     setRecord({ ...current.current });
     update(current.current.file.content);
+  };
+  const toggleStar = () => {
+    if (!current.current) return;
+    const next = starRecord(current.current, !current.current.starred);
+    current.current = next;
+    setRecord(next);
+    void queue.current
+      .enqueue(() => storage.save(current.current!))
+      .catch((e) => setError(message(e)));
   };
   const saveAs = useCallback(async () => {
     if (!current.current) return;
@@ -1400,6 +1534,7 @@ function Workspace() {
       </div>
     );
   const f = record.file;
+  const starred = !!record.starred;
   return (
     <div className="workspace">
       <header className="workspace-header">
@@ -1489,8 +1624,9 @@ function Workspace() {
               type="button"
               className={`doc-icon-btn star-btn ${starred ? "starred" : ""}`}
               aria-label={starred ? "Starred" : "Star document"}
-              onClick={() => setStarred(!starred)}
-              title="Star"
+              aria-pressed={starred}
+              onClick={toggleStar}
+              title={starred ? "Unstar" : "Star"}
             >
               <Star
                 size={16}

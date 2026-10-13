@@ -553,7 +553,16 @@ export interface FileRecord {
   fingerprint?: string;
   recovery?: boolean;
   drive?: DriveLink;
+  /** Saved on the library entry so starring and Trash never rewrite the native file. */
+  starred?: boolean;
+  /** When the file was moved to Trash. Absent means it is not in Trash. */
+  trashedAt?: string;
 }
+export {
+  applyLibraryMarks,
+  readLibraryMarks,
+  type LibraryMarks,
+} from "./library-marks";
 /** Whether a SuiteDrive file has local edits that were never uploaded. */
 export function hasUnsyncedEdits(record: FileRecord) {
   return !!record.drive && record.drive.syncedAt !== record.file.updatedAt;

@@ -411,7 +411,7 @@ a {
 .file-list-head,
 .file-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) 130px 115px;
+  grid-template-columns: minmax(160px, 1fr) 130px 176px;
   align-items: center;
   gap: 15px;
   padding: 15px 22px;
@@ -446,11 +446,18 @@ a {
 .file-row:hover {
   background: var(--surface-hover);
 }
-.file-row > a {
+.file-row > a,
+.file-main > a {
   display: flex;
   align-items: center;
   gap: 14px;
   color: var(--text-primary);
+  min-width: 0;
+}
+.file-main {
+  min-width: 0;
+}
+.file-main > a span:last-child {
   min-width: 0;
 }
 .file-row small {
@@ -494,6 +501,86 @@ a {
 .file-controls button:hover {
   background: var(--surface-hover);
   color: var(--text-primary);
+}
+.file-controls button.starred,
+.file-controls button[aria-pressed="true"] {
+  color: #e37400;
+}
+.file-controls button.starred:hover,
+.file-controls button[aria-pressed="true"]:hover {
+  color: #e37400;
+}
+.in-trash-label {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 1px 7px;
+  border-radius: 4px;
+  background: color-mix(in srgb, #d93025 12%, transparent);
+  color: #b3261e;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+.file-row small.file-trash-status {
+  display: block;
+  max-width: none;
+  margin-top: 4px;
+  overflow: visible;
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-overflow: unset;
+  white-space: normal;
+}
+.trash-banner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: -4px 0 16px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.trash-banner p {
+  margin: 0;
+  flex: 1;
+}
+.trash-banner button {
+  flex-shrink: 0;
+}
+.trash-name-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+.trash-toast {
+  position: fixed;
+  z-index: 40;
+  left: 262px;
+  bottom: 118px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: min(520px, calc(100vw - 300px));
+  padding: 12px 12px 12px 16px;
+  border-radius: 8px;
+  background: #323639;
+  color: #fff;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+  font-size: 14px;
+}
+.trash-toast button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 4px 8px;
+}
+.trash-toast .trash-undo {
+  color: #8ab4f8;
+  font-weight: 600;
 }
 .empty {
   text-align: center;
@@ -1864,9 +1951,12 @@ a {
   }
   .file-row,
   .file-list-head {
-    grid-template-columns: minmax(110px, 1fr) 86px;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 4px;
     padding: 12px;
+  }
+  .restore-label {
+    display: none;
   }
   .file-row time,
   .file-list-head > :nth-child(3) {
@@ -1883,6 +1973,16 @@ a {
   }
   .file-controls button {
     padding: 5px;
+  }
+  .trash-toast {
+    left: 72px;
+    right: 12px;
+    bottom: 16px;
+    max-width: none;
+  }
+  .trash-banner {
+    align-items: stretch;
+    flex-direction: column;
   }
   .document-stage {
     justify-content: center;
