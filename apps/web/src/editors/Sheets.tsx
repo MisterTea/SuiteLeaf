@@ -45,6 +45,7 @@ import "@univerjs/preset-sheets-note/lib/index.css";
 import SheetCleanup from "./sheet-cleanup-ui";
 import { SheetSpelling } from "./grid-spelling-ui";
 import SheetRowGroups, { type SheetRowGroupsHandle } from "./sheet-row-groups-ui";
+import SheetColumnGroups, { type SheetColumnGroupsHandle } from "./sheet-column-groups-ui";
 import SheetFeatures from "./sheet-features";
 import SheetPrint, { type SheetPrintHandle } from "./sheet-print-ui";
 import { printMarkup, printedPages, readSheetPrint } from "./sheet-print";
@@ -562,7 +563,7 @@ function suggestedChartTitle(headers: CellValue[]) {
     : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 }
 const rowVisibilityMutation =
-  /^sheet\.mutation\.(set-filter-criteria|set-filter-range|re-calc-filter|remove-filter|set-row-hidden|set-row-visible)$/;
+  /^sheet\.mutation\.(set-filter-criteria|set-filter-range|re-calc-filter|remove-filter|set-row-hidden|set-row-visible|set-col-hidden|set-col-visible)$/;
 /**
  * Univer's filter list toggles a value only from its small checkbox. As in Sheets and
  * Excel, clicking the value's label or count toggles it too. Rows with an expand arrow
@@ -831,6 +832,7 @@ export default function Sheets({
   const spelling = useRef<{ open: () => void }>(null);
   const names = useRef<NamedRangesHandle>(null);
   const rowGroups = useRef<SheetRowGroupsHandle>(null);
+  const columnGroups = useRef<SheetColumnGroupsHandle>(null);
   const printing = useRef<SheetPrintHandle>(null);
   const printSheet = useRef<() => Promise<void>>(async () => {});
   const engine = useRef<any>(null);
@@ -2070,6 +2072,7 @@ export default function Sheets({
         sortRange: openSortRange,
         namedRanges: () => names.current?.open(),
         groupRows: () => rowGroups.current?.groupRows(),
+        groupColumns: () => columnGroups.current?.groupColumns(),
         trimWhitespace: () => cleanup.current?.trim(),
         removeDuplicates: () => cleanup.current?.duplicates(),
         splitTextToColumns: () => cleanup.current?.split(),
@@ -2454,6 +2457,14 @@ export default function Sheets({
       {ready && api.current && engine.current ? (
         <SheetRowGroups
           ref={rowGroups}
+          api={api.current}
+          engine={engine.current}
+          persist={() => persist.current()}
+        />
+      ) : null}
+      {ready && api.current && engine.current ? (
+        <SheetColumnGroups
+          ref={columnGroups}
           api={api.current}
           engine={engine.current}
           persist={() => persist.current()}

@@ -20,7 +20,8 @@ Rosa's budget has the category name in column A and twelve month columns after i
 4. **One month.** She expands the group and hides every month except January. February is hidden. January and the year total stay.
 5. **Undo.** One Undo removes the column group. All twelve months are visible again.
 6. **The label.** She selects only column A and chooses Group columns. The dialog says there is nothing to group, and column A stays visible.
-7. **Save.** She reopens the file. The months are collapsed the way she left them, and the year total is still beside the category.
+7. **Save.** Redo puts the group back, still open on January. She leaves and opens Rent budget again. January is still the only month, and the year total is still beside the category.
+8. **Rows still group.** She groups the Rent and Food rows and collapses them. Those rows hide. January and the year total stay, and the other months stay hidden.
 
 ## Google Workspace benchmark
 
@@ -38,10 +39,23 @@ In Google Sheets the path is select the detail columns, Data â€º Group columns â
 
 ## Success looks like
 
-Rosa sees the category and the year total side by side, with the months collapsed. She can open January without ungrouping the rest. Undo puts the twelve months back.
+Rosa sees the category and the year total side by side, with the months collapsed. She can open January without ungrouping the rest. Undo puts the twelve months back. After she leaves and comes back, January is still the only open month.
 
 ## Gaps and notes
 
-- Row groups exist. Column groups do not.
-- Do not rebuild row groups, named ranges, or spelling.
-- Keep the Data menu hook small. Extend the row-group module or add a sibling module. Do not copy the row-group UI into a second unrelated system if one outline can hold both.
+- A group is kept in the SuiteLeaf file. It is not written out as an Excel outline.
+- Inserting or deleting columns does not move an existing group.
+- If the selection includes a text category on the left, or a year-total formula on the right, those columns stay out of the group. Selecting only the category explains that there is nothing to group.
+- The plus and minus sit on the column headers. There is no extra outline band above the letters.
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| Group columns groups the selected months, and the column to the left is not grouped | Met | Video 0:16; `tests/browser/column-groups.spec.ts` |
+| Minus collapses the months, plus expands them, and the year total moves beside the category | Met | Video 0:18 and 0:22 |
+| Collapse does not change values or the year-total formula | Met | Video 0:21 (`=SUM(B2:M2)`, $14,400); browser test download |
+| One Undo removes the group and shows every column | Met | Video 0:24; browser test |
+| The group and its collapsed columns survive save and reopen | Met | Video 0:40, January open and February hidden; browser test reopen |
+| Selecting only the category explains and hides nothing | Met | Video 0:27; browser test |
+| An existing row group still collapses, and column groups do not clear it | Met | Video 0:46; browser test |
