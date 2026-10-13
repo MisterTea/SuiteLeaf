@@ -152,14 +152,20 @@ export function toAgentTool(t: SuiteTool): AgentTool {
     parameters: t.parameters,
     executionMode: "sequential",
     async execute(_id, params, signal) {
+      // Screens rebuild their tools as their state changes (and calls in one
+      // turn can change it): once the last change has rendered, run the tool
+      // the screen offers now.
+      await new Promise((r) => setTimeout(r, 50));
+      const live = currentSuiteTools().find((x) => x.name === t.name);
+      if (!live) throw new Error(`Tool ${t.name} not found`);
       let target: Target;
       try {
-        target = await t.target?.(params as never);
+        target = await live.target?.(params as never);
       } catch {
         target = undefined;
       }
-      await moveCursor(target, t.label);
-      const out = await t.execute(params as never, signal);
+      await moveCursor(target, live.label);
+      const out = await live.execute(params as never, signal);
       const text = typeof out === "string" ? out : out.text;
       return {
         content: [{ type: "text", text }],
