@@ -97,16 +97,16 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 39 | [Insert a function with help](39-insert-a-function-with-help.md) | single-node | Sheets |
 | 40 | [Trash, star, and restore files](40-trash-star-and-restore.md) | single-node | Files |
 | 41 | [A viewer cannot edit a spreadsheet or a presentation](41-view-only-sheets-and-slides.md) | cluster | Sheets, Slides |
-| 42 | [Hear that a file was shared, and keep a copy](42-you-were-shared-a-file.md) | cluster | Files |
+| 42 | [Hear that a file was shared, and keep a copy](42-notice-when-a-file-is-shared.md) | cluster | Files |
 | 43 | [See who last edited a file](43-who-last-edited.md) | cluster | Files, Docs |
 | 44 | [Compare a spreadsheet or a slide version in color](44-compare-a-sheet-or-slide-version.md) | cluster | Sheets, Slides |
-| 45 | [Check grammar while you write](45-check-grammar.md) | single-node | Docs |
+| 45 | [Check grammar while you write](45-check-grammar-on-the-device.md) | single-node | Docs |
 | 46 | [Bold one word in a slide](46-format-one-word-on-a-slide.md) | single-node | Slides |
 | 47 | [Save a slide theme and use it again](47-save-a-slide-theme.md) | single-node | Slides |
 | 48 | [Dropdowns with several choices, or from a range](48-dropdowns-from-a-range.md) | single-node | Sheets |
 | 49 | [Mention someone in a comment](49-mention-someone-in-a-comment.md) | single-node | Docs |
-| 50 | [Add a citation and a bibliography](50-citations-and-a-bibliography.md) | single-node | Docs |
-| 51 | [Hand over a file, and let a share expire](51-transfer-ownership-and-expire-a-share.md) | cluster | Docs |
+| 50 | [Add a citation and a bibliography](50-cite-a-source.md) | single-node | Docs |
+| 51 | [Hand over a file, and let a share expire](51-hand-over-a-file-and-let-a-share-expire.md) | cluster | Docs |
 | 52 | [Restore one paragraph](52-restore-one-paragraph.md) | cluster | Docs |
 | 53 | [Link a cell](53-link-a-cell.md) | single-node | Sheets |
 | 54 | [Spell a sheet and a deck](54-spell-a-sheet-and-a-deck.md) | single-node | Sheets, Slides |
