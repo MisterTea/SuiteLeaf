@@ -22,7 +22,8 @@ export const commentDraftKey = new PluginKey<{ from: number; to: number } | null
 
 export const CommentMark = Mark.create({
   name: MARK,
-  inclusive: false,
+  // Typing at the end of a comment stays inside it, so the thread remains linked.
+  inclusive: true,
   excludes: "",
   addAttributes() {
     return {

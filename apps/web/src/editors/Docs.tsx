@@ -63,7 +63,7 @@ import { Tool, type EditorActions, type TableAction } from "../ui";
 import { MenuSearchPill } from "../command-palette";
 import { useToolbarOverflow } from "./toolbar-overflow";
 import { linkTarget } from "./doc-links";
-import { NodeSelection, Selection, TextSelection } from "@tiptap/pm/state";
+import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import {
   DocumentSearchHighlight,
   documentMatches,
@@ -229,7 +229,7 @@ export default function Docs({
   const docTools = useRef<HTMLFieldSetElement>(null);
   const moreDocTools = useToolbarOverflow(
     docTools,
-    '[aria-label="Page setup"], [aria-label="Page break"], [aria-label="Superscript"], [aria-label="Subscript"], [aria-label="Bulleted list"], [aria-label="Decrease indent"], [aria-label="Increase indent"]',
+    '[aria-label="Page setup"], [aria-label="Page break"], [aria-label="Superscript"], [aria-label="Subscript"], [aria-label="Bulleted list"], [aria-label="Decrease indent"], [aria-label="Increase indent"], [aria-label="Find and replace"], [aria-label="Insert table"], .mode-switch',
   );
   const [pageViewportWidth, setPageViewportWidth] = useState(
     window.innerWidth - 32,
@@ -280,17 +280,23 @@ export default function Docs({
         ) {
           const sel = view.state.selection;
           const dir = event.key === "ArrowRight" ? 1 : -1;
-          const next = Selection.findFrom(sel.$head, dir, true);
-          if (!next) return false;
-          event.preventDefault();
-          const moved = TextSelection.create(
-            view.state.doc,
-            sel.anchor,
-            next.head,
-          );
-          if (!moved.eq(sel))
+          const doc = view.state.doc;
+          let pos = sel.head;
+          for (let step = 0; step < 8; step++) {
+            pos += dir;
+            if (pos < 0 || pos > doc.content.size) break;
+            let moved: TextSelection;
+            try {
+              moved = TextSelection.create(doc, sel.anchor, pos);
+            } catch {
+              continue;
+            }
+            if (moved.anchor === sel.anchor && moved.head === sel.head) continue;
+            event.preventDefault();
             view.dispatch(view.state.tr.setSelection(moved).scrollIntoView());
-          return true;
+            return true;
+          }
+          return false;
         }
         // A right or left arrow collapses a selection to that edge first,
         // including when the browser leaves the range in place.

@@ -57,6 +57,7 @@ test("command search runs strikethrough and explains commands that cannot run", 
   await expect(freeze).not.toHaveAttribute("aria-disabled", "true");
   await page.keyboard.press("Enter");
   await page.getByRole("button", { name: "View", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Freeze" }).hover();
+  // A phone expands the submenu on tap. Hover never opens it there.
+  await page.getByRole("menuitem", { name: "Freeze" }).click();
   await expect(page.getByRole("menuitemcheckbox", { name: "1 row" })).toBeChecked();
 });

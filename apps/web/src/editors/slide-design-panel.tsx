@@ -165,7 +165,11 @@ export function SlideDesignPanel({
                 body in {current.bodyFont}.
               </p>
             ) : null}
-            <div className="theme-customize">
+            <div
+              className="theme-customize"
+              onMouseEnter={() => onHoverTheme(null)}
+              onFocus={() => onHoverTheme(null)}
+            >
               <h3>Customize</h3>
               {current ? (
                 <>
