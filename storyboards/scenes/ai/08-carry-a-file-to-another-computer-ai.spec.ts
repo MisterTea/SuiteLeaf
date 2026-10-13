@@ -93,8 +93,16 @@ test("08-carry-a-file-to-another-computer-ai", async ({ page }) => {
     await (await chooser).setFiles(saved);
   }
   const same = page.getByRole("dialog", { name: `“${title}” is already ${electronMode ? "on this computer" : "in this browser"}` });
-  await expect(same).toContainText("The one here has newer changes. Replacing it discards them.");
-  await caption(page, "SuiteLeaf sees the list is already here, with newer changes, and asks before replacing it.", 2800);
+  // If the assistant saved the edit back over the file, the file is as new as the list here.
+  const savedBack = reopen.items.some((i) => i.kind === "tool" && i.name === "download_file" && i.status === "ok");
+  if (savedBack) {
+    await expect(same).toBeVisible();
+    await expect(same).not.toContainText("The one here has newer changes.");
+    await caption(page, "SuiteLeaf sees the list is already here, and asks before replacing it.", 2800);
+  } else {
+    await expect(same).toContainText("The one here has newer changes. Replacing it discards them.");
+    await caption(page, "SuiteLeaf sees the list is already here, with newer changes, and asks before replacing it.", 2800);
+  }
   await same.getByRole("button", { name: "Cancel" }).click();
   await expect(page.locator(".file-row")).toHaveCount(1);
   await page.getByRole("link", { name: title }).click();
