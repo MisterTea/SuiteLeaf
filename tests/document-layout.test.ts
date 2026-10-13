@@ -305,16 +305,19 @@ describe("page number format chips", () => {
     expect(pageNumberFormatChips(1, 2)).toEqual({
       fraction: "1 / 2",
       page: "Page 1",
+      roman: "i, ii, iii",
     });
   });
   it("follows a start of 12, then 3, on a two-page file", () => {
     expect(pageNumberFormatChips(12, 2)).toEqual({
       fraction: "12 / 13",
       page: "Page 12",
+      roman: "xii, xiii, xiv",
     });
     expect(pageNumberFormatChips(3, 2)).toEqual({
       fraction: "3 / 4",
       page: "Page 3",
+      roman: "iii, iv, v",
     });
   });
   it("matches the number drawn on the first page", () => {
@@ -334,6 +337,28 @@ describe("page number format chips", () => {
         pageFace({ ...shared, pageNumberFormat: "fraction" }, 0, 2).pageNumber,
       ).toBe(chips.fraction);
     }
+  });
+  it("lists three roman pages from the start", () => {
+    expect(pageNumberFormatChips(1, 2).roman).toBe("i, ii, iii");
+    expect(pageNumberFormatChips(4, 2).roman).toBe("iv, v, vi");
+    expect(pageNumberFormatChips(12, 2).roman).toBe("xii, xiii, xiv");
+    const started = {
+      ...defaultPageSettings,
+      pageNumbers: true,
+      pageNumberFormat: "roman" as const,
+      pageNumberStart: 4,
+    };
+    expect(pageFace(started, 0, 2).pageNumber).toBe("iv");
+    expect(pageFace(started, 1, 2).pageNumber).toBe("v");
+    expect(pageNumberFormatChips(4, 2).roman.startsWith("iv, v")).toBe(true);
+    expect(pageNumberFormatChips(4, 2)).toMatchObject({
+      fraction: "4 / 5",
+      page: "Page 4",
+    });
+    expect(pageNumberFormatChips(12, 2)).toMatchObject({
+      fraction: "12 / 13",
+      page: "Page 12",
+    });
   });
 });
 

@@ -217,15 +217,16 @@ export function pageNumberText(
   return `${page} / ${total}`;
 }
 /**
- * Labels for the fraction and "Page N" chips. They use the number on the
- * first page, so a start of 12 on two pages reads "12 / 13" and "Page 12".
- * Pass the last accepted start. The caller keeps that number when the field
- * is below 1, so the chips do not move.
+ * Labels for the fraction, "Page N", and roman chips. They use the number
+ * on the first page, so a start of 4 on two pages reads "4 / 5", "Page 4",
+ * and "iv, v, vi". The roman chip lists three numbers from that start, the
+ * same length as "i, ii, iii". Pass the last accepted start. The caller
+ * keeps that number when the field is below 1, so the chips do not move.
  */
 export function pageNumberFormatChips(
   start: number,
   pageCount: number,
-): { fraction: string; page: string } {
+): { fraction: string; page: string; roman: string } {
   const count = Math.max(1, Math.floor(pageCount) || 1);
   const shown = pageNumberAt(
     {
@@ -235,9 +236,13 @@ export function pageNumberFormatChips(
     0,
     count,
   );
+  const roman = [0, 1, 2]
+    .map((offset) => lowerRoman(shown.page + offset))
+    .join(", ");
   return {
     fraction: pageNumberText("fraction", shown.page, shown.total),
     page: pageNumberText("page", shown.page, shown.total),
+    roman,
   };
 }
 /** A start number is a whole page from 1 through 9999. Anything else starts at 1. */

@@ -177,7 +177,7 @@ export function PageSetupFields({
               checked={draft.pageNumberFormat === "roman"}
               onChange={() => onChange({ ...draft, pageNumberFormat: "roman" })}
             />
-            i, ii, iii
+            {chips.roman}
           </label>
         </fieldset>
         <fieldset className="page-number-choice" disabled={!draft.pageNumbers}>

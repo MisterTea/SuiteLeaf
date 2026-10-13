@@ -154,6 +154,7 @@
   background: #fff;
   font-weight: 500;
   cursor: pointer;
+  white-space: nowrap;
 }
 .page-setup-check.page-setup-numbers .page-number-choice label:has(input:checked) {
   border-color: #1a73e8;
