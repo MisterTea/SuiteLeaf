@@ -1,4 +1,11 @@
 import type { JsonNode } from "./index";
+export type PageNumberFormat = "fraction" | "page";
+export type PageNumberPosition = "bottom-right" | "bottom-center" | "top-right";
+const pageNumberPositions: PageNumberPosition[] = [
+  "bottom-right",
+  "bottom-center",
+  "top-right",
+];
 export type PageSettings = {
   size: "letter" | "a4";
   landscape: boolean;
@@ -6,6 +13,15 @@ export type PageSettings = {
   header: string;
   footer: string;
   pageNumbers: boolean;
+  /** "1 / 2", or "Page 1" when the total should stay hidden. */
+  pageNumberFormat: PageNumberFormat;
+  /** Where the number sits. Ignored until pageNumberPositionSet is true. */
+  pageNumberPosition: PageNumberPosition;
+  /**
+   * Files saved before a position was chosen leave this false, so odd and even
+   * pages still number on the outside edge.
+   */
+  pageNumberPositionSet: boolean;
   /** Page 1 uses firstHeader and firstFooter and has no page number. */
   differentFirstPage: boolean;
   firstHeader: string;
@@ -29,6 +45,9 @@ export const defaultPageSettings: PageSettings = {
   header: "",
   footer: "",
   pageNumbers: false,
+  pageNumberFormat: "fraction",
+  pageNumberPosition: "bottom-right",
+  pageNumberPositionSet: false,
   differentFirstPage: false,
   firstHeader: "",
   firstFooter: "",
@@ -54,6 +73,13 @@ export function documentPageSettings(content: JsonNode): PageSettings {
     // Like Docs and Word, page numbers are off until chosen; settings saved
     // before that default changed keep numbering unless it was turned off.
     pageNumbers: a ? a.pageNumbers !== false : false,
+    pageNumberFormat: a?.pageNumberFormat === "page" ? "page" : "fraction",
+    pageNumberPosition: pageNumberPositions.includes(
+      a?.pageNumberPosition as PageNumberPosition,
+    )
+      ? (a?.pageNumberPosition as PageNumberPosition)
+      : "bottom-right",
+    pageNumberPositionSet: a?.pageNumberPositionSet === true,
     differentFirstPage: a?.differentFirstPage === true,
     firstHeader: pageText(a?.firstHeader),
     firstFooter: pageText(a?.firstFooter),
@@ -64,16 +90,29 @@ export function documentPageSettings(content: JsonNode): PageSettings {
     oddFooter: pageText(a?.oddFooter),
   };
 }
-export type PageNumberSide = "left" | "right" | "none";
+export type PageNumberSide = "left" | "right" | "center" | "top-right" | "none";
 export type PageFace = {
   header: string;
   footer: string;
   /** Outside edge when odd and even pages differ; otherwise the left. */
   headerAlign: "left" | "right";
   numberSide: PageNumberSide;
-  /** Empty when this page has no number. Otherwise "2 / 3". */
+  /** Empty when this page has no number. Otherwise "2 / 3" or "Page 2". */
   pageNumber: string;
 };
+export function pageNumberText(
+  format: PageNumberFormat,
+  page: number,
+  pageCount: number,
+): string {
+  const total = Math.max(pageCount, 1);
+  return format === "page" ? `Page ${page}` : `${page} / ${total}`;
+}
+function chosenNumberSide(settings: PageSettings): PageNumberSide {
+  if (settings.pageNumberPosition === "bottom-center") return "center";
+  if (settings.pageNumberPosition === "top-right") return "top-right";
+  return "right";
+}
 /**
  * Which header, footer, and page-number edge a page uses.
  * Page 1 keeps its letterhead when different first page is on.
@@ -91,7 +130,13 @@ export function pageFace(
   let header = settings.header;
   let footer = settings.footer;
   let headerAlign: "left" | "right" = "left";
-  let numberSide: PageNumberSide = settings.pageNumbers ? "right" : "none";
+  let numberSide: PageNumberSide = "none";
+  if (settings.pageNumbers) {
+    numberSide =
+      settings.pageNumberPositionSet && !first
+        ? chosenNumberSide(settings)
+        : "right";
+  }
   if (first) {
     header = settings.firstHeader;
     footer = settings.firstFooter;
@@ -100,14 +145,16 @@ export function pageFace(
     header = even ? settings.evenHeader : settings.oddHeader;
     footer = even ? settings.evenFooter : settings.oddFooter;
     headerAlign = even ? "left" : "right";
-    numberSide = settings.pageNumbers ? (even ? "left" : "right") : "none";
+    if (settings.pageNumbers && !settings.pageNumberPositionSet)
+      numberSide = even ? "left" : "right";
   }
   return {
     header,
     footer,
     headerAlign,
     numberSide,
-    pageNumber: numberSide === "none" ? "" : `${page} / ${Math.max(pageCount, 1)}`,
+    pageNumber:
+      numberSide === "none" ? "" : pageNumberText(settings.pageNumberFormat, page, pageCount),
   };
 }
 /** Copy the shared header into the even and odd fields the first time they are used. */
@@ -137,14 +184,33 @@ export function setDifferentFirstPage(
 ): PageSettings {
   return { ...settings, differentFirstPage: on };
 }
-export function pageNumberHint(settings: PageSettings): string {
-  if (settings.differentFirstPage && settings.differentOddEven)
-    return "No number on page 1. Left on even pages, right on odd pages.";
-  if (settings.differentOddEven)
-    return "Left on even pages, right on odd pages.";
+export function pageNumberHint(settings: PageSettings, pageCount = 2): string {
+  if (!settings.pageNumbers)
+    return "Off on every page. Turn them on to choose a format and a position.";
+  if (!settings.pageNumberPositionSet && settings.differentOddEven)
+    return settings.differentFirstPage
+      ? "No number on page 1. Left on even pages, right on odd pages."
+      : "Left on even pages, right on odd pages.";
+  if (
+    settings.differentFirstPage &&
+    !settings.pageNumberPositionSet &&
+    settings.pageNumberFormat !== "page"
+  )
+    return "Page 1 has no number. Page 2 shows 2.";
+  const sample =
+    settings.pageNumberFormat === "page"
+      ? "Page 1"
+      : pageNumberText("fraction", 1, pageCount);
+  const place =
+    settings.pageNumberPositionSet && settings.pageNumberPosition === "bottom-center"
+      ? "Bottom center"
+      : settings.pageNumberPositionSet && settings.pageNumberPosition === "top-right"
+        ? "Top right"
+        : "Bottom right";
+  const kept = "Editing the footer leaves it in place.";
   if (settings.differentFirstPage)
-    return "No number on page 1. Bottom right on later pages.";
-  return "Bottom right of every page, as “1 / 3”.";
+    return `No number on page 1. ${place} on later pages, as “${sample}”. ${kept}`;
+  return `${place} of every page, as “${sample}”. ${kept}`;
 }
 export function pageDimensions(settings: PageSettings) {
   const [width, height] = settings.size === "a4" ? [794, 1123] : [816, 1056];
@@ -152,6 +218,20 @@ export function pageDimensions(settings: PageSettings) {
     width: settings.landscape ? height : width,
     height: settings.landscape ? width : height,
   };
+}
+function pageNumberMarginBox(settings: PageSettings): string {
+  if (!settings.pageNumbers) return "";
+  const slot =
+    settings.pageNumberPositionSet && settings.pageNumberPosition === "bottom-center"
+      ? "bottom-center"
+      : settings.pageNumberPositionSet && settings.pageNumberPosition === "top-right"
+        ? "top-right"
+        : "bottom-right";
+  const content =
+    settings.pageNumberFormat === "page"
+      ? '"Page " counter(page)'
+      : 'counter(page) " / " counter(pages)';
+  return `@${slot} { content: ${content}; font: 10pt Arial, sans-serif; color: #555; }`;
 }
 const escapeHtml = (text: string) =>
   text.replace(
@@ -172,9 +252,7 @@ export function documentHtml(
   const pageRule = [
     `size: ${width / 96}in ${height / 96}in;`,
     `margin: ${settings.margin / 96}in;`,
-    settings.pageNumbers
-      ? `@bottom-right { content: counter(page) " / " counter(pages); font: 10pt Arial, sans-serif; color: #555; }`
-      : "",
+    pageNumberMarginBox(settings),
   ].join(" ");
   const furniture = (tag: "header" | "footer", text: string) =>
     text ? `<${tag} class="page-${tag}">${escapeHtml(text)}</${tag}>` : "";

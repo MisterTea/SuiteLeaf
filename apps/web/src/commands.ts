@@ -66,6 +66,8 @@ export const COMMAND_SYNONYMS: Record<string, string[]> = {
     "footer",
     "different first page",
     "first page",
+    "page number format",
+    "page number position",
   ],
   "Cell comment": ["comment", "comments", "note", "annotation"],
   "1 row": [

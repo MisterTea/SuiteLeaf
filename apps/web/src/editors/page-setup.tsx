@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import {
   pageFace,
   pageNumberHint,
+  pageNumberText,
   setDifferentFirstPage,
   setDifferentOddEven,
   type PageSettings,
@@ -42,17 +43,27 @@ function Preview({
   draft: PageSettings;
   pageCount: number;
 }) {
-  const total = Math.max(pageCount, 3);
+  const count = draft.differentOddEven ? 3 : Math.min(3, Math.max(pageCount, 1));
+  const total = Math.max(pageCount, count);
   return (
-    <div className="page-setup-preview" role="group" aria-label="Page preview">
-      {[0, 1, 2].map((index) => {
+    <div
+      className="page-setup-preview"
+      role="group"
+      aria-label="Page preview"
+      style={{ "--preview-columns": count } as CSSProperties}
+    >
+      {Array.from({ length: count }, (_, index) => {
         const face = pageFace(draft, index, total);
         const where =
           face.numberSide === "none"
             ? "No number"
             : face.numberSide === "left"
               ? `${face.pageNumber} on the left`
-              : `${face.pageNumber} on the right`;
+              : face.numberSide === "center"
+                ? `${face.pageNumber} in the center`
+                : face.numberSide === "top-right"
+                  ? `${face.pageNumber} at the top right`
+                  : `${face.pageNumber} on the right`;
         return (
           <div key={index} className="page-setup-preview-page">
             <span className="page-setup-preview-label">
@@ -109,10 +120,10 @@ export function PageSetupFields({
         <p className="page-setup-hint">
           {draft.differentOddEven
             ? `Untick to put “${shared}” back on every later page.`
-            : "Even and odd pages after the first can each have a header and a footer. Their page numbers sit on the outside edge."}
+            : "Even and odd pages after the first can each have a header and a footer."}
         </p>
       </fieldset>
-      <div className="page-setup-check">
+      <div className="page-setup-check page-setup-numbers">
         <label>
           <input
             type="checkbox"
@@ -124,9 +135,62 @@ export function PageSetupFields({
           />
           Page numbers
         </label>
-        <span id="page-numbers-hint" className="page-setup-hint">
-          {pageNumberHint(draft)}
-        </span>
+        <fieldset className="page-number-choice" disabled={!draft.pageNumbers}>
+          <legend>Format</legend>
+          <label>
+            <input
+              type="radio"
+              name="page-number-format"
+              checked={draft.pageNumberFormat === "fraction"}
+              onChange={() =>
+                onChange({ ...draft, pageNumberFormat: "fraction" })
+              }
+            />
+            {pageNumberText("fraction", 1, Math.max(pageCount, 1))}
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="page-number-format"
+              checked={draft.pageNumberFormat === "page"}
+              onChange={() => onChange({ ...draft, pageNumberFormat: "page" })}
+            />
+            Page 1
+          </label>
+        </fieldset>
+        <fieldset className="page-number-choice" disabled={!draft.pageNumbers}>
+          <legend>Position</legend>
+          {(
+            [
+              ["bottom-right", "Bottom right"],
+              ["bottom-center", "Bottom center"],
+              ["top-right", "Top right"],
+            ] as const
+          ).map(([id, label]) => (
+            <label key={id}>
+              <input
+                type="radio"
+                name="page-number-position"
+                checked={
+                  draft.pageNumberPositionSet
+                    ? draft.pageNumberPosition === id
+                    : !draft.differentOddEven && id === "bottom-right"
+                }
+                onChange={() =>
+                  onChange({
+                    ...draft,
+                    pageNumberPosition: id,
+                    pageNumberPositionSet: true,
+                  })
+                }
+              />
+              {label}
+            </label>
+          ))}
+        </fieldset>
+        <p id="page-numbers-hint" className="page-setup-hint">
+          {pageNumberHint(draft, pageCount)}
+        </p>
       </div>
       <Preview draft={draft} pageCount={pageCount} />
       {draft.differentFirstPage ? (
@@ -253,13 +317,18 @@ export function PageFurniture({
             data-header-align={face.headerAlign}
             style={{ "--page-index": i } as CSSProperties}
           >
+            {face.numberSide === "top-right" ? (
+              <span className="page-number page-number-top">{face.pageNumber}</span>
+            ) : null}
             <div className={`page-header align-${face.headerAlign}`}>{face.header}</div>
-            <div className={`page-footer number-${face.numberSide}`}>
+            <div
+              className={`page-footer number-${face.numberSide === "top-right" ? "none" : face.numberSide}`}
+            >
               {face.numberSide === "left" ? (
                 <span className="page-number">{face.pageNumber}</span>
               ) : null}
               <span className="page-footer-text">{face.footer}</span>
-              {face.numberSide === "right" ? (
+              {face.numberSide === "right" || face.numberSide === "center" ? (
                 <span className="page-number">{face.pageNumber}</span>
               ) : null}
             </div>
