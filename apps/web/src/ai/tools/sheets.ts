@@ -27,7 +27,8 @@ export interface SheetsAgentContext {
   sort: (rules: { column: number; ascending: boolean }[], hasHeader: boolean) => void;
   freeze: (axis: "rows" | "columns", count: number) => void;
   insertCheckbox: () => void;
-  exportAs: (format: "xlsx" | "csv" | "tsv") => Promise<void>;
+  /** Undefined once the browser downloads it; on the desktop, the saved path or null if cancelled. */
+  exportAs: (format: "xlsx" | "csv" | "tsv") => Promise<string | null | void>;
   setAuthor?: (name: string) => void;
 }
 
@@ -844,8 +845,13 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       parameters: Type.Object({ format: Type.String({ enum: ["xlsx", "csv", "tsv"] }) }),
       target: () => document.querySelector(".workspace-header [aria-haspopup]"),
       async execute({ format }) {
-        await ctx.exportAs(format as "xlsx");
-        return `Exported "${ctx.title}.${format}".`;
+        const saved = await ctx.exportAs(format as "xlsx");
+        const name = `"${ctx.title}.${format}"`;
+        const what = format === "xlsx" ? "every sheet" : `the sheet "${ctx.book.getActiveSheet().getSheetName()}"`;
+        if (saved === null) return `The user closed the save dialog, so ${name} was not exported. Tell them; export again only if they ask.`;
+        return saved
+          ? `Exported ${what} as ${name}; the user saved it as ${saved}.`
+          : `Exported ${what} as ${name}; it downloaded to the browser's downloads.`;
       },
     }),
     tool({

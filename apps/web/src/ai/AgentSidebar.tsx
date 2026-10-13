@@ -204,6 +204,8 @@ export function AgentSidebar() {
                 ? `Preparing “${session.draft.label}”…${session.draft.chars > 200 ? ` ${session.draft.chars.toLocaleString()} characters` : ""}`
                 : "Working…"}
           </div>
+        ) : session.state === "done" && session.items.at(-1)?.kind === "tool" ? (
+          <p className="agent-note">Gemma finished without a summary. The steps above are what it did.</p>
         ) : null}
       </div>
       <FilePrompt />

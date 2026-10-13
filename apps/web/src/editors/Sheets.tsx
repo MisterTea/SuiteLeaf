@@ -1765,16 +1765,15 @@ export default function Sheets({
         if (format === "xlsx") {
           persist.current();
           const { exportXlsx } = await import("@suiteleaf/core/xlsx-export");
-          await exportBinary(
+          return exportBinary(
             filename(file.title, "xlsx"),
             await exportXlsx({ content: content.current }),
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
           );
-          return;
         }
         const s = book.current.getActiveSheet();
         const values = s.getDataRange().getRawValues();
-        await exportText(
+        return exportText(
           filename(file.title, format),
           Papa.unparse(values, {
             delimiter: format === "tsv" ? "\t" : ",",
