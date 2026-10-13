@@ -27,7 +27,13 @@ import {
   TableRow,
   TextRun,
   UnderlineType,
+  HorizontalPositionAlign,
+  HorizontalPositionRelativeFrom,
+  TextWrappingSide,
+  TextWrappingType,
   VerticalAlign,
+  VerticalPositionAlign,
+  VerticalPositionRelativeFrom,
   WidthType,
   type IRunOptions,
   type MathComponent,
@@ -49,6 +55,7 @@ import {
   type CitationLibrary,
 } from "./citations";
 import { croppedFrame, docxImageCrop, imageCrop } from "./image-crop";
+import { imageWrap } from "./image-wrap";
 
 const color = (v: unknown) =>
   typeof v === "string" && /^#[\da-f]{6}$/i.test(v) ? v.slice(1) : undefined;
@@ -245,6 +252,30 @@ function runs(
         crop,
       );
       const docxCrop = docxImageCrop(crop);
+      const wrap = imageWrap(n.attrs);
+      const floating = wrap
+        ? {
+            horizontalPosition: {
+              relative: HorizontalPositionRelativeFrom.COLUMN,
+              align:
+                wrap === "right"
+                  ? HorizontalPositionAlign.RIGHT
+                  : HorizontalPositionAlign.LEFT,
+            },
+            verticalPosition: {
+              relative: VerticalPositionRelativeFrom.PARAGRAPH,
+              align: VerticalPositionAlign.TOP,
+            },
+            wrap:
+              wrap === "break"
+                ? { type: TextWrappingType.TOP_AND_BOTTOM }
+                : {
+                    type: TextWrappingType.SQUARE,
+                    side: TextWrappingSide.BOTH_SIDES,
+                  },
+            allowOverlap: false,
+          }
+        : undefined;
       return [
         new ImageRun({
           type: match[1] === "jpeg" ? "jpg" : (match[1] as "png" | "gif"),
@@ -254,6 +285,7 @@ function runs(
             height: Math.max(1, frame.height),
           },
           ...(docxCrop ? { crop: docxCrop } : {}),
+          ...(floating ? { floating } : {}),
           altText: docxImageAlt(n.attrs?.alt),
         }),
       ];

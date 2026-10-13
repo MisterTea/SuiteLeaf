@@ -1517,8 +1517,105 @@ a {
 }
 .ProseMirror-selectednode.doc-image-host > .doc-image-actions,
 .doc-image-host[data-cropping="true"] > .doc-image-actions,
-.doc-image-host:focus-within > .doc-image-actions {
+.doc-image-host:focus-within > .doc-image-actions,
+.doc-image-host:hover > .doc-image-actions {
   display: flex;
+}
+/* Left and Right share lines with the following paragraph. Break text does not float. */
+.document-content .doc-image-host:has(img[data-wrap="left"]),
+.document-content .doc-image-host:has(img[data-wrap="right"]),
+.document-content .doc-image-host[data-wrap="left"],
+.document-content .doc-image-host[data-wrap="right"] {
+  float: left;
+  width: max-content;
+  max-width: 48%;
+  margin: 0 16px 8px 0;
+  clear: none;
+}
+.document-content .doc-image-host:has(img[data-wrap="right"]),
+.document-content .doc-image-host[data-wrap="right"] {
+  float: right;
+  margin: 0 0 8px 16px;
+}
+.document-content .doc-image-host:has(img[data-wrap="left"]) [data-resize-wrapper],
+.document-content .doc-image-host:has(img[data-wrap="right"]) [data-resize-wrapper] {
+  width: max-content;
+  max-width: 100%;
+}
+.document-content .doc-image-host:not([data-wrap="left"]):not([data-wrap="right"]):not(:has(img[data-wrap="left"])):not(:has(img[data-wrap="right"])) {
+  float: none;
+  clear: both;
+}
+.document-content::after {
+  content: "";
+  display: block;
+  clear: both;
+}
+.doc-image-host[data-cropping="true"] .doc-image-wrap {
+  display: none;
+}
+.doc-image-wrap-check {
+  width: 1em;
+  color: #174ea6;
+}
+.doc-image-wrap-item[aria-checked="false"] .doc-image-wrap-check {
+  visibility: hidden;
+}
+.doc-image-wrap {
+  position: relative;
+}
+.doc-image-wrap-menu {
+  position: absolute;
+  z-index: 6;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 160px;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid #c4c7c5;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 4px 16px rgba(32, 33, 36, 0.18);
+}
+.doc-image-wrap-menu[hidden] {
+  display: none;
+}
+.doc-image-wrap-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  min-height: 32px;
+  margin: 0;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #1f1f1f;
+  font: 600 13px/1.2 Arial, sans-serif;
+  text-align: left;
+  cursor: pointer;
+}
+.doc-image-wrap-item[aria-checked="true"] {
+  background: #e8f0fe;
+  box-shadow: inset 3px 0 0 #1a73e8;
+}
+.doc-image-wrap-check {
+  width: 1em;
+  visibility: hidden;
+}
+.doc-image-wrap-item[aria-checked="true"] .doc-image-wrap-check {
+  visibility: visible;
+}
+.doc-image-wrap-item:hover {
+  background: #f1f3f4;
+}
+.doc-image-wrap-item[aria-checked="true"]:hover,
+.doc-image-wrap-item[aria-checked="true"]:focus-visible {
+  background: #d2e3fc;
+}
+.doc-image-wrap-item:focus-visible {
+  outline: 2px solid #1a73e8;
+  outline-offset: -2px;
 }
 .doc-image-crop-button[hidden],
 .doc-image-crop-hint[hidden],
@@ -1605,7 +1702,8 @@ a {
   display: none;
 }
 @media (max-width: 700px) {
-  .doc-image-crop-button {
+  .doc-image-crop-button,
+  .doc-image-wrap-item {
     min-height: 32px;
   }
 }

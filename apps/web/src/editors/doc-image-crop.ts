@@ -13,6 +13,11 @@ import {
   imageCropActive,
   type ImageCrop,
 } from "@suiteleaf/core/image-crop";
+import {
+  imageWrapAttribute,
+  mountImageWrapMenu,
+  syncImageWrap,
+} from "./doc-image-wrap";
 
 let hintSerial = 0;
 const EDGES = ["top", "right", "bottom", "left"] as const;
@@ -58,6 +63,7 @@ function keyPercent(edge: Edge, key: string): number | null {
  * Crop changes only the hidden-edge percentages. Resize still writes width and height.
  */
 export const croppableImage = Image.extend({
+  atom: true,
   addAttributes() {
     return {
       ...this.parent?.(),
@@ -65,6 +71,7 @@ export const croppableImage = Image.extend({
       cropTop: cropAttribute("cropTop", "data-crop-top"),
       cropRight: cropAttribute("cropRight", "data-crop-right"),
       cropBottom: cropAttribute("cropBottom", "data-crop-bottom"),
+      wrap: imageWrapAttribute(),
     };
   },
   addNodeView() {
@@ -125,13 +132,17 @@ export const croppableImage = Image.extend({
       resetButton.dataset.cropControl = "reset";
       resetButton.textContent = "Reset crop";
 
-      const hint = document.createElement("p");
+      const hint = document.createElement("span");
       hint.className = "doc-image-crop-hint";
       hint.id = `crop-hint-${++hintSerial}`;
       hint.textContent =
         "Drag an edge to hide it. The rest of the photo stays the same size.";
 
       actions.append(cropButton, doneButton, resetButton, hint);
+      const unmountWrap = mountImageWrapMenu(actions, editor, () => {
+        const pos = getPos();
+        return typeof pos === "number" ? pos : undefined;
+      });
 
       const edgeButtons = new Map<Edge, HTMLButtonElement>();
       for (const edge of EDGES) {
@@ -317,6 +328,7 @@ export const croppableImage = Image.extend({
           locked = true;
         }
         paint(imageCrop(updated.attrs));
+        syncImageWrap(host, updated.attrs);
         return true;
       };
 
@@ -328,6 +340,8 @@ export const croppableImage = Image.extend({
         onResize: (width, height) => {
           img.style.width = `${width}px`;
           img.style.height = `${height}px`;
+          if (host.dataset.wrap === "left" || host.dataset.wrap === "right")
+            host.style.width = `${width}px`;
           fullWidth = width;
           fullHeight = img.offsetHeight || height;
           if (!imageCropActive(current)) return;
@@ -360,6 +374,16 @@ export const croppableImage = Image.extend({
       host.style.flexDirection = "column";
       host.style.alignItems = "flex-start";
       host.appendChild(actions);
+      host.addEventListener("mousedown", (event) => {
+        if (event.button !== 0) return;
+        const target = event.target;
+        if (!(target instanceof Element) || target.closest("button, .doc-image-actions"))
+          return;
+        const pos = getPos();
+        if (typeof pos !== "number") return;
+        editor.commands.setNodeSelection(pos);
+      });
+      syncImageWrap(host, start.attrs);
 
       const show = () => {
         host.style.visibility = "";
@@ -374,6 +398,7 @@ export const croppableImage = Image.extend({
           // Reopening mounts this view before the editor view exists.
         }
         paint(imageCrop(attrs));
+        syncImageWrap(host, attrs);
       };
       host.style.visibility = "hidden";
       host.style.pointerEvents = "none";
@@ -460,6 +485,7 @@ export const croppableImage = Image.extend({
         ) => nodeView.update(updated, decorations, inner),
         destroy: () => {
           stopDrag();
+          unmountWrap();
           document.removeEventListener("keydown", onEditorKey, true);
           nodeView.destroy();
         },
@@ -476,3 +502,6 @@ export const croppableImage = Image.extend({
     alwaysPreserveAspectRatio: true,
   },
 });
+
+/** Same picture node, including wrap, for editors that import it by this name. */
+export const wrappedImage = croppableImage;

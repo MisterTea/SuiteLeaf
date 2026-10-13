@@ -5,7 +5,7 @@ import StarterKit from "@tiptap/starter-kit";
 import { TextStyleKit } from "@tiptap/extension-text-style";
 import Highlight from "@tiptap/extension-highlight";
 import TextAlign from "@tiptap/extension-text-align";
-import { croppableImage } from "./doc-image-crop";
+import { wrappedImage } from "./doc-image-crop";
 import { TableKit } from "@tiptap/extension-table";
 import Superscript from "@tiptap/extension-superscript";
 import Subscript from "@tiptap/extension-subscript";
@@ -60,7 +60,7 @@ const previewExtensions: Extensions = [
   TextStyleKit,
   Highlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ["heading", "paragraph"] }),
-  croppableImage,
+  wrappedImage,
   TableKit,
   Superscript,
   Subscript,

@@ -48,6 +48,12 @@ import {
   imagePageSizes,
   type ImagePageSize,
 } from "./image-extent";
+import {
+  drawingPlacement,
+  layoutNote,
+  type DrawingPlacement,
+  type ImageWrap,
+} from "./image-wrap";
 
 type Mark = NonNullable<JsonNode["marks"]>[number];
 const normalize = (s: string) => s.replace(/[\s\u200b\ufeff]+/gu, "");
@@ -391,14 +397,18 @@ function wordRelationshipPath(target: string): string {
   return parts.join("/");
 }
 
-type PictureCrop = { payload: string; crop: ImageCrop };
+type PictureLayout = { payload: string; crop: ImageCrop; wrap: ImageWrap | null };
 
 /**
- * Crops for the pictures Mammoth will turn into image nodes, in document order.
- * `a:srcRect` is the hidden edge of the full image. The drawing extent is the
- * cropped frame, so it is not stored as the picture's width.
+ * Crops and wrap for the pictures Mammoth will turn into image nodes, in
+ * document order. `a:srcRect` is the hidden edge of the full image. The
+ * drawing extent is the cropped frame, so it is not stored as the picture's
+ * width. Square wrap is kept so the paragraph can sit beside the picture.
  */
-async function wordPictureCrops(zip: JSZip, xml: string): Promise<PictureCrop[]> {
+async function wordPictureLayouts(
+  zip: JSZip,
+  xml: string,
+): Promise<{ pictures: PictureLayout[]; placements: DrawingPlacement[] }> {
   const relsXml = await zip.file("word/_rels/document.xml.rels")?.async("string");
   const rels = new Map<string, string>();
   if (relsXml) {
@@ -408,32 +418,51 @@ async function wordPictureCrops(zip: JSZip, xml: string): Promise<PictureCrop[]>
       rels.set(attrs.Id, attrs.Target);
     }
   }
-  const crops: PictureCrop[] = [];
+  const pictures: PictureLayout[] = [];
+  const placements: DrawingPlacement[] = [];
+  const missed = (placement: DrawingPlacement) => {
+    if (placement.floating) placements.push({ ...placement, represented: false });
+  };
   for (const fill of xml.matchAll(
     /<(?:[\w.-]+:)?blipFill\b[^>]*>([\s\S]*?)<\/(?:[\w.-]+:)?blipFill>/g,
   )) {
+    const placement = drawingPlacement(xml, fill.index ?? 0);
     const blip = /<(?:[\w.-]+:)?blip\b([^>]*?)\/?>/.exec(fill[1]);
-    if (!blip) continue;
+    if (!blip) {
+      missed(placement);
+      continue;
+    }
     const blipAttrs = xmlAttributeMap(blip[1]);
     const embed = blipAttrs["r:embed"] || blipAttrs["r:id"];
     const target = embed ? rels.get(embed) : undefined;
-    if (!target) continue;
+    if (!target) {
+      missed(placement);
+      continue;
+    }
     const media = zip.file(wordRelationshipPath(target));
-    if (!media) continue;
+    if (!media) {
+      missed(placement);
+      continue;
+    }
     const bytes = await media.async("uint8array");
     const mime = detectImageMime(bytes);
-    if (!mime || !WORD_PICTURE_TYPES.has(mime)) continue;
+    if (!mime || !WORD_PICTURE_TYPES.has(mime)) {
+      missed(placement);
+      continue;
+    }
+    placements.push(placement);
     const rect = /<(?:[\w.-]+:)?srcRect\b([^>]*?)\/?>/.exec(fill[1]);
-    crops.push({
+    pictures.push({
       payload: uint8ToBase64(bytes),
       crop: imageCropFromSrcRect(rect ? xmlAttributeMap(rect[1]) : null),
+      wrap: placement.wrap,
     });
   }
-  return crops;
+  return { pictures, placements };
 }
 
-/** Copy each picture crop onto the matching image. The source bytes stay whole. */
-function applyWordPictureCrops(node: JsonNode, crops: PictureCrop[]): JsonNode {
+/** Copy each picture crop and wrap onto the matching image. The source bytes stay whole. */
+function applyWordPictureLayouts(node: JsonNode, pictures: PictureLayout[]): JsonNode {
   let index = 0;
   const visit = (current: JsonNode) => {
     if (current.type === "image") {
@@ -444,24 +473,28 @@ function applyWordPictureCrops(node: JsonNode, crops: PictureCrop[]): JsonNode {
           ? src.slice(comma + 1).replace(/\s/g, "")
           : "";
       let at = index;
-      while (at < crops.length && crops[at].payload !== payload) at += 1;
-      if (at < crops.length) {
-        const crop = crops[at].crop;
-        if (imageCropActive(crop)) {
+      while (at < pictures.length && pictures[at].payload !== payload) at += 1;
+      if (at < pictures.length) {
+        const picture = pictures[at];
+        const next = { ...current.attrs };
+        let changed = false;
+        if (imageCropActive(picture.crop)) {
           const round = (value: number) => Math.round(value * 1000) / 1000;
           // The drawing extent is the cropped frame. Width stays the full
           // picture, so a srcRect import does not keep that frame as width.
-          const attrs = { ...(current.attrs ?? {}) };
-          delete attrs.width;
-          delete attrs.height;
-          current.attrs = {
-            ...attrs,
-            cropLeft: round(crop.left),
-            cropTop: round(crop.top),
-            cropRight: round(crop.right),
-            cropBottom: round(crop.bottom),
-          };
+          delete next.width;
+          delete next.height;
+          next.cropLeft = round(picture.crop.left);
+          next.cropTop = round(picture.crop.top);
+          next.cropRight = round(picture.crop.right);
+          next.cropBottom = round(picture.crop.bottom);
+          changed = true;
         }
+        if (picture.wrap) {
+          next.wrap = picture.wrap;
+          changed = true;
+        }
+        if (changed) current.attrs = next;
         index = at + 1;
       }
     }
@@ -1357,7 +1390,8 @@ export async function importDocx(
     output = normalize(documentText(content));
   }
   const pictureXml = (await zip.file("word/document.xml")?.async("string")) ?? xml;
-  content = applyWordPictureCrops(content, await wordPictureCrops(zip, pictureXml));
+  const pictures = await wordPictureLayouts(zip, pictureXml);
+  content = applyWordPictureLayouts(content, pictures.pictures);
   let supplementary = 0;
   const hasTitlePg =
     /<w:titlePg\b(?:\s+[^>]*w:val="(?:true|1|on)")?(?:\/|\s*>)/.test(xml);
@@ -1433,9 +1467,7 @@ export async function importDocx(
       `${droppedLinks.length} ${one ? "link" : "links"} with an unsafe or unsupported address${schemes.length ? ` (${schemes.join(", ")})` : ""} ${one ? "was" : "were"} removed; ${one ? "its" : "their"} text was kept.`,
     );
   }
-  warnings.push(
-    "SuiteLeaf lays out its own pages, so Word's exact line and page breaks, floating placement and font styling may differ.",
-  );
+  warnings.push(layoutNote(pictures.placements));
   const commentsXml = await zip.file("word/comments.xml")?.async("string");
   if (commentsXml?.includes("<w:comment")) {
     const imported = importWordComments(content, {

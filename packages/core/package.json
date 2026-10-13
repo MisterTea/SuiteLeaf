@@ -12,7 +12,8 @@
     "./suggestions": "./src/suggestions.ts",
     "./citations": "./src/citations.ts",
     "./equations": "./src/equations.ts",
-    "./image-crop": "./src/image-crop.ts"
+    "./image-crop": "./src/image-crop.ts",
+    "./image-wrap": "./src/image-wrap.ts"
   },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",
