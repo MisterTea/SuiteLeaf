@@ -534,7 +534,7 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
         await wait(600);
         const screen = document.fullscreenElement
           ? "in full screen"
-          : "in the window (the browser allows full screen only right after the user clicks or presses a key)";
+          : "in the window (the browser allows full screen only right after the user clicks or presses a key; they can click Full screen in the show's controls)";
         return `Presenting ${screen} from slide ${index + 1} of ${deck.slideOrder.length}, "${titleOf(deck.slides[deck.slideOrder[index]])}"${with_notes ? ", with the speaker notes beside it" : ""}. Use next_slide to advance and end_presentation to stop.`;
       },
     }),

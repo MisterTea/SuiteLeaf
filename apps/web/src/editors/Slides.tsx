@@ -32,6 +32,7 @@ import {
   MousePointer2,
   Minus,
   StickyNote,
+  Maximize2,
 } from "lucide-react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import {
@@ -602,6 +603,21 @@ ${slidesHtml}
       );
     }
   }, []);
+
+  // A show started by the assistant (not a click) may not get full screen;
+  // the person can ask for it from the controls.
+  const [fullscreen, setFullscreen] = useState(() => !!document.fullscreenElement);
+  useEffect(() => {
+    const update = () => setFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", update);
+    return () => document.removeEventListener("fullscreenchange", update);
+  }, []);
+  const enterFullscreen = () => {
+    showFullscreenRef.current = true;
+    document.documentElement.requestFullscreen().catch(() => {
+      showFullscreenRef.current = false;
+    });
+  };
 
   const endShow = useCallback(() => {
     setPresenting(false);
@@ -1775,6 +1791,11 @@ ${slidesHtml}
             >
               <StickyNote size={15} /> Notes
             </button>
+            {!fullscreen ? (
+              <button type="button" onClick={enterFullscreen} title="Show the slides full screen">
+                <Maximize2 size={15} /> Full screen
+              </button>
+            ) : null}
             <button
               type="button"
               className="exit-present-btn"
