@@ -3,7 +3,7 @@
 // items and actions, with `add` taking a whole list so a small model writes
 // its plan in one call, and every result showing the whole list. The agent
 // won't accept a final reply while items are open (agent.ts).
-import { Type } from "@earendil-works/pi-ai";
+import { StringEnum, Type } from "@earendil-works/pi-ai";
 import { ToolError, tool, type SuiteTool } from "./host";
 
 export interface Todo {
@@ -48,7 +48,8 @@ export const todoTool: SuiteTool = tool({
   description:
     "Your checklist for the user's request. Actions: add (items: the parts of the request, in order, each a short step in the user's words; only what they asked for), toggle (id or ids: mark items done once you have done them), list, clear. Every result shows the whole list.",
   parameters: Type.Object({
-    action: Type.Union([Type.Literal("add"), Type.Literal("toggle"), Type.Literal("list"), Type.Literal("clear")]),
+    // A string enum, as in pi's tool: chat templates expect every parameter to have a type.
+    action: StringEnum(["add", "toggle", "list", "clear"] as const),
     items: Type.Optional(Type.Array(Type.String(), { description: "For add: one or more steps" })),
     text: Type.Optional(Type.String({ description: "For add: one step" })),
     id: Type.Optional(Type.Number({ description: "For toggle" })),

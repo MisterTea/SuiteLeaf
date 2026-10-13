@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { clearTodos, openTodos, todoTool } from "../apps/web/src/ai/todo";
+import { renderSystem } from "../apps/web/src/ai/gemma";
+import { renderQwenSystem } from "../apps/web/src/ai/qwen";
 
 const todo = async (args: Record<string, unknown>) => (await todoTool.execute(args as never)) as string;
 
@@ -28,5 +30,11 @@ describe("the assistant's checklist", () => {
     await todo({ action: "add", items: ["One"] });
     clearTodos();
     expect(await todo({ action: "list" })).toBe("Checklist:\nThe checklist is empty.");
+  });
+
+  it("renders in both models' chat templates (each parameter needs a type)", () => {
+    const declared = [{ name: todoTool.name, description: todoTool.description, parameters: todoTool.parameters }];
+    expect(renderSystem("S", declared as never)).toContain("declaration:todo{");
+    expect(renderQwenSystem("S", declared as never)).toContain('"name": "todo"');
   });
 });
