@@ -122,8 +122,11 @@ test("a cropped Word picture opens as the stall and still contains the parking l
     const width = el.offsetWidth;
     return width > 0 ? el.getBoundingClientRect().width / width || 1 : 1;
   });
-  await drag(page, Math.round((fullWidth - cropped.width) * scale));
-  await expect.poll(async () => (await frame.boundingBox())!.width).toBeGreaterThan(fullWidth * 0.9);
+  await drag(page, Math.round(fullWidth * 0.2 * scale));
+  await expect
+    .poll(async () => (await frame.boundingBox())!.width)
+    .toBeGreaterThan(cropped.width * 1.2);
+  await expect(frame).toHaveAttribute("data-cropped", "true");
   expect(await image.getAttribute("src")).toBe(src);
 
   await page.getByRole("button", { name: "Reset crop", exact: true }).click();

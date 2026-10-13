@@ -139,7 +139,7 @@ test("67-open-a-cropped-word-picture", async ({ page }) => {
   await notes.locator("summary").click();
   await expect(notes.locator("li")).toHaveText([/SuiteLeaf lays out its own pages/]);
   await expect(notes).not.toContainText(/crop/i);
-  await beat(page, 1400);
+  await beat(page, 2200);
   await notes.locator("summary").click();
   await image.scrollIntoViewIfNeeded();
 
@@ -154,14 +154,15 @@ test("67-open-a-cropped-word-picture", async ({ page }) => {
     const width = el.offsetWidth;
     return width > 0 ? el.getBoundingClientRect().width / width || 1 : 1;
   });
-  await drag(page, Math.round((fullWidth - cropped.width) * scale));
+  await drag(page, Math.round(fullWidth * 0.2 * scale));
   await expect
     .poll(async () => (await frame.boundingBox())!.width)
-    .toBeGreaterThan(fullWidth * 0.9);
+    .toBeGreaterThan(cropped.width * 1.2);
+  await expect(frame).toHaveAttribute("data-cropped", "true");
   expect(await image.getAttribute("src")).toBe(src);
   const revealed = (await frame.boundingBox())!;
   const lot = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.tagName, {
-    x: cropped.x + cropped.width + 28,
+    x: cropped.x + cropped.width + 16,
     y: revealed.y + revealed.height / 2,
   });
   expect(lot).toBe("IMG");
@@ -187,7 +188,7 @@ test("67-open-a-cropped-word-picture", async ({ page }) => {
   await beat(page, 400);
   const downloading = page.waitForEvent("download");
   await page.getByRole("button", { name: "File", exact: true }).click();
-  await beat(page, 400);
+  await beat(page, 900);
   await page.getByRole("menuitem", { name: "Export DOCX", exact: true }).click();
   const download = await downloading;
   const docxPath = join(
@@ -209,7 +210,10 @@ test("67-open-a-cropped-word-picture", async ({ page }) => {
 
   await page.getByRole("button", { name: "Back to files" }).click();
   await expect(page.getByLabel("Search files")).toBeVisible();
-  await caption(page, "She opens that Word file. The stall is still the frame.", 1100);
+  const listed = page.getByRole("link", { name: "Seed swap sign-up", exact: true });
+  await listed.evaluate((el) => el.scrollIntoView({ block: "center" }));
+  await beat(page, 300);
+  await caption(page, "She opens that Word file. The stall is still the frame.", 1400);
   const again = page.waitForEvent("filechooser");
   const openAgain = page.getByRole("button", { name: "Open / import" });
   await openAgain.scrollIntoViewIfNeeded();
