@@ -42,6 +42,7 @@ import {
 import type { DocFile, JsonNode } from "./index";
 import { asEquation, type EqNode } from "./equations";
 import { documentPageSettings } from "./document-layout";
+import { docxWatermarkParagraph } from "./doc-watermark";
 import {
   planDocxComments,
   stampDocxComments,
@@ -476,6 +477,7 @@ export async function exportDocx(
     target[String(slot.num)] = { children: noteBody(id) };
   }
   const settings = documentPageSettings(content);
+  const watermark = docxWatermarkParagraph(settings.watermark);
   const numberRun = () =>
     new TextRun({
       children:
@@ -490,6 +492,7 @@ export async function exportDocx(
   const headerPart = (text: string, withNumber = false) =>
     new Header({
       children: [
+        ...(watermark ? [watermark] : []),
         new Paragraph(text),
         ...(withNumber
           ? [

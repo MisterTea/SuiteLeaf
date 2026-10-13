@@ -7,6 +7,7 @@ import {
   pageFace,
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
+import { DocWatermark } from "./doc-watermark";
 
 /** Header and footer text stored on the document. The page number is not part of it. */
 export const FURNITURE_TEXT_LIMIT = 500;
@@ -261,6 +262,7 @@ function FurniturePage({
       }
       style={{ ["--page-index" as string]: pageIndex }}
     >
+      <DocWatermark text={settings.watermark} />
       {face.numberSide === "top-right" ? (
         <span className="page-number page-number-top">{face.pageNumber}</span>
       ) : null}

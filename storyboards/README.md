@@ -130,3 +130,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 68 | [Space the lines](68-space-the-lines.md) | single-node | Docs |
 | 69 | [Open a picture at its page size](69-open-a-picture-at-its-page-size.md) | single-node | Docs |
 | 70 | [Put a picture beside the text](70-put-a-picture-beside-the-text.md) | single-node | Docs |
+| 72 | [Mark a draft](72-mark-a-draft.md) | single-node | Docs |

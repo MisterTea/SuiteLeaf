@@ -4271,10 +4271,12 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
 tr.doc-page-spacer { display: table-row; }
 tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; background: transparent; }
 .manual-page-break { height: 0; margin: 0; }
-.page-furniture { position: absolute; inset: 0; z-index: 2; pointer-events: none; color: #555; font: 10pt Arial, sans-serif; }
+.page-furniture { position: absolute; inset: 0; pointer-events: none; color: #555; font: 10pt Arial, sans-serif; }
 .page-furniture-page { position: absolute; left: var(--page-margin); right: var(--page-margin); top: calc(var(--page-index) * var(--page-stride)); height: var(--page-height); }
-.page-header { position: absolute; top: calc(var(--page-margin) / 2 - 8px); left: 0; right: 0; white-space: pre-wrap; pointer-events: auto; }
-.page-footer { position: absolute; bottom: calc(var(--page-margin) / 2 - 8px); display: flex; justify-content: space-between; gap: 16px; width: 100%; white-space: pre-wrap; pointer-events: auto; }
+.page-header { position: absolute; top: calc(var(--page-margin) / 2 - 8px); left: 0; right: 0; white-space: pre-wrap; pointer-events: auto; z-index: 2; }
+.page-footer { position: absolute; bottom: calc(var(--page-margin) / 2 - 8px); display: flex; justify-content: space-between; gap: 16px; width: 100%; white-space: pre-wrap; pointer-events: auto; z-index: 2; }
+.page-watermark { position: absolute; left: 0; right: 0; top: calc(var(--page-margin) + 28px); height: 210px; z-index: 0; display: flex; align-items: center; justify-content: center; overflow: visible; pointer-events: none; user-select: none; }
+.page-watermark span { font-family: Arial, sans-serif; font-weight: 700; line-height: 1; letter-spacing: 0.06em; color: rgba(95, 99, 104, 0.36); white-space: nowrap; font-size: min(108px, calc(var(--page-width) / var(--mark-em, 5))); }
 .page-footer-text { min-width: 0; pointer-events: auto; }
 .page-number { pointer-events: none; user-select: none; }
 .page-header.is-active, .page-footer.is-active { z-index: 3; }
@@ -4307,6 +4309,8 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 .page-setup-first { display: grid; gap: 10px; margin: 0; padding: 10px 12px 12px; border: 1px solid #dadce0; border-radius: 8px; background: #f8f9fa; }
 .page-setup-first legend { padding: 0 4px; font-size: 13px; font-weight: 500; color: #1f1f1f; }
 .page-setup-first label { display: grid; grid-template-columns: 4.5em 1fr; gap: 12px; align-items: center; }
+.doc-watermark-field { display: grid; gap: 4px; align-content: start; min-width: 0; }
+.doc-watermark-field .page-setup-hint { grid-column: auto; }
 .word-count { color: #1f1f1f; font-weight: 600; font-size: 13px; }
 .word-count-dialog,
 .dictionary-dialog,
@@ -4468,6 +4472,7 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 .dictionary-flag { display: flex; gap: 8px; align-items: center; }
 .dictionary-flag input { flex: 1; }
 @media (max-width: 700px) {
+  .page-setup-marks { grid-template-columns: 1fr; }
   .editor-status { flex-wrap: wrap; gap: 4px 12px; }
   .spelling-layer { align-items: flex-end; justify-content: center; padding: 0 12px 72px; }
   .spelling-actions { display: grid; }

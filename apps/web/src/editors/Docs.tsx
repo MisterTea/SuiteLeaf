@@ -109,6 +109,7 @@ import { PageSetupFields } from "./page-setup";
 import { PageFurniture } from "./doc-header-editor";
 import { paragraphLineSpacing } from "./doc-line-spacing";
 import { LineSpacingControl } from "./doc-line-spacing-ui";
+import { pageSetupToSave } from "./doc-watermark";
 
 export const extensions: Extensions = [
   DocumentPagination,
@@ -1295,7 +1296,10 @@ export default function Docs({
               e.preventDefault();
               if (!pageDraftValid) return;
               editor.view.dispatch(
-                editor.state.tr.setDocAttribute("pageSettings", pageDraft),
+                editor.state.tr.setDocAttribute(
+                  "pageSettings",
+                  pageSetupToSave(pageDraft),
+                ),
               );
               closePageSetup();
             }}

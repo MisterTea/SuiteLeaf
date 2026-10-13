@@ -37,7 +37,16 @@ export type PageSettings = {
   evenFooter: string;
   oddHeader: string;
   oddFooter: string;
+  /** A short phrase drawn behind the text. Empty means no watermark. */
+  watermark: string;
 };
+/** Long enough for a word or a short phrase, not a sentence. */
+export const WATERMARK_LIMIT = 40;
+/** The watermark actually drawn. Blank, and anything that is not text, means none. */
+export function watermarkText(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.replace(/\s+/g, " ").trim().slice(0, WATERMARK_LIMIT);
+}
 export const defaultPageSettings: PageSettings = {
   size: "letter",
   landscape: false,
@@ -56,6 +65,7 @@ export const defaultPageSettings: PageSettings = {
   evenFooter: "",
   oddHeader: "",
   oddFooter: "",
+  watermark: "",
 };
 const pageText = (value: unknown) =>
   typeof value === "string" ? value.slice(0, 500) : "";
@@ -88,6 +98,7 @@ export function documentPageSettings(content: JsonNode): PageSettings {
     evenFooter: pageText(a?.evenFooter),
     oddHeader: pageText(a?.oddHeader),
     oddFooter: pageText(a?.oddFooter),
+    watermark: watermarkText(a?.watermark),
   };
 }
 export type PageNumberSide = "left" | "right" | "center" | "top-right" | "none";
@@ -274,6 +285,14 @@ export function documentHtml(
       : "";
   const furniture = (tag: "header" | "footer", text: string) =>
     text ? `<${tag} class="page-${tag}">${escapeHtml(text)}</${tag}>` : "";
+  const mark = watermarkText(settings.watermark);
+  const watermark = mark
+    ? `<div class="page-watermark" aria-hidden="true">${escapeHtml(mark)}</div>`
+    : "";
+  const watermarkCss = mark
+    ? `.page-watermark { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; font: 700 96px/1 Arial, sans-serif; letter-spacing: 0.08em; color: rgba(95, 99, 104, 0.36); pointer-events: none; user-select: none; z-index: 0; }
+main { position: relative; z-index: 1; }`
+    : "";
   return `<!doctype html>
 <html>
 <head>
@@ -285,6 +304,7 @@ body { max-width: ${width / 96}in; margin: 0 auto; padding: ${settings.margin / 
 .page-header, .page-footer { color: #555; font-size: 10pt; white-space: pre-wrap; }
 .page-header { margin-bottom: 2em; }
 .page-footer { margin-top: 2em; }
+${watermarkCss}
 [data-page-break] { break-before: page; }
 @page { ${pageRule} }
 ${firstPageRule}
@@ -292,6 +312,7 @@ ${firstPageRule}
 </style>
 </head>
 <body>
+${watermark}
 ${furniture("header", bannerHeader)}
 <main>${bodyHtml}</main>
 ${furniture("footer", bannerFooter)}

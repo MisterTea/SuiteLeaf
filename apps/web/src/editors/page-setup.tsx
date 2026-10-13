@@ -8,6 +8,7 @@ import {
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
 import "./page-setup.css";
+import { DocWatermarkField } from "./doc-watermark";
 
 function TextField({
   span,
@@ -135,6 +136,10 @@ export function PageSetupFields({
           />
           Page numbers
         </label>
+        <DocWatermarkField
+          value={draft.watermark}
+          onChange={(watermark) => onChange({ ...draft, watermark })}
+        />
         <fieldset className="page-number-choice" disabled={!draft.pageNumbers}>
           <legend>Format</legend>
           <label>
