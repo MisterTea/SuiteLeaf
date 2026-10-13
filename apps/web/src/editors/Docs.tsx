@@ -104,7 +104,8 @@ import {
   pageDimensions,
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
-import { PageFurniture, PageSetupFields } from "./page-setup";
+import { PageSetupFields } from "./page-setup";
+import { PageFurniture } from "./doc-header-editor";
 
 export const extensions: Extensions = [
   DocumentPagination,
@@ -1868,7 +1869,11 @@ export default function Docs({
               } as CSSProperties
             }
           >
-            <PageFurniture settings={pageSettings} pageCount={pageCount} />
+            <PageFurniture
+              editor={editor}
+              pageCount={pageCount}
+              readOnly={readOnly}
+            />
             <EditorContent editor={editor} />
           </div>
         </div>

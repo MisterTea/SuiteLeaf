@@ -4012,15 +4012,30 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
 
 /* Page spacers are decorations: pagination leaves the editable document intact. */
 .paginated-paper { position: relative; width: var(--page-width); max-width: none; flex-shrink: 0; border: 0; background: repeating-linear-gradient(to bottom, white 0, white var(--page-height), var(--viewport-bg) var(--page-height), var(--viewport-bg) var(--page-stride)); }
-.paginated-paper .document-content { padding: var(--page-margin); min-height: var(--page-height); }
+.paginated-paper .document-content { position: relative; z-index: 1; padding: var(--page-margin); min-height: var(--page-height); }
+.paginated-paper.is-editing-furniture { margin-bottom: 36vh; }
+.paginated-paper.is-editing-furniture .document-content { opacity: 0.28; }
 .doc-page-spacer { display: block; height: var(--spacer-height); margin: 0 !important; padding: 0 !important; border: 0 !important; pointer-events: none; }
 tr.doc-page-spacer { display: table-row; }
 tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; background: transparent; }
 .manual-page-break { height: 0; margin: 0; }
-.page-furniture { position: absolute; inset: 0; pointer-events: none; color: #555; font: 10pt Arial, sans-serif; }
+.page-furniture { position: absolute; inset: 0; z-index: 2; pointer-events: none; color: #555; font: 10pt Arial, sans-serif; }
 .page-furniture-page { position: absolute; left: var(--page-margin); right: var(--page-margin); top: calc(var(--page-index) * var(--page-stride)); height: var(--page-height); }
-.page-header { position: absolute; top: calc(var(--page-margin) / 2 - 8px); white-space: pre-wrap; }
-.page-footer { position: absolute; bottom: calc(var(--page-margin) / 2 - 8px); display: flex; justify-content: space-between; gap: 16px; width: 100%; white-space: pre-wrap; }
+.page-header { position: absolute; top: calc(var(--page-margin) / 2 - 8px); left: 0; right: 0; white-space: pre-wrap; pointer-events: auto; }
+.page-footer { position: absolute; bottom: calc(var(--page-margin) / 2 - 8px); display: flex; justify-content: space-between; gap: 16px; width: 100%; white-space: pre-wrap; pointer-events: auto; }
+.page-footer-text { min-width: 0; pointer-events: auto; }
+.page-number { pointer-events: none; user-select: none; }
+.page-header.is-active, .page-footer.is-active { z-index: 3; }
+.page-header.is-active { display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
+.page-furniture.is-editing .page-number { box-shadow: inset 0 0 0 1px #dadce0; }
+.page-furniture:not(.is-editing) .page-header:hover,
+.page-furniture:not(.is-editing) .page-footer-text:hover { cursor: text; box-shadow: inset 0 0 0 1.5px #8ab4f8; border-radius: 4px; }
+.page-header:focus-visible, .page-footer-text:focus-visible { outline: 2px solid #1a73e8; outline-offset: 2px; }
+.page-header.is-empty:not(.is-active):hover::after,
+.page-footer-text.is-empty:not(:focus-within):hover::before { content: "Double-click to edit"; color: #1a73e8; font-style: normal; }
+.page-furniture-input { flex: 1; min-width: 0; width: 100%; border: 2px solid #1a73e8; border-radius: 4px; background: #fff; color: #202124; font: inherit; line-height: 1.3; padding: 2px 8px; box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.18); }
+.page-furniture-input::selection { background: #a8c7fa; color: #202124; }
+.page-furniture-scope { align-self: flex-start; margin-bottom: 4px; padding: 2px 8px; background: #1a73e8; color: #fff; font: 600 12px/1.3 Arial, sans-serif; border-radius: 4px; pointer-events: none; }
 .feature-dialog { width: min(560px, calc(100vw - 32px)); max-height: 85vh; overflow: auto; }
 .feature-dialog fieldset { margin: 12px 0; padding: 12px; }
 .feature-dialog button { margin: 4px; padding: 6px 10px; }
@@ -4214,7 +4229,8 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 .tab-settings-row input[type="color"] { width: 30px; }
 @media print {
   .paginated-paper { width: var(--page-width); background: white; box-shadow: none; min-height: 0 !important; zoom: 1 !important; }
-  .paginated-paper .document-content { padding: var(--page-margin); }
+  .paginated-paper .document-content { padding: var(--page-margin); opacity: 1; }
+  .page-furniture-scope { display: none; }
   .doc-page-spacer { height: calc(var(--spacer-height) - 24px); }
   tr.doc-page-spacer td { height: calc(var(--spacer-height) - 24px); }
   .page-furniture-page { top: calc(var(--page-index) * var(--page-height)); }
