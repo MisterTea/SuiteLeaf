@@ -159,6 +159,24 @@ function grid(sheet: any, r: ReturnType<typeof parseA1>, maxRows = 60, maxColumn
   return lines.join("\n") + more;
 }
 
+/** The used area's formula cells ("C8" → its formula and shown value), to report what recalculated. */
+function formulaCells(sheet: any, maxRows = 200, maxColumns = 26) {
+  const r = usedRange(sheet);
+  const endRow = Math.min(r.endRow, r.startRow + maxRows - 1),
+    endColumn = Math.min(r.endColumn, r.startColumn + maxColumns - 1);
+  const range = sheet.getRange(r.startRow, r.startColumn, endRow - r.startRow + 1, endColumn - r.startColumn + 1);
+  const values = range.getValues() as unknown[][];
+  const formulas = (range.getFormulas?.() ?? []) as string[][];
+  const cells = new Map<string, { formula: string; value: string }>();
+  formulas.forEach((row, i) =>
+    row.forEach((formula, j) => {
+      const at = { startRow: r.startRow + i, endRow: r.startRow + i, startColumn: r.startColumn + j, endColumn: r.startColumn + j };
+      if (formula) cells.set(a1(at), { formula, value: display(values[i]?.[j]) });
+    }),
+  );
+  return cells;
+}
+
 /** A cell's typed value: numbers stay numbers, '=' starts a formula, codes with leading zeros stay text. */
 export function cellInput(value: unknown): unknown {
   if (typeof value === "number" || typeof value === "boolean") return value;
@@ -237,6 +255,8 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       async execute({ start, values }) {
         const s = parseCell(start);
         if (!values.length) throw new ToolError("Give at least one row of values.");
+        await ctx.settle();
+        const before = formulaCells(sheet());
         for (let i = 0; i < values.length; i++) {
           const row = values[i];
           if (!row.length) continue;
@@ -254,7 +274,14 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         sheet().getRange(a1(end)).activate();
         ctx.persist();
         await ctx.settle();
-        return `Wrote ${a1(end)}. Now:\n${grid(sheet(), end, 20, 12)}`;
+        const inside = (row: number, column: number) =>
+          row >= end.startRow && row <= end.endRow && column >= end.startColumn && column <= end.endColumn;
+        const recalculated = [...formulaCells(sheet())]
+          .filter(([cell, now]) => before.get(cell)?.formula === now.formula && before.get(cell)?.value !== now.value)
+          .filter(([cell]) => !inside(parseCell(cell).row, parseCell(cell).column))
+          .slice(0, 12)
+          .map(([cell, now]) => `${cell} ${now.formula}: ${before.get(cell)!.value} → ${now.value}`);
+        return `Wrote ${a1(end)}. Now:\n${grid(sheet(), end, 20, 12)}${recalculated.length ? `\nFormulas that recalculated by themselves: ${recalculated.join("; ")}.` : ""}`;
       },
     }),
     tool({
