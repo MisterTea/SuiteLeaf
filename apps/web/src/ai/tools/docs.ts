@@ -196,7 +196,8 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         if (last && prev && !last.text && last.type === "paragraph" && prev.label === "Paragraph" && last.pos > editor.state.selection.to)
           editor.view.dispatch(editor.state.tr.delete(last.pos, last.end));
         const typed = text.split("\n").filter((l) => l.trim()).length;
-        return `Typed ${typed} paragraph(s). The document now has ${blocks(editor).length} paragraph(s).`;
+        const headings = blocks(editor).filter((b) => b.type === "heading").map((b) => `${b.label}: ${b.text}`);
+        return `Typed ${typed} paragraph(s). The document now has ${blocks(editor).length} paragraph(s).${headings.length ? `\nHeadings in the document now: ${headings.join(" | ")}` : ""}`;
       },
     }),
     tool({
