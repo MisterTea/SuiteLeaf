@@ -1,5 +1,5 @@
 import type { JsonNode } from "@suiteleaf/core";
-import { Extension } from "@tiptap/core";
+import { Extension, Mark } from "@tiptap/core";
 import type { Node as ProseNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
@@ -40,8 +40,23 @@ export function writePersonalDictionary(dictionary: PersonalDictionary) {
   }
 }
 
-const sameWord = (left: string, right: string) =>
+export const sameWord = (left: string, right: string) =>
   left.toLowerCase().replace(/’/g, "'") === right.toLowerCase().replace(/’/g, "'");
+
+/** One occurrence the writer chose to keep. The same word stays wrong everywhere else. */
+export const SPELLING_IGNORE_MARK = "spellingIgnore";
+
+export const SpellingIgnoreMark = Mark.create({
+  name: SPELLING_IGNORE_MARK,
+  inclusive: false,
+  excludes: "",
+  parseHTML() {
+    return [{ tag: "span[data-spelling-ignore]" }];
+  },
+  renderHTML() {
+    return ["span", { "data-spelling-ignore": "true" }, 0];
+  },
+});
 
 export function addToPersonalDictionary(dictionary: PersonalDictionary, word: string): PersonalDictionary {
   const cleaned = word.trim();
@@ -257,7 +272,8 @@ export function misspelledRanges(
 ): SpellingRange[] {
   const ranges: SpellingRange[] = [];
   doc.descendants((node, pos) => {
-    if (!node.isText || !node.text) return;
+    if (!node.isText || !node.text || node.marks.some((mark) => mark.type.name === SPELLING_IGNORE_MARK))
+      return;
     for (const match of node.text.matchAll(WORD)) {
       const word = match[0];
       if (!isMisspelling(word, personal, ignored)) continue;
@@ -275,7 +291,7 @@ export function misspelledWords(
 ) {
   const words: string[] = [];
   const walk = (node: JsonNode) => {
-    if (node.text) {
+    if (node.text && !node.marks?.some((mark) => mark.type === SPELLING_IGNORE_MARK)) {
       for (const match of node.text.matchAll(WORD)) {
         if (isMisspelling(match[0], personal, ignored)) words.push(match[0]);
       }
@@ -290,6 +306,8 @@ export type SpellingMenuHit = SpellingRange & {
   suggestions: string[];
   x: number;
   y: number;
+  /** This copy was ignored on purpose, so it is not underlined. */
+  kept: boolean;
 };
 
 export function spellingHit(
@@ -322,6 +340,7 @@ export function spellingHit(
     suggestions: spellingSuggestions(found[0]),
     x: event.clientX,
     y: event.clientY,
+    kept: view.state.doc.resolve(from).marks().some((mark) => mark.type.name === SPELLING_IGNORE_MARK),
   };
 }
 
@@ -334,6 +353,9 @@ export function spellingHighlight(from: number, to: number) {
 
 export const Proofing = Extension.create({
   name: "proofing",
+  addExtensions() {
+    return [SpellingIgnoreMark];
+  },
   addGlobalAttributes() {
     return [
       {

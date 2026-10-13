@@ -29,7 +29,10 @@ export function LastEdited({ itemId }: { itemId: string }) {
   if (!edit) return null;
   return (
     <p className="last-edited">
-      Last edited by <strong>{edit.name}</strong>
+      <strong>
+        <span className="last-edited-label">Last edited by </span>
+        {edit.name}
+      </strong>
       {" · "}
       <time dateTime={edit.at}>{versionWhen(edit.at)}</time>
     </p>

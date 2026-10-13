@@ -17,18 +17,37 @@ const pageNumberPositions: PageNumberPosition[] = [
   "top-right",
 ];
 /** Page setup accepts 0.25–3 inches. CSS pixels at 96 per inch. */
-export const MARGIN_MIN_PX = 24;
-export const MARGIN_MAX_PX = 288;
+export const PX_PER_INCH = 96;
+export const MARGIN_MIN_PX = 0.25 * PX_PER_INCH;
+export const MARGIN_MAX_PX = 3 * PX_PER_INCH;
+export const MIN_MARGIN_PX = MARGIN_MIN_PX;
+export const MAX_MARGIN_PX = MARGIN_MAX_PX;
 export const MARGIN_DEFAULT_PX = 72;
+/** A binding gutter above 2 inches is refused so the text stays on the page. */
+export const maxGutter = 2 * PX_PER_INCH;
+export type MarginEdge = "top" | "bottom" | "left" | "right";
+export type PageMargins = {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+};
 export type PageSettings = {
   size: "letter" | "a4";
   landscape: boolean;
   /** Older files stored this one inset, in CSS pixels, for every edge. */
   margin: number;
+  /** Extra inside margin, in CSS pixels. 0 means the edges stay equal. */
+  gutter: number;
   marginTop: number;
   marginBottom: number;
   marginLeft: number;
   marginRight: number;
+  /** Same edges, under the names the gutter and margin dialogs read. */
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
   header: string;
   footer: string;
   pageNumbers: boolean;
@@ -88,10 +107,15 @@ export const defaultPageSettings: PageSettings = {
   size: "letter",
   landscape: false,
   margin: MARGIN_DEFAULT_PX,
+  gutter: 0,
   marginTop: MARGIN_DEFAULT_PX,
   marginBottom: MARGIN_DEFAULT_PX,
   marginLeft: MARGIN_DEFAULT_PX,
   marginRight: MARGIN_DEFAULT_PX,
+  top: MARGIN_DEFAULT_PX,
+  bottom: MARGIN_DEFAULT_PX,
+  left: MARGIN_DEFAULT_PX,
+  right: MARGIN_DEFAULT_PX,
   header: "",
   footer: "",
   pageNumbers: false,
@@ -128,16 +152,28 @@ export function documentPageSettings(content: JsonNode): PageSettings {
   // edge. An edge that is present replaces it; Word cannot be stored as one.
   const edge = (value: unknown) =>
     storedMargin(value) === undefined ? uniform : clampMargin(value, uniform);
-  const marginTop = edge(a?.marginTop);
-  const marginBottom = edge(a?.marginBottom);
+  const marginTop = edge(a?.marginTop ?? a?.top);
+  const marginBottom = edge(a?.marginBottom ?? a?.bottom);
+  const marginLeft = edge(a?.marginLeft ?? a?.left);
+  const marginRight = edge(a?.marginRight ?? a?.right);
+  const storedGutter = storedMargin(a?.gutter);
+  const gutter =
+    storedGutter === undefined || storedGutter <= 0
+      ? 0
+      : Math.min(maxGutter, storedGutter);
   return {
     size: a?.size === "a4" ? "a4" : "letter",
     landscape: a?.landscape === true,
     margin: uniform,
+    gutter,
     marginTop,
     marginBottom,
-    marginLeft: edge(a?.marginLeft),
-    marginRight: edge(a?.marginRight),
+    marginLeft,
+    marginRight,
+    top: marginTop,
+    bottom: marginBottom,
+    left: marginLeft,
+    right: marginRight,
     headerFromEdge: resolveEdgePx(a?.headerFromEdge, marginTop),
     footerFromEdge: resolveEdgePx(a?.footerFromEdge, marginBottom),
     header: pageText(a?.header),
@@ -546,4 +582,59 @@ ${furniture("footer", settings.footer)}
 </body>
 </html>
 `;
+}
+
+/** True when a gutter, in CSS pixels, can be stored and laid out. */
+export function gutterAccepted(px: number): boolean {
+  return Number.isFinite(px) && px >= 0 && px <= maxGutter;
+}
+/** Why a margin cannot be applied, or null when it is inside 0.25–3 inches. */
+export function marginError(px: number): string | null {
+  if (!Number.isFinite(px)) return "Enter each margin in inches.";
+  if (px < MIN_MARGIN_PX) return "A margin must be at least 0.25 inches.";
+  if (px > MAX_MARGIN_PX) return "A margin must be at most 3 inches.";
+  return null;
+}
+const marginField = {
+  top: "marginTop",
+  bottom: "marginBottom",
+  left: "marginLeft",
+  right: "marginRight",
+} as const;
+/** Replace one edge. The named field and the marginTop-style field stay equal. */
+export function setPageMargin(
+  settings: PageSettings,
+  edge: MarginEdge,
+  px: number,
+): PageSettings {
+  return { ...settings, [edge]: px, [marginField[edge]]: px };
+}
+/**
+ * Horizontal insets for a 1-based page. Odd pages keep the extra space on
+ * the left. Even pages keep it on the right.
+ */
+export function pageSideInsets(
+  settings: PageSettings,
+  pageNumber: number,
+): { left: number; right: number } {
+  const odd = Math.abs(pageNumber) % 2 === 1;
+  return odd
+    ? { left: settings.left + settings.gutter, right: settings.right }
+    : { left: settings.left, right: settings.right + settings.gutter };
+}
+/** CSS variables the page, furniture, and notes read. */
+export function pageMarginVars(settings: PageMargins): {
+  "--page-margin": string;
+  "--page-margin-top": string;
+  "--page-margin-right": string;
+  "--page-margin-bottom": string;
+  "--page-margin-left": string;
+} {
+  return {
+    "--page-margin": `${settings.top}px`,
+    "--page-margin-top": `${settings.top}px`,
+    "--page-margin-right": `${settings.right}px`,
+    "--page-margin-bottom": `${settings.bottom}px`,
+    "--page-margin-left": `${settings.left}px`,
+  };
 }

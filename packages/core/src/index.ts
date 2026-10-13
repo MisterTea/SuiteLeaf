@@ -401,7 +401,7 @@ export {
 function validateTree(n: JsonNode, depth = 0) {
   if (depth > 100) throw new Error("Document is nested too deeply.");
   if (
-    n.type === "image" &&
+    (n.type === "image" || n.type === "inlineImage") &&
     !/^data:image\/(png|jpeg|gif|webp);base64,/i.test(String(n.attrs?.src))
   )
     throw new Error(

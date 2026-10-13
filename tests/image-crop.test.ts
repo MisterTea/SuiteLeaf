@@ -9,6 +9,7 @@ import {
   docxImageCrop,
   imageCrop,
   imageCropActive,
+  imageCropFromSrcRect,
 } from "../packages/core/src/image-crop";
 
 const png =
@@ -24,6 +25,17 @@ describe("image crop", () => {
     expect(frame.width).toBe(300);
     expect(frame.height).toBe(200);
     expect(frame.offsetX).toBe(0);
+  });
+
+  it("reads a Word source rectangle as hidden-edge percentages", () => {
+    expect(imageCropFromSrcRect({ l: "10000", t: "20000", r: "42000", b: "5000" })).toEqual({
+      left: 10,
+      top: 20,
+      right: 42,
+      bottom: 5,
+    });
+    expect(imageCropFromSrcRect({ r: "42%" })).toMatchObject({ right: 42, left: 0 });
+    expect(imageCropActive(imageCropFromSrcRect(null))).toBe(false);
   });
 
   it("keeps at least a sliver of the picture", () => {
