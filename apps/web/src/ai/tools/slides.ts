@@ -1,6 +1,14 @@
 import { Type } from "@earendil-works/pi-ai";
 import type { Slide, SlideElement, SlideFile } from "@suiteleaf/core";
-import { applyBackground, applyLayout, newSlide, reorder, type Layout } from "../../editors/slide-layouts";
+import {
+  applyBackground,
+  applyLayout,
+  backgroundColors,
+  fillColors,
+  newSlide,
+  reorder,
+  type Layout,
+} from "../../editors/slide-layouts";
 import { ToolError, tool, type SuiteTool } from "../host";
 import { requestFile } from "../file-request";
 
@@ -37,11 +45,40 @@ const layoutParam = Type.String({ enum: ["title", "title-body", "two-column", "s
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const textOf = (el: SlideElement) => (el.type === "text" ? (el.content ?? "") : "");
+const titleOf = (slide: Slide) => textOf(slide.elements.find((e) => e.type === "text") ?? slide.elements[0] ?? ({} as SlideElement)) || "(untitled)";
+
+/** What each text box of a layout is called, matching the text tools' arguments. */
+const BOX_NAMES: Record<string, string[]> = {
+  title: ["title", "subtitle"],
+  "title-body": ["title", "body"],
+  "two-column": ["title", "left column (body)", "right column (column2)"],
+  section: ["title"],
+};
+/** The text arguments each layout has a box for. */
+const LAYOUT_FIELDS: Record<string, string> = {
+  title: "title and subtitle",
+  "title-body": "title and body",
+  "two-column": "title, body (left column) and column2 (right column)",
+  section: "only a title",
+  blank: "no text boxes",
+};
+const boxName = (slide: Slide, i: number) => BOX_NAMES[slide.layout ?? ""]?.[i] ?? (i === 0 ? "title" : `box ${i + 1}`);
+
+/** Where an object sits on the 960×540 slide, in the words positions use. */
+function whereOn(el: SlideElement) {
+  const cx = el.x + el.width / 2,
+    cy = el.y + el.height / 2;
+  const v = cy < 180 ? "top" : cy > 360 ? "bottom" : "",
+    h = cx < 320 ? "left" : cx > 640 ? "right" : "";
+  return v && h ? `${v}-${h}` : v || h || "center";
+}
 
 function describeSlide(slide: Slide, index: number) {
   const texts = slide.elements.filter((e) => e.type === "text");
-  const parts = texts.map((e, i) => `${i === 0 ? "title" : `box ${i + 1}`}: ${textOf(e).replace(/\n/g, " / ") || "(empty)"}`);
-  const others = slide.elements.filter((e) => e.type !== "text").map((e) => (e.type === "shape" ? `${e.shapeType} shape` : e.type));
+  const parts = texts.map((e, i) => `${boxName(slide, i)}: ${textOf(e).replace(/\n/g, " / ") || "(empty)"}`);
+  const others = slide.elements
+    .filter((e) => e.type !== "text")
+    .map((e) => (e.type === "shape" ? `${e.shapeType} shape (${e.fill ?? "no fill"}, ${e.width}×${e.height}, ${whereOn(e)})` : e.type));
   return `Slide ${index + 1} [${slide.layout ?? "custom"}${slide.background?.color ? `, background ${slide.background.color}` : ""}] ${parts.join("; ")}${others.length ? `; also ${others.join(", ")}` : ""}${slide.notes ? `; notes: ${slide.notes.slice(0, 120)}` : ""}`;
 }
 
@@ -84,14 +121,75 @@ function place(position: string | undefined, w: number, h: number, deck: Deck) {
   return { x: Math.round(x[hz as keyof typeof x]), y: Math.round(y[v as keyof typeof y]) };
 }
 
+/** Typed bullets ("- ", "* ") become "• "; in a bulleted box every line gets one, as a person types them. */
+function bulleted(text: string, bullets: boolean) {
+  return text
+    .split("\n")
+    .map((line) => {
+      const marked = /^\s*[-*•▪◦]\s+(.*)$/.exec(line);
+      if (marked) return `• ${marked[1]}`;
+      return bullets && line.trim() ? `• ${line.trim()}` : line;
+    })
+    .join("\n");
+}
+
 /** Fill a slide's text boxes in order: title, then body (or subtitle, columns). */
 function fillText(slide: Slide, texts: (string | undefined)[]): Slide {
   const boxes = slide.elements.filter((e) => e.type === "text");
   const elements = slide.elements.map((e) => {
     const i = boxes.indexOf(e);
-    return i >= 0 && texts[i] !== undefined ? { ...e, content: texts[i] } : e;
+    return i >= 0 && texts[i] !== undefined ? { ...e, content: i === 0 ? texts[i] : bulleted(texts[i]!, !!e.bullet) } : e;
   });
   return { ...slide, elements };
+}
+
+interface SlideText {
+  title?: string;
+  body?: string;
+  subtitle?: string;
+  column2?: string;
+}
+
+/** Put text into a slide's boxes, and say what had no box and which boxes are still empty. */
+function fillSlide(slide: Slide, { title, body, subtitle, column2 }: SlideText) {
+  const title1 = slide.layout === "title";
+  const next = fillText(slide, [title, title1 ? (subtitle ?? body) : body, column2]);
+  const count = next.elements.filter((e) => e.type === "text").length;
+  const unused = [
+    subtitle !== undefined && !title1 && "subtitle",
+    body !== undefined && (count < 2 || (title1 && subtitle !== undefined)) && "body",
+    column2 !== undefined && count < 3 && "column2",
+    title !== undefined && count < 1 && "title",
+  ].filter(Boolean);
+  const empty = next.elements
+    .filter((e) => e.type === "text")
+    .map((e, i) => (e.placeholder !== undefined && !e.content?.trim() ? boxName(next, i) : ""))
+    .filter(Boolean);
+  const notes = [
+    unused.length
+      ? `Not used: ${unused.join(", ")}, because a ${next.layout ?? "custom"} slide has ${LAYOUT_FIELDS[next.layout ?? ""] ?? "other boxes"}.`
+      : "",
+    empty.length ? `Still empty: ${empty.join(", ")}.` : "",
+  ];
+  return { slide: next, notes: notes.filter(Boolean).join(" ") };
+}
+
+/** A #rrggbb color, or a color named in one of the editor's menus ("sage green", "yellow"). */
+function pickColor(value: string, palette: { label: string; val: string }[], menu: string) {
+  const v = value.trim();
+  if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(v)) {
+    const named = palette.find((c) => c.val === v.toLowerCase());
+    return { color: v, name: named ? `${named.label.toLowerCase()} (${v})` : v };
+  }
+  const words = v.toLowerCase().replace(/[^a-z ]/g, " ").split(/\s+/).filter(Boolean);
+  const label = (c: { label: string }) => c.label.toLowerCase().split(" ");
+  const hit =
+    palette.find((c) => label(c).join(" ") === words.join(" ")) ??
+    palette.find((c) => label(c).every((w) => words.includes(w))) ??
+    palette.find((c) => words.length > 0 && words.every((w) => label(c).includes(w)));
+  if (!hit)
+    throw new ToolError(`"${value}" is not a color here. Use a #rrggbb code or a ${menu} menu color: ${palette.map((c) => c.label).join(", ")}.`);
+  return { color: hit.val, name: `${hit.label.toLowerCase()} (${hit.val})` };
 }
 
 export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
@@ -100,6 +198,16 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
     const next = { ...deck, slides: { ...deck.slides, [id]: change(deck.slides[id]) } };
     ctx.commit(next);
     return next;
+  };
+  /** A slide-level toolbar button (shown when nothing on the slide is selected), after showing that slide. */
+  const slideButton = async (slide: number | undefined, label: string) => {
+    try {
+      ctx.select(findSlide(ctx.deck(), slide, ctx.activeSlideId).id, null);
+    } catch {
+      // The tool reports the bad slide number.
+    }
+    await wait(120);
+    return [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === label);
   };
   return [
     tool({
@@ -117,7 +225,7 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
       name: "add_slide",
       label: "New slide",
       description:
-        "Add a slide after slide `after` (default: the current slide) with a layout: title (title + subtitle), title-body (title + bulleted text), two-column, section (section header), blank. Fill its text: title, then body (use new lines for separate bullets), or subtitle for a title slide, and column2 for the second column.",
+        "Add a slide after slide `after` (default: the current slide) with a layout: title (title + subtitle), title-body (title + bulleted body), two-column (title + two lists side by side), section (section header: a dark slide with only a title), blank. Fill its text: title; subtitle on a title slide; body (one bullet per line); on a two-column slide, body is the left column and column2 the right column.",
       parameters: Type.Object({
         layout: layoutParam,
         title: Type.Optional(Type.String()),
@@ -126,25 +234,26 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
         column2: Type.Optional(Type.String()),
         after: Type.Optional(Type.Number({ description: "Slide number to add after." })),
       }),
+      prepare: (args) => (args.column1 !== undefined && args.body === undefined ? { ...args, body: args.column1 } : args),
       target: () => [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("New slide")),
       async execute({ layout, title, body, subtitle, column2, after }) {
         const deck = ctx.deck();
         const l = LAYOUTS[layout] ?? "title-body";
-        const slide = fillText(newSlide(l), [title, l === "title" ? subtitle ?? body : body, column2]);
+        const { slide, notes } = fillSlide(newSlide(l), { title, body, subtitle, column2 });
         const at = after !== undefined ? Math.max(0, Math.min(deck.slideOrder.length, after)) : deck.slideOrder.indexOf(ctx.activeSlideId) + 1;
         const order = [...deck.slideOrder];
         order.splice(at, 0, slide.id);
         ctx.commit({ ...deck, slideOrder: order, slides: { ...deck.slides, [slide.id]: slide } });
         ctx.select(slide.id, null);
         await wait(300);
-        return `Added slide ${at + 1} (${l}). The presentation has ${order.length} slides.`;
+        return `Added ${describeSlide(slide, at)}. ${notes ? `${notes} ` : ""}The presentation has ${order.length} slides.`;
       },
     }),
     tool({
       name: "set_slide_text",
       label: "Edit slide text",
       description:
-        "Replace the text on a slide: title, body (new lines make separate bullets), subtitle (title slides), column2 (second column). Leave out what should not change.",
+        "Replace the text on a slide: title, subtitle (title slides), body (one bullet per line), and on a two-column slide body for the left column and column2 for the right column. Leave out what should not change.",
       parameters: Type.Object({
         slide: Type.Optional(Type.Number({ description: "Slide number; default the current slide." })),
         title: Type.Optional(Type.String()),
@@ -152,22 +261,25 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
         subtitle: Type.Optional(Type.String()),
         column2: Type.Optional(Type.String()),
       }),
+      prepare: (args) => (args.column1 !== undefined && args.body === undefined ? { ...args, body: args.column1 } : args),
       target: () => canvas()?.querySelector(".slide-element textarea") ?? canvas(),
       async execute({ slide, title, body, subtitle, column2 }) {
         const { id, index } = findSlide(ctx.deck(), slide, ctx.activeSlideId);
         ctx.select(id, null);
         await wait(250);
-        const layout = ctx.deck().slides[id].layout;
-        const second = layout === "title" ? (subtitle ?? body) : body;
+        let notes = "";
         const deck = update(id, (s) => {
           const boxes = s.elements.filter((e) => e.type === "text");
-          if (!boxes.length) {
-            const box = newSlide("title-body").elements;
-            return fillText({ ...s, elements: [...s.elements, ...box] }, [title, second, column2]);
-          }
-          return fillText(s, [title, second, column2]);
+          const filled = fillSlide(boxes.length ? s : { ...s, layout: "title-body", elements: [...s.elements, ...newSlide("title-body").elements] }, {
+            title,
+            body,
+            subtitle,
+            column2,
+          });
+          notes = filled.notes;
+          return filled.slide;
         });
-        return `Slide ${index + 1} now reads: ${describeSlide(deck.slides[id], index)}`;
+        return `Slide ${index + 1} now reads: ${describeSlide(deck.slides[id], index)}${notes ? `\n${notes}` : ""}`;
       },
     }),
     tool({
@@ -175,7 +287,7 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
       label: "Layout",
       description: "Change a slide's layout; its text moves into the new layout's boxes.",
       parameters: Type.Object({ slide: Type.Optional(Type.Number()), layout: layoutParam }),
-      target: () => [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Layout"),
+      target: ({ slide }) => slideButton(slide, "Layout"),
       async execute({ slide, layout }) {
         const { id, index } = findSlide(ctx.deck(), slide, ctx.activeSlideId);
         ctx.select(id, null);
@@ -188,7 +300,7 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
       name: "add_shape",
       label: "Add shape",
       description:
-        "Add a shape (rectangle, rounded rectangle, circle/ellipse) to a slide. position: top-left, top, top-right, left, center, right, bottom-left, bottom, bottom-right. Optional fill color (#rrggbb), size in pixels (slide is 960×540) and text inside it.",
+        `Add a shape (rectangle, rounded rectangle, circle/ellipse) to a slide. position: top-left, top, top-right, left, center, right, bottom-left, bottom, bottom-right. Optional fill color (#rrggbb or a Fill menu color: ${fillColors.map((c) => c.label).join(", ")}) and size in pixels (slide is 960×540).`,
       parameters: Type.Object({
         slide: Type.Optional(Type.Number()),
         shape: Type.String({ enum: ["rectangle", "rounded rectangle", "circle", "ellipse"] }),
@@ -201,6 +313,7 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
         document.querySelector(`[aria-label="${shape === "circle" || shape === "ellipse" ? "Circle" : "Rectangle"}"]`),
       async execute({ slide, shape, position, fill, width, height }) {
         const { id, index } = findSlide(ctx.deck(), slide, ctx.activeSlideId);
+        const paint = pickColor(fill ?? "#e2e8f0", fillColors, "Fill");
         ctx.select(id, null);
         const round = shape === "circle" || shape === "ellipse";
         const w = Math.round(width ?? (round ? 160 : 220)),
@@ -214,13 +327,13 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
           width: w,
           height: h,
           shapeType: round ? "ellipse" : shape === "rectangle" ? "rect" : "roundRect",
-          fill: fill ?? "#e2e8f0",
+          fill: paint.color,
           stroke: "#94a3b8",
           strokeWidth: 2,
         };
-        update(id, (s) => ({ ...s, elements: [...s.elements, el] }));
+        const deck = update(id, (s) => ({ ...s, elements: [...s.elements, el] }));
         ctx.select(id, el.id);
-        return `Added a ${shape} at the ${position ?? "center"} of slide ${index + 1}.`;
+        return `Added a ${paint.name} ${shape}, ${w}×${h}, at the ${whereOn(el)} of slide ${index + 1} "${titleOf(deck.slides[id])}".`;
       },
     }),
     tool({
@@ -294,34 +407,54 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
     tool({
       name: "set_background",
       label: "Background",
-      description: "Set the background color (#rrggbb) of one slide, or of every slide with all_slides=true (section headers keep theirs).",
+      description: `Set the background color of one slide (the current one, or \`slide\`), or of every slide with all_slides=true (section headers keep theirs). color: #rrggbb or a Background menu color: ${backgroundColors.map((c) => c.label).join(", ")}.`,
       parameters: Type.Object({ color: Type.String(), slide: Type.Optional(Type.Number()), all_slides: Type.Optional(Type.Boolean()) }),
-      target: () => [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Background"),
+      target: ({ slide, all_slides }) => slideButton(all_slides ? undefined : slide, "Background"),
       execute({ color, slide, all_slides }) {
         const deck = ctx.deck();
+        const paint = pickColor(color, backgroundColors, "Background");
         if (all_slides) {
-          ctx.commit({ ...deck, slides: applyBackground(deck.slides, color, true) });
-          return `Every slide now has a ${color} background.`;
+          ctx.commit({ ...deck, slides: applyBackground(deck.slides, paint.color, true) });
+          return `Every slide now has a ${paint.name} background.`;
         }
         const { id, index } = findSlide(deck, slide, ctx.activeSlideId);
-        update(id, (s) => ({ ...s, background: { ...s.background, color } }));
-        return `Slide ${index + 1} now has a ${color} background.`;
+        update(id, (s) => applyBackground({ [id]: s }, paint.color)[id]);
+        ctx.select(id, null);
+        return `Slide ${index + 1} "${titleOf(deck.slides[id])}" now has a ${paint.name} background; the other slides keep theirs.`;
       },
     }),
     tool({
       name: "move_slide",
       label: "Reorder slides",
-      description: "Move a slide to a new position (1 = first).",
-      parameters: Type.Object({ slide: Type.Number(), to: Type.Number() }),
+      description: "Move a slide: to a position (`to`, 1 = first), or `before` / `after` another slide (its title or number).",
+      parameters: Type.Object({
+        slide: Type.Number({ description: "Number of the slide to move." }),
+        to: Type.Optional(Type.Number()),
+        before: Type.Optional(Type.String()),
+        after: Type.Optional(Type.String()),
+      }),
       target: ({ slide }) => thumbnail(slide - 1),
-      async execute({ slide, to }) {
+      async execute({ slide, to, before, after }) {
         const deck = ctx.deck();
-        const { index } = findSlide(deck, slide, ctx.activeSlideId);
-        const dest = Math.max(0, Math.min(deck.slideOrder.length - 1, to - 1));
-        ctx.commit({ ...deck, slideOrder: reorder(deck.slideOrder, index, dest) });
+        const { id, index } = findSlide(deck, slide, ctx.activeSlideId);
+        let dest: number;
+        if (before !== undefined || after !== undefined) {
+          const other = findSlide(deck, (before ?? after)!, ctx.activeSlideId);
+          if (other.id === id) throw new ToolError(`Slide ${slide} cannot move ${before !== undefined ? "before" : "after"} itself.`);
+          dest = deck.slideOrder.filter((x) => x !== id).indexOf(other.id) + (before !== undefined ? 0 : 1);
+        } else if (to !== undefined) dest = Math.max(0, Math.min(deck.slideOrder.length - 1, to - 1));
+        else throw new ToolError("Say where the slide goes: `to` a position, or `before` or `after` another slide.");
+        const order = reorder(deck.slideOrder, index, dest);
+        const name = titleOf(deck.slides[id]);
+        const prev = dest > 0 ? `after "${titleOf(deck.slides[order[dest - 1]])}"` : "",
+          next = dest < order.length - 1 ? `before "${titleOf(deck.slides[order[dest + 1]])}"` : "";
+        const neighbours = prev && next ? `${prev} and ${next}` : prev ? `last, ${prev}` : `first, ${next}`;
+        const listing = order.map((x, i) => `${i + 1}. ${titleOf(deck.slides[x])}`).join("; ");
+        if (dest === index) return `"${name}" is already slide ${index + 1} (${neighbours}); nothing changed. Order: ${listing}`;
+        ctx.commit({ ...deck, slideOrder: order });
+        ctx.select(id, null);
         await wait(300);
-        const after = ctx.deck();
-        return `Moved slide ${slide} to position ${dest + 1}. Order: ${after.slideOrder.map((id, i) => `${i + 1}. ${textOf(after.slides[id].elements.find((e) => e.type === "text")!) || "(untitled)"}`).join("; ")}`;
+        return `Moved "${name}" from slide ${index + 1} to slide ${dest + 1}: it now comes ${neighbours}. Order: ${listing}`;
       },
     }),
     tool({

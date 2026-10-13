@@ -45,6 +45,8 @@ import { Menu, MenuItem, Tool, type EditorActions } from "../ui";
 import {
   applyBackground,
   applyLayout,
+  backgroundColors,
+  fillColors,
   newSlide,
   reorder,
   type Layout,
@@ -1015,21 +1017,7 @@ ${slidesHtml}
           <div className="tool-group">
             {/* Fill color */}
             <Menu label="Fill">
-              {[
-                { label: "Transparent", val: "transparent" },
-                { label: "White", val: "#ffffff" },
-                { label: "Soft grey", val: "#f1f3f4" },
-                { label: "Slate", val: "#e2e8f0" },
-                { label: "Light blue", val: "#d2e3fc" },
-                { label: "Light green", val: "#ceead6" },
-                { label: "Light yellow", val: "#feefc3" },
-                { label: "Light red", val: "#fad2cf" },
-                { label: "Blue", val: "#4285f4" },
-                { label: "Green", val: "#34a853" },
-                { label: "Yellow", val: "#fbbc04" },
-                { label: "Red", val: "#ea4335" },
-                { label: "Dark", val: "#202124" },
-              ].map((c) => (
+              {fillColors.map((c) => (
                 <MenuItem
                   key={c.val}
                   onSelect={() =>
@@ -1222,14 +1210,7 @@ ${slidesHtml}
         ) : (
           <div className="tool-group">
             <Menu label="Background">
-              {[
-                { label: "White", val: "#ffffff" },
-                { label: "Soft light", val: "#f8fafc" },
-                { label: "Warm sand", val: "#fef3c7" },
-                { label: "Sage green", val: "#e2ece9" },
-                { label: "Dark slate", val: "#0f172a" },
-                { label: "Deep navy", val: "#1e293b" },
-              ].map((color) => (
+              {backgroundColors.map((color) => (
                 <MenuItem
                   key={color.val}
                   onSelect={() =>

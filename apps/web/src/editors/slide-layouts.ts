@@ -4,6 +4,33 @@ export type Layout = NonNullable<Slide["layout"]>;
 
 export const sectionBackground = "#1e293b";
 
+/** The colors the Fill menu offers for shapes and text boxes. */
+export const fillColors = [
+  { label: "Transparent", val: "transparent" },
+  { label: "White", val: "#ffffff" },
+  { label: "Soft grey", val: "#f1f3f4" },
+  { label: "Slate", val: "#e2e8f0" },
+  { label: "Light blue", val: "#d2e3fc" },
+  { label: "Light green", val: "#ceead6" },
+  { label: "Light yellow", val: "#feefc3" },
+  { label: "Light red", val: "#fad2cf" },
+  { label: "Blue", val: "#4285f4" },
+  { label: "Green", val: "#34a853" },
+  { label: "Yellow", val: "#fbbc04" },
+  { label: "Red", val: "#ea4335" },
+  { label: "Dark", val: "#202124" },
+];
+
+/** The colors the Background menu offers for slides. */
+export const backgroundColors = [
+  { label: "White", val: "#ffffff" },
+  { label: "Soft light", val: "#f8fafc" },
+  { label: "Warm sand", val: "#fef3c7" },
+  { label: "Sage green", val: "#e2ece9" },
+  { label: "Dark slate", val: "#0f172a" },
+  { label: "Deep navy", val: "#1e293b" },
+];
+
 type Box = Omit<SlideElement, "id" | "type">;
 
 const title = (y: number): Box => ({
