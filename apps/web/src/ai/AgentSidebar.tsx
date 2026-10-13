@@ -187,7 +187,12 @@ export function AgentSidebar() {
         )}
         {busy ? (
           <div className="agent-working">
-            <Loader2 size={14} className="spin" /> {session.state === "loading" ? "Starting Gemma…" : "Working…"}
+            <Loader2 size={14} className="spin" />{" "}
+            {session.state === "loading"
+              ? "Starting Gemma…"
+              : session.draft
+                ? `Preparing “${session.draft.label}”…${session.draft.chars > 200 ? ` ${session.draft.chars.toLocaleString()} characters` : ""}`
+                : "Working…"}
           </div>
         ) : null}
       </div>

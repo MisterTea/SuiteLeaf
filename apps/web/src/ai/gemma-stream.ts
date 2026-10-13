@@ -75,6 +75,8 @@ export interface GemmaStreamOptions {
   onStats?: (stats: GenerationStats) => void;
   /** Called with each request's rendered prompt length and raw output (debugging and tests). */
   onRaw?: (prompt: string, output: string) => void;
+  /** The tool call being written so far (raw, e.g. `call:write_text{…`), then undefined once it is complete. */
+  onDraft?: (body: string | undefined) => void;
 }
 
 /**
@@ -149,6 +151,7 @@ export function createGemmaStreamFn(model: LocalModel, options: GemmaStreamOptio
     const emitCall = (body: string) => {
       closeBlock();
       pending = "";
+      options.onDraft?.(undefined);
       const parsed = parseToolCall(body);
       toolCalls++;
       if (parsed.error) parseErrors++;
@@ -199,6 +202,7 @@ export function createGemmaStreamFn(model: LocalModel, options: GemmaStreamOptio
           if (end < 0) {
             if (final && raw.slice(done).trim()) emitCall(raw.slice(done));
             if (final) done = raw.length;
+            else options.onDraft?.(raw.slice(done));
             return;
           }
           emitCall(raw.slice(done, end));
@@ -221,6 +225,7 @@ export function createGemmaStreamFn(model: LocalModel, options: GemmaStreamOptio
     const finish = (event: Exclude<AiGenerateEvent, { type: "text" }>) => {
       if (finished) return;
       finished = true;
+      options.onDraft?.(undefined);
       streamOptions?.signal?.removeEventListener("abort", onAbort);
       if (event.type === "error") {
         closeBlock();
