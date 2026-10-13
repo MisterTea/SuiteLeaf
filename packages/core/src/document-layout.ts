@@ -203,6 +203,18 @@ export function documentHtml(
       ? `@bottom-right { content: counter(page) " / " counter(pages); font: 10pt Arial, sans-serif; color: #555; }`
       : "",
   ].join(" ");
+  // The web page starts on page 1, so a different first page shows its letterhead
+  // and prints no number there. Later running heads still appear once.
+  const bannerHeader = settings.differentFirstPage
+    ? settings.firstHeader
+    : settings.header;
+  const bannerFooter = settings.differentFirstPage
+    ? settings.firstFooter
+    : settings.footer;
+  const firstPageRule =
+    settings.pageNumbers && settings.differentFirstPage
+      ? "@page :first { @bottom-right { content: none; } }"
+      : "";
   const furniture = (tag: "header" | "footer", text: string) =>
     text ? `<${tag} class="page-${tag}">${escapeHtml(text)}</${tag}>` : "";
   return `<!doctype html>
@@ -218,13 +230,14 @@ body { max-width: ${width / 96}in; margin: 0 auto; padding: ${settings.margin / 
 .page-footer { margin-top: 2em; }
 [data-page-break] { break-before: page; }
 @page { ${pageRule} }
+${firstPageRule}
 @media print { body { max-width: none; padding: 0; } }
 </style>
 </head>
 <body>
-${furniture("header", settings.header)}
+${furniture("header", bannerHeader)}
 <main>${bodyHtml}</main>
-${furniture("footer", settings.footer)}
+${furniture("footer", bannerFooter)}
 </body>
 </html>
 `;

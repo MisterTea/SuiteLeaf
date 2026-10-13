@@ -141,3 +141,14 @@
   .page-setup-hint { grid-column: 1; }
   .page-setup-orientation legend { float: none; }
 }
+
+.page-furniture-page[data-letterhead="true"] .page-header {
+  border-bottom: 1px solid #bdc1c6;
+  padding-bottom: 4px;
+}
+.page-furniture-page[data-letterhead="true"] .page-header-text {
+  color: #202124;
+  font-size: 13pt;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}

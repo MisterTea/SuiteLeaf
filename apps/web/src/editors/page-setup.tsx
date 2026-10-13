@@ -251,9 +251,16 @@ export function PageFurniture({
             className="page-furniture-page"
             data-number-side={face.numberSide}
             data-header-align={face.headerAlign}
+            data-letterhead={
+              i === 0 && settings.differentFirstPage && face.header
+                ? "true"
+                : undefined
+            }
             style={{ "--page-index": i } as CSSProperties}
           >
-            <div className={`page-header align-${face.headerAlign}`}>{face.header}</div>
+            <div className={`page-header align-${face.headerAlign}`}>
+              <span className="page-header-text">{face.header}</span>
+            </div>
             <div className={`page-footer number-${face.numberSide}`}>
               {face.numberSide === "left" ? (
                 <span className="page-number">{face.pageNumber}</span>

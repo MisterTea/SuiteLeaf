@@ -12,7 +12,12 @@ import {
   annotateTrackedChanges,
   resolveSuggestions,
 } from "./suggestions";
-import { type OfficeImport, parseXml } from "./office";
+import { documentPageSettings } from "./document-layout";
+import { type OfficeImport } from "./office";
+import {
+  importWordPageFurniture,
+  insertWordPageBreaks,
+} from "./word-headers";
 import {
   applyImportedNotes,
   notesImportSummary,
@@ -305,56 +310,6 @@ export function htmlToDocument(
     type: "doc",
     content: content.length ? content : [{ type: "paragraph" }],
   };
-}
-
-function detectImageMime(buf: Uint8Array): string | null {
-  if (
-    buf.length >= 8 &&
-    buf[0] === 0x89 &&
-    buf[1] === 0x50 &&
-    buf[2] === 0x4e &&
-    buf[3] === 0x47
-  ) {
-    return "image/png";
-  }
-  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
-    return "image/jpeg";
-  }
-  if (
-    buf.length >= 6 &&
-    buf[0] === 0x47 &&
-    buf[1] === 0x49 &&
-    buf[2] === 0x46 &&
-    buf[3] === 0x38
-  ) {
-    return "image/gif";
-  }
-  if (
-    buf.length >= 12 &&
-    buf[0] === 0x52 &&
-    buf[1] === 0x49 &&
-    buf[2] === 0x46 &&
-    buf[3] === 0x46 &&
-    buf[8] === 0x57 &&
-    buf[9] === 0x45 &&
-    buf[10] === 0x42 &&
-    buf[11] === 0x50
-  ) {
-    return "image/webp";
-  }
-  return null;
-}
-
-function uint8ToBase64(u8: Uint8Array): string {
-  if (typeof Buffer !== "undefined") {
-    return Buffer.from(u8).toString("base64");
-  }
-  let binary = "";
-  const len = u8.byteLength;
-  for (let i = 0; i < len; i += 8192) {
-    binary += String.fromCharCode(...u8.subarray(i, i + 8192));
-  }
-  return btoa(binary);
 }
 
 function toLowerRoman(n: number): string {
@@ -1237,94 +1192,24 @@ export async function importDocx(
   const suppressHeadersFooters =
     (hasTitlePg && isSinglePage && !hasFirstHeaderFooter) || isPureCoverPage;
 
-  const headerFooterPaths = suppressHeadersFooters
-    ? []
-    : Object.keys(zip.files)
-        .filter((p) => /word\/(header\d*|footer\d*)\.xml$/i.test(p))
-        .sort((a, b) => {
-          const aIsH = a.includes("header") ? 0 : 1;
-          const bIsH = b.includes("header") ? 0 : 1;
-          if (aIsH !== bIsH) return aIsH - bIsH;
-          return a.localeCompare(b);
-        });
-  for (const path of headerFooterPaths) {
-    const value = await zip.file(path)!.async("string");
-    if (!value.trim()) continue;
-    try {
-      parseXml(value, path);
-    } catch {
-      warnings.push(`An unreadable header/footer (${path}) was omitted.`);
-      continue;
-    }
-    const imgNodes: JsonNode[] = [];
-    const relsPath = path.replace(/^(.*\/)([^/]+)$/, "$1_rels/$2.rels");
-    const relsFile = zip.file(relsPath);
-    if (relsFile) {
-      const relsXml = await relsFile.async("string");
-      const relsMap = new Map<string, string>();
-      for (const m of relsXml.matchAll(/<Relationship\b([^>]*)\/?>/g)) {
-        const idMatch = m[1].match(/Id="([^"]+)"/);
-        const targetMatch = m[1].match(/Target="([^"]+)"/);
-        if (idMatch && targetMatch) relsMap.set(idMatch[1], targetMatch[1]);
-      }
-      const cleaned = value.replace(
-        /<(?:ve|mc):AlternateContent>[\s\S]*?<(?:ve|mc):Fallback>([\s\S]*?)<\/(?:ve|mc):Fallback>[\s\S]*?<\/(?:ve|mc):AlternateContent>/g,
-        "$1",
-      );
-      for (const m of cleaned.matchAll(
-        /<(?:a:blip|v:imagedata)\b[^>]*(?:r:embed|r:id)="([^"]+)"/g,
-      )) {
-        const target = relsMap.get(m[1]);
-        if (!target) continue;
-        const basePath = path.split("/").slice(0, -1).join("/");
-        const zPath = target.startsWith("/")
-          ? target.slice(1)
-          : `${basePath}/${target}`;
-        const imgFile = zip.file(zPath);
-        if (imgFile) {
-          const imgBytes = await imgFile.async("uint8array");
-          const mime = detectImageMime(imgBytes);
-          if (mime) {
-            const b64 = uint8ToBase64(imgBytes);
-            imgNodes.push({
-              type: "image",
-              attrs: {
-                src: `data:${mime};base64,${b64}`,
-                alt: path.includes("header") ? "Header image" : "Footer image",
-              },
-            });
-          }
-        }
-      }
-    }
-    const ps = wordParagraphs(value);
-    if (ps.length || imgNodes.length) {
-      supplementary += ps.length + imgNodes.length;
-      content.content!.push(
-        {
-          type: "heading",
-          attrs: { level: 2 },
-          content: [
-            {
-              type: "text",
-              text: path.includes("header")
-                ? "Imported header"
-                : "Imported footer",
-            },
-          ],
+  const documentXml =
+    (await zip.file("word/document.xml")?.async("string")) ?? xml;
+  insertWordPageBreaks(content, documentXml);
+  if (!suppressHeadersFooters) {
+    const furniture = await importWordPageFurniture(zip, documentXml);
+    if (furniture) {
+      content.attrs = {
+        ...(content.attrs ?? {}),
+        pageSettings: {
+          ...documentPageSettings(content),
+          ...furniture.settings,
         },
-        ...imgNodes,
-        ...ps.map((text) => ({
-          type: "paragraph",
-          content: [{ type: "text", text }],
-        })),
-      );
+      };
+      content.content!.push(...furniture.blocks);
+      supplementary += furniture.supplementary;
+      warnings.push(...furniture.warnings);
     }
   }
-  if (supplementary)
-    warnings.push(
-      "Header/footer text is retained as document sections rather than repeated page furniture.",
-    );
   const checks: Record<string, RegExp> = {
     tables: /<w:tbl\b/,
     images: /<w:(drawing|pict)\b/,
