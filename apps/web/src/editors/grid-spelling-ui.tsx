@@ -754,11 +754,18 @@ export function SheetSpelling({
   issuesRef.current = issues;
   const { index, restart } = useSpellCursor(issues.length, open);
   const issue = open && issues.length ? issues[index] : null;
+  const issueKey = issue?.key;
+  const issueRef = useRef(issue);
+  issueRef.current = issue;
 
   useEffect(() => {
-    if (preview || !open || !issue) return;
-    focusSheetIssue(bookRef.current, issue);
-  }, [open, issue, preview, bookRef]);
+    const current = issueRef.current;
+    if (preview || !open || !current) return;
+    // A rescan builds a new issue object for the same word. Follow the cursor
+    // only when that word changes, so the scan does not pull the selection
+    // back after the user moves to another cell.
+    focusSheetIssue(bookRef.current, current);
+  }, [open, issueKey, preview, bookRef]);
 
   useEffect(() => {
     const first = preview?.cells[0];
