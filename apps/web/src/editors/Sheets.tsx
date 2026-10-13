@@ -56,6 +56,11 @@ import {
   shrinkRowGroups,
 } from "./sheet-row-groups";
 import SheetColumnGroups, { type SheetColumnGroupsHandle } from "./sheet-column-groups-ui";
+import {
+  contiguousColumnRanges,
+  readColumnGroups,
+  shiftColumnGroups,
+} from "./sheet-column-groups";
 import SheetFeatures from "./sheet-features";
 import SheetPrint, { type SheetPrintHandle } from "./sheet-print-ui";
 import { printMarkup, printedPages, readSheetPrint } from "./sheet-print";
@@ -1429,6 +1434,49 @@ export default function Sheets({
             facade.hideRows(range.startRow, range.endRow - range.startRow + 1);
         });
       };
+      const shiftGroupsForInsertedColumns = (
+        at: number,
+        count: number,
+        params: { unitId?: unknown; subUnitId?: unknown },
+      ) => {
+        if (!Number.isInteger(at) || !Number.isInteger(count) || count < 1)
+          return;
+        const subUnitId =
+          typeof params.subUnitId === "string" ? params.subUnitId : "";
+        if (!subUnitId) return;
+        const unitId =
+          typeof params.unitId === "string" ? params.unitId : workbook.getId();
+        const worksheet = injector
+          .get(IUniverInstanceService)
+          .getUnit(unitId, UniverInstanceType.UNIVER_SHEET)
+          ?.getSheetBySheetId(subUnitId);
+        if (!worksheet) return;
+        const before = readColumnGroups(worksheet.getCustomMetadata());
+        if (!before.length) return;
+        const after = shiftColumnGroups(before, at, count);
+        const custom = { ...(worksheet.getCustomMetadata() ?? {}) };
+        custom.suiteleafColumnGroups = after;
+        worksheet.setCustomMetadata(custom);
+        const hide = [
+          ...new Set(
+            after.flatMap((group) =>
+              group.collapsed.filter(
+                (column) => column >= at && column < at + count,
+              ),
+            ),
+          ),
+        ].sort((a, b) => a - b);
+        if (!hide.length) return;
+        const facade = workbook.getSheetBySheetId(subUnitId);
+        queueMicrotask(() => {
+          if (disposed || !facade) return;
+          for (const range of contiguousColumnRanges(hide))
+            facade.hideColumns(
+              range.startColumn,
+              range.endColumn - range.startColumn + 1,
+            );
+        });
+      };
       const shrinkGroupsForDeletedRows = (
         at: number,
         count: number,
@@ -1483,6 +1531,8 @@ export default function Sheets({
           const end = axis === "row" ? p.range.endRow : p.range.endColumn;
           if (structural[1] === "insert" && axis === "row")
             shiftGroupsForInsertedRows(start, end - start + 1, p);
+          if (structural[1] === "insert" && axis === "column")
+            shiftGroupsForInsertedColumns(start, end - start + 1, p);
           for (const chart of content.current.charts) {
             for (const series of chart.excel?.series ?? []) {
               if (series.values.sheetId !== p.subUnitId) continue;

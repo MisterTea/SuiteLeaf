@@ -13,6 +13,7 @@ import {
   planGroupColumns,
   readColumnGroups,
   replaceColumnGroups,
+  shiftColumnGroups,
   showOnlyColumn,
   showOnlyColumnLabel,
   withColumnGroups,
@@ -84,6 +85,49 @@ test("show only keeps one month and does not change the span", () => {
   expect(showOnlyColumnLabel("", 4)).toBe("Show only column E");
   expect(columnName(0)).toBe("A");
   expect(columnName(13)).toBe("N");
+});
+
+test("inserting a column shifts a nested group and a collapsed week", () => {
+  const quarter = makeColumnGroup(1, 7);
+  const week = makeColumnGroup(3, 5);
+  const spans = (groups: { startColumn: number; endColumn: number; collapsed: number[] }[]) =>
+    groups.map((group) => [group.startColumn, group.endColumn, group.collapsed]);
+
+  const inside = shiftColumnGroups([quarter, week], 4);
+  expect(spans(inside)).toEqual([
+    [1, 8, []],
+    [3, 6, []],
+  ]);
+  expect(columnSpanLabel(inside[0]!)).toBe("Columns B–I");
+  expect(columnSpanLabel(inside[1]!)).toBe("Columns D–G");
+  expect(inside.filter((group) => group.startColumn <= 4 && group.endColumn >= 4)).toHaveLength(2);
+  expect(inside.some((group) => group.startColumn <= 0 && group.endColumn >= 0)).toBe(false);
+
+  const atFirst = shiftColumnGroups(inside, 1);
+  expect(spans(atFirst)).toEqual([
+    [2, 9, []],
+    [4, 7, []],
+  ]);
+  expect(columnSpanLabel(atFirst[0]!)).toBe("Columns C–J");
+  expect(columnSpanLabel(atFirst[1]!)).toBe("Columns E–H");
+  expect(atFirst.some((group) => group.startColumn <= 1 && group.endColumn >= 1)).toBe(false);
+  expect(atFirst.every((group) => group.startColumn > 0)).toBe(true);
+
+  const collapsed = shiftColumnGroups([quarter, collapseAllColumns(week)], 4);
+  expect(spans(collapsed)).toEqual([
+    [1, 8, []],
+    [3, 6, [3, 4, 5, 6]],
+  ]);
+  const stillCollapsed = shiftColumnGroups(collapsed, 1);
+  expect(spans(stillCollapsed)).toEqual([
+    [2, 9, []],
+    [4, 7, [4, 5, 6, 7]],
+  ]);
+  expect(stillCollapsed[1]!.collapsed.length).toBe(
+    stillCollapsed[1]!.endColumn - stillCollapsed[1]!.startColumn + 1,
+  );
+  expect(stillCollapsed.some((group) => group.startColumn <= 1 && group.endColumn >= 1)).toBe(false);
+  expect(stillCollapsed.every((group) => group.startColumn > 0)).toBe(true);
 });
 
 test("stored column groups keep row groups and survive a round trip", () => {

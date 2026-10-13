@@ -257,7 +257,11 @@ export default function SheetColumnGroups({
     ensureMutation(engine);
     refreshRef.current();
     const workbook = api.getActiveWorkbook();
-    const sub = workbook?.onCommandExecuted(() => refreshRef.current());
+    const sub = workbook?.onCommandExecuted(() => {
+      // Insert shifts the groups in the same command turn. Read them after
+      // every listener has finished, so the labels show the new spans.
+      queueMicrotask(() => refreshRef.current());
+    });
     return () => sub?.dispose();
   }, [api, engine]);
 

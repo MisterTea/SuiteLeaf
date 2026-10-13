@@ -126,6 +126,47 @@ export function makeColumnGroup(startColumn: number, endColumn: number): ColumnG
   };
 }
 
+/**
+ * Shift column groups when `count` columns are inserted at the 0-based index `at`.
+ * Inserting on the group's first column, or anywhere to its left, moves the whole
+ * group right and leaves the new columns out. Inserting after that first column and
+ * within the span grows the group so the new columns belong to it. A group that
+ * was fully collapsed keeps the new columns collapsed; an insert to the left of a
+ * collapsed group only moves the hidden indexes.
+ */
+export function shiftColumnGroups(
+  groups: ColumnGroup[],
+  at: number,
+  count = 1,
+): ColumnGroup[] {
+  if (!Number.isInteger(at) || at < 0 || !Number.isInteger(count) || count < 1)
+    return groups;
+  return groups.map((group) => shiftColumnGroupForInsert(group, at, count));
+}
+
+function shiftColumnGroupForInsert(
+  group: ColumnGroup,
+  at: number,
+  count: number,
+): ColumnGroup {
+  if (at > group.endColumn) return group;
+  if (at <= group.startColumn) {
+    return {
+      ...group,
+      startColumn: group.startColumn + count,
+      endColumn: group.endColumn + count,
+      collapsed: group.collapsed.map((column) => column + count),
+    };
+  }
+  const span = group.endColumn - group.startColumn + 1;
+  const fullyCollapsed = group.collapsed.length === span;
+  const collapsed = group.collapsed.map((column) => (column >= at ? column + count : column));
+  if (fullyCollapsed)
+    for (let column = at; column < at + count; column++) collapsed.push(column);
+  collapsed.sort((a, b) => a - b);
+  return { ...group, endColumn: group.endColumn + count, collapsed };
+}
+
 export function replaceColumnGroups(
   existing: ColumnGroup[],
   next: ColumnGroup,

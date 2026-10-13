@@ -11,6 +11,8 @@ import {
   collapseAllColumns,
   collapsedColumns,
   expandAllColumns,
+  makeColumnGroup,
+  shiftColumnGroups,
 } from "../apps/web/src/editors/sheet-column-groups";
 import {
   collapseAll,
@@ -467,5 +469,31 @@ describe("Excel outline export and import", () => {
     expect(again.columnData?.[3]?.hd).toBe(1);
     expect(again.columnData?.[5]?.hd).toBe(1);
     expect(again.columnData?.[6]?.hd).toBeUndefined();
+  });
+
+  it("writes outline level 2 on a week that grew around an inserted column", async () => {
+    const file = createFile("sheet", "Quarterly budget");
+    if (file.kind !== "sheet") throw new Error("Expected a workbook");
+    const sheet = file.content.workbook.sheets[file.content.workbook.sheetOrder[0]];
+    const headers = ["Category", "Oct 1", "Oct 2", "Oct 6", "Oct 7", "Oct 8", "Oct 9", "Oct 10"];
+    sheet.cellData = {
+      0: Object.fromEntries(headers.map((name, column) => [column, { v: name, t: 1 }])),
+    };
+    const grown = shiftColumnGroups([makeColumnGroup(1, 7), makeColumnGroup(3, 5)], 4);
+    const closed = grown.map((group) =>
+      group.startColumn === 3 ? collapseAllColumns(group) : group,
+    );
+    sheet.custom = { suiteleafColumnGroups: shiftColumnGroups(closed, 1) };
+    const written = colMap(await sheetXml(await exportXlsx(file)));
+    expect(written.get(1)?.outlineLevel).toBeUndefined();
+    expect(written.get(2)?.outlineLevel).toBeUndefined();
+    for (const column of [3, 4, 9, 10]) {
+      expect(written.get(column)?.outlineLevel).toBe("1");
+      expect(written.get(column)?.hidden).toBeUndefined();
+    }
+    for (const column of [5, 6, 7, 8]) {
+      expect(written.get(column)?.outlineLevel).toBe("2");
+      expect(written.get(column)?.hidden === "1" || written.get(column)?.hidden === "true").toBe(true);
+    }
   });
 });
