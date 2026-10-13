@@ -56,6 +56,18 @@ function apply(state: EditorState, tr: Transaction) {
   return state.apply(tr);
 }
 
+function runHistory(
+  state: EditorState,
+  command: (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean,
+) {
+  let next = state;
+  const ran = command(state, (tr) => {
+    next = state.apply(tr);
+  });
+  if (!ran) throw new Error("history command did not run");
+  return next;
+}
+
 const notes = [
   { text: "We will recieve the keys on Monday.", bold: "recieve" },
   { text: "The team will recieve a note." },
@@ -92,9 +104,9 @@ describe("change every copy of a typo", () => {
       if (node.isText && node.marks.some((mark) => mark.type.name === "bold")) bold += node.text;
     });
     expect(bold).toBe("receive");
-    state = apply(state, undo(state)!);
+    state = runHistory(state, undo);
     expect(state.doc.textContent.match(/recieve/g)).toHaveLength(4);
-    state = apply(state, redo(state)!);
+    state = runHistory(state, redo);
     expect(state.doc.textContent.match(/receive/g)).toHaveLength(4);
   });
 
@@ -112,7 +124,7 @@ describe("change every copy of a typo", () => {
     state = apply(state, changeAllTransaction(state, again, "receive"));
     expect(state.doc.textContent.match(/recieve/g)).toHaveLength(1);
     expect(state.doc.textContent.match(/receive/g)).toHaveLength(3);
-    state = apply(state, undo(state)!);
+    state = runHistory(state, undo);
     expect(state.doc.textContent.match(/recieve/g)).toHaveLength(4);
     state = apply(state, checkOccurrence(state, kept.from, kept.to));
     expect(copiesOf(state.doc, "recieve", none, [])).toHaveLength(4);
