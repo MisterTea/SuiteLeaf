@@ -1,6 +1,6 @@
 # 50 · Add a citation and a bibliography
 
-**Mode:** single-node · **App:** Docs · **Video:** [videos/50-citations-and-a-bibliography.mp4](videos/50-citations-and-a-bibliography.mp4) · **Script:** [scenes/50-citations-and-a-bibliography.spec.ts](scenes/50-citations-and-a-bibliography.spec.ts)
+**Mode:** single-node · **App:** Docs · **Video:** [videos/50-cite-a-source.mp4](videos/50-cite-a-source.mp4) · **Script:** [scenes/50-cite-a-source.spec.ts](scenes/50-cite-a-source.spec.ts)
 
 ## Who and why
 
@@ -16,13 +16,13 @@ Kwame's "Grant report 2026" already has a table of contents and footnotes (story
 
 ## Scenes
 
-1. **Open the report.** Kwame opens "Grant report 2026". The contents and footnotes from storyboard 35 are still there.
-2. **Add two sources.** Tools › Citations opens a panel set to APA. Add citation source asks for a book: author "Mensah", title "Youth football in Accra", year "2024". A second source is the article "Coaching hours", author "Boateng", year "2023".
-3. **Cite them.** After "attendance rose 40%" he clicks Cite on Mensah. The text gains "(Mensah, 2024)". After the coaching paragraph he cites Boateng. Each citation is part of the sentence, and clicking it selects the source in the panel.
-4. **Bibliography.** At the end he clicks **Insert bibliography**. A "References" list shows Mensah, then Boateng, in APA. A third source he adds and never cites, "Unused notes", does not appear.
+1. **Open the report.** Kwame opens "Grant report 2026". The contents are at the top. Footnote 1, "League register, 2025.", sits at the bottom of the page.
+2. **Add two sources.** Tools › Citations opens a panel set to APA, with MLA and Chicago beside it. Add citation source asks for a book: author "Mensah", title "Youth football in Accra", year "2024". The page field stays blank. A second source is the article "Coaching hours", author "Boateng", year "2023".
+3. **Cite them.** After "attendance rose 40%" he clicks Cite on Mensah. The text gains "(Mensah, 2024)". After the coaching paragraph he cites Boateng. Each citation is part of the sentence, and clicking Mensah's citation selects that source in the panel.
+4. **Bibliography.** He adds a third source, "Unused notes", and never cites it. The card says "Not cited". **Insert bibliography** adds a References list in APA, alphabetical: Boateng, then Mensah. Unused notes stays out. No "#" appears.
 5. **It keeps up.** He changes Mensah's year to 2022. Within a second both the in-text citation and the bibliography say 2022. There is no refresh control.
-6. **Export.** File › Export DOCX. The file Word opens has a citation field for Mensah and for Boateng, a bibliography field, and the sources Word's citation manager reads. The footnotes and the table of contents from storyboard 35 are still in the file.
-7. **Back from Word.** The funder's officer does not edit the citations. Kwame opens the returned file. The import summary includes "2 citations, 1 bibliography". Both citations are still citations linked to Mensah 2022 and Boateng 2023, not plain parentheses. Changing Boateng's year to 2021 updates the citation and the bibliography again.
+6. **Export.** File › Export DOCX. The file has a citation field for Mensah and for Boateng, a bibliography field, and the sources Word's citation manager reads. The footnote and the table of contents are still in the file.
+7. **Back from Word.** The funder's officer does not edit the citations. Kwame opens the returned file. The import summary includes "2 citations, 1 bibliography", and the footnote and contents came back too. Both citations are still citations linked to Mensah 2022 and Boateng 2023, not plain parentheses. Changing Boateng's year to 2021 updates the citation and the bibliography again.
 
 ## Google Workspace benchmark
 
@@ -47,12 +47,24 @@ Known pain points:
 
 ## Success looks like
 
-- The report cites Mensah (2022) and Boateng, and the bibliography lists those two and not the unused source.
+- The report cites Mensah (2022) and Boateng (2021), and the bibliography lists those two, alphabetically, and not the unused source.
 - The Word file comes back with both citations still linked, and a later year change updates the citation and the bibliography together.
 
 ## Gaps and notes
 
-- Footnotes, endnotes, and a table-of-contents field already round-trip (storyboard 35, `word/footnotes.xml` and a TOC field). There is no citation object, no source list, and no bibliography node.
-- `docx-export.ts` and `word.ts` do not write or read a `CITATION` field, a `BIBLIOGRAPHY` field, or a bibliography source part.
-- The styles this story has to render are the three Google offers: MLA, APA, and Chicago Author-Date. The recording uses APA. The other two need the same source to produce their own in-text form and bibliography line, which a test can check without a second recording.
-- Page numbers are optional on the source. This story does not insert a "#" placeholder.
+- The recording uses APA. MLA renders `(Mensah)` and a Works Cited heading; Chicago author-date renders `(Mensah 2022)`. `tests/citations.test.ts` and `tests/browser/citations.spec.ts` check those forms. A blank page never becomes "#"; a filled page becomes "p. 12" in APA.
+- Removing a source also removes its in-text citations, so a deleted source does not leave a stranded parenthesis. The recording does not show that step.
+- The exported docx was not opened in Microsoft Word. The package contains `CITATION` fields, a `BIBLIOGRAPHY` field, and a bibliography custom XML part (`http://schemas.openxmlformats.org/officeDocument/2006/bibliography`). SuiteLeaf's own import reads that package back into linked citations.
+- The source form is author, title, year, and an optional page. It does not ask for a publisher, a URL, or a second author.
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| 1. Tools › Citations adds a book and Cite is one click | Met | Video 0:08–0:20; `tests/browser/citations.spec.ts` |
+| 2. Bibliography lists cited sources in the selected style and omits an uncited source; MLA and Chicago are in the same control | Met | Video 0:28, References is Boateng then Mensah, Unused notes absent; style radios at 0:08; MLA/Chicago in `tests/citations.test.ts` and the browser spec |
+| 3. Editing the year updates the citation and the bibliography within 1 second, with no refresh | Met | Video 0:32, Mensah becomes 2022 in the sentence and in References; `expect.poll` timeout 1000ms in the scene and the browser spec |
+| 4. Export DOCX writes citation fields, a bibliography field, and Word's sources; footnote and contents remain | Met | Video 0:34; scene assertions on `CITATION Men24`, `CITATION Boa23`, `BIBLIOGRAPHY`, `footnoteReference`, `TOC`, and the bibliography custom XML; `tests/citations.test.ts` round trip |
+| 5. Opening the docx restores linked citations, and the import summary counts them | Met | Video 0:38, banner "2 citations, 1 bibliography" plus the footnote and contents; citations are still buttons, not plain text |
+| 6. Round trip keeps authors, titles, years, and the same two places | Met | Video 0:42, Mensah 2022 after "Attendance rose 40%" and Boateng 2021 after the coaching sentence; `tests/citations.test.ts` |
+| 7. Clicking a citation selects its source | Met | Video 0:22, Mensah's card is outlined; browser spec |

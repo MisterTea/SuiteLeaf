@@ -2,6 +2,8 @@ import type { NodeUser } from "./node-client";
 
 const NAME_KEY = "suiteleaf:display-name";
 const ID_KEY = "suiteleaf:local-author";
+/** Names this computer already knows. Single-node @ suggestions use this list. */
+const KNOWN_KEY = "suiteleaf:known-names";
 const listeners = new Set<() => void>();
 
 /** The person comments are attributed to on this device. */
@@ -36,8 +38,51 @@ export function localName() {
   return read(NAME_KEY).trim();
 }
 
+function readKnown() {
+  try {
+    const raw = JSON.parse(read(KNOWN_KEY) || "[]") as unknown;
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim().slice(0, 80))
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+/** The local display name, plus every name remembered on this computer. */
+export function knownNames() {
+  const names: string[] = [];
+  const push = (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    if (names.some((item) => item.toLowerCase() === trimmed.toLowerCase())) return;
+    names.push(trimmed);
+  };
+  push(localName());
+  for (const name of readKnown()) push(name);
+  return names;
+}
+
+function storeKnown(name: string) {
+  const trimmed = name.trim().slice(0, 80);
+  if (!trimmed || trimmed.toLowerCase() === "you") return false;
+  const current = readKnown();
+  if (current.some((item) => item.toLowerCase() === trimmed.toLowerCase())) return false;
+  write(KNOWN_KEY, JSON.stringify([...current, trimmed].slice(-40)));
+  return true;
+}
+
+/** Remember a name for later @ suggestions. Does not change who is commenting. */
+export function rememberName(name: string) {
+  if (storeKnown(name)) listeners.forEach((listener) => listener());
+}
+
 export function setLocalName(name: string) {
-  write(NAME_KEY, name.trim().slice(0, 80));
+  const trimmed = name.trim().slice(0, 80);
+  write(NAME_KEY, trimmed);
+  if (trimmed) storeKnown(trimmed);
   listeners.forEach((listener) => listener());
 }
 

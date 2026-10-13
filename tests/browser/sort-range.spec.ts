@@ -77,7 +77,10 @@ test("Data › Sort range keeps the detected header row in place", async ({
     ["Priya Shah", "Kitchen", 14],
     ["Alba Reyes", "Kitchen", 9],
   ]);
-  await page.getByRole("button", { name: "Undo (Cmd+Z)" }).click();
+  const undo = page.getByRole("button", { name: "Undo (Cmd+Z)" });
+  if (!(await undo.isVisible()))
+    await page.getByRole("button", { name: "More tools" }).click();
+  await undo.click();
   expect(await rows(page)).toEqual(volunteers);
 });
 

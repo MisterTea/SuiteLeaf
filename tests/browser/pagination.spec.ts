@@ -60,7 +60,9 @@ test("long paragraphs and tables paginate without changing document content", as
 });
 test("a page break leaves the caret at the top of the new page", async ({
   page,
+  isMobile,
 }) => {
+  test.skip(isMobile, "Ctrl+End and Ctrl+Enter are desktop shortcuts.");
   await page.goto("/");
   await page.getByRole("button", { name: "New document" }).click();
   const editor = page.getByRole("textbox", { name: "Document content" });

@@ -317,10 +317,14 @@ export type EditorActions = {
     insertTableOfContents: (pageNumbers?: boolean) => void;
     insertFootnote: () => void;
     insertEndnote: () => void;
+    insertEquation: () => void;
     openPageSetup: () => void;
     openWordCount: () => void;
     openSpelling: () => void;
+    openGrammar: () => void;
+    openIgnoredGrammar: () => void;
     openDictionary: () => void;
+    openCitations: () => void;
     clearFormatting: () => void;
     align: (alignment: "left" | "center" | "right" | "justify") => void;
     toggleBold: () => void;
@@ -342,6 +346,7 @@ export type EditorActions = {
     tabsProtection?: () => void;
     insertCheckbox?: () => void;
     insertDropdown?: () => void;
+    insertLink?: () => void;
     undo: () => void;
     redo: () => void;
     cut: () => void;
@@ -353,7 +358,14 @@ export type EditorActions = {
     insertPivot: () => void;
     insertFunction?: (name: string) => void;
     toggleFilter: () => void;
+    /** Unsaved filter for someone who cannot edit. Not stored in the file. */
+    createFilterView?: () => void;
+    applyFilterView?: (value: string) => void;
+    clearFilterView?: () => void;
+    filterViewChoices?: () => { label: string; value: string }[];
     sortRange?: () => void;
+    namedRanges?: () => void;
+    groupRows?: () => void;
     trimWhitespace?: () => void;
     removeDuplicates?: () => void;
     splitTextToColumns?: () => void;
@@ -370,6 +382,9 @@ export type EditorActions = {
     freezeColumns: (count: number) => void;
     showGridlines: (visible: boolean) => void;
     showFormulaBar: (visible: boolean) => void;
+    openSpelling?: () => void;
+    insertPageBreak?: () => void;
+    openPrintSettings?: () => void;
   };
   slideActions?: {
     undo: () => void;
@@ -392,9 +407,17 @@ export type EditorActions = {
     ) => void;
     openTheme: () => void;
     openTransition: () => void;
+    insertComment?: () => void;
+    openComments?: () => void;
+    openResolved?: () => void;
+    /** Insert › Animation › Fade in on click, for the selected object. */
+    fadeOnClick?: () => void;
+    /** Why that command cannot run, if it cannot. */
+    fadeOnClickReason?: () => string | undefined;
     undoReason?: () => string | undefined;
     redoReason?: () => string | undefined;
     deleteReason?: () => string | undefined;
+    openSpelling?: () => void;
   };
 };
 export type SheetView = {

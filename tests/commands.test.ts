@@ -162,6 +162,8 @@ describe("shortcut labels", () => {
     expect(appHandlesShortcut("Cmd+B", "doc", false)).toBe(false);
     expect(appHandlesShortcut("Cmd+Shift+H", "doc", false)).toBe(true);
     expect(appHandlesShortcut("Cmd+D", "slide", false)).toBe(true);
+    expect(appHandlesShortcut("Cmd+K", "sheet", false)).toBe(true);
+    expect(appHandlesShortcut("Cmd+K", "sheet", true)).toBe(false);
     expect(appHandlesShortcut("Cmd+D", "slide", true)).toBe(false);
   });
 
