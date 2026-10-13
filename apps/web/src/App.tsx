@@ -109,7 +109,11 @@ import {
 } from "./library-trash";
 import { ConnectDialog, SignInScreen, useNodeSession } from "./drive/SignIn";
 import { syncSummary, useServerSync } from "./drive/status";
-import { VersionHistory, VersionPreview } from "./editors/version-history";
+import {
+  VersionHistory,
+  VersionPreview,
+  type ParagraphRestoreControl,
+} from "./editors/version-history";
 import { noteLocalSnapshot } from "./editors/local-versions";
 import { completeHandoff } from "./node-client";
 import {
@@ -1189,7 +1193,9 @@ function Workspace() {
   const [historyPreview, setHistoryPreview] = useState<{
     content: JsonNode;
     label: string;
+    offers: (ParagraphRestoreControl | null)[] | null;
   } | null>(null);
+  const restoreParagraph = useRef<(key: string) => void>(() => {});
   const [driveConflict, setDriveConflictState] = useState<DriveItem | null>(
       null,
     ),
@@ -2866,6 +2872,8 @@ function Workspace() {
               key={JSON.stringify(historyPreview.content)}
               content={historyPreview.content}
               label={historyPreview.label}
+              offers={historyPreview.offers}
+              onRestoreParagraph={(key) => restoreParagraph.current(key)}
             />
           ) : null}
           <div
@@ -2924,9 +2932,12 @@ function Workspace() {
               setHistoryOpen(false);
               setHistoryPreview(null);
             }}
-            onPreview={(content, label) =>
-              setHistoryPreview(content ? { content, label } : null)
+            onPreview={(content, label, offers) =>
+              setHistoryPreview(
+                content ? { content, label, offers: offers ?? null } : null,
+              )
             }
+            bindParagraphRestore={restoreParagraph}
             onStatus={setStatus}
             onRestored={(next) => {
               clearTimeout(timer.current);

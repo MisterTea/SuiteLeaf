@@ -1,6 +1,13 @@
 import { z } from "zod";
 
 export { diffDocuments, type DocDiff } from "./doc-diff";
+export {
+  applyParagraphRestore,
+  compareParagraphs,
+  paragraphRestorePrompt,
+  type ParagraphCompare,
+  type ParagraphOffer,
+} from "./doc-paragraph-restore";
 export type Kind = "doc" | "sheet" | "slide";
 export type JsonNode = {
   type: string;
