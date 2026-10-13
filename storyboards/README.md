@@ -173,3 +173,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 150 | [Make the rows equal](150-make-the-rows-equal.md) | single-node | Docs |
 | 151 | [Caption the photo](151-caption-the-photo.md) | single-node | Docs |
 | 153 | [Keep the caption from Word](153-keep-the-caption-from-word.md) | single-node | Docs |
+| 155 | [Turn the photo](155-turn-the-photo.md) | single-node | Docs |
