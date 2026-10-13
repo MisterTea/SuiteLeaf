@@ -75,6 +75,7 @@ import {
 import { SheetViewMenu } from "./editors/SheetViewMenu";
 import {
   DriveConflict,
+  drive,
   finishSignOut,
   getSession,
   openDriveFile,
@@ -83,8 +84,10 @@ import {
   signOut,
   uploadDriveFile,
   type DriveItem,
+  type DriveRole,
 } from "./node-client";
 import { DriveBrowser, DriveDialog, NameDialog } from "./drive/DriveBrowser";
+import { ShareDialog } from "./drive/ShareDialog";
 import { searchFile } from "./library-search";
 import { ConnectDialog, SignInScreen, useNodeSession } from "./drive/SignIn";
 import { formatModified, syncSummary, useServerSync } from "./drive/status";
@@ -1027,8 +1030,13 @@ function Workspace() {
       null,
     ),
     [driveDialog, setDriveDialog] = useState<"open" | "save" | null>(null),
+    [shareOpen, setShareOpen] = useState(false),
+    [driveRole, setDriveRole] = useState<DriveRole | "local" | null>(null),
     { mode } = useMode(),
     cluster = mode.kind === "cluster";
+  const canEditRef = useRef(true);
+  const canEdit =
+    driveRole === "local" || driveRole === "editor" || driveRole === "owner";
   const setDriveConflict = (item: DriveItem | null) => {
     driveConflictRef.current = item;
     setDriveConflictState(item);
@@ -1037,6 +1045,7 @@ function Workspace() {
   const syncDrive = useCallback(async () => {
     clearTimeout(driveTimer.current);
     driveTimer.current = undefined;
+    if (!canEditRef.current) return;
     if (!current.current?.drive || driveConflictRef.current) return;
     if (!getSession()) {
       setStatus("Saved on this device · sign in to sync with SuiteDrive");
@@ -1064,6 +1073,7 @@ function Workspace() {
     }
   }, []);
   const save = useCallback(async () => {
+    if (!canEditRef.current) return;
     clearTimeout(timer.current);
     try {
       await actions.current?.flush();
@@ -1125,6 +1135,9 @@ function Workspace() {
   useEffect(() => {
     alive.current = true;
     setActionsReady(false);
+    setDriveRole(null);
+    setShareOpen(false);
+    canEditRef.current = false;
     actions.current = undefined;
     const saveQueue = queue.current;
     let release: (() => void) | undefined,
@@ -1134,9 +1147,21 @@ function Workspace() {
         const r = await driveQueue.current.enqueue(() => storage.get(id!));
         if (cancel) return;
         if (!r) throw new Error("This file could not be found.");
+        let role: DriveRole | "local" = "local";
+        if (r.drive && getSession()) {
+          try {
+            role = (await drive.get(r.drive.itemId)).role ?? "viewer";
+          } catch {
+            role = "viewer";
+          }
+        }
+        if (cancel) return;
+        canEditRef.current =
+          role === "local" || role === "editor" || role === "owner";
+        setDriveRole(role);
         current.current = r;
         setRecord(r);
-        if (hasUnsyncedEdits(r)) {
+        if (canEditRef.current && hasUnsyncedEdits(r)) {
           setStatus("Saving to SuiteDrive…");
           void syncDrive();
           return;
@@ -1201,7 +1226,7 @@ function Workspace() {
   }, [save, syncDrive]);
   const update = useCallback(
     (content: SuiteFile["content"]) => {
-      if (!current.current) return;
+      if (!canEditRef.current || !current.current) return;
       current.current = {
         ...current.current,
         file: {
@@ -1219,7 +1244,7 @@ function Workspace() {
     [save],
   );
   const changeTitle = (title: string) => {
-    if (!current.current) return;
+    if (!canEditRef.current || !current.current) return;
     current.current.file.title = title || "Untitled";
     setRecord({ ...current.current });
     update(current.current.file.content);
@@ -1483,8 +1508,14 @@ function Workspace() {
               aria-label="File title"
               value={f.title}
               maxLength={200}
+              readOnly={!canEdit}
               onChange={(e) => changeTitle(e.target.value)}
             />
+            {driveRole === "viewer" ? (
+              <span className="view-only-badge">View only</span>
+            ) : driveRole === "commenter" ? (
+              <span className="view-only-badge">Can comment</span>
+            ) : null}
             <button
               type="button"
               className={`doc-icon-btn star-btn ${starred ? "starred" : ""}`}
@@ -2071,6 +2102,15 @@ function Workspace() {
           >
             <MessageSquare size={18} />
           </button>
+          {cluster && record.drive ? (
+            <button
+              type="button"
+              className="share-btn"
+              onClick={() => setShareOpen(true)}
+            >
+              Share
+            </button>
+          ) : null}
           {mode.kind === "cluster" ? (
             <span
               className="workspace-brand workspace-server"
@@ -2172,6 +2212,13 @@ function Workspace() {
           </span>
         </div>
       ) : null}
+      {shareOpen && record.drive ? (
+        <ShareDialog
+          itemId={record.drive.itemId}
+          itemName={f.title}
+          onClose={() => setShareOpen(false)}
+        />
+      ) : null}
       {driveDialog ? (
         <DriveBrowser
           mode={driveDialog}
@@ -2230,6 +2277,7 @@ function Workspace() {
             <Docs
               key={id}
               file={f as DocFile}
+              readOnly={!canEdit}
               onChange={update}
               onActions={onActions}
               onError={setError}

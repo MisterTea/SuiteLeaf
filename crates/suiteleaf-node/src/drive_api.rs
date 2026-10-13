@@ -117,15 +117,45 @@ async fn list(
     Query(q): Query<ListQuery>,
 ) -> ApiResult<Response> {
     let who = principal(&user);
+    let shared = q.shared.is_some();
     let items = blocking(&s.drive, move |d| {
-        if q.shared.is_some() {
+        if shared {
             d.shared(&who)
         } else {
             d.list(&who, q.parent.as_deref().filter(|p| !p.is_empty()))
         }
     })
     .await?;
-    Ok(Json(json!({ "items": items })).into_response())
+    let mut payload =
+        serde_json::to_value(&items).map_err(|e| ApiError(DriveError::Other(e.into())))?;
+    if shared && let Some(rows) = payload.as_array_mut() {
+        let ids: Vec<String> = rows
+            .iter()
+            .filter_map(|row| {
+                row.get("ownerId")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned)
+            })
+            .collect();
+        let auth = s.auth.clone();
+        let profiles = tokio::task::spawn_blocking(move || auth.accounts(&ids))
+            .await
+            .map_err(|e| ApiError(DriveError::Other(e.into())))?
+            .map_err(|e| ApiError(DriveError::Other(e)))?;
+        let by_id: std::collections::HashMap<_, _> =
+            profiles.into_iter().map(|p| (p.id.clone(), p)).collect();
+        for row in rows {
+            let name = row
+                .get("ownerId")
+                .and_then(|v| v.as_str())
+                .and_then(|id| by_id.get(id))
+                .and_then(|p| p.name.clone());
+            if let Some(object) = row.as_object_mut() {
+                object.insert("ownerName".into(), serde_json::json!(name));
+            }
+        }
+    }
+    Ok(Json(json!({ "items": payload })).into_response())
 }
 
 #[derive(Deserialize)]
@@ -350,9 +380,107 @@ async fn me(RequireUser(user): RequireUser) -> Json<AuthUser> {
     Json(user)
 }
 
+#[derive(Deserialize)]
+struct AccountQuery {
+    q: Option<String>,
+}
+
+async fn search_accounts(
+    State(s): State<AppState>,
+    RequireUser(user): RequireUser,
+    Query(q): Query<AccountQuery>,
+) -> ApiResult<Response> {
+    let query = q.q.unwrap_or_default();
+    if query.trim().chars().count() < 2 {
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Type at least 2 characters to search for someone." })),
+        )
+            .into_response());
+    }
+    let auth = s.auth.clone();
+    let caller = user.id.clone();
+    let accounts = tokio::task::spawn_blocking(move || auth.search_accounts(&query, Some(&caller)))
+        .await
+        .map_err(|e| ApiError(DriveError::Other(e.into())))?
+        .map_err(|e| ApiError(DriveError::Other(e)))?;
+    Ok(Json(json!({ "accounts": accounts })).into_response())
+}
+
+async fn get_access(
+    State(s): State<AppState>,
+    RequireUser(user): RequireUser,
+    Path(id): Path<String>,
+) -> ApiResult<Response> {
+    let who = principal(&user);
+    let access = blocking(&s.drive, move |d| d.access(&who, &id)).await?;
+    let ids: Vec<String> = access
+        .grants
+        .iter()
+        .map(|g| g.principal_id.clone())
+        .collect();
+    let auth = s.auth.clone();
+    let profiles = tokio::task::spawn_blocking(move || auth.accounts(&ids))
+        .await
+        .map_err(|e| ApiError(DriveError::Other(e.into())))?
+        .map_err(|e| ApiError(DriveError::Other(e)))?;
+    let by_id: std::collections::HashMap<_, _> =
+        profiles.into_iter().map(|p| (p.id.clone(), p)).collect();
+    let grants: Vec<_> = access
+        .grants
+        .into_iter()
+        .map(|g| {
+            let profile = by_id.get(&g.principal_id);
+            json!({
+                "principalType": g.principal_type,
+                "principalId": g.principal_id,
+                "role": g.role,
+                "name": profile.and_then(|p| p.name.clone()),
+                "email": profile.and_then(|p| p.email.clone()),
+                "inheritedFrom": g.inherited_from,
+            })
+        })
+        .collect();
+    Ok(Json(json!({
+        "grants": grants,
+        "parent": access.parent,
+        "yourRole": access.your_role,
+    }))
+    .into_response())
+}
+
+#[derive(Deserialize)]
+struct CommentBody {
+    body: String,
+}
+
+async fn list_comments(
+    State(s): State<AppState>,
+    RequireUser(user): RequireUser,
+    Path(id): Path<String>,
+) -> ApiResult<Response> {
+    let who = principal(&user);
+    Ok(Json(json!({
+        "comments": blocking(&s.drive, move |d| d.comments(&who, &id)).await?
+    }))
+    .into_response())
+}
+
+async fn add_comment(
+    State(s): State<AppState>,
+    RequireUser(user): RequireUser,
+    Path(id): Path<String>,
+    Json(body): Json<CommentBody>,
+) -> ApiResult<Response> {
+    let who = principal(&user);
+    let comment = blocking(&s.drive, move |d| d.add_comment(&who, &id, &body.body)).await?;
+    Ok((StatusCode::CREATED, Json(comment)).into_response())
+}
+
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/me", get(me))
+        .route("/api/accounts", get(search_accounts))
         .route("/api/drive/items", get(list).post(create))
         .route(
             "/api/drive/items/{id}",
@@ -366,5 +494,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/drive/items/{id}/versions", get(versions))
         .route("/api/drive/items/{id}/acl", get(get_acl).put(put_acl))
+        .route("/api/drive/items/{id}/access", get(get_access))
+        .route(
+            "/api/drive/items/{id}/comments",
+            get(list_comments).post(add_comment),
+        )
         .with_state(state)
 }

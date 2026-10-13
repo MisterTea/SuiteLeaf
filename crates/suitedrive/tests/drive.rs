@@ -205,6 +205,88 @@ fn sharing_is_inherited_by_folder_contents_and_enforced() {
 }
 
 #[test]
+fn a_commenter_can_comment_but_cannot_change_the_file() {
+    let n = node();
+    let (ann, bob, eve) = (user("ann"), user("bob"), user("eve"));
+    let file = n
+        .drive
+        .create(&ann, None, "rota.sldoc", "file", None)
+        .unwrap();
+    n.drive
+        .share(&ann, &file.id, "user", "bob", Some(Role::Commenter))
+        .unwrap();
+    assert_eq!(
+        n.drive.get(&bob, &file.id).unwrap().role,
+        Some(Role::Commenter)
+    );
+    assert!(matches!(
+        n.drive.write(&bob, &file.id, None, None, b"changed"),
+        Err(DriveError::Forbidden)
+    ));
+    let comment = n
+        .drive
+        .add_comment(&bob, &file.id, "Can I swap Tuesday?")
+        .unwrap();
+    assert_eq!(comment.body, "Can I swap Tuesday?");
+    assert_eq!(n.drive.comments(&ann, &file.id).unwrap().len(), 1);
+    n.drive
+        .share(&ann, &file.id, "user", "eve", Some(Role::Viewer))
+        .unwrap();
+    assert!(matches!(
+        n.drive.add_comment(&eve, &file.id, "I can only read"),
+        Err(DriveError::Forbidden)
+    ));
+    assert!(n.drive.add_comment(&bob, &file.id, "  ").is_err());
+}
+
+#[test]
+fn access_lists_inherited_folder_roles_above_weaker_direct_ones() {
+    let n = node();
+    let ann = user("ann");
+    let folder = n
+        .drive
+        .create(&ann, None, "Garden club", "folder", None)
+        .unwrap();
+    let file = n
+        .drive
+        .create(&ann, Some(&folder.id), "rota.sldoc", "file", None)
+        .unwrap();
+    n.drive
+        .share(&ann, &file.id, "user", "bob", Some(Role::Viewer))
+        .unwrap();
+    n.drive
+        .share(&ann, &folder.id, "user", "bob", Some(Role::Editor))
+        .unwrap();
+    let access = n.drive.access(&ann, &file.id).unwrap();
+    assert_eq!(access.your_role, Role::Owner);
+    assert_eq!(access.parent.as_ref().unwrap().name, "Garden club");
+    let bob_grant = access
+        .grants
+        .iter()
+        .find(|g| g.principal_id == "bob")
+        .unwrap();
+    assert_eq!(bob_grant.role, Role::Editor);
+    assert_eq!(
+        bob_grant.inherited_from.as_ref().unwrap().name,
+        "Garden club"
+    );
+    assert!(access.grants.iter().any(|g| {
+        g.principal_type == "owner" && g.principal_id == "ann" && g.inherited_from.is_none()
+    }));
+    n.drive.share(&ann, &file.id, "user", "bob", None).unwrap();
+    let only_folder = n.drive.access(&ann, &file.id).unwrap();
+    assert_eq!(
+        only_folder
+            .grants
+            .iter()
+            .find(|g| g.principal_id == "bob")
+            .unwrap()
+            .role,
+        Role::Editor
+    );
+}
+
+#[test]
 fn moves_rename_and_trash_respect_the_folder_tree() {
     let n = node();
     let ann = user("ann");

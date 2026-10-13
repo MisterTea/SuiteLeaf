@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { isNativeName, kindFromName } from "@suiteleaf/core";
 import { drive, getSession, type DriveItem } from "../node-client";
+import { accessLabel } from "./roles";
 import { formatModified } from "./status";
 
 type Crumb = { id: string | null; name: string };
@@ -263,6 +264,12 @@ export function DriveBrowser({
     }
   }, [folder.id, view]);
   useEffect(() => void refresh(), [refresh, refreshKey]);
+  // Shared with me updates when someone shares, without reloading the page.
+  useEffect(() => {
+    if (view !== "shared" || folder.id !== null) return;
+    const timer = setInterval(() => void refresh(), 2000);
+    return () => clearInterval(timer);
+  }, [view, folder.id, refresh]);
   useEffect(() => {
     onFolderChange?.(folder.id, folder.name);
     if (inline) place.save({ view, path });
@@ -380,7 +387,14 @@ export function DriveBrowser({
                 }
               >
                 <ItemIcon item={item} />
-                <span>{item.name}</span>
+                <span className="drive-item-label">
+                  <span className="drive-item-name">{item.name}</span>
+                  {view === "shared" && folder.id === null ? (
+                    <small className="drive-share-meta">
+                      {item.ownerName || "Someone"} · {accessLabel(item.role)}
+                    </small>
+                  ) : null}
+                </span>
                 {!item.available ? (
                   <small className="drive-copying">
                     <CloudOff size={14} aria-label="Replicating" />
