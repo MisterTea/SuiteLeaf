@@ -746,6 +746,7 @@ a {
   border: 1px solid var(--border);
   border-radius: 18px;
   padding: 6px 14px;
+  white-space: nowrap;
 }
 .save-copy:hover {
   background: var(--surface-hover);
