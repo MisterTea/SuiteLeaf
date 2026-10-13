@@ -159,7 +159,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       name: "write_text",
       label: "Type text",
       description:
-        "Type text into the document. Each line becomes a paragraph. Start a line with '# ', '## ' or '### ' for a heading, '- ' for a bullet, '1. ' for a numbered item; wrap words in **double asterisks** for bold. By default the text goes at the end of the document (leave out `after` to keep adding to the end); give `after` to insert it right after the one paragraph or heading containing that text, or set `replace_document` to start over.",
+        "Type text into the document. Each line becomes a paragraph. Start a line with '# ' for a Heading 1 (a main section), '## ' for a Heading 2 (a sub-section) or '### ' for a Heading 3, '- ' for a bullet, '1. ' for a numbered item; wrap words in **double asterisks** for bold. By default the text goes at the end of the document (leave out `after` to keep adding to the end); give `after` to insert it right after the one paragraph or heading containing that text, or set `replace_document` to start over.",
       parameters: Type.Object({
         text: Type.String({ description: "The text to type." }),
         after: Type.Optional(
