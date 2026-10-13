@@ -132,6 +132,7 @@ class AgentSession {
   private emptyRetries = 0;
   private lastCalls: string[] = [];
   private runningTool?: { id: string; name: string };
+  private runStarted = 0;
   /** Tool results rewritten for the model (tools called from the wrong screen), by call id. */
   private explained = new Map<string, string>();
 
@@ -298,7 +299,7 @@ class AgentSession {
 
   /** Load the model, then run the agent until it stops. */
   private async run(go: () => Promise<void>, fresh = true) {
-    const started = performance.now();
+    const started = (this.runStarted = performance.now());
     this.state = "loading";
     this.emit();
     const status = await localModel().load();
@@ -348,7 +349,7 @@ class AgentSession {
       const saved: SavedRun = {
         messages: this.agent.state.messages,
         items: this.items,
-        metrics: this.metrics,
+        metrics: { ...this.metrics, wallMs: this.metrics.wallMs + Math.round(performance.now() - this.runStarted) },
         pending,
         result,
         turns: this.turns,
@@ -374,6 +375,7 @@ class AgentSession {
       item.status = "ok";
       item.result = saved.result;
     }
+    this.state = "loading";
     this.emit();
     // Give the new screen a moment to register its tools.
     await new Promise((r) => setTimeout(r, 1500));
