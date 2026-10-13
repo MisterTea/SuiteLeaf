@@ -579,12 +579,12 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         title: Type.Optional(Type.String()),
       }),
       target: () => document.querySelector(".chart-btn") ?? undefined,
-      async execute({ range, type = "column", title }) {
-        checkHeaderRow(sheet(), range);
+      async execute({ range: asked, type = "column", title }) {
+        const { range, note } = checkHeaderRow(sheet(), asked);
         select(range);
         const before = new Set(ctx.content().charts.map((c) => c.id));
         ctx.openPanel("chart", {
-          range: a1(parseA1(range)),
+          range,
           sheetId: sheet().getSheetId(),
           title: title ?? "",
           chartType: type === "column" ? "bar" : (type as ChartDefinition["type"]),
@@ -594,7 +594,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         await wait(400);
         const chart = ctx.content().charts.find((c) => !before.has(c.id));
         if (!chart) throw new ToolError("The chart was not created. Check that the range has a header row and numbers.");
-        return `Inserted a ${type} chart "${chart.title}" from ${a1(chart.source)} (${chart.width}×${chart.height}px), below the table: it covers ${chartCells(sheet(), chart)}. The table is ${a1(usedRange(sheet()))}. ${chartContents(sheet(), chart.source)}`;
+        return `Inserted a ${type} chart "${chart.title}" from ${a1(chart.source)} (${chart.width}×${chart.height}px), below the table: it covers ${chartCells(sheet(), chart)}. The table is ${a1(usedRange(sheet()))}.${note ? ` ${note}` : ""} ${chartContents(sheet(), chart.source)}`;
       },
     }),
     tool({
@@ -619,14 +619,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         const c = findChart(ctx, args.chart);
         if (!c) throw new ToolError("There is no chart on this sheet yet. Make one with insert_chart first, then edit it.");
         // Check everything before changing anything, so an error means nothing moved.
-        let range = args.range;
-        if (range) {
-          const r = parseA1(range);
-          // The chart's own data rows without their header row mean the chart's current range.
-          const own = { ...c.source, startRow: c.source.startRow + 1 };
-          if (a1(r) === a1(own)) range = undefined;
-          else checkHeaderRow(sheet(), range);
-        }
+        const range = args.range ? checkHeaderRow(sheet(), args.range).range : undefined;
         if (args.move_to) parseCell(args.move_to);
         const changed: string[] = [];
         if (args.move_to || args.width || args.height) {
@@ -881,20 +874,24 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
   ];
 }
 
-/** A chart range must start with its header row, as the Insert chart panel expects. */
-function checkHeaderRow(sheet: any, input: string) {
+/**
+ * A chart range must start with its header row, as the Insert chart panel expects. A range that starts
+ * just below the headers is extended up to them; returns the range to use and a note saying so.
+ */
+function checkHeaderRow(sheet: any, input: string): { range: string; note: string } {
   const r = parseA1(input);
   const width = r.endColumn - r.startColumn + 1;
   const first = sheet.getRange(r.startRow, r.startColumn, 1, width).getValues()[0] as unknown[];
   const numeric = first.slice(1).some((v) => typeof v === "number");
-  if (!numeric) return;
+  if (!numeric) return { range: a1(r), note: "" };
   const above =
     r.startRow > 0 ? (sheet.getRange(r.startRow - 1, r.startColumn, 1, width).getValues()[0] as unknown[]) : [];
-  const fix = above.some((v) => typeof v === "string" && v.trim())
-    ? ` Row ${r.startRow} looks like the headers; use ${a1({ ...r, startRow: r.startRow - 1 })}.`
-    : "";
+  if (above.some((v) => typeof v === "string" && v.trim())) {
+    const range = a1({ ...r, startRow: r.startRow - 1 });
+    return { range, note: `${a1(r)} starts below the header row, so the chart uses ${range} and takes its series names from row ${r.startRow}.` };
+  }
   throw new ToolError(
-    `The first row of ${input} holds numbers (${first.map(display).join(", ")}), so the chart would have no series names. Include the header row.${fix}`,
+    `The first row of ${input} holds numbers (${first.map(display).join(", ")}), so the chart would have no series names. Include the header row.`,
   );
 }
 

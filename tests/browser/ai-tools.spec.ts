@@ -84,10 +84,11 @@ test("spreadsheet tools write, format, sort, chart and pivot", async ({ page }) 
   await waitForTools(page, "read_sheet");
   expect(await call(page, "read_sheet")).toContain("Engineering\t12000\t10800");
 
-  await expect(call(page, "insert_chart", { range: "A2:C5", type: "column" })).rejects.toThrow(/use A1:C5/);
+  await expect(call(page, "insert_chart", { range: "B3:C5" })).rejects.toThrow(/no series names/);
   await expect(call(page, "edit_chart", { width: 400 })).rejects.toThrow(/insert_chart first/);
-  const inserted = await call(page, "insert_chart", { range: "A1:C5", title: "Studio costs" });
-  expect(inserted).toContain('column chart "Studio costs"');
+  const inserted = await call(page, "insert_chart", { range: "A2:C5", title: "Studio costs" });
+  expect(inserted).toContain('column chart "Studio costs" from A1:C5');
+  expect(inserted).toContain("A2:C5 starts below the header row, so the chart uses A1:C5");
   expect(inserted).toContain("It shows Budget, Actual (from the header row) for Design, Engineering, Research, Operations (from column A).");
   await expect(page.locator('[aria-label="Chart: Studio costs"]')).toBeVisible();
   const moved = await call(page, "edit_chart", { move_to: "F1", width: 420, range: "A1:C5" });
