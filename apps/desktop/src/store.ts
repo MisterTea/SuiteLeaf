@@ -110,6 +110,15 @@ export class FileStore {
         fingerprint: fingerprint(text),
         recovery: false,
       };
+      // A different version of this file is already in the library (a draft,
+      // or saved elsewhere): return it unsaved, so the user chooses which to keep.
+      if (
+        existing &&
+        !existing.drive &&
+        existing.path !== full &&
+        serializeFile(existing.file) !== serializeFile(file)
+      )
+        return structuredClone(r);
       this.records.set(file.id, r);
       await this.persist();
       return structuredClone(r);

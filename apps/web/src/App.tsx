@@ -419,7 +419,23 @@ function LocalHome() {
    * opens that copy if it is the same, and otherwise asks what to keep. */
   const importRecord = useCallback(
     async (r: FileRecord, name?: string) => {
-      if (!name) return open(r);
+      if (!name) {
+        // The desktop store leaves a different version in the library alone.
+        const existing = r.path ? await storage.get(r.file.id) : undefined;
+        if (
+          existing &&
+          !existing.drive &&
+          existing.path !== r.path &&
+          serializeFile(existing.file) !== serializeFile(r.file)
+        )
+          setSameFile({
+            name: r.path!.split(/[\\/]/).pop()!,
+            existing,
+            incoming: r,
+          });
+        else await open(r);
+        return;
+      }
       const existing =
         r.path || r.recovery ? undefined : await storage.get(r.file.id);
       if (!existing || existing.drive || existing.path)
@@ -458,10 +474,10 @@ function LocalHome() {
       if (action === "open")
         void storage
           .open()
-          .then((r) => r && open(r))
+          .then((r) => r && importRecord(r))
           .catch((e) => setError(message(e)));
     },
-    [make, open],
+    [make, importRecord],
   );
   useEffect(() => window.suiteleaf?.onMenu(menu), [menu]);
   const rename = async (r: FileRecord, title: string) => {
