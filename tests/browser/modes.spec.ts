@@ -67,7 +67,8 @@ test("connecting accepts a server address without http:// or https://", async ({
   page,
 }) => {
   await fakeServer(page, "https://team.example.org");
-  // WebKit leaves an aborted request hanging, so the https attempt never fails over.
+  await fakeServer(page, "http://team.example.org");
+  // The https attempt must fail immediately so the probe can try http.
   await page.route("https://lan-box.test/**", (route) =>
     route.fulfill({ status: 502, body: "" }),
   );
