@@ -125,6 +125,11 @@ import { HeaderEdgeFields } from "./header-edge";
 import { KeepWithNext, KeepWithNextControl } from "./doc-keep-next";
 import { DontLeaveOneLineControl, WidowControl } from "./doc-widow-control";
 import { KeepLines, KeepLinesTogetherControl } from "./doc-keep-lines";
+import {
+  applyCopiedTextFormat,
+  copyTextFormat,
+  type CopiedTextFormat,
+} from "./doc-paint-format";
 
 export const extensions: Extensions = [
   DocumentPagination,
@@ -258,7 +263,10 @@ export default function Docs({
   const docTools = useRef<HTMLFieldSetElement>(null);
   const moreDocTools = useToolbarOverflow(
     docTools,
-    '[aria-label="Page setup"], [aria-label="Page break"], [aria-label="Superscript"], [aria-label="Subscript"], [aria-label="Bulleted list"], [aria-label="Decrease indent"], [aria-label="Increase indent"], [aria-label="Find and replace"], [aria-label="Insert table"], [aria-label="Insert link"], .mode-switch',
+    '[aria-label="Page setup"], [aria-label="Page break"], [aria-label="Bold"], .paint-format, [aria-label="Superscript"], [aria-label="Subscript"], [aria-label="Bulleted list"], [aria-label="Decrease indent"], [aria-label="Increase indent"], [aria-label="Find and replace"], [aria-label="Insert table"], [aria-label="Insert link"], .mode-switch',
+  );
+  const [copiedFormat, setCopiedFormat] = useState<CopiedTextFormat | null>(
+    null,
   );
   const [pageViewportWidth, setPageViewportWidth] = useState(
     window.innerWidth - 32,
@@ -807,6 +815,20 @@ export default function Docs({
     editor.chain().focus().setFontSize(`${next}pt`).run();
   };
 
+  const copyFormat = () => {
+    if (!editor) return;
+    setCopiedFormat(copyTextFormat(editor.state));
+  };
+
+  const applyFormat = () => {
+    if (!editor || !copiedFormat) return;
+    const { from, to } = editor.state.selection;
+    if (from === to) return;
+    const tr = applyCopiedTextFormat(editor.state, copiedFormat);
+    if (tr.docChanged) editor.view.dispatch(tr);
+    setCopiedFormat(null);
+  };
+
   useEffect(() => {
     if (!editor) return;
     onActions({
@@ -1277,6 +1299,15 @@ export default function Docs({
         >
           <Bold size={16} />
         </Tool>
+        <button
+          type="button"
+          className="tool paint-format"
+          aria-label={copiedFormat ? "Apply format" : "Copy format"}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={copiedFormat ? applyFormat : copyFormat}
+        >
+          {copiedFormat ? "Apply format" : "Copy format"}
+        </button>
         <Tool
           label="Italic"
           active={state?.italic}

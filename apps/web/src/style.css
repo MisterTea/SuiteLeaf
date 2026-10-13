@@ -1234,6 +1234,14 @@ a {
 .docs-editor .toolbar .tool {
   padding: 5px;
 }
+.docs-editor .toolbar .tool.paint-format {
+  width: 7.4rem;
+  padding: 4px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
 .toolbar-select {
   background: transparent;
   border: 0;
