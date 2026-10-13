@@ -39,6 +39,17 @@ Sam turns the switch on and page 4's number slides to the left while page 5 stay
 
 ## Gaps and notes
 
-- A chosen corner stays put when odd and even pages turn on.
-- Do not add a live cover, a live watermark, a section break, or a control for the numeral's font or size.
-- Bottom center, if it was the chosen place, should also move to the outside bottom edge. Top right is the scene.
+- No live cover, no live watermark, no section break, and no control for the numeral's font or size.
+- The position control stays on the corner Sam already chose. Turning on different odd and even pages moves that corner to the outside edge: top right becomes top left on even pages, and bottom center becomes the outside bottom edge. Turning the switch off puts the chosen corner back on every page.
+- The preview still shows the last even page and the last odd page, from storyboard 128.
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| With the number already at the top right, turning on different odd and even pages moves the even page's number to the left before Apply | Met | Video 0:09: the switch is on, Apply is still on screen, and page 4's number is on the left of the page and of the preview. Vitest `moves a top-right number to the left on even pages and keeps odd pages on the right`. Browser `a top-right number moves to the outside edge before apply and stays after reopen`. |
+| The odd page's number stays on the right | Met | Video 0:09: page 5 stays at the top right on the page and on the preview. The same browser test checks page 5. |
+| The preview shows the last even page with the number on the left and the last odd page with the number on the right, before Apply | Met | Video 0:09: sheets labeled Page 4 · last even and Page 5 · last odd, with the numerals on the outside edges, before Apply. |
+| The document pages match that preview before Apply | Met | Video 0:09: the document shows page 4 on the left and page 5 on the right while Apply is still available. |
+| Turning the switch off puts the number back at the top right on every preview page | Met | Video 0:13: the switch is off, the preview is page 1 and page 5, and both numerals are at the top right. The document pages match. |
+| Apply and reopen keep the even number on the left and the odd number on the right | Met | Video 0:20: after Apply, page 4 is at the top left. Video 0:22: page 5 is at the top right. Video 0:26: after reopen, the switch is still on and the pages are still on the outside edges. |

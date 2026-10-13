@@ -105,10 +105,13 @@ async function showSpread(page: Page) {
   await beat(page, 200);
 }
 
+/** Pin a document page to the top of the stage so the next page's number can show too. */
 async function showDocumentPage(page: Page, index: number) {
   await page.evaluate((i) => {
     const face = document.querySelectorAll(".page-furniture-page")[i] as HTMLElement;
-    face.scrollIntoView({ block: "center", inline: "nearest" });
+    const stage = document.querySelector(".document-stage") as HTMLElement;
+    const delta = face.getBoundingClientRect().top - stage.getBoundingClientRect().top;
+    stage.scrollTop += delta - 6;
   }, index);
   await beat(page, 450);
 }
@@ -278,7 +281,7 @@ test("132-numbers-on-the-outside", async ({ page }) => {
   const editor = page.getByRole("textbox", { name: "Document content" });
   await expect(editor).toContainText("The index ends the preface.");
   await expect(page.locator(".editor-status")).toContainText("5 pages");
-  await say(page, "Sam's preface is five pages. The number is already at the top right.", 1800);
+  await say(page, "Sam's preface is five pages. The number is already at the top right.", 1600);
 
   let setup = await openSetup(page);
   await showSpread(page);
@@ -293,26 +296,28 @@ test("132-numbers-on-the-outside", async ({ page }) => {
     "Pages 2\u20134 skipped",
   );
   await layoutClear(page, "ends");
-  await miniature.nth(1).hover({ position: { x: 100, y: 24 } });
+  await miniature.nth(1).locator(".page-setup-preview-number").hover();
   await say(
     page,
     "Page setup shows page 1 and the last page. Both numbers sit at the top right.",
-    2600,
+    2200,
   );
 
+  await say(page, "So do the pages. Page 4 and page 5 are at the top right.", 0);
   await showDocumentPage(page, 3);
   await pageOnScreen(page, 3, "top-right");
-  await say(page, "On the page itself, page 4's number is at the top right too.", 1800);
+  await pageOnScreen(page, 4, "top-right");
+  await beat(page, 1800);
 
   await oddEven.hover();
-  await beat(page, 300);
+  await beat(page, 280);
   await oddEven.check();
   await caption(
     page,
     "She turns on different odd and even pages. Before Apply, page 4 slides to the left. Page 5 stays on the right.",
     0,
   );
-  await beat(page, 700);
+  await beat(page, 800);
   await showSpread(page);
   await expect(setup.getByRole("button", { name: "Apply", exact: true })).toBeVisible();
   await expect(setup.getByRole("radio", { name: "Top right", exact: true })).toBeChecked();
@@ -326,19 +331,12 @@ test("132-numbers-on-the-outside", async ({ page }) => {
   await layoutClear(page, "spread");
   await showDocumentPage(page, 3);
   await pageOnScreen(page, 3, "top-left");
-  await beat(page, 1600);
-
-  await showDocumentPage(page, 4);
   await pageOnScreen(page, 4, "top-right");
-  await say(
-    page,
-    "The pages match the preview. Page 4 is on the left. Page 5 is still on the right. Apply is still waiting.",
-    2600,
-  );
+  await preview.locator("[data-preview-role='last-even'] .page-setup-preview-number").hover();
+  await beat(page, 2600);
 
-  await showDocumentPage(page, 3);
   await oddEven.hover();
-  await beat(page, 250);
+  await beat(page, 220);
   await oddEven.uncheck();
   await caption(
     page,
@@ -352,33 +350,38 @@ test("132-numbers-on-the-outside", async ({ page }) => {
   await layoutClear(page, "ends");
   await showDocumentPage(page, 3);
   await pageOnScreen(page, 3, "top-right");
-  await showDocumentPage(page, 4);
   await pageOnScreen(page, 4, "top-right");
-  await beat(page, 1800);
+  await miniature.nth(1).locator(".page-setup-preview-number").hover();
+  await beat(page, 2000);
 
-  await showDocumentPage(page, 3);
   await oddEven.hover();
-  await beat(page, 250);
+  await beat(page, 220);
   await oddEven.check();
-  await caption(
-    page,
-    "On again. Page 4 on the left, page 5 on the right. She applies.",
-    0,
-  );
-  await beat(page, 600);
+  await caption(page, "On again. Page 4 on the left, page 5 on the right. She applies.", 0);
+  await beat(page, 500);
   await showSpread(page);
   await expect(preview.locator(".page-setup-preview-number")).toHaveText(["Page 4", "Page 5"]);
   await layoutClear(page, "spread");
   await showDocumentPage(page, 3);
   await pageOnScreen(page, 3, "top-left");
-  await beat(page, 1400);
+  await pageOnScreen(page, 4, "top-right");
+  await preview.locator("[data-preview-role='last-even'] .page-setup-preview-number").hover();
+  await beat(page, 1200);
   await setup.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(setup).toBeHidden();
   await expect(page.locator(".save-status")).toContainText("Saved");
-  await say(page, "She closes the file and opens it again.", 1400);
+  await say(page, "Applied. On the document, page 4 is on the left and page 5 is on the right.", 0);
+  await showDocumentPage(page, 3);
+  await pageOnScreen(page, 3, "top-left");
+  await beat(page, 1600);
+  await showDocumentPage(page, 4);
+  await pageOnScreen(page, 4, "top-right");
+  await beat(page, 1600);
+
+  await say(page, "She closes the file and opens it again.", 900);
   await page.getByRole("button", { name: "Back to files" }).click();
   await expect(page.getByLabel("Search files")).toBeVisible();
-  await beat(page, 500);
+  await beat(page, 400);
   await page.getByRole("link", { name: "Preface" }).click();
   await expect(editor).toContainText("The front matter starts here.");
 
@@ -391,11 +394,11 @@ test("132-numbers-on-the-outside", async ({ page }) => {
   await layoutClear(page, "spread");
   await showDocumentPage(page, 3);
   await pageOnScreen(page, 3, "top-left");
-  await showDocumentPage(page, 4);
   await pageOnScreen(page, 4, "top-right");
+  await preview.locator("[data-preview-role='last-odd'] .page-setup-preview-number").hover();
   await say(
     page,
     "Saved and reopened. Page 4 is still on the left, and page 5 is still on the right.",
-    2800,
+    2600,
   );
 });
