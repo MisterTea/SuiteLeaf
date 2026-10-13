@@ -212,14 +212,24 @@ test("a downloaded native file says what it is and reopens over its library copy
   await expect(rows).toHaveCount(2);
 
   await page
-    .getByRole("button", { name: "Remove Packing list", exact: true })
+    .getByRole("button", { name: "Move Packing list to Trash", exact: true })
     .click();
-  const confirm = page.getByRole("dialog", { name: "Delete this file?" });
+  await expect(page.locator(".trash-toast")).toContainText(
+    "Moved “Packing list” to Trash",
+  );
+  await page.getByRole("button", { name: "Trash", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Delete Packing list forever", exact: true })
+    .click();
+  const confirm = page.getByRole("dialog", {
+    name: "Delete “Packing list” forever?",
+  });
   await expect(confirm).toContainText(
-    "“Packing list” will be deleted from this browser. This can't be undone.",
+    "“Packing list” will be deleted from this browser forever. This can't be undone.",
   );
   await expect(confirm).toContainText("open it again with Open / import");
-  await confirm.getByRole("button", { name: "Delete" }).click();
+  await confirm.getByRole("button", { name: "Delete forever" }).click();
+  await page.getByRole("button", { name: "All files", exact: true }).click();
   await expect(rows).toHaveCount(1);
 });
 test("cached application and local files work offline", async ({ page }) => {

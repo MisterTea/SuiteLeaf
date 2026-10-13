@@ -18,15 +18,16 @@ Grace keeps the family's paperwork in SuiteLeaf on her laptop: a "Grandkids' bir
 
 ## Scenes
 
-1. **Home.** Grace opens SuiteLeaf. The sidebar lists All files, Starred, Documents, Spreadsheets, Presentations, and Trash.
-2. **Delete by mistake.** She clicks the bin on "Grandkids' birthdays". It disappears from the list right away, with no browser pop-up. A notice at the bottom reads "Moved "Grandkids' birthdays" to Trash · Undo".
-3. **Undo.** She clicks Undo. The sheet is back in the same place with the same "Last edited" date.
-4. **Delete, then find it later.** She deletes an old recipe on purpose and lets the notice disappear. A week later she wants it after all, opens **Trash**, and sees it with "Deleted 7 days ago · deleted forever in 23 days".
-5. **Restore.** She clicks **Restore** on the recipe. It returns to All files and opens with its content, title, and star unchanged.
-6. **Search finds trashed files.** She types "lasagne" in "Search your files". The recipe she'd binned shows up under "In Trash", with Restore beside it.
-7. **Empty the trash.** In Trash she clicks **Empty trash**. An in-app dialog says "Delete 3 files forever? This can't be undone," and she confirms.
-8. **Star favourites.** She clicks the star on the rows for "Weekly shopping", "Grandkids' birthdays", and "Medication times". In an open document, the star next to the title shows filled.
-9. **Starred view.** **Starred** in the sidebar lists the three, most recently edited first. After closing the browser (or quitting the desktop app) and reopening, they're still starred.
+1. **Home.** Grace opens SuiteLeaf. The sidebar lists All files, Starred, Documents, Spreadsheets, Presentations, and Trash. Her paperwork is already here: Lasagne, Weekly shopping, Grandkids' birthdays, Medication times, a holiday slideshow, and three old files.
+2. **Star the recipe.** She clicks the star on Lasagne. It fills in one click.
+3. **Delete by mistake.** She clicks the bin on Grandkids' birthdays. It leaves the list immediately, with no dialog. A notice at the bottom reads Moved “Grandkids' birthdays” to Trash, with Undo.
+4. **Undo.** She clicks Undo. The sheet is back in the same place, still showing 8:47 PM.
+5. **Delete, then find it later.** She deletes Lasagne on purpose and lets the notice disappear. A week later she opens Trash and sees “Deleted 7 days ago · deleted forever in 23 days”, with Restore beside it.
+6. **Search finds trashed files.** From All files she types lasagne. The recipe shows up under Results for “lasagne”, labelled In Trash, with Restore beside it.
+7. **Restore.** Back in Trash she clicks Restore. Lasagne returns to All files and opens with “Sunday lunch: pasta, ragu, and bechamel.”, the same title, and the star still filled.
+8. **Star favourites.** She clicks the star on Weekly shopping, Grandkids' birthdays, and Medication times.
+9. **Starred view.** Starred lists Medication times, Grandkids' birthdays, Weekly shopping, then Lasagne: most recently edited first. After a reload, the same four are still starred.
+10. **Empty the trash.** She moves Old grocery list, 2024 holiday cards, and Expired coupons to Trash and clicks Empty trash. The dialog says “Delete 3 files forever?” and “This can't be undone.”, and names the three. She confirms, and Trash is empty.
 
 ## Google Workspace benchmark
 
@@ -51,13 +52,24 @@ Known pain points:
 
 ## Success looks like
 
-- "Grandkids' birthdays" is back, unchanged, and starred along with two other weekly files.
-- The recipe was found in Trash a week later and restored, and emptying Trash asked first.
+- Grandkids' birthdays is back, unchanged, and starred along with Weekly shopping and Medication times.
+- Lasagne was found in Trash a week later, restored with its text and star, and emptying Trash named the three old files and asked first.
 
 ## Gaps and notes
 
-- **Deleting is permanent and uses a browser pop-up.** The bin on a Home row ("Remove from library") calls `window.confirm("Delete this file from this browser?")` and then `storage.remove`, which deletes the record. There's no Trash, no Undo, and no recovery.
-- In the desktop app the same button removes the library entry and its recovery draft, and the confirmation says the file stays on disk.
-- **The star isn't saved.** The editor's Star button toggles React state (`useState(false)`) and resets every time a file is opened. Home rows have no star, and the sidebar has no Starred or Trash view (only All files, Documents, Spreadsheets, and Presentations).
-- Neither the library (`browser-library.ts`) nor the file records have a trashed, deleted-at, or starred field.
-- **Cluster mode has half a trash.** SuiteDrive's "Move to trash" sets `trashed: true` (`PATCH /api/drive/items/{id}`), and listing hides trashed items. But nothing lists the trash (no `?trashed=1`), the UI can't restore, and there's no permanent delete. A restore would be `PATCH` with `trashed: false`. The same criteria should apply there in a later storyboard.
+- The week-later shot sets the recipe's deletion time to seven days ago, then reloads. A file left in Trash is removed on the next visit once it is 30 days old. Nothing deletes it while the app is closed in between.
+- The recording is the browser. On the desktop app the bin, the Trash note, and Delete forever say the saved file stays on disk, and removing a library entry does not delete that file. Covered by `tests/library-trash.test.ts` and `tests/store.test.ts`.
+- SuiteDrive's trash is unchanged: cluster mode can mark an item trashed, and still has no Trash list, restore, or permanent delete.
+- Search from All files, Documents, Spreadsheets, and Presentations includes Trash. There is no `is:starred` operator; Starred is the sidebar view, and the search box filters that view.
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| 1. One click to Trash, no browser dialog, Undo stays at least 8 seconds | Met | Video 0:16–0:32, notice then Undo. `tests/browser/trash-star.spec.ts` waits 8 seconds and the notice is still there. |
+| 2. Trash is one sidebar click, shows days left, Restore is one click | Met | Video 0:35 “Deleted 7 days ago · deleted forever in 23 days” and Restore; 0:40 restores it. |
+| 3. Restored file matches: content, title, last edited, star | Met | Video 0:43 title Lasagne, the recipe text, filled star. `tests/library-trash.test.ts`, `tests/browser-library.test.ts`. |
+| 4. 30 days, and Delete forever / Empty trash name the count | Met | Video 0:57 “Delete 3 files forever?” names the three files. Expiry in `tests/library-trash.test.ts`. |
+| 5. Search labels Trash and offers Restore | Met | Video 0:38 Results for “lasagne”, In Trash, Restore. |
+| 6. Star is one click, saved, Starred is newest first | Met | Video 0:14, 0:45, 0:48, and 0:51 after reload. `tests/browser/trash-star.spec.ts`, `tests/store.test.ts`. |
+| 7. Desktop bin and Trash say what happens on disk | Met | Not in this browser recording. `moveToTrashTitle`, `trashViewNote`, and `deleteForeverCopy` in `tests/library-trash.test.ts`; `tests/store.test.ts` checks the file is still on disk after remove. |

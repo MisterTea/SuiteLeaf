@@ -96,17 +96,34 @@ test("the library searches inside files, sorts, renames and deletes in place", a
   );
   await page.getByRole("button", { name: "Back to files" }).click();
 
-  // Delete asks in the page, and Cancel keeps the file.
+  // Delete moves the file to Trash. Undo puts it back; Delete forever removes it.
   page.on("dialog", (d) => {
     throw new Error(`Unexpected browser dialog: ${d.message()}`);
   });
-  await page.getByRole("button", { name: "Remove Garden club talk", exact: true }).click();
-  const confirm = page.getByRole("dialog", { name: "Delete this file?" });
-  await expect(confirm).toContainText("“Garden club talk” will be deleted from this browser.");
-  await confirm.getByRole("button", { name: "Cancel" }).click();
-  await expect(rows).toHaveCount(3);
-  await page.getByRole("button", { name: "Remove Garden club talk", exact: true }).click();
-  await confirm.getByRole("button", { name: "Delete" }).click();
+  const talk = page.locator(".file-row", { hasText: "Garden club talk" });
+  const edited = await talk.locator("time").innerText();
+  await page
+    .getByRole("button", { name: "Move Garden club talk to Trash", exact: true })
+    .click();
+  const toast = page.locator(".trash-toast");
+  await expect(toast).toContainText("Moved “Garden club talk” to Trash");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(talk).toHaveCount(0);
+  await toast.getByRole("button", { name: "Undo" }).click();
+  await expect(talk).toBeVisible();
+  await expect(talk.locator("time")).toHaveText(edited);
+  await page
+    .getByRole("button", { name: "Move Garden club talk to Trash", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Trash", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Delete Garden club talk forever", exact: true })
+    .click();
+  await page
+    .getByRole("dialog", { name: "Delete “Garden club talk” forever?" })
+    .getByRole("button", { name: "Delete forever" })
+    .click();
+  await page.getByRole("button", { name: "All files", exact: true }).click();
   await expect(rows).toHaveCount(2);
   await expect(page.getByRole("link", { name: "Garden club talk", exact: true })).toHaveCount(0);
   await page.reload();

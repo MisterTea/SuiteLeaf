@@ -107,6 +107,24 @@ it("throws when a saved file on disk is deleted or inaccessible", async () => {
   );
 });
 
+it("keeps a star and Trash across a restart and never deletes the file on disk", async () => {
+  const f = createFile("doc", "Birthdays");
+  const path = join(dir, "birthdays.suiteleaf");
+  const saved = await store.saveAs({ file: f }, path);
+  const disk = await readFile(path, "utf8");
+  const trashedAt = "2026-03-01T12:00:00.000Z";
+  await store.save({ ...saved, starred: true, trashedAt });
+  expect(await readFile(path, "utf8")).toBe(disk);
+  const reopened = new FileStore(join(dir, "data"));
+  await reopened.init();
+  const again = (await reopened.get(f.id))!;
+  expect(again.starred).toBe(true);
+  expect(again.trashedAt).toBe(trashedAt);
+  expect(serializeFile(again.file)).toBe(serializeFile(saved.file));
+  await reopened.remove(f.id);
+  expect(await readFile(path, "utf8")).toBe(disk);
+});
+
 it("writes PDF-style binary bytes without text encoding corruption", async () => {
   const path = join(dir, "document.pdf");
   const bytes = Uint8Array.from([

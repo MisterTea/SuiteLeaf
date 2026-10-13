@@ -1,7 +1,9 @@
 import Dexie, { type Table } from "dexie";
 import {
+  applyLibraryMarks,
   driveLinkSchema,
   parseFile,
+  readLibraryMarks,
   serializeFile,
   type DriveLink,
   type FileRecord,
@@ -14,6 +16,8 @@ interface EncodedRecord {
   count?: number;
   revision?: string;
   drive?: DriveLink;
+  starred?: boolean;
+  trashedAt?: string;
 }
 interface Chunk {
   key: string;
@@ -69,9 +73,10 @@ export class Library extends Dexie {
       text = parts.map((p) => p!.data).join("");
     }
     const drive = driveLinkSchema.safeParse(row.drive);
-    return drive.success
+    const base: FileRecord = drive.success
       ? { file: parseFile(text), drive: drive.data }
       : { file: parseFile(text) };
+    return applyLibraryMarks(base, readLibraryMarks(row));
   }
   async list(): Promise<FileRecord[]> {
     return Promise.all(
@@ -92,6 +97,7 @@ export class Library extends Dexie {
         title: record.file.title,
         updatedAt: record.file.updatedAt,
         drive: record.drive,
+        ...readLibraryMarks(record),
       };
       if (native.length < 16 * 1024 * 1024)
         await this.encoded.put({ ...meta, native });
@@ -108,9 +114,10 @@ export class Library extends Dexie {
         await this.encoded.put({ ...meta, revision, count });
       }
     });
-    return record.drive
+    const saved: FileRecord = record.drive
       ? { file: record.file, drive: record.drive }
       : { file: record.file };
+    return applyLibraryMarks(saved, readLibraryMarks(record));
   }
   async remove(id: string) {
     await this.transaction("rw", this.encoded, this.chunks, async () => {
