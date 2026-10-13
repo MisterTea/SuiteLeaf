@@ -180,6 +180,11 @@ export function AgentSidebar() {
         <div className="agent-msg error" role="alert">
           <CircleAlert size={14} /> {model.message}
         </div>
+      ) : model.state === "ready" && model.fallback ? (
+        <details className="agent-fallback">
+          <summary>WebNN couldn't run Gemma here, so it runs on {backend}.</summary>
+          {model.fallback}
+        </details>
       ) : null}
       <div className="agent-log" ref={log} role="log" aria-live="polite">
         {session.items.length === 0 ? (

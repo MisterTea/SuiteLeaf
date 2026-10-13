@@ -19,6 +19,8 @@ export function modelHost() {
 
 /** Force a browser device ("webnn-gpu", "webgpu", "wasm"); otherwise WebNN, then WebGPU. */
 export const forcedDevice = () => localStorage.getItem("suiteleaf.ai.device") ?? undefined;
+/** Force the WebGPU weights ("q4f16" or "q4"); otherwise q4 only where the GPU lacks shader-f16. */
+const forcedDtype = () => localStorage.getItem("suiteleaf.ai.dtype") ?? undefined;
 
 function statusHub(initial: AiStatus) {
   let status = initial;
@@ -64,6 +66,22 @@ const COMPILE_BUDGET_MS: Record<string, number> = {
   webgpu: 900_000,
 };
 
+/**
+ * WebNN can spend its whole budget failing, so once it has failed and another
+ * device worked, later loads skip it until the browser (its user agent) changes.
+ */
+const WEBNN_FAILURE = "suiteleaf.ai.webnnFailure";
+function knownWebnnFailure(): { message: string; at: string } | undefined {
+  try {
+    const saved = JSON.parse(localStorage.getItem(WEBNN_FAILURE) ?? "null");
+    return saved?.browser === navigator.userAgent ? saved : undefined;
+  } catch {
+    return undefined;
+  }
+}
+const rememberWebnnFailure = (message: string) =>
+  localStorage.setItem(WEBNN_FAILURE, JSON.stringify({ message, at: new Date().toISOString(), browser: navigator.userAgent }));
+
 /** Gemma running in a Web Worker: WebNN first, then WebGPU, each in its own worker. */
 function workerModel(): LocalModel {
   const hub = statusHub({ state: "idle" });
@@ -94,8 +112,7 @@ function workerModel(): LocalModel {
             done(status);
             return;
           }
-          const note = fallbacks.length ? ` (after ${fallbacks.join("; ")})` : "";
-          hub.set({ ...status, message: (status.message ?? "") + (status.state === "ready" ? note : "") });
+          hub.set(status.state === "ready" && fallbacks.length ? { ...status, fallback: fallbacks.join("; ") } : status);
           if (status.state === "ready") {
             clearTimeout(timer);
             worker = candidate;
@@ -119,17 +136,22 @@ function workerModel(): LocalModel {
         }
         done({ state: "error", message: `${device}: ${message}` });
       };
-      candidate.postMessage({ type: "load", host: modelHost(), device });
+      candidate.postMessage({ type: "load", host: modelHost(), device, dtype: forcedDtype() });
     });
 
   const load = async () => {
     const forced = forcedDevice();
     const devices = forced ? [forced] : ["webnn-gpu", "webgpu"];
     const failures: string[] = [];
+    const known = forced ? undefined : knownWebnnFailure();
     hub.set({ state: "loading", progress: 0, message: "Starting Gemma 4 E4B" });
     for (const device of devices) {
       if (device.startsWith("webnn") && !("ml" in navigator)) {
         failures.push(`${device}: WebNN is not available in this browser`);
+        continue;
+      }
+      if (device.startsWith("webnn") && known) {
+        failures.push(`${known.message} (on ${new Date(known.at).toLocaleDateString()}; skipped until the browser updates)`);
         continue;
       }
       if (device === "webgpu" && !("gpu" in navigator)) {
@@ -137,7 +159,11 @@ function workerModel(): LocalModel {
         continue;
       }
       const status = await tryDevice(device, failures);
-      if (status.state === "ready") return status;
+      if (status.state === "ready") {
+        const webnn = failures.find((f) => f.startsWith("webnn") && !f.includes("not available"));
+        if (webnn && !known && !forced) rememberWebnnFailure(webnn);
+        return status;
+      }
       console.warn(`[suiteleaf-ai] ${status.message}`);
       failures.push(status.message ?? device);
     }

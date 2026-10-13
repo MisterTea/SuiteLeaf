@@ -33,7 +33,7 @@ const DTYPES: Record<string, string | Record<string, string>> = {
 };
 
 type Inbound =
-  | { type: "load"; host: string; device?: string }
+  | { type: "load"; host: string; device?: string; dtype?: string }
   | { type: "generate"; id: string; request: AiGenerateRequest }
   | { type: "abort"; id: string };
 
@@ -56,7 +56,7 @@ function setStatus(next: Partial<AiStatus>) {
 const kindOf = (device: string): AiBackendKind =>
   device.startsWith("webnn") ? "webnn" : device === "webgpu" ? "webgpu" : "wasm";
 
-async function load(host: string, forced?: string) {
+async function load(host: string, forced?: string, forcedDtype?: string) {
   if (status.state === "ready") return;
   loading ??= (async () => {
     const started = performance.now();
@@ -80,7 +80,7 @@ async function load(host: string, forced?: string) {
     setStatus({ state: "loading", progress: 0, message: "Downloading Gemma 4 E4B" });
     tokenizer = await AutoTokenizer.from_pretrained(MODEL_ID, { progress_callback });
     for (const device of devices) {
-      const dtype = DTYPES[device] ?? "q4f16";
+      let dtype = DTYPES[device] ?? "q4f16";
       if (device.startsWith("webnn") && !("ml" in navigator)) {
         failures.push(`${device}: WebNN is not available in this browser`);
         continue;
@@ -88,6 +88,18 @@ async function load(host: string, forced?: string) {
       if (device === "webgpu" && !("gpu" in navigator)) {
         failures.push("webgpu: WebGPU is not available in this browser");
         continue;
+      }
+      if (device === "webgpu") {
+        const { gpu } = navigator as unknown as {
+          gpu: { requestAdapter(): Promise<{ features: Set<string>; info?: { isFallbackAdapter?: boolean } } | null> };
+        };
+        const adapter = await gpu.requestAdapter();
+        if (!adapter || adapter.info?.isFallbackAdapter) {
+          failures.push(`webgpu: ${adapter ? "only a software (CPU) adapter is available" : "no WebGPU adapter is available"}`);
+          continue;
+        }
+        // q4f16 computes in 16-bit floats; GPUs without shader-f16 need the 32-bit (q4) export, 0.7 GB larger.
+        dtype = forcedDtype ?? (adapter.features.has("shader-f16") ? "q4f16" : "q4");
       }
       try {
         setStatus({ backend: kindOf(device), message: `Loading Gemma 4 E4B on ${device}` });
@@ -110,7 +122,7 @@ async function load(host: string, forced?: string) {
           state: "ready",
           progress: 1,
           backend: kindOf(device),
-          message: device,
+          message: dtype === "q4" ? `${device} (32-bit q4 weights)` : device,
           loadMs: Math.round(performance.now() - started),
         });
         return;
@@ -204,7 +216,7 @@ async function generate(id: string, request: AiGenerateRequest) {
 }
 
 self.onmessage = ({ data }: MessageEvent<Inbound>) => {
-  if (data.type === "load") void load(data.host, data.device);
+  if (data.type === "load") void load(data.host, data.device, data.dtype);
   else if (data.type === "abort") stops.get(data.id)?.interrupt();
   else if (data.type === "generate") {
     stops.set(data.id, new InterruptableStoppingCriteria());

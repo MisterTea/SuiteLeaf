@@ -3535,6 +3535,15 @@ body.agent-open .gdocs-modal-overlay {
   font-size: 12px;
   color: var(--text-muted);
 }
+.agent-fallback {
+  margin: 8px 12px 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.agent-fallback summary {
+  cursor: pointer;
+}
 .agent-msg {
   padding: 8px 12px;
   border-radius: 12px;

@@ -8,6 +8,8 @@ export interface AiStatus {
   /** 0-1 while loading. */
   progress?: number;
   message?: string;
+  /** Why faster devices were passed over, when the model runs on a fallback. */
+  fallback?: string;
   /** Milliseconds the last load took. */
   loadMs?: number;
 }
