@@ -294,7 +294,11 @@ export function homeTools(ctx: HomeAgentContext): SuiteTool[] {
         const kind = await Promise.race(
           (["doc", "sheet", "slide"] as const).map((k) => waitForHost(k, 120000).then(() => k)),
         );
-        return opened(kind, preview || `Opened "${file.name}".`);
+        const notes = [...document.querySelectorAll(".import-notes li")].map((li) => li.textContent?.trim()).filter(Boolean);
+        const converted = document.querySelector(".import-notes")
+          ? ` It was converted into an editable SuiteLeaf copy; the original file is unchanged.${notes.length ? ` Import notes: ${notes.join(" ")}` : ""}`
+          : "";
+        return opened(kind, `${preview || `Opened "${file.name}".`}${converted}`);
       },
     }),
   ];

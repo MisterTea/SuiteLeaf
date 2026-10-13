@@ -1126,7 +1126,7 @@ export function sheetSnapshot(ctx: SheetsAgentContext) {
     );
     return [
       `Open spreadsheet: "${ctx.title}". Sheets: ${sheets.join(", ")}. Active sheet: "${s.getSheetName()}", used range ${a1(used)}${selection ? `, selected ${selection}` : ""}.`,
-      freeze?.ySplit || freeze?.xSplit ? `Frozen: ${freeze.startRow} row(s), ${freeze.startColumn} column(s).` : "",
+      freeze?.ySplit || freeze?.xSplit ? `Frozen: ${freeze.ySplit ? freeze.startRow : 0} row(s), ${freeze.xSplit ? freeze.startColumn : 0} column(s).` : "",
       filterSummary(s),
       charts.length ? `Charts: ${charts.map((c) => `"${c.title}" (${c.type === "bar" ? "column" : c.type}, ${a1(c.source)}, over ${chartCells(s, c)})`).join("; ")}.` : "",
       pivots.length ? `Pivot tables: ${pivots.join("; ")}.` : "",

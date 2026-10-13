@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { wordFixture } from "../office-fixtures";
+import { excelFixture, wordFixture } from "../office-fixtures";
 
 // The assistant's tools, run directly against the real editors. These test
 // the tools, not the model: each call is what Gemma would send.
@@ -385,4 +385,23 @@ test("a CSV opens through its import preview, with codes kept as text, and expor
   );
   const csv = readFileSync((await (await download).path())!, "utf8");
   expect(csv.trim().split(/\r?\n/)).toEqual(["ID,Name,ZIP,Paid", "00412,Rosa,02139,45", "01205,Mei,10001,0"]);
+});
+
+test("an Excel workbook opens with its import notes and frozen panes", async ({ page }) => {
+  await page.addInitScript(() => sessionStorage.setItem("suiteleaf.ai.open", "1"));
+  await page.goto("/");
+  await waitForTools(page, "open_from_computer");
+  const choose = async () => {
+    const chooser = page.waitForEvent("filechooser");
+    await page.getByRole("button", { name: "Choose file…" }).click();
+    await (await chooser).setFiles({
+      name: "Studio budget.xlsx",
+      mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      buffer: Buffer.from(await excelFixture()),
+    });
+  };
+  const [opened] = await Promise.all([call(page, "open_from_computer"), choose()]);
+  expect(opened).toContain('Opened "Studio budget.xlsx". It was converted into an editable SuiteLeaf copy; the original file is unchanged. Import notes:');
+  expect(opened).toContain("Excel formulas were kept with their last calculated results");
+  expect(opened).toContain("Frozen: 1 row(s), 1 column(s).");
 });
