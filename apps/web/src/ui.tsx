@@ -346,6 +346,7 @@ export type EditorActions = {
     tabsProtection?: () => void;
     insertCheckbox?: () => void;
     insertDropdown?: () => void;
+    insertLink?: () => void;
     undo: () => void;
     redo: () => void;
     cut: () => void;
