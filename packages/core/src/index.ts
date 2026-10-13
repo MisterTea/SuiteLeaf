@@ -109,6 +109,15 @@ export const pivotSchema = z.object({
   invalid: z.boolean().optional(),
 });
 export type PivotDefinition = z.infer<typeof pivotSchema>;
+/** One slice of a text box. Unset bold, italic, underline, and colour follow the box. */
+export const textRunSchema = z.object({
+  text: z.string(),
+  bold: z.boolean().optional(),
+  italic: z.boolean().optional(),
+  underline: z.boolean().optional(),
+  color: z.string().max(40).optional(),
+});
+export type TextRun = z.infer<typeof textRunSchema>;
 export const slideElementSchema = z.object({
   id: z.string(),
   type: z.enum(["text", "shape", "image", "table"]),
@@ -118,6 +127,8 @@ export const slideElementSchema = z.object({
   height: z.number().nonnegative(),
   rotation: z.number().optional(),
   content: z.string().optional(),
+  /** Per-word styles. The plain `content` string stays in sync with these runs. */
+  runs: z.array(textRunSchema).optional(),
   placeholder: z.string().optional(),
   fontSize: z.number().optional(),
   fontFamily: z.string().optional(),
