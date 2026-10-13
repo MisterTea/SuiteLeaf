@@ -48,6 +48,7 @@ import {
   Outdent,
   FileCog,
   SeparatorHorizontal,
+  EllipsisVertical,
   Check,
   X,
 } from "lucide-react";
@@ -60,6 +61,7 @@ import {
 import { exportBinary, exportText, printDocument } from "../storage";
 import { Tool, type EditorActions, type TableAction } from "../ui";
 import { MenuSearchPill } from "../command-palette";
+import { useToolbarOverflow } from "./toolbar-overflow";
 import { linkTarget } from "./doc-links";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import {
@@ -231,6 +233,11 @@ export default function Docs({
     window.innerWidth < 700 ? "Fit" : "100%",
   );
   const paperContainer = useRef<HTMLDivElement>(null);
+  const docTools = useRef<HTMLFieldSetElement>(null);
+  const moreDocTools = useToolbarOverflow(
+    docTools,
+    '[aria-label="Page setup"], [aria-label="Page break"], [aria-label="Superscript"], [aria-label="Subscript"], [aria-label="Bulleted list"], [aria-label="Decrease indent"], [aria-label="Increase indent"], [aria-label="Find and replace"], [aria-label="Insert table"], .mode-switch',
+  );
   const [pageViewportWidth, setPageViewportWidth] = useState(
     window.innerWidth - 32,
   );
@@ -270,6 +277,57 @@ export default function Docs({
       handleKeyDown: (view, event): boolean => {
         // Home and End move to the start or end of the line, as in Word.
         // macOS scrolls the page instead, and Linux does too inside this editor.
+        // Shift+arrow extends by one character in the document, on every
+        // platform. Linux otherwise drops the first character of the word.
+        if (
+          (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
+          event.shiftKey &&
+          !event.altKey &&
+          !event.metaKey &&
+          !event.ctrlKey &&
+          view.state.selection instanceof TextSelection
+        ) {
+          const sel = view.state.selection;
+          const dir = event.key === "ArrowRight" ? 1 : -1;
+          const doc = view.state.doc;
+          let pos = sel.head;
+          for (let step = 0; step < 8; step++) {
+            pos += dir;
+            if (pos < 0 || pos > doc.content.size) break;
+            let moved: TextSelection;
+            try {
+              moved = TextSelection.create(doc, sel.anchor, pos);
+            } catch {
+              continue;
+            }
+            if (moved.anchor === sel.anchor && moved.head === sel.head) continue;
+            event.preventDefault();
+            view.dispatch(view.state.tr.setSelection(moved).scrollIntoView());
+            return true;
+          }
+          return false;
+        }
+        // A right or left arrow collapses a selection to that edge first,
+        // including when the browser leaves the range in place.
+        if (
+          (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
+          !event.shiftKey &&
+          !event.altKey &&
+          !event.metaKey &&
+          !event.ctrlKey &&
+          !view.state.selection.empty &&
+          !(view.state.selection instanceof CellSelection)
+        ) {
+          const pos =
+            event.key === "ArrowRight"
+              ? view.state.selection.to
+              : view.state.selection.from;
+          event.preventDefault();
+          view.dispatch(
+            view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(pos))),
+          );
+          return true;
+        }
         if (
           (event.key === "Home" || event.key === "End") &&
           !event.metaKey &&
@@ -392,10 +450,11 @@ export default function Docs({
           return true;
         },
         contextmenu: (view, event) => {
-          if (proofingContext.current(view, event)) return true;
           const target = event.target as HTMLElement | null;
           const cell = target?.closest?.("td, th");
-          if (!cell || cell.closest(".doc-page-spacer")) return false;
+          const inTable = !!cell && !cell.closest(".doc-page-spacer");
+          if (!inTable && proofingContext.current(view, event)) return true;
+          if (!inTable) return false;
           const hit = view.posAtCoords({
             left: event.clientX,
             top: event.clientY,
@@ -981,7 +1040,7 @@ export default function Docs({
     <SuggestionProvider editor={editor}>
     <SuggestionBridge api={suggestionApi} />
     <div className="docs-editor">
-      <div className="toolbar" role="toolbar" aria-label="Document formatting">
+      <div className="toolbar docs-toolbar" role="toolbar" aria-label="Document formatting">
         <MenuSearchPill />
         <fieldset className="toolbar-edits" disabled={readOnly}>
           <Tool label="Undo" onClick={() => editor.commands.undo()}>
@@ -1011,7 +1070,11 @@ export default function Docs({
           <option value="200%">200%</option>
         </select>
 
-        <fieldset className="toolbar-edits toolbar-edits-rest" disabled={readOnly}>
+        <fieldset
+          ref={docTools}
+          className={`toolbar-edits toolbar-edits-rest docs-toolbar-tools${moreDocTools.overflowing ? " has-overflow" : ""}${moreDocTools.open ? " show-more" : ""}`}
+          disabled={readOnly}
+        >
         <Tool label="Page setup" onClick={openPageSetup}>
           <FileCog size={16} />
         </Tool>
@@ -1275,6 +1338,19 @@ export default function Docs({
           <Search size={16} />
         </Tool>
         <SuggestionModeSwitch />
+        {moreDocTools.open ? (
+          <span className="toolbar-break" aria-hidden="true" />
+        ) : null}
+        <button
+          type="button"
+          className="tool more-tools"
+          title="More tools"
+          aria-label="More tools"
+          aria-expanded={moreDocTools.open}
+          onClick={() => moreDocTools.setOpen(!moreDocTools.open)}
+        >
+          <EllipsisVertical size={16} />
+        </button>
         </fieldset>
       </div>
 

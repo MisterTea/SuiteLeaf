@@ -39,7 +39,7 @@ test("table of contents stays live and footnotes link from the page", async ({ p
   await expect(editor.getByRole("heading", { name: "Introduction" })).toBeVisible();
   await editor.locator("p").first().click();
   await page.getByRole("button", { name: "Insert", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Table of contents" }).hover();
+  await page.getByRole("menuitem", { name: "Table of contents" }).click();
   await page.getByRole("menuitem", { name: "With page numbers" }).click();
   const toc = page.getByRole("navigation", { name: "Table of contents" });
   await expect(toc.getByRole("button", { name: "Introduction" })).toBeVisible();

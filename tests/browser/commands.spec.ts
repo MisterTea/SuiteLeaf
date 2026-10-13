@@ -40,7 +40,7 @@ test("command search runs strikethrough and explains commands that cannot run", 
   );
   await page.keyboard.press("Escape");
 
-  await page.keyboard.press("Control+Alt+m");
+  await page.keyboard.press("F10");
   await expect(page.getByRole("button", { name: "File", exact: true })).toBeFocused();
   await page.keyboard.press("ArrowRight");
   await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeFocused();
@@ -57,6 +57,7 @@ test("command search runs strikethrough and explains commands that cannot run", 
   await expect(freeze).not.toHaveAttribute("aria-disabled", "true");
   await page.keyboard.press("Enter");
   await page.getByRole("button", { name: "View", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Freeze" }).hover();
+  // A phone expands the submenu on tap. Hover never opens it there.
+  await page.getByRole("menuitem", { name: "Freeze" }).click();
   await expect(page.getByRole("menuitemcheckbox", { name: "1 row" })).toBeChecked();
 });
