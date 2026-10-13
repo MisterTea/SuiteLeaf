@@ -2,6 +2,21 @@ import JSZip from "jszip";
 import { commentIdToParaId } from "docx";
 import type { JsonNode } from "./index";
 
+/**
+ * A person named in a comment. Stored beside the sentence, not inside `text`,
+ * so the name can be matched without parsing the words. No address is required,
+ * and nothing here is an instruction to send mail.
+ */
+export interface DocMention {
+  name: string;
+  /** Offset in `text` where the name is shown. The name itself is not in `text`. */
+  at: number;
+  /** Server account, when the mention was picked from the directory. */
+  accountId?: string;
+  /** Shown while picking an account. Never used to send mail. */
+  email?: string;
+}
+
 /** One message in a document comment thread. The first message is the comment. */
 export interface DocCommentMessage {
   id: string;
@@ -9,6 +24,7 @@ export interface DocCommentMessage {
   authorName: string;
   createdAt: string;
   text: string;
+  mentions?: DocMention[];
 }
 
 /** A comment anchored to a range of document text, plus its replies. */
@@ -127,7 +143,7 @@ export function planDocxComments(content: JsonNode): DocxCommentPlan {
       author: root.authorName,
       initials: initials(root.authorName),
       date: parseDate(root.createdAt),
-      text: root.text,
+      text: wordCommentText(root),
       resolved: thread.resolved,
     });
     for (const reply of thread.messages.slice(1)) {
@@ -140,7 +156,7 @@ export function planDocxComments(content: JsonNode): DocxCommentPlan {
         author: reply.authorName,
         initials: initials(reply.authorName),
         date: parseDate(reply.createdAt),
-        text: reply.text,
+        text: wordCommentText(reply),
         resolved: thread.resolved,
       });
     }
@@ -401,13 +417,17 @@ export function importWordComments(
       orphaned,
       resolved,
       ...(resolved ? { resolvedBy: root.author } : {}),
-      messages: messages.map((message) => ({
-        id: `word-${message.id}`,
-        authorId: `word:${message.author}`,
-        authorName: message.author,
-        createdAt: isoDate(message.date),
-        text: message.text,
-      })),
+      messages: messages.map((message) => {
+        const body = mentionsFromWordText(message.text);
+        return {
+          id: `word-${message.id}`,
+          authorId: `word:${message.author}`,
+          authorName: message.author,
+          createdAt: isoDate(message.date),
+          text: body.text,
+          ...(body.mentions.length ? { mentions: body.mentions } : {}),
+        };
+      }),
     });
   }
   stampMarks(doc, ranges);
@@ -536,4 +556,231 @@ export async function stampDocxComments(
     }
   }
   return new Uint8Array(await zip.generateAsync({ type: "uint8array" }));
+}
+
+/** Drop mentions that are not a name at a real offset in the sentence. */
+export function normalizeMentions(raw: unknown, textLength: number): DocMention[] {
+  if (!Array.isArray(raw)) return [];
+  const mentions: DocMention[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    const name = typeof record.name === "string" ? record.name.trim().slice(0, 80) : "";
+    if (!name) continue;
+    const at =
+      typeof record.at === "number" && Number.isFinite(record.at) ? Math.floor(record.at) : 0;
+    const mention: DocMention = {
+      name,
+      at: Math.max(0, Math.min(textLength, at)),
+    };
+    if (typeof record.email === "string" && record.email.trim())
+      mention.email = record.email.trim();
+    if (typeof record.accountId === "string" && record.accountId.trim())
+      mention.accountId = record.accountId.trim();
+    mentions.push(mention);
+  }
+  mentions.sort((a, b) => a.at - b.at);
+  const placed: DocMention[] = [];
+  for (const mention of mentions) {
+    if (placed.some((kept) => kept.at === mention.at && kept.name === mention.name)) continue;
+    placed.push(mention);
+  }
+  return placed;
+}
+
+/** Word comment text. The name is written so Word shows it; the file keeps it separate. */
+export function wordCommentText(message: { text: string; mentions?: unknown }): string {
+  const text = message.text ?? "";
+  const mentions = normalizeMentions(message.mentions, text.length);
+  if (!mentions.length) return text;
+  let out = "";
+  let cursor = 0;
+  for (const mention of mentions) {
+    out += text.slice(cursor, mention.at);
+    out += `@${mention.name}`;
+    cursor = mention.at;
+  }
+  return out + text.slice(cursor);
+}
+
+const mentionWord = /^[\p{L}][\p{L}'’.\-]*/u;
+
+function takeMentionName(rest: string) {
+  const words: string[] = [];
+  let index = 0;
+  while (words.length < 4) {
+    const match = mentionWord.exec(rest.slice(index));
+    if (!match?.[0]) break;
+    if (words.length > 0 && match[0][0] !== match[0][0].toUpperCase()) break;
+    words.push(match[0]);
+    index += match[0].length;
+    if (rest[index] !== " ") break;
+    const peek = mentionWord.exec(rest.slice(index + 1));
+    if (!peek?.[0] || peek[0][0] !== peek[0][0].toUpperCase()) break;
+    index += 1;
+  }
+  return words.length ? words.join(" ") : null;
+}
+
+/**
+ * Pull @Name tokens out of a Word comment. The name is returned as a mention
+ * and removed from the sentence, which is how a round trip stays structured.
+ */
+export function mentionsFromWordText(source: string): {
+  text: string;
+  mentions: DocMention[];
+} {
+  let text = "";
+  const mentions: DocMention[] = [];
+  for (let index = 0; index < source.length; index += 1) {
+    const boundary = index === 0 || /\s/.test(source[index - 1] ?? "");
+    if (source[index] === "@" && boundary) {
+      const name = takeMentionName(source.slice(index + 1));
+      if (name) {
+        mentions.push({ name, at: text.length });
+        index += name.length;
+        continue;
+      }
+    }
+    text += source[index];
+  }
+  return { text, mentions };
+}
+
+export type MentionPiece =
+  | { kind: "text"; text: string }
+  | { kind: "mention"; name: string };
+
+/** Pieces for drawing a comment: the sentence, with each mention at its offset. */
+export function mentionPieces(text: string, raw: unknown): MentionPiece[] {
+  const mentions = normalizeMentions(raw, text.length);
+  if (!mentions.length) return text ? [{ kind: "text", text }] : [];
+  const pieces: MentionPiece[] = [];
+  let cursor = 0;
+  for (const mention of mentions) {
+    if (mention.at > cursor)
+      pieces.push({ kind: "text", text: text.slice(cursor, mention.at) });
+    pieces.push({ kind: "mention", name: mention.name });
+    cursor = mention.at;
+  }
+  if (cursor < text.length) pieces.push({ kind: "text", text: text.slice(cursor) });
+  return pieces;
+}
+
+/** Someone opening the file. Matching uses the name, and an account id or email when signed in. */
+export interface MentionReader {
+  name?: string;
+  email?: string;
+  accountId?: string;
+}
+
+function sameText(a?: string, b?: string) {
+  return !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+function sameAccount(a?: string, b?: string) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  return a.replace(/^user-/, "") === b.replace(/^user-/, "");
+}
+
+export function mentionMatches(mention: DocMention, reader: MentionReader) {
+  if (sameText(mention.name, reader.name)) return true;
+  if (sameText(mention.email, reader.email)) return true;
+  return sameAccount(mention.accountId, reader.accountId);
+}
+
+function threadMentions(thread: DocCommentThread, reader: MentionReader) {
+  return thread.messages.some((message) =>
+    normalizeMentions(message.mentions, message.text.length).some((mention) =>
+      mentionMatches(mention, reader),
+    ),
+  );
+}
+
+/**
+ * The comment to land on when this person opens the file. An open thread wins
+ * over a resolved one. Someone who is not named gets nothing, so the page stays put.
+ */
+export function threadForReader(
+  threads: DocCommentThread[],
+  reader: MentionReader,
+): DocCommentThread | null {
+  if (!reader.name && !reader.email && !reader.accountId) return null;
+  const open = threads.find((thread) => !thread.resolved && threadMentions(thread, reader));
+  if (open) return open;
+  return threads.find((thread) => threadMentions(thread, reader)) ?? null;
+}
+
+/** A row in the @ menu. `unmatched` is a name with no stored person and no account. */
+export interface MentionChoice {
+  name: string;
+  email?: string;
+  accountId?: string;
+  unmatched?: boolean;
+}
+
+export interface MentionAccount {
+  id: string;
+  name: string | null;
+  email: string | null;
+  username: string | null;
+}
+
+function exactChoice(choices: MentionChoice[], query: string) {
+  const q = query.trim().toLowerCase();
+  return choices.some(
+    (choice) =>
+      choice.name.toLowerCase() === q || (choice.email?.toLowerCase() ?? "") === q,
+  );
+}
+
+/** Names already stored on this computer. At least two characters. */
+export function choicesFromNames(query: string, names: string[]): MentionChoice[] {
+  const q = query.trim();
+  const lower = q.toLowerCase();
+  if (lower.length < 2) return [];
+  const seen = new Set<string>();
+  const ranked: { name: string; rank: number }[] = [];
+  for (const raw of names) {
+    const name = raw.trim();
+    const key = name.toLowerCase();
+    if (!name || key === "you" || seen.has(key)) continue;
+    seen.add(key);
+    const starts = key.startsWith(lower);
+    const word = key.split(/\s+/).some((part) => part.startsWith(lower));
+    if (!starts && !word) continue;
+    ranked.push({ name, rank: starts ? 0 : 1 });
+  }
+  ranked.sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
+  const choices: MentionChoice[] = ranked.slice(0, 6).map((item) => ({ name: item.name }));
+  if (!exactChoice(choices, q)) choices.push({ name: q, unmatched: true });
+  return choices;
+}
+
+/**
+ * Accounts from the server directory. Each row keeps the name and the email
+ * for display. A name the directory does not have is still offered, with no account.
+ */
+export function choicesFromAccounts(
+  query: string,
+  accounts: MentionAccount[],
+): MentionChoice[] {
+  const q = query.trim();
+  if (q.length < 2) return [];
+  const choices: MentionChoice[] = [];
+  const seen = new Set<string>();
+  for (const account of accounts) {
+    const name = (account.name || account.username || account.email || "").trim();
+    if (!name || seen.has(account.id)) continue;
+    seen.add(account.id);
+    choices.push({
+      name,
+      ...(account.email?.trim() ? { email: account.email.trim() } : {}),
+      accountId: account.id,
+    });
+  }
+  const shown = choices.slice(0, exactChoice(choices, q) ? 8 : 7);
+  if (!exactChoice(shown, q)) shown.push({ name: q, unmatched: true });
+  return shown;
 }
