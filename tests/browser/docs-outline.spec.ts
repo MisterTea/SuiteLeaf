@@ -8,7 +8,9 @@ const stageScroll = (page: Page) =>
 
 test("End moves to the end of the line and Enter keeps the page still", async ({
   page,
+  isMobile,
 }) => {
+  test.skip(isMobile, "End moves within the line on a desktop keyboard.");
   await page.goto("/");
   await page.getByRole("button", { name: "New document" }).click();
   const editor = page.getByRole("textbox", { name: "Document content" });
