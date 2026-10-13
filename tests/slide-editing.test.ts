@@ -1,11 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { createFile, type Presentation, type SlideFile } from "@suiteleaf/core";
+import {
+  createFile,
+  parseFile,
+  serializeFile,
+  type Presentation,
+  type SlideFile,
+} from "@suiteleaf/core";
 import {
   DeckHistory,
   PASTE_NUDGE,
   canDeleteSlides,
   alignBoxes,
+  groupBoxes,
+  groupMemberIds,
+  moveGroupedBoxes,
+  selectionIsOneGroup,
   spaceBoxesEvenly,
+  ungroupBoxes,
   centeredTextBox,
   commandFromKey,
   deleteSlides,
@@ -606,5 +617,146 @@ describe("spaceBoxesEvenly", () => {
     expect(gapAcross(b, c)).toBe(gapAcross(c, d));
     expect(b.y).toBe(saturday.y);
     expect(c.width).toBe(80);
+  });
+});
+
+describe("groupBoxes", () => {
+  const market = {
+    id: "market",
+    type: "text" as const,
+    x: 48,
+    y: 64,
+    width: 230,
+    height: 84,
+    content: "Market",
+  };
+  const saturday = {
+    id: "saturday",
+    type: "text" as const,
+    x: 360,
+    y: 64,
+    width: 190,
+    height: 78,
+    content: "Saturday",
+  };
+  const notes = {
+    id: "notes",
+    type: "text" as const,
+    x: 700,
+    y: 300,
+    width: 180,
+    height: 72,
+    content: "Notes",
+  };
+  const boxes = [market, saturday, notes];
+
+  it("groups two boxes, moves that pair, and lets one move alone after ungroup", () => {
+    const file = createFile("slide", "Saturday market") as SlideFile;
+    const slideId = file.content.slideOrder[0];
+    expect(
+      file.content.slides[slideId].elements.every((el) => el.groupId === undefined),
+    ).toBe(true);
+    const opened = parseFile(serializeFile(file)) as SlideFile;
+    expect(opened.content.slides[slideId].elements[0].groupId).toBeUndefined();
+
+    const grouped = groupBoxes(boxes, ["market", "saturday"], "pair-1");
+    const groupedMarket = grouped.find((el) => el.id === "market")!;
+    const groupedSaturday = grouped.find((el) => el.id === "saturday")!;
+    const groupedNotes = grouped.find((el) => el.id === "notes")!;
+    expect(groupedMarket.groupId).toBe("pair-1");
+    expect(groupedSaturday.groupId).toBe("pair-1");
+    expect(groupedNotes.groupId).toBeUndefined();
+    expect(groupedNotes).toBe(notes);
+    expect(groupedMarket).toMatchObject({
+      x: market.x,
+      y: market.y,
+      width: market.width,
+      height: market.height,
+      content: "Market",
+    });
+    expect(selectionIsOneGroup(grouped, ["market", "saturday"])).toBe(true);
+    expect(selectionIsOneGroup(boxes, ["market", "saturday"])).toBe(false);
+    expect(selectionIsOneGroup(grouped, ["market"])).toBe(false);
+    expect(groupMemberIds(grouped, "saturday")).toEqual(["market", "saturday"]);
+    expect(groupMemberIds(boxes, "market")).toEqual(["market"]);
+
+    const dx = 36;
+    const dy = -12;
+    const moved = moveGroupedBoxes(grouped, "market", dx, dy);
+    const movedMarket = moved.find((el) => el.id === "market")!;
+    const movedSaturday = moved.find((el) => el.id === "saturday")!;
+    const movedNotes = moved.find((el) => el.id === "notes")!;
+    expect(movedMarket).toMatchObject({
+      x: market.x + dx,
+      y: market.y + dy,
+      width: market.width,
+      height: market.height,
+      content: "Market",
+      groupId: "pair-1",
+    });
+    expect(movedSaturday).toMatchObject({
+      x: saturday.x + dx,
+      y: saturday.y + dy,
+      width: saturday.width,
+      height: saturday.height,
+      content: "Saturday",
+      groupId: "pair-1",
+    });
+    expect(movedSaturday.x - movedMarket.x).toBe(saturday.x - market.x);
+    expect(movedSaturday.y - movedMarket.y).toBe(saturday.y - market.y);
+    expect(movedNotes).toMatchObject({
+      x: notes.x,
+      y: notes.y,
+      width: notes.width,
+      height: notes.height,
+      content: "Notes",
+    });
+    expect(movedNotes.groupId).toBeUndefined();
+    const fromSaturday = moveGroupedBoxes(grouped, "saturday", dx, dy);
+    expect(fromSaturday.find((el) => el.id === "market")).toMatchObject({
+      x: market.x + dx,
+      y: market.y + dy,
+    });
+
+    const ungrouped = ungroupBoxes(moved, ["market", "saturday"]);
+    expect(ungrouped.find((el) => el.id === "market")!.groupId).toBeUndefined();
+    expect(ungrouped.find((el) => el.id === "saturday")!.groupId).toBeUndefined();
+    expect(ungrouped.find((el) => el.id === "market")).toMatchObject({
+      x: market.x + dx,
+      y: market.y + dy,
+      content: "Market",
+    });
+    expect(ungrouped.find((el) => el.id === "saturday")).toMatchObject({
+      x: saturday.x + dx,
+      y: saturday.y + dy,
+      content: "Saturday",
+    });
+    expect(ungrouped.find((el) => el.id === "notes")).toBe(movedNotes);
+
+    const later = moveGroupedBoxes(ungrouped, "market", 20, 8);
+    expect(later.find((el) => el.id === "market")).toMatchObject({
+      x: market.x + dx + 20,
+      y: market.y + dy + 8,
+      width: market.width,
+      content: "Market",
+    });
+    expect(later.find((el) => el.id === "saturday")).toMatchObject({
+      x: saturday.x + dx,
+      y: saturday.y + dy,
+      width: saturday.width,
+      content: "Saturday",
+    });
+    expect(later.find((el) => el.id === "notes")).toMatchObject({
+      x: notes.x,
+      y: notes.y,
+      content: "Notes",
+    });
+
+    file.content.slides[slideId].elements = grouped;
+    const saved = parseFile(serializeFile(file)) as SlideFile;
+    const stored = saved.content.slides[slideId].elements;
+    expect(stored.find((el) => el.content === "Market")!.groupId).toBe("pair-1");
+    expect(stored.find((el) => el.content === "Saturday")!.groupId).toBe("pair-1");
+    expect(stored.find((el) => el.content === "Notes")!.groupId).toBeUndefined();
   });
 });

@@ -39,6 +39,8 @@ import {
   Minus,
   StickyNote,
   Blend,
+  Group,
+  Ungroup,
 } from "lucide-react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import {
@@ -59,7 +61,12 @@ import {
 import {
   DeckHistory,
   alignBoxes,
+  groupBoxes,
+  groupMemberIds,
+  moveGroupedBoxes,
+  selectionIsOneGroup,
   spaceBoxesEvenly,
+  ungroupBoxes,
   canDeleteSlides,
   canMove,
   centeredTextBox,
@@ -270,6 +277,7 @@ export default function Slides({
     handle?: ResizeHandle;
     initW?: number;
     initH?: number;
+    snapshot: SlideElement[];
   } | null>(null);
 
   const refreshMarks = () =>
@@ -368,6 +376,10 @@ export default function Slides({
     deck.slides[activeSlideId] || deck.slides[deck.slideOrder[0]];
   const selectedElement =
     activeSlide?.elements.find((el) => el.id === selectedElementId) || null;
+  const oneGroup = selectionIsOneGroup(
+    activeSlide?.elements ?? [],
+    selectedElementIds,
+  );
   const slideComments = useSlideComments({
     deck,
     activeSlideId: activeSlide?.id ?? activeSlideId,
@@ -860,6 +872,77 @@ export default function Slides({
     });
   };
 
+  const rewriteSelectedGroups = (nextElements: SlideElement[]) => {
+    const prev = deckRef.current;
+    const slide =
+      prev.slides[activeRef.current] || prev.slides[prev.slideOrder[0]];
+    if (!slide) return;
+    const changed = nextElements.some((el, index) => el !== slide.elements[index]);
+    if (!changed) return;
+    commit({
+      ...prev,
+      slides: {
+        ...prev.slides,
+        [slide.id]: { ...slide, elements: nextElements },
+      },
+    });
+  };
+
+  const groupSelected = () => {
+    const slide =
+      deckRef.current.slides[activeRef.current] ||
+      deckRef.current.slides[deckRef.current.slideOrder[0]];
+    if (!slide) return;
+    rewriteSelectedGroups(
+      groupBoxes(
+        slide.elements,
+        selectedElementIdsRef.current,
+        crypto.randomUUID(),
+      ),
+    );
+  };
+
+  const ungroupSelected = () => {
+    const slide =
+      deckRef.current.slides[activeRef.current] ||
+      deckRef.current.slides[deckRef.current.slideOrder[0]];
+    if (!slide) return;
+    rewriteSelectedGroups(
+      ungroupBoxes(slide.elements, selectedElementIdsRef.current),
+    );
+  };
+
+  const moveElementsLive = useCallback(
+    (positions: { id: string; x: number; y: number }[]) => {
+      if (readOnlyRef.current || !positions.length) return;
+      const prev = deckRef.current;
+      const active =
+        prev.slides[activeRef.current] || prev.slides[prev.slideOrder[0]];
+      if (!active) return;
+      const byId = new Map(positions.map((item) => [item.id, item]));
+      let changed = false;
+      const elements = active.elements.map((el) => {
+        const next = byId.get(el.id);
+        if (!next || (next.x === el.x && next.y === el.y)) return el;
+        changed = true;
+        return { ...el, x: next.x, y: next.y };
+      });
+      if (!changed) return;
+      const deck = {
+        ...prev,
+        slides: {
+          ...prev.slides,
+          [active.id]: { ...active, elements },
+        },
+      };
+      deckRef.current = deck;
+      liveDirty.current = true;
+      setDeck(deck);
+      onChange(deck);
+    },
+    [onChange],
+  );
+
   const copySelection = () => {
     const deckNow = deckRef.current;
     const slide = activeDeckSlide(deckNow);
@@ -1042,16 +1125,19 @@ export default function Slides({
       }
       return;
     }
-    selectedElementIdsRef.current = [elementId];
-    setSelectedElementIds([elementId]);
+    const elements = activeSlide?.elements ?? [];
+    const members = groupMemberIds(elements, elementId);
+    const ids = members.length ? members : [elementId];
+    selectedElementIdsRef.current = ids;
+    setSelectedElementIds(ids);
     selectedElementRef.current = elementId;
     setSelectedElementId(elementId);
-    if (!handle && editingRef.current && editingRef.current !== elementId) {
+    if (!handle && editingRef.current && !ids.includes(editingRef.current)) {
       editingRef.current = null;
       setEditingId(null);
       textRange.current = null;
     }
-    const el = activeSlide.elements.find((item) => item.id === elementId);
+    const el = elements.find((item) => item.id === elementId);
     if (!el || readOnlyRef.current) return;
 
     draggingRef.current = {
@@ -1063,6 +1149,7 @@ export default function Slides({
       handle,
       initW: el.width,
       initH: el.height,
+      snapshot: elements,
     };
   };
 
@@ -1114,9 +1201,14 @@ export default function Slides({
           { live: true },
         );
       } else {
-        const newX = Math.round(initX + dx);
-        const newY = Math.round(initY + dy);
-        updateElement(elementId, { x: newX, y: newY }, { live: true });
+        const snapshot = draggingRef.current.snapshot;
+        const moved = moveGroupedBoxes(snapshot, elementId, dx, dy);
+        const positions = moved.flatMap((next) => {
+          const prior = snapshot.find((item) => item.id === next.id);
+          if (!prior || (prior.x === next.x && prior.y === next.y)) return [];
+          return [{ id: next.id, x: next.x, y: next.y }];
+        });
+        if (positions.length) moveElementsLive(positions);
       }
     };
 
@@ -1138,7 +1230,7 @@ export default function Slides({
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     };
-  }, [deck.width, updateElement]);
+  }, [deck.width, updateElement, moveElementsLive]);
 
   // Export handlers
   const exportTxt = async () => {
@@ -1927,6 +2019,17 @@ ${slidesHtml}
         {/* Dynamic Contextual Tools: Fill, Border, Typography or Slide background/layout */}
         {selectedElementIds.length >= 2 ? (
           <>
+            <div className="tool-group">
+              <Tool
+                label={oneGroup ? "Ungroup" : "Group"}
+                onClick={oneGroup ? ungroupSelected : groupSelected}
+              >
+                {oneGroup ? <Ungroup size={16} /> : <Group size={16} />}
+                <span className="align-box-label">
+                  {oneGroup ? "Ungroup" : "Group"}
+                </span>
+              </Tool>
+            </div>
             <div className="tool-group">
               <Tool label="Align left" onClick={() => alignSelectedBoxes("left")}>
                 <AlignStartHorizontal size={16} />

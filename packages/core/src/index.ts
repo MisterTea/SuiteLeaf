@@ -163,6 +163,8 @@ export const slideElementSchema = z.object({
   themeOverride: z.boolean().optional(),
   /** Hidden in the slideshow until the next click, then faded in. */
   animation: z.literal("fade-on-click").optional(),
+  /** Shared by boxes that move together. Older decks omit it. */
+  groupId: z.string().min(1).optional(),
   src: z.string().optional(),
   alt: z.string().optional(),
   rows: z.array(z.array(z.string())).optional(),

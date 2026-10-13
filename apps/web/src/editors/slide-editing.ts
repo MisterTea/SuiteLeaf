@@ -511,6 +511,89 @@ export function spaceBoxesEvenly(
   return boxes.map((el) => placed.get(el.id) ?? el);
 }
 
+/**
+ * Give the selected boxes one new group id. Fewer than two selected boxes are
+ * left untouched, and boxes outside the selection do not receive the id.
+ */
+export function groupBoxes(
+  elements: readonly SlideElement[],
+  selectedIds: readonly string[],
+  groupId: string,
+): SlideElement[] {
+  const selected = new Set(selectedIds);
+  const count = elements.filter((el) => selected.has(el.id)).length;
+  if (count < 2 || !groupId) return elements as SlideElement[];
+  return elements.map((el) =>
+    selected.has(el.id) && el.groupId !== groupId ? { ...el, groupId } : el,
+  );
+}
+
+/** Clear the group id on the selected boxes and leave every position alone. */
+export function ungroupBoxes(
+  elements: readonly SlideElement[],
+  selectedIds: readonly string[],
+): SlideElement[] {
+  const selected = new Set(selectedIds);
+  let changed = false;
+  const next = elements.map((el) => {
+    if (!selected.has(el.id) || !el.groupId) return el;
+    changed = true;
+    const rest = { ...el };
+    delete rest.groupId;
+    return rest;
+  });
+  return changed ? next : (elements as SlideElement[]);
+}
+
+/** True when the selection is exactly the members of one group. */
+export function selectionIsOneGroup(
+  elements: readonly SlideElement[],
+  selectedIds: readonly string[],
+): boolean {
+  if (selectedIds.length < 2) return false;
+  const selected = elements.filter((el) => selectedIds.includes(el.id));
+  if (selected.length !== selectedIds.length || selected.length < 2) return false;
+  const groupId = selected[0].groupId;
+  if (!groupId) return false;
+  if (!selected.every((el) => el.groupId === groupId)) return false;
+  return elements.filter((el) => el.groupId === groupId).length === selected.length;
+}
+
+/** The box itself, or every box that shares its group id. */
+export function groupMemberIds(
+  elements: readonly SlideElement[],
+  elementId: string,
+): string[] {
+  const source = elements.find((el) => el.id === elementId);
+  if (!source) return [];
+  if (!source.groupId) return [source.id];
+  const ids = elements
+    .filter((el) => el.groupId === source.groupId)
+    .map((el) => el.id);
+  return ids.length ? ids : [source.id];
+}
+
+/**
+ * Move one box by (dx, dy). When it has a group id, every member moves by that
+ * same delta. Widths, heights, words, and boxes outside the group stay put.
+ */
+export function moveGroupedBoxes(
+  elements: readonly SlideElement[],
+  elementId: string,
+  dx: number,
+  dy: number,
+): SlideElement[] {
+  const moving = new Set(groupMemberIds(elements, elementId));
+  if (!moving.size) return elements as SlideElement[];
+  return elements.map((el) => {
+    if (!moving.has(el.id)) return el;
+    const x = Math.round(el.x + dx);
+    const y = Math.round(el.y + dy);
+    if (x === el.x && y === el.y) return el;
+    return { ...el, x, y };
+  });
+}
+
 /** One undo step per edit, with typing in the same box collapsing into one step. */
 export class DeckHistory {
   private entries: Presentation[];
