@@ -92,8 +92,7 @@ test("spreadsheet tools write, format, sort, chart and pivot", async ({ page }) 
   expect(await call(page, "edit_chart", { move_to: "F1", width: 420 })).toContain("moved to F1");
 
   expect(await call(page, "set_cells", { start: "A8", values: [["'Code'", "Amount"], ["007", "12.5"]] })).toMatch(/8\tCode\tAmount\n9\t007/);
-  expect(await call(page, "set_cells", { range: "A10:B10", values: ["Double", "=B9*2"] })).toContain("Wrote A10:B10.");
-  expect(await call(page, "set_cells", { start: "B9", values: [["20"]] })).toContain(
+  expect(await call(page, "set_cells", { range: "A10:B10", values: ["Double", "=B9*2"] })).toContain("Wrote A10:B10.");  expect(await call(page, "set_cells", { start: "B9", values: [["20"]] })).toContain(
     "Formulas that recalculated by themselves: B10 =B9*2: 25 → 40.",
   );
   expect(await call(page, "set_cells", { start: "B10", values: [["40"]] })).toContain(

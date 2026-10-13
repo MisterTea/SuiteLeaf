@@ -320,11 +320,15 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         values: Type.Array(Type.Array(Type.String())),
       }),
       // A flat list is one row (the schema check would make it a column), and a range names its top-left cell.
-      prepare: ({ values, ...args }) => ({
-        ...args,
-        ...(args.start === undefined && typeof args.range === "string" ? { start: args.range.split(":")[0] } : {}),
-        values: Array.isArray(values) && values.length && values.every((v) => !Array.isArray(v)) ? [values] : values,
-      }),
+      // A null cell is a blank one; the schema check would turn it into the text "null".
+      prepare: ({ values, ...args }) => {
+        const rows = Array.isArray(values) && values.length && values.every((v) => !Array.isArray(v)) ? [values] : values;
+        return {
+          ...args,
+          ...(args.start === undefined && typeof args.range === "string" ? { start: args.range.split(":")[0] } : {}),
+          values: Array.isArray(rows) ? rows.map((row) => (Array.isArray(row) ? row.map((v) => v ?? "") : row)) : rows,
+        };
+      },
       target: ({ start, values }) => {
         const s = parseCell(start);
         return target(
