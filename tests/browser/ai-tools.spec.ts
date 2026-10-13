@@ -109,6 +109,10 @@ test("spreadsheet tools write, format, sort, chart and pivot", async ({ page }) 
   expect(await call(page, "format_cells", { range: "B2:D6", align: "right" })).toContain("aligned right");
   expect(await call(page, "format_cells", { range: "A1:B1", bold: true })).toContain("bold. Bold: all of it.");
   expect(await call(page, "format_cells", { range: "A1:B2", italic: false })).toContain("Bold: A1, B1.");
+  expect(await call(page, "format_cells", { range: "A1:B1", style: { bold: false, text_align: "center" } })).toContain(
+    "not bold, aligned center. Bold: none of it.",
+  );
+  await expect(call(page, "format_cells", { range: "A1", look: "nice" })).rejects.toThrow(/Nothing to change: format_cells has no look option/);
   await expect(call(page, "format_cells", { range: "B2:B9,C2:C9", bold: true })).rejects.toThrow(/2 ranges; .*B2:C9 to cover them all/);
   expect(await call(page, "sort_range", { range: "A1:D5", column: "Budget", order: "descending", has_header: true })).toMatch(
     /2\tEngineering/,

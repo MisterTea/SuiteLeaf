@@ -376,7 +376,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       name: "format_cells",
       label: "Format cells",
       description:
-        "Format a range: number_format (currency $1,234.50, accounting, percent 12.5%, percent_whole 13%, number 1,234.50 without a $ sign, date, plain), decimals (how many decimal places to show, e.g. 0 for $1,235 or 2 for 12.46%; leave it out to keep the format's usual places), bold, italic, text_color and fill_color (#rrggbb), align (left, center, right), borders (true for thin borders on every cell), wrap. Set only what the user asked for on this range; anything you leave out stays as it is (bold=false removes bold).",
+        "Format a range: number_format (currency $1,234.50, accounting, percent 12.5%, percent_whole 13%, number 1,234.50 without a $ sign, date, plain), decimals (how many decimal places to show; leave it out for the usual 2 for currency and number, 1 for percent), bold, italic, text_color and fill_color (#rrggbb), align (left, center, right), borders (true for thin borders on every cell), wrap. Set only what the user asked for on this range; anything you leave out stays as it is (bold=false removes bold).",
       parameters: Type.Object({
         range: Type.String(),
         number_format: Type.Optional(
@@ -391,8 +391,27 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         borders: Type.Optional(Type.Boolean()),
         wrap: Type.Optional(Type.Boolean()),
       }),
+      // Options wrapped in an object ({"style": {"bold": true}}) and CSS-like names are the same request.
+      prepare: (args) => {
+        const flat: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(args))
+          if (key !== "range" && value && typeof value === "object" && !Array.isArray(value)) Object.assign(flat, value);
+          else flat[key] = value;
+        for (const alias of ["text_align", "alignment", "horizontal_alignment"])
+          if (flat[alias] !== undefined && flat.align === undefined) {
+            flat.align = flat[alias];
+            delete flat[alias];
+          }
+        return flat;
+      },
       target: ({ range }) => target(range),
       async execute(args) {
+        const options = ["number_format", "decimals", "bold", "italic", "text_color", "fill_color", "align", "borders", "wrap"];
+        const unknown = Object.keys(args).filter((k) => k !== "range" && !options.includes(k));
+        if (!options.some((k) => (args as Record<string, unknown>)[k] !== undefined))
+          throw new ToolError(
+            `Nothing to change${unknown.length ? `: format_cells has no ${unknown.join(", ")} option` : ""}. Give range plus one or more of ${options.join(", ")} as separate arguments, e.g. {"range": "${args.range}", "bold": true}.`,
+          );
         select(args.range);
         const range = sheet().getRange(a1(parseA1(args.range)));
         const done: string[] = [];
@@ -437,6 +456,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
           range.setWrap(args.wrap);
           done.push(args.wrap ? "wrapped" : "not wrapped");
         }
+        if (unknown.length) done.push(`ignored ${unknown.join(", ")} (not an option)`);
         ctx.persist();
         await ctx.settle();
         const sample = range.getRange();
