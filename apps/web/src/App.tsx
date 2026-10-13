@@ -772,7 +772,7 @@ function LocalHome() {
                       {r.file.title}
                       {snippet ? (
                         <small className="file-snippet">{snippet}</small>
-                      ) : r.recovery ? (
+                      ) : r.recovery && r.path ? (
                         <small>Recovery draft available</small>
                       ) : r.path ? (
                         <small>{r.path}</small>
@@ -1215,7 +1215,7 @@ function Workspace() {
         }
         const saved = r.drive
           ? "Saved to SuiteDrive"
-          : r.recovery
+          : r.recovery && r.path
             ? "Recovered draft · review and save"
             : r.path
               ? "Saved to file"
