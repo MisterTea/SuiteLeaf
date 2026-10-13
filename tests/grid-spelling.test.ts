@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  boxesOverlap,
   collectSheetIssues,
   collectSlideIssues,
   misspellingsInText,
   plainCellText,
   replaceSlideWord,
   replaceWordAt,
+  spellingMenuPosition,
   suggestionsFor,
   wordBand,
+  type Box,
 } from "../apps/web/src/editors/grid-spelling";
 import { addToPersonalDictionary, type PersonalDictionary } from "../apps/web/src/editors/doc-spelling";
 
@@ -99,5 +102,31 @@ describe("grid spelling", () => {
       x: 2 + 8 * 8,
       width: 7 * 8,
     });
+  });
+
+  it("places the right-click menu beside the cell without covering the word", () => {
+    const menu = { width: 220, height: 132 };
+    const covers = (pos: { left: number; top: number }, word: Box) =>
+      boxesOverlap({ left: pos.left, top: pos.top, width: menu.width, height: menu.height }, word);
+
+    const word = { left: 220, top: 210, width: 54, height: 24 };
+    const cell = { left: 160, top: 210, width: 300, height: 24 };
+    const beside = spellingMenuPosition(cell, word, menu, { width: 1280, height: 800 });
+    expect(beside.left).toBeGreaterThanOrEqual(cell.left + cell.width);
+    expect(covers(beside, word)).toBe(false);
+
+    const wideCell = { left: 16, top: 180, width: 1000, height: 24 };
+    const wideWord = { left: 400, top: 180, width: 54, height: 24 };
+    const below = spellingMenuPosition(wideCell, wideWord, menu, { width: 1100, height: 800 });
+    expect(below.top).toBeGreaterThanOrEqual(wideCell.top + wideCell.height);
+    expect(covers(below, wideWord)).toBe(false);
+
+    const phoneWord = { left: 80, top: 180, width: 48, height: 22 };
+    const phoneCell = { left: 40, top: 180, width: 200, height: 22 };
+    const phone = spellingMenuPosition(phoneCell, phoneWord, menu, { width: 390, height: 700 });
+    expect(phone.left).toBeGreaterThanOrEqual(8);
+    expect(phone.left + menu.width).toBeLessThanOrEqual(382);
+    expect(covers(phone, phoneWord)).toBe(false);
+    expect(suggestionsFor("recieve")[0]).toBe("receive");
   });
 });

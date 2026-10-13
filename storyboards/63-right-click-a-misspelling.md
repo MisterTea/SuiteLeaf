@@ -14,12 +14,14 @@ Sam already used Tools › Spelling to fix the decisions sheet (storyboard 54). 
 
 ## Scenes
 
-1. **The underline.** Sam opens "Decisions". B4 says "Please recieve the keys". After he leaves the cell, "recieve" is underlined. The rest of the sentence is not.
-2. **The menu.** He right-clicks the underlined word. A menu lists "receive" first, then Ignore and Add to dictionary. It opens next to the cell, not over the word.
-3. **Replace.** He clicks "receive". The cell becomes "Please receive the keys". The underline is gone. Undo puts "recieve" back.
-4. **A name.** He right-clicks "Nkrumah" in B5 and chooses Add to dictionary. The underline disappears. Tools › Spelling no longer stops on that cell.
-5. **The shared dictionary.** The word he added in Docs is already in this menu's dictionary, and the word he adds here is not flagged when he later opens a document.
-6. **Save.** He reopens the file. "receive" is saved, and "Nkrumah" is still not underlined.
+1. **The shared dictionary.** Sam opens "Handover". "Kwame", "Nkrumah", and "seperate" are underlined. He right-clicks "Kwame" and chooses Add to dictionary. That underline goes away.
+2. **The underline.** He opens "Decisions". "Ask Kwame tomorrow" is not underlined. He types "Please recieve the keys" in B4. After he leaves the cell, only "recieve" is underlined.
+3. **The menu.** He right-clicks the underlined word. A menu lists "receive" first, then Ignore and Add to dictionary. It opens beside the cell, and the word stays visible.
+4. **Replace.** He clicks "receive". The cell becomes "Please receive the keys". Undo puts "recieve" back, and redo restores "receive".
+5. **A name.** He right-clicks "Nkrumah" in B5 and chooses Add to dictionary. The underline disappears. Tools › Spelling stops on "seperate", not on that cell.
+6. **Ignore.** He right-clicks "seperate" and chooses Ignore. The word stays in the cell. The underline goes away. It is not added to the dictionary.
+7. **Back in the document.** "Nkrumah" is not flagged. "seperate" still is, because Ignore did not add it. "Kwame" is still clear.
+8. **Save.** He reopens "Decisions". "receive" is saved, and "Nkrumah" is still not underlined.
 
 ## Google Workspace benchmark
 
@@ -37,10 +39,24 @@ Google Sheets does not put a suggestion menu on the underlined word. Tools › S
 
 ## Success looks like
 
-Sam fixes "recieve" from the cell itself. He does not open Tools › Spelling. "Nkrumah" stays a name he chose, in this sheet and in a document.
+Sam fixes "recieve" from the cell itself. He does not step through Tools › Spelling to make that change. "Nkrumah" stays a name he chose, in this sheet and in a document. "Kwame", added in the document, was already known here.
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| 1. Right-clicking an underlined word opens suggestions, and the top item matches Tools › Spelling | Met | Video 0:16, the menu's first item is "receive". Browser test `right-clicking a sheet misspelling suggests, replaces, ignores, and shares the Docs dictionary` opens Tools › Spelling first and expects "recieve → receive", then expects that same word as the menu's first item. |
+| 2. A suggestion replaces only that word, and undo restores the misspelling | Met | Video 0:20, B4 reads "Please receive the keys". Video 0:21, undo puts "recieve" back and the underline returns. Video 0:22, redo restores "receive". The browser test checks the cell value at each step. |
+| 3. The menu does not cover the word it is correcting | Met | Video 0:16, "Please recieve the keys" stays fully visible and the menu sits to the right of the cell. The browser test polls until the menu box does not overlap the word. |
+| 4. Add to dictionary uses the same personal dictionary as Docs | Met | Video 0:04, Sam adds "Kwame" in the document. Video 0:08, the sheet does not underline it. Video 0:25, he adds "Nkrumah" in the sheet. Video 0:34, the document no longer underlines "Nkrumah". The browser test reads `suiteleaf.personal-dictionary` and expects both names. |
+| 5. Ignore leaves the word in this cell and does not add it to the dictionary | Met | Video 0:31, B6 still says "seperate the copies" and the underline is gone. Video 0:34, the document still underlines "seperate". The browser test expects the cell text unchanged and the personal dictionary not to contain "seperate". |
+| 6. The correction and the dictionary survive save and reopen | Met | Video 0:40, the reopened sheet shows "Please receive the keys", and "Nkrumah" is not underlined. The browser test reopens the file and downloads the saved cell. |
+| 7. Right-clicking a correctly spelled word does not show spelling suggestions | Met | Video 0:13, "Please" and "keys" are not underlined. The browser test right-clicks "keys" and expects no spelling menu. |
 
 ## Gaps and notes
 
-- Tools › Spelling and the underline already exist. There is no context menu on the underlined word.
-- Reuse the Docs dictionary. Do not add a second word list.
-- Do not rebuild Tools › Spelling, grammar, or cell links.
+- The right-click menu lives in the spelling module and reuses the Docs personal dictionary. There is no second word list.
+- Tools › Spelling was left as it was. The recording opens it only to show that it skips "Nkrumah".
+- Ignore uses the same per-file word list as Tools › Spelling. Ignoring "seperate" clears it for this sheet, and the document still flags it.
+- The underline appears after the cell is committed. A formula is still not rewritten.
+- Right-clicking a correctly spelled word keeps the grid's own menu. Spelling suggestions are not added to it.
