@@ -3,6 +3,7 @@ import type { SuiteFile } from "@suiteleaf/core";
 import type { DriveControl } from "../../drive/DriveBrowser";
 import type { DriveItem } from "../../node-client";
 import { agentSession } from "../agent";
+import { moveCursor } from "../cursor";
 import { ToolError, currentSnapshot, tool, waitForHost, type SuiteTool } from "../host";
 
 type Kind = SuiteFile["kind"];
@@ -277,6 +278,7 @@ export function conflictTools(ctx: {
           const name = copy_name?.trim().replace(/\.(sldoc|slsheet|slslides)$/i, "");
           if (name && name !== original) {
             const input = document.querySelector<HTMLInputElement>(".workspace-header input");
+            await moveCursor(input, "Name the copy");
             input?.focus();
             for (let i = 1; i <= name.length; i++) {
               ctx.rename(name.slice(0, i));
