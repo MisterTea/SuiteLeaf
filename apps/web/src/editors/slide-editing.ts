@@ -437,12 +437,13 @@ export function logoImage(
  * Line up selected boxes on one edge. The result is only those boxes.
  * One selected box is returned as-is, so it does not jump to the slide edge.
  * Align left uses the smallest x. Align top uses the smallest y.
- * Widths, text, and the other coordinate stay.
+ * Align right uses the largest x + width. Align bottom uses the largest y + height.
+ * The box that already owns that edge stays put. Widths, text, and the other coordinate stay.
  */
 export function alignBoxes(
   elements: readonly SlideElement[],
   selectedIds: readonly string[],
-  edge: "left" | "top",
+  edge: "left" | "top" | "right" | "bottom",
 ): SlideElement[] {
   const selected = new Set(selectedIds);
   const boxes = elements.filter((el) => selected.has(el.id));
@@ -451,8 +452,20 @@ export function alignBoxes(
     const x = Math.min(...boxes.map((el) => el.x));
     return boxes.map((el) => (el.x === x ? el : { ...el, x }));
   }
-  const y = Math.min(...boxes.map((el) => el.y));
-  return boxes.map((el) => (el.y === y ? el : { ...el, y }));
+  if (edge === "top") {
+    const y = Math.min(...boxes.map((el) => el.y));
+    return boxes.map((el) => (el.y === y ? el : { ...el, y }));
+  }
+  if (edge === "right") {
+    const right = Math.max(...boxes.map((el) => el.x + el.width));
+    return boxes.map((el) =>
+      el.x + el.width === right ? el : { ...el, x: right - el.width },
+    );
+  }
+  const bottom = Math.max(...boxes.map((el) => el.y + el.height));
+  return boxes.map((el) =>
+    el.y + el.height === bottom ? el : { ...el, y: bottom - el.height },
+  );
 }
 
 /** One undo step per edit, with typing in the same box collapsing into one step. */

@@ -25,7 +25,9 @@ import {
   AlignCenter,
   AlignRight,
   AlignStartHorizontal,
+  AlignEndHorizontal,
   AlignVerticalJustifyStart,
+  AlignVerticalJustifyEnd,
   List,
   Undo2,
   Redo2,
@@ -813,7 +815,7 @@ export default function Slides({
     if (el) updateElement(el.id, { align: alignment });
   };
 
-  const alignSelectedBoxes = (edge: "left" | "top") => {
+  const alignSelectedBoxes = (edge: "left" | "top" | "right" | "bottom") => {
     const prev = deckRef.current;
     const slide =
       prev.slides[activeRef.current] || prev.slides[prev.slideOrder[0]];
@@ -1908,6 +1910,14 @@ ${slidesHtml}
             <Tool label="Align top" onClick={() => alignSelectedBoxes("top")}>
               <AlignVerticalJustifyStart size={16} />
               <span className="align-box-label">Align top</span>
+            </Tool>
+            <Tool label="Align right" onClick={() => alignSelectedBoxes("right")}>
+              <AlignEndHorizontal size={16} />
+              <span className="align-box-label">Align right</span>
+            </Tool>
+            <Tool label="Align bottom" onClick={() => alignSelectedBoxes("bottom")}>
+              <AlignVerticalJustifyEnd size={16} />
+              <span className="align-box-label">Align bottom</span>
             </Tool>
           </div>
         ) : selectedElement ? (

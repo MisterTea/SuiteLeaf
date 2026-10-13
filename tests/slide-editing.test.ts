@@ -338,4 +338,73 @@ describe("alignBoxes", () => {
     expect(alone[0]).toBe(saturday);
     expect(alone[0].x).toBe(360);
   });
+
+  it("lines up the further right edge, then the lower bottom, and leaves everyone else alone", () => {
+    const wide = {
+      id: "market",
+      type: "text" as const,
+      x: 72,
+      y: 120,
+      width: 540,
+      height: 90,
+      content: "Market",
+    };
+    const narrow = {
+      id: "saturday",
+      type: "text" as const,
+      x: 500,
+      y: 220,
+      width: 240,
+      height: 200,
+      content: "Saturday",
+    };
+    const aside = {
+      id: "notes",
+      type: "text" as const,
+      x: 36,
+      y: 20,
+      width: 168,
+      height: 64,
+      content: "Notes",
+    };
+    const boxes = [wide, narrow, aside];
+    expect(wide.width).toBeGreaterThan(narrow.width);
+    expect(narrow.x + narrow.width).toBeGreaterThan(wide.x + wide.width);
+    expect(narrow.y + narrow.height).toBeGreaterThan(wide.y + wide.height);
+
+    const right = alignBoxes(boxes, ["market", "saturday"], "right");
+    expect(right.map((el) => el.id)).toEqual(["market", "saturday"]);
+    expect(right.find((el) => el.id === "notes")).toBeUndefined();
+    expect(right.find((el) => el.id === "saturday")).toBe(narrow);
+    const moved = right.find((el) => el.id === "market")!;
+    const furthest = narrow.x + narrow.width;
+    expect(moved.x + moved.width).toBe(furthest);
+    expect(moved.width).toBe(wide.width);
+    expect(moved.y).toBe(wide.y);
+    expect(moved.height).toBe(wide.height);
+    expect(moved.content).toBe("Market");
+    expect(narrow.content).toBe("Saturday");
+
+    const afterRight = boxes.map(
+      (el) => right.find((aligned) => aligned.id === el.id) ?? el,
+    );
+    const bottom = alignBoxes(afterRight, ["market", "saturday"], "bottom");
+    expect(bottom.map((el) => el.id)).not.toContain("notes");
+    expect(bottom.find((el) => el.id === "saturday")).toBe(narrow);
+    const dropped = bottom.find((el) => el.id === "market")!;
+    expect(dropped.y + dropped.height).toBe(narrow.y + narrow.height);
+    expect(dropped.x).toBe(moved.x);
+    expect(dropped.width).toBe(wide.width);
+    expect(dropped.height).toBe(wide.height);
+    expect(dropped.content).toBe("Market");
+    expect(afterRight.find((el) => el.id === "notes")).toEqual(aside);
+
+    const aloneRight = alignBoxes(boxes, ["market"], "right");
+    expect(aloneRight).toEqual([wide]);
+    expect(aloneRight[0]).toBe(wide);
+    expect(aloneRight[0].x).toBe(72);
+    const aloneBottom = alignBoxes(boxes, ["saturday"], "bottom");
+    expect(aloneBottom[0]).toBe(narrow);
+    expect(aloneBottom[0].y).toBe(220);
+  });
 });
