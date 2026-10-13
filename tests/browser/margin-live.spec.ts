@@ -69,7 +69,8 @@ async function places(page: Page) {
       padTop: parseFloat(style.paddingTop) / 96,
       padBottom: parseFloat(style.paddingBottom) / 96,
       padLeft: parseFloat(style.paddingLeft) / 96,
-      paperWidth: paper.offsetWidth,
+      paperWidth: parseFloat(paper.style.getPropertyValue("--page-width")),
+      paperHeight: parseFloat(paper.style.getPropertyValue("--page-height")),
     };
   });
 }
@@ -120,7 +121,8 @@ test("the margin moves before apply, and cancel puts it back", async ({ page }) 
   let dialog = await openSetup(page);
   await dialog.getByLabel("Paper size").selectOption("a4");
   await dialog.getByLabel("Page header").fill("Agenda");
-  await expect.poll(async () => (await places(page)).paperWidth).toBe(816);
+  await expect.poll(async () => (await places(page)).paperWidth).toBe(794);
+  await expect.poll(async () => (await places(page)).paperHeight).toBe(1123);
   await expect.poll(async () => (await places(page)).headerText).toBe("Town council");
 
   for (const label of ["Top margin", "Bottom margin", "Left margin", "Right margin"])
@@ -132,7 +134,8 @@ test("the margin moves before apply, and cancel puts it back", async ({ page }) 
   await near(page, "footerBottom", 1);
   const moved = await places(page);
   expect(moved.headerText).toBe("Town council");
-  expect(moved.paperWidth).toBe(816);
+  expect(moved.paperWidth).toBe(794);
+  expect(moved.paperHeight).toBe(1123);
   for (const label of ["Top margin", "Bottom margin", "Left margin", "Right margin"])
     await expect(dialog.getByLabel(label)).toHaveValue("1.5");
 

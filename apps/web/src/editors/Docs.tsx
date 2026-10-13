@@ -119,6 +119,11 @@ import { columnLayout } from "./doc-columns";
 import { PageSetupFit } from "./page-setup-fit";
 import { publishLiveEdges } from "./letterhead-live";
 import { livePageSettings, publishLiveMargins } from "./margin-live";
+import {
+  paperPreviewZoom,
+  paperSizeCaption,
+  publishLivePaper,
+} from "./paper-size-live";
 import "./letterhead-live.css";
 
 export const extensions: Extensions = [
@@ -250,6 +255,9 @@ export default function Docs({
   );
   const [pageViewportWidth, setPageViewportWidth] = useState(
     window.innerWidth - 32,
+  );
+  const [pageViewportHeight, setPageViewportHeight] = useState(() =>
+    Math.max(240, window.innerHeight - 180),
   );
   const [textColor, setTextColor] = useState("#202124");
   const [highlightColor, setHighlightColor] = useState("#ffff00");
@@ -555,13 +563,22 @@ export default function Docs({
   ).width;
   useEffect(() => {
     const container = paperContainer.current;
-    if (!editor || !container) return;
-    const update = () => setPageViewportWidth(container.clientWidth);
+    const stage = documentStage.current;
+    if (!editor || !container || !stage) return;
+    const update = () => {
+      setPageViewportWidth(container.clientWidth);
+      const style = getComputedStyle(stage);
+      const pad =
+        parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+      const next = Math.max(0, stage.clientHeight - pad);
+      setPageViewportHeight((prev) => (Math.abs(prev - next) < 0.5 ? prev : next));
+    };
     const observer = new ResizeObserver(update);
     observer.observe(container);
+    observer.observe(stage);
     update();
     return () => observer.disconnect();
-  }, [editor, paperWidth]);
+  }, [editor, paperWidth, pageSetupOpen]);
 
   const insertTable = () => {
     editor
@@ -847,12 +864,14 @@ export default function Docs({
     if (!pageSetupOpen) {
       publishLiveEdges(root, null);
       publishLiveMargins(root, null);
+      publishLivePaper(root, null);
       return;
     }
     const saved = documentPageSettings(editor.getJSON() as JsonNode);
     const shown = livePageSettings(saved, pageDraft);
     publishLiveEdges(root, shown);
     publishLiveMargins(root, shown);
+    publishLivePaper(root, shown);
   }, [editor, pageSetupOpen, pageDraft]);
 
   // The outline highlights the section being read: the last heading above a
@@ -991,15 +1010,21 @@ export default function Docs({
     Number.isInteger(pageDraft.pageNumberStart) &&
     pageDraft.pageNumberStart >= 1 &&
     pageDraft.pageNumberStart <= 9999;
-  const dimensions = pageDimensions(pageSettings);
+  const dimensions = pageDimensions(shownSettings);
   const edgeInsets = bodyEdgeInsets(shownSettings, dimensions.width);
   const requestedZoom =
     zoomLevel === "Fit" ? 1 : Number.parseInt(zoomLevel, 10) / 100;
-  const pageZoom = commentGutter || citationsOpen
-    ? Math.min(requestedZoom, pageViewportWidth / dimensions.width)
+  const widthFit = pageViewportWidth / dimensions.width;
+  let pageZoom = commentGutter || citationsOpen
+    ? Math.min(requestedZoom, widthFit)
     : zoomLevel === "Fit"
-      ? Math.min(1, pageViewportWidth / dimensions.width)
+      ? Math.min(1, widthFit)
       : requestedZoom;
+  if (pageSetupOpen)
+    pageZoom = Math.min(
+      pageZoom,
+      paperPreviewZoom(pageViewportWidth, pageViewportHeight - 36),
+    );
   const search = documentMatches(editor.state.doc, findOpen ? query : "", {
     matchCase,
     regex: useRegex,
@@ -1974,6 +1999,11 @@ export default function Docs({
                 : "center",
           }}
         >
+          {pageSetupOpen ? (
+            <p className="paper-size-live" aria-live="polite">
+              {paperSizeCaption(shownSettings)}
+            </p>
+          ) : null}
           <style>{`@page { size: ${dimensions.width / 96}in ${dimensions.height / 96}in; margin: 0; }`}</style>
           <div
             className="paper paginated-paper"

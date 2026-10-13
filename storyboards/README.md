@@ -140,3 +140,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 94 | [See the margin and the reason](94-see-the-margin-and-the-reason.md) | single-node | Docs |
 | 97 | [See the letterhead move](97-see-the-letterhead-move.md) | single-node | Docs |
 | 100 | [See the margin move](100-see-the-margin-move.md) | single-node | Docs |
+| 103 | [See the paper size change](103-see-the-paper-size.md) | single-node | Docs |

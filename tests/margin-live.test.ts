@@ -48,8 +48,9 @@ describe("live page margins", () => {
     expect(shown.footerFromEdge).toBe(inch(1));
     expect(shown.header).toBe("Town council");
     expect(shown.footer).toBe("Hearing notes");
-    expect(shown.size).toBe("letter");
-    expect(pageDimensions(shown).width).toBe(pageDimensions(saved).width);
+    expect(shown.size).toBe("a4");
+    expect(shown.landscape).toBe(false);
+    expect(pageDimensions(shown)).toEqual({ width: 794, height: 1123 });
   });
 
   it("keeps a refused margin on the saved page and still draws the others", () => {
