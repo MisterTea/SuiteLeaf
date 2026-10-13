@@ -112,6 +112,10 @@
   width: 54px;
   height: 70px;
 }
+.page-setup-fit .margin-preview-page.is-landscape {
+  width: 70px;
+  height: 54px;
+}
 .page-setup-fit .header-edge-input input {
   width: 5.5em;
   padding: 4px 8px;

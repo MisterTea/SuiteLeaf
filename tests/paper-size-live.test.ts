@@ -41,7 +41,6 @@ describe("live paper size", () => {
       size: "a4",
       header: "Agenda",
       marginTop: inch(1.5),
-      landscape: true,
     });
     expect(shown.size).toBe("a4");
     expect(shown.landscape).toBe(false);

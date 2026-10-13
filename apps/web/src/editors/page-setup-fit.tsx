@@ -91,7 +91,7 @@ function MarginPreview({
           {inches("marginLeft")}
         </span>
         <div
-          className={`margin-preview-page${active ? ` edge-${active}` : ""}`}
+          className={`margin-preview-page${draft.landscape ? " is-landscape" : ""}${active ? ` edge-${active}` : ""}`}
           style={{
             paddingTop: band("marginTop"),
             paddingRight: band("marginRight"),

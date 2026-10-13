@@ -6,9 +6,9 @@ import {
 import { letterheadLiveEvent } from "./letterhead-live";
 
 /**
- * Paper size is drawn while Page setup is open. Orientation, the header
- * and footer wording, and every other field stay on the saved page.
- * Live margins and letterhead distances are applied beside this.
+ * Paper size is drawn while Page setup is open. The header and footer
+ * wording stay on the saved page. Orientation, live margins, and letterhead
+ * distances are applied beside this.
  */
 export function livePaperSize(
   base: PageSettings,
@@ -34,21 +34,27 @@ export function paperSizeCaption(settings: PageSettings): string {
 }
 
 const previewFrame = (() => {
-  const letter = pageDimensions(
-    documentPageSettings({ type: "doc", attrs: { pageSettings: { size: "letter" } } }),
-  );
-  const a4 = pageDimensions(
-    documentPageSettings({ type: "doc", attrs: { pageSettings: { size: "a4" } } }),
-  );
-  return {
-    width: Math.max(letter.width, a4.width),
-    height: Math.max(letter.height, a4.height),
-  };
+  let width = 0;
+  let height = 0;
+  for (const size of ["letter", "a4"] as const) {
+    for (const landscape of [false, true]) {
+      const box = pageDimensions(
+        documentPageSettings({
+          type: "doc",
+          attrs: { pageSettings: { size, landscape } },
+        }),
+      );
+      width = Math.max(width, box.width);
+      height = Math.max(height, box.height);
+    }
+  }
+  return { width, height };
 })();
 
 /**
- * One zoom for both Letter and A4, so choosing a size changes the sheet's
- * shape instead of scaling each size to the same width.
+ * One zoom for Letter and A4, portrait and landscape, so choosing a size or
+ * turning the page changes the sheet's shape instead of scaling each sheet
+ * to the same box.
  */
 export function paperPreviewZoom(
   viewportWidth: number,

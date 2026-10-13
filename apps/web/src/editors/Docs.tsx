@@ -117,6 +117,7 @@ import { LineSpacingControl } from "./doc-line-spacing-ui";
 import { DocWatermarkField, pageSetupToSave } from "./doc-watermark";
 import { columnLayout } from "./doc-columns";
 import { PageSetupFit } from "./page-setup-fit";
+import { publishLiveOrientation } from "./landscape-live";
 import { publishLiveEdges } from "./letterhead-live";
 import { livePageSettings, publishLiveMargins } from "./margin-live";
 import {
@@ -865,6 +866,7 @@ export default function Docs({
       publishLiveEdges(root, null);
       publishLiveMargins(root, null);
       publishLivePaper(root, null);
+      publishLiveOrientation(root, null);
       return;
     }
     const saved = documentPageSettings(editor.getJSON() as JsonNode);
@@ -872,6 +874,7 @@ export default function Docs({
     publishLiveEdges(root, shown);
     publishLiveMargins(root, shown);
     publishLivePaper(root, shown);
+    publishLiveOrientation(root, shown);
   }, [editor, pageSetupOpen, pageDraft]);
 
   // The outline highlights the section being read: the last heading above a
@@ -1471,8 +1474,14 @@ export default function Docs({
                       })
                     }
                   >
-                    <option value="letter">Letter (8.5 × 11 in)</option>
-                    <option value="a4">A4 (21 × 29.7 cm)</option>
+                    <option value="letter">
+                      {pageDraft.landscape
+                        ? "Letter (11 × 8.5 in)"
+                        : "Letter (8.5 × 11 in)"}
+                    </option>
+                    <option value="a4">
+                      {pageDraft.landscape ? "A4 (29.7 × 21 cm)" : "A4 (21 × 29.7 cm)"}
+                    </option>
                   </select>
                 </label>
                 <fieldset className="page-setup-orientation">
