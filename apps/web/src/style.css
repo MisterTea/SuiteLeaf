@@ -7711,3 +7711,56 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 .row-group-only:hover {
   background: #e8f0fe;
 }
+.column-group-controls {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+}
+.column-group-line {
+  position: fixed;
+  height: 2px;
+  background: #1a73e8;
+  border-radius: 1px;
+  pointer-events: none;
+}
+.column-group-toggle,
+.column-group-only {
+  position: fixed;
+  pointer-events: auto;
+  cursor: pointer;
+}
+.column-group-toggle {
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 1.5px solid #1a73e8;
+  border-radius: 50%;
+  background: #fff;
+  color: #1a73e8;
+  font: 700 14px/16px var(--font-google), sans-serif;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+.column-group-only {
+  box-sizing: border-box;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid #1a73e8;
+  border-radius: 13px;
+  background: #fff;
+  color: #174ea6;
+  font: 600 13px/24px var(--font-google), sans-serif;
+  box-shadow: 0 1px 3px rgba(60, 64, 67, 0.3);
+  white-space: nowrap;
+}
+.column-group-toggle:hover,
+.column-group-only:hover {
+  background: #e8f0fe;
+}
+.column-group-toggle:focus-visible,
+.column-group-only:focus-visible {
+  outline: 2px solid #1a73e8;
+  outline-offset: 2px;
+}

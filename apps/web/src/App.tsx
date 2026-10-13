@@ -1652,13 +1652,21 @@ function Workspace() {
     else navigate(`/file/${(await storage.save({ file: copy })).file.id}`);
   };
   /** In cluster mode files live in SuiteDrive, so downloads are copies. */
-  const download = () =>
+  const download = () => {
+    const started = version.current;
     void (cluster ? exportNative().then(() => true) : saveAs())
       .then((done) => {
-        if (done && !cluster && !window.suiteleaf && alive.current)
+        if (
+          done &&
+          !cluster &&
+          !window.suiteleaf &&
+          alive.current &&
+          version.current === started
+        )
           setStatus(`Downloaded “${nativeFilename(current.current!.file)}”`);
       })
       .catch((e) => setError(message(e)));
+  };
   const onActions = useCallback((a: EditorActions) => {
     actions.current = a;
     setActionsReady(true);
@@ -2538,6 +2546,19 @@ function Workspace() {
                     }
                   >
                     Group rows
+                  </MenuItem>
+                  <MenuItem
+                    synonyms={[
+                      "group columns",
+                      "column group",
+                      "outline columns",
+                      "collapse columns",
+                    ]}
+                    onSelect={() =>
+                      actions.current?.sheetActions?.groupColumns?.()
+                    }
+                  >
+                    Group columns
                   </MenuItem>
                   <SubMenu label="Data cleanup">
                     <MenuItem

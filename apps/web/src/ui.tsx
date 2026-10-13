@@ -410,6 +410,7 @@ export type EditorActions = {
     sortRange?: () => void;
     namedRanges?: () => void;
     groupRows?: () => void;
+    groupColumns?: () => void;
     trimWhitespace?: () => void;
     removeDuplicates?: () => void;
     splitTextToColumns?: () => void;
