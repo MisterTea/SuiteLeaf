@@ -253,6 +253,17 @@ export function cellInput(value: unknown): unknown {
   return s;
 }
 
+/** `code` showing exactly `places` decimals: ("0%", 1) → "0.0%", ('"$"#,##0.00', 0) → '"$"#,##0'. Dates are left as they are. */
+export function withDecimals(code: string, places: number) {
+  if (/[dmyhs]/i.test(code.replace(/"[^"]*"/g, "").replace(/general/i, ""))) return code;
+  const base = !code.trim() || /^general$/i.test(code.trim()) ? "#,##0" : code;
+  const digits = places > 0 ? `.${"0".repeat(places)}` : "";
+  return base
+    .split(";")
+    .map((part) => part.replace(/0(\.0+)?(?![\d.])/, `0${digits}`))
+    .join(";");
+}
+
 const NUMBER_FORMATS: Record<string, string> = {
   currency: "currency2",
   accounting: "accounting",
@@ -320,11 +331,15 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         values: Type.Array(Type.Array(Type.String())),
       }),
       // A flat list is one row (the schema check would make it a column), and a range names its top-left cell.
-      prepare: ({ values, ...args }) => ({
-        ...args,
-        ...(args.start === undefined && typeof args.range === "string" ? { start: args.range.split(":")[0] } : {}),
-        values: Array.isArray(values) && values.length && values.every((v) => !Array.isArray(v)) ? [values] : values,
-      }),
+      // A null cell is a blank one; the schema check would turn it into the text "null".
+      prepare: ({ values, ...args }) => {
+        const rows = Array.isArray(values) && values.length && values.every((v) => !Array.isArray(v)) ? [values] : values;
+        return {
+          ...args,
+          ...(args.start === undefined && typeof args.range === "string" ? { start: args.range.split(":")[0] } : {}),
+          values: Array.isArray(rows) ? rows.map((row) => (Array.isArray(row) ? row.map((v) => v ?? "") : row)) : rows,
+        };
+      },
       target: ({ start, values }) => {
         const s = parseCell(start);
         return target(
@@ -377,7 +392,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       name: "format_cells",
       label: "Format cells",
       description:
-        "Format a range: number_format (currency, accounting, percent, percent_whole, number, date, plain), decimals (+1 or -1 to add or remove a decimal place), bold, italic, text_color and fill_color (#rrggbb), align (left, center, right), borders (true for thin borders on every cell), wrap. On a pivot table's sheet only number_format applies (to the source numbers the pivot shows).",
+        "Format a range: number_format (currency $1,234.50, accounting, percent 12.5%, percent_whole 13%, number 1,234.50 without a $ sign, date, plain), decimals (how many decimal places to show; leave it out for the usual 2 for currency and number, 1 for percent), bold, italic, text_color and fill_color (#rrggbb), align (left, center, right), borders (true for thin borders on every cell), wrap. Set only what the user asked for on this range; anything you leave out stays as it is (bold=false removes bold). On a pivot table's sheet only number_format applies (to the source numbers the pivot shows).",
       parameters: Type.Object({
         range: Type.String(),
         number_format: Type.Optional(
@@ -392,8 +407,27 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         borders: Type.Optional(Type.Boolean()),
         wrap: Type.Optional(Type.Boolean()),
       }),
+      // Options wrapped in an object ({"style": {"bold": true}}) and CSS-like names are the same request.
+      prepare: (args) => {
+        const flat: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(args))
+          if (key !== "range" && value && typeof value === "object" && !Array.isArray(value)) Object.assign(flat, value);
+          else flat[key] = value;
+        for (const alias of ["text_align", "alignment", "horizontal_alignment"])
+          if (flat[alias] !== undefined && flat.align === undefined) {
+            flat.align = flat[alias];
+            delete flat[alias];
+          }
+        return flat;
+      },
       target: ({ range }) => target(range),
       async execute(args) {
+        const options = ["number_format", "decimals", "bold", "italic", "text_color", "fill_color", "align", "borders", "wrap"];
+        const unknown = Object.keys(args).filter((k) => k !== "range" && !options.includes(k));
+        if (!options.some((k) => (args as Record<string, unknown>)[k] !== undefined))
+          throw new ToolError(
+            `Nothing to change${unknown.length ? `: format_cells has no ${unknown.join(", ")} option` : ""}. Give range plus one or more of ${options.join(", ")} as separate arguments, e.g. {"range": "${args.range}", "bold": true}.`,
+          );
         const pivot = ctx.content().pivots.find((x) => x.targetSheetId === sheet().getSheetId());
         const { number_format, ...others } = args;
         const onlyFormat = Object.entries(others).every(([k, v]) => k === "range" || v === undefined);
@@ -412,16 +446,17 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         select(args.range);
         const range = sheet().getRange(a1(parseA1(args.range)));
         const done: string[] = [];
+        const places = args.decimals === undefined ? undefined : Math.max(0, Math.min(10, Math.round(args.decimals)));
         if (args.number_format) {
-          const id = NUMBER_FORMATS[args.number_format];
-          if (!id || !applyNamedFormat(id, (code) => range.setNumberFormat(code)).ok)
-            throw new ToolError(`Unknown number format ${args.number_format}.`);
-          done.push(`${args.number_format} (${numberFormatById(id)!.code})`);
-        }
-        if (args.decimals) {
-          const command = args.decimals > 0 ? "sheet.command.numfmt.add.decimal.command" : "sheet.command.numfmt.subtract.decimal.command";
-          for (let i = 0; i < Math.min(4, Math.abs(args.decimals)); i++) await ctx.api.executeCommand(command);
-          done.push(`${args.decimals > 0 ? "more" : "fewer"} decimals`);
+          const named = numberFormatById(NUMBER_FORMATS[args.number_format] ?? "");
+          if (!named) throw new ToolError(`Unknown number format ${args.number_format}.`);
+          const code = places === undefined ? named.code : withDecimals(named.code, places);
+          range.setNumberFormat(code);
+          done.push(`${args.number_format}${places === undefined ? "" : ` with ${places} decimal place(s)`} (${code})`);
+        } else if (places !== undefined) {
+          const codes = (range.getNumberFormats() as string[][]).map((row) => row.map((code) => withDecimals(code ?? "", places)));
+          range.setNumberFormats(codes);
+          done.push(`${places} decimal place(s) (${[...new Set(codes.flat())].join(", ")})`);
         }
         if (args.bold !== undefined) {
           range.setFontWeight(args.bold ? "bold" : "normal");
@@ -452,10 +487,35 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
           range.setWrap(args.wrap);
           done.push(args.wrap ? "wrapped" : "not wrapped");
         }
+        if (unknown.length) done.push(`ignored ${unknown.join(", ")} (not an option)`);
         ctx.persist();
         await ctx.settle();
         const sample = range.getRange();
-        return `Formatted ${args.range}: ${done.join(", ") || "nothing changed"}. Shown as:\n${grid(sheet(), { ...sample, endRow: Math.min(sample.endRow, sample.startRow + 11) }, 12, 8)}`;
+        const cells: { ref: string; bold: boolean }[] = [];
+        for (let row = sample.startRow; row <= Math.min(sample.endRow, sample.startRow + 11); row++)
+          for (let column = sample.startColumn; column <= Math.min(sample.endColumn, sample.startColumn + 7); column++)
+            cells.push({
+              ref: a1({ startRow: row, endRow: row, startColumn: column, endColumn: column }),
+              bold: sheet().getRange(row, column, 1, 1).getCellStyleData()?.bl === 1,
+            });
+        const bolded = cells.filter((c) => c.bold);
+        const boldText = !bolded.length ? "none of it" : bolded.length === cells.length ? "all of it" : bolded.map((c) => c.ref).join(", ");
+        // A number format on part of a column often misses its total just below (or a first value just above).
+        const nextTo: string[] = [];
+        if (args.number_format)
+          for (const row of [sample.startRow - 1, sample.endRow + 1].filter((r) => r >= 0 && r <= usedRange(sheet()).endRow))
+            for (let column = sample.startColumn; column <= Math.min(sample.endColumn, sample.startColumn + 7); column++) {
+              const cell = sheet().getRange(row, column, 1, 1);
+              if (typeof cell.getRawValue() !== "number" || cell.getNumberFormat() === range.getNumberFormat()) continue;
+              const formula = cell.getFormula();
+              nextTo.push(
+                `${a1({ startRow: row, endRow: row, startColumn: column, endColumn: column })}${formula ? ` ${formula}` : ""} → ${cell.getDisplayValue()}`,
+              );
+            }
+        const near = nextTo.length
+          ? `\nRight next to ${args.range}, ${nextTo.join("; ")} ${nextTo.length > 1 ? "show" : "shows"} a different number format; if ${nextTo.length > 1 ? "they hold" : "it holds"} the same kind of number (such as a total), format ${nextTo.length > 1 ? "them" : "it"} too.`
+          : "";
+        return `Formatted ${args.range}: ${done.join(", ") || "nothing changed"}. Bold: ${boldText}. Shown as:\n${grid(sheet(), { ...sample, endRow: Math.min(sample.endRow, sample.startRow + 11) }, 12, 8)}${near}`;
       },
     }),
     tool({

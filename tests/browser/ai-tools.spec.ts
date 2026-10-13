@@ -110,15 +110,30 @@ test("spreadsheet tools write, format, sort, chart and pivot", async ({ page }) 
   expect((await page.locator('[aria-label="Chart: Studio costs"]').boundingBox())!.x).toBeCloseTo(placed.x, 0);
 
   expect(await call(page, "set_cells", { start: "A8", values: [["'Code'", "Amount"], ["007", "12.5"]] })).toMatch(/8\tCode\tAmount\n9\t007/);
-  expect(await call(page, "set_cells", { range: "A10:B10", values: ["Double", "=B9*2"] })).toContain("Wrote A10:B10.");
-  expect(await call(page, "set_cells", { start: "B9", values: [["20"]] })).toContain(
+  expect(await call(page, "set_cells", { range: "A10:B10", values: ["Double", "=B9*2"] })).toContain("Wrote A10:B10.");  expect(await call(page, "set_cells", { start: "B9", values: [["20"]] })).toContain(
     "Formulas that recalculated by themselves: B10 =B9*2: 25 → 40.",
   );
   expect(await call(page, "set_cells", { start: "B10", values: [["40"]] })).toContain(
     "These formulas were replaced by fixed values, which will not update any more: B10 was =B9*2.",
   );
   expect(await call(page, "format_cells", { range: "B2:D6", number_format: "currency" })).toContain("$6,000.00");
+  const twoPlaces = await call(page, "format_cells", { range: "B2:D6", number_format: "currency", decimals: 2 });
+  expect(twoPlaces).toContain('currency with 2 decimal place(s) ("$"#,##0.00)');
+  expect(twoPlaces).toMatch(/\$6,000\.00(?!\d)/);
+  expect(await call(page, "format_cells", { range: "B2:D6", decimals: 0 })).toContain('0 decimal place(s) ("$"#,##0)');
+  expect(await call(page, "format_cells", { range: "E2", number_format: "percent", decimals: 1 })).toContain("percent with 1 decimal place(s) (0.0%)");
+  expect(await call(page, "format_cells", { range: "B2:D6", number_format: "currency" })).toContain("$6,000.00");
+  expect(await call(page, "format_cells", { range: "B3:B4", number_format: "number" })).toMatch(
+    /Right next to B3:B4, B2 → \$[\d,.]+; B5 → \$[\d,.]+ show a different number format/,
+  );
+  expect(await call(page, "format_cells", { range: "B2:D6", number_format: "currency" })).not.toContain("Right next to");
   expect(await call(page, "format_cells", { range: "B2:D6", align: "right" })).toContain("aligned right");
+  expect(await call(page, "format_cells", { range: "A1:B1", bold: true })).toContain("bold. Bold: all of it.");
+  expect(await call(page, "format_cells", { range: "A1:B2", italic: false })).toContain("Bold: A1, B1.");
+  expect(await call(page, "format_cells", { range: "A1:B1", style: { bold: false, text_align: "center" } })).toContain(
+    "not bold, aligned center. Bold: none of it.",
+  );
+  await expect(call(page, "format_cells", { range: "A1", look: "nice" })).rejects.toThrow(/Nothing to change: format_cells has no look option/);
   await expect(call(page, "format_cells", { range: "B2:B9,C2:C9", bold: true })).rejects.toThrow(/2 ranges; .*B2:C9 to cover them all/);
   expect(await call(page, "sort_range", { range: "A1:D5", column: "Budget", order: "descending", has_header: true })).toMatch(
     /2\tEngineering/,
