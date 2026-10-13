@@ -398,6 +398,8 @@ export type EditorActions = {
     cut: () => void;
     copy: () => void;
     paste: () => void;
+    /** Write the copied cells' calculated values, without their formulas. */
+    pasteValues?: () => void;
     deleteValues: () => void;
     insertChart: () => void;
     insertImage?: () => void;

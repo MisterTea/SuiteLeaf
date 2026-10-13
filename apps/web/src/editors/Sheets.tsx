@@ -56,6 +56,11 @@ import {
   shrinkRowGroups,
 } from "./sheet-row-groups";
 import { applyMergeButton, mergeButtonLabel } from "./sheet-merge";
+import {
+  cellsForPasteValues,
+  pastedScalar,
+  type CopiedCell,
+} from "./paste-values";
 import SheetColumnGroups, { type SheetColumnGroupsHandle } from "./sheet-column-groups-ui";
 import {
   contiguousColumnRanges,
@@ -882,6 +887,15 @@ export default function Sheets({
     pivotErrors = useRef(new Map<string, string>()),
     valueChosen = useRef(false);
   const startingUp = useRef(true);
+  /** Range last copied or cut, so Paste values can write calculated numbers. */
+  const copiedRange = useRef<{
+    sheetId: string;
+    startRow: number;
+    endRow: number;
+    startColumn: number;
+    endColumn: number;
+  } | null>(null);
+  const rememberCopiedRange = useRef(() => {});
   const readOnlyRef = useRef(readOnly);
   readOnlyRef.current = readOnly;
   const canCommentRef = useRef(canComment);
@@ -1407,10 +1421,13 @@ export default function Sheets({
       const changedSheets = new Set<string>();
       const publishValue = () => {
         try {
-          const value = workbook.getActiveRange()?.getValue();
+          const range = workbook.getActiveRange();
+          const value = range?.getValue();
           container.dataset.activeValue = value == null ? "" : String(value);
+          container.dataset.activeFormula = range?.getFormula?.() ?? "";
         } catch {
           container.dataset.activeValue = "";
+          container.dataset.activeFormula = "";
         }
       };
       publishValue();
@@ -1789,6 +1806,17 @@ export default function Sheets({
     const t = setTimeout(() => setNotice(""), 8000);
     return () => clearTimeout(t);
   }, [notice]);
+  // Snapshot the selection before Univer handles Cmd/Ctrl+C or +X, so Paste
+  // values still knows the source after the selection moves.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) return;
+      const key = event.key.toLowerCase();
+      if (key === "c" || key === "x") rememberCopiedRange.current();
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, []);
   useEffect(() => {
     if (!api.current) return;
     try {
@@ -1853,7 +1881,26 @@ export default function Sheets({
   const toggleBold = () => toggleTextStyle("sheet.command.set-range-bold");
   const toggleItalic = () => toggleTextStyle("sheet.command.set-range-italic");
   const toggleStrike = () => toggleTextStyle("sheet.command.set-range-stroke");
+  rememberCopiedRange.current = () => {
+    try {
+      const sheet = book.current?.getActiveSheet();
+      const range = book.current?.getActiveRange()?.getRange();
+      if (!sheet || !range) return;
+      const { startRow, endRow, startColumn, endColumn } = range;
+      if (![startRow, endRow, startColumn, endColumn].every((n) => Number.isInteger(n)))
+        return;
+      if (endRow < startRow || endColumn < startColumn) return;
+      copiedRange.current = {
+        sheetId: sheet.getSheetId(),
+        startRow,
+        endRow,
+        startColumn,
+        endColumn,
+      };
+    } catch {}
+  };
   const clipboard = async (action: "cut" | "copy" | "paste") => {
+    if (action === "copy" || action === "cut") rememberCopiedRange.current();
     let done = false;
     try {
       done = !!(await api.current?.executeCommand(`univer.command.${action}`));
@@ -1863,6 +1910,45 @@ export default function Sheets({
     setNotice(
       `Your browser doesn't let the Edit menu ${action} here. Use ${key} to ${action}.`,
     );
+  };
+  // One click writes calculated values. Ordinary Paste still writes the formula.
+  const pasteValues = () => {
+    if (readOnlyRef.current) return;
+    const copied = copiedRange.current;
+    const workbook = book.current;
+    if (!copied || !workbook) {
+      setNotice("Copy cells first, then choose Paste values.");
+      return;
+    }
+    const sourceSheet = workbook.getSheetBySheetId(copied.sheetId);
+    const destSheet = workbook.getActiveSheet();
+    const dest = workbook.getActiveRange()?.getRange();
+    if (!sourceSheet || !destSheet || !dest) return;
+    const rows = copied.endRow - copied.startRow + 1;
+    const columns = copied.endColumn - copied.startColumn + 1;
+    try {
+      const source = sourceSheet.getRange(
+        copied.startRow,
+        copied.startColumn,
+        rows,
+        columns,
+      );
+      const formulas = source.getFormulas() as string[][];
+      const values = source.getValues() as unknown[][];
+      const cells: CopiedCell[][] = values.map((row, r) =>
+        row.map((value, c) => ({
+          formula: formulas[r]?.[c] ? formulas[r][c] : null,
+          value: pastedScalar(value),
+        })),
+      );
+      destSheet
+        .getRange(dest.startRow, dest.startColumn, rows, columns)
+        .setValues(cellsForPasteValues(cells));
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+      return;
+    }
+    persist.current();
   };
   const deleteValues = () => {
     const ranges =
@@ -2242,6 +2328,7 @@ export default function Sheets({
         cut: () => void clipboard("cut"),
         copy: () => void clipboard("copy"),
         paste: () => void clipboard("paste"),
+        pasteValues,
         deleteValues,
         insertChart: () => startPanel("chart"),
         insertPivot: () => startPanel("pivot"),
