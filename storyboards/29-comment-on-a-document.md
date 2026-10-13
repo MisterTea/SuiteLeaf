@@ -18,15 +18,16 @@ Jordan is reviewing Alex's "Quarterly Report" before it goes to the board. Jorda
 ## Scenes
 
 1. **Open the report.** Jordan opens "Quarterly Report" on their own computer.
-2. **Comment on a phrase.** Jordan selects "grew 12%" and presses Cmd/Ctrl+Alt+M. A comment card opens in the right margin level with the line, already focused. The phrase gets a yellow highlight.
-3. **Write and post.** Jordan types "Is 12% right? Finance says 11.5%." and presses Cmd/Ctrl+Enter. The card shows Jordan's name, the time, and the text.
-4. **Second comment by button.** Jordan selects a heading and clicks the "Add comment" button that appears in the margin beside the selection, then writes "Can we shorten this?"
-5. **Close and reopen.** Jordan closes the file and opens it again. Both highlights and cards are still there.
-6. **Send to Alex.** Jordan chooses File › Export DOCX. Alex opens it in Word: both comments show in Word's margin, anchored to the same words and signed "Jordan".
-7. **Alex replies in Word.** Alex replies "Yes, 11.5% — fixed" to the first comment, corrects the number, and sends the .docx back.
-8. **Import the reply.** Jordan opens the .docx in SuiteLeaf. The first card now shows Alex's reply under Jordan's comment, and the import summary says "2 comment threads imported".
-9. **Resolve.** Jordan clicks the tick on the first thread. The highlight disappears, and the card collapses to "Resolved by Jordan".
-10. **Find it again.** The Comments button in the header opens a panel with "Open" and "Resolved" tabs. Under Resolved, Jordan clicks the thread, it scrolls to "grew 11.5%", and **Reopen** brings it back.
+2. **Comment on a phrase.** Jordan selects "grew 12%" and presses Cmd/Ctrl+Alt+M. A comment card opens in the right margin, the comment box focused, and the phrase turns yellow.
+3. **Name, then post.** Jordan types "Is 12% right? Finance says 11.5%." and presses Cmd/Ctrl+Enter. The first comment on this computer asks for a name. Jordan types "Jordan" and presses Cmd/Ctrl+Enter again. The card shows Jordan, the time, and the question. Later comments skip the name.
+4. **The highlight stays put.** Typing before the phrase leaves the highlight on "grew 12%". Typing inside it extends the highlight. Splitting the paragraph keeps both pieces highlighted. Undo puts the sentence back.
+5. **Second comment by button.** Jordan selects "Outlook for the rest of the year" and clicks **Add comment** in the margin. No name is asked. Jordan writes "Can we shorten this?" and posts with Cmd/Ctrl+Enter.
+6. **Close and reopen.** Jordan goes back to the files and opens the report again. Both highlights and cards are still there.
+7. **Send to Alex.** Jordan chooses File › Export DOCX. The file carries both threads, on the same words, signed Jordan.
+8. **Alex replies in Word.** Alex replies "Yes, 11.5% — fixed", corrects the figure, and sends the file back. The recording shows that hand-off with a caption; SuiteLeaf then opens the file Alex sent.
+9. **Import the reply.** The banner reads "2 comment threads imported". The first card shows Alex's reply under Jordan's question, on "grew 11.5%".
+10. **Resolve.** Jordan clicks the tick. The highlight disappears and the card collapses to "Resolved by Jordan". Exporting again keeps that thread in the Word file, marked done.
+11. **Find it again.** The Comments button opens a panel with Open and Resolved tabs. Under Resolved, Jordan clicks the thread and **Reopen** brings the highlight and the reply back.
 
 ## Google Workspace benchmark
 
@@ -53,14 +54,27 @@ Known pain points:
 
 ## Success looks like
 
-- The report has two threads: one resolved, with Alex's reply from Word, and one open.
-- The same threads, with replies and done state, appear in Word after another export.
+- Both threads are on the report: the growth thread shows Jordan's question and Alex's reply on "grew 11.5%", and the outlook thread is still open.
+- Resolving collapsed that thread to "Resolved by Jordan" and cleared the highlight; Reopen put it back.
+- A second DOCX export still contains the reply and marks the resolved thread done.
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| 1. Cmd/Ctrl+Alt+M focuses the comment box; Cmd/Ctrl+Enter posts it | Met | Video 0:08–0:14. With a saved name, `document comments post from the keyboard and stay linked to the text` asserts the box is focused and posts with no click. The first comment on a computer adds the name step in criterion 7. |
+| 2. Highlight stays linked through edits before, inside, and splitting the paragraph | Met | Video 0:15 (typed inside "12%") and 0:19 (paragraph split, both pieces highlighted). Same browser test. |
+| 3. Reply, resolve, and reopen are one click once the thread is open; resolved threads are one click away in the panel | Met | Reply is the button on the open card. Video 0:38 resolve tick, 0:42 Resolved tab, 0:46 Reopen. |
+| 4. Threads survive save, close, reopen, and Download | Met | Video 0:28 close and reopen. Browser test downloads the SuiteLeaf file and checks the author, quote, and orphan flag. |
+| 5. DOCX export writes every thread, including replies; resolved threads are marked done, not dropped | Met | Video 0:32 export, and the second export after resolve. `tests/doc-comments.test.ts` checks authors, anchors, replies, and `w15:done="1"` with no reply required. |
+| 6. Opening a DOCX imports threads on the same text, with authors, dates, replies, done state, and a count | Met | Video 0:36 banner "2 comment threads imported", Alex's reply on "grew 11.5%". Same vitest. |
+| 7. The first comment asks for a display name once; nothing is signed "Owner" | Met | Video 0:10 name field, then the second comment skips it. Cards say Jordan and Alex. |
+| 8. Deleting the commented text keeps the thread, marked "Original text deleted" | Met | Browser test deletes the anchor and checks the panel, the downloaded file, and reopen. Not in the story video, so the ending stays the two live threads. |
 
 ## Gaps and notes
 
-- **Docs has no comments.** `Docs.tsx` loads no comment mark or extension, there's no Insert › Comment item, and Cmd/Ctrl+Alt+M does nothing.
-- **The header Comments button only works in Sheets.** It calls `sheetActions.openComments`, which is undefined for Docs and Slides, so clicking it there does nothing.
-- **Word comments are dropped silently on import.** `word.ts` converts with Mammoth and doesn't read `comments.xml`. Its list of feature checks (tables, footnotes, tracked changes, and so on) doesn't include comments, so there's no warning either.
-- **DOCX export writes no comments part.** `docx-export.ts` has no `comments.xml` output.
-- A device display name already exists (`identity.ts`, used for Sheets comments), so Docs comments can use it from the start.
-- In single-node mode comments live in the file, so nobody is notified. That's expected, and the .docx round trip is how they reach someone else.
+- The recording does not launch Microsoft Word. Alex's reply is written into the exported package (a reply comment, the thread link, and "grew 11.5%") and opened again. That package is what Word reads; the vitest checks the same comments, authors, and done flags.
+- In single-node mode comments live in the file, so nobody is notified. The .docx round trip is how they reach someone else.
+- A selection that is already entirely inside a comment focuses that thread instead of stacking a second anchor on the same words.
+- When two tall cards would run off the bottom of the window, the page scrolls so both stay in view, which can leave a short resolved chip a little above its line.
+- Suggesting mode, sharing, spelling, and tables of contents or footnotes are other storyboards and are not built here.

@@ -73,6 +73,7 @@ import {
   type Point,
 } from "./doc-find";
 import { documentPlainText } from "./doc-text";
+import { commentExtensions, DocComments } from "./doc-comments";
 import { slugify, uniqueSlug, anchorHref, isInternalAnchor } from "../anchors";
 
 import { DocumentPagination, PageBreak } from "./doc-pagination";
@@ -105,6 +106,7 @@ export const extensions: Extensions = [
   TableKit.configure({ table: { resizable: true } }),
   CharacterCount,
   DocumentSearchHighlight,
+  ...commentExtensions,
   Superscript,
   Subscript,
   Extension.create({
@@ -188,6 +190,9 @@ export default function Docs({
     error: string;
   } | null>(null);
   const openLink = useRef(() => {});
+  const insertComment = useRef(() => {});
+  const openComments = useRef(() => {});
+  const [commentGutter, setCommentGutter] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(() =>
     window.innerWidth < 700 ? "Fit" : "100%",
   );
@@ -271,6 +276,16 @@ export default function Docs({
           if (readOnlyRef.current) return true;
           event.preventDefault();
           openLink.current();
+          return true;
+        }
+        if (
+          (event.metaKey || event.ctrlKey) &&
+          event.altKey &&
+          !event.shiftKey &&
+          event.code === "KeyM"
+        ) {
+          event.preventDefault();
+          insertComment.current();
           return true;
         }
         if (
@@ -628,6 +643,8 @@ export default function Docs({
         insertHorizontalRule: () =>
           editor.chain().focus().setHorizontalRule().run(),
         insertPageBreak: () => editor.chain().focus().setPageBreak().run(),
+        insertComment: () => insertComment.current(),
+        openComments: () => openComments.current(),
         openPageSetup,
         clearFormatting: () =>
           editor.chain().focus().unsetAllMarks().clearNodes().run(),
@@ -788,10 +805,13 @@ export default function Docs({
     pageDraft.margin >= 24 &&
     pageDraft.margin <= 144;
   const dimensions = pageDimensions(pageSettings);
-  const pageZoom =
-    zoomLevel === "Fit"
+  const requestedZoom =
+    zoomLevel === "Fit" ? 1 : Number.parseInt(zoomLevel, 10) / 100;
+  const pageZoom = commentGutter
+    ? Math.min(requestedZoom, pageViewportWidth / dimensions.width)
+    : zoomLevel === "Fit"
       ? Math.min(1, pageViewportWidth / dimensions.width)
-      : parseInt(zoomLevel) / 100;
+      : requestedZoom;
   const search = documentMatches(editor.state.doc, findOpen ? query : "", {
     matchCase,
     regex: useRegex,
@@ -1729,7 +1749,10 @@ export default function Docs({
         </div>
       ) : null}
 
-      <div className="document-stage" ref={documentStage}>
+      <div
+        className={`document-stage${commentGutter ? " with-comments" : ""}`}
+        ref={documentStage}
+      >
         <aside className="outline">
           <div className="outline-header">
             <span className="outline-tab active">Outline</span>
@@ -1814,6 +1837,15 @@ export default function Docs({
             <EditorContent editor={editor} />
           </div>
         </div>
+        <DocComments
+          editor={editor}
+          stageRef={documentStage}
+          onGutter={setCommentGutter}
+          bind={(api) => {
+            insertComment.current = api.insert;
+            openComments.current = api.openPanel;
+          }}
+        />
       </div>
       <footer className="editor-status">
         {state?.words} words{" "}
