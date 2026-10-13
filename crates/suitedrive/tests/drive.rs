@@ -516,3 +516,49 @@ fn sharing_notifies_in_the_app_and_keep_copy_is_owned() {
         .unwrap();
     assert!(n.drive.notices(&rosa).unwrap().is_empty());
 }
+
+#[test]
+fn the_last_editor_is_the_head_version_author_not_the_owner() {
+    let n = node();
+    let (rosa, sam, alex) = (user("rosa"), user("sam"), user("alex"));
+    let file = n
+        .drive
+        .create(&rosa, None, "Watering rota.sldoc", "file", None)
+        .unwrap();
+    assert!(file.last_author_id.is_none());
+    assert!(file.last_edited_at.is_none());
+
+    let saved = n.drive.write(&rosa, &file.id, None, None, b"rosa").unwrap();
+    assert_eq!(saved.last_author_id.as_deref(), Some(rosa.id.as_str()));
+    assert!(saved.last_edited_at.is_some());
+    assert_eq!(saved.owner_id, rosa.id);
+
+    n.drive
+        .share(&rosa, &file.id, "user", &sam.id, Some(Role::Editor))
+        .unwrap();
+    let edited = n
+        .drive
+        .write(
+            &sam,
+            &file.id,
+            saved.head_version_id.as_deref(),
+            None,
+            b"sam",
+        )
+        .unwrap();
+    assert_eq!(edited.owner_id, rosa.id);
+    assert_eq!(edited.last_author_id.as_deref(), Some(sam.id.as_str()));
+    assert_ne!(edited.last_edited_at, saved.last_edited_at);
+
+    n.drive
+        .share(&rosa, &file.id, "user", &alex.id, Some(Role::Viewer))
+        .unwrap();
+    let seen = n.drive.get(&alex, &file.id).unwrap();
+    assert_eq!(seen.role, Some(Role::Viewer));
+    assert_eq!(seen.last_author_id.as_deref(), Some(sam.id.as_str()));
+    assert_eq!(seen.last_edited_at, edited.last_edited_at);
+
+    let listed = n.drive.list(&rosa, None).unwrap();
+    let row = listed.iter().find(|item| item.id == file.id).unwrap();
+    assert_eq!(row.last_author_id.as_deref(), Some(sam.id.as_str()));
+}

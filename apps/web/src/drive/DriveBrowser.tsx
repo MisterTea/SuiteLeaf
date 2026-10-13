@@ -22,6 +22,8 @@ import {
 } from "lucide-react";
 import { isNativeName, kindFromName } from "@suiteleaf/core";
 import { drive, getSession, type DriveItem } from "../node-client";
+import { versionWhen } from "../editors/version-history-model";
+import { DRIVE_SAVED, lastEditOf } from "./last-edit";
 import { accessLabel } from "./roles";
 import { ShareNotices } from "./share-notices";
 import { formatModified } from "./status";
@@ -234,6 +236,9 @@ export function DriveBrowser({
     | null
   >(null);
   const restored = useRef(initial.path.length > 1);
+  const seenEdit = useRef(new Map<string, string>());
+  const flash = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [justEdited, setJustEdited] = useState<ReadonlySet<string>>(new Set());
   const folder = path[path.length - 1];
   const shown = useRef(""),
     request = useRef(0);
@@ -266,12 +271,33 @@ export function DriveBrowser({
     }
   }, [folder.id, view]);
   useEffect(() => void refresh(), [refresh, refreshKey]);
-  // Shared with me updates when someone shares, without reloading the page.
   useEffect(() => {
-    if (view !== "shared" || folder.id !== null) return;
+    const changed: string[] = [];
+    const next = new Map<string, string>();
+    for (const item of items) {
+      const edit = lastEditOf(item);
+      const label = edit ? `${edit.name}\n${edit.at}` : "";
+      next.set(item.id, label);
+      const previous = seenEdit.current.get(item.id);
+      if (previous !== undefined && previous !== label) changed.push(item.id);
+    }
+    seenEdit.current = next;
+    if (!changed.length) return;
+    setJustEdited(new Set(changed));
+    clearTimeout(flash.current);
+    flash.current = setTimeout(() => setJustEdited(new Set()), 2400);
+  }, [items]);
+  useEffect(() => () => clearTimeout(flash.current), []);
+  // Another person can save, or share, while this list is already open.
+  useEffect(() => {
     const timer = setInterval(() => void refresh(), 2000);
-    return () => clearInterval(timer);
-  }, [view, folder.id, refresh]);
+    const onSave = () => void refresh();
+    window.addEventListener(DRIVE_SAVED, onSave);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener(DRIVE_SAVED, onSave);
+    };
+  }, [refresh]);
   useEffect(() => {
     onFolderChange?.(folder.id, folder.name);
     if (inline) place.save({ view, path });
@@ -384,16 +410,26 @@ export function DriveBrowser({
               : "This folder is empty."}
           </p>
         ) : (
-          visible.map((item) => (
-            <div className="drive-row" role="listitem" key={item.id}>
+          visible.map((item) => {
+            const edit = lastEditOf(item);
+            const edited = edit
+              ? `Last edited by ${edit.name}, ${versionWhen(edit.at)}`
+              : undefined;
+            return (
+            <div
+              className={`drive-row${justEdited.has(item.id) ? " just-edited" : ""}`}
+              role="listitem"
+              key={item.id}
+            >
               <button
                 className="drive-item"
                 aria-label={item.name}
+                aria-description={edited}
                 disabled={busy}
                 onClick={() => choose(item)}
                 title={
                   item.available
-                    ? item.name
+                    ? edited || item.name
                     : `${item.name} (still replicating)`
                 }
               >
@@ -412,12 +448,20 @@ export function DriveBrowser({
                     Copying…
                   </small>
                 ) : null}
-                <time
-                  dateTime={item.updatedAt}
-                  title={new Date(item.updatedAt).toLocaleString()}
-                >
-                  {formatModified(item.updatedAt)}
-                </time>
+                {edit ? (
+                  <time dateTime={edit.at} title={edited} aria-live="polite">
+                    <span className="drive-editor">{edit.name}</span>
+                    {" · "}
+                    {versionWhen(edit.at)}
+                  </time>
+                ) : (
+                  <time
+                    dateTime={item.updatedAt}
+                    title={new Date(item.updatedAt).toLocaleString()}
+                  >
+                    {formatModified(item.updatedAt)}
+                  </time>
+                )}
               </button>
               {view === "shared" && item.kind === "file" ? (
                 <button
@@ -459,7 +503,8 @@ export function DriveBrowser({
                 </span>
               ) : null}
             </div>
-          ))
+            );
+          })
         )}
       </div>
       {mode === "save" ? (

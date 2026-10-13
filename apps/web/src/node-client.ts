@@ -55,6 +55,11 @@ export interface DriveItem {
   role: DriveRole | null;
   /** Display name of the owner, when the server includes it (shared lists). */
   ownerName?: string | null;
+  /** Head version author. Not the owner, and absent for folders. */
+  lastAuthorId?: string | null;
+  lastAuthorName?: string | null;
+  /** When that head version was written. Same instant version history shows. */
+  lastEditedAt?: string | null;
   available: boolean;
 }
 export type DriveRole = "viewer" | "commenter" | "editor" | "owner";
