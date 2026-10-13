@@ -1,6 +1,6 @@
 import { Type } from "@earendil-works/pi-ai";
 import type { ChartDefinition, PivotDefinition, SheetFile } from "@suiteleaf/core";
-import { applyNamedFormat, numberFormatById } from "../../formats";
+import { numberFormatById } from "../../formats";
 import { moveCursor } from "../cursor";
 import { ToolError, tool, type SuiteTool } from "../host";
 
@@ -252,6 +252,17 @@ export function cellInput(value: unknown): unknown {
   return s;
 }
 
+/** `code` showing exactly `places` decimals: ("0%", 1) → "0.0%", ('"$"#,##0.00', 0) → '"$"#,##0'. Dates are left as they are. */
+export function withDecimals(code: string, places: number) {
+  if (/[dmyhs]/i.test(code.replace(/"[^"]*"/g, "").replace(/general/i, ""))) return code;
+  const base = !code.trim() || /^general$/i.test(code.trim()) ? "#,##0" : code;
+  const digits = places > 0 ? `.${"0".repeat(places)}` : "";
+  return base
+    .split(";")
+    .map((part) => part.replace(/0(\.0+)?(?![\d.])/, `0${digits}`))
+    .join(";");
+}
+
 const NUMBER_FORMATS: Record<string, string> = {
   currency: "currency2",
   accounting: "accounting",
@@ -365,7 +376,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       name: "format_cells",
       label: "Format cells",
       description:
-        "Format a range: number_format (currency, accounting, percent, percent_whole, number, date, plain), decimals (+1 or -1 to add or remove a decimal place), bold, italic, text_color and fill_color (#rrggbb), align (left, center, right), borders (true for thin borders on every cell), wrap.",
+        "Format a range: number_format (currency $1,020.00, accounting, percent 54.3%, percent_whole 54%, number 1,020.00, date, plain), decimals (how many decimal places to show, e.g. 0 for $1,020 or 2 for 54.26%; leave it out to keep the format's usual places), bold, italic, text_color and fill_color (#rrggbb), align (left, center, right), borders (true for thin borders on every cell), wrap.",
       parameters: Type.Object({
         range: Type.String(),
         number_format: Type.Optional(
@@ -385,16 +396,17 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         select(args.range);
         const range = sheet().getRange(a1(parseA1(args.range)));
         const done: string[] = [];
+        const places = args.decimals === undefined ? undefined : Math.max(0, Math.min(10, Math.round(args.decimals)));
         if (args.number_format) {
-          const id = NUMBER_FORMATS[args.number_format];
-          if (!id || !applyNamedFormat(id, (code) => range.setNumberFormat(code)).ok)
-            throw new ToolError(`Unknown number format ${args.number_format}.`);
-          done.push(`${args.number_format} (${numberFormatById(id)!.code})`);
-        }
-        if (args.decimals) {
-          const command = args.decimals > 0 ? "sheet.command.numfmt.add.decimal.command" : "sheet.command.numfmt.subtract.decimal.command";
-          for (let i = 0; i < Math.min(4, Math.abs(args.decimals)); i++) await ctx.api.executeCommand(command);
-          done.push(`${args.decimals > 0 ? "more" : "fewer"} decimals`);
+          const named = numberFormatById(NUMBER_FORMATS[args.number_format] ?? "");
+          if (!named) throw new ToolError(`Unknown number format ${args.number_format}.`);
+          const code = places === undefined ? named.code : withDecimals(named.code, places);
+          range.setNumberFormat(code);
+          done.push(`${args.number_format}${places === undefined ? "" : ` with ${places} decimal place(s)`} (${code})`);
+        } else if (places !== undefined) {
+          const codes = (range.getNumberFormats() as string[][]).map((row) => row.map((code) => withDecimals(code ?? "", places)));
+          range.setNumberFormats(codes);
+          done.push(`${places} decimal place(s) (${[...new Set(codes.flat())].join(", ")})`);
         }
         if (args.bold !== undefined) {
           range.setFontWeight(args.bold ? "bold" : "normal");
