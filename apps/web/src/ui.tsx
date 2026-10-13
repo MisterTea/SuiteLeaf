@@ -257,6 +257,23 @@ export type EditorActions = {
     showGridlines: (visible: boolean) => void;
     showFormulaBar: (visible: boolean) => void;
   };
+  slideActions?: {
+    undo: () => void;
+    redo: () => void;
+    cut: () => void;
+    copy: () => void;
+    paste: () => void;
+    insertTextBox: () => void;
+    insertImage: () => void;
+    insertShape: (shape: "rect" | "roundRect" | "ellipse") => void;
+    newSlide: () => void;
+    duplicate: () => void;
+    deleteSlides: () => void;
+    move: (where: "up" | "down" | "start" | "end") => void;
+    toggleBold: () => void;
+    toggleItalic: () => void;
+    align: (alignment: "left" | "center" | "right") => void;
+  };
 };
 export type SheetView = {
   frozenRows: number;
