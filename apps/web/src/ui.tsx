@@ -402,6 +402,8 @@ export type EditorActions = {
     pasteValues?: () => void;
     /** Copy the top cell of the selection down, shifting relative row references. */
     fillDown?: () => void;
+    /** Copy the left cell of the selection across, shifting relative column references. */
+    fillRight?: () => void;
     deleteValues: () => void;
     insertChart: () => void;
     insertImage?: () => void;

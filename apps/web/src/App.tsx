@@ -2311,6 +2311,11 @@ function Workspace() {
                     Fill down
                   </MenuItem>
                   <MenuItem
+                    onSelect={() => actions.current?.sheetActions?.fillRight?.()}
+                  >
+                    Fill right
+                  </MenuItem>
+                  <MenuItem
                     shortcut="Delete"
                     onSelect={() =>
                       actions.current?.sheetActions?.deleteValues()
