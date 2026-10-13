@@ -3417,6 +3417,9 @@ body.agent-open .loading {
 body.agent-open .workspace {
   width: calc(100vw - var(--agent-width));
 }
+body.agent-open .gdocs-modal-overlay {
+  right: var(--agent-width);
+}
 .ai-button {
   display: inline-flex;
   align-items: center;
