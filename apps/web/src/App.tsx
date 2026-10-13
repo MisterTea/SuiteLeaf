@@ -2896,9 +2896,13 @@ function Workspace() {
             aria-label="Comments"
             onClick={() => {
               actions.current?.docActions?.openComments?.();
-              actions.current?.sheetActions?.openComments?.();
-              if (f.kind === "sheet")
-                window.dispatchEvent(new Event("suiteleaf:open-sheet-comments"));
+              if (f.kind === "sheet") {
+                // Opening and the header event both toggle the panel, so only one runs.
+                const open = actions.current?.sheetActions?.openComments;
+                if (open) open();
+                else
+                  window.dispatchEvent(new Event("suiteleaf:open-sheet-comments"));
+              }
               actions.current?.slideActions?.openComments?.();
             }}
           >

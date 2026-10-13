@@ -787,6 +787,7 @@ export default function Sheets({
   changes.current = onChange;
   error.current = onError;
   const [ready, setReady] = useState(false),
+    [booted, setBooted] = useState(false),
     [panel, setPanel] = useState<"chart" | "pivot" | null>(null),
     [editing, setEditing] = useState<string>(),
     [range, setRange] = useState("A1:B5"),
@@ -1061,6 +1062,7 @@ export default function Sheets({
         persist.current();
       };
       book.current = workbook;
+      setBooted(true);
       rankFormulaSuggestions(injector.get(IDescriptionService));
       // Authors from other devices are unknown here; without a profile Univer
       // hides their name and the reply-to button.
@@ -1912,7 +1914,9 @@ export default function Sheets({
     else sheet.setFrozenColumns(count);
   };
   useEffect(() => {
-    if (!ready) return;
+    // Menus register once the workbook exists. Permission restore can fail
+    // without ever reaching the steady lifecycle, and viewers still need them.
+    if (!booted) return;
     printSheet.current = async () => {
       await api.current.getFormula().onCalculationResultApplied(10000);
       const s = book.current.getActiveSheet();
@@ -2102,7 +2106,7 @@ export default function Sheets({
         openSpelling: () => spelling.current?.open(),
       },
     });
-  }, [ready, file.title, onActions]);
+  }, [booted, file.title, onActions]);
   const startPanel = (type: "chart" | "pivot", id?: string) => {
     moreTools.setOpen(false);
     setPanel(type);
