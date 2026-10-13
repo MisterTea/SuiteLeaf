@@ -37,8 +37,20 @@ In Google Docs the path is Format, Line & paragraph spacing, then a preset ([Doc
 
 The welcome paragraph is open at 1.5 and the motion is double-spaced. Reopening the file, and the Word file, keep both.
 
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| One control, with Single, 1.15, 1.5, and Double. No second dialog. | Met | Video 0:07. The list opens under the toolbar button and shows all four presets. `tests/browser/line-spacing.spec.ts` |
+| The control shows the caret's paragraph value. | Met | Video 0:07 Single is checked. At 0:16 the button reads Double. At 0:22, after reopen, Double is checked on a motion line. |
+| 1.5 changes only the paragraphs in the selection. | Met | Video 0:09. The welcome opens and the motion list stays single. `tests/doc-line-spacing.test.ts` |
+| Double on the motion does not reset the welcome. | Met | Video 0:16. The three motion lines spread out and the welcome stays at 1.5. |
+| Both values survive save and reopen. | Met | Video 0:18–0:22. She leaves and opens Garden club minutes again. |
+| The .docx records each paragraph's spacing. | Met | Video 0:24 File › Export DOCX. Welcome is `w:line="360"`, each motion line is `480`, and the Motion label is `240`. `tests/doc-line-spacing.test.ts` |
+
 ## Gaps and notes
 
-- Paragraphs have no spacing attribute today.
-- Space before and space after a paragraph are out of scope.
-- Do not change page size, headers, or page numbers.
+- Space before and space after a paragraph are still out of scope.
+- Opening a Word file does not read paragraph spacing back in. Export writes it.
+- Page size, headers, and page numbers were left alone.
+- The document toolbar already wraps onto a second row. Line spacing sits beside the paragraph style on that row.
