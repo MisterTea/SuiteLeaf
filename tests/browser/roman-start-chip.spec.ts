@@ -99,12 +99,12 @@ test("the roman chip follows the starting number before apply", async ({ page })
   await expect(start).toHaveValue("1");
   await expect(dialog.getByRole("radio", { name: "1 / 2", exact: true })).toBeVisible();
   await expect(dialog.getByRole("radio", { name: "Page 1", exact: true })).toBeChecked();
-  await expect(dialog.getByRole("radio", { name: "i, ii, iii", exact: true })).toBeVisible();
+  await expect(dialog.getByRole("radio", { name: "i, ii", exact: true })).toBeVisible();
 
   await start.fill("4");
   await expect(start).toHaveValue("4");
   await expect(dialog).toBeVisible();
-  const romanAtFour = dialog.getByRole("radio", { name: "iv, v, vi", exact: true });
+  const romanAtFour = dialog.getByRole("radio", { name: "iv, v", exact: true });
   await expect(romanAtFour).toBeVisible();
   await expect(dialog.getByRole("radio", { name: "4 / 5", exact: true })).toBeVisible();
   await expect(dialog.getByRole("radio", { name: "Page 4", exact: true })).toBeChecked();
@@ -119,7 +119,7 @@ test("the roman chip follows the starting number before apply", async ({ page })
 
   await start.fill("12");
   await expect(start).toHaveValue("12");
-  const romanAtTwelve = dialog.getByRole("radio", { name: "xii, xiii, xiv", exact: true });
+  const romanAtTwelve = dialog.getByRole("radio", { name: "xii, xiii", exact: true });
   await expect(romanAtTwelve).toBeChecked();
   await expect(dialog.getByRole("radio", { name: "12 / 13", exact: true })).toBeVisible();
   await expect(dialog.getByRole("radio", { name: "Page 12", exact: true })).toBeVisible();
@@ -136,7 +136,7 @@ test("the roman chip follows the starting number before apply", async ({ page })
   await expect(dialog.getByRole("button", { name: "Apply", exact: true })).toBeEnabled();
 
   await start.fill("4");
-  await expect(dialog.getByRole("radio", { name: "iv, v, vi", exact: true })).toBeChecked();
+  await expect(dialog.getByRole("radio", { name: "iv, v", exact: true })).toBeChecked();
   await expect(dialog.getByRole("radio", { name: "4 / 5", exact: true })).toBeVisible();
   await expect(dialog.getByRole("radio", { name: "Page 4", exact: true })).toBeVisible();
   await expect.poll(() => numbers(page)).toEqual(["iv", "v"]);
@@ -153,7 +153,7 @@ test("the roman chip follows the starting number before apply", async ({ page })
   await expect.poll(() => numbers(page)).toEqual(["iv", "v"]);
   const again = await openSetup(page);
   await expect(again.getByRole("spinbutton", { name: "Start at" })).toHaveValue("4");
-  await expect(again.getByRole("radio", { name: "iv, v, vi", exact: true })).toBeChecked();
+  await expect(again.getByRole("radio", { name: "iv, v", exact: true })).toBeChecked();
   await expect(again.getByRole("radio", { name: "4 / 5", exact: true })).toBeVisible();
   await expect(again.getByRole("radio", { name: "Page 4", exact: true })).toBeVisible();
 });

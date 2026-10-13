@@ -9,6 +9,7 @@ import {
   pageMarginsError,
   pageNumberFormatChips,
   pageNumberHint,
+  romanPageChip,
 } from "../packages/core/src/document-layout";
 
 describe("document page settings", () => {
@@ -305,19 +306,19 @@ describe("page number format chips", () => {
     expect(pageNumberFormatChips(1, 2)).toEqual({
       fraction: "1 / 2",
       page: "Page 1",
-      roman: "i, ii, iii",
+      roman: "i, ii",
     });
   });
   it("follows a start of 12, then 3, on a two-page file", () => {
     expect(pageNumberFormatChips(12, 2)).toEqual({
       fraction: "12 / 13",
       page: "Page 12",
-      roman: "xii, xiii, xiv",
+      roman: "xii, xiii",
     });
     expect(pageNumberFormatChips(3, 2)).toEqual({
       fraction: "3 / 4",
       page: "Page 3",
-      roman: "iii, iv, v",
+      roman: "iii, iv",
     });
   });
   it("matches the number drawn on the first page", () => {
@@ -338,27 +339,54 @@ describe("page number format chips", () => {
       ).toBe(chips.fraction);
     }
   });
-  it("lists three roman pages from the start", () => {
-    expect(pageNumberFormatChips(1, 2).roman).toBe("i, ii, iii");
-    expect(pageNumberFormatChips(4, 2).roman).toBe("iv, v, vi");
-    expect(pageNumberFormatChips(12, 2).roman).toBe("xii, xiii, xiv");
+  it("lists only the roman pages that exist", () => {
+    expect(romanPageChip(4, 1)).toBe("iv");
+    expect(romanPageChip(4, 2)).toBe("iv, v");
+    expect(romanPageChip(4, 3)).toBe("iv, v, vi");
+    expect(romanPageChip(4, 4)).toBe("iv … vii");
+    expect(romanPageChip(4, 5)).toBe("iv … viii");
+    expect(romanPageChip(1, 2)).toBe("i, ii");
+    expect(romanPageChip(1, 4)).toBe("i … iv");
+    expect(pageNumberFormatChips(4, 2).roman).not.toContain("vi");
     const started = {
       ...defaultPageSettings,
       pageNumbers: true,
       pageNumberFormat: "roman" as const,
+      pageNumberPosition: "top-right" as const,
+      pageNumberPositionSet: true,
       pageNumberStart: 4,
     };
-    expect(pageFace(started, 0, 2).pageNumber).toBe("iv");
-    expect(pageFace(started, 1, 2).pageNumber).toBe("v");
-    expect(pageNumberFormatChips(4, 2).roman.startsWith("iv, v")).toBe(true);
+    for (const pages of [1, 2, 3, 5]) {
+      const chip = pageNumberFormatChips(4, pages).roman;
+      const ends = chip.includes("…") ? chip.split(" … ") : chip.split(", ");
+      expect(pageFace(started, 0, pages).pageNumber).toBe(ends[0]);
+      expect(pageFace(started, pages - 1, pages).pageNumber).toBe(
+        ends[ends.length - 1],
+      );
+    }
     expect(pageNumberFormatChips(4, 2)).toMatchObject({
       fraction: "4 / 5",
       page: "Page 4",
+      roman: "iv, v",
+    });
+    expect(pageNumberFormatChips(4, 1)).toMatchObject({
+      fraction: "4 / 4",
+      roman: "iv",
+    });
+    expect(pageNumberFormatChips(4, 3)).toMatchObject({
+      fraction: "4 / 6",
+      roman: "iv, v, vi",
     });
     expect(pageNumberFormatChips(12, 2)).toMatchObject({
       fraction: "12 / 13",
       page: "Page 12",
+      roman: "xii, xiii",
     });
+    expect(pageNumberHint(started, 1)).toBe(
+      "Top right of the only page, “iv”. Editing the footer leaves it in place.",
+    );
+    expect(pageNumberHint(started, 1)).not.toContain("next page");
+    expect(pageNumberHint(started, 2)).toContain("“v”");
   });
 });
 

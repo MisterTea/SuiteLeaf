@@ -137,14 +137,14 @@ describe("live page numbers", () => {
     expect(pageNumberFormatChips(atTwelve.pageNumberStart, 2)).toEqual({
       fraction: "12 / 13",
       page: "Page 12",
-      roman: "xii, xiii, xiv",
+      roman: "xii, xiii",
     });
     expect(pageFace(atTwelve, 0, 2).pageNumber).toBe("Page 12");
     const atThree = livePageNumbers(atTwelve, { ...atTwelve, pageNumberStart: 3 });
     expect(pageNumberFormatChips(atThree.pageNumberStart, 2)).toEqual({
       fraction: "3 / 4",
       page: "Page 3",
-      roman: "iii, iv, v",
+      roman: "iii, iv",
     });
     expect(pageFace(atThree, 0, 2).pageNumber).toBe("Page 3");
     const refused = acceptPageNumberStart(atThree.pageNumberStart, "0");
@@ -153,7 +153,7 @@ describe("live page numbers", () => {
     expect(pageNumberFormatChips(kept, 2)).toEqual({
       fraction: "3 / 4",
       page: "Page 3",
-      roman: "iii, iv, v",
+      roman: "iii, iv",
     });
     expect(pageFace(atThree, 0, 2).pageNumber).toBe("Page 3");
   });
@@ -173,18 +173,18 @@ describe("live page numbers", () => {
     expect(pageNumberFormatChips(atFour.pageNumberStart, 2)).toEqual({
       fraction: "4 / 5",
       page: "Page 4",
-      roman: "iv, v, vi",
+      roman: "iv, v",
     });
     expect(pageFace(atFour, 0, 2).pageNumber).toBe("iv");
     expect(pageFace(atFour, 1, 2).pageNumber).toBe("v");
     const refused = acceptPageNumberStart(atFour.pageNumberStart, "0");
     expect(refused).toEqual({ start: 4, refused: true, text: "0" });
     const kept = refused.refused ? atFour.pageNumberStart : refused.start;
-    expect(pageNumberFormatChips(kept, 2).roman).toBe("iv, v, vi");
+    expect(pageNumberFormatChips(kept, 2).roman).toBe("iv, v");
     expect(livePageNumbers(atFour, { ...atFour, pageNumberStart: 0 })).toBe(atFour);
     const atTwelve = livePageNumbers(atFour, { ...atFour, pageNumberStart: 12 });
     expect(pageNumberFormatChips(atTwelve.pageNumberStart, 2).roman).toBe(
-      "xii, xiii, xiv",
+      "xii, xiii",
     );
     expect(pageFace(atTwelve, 0, 2).pageNumber).toBe("xii");
     expect(pageFace(atTwelve, 1, 2).pageNumber).toBe("xiii");

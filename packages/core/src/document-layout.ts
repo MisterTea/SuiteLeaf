@@ -217,11 +217,24 @@ export function pageNumberText(
   return `${page} / ${total}`;
 }
 /**
+ * The roman chip lists only the pages that exist, from the first printed
+ * number. One page starting at 4 is "iv". Two pages are "iv, v". Three
+ * pages are "iv, v, vi". Longer than three, it shows the first, an ellipsis,
+ * and the last, such as "iv … viii".
+ */
+export function romanPageChip(first: number, pageCount: number): string {
+  const count = Math.max(1, Math.floor(pageCount) || 1);
+  const start = Math.trunc(first);
+  const at = (offset: number) => lowerRoman(start + offset);
+  if (count > 3) return `${at(0)} … ${at(count - 1)}`;
+  return Array.from({ length: count }, (_, offset) => at(offset)).join(", ");
+}
+/**
  * Labels for the fraction, "Page N", and roman chips. They use the number
  * on the first page, so a start of 4 on two pages reads "4 / 5", "Page 4",
- * and "iv, v, vi". The roman chip lists three numbers from that start, the
- * same length as "i, ii, iii". Pass the last accepted start. The caller
- * keeps that number when the field is below 1, so the chips do not move.
+ * and "iv, v". The roman chip does not add a page the file does not have.
+ * Pass the last accepted start. The caller keeps that number when the field
+ * is below 1, so the chips do not move.
  */
 export function pageNumberFormatChips(
   start: number,
@@ -236,13 +249,10 @@ export function pageNumberFormatChips(
     0,
     count,
   );
-  const roman = [0, 1, 2]
-    .map((offset) => lowerRoman(shown.page + offset))
-    .join(", ");
   return {
     fraction: pageNumberText("fraction", shown.page, shown.total),
     page: pageNumberText("page", shown.page, shown.total),
-    roman,
+    roman: romanPageChip(shown.page, count),
   };
 }
 /** A start number is a whole page from 1 through 9999. Anything else starts at 1. */
@@ -398,13 +408,16 @@ export function pageNumberHint(settings: PageSettings, pageCount = 2): string {
     return `No number on the cover. The next page is “${shown}”, not “${asTwo}”. Start at stays for when the cover has a number. ${kept}`;
   }
   if (settings.pageNumberStart !== 1) {
-    const first = pageNumberAt(settings, 0, pageCount);
-    const second = pageNumberAt(settings, 1, pageCount);
+    const count = Math.max(1, Math.floor(pageCount) || 1);
+    const first = pageNumberAt(settings, 0, count);
     const started = pageNumberText(
       settings.pageNumberFormat,
       first.page,
       first.total,
     );
+    if (count < 2)
+      return `${numberPlace(settings)} of the only page, “${started}”. ${kept}`;
+    const second = pageNumberAt(settings, 1, count);
     const next = pageNumberText(
       settings.pageNumberFormat,
       second.page,
