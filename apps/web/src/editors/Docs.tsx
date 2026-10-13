@@ -420,6 +420,19 @@ export default function Docs({
           if (readOnlyRef.current) return true;
           return editor?.commands.setPageBreak() ?? false;
         }
+        // iOS WebKit does not run the Enter keymap on keydown. It retries
+        // handleKeyDown 200ms later with a plain Event, not a KeyboardEvent.
+        if (
+          event.key === "Enter" &&
+          !event.shiftKey &&
+          !event.altKey &&
+          !event.metaKey &&
+          !event.ctrlKey &&
+          !(event instanceof KeyboardEvent)
+        ) {
+          if (readOnlyRef.current) return true;
+          return editor?.commands.keyboardShortcut("Enter") ?? false;
+        }
         return false;
       },
       handlePaste: (_view, event) => {
@@ -441,10 +454,29 @@ export default function Docs({
             return false;
           if (!view.state.selection.empty) return false;
           event.preventDefault();
+          const parent = view.state.selection.$from.parent;
+          // Enter already opened a fresh paragraph. A second split would add a blank line.
+          if (parent.content.size === 0) return true;
+          const pos = view.state.selection.from;
           try {
-            view.dispatch(view.state.tr.split(view.state.selection.from));
+            view.dispatch(view.state.tr.split(pos));
           } catch {
             return false;
+          }
+          // iPhone WebKit keeps the DOM caret in the previous paragraph, so
+          // the next character is typed onto that line.
+          const dom = view.domAtPos(view.state.selection.from);
+          const selection = view.dom.ownerDocument.getSelection();
+          if (selection && dom.node) {
+            const range = view.dom.ownerDocument.createRange();
+            try {
+              range.setStart(dom.node, dom.offset);
+              range.collapse(true);
+              selection.removeAllRanges();
+              selection.addRange(range);
+            } catch {
+              // A fresh block can reject the range until the next frame.
+            }
           }
           return true;
         },
