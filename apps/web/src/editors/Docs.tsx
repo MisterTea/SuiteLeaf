@@ -120,6 +120,7 @@ import { DocWatermarkField, pageSetupToSave } from "./doc-watermark";
 import { columnLayout } from "./doc-columns";
 import { PageMarginFields } from "./page-setup-margins";
 import { HeaderEdgeFields } from "./header-edge";
+import { KeepWithNext, KeepWithNextControl } from "./doc-keep-next";
 
 export const extensions: Extensions = [
   DocumentPagination,
@@ -135,6 +136,7 @@ export const extensions: Extensions = [
   Highlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ["heading", "paragraph"] }),
   paragraphLineSpacing,
+  KeepWithNext,
   croppableImage,
   TableKit.configure({ table: { resizable: true } }),
   CharacterCount,
@@ -1988,6 +1990,7 @@ export default function Docs({
               arabicStart={arabicPage}
             />
             <EditorContent editor={editor} />
+            <KeepWithNextControl editor={editor} readOnly={readOnly} />
           </div>
         </div>
         <DocComments

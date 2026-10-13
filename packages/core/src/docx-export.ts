@@ -422,6 +422,7 @@ function blocks(
                 HeadingLevel.HEADING_6,
               ][Number(n.attrs?.level) - 1] ?? HeadingLevel.HEADING_1)
             : undefined,
+        ...(n.attrs?.keepNext === true ? { keepNext: true } : {}),
         ...(list
           ? list.ordered
             ? { numbering: { reference: "suiteleaf-list", level: list.level } }

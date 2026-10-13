@@ -7,6 +7,14 @@ import {
   pageDimensions,
 } from "@suiteleaf/core/document-layout";
 import type { JsonNode } from "@suiteleaf/core";
+import {
+  breakPosBeforeList,
+  keepWithNextBreak,
+  keepsWithNext,
+  markKeepNextLine,
+  nextBlockType,
+  staysWithFollowingBlock,
+} from "./doc-keep-next";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -78,7 +86,8 @@ type Boundary = {
   row?: boolean;
   columns?: number;
   manual?: boolean;
-  heading?: boolean;
+  /** The user asked this block to stay with the one after it. */
+  keepNext?: boolean;
   /** This heading is where arabic page numbers restart at 1. */
   arabic?: boolean;
   /** 0-based page this block lands on, after breaks. */
@@ -213,10 +222,13 @@ export const DocumentPagination = Extension.create({
                   return;
                 if (bottom - top <= bodyHeight) {
                   boundaries.push({
-                    pos,
+                    pos: breakPosBeforeList(view.state.doc, pos) ?? pos,
                     top,
                     bottom,
-                    heading: node.type.name === "heading",
+                    keepNext: staysWithFollowingBlock(
+                      { type: node.type.name, keepNext: keepsWithNext(node) },
+                      nextBlockType(parent, node),
+                    ),
                     arabic:
                       node.type.name === "heading" &&
                       node.attrs.startArabic === true,
@@ -225,7 +237,10 @@ export const DocumentPagination = Extension.create({
                 }
                 // A paragraph taller than a page is split at visual line boundaries.
                 boundaries.push(
-                  ...textLines(view, dom, pos, origin, scale, topMargin),
+                  ...markKeepNextLine(
+                    textLines(view, dom, pos, origin, scale, topMargin),
+                    keepsWithNext(node),
+                  ),
                 );
                 return false;
               });
@@ -241,14 +256,9 @@ export const DocumentPagination = Extension.create({
                     next.top + added > start + 0.5) ||
                   next.manual
                 ) {
-                  // Headings move with the block that follows them, as in Word and Docs.
-                  let first = i;
-                  while (
-                    !next.manual &&
-                    boundaries[first - 1]?.heading &&
-                    boundaries[first - 1].top + added > start + 0.5
-                  )
-                    first--;
+                  // Headings stay with the next paragraph. Keep with next is what
+                  // also carries a heading onto the list that follows it.
+                  const first = keepWithNextBreak(boundaries, i, start, added);
                   const b = boundaries[first];
                   for (let k = first; k <= i; k++) boundaries[k].page = page + 1;
                   const gap =
