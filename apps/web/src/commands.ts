@@ -119,6 +119,7 @@ const PARAGRAPH_LABELS = new Set([
   "Bulleted list",
   "Numbered list",
   "Page break",
+  "Tab stop",
 ]);
 
 export function commandGroup(path: string[], label: string, explicit?: string) {

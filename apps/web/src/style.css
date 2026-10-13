@@ -1620,6 +1620,75 @@ a {
   min-width: 0;
   margin-top: 0;
 }
+.document-content p[data-tab-stop] {
+  position: relative;
+}
+.document-content .doc-tab-guide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(26, 115, 232, 0.8);
+  pointer-events: none;
+}
+.document-content .doc-tab {
+  display: inline-block;
+  width: 0;
+  vertical-align: baseline;
+}
+.tab-stop-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin: 0 16px 4px;
+  padding: 4px 12px;
+  min-height: 32px;
+  background: var(--toolbar-bg);
+  border-radius: 16px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.tab-stop-bar label {
+  font-weight: 600;
+}
+.tab-stop-bar input {
+  width: 4.5em;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: right;
+}
+.tab-stop-bar input:focus {
+  outline: 2px solid #1a73e8;
+  border-color: #1a73e8;
+}
+.tab-stop-unit {
+  color: var(--text-secondary);
+}
+.tab-stop-hint {
+  color: var(--text-secondary);
+  font-size: 12px;
+  min-width: 0;
+}
+@media (max-width: 700px) {
+  .tab-stop-bar {
+    margin: 0 8px 4px;
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+}
+@media print {
+  .tab-stop-bar {
+    display: none !important;
+  }
+  .document-content .doc-tab-guide {
+    display: none;
+  }
+}
 .document-content h1,
 .document-content h2,
 .document-content h3 {

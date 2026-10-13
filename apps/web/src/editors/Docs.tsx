@@ -94,6 +94,8 @@ import {
 import { DocumentPagination, PageBreak } from "./doc-pagination";
 import { Grammar } from "./doc-grammar";
 import { useDocGrammar } from "./doc-grammar-ui";
+import { focusTabStop, TabCharacter, TabStops } from "./doc-tab-stops";
+import { TabStopBar } from "./doc-tab-stops-ui";
 import { Proofing } from "./doc-spelling";
 import { useDocProofing, type ProofingContext } from "./doc-proofing";
 import { DocImageAlt } from "./doc-image-alt-ui";
@@ -141,6 +143,8 @@ export const extensions: Extensions = [
   Superscript,
   Subscript,
   Equation,
+  TabCharacter,
+  TabStops,
   Extension.create({
     name: "suiteleafStrikeShortcut",
     addKeyboardShortcuts() {
@@ -820,6 +824,7 @@ export default function Docs({
           editor.chain().focus().toggleOrderedList().run(),
         tableActions,
         openSuggestions: () => suggestionApi.current?.openReview(),
+        focusTabStop,
       },
     });
   }, [editor, file.title, onActions, proofing.openWordCount, proofing.openSpelling, proofing.openDictionary, grammar.openGrammar, grammar.openIgnoredGrammar]);
@@ -1894,6 +1899,7 @@ export default function Docs({
         </div>
       ) : null}
 
+      <TabStopBar editor={editor} readOnly={readOnly} />
       <div
         className={`document-stage${commentGutter ? " with-comments" : ""}${citationsOpen ? " with-citations" : ""}`}
         ref={documentStage}

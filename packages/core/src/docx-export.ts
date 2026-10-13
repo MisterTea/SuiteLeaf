@@ -23,6 +23,8 @@ import {
   Paragraph,
   SectionType,
   SimpleField,
+  Tab,
+  TabStopType,
   Table,
   TableCell,
   TableOfContents,
@@ -226,6 +228,7 @@ function runs(
       ];
     }
     if (n.type === "hardBreak") return [new TextRun({ break: 1 })];
+    if (n.type === "tab") return [new TextRun({ children: [new Tab()] })];
     if (n.type === "image") {
       const match = /^data:image\/(png|jpeg|gif);base64,(.*)$/i.exec(
         String(n.attrs?.src),
@@ -397,9 +400,15 @@ function blocks(
       n.type === "paragraph" || n.type === "heading"
         ? docxLineSpacing(n.attrs?.lineSpacing)
         : undefined;
+    const stop = Number(n.attrs?.tabStop);
+    const tabStops =
+      Number.isFinite(stop) && stop > 0 && stop <= 22
+        ? [{ type: TabStopType.LEFT, position: Math.round(stop * 1440) }]
+        : undefined;
     return [
       new Paragraph({
         children,
+        tabStops,
         alignment: alignment(n.attrs?.textAlign),
         ...(spacing ? { spacing } : {}),
         heading:
