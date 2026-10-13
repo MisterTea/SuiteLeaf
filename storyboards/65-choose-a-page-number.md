@@ -50,9 +50,9 @@ The minutes show "Page 1" at the top right, with "Committee draft" still in the 
 
 | Criterion | Met? | Evidence |
 | --- | --- | --- |
-| Page setup shows the format and the position next to the page-numbers checkbox. No second dialog. | Met | Video ~0:08. One Page setup dialog; Format and Position sit under the checkbox. `tests/browser/page-numbers.spec.ts` |
-| "1 / 2" and "Page 1" are both available. Choosing "Page 1" hides the total. | Met | Video ~0:14–0:16. The pills read "Page 1" and "Page 2". |
-| Bottom center, bottom right, and top right each place the number there and remove it from the other spot. | Met | Video ~0:05 bottom right, ~0:13 bottom center, ~0:20 top right (the footer no longer has the number). |
-| The number is not ordinary text. Editing the footer does not delete it. | Met | Video ~0:18. "Committee draft" is on the left and the "Page 1" pill stays in the center. |
-| The format and position survive save and reopen. | Met | Video ~0:26. The browser test downloads the file and opens it again. |
-| Turning page numbers off removes them from every page in one step. | Met | Video ~0:30. The footer text remains. ~0:34 turns them on again and "Page 1" returns at the top right. |
+| Page setup shows the format and the position next to the page-numbers checkbox. No second dialog. | Met | Video ~0:07. One Page setup dialog; Format and Position sit under the checkbox. `tests/browser/page-numbers.spec.ts` |
+| "1 / 2" and "Page 1" are both available. Choosing "Page 1" hides the total. | Met | Video ~0:11–0:13. The pills read "Page 1" and "Page 2". |
+| Bottom center, bottom right, and top right each place the number there and remove it from the other spot. | Met | Video ~0:03 bottom right, ~0:12 bottom center, ~0:20 top right (the footer no longer has the number). |
+| The number is not ordinary text. Editing the footer does not delete it. | Met | Video ~0:17. "Committee draft" is on the left and the "Page 1" pill stays in the center. |
+| The format and position survive save and reopen. | Met | Video ~0:25. The browser test downloads the file and opens it again. |
+| Turning page numbers off removes them from every page in one step. | Met | Video ~0:28. The footer text remains. ~0:32 turns them on again and "Page 1" returns at the top right. |
