@@ -16,7 +16,10 @@ test("the assistant writes a document with Gemma in the main process", async () 
   const dir = await mkdtemp(join(tmpdir(), "suiteleaf-electron-ai-"));
   const app = await electron.launch({
     executablePath: process.env.SUITELEAF_PACKAGED_EXECUTABLE,
-    args: process.env.SUITELEAF_PACKAGED_EXECUTABLE ? [] : [resolve("apps/desktop/out/main/index.js")],
+    args: [
+      ...(process.env.SUITELEAF_PACKAGED_EXECUTABLE ? [] : [resolve("apps/desktop/out/main/index.js")]),
+      `--user-data-dir=${join(dir, "profile")}`,
+    ],
     env: {
       ...process.env,
       SUITELEAF_TEST_DATA: join(dir, "library"),

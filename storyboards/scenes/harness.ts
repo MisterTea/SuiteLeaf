@@ -66,7 +66,8 @@ export const test = base.extend<{ page: Page }>({
     if (electronMode) {
       const data = mkdtempSync(join(tmpdir(), "storyboard-electron-"));
       const app = await electron.launch({
-        args: [join(root, "apps/desktop/out/main/index.js")],
+        // Its own profile, so the single-instance lock never meets another SuiteLeaf.
+        args: [join(root, "apps/desktop/out/main/index.js"), `--user-data-dir=${join(data, "profile")}`],
         env: {
           ...process.env,
           SUITELEAF_TEST_DATA: join(data, "library"),
