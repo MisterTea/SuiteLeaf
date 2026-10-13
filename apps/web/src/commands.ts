@@ -68,6 +68,8 @@ export const COMMAND_SYNONYMS: Record<string, string[]> = {
     "first page",
     "page number format",
     "page number position",
+    "watermark",
+    "draft",
   ],
   "Cell comment": ["comment", "comments", "note", "annotation"],
   "1 row": [

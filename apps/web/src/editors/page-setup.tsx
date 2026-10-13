@@ -8,6 +8,7 @@ import {
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
 import "./page-setup.css";
+import { DocWatermark } from "./doc-watermark";
 
 function TextField({
   span,
@@ -321,6 +322,7 @@ export function PageFurniture({
               <span className="page-number page-number-top">{face.pageNumber}</span>
             ) : null}
             <div className={`page-header align-${face.headerAlign}`}>{face.header}</div>
+            <DocWatermark text={settings.watermark} />
             <div
               className={`page-footer number-${face.numberSide === "top-right" ? "none" : face.numberSide}`}
             >
