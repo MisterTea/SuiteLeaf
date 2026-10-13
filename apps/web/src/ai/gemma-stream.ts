@@ -85,6 +85,8 @@ export interface GemmaStreamOptions {
  */
 export function createGemmaStreamFn(model: LocalModel, options: GemmaStreamOptions = {}): StreamFn {
   const raws = new Map<string, string>();
+  // Ids stay unique across page reloads, where a resumed conversation keeps its old calls.
+  const prefix = crypto.randomUUID().slice(0, 8);
   let calls = 0;
   return (piModel, context, streamOptions) => {
     const stream = createAssistantMessageEventStream();
@@ -157,7 +159,7 @@ export function createGemmaStreamFn(model: LocalModel, options: GemmaStreamOptio
       if (parsed.error) parseErrors++;
       const call = {
         type: "toolCall" as const,
-        id: `call_${++calls}`,
+        id: `call_${prefix}_${++calls}`,
         name: parsed.name || "invalid_tool_call",
         arguments: (parsed.error
           ? { [PARSE_ERROR]: `${parsed.error} Raw call: ${parsed.raw.slice(0, 400)}` }
