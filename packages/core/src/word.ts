@@ -33,6 +33,7 @@ import {
   extractOfficeMath,
   spliceEquationTokens,
 } from "./equations";
+import { lineSpacingFromWord, type LineSpacing } from "./line-spacing";
 import { paragraphIndentFromWord } from "./paragraph-indent";
 import { firstSectionPageMargins } from "./word-page-margins";
 
@@ -420,7 +421,11 @@ const orderedParser = new XMLParser({
 });
 type WordIndentAttrs = { firstLineIndent: number } | { hangingIndent: number };
 
-type WordBodyParagraph = { text: string; indent: WordIndentAttrs | null };
+type WordBodyParagraph = {
+  text: string;
+  indent: WordIndentAttrs | null;
+  lineSpacing: LineSpacing | null;
+};
 
 function wordAttribute(attrs: Record<string, unknown>, name: string): unknown {
   return attrs[`@_w:${name}`] ?? attrs[`@_${name}`];
@@ -440,6 +445,27 @@ function indentFromParagraph(nodes: any[]): WordIndentAttrs | null {
         return paragraphIndentFromWord({
           firstLine: wordAttribute(child[":@"] ?? {}, "firstLine"),
           hanging: wordAttribute(child[":@"] ?? {}, "hanging"),
+        });
+      }
+    }
+  }
+  return null;
+}
+
+/** `w:spacing` on this paragraph's own `w:pPr`, not a nested paragraph. */
+function lineSpacingFromParagraph(nodes: any[]): LineSpacing | null {
+  for (const node of nodes) {
+    for (const [key, value] of Object.entries(node)) {
+      if (key === ":@" || !(key.endsWith(":pPr") || key === "pPr")) continue;
+      if (!Array.isArray(value)) continue;
+      for (const child of value as any[]) {
+        const spacingKey = Object.keys(child).find(
+          (name) => name === "spacing" || name.endsWith(":spacing"),
+        );
+        if (!spacingKey) continue;
+        return lineSpacingFromWord({
+          line: wordAttribute(child[":@"] ?? {}, "line"),
+          lineRule: wordAttribute(child[":@"] ?? {}, "lineRule"),
         });
       }
     }
@@ -521,7 +547,11 @@ function readWordBody(xml: string): WordBodyParagraph[] | null {
         if (k.endsWith(":p") || k === "p") {
           const t = text(v as any[]);
           if (t)
-            result.push({ text: t, indent: indentFromParagraph(v as any[]) });
+            result.push({
+              text: t,
+              indent: indentFromParagraph(v as any[]),
+              lineSpacing: lineSpacingFromParagraph(v as any[]),
+            });
         } else if (Array.isArray(v)) walk(v);
       }
   }
@@ -547,9 +577,12 @@ export function wordParagraphs(xml: string): string[] {
 }
 
 /**
- * Copies `w:ind` onto the imported paragraphs.
+ * Copies `w:ind` and a recognized auto `w:line` onto the imported paragraphs.
  * First line becomes `firstLineIndent`. Hanging becomes `hangingIndent`.
- * A paragraph with no `w:ind` is left alone, including any spacing it already has.
+ * 240, 276, 360, and 480 with `w:lineRule="auto"` become `lineSpacing`.
+ * Any other line, or a rule other than auto, stays single and does not
+ * clear an indent. Space before and after are not read.
+ * A paragraph with neither is left alone.
  */
 function applyWordParagraphIndents(content: JsonNode, xml: string): JsonNode {
   const sources = readWordBody(xml);
@@ -565,22 +598,30 @@ function applyWordParagraphIndents(content: JsonNode, xml: string): JsonNode {
     }
     return null;
   };
-  const stamp = (node: JsonNode, indent: WordIndentAttrs): JsonNode => {
+  const stamp = (node: JsonNode, source: WordBodyParagraph): JsonNode => {
     const attrs = { ...(node.attrs ?? {}) };
-    if ("firstLineIndent" in indent) {
-      delete attrs.hangingIndent;
-      attrs.firstLineIndent = indent.firstLineIndent;
-    } else {
-      delete attrs.firstLineIndent;
-      attrs.hangingIndent = indent.hangingIndent;
+    if (source.indent) {
+      if ("firstLineIndent" in source.indent) {
+        delete attrs.hangingIndent;
+        attrs.firstLineIndent = source.indent.firstLineIndent;
+      } else {
+        delete attrs.firstLineIndent;
+        attrs.hangingIndent = source.indent.hangingIndent;
+      }
     }
+    if (source.lineSpacing) attrs.lineSpacing = source.lineSpacing;
     return { ...node, attrs };
   };
   const visit = (node: JsonNode): JsonNode => {
     if (node.type === "paragraph" || node.type === "heading") {
       const source = take(documentText(node));
-      if (!source?.indent || node.type !== "paragraph") return node;
-      return stamp(node, source.indent);
+      if (
+        !source ||
+        node.type !== "paragraph" ||
+        (!source.indent && !source.lineSpacing)
+      )
+        return node;
+      return stamp(node, source);
     }
     if (!node.content?.length) return node;
     let changed = false;
