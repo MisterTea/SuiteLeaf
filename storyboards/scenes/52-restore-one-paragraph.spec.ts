@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import type { Page } from "@playwright/test";
+import { versionWhen } from "../../apps/web/src/editors/version-history-model";
 import {
   beat,
   caption,
@@ -18,6 +19,10 @@ function at(daysAgo: number, hour: number, minute: number) {
   const d = new Date();
   d.setDate(d.getDate() - daysAgo);
   d.setHours(hour, minute, 0, 0);
+  // Version history lists the newest createdAt first. A same-day 09:14 is
+  // still in the future after midnight, which would sort Sam ahead of the restore.
+  const latest = Date.now() - 2 * 60 * 1000;
+  if (d.getTime() > latest) d.setTime(latest);
   return d.toISOString();
 }
 
@@ -247,7 +252,7 @@ con.commit()`,
     await page.getByRole("button", { name: "Version history", exact: true }).click();
     await expect(panel.getByText("Restored the north-bed paragraph", { exact: true })).toBeVisible();
     await expect(panel.getByText("Agreed rota", { exact: true })).toBeVisible();
-    await expect(panel.getByText("Today 09:14 · Sam Okafor")).toBeVisible();
+    await expect(panel.getByText(`${versionWhen(morning)} · Sam Okafor`)).toBeVisible();
     await expect(editor).toContainText("North bed: 6am");
     await expect(editor).toContainText("Thursday: ask Alex to cover.");
     await beat(page, 1600);
