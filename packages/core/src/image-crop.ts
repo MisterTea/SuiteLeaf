@@ -79,6 +79,32 @@ export function cropByEdge(
 }
 
 /**
+ * Read OOXML `a:srcRect`. Each edge is thousandths of a percent (`42000` is
+ * 42%) or a percentage string (`42%`). An omitted edge hides nothing.
+ */
+export function imageCropFromSrcRect(
+  attrs: Record<string, string | undefined> | null | undefined,
+): ImageCrop {
+  const edge = (key: string) => {
+    const raw = attrs?.[key] ?? attrs?.[`a:${key}`];
+    if (raw == null || raw.trim() === "") return 0;
+    const text = raw.trim();
+    if (text.endsWith("%")) {
+      const pct = Number(text.slice(0, -1));
+      return Number.isFinite(pct) ? pct : 0;
+    }
+    const thousandths = Number(text);
+    return Number.isFinite(thousandths) ? thousandths / 1000 : 0;
+  };
+  return clampImageCrop({
+    left: edge("l"),
+    top: edge("t"),
+    right: edge("r"),
+    bottom: edge("b"),
+  });
+}
+
+/**
  * Percentages for docx's ImageRun crop (0–100). The library writes them as
  * OOXML `a:srcRect` thousandths of a percent. Undefined means no crop, so the
  * drawing stays the full picture.
