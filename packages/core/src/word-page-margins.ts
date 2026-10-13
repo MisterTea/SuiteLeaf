@@ -35,9 +35,10 @@ function marginAttr(raw: string, name: string): number | undefined {
 
 /**
  * Top, bottom, left, and right from the first section's w:pgMar.
- * A later section is left for another story. Header and footer distance,
- * mirror margins, and the binding gutter are not read. No pgMar means the
- * caller keeps SuiteLeaf's default on every edge.
+ * A later section is left for another story. Mirror margins and the binding
+ * gutter are not read. Header and footer distance are a different pair of
+ * fields (`firstSectionEdgeDistances`); they are not stored as body margins.
+ * No pgMar means the caller keeps SuiteLeaf's default on every edge.
  */
 export function firstSectionPageMargins(
   documentXml: string,
@@ -63,4 +64,41 @@ export function firstSectionPageMargins(
     marginLeft: left ?? MARGIN_DEFAULT_PX,
     marginRight: right ?? MARGIN_DEFAULT_PX,
   };
+}
+
+/** CSS pixels. Omitted when that attribute is absent, so the caller keeps its default. */
+export type WordEdgeDistances = {
+  headerFromEdge?: number;
+  footerFromEdge?: number;
+};
+
+/** Twips to CSS pixels, without the body-margin clamp. */
+function edgeTwipsToPx(raw: string, name: string): number | undefined {
+  const found = raw.match(
+    new RegExp(`(?:[\\w.-]+:)?${name}=["'](-?\\d+(?:\\.\\d+)?)["']`),
+  );
+  if (!found) return undefined;
+  const twips = Number(found[1]);
+  if (!Number.isFinite(twips)) return undefined;
+  return Math.round(twips / TWIPS_PER_PX);
+}
+
+/**
+ * `w:header` and `w:footer` on the first section's `w:pgMar`, in CSS pixels.
+ * An attribute that is missing stays unset. These are not body margins.
+ */
+export function firstSectionEdgeDistances(
+  documentXml: string,
+): WordEdgeDistances | null {
+  const section = documentXml.match(sectionPattern);
+  if (!section) return null;
+  const margins = section[0].match(marginPattern);
+  if (!margins) return null;
+  const headerFromEdge = edgeTwipsToPx(margins[1], "header");
+  const footerFromEdge = edgeTwipsToPx(margins[1], "footer");
+  if (headerFromEdge === undefined && footerFromEdge === undefined) return null;
+  const distances: WordEdgeDistances = {};
+  if (headerFromEdge !== undefined) distances.headerFromEdge = headerFromEdge;
+  if (footerFromEdge !== undefined) distances.footerFromEdge = footerFromEdge;
+  return distances;
 }

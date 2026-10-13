@@ -145,7 +145,8 @@ function isImportFeature(warning: string): boolean {
   return (
     /^\d+ (?:footnote|endnote|table|citation|bibliography)/.test(warning) ||
     /^\d+ comment threads? imported$/.test(warning) ||
-    /^\d+ suggestions? imported$/.test(warning)
+    /^\d+ suggestions? imported$/.test(warning) ||
+    /^Letterhead: /.test(warning)
   );
 }
 function importFeatureLine(warnings: string[]): string {

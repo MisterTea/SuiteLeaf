@@ -33,6 +33,12 @@ import {
   extractOfficeMath,
   spliceEquationTokens,
 } from "./equations";
+import {
+  letterheadDistanceNote,
+  letterheadDistancePatch,
+  readDefaultLetterhead,
+  type LetterheadText,
+} from "./letterhead-distance";
 import { firstSectionPageMargins } from "./word-page-margins";
 
 type Mark = NonNullable<JsonNode["marks"]>[number];
@@ -1237,6 +1243,10 @@ export async function importDocx(
     /<w:(?:headerReference|footerReference)\b[^>]*w:type="first"/.test(xml);
   const suppressHeadersFooters =
     (hasTitlePg && isSinglePage && !hasFirstHeaderFooter) || isPureCoverPage;
+  const emptyLetterhead: LetterheadText = { absorbed: new Set() };
+  const letterhead = suppressHeadersFooters
+    ? emptyLetterhead
+    : await readDefaultLetterhead(zip, xml);
 
   const headerFooterPaths = suppressHeadersFooters
     ? []
@@ -1298,7 +1308,9 @@ export async function importDocx(
         }
       }
     }
-    const ps = wordParagraphs(value);
+    const ps = letterhead.absorbed.has(path.replace(/^\/+/, ""))
+      ? []
+      : wordParagraphs(value);
     if (ps.length || imgNodes.length) {
       supplementary += ps.length + imgNodes.length;
       content.content!.push(
@@ -1385,7 +1397,10 @@ export async function importDocx(
     }
   }
   const pageMargins = firstSectionPageMargins(xml);
-  if (pageMargins) {
+  const distances = letterheadDistancePatch(xml, pageMargins);
+  const distanceNote = letterheadDistanceNote(distances);
+  if (distanceNote) warnings.push(distanceNote);
+  if (pageMargins || distances || letterhead.header || letterhead.footer) {
     const previous = content.attrs?.pageSettings;
     content = {
       ...content,
@@ -1393,7 +1408,10 @@ export async function importDocx(
         ...(content.attrs ?? {}),
         pageSettings: {
           ...(previous && typeof previous === "object" ? previous : {}),
-          ...pageMargins,
+          ...(pageMargins ?? {}),
+          ...(distances ?? {}),
+          ...(letterhead.header ? { header: letterhead.header } : {}),
+          ...(letterhead.footer ? { footer: letterhead.footer } : {}),
           // A stored page setup otherwise turns page numbers on. This file
           // did not ask for them.
           pageNumbers: false,
