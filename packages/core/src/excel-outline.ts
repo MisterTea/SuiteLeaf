@@ -5,7 +5,9 @@ import { columnName } from "./index";
  * left and the total stays above, so exported outlines use summaryRight="0"
  * and summaryBelow="0". Excel's own default puts the summary after the
  * detail; import honors whichever side outlinePr names.
- * A second outline level is flattened into the one group SuiteLeaf stores.
+ * Row groups keep every outline level, so a week at level 2 stays inside
+ * the month at level 1. Column outlines still flatten a second level into
+ * one group.
  */
 
 type Attrs = Record<string, string>;
@@ -28,7 +30,7 @@ export type OutlineRowGroup = {
 export type WorksheetOutline = {
   columnGroups: OutlineColumnGroup[];
   rowGroups: OutlineRowGroup[];
-  /** True when the file used an outline level deeper than 1. */
+  /** True when an outline level deeper than 1 was flattened into one group. */
   nested: boolean;
 };
 
@@ -229,16 +231,19 @@ function patchRows(xml: string, rows: Span[]): string {
     if (!patch) patches.set(rowNumber, (patch = {}));
     return patch;
   };
+  const levelAt = new Map<number, number>();
+  for (const span of rows)
+    for (let index = span.start; index <= span.end; index++)
+      levelAt.set(index, (levelAt.get(index) ?? 0) + 1);
   for (const span of rows) {
     const hidden = new Set(span.collapsed);
     for (let index = span.start; index <= span.end; index++) {
       const patch = touch(index + 1);
-      patch.outlineLevel = "1";
+      patch.outlineLevel = String(levelAt.get(index) ?? 1);
       if (hidden.has(index)) patch.hidden = "1";
     }
     const summary = span.start - 1;
-    if (isFull(span) && summary >= 0 && !covered(rows, summary))
-      touch(summary + 1).collapsed = "1";
+    if (isFull(span) && summary >= 0) touch(summary + 1).collapsed = "1";
   }
   const seen = new Set<number>();
   let next = xml.replace(
@@ -284,11 +289,27 @@ function ensureOutlinePr(xml: string): string {
   );
 }
 
-function ensureFormatLevels(xml: string, rows: boolean, columns: boolean): string {
+function outlineDepth(spans: Span[]): number {
+  const events: { at: number; delta: number }[] = [];
+  for (const span of spans) {
+    events.push({ at: span.start, delta: 1 });
+    events.push({ at: span.end + 1, delta: -1 });
+  }
+  events.sort((a, b) => a.at - b.at || a.delta - b.delta);
+  let depth = 0;
+  let max = 0;
+  for (const event of events) {
+    depth += event.delta;
+    if (depth > max) max = depth;
+  }
+  return max;
+}
+
+function ensureFormatLevels(xml: string, rowLevel: number, columnLevel: number): string {
   const match = xml.match(/<(?:\w+:)?sheetFormatPr\b([^>]*)\/>/);
   const attrs = match ? parseAttrs(match[1]!) : {};
-  if (rows) attrs.outlineLevelRow = "1";
-  if (columns) attrs.outlineLevelCol = "1";
+  if (rowLevel > 0) attrs.outlineLevelRow = String(rowLevel);
+  if (columnLevel > 0) attrs.outlineLevelCol = String(columnLevel);
   const tag = `<sheetFormatPr ${emitAttrs(attrs)}/>`;
   if (match) return xml.replace(match[0], tag);
   return xml.replace(/<(?:\w+:)?(?:cols|sheetData)\b/, (found) => `${tag}${found}`);
@@ -301,7 +322,7 @@ export function applyWorksheetOutline(xml: string, custom: unknown): string {
   let next = patchColumns(xml, columns);
   next = patchRows(next, rows);
   next = ensureOutlinePr(next);
-  next = ensureFormatLevels(next, rows.length > 0, columns.length > 0);
+  next = ensureFormatLevels(next, outlineDepth(rows), columns.length ? 1 : 0);
   return next;
 }
 
@@ -362,6 +383,80 @@ function columnMarks(xml: string): Map<number, Mark> {
   return marks;
 }
 
+/** One group per outline level, so a week inside a month stays its own span. */
+function nestedRowSpans(marks: Map<number, Mark>, before: boolean): Span[] {
+  let maxLevel = 0;
+  for (const mark of marks.values()) if (mark.level > maxLevel) maxLevel = mark.level;
+  const spans: Array<Span & { level: number }> = [];
+  for (let level = 1; level <= maxLevel; level++) {
+    const members = [...marks.entries()]
+      .filter(([, mark]) => mark.level >= level)
+      .sort((a, b) => a[0] - b[0]);
+    let index = 0;
+    while (index < members.length) {
+      const start = members[index]![0];
+      let end = start;
+      while (index + 1 < members.length && members[index + 1]![0] === end + 1) {
+        index += 1;
+        end = members[index]![0];
+      }
+      spans.push({
+        start,
+        end,
+        collapsed: collapsedAtLevel(marks, start, end, level, before),
+        level,
+      });
+      index += 1;
+    }
+  }
+  return spans.sort((a, b) => a.start - b.start || b.end - a.end || a.level - b.level);
+}
+
+function collapsedAtLevel(
+  marks: Map<number, Mark>,
+  start: number,
+  end: number,
+  level: number,
+  before: boolean,
+): number[] {
+  const summary = before ? start - 1 : end + 1;
+  const exactHidden: number[] = [];
+  let allHidden = true;
+  for (let index = start; index <= end; index++) {
+    const mark = marks.get(index);
+    const hidden = !!mark?.hidden;
+    if (!hidden) allHidden = false;
+    if (mark && mark.level === level && hidden) exactHidden.push(index);
+  }
+  if (marks.get(summary)?.collapsed === true || allHidden)
+    return Array.from({ length: end - start + 1 }, (_, offset) => start + offset);
+  return exactHidden;
+}
+
+function rowGroupId(start: number, end: number, used: Set<string>): string {
+  const base = `rows-${start + 1}-${end + 1}`;
+  if (!used.has(base)) {
+    used.add(base);
+    return base;
+  }
+  let level = 2;
+  while (used.has(`${base}-l${level}`)) level += 1;
+  const id = `${base}-l${level}`;
+  used.add(id);
+  return id;
+}
+
+/** True when a row's outline level is deeper than the groups that contain it. */
+function rowLevelsFlattened(marks: Map<number, Mark>, spans: Span[]): boolean {
+  for (const [index, mark] of marks) {
+    if (mark.level <= 0) continue;
+    let depth = 0;
+    for (const span of spans) if (index >= span.start && index <= span.end) depth += 1;
+    if (depth !== mark.level) return true;
+  }
+  return false;
+}
+
 function spansFrom(marks: Map<number, Mark>, before: boolean): Array<Span & { maxLevel: number }> {
   const members = [...marks.entries()]
     .filter(([, mark]) => mark.level > 0)
@@ -395,13 +490,12 @@ function spansFrom(marks: Map<number, Mark>, before: boolean): Array<Span & { ma
 /** Read an Excel outline into SuiteLeaf row and column groups. Hidden columns that are not outlined are ignored. */
 export function readWorksheetOutline(xml: string): WorksheetOutline {
   const columnSpans = spansFrom(columnMarks(xml), summaryBefore(xml, "summaryRight"));
-  const rowSpans = spansFrom(
-    marksFrom(xml, /<(?:\w+:)?row\b([^>]*?)(?:\/>|>)/g, (attrs) => {
-      const row = Number(attrs.r);
-      return Number.isInteger(row) ? row - 1 : null;
-    }),
-    summaryBefore(xml, "summaryBelow"),
-  );
+  const rowMarks = marksFrom(xml, /<(?:\w+:)?row\b([^>]*?)(?:\/>|>)/g, (attrs) => {
+    const row = Number(attrs.r);
+    return Number.isInteger(row) ? row - 1 : null;
+  });
+  const rowSpans = nestedRowSpans(rowMarks, summaryBefore(xml, "summaryBelow"));
+  const usedRowIds = new Set<string>();
   return {
     columnGroups: columnSpans.map((span) => ({
       id: `cols-${columnName(span.start)}-${columnName(span.end)}`,
@@ -410,11 +504,13 @@ export function readWorksheetOutline(xml: string): WorksheetOutline {
       collapsed: span.collapsed,
     })),
     rowGroups: rowSpans.map((span) => ({
-      id: `rows-${span.start + 1}-${span.end + 1}`,
+      id: rowGroupId(span.start, span.end, usedRowIds),
       startRow: span.start,
       endRow: span.end,
       collapsed: span.collapsed,
     })),
-    nested: [...columnSpans, ...rowSpans].some((span) => span.maxLevel > 1),
+    nested:
+      columnSpans.some((span) => span.maxLevel > 1) ||
+      rowLevelsFlattened(rowMarks, rowSpans),
   };
 }

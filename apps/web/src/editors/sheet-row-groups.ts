@@ -114,6 +114,11 @@ export function showOnly(group: RowGroup, keepRow: number): RowGroup {
   return { ...group, collapsed };
 }
 
+/** Visible name of the rows a control will hide, before the click. */
+export function rowSpanLabel(group: Pick<RowGroup, "startRow" | "endRow">): string {
+  return `Rows ${group.startRow + 1}–${group.endRow + 1}`;
+}
+
 export function collapseLabel(group: RowGroup): string {
   return `Collapse rows ${group.startRow + 1} to ${group.endRow + 1}`;
 }
@@ -140,7 +145,7 @@ export function rowsInGroups(groups: RowGroup[]): number[] {
 }
 
 export function collapsedRows(groups: RowGroup[]): number[] {
-  return groups.flatMap((group) => group.collapsed);
+  return [...new Set(groups.flatMap((group) => group.collapsed))].sort((a, b) => a - b);
 }
 
 export function readRowGroups(custom: unknown): RowGroup[] {

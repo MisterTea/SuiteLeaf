@@ -19,6 +19,7 @@ import {
   planGroupRows,
   readRowGroups,
   replaceGroups,
+  rowSpanLabel,
   rowsInGroups,
   showOnly,
   showOnlyLabel,
@@ -50,10 +51,26 @@ type Button = {
   left: number;
   top: number;
   width?: number;
+  depth: number;
   kind: "toggle" | "only";
   run: () => void;
 };
-type Line = { key: string; left: number; top: number; height: number };
+type Line = { key: string; left: number; top: number; height: number; depth: number };
+type Tick = { key: string; left: number; top: number; text: string; depth: number };
+
+function controlWidth(text: string): number {
+  return Math.max(22, Math.ceil(text.length * 6.7 + 18));
+}
+
+function groupDepth(group: RowGroup, groups: RowGroup[]): number {
+  return groups.filter(
+    (other) =>
+      other.id !== group.id &&
+      other.startRow <= group.startRow &&
+      other.endRow >= group.endRow &&
+      (other.startRow < group.startRow || other.endRow > group.endRow),
+  ).length;
+}
 
 function worksheetOf(engine: Engine, unitId: string, sheetId: string) {
   return engine
@@ -204,6 +221,7 @@ export default function SheetRowGroups({
   const [model, setModel] = useState<Model | null>(null);
   const [buttons, setButtons] = useState<Button[]>([]);
   const [lines, setLines] = useState<Line[]>([]);
+  const [ticks, setTicks] = useState<Tick[]>([]);
   const modelRef = useRef(model);
   modelRef.current = model;
   const actions = useRef<(group: RowGroup, next: RowGroup) => void>(() => {});
@@ -329,9 +347,11 @@ export default function SheetRowGroups({
       if (!current?.groups.length || !host || !facade || facade.getSheetId() !== current.sheetId) {
         setButtons((prev) => (prev.length ? [] : prev));
         setLines((prev) => (prev.length ? [] : prev));
+        setTicks((prev) => (prev.length ? [] : prev));
         return;
       }
       const origin = gridCanvas(host);
+      if (!origin) return;
       const hostBox = host.getBoundingClientRect();
       const snap = worksheetOf(engine, workbook.getId(), current.sheetId)?.getSnapshot?.();
       const scrollLeft = Number(snap?.scrollLeft) || 0;
@@ -339,6 +359,9 @@ export default function SheetRowGroups({
       const zoom = Number(snap?.zoomRatio) || 1;
       const nextButtons: Button[] = [];
       const nextLines: Line[] = [];
+      const nextTicks: Tick[] = [];
+      const hiddenByAny = new Set(current.groups.flatMap((group) => group.collapsed));
+      const maxDepth = Math.max(...current.groups.map((group) => groupDepth(group, current.groups)));
       const place = (rect: SceneRect | null) =>
         rect && origin ? sceneToView(rect, origin, scrollLeft, scrollTop, zoom) : null;
       const onGrid = (rect: SceneRect) =>
@@ -349,7 +372,9 @@ export default function SheetRowGroups({
         const hidden = new Set(group.collapsed);
         const open = hidden.size < group.endRow - group.startRow + 1;
         const closed = hidden.size > 0;
+        const depth = groupDepth(group, current.groups);
         const anchor = group.startRow > 0 ? group.startRow - 1 : group.startRow;
+        if (hiddenByAny.has(anchor)) continue;
         let anchorRect: SceneRect | null = null;
         try {
           if (anchor !== group.startRow || !hidden.has(anchor))
@@ -358,14 +383,16 @@ export default function SheetRowGroups({
           anchorRect = null;
         }
         if (!anchorRect || anchorRect.height < 2 || !onGrid(anchorRect)) continue;
+        const span = rowSpanLabel(group);
         const toggles: Button[] = [];
         if (open)
           toggles.push({
             key: `${group.id}-collapse`,
             label: collapseLabel(group),
-            text: "−",
+            text: `− ${span}`,
             left: 0,
             top: 0,
+            depth,
             kind: "toggle",
             run: () => actions.current(group, collapseAll(group)),
           });
@@ -373,37 +400,56 @@ export default function SheetRowGroups({
           toggles.push({
             key: `${group.id}-expand`,
             label: expandLabel(group),
-            text: "+",
+            text: `+ ${span}`,
             left: 0,
             top: 0,
+            depth,
             kind: "toggle",
             run: () => actions.current(group, expandAll(group)),
           });
-        const size = 18;
-        const gap = 4;
-        const total = toggles.length * size + Math.max(0, toggles.length - 1) * gap;
-        const left = Math.max(origin!.left + 2, anchorRect.left - total - 8);
-        const top = anchorRect.top + (anchorRect.height - size) / 2;
-        toggles.forEach((button, index) => {
-          button.left = left + index * (size + gap);
-          button.top = top;
+        const markSize = 18;
+        const lane = maxDepth - depth;
+        const lineLeft = anchorRect.left - 6 - lane * 12;
+        const markLeft = Math.max(origin!.left + 2, lineLeft - markSize / 2);
+        const markTop = anchorRect.top + (anchorRect.height - markSize) / 2;
+        nextTicks.push({
+          key: group.id,
+          left: markLeft,
+          top: markTop,
+          text: open ? "−" : "+",
+          depth,
+        });
+        let labelLeft = anchorRect.left + 8 + depth * 18;
+        try {
+          const slot = place(facade.getRange(anchor, 2).getCellRect());
+          if (slot) labelLeft = slot.left + 8 + depth * 18;
+        } catch {
+          // Column C may not have a rect yet.
+        }
+        const pillHeight = 22;
+        const pillTop = anchorRect.top + (anchorRect.height - pillHeight) / 2;
+        toggles.forEach((button) => {
+          button.left = labelLeft;
+          button.top = pillTop;
+          labelLeft += controlWidth(button.text) + 6;
           nextButtons.push(button);
         });
         const visible: number[] = [];
         for (let row = group.startRow; row <= group.endRow; row++)
-          if (!hidden.has(row)) visible.push(row);
+          if (!hiddenByAny.has(row)) visible.push(row);
         if (visible.length) {
           try {
             const last = place(facade.getRange(visible[visible.length - 1]!, 0).getCellRect());
             if (last) {
-              const lineTop = anchor < group.startRow ? anchorRect.bottom - 1 : anchorRect.top + size / 2;
+              const lineTop = anchor < group.startRow ? anchorRect.bottom - 1 : anchorRect.top + markSize / 2;
               const height = last.bottom - lineTop;
               if (height > 4)
                 nextLines.push({
                   key: group.id,
-                  left: anchorRect.left - 5,
+                  left: lineLeft,
                   top: lineTop,
                   height,
+                  depth,
                 });
             }
           } catch {
@@ -431,6 +477,7 @@ export default function SheetRowGroups({
                 text: label,
                 left: Math.min(cell.left + 8, hostBox.right - 180),
                 top: cell.top + (cell.height - 26) / 2,
+                depth: 0,
                 kind: "only",
                 run: () => actions.current(group, showOnly(group, row)),
               });
@@ -449,13 +496,22 @@ export default function SheetRowGroups({
         return prevSignature === signature ? prev : nextButtons;
       });
       const lineSignature = JSON.stringify(
-        nextLines.map((line) => [line.key, Math.round(line.left), Math.round(line.top), Math.round(line.height)]),
+        nextLines.map((line) => [line.key, Math.round(line.left), Math.round(line.top), Math.round(line.height), line.depth]),
       );
       setLines((prev) => {
         const prevSignature = JSON.stringify(
-          prev.map((line) => [line.key, Math.round(line.left), Math.round(line.top), Math.round(line.height)]),
+          prev.map((line) => [line.key, Math.round(line.left), Math.round(line.top), Math.round(line.height), line.depth]),
         );
         return prevSignature === lineSignature ? prev : nextLines;
+      });
+      const tickSignature = JSON.stringify(
+        nextTicks.map((tick) => [tick.key, Math.round(tick.left), Math.round(tick.top), tick.text, tick.depth]),
+      );
+      setTicks((prev) => {
+        const prevSignature = JSON.stringify(
+          prev.map((tick) => [tick.key, Math.round(tick.left), Math.round(tick.top), tick.text, tick.depth]),
+        );
+        return prevSignature === tickSignature ? prev : nextTicks;
       });
     };
     frame = requestAnimationFrame(measure);
@@ -463,21 +519,35 @@ export default function SheetRowGroups({
   }, [api, engine, model]);
 
   const collapsed = model ? collapsedRows(model.groups).join(",") : "";
+  const groupSpans = model?.groups.map((group) => `${group.startRow + 1}-${group.endRow + 1}`).join(",") ?? "";
   return (
     <>
-      <div className="row-group-controls" data-collapsed={collapsed}>
+      <div className="row-group-controls" data-collapsed={collapsed} data-groups={groupSpans}>
         {lines.map((line) => (
           <span
             key={line.key}
             className="row-group-line"
+            data-depth={line.depth}
             style={{ left: line.left, top: line.top, height: line.height }}
           />
+        ))}
+        {ticks.map((tick) => (
+          <span
+            key={tick.key}
+            className="row-group-mark"
+            data-depth={tick.depth}
+            aria-hidden="true"
+            style={{ left: tick.left, top: tick.top }}
+          >
+            {tick.text}
+          </span>
         ))}
         {buttons.map((button) => (
           <button
             key={button.key}
             type="button"
             className={button.kind === "only" ? "row-group-only" : "row-group-toggle"}
+            data-depth={button.kind === "toggle" ? button.depth : undefined}
             aria-label={button.label}
             style={{ left: button.left, top: button.top }}
             onMouseDown={(event) => event.stopPropagation()}

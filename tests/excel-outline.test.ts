@@ -7,6 +7,11 @@ import {
 } from "../packages/core/src/excel-outline";
 import { importOffice } from "../packages/core/src/office";
 import { exportXlsx } from "../packages/core/src/xlsx-export";
+import {
+  collapseAll,
+  collapsedRows,
+  expandAll,
+} from "../apps/web/src/editors/sheet-row-groups";
 
 const months = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
@@ -237,5 +242,99 @@ describe("Excel outline export and import", () => {
     expect(roundTrip.columnGroups[0]?.collapsed).toEqual([1, 2]);
     expect(roundTrip.rowGroups[0]?.collapsed).toEqual([1, 2]);
     expect(roundTrip.nested).toBe(false);
+  });
+
+  it("keeps a level-2 week inside a level-1 month, and export writes both levels", async () => {
+    const file = createFile("sheet", "Household budget");
+    if (file.kind !== "sheet") throw new Error("Expected a workbook");
+    const sheet = file.content.workbook.sheets[file.content.workbook.sheetOrder[0]];
+    const rows: [string, number][] = [
+      ["October total", 420],
+      ["Oct 1 groceries", 40],
+      ["Oct 2 transit", 55],
+      ["Oct 6 groceries", 30],
+      ["Oct 7 cafe", 45],
+      ["Oct 8 transit", 25],
+      ["Oct 9 utilities", 80],
+      ["Oct 10 rent", 145],
+    ];
+    sheet.cellData = Object.fromEntries(
+      rows.map((row, index) => [
+        index,
+        {
+          0: { v: row[0], t: 1 },
+          1: { v: row[1], t: 2 },
+        },
+      ]),
+    );
+    const zip = await JSZip.loadAsync(await exportXlsx(file));
+    const plain = await zip.file("xl/worksheets/sheet1.xml")!.async("string");
+    const levels: Record<number, number> = { 2: 1, 3: 1, 4: 2, 5: 2, 6: 2, 7: 1, 8: 1 };
+    const seen = new Set<number>();
+    const outlined = plain.replace(
+      /<row\b([^>]*?)\br="(\d+)"([^>]*?)(\/>|>)/g,
+      (full, before: string, row: string, after: string, end: string) => {
+        const number = Number(row);
+        const level = levels[number];
+        if (!level) return full;
+        seen.add(number);
+        return `<row${before}r="${row}"${after} outlineLevel="${level}"${end}`;
+      },
+    );
+    for (const row of Object.keys(levels))
+      if (!seen.has(Number(row))) throw new Error(`Row ${row} was not in the worksheet`);
+    const outline = readWorksheetOutline(outlined);
+    expect(outline.nested).toBe(false);
+    expect(outline.rowGroups).toEqual([
+      { id: "rows-2-8", startRow: 1, endRow: 7, collapsed: [] },
+      { id: "rows-4-6", startRow: 3, endRow: 5, collapsed: [] },
+    ]);
+    const weekClosed = outline.rowGroups.map((group) =>
+      group.id === "rows-4-6" ? collapseAll(group) : group,
+    );
+    expect(collapsedRows(weekClosed)).toEqual([3, 4, 5]);
+    const bothClosed = weekClosed.map((group) =>
+      group.id === "rows-2-8" ? collapseAll(group) : group,
+    );
+    expect(collapsedRows(bothClosed)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(collapsedRows(bothClosed.map((group) => (group.id === "rows-2-8" ? expandAll(group) : group)))).toEqual([
+      3, 4, 5,
+    ]);
+
+    zip.file("xl/worksheets/sheet1.xml", outlined);
+    const imported = await importOffice(
+      await zip.generateAsync({ type: "uint8array" }),
+      "xlsx",
+      "Household budget.xlsx",
+    );
+    if (imported.file.kind !== "sheet") throw new Error("Expected a workbook");
+    const opened = imported.file.content.workbook.sheets[imported.file.content.workbook.sheetOrder[0]];
+    expect(opened.custom?.suiteleafRowGroups).toEqual(outline.rowGroups);
+    expect(opened.rowData?.[0]?.hd).toBeUndefined();
+    expect(imported.report.warnings.join("\n")).not.toMatch(/not kept separate|flattened/i);
+
+    sheet.custom = { suiteleafRowGroups: weekClosed };
+    const xml = await sheetXml(await exportXlsx(file));
+    const written = rowMap(xml);
+    expect(written.get(1)?.outlineLevel).toBeUndefined();
+    for (const row of [2, 3, 7, 8]) {
+      expect(written.get(row)?.outlineLevel).toBe("1");
+      expect(written.get(row)?.hidden).toBeUndefined();
+    }
+    for (const row of [4, 5, 6]) {
+      expect(written.get(row)?.outlineLevel).toBe("2");
+      expect(written.get(row)?.hidden === "1" || written.get(row)?.hidden === "true").toBe(true);
+    }
+    expect(xml).toContain('outlineLevelRow="2"');
+    const roundTrip = await importOffice(await exportXlsx(file), "xlsx", "Household budget.xlsx");
+    if (roundTrip.file.kind !== "sheet") throw new Error("Expected a workbook");
+    const again = roundTrip.file.content.workbook.sheets[roundTrip.file.content.workbook.sheetOrder[0]];
+    expect(again.custom?.suiteleafRowGroups).toEqual(weekClosed);
+    expect(again.rowData?.[1]?.hd).toBeUndefined();
+    expect(again.rowData?.[2]?.hd).toBeUndefined();
+    expect(again.rowData?.[3]?.hd).toBe(1);
+    expect(again.rowData?.[5]?.hd).toBe(1);
+    expect(again.rowData?.[6]?.hd).toBeUndefined();
+    expect(again.rowData?.[0]?.hd).toBeUndefined();
   });
 });
