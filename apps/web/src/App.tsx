@@ -1898,6 +1898,22 @@ function Workspace() {
                   Page setup…
                 </MenuItem>
               ) : null}
+              {f.kind === "sheet" ? (
+                <MenuItem
+                  synonyms={[
+                    "print settings",
+                    "repeat row",
+                    "repeat header",
+                    "repeating header",
+                    "print header",
+                  ]}
+                  onSelect={() =>
+                    actions.current?.sheetActions?.openPrintSettings?.()
+                  }
+                >
+                  Print settings
+                </MenuItem>
+              ) : null}
               <MenuItem onSelect={() => void doAction("print")}>
                 Print / Save as PDF
               </MenuItem>
@@ -2270,6 +2286,21 @@ function Workspace() {
                     }
                   >
                     Image
+                  </MenuItem>
+                  <MenuItem
+                    synonyms={[
+                      "page break",
+                      "page break above",
+                      "row break",
+                      "insert page break",
+                      "insert break",
+                    ]}
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.sheetActions?.insertPageBreak?.()
+                    }
+                  >
+                    Page break above
                   </MenuItem>
                   <MenuItem
                     onSelect={() =>

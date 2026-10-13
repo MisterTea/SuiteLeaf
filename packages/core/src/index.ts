@@ -328,6 +328,21 @@ export const fileSchema = z.discriminatedUnion("kind", [
         .optional(),
       charts: z.array(chartSchema),
       pivots: z.array(pivotSchema),
+      /** Paper layout. Independent of a frozen row on screen. */
+      print: z
+        .object({
+          sheets: z.record(
+            z.string(),
+            z.object({
+              /** 0-based rows that start a new printed page. The break sits above each row. */
+              breaksAbove: z
+                .array(z.number().int().min(1).max(1048575))
+                .max(200),
+              repeatFirstRow: z.boolean(),
+            }),
+          ),
+        })
+        .optional(),
     }),
   }),
   z.object({
