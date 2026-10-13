@@ -158,7 +158,7 @@ describe("FrogNano tool calls", () => {
       },
     };
     const stats: { outputTokens: number }[] = [];
-    const stream = createLocalStreamFn(model as never, { format: frognanoFormat, onStats: (s) => stats.push(s) })(
+    const stream = createLocalStreamFn(model as never, { format: frognanoFormat, thinkingBudget: 128, onStats: (s) => stats.push(s) })(
       localModelDescriptor(frognanoFormat.info, "test"),
       { systemPrompt: "S", messages: [conversation[0]], tools },
       {},
