@@ -62,13 +62,11 @@ const typos = (page: Page) => page.locator(".document-content .spelling-misspell
 
 test("64-change-every-copy-of-a-typo", async ({ page }) => {
   await seed(page);
-  await caption(page, "Sam's launch notes say “recieve” four times. One is bold. “seperate” stays.", 1800);
+  await caption(page, "Sam's launch notes say “recieve” four times. One is bold. “seperate” stays.", 1600);
   await expect(typos(page)).toHaveCount(4);
-  await beat(page, 600);
-
+  await caption(page, "The suggestion can fix every copy, not just this word.", 500);
   await typos(page).first().click({ button: "right" });
-  await beat(page, 400);
-  await caption(page, "The suggestion can fix every copy, not just this word.", 1400);
+  await beat(page, 1400);
   const menu = page.getByRole("menu", { name: "Spelling for recieve" });
   await expect(menu.getByRole("menuitem", { name: "receive", exact: true })).toBeVisible();
   await menu.getByRole("menuitem", { name: "Change all to receive" }).click();

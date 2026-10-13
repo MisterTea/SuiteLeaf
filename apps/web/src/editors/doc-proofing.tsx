@@ -278,7 +278,9 @@ export function useDocProofing(
   };
   const ignoreThis = (from: number, to: number) => {
     if (!editor) return;
-    editor.view.dispatch(ignoreOccurrence(editor.state, from, to));
+    let tr = ignoreOccurrence(editor.state, from, to);
+    tr = tr.setSelection(TextSelection.near(tr.doc.resolve(Math.min(to, tr.doc.content.size))));
+    editor.view.dispatch(tr);
     setMenu(null);
     if (dialog === "spelling") advance(to);
   };
@@ -331,8 +333,8 @@ export function useDocProofing(
         role="menu"
         aria-label={`Spelling for ${menu.word}`}
         style={{
-          left: Math.min(menu.x, window.innerWidth - 260),
-          top: Math.min(menu.y, window.innerHeight - 420),
+          left: Math.max(8, Math.min(menu.x + 140, window.innerWidth - 260)),
+          top: Math.max(8, Math.min(menu.y - 24, window.innerHeight - 320)),
         }}
         onMouseDown={(event) => event.stopPropagation()}
         onKeyDown={(event) => {

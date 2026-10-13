@@ -43,13 +43,13 @@ Sam fixes three "recieve" copies in one step and keeps the one he ignored. He ca
 
 | Criterion | Met | Evidence |
 | --- | --- | --- |
-| 1. Change all is on the right-click menu and in Tools › Spelling | Met | Video: right-click shows "Change all to receive"; Tools › Spelling shows Change all. |
-| 2. Before anything changes, the user sees how many copies will change and can cancel | Met | Video: the preview says "4 copies" and Cancel leaves the notes unchanged. Browser test `change all lists every copy, cancels, and undoes in one step`. |
-| 3. Only the same misspelling is changed. A different typo, and an ignored copy, stay | Met | Video: "seperate" stays underlined; the ignored "recieve" stays. Vitest `leaves an ignored copy out of a later change all`. |
-| 4. Confirming is one undo step that restores every copy | Met | Video: one Undo restores all four, then later one Undo restores the three. Vitest `replaces every copy in one undo step and keeps bold`. |
-| 5. The corrections survive save and reopen | Met | Video: after reopen, three "receive" remain and the ignored copy is still "recieve". Browser test reopens the file. |
-| 6. A copy ignored for this word is not included in a later Change all | Met | Video: the second preview lists 3 copies. Vitest expects three replacements and one remaining "recieve". |
-| 7. Bold stays, and Find and replace still works | Met | Video: the first "receive" is still bold. Browser test `find and replace still replaces every match in one undo`. |
+| 1. Change all is on the right-click menu and in Tools › Spelling | Met | Video 0:04, menu item "Change all to receive". Video 0:17, Tools › Spelling shows Change all. |
+| 2. Before anything changes, the user sees how many copies will change and can cancel | Met | Video 0:07, "4 copies of recieve". Video 0:09, Cancel, the four underlines remain. Browser test `change all lists every copy, cancels, and undoes in one step`. |
+| 3. Only the same misspelling is changed. A different typo, and an ignored copy, stay | Met | Video 0:11, "seperate" is still underlined after the four fixes. Video 0:22, the ignored "recieve" remains. Vitest `leaves an ignored copy out of a later change all`. |
+| 4. Confirming is one undo step that restores every copy | Met | Video 0:13, one Undo restores all four underlines. Video 0:14, Redo fixes them again. Vitest `replaces every copy in one undo step and keeps bold`. |
+| 5. The corrections survive save and reopen | Met | Video 0:25, reopened notes still have three "receive" copies, the ignored "recieve", and underlined "seperate". Browser test reopens the file. |
+| 6. A copy ignored for this word is not included in a later Change all | Met | Video 0:16, that copy loses its underline. Video 0:19, the next preview says "3 copies" and omits it. |
+| 7. Bold stays, and Find and replace still works | Met | Video 0:04, the Bold toolbar button is on while "recieve" is selected. Video 0:11, that word is still "receive". Browser test `find and replace still replaces every match in one undo`. |
 
 ## Gaps and notes
 
