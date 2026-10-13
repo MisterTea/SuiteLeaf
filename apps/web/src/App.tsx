@@ -1508,6 +1508,8 @@ function Workspace() {
                   conflict: () => !!driveConflictRef.current,
                   saveCopy: saveDriveCopy,
                   reload: reloadFromDrive,
+                  title: () => current.current?.file.title ?? "",
+                  rename: changeTitle,
                 })
               : []),
           ]
