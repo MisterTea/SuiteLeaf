@@ -118,3 +118,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 60 | [Comment on a slide](60-comment-on-a-slide.md) | single-node | Slides |
 | 61 | [A different first page](61-different-first-page.md) | single-node | Docs |
 | 63 | [Right-click a misspelling](63-right-click-a-misspelling.md) | single-node | Sheets |
+| 64 | [Change every copy of a typo](64-change-every-copy-of-a-typo.md) | single-node | Sheets |
