@@ -1442,6 +1442,8 @@ function Workspace() {
   const update = useCallback(
     (content: SuiteFile["content"]) => {
       if (!canEditRef.current || !current.current) return;
+      if (JSON.stringify(content) === JSON.stringify(current.current.file.content))
+        return;
       current.current = {
         ...current.current,
         file: {

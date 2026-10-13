@@ -410,7 +410,9 @@ export default function Docs({
         },
       },
     },
-    onUpdate: ({ editor }) => {
+    onUpdate: ({ editor, transaction }) => {
+      if (!transaction.docChanged || transaction.getMeta("addToHistory") === false)
+        return;
       if (!readOnlyRef.current) changes.current(editor.getJSON() as JsonNode);
     },
   });
