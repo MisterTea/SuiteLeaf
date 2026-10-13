@@ -712,12 +712,18 @@ a {
   outline: none;
 }
 .save-status {
-  display: flex;
-  gap: 4px;
-  align-items: center;
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text-secondary);
   font-size: 12px;
   margin-left: 4px;
+}
+.save-status svg {
+  margin-right: 4px;
+  vertical-align: -2px;
 }
 .header-right-tools {
   margin-left: auto;

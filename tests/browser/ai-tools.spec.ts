@@ -101,7 +101,9 @@ test("spreadsheet tools write, format, sort, chart and pivot", async ({ page }) 
   expect(await call(page, "sort_range", { range: "I1:J4", column: "Qty", order: "descending", has_header: true })).toMatch(
     /1\tItem\tQty\n2\tInk\t9\n3\tPads\t5\n4\tPens\t3/,
   );
-  expect(await call(page, "freeze", { rows: 1 })).toContain("1 row");
+  expect(await call(page, "freeze", { rows: 1 })).toMatch(
+    /^Row 1 \(Category, Budget, .*\) now stays at the top while scrolling\. No columns are frozen\.$/,
+  );
   expect(
     await call(page, "create_pivot", { range: "A1:C5", rows: ["Category"], value: "Actual", summarize: "SUM" }),
   ).toContain("Pivot table");
