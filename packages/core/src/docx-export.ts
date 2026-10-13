@@ -20,6 +20,7 @@ import {
   Packer,
   PageNumber,
   Paragraph,
+  SectionType,
   SimpleField,
   Table,
   TableCell,
@@ -335,6 +336,25 @@ function runs(
     return [...marked(plan, index, "starts"), body, ...marked(plan, index, "ends")];
   });
 }
+function columnSegments(
+  nodes: JsonNode[],
+): { columns: 1 | 2; nodes: JsonNode[] }[] {
+  const out: { columns: 1 | 2; nodes: JsonNode[] }[] = [];
+  const push = (columns: 1 | 2, node: JsonNode) => {
+    const last = out[out.length - 1];
+    if (last && last.columns === columns) last.nodes.push(node);
+    else out.push({ columns, nodes: [node] });
+  };
+  const walk = (items: JsonNode[], columns: 1 | 2) => {
+    for (const node of items) {
+      if (node.type === "columnLayout")
+        walk(node.content ?? [], node.attrs?.columns === 1 ? 1 : 2);
+      else push(columns, node);
+    }
+  };
+  walk(nodes, 1);
+  return out;
+}
 function blocks(
   nodes: JsonNode[],
   plan: DocxCommentPlan,
@@ -344,6 +364,8 @@ function blocks(
 ): (Paragraph | Table | TableOfContents)[] {
   return nodes.flatMap((n): (Paragraph | Table | TableOfContents)[] => {
     if (n.type === "note") return [];
+    if (n.type === "columnLayout")
+      return blocks(n.content ?? [], plan, notes, library, list);
     if (n.type === "bibliography")
       return [new Paragraph({ children: [new TextRun("SLBIBFIELD")] })];
     if (n.type === "tableOfContents") {
@@ -548,9 +570,13 @@ export async function exportDocx(
   const splitFurniture =
     settings.differentFirstPage || settings.differentOddEven;
   const comments = planDocxComments(content);
-  const children = blocks(content.content ?? [], comments, notes, library);
+  const segments = columnSegments(content.content ?? []);
+  if (!segments.length) segments.push({ columns: 1, nodes: [] });
+  const sectionChildren = segments.map((segment) =>
+    blocks(segment.nodes, comments, notes, library),
+  );
   if (comments.trailing.length)
-    children.push(
+    sectionChildren[sectionChildren.length - 1].push(
       new Paragraph({
         children: comments.trailing.flatMap((id) => [
           new CommentRangeStart(id),
@@ -599,8 +625,7 @@ export async function exportDocx(
           })),
         }
       : undefined,
-    sections: [
-      {
+    sections: sectionChildren.map((children, index) => ({
         properties: {
           page: {
             size: {
@@ -616,6 +641,10 @@ export async function exportDocx(
               footer: 360,
             },
           },
+          ...(segments[index].columns === 2
+            ? { column: { count: 2, space: 720, equalWidth: true } }
+            : {}),
+          ...(index > 0 ? { type: SectionType.CONTINUOUS } : {}),
           ...(settings.differentFirstPage ? { titlePage: true } : {}),
         },
         headers: splitFurniture
@@ -697,8 +726,7 @@ export async function exportDocx(
                     }),
                   },
         children,
-      },
-    ],
+    })),
   });
   const packed = await revisionizeDocx(
     new Uint8Array(await Packer.toArrayBuffer(doc)),
