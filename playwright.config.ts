@@ -4,8 +4,10 @@ export default defineConfig({
   testDir: "tests/browser",
   timeout: 45000,
   expect: { timeout: 15000 },
-  fullyParallel: false,
-  workers: 1,
+  // CI shards the suite and runs tests side by side. Locally, one
+  // worker keeps failures easy to read.
+  fullyParallel: !!process.env.CI,
+  workers: process.env.CI ? 4 : 1,
   use: {
     baseURL: "http://127.0.0.1:4173",
     trace: "retain-on-failure",
