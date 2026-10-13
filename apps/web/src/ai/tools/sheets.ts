@@ -76,14 +76,42 @@ export const a1 = (r: { startRow: number; endRow: number; startColumn: number; e
 const display = (v: unknown) =>
   v === null || v === undefined ? "" : typeof v === "number" ? String(Math.round(v * 1e6) / 1e6) : String(v);
 
+const gridCanvas = () =>
+  [...document.querySelectorAll<HTMLCanvasElement>(".sheet-host canvas")]
+    .filter((c) => c.getBoundingClientRect().height > 100)
+    .sort((x, y) => y.getBoundingClientRect().height - x.getBoundingClientRect().height)[0];
+
+/** Scrolls a range that is out of view back on screen, as a person would before acting on it. */
+export async function revealRange(book: any, input: string) {
+  try {
+    const sheet = book.getActiveSheet();
+    const r = parseA1(input);
+    const freeze = sheet.getFreeze?.() ?? {};
+    const fr = freeze.ySplit ? freeze.startRow : 0,
+      fc = freeze.xSplit ? freeze.startColumn : 0;
+    const state = sheet.getScrollState();
+    const rect = rangeScreenRect(book, input);
+    const box = gridCanvas()?.getBoundingClientRect();
+    if (!rect || !box) return;
+    const hidden =
+      (r.startRow >= fr && r.startRow < state.sheetViewStartRow + fr) ||
+      (r.startColumn >= fc && r.startColumn < state.sheetViewStartColumn + fc) ||
+      rect.top > box.bottom - 30 ||
+      rect.left > box.right - 30;
+    if (!hidden) return;
+    sheet.scrollToCell(Math.max(fr, r.startRow - 2), Math.max(fc, r.startColumn - 1));
+    await wait(400);
+  } catch {
+    // Pointing is best effort.
+  }
+}
+
 /** The on-screen rectangle of a range, for the agent's pointer. */
 export function rangeScreenRect(book: any, input: string): DOMRect | undefined {
   try {
     const sheet = book.getActiveSheet();
     const r = parseA1(input);
-    const canvas = [...document.querySelectorAll<HTMLCanvasElement>(".sheet-host canvas")]
-      .filter((c) => c.getBoundingClientRect().height > 100)
-      .sort((x, y) => y.getBoundingClientRect().height - x.getBoundingClientRect().height)[0];
+    const canvas = gridCanvas();
     if (!canvas) return undefined;
     const box = canvas.getBoundingClientRect();
     const rect = (row: number, col: number) => JSON.parse(sheet.getRange(row, col, 1, 1).getCellRect().toJSON());
@@ -175,7 +203,11 @@ const NUMBER_FORMATS: Record<string, string> = {
 export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
   const { book } = ctx;
   const sheet = () => book.getActiveSheet();
-  const target = (range?: string) => (range ? rangeScreenRect(book, range) : undefined);
+  const target = async (range?: string) => {
+    if (!range) return undefined;
+    await revealRange(book, range);
+    return rangeScreenRect(book, range);
+  };
   const select = (range: string) => {
     sheet().getRange(a1(parseA1(range))).activate();
   };
@@ -399,12 +431,38 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       label: "Freeze",
       description: "Freeze the top rows and/or left columns so they stay visible while scrolling. 0 unfreezes.",
       parameters: Type.Object({ rows: Type.Optional(Type.Number()), columns: Type.Optional(Type.Number()) }),
-      target: () => target("A1"),
+      target: ({ rows, columns }) => {
+        const used = usedRange(sheet());
+        const r = Math.max(0, Math.round(rows ?? 0)),
+          c = Math.max(0, Math.round(columns ?? 0));
+        if (r) return target(a1({ startRow: 0, endRow: r - 1, startColumn: 0, endColumn: Math.max(used.endColumn, c - 1) }));
+        if (c) return target(a1({ startRow: 0, endRow: Math.min(used.endRow, 20), startColumn: 0, endColumn: c - 1 }));
+        return target("A1");
+      },
       execute({ rows, columns }) {
         if (rows !== undefined) ctx.freeze("rows", Math.max(0, Math.round(rows)));
         if (columns !== undefined) ctx.freeze("columns", Math.max(0, Math.round(columns)));
         ctx.persist();
-        return `Frozen: ${rows ?? "unchanged"} row(s), ${columns ?? "unchanged"} column(s).`;
+        const f = sheet().getFreeze?.() ?? {};
+        const fr = f.ySplit ? f.startRow : 0,
+          fc = f.xSplit ? f.startColumn : 0;
+        const used = usedRange(sheet());
+        const shown = (range: Parameters<typeof a1>[0]) => {
+          const values = sheet()
+            .getRange(range.startRow, range.startColumn, range.endRow - range.startRow + 1, range.endColumn - range.startColumn + 1)
+            .getValues()
+            .flat()
+            .map(display)
+            .filter(Boolean);
+          return values.length ? ` (${values.slice(0, 8).join(", ")}${values.length > 8 ? ", …" : ""})` : "";
+        };
+        const rowsText = fr
+          ? `${fr === 1 ? "Row 1" : `Rows 1-${fr}`}${shown({ startRow: 0, endRow: fr - 1, startColumn: used.startColumn, endColumn: used.endColumn })} now ${fr === 1 ? "stays" : "stay"} at the top while scrolling.`
+          : "No rows are frozen.";
+        const columnsText = fc
+          ? `${fc === 1 ? "Column A" : `Columns A-${columnLetter(fc - 1)}`}${shown({ startRow: used.startRow, endRow: used.startRow, startColumn: 0, endColumn: fc - 1 })} now ${fc === 1 ? "stays" : "stay"} at the left while scrolling.`
+          : "No columns are frozen.";
+        return `${rowsText} ${columnsText}`;
       },
     }),
     tool({
