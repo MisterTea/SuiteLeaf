@@ -104,6 +104,7 @@ import { Equation, EquationDialog } from "./doc-equations";
 import {
   documentHtml,
   documentPageSettings,
+  gutterAccepted,
   pageDimensions,
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
@@ -113,6 +114,7 @@ import { paragraphLineSpacing } from "./doc-line-spacing";
 import { LineSpacingControl } from "./doc-line-spacing-ui";
 import { pageSetupToSave } from "./doc-watermark";
 import { columnLayout } from "./doc-columns";
+import { GutterField, PageGutterBands } from "./page-gutter";
 
 export const extensions: Extensions = [
   DocumentPagination,
@@ -956,7 +958,8 @@ export default function Docs({
   const pageDraftValid =
     Number.isFinite(pageDraft.margin) &&
     pageDraft.margin >= 24 &&
-    pageDraft.margin <= 144;
+    pageDraft.margin <= 144 &&
+    gutterAccepted(pageDraft.gutter);
   const dimensions = pageDimensions(pageSettings);
   const requestedZoom =
     zoomLevel === "Fit" ? 1 : Number.parseInt(zoomLevel, 10) / 100;
@@ -1450,6 +1453,10 @@ export default function Docs({
                   }
                 />
               </label>
+              <GutterField
+                px={pageDraft.gutter}
+                onPx={(gutter) => setPageDraft({ ...pageDraft, gutter })}
+              />
               <PageSetupFields
                 draft={pageDraft}
                 pageCount={pageCount}
@@ -1953,12 +1960,14 @@ export default function Docs({
                 "--page-width": `${dimensions.width}px`,
                 "--page-height": `${dimensions.height}px`,
                 "--page-margin": `${pageSettings.margin}px`,
+                "--page-gutter": `${pageSettings.gutter}px`,
                 "--page-stride": `${dimensions.height + 24}px`,
                 minHeight: `${pageCount * dimensions.height + (pageCount - 1) * 24}px`,
                 zoom: pageZoom,
               } as CSSProperties
             }
           >
+            <PageGutterBands settings={pageSettings} pageCount={pageCount} />
             <PageFurniture
               editor={editor}
               pageCount={pageCount}

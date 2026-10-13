@@ -6,6 +6,7 @@ import {
   pageDimensions,
 } from "@suiteleaf/core/document-layout";
 import type { JsonNode } from "@suiteleaf/core";
+import { gutterDecorations } from "./doc-gutter";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -205,6 +206,7 @@ export const DocumentPagination = Extension.create({
               });
               boundaries.sort((a, b) => a.top - b.top || a.pos - b.pos);
               const decorations: Decoration[] = [];
+              const breaks: number[] = [];
               let added = 0,
                 page = 0;
               for (const [i, next] of boundaries.entries()) {
@@ -251,10 +253,19 @@ export const DocumentPagination = Extension.create({
                       },
                     ),
                   );
+                  breaks.push(b.pos);
                   added += gap;
                   page++;
                 }
               }
+              decorations.push(
+                ...gutterDecorations(
+                  view.state.doc,
+                  boundaries,
+                  breaks,
+                  settings,
+                ),
+              );
               const naturalBottom = Math.max(
                 0,
                 ...boundaries.map((b) => b.bottom),

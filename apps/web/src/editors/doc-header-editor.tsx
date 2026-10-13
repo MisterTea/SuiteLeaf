@@ -1,10 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import type { Editor } from "@tiptap/react";
 import { useEditorState } from "@tiptap/react";
 import type { JsonNode } from "@suiteleaf/core";
 import {
   documentPageSettings,
   pageFace,
+  pageSideInsets,
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
 import { DocWatermark } from "./doc-watermark";
@@ -243,6 +244,7 @@ function FurniturePage({
   onTab: (field: FurnitureField, pageIndex: number) => void;
 }) {
   const face = pageFace(settings, pageIndex, pageCount);
+  const insets = pageSideInsets(settings, pageIndex + 1);
   const headerSlot = furnitureSlot(settings, "header", pageIndex);
   const footerSlot = furnitureSlot(settings, "footer", pageIndex);
   const headerHere =
@@ -260,7 +262,13 @@ function FurniturePage({
           ? "true"
           : undefined
       }
-      style={{ ["--page-index" as string]: pageIndex }}
+      style={
+        {
+          ["--page-index" as string]: pageIndex,
+          ["--gutter-left" as string]: `${insets.left - settings.margin}px`,
+          ["--gutter-right" as string]: `${insets.right - settings.margin}px`,
+        } as CSSProperties
+      }
     >
       <DocWatermark text={settings.watermark} />
       {face.numberSide === "top-right" ? (

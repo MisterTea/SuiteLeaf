@@ -4,6 +4,7 @@ import {
   eventMatchesShortcut,
   formatShortcut,
   isUnimplemented,
+  COMMAND_SYNONYMS,
   searchCommands,
   synonymsFor,
   type CommandView,
@@ -94,6 +95,12 @@ describe("command search", () => {
       "watermark",
     );
     expect(top.label).toBe("Page setup…");
+  });
+
+  it("offers gutter as another way to say page setup", () => {
+    expect(COMMAND_SYNONYMS["Page setup…"]).toEqual(
+      expect.arrayContaining(["gutter", "binding"]),
+    );
   });
 
   it("ranks freeze 1 row ahead of the other freeze commands", () => {

@@ -10,6 +10,8 @@ export type PageSettings = {
   size: "letter" | "a4";
   landscape: boolean;
   margin: number;
+  /** Extra inside margin, in CSS pixels. 0 means the edges stay equal. */
+  gutter: number;
   header: string;
   footer: string;
   pageNumbers: boolean;
@@ -47,10 +49,13 @@ export function watermarkText(value: unknown): string {
   if (typeof value !== "string") return "";
   return value.replace(/\s+/g, " ").trim().slice(0, WATERMARK_LIMIT);
 }
+/** A binding gutter above 2 inches is refused so the text stays on the page. */
+export const maxGutter = 2 * 96;
 export const defaultPageSettings: PageSettings = {
   size: "letter",
   landscape: false,
   margin: 72,
+  gutter: 0,
   header: "",
   footer: "",
   pageNumbers: false,
@@ -69,6 +74,15 @@ export const defaultPageSettings: PageSettings = {
 };
 const pageText = (value: unknown) =>
   typeof value === "string" ? value.slice(0, 500) : "";
+/** True when a gutter, in CSS pixels, can be stored and laid out. */
+export function gutterAccepted(px: number): boolean {
+  return Number.isFinite(px) && px >= 0 && px <= maxGutter;
+}
+function clampGutter(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0)
+    return 0;
+  return Math.min(maxGutter, value);
+}
 export function documentPageSettings(content: JsonNode): PageSettings {
   const a = content.attrs?.pageSettings as Partial<PageSettings> | undefined;
   return {
@@ -78,6 +92,7 @@ export function documentPageSettings(content: JsonNode): PageSettings {
       typeof a?.margin === "number" && Number.isFinite(a.margin)
         ? Math.min(144, Math.max(24, a.margin))
         : 72,
+    gutter: clampGutter(a?.gutter),
     header: pageText(a?.header),
     footer: pageText(a?.footer),
     // Like Docs and Word, page numbers are off until chosen; settings saved
@@ -223,6 +238,20 @@ export function pageNumberHint(settings: PageSettings, pageCount = 2): string {
     return `No number on page 1. ${place} on later pages, as “${sample}”. ${kept}`;
   return `${place} of every page, as “${sample}”. ${kept}`;
 }
+/**
+ * Horizontal insets for a 1-based page. Odd pages, including the first, keep
+ * the extra space on the left. Even pages keep it on the right. The outside
+ * edge stays at `margin`.
+ */
+export function pageSideInsets(
+  settings: PageSettings,
+  pageNumber: number,
+): { left: number; right: number } {
+  const odd = Math.abs(pageNumber) % 2 === 1;
+  return odd
+    ? { left: settings.margin + settings.gutter, right: settings.margin }
+    : { left: settings.margin, right: settings.margin + settings.gutter };
+}
 export function pageDimensions(settings: PageSettings) {
   const [width, height] = settings.size === "a4" ? [794, 1123] : [816, 1056];
   return {
@@ -260,9 +289,11 @@ export function documentHtml(
   settings: PageSettings,
 ) {
   const { width, height } = pageDimensions(settings);
+  const margin = settings.margin / 96;
+  const gutter = settings.gutter / 96;
   const pageRule = [
     `size: ${width / 96}in ${height / 96}in;`,
-    `margin: ${settings.margin / 96}in;`,
+    `margin: ${margin}in;`,
     pageNumberMarginBox(settings),
   ].join(" ");
   // The web page starts on page 1, so a different first page shows its letterhead
@@ -282,6 +313,11 @@ export function documentHtml(
   const firstPageRule =
     settings.pageNumbers && settings.differentFirstPage
       ? `@page :first { @${numberSlot} { content: none; } }`
+      : "";
+  // CSS :right is the odd (recto) page. The gutter swaps onto the inside edge.
+  const mirror =
+    gutter > 0
+      ? `@page :right { margin-left: ${margin + gutter}in; margin-right: ${margin}in; } @page :left { margin-left: ${margin}in; margin-right: ${margin + gutter}in; }`
       : "";
   const furniture = (tag: "header" | "footer", text: string) =>
     text ? `<${tag} class="page-${tag}">${escapeHtml(text)}</${tag}>` : "";
@@ -310,6 +346,7 @@ ${watermarkCss}
 .doc-columns { column-count: 2; column-gap: 0.5in; }
 @page { ${pageRule} }
 ${firstPageRule}
+${mirror}
 @media print { body { max-width: none; padding: 0; } }
 </style>
 </head>

@@ -3,8 +3,10 @@ import {
   defaultPageSettings,
   documentHtml,
   documentPageSettings,
+  maxGutter,
   pageFace,
   pageNumberHint,
+  pageSideInsets,
 } from "../packages/core/src/document-layout";
 
 describe("document page settings", () => {
@@ -150,6 +152,25 @@ describe("document page settings", () => {
     expect(unknown.pageNumberPositionSet).toBe(false);
     expect(pageFace(unknown, 0, 2).pageNumber).toBe("1 / 2");
   });
+  it("defaults the gutter to 0 and refuses anything above 2 inches", () => {
+    const saved = (pageSettings: object) =>
+      documentPageSettings({ type: "doc", attrs: { pageSettings } });
+    expect(defaultPageSettings.gutter).toBe(0);
+    expect(documentPageSettings({ type: "doc" }).gutter).toBe(0);
+    expect(saved({ header: "Old file" }).gutter).toBe(0);
+    expect(saved({ gutter: 48 }).gutter).toBe(48);
+    expect(saved({ gutter: 0 }).gutter).toBe(0);
+    expect(saved({ gutter: 300 }).gutter).toBe(maxGutter);
+    expect(saved({ gutter: -10 }).gutter).toBe(0);
+    const halfInch = { ...defaultPageSettings, gutter: 48 };
+    expect(pageSideInsets(halfInch, 1)).toEqual({ left: 72 + 48, right: 72 });
+    expect(pageSideInsets(halfInch, 2)).toEqual({ left: 72, right: 72 + 48 });
+    expect(pageSideInsets(halfInch, 3)).toEqual(pageSideInsets(halfInch, 1));
+    expect(pageSideInsets(defaultPageSettings, 2)).toEqual({
+      left: 72,
+      right: 72,
+    });
+  });
 });
 
 describe("document HTML export", () => {
@@ -224,5 +245,19 @@ describe("document HTML export", () => {
     expect(html).not.toContain("<footer");
     expect(html).not.toContain("counter(page)");
     expect(html).toContain("<main><p>Text</p></main>");
+    expect(html).not.toContain("@page :left");
+    expect(html).not.toContain("@page :right");
+  });
+  it("prints the gutter on the inside edge", () => {
+    const html = documentHtml("Minutes", "<p>Text</p>", {
+      ...defaultPageSettings,
+      gutter: 48,
+    });
+    expect(html).toContain(
+      "@page :right { margin-left: 1.25in; margin-right: 0.75in; }",
+    );
+    expect(html).toContain(
+      "@page :left { margin-left: 0.75in; margin-right: 1.25in; }",
+    );
   });
 });
