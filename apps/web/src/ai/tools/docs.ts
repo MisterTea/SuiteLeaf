@@ -23,7 +23,8 @@ export interface DocsAgentContext {
   showSpelling: () => void;
   jumpToHeading: (pos: number) => void;
   insertImage: (file: File) => Promise<void>;
-  exportAs: (format: "docx" | "html" | "txt") => Promise<void>;
+  /** Undefined once the browser downloads it; on the desktop, the saved path or null if cancelled. */
+  exportAs: (format: "docx" | "html" | "txt") => Promise<string | null | undefined>;
   pageCount: number;
 }
 
@@ -593,8 +594,10 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       parameters: Type.Object({ format: Type.String({ enum: ["docx", "html", "txt"] }) }),
       target: () => document.querySelector(".workspace-header .menu-trigger, .workspace-header [aria-haspopup]"),
       async execute({ format }) {
-        await ctx.exportAs(format as "docx");
-        return `Exported "${ctx.title}.${format}".`;
+        const saved = await ctx.exportAs(format as "docx");
+        const name = `"${ctx.title}.${format}"`;
+        if (saved === null) return `The user closed the save dialog, so ${name} was not exported. Tell them; export again only if they ask.`;
+        return saved ? `Exported ${name}; the user saved it as ${saved}.` : `Exported ${name}; it downloaded to the browser's downloads.`;
       },
     }),
     tool({

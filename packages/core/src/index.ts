@@ -577,7 +577,8 @@ export interface DesktopBridge {
   open(): Promise<FileRecord | null>;
   saveAs(record: FileRecord): Promise<FileRecord | null>;
   reload(id: string): Promise<FileRecord | undefined>;
-  exportFile(name: string, content: string | Uint8Array): Promise<void>;
+  /** Where the person saved the export, or null if they cancelled the dialog. */
+  exportFile(name: string, content: string | Uint8Array): Promise<string | null>;
   print(title?: string): Promise<void>;
   onMenu(callback: (action: string) => void): () => void;
   setDirty(dirty: boolean): void;

@@ -575,10 +575,10 @@ export default function Docs({
   };
 
   const exportDocument = async (format: string) => {
-    if (!editor) return;
+    if (!editor) return null;
     if (format === "docx") {
       const { exportDocx } = await import("@suiteleaf/core/docx-export");
-      await exportBinary(
+      return exportBinary(
         filename(file.title, "docx"),
         await exportDocx({
           title: file.title,
@@ -587,7 +587,7 @@ export default function Docs({
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       );
     } else if (format === "html")
-      await exportText(
+      return exportText(
         filename(file.title, "html"),
         documentHtml(
           file.title,
@@ -597,7 +597,7 @@ export default function Docs({
         "text/html",
       );
     else
-      await exportText(
+      return exportText(
         filename(file.title, "txt"),
         documentPlainText(editor.getJSON() as JsonNode),
       );
@@ -645,7 +645,9 @@ export default function Docs({
     if (!editor) return;
     onActions({
       flush: async () => {},
-      export: (format) => exportRef.current(format),
+      export: async (format) => {
+        await exportRef.current(format);
+      },
       print: () => printDocument(file.title),
       docActions: {
         undo: () => editor.commands.undo(),

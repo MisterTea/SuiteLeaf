@@ -60,6 +60,9 @@ test("document tools write, style, find, replace and check spelling", async ({ p
   await expect(page.getByLabel("Page margins")).toHaveValue("1");
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   expect(await call(page, "page_setup", { margin_inches: 3 })).toContain('1.50" margins (3" is outside');
+  const download = page.waitForEvent("download");
+  expect(await call(page, "export_document", { format: "html" })).toContain("downloaded to the browser's downloads");
+  expect((await download).suggestedFilename()).toBe("Volunteer letter.html");
   expect(await call(page, "write_text", { after: "# Thank you", text: "Dear friends," })).toContain('right after "Thank you"');
   await expect(doc.locator("h1 + p")).toHaveText("Dear friends,");
   await call(page, "write_text", { after: "Thank you", text: "## Helpers\nAll of you." });
