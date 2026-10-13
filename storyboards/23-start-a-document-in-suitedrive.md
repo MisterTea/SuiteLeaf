@@ -27,6 +27,24 @@ Rosa coordinates the garden club's watering rota. She opens the team's SuiteLeaf
 - SuiteDrive has a "Garden club" folder containing "Watering rota.sldoc".
 - The document autosaved to the server, and renaming the title renamed the file.
 
+## AI version
+
+**Video:** [web](videos/23-start-a-document-in-suitedrive-ai.mp4) · **Script:** [scenes/ai/23-start-a-document-in-suitedrive-ai.spec.ts](scenes/ai/23-start-a-document-in-suitedrive-ai.spec.ts)
+
+Web only: this is a cluster storyboard, with the app served by the SuiteLeaf node itself (locked to that server). Rosa opens the server and creates her account herself; the assistant never signs in or types passwords. Her SuiteDrive is empty. She then asks the on-device assistant (Gemma 4 E4B) once:
+
+"Make a Garden club folder and start a document in it called Watering rota. It should say: Mon Rosa, Tue Leo, Wed Priya, Thu Sam."
+
+Gemma uses `new_folder`, `open_folder`, `create_file` and `write_text`, in that order, every run. In the recording, SuiteDrive scrolls up into view and the pointer goes to New folder, and "Garden club" appears in My Drive. The pointer then goes to the folder's row, and the path changes to "My Drive › Garden club" with "In Garden club" on the New buttons. It goes to New document, which opens a blank document titled "Watering rota", and the rota is typed in. The status beside the title reads "Saved to SuiteDrive". Rosa closes the panel and clicks Back to files, which returns her to Garden club with "Watering rota.sldoc" in it. My Drive holds only the Garden club folder. The test checks the title, the four names in order, the "Saved to SuiteDrive" status, the file's name in the Garden club folder (as listed by the server), and that the document isn't loose in My Drive. Because the agent names the document when it creates it, nothing gets renamed afterwards. The check that "renaming the title renamed the file" therefore becomes a check that the file on the server carries the document's title.
+
+Fixes made along the way:
+
+- The SuiteDrive tools now scroll the drive list into view before pointing. Before, the list sat below the New buttons and the new folder's row was at the bottom edge of the screen.
+- With the AI panel open, the title box shrinks to fit its text, so the editor header shows the whole "Saved to SuiteDrive" status. Before, it was cut to "Saved to …".
+- When `write_text` replaces the whole document, its result now says so instead of "at the end of the document".
+
+**How Gemma did:** with the final tools, web passed 3 of 3 runs (4 of 5 recordings in all). The first recording failed only because the test then expected the rota word for word; it now checks the four names in order. In every run Gemma typed the rota as four lines ("Mon Rosa", "Tue Leo", …), dropping the commas and the full stop, even though the system prompt says to keep the user's text. In 3 of 5 runs it set "replace the whole document" on a document that was already empty, which did no harm. In the first run its closing message said "You created the folder…" instead of "I". It picked the right tools with the right arguments every time, never called a tool that failed, and never went back to the file list on its own. Each run took about 20 seconds after the model loaded.
+
 ## Gaps and notes
 
 - "New folder", the Rename pencil, and Move to trash now use in-app dialogs in SuiteLeaf's dialog style instead of the browser's prompt and confirm pop-ups. Rename selects the title but not the extension, so typing a new name keeps `.sldoc`.
