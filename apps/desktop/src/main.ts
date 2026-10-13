@@ -25,6 +25,7 @@ import {
   type FileRecord,
 } from "@suiteleaf/core";
 import { FileStore, atomicWrite, driveLink } from "./store";
+import { registerAi } from "./ai";
 protocol.registerSchemesAsPrivileged([
   {
     scheme: "suiteleaf",
@@ -457,6 +458,11 @@ else {
       if (typeof url !== "string") throw new Error("Invalid sign-in address.");
       return authWindow(url);
     });
+    registerAi(
+      register,
+      () => window?.webContents,
+      (sender) => sender === window?.webContents,
+    );
     ipcMain.on("dirty", (event, value) => {
       if (event.sender === window?.webContents && typeof value === "boolean")
         dirty = value;

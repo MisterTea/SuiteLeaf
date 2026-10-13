@@ -198,6 +198,7 @@ export type EditorActions = {
     undo: () => void;
     redo: () => void;
     openFind: () => void;
+    openSpelling: () => void;
     selectAll: () => void;
     insertLink: () => void;
     insertImage: () => void;

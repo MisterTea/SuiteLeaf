@@ -7,6 +7,7 @@ import {
   useState,
   Component,
   type ReactNode,
+  type RefObject,
 } from "react";
 import {
   HashRouter,
@@ -97,6 +98,16 @@ import {
   useMode,
   type ResolvedMode,
 } from "./mode";
+import { useAgentHost } from "./ai/host";
+import { AiButton, AgentLayer } from "./ai/AgentSidebar";
+import {
+  homeSnapshot,
+  homeTools,
+  workspaceSnapshot,
+  workspaceTools,
+  type HomeAgentContext,
+  type WorkspaceAgentContext,
+} from "./ai/tools/files";
 const Docs = lazy(() => import("./editors/Docs")),
   Sheets = lazy(() => import("./editors/Sheets")),
   Slides = lazy(() => import("./editors/Slides"));
@@ -191,12 +202,15 @@ function ImportButton({
   onImport,
   onError,
   filePicker = false,
+  importer,
 }: {
   /** `name` is the chosen file's name when it came from the file picker. */
   onImport: (r: FileRecord, name?: string) => Promise<void>;
   onError: (s: string) => void;
   /** Always use the browser file picker, even on desktop. */
   filePicker?: boolean;
+  /** Receives a function that imports a chosen file the same way the picker does. */
+  importer?: RefObject<((f: File) => Promise<void>) | null>;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
@@ -204,6 +218,21 @@ function ImportButton({
     draft: DelimitedDraft;
     resolve: (options: DelimitedOptions | null) => void;
   } | null>(null);
+  const importChosen = async (f: File) => {
+    setImporting(true);
+    try {
+      const file = await importFile(
+        f,
+        (draft) => new Promise((resolve) => setReview({ draft, resolve })),
+      );
+      if (file) await onImport({ file }, f.name);
+    } catch (e) {
+      onError(message(e));
+    } finally {
+      setImporting(false);
+    }
+  };
+  if (importer) importer.current = importChosen;
   const open = async () => {
     setImporting(true);
     try {
@@ -231,20 +260,7 @@ function ImportButton({
         onChange={async (e) => {
           const f = e.target.files?.[0];
           e.target.value = "";
-          if (!f) return;
-          setImporting(true);
-          try {
-            const file = await importFile(
-              f,
-              (draft) =>
-                new Promise((resolve) => setReview({ draft, resolve })),
-            );
-            if (file) await onImport({ file }, f.name);
-          } catch (e) {
-            onError(message(e));
-          } finally {
-            setImporting(false);
-          }
+          if (f) await importChosen(f);
         }}
       />
       {window.suiteleaf && !filePicker ? (
@@ -534,6 +550,38 @@ function LocalHome() {
       {label}
     </button>
   ));
+  const importer = useRef<((f: File) => Promise<void>) | null>(null);
+  useAgentHost("home", () => {
+    const ctx: HomeAgentContext = {
+      records,
+      shown: shown.map((s) => s.r),
+      query,
+      filter,
+      setQuery,
+      setFilter,
+      setSort,
+      create: (kind, title) => open({ file: createFile(kind, title) }),
+      open: (r) => navigate(`/file/${r.file.id}`),
+      openSample: (kind) =>
+        void open({
+          file: (kind === "doc" ? sampleDoc : kind === "sheet" ? sampleSheet : sampleSlide)(),
+        }),
+      rename,
+      duplicate: (r) =>
+        storage.save({ file: duplicateFile(r.file) }).then(refresh),
+      showRemove: (record) => setAsking({ action: "remove", record }),
+      remove: async (r) => {
+        setAsking(null);
+        await storage.remove(r.file.id);
+        await refresh();
+      },
+      importFile: async (f) => {
+        if (!importer.current) throw new Error("Clear the search to import a file.");
+        await importer.current(f);
+      },
+    };
+    return { kind: "home", snapshot: () => homeSnapshot(ctx), tools: homeTools(ctx) };
+  });
   return (
     <div className="home">
       <aside className="sidebar">
@@ -608,6 +656,7 @@ function LocalHome() {
             />
           </label>
           <span className="version">OPEN SOURCE · v0.1</span>
+          <AiButton />
         </header>
         <LeftServerNotice />
         {searching ? null : (
@@ -630,7 +679,11 @@ function LocalHome() {
             {searching ? (
               <button onClick={() => setQuery("")}>Clear search</button>
             ) : (
-              <ImportButton onImport={importRecord} onError={setError} />
+              <ImportButton
+                onImport={importRecord}
+                onError={setError}
+                importer={importer}
+              />
             )}
           </header>
           {sameFile ? (
@@ -941,6 +994,7 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
         <header className="home-top">
           <span />
           <span className="version">OPEN SOURCE · v0.1</span>
+          <AiButton />
         </header>
         <section className="welcome">
           <p className="eyebrow">YOUR TEAM WORKSPACE</p>
@@ -1342,6 +1396,24 @@ function Workspace() {
     actions.current = a;
     setActionsReady(true);
   }, []);
+  useAgentHost("workspace", () => {
+    const file = record?.file;
+    const ctx: WorkspaceAgentContext | null = file
+      ? {
+          title: file.title,
+          kind: file.kind,
+          status,
+          rename: changeTitle,
+          download,
+          back: () => save().then(() => navigate("/")),
+        }
+      : null;
+    return {
+      kind: file?.kind ?? "doc",
+      snapshot: () => (ctx ? workspaceSnapshot(ctx) : ""),
+      tools: ctx ? workspaceTools(ctx) : [],
+    };
+  });
   if (locked)
     return (
       <div className="loading">
@@ -1714,9 +1786,7 @@ function Workspace() {
                     Find and replace
                   </MenuItem>
                   <MenuItem
-                    onSelect={() =>
-                      actions.current?.docActions?.clearFormatting()
-                    }
+                    onSelect={() => actions.current?.docActions?.openSpelling()}
                   >
                     Spelling and grammar
                   </MenuItem>
@@ -2031,6 +2101,7 @@ function Workspace() {
           >
             <MessageSquare size={18} />
           </button>
+          <AiButton />
           {mode.kind === "cluster" ? (
             <span
               className="workspace-brand workspace-server"
@@ -2279,6 +2350,7 @@ export default function App() {
   return (
     <ModeContext.Provider value={mode}>
       <HashRouter>
+        <AgentLayer />
         <Routes>
           <Route path="/auth-complete" element={<AuthComplete />} />
           <Route

@@ -76,6 +76,9 @@ import { documentPlainText } from "./doc-text";
 import { slugify, uniqueSlug, anchorHref, isInternalAnchor } from "../anchors";
 
 import { DocumentPagination, PageBreak } from "./doc-pagination";
+import SpellingPanel from "./SpellingPanel";
+import { useAgentHost } from "../ai/host";
+import { docSnapshot, docTools, type DocsAgentContext } from "../ai/tools/docs";
 import {
   documentHtml,
   documentPageSettings,
@@ -199,6 +202,7 @@ export default function Docs({
   const [activeHeading, setActiveHeading] = useState<number | null>(null);
   const [pageCount, setPageCount] = useState(1);
   const [pageSetupOpen, setPageSetupOpen] = useState(false);
+  const [spellingOpen, setSpellingOpen] = useState(false);
   const [pageDraft, setPageDraft] = useState<PageSettings>(() =>
     documentPageSettings(file.content),
   );
@@ -568,42 +572,84 @@ export default function Docs({
     editor.chain().focus().setFontSize(`${next}pt`).run();
   };
 
+  const exportDocument = async (format: string) => {
+    if (!editor) return;
+    if (format === "docx") {
+      const { exportDocx } = await import("@suiteleaf/core/docx-export");
+      await exportBinary(
+        filename(file.title, "docx"),
+        await exportDocx({
+          title: file.title,
+          content: editor.getJSON() as JsonNode,
+        }),
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      );
+    } else if (format === "html")
+      await exportText(
+        filename(file.title, "html"),
+        documentHtml(
+          file.title,
+          editor.getHTML(),
+          documentPageSettings(editor.getJSON() as JsonNode),
+        ),
+        "text/html",
+      );
+    else
+      await exportText(
+        filename(file.title, "txt"),
+        documentPlainText(editor.getJSON() as JsonNode),
+      );
+  };
+  const exportRef = useRef(exportDocument);
+  exportRef.current = exportDocument;
+
+  useAgentHost("editor", () => {
+    const ready = !!editor?.schema;
+    const ctx: DocsAgentContext | null = ready
+      ? {
+          editor: editor!,
+          title: file.title,
+          showFind: (q, r, mc) => {
+            setQuery(q);
+            setReplacement(r);
+            setMatchCase(mc);
+            setUseRegex(false);
+            setIgnoreDiacritics(!mc);
+            setFindOpen(true);
+          },
+          showReplaced: (n) => setReplacedCount(n),
+          closeFind: () => setFindOpen(false),
+          showPageSetup: (draft) => {
+            setPageDraft(draft);
+            setPageSetupOpen(true);
+          },
+          pageSettings: () => documentPageSettings(editor!.getJSON() as JsonNode),
+          closePageSetup: () => setPageSetupOpen(false),
+          showSpelling: () => setSpellingOpen(true),
+          jumpToHeading,
+          insertImage,
+          exportAs: (format) => exportRef.current(format),
+          pageCount,
+        }
+      : null;
+    return {
+      kind: "doc",
+      snapshot: () => (ctx ? docSnapshot(ctx) : "A document is opening."),
+      tools: ctx ? docTools(ctx) : [],
+    };
+  });
+
   useEffect(() => {
     if (!editor) return;
     onActions({
       flush: async () => {},
-      async export(format) {
-        if (format === "docx") {
-          const { exportDocx } = await import("@suiteleaf/core/docx-export");
-          await exportBinary(
-            filename(file.title, "docx"),
-            await exportDocx({
-              title: file.title,
-              content: editor.getJSON() as JsonNode,
-            }),
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-          );
-        } else if (format === "html")
-          await exportText(
-            filename(file.title, "html"),
-            documentHtml(
-              file.title,
-              editor.getHTML(),
-              documentPageSettings(editor.getJSON() as JsonNode),
-            ),
-            "text/html",
-          );
-        else
-          await exportText(
-            filename(file.title, "txt"),
-            documentPlainText(editor.getJSON() as JsonNode),
-          );
-      },
+      export: (format) => exportRef.current(format),
       print: () => printDocument(file.title),
       docActions: {
         undo: () => editor.commands.undo(),
         redo: () => editor.commands.redo(),
         openFind: () => setFindOpen(true),
+        openSpelling: () => setSpellingOpen(true),
         selectAll: () => editor.chain().focus().selectAll().run(),
         insertLink: () => openLink.current(),
         insertImage: () => imageInput.current?.click(),
@@ -1793,6 +1839,9 @@ export default function Docs({
             <EditorContent editor={editor} />
           </div>
         </div>
+        {spellingOpen ? (
+          <SpellingPanel editor={editor} onClose={() => setSpellingOpen(false)} />
+        ) : null}
       </div>
       <footer className="editor-status">
         {state?.words} words{" "}

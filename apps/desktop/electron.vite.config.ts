@@ -2,12 +2,19 @@ import { defineConfig } from "electron-vite";
 import react from "@vitejs/plugin-react";
 import { resolve } from "node:path";
 import { conditionalFormatDefaults } from "../web/conditional-format-defaults";
+import { dictionaryAlias } from "../web/vite.config";
 export default defineConfig({
   main: {
     build: {
       externalizeDeps: false,
       rollupOptions: {
-        input: { index: resolve(import.meta.dirname, "src/main.ts"), "office-worker":resolve(import.meta.dirname,"src/office-worker.ts") },
+        input: {
+          index: resolve(import.meta.dirname, "src/main.ts"),
+          "office-worker": resolve(import.meta.dirname, "src/office-worker.ts"),
+          "ai-host": resolve(import.meta.dirname, "src/ai-host.ts"),
+        },
+        // Native bindings and per-platform binaries load at runtime.
+        external: [/^node-llama-cpp/, /^@node-llama-cpp\//],
       },
     },
   },
@@ -22,6 +29,7 @@ export default defineConfig({
   renderer: {
     root: resolve(import.meta.dirname, "../web"),
     plugins: [react(), conditionalFormatDefaults()],
+    resolve: { alias: dictionaryAlias },
     base: "./",
     worker: {
       format: "es",

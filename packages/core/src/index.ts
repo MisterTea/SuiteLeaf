@@ -568,6 +568,8 @@ export interface StorageAdapter {
   reload(id: string): Promise<FileRecord | undefined>;
 }
 export interface DesktopBridge {
+  /** The on-device model host (Gemma via llama.cpp in the main process). */
+  ai?: import("./ai").AiBridge;
   list(): Promise<FileRecord[]>;
   get(id: string): Promise<FileRecord | undefined>;
   save(record: FileRecord): Promise<FileRecord>;

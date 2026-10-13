@@ -1,0 +1,521 @@
+import type { Editor } from "@tiptap/core";
+import { TextSelection } from "@tiptap/pm/state";
+import { Type } from "@earendil-works/pi-ai";
+import type { PageSettings } from "@suiteleaf/core/document-layout";
+import { documentMatches } from "../../editors/doc-search-plugin";
+import { findMisspellings, spellchecker } from "../../editors/doc-spelling";
+import { ToolError, tool, type SuiteTool } from "../host";
+import { requestFile } from "../file-request";
+
+/** What the Docs editor lends the agent. */
+export interface DocsAgentContext {
+  editor: Editor;
+  title: string;
+  /** Show the find and replace dialog with these values. */
+  showFind: (query: string, replacement: string, matchCase: boolean) => void;
+  /** Record a "Replaced N" result in the dialog. */
+  showReplaced: (count: number) => void;
+  closeFind: () => void;
+  showPageSetup: (draft: PageSettings) => void;
+  pageSettings: () => PageSettings;
+  closePageSetup: () => void;
+  showSpelling: () => void;
+  jumpToHeading: (pos: number) => void;
+  insertImage: (file: File) => Promise<void>;
+  exportAs: (format: "docx" | "html" | "txt") => Promise<void>;
+  pageCount: number;
+}
+
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Blocks with their text, for reading and for finding where things are. */
+function blocks(editor: Editor) {
+  const list: { pos: number; end: number; type: string; text: string; label: string }[] = [];
+  editor.state.doc.descendants((node, pos) => {
+    if (!node.isTextblock) return;
+    const parent = editor.state.doc.resolve(pos).parent;
+    const inList = parent.type.name === "listItem";
+    const label =
+      node.type.name === "heading"
+        ? `Heading ${node.attrs.level}`
+        : inList
+          ? editor.state.doc.resolve(pos).node(-1)?.type.name === "orderedList"
+            ? "Numbered item"
+            : "Bullet"
+          : editor.state.doc.resolve(pos).node(-1)?.type.name?.startsWith("table")
+            ? "Table cell"
+            : "Paragraph";
+    list.push({ pos, end: pos + node.nodeSize, type: node.type.name, text: node.textContent, label });
+    return false;
+  });
+  return list;
+}
+
+/** Find the n-th (1-based) occurrence of `text`, ignoring case if needed. */
+function locate(editor: Editor, text: string, occurrence = 1) {
+  if (!text) throw new ToolError("Say which text to use.");
+  let matches = documentMatches(editor.state.doc, text, { matchCase: true, regex: false, ignoreDiacritics: false }).matches;
+  if (!matches.length)
+    matches = documentMatches(editor.state.doc, text, { matchCase: false, regex: false, ignoreDiacritics: true }).matches;
+  if (!matches.length)
+    throw new ToolError(`"${text}" is not in the document. Use read_document to see the exact text.`);
+  const match = matches[Math.min(Math.max(1, occurrence), matches.length) - 1];
+  return match;
+}
+
+function rectAt(editor: Editor, pos: number) {
+  try {
+    const c = editor.view.coordsAtPos(Math.min(pos, editor.state.doc.content.size));
+    return new DOMRect(c.left, c.top, Math.max(2, c.right - c.left), c.bottom - c.top);
+  } catch {
+    return undefined;
+  }
+}
+
+const endOfDocument = (editor: Editor) => {
+  const last = blocks(editor).at(-1);
+  return last ? last.end - 1 : 1;
+};
+
+/** Insert lightweight Markdown: "# " headings, "- " bullets, "1. " numbers, **bold**. */
+async function writeLines(editor: Editor, text: string, animate: boolean) {
+  // Blank lines separate paragraphs; they don't become empty paragraphs.
+  const lines = text
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .filter((line) => line.trim());
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+    if (i > 0) {
+      if (editor.isActive("listItem")) editor.chain().focus().splitListItem("listItem").run();
+      else editor.chain().focus().splitBlock().run();
+    }
+    const heading = /^(#{1,3})\s+(.*)$/.exec(line);
+    const bullet = /^\s*[-*•]\s+(.*)$/.exec(line);
+    const numbered = /^\s*\d+[.)]\s+(.*)$/.exec(line);
+    const leaveList = () => {
+      while (editor.isActive("listItem") && editor.chain().focus().liftListItem("listItem").run());
+    };
+    if (heading) {
+      leaveList();
+      editor.chain().focus().setHeading({ level: heading[1].length as 1 | 2 | 3 }).run();
+      line = heading[2];
+    } else if (bullet || numbered) {
+      const want = bullet ? "bulletList" : "orderedList";
+      if (!editor.isActive(want)) {
+        leaveList();
+        editor.chain().focus().setParagraph().run();
+        if (bullet) editor.chain().focus().toggleBulletList().run();
+        else editor.chain().focus().toggleOrderedList().run();
+      }
+      line = (bullet ?? numbered)![1];
+    } else {
+      leaveList();
+      editor.chain().focus().setParagraph().run();
+    }
+    for (const [index, part] of line.split(/\*\*/).entries()) {
+      if (!part) continue;
+      const bold = index % 2 === 1;
+      const words = animate ? part.match(/\S+\s*|\s+/g) ?? [part] : [part];
+      for (const word of words) {
+        editor
+          .chain()
+          .focus()
+          .insertContent(bold ? { type: "text", text: word, marks: [{ type: "bold" }] } : { type: "text", text: word })
+          .run();
+        if (animate) await wait(18);
+      }
+      editor.chain().unsetBold().run();
+    }
+  }
+}
+
+export function docTools(ctx: DocsAgentContext): SuiteTool[] {
+  const { editor } = ctx;
+  const selectMatch = (text: string, occurrence?: number) => {
+    const m = locate(editor, text, occurrence);
+    editor.chain().focus().setTextSelection(m).scrollIntoView().run();
+    return m;
+  };
+  const blockOf = (text?: string, occurrence?: number) => {
+    if (text) selectMatch(text, occurrence);
+    return editor.state.selection.$from.parent;
+  };
+  return [
+    tool({
+      name: "read_document",
+      label: "Read the document",
+      description:
+        "Read the document's text, one numbered line per paragraph, heading, list item or table cell, with its style.",
+      parameters: Type.Object({}),
+      target: () => editor.view.dom,
+      execute: () => {
+        const list = blocks(editor);
+        const lines = list.map((b, i) => `${i + 1}. [${b.label}] ${b.text || "(empty)"}`);
+        return `"${ctx.title}", ${ctx.pageCount} page(s).\n${lines.join("\n") || "The document is empty."}`;
+      },
+    }),
+    tool({
+      name: "write_text",
+      label: "Type text",
+      description:
+        "Type text into the document. Each line becomes a paragraph. Start a line with '# ', '## ' or '### ' for a heading, '- ' for a bullet, '1. ' for a numbered item; wrap words in **double asterisks** for bold. By default the text goes at the end of the document; give `after` to put it after a paragraph containing that text, or set `replace_document` to start over.",
+      parameters: Type.Object({
+        text: Type.String({ description: "The text to type." }),
+        after: Type.Optional(Type.String({ description: "Put the text in a new paragraph after the paragraph containing this text." })),
+        replace_document: Type.Optional(Type.Boolean({ description: "Replace everything in the document." })),
+      }),
+      target: ({ after }) => {
+        try {
+          return rectAt(editor, after ? blocks(editor).find((b) => b.text.includes(after))?.end ?? 0 : endOfDocument(editor));
+        } catch {
+          return editor.view.dom;
+        }
+      },
+      async execute({ text, after, replace_document }) {
+        if (replace_document) editor.chain().focus().clearContent().run();
+        const list = blocks(editor);
+        const empty = list.length === 1 && !list[0].text;
+        if (after) {
+          const block = list.find((b) => b.text.includes(after)) ?? list.find((b) => b.text.toLowerCase().includes(after.toLowerCase()));
+          if (!block) throw new ToolError(`No paragraph contains "${after}".`);
+          editor.chain().focus().setTextSelection(block.end - 1).splitBlock().setParagraph().run();
+        } else {
+          editor.chain().focus().setTextSelection(endOfDocument(editor)).run();
+          if (!empty && !replace_document) editor.chain().focus().splitBlock().setParagraph().run();
+        }
+        await writeLines(editor, text, text.length < 1500);
+        const typed = text.split("\n").filter((l) => l.trim()).length;
+        return `Typed ${typed} paragraph(s). The document now has ${blocks(editor).length} paragraph(s).`;
+      },
+    }),
+    tool({
+      name: "set_style",
+      label: "Paragraph style",
+      description: "Change the style of the paragraph that contains `text`: Normal text, Heading 1, Heading 2 or Heading 3.",
+      parameters: Type.Object({
+        text: Type.String({ description: "Text in the paragraph to restyle." }),
+        style: Type.String({ enum: ["Normal text", "Heading 1", "Heading 2", "Heading 3"] }),
+      }),
+      target: () => document.querySelector('[aria-label="Paragraph style"]'),
+      execute({ text, style }) {
+        blockOf(text);
+        const level = /Heading (\d)/.exec(style)?.[1];
+        if (level) editor.chain().focus().setHeading({ level: Number(level) as 1 | 2 | 3 }).run();
+        else editor.chain().focus().setParagraph().run();
+        return `The paragraph containing "${text}" is now ${style}.`;
+      },
+    }),
+    tool({
+      name: "format_text",
+      label: "Format text",
+      description:
+        "Format an exact piece of text: bold, italic, underline, strikethrough, superscript, subscript, text color, highlight color, font or size. Booleans turn a style on (true) or off (false).",
+      parameters: Type.Object({
+        text: Type.String({ description: "The exact text to format." }),
+        occurrence: Type.Optional(Type.Number({ description: "Which occurrence, counting from 1. Default 1." })),
+        bold: Type.Optional(Type.Boolean()),
+        italic: Type.Optional(Type.Boolean()),
+        underline: Type.Optional(Type.Boolean()),
+        strikethrough: Type.Optional(Type.Boolean()),
+        superscript: Type.Optional(Type.Boolean()),
+        subscript: Type.Optional(Type.Boolean()),
+        color: Type.Optional(Type.String({ description: "Text color as #rrggbb." })),
+        highlight: Type.Optional(Type.String({ description: "Highlight color as #rrggbb, or 'none'." })),
+        font: Type.Optional(Type.String({ description: "Font family, e.g. Arial, Georgia." })),
+        size: Type.Optional(Type.Number({ description: "Font size in points." })),
+      }),
+      target: ({ text, occurrence }) => {
+        const m = locate(editor, text, occurrence);
+        return rectAt(editor, m.from);
+      },
+      execute(args) {
+        selectMatch(args.text, args.occurrence);
+        const set = (on: boolean | undefined, mark: string) => {
+          if (on === undefined) return;
+          const chain = editor.chain().focus();
+          (on ? chain.setMark(mark) : chain.unsetMark(mark)).run();
+        };
+        set(args.bold, "bold");
+        set(args.italic, "italic");
+        set(args.underline, "underline");
+        set(args.strikethrough, "strike");
+        set(args.superscript, "superscript");
+        set(args.subscript, "subscript");
+        if (args.color) editor.chain().focus().setColor(args.color).run();
+        if (args.highlight)
+          args.highlight === "none"
+            ? editor.chain().focus().unsetHighlight().run()
+            : editor.chain().focus().setHighlight({ color: args.highlight }).run();
+        if (args.font) editor.chain().focus().setFontFamily(args.font).run();
+        if (args.size) editor.chain().focus().setFontSize(`${args.size}pt`).run();
+        return `Formatted "${args.text}".`;
+      },
+    }),
+    tool({
+      name: "set_list",
+      label: "Lists",
+      description:
+        "Make paragraphs a bulleted or numbered list, or plain paragraphs again. Covers every paragraph from the one containing `from_text` to the one containing `to_text` (or just the first).",
+      parameters: Type.Object({
+        from_text: Type.String(),
+        to_text: Type.Optional(Type.String()),
+        list: Type.String({ enum: ["bullet", "numbered", "none"] }),
+      }),
+      target: () => document.querySelector('[aria-label="Bulleted list"]'),
+      execute({ from_text, to_text, list }) {
+        const start = locate(editor, from_text);
+        const end = to_text ? locate(editor, to_text) : start;
+        editor.chain().focus().setTextSelection({ from: start.from, to: Math.max(start.to, end.to) }).run();
+        const bullet = editor.isActive("bulletList"),
+          numbered = editor.isActive("orderedList");
+        const chain = editor.chain().focus();
+        if (list === "bullet" && !bullet) chain.toggleBulletList().run();
+        else if (list === "numbered" && !numbered) chain.toggleOrderedList().run();
+        else if (list === "none") {
+          if (bullet) chain.toggleBulletList().run();
+          else if (numbered) chain.toggleOrderedList().run();
+        }
+        return `Set the paragraphs to ${list === "none" ? "plain paragraphs" : `a ${list} list`}.`;
+      },
+    }),
+    tool({
+      name: "align_text",
+      label: "Align",
+      description: "Align the paragraph that contains `text`: left, center, right or justify.",
+      parameters: Type.Object({ text: Type.String(), alignment: Type.String({ enum: ["left", "center", "right", "justify"] }) }),
+      target: ({ alignment }) =>
+        document.querySelector(`[aria-label="${alignment === "justify" ? "Justify" : `Align ${alignment}`}"]`),
+      execute({ text, alignment }) {
+        blockOf(text);
+        editor.chain().focus().setTextAlign(alignment).run();
+        return `Aligned the paragraph ${alignment}.`;
+      },
+    }),
+    tool({
+      name: "insert_table",
+      label: "Insert table",
+      description:
+        "Insert a table after the paragraph containing `after` (or at the end) and fill it. `cells` is a list of rows, each a list of cell texts; the first row is the header row when header_row is true.",
+      parameters: Type.Object({
+        cells: Type.Array(Type.Array(Type.String())),
+        header_row: Type.Optional(Type.Boolean()),
+        after: Type.Optional(Type.String()),
+      }),
+      target: () => document.querySelector('[aria-label="Insert table"]'),
+      async execute({ cells, header_row = true, after }) {
+        const rows = Math.max(1, cells.length);
+        const cols = Math.max(1, ...cells.map((r) => r.length));
+        const list = blocks(editor);
+        const block = after ? list.find((b) => b.text.includes(after)) : list.at(-1);
+        if (after && !block) throw new ToolError(`No paragraph contains "${after}".`);
+        editor.chain().focus().setTextSelection((block?.end ?? 1) - 1).run();
+        if (block?.text) editor.chain().focus().splitBlock().setParagraph().run();
+        editor.chain().focus().insertTable({ rows, cols, withHeaderRow: header_row }).run();
+        // Fill cell by cell, moving with Tab like a person would.
+        for (let r = 0; r < rows; r++)
+          for (let c = 0; c < cols; c++) {
+            const value = cells[r]?.[c] ?? "";
+            if (value) editor.chain().focus().insertContent(value).run();
+            await wait(25);
+            if (r < rows - 1 || c < cols - 1) editor.chain().focus().goToNextCell().run();
+          }
+        return `Inserted a ${rows}×${cols} table.`;
+      },
+    }),
+    tool({
+      name: "insert_link",
+      label: "Insert link",
+      description: "Turn existing text into a link to `url`. If `text` is not in the document, it is added at the end as a link.",
+      parameters: Type.Object({ text: Type.String(), url: Type.String() }),
+      target: ({ text }) => {
+        try {
+          return rectAt(editor, locate(editor, text).from);
+        } catch {
+          return document.querySelector('[aria-label="Insert link"]');
+        }
+      },
+      execute({ text, url }) {
+        const href = /^[a-z]+:/i.test(url) || url.startsWith("#") ? url : `https://${url}`;
+        let range: { from: number; to: number };
+        try {
+          range = selectMatch(text);
+        } catch {
+          editor.chain().focus().setTextSelection(endOfDocument(editor)).insertContent(" ").run();
+          const from = editor.state.selection.from;
+          editor.chain().focus().insertContent(text).run();
+          range = { from, to: from + text.length };
+        }
+        editor.chain().focus().setTextSelection(range).setLink({ href }).run();
+        editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, range.to)));
+        return `Linked "${text}" to ${href}.`;
+      },
+    }),
+    tool({
+      name: "insert_image",
+      label: "Insert image",
+      description:
+        "Ask the user to choose a photo from their computer and insert it after the paragraph containing `after` (or at the cursor).",
+      parameters: Type.Object({ after: Type.Optional(Type.String()) }),
+      target: () => document.querySelector('[aria-label="Insert image"]'),
+      async execute({ after }) {
+        const file = await requestFile("Choose a photo to insert", "image/png,image/jpeg,image/gif,image/webp");
+        if (!file) return "The user did not choose a photo.";
+        if (after) {
+          const block = blocks(editor).find((b) => b.text.includes(after));
+          if (!block) throw new ToolError(`No paragraph contains "${after}".`);
+          editor.chain().focus().setTextSelection(block.end - 1).splitBlock().setParagraph().run();
+        }
+        await ctx.insertImage(file);
+        return `Inserted the photo "${file.name}".`;
+      },
+    }),
+    tool({
+      name: "find_and_replace",
+      label: "Find and replace",
+      description:
+        "Replace text. With all=true every match is replaced; otherwise only the first match. Returns how many were replaced.",
+      parameters: Type.Object({
+        find: Type.String(),
+        replace: Type.String(),
+        all: Type.Optional(Type.Boolean()),
+        match_case: Type.Optional(Type.Boolean()),
+      }),
+      target: () => document.querySelector('[aria-label="Find and replace"]') ?? editor.view.dom,
+      async execute({ find, replace, all = true, match_case = false }) {
+        ctx.showFind(find, replace, match_case);
+        await wait(700);
+        const options = { matchCase: match_case, regex: false, ignoreDiacritics: !match_case };
+        const matches = documentMatches(editor.state.doc, find, options).matches;
+        if (!matches.length) {
+          ctx.closeFind();
+          throw new ToolError(`"${find}" was not found.`);
+        }
+        let tr = editor.state.tr;
+        const chosen = all ? [...matches].reverse() : [matches[0]];
+        for (const m of chosen) tr = tr.insertText(replace, m.from, m.to);
+        editor.view.dispatch(tr.scrollIntoView());
+        ctx.showReplaced(chosen.length);
+        await wait(900);
+        ctx.closeFind();
+        const left = matches.length - chosen.length;
+        return `Replaced ${chosen.length} of ${matches.length} "${find}"${left ? `; ${left} left` : ""}.`;
+      },
+    }),
+    tool({
+      name: "check_spelling",
+      label: "Check spelling",
+      description:
+        "Check the document's spelling. Returns each misspelled word with suggestions. Fix words with find_and_replace.",
+      parameters: Type.Object({}),
+      target: () => editor.view.dom,
+      async execute() {
+        ctx.showSpelling();
+        const spell = await spellchecker();
+        const found = findMisspellings(editor.state.doc, spell);
+        if (!found.length) return "No spelling mistakes found.";
+        const words = new Map<string, { count: number; suggestions: string[] }>();
+        for (const f of found) {
+          const entry = words.get(f.word) ?? { count: 0, suggestions: f.suggestions };
+          entry.count++;
+          words.set(f.word, entry);
+        }
+        return [...words]
+          .map(([w, e]) => `"${w}" (${e.count}×): ${e.suggestions.length ? e.suggestions.join(", ") : "no suggestions"}`)
+          .join("\n");
+      },
+    }),
+    tool({
+      name: "page_setup",
+      label: "Page setup",
+      description:
+        "Change page setup: paper (letter or a4), orientation (portrait or landscape), margins in inches, header and footer text, page numbers on or off.",
+      parameters: Type.Object({
+        paper: Type.Optional(Type.String({ enum: ["letter", "a4"] })),
+        orientation: Type.Optional(Type.String({ enum: ["portrait", "landscape"] })),
+        margin_inches: Type.Optional(Type.Number()),
+        header: Type.Optional(Type.String()),
+        footer: Type.Optional(Type.String()),
+        page_numbers: Type.Optional(Type.Boolean()),
+      }),
+      target: () => document.querySelector('[aria-label="Page setup"]'),
+      async execute(args) {
+        const current = ctx.pageSettings();
+        const next: PageSettings = {
+          ...current,
+          ...(args.paper ? { size: args.paper as PageSettings["size"] } : {}),
+          ...(args.orientation ? { landscape: args.orientation === "landscape" } : {}),
+          ...(args.margin_inches !== undefined ? { margin: Math.round(Math.min(2, Math.max(1 / 3, args.margin_inches)) * 72) } : {}),
+          ...(args.header !== undefined ? { header: args.header } : {}),
+          ...(args.footer !== undefined ? { footer: args.footer } : {}),
+          ...(args.page_numbers !== undefined ? { pageNumbers: args.page_numbers } : {}),
+        };
+        ctx.showPageSetup(next);
+        await wait(1100);
+        editor.view.dispatch(editor.state.tr.setDocAttribute("pageSettings", next));
+        ctx.closePageSetup();
+        return `Page setup: ${next.size.toUpperCase()} ${next.landscape ? "landscape" : "portrait"}, ${(next.margin / 72).toFixed(2)}" margins${next.header ? `, header "${next.header}"` : ""}${next.footer ? `, footer "${next.footer}"` : ""}${next.pageNumbers ? ", page numbers" : ""}.`;
+      },
+    }),
+    tool({
+      name: "insert_page_break",
+      label: "Page break",
+      description: "Start a new page before the paragraph that contains `before_text`.",
+      parameters: Type.Object({ before_text: Type.String() }),
+      target: ({ before_text }) => rectAt(editor, locate(editor, before_text).from),
+      execute({ before_text }) {
+        const block = blocks(editor).find((b) => b.text.includes(before_text));
+        if (!block) throw new ToolError(`No paragraph contains "${before_text}".`);
+        editor.chain().focus().setTextSelection(block.pos + 1).setPageBreak().run();
+        return `Inserted a page break before "${before_text}".`;
+      },
+    }),
+    tool({
+      name: "go_to_heading",
+      label: "Go to heading",
+      description: "Scroll to a heading using the outline.",
+      parameters: Type.Object({ heading: Type.String() }),
+      target: ({ heading }) =>
+        [...document.querySelectorAll(".outline-item")].find((el) => el.textContent?.includes(heading)),
+      execute({ heading }) {
+        const block = blocks(editor).find((b) => b.type === "heading" && b.text.toLowerCase().includes(heading.toLowerCase()));
+        if (!block) throw new ToolError(`There is no heading "${heading}". Headings: ${blocks(editor).filter((b) => b.type === "heading").map((b) => b.text).join("; ")}`);
+        ctx.jumpToHeading(block.pos);
+        return `Showing "${block.text}".`;
+      },
+    }),
+    tool({
+      name: "export_document",
+      label: "Export",
+      description: "Export the document as a Word file (docx), a web page (html) or plain text (txt). The file downloads.",
+      parameters: Type.Object({ format: Type.String({ enum: ["docx", "html", "txt"] }) }),
+      target: () => document.querySelector(".workspace-header .menu-trigger, .workspace-header [aria-haspopup]"),
+      async execute({ format }) {
+        await ctx.exportAs(format as "docx");
+        return `Exported "${ctx.title}.${format}".`;
+      },
+    }),
+    tool({
+      name: "undo",
+      label: "Undo",
+      description: "Undo the last change.",
+      parameters: Type.Object({}),
+      target: () => document.querySelector('[aria-label="Undo"]'),
+      execute() {
+        editor.commands.undo();
+        return "Undid the last change.";
+      },
+    }),
+  ];
+}
+
+export function docSnapshot(ctx: DocsAgentContext) {
+  const list = blocks(ctx.editor);
+  const headings = list.filter((b) => b.type === "heading").map((b) => `${b.label}: ${b.text}`);
+  const words = ctx.editor.getText().trim().split(/\s+/).filter(Boolean).length;
+  const preview = list
+    .slice(0, 12)
+    .map((b) => `[${b.label}] ${b.text.slice(0, 80)}`)
+    .join("\n");
+  return `Open document: "${ctx.title}" (${words} words, ${ctx.pageCount} page(s)).${headings.length ? `\nHeadings: ${headings.join(" | ")}` : ""}\n${words ? `Start of the document:\n${preview}` : "The document is empty."}`;
+}
