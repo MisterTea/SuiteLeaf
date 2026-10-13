@@ -136,13 +136,14 @@ export interface AgentRun {
 /**
  * Ask the assistant to do something, the way a person would: open the AI
  * panel, type the request, and wait for Gemma to finish. Files the agent asks
- * for are chosen from `files` (the person picks them). The run's transcript
- * and metrics are saved to test-results/ai-metrics/<title>.json.
+ * for are chosen from `files` (the person picks them). `paste` is text the
+ * person pastes after typing the request (it may span lines). The run's
+ * transcript and metrics are saved to test-results/ai-metrics/<title>.json.
  */
 export async function askAgent(
   page: Page,
   prompt: string,
-  options: { files?: { name: string; mimeType: string; buffer: Buffer }[]; timeoutMs?: number } = {},
+  options: { files?: { name: string; mimeType: string; buffer: Buffer }[]; timeoutMs?: number; paste?: string } = {},
 ): Promise<AgentRun> {
   const panel = page.locator(".agent-sidebar");
   if (!(await panel.isVisible())) {
@@ -152,6 +153,11 @@ export async function askAgent(
   const box = page.getByRole("textbox", { name: "Ask the assistant" });
   await box.click();
   await typeSlowly(page, prompt, 18);
+  if (options.paste) {
+    await beat(page, 400);
+    await page.keyboard.insertText(options.paste);
+    prompt += options.paste;
+  }
   await beat(page, 300);
   await box.press("Enter");
   const started = Date.now();
