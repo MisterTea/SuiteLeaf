@@ -121,7 +121,7 @@ import { paragraphLineSpacing } from "./doc-line-spacing";
 import { LineSpacingControl } from "./doc-line-spacing-ui";
 import { paragraphSpacing } from "./doc-paragraph-spacing";
 import { paragraphIndent } from "./doc-paragraph-indent";
-import { DocWatermarkField, pageSetupToSave } from "./doc-watermark";
+import { pageSetupToSave } from "./doc-watermark";
 import { columnLayout } from "./doc-columns";
 import { PageSetupFit } from "./page-setup-fit";
 import { publishLiveOrientation } from "./landscape-live";
@@ -1598,12 +1598,6 @@ export default function Docs({
                 draft={pageDraft}
                 pageCount={pageCount}
                 onChange={setPageDraft}
-              />
-              <DocWatermarkField
-                value={pageDraft.watermark}
-                onChange={(watermark) =>
-                  setPageDraft({ ...pageDraft, watermark })
-                }
               />
             </div>
             <div className="dialog-footer">

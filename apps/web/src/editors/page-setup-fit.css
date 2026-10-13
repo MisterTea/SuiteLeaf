@@ -11,7 +11,8 @@
   width: min(1040px, calc(100vw - 32px));
   max-height: calc(100vh - 96px);
   max-height: calc(100dvh - 96px);
-  overflow: hidden;
+  overflow: visible;
+  max-height: none;
   padding: 12px 16px 10px;
   gap: 8px;
 }
@@ -20,9 +21,9 @@
   flex-direction: column;
   gap: 2px;
   max-height: none;
-  flex: 1 1 auto;
+  flex: none;
   min-height: 0;
-  overflow: auto;
+  overflow: visible;
   padding-right: 2px;
 }
 .page-setup-dialog .dialog-footer {

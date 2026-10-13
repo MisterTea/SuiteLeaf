@@ -10,7 +10,7 @@ import {
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
 import "./page-setup.css";
-import { DocWatermark } from "./doc-watermark";
+import { DocWatermark, DocWatermarkField } from "./doc-watermark";
 import { acceptPageNumberStart } from "./page-number-live";
 import {
   previewNumberCorner,
@@ -264,6 +264,10 @@ export function PageSetupFields({
           />
           Page numbers
         </label>
+        <DocWatermarkField
+          value={draft.watermark}
+          onChange={(watermark) => onChange({ ...draft, watermark })}
+        />
         <fieldset className="page-number-choice" disabled={!draft.pageNumbers}>
           <legend>Format</legend>
           <label>
