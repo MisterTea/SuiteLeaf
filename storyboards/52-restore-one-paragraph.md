@@ -20,9 +20,9 @@ Sam's Tuesday rewrite of the "Watering rota" replaced Monday's agreed times, and
 2. **See the one change.** The clock, then "Agreed rota", Compare with current. "North bed: 6am" is on the page in the compare colors, and the Thursday line is marked as added later. The page is read-only. Typing does nothing.
 3. **Restore that paragraph.** The north-bed paragraph offers **Restore this paragraph**, and the note is already on screen: `Restore the north-bed paragraph from "Agreed rota"? It becomes "North bed: 6am". The rest of the document stays as it is.` She clicks it. From the editor that is the clock, the version, and that button.
 4. **The mix.** The panel closes. The rota says "North bed: 6am" and still has "Thursday: ask Alex to cover." The status is "Saved to SuiteDrive".
-5. **History kept both.** The top entry is her partial restore. "Agreed rota" and Sam's full Tuesday version are still in the list. The open rota still reads "North bed: 6am" and "Thursday: ask Alex to cover."
-6. **The other paragraphs.** A paragraph she does not restore, "South bed: 7am", stays exactly as it was in the current file, including its bold.
-7. **Another server.** On the club's other server the rota shows 6am and the Thursday line, and "Agreed rota" is still named.
+5. **History kept both.** She opens the clock again. The top entry is "Restored the north-bed paragraph", signed with her name. "Agreed rota" and Sam's full Tuesday version, "Today 09:14 · Sam Okafor", are still in the list. The open rota still reads "North bed: 6am" and "Thursday: ask Alex to cover."
+6. **The other paragraphs.** "South bed: 7am" stays exactly as it was in the current file, including its bold. She did not restore that paragraph, so the compare view never offered a button on it.
+7. **Another server.** On the club's other server the rota shows 6am, the bold south bed, and the Thursday line. "Agreed rota" is still named, and "Restored the north-bed paragraph" is the current version. Garden club still has only the one rota file.
 
 On a single-node computer the same control works on a snapshot kept with the file in the browser.
 
@@ -49,11 +49,24 @@ Known pain points:
 ## Success looks like
 
 - The rota has Monday's "North bed: 6am" and Sam's Thursday line.
-- "South bed: 7am" is unchanged, including its bold. Sam's Tuesday version is still in the history and can be restored whole.
+- "South bed: 7am" is unchanged, including its bold. Sam's Tuesday version is still in the history and can be restored whole. Restoring it returns the document from before the paragraph restore.
 
 ## Gaps and notes
 
-- Restore calls `drive.restoreVersion`, or `restoreLocalVersion` on this computer, with the whole file. The confirmation for a document says how many paragraphs change and then replaces all of them.
-- The compare preview is read-only (storyboard 28) and has no per-paragraph control. The way to take one paragraph today is Make a copy, then copy it by hand.
 - Sheets and slides still restore the whole file. This story is documents, where the compare is already paragraphs. A cell or a slide object is a later story.
-- Storyboard 28's whole-file restore, names, and Make a copy stay available. Restore this paragraph is an extra control on a changed paragraph in the compare.
+- Storyboard 28's whole-file restore, names, and Make a copy stay available. Restore this paragraph is an extra control on a changed paragraph in the compare with the current version. "Changes in this version" stays a read-only look at that version alone.
+- A paragraph that was added later can be restored too: the note says it is removed, because Monday did not have it. A paragraph that matches the current text has no button, even when its bold differs. The compare page draws unchanged blocks from the older version, so South bed looks plain there and bold again in the editor.
+- The partial restore is stored under the name "Restored the north-bed paragraph", so "Named versions only" includes it.
+- On the club's other server the names and the mixed document arrive, and the original times do not. Every version there is stamped with the sync time. That is how version rows replicate today; this story does not change it.
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| 1. In the compare view, each changed paragraph offers Restore this paragraph. Paragraphs that match the current document do not. | Met | Video 9s: a card under North bed and under Thursday, none under South bed. `tests/doc-paragraph-restore.test.ts` |
+| 2. From the editor, restoring one paragraph takes at most 3 clicks, and the confirmation names that paragraph and says the rest of the document stays. | Met | Video 11s: clock, Agreed rota, and the note `Restore the north-bed paragraph from "Agreed rota"? It becomes "North bed: 6am". The rest of the document stays as it is.` The click on Restore this paragraph is the confirmation. |
+| 3. After it, that paragraph matches the chosen version, and every other paragraph matches the current document, including formatting. | Met | Video 16s: "North bed: 6am", bold "South bed: 7am", and the Thursday line. Browser test `restoring one paragraph keeps the rest of a local document` |
+| 4. The restore adds a new version. The previous current version stays. Restoring it returns the document from before the paragraph restore. | Met | Video 18s: "Restored the north-bed paragraph", "Today 09:14 · Sam Okafor", and "Agreed rota". The scene asserts Sam's saved bytes are unchanged. The browser test restores that version and gets 8am, the Thursday line, and the bold back. |
+| 5. Make a copy is not required, and no second file is created. | Met | Video 21s: Garden club still lists only "Watering rota.sldoc". The scene asserts the folder has that one file. |
+| 6. The preview stays read-only. The current document changes only after Restore this paragraph is confirmed. | Met | Video 9s: typing does not land. The document still says 8am until the button. Browser test focuses the button and types into the preview first. |
+| 7. The partial restore is stored on the server and appears on another server, with the named version still named. | Met | Video 22s: 6am, the Thursday line, "Agreed rota", and "Restored the north-bed paragraph" on the other server. |

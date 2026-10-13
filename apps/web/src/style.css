@@ -4656,6 +4656,40 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
   color: #137333;
   text-decoration-color: #137333;
 }
+.version-preview .paragraph-restore {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 10px 0 18px;
+  padding: 10px 12px;
+  border: 1px solid #b7dfc4;
+  border-left: 3px solid #137333;
+  border-radius: 8px;
+  background: #f6fbf8;
+}
+.paragraph-restore-note {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #202124;
+}
+.paragraph-restore-button {
+  border: 0;
+  border-radius: 6px;
+  background: #137333;
+  color: #fff;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.paragraph-restore-button:hover {
+  background: #0d652d;
+}
+.paragraph-restore-button:focus-visible {
+  outline: 2px solid #1a73e8;
+  outline-offset: 2px;
+}
 @media (max-width: 700px) {
   .editor-and-history.history-open {
     flex-direction: column;
@@ -4668,6 +4702,9 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
   }
   .version-preview {
     padding: 12px;
+  }
+  .paragraph-restore-button {
+    width: 100%;
   }
 }
 .document-stage.with-comments {

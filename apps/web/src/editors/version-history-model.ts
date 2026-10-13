@@ -133,6 +133,12 @@ export function changeSentence(count: number) {
   return `${count} paragraphs change`;
 }
 
+/** History title for a restore that put one paragraph back. */
+export function partialRestoreTitle(label: string) {
+  const title = `Restored the ${label} paragraph`;
+  return title.length <= 80 ? title : `${title.slice(0, 79)}…`;
+}
+
 /** Shown before the restore button, so the click that restores is the confirmation. */
 export function restorePrompt(
   version: HistoryVersion,
