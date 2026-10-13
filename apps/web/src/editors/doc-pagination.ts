@@ -2,6 +2,7 @@ import { Extension, Node } from "@tiptap/core";
 import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import {
+  bodyEdgeInsets,
   documentPageSettings,
   pageDimensions,
 } from "@suiteleaf/core/document-layout";
@@ -137,10 +138,27 @@ export const DocumentPagination = Extension.create({
               const settings = documentPageSettings(
                 view.state.doc.toJSON() as JsonNode,
               );
-              const { height } = pageDimensions(settings);
-              const topMargin = settings.marginTop,
-                bottomMargin = settings.marginBottom,
+              const { width, height } = pageDimensions(settings);
+              const insets = bodyEdgeInsets(settings, width);
+              const topMargin = insets.top,
+                bottomMargin = insets.bottom,
                 bodyHeight = height - topMargin - bottomMargin;
+              const paper = view.dom.closest(".paginated-paper");
+              if (paper instanceof HTMLElement) {
+                paper.style.setProperty(
+                  "--header-from-edge",
+                  `${settings.headerFromEdge}px`,
+                );
+                paper.style.setProperty(
+                  "--footer-from-edge",
+                  `${settings.footerFromEdge}px`,
+                );
+                paper.style.setProperty("--body-inset-top", `${insets.top}px`);
+                paper.style.setProperty(
+                  "--body-inset-bottom",
+                  `${insets.bottom}px`,
+                );
+              }
               const origin = view.dom.getBoundingClientRect().top;
               const scale =
                 view.dom.getBoundingClientRect().width /

@@ -1,4 +1,14 @@
 import type { JsonNode } from "./index";
+import { bodyEdgeInsets, resolveEdgePx } from "./header-edge";
+export {
+  bodyEdgeInsets,
+  edgeDistanceError,
+  edgeDistancesValid,
+  edgeIntrusionNote,
+  formatEdgeInches,
+  resolveEdgePx,
+  type EdgeKind,
+} from "./header-edge";
 export type PageNumberFormat = "fraction" | "page" | "roman";
 export type PageNumberPosition = "bottom-right" | "bottom-center" | "top-right";
 const pageNumberPositions: PageNumberPosition[] = [
@@ -56,6 +66,14 @@ export type PageSettings = {
   evenFooter: string;
   oddHeader: string;
   oddFooter: string;
+  /**
+   * CSS pixels from the top edge of the paper to the header. One distance for
+   * every header, including a different first page and odd or even pages.
+   * Separate from the top margin.
+   */
+  headerFromEdge: number;
+  /** CSS pixels from the bottom edge of the paper to the footer. One distance for every footer. */
+  footerFromEdge: number;
   /** A short phrase drawn behind the text. Empty means no watermark. */
   watermark: string;
 };
@@ -90,6 +108,8 @@ export const defaultPageSettings: PageSettings = {
   evenFooter: "",
   oddHeader: "",
   oddFooter: "",
+  headerFromEdge: MARGIN_DEFAULT_PX,
+  footerFromEdge: MARGIN_DEFAULT_PX,
   watermark: "",
 };
 const pageText = (value: unknown) =>
@@ -108,14 +128,18 @@ export function documentPageSettings(content: JsonNode): PageSettings {
   // edge. An edge that is present replaces it; Word cannot be stored as one.
   const edge = (value: unknown) =>
     storedMargin(value) === undefined ? uniform : clampMargin(value, uniform);
+  const marginTop = edge(a?.marginTop);
+  const marginBottom = edge(a?.marginBottom);
   return {
     size: a?.size === "a4" ? "a4" : "letter",
     landscape: a?.landscape === true,
     margin: uniform,
-    marginTop: edge(a?.marginTop),
-    marginBottom: edge(a?.marginBottom),
+    marginTop,
+    marginBottom,
     marginLeft: edge(a?.marginLeft),
     marginRight: edge(a?.marginRight),
+    headerFromEdge: resolveEdgePx(a?.headerFromEdge, marginTop),
+    footerFromEdge: resolveEdgePx(a?.footerFromEdge, marginBottom),
     header: pageText(a?.header),
     footer: pageText(a?.footer),
     // Like Docs and Word, page numbers are off until chosen; settings saved
@@ -467,7 +491,14 @@ export function documentHtml(
   settings: PageSettings,
 ) {
   const { width, height } = pageDimensions(settings);
+  const layout = {
+    ...settings,
+    headerFromEdge: resolveEdgePx(settings.headerFromEdge, settings.marginTop),
+    footerFromEdge: resolveEdgePx(settings.footerFromEdge, settings.marginBottom),
+  };
+  const insets = bodyEdgeInsets(layout, width);
   const edges = `${settings.marginTop / 96}in ${settings.marginRight / 96}in ${settings.marginBottom / 96}in ${settings.marginLeft / 96}in`;
+  const padding = `${insets.top / 96}in ${settings.marginRight / 96}in ${insets.bottom / 96}in ${settings.marginLeft / 96}in`;
   const pageRule = [
     `size: ${width / 96}in ${height / 96}in;`,
     `margin: ${edges};`,
@@ -494,10 +525,10 @@ main { position: relative; z-index: 1; }`
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title>
 <style>
-body { max-width: ${width / 96}in; margin: 0 auto; padding: ${edges}; box-sizing: border-box; font: 11pt/1.5 Arial, sans-serif; }
-.page-header, .page-footer { color: #555; font-size: 10pt; white-space: pre-wrap; }
-.page-header { margin-bottom: 2em; }
-.page-footer { margin-top: 2em; }
+body { position: relative; max-width: ${width / 96}in; margin: 0 auto; padding: ${padding}; box-sizing: border-box; font: 11pt/1.5 Arial, sans-serif; }
+.page-header, .page-footer { color: #555; font-size: 10pt; line-height: 16px; white-space: pre-wrap; }
+.page-header { position: absolute; top: ${layout.headerFromEdge / 96}in; left: ${settings.marginLeft / 96}in; right: ${settings.marginRight / 96}in; margin: 0; }
+.page-footer { position: absolute; bottom: ${layout.footerFromEdge / 96}in; left: ${settings.marginLeft / 96}in; right: ${settings.marginRight / 96}in; margin: 0; }
 ${watermarkCss}
 [data-page-break] { break-before: page; }
 [data-columns="2"] { column-count: 2; column-gap: 0.5in; }
