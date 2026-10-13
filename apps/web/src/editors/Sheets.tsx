@@ -791,6 +791,8 @@ export default function Sheets({
     [sorting, setSorting] = useState<{
       range: GridRange;
       values: CellValue[][];
+      initialRules?: SortRule[];
+      initialHeader?: boolean;
     } | null>(null),
     [notice, setNotice] = useState("");
   const pending = useRef(false);
@@ -2193,7 +2195,7 @@ export default function Sheets({
           submitPanel: () => submitRef.current(),
           refreshCharts: () => refreshCharts.current(),
           copyPivot,
-          showSort: (r) => {
+          showSort: (r, initialRules, initialHeader) => {
             const sheet = book.current.getActiveSheet();
             const target = sheet.getRange(
               r.startRow,
@@ -2201,7 +2203,12 @@ export default function Sheets({
               r.endRow - r.startRow + 1,
               r.endColumn - r.startColumn + 1,
             );
-            setSorting({ range: target.getRange(), values: target.getValues() });
+            setSorting({
+              range: target.getRange(),
+              values: target.getValues(),
+              initialRules,
+              initialHeader,
+            });
           },
           sort: (rules, hasHeader) => sortRef.current(rules, hasHeader),
           freeze: setFrozen,

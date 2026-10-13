@@ -26,6 +26,24 @@ Lena coordinates volunteers and keeps their hours in a small table. She wants th
 - The header row stays in row 1 and the eight data rows are ordered by Hours, largest first.
 - Each row moved as a unit (verified in the downloaded file).
 
+## AI version
+
+**Video:** [videos/10-sort-without-the-header-ai.mp4](videos/10-sort-without-the-header-ai.mp4) · **Desktop:** [videos/electron/10-sort-without-the-header-ai.mp4](videos/electron/10-sort-without-the-header-ai.mp4) · **Script:** [scenes/ai/10-sort-without-the-header-ai.spec.ts](scenes/ai/10-sort-without-the-header-ai.spec.ts)
+
+Lena opens the same "Volunteer hours" workbook, opens the assistant and types one request:
+
+> Put the busiest volunteers at the top, most hours first. Don't move the header row.
+
+Gemma answers with a single `sort_range` call on A1:C9, descending, with `has_header: true`. The column was "C" in most runs and "Hours" in one; both work. In the recording the purple pointer goes to the "Hours" header. Then the range A1:C9 is selected and Data › Sort range opens already filled in: "Data has header row" ticked, Sort by Hours, Z → A. The pointer moves to Sort and the dialog closes on the sorted table. Gemma's reply says it sorted by hours, most first, and kept the header row. Lena then downloads the file (Save As on the desktop). The script checks that the saved file has Name, Team, Hours in row 1 and all eight rows in order from Wen Zhou (Greeters, 31) to Grace Obi (Setup, 7), with each name still next to its own team and hours.
+
+Gemma 4 E4B got this right in every attempt: 4 of 4 web runs (one before and three after the fixes below) and 1 of 1 on the desktop app (llama.cpp). Each run took one tool call, had no errors and finished 17–34 seconds after Lena pressed Enter, including the time to load the model. We saw no model mistakes.
+
+Changes made while recording it:
+
+- Before, the tool opened the Sort range dialog with its defaults (Name, A → Z) showing and then sorted by Hours, so the video showed one choice and did another. The dialog is now filled in with the agent's column, order and header choice, and the range is selected first.
+- `sort_range` passed sheet column numbers to a sort that counts columns from the start of the range. Any table that did not start in column A was sorted by the wrong column.
+- Column names of three letters or fewer, such as "Qty", were read as column letters (column QTY). Now a matching header name is used before trying column letters.
+
 ## Gaps and notes
 
 - **Data › Sort range** now opens a Sheets-style dialog: "Data has header row", "Sort by" with A → Z / Z → A, and "Add another sort column". With a single cell selected it sorts the sheet's data region. Escape or Cancel closes it without changes, and Undo reverses a sort.
