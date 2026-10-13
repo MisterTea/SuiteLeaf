@@ -93,10 +93,13 @@ import {
   type TransitionType,
 } from "./slide-theme";
 import { SlideDesignPanel, useReducedMotion } from "./slide-design-panel";
+import { replaceSlideWord } from "./grid-spelling";
+import { SlideSpellMirror, SlideSpelling } from "./grid-spelling-ui";
 import {
   hasTextRuns,
   rangeColor,
   rangeHas,
+  replaceRunRange,
   runsOf,
   styleSelection,
   styleWholeBox,
@@ -219,6 +222,7 @@ export default function Slides({
   >(() => {});
 
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const spellingRef = useRef<{ open: () => void }>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef<{
     elementId: string;
@@ -1184,6 +1188,7 @@ ${slidesHtml}
         undoReason: () => slideApi.current.undoReason(),
         redoReason: () => slideApi.current.redoReason(),
         deleteReason: () => slideApi.current.deleteReason(),
+        openSpelling: () => spellingRef.current?.open(),
       },
     });
   }, [onActions, onChange, activeSlideId, beginShow]);
@@ -2350,6 +2355,7 @@ ${slidesHtml}
                         color: el.color || "#1e293b",
                         textAlign: el.align || "left",
                         backgroundColor: el.fill || "transparent",
+                        ["--spell-caret" as string]: el.color || "#1e293b",
                       }}
                       onMouseDown={(e) => {
                         const inEditor = (e.target as HTMLElement).closest?.(
@@ -2393,19 +2399,22 @@ ${slidesHtml}
                           onCaret={(sel) => rememberCaret(el.id, sel)}
                         />
                       ) : (
-                        <textarea
-                          className="element-textarea"
-                          value={el.content || ""}
-                          placeholder={el.placeholder ?? "Click to add text"}
-                          onChange={(e) =>
-                            updateElement(
-                              el.id,
-                              { content: e.target.value },
-                              { coalesce: `type:${el.id}` },
-                            )
-                          }
-                          onFocus={() => selectElement(el.id)}
-                        />
+                        <>
+                          <SlideSpellMirror text={el.content || ""} fileId={file.id} />
+                          <textarea
+                            className="element-textarea"
+                            value={el.content || ""}
+                            placeholder={el.placeholder ?? "Click to add text"}
+                            onChange={(e) =>
+                              updateElement(
+                                el.id,
+                                { content: e.target.value },
+                                { coalesce: `type:${el.id}` },
+                              )
+                            }
+                            onFocus={() => selectElement(el.id)}
+                          />
+                        </>
                       )}
                       {isSelected ? renderHandles(el.id) : null}
                     </div>
@@ -2567,6 +2576,34 @@ ${slidesHtml}
             status={transitionStatus}
           />
         ) : null}
+        <SlideSpelling
+          ref={spellingRef}
+          deck={deck}
+          fileId={file.id}
+          onFocus={(issue) => applySelection(issue.slideId, [issue.slideId], issue.elementId)}
+          onReplace={(issue, replacement) => {
+            const next = replaceSlideWord(
+              deckRef.current,
+              issue.slideId,
+              issue.elementId,
+              issue.from,
+              issue.to,
+              replacement,
+            );
+            const slide = next.slides[issue.slideId];
+            const element = slide?.elements.find((item) => item.id === issue.elementId);
+            if (element?.runs?.length) {
+              element.runs = replaceRunRange(
+                element.runs,
+                issue.from,
+                issue.to,
+                replacement,
+              );
+            }
+            commitRef.current(next);
+            applySelection(issue.slideId, [issue.slideId], issue.elementId);
+          }}
+        />
       </div>
 
       {/* Presentation Fullscreen Mode Modal */}
