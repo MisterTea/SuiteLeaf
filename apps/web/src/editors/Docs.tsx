@@ -270,7 +270,7 @@ export default function Docs({
   const docTools = useRef<HTMLFieldSetElement>(null);
   const moreDocTools = useToolbarOverflow(
     docTools,
-    '[aria-label="Page setup"], [aria-label="Page break"], [aria-label="Superscript"], [aria-label="Subscript"], [aria-label="Bulleted list"], [aria-label="Decrease indent"], [aria-label="Increase indent"], [aria-label="Find and replace"], [aria-label="Insert table"], [aria-label="Insert link"], .mode-switch',
+    '[aria-label="Bold"], [aria-label="Italic"], [aria-label="Page setup"], [aria-label="Page break"], [aria-label="Superscript"], [aria-label="Subscript"], [aria-label="Bulleted list"], [aria-label="Decrease indent"], [aria-label="Increase indent"], [aria-label="Find and replace"], [aria-label="Insert table"], [aria-label="Insert link"], .mode-switch',
   );
   const [pageViewportWidth, setPageViewportWidth] = useState(
     window.innerWidth - 32,
