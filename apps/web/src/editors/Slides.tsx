@@ -101,11 +101,14 @@ export default function Slides({
   onChange,
   onActions,
   onError,
+  readOnly = false,
 }: {
   file: SlideFile;
   onChange: (content: SlideFile["content"]) => void;
   onActions: (actions: EditorActions) => void;
   onError: (s: string) => void;
+  /** Viewers can present, but not change slides or text. */
+  readOnly?: boolean;
 }) {
   const [deck, setDeck] = useState<SlideFile["content"]>(() =>
     structuredClone(file.content),
@@ -192,6 +195,8 @@ export default function Slides({
   const commitRef = useRef<
     (next: SlideFile["content"], key?: string) => void
   >(() => {});
+  const readOnlyRef = useRef(readOnly);
+  readOnlyRef.current = readOnly;
 
   const imageInputRef = useRef<HTMLInputElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -213,6 +218,7 @@ export default function Slides({
     });
 
   const applyDeck = (next: SlideFile["content"]) => {
+    if (readOnlyRef.current) return;
     deckRef.current = next;
     setDeck(next);
     onChange(next);
@@ -235,6 +241,7 @@ export default function Slides({
 
   // Commit changes and push to undo history
   const commit = (next: SlideFile["content"], key?: string) => {
+    if (readOnlyRef.current) return;
     historyRef.current!.commit(next, key);
     applyDeck(next);
     setNotice(null);
@@ -496,6 +503,7 @@ export default function Slides({
       partial: Partial<SlideElement>,
       mode?: { live?: boolean; coalesce?: string },
     ) => {
+      if (readOnlyRef.current) return;
       const prev = deckRef.current;
       const active =
         prev.slides[activeRef.current] || prev.slides[prev.slideOrder[0]];
@@ -755,7 +763,7 @@ export default function Slides({
     selectedElementRef.current = elementId;
     setSelectedElementId(elementId);
     const el = activeSlide.elements.find((item) => item.id === elementId);
-    if (!el) return;
+    if (!el || readOnlyRef.current) return;
 
     draggingRef.current = {
       elementId,
@@ -1055,6 +1063,10 @@ ${slidesHtml}
       }
       const command = commandFromKey(e, typingContext(e.target));
       if (!command) return;
+      if (readOnlyRef.current && command.type !== "copy") {
+        e.preventDefault();
+        return;
+      }
       e.preventDefault();
       api.current.run(command);
     };
@@ -1100,6 +1112,7 @@ ${slidesHtml}
       }
       if (e.key.toLowerCase() !== "m" || e.shiftKey || e.altKey) return;
       e.preventDefault();
+      if (readOnlyRef.current) return;
       apiRef.current.addSlide("title-body");
     };
     window.addEventListener("keydown", onKeyDown);
@@ -1459,6 +1472,7 @@ ${slidesHtml}
         role="toolbar"
         aria-label="Slides toolbar"
       >
+        <fieldset className="toolbar-edits" disabled={readOnly}>
         <div className="tool-group">
           <MenuSearchPill />
           <button
@@ -1488,19 +1502,16 @@ ${slidesHtml}
           <Tool
             label="Undo (Cmd+Z)"
             onClick={undo}
-            disabled={!historyMarks.undo}
+            disabled={!historyMarks.undo || readOnly}
           >
             <Undo2 size={16} />
           </Tool>
           <Tool
             label="Redo (Cmd+Y)"
             onClick={redo}
-            disabled={!historyMarks.redo}
+            disabled={!historyMarks.redo || readOnly}
           >
             <Redo2 size={16} />
-          </Tool>
-          <Tool label="Print (Cmd+P)" onClick={() => printDocument()}>
-            <Printer size={16} />
           </Tool>
         </div>
 
@@ -1821,6 +1832,11 @@ ${slidesHtml}
 
           </div>
         )}
+        </fieldset>
+
+        <Tool label="Print (Cmd+P)" onClick={() => printDocument()}>
+          <Printer size={16} />
+        </Tool>
 
         {/* Google Slides styled Slideshow button */}
         <div className="tool-group right-tools" style={{ marginLeft: "auto" }}>
@@ -1898,7 +1914,7 @@ ${slidesHtml}
                 type="button"
                 title="Move slide up"
                 onClick={() => moveSlides("up")}
-                disabled={!canMove(deck.slideOrder, selectedSlideIds, "up")}
+                disabled={readOnly || !canMove(deck.slideOrder, selectedSlideIds, "up")}
               >
                 <ChevronUp size={14} />
               </button>
@@ -1906,13 +1922,16 @@ ${slidesHtml}
                 type="button"
                 title="Move slide down"
                 onClick={() => moveSlides("down")}
-                disabled={!canMove(deck.slideOrder, selectedSlideIds, "down")}
+                disabled={
+                  readOnly || !canMove(deck.slideOrder, selectedSlideIds, "down")
+                }
               >
                 <ChevronDown size={14} />
               </button>
               <button
                 type="button"
                 title="Duplicate slide"
+                disabled={readOnly}
                 onClick={duplicateCurrentSlide}
               >
                 <Copy size={14} />
@@ -1921,7 +1940,9 @@ ${slidesHtml}
                 type="button"
                 title="Delete slide"
                 onClick={deleteCurrentSlide}
-                disabled={!canDeleteSlides(deck.slideOrder, selectedSlideIds)}
+                disabled={
+                  readOnly || !canDeleteSlides(deck.slideOrder, selectedSlideIds)
+                }
               >
                 <Trash2 size={14} />
               </button>
@@ -2021,6 +2042,7 @@ ${slidesHtml}
                   }}
                   onContextMenu={(e) => {
                     e.preventDefault();
+                    if (readOnlyRef.current) return;
                     if (!selectedRef.current.includes(id)) {
                       anchorRef.current = id;
                       applySelection(id, [id], null);
@@ -2111,6 +2133,7 @@ ${slidesHtml}
             <button
               type="button"
               className="add-slide-sidebar-btn"
+              disabled={readOnly}
               onClick={() => addSlide("title-body")}
               title="New slide (Cmd+M)"
             >
@@ -2168,6 +2191,7 @@ ${slidesHtml}
                     >
                       <textarea
                         className="element-textarea"
+                        readOnly={readOnly}
                         value={el.content || ""}
                         placeholder={el.placeholder ?? "Click to add text"}
                         onChange={(e) =>
@@ -2179,7 +2203,7 @@ ${slidesHtml}
                         }
                         onFocus={() => selectElement(el.id)}
                       />
-                      {isSelected ? renderHandles(el.id) : null}
+                      {isSelected && !readOnly ? renderHandles(el.id) : null}
                     </div>
                   );
                 }
@@ -2197,7 +2221,7 @@ ${slidesHtml}
                       onClick={(e) => e.stopPropagation()}
                     >
                       <img src={el.src} alt={el.alt || "Slide asset"} />
-                      {isSelected ? renderHandles(el.id) : null}
+                      {isSelected && !readOnly ? renderHandles(el.id) : null}
                     </div>
                   );
                 }
@@ -2229,7 +2253,7 @@ ${slidesHtml}
                       onMouseDown={(e) => onElementMouseDown(e, el.id)}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      {isSelected ? renderHandles(el.id) : null}
+                      {isSelected && !readOnly ? renderHandles(el.id) : null}
                     </div>
                   );
                 }
@@ -2257,7 +2281,7 @@ ${slidesHtml}
                           ))}
                         </tbody>
                       </table>
-                      {isSelected ? renderHandles(el.id) : null}
+                      {isSelected && !readOnly ? renderHandles(el.id) : null}
                     </div>
                   );
                 }
@@ -2281,6 +2305,7 @@ ${slidesHtml}
             {showNotes ? (
               <textarea
                 className="notes-textarea"
+                readOnly={readOnly}
                 placeholder="Click to add speaker notes"
                 value={activeSlide?.notes || ""}
                 onChange={(e) =>

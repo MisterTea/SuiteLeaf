@@ -75,6 +75,7 @@ import {
 } from "./ui";
 import { FunctionMenu } from "./editors/function-help-ui";
 import { SheetViewMenu } from "./editors/SheetViewMenu";
+import { FilterViewChoices } from "./editors/sheet-filter-view";
 import { CommandPalette, useCommandPalette } from "./command-palette";
 import {
   DriveConflict,
@@ -2325,8 +2326,29 @@ function Workspace() {
                   </MenuItem>
                 </Menu>
                 <Menu label="Data">
+                  {!canEdit ? (
+                    <SubMenu label="Filter views">
+                      <MenuItem
+                        onSelect={() =>
+                          actions.current?.sheetActions?.createFilterView?.()
+                        }
+                      >
+                        Create a filter view
+                      </MenuItem>
+                      <FilterViewChoices
+                        load={() =>
+                          actions.current?.sheetActions?.filterViewChoices?.() ??
+                          []
+                        }
+                        onPick={(value) =>
+                          actions.current?.sheetActions?.applyFilterView?.(value)
+                        }
+                      />
+                    </SubMenu>
+                  ) : null}
                   <MenuItem
                     searchLabel="Create a filter"
+                    disabled={!canEdit}
                     onSelect={() =>
                       actions.current?.sheetActions?.toggleFilter()
                     }
@@ -2685,6 +2707,8 @@ function Workspace() {
             onClick={() => {
               actions.current?.docActions?.openComments?.();
               actions.current?.sheetActions?.openComments?.();
+              if (f.kind === "sheet")
+                window.dispatchEvent(new Event("suiteleaf:open-sheet-comments"));
             }}
           >
             <MessageSquare size={18} />
@@ -2899,6 +2923,8 @@ function Workspace() {
                   <Sheets
                     key={`${id}:${editorEpoch}`}
                     file={f as SheetFile}
+                    readOnly={!canEdit}
+                    canComment={driveRole === "commenter"}
                     onChange={update}
                     onActions={onActions}
                     onError={setError}
@@ -2907,6 +2933,7 @@ function Workspace() {
                   <Slides
                     key={`${id}:${editorEpoch}`}
                     file={f as SlideFile}
+                    readOnly={!canEdit}
                     onChange={update}
                     onActions={onActions}
                     onError={setError}

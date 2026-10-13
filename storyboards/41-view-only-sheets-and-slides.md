@@ -1,6 +1,6 @@
 # 41 · A viewer cannot edit a spreadsheet or a presentation
 
-**Mode:** cluster · **App:** Sheets, Slides · **Video:** [videos/41-view-only-sheets-and-slides.mp4](videos/41-view-only-sheets-and-slides.mp4) · **Script:** [scenes/41-view-only-sheets-and-slides.spec.ts](scenes/41-view-only-sheets-and-slides.spec.ts)
+**Mode:** cluster · **App:** Sheets, Slides · **Video:** [videos/41-viewer-of-a-sheet-or-deck.mp4](videos/41-viewer-of-a-sheet-or-deck.mp4) · **Script:** [scenes/41-viewer-of-a-sheet-or-deck.spec.ts](scenes/41-viewer-of-a-sheet-or-deck.spec.ts)
 
 ## Who and why
 
@@ -18,7 +18,7 @@ Alex Rivera can read the garden club's "Plot assignments" spreadsheet and the "S
 
 1. **Open the sheet.** Alex signs in. Shared with me lists "Plot assignments.slsheet" as "Rosa Diaz · Can view". The sheet opens with "View only" beside the title. The formula bar and the editing toolbar (undo, formatting, Insert) are greyed. Zoom and Print stay usable.
 2. **Try to type.** Alex clicks C4, types "Alex", and presses Enter. C4 still says "Sam". Paste and Delete do the same. The status never says it is saving, and it never reports an error.
-3. **Look, without changing the file.** Data › Filter views › Create a filter view filters the sheet to "North". That filter is only on Alex's screen. Closing the file and opening it again shows every row, and Rosa's copy is unchanged.
+3. **Look, without changing the file.** Data › Filter views › Bed: North (three clicks) hides every row that is not North, and a bar says the filter is only on this screen. Closing the file and opening it again shows every row, and Rosa's copy is unchanged.
 4. **A commenter, still not an editor.** Priya, who can comment, opens the same sheet. The badge says "Can comment". The editing toolbar and the formula bar are greyed. Typing in C4 leaves "Sam". Priya can open the comment on C4 and reply.
 5. **Open the slides.** Alex opens "Spring fair.slslides", also "Rosa Diaz · Can view", with the same "View only" badge. Bold, Theme, New slide, and the text-box tools are greyed. Present stays available.
 6. **Try to edit a slide.** Alex clicks a text box, presses Cmd/Ctrl+B, and types. The words stay as Rosa left them. The status does not save.
@@ -53,8 +53,20 @@ Known pain points:
 
 ## Gaps and notes
 
-- The header badge is already there: `driveRole === "viewer"` shows "View only", and `"commenter"` shows "Can comment". Saves are already skipped when `canEdit` is false (`syncDrive` and `save` return immediately).
-- Only Docs receives `readOnly` and disables `fieldset.toolbar-edits`. Sheets and Slides are mounted with no read-only flag, so their toolbars stay active and Univer still accepts cell edits on the device.
-- Sheet comments already exist (storyboard 17). This story only needs a commenter to be able to reply while the grid is locked. Slide comments are a different story.
-- Data › Create a filter writes the sheet (storyboard 11). A viewer needs a filter view that is not saved, which the sheet does not have yet.
 - Version history for viewers is unchanged: this story does not grant or remove it.
+- Slide comments are a different story. A commenter on a deck still cannot comment.
+- Selecting a commented cell also opens Univer's comment card beside the grid, as well as the comments sidebar.
+- A viewer's saved "Create a filter" stays disabled. Filter views are the path that does not write the file.
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| 1. Viewer sees "View only"; formula bar and editing toolbar disabled; Zoom and Print stay on | Met | Video ~0:08; scene asserts Bold, Undo, and Font family disabled, Zoom and Print enabled, formula editor `data-view-locked` |
+| 2. Typing, paste, and Delete leave cells unchanged; no save and no save error | Met | Video ~0:14, C4 stays Sam; scene counts content PUTs as 0 |
+| 3. Filter view in at most 3 clicks, not written, gone on reopen | Met | Video ~0:22, Data › Filter views › Bed: North; reopen at ~0:28 shows South; bytes match before Rosa edits |
+| 4. Commenter sees "Can comment", cannot edit cells, can reply | Met | Video ~0:36, Priya types a reply on C4; C4 stays Sam |
+| 5. Slide viewer sees "View only"; Bold, Theme, New slide, and text tools disabled; Present works | Met | Video ~0:46 toolbar, ~0:50 slideshow |
+| 6. Typing and Bold on a slide change nothing and do not save | Met | Video ~0:48, title stays "Spring fair"; content PUTs stay 0 |
+| 7. Stored bytes match after the viewer and commenter close the files | Met | Scene compares SHA-256 of both files before Rosa edits |
+| 8. An editor gets an enabled toolbar and can edit | Met | Video ~0:54 Rosa types "ok" and adds "!" to the title |
