@@ -14,7 +14,8 @@
     "./equations": "./src/equations.ts",
     "./image-crop": "./src/image-crop.ts",
     "./line-spacing": "./src/line-spacing.ts",
-    "./paragraph-spacing": "./src/paragraph-spacing.ts"
+    "./paragraph-spacing": "./src/paragraph-spacing.ts",
+    "./paragraph-indent": "./src/paragraph-indent.ts"
   },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",

@@ -1,0 +1,17 @@
+.paragraph-indent-fields {
+  display: grid;
+  gap: 6px;
+  margin: 4px -4px -4px;
+  padding: 8px;
+  border-top: 1px solid var(--border, #dadce0);
+  min-width: 210px;
+}
+.paragraph-indent-fields [role="listbox"] {
+  display: grid;
+}
+.paragraph-indent-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-secondary, #5f6368);
+}

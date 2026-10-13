@@ -38,6 +38,7 @@ import {
   type ParagraphChild,
 } from "docx";
 import type { DocFile, JsonNode } from "./index";
+import { docxParagraphIndent } from "./paragraph-indent";
 import { asEquation, type EqNode } from "./equations";
 import {
   documentPageSettings,
@@ -401,6 +402,10 @@ function blocks(
       n.type === "paragraph" || n.type === "heading"
         ? { ...docxLineSpacing(n.attrs?.lineSpacing), ...docxParagraphGap(n.attrs) }
         : undefined;
+    const indent =
+      n.type === "paragraph" || n.type === "heading"
+        ? docxParagraphIndent(n.attrs)
+        : undefined;
     const stop = Number(n.attrs?.tabStop);
     const tabStops =
       Number.isFinite(stop) && stop > 0 && stop <= 22
@@ -412,6 +417,7 @@ function blocks(
         tabStops,
         alignment: alignment(n.attrs?.textAlign),
         ...(spacing ? { spacing } : {}),
+        ...(indent ? { indent } : {}),
         heading:
           n.type === "heading"
             ? ([

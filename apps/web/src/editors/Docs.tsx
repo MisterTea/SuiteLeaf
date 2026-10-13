@@ -117,6 +117,7 @@ import { ArabicNumberStart, ArabicStartControl } from "./doc-arabic-start";
 import { paragraphLineSpacing } from "./doc-line-spacing";
 import { LineSpacingControl } from "./doc-line-spacing-ui";
 import { paragraphSpacing } from "./doc-paragraph-spacing";
+import { paragraphIndent } from "./doc-paragraph-indent";
 import { DocWatermarkField, pageSetupToSave } from "./doc-watermark";
 import { columnLayout } from "./doc-columns";
 import { PageMarginFields } from "./page-setup-margins";
@@ -140,6 +141,7 @@ export const extensions: Extensions = [
   TextAlign.configure({ types: ["heading", "paragraph"] }),
   paragraphLineSpacing,
   paragraphSpacing,
+  paragraphIndent,
   KeepWithNext,
   WidowControl,
   KeepLines,
