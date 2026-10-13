@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { flushSync } from "react-dom";
 import { X } from "lucide-react";
 import { Node, type Editor } from "@tiptap/core";
 import type { Node as ProseNode } from "@tiptap/pm/model";
@@ -283,7 +284,6 @@ export function EquationDialog({
     const expr = parsed;
     editor
       .chain()
-      .focus()
       .insertContent({
         type: "equation",
         attrs: { expr, plain: plainOf(expr) },
@@ -294,7 +294,13 @@ export function EquationDialog({
         return true;
       })
       .run();
-    onClose();
+    // Tiptap's focus() waits for a frame, and removing the dialog on this
+    // click moves focus to the page. Focus the document itself, while it is
+    // already the active element, so the next characters are not dropped.
+    const field = editor.view.dom as HTMLElement;
+    field.focus();
+    flushSync(() => onClose());
+    field.focus();
   };
   const trimmed = value.trim();
   const unfinished =
