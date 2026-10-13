@@ -71,6 +71,73 @@ export function wordBand(
   return { x: origin + prefix, width };
 }
 
+export type Box = { left: number; top: number; width: number; height: number };
+
+export function boxesOverlap(a: Box, b: Box) {
+  return (
+    a.left < b.left + b.width &&
+    a.left + a.width > b.left &&
+    a.top < b.top + b.height &&
+    a.top + a.height > b.top
+  );
+}
+
+/**
+ * The menu sits beside the cell, then below it, and never on the underlined word.
+ * A clamped fallback still prefers a side that leaves the word visible.
+ */
+export function spellingMenuPosition(
+  cell: Box,
+  word: Box,
+  menu: { width: number; height: number },
+  viewport: { width: number; height: number },
+): { left: number; top: number } {
+  const gap = 8;
+  const margin = 8;
+  const asBox = (left: number, top: number): Box => ({
+    left,
+    top,
+    width: menu.width,
+    height: menu.height,
+  });
+  const onScreen = (left: number, top: number) => {
+    const box = asBox(left, top);
+    return (
+      box.left >= margin &&
+      box.top >= margin &&
+      box.left + box.width <= viewport.width - margin &&
+      box.top + box.height <= viewport.height - margin
+    );
+  };
+  const clear = (left: number, top: number) => !boxesOverlap(asBox(left, top), word);
+  const candidates = [
+    { left: cell.left + cell.width + gap, top: cell.top },
+    { left: cell.left - menu.width - gap, top: cell.top },
+    { left: cell.left, top: cell.top + cell.height + gap },
+    { left: word.left, top: word.top - menu.height - gap },
+  ];
+  for (const candidate of candidates) {
+    if (onScreen(candidate.left, candidate.top) && clear(candidate.left, candidate.top))
+      return candidate;
+  }
+  let left = Math.min(
+    Math.max(margin, cell.left),
+    Math.max(margin, viewport.width - margin - menu.width),
+  );
+  let top = cell.top + cell.height + gap;
+  if (!onScreen(left, top)) top = word.top - menu.height - gap;
+  if (!clear(left, top)) {
+    const right = word.left + word.width + gap;
+    const leftSide = word.left - menu.width - gap;
+    if (onScreen(right, word.top)) return { left: right, top: word.top };
+    if (onScreen(leftSide, word.top)) return { left: leftSide, top: word.top };
+    top = word.top + word.height + gap;
+  }
+  left = Math.min(Math.max(margin, left), Math.max(margin, viewport.width - margin - menu.width));
+  top = Math.min(Math.max(margin, top), Math.max(margin, viewport.height - margin - menu.height));
+  return { left, top };
+}
+
 type CellSource = {
   sheetId: string;
   sheetName: string;

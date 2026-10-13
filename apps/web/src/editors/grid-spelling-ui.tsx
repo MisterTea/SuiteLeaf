@@ -1,7 +1,9 @@
 import { X } from "lucide-react";
 import {
+  Fragment,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -23,10 +25,12 @@ import {
   plainCellText,
   readIgnoredWords,
   replaceWordAt,
+  spellingMenuPosition,
   suggestionsFor,
   withIgnored,
   wordBand,
   writeIgnoredWords,
+  type Box,
   type SheetIssue,
   type SlideIssue,
   type SpellHit,
@@ -241,7 +245,19 @@ function cellFont(sheet: any, row: number, column: number) {
   } as const;
 }
 
-type Mark = { key: string; word: string; label: string; left: number; top: number; width: number };
+type Mark = {
+  key: string;
+  word: string;
+  label: string;
+  left: number;
+  top: number;
+  width: number;
+  hitLeft: number;
+  hitTop: number;
+  hitWidth: number;
+  hitHeight: number;
+  cell: Box;
+};
 
 function placeMarks(workbook: any, host: HTMLElement, issues: SheetIssue[]): Mark[] {
   const sheet = workbook?.getActiveSheet?.();
@@ -277,6 +293,19 @@ function placeMarks(workbook: any, host: HTMLElement, issues: SheetIssue[]): Mar
     const top = box.top + rect.top + rect.height - 5;
     if (left + band.width < box.left + 40 || left > box.right) continue;
     if (top < box.top + 16 || top > box.bottom) continue;
+    const cellLeft = Math.max(box.left, box.left + rect.left);
+    const cellTop = Math.max(box.top, box.top + rect.top);
+    const cellRight = Math.min(box.right, box.left + rect.left + rect.width);
+    const cellBottom = Math.min(box.bottom, box.top + rect.top + rect.height);
+    const cell = {
+      left: cellLeft,
+      top: cellTop,
+      width: Math.max(0, cellRight - cellLeft),
+      height: Math.max(0, cellBottom - cellTop),
+    };
+    const hitLeft = Math.max(left, cell.left);
+    const hitWidth = Math.min(left + band.width, cell.left + cell.width) - hitLeft;
+    if (hitWidth < 4 || cell.height < 4) continue;
     marks.push({
       key: issue.key,
       word: issue.word,
@@ -284,6 +313,11 @@ function placeMarks(workbook: any, host: HTMLElement, issues: SheetIssue[]): Mar
       left,
       top,
       width: band.width,
+      hitLeft,
+      hitTop: cell.top,
+      hitWidth,
+      hitHeight: cell.height,
+      cell,
     });
   }
   return marks;
@@ -293,13 +327,26 @@ function SheetMarks({ marks, activeKey }: { marks: Mark[]; activeKey: string | n
   return (
     <>
       {marks.map((mark) => (
-        <div
-          key={mark.key}
-          className={`sheet-spell-mark${mark.key === activeKey ? " current" : ""}`}
-          data-spell-word={mark.word}
-          data-spell-cell={mark.label}
-          style={{ left: mark.left, top: mark.top, width: mark.width }}
-        />
+        <Fragment key={mark.key}>
+          <div
+            className="sheet-spell-hit"
+            data-spell-key={mark.key}
+            data-spell-word={mark.word}
+            data-spell-cell={mark.label}
+            style={{
+              left: mark.hitLeft,
+              top: mark.hitTop,
+              width: mark.hitWidth,
+              height: mark.hitHeight,
+            }}
+          />
+          <div
+            className={`sheet-spell-mark${mark.key === activeKey ? " current" : ""}`}
+            data-spell-word={mark.word}
+            data-spell-cell={mark.label}
+            style={{ left: mark.left, top: mark.top, width: mark.width }}
+          />
+        </Fragment>
       ))}
     </>
   );
@@ -331,6 +378,126 @@ function replaceSheetIssue(workbook: any, issue: SheetIssue, replacement: string
   return true;
 }
 
+type SpellMenu = {
+  key: string;
+  word: string;
+  suggestions: string[];
+  wordBox: Box;
+  cellBox: Box;
+};
+
+function editingText(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target.isContentEditable ||
+    !!target.closest("input, textarea, [contenteditable='true']")
+  );
+}
+
+function SpellContextMenu({
+  menu,
+  onReplace,
+  onIgnore,
+  onAdd,
+  onClose,
+}: {
+  menu: SpellMenu;
+  onReplace: (replacement: string) => void;
+  onIgnore: () => void;
+  onAdd: () => void;
+  onClose: () => void;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ width: 220, height: 148 });
+  useLayoutEffect(() => {
+    const el = menuRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const width = Math.ceil(rect.width);
+    const height = Math.ceil(rect.height);
+    setSize((current) =>
+      Math.abs(current.width - width) > 1 || Math.abs(current.height - height) > 1
+        ? { width, height }
+        : current,
+    );
+  }, [menu.suggestions, menu.word]);
+  const pos = spellingMenuPosition(menu.cellBox, menu.wordBox, size, {
+    width: window.innerWidth,
+    height: window.innerHeight,
+  });
+  return (
+    <div
+      className="context-menu-backdrop"
+      onMouseDown={(event) => {
+        if (event.button !== 0) return;
+        onClose();
+      }}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+    >
+      <div
+        ref={menuRef}
+        className="menu-content table-context-menu spelling-menu"
+        role="menu"
+        aria-label={`Spelling for ${menu.word}`}
+        style={{ left: pos.left, top: pos.top }}
+        onMouseDown={(event) => event.stopPropagation()}
+        onKeyDown={(event) => {
+          const items = [...event.currentTarget.querySelectorAll<HTMLElement>("[role=menuitem]")];
+          const at = items.indexOf(document.activeElement as HTMLElement);
+          if (event.key === "Escape") {
+            event.preventDefault();
+            onClose();
+          } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            const next =
+              event.key === "ArrowDown"
+                ? items[(at + 1) % items.length]
+                : items[(at - 1 + items.length) % items.length];
+            next?.focus();
+          }
+        }}
+      >
+        {menu.suggestions.length ? (
+          menu.suggestions.map((suggestion, index) => (
+            <button
+              type="button"
+              role="menuitem"
+              className="menu-item spelling-suggestion"
+              key={suggestion}
+              autoFocus={index === 0}
+              onClick={() => onReplace(suggestion)}
+            >
+              {suggestion}
+            </button>
+          ))
+        ) : (
+          <div className="menu-item" data-disabled="true" aria-disabled="true">
+            No suggestions
+          </div>
+        )}
+        <div className="menu-separator" role="separator" />
+        <button type="button" role="menuitem" className="menu-item" onClick={onIgnore}>
+          Ignore
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          className="menu-item"
+          autoFocus={menu.suggestions.length === 0}
+          onClick={onAdd}
+        >
+          Add to dictionary
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function SheetSpelling({
   bookRef,
   hostRef,
@@ -352,6 +519,7 @@ export function SheetSpelling({
   const [hadIssues, setHadIssues] = useState(false);
   const [tick, setTick] = useState(0);
   const [marks, setMarks] = useState<Mark[]>([]);
+  const [menu, setMenu] = useState<SpellMenu | null>(null);
   const personalRef = useRef(personal);
   personalRef.current = personal;
   const ignoredRef = useRef(ignored);
@@ -380,6 +548,10 @@ export function SheetSpelling({
     void tick;
     return collectSheetIssues(bookRef.current, personal, ignored);
   }, [ready, personal, ignored, tick, bookRef]);
+  const marksRef = useRef(marks);
+  marksRef.current = marks;
+  const issuesRef = useRef(issues);
+  issuesRef.current = issues;
   const { index, restart } = useSpellCursor(issues.length, open);
   const issue = open && issues.length ? issues[index] : null;
 
@@ -416,7 +588,66 @@ export function SheetSpelling({
     };
   }, [ready, issues, bookRef, hostRef]);
 
+  useEffect(() => {
+    if (!menu) return;
+    if (!issues.some((item) => item.key === menu.key)) setMenu(null);
+  }, [issues, menu]);
+
+  useEffect(() => {
+    if (!ready) return;
+    // The underline is painted over the canvas and does not take clicks, so the
+    // grid still selects and edits. A right-click is claimed only on the word.
+    const hitAt = (x: number, y: number) => {
+      for (const node of document.querySelectorAll<HTMLElement>(".sheet-spell-hit")) {
+        const rect = node.getBoundingClientRect();
+        if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) return node;
+      }
+      return null;
+    };
+    const wordAt = (event: MouseEvent) => {
+      if (editingText(event.target)) return null;
+      if (event.target instanceof HTMLElement && event.target.closest(".spelling-menu")) return null;
+      if (hostRef.current?.closest(".view-locked")) return null;
+      const node = hitAt(event.clientX, event.clientY);
+      if (!node) return null;
+      const key = node.dataset.spellKey;
+      const found = key ? issuesRef.current.find((item) => item.key === key) : undefined;
+      const mark = key ? marksRef.current.find((item) => item.key === key) : undefined;
+      if (!found || !mark) return null;
+      return { node, found, mark };
+    };
+    // Stop the grid menu on the way down. Open ours on contextmenu, after the
+    // click's mousedown, so the backdrop does not dismiss itself.
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.button !== 2 || !wordAt(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const onContextMenu = (event: MouseEvent) => {
+      const hit = wordAt(event);
+      if (!hit) return;
+      event.preventDefault();
+      event.stopPropagation();
+      focusSheetIssue(bookRef.current, hit.found);
+      const rect = hit.node.getBoundingClientRect();
+      setMenu({
+        key: hit.found.key,
+        word: hit.found.word,
+        suggestions: suggestionsFor(hit.found.word),
+        wordBox: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+        cellBox: hit.mark.cell,
+      });
+    };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("contextmenu", onContextMenu, true);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("contextmenu", onContextMenu, true);
+    };
+  }, [ready, bookRef, hostRef]);
+
   const openSession = () => {
+    setMenu(null);
     restart();
     setHadIssues(collectSheetIssues(bookRef.current, personalRef.current, ignoredRef.current).length > 0);
     setOpen(true);
@@ -438,10 +669,39 @@ export function SheetSpelling({
     if (replaceSheetIssue(bookRef.current, issue, replacement)) persist();
     setTick((value) => value + 1);
   };
+  const menuIssue = () => (menu ? issuesRef.current.find((item) => item.key === menu.key) : undefined);
+  const replaceFromMenu = (replacement: string) => {
+    const current = menuIssue();
+    if (!current || !replacement.trim()) return;
+    if (replaceSheetIssue(bookRef.current, current, replacement)) persist();
+    setMenu(null);
+    setTick((value) => value + 1);
+  };
+  const ignoreFromMenu = () => {
+    const current = menuIssue();
+    if (!current) return;
+    writeIgnoredWords(fileId, withIgnored(ignoredRef.current, current.word));
+    setMenu(null);
+  };
+  const addFromMenu = () => {
+    const current = menuIssue();
+    if (!current) return;
+    remember(addToPersonalDictionary(personalRef.current, current.word));
+    setMenu(null);
+  };
 
   return (
     <>
-      <SheetMarks marks={marks} activeKey={issue?.key ?? null} />
+      <SheetMarks marks={marks} activeKey={issue?.key ?? menu?.key ?? null} />
+      {menu ? (
+        <SpellContextMenu
+          menu={menu}
+          onReplace={replaceFromMenu}
+          onIgnore={ignoreFromMenu}
+          onAdd={addFromMenu}
+          onClose={() => setMenu(null)}
+        />
+      ) : null}
       {open ? (
         <SpellingPanel
           key={issue?.key ?? "done"}
