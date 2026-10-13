@@ -830,6 +830,10 @@ a {
   color: var(--text-primary);
   font-weight: 600;
 }
+.last-edited-label {
+  color: var(--text-secondary);
+  font-weight: 400;
+}
 .header-right-tools {
   margin-left: auto;
   display: flex;
