@@ -146,3 +146,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 101 | [Bring the space from Word](101-bring-the-space-from-word.md) | single-node | Docs |
 | 102 | [Keep the indent from Word](102-keep-the-indent-from-word.md) | single-node | Docs |
 | 104 | [Bring the line spacing from Word](104-bring-the-line-spacing-from-word.md) | single-node | Docs |
+| 107 | [Number the top center](107-number-the-top-center.md) | single-node | Docs |
