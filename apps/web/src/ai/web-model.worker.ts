@@ -13,6 +13,11 @@ import {
   type Tensor,
 } from "@huggingface/transformers";
 import type { AiBackendKind, AiGenerateRequest, AiStatus } from "@suiteleaf/core/ai";
+// The ONNX runtime ships with the app, so the model works offline once cached.
+import ortWasm from "onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm?url";
+import ortModule from "onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs?url";
+
+if (env.backends.onnx.wasm) env.backends.onnx.wasm.wasmPaths = { wasm: ortWasm, mjs: ortModule };
 
 export const MODEL_ID = "onnx-community/gemma-4-E4B-it-ONNX";
 
