@@ -5,6 +5,7 @@ import {
 import { liveOrientation } from "./landscape-live";
 import { liveLetterheadText } from "./letterhead-text-live";
 import { letterheadLiveEvent, liveEdgeDistances } from "./letterhead-live";
+import { livePageNumbers } from "./page-number-live";
 import { livePaperSize } from "./paper-size-live";
 
 const marginEdges = [
@@ -18,7 +19,8 @@ const marginEdges = [
  * Body margins are drawn while Page setup is open. Header and footer
  * distances stay on the letterhead preview: a new margin does not move them.
  * A margin Page setup would refuse stays on the saved page. Paper size,
- * orientation, and header and footer wording are drawn beside this.
+ * orientation, header and footer wording, and the page-number switch are
+ * drawn beside this.
  */
 export function liveMargins(base: PageSettings, draft: PageSettings): PageSettings {
   let next: PageSettings | null = null;
@@ -36,9 +38,12 @@ export function livePageSettings(
   saved: PageSettings,
   draft: PageSettings,
 ): PageSettings {
-  return liveLetterheadText(
-    liveOrientation(
-      livePaperSize(liveMargins(liveEdgeDistances(saved, draft), draft), draft),
+  return livePageNumbers(
+    liveLetterheadText(
+      liveOrientation(
+        livePaperSize(liveMargins(liveEdgeDistances(saved, draft), draft), draft),
+        draft,
+      ),
       draft,
     ),
     draft,

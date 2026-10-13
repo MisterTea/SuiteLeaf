@@ -251,12 +251,15 @@
 }
 .page-number {
   color: #174ea6;
-  font-weight: 600;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
+  /* The sheet zooms down beside Page setup. Counter that zoom so the
+     number stays a readable label instead of shrinking with the paper. */
+  font-size: calc(14px / var(--page-zoom, 1));
   background: #e8f0fe;
   border-radius: 999px;
-  padding: 0 8px;
-  line-height: 18px;
+  padding: 0.05em 0.55em;
+  line-height: 1.35;
   white-space: nowrap;
 }
 @media (max-width: 700px) {

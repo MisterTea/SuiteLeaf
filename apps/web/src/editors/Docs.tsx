@@ -2034,6 +2034,7 @@ export default function Docs({
                 "--body-inset-bottom": `${edgeInsets.bottom}px`,
                 "--page-stride": `${dimensions.height + 24}px`,
                 minHeight: `${pageCount * dimensions.height + (pageCount - 1) * 24}px`,
+                "--page-zoom": String(Math.max(pageZoom, 0.2)),
                 zoom: pageZoom,
               } as CSSProperties
             }
