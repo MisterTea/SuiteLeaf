@@ -274,6 +274,13 @@ export function parseToolCall(body: string): ParsedCall {
       } catch {
         // Fall through to the original error.
       }
+      // ...or close a list of rows one "]" short when it is the last argument ("values:[[a, b]}").
+      try {
+        const repaired = rest.replace(/\]\s*\}\s*$/, `${"]".repeat(surplus + 1)}}`);
+        if (repaired !== rest) return { name, arguments: parse(repaired), raw };
+      } catch {
+        // Fall through to the original error.
+      }
     }
     const brackets = surplus
       ? ` The brackets do not match: there are ${Math.abs(surplus)} more "${surplus > 0 ? "[" : "]"}" than "${surplus > 0 ? "]" : "["}".`

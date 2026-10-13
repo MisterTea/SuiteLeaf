@@ -170,6 +170,10 @@ describe("Gemma 4 tool-call parsing", () => {
     );
     expect(parsed.error).toBeUndefined();
     expect(parsed.arguments).toEqual({ cells: [["Name", "Bringing"], ["Asha [A]", "Beans"]], header_row: true });
+    expect(parseToolCall('call:set_cells{start:<|"|>A8<|"|>,values:[[<|"|>Left<|"|>,<|"|>=B7-C7<|"|>]}').arguments).toEqual({
+      start: "A8",
+      values: [["Left", "=B7-C7"]],
+    });
     expect(parseToolCall('call:insert_table{cells:[[<|"|>a<|"|>],[<|"|>b<|"|>],header_row:true}').error).toMatch(
       /brackets do not match: there are 1 more "\[" than "\]"/,
     );
