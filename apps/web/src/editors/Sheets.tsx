@@ -51,6 +51,7 @@ import {
 } from "./formula-suggestions";
 import { useSheetFunctions } from "./function-help-ui";
 import SortRangeDialog from "./SortRangeDialog";
+import NamedRanges, { type NamedRangesHandle } from "./named-ranges-ui";
 import { useToolbarOverflow } from "./toolbar-overflow";
 import "@univerjs/preset-sheets-core/lib/index.css";
 import "@univerjs/preset-sheets-drawing/lib/index.css";
@@ -801,6 +802,7 @@ export default function Sheets({
   const dropdowns = useRef<SheetDropdownHandle>(null);
   const dropdownEngine = useRef<{ api: any; injector: any } | null>(null);
   const cleanup = useRef<{ trim: () => void; duplicates: () => void; split: () => void }>(null);
+  const names = useRef<NamedRangesHandle>(null);
   const engine = useRef<any>(null);
   const toolbar = useRef<HTMLDivElement>(null);
   const moreTools = useToolbarOverflow(
@@ -1922,6 +1924,7 @@ export default function Sheets({
         insertFunction: (name: string) => functionActions.current.insertFunction(name),
         toggleFilter,
         sortRange: openSortRange,
+        namedRanges: () => names.current?.open(),
         trimWhitespace: () => cleanup.current?.trim(),
         removeDuplicates: () => cleanup.current?.duplicates(),
         splitTextToColumns: () => cleanup.current?.split(),
@@ -2261,6 +2264,14 @@ export default function Sheets({
             <X size={14} />
           </button>
         </div>
+      ) : null}
+      {ready && api.current && engine.current ? (
+        <NamedRanges
+          ref={names}
+          api={api.current}
+          engine={engine.current}
+          persist={() => persist.current()}
+        />
       ) : null}
       {ready && api.current && engine.current ? (
         <SheetCleanup
