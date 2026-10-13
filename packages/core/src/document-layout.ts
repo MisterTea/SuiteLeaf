@@ -6,7 +6,16 @@ export type PageSettings = {
   header: string;
   footer: string;
   pageNumbers: boolean;
+  /** A short phrase drawn behind the text. Empty means no watermark. */
+  watermark: string;
 };
+/** Long enough for a word or a short phrase, not a sentence. */
+export const WATERMARK_LIMIT = 40;
+/** The watermark actually drawn. Blank, and anything that is not text, means none. */
+export function watermarkText(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.replace(/\s+/g, " ").trim().slice(0, WATERMARK_LIMIT);
+}
 export const defaultPageSettings: PageSettings = {
   size: "letter",
   landscape: false,
@@ -14,6 +23,7 @@ export const defaultPageSettings: PageSettings = {
   header: "",
   footer: "",
   pageNumbers: false,
+  watermark: "",
 };
 export function documentPageSettings(content: JsonNode): PageSettings {
   const a = content.attrs?.pageSettings as Partial<PageSettings> | undefined;
@@ -29,6 +39,7 @@ export function documentPageSettings(content: JsonNode): PageSettings {
     // Like Docs and Word, page numbers are off until chosen; settings saved
     // before that default changed keep numbering unless it was turned off.
     pageNumbers: a ? a.pageNumbers !== false : false,
+    watermark: watermarkText(a?.watermark),
   };
 }
 export function pageDimensions(settings: PageSettings) {
@@ -63,6 +74,14 @@ export function documentHtml(
   ].join(" ");
   const furniture = (tag: "header" | "footer", text: string) =>
     text ? `<${tag} class="page-${tag}">${escapeHtml(text)}</${tag}>` : "";
+  const mark = watermarkText(settings.watermark);
+  const watermark = mark
+    ? `<div class="page-watermark" aria-hidden="true">${escapeHtml(mark)}</div>`
+    : "";
+  const watermarkCss = mark
+    ? `.page-watermark { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; font: 700 96px/1 Arial, sans-serif; letter-spacing: 0.08em; color: rgba(95, 99, 104, 0.36); pointer-events: none; user-select: none; z-index: 0; }
+main { position: relative; z-index: 1; }`
+    : "";
   return `<!doctype html>
 <html>
 <head>
@@ -74,12 +93,14 @@ body { max-width: ${width / 96}in; margin: 0 auto; padding: ${settings.margin / 
 .page-header, .page-footer { color: #555; font-size: 10pt; white-space: pre-wrap; }
 .page-header { margin-bottom: 2em; }
 .page-footer { margin-top: 2em; }
+${watermarkCss}
 [data-page-break] { break-before: page; }
 @page { ${pageRule} }
 @media print { body { max-width: none; padding: 0; } }
 </style>
 </head>
 <body>
+${watermark}
 ${furniture("header", settings.header)}
 <main>${bodyHtml}</main>
 ${furniture("footer", settings.footer)}

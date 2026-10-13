@@ -14,12 +14,12 @@ Priya's garden-club minutes are not ready to send. She wants the word DRAFT behi
 
 ## Scenes
 
-1. **The minutes.** Priya opens "Garden club minutes". The pages have no word behind the text.
-2. **The word.** In Page setup, beside the page-numbers choice, she types DRAFT and applies. No second dialog.
-3. **Every page.** Page 1 and page 2 both show DRAFT behind the paragraphs, large and faint. She can still select and edit a sentence. The word is not part of the paragraph.
-4. **A different word.** She changes it to FINAL. Both pages update. DRAFT is gone.
-5. **Clear.** She clears the field and applies. The pages have no word behind the text. The paragraphs are unchanged.
-6. **Save and Word.** She sets DRAFT again, reopens the SuiteLeaf file, and the word is still behind both pages. The exported .docx has that watermark, not a typed paragraph.
+1. **The minutes.** Priya opens "Garden club minutes". Two pages, and no word behind the text.
+2. **The word.** Page setup already shows page numbers. Beside that checkbox she types DRAFT and clicks Apply. The dialog does not open a second one.
+3. **Every page.** Page 1 and page 2 both show DRAFT behind the paragraphs, large and faint. She adds "The vote was unanimous." The word stays where it was, and it is not in the paragraph.
+4. **A different word.** She changes the field to FINAL. Both pages update. DRAFT is gone.
+5. **Clear.** She clears the field and applies. The pages have no word behind the text. The paragraphs, including the new sentence, are unchanged.
+6. **Save and Word.** She sets DRAFT again. SuiteLeaf saves it. She leaves the file and opens it again: the word is still behind the minutes. Export DOCX writes a Word watermark, not a paragraph that says DRAFT.
 
 ## Google Workspace benchmark
 
@@ -36,10 +36,21 @@ In Google Docs the path is Insert, Watermark, type, Done ([Docs Help](https://su
 
 ## Success looks like
 
-Both pages of the minutes show DRAFT behind the text. Priya edits a sentence and the word stays. Clearing the field removes it. The Word file has the same watermark.
+Both pages show DRAFT behind the minutes. Priya adds a sentence and the word stays. Clearing the field removes it and leaves the paragraphs. Reopening the file brings DRAFT back, and the Word file has that watermark.
 
 ## Gaps and notes
 
-- There is no watermark today.
-- An image watermark and a diagonal angle are out of scope. Text, one word or a short phrase, is enough.
-- Do not change page numbers, headers, or line spacing.
+- The word is horizontal, across the body of the page. Google's and Word's usual DRAFT stamp is diagonal. An angle control and an image watermark are still out of scope.
+- Opening a Word file does not read an existing watermark back into Page setup. Export writes one; import does not yet.
+- Spellcheck still underlines ordinary names in the minutes. That is separate from the watermark.
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| The watermark is a field in Page setup, next to the page-number choices. No second dialog. | Met | Video ~8–12s: Watermark sits beside Page numbers; she types DRAFT and clicks Apply. The scene asserts a single dialog. |
+| The word appears behind the text on every page, large and faint, and stays out of the paragraph text. | Met | Video ~14s (page 1) and ~17s (page 2). The editor text does not contain DRAFT. `tests/doc-watermark.test.ts`, `tests/browser/doc-watermark.spec.ts`. |
+| Editing a sentence does not delete or move the watermark. | Met | Video ~21–24s: "The vote was unanimous." is a new line; DRAFT stays. The browser test checks the word's place on the page before and after the edit. |
+| Changing the word updates every page. Clearing it removes it from every page and leaves the paragraphs alone. | Met | Video ~28s FINAL on both pages, ~34s the word is gone and the new sentence remains. |
+| The word survives save and reopen. | Met | Video ~40–44s: back to files, open "Garden club minutes", DRAFT is behind the text. The browser test checks the saved `.sldoc` and the reopened page. |
+| The exported .docx carries that watermark, not an extra paragraph that says DRAFT. | Met | Video ~46s. `tests/doc-watermark.test.ts`: `word/header1.xml` has `PowerPlusWaterMarkObject` and `string="DRAFT"`; `word/document.xml` does not contain DRAFT. |

@@ -28,6 +28,7 @@ import {
 } from "docx";
 import type { DocFile, JsonNode } from "./index";
 import { documentPageSettings } from "./document-layout";
+import { docxWatermarkParagraph } from "./doc-watermark";
 import {
   planDocxComments,
   stampDocxComments,
@@ -341,6 +342,7 @@ export async function exportDocx(
     target[String(slot.num)] = { children: noteBody(id) };
   }
   const settings = documentPageSettings(content);
+  const watermark = docxWatermarkParagraph(settings.watermark);
   const comments = planDocxComments(content);
   const children = blocks(content.content ?? [], comments, notes);
   if (comments.trailing.length)
@@ -409,7 +411,12 @@ export async function exportDocx(
           },
         },
         headers: {
-          default: new Header({ children: [new Paragraph(settings.header)] }),
+          default: new Header({
+            children: [
+              ...(watermark ? [watermark] : []),
+              new Paragraph(settings.header),
+            ],
+          }),
         },
         footers: {
           default: new Footer({

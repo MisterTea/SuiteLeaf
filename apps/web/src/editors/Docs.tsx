@@ -99,6 +99,11 @@ import {
   pageDimensions,
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
+import {
+  DocWatermark,
+  DocWatermarkField,
+  pageSetupToSave,
+} from "./doc-watermark";
 
 export const extensions: Extensions = [
   DocumentPagination,
@@ -1279,7 +1284,10 @@ export default function Docs({
               e.preventDefault();
               if (!pageDraftValid) return;
               editor.view.dispatch(
-                editor.state.tr.setDocAttribute("pageSettings", pageDraft),
+                editor.state.tr.setDocAttribute(
+                  "pageSettings",
+                  pageSetupToSave(pageDraft),
+                ),
               );
               closePageSetup();
             }}
@@ -1373,24 +1381,32 @@ export default function Docs({
                   }
                 />
               </label>
-              <div className="page-setup-check">
-                <label>
-                  <input
-                    type="checkbox"
-                    aria-describedby="page-numbers-hint"
-                    checked={pageDraft.pageNumbers}
-                    onChange={(e) =>
-                      setPageDraft({
-                        ...pageDraft,
-                        pageNumbers: e.target.checked,
-                      })
-                    }
-                  />
-                  Page numbers
-                </label>
-                <span id="page-numbers-hint" className="page-setup-hint">
-                  Bottom right of every page, as “1 / 3”
-                </span>
+              <div className="page-setup-marks">
+                <div className="page-setup-check">
+                  <label>
+                    <input
+                      type="checkbox"
+                      aria-describedby="page-numbers-hint"
+                      checked={pageDraft.pageNumbers}
+                      onChange={(e) =>
+                        setPageDraft({
+                          ...pageDraft,
+                          pageNumbers: e.target.checked,
+                        })
+                      }
+                    />
+                    Page numbers
+                  </label>
+                  <span id="page-numbers-hint" className="page-setup-hint">
+                    Bottom right of every page, as “1 / 3”
+                  </span>
+                </div>
+                <DocWatermarkField
+                  value={pageDraft.watermark}
+                  onChange={(watermark) =>
+                    setPageDraft({ ...pageDraft, watermark })
+                  }
+                />
               </div>
             </div>
             <div className="dialog-footer">
@@ -1900,6 +1916,7 @@ export default function Docs({
                   style={{ "--page-index": i } as CSSProperties}
                 >
                   <div className="page-header">{pageSettings.header}</div>
+                  <DocWatermark text={pageSettings.watermark} />
                   <div className="page-footer">
                     <span>{pageSettings.footer}</span>
                     {pageSettings.pageNumbers ? (
