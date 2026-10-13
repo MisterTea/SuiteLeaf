@@ -19,6 +19,7 @@ import {
   parseToolCall,
   renderConversation,
   renderSystem,
+  trimStops,
 } from "./gemma";
 
 /** Per-request numbers, for the sidebar and the storyboard metrics. */
@@ -46,7 +47,7 @@ export const gemmaModel = (backend: string): Model<"suiteleaf-local"> => ({
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   reasoning: false,
   contextWindow: 16384,
-  maxTokens: 1024,
+  maxTokens: 2048,
 });
 
 const MARKERS = [TOOL_CALL, "<|channel>", ...GEMMA_STOP];
@@ -116,6 +117,8 @@ export function createGemmaStreamFn(model: LocalModel, options: GemmaStreamOptio
     let toolCalls = 0;
     let parseErrors = 0;
     let finished = false;
+    let cutOff = false;
+    const maxTokens = options.maxTokens ?? piModel.maxTokens;
 
     const closeBlock = () => {
       if (block < 0) return;
@@ -155,6 +158,8 @@ export function createGemmaStreamFn(model: LocalModel, options: GemmaStreamOptio
       pending = "";
       options.onDraft?.(undefined);
       const parsed = parseToolCall(body);
+      if (parsed.error && cutOff)
+        parsed.error = `The reply reached its ${maxTokens}-token limit before this call was finished. Split long text over several calls.`;
       toolCalls++;
       if (parsed.error) parseErrors++;
       const call = {
@@ -214,7 +219,8 @@ export function createGemmaStreamFn(model: LocalModel, options: GemmaStreamOptio
         } else if (mode === "tool") {
           const end = raw.indexOf(TOOL_CALL_END, done);
           if (end < 0) {
-            if (final && raw.slice(done).trim()) emitCall(raw.slice(done));
+            // A call cut short by the end of the turn has no <tool_call|>, but may carry the stop marker.
+            if (final && trimStops(raw.slice(done)).trim()) emitCall(trimStops(raw.slice(done)));
             if (final) done = raw.length;
             else options.onDraft?.(raw.slice(done));
             return;
@@ -249,6 +255,7 @@ export function createGemmaStreamFn(model: LocalModel, options: GemmaStreamOptio
         stream.end(output);
         return;
       }
+      cutOff = event.reason === "length";
       pump(true);
       closeBlock();
       raws.set(output.responseId!, raw);
@@ -285,7 +292,7 @@ export function createGemmaStreamFn(model: LocalModel, options: GemmaStreamOptio
     const cancel = model.generate(
       {
         prompt,
-        maxTokens: options.maxTokens ?? piModel.maxTokens,
+        maxTokens,
         stop: GEMMA_STOP,
         ...GEMMA_SAMPLING,
       },

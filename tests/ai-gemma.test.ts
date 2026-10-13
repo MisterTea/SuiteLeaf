@@ -10,7 +10,7 @@ import {
   renderSystem,
   templateTools,
 } from "../apps/web/src/ai/gemma";
-import { createGemmaStreamFn, gemmaModel } from "../apps/web/src/ai/gemma-stream";
+import { PARSE_ERROR, createGemmaStreamFn, gemmaModel } from "../apps/web/src/ai/gemma-stream";
 
 const official = new Template(
   readFileSync(new URL("../apps/web/src/ai/gemma4-chat-template.jinja", import.meta.url), "utf8"),
@@ -190,12 +190,12 @@ describe("Gemma 4 tool-call parsing", () => {
 
 describe("Gemma 4 stream", () => {
   /** Run the stream function on a model that writes `chunks`, and return the message. */
-  async function streamed(chunks: string[]) {
+  async function streamed(chunks: string[], reason = "stop") {
     const model = {
       generate: (_request: unknown, onEvent: (e: unknown) => void) => {
         setTimeout(() => {
           for (const text of chunks) onEvent({ type: "text", text });
-          onEvent({ type: "done", reason: "stop", promptTokens: 1, cachedTokens: 0, outputTokens: 1, promptMs: 1, generateMs: 1 });
+          onEvent({ type: "done", reason, promptTokens: 1, cachedTokens: 0, outputTokens: 1, promptMs: 1, generateMs: 1 });
         });
         return () => {};
       },
@@ -208,6 +208,17 @@ describe("Gemma 4 stream", () => {
     const message = await streamed(["ca", "ll:insert_chart{type:", "column}<tool_call|>"]);
     expect(message.content).toEqual([expect.objectContaining({ type: "toolCall", name: "insert_chart", arguments: { type: "column" } })]);
     expect(message.stopReason).toBe("toolUse");
+  });
+
+  it("reads a call the turn ended before it was closed", async () => {
+    const message = await streamed(['<|tool_call>call:create_file{kind:<|"|>document<|"|>}', "<turn|>"]);
+    expect(message.content).toEqual([expect.objectContaining({ type: "toolCall", name: "create_file", arguments: { kind: "document" } })]);
+  });
+
+  it("says when a call was cut off by the token limit", async () => {
+    const message = await streamed(['<|tool_call>call:write_text{text:<|"|>Summary\nA long'], "length");
+    const call = message.content[0] as { arguments: Record<string, string> };
+    expect(call.arguments[PARSE_ERROR]).toMatch(/reached its 2048-token limit/);
   });
 
   it("keeps ordinary replies as text", async () => {
