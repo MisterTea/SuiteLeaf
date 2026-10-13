@@ -218,6 +218,7 @@ export type EditorActions = {
     toggleBulletList: () => void;
     toggleOrderedList: () => void;
     tableActions: () => TableAction[];
+    openSuggestions?: () => void;
   };
   sheetActions?: {
     dataValidation?: () => void;

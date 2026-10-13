@@ -2023,7 +2023,8 @@ a {
   .toolbar .font-size-stepper,
   .toolbar .color-tool,
   .toolbar .divider,
-  .toolbar .menu-search-pill {
+  .toolbar .menu-search-pill,
+  .toolbar .mode-switch {
     flex-shrink: 0;
   }
   .sheets-toolbar {
@@ -4191,4 +4192,220 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
   .doc-comment-gutter {
     display: none !important;
   }
+}
+.mode-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  padding: 2px;
+  border-radius: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.mode-switch button {
+  border: 0;
+  background: transparent;
+  border-radius: 14px;
+  padding: 4px 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.mode-switch button[aria-pressed="true"] {
+  background: var(--toolbar-active);
+  color: var(--toolbar-active-text);
+}
+.mode-switch.suggesting {
+  border-color: #137333;
+}
+.mode-switch.suggesting button[aria-pressed="true"] {
+  background: #137333;
+  color: #fff;
+}
+.mode-author {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px 0 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.mode-author input {
+  width: 88px;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  padding: 2px 0;
+}
+.suggesting-flag {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: #137333;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+.suggestion {
+  border-radius: 2px;
+}
+.suggestion-insert {
+  color: #0b8043;
+  text-decoration: underline;
+  text-decoration-color: #0b8043;
+  background: #e6f4ea;
+}
+.suggestion-delete {
+  color: #c5221f;
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+}
+.suggestion-format,
+[data-suggestion-heading] {
+  text-decoration: underline dotted #137333;
+  text-underline-offset: 3px;
+}
+.suggestion-rail {
+  position: relative;
+  width: 250px;
+  flex: 0 0 250px;
+  min-height: 100%;
+}
+.suggestion-rail-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+.suggestion-actions {
+  display: flex;
+  gap: 6px;
+}
+.suggestion-actions button {
+  flex: 1;
+}
+.suggestion-card {
+  position: static;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-left: 3px solid #137333;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(60, 64, 67, 0.16);
+  font-size: 13px;
+}
+.suggestion-card header {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.suggestion-card p {
+  margin: 4px 0;
+}
+.suggestion-card-delete {
+  border-left-color: #c5221f;
+}
+.suggestion-card-actions {
+  display: flex;
+  gap: 6px;
+}
+.suggestion-card-actions button {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: #fff;
+  cursor: pointer;
+}
+.suggestion-card-actions button:first-child:hover {
+  background: #e6f4ea;
+  border-color: #137333;
+}
+.suggestion-card-actions button:last-child:hover {
+  background: #fce8e6;
+  border-color: #c5221f;
+}
+.suggestion-preview-banner {
+  position: fixed;
+  top: 132px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: #137333;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+.docs-editor.suggestions-preview-accepted .suggestion-insert,
+.docs-editor.suggestions-preview-original .suggestion-delete {
+  color: inherit;
+  text-decoration: none;
+  background: none;
+}
+.docs-editor.suggestions-preview-accepted .suggestion-delete,
+.docs-editor.suggestions-preview-original .suggestion-insert {
+  display: none;
+}
+.docs-editor.suggestions-preview-accepted .suggestion-format,
+.docs-editor.suggestions-preview-accepted [data-suggestion-heading] {
+  text-decoration: none;
+}
+.docs-editor.suggestions-preview-original .suggestion-format[data-before="false"][data-property="bold"],
+.docs-editor.suggestions-preview-original .suggestion-format[data-before="false"][data-property="bold"] strong {
+  font-weight: 400;
+}
+.docs-editor.suggestions-preview-original .suggestion-format[data-before="false"][data-property="italic"],
+.docs-editor.suggestions-preview-original .suggestion-format[data-before="false"][data-property="italic"] em {
+  font-style: normal;
+}
+.docs-editor.suggestions-preview-original .suggestion-format[data-before="false"][data-property="underline"] {
+  text-decoration: none;
+}
+.docs-editor.suggestions-preview-original [data-suggestion-heading][data-before="0"] {
+  font-size: 11pt;
+  font-weight: 400;
+}
+.suggestion-count {
+  margin: 0 0 8px;
+  font-weight: 600;
+}
+.suggestion-review-list {
+  margin: 12px 0 0;
+  padding-left: 18px;
+}
+@media (max-width: 900px) {
+  .suggestion-rail {
+    width: 100%;
+    flex-basis: auto;
+  }
+  .suggestion-card {
+    position: static;
+    margin-bottom: 8px;
+  }
+}
+
+/* Comment cards and suggestion cards are separate columns so they cannot cover each other. */
+.document-stage.with-comments .doc-comment-gutter,
+.document-stage .suggestion-rail {
+  align-self: stretch;
 }

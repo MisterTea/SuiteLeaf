@@ -7,7 +7,7 @@ import {
   type CSSProperties,
 } from "react";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
-import { generateJSON, type Extensions } from "@tiptap/core";
+import { generateHTML, generateJSON, type Extensions } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { TextStyleKit } from "@tiptap/extension-text-style";
 import Highlight from "@tiptap/extension-highlight";
@@ -75,6 +75,18 @@ import {
 import { documentPlainText } from "./doc-text";
 import { commentExtensions, DocComments } from "./doc-comments";
 import { slugify, uniqueSlug, anchorHref, isInternalAnchor } from "../anchors";
+import { Suggestions } from "./doc-suggestions";
+import {
+  SuggestionBridge,
+  SuggestionFlag,
+  SuggestionModeSwitch,
+  SuggestionProvider,
+  SuggestionRail,
+} from "./doc-suggestions-ui";
+import {
+  listSuggestions,
+  resolveSuggestions,
+} from "@suiteleaf/core/suggestions";
 
 import { DocumentPagination, PageBreak } from "./doc-pagination";
 import {
@@ -107,6 +119,7 @@ export const extensions: Extensions = [
   CharacterCount,
   DocumentSearchHighlight,
   ...commentExtensions,
+  Suggestions,
   Superscript,
   Subscript,
   Extension.create({
@@ -204,6 +217,10 @@ export default function Docs({
   const [highlightColor, setHighlightColor] = useState("#ffff00");
   const imageInput = useRef<HTMLInputElement>(null);
   const documentStage = useRef<HTMLDivElement>(null);
+  const suggestionApi = useRef<{
+    askPlainExport: () => Promise<"accepted" | "original" | null>;
+    openReview: () => void;
+  } | null>(null);
   const [activeHeading, setActiveHeading] = useState<number | null>(null);
   const [pageCount, setPageCount] = useState(1);
   const [pageSetupOpen, setPageSetupOpen] = useState(false);
@@ -605,6 +622,17 @@ export default function Docs({
     onActions({
       flush: async () => {},
       async export(format) {
+        let content = editor.getJSON() as JsonNode;
+        let resolved = false;
+        if (
+          (format === "html" || format === "txt") &&
+          listSuggestions(content).length
+        ) {
+          const choice = await suggestionApi.current?.askPlainExport();
+          if (!choice) return;
+          content = resolveSuggestions(content, choice);
+          resolved = true;
+        }
         if (format === "docx") {
           const { exportDocx } = await import("@suiteleaf/core/docx-export");
           await exportBinary(
@@ -620,15 +648,15 @@ export default function Docs({
             filename(file.title, "html"),
             documentHtml(
               file.title,
-              editor.getHTML(),
-              documentPageSettings(editor.getJSON() as JsonNode),
+              resolved ? generateHTML(content, extensions) : editor.getHTML(),
+              documentPageSettings(content),
             ),
             "text/html",
           );
         else
           await exportText(
             filename(file.title, "txt"),
-            documentPlainText(editor.getJSON() as JsonNode),
+            documentPlainText(content),
           );
       },
       print: () => printDocument(file.title),
@@ -661,6 +689,7 @@ export default function Docs({
         toggleOrderedList: () =>
           editor.chain().focus().toggleOrderedList().run(),
         tableActions,
+        openSuggestions: () => suggestionApi.current?.openReview(),
       },
     });
   }, [editor, file.title, onActions]);
@@ -889,6 +918,8 @@ export default function Docs({
   };
 
   return (
+    <SuggestionProvider editor={editor}>
+    <SuggestionBridge api={suggestionApi} />
     <div className="docs-editor">
       <div className="toolbar" role="toolbar" aria-label="Document formatting">
         <fieldset className="toolbar-edits" disabled={readOnly}>
@@ -1181,6 +1212,7 @@ export default function Docs({
         <Tool label="Find and replace" onClick={() => setFindOpen((v) => !v)}>
           <Search size={16} />
         </Tool>
+        <SuggestionModeSwitch />
         </fieldset>
       </div>
 
@@ -1846,9 +1878,10 @@ export default function Docs({
             openComments.current = api.openPanel;
           }}
         />
+        <SuggestionRail />
       </div>
       <footer className="editor-status">
-        {state?.words} words{" "}
+        {state?.words} words <SuggestionFlag />{" "}
         <span>
           {pageCount} {pageCount === 1 ? "page" : "pages"} · English
         </span>
@@ -1864,5 +1897,6 @@ export default function Docs({
         }}
       />
     </div>
+    </SuggestionProvider>
   );
 }

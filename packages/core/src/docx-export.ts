@@ -30,6 +30,7 @@ import {
   stampDocxComments,
   type DocxCommentPlan,
 } from "./doc-comments";
+import { embedSuggestionMarkers, revisionizeDocx } from "./suggestions";
 
 const color = (v: unknown) =>
   typeof v === "string" && /^#[\da-f]{6}$/i.test(v) ? v.slice(1) : undefined;
@@ -227,7 +228,7 @@ function blocks(
 export async function exportDocx(
   file: Pick<DocFile, "title" | "content">,
 ): Promise<Uint8Array> {
-  const content = structuredClone(file.content);
+  const content = embedSuggestionMarkers(structuredClone(file.content));
   const prepareImages = async (node: JsonNode): Promise<void> => {
     if (
       node.type === "image" &&
@@ -347,7 +348,9 @@ export async function exportDocx(
       },
     ],
   });
-  const packed = new Uint8Array(await Packer.toArrayBuffer(doc));
+  const packed = await revisionizeDocx(
+    new Uint8Array(await Packer.toArrayBuffer(doc)),
+  );
   return comments.comments.length
     ? stampDocxComments(packed, comments.resolvedWordIds)
     : packed;

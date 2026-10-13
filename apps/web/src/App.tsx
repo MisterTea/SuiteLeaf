@@ -1453,9 +1453,14 @@ function Workspace() {
   const commentNote = f.importInfo?.warnings.find((w) =>
     /^\d+ comment threads? imported$/.test(w),
   );
+  const suggestionNote = f.importInfo?.warnings.find((w) =>
+    /^\d+ suggestions? imported$/.test(w),
+  );
   const importNotes =
     f.importInfo?.warnings.filter(
-      (w) => !/^\d+ comment threads? imported$/.test(w),
+      (w) =>
+        !/^\d+ comment threads? imported$/.test(w) &&
+        !/^\d+ suggestions? imported$/.test(w),
     ) ?? [];
   return (
     <div className="workspace">
@@ -1838,6 +1843,13 @@ function Workspace() {
                     }
                   >
                     Spelling and grammar
+                  </MenuItem>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.docActions?.openSuggestions?.()
+                    }
+                  >
+                    Review suggestions
                   </MenuItem>
                 </Menu>
                 <Menu label="Help">
@@ -2300,6 +2312,7 @@ function Workspace() {
             Imported {f.importInfo.sourceFormat.toUpperCase()}:{" "}
             {f.importInfo.sourceName}
             {commentNote ? ` · ${commentNote}` : ""}
+            {suggestionNote ? ` · ${suggestionNote}` : ""}
             {importNotes.length
               ? ` · ${importNotes.length} compatibility ${importNotes.length === 1 ? "note" : "notes"}`
               : ""}

@@ -7,6 +7,11 @@ import type { AnyNode, Element } from "domhandler";
 import { XMLParser } from "fast-xml-parser";
 import { createFile, safeLink, type JsonNode, type DocFile } from "./index";
 import { commentImportSummary, importWordComments } from "./doc-comments";
+import {
+  absorbSuggestionMarkers,
+  annotateTrackedChanges,
+  resolveSuggestions,
+} from "./suggestions";
 import { type OfficeImport, parseXml } from "./office";
 
 type Mark = NonNullable<JsonNode["marks"]>[number];
@@ -1020,10 +1025,12 @@ export async function importDocx(
     zip,
     xml,
   );
+  const annotated = annotateTrackedChanges(updatedXml);
+  if (annotated !== updatedXml) zip.file("word/document.xml", annotated);
   const source = wordParagraphs(updatedXml);
   try {
     const input =
-      features.includes("strict-ooxml") || modified
+      features.includes("strict-ooxml") || modified || annotated !== updatedXml
         ? await zip.generateAsync({ type: "uint8array" })
         : bytes;
     const result = await mammoth.convertToHtml(
@@ -1107,7 +1114,19 @@ export async function importDocx(
   }
   if (!content.content?.length)
     content = { type: "doc", content: [{ type: "paragraph" }] };
-  let output = normalize(documentText(content));
+  const absorbed = absorbSuggestionMarkers(content);
+  content = absorbed.doc;
+  const suggestionCount = absorbed.count;
+  if (suggestionCount)
+    content = {
+      ...content,
+      attrs: { ...(content.attrs ?? {}), editingMode: "suggesting" },
+    };
+  let output = normalize(
+    documentText(
+      suggestionCount ? resolveSuggestions(content, "accepted") : content,
+    ),
+  );
   const missing = source.filter((t) => {
     const normT = normalize(t);
     if (!normT) return false;
@@ -1247,7 +1266,11 @@ export async function importDocx(
   };
   for (const [name, re] of Object.entries(checks))
     if (re.test(xml)) features.push(name);
-  if (features.includes("tracked_changes"))
+  if (suggestionCount)
+    warnings.push(
+      `${suggestionCount} suggestion${suggestionCount === 1 ? "" : "s"} imported`,
+    );
+  else if (features.includes("tracked_changes"))
     warnings.push(
       "Tracked changes are imported as accepted text; review history is not retained.",
     );
