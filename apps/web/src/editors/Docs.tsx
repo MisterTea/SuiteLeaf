@@ -258,7 +258,7 @@ export default function Docs({
   const docTools = useRef<HTMLFieldSetElement>(null);
   const moreDocTools = useToolbarOverflow(
     docTools,
-    '[aria-label="Page setup"], [aria-label="Page break"], [aria-label="Superscript"], [aria-label="Subscript"], [aria-label="Bulleted list"], [aria-label="Decrease indent"], [aria-label="Increase indent"], [aria-label="Find and replace"], [aria-label="Insert table"], .mode-switch',
+    '[aria-label="Page setup"], [aria-label="Page break"], [aria-label="Superscript"], [aria-label="Subscript"], [aria-label="Bulleted list"], [aria-label="Decrease indent"], [aria-label="Increase indent"], [aria-label="Find and replace"], [aria-label="Insert table"], [aria-label="Insert link"], .mode-switch',
   );
   const [pageViewportWidth, setPageViewportWidth] = useState(
     window.innerWidth - 32,
@@ -298,6 +298,27 @@ export default function Docs({
       // Keep a few lines of context around the caret when typing scrolls the page.
       scrollMargin: { top: 64, bottom: 64, left: 5, right: 5 },
       handleKeyDown: (view, event): boolean => {
+        // Ctrl+A is "start of paragraph" on iPhone WebKit, and that command
+        // runs after select-all and collapses the range. Select the document
+        // and put the range back on the next frame.
+        if (
+          (event.metaKey || event.ctrlKey) &&
+          !event.altKey &&
+          !event.shiftKey &&
+          event.key.toLowerCase() === "a"
+        ) {
+          event.preventDefault();
+          const apply = () => {
+            if (view.isDestroyed) return;
+            const doc = view.state.doc;
+            const next = TextSelection.create(doc, 0, doc.content.size);
+            if (!view.state.selection.eq(next))
+              view.dispatch(view.state.tr.setSelection(next));
+          };
+          apply();
+          requestAnimationFrame(apply);
+          return true;
+        }
         // Home and End move to the start or end of the line, as in Word.
         // macOS scrolls the page instead, and Linux does too inside this editor.
         // Shift+arrow extends by one character in the document, on every
@@ -431,6 +452,19 @@ export default function Docs({
           if (readOnlyRef.current) return true;
           return editor?.commands.setPageBreak() ?? false;
         }
+        // iOS WebKit does not run the Enter keymap on keydown. It retries
+        // handleKeyDown 200ms later with a plain Event, not a KeyboardEvent.
+        if (
+          event.key === "Enter" &&
+          !event.shiftKey &&
+          !event.altKey &&
+          !event.metaKey &&
+          !event.ctrlKey &&
+          !(event instanceof KeyboardEvent)
+        ) {
+          if (readOnlyRef.current) return true;
+          return editor?.commands.keyboardShortcut("Enter") ?? false;
+        }
         return false;
       },
       handlePaste: (_view, event) => {
@@ -445,6 +479,39 @@ export default function Docs({
       },
       // Internal "#anchor" links scroll to the heading that owns that slug.
       handleDOMEvents: {
+        // iPhone WebKit inserts a paragraph with its own editing command and
+        // can leave the previous line in the same box as the new one.
+        beforeinput: (view, event) => {
+          if (event.inputType !== "insertParagraph" || event.defaultPrevented)
+            return false;
+          if (!view.state.selection.empty) return false;
+          event.preventDefault();
+          const parent = view.state.selection.$from.parent;
+          // Enter already opened a fresh paragraph. A second split would add a blank line.
+          if (parent.content.size === 0) return true;
+          const pos = view.state.selection.from;
+          try {
+            view.dispatch(view.state.tr.split(pos));
+          } catch {
+            return false;
+          }
+          // iPhone WebKit keeps the DOM caret in the previous paragraph, so
+          // the next character is typed onto that line.
+          const dom = view.domAtPos(view.state.selection.from);
+          const selection = view.dom.ownerDocument.getSelection();
+          if (selection && dom.node) {
+            const range = view.dom.ownerDocument.createRange();
+            try {
+              range.setStart(dom.node, dom.offset);
+              range.collapse(true);
+              selection.removeAllRanges();
+              selection.addRange(range);
+            } catch {
+              // A fresh block can reject the range until the next frame.
+            }
+          }
+          return true;
+        },
         click: (view, event) => {
           const target = event.target as HTMLElement | null;
           const anchor = target?.closest?.("a[href^='#']");
@@ -1988,7 +2055,9 @@ export default function Docs({
                 "--body-inset-bottom": `${edgeInsets.bottom}px`,
                 "--page-stride": `${dimensions.height + 24}px`,
                 minHeight: `${pageCount * dimensions.height + (pageCount - 1) * 24}px`,
-                zoom: pageZoom,
+                // zoom: 1 still makes WebKit a zoom container, and then a
+                // heading shares its line with the paragraph above it.
+                ...(pageZoom === 1 ? {} : { zoom: pageZoom }),
               } as CSSProperties
             }
           >
