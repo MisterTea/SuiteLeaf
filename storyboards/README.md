@@ -49,4 +49,29 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 
 | # | Storyboard | Mode | App |
 | --- | --- | --- | --- |
-| 01 | [Write your first document](01-first-document.md) | Single-node | Docs |
+| 01 | [Write your first document](01-first-document.md) | single-node | Docs |
+| 02 | [Find and organize your files](02-find-and-organize-files.md) | single-node | Files |
+| 03 | [Open a Word document](03-import-word-document.md) | single-node | Docs |
+| 04 | [Write a long report and move around it with the outline](04-long-report-with-outline.md) | single-node | Docs |
+| 05 | [Add a table, a photo and a link](05-tables-images-and-links.md) | single-node | Docs |
+| 06 | [Fix a repeated typo with find and replace](06-find-and-replace.md) | single-node | Docs |
+| 07 | [Set up pages and export for Word and the web](07-page-setup-and-export.md) | single-node | Docs |
+| 08 | [Carry a file to another computer](08-carry-a-file-to-another-computer.md) | single-node | Docs |
+| 09 | [Build a household budget with formulas](09-household-budget-with-formulas.md) | single-node | Sheets |
+| 10 | [Sort a column without moving the header](10-sort-without-the-header.md) | single-node | Sheets |
+| 11 | [Filter to what matters](11-filter-to-what-matters.md) | single-node | Sheets |
+| 12 | [Freeze the header row](12-freeze-the-header-row.md) | single-node | Sheets |
+| 13 | [Format money and percentages](13-format-money-and-percentages.md) | single-node | Sheets |
+| 14 | [Turn a table into a chart](14-chart-from-a-table.md) | single-node | Sheets |
+| 15 | [Summarize spending with a pivot table](15-summarize-with-a-pivot.md) | single-node | Sheets |
+| 16 | [Import and export a CSV without losing leading zeros](16-import-and-export-csv.md) | single-node | Sheets |
+| 17 | [Review a budget with notes and comments](17-review-a-budget-with-notes-and-comments.md) | single-node | Sheets |
+| 18 | [Highlight and check off tasks](18-highlight-and-check-off.md) | single-node | Sheets |
+| 19 | [Open an Excel workbook and send it back](19-open-an-excel-workbook.md) | single-node | Sheets |
+| 20 | [Build a presentation](20-build-a-presentation.md) | single-node | Slides |
+| 21 | [Present with speaker notes](21-present-with-speaker-notes.md) | single-node | Slides |
+| 22 | [Connect to your team's server](22-connect-to-your-team-server.md) | single-node → cluster | Home |
+| 23 | [Start a document in SuiteDrive](23-start-a-document-in-suitedrive.md) | cluster | Docs |
+| 24 | [Pick up on another server](24-pick-up-on-another-server.md) | cluster (two servers) | Slides |
+| 25 | [When someone else saved first](25-when-someone-else-saved-first.md) | cluster | Docs |
+| 26 | [Sign out and go back to this computer](26-sign-out-and-disconnect.md) | cluster → single-node | Home |
