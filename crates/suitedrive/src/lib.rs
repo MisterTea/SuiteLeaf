@@ -27,7 +27,7 @@ use tokio::sync::Notify;
 pub use blobs::{BlobStore, CHUNK_SIZE, Hash, Manifest};
 
 /// Bump when the drive tables change.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 const MAX_BLOB_RESPONSE: usize = 24 * 1024 * 1024;
 const MAX_DEPTH: usize = 64;
 
@@ -53,6 +53,8 @@ pub fn tables() -> Vec<TableDef> {
             .column("size", Integer)
             .column("authorId", Text)
             .column("createdAt", Text)
+            .column("name", Text)
+            .column("restoredFrom", Text)
             .index("itemId")
             .index("contentHash"),
         TableDef::new("drive_acl", "id")
@@ -62,6 +64,12 @@ pub fn tables() -> Vec<TableDef> {
             .column("role", Text)
             .index("itemId")
             .index("principalId"),
+        TableDef::new("drive_comment", "id")
+            .column("itemId", Text)
+            .column("authorId", Text)
+            .column("body", Text)
+            .column("createdAt", Text)
+            .index("itemId"),
     ]
 }
 
@@ -69,6 +77,8 @@ pub fn tables() -> Vec<TableDef> {
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     Viewer,
+    /// Can read and add comments, but cannot change the file.
+    Commenter,
     Editor,
     Owner,
 }
@@ -77,6 +87,7 @@ impl Role {
     fn parse(s: &str) -> Option<Role> {
         match s {
             "viewer" => Some(Role::Viewer),
+            "commenter" => Some(Role::Commenter),
             "editor" => Some(Role::Editor),
             "owner" => Some(Role::Owner),
             _ => None,
@@ -86,6 +97,7 @@ impl Role {
     fn as_str(self) -> &'static str {
         match self {
             Role::Viewer => "viewer",
+            Role::Commenter => "commenter",
             Role::Editor => "editor",
             Role::Owner => "owner",
         }
@@ -128,6 +140,8 @@ pub struct Version {
     pub size: i64,
     pub author_id: String,
     pub created_at: String,
+    pub name: Option<String>,
+    pub restored_from: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -136,6 +150,45 @@ pub struct AclEntry {
     pub principal_type: String,
     pub principal_id: String,
     pub role: Role,
+}
+
+/// A folder whose sharing also applies to a file inside it.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct InheritedFrom {
+    pub id: String,
+    pub name: String,
+}
+
+/// One person or organization who can open an item, including access inherited
+/// from a folder. The file's owner uses `principal_type` `"owner"`.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AccessGrant {
+    pub principal_type: String,
+    pub principal_id: String,
+    pub role: Role,
+    pub inherited_from: Option<InheritedFrom>,
+}
+
+/// Who can open an item, and the folder it lives in.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemAccess {
+    pub grants: Vec<AccessGrant>,
+    pub parent: Option<InheritedFrom>,
+    pub your_role: Role,
+}
+
+/// A comment stored beside a file, separate from the file's content.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DriveComment {
+    pub id: String,
+    pub item_id: String,
+    pub author_id: String,
+    pub body: String,
+    pub created_at: String,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -175,6 +228,19 @@ fn int(row: &Row, key: &str) -> i64 {
     match row.get(key) {
         Some(Value::Integer(i)) => *i,
         _ => 0,
+    }
+}
+
+fn version_from_row(row: &Row) -> Version {
+    Version {
+        id: text(row, "id").unwrap_or_default(),
+        item_id: text(row, "itemId").unwrap_or_default(),
+        content_hash: text(row, "contentHash").unwrap_or_default(),
+        size: int(row, "size"),
+        author_id: text(row, "authorId").unwrap_or_default(),
+        created_at: text(row, "createdAt").unwrap_or_default(),
+        name: text(row, "name").filter(|s| !s.is_empty()),
+        restored_from: text(row, "restoredFrom").filter(|s| !s.is_empty()),
     }
 }
 
@@ -624,6 +690,24 @@ impl Drive {
         self.get(who, id)
     }
 
+    fn version_row(&self, item_id: &str, version_id: &str) -> DriveResult<Row> {
+        let row = self
+            .db
+            .get("drive_version", version_id)?
+            .ok_or(DriveError::NotFound)?;
+        if text(&row, "itemId").as_deref() != Some(item_id) {
+            return Err(DriveError::NotFound);
+        }
+        Ok(row)
+    }
+
+    fn head_matches(head: Option<&str>, if_match: Option<&str>) -> bool {
+        match if_match.map(|m| m.trim_matches('"')) {
+            Some(expected) if expected != "*" => Some(expected) == head,
+            _ => true,
+        }
+    }
+
     pub fn versions(&self, who: &Principal, id: &str) -> DriveResult<Vec<Version>> {
         self.require(who, id, Role::Viewer)?;
         Ok(self
@@ -633,15 +717,123 @@ impl Drive {
                 &[Value::Text(id.into())],
             )?
             .into_iter()
-            .map(|r| Version {
-                id: text(&r, "id").unwrap_or_default(),
-                item_id: text(&r, "itemId").unwrap_or_default(),
-                content_hash: text(&r, "contentHash").unwrap_or_default(),
-                size: int(&r, "size"),
-                author_id: text(&r, "authorId").unwrap_or_default(),
-                created_at: text(&r, "createdAt").unwrap_or_default(),
-            })
+            .map(|r| version_from_row(&r))
             .collect())
+    }
+
+    /// Set or clear the name people see in version history. The name replicates
+    /// with the version row, so another server shows it after sync.
+    pub fn name_version(
+        &self,
+        who: &Principal,
+        id: &str,
+        version_id: &str,
+        name: Option<&str>,
+    ) -> DriveResult<Version> {
+        self.require(who, id, Role::Editor)?;
+        self.version_row(id, version_id)?;
+        let name = match name.map(str::trim).filter(|s| !s.is_empty()) {
+            Some(name) => {
+                if name.chars().count() > 80 || name.contains(['\n', '\r', '\0']) {
+                    return Err(DriveError::BadRequest(
+                        "Use a version name of 1–80 characters on one line.".into(),
+                    ));
+                }
+                Some(name.to_owned())
+            }
+            None => None,
+        };
+        self.db.transact(|tx| {
+            tx.upsert(
+                "drive_version",
+                version_id,
+                [("name", Value::from(name.clone()))],
+            )
+        })?;
+        Ok(version_from_row(
+            &self
+                .db
+                .get("drive_version", version_id)?
+                .unwrap_or_default(),
+        ))
+    }
+
+    /// Make `version_id` the file's content again, as a new version. The
+    /// previous head stays in history and the saved bytes are the same blob.
+    pub fn restore(
+        &self,
+        who: &Principal,
+        id: &str,
+        version_id: &str,
+        if_match: Option<&str>,
+    ) -> DriveResult<Item> {
+        self.require(who, id, Role::Editor)?;
+        let row = self.item_row(id)?;
+        if text(&row, "kind").as_deref() != Some("file") {
+            return Err(DriveError::BadRequest("Folders have no content.".into()));
+        }
+        let head = text(&row, "headVersionId");
+        if !Self::head_matches(head.as_deref(), if_match) {
+            let role = self.role(who, id)?;
+            return Err(DriveError::Conflict(Box::new(self.to_item(&row, role)?)));
+        }
+        let source = self.version_row(id, version_id)?;
+        let hash = text(&source, "contentHash")
+            .ok_or_else(|| DriveError::Other(anyhow::anyhow!("version has no content")))?;
+        let parsed: Hash = hash
+            .parse()
+            .map_err(|_| DriveError::Other(anyhow::anyhow!("corrupt content hash")))?;
+        if !self.blobs.missing(&parsed)?.is_empty() {
+            return Err(DriveError::Unavailable);
+        }
+        let version = uuid::Uuid::now_v7().to_string();
+        let now = iso_now();
+        let size = int(&source, "size");
+        self.db.transact(|tx| {
+            tx.upsert(
+                "drive_version",
+                &version,
+                [
+                    ("itemId", Value::from(id)),
+                    ("contentHash", hash.into()),
+                    ("size", Value::Integer(size)),
+                    ("authorId", who.id.clone().into()),
+                    ("createdAt", now.clone().into()),
+                    ("restoredFrom", Value::from(version_id)),
+                ],
+            )?;
+            tx.upsert(
+                "drive_item",
+                id,
+                [
+                    ("headVersionId", Value::Text(version.clone())),
+                    ("size", Value::Integer(size)),
+                    ("updatedAt", now.into()),
+                ],
+            )
+        })?;
+        self.get(who, id)
+    }
+
+    /// A new file in the same folder, holding this version's bytes.
+    pub fn copy_version(
+        &self,
+        who: &Principal,
+        id: &str,
+        version_id: &str,
+        name: &str,
+    ) -> DriveResult<Item> {
+        let item = self.get(who, id)?;
+        self.version_row(id, version_id)?;
+        let (_, bytes) = self.read(who, id, Some(version_id))?;
+        let created = self.create(
+            who,
+            item.parent_id.as_deref(),
+            name,
+            "file",
+            item.mime.as_deref(),
+        )?;
+        self.write(who, &created.id, None, item.mime.as_deref(), &bytes)
     }
 
     pub fn acl(&self, who: &Principal, id: &str) -> DriveResult<Vec<AclEntry>> {
@@ -661,6 +853,147 @@ impl Drive {
                 })
             })
             .collect())
+    }
+
+    /// Everyone who can open `id`: the owner, direct grants, and grants
+    /// inherited from ancestor folders. When someone has more than one grant,
+    /// only the highest role is returned, labelled with the folder it comes
+    /// from when that role is not on the item itself.
+    pub fn access(&self, who: &Principal, id: &str) -> DriveResult<ItemAccess> {
+        let your_role = self.require(who, id, Role::Viewer)?;
+        let mut best: BTreeMap<String, AccessGrant> = BTreeMap::new();
+        let mut parent = None;
+        let mut current = Some(id.to_owned());
+        for depth in 0..MAX_DEPTH {
+            let Some(item_id) = current.take() else { break };
+            let row = self.item_row(&item_id)?;
+            let name = text(&row, "name").unwrap_or_default();
+            let on_item = item_id == id;
+            if depth == 1 {
+                parent = Some(InheritedFrom {
+                    id: item_id.clone(),
+                    name: name.clone(),
+                });
+            }
+            if let Some(owner) = text(&row, "ownerId") {
+                let key = format!("user:{owner}");
+                let higher = best
+                    .get(&key)
+                    .is_none_or(|existing| Role::Owner > existing.role);
+                if higher {
+                    best.insert(
+                        key,
+                        AccessGrant {
+                            principal_type: if on_item { "owner" } else { "user" }.into(),
+                            principal_id: owner,
+                            role: Role::Owner,
+                            inherited_from: (!on_item).then(|| InheritedFrom {
+                                id: item_id.clone(),
+                                name: name.clone(),
+                            }),
+                        },
+                    );
+                }
+            }
+            let via = (!on_item).then(|| InheritedFrom {
+                id: item_id.clone(),
+                name: name.clone(),
+            });
+            for grant in self.db.query(
+                "SELECT principalType, principalId, role FROM drive_acl WHERE itemId = ?1",
+                &[Value::Text(item_id.clone())],
+            )? {
+                let Some(ptype) = text(&grant, "principalType") else {
+                    continue;
+                };
+                let Some(pid) = text(&grant, "principalId") else {
+                    continue;
+                };
+                let Some(role) = text(&grant, "role").and_then(|r| Role::parse(&r)) else {
+                    continue;
+                };
+                let key = format!("{ptype}:{pid}");
+                let higher = best.get(&key).is_none_or(|existing| role > existing.role);
+                if higher {
+                    best.insert(
+                        key,
+                        AccessGrant {
+                            principal_type: ptype,
+                            principal_id: pid,
+                            role,
+                            inherited_from: via.clone(),
+                        },
+                    );
+                }
+            }
+            current = text(&row, "parentId");
+        }
+        let mut grants: Vec<_> = best.into_values().collect();
+        grants.sort_by(|a, b| {
+            let rank = |g: &AccessGrant| if g.principal_type == "owner" { 0 } else { 1 };
+            rank(a)
+                .cmp(&rank(b))
+                .then(b.role.cmp(&a.role))
+                .then(a.principal_id.cmp(&b.principal_id))
+        });
+        Ok(ItemAccess {
+            grants,
+            parent,
+            your_role,
+        })
+    }
+
+    /// Comments on an item. Viewers can read them; writing is [`add_comment`].
+    pub fn comments(&self, who: &Principal, id: &str) -> DriveResult<Vec<DriveComment>> {
+        self.require(who, id, Role::Viewer)?;
+        Ok(self
+            .db
+            .query(
+                "SELECT * FROM drive_comment WHERE itemId = ?1 ORDER BY createdAt, id",
+                &[Value::Text(id.into())],
+            )?
+            .into_iter()
+            .map(|r| DriveComment {
+                id: text(&r, "id").unwrap_or_default(),
+                item_id: text(&r, "itemId").unwrap_or_default(),
+                author_id: text(&r, "authorId").unwrap_or_default(),
+                body: text(&r, "body").unwrap_or_default(),
+                created_at: text(&r, "createdAt").unwrap_or_default(),
+            })
+            .collect())
+    }
+
+    /// Add a comment. Commenters, editors, and owners may do this. Changing
+    /// the file itself still requires an editor (`write` returns forbidden).
+    pub fn add_comment(&self, who: &Principal, id: &str, body: &str) -> DriveResult<DriveComment> {
+        self.require(who, id, Role::Commenter)?;
+        let body = body.trim();
+        if body.is_empty() || body.len() > 8_000 {
+            return Err(DriveError::BadRequest(
+                "Write a comment of 1–8000 characters.".into(),
+            ));
+        }
+        let comment_id = uuid::Uuid::now_v7().to_string();
+        let now = iso_now();
+        self.db.transact(|tx| {
+            tx.upsert(
+                "drive_comment",
+                &comment_id,
+                [
+                    ("itemId", Value::from(id)),
+                    ("authorId", who.id.clone().into()),
+                    ("body", body.into()),
+                    ("createdAt", now.clone().into()),
+                ],
+            )
+        })?;
+        Ok(DriveComment {
+            id: comment_id,
+            item_id: id.to_owned(),
+            author_id: who.id.clone(),
+            body: body.to_owned(),
+            created_at: now,
+        })
     }
 
     /// Grant a user or organization a role, or remove it with `None`.

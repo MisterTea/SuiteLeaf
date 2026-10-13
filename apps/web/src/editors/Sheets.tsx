@@ -42,11 +42,14 @@ import {
 } from "@univerjs/preset-sheets-note";
 import NoteEnUS from "@univerjs/preset-sheets-note/locales/en-US";
 import "@univerjs/preset-sheets-note/lib/index.css";
+import SheetCleanup from "./sheet-cleanup-ui";
 import SheetFeatures from "./sheet-features";
+import SheetDropdowns, { type SheetDropdownHandle } from "./sheet-dropdown-panel";
 import {
   guardFormulaSuggestions,
   rankFormulaSuggestions,
 } from "./formula-suggestions";
+import { useSheetFunctions } from "./function-help-ui";
 import SortRangeDialog from "./SortRangeDialog";
 import { useToolbarOverflow } from "./toolbar-overflow";
 import "@univerjs/preset-sheets-core/lib/index.css";
@@ -82,7 +85,6 @@ import {
   Redo2,
   Printer,
   PaintRoller,
-  Search,
   Minus,
   Plus,
   Bold,
@@ -127,7 +129,9 @@ import {
   numberFormatById,
 } from "../formats";
 import { exportBinary, exportText, printDocument } from "../storage";
+import { placeSheetImage, readImageFile } from "../templates/sheet-image";
 import { Tool, type EditorActions, type SheetView } from "../ui";
+import { MenuSearchPill } from "../command-palette";
 import "../excel-overflow";
 import "../excel-number-display";
 import "../excel-wrap";
@@ -756,6 +760,7 @@ export default function Sheets({
   const host = useRef<HTMLDivElement>(null),
     api = useRef<any>(null),
     book = useRef<any>(null),
+    injectorRef = useRef<any>(null),
     content = useRef(structuredClone(file.content)),
     changes = useRef(onChange),
     error = useRef(onError);
@@ -793,16 +798,29 @@ export default function Sheets({
     [notice, setNotice] = useState("");
   const pending = useRef(false);
   const tabSettings = useRef<{ openTabs: () => void }>(null);
+  const dropdowns = useRef<SheetDropdownHandle>(null);
+  const dropdownEngine = useRef<{ api: any; injector: any } | null>(null);
+  const cleanup = useRef<{ trim: () => void; duplicates: () => void; split: () => void }>(null);
+  const engine = useRef<any>(null);
   const toolbar = useRef<HTMLDivElement>(null);
   const moreTools = useToolbarOverflow(
     toolbar,
-    '[aria-label^="Insert comment"], .chart-btn, .filter-btn, .pivot-btn, .sheet-analyses-dropdown',
+    '[aria-label^="Insert comment"], [aria-label="Undo (Cmd+Z)"], [aria-label="Redo (Cmd+Y)"], .menu-search-pill, .chart-btn, .filter-btn, .functions-btn, .pivot-btn, .sheet-analyses-dropdown',
+    { foldNarrow: true },
   );
+  const functionActions = useRef<{
+    insertFunction: (name: string) => void;
+    autoSum: () => void;
+  }>({
+    insertFunction: () => {},
+    autoSum: () => {},
+  });
   const persist = useRef<() => void>(() => {}),
     refreshCharts = useRef<() => void>(() => {}),
     syncTextStyle = useRef<() => void>(() => {}),
     editChart = useRef<(id: string) => void>(() => {}),
-    refreshPivots = useRef<(sheetIds: Set<string>) => void>(() => {});
+    refreshPivots = useRef<(sheetIds: Set<string>) => void>(() => {}),
+    insertImage = useRef<(src: string) => Promise<void>>(async () => {});
   /** Last result written per pivot, so unchanged recalculations leave the sheet alone. */
   const pivotWrites = useRef(new Map<string, string>()),
     writingPivot = useRef(false),
@@ -917,6 +935,8 @@ export default function Sheets({
         ],
       });
       const injector = univer.__getInjector();
+      engine.current = injector;
+      injectorRef.current = injector;
       const stopSuggestionGuard = guardFormulaSuggestions(
         injector.get(IShortcutService),
         injector.get(IEditorService),
@@ -927,6 +947,8 @@ export default function Sheets({
         clearTimeout(timer);
         api.current = null;
         book.current = null;
+        engine.current = null;
+        injectorRef.current = null;
         persist.current = () => {};
         refreshCharts.current = () => {};
         refreshPivots.current = () => {};
@@ -934,6 +956,7 @@ export default function Sheets({
         univer.dispose();
       };
       api.current = univerAPI;
+      dropdownEngine.current = { api: univerAPI, injector };
       if (!formulaBarVisible())
         univerAPI.setUIVisible(univerAPI.Enum.BuiltInUIPart.HEADER, false);
       univerAPI.registerComponent("suiteleaf-chart", EmbeddedChart);
@@ -967,6 +990,16 @@ export default function Sheets({
       const workbook = univerAPI.createWorkbook(
         content.current.workbook as unknown as IWorkbookData,
       );
+      insertImage.current = async (src) => {
+        await placeSheetImage(
+          workbook.getActiveSheet(),
+          univerAPI.Enum.ImageSourceType.BASE64,
+          content.current,
+          src,
+        );
+        pending.current = true;
+        persist.current();
+      };
       book.current = workbook;
       rankFormulaSuggestions(injector.get(IDescriptionService));
       // Authors from other devices are unknown here; without a profile Univer
@@ -1810,11 +1843,29 @@ export default function Sheets({
         }
       },
       sheetActions: {
-        dataValidation: () =>
+        insertImage: () => {
+          const input = document.createElement("input");
+          input.type = "file";
+          input.accept =
+            "image/png,image/jpeg,image/gif,image/webp,image/svg+xml,.svg";
+          input.onchange = () => {
+            const chosen = input.files?.[0];
+            if (!chosen) return;
+            void readImageFile(chosen)
+              .then((src) => insertImage.current(src))
+              .catch((e: unknown) =>
+                error.current(e instanceof Error ? e.message : String(e)),
+              );
+          };
+          input.click();
+        },
+        dataValidation: () => {
+          if (dropdowns.current?.openExisting()) return;
           void api.current?.executeCommand(
             "data-validation.operation.open-validation-panel",
             {},
-          ),
+          );
+        },
         conditionalFormatting: () =>
           void api.current?.executeCommand(
             "sheet.operation.open.conditional.formatting.panel",
@@ -1860,6 +1911,7 @@ export default function Sheets({
             ).then(() => persist.current());
           }
         },
+        insertDropdown: () => dropdowns.current?.openNew(),
         undo: () => void api.current?.undo(),
         redo: () => void api.current?.redo(),
         cut: () => void clipboard("cut"),
@@ -1868,8 +1920,12 @@ export default function Sheets({
         deleteValues,
         insertChart: () => startPanel("chart"),
         insertPivot: () => startPanel("pivot"),
+        insertFunction: (name: string) => functionActions.current.insertFunction(name),
         toggleFilter,
         sortRange: openSortRange,
+        trimWhitespace: () => cleanup.current?.trim(),
+        removeDuplicates: () => cleanup.current?.duplicates(),
+        splitTextToColumns: () => cleanup.current?.split(),
         hasFilter: () => !!book.current?.getActiveSheet()?.getFilter(),
         formatCurrency,
         formatPercent,
@@ -2178,8 +2234,23 @@ export default function Sheets({
   const activePivotError = activePivot
     ? pivotErrors.current.get(activePivot.id)
     : undefined;
+  const functions = useSheetFunctions({
+    ready,
+    hostRef: host,
+    bookRef: book,
+    apiRef: api,
+    injectorRef,
+    persist: () => persist.current(),
+    notify: setNotice,
+  });
+  functionActions.current = {
+    insertFunction: functions.insertFunction,
+    autoSum: functions.autoSum,
+  };
   return (
     <div className="sheets-editor">
+      {functions.panel}
+      {functions.stats}
       {notice ? (
         <div className="sheet-notice" role="status">
           {notice}
@@ -2191,6 +2262,15 @@ export default function Sheets({
             <X size={14} />
           </button>
         </div>
+      ) : null}
+      {ready && api.current && engine.current ? (
+        <SheetCleanup
+          ref={cleanup}
+          api={api.current}
+          engine={engine.current}
+          persist={() => persist.current()}
+          onError={onError}
+        />
       ) : null}
       {ready && api.current ? (
         <SheetFeatures
@@ -2208,15 +2288,7 @@ export default function Sheets({
         role="toolbar"
         aria-label="Spreadsheet formatting"
       >
-        <button
-          type="button"
-          className="menu-search-pill"
-          title="Search the menus (Option+/)"
-          onClick={() => {}}
-        >
-          <Search size={14} className="menu-search-icon" />
-          <span>Menus</span>
-        </button>
+        <MenuSearchPill />
 
         <Tool label="Undo (Cmd+Z)" onClick={() => void api.current?.undo()}>
           <Undo2 size={16} />
@@ -2494,13 +2566,7 @@ export default function Sheets({
           className="tool functions-btn"
           title="Functions"
           aria-label="Functions"
-          onClick={() => {
-            const r = book.current?.getActiveRange();
-            if (r) {
-              r.setValue("=SUM()");
-              persist.current();
-            }
-          }}
+          onClick={() => functions.autoSum()}
         >
           <span
             style={{
@@ -2842,6 +2908,15 @@ export default function Sheets({
             {editing ? "Update" : "Create"} {panel}
           </button>
         </aside>
+      ) : null}
+      {ready && dropdownEngine.current ? (
+        <SheetDropdowns
+          ref={dropdowns}
+          api={dropdownEngine.current.api}
+          injector={dropdownEngine.current.injector}
+          persist={() => persist.current()}
+          host={host}
+        />
       ) : null}
     </div>
   );

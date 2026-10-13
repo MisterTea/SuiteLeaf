@@ -28,6 +28,17 @@ export interface NodeSession {
   token: string;
   user: NodeUser;
 }
+export interface DriveVersion {
+  id: string;
+  itemId: string;
+  contentHash: string;
+  size: number;
+  authorId: string;
+  authorName: string;
+  createdAt: string;
+  name: string | null;
+  restoredFrom: string | null;
+}
 export interface DriveItem {
   id: string;
   parentId: string | null;
@@ -41,8 +52,30 @@ export interface DriveItem {
   createdAt: string;
   updatedAt: string;
   trashed: boolean;
-  role: "viewer" | "editor" | "owner" | null;
+  role: DriveRole | null;
+  /** Display name of the owner, when the server includes it (shared lists). */
+  ownerName?: string | null;
   available: boolean;
+}
+export type DriveRole = "viewer" | "commenter" | "editor" | "owner";
+export interface AccountProfile {
+  id: string;
+  name: string | null;
+  email: string | null;
+  username: string | null;
+}
+export interface AccessGrant {
+  principalType: "user" | "org" | "owner";
+  principalId: string;
+  role: DriveRole;
+  name: string | null;
+  email: string | null;
+  inheritedFrom: { id: string; name: string } | null;
+}
+export interface ItemAccess {
+  grants: AccessGrant[];
+  parent: { id: string; name: string } | null;
+  yourRole: DriveRole;
 }
 export interface AuthProviders {
   emailAndPassword: boolean;
@@ -285,6 +318,37 @@ export const drive = {
       versionId: response.headers.get("etag")?.replace(/"/g, "") || undefined,
     };
   },
+  async accounts(query: string): Promise<AccountProfile[]> {
+    const response = await api(
+      `/api/accounts?q=${encodeURIComponent(query)}`,
+    );
+    return (await response.json()).accounts;
+  },
+  async access(id: string): Promise<ItemAccess> {
+    return (
+      await api(`/api/drive/items/${encodeURIComponent(id)}/access`)
+    ).json();
+  },
+  async share(
+    id: string,
+    principalId: string,
+    role: Exclude<DriveRole, "owner"> | null,
+  ): Promise<void> {
+    await api(`/api/drive/items/${encodeURIComponent(id)}/acl`, {
+      method: "PUT",
+      ...json({
+        principalType: "user",
+        principalId,
+        role,
+      }),
+    });
+  },
+  async comment(id: string, body: string): Promise<void> {
+    await api(`/api/drive/items/${encodeURIComponent(id)}/comments`, {
+      method: "POST",
+      ...json({ body }),
+    });
+  },
   async write(
     id: string,
     body: string,
@@ -300,6 +364,59 @@ export const drive = {
     const result = await response.json();
     if (response.status === 409) throw new DriveConflict(result.item);
     return result;
+  },
+  async versions(id: string): Promise<DriveVersion[]> {
+    return (
+      await (
+        await api(`/api/drive/items/${encodeURIComponent(id)}/versions`)
+      ).json()
+    ).versions;
+  },
+  async readVersion(id: string, versionId: string): Promise<string> {
+    return (
+      await api(
+        `/api/drive/items/${encodeURIComponent(id)}/content?version=${encodeURIComponent(versionId)}`,
+      )
+    ).text();
+  },
+  async nameVersion(
+    id: string,
+    versionId: string,
+    name: string,
+  ): Promise<DriveVersion> {
+    return (
+      await api(
+        `/api/drive/items/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}`,
+        { method: "PATCH", ...json({ name }) },
+      )
+    ).json();
+  },
+  async restoreVersion(
+    id: string,
+    versionId: string,
+    ifMatch?: string,
+  ): Promise<DriveItem> {
+    const headers: Record<string, string> = {};
+    if (ifMatch) headers["if-match"] = `"${ifMatch}"`;
+    const response = await api(
+      `/api/drive/items/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/restore`,
+      { method: "POST", headers },
+    );
+    const result = await response.json();
+    if (response.status === 409) throw new DriveConflict(result.item);
+    return result;
+  },
+  async copyVersion(
+    id: string,
+    versionId: string,
+    name: string,
+  ): Promise<DriveItem> {
+    return (
+      await api(
+        `/api/drive/items/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/copy`,
+        { method: "POST", ...json({ name }) },
+      )
+    ).json();
   },
 };
 

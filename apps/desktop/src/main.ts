@@ -14,11 +14,13 @@ import { readFile } from "node:fs/promises";
 import { Worker } from "node:worker_threads";
 import { pathToFileURL } from "node:url";
 import {
+  applyLibraryMarks,
   extensionFor,
   filename,
   kindFromName,
   nativeFilename,
   parseFile,
+  readLibraryMarks,
   NATIVE_EXTENSIONS,
   appModeSchema,
   type AppMode,
@@ -109,10 +111,14 @@ function register(channel: string, handler: (...args: any[]) => unknown) {
     return handler(...args);
   });
 }
-const checked = (r: FileRecord): FileRecord => ({
-  file: parseFile(JSON.stringify(r.file)),
-  drive: driveLink(r.drive),
-});
+const checked = (r: FileRecord): FileRecord =>
+  applyLibraryMarks(
+    {
+      file: parseFile(JSON.stringify(r.file)),
+      drive: driveLink(r.drive),
+    },
+    readLibraryMarks(r),
+  );
 async function openFile() {
   const result = await dialog.showOpenDialog(window!, {
     filters: [

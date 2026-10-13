@@ -32,6 +32,7 @@ import {
   MousePointer2,
   Minus,
   StickyNote,
+  Blend,
 } from "lucide-react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import {
@@ -39,16 +40,59 @@ import {
   type SlideFile,
   type Slide,
   type SlideElement,
+  type SlideTheme,
 } from "@suiteleaf/core";
 import { exportText, printDocument } from "../storage";
 import { Menu, MenuItem, Tool, type EditorActions } from "../ui";
+import { MenuSearchPill } from "../command-palette";
 import {
   applyBackground,
   applyLayout,
-  newSlide,
-  reorder,
   type Layout,
 } from "./slide-layouts";
+import {
+  DeckHistory,
+  canDeleteSlides,
+  canMove,
+  centeredTextBox,
+  commandFromKey,
+  deletedSlidesMessage,
+  deleteSlides,
+  duplicateSlides,
+  extendSelection,
+  logoImage,
+  moveSelection,
+  pastedElements,
+  pasteSlides,
+  rangeIds,
+  reorderGroup,
+  shapeElement,
+  toggleId,
+  typingContext,
+  withElements,
+  withoutElements,
+  type MoveWhere,
+  type SlideCommand,
+} from "./slide-editing";
+import {
+  DECK_THEMES,
+  THEME_FONTS,
+  TRANSITION_CHOICES,
+  applyDeckTheme,
+  customizeTheme,
+  handStyle,
+  layoutWithTheme,
+  paintSlide,
+  resetToTheme,
+  setTransitionDuration,
+  setTransitions,
+  shapeDefaults,
+  slideFromTheme,
+  textDefaults,
+  transitionMs,
+  type TransitionType,
+} from "./slide-theme";
+import { SlideDesignPanel, useReducedMotion } from "./slide-design-panel";
 
 type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
@@ -72,6 +116,18 @@ export default function Slides({
   const [selectedElementId, setSelectedElementId] = useState<string | null>(
     null,
   );
+  const [selectedSlideIds, setSelectedSlideIds] = useState<string[]>([
+    file.content.slideOrder[0] || "",
+  ]);
+  const [notice, setNotice] = useState<{ count: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [historyMarks, setHistoryMarks] = useState({
+    undo: false,
+    redo: false,
+  });
   const [showNotes, setShowNotes] = useState(true);
   const [presenting, setPresenting] = useState(false);
   const [presentSlideIndex, setPresentSlideIndex] = useState(0);
@@ -79,14 +135,63 @@ export default function Slides({
   const [blankScreen, setBlankScreen] = useState<string | null>(null);
   const [showStartedAt, setShowStartedAt] = useState(0);
   const [clock, setClock] = useState(0);
+  const [panel, setPanel] = useState<"theme" | "transition" | null>(null);
+  const [previewTheme, setPreviewTheme] = useState<SlideTheme | null>(null);
+  const [transitionScope, setTransitionScope] = useState<"all" | "selected">(
+    "all",
+  );
+  const [transitionDuration, setDuration] = useState(0.4);
+  const [chosenTransition, setChosenTransition] = useState<TransitionType | null>(
+    null,
+  );
+  const [transitionStatus, setTransitionStatus] = useState("");
+  const [canvasMotion, setCanvasMotion] = useState<{
+    type: TransitionType;
+    ms: number;
+  } | null>(null);
+  const [showMotion, setShowMotion] = useState<{
+    index: number;
+    type: TransitionType | null;
+  }>({ index: -1, type: null });
+  const themeEdits = useRef(new Map<string, SlideTheme>());
+  const apiRef = useRef<{
+    addSlide: (layout: Layout) => void;
+    applyLayout: (layout: Layout) => void;
+    openTheme: () => void;
+    openTransition: () => void;
+  }>({
+    addSlide: () => {},
+    applyLayout: () => {},
+    openTheme: () => {},
+    openTransition: () => {},
+  });
+  const reducedMotion = useReducedMotion();
 
-  // Undo/Redo history
-  const history = useRef<SlideFile["content"][]>([
-    structuredClone(file.content),
-  ]);
-  const historyIndex = useRef(0);
+  // Undo/Redo history. Typing in one box collapses into a single step.
+  const historyRef = useRef<DeckHistory | null>(null);
+  if (!historyRef.current)
+    historyRef.current = new DeckHistory(structuredClone(file.content));
   const deckRef = useRef(deck);
   deckRef.current = deck;
+  const activeRef = useRef(activeSlideId);
+  activeRef.current = activeSlideId;
+  const selectedRef = useRef(selectedSlideIds);
+  selectedRef.current = selectedSlideIds;
+  const selectedElementRef = useRef(selectedElementId);
+  selectedElementRef.current = selectedElementId;
+  const anchorRef = useRef(activeSlideId);
+  const presentingRef = useRef(false);
+  presentingRef.current = presenting;
+  const pendingFocus = useRef<string | null>(null);
+  const liveDirty = useRef(false);
+  const clipboard = useRef<
+    | { kind: "elements"; elements: SlideElement[] }
+    | { kind: "slides"; slides: Slide[] }
+    | null
+  >(null);
+  const commitRef = useRef<
+    (next: SlideFile["content"], key?: string) => void
+  >(() => {});
 
   const imageInputRef = useRef<HTMLInputElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -101,38 +206,86 @@ export default function Slides({
     initH?: number;
   } | null>(null);
 
+  const refreshMarks = () =>
+    setHistoryMarks({
+      undo: historyRef.current!.canUndo,
+      redo: historyRef.current!.canRedo,
+    });
+
+  const applyDeck = (next: SlideFile["content"]) => {
+    deckRef.current = next;
+    setDeck(next);
+    onChange(next);
+  };
+
+  const applySelection = (
+    activeId: string,
+    selected: string[],
+    elementId?: string | null,
+  ) => {
+    activeRef.current = activeId;
+    selectedRef.current = selected;
+    setActiveSlideId(activeId);
+    setSelectedSlideIds(selected);
+    if (elementId !== undefined) {
+      selectedElementRef.current = elementId;
+      setSelectedElementId(elementId);
+    }
+  };
+
   // Commit changes and push to undo history
-  const commit = useCallback(
-    (newDeck: SlideFile["content"], pushHistory = true) => {
-      setDeck(newDeck);
-      onChange(newDeck);
-      if (pushHistory) {
-        history.current = history.current.slice(0, historyIndex.current + 1);
-        history.current.push(structuredClone(newDeck));
-        if (history.current.length > 50) history.current.shift();
-        historyIndex.current = history.current.length - 1;
-      }
-    },
-    [onChange],
-  );
+  const commit = (next: SlideFile["content"], key?: string) => {
+    historyRef.current!.commit(next, key);
+    applyDeck(next);
+    setNotice(null);
+    refreshMarks();
+    liveDirty.current = false;
+  };
+  commitRef.current = commit;
 
-  const undo = () => {
-    if (historyIndex.current > 0) {
-      historyIndex.current--;
-      const prev = structuredClone(history.current[historyIndex.current]);
-      setDeck(prev);
-      onChange(prev);
+  const restore = (next: SlideFile["content"] | null) => {
+    if (!next) return;
+    const oldOrder = deckRef.current.slideOrder;
+    const previousActive = activeRef.current;
+    const previousIndex = oldOrder.indexOf(previousActive);
+    const neighbor =
+      oldOrder[previousIndex - 1] || oldOrder[previousIndex + 1] || "";
+    const elementId = selectedElementRef.current;
+    applyDeck(next);
+    const appeared = next.slideOrder.filter((id) => !oldOrder.includes(id));
+    if (appeared.length) {
+      applySelection(appeared[0], appeared, null);
+      setNotice(null);
+      refreshMarks();
+      liveDirty.current = false;
+      return;
     }
+    const active = next.slideOrder.includes(previousActive)
+      ? previousActive
+      : next.slideOrder.includes(neighbor)
+        ? neighbor
+        : next.slideOrder[
+            Math.min(Math.max(previousIndex, 0), next.slideOrder.length - 1)
+          ] ||
+          next.slideOrder[0] ||
+          "";
+    const selected = selectedRef.current.filter((id) =>
+      next.slideOrder.includes(id),
+    );
+    if (active && !selected.includes(active)) selected.push(active);
+    const slide = next.slides[active];
+    const keep =
+      active === previousActive &&
+      !!elementId &&
+      !!slide?.elements.some((el) => el.id === elementId);
+    applySelection(active, selected.length ? selected : active ? [active] : [], keep ? elementId : null);
+    setNotice(null);
+    refreshMarks();
+    liveDirty.current = false;
   };
 
-  const redo = () => {
-    if (historyIndex.current < history.current.length - 1) {
-      historyIndex.current++;
-      const next = structuredClone(history.current[historyIndex.current]);
-      setDeck(next);
-      onChange(next);
-    }
-  };
+  const undo = () => restore(historyRef.current!.undo());
+  const redo = () => restore(historyRef.current!.redo());
 
   // Active slide
   const activeSlide =
@@ -140,91 +293,72 @@ export default function Slides({
   const selectedElement =
     activeSlide?.elements.find((el) => el.id === selectedElementId) || null;
 
+  const chosenSlides = () => {
+    const order = deckRef.current.slideOrder;
+    const ids = order.filter((id) => selectedRef.current.includes(id));
+    return ids.length ? ids : activeRef.current ? [activeRef.current] : [];
+  };
+
   // Add new slide
   const addSlide = (layout: Layout = "title-body") => {
-    const slide = newSlide(layout);
-    const newId = slide.id;
-    const currentIdx = deck.slideOrder.indexOf(activeSlideId);
-    const newOrder = [...deck.slideOrder];
-    newOrder.splice(currentIdx + 1, 0, newId);
-
-    const updated = {
-      ...deck,
-      slideOrder: newOrder,
-      slides: { ...deck.slides, [newId]: slide },
-    };
-    commit(updated);
-    setActiveSlideId(newId);
-    setSelectedElementId(null);
+    const prev = deckRef.current;
+    const current =
+      prev.slides[activeRef.current] || prev.slides[prev.slideOrder[0]];
+    const slide = slideFromTheme(layout, prev.theme, current?.transition);
+    const idx = Math.max(0, prev.slideOrder.indexOf(activeRef.current));
+    const slideOrder = [...prev.slideOrder];
+    slideOrder.splice(idx + 1, 0, slide.id);
+    commit({
+      ...prev,
+      slideOrder,
+      slides: { ...prev.slides, [slide.id]: slide },
+    });
+    anchorRef.current = slide.id;
+    applySelection(slide.id, [slide.id], null);
   };
 
-  // Duplicate slide
   const duplicateCurrentSlide = () => {
-    if (!activeSlide) return;
-    const newId = crypto.randomUUID();
-    const clonedSlide: Slide = structuredClone(activeSlide);
-    clonedSlide.id = newId;
-    if (activeSlide.title) clonedSlide.title = `${activeSlide.title} (copy)`;
-    clonedSlide.elements = clonedSlide.elements.map((el) => ({
-      ...el,
-      id: crypto.randomUUID(),
-    }));
-
-    const currentIdx = deck.slideOrder.indexOf(activeSlideId);
-    const newOrder = [...deck.slideOrder];
-    newOrder.splice(currentIdx + 1, 0, newId);
-
-    const updated = {
-      ...deck,
-      slideOrder: newOrder,
-      slides: { ...deck.slides, [newId]: clonedSlide },
-    };
-    commit(updated);
-    setActiveSlideId(newId);
+    const result = duplicateSlides(
+      deckRef.current,
+      chosenSlides(),
+      () => crypto.randomUUID(),
+    );
+    if (!result.newIds.length) return;
+    commit(result.deck);
+    anchorRef.current = result.newIds[0];
+    applySelection(result.newIds[0], result.newIds, null);
   };
 
-  // Delete slide
   const deleteCurrentSlide = () => {
-    if (deck.slideOrder.length <= 1) {
-      onError("Presentations must have at least one slide.");
+    const result = deleteSlides(deckRef.current, chosenSlides());
+    if ("error" in result) {
+      onError(result.error);
       return;
     }
-    const currentIdx = deck.slideOrder.indexOf(activeSlideId);
-    const newOrder = deck.slideOrder.filter((id) => id !== activeSlideId);
-    const newSlides = { ...deck.slides };
-    delete newSlides[activeSlideId];
-
-    const nextId = newOrder[Math.min(currentIdx, newOrder.length - 1)];
-    const updated = { ...deck, slideOrder: newOrder, slides: newSlides };
-    commit(updated);
-    setActiveSlideId(nextId);
-    setSelectedElementId(null);
+    commit(result.deck);
+    anchorRef.current = result.activeId;
+    applySelection(result.activeId, [result.activeId], null);
+    setNotice({ count: result.removed });
   };
 
-  // Reorder slide up/down
-  const moveSlide = (direction: "up" | "down") => {
-    const idx = deck.slideOrder.indexOf(activeSlideId);
-    if (direction === "up" && idx <= 0) return;
-    if (direction === "down" && idx >= deck.slideOrder.length - 1) return;
-    moveSlideTo(idx, direction === "up" ? idx - 1 : idx + 1);
+  const moveSlides = (where: MoveWhere) => {
+    const prev = deckRef.current;
+    const slideOrder = moveSelection(prev.slideOrder, chosenSlides(), where);
+    if (slideOrder === prev.slideOrder) return;
+    commit({ ...prev, slideOrder });
   };
 
-  const moveSlideTo = (from: number, to: number) => {
-    if (from === to) return;
-    commit({ ...deck, slideOrder: reorder(deck.slideOrder, from, to) });
-  };
-
-  // Drag a thumbnail to reorder: `over` is the gap index (0..n) it would land in
+  // Drag thumbnails to reorder. `over` is the gap (0..n) the group would land in.
   const [slideDrag, setSlideDrag] = useState<{
-    from: number;
+    ids: string[];
     startY: number;
     over: number | null;
   } | null>(null);
+  const dragRef = useRef<typeof slideDrag>(null);
   const thumbnailsRef = useRef<HTMLDivElement>(null);
   const suppressThumbnailClick = useRef(false);
 
   useEffect(() => {
-    if (!slideDrag) return;
     const gapAt = (y: number) => {
       const rows = [
         ...(thumbnailsRef.current?.querySelectorAll(".thumbnail-row") ?? []),
@@ -236,154 +370,386 @@ export default function Slides({
       return i === -1 ? rows.length : i;
     };
     const onMove = (e: MouseEvent) => {
-      if (slideDrag.over === null && Math.abs(e.clientY - slideDrag.startY) < 6)
-        return;
+      const drag = dragRef.current;
+      if (!drag) return;
+      if (drag.over === null && Math.abs(e.clientY - drag.startY) < 6) return;
       const over = gapAt(e.clientY);
-      if (over !== slideDrag.over) setSlideDrag({ ...slideDrag, over });
+      if (over === drag.over) return;
+      const next = { ...drag, over };
+      dragRef.current = next;
+      setSlideDrag(next);
     };
     const onUp = () => {
-      const { from, over } = slideDrag;
+      const drag = dragRef.current;
+      if (!drag) return;
+      dragRef.current = null;
       setSlideDrag(null);
-      if (over === null) return;
+      if (drag.over === null) return;
       suppressThumbnailClick.current = true;
       setTimeout(() => (suppressThumbnailClick.current = false));
-      setActiveSlideId(deck.slideOrder[from]);
-      setSelectedElementId(null);
-      moveSlideTo(from, over > from ? over - 1 : over);
+      const prev = deckRef.current;
+      const slideOrder = reorderGroup(prev.slideOrder, drag.ids, drag.over);
+      if (slideOrder === prev.slideOrder) return;
+      commitRef.current({ ...prev, slideOrder });
     };
+    const onDragStart = (event: DragEvent) => event.preventDefault();
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("dragend", onUp);
+    window.addEventListener("dragstart", onDragStart);
     return () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("dragend", onUp);
+      window.removeEventListener("dragstart", onDragStart);
     };
-  });
+  }, []);
+
+  useEffect(() => {
+    thumbnailsRef.current
+      ?.querySelector(`[data-slide-id="${activeSlideId}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [activeSlideId, deck.slideOrder]);
 
   const applyLayoutToSlide = (layout: Layout) => {
     if (!activeSlide) return;
+    const next = deck.theme
+      ? layoutWithTheme(activeSlide, layout, deck.theme)
+      : applyLayout(activeSlide, layout);
     commit({
       ...deck,
-      slides: { ...deck.slides, [activeSlide.id]: applyLayout(activeSlide, layout) },
+      slides: { ...deck.slides, [activeSlide.id]: next },
     });
   };
 
   const setDeckBackground = (color: string, keepSections: boolean) =>
     commit({ ...deck, slides: applyBackground(deck.slides, color, keepSections) });
 
-  // Update active slide properties
-  const updateSlide = useCallback(
-    (partial: Partial<Slide>) => {
-      setDeck((prev) => {
-        const active =
-          prev.slides[activeSlideId] || prev.slides[prev.slideOrder[0]];
-        if (!active) return prev;
-        const updatedSlide = { ...active, ...partial };
-        const next = {
-          ...prev,
-          slides: { ...prev.slides, [active.id]: updatedSlide },
-        };
-        onChange(next);
-        return next;
-      });
-    },
-    [activeSlideId, onChange],
-  );
+  const activeDeckSlide = (prev: SlideFile["content"]) =>
+    prev.slides[activeRef.current] || prev.slides[prev.slideOrder[0]];
 
-  // Update a specific element on the active slide
+  if (deck.theme) themeEdits.current.set(deck.theme.id, deck.theme);
+  const resolveTheme = (theme: SlideTheme) =>
+    themeEdits.current.get(theme.id) ?? theme;
+  const shownSlide =
+    previewTheme && activeSlide ? paintSlide(activeSlide, previewTheme) : activeSlide;
+
+  const useTheme = (theme: SlideTheme) => {
+    themeEdits.current.set(theme.id, theme);
+    setPreviewTheme(null);
+    commit(applyDeckTheme(deck, theme));
+  };
+  const transitionTargets = () =>
+    transitionScope === "all" ? deck.slideOrder : selectedSlideIds;
+  const describeTransition = (type: TransitionType, count: number) => {
+    if (type === "none")
+      return count === deck.slideOrder.length
+        ? "Cut on every slide"
+        : `Cut on ${count} slides`;
+    const label = TRANSITION_CHOICES.find((choice) => choice.type === type)?.label;
+    const where =
+      count === deck.slideOrder.length ? "all slides" : `${count} slides`;
+    return `${label} · ${transitionDuration.toFixed(1)} s · ${where}`;
+  };
+  const pickTransition = (type: TransitionType) =>
+    applyTransitionTo(type, transitionTargets());
+  apiRef.current = {
+    addSlide,
+    applyLayout: applyLayoutToSlide,
+    openTheme: () => setPanel("theme"),
+    openTransition: () => setPanel("transition"),
+  };
+
+  const playTransition = () => {
+    const current = activeSlide?.transition;
+    const type = current?.type && current.type !== "none" ? current.type : chosenTransition;
+    if (!type || type === "none") return;
+    const ms = transitionMs(
+      { type, duration: current?.duration ?? transitionDuration },
+      reducedMotion,
+    );
+    if (ms === 0) return;
+    setCanvasMotion(null);
+    requestAnimationFrame(() => setCanvasMotion({ type, ms }));
+  };
+  const applyTransitionTo = (type: TransitionType, ids: readonly string[]) => {
+    setChosenTransition(type);
+    commit(setTransitions(deck, ids, { type, duration: transitionDuration }));
+    setTransitionStatus(describeTransition(type, ids.length));
+  };
+
+
+  // Update active slide properties. `coalesce` folds repeated edits (typing) into one undo.
+  const updateSlide = useCallback((partial: Partial<Slide>, coalesce?: string) => {
+    const prev = deckRef.current;
+    const active =
+      prev.slides[activeRef.current] || prev.slides[prev.slideOrder[0]];
+    if (!active) return;
+    commitRef.current(
+      {
+        ...prev,
+        slides: { ...prev.slides, [active.id]: { ...active, ...partial } },
+      },
+      coalesce,
+    );
+  }, []);
+
+  // Update a specific element on the active slide.
   const updateElement = useCallback(
-    (elementId: string, partial: Partial<SlideElement>) => {
-      setDeck((prev) => {
-        const active =
-          prev.slides[activeSlideId] || prev.slides[prev.slideOrder[0]];
-        if (!active) return prev;
-        const updatedElements = active.elements.map((el) =>
-          el.id === elementId ? { ...el, ...partial } : el,
-        );
-        const updatedSlide = { ...active, elements: updatedElements };
-        const next = {
-          ...prev,
-          slides: { ...prev.slides, [active.id]: updatedSlide },
-        };
+    (
+      elementId: string,
+      partial: Partial<SlideElement>,
+      mode?: { live?: boolean; coalesce?: string },
+    ) => {
+      const prev = deckRef.current;
+      const active =
+        prev.slides[activeRef.current] || prev.slides[prev.slideOrder[0]];
+      if (!active) return;
+      const next = {
+        ...prev,
+        slides: {
+          ...prev.slides,
+          [active.id]: {
+            ...active,
+            elements: active.elements.map((el) =>
+              el.id === elementId ? { ...el, ...partial } : el,
+            ),
+          },
+        },
+      };
+      if (mode?.live) {
+        deckRef.current = next;
+        liveDirty.current = true;
+        setDeck(next);
         onChange(next);
-        return next;
-      });
+        return;
+      }
+      commitRef.current(next, mode?.coalesce);
     },
-    [activeSlideId, onChange],
+    [onChange],
   );
 
-  // Add text element
+  const selectElement = (id: string | null) => {
+    selectedElementRef.current = id;
+    setSelectedElementId(id);
+  };
+
+  const insertOnActive = (elements: SlideElement[], focusId?: string) => {
+    const slide = activeDeckSlide(deckRef.current);
+    if (!slide || !elements.length) return;
+    commit(withElements(deckRef.current, slide.id, elements));
+    selectElement(elements[elements.length - 1].id);
+    if (focusId) pendingFocus.current = focusId;
+  };
+
   const addTextBox = () => {
-    const newEl: SlideElement = {
-      id: crypto.randomUUID(),
-      type: "text",
-      x: 100,
-      y: 180,
-      width: 400,
-      height: 80,
-      content: "",
-      fontSize: 22,
-      fontFamily: "Arial",
-      color: "#1e293b",
-      align: "left",
+    const box = {
+      ...centeredTextBox(
+        deckRef.current.width,
+        deckRef.current.height,
+        () => crypto.randomUUID(),
+      ),
+      ...textDefaults(deckRef.current.theme),
     };
-    updateSlide({ elements: [...activeSlide.elements, newEl] });
-    setSelectedElementId(newEl.id);
+    insertOnActive([box], box.id);
   };
 
-  // Add shape
   const addShape = (shapeType: "rect" | "roundRect" | "ellipse") => {
-    const newEl: SlideElement = {
-      id: crypto.randomUUID(),
-      type: "shape",
-      x: 150,
-      y: 150,
-      width: shapeType === "ellipse" ? 160 : 220,
-      height: shapeType === "ellipse" ? 160 : 140,
-      shapeType,
-      fill: "#e2e8f0",
-      stroke: "#94a3b8",
-      strokeWidth: 2,
+    const shape = {
+      ...shapeElement(
+        shapeType,
+        deckRef.current.width,
+        deckRef.current.height,
+        () => crypto.randomUUID(),
+      ),
+      ...shapeDefaults(deckRef.current.theme),
     };
-    updateSlide({ elements: [...activeSlide.elements, newEl] });
-    setSelectedElementId(newEl.id);
+    insertOnActive([shape]);
   };
 
-  // Add image
   const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const picked = e.target.files?.[0];
     e.target.value = "";
-    if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
+    if (!picked) return;
+    if (picked.size > 5 * 1024 * 1024) {
       onError("Please choose an image smaller than 5 MB.");
       return;
     }
     const reader = new FileReader();
     reader.onload = () => {
-      const src = String(reader.result);
-      const newEl: SlideElement = {
-        id: crypto.randomUUID(),
-        type: "image",
-        x: 150,
-        y: 100,
-        width: 360,
-        height: 240,
-        src,
-        alt: file.name,
-      };
-      updateSlide({ elements: [...activeSlide.elements, newEl] });
-      setSelectedElementId(newEl.id);
+      const image = logoImage(
+        String(reader.result),
+        picked.name,
+        () => crypto.randomUUID(),
+        deckRef.current.width,
+      );
+      const slide = activeDeckSlide(deckRef.current);
+      if (!slide) return;
+      commitRef.current(withElements(deckRef.current, slide.id, [image]));
+      selectElement(image.id);
     };
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(picked);
   };
 
-  // Delete selected element
   const deleteSelectedElement = () => {
-    if (!selectedElementId || !activeSlide) return;
-    const remaining = activeSlide.elements.filter(
-      (el) => el.id !== selectedElementId,
+    const elementId = selectedElementRef.current;
+    const slide = activeDeckSlide(deckRef.current);
+    if (!elementId || !slide?.elements.some((el) => el.id === elementId)) return;
+    commit(withoutElements(deckRef.current, slide.id, [elementId]));
+    selectElement(null);
+  };
+
+  const selectedText = () => {
+    const slide = activeDeckSlide(deckRef.current);
+    const el = slide?.elements.find(
+      (item) => item.id === selectedElementRef.current,
     );
-    updateSlide({ elements: remaining });
-    setSelectedElementId(null);
+    return el?.type === "text" ? el : null;
+  };
+
+  const toggleBold = () => {
+    const el = selectedText();
+    if (el) updateElement(el.id, { bold: !el.bold });
+  };
+  const toggleItalic = () => {
+    const el = selectedText();
+    if (el) updateElement(el.id, { italic: !el.italic });
+  };
+  const alignText = (alignment: "left" | "center" | "right") => {
+    const el = selectedText();
+    if (el) updateElement(el.id, { align: alignment });
+  };
+
+  const copySelection = () => {
+    const deckNow = deckRef.current;
+    const slide = activeDeckSlide(deckNow);
+    const el = slide?.elements.find(
+      (item) => item.id === selectedElementRef.current,
+    );
+    if (el) {
+      clipboard.current = { kind: "elements", elements: [structuredClone(el)] };
+      return;
+    }
+    const ids = chosenSlides();
+    if (!ids.length) return;
+    clipboard.current = {
+      kind: "slides",
+      slides: ids.map((id) => structuredClone(deckNow.slides[id])),
+    };
+  };
+
+  const cutSelection = () => {
+    copySelection();
+    if (clipboard.current?.kind === "elements") deleteSelectedElement();
+    else if (clipboard.current?.kind === "slides") deleteCurrentSlide();
+  };
+
+  const pasteClipboard = () => {
+    const clip = clipboard.current;
+    const deckNow = deckRef.current;
+    const slide = activeDeckSlide(deckNow);
+    if (!clip || !slide) return;
+    if (clip.kind === "elements") {
+      const placed = pastedElements(
+        slide.elements,
+        clip.elements,
+        () => crypto.randomUUID(),
+        { width: deckNow.width, height: deckNow.height },
+      );
+      commit(withElements(deckNow, slide.id, placed));
+      selectElement(placed[placed.length - 1]?.id ?? null);
+      return;
+    }
+    const after = chosenSlides().at(-1) || slide.id;
+    const result = pasteSlides(deckNow, clip.slides, after, () =>
+      crypto.randomUUID(),
+    );
+    if (!result.newIds.length) return;
+    commit(result.deck);
+    anchorRef.current = result.newIds[0];
+    applySelection(result.newIds[0], result.newIds, null);
+  };
+
+  const runCommand = (command: SlideCommand) => {
+    switch (command.type) {
+      case "undo":
+        undo();
+        break;
+      case "redo":
+        redo();
+        break;
+      case "duplicate":
+        duplicateCurrentSlide();
+        break;
+      case "delete": {
+        const slide = activeDeckSlide(deckRef.current);
+        const elementId = selectedElementRef.current;
+        if (elementId && slide?.elements.some((el) => el.id === elementId))
+          deleteSelectedElement();
+        else deleteCurrentSlide();
+        break;
+      }
+      case "copy":
+        copySelection();
+        break;
+      case "cut":
+        cutSelection();
+        break;
+      case "paste":
+        pasteClipboard();
+        break;
+      case "new-slide":
+        addSlide();
+        break;
+      case "bold":
+        toggleBold();
+        break;
+      case "italic":
+        toggleItalic();
+        break;
+      case "move":
+        moveSlides(command.where);
+        break;
+    }
+  };
+
+  const api = useRef({
+    undo,
+    redo,
+    cut: cutSelection,
+    copy: copySelection,
+    paste: pasteClipboard,
+    insertTextBox: addTextBox,
+    insertImage: () => imageInputRef.current?.click(),
+    insertShape: addShape,
+    newSlide: () => addSlide(),
+    duplicate: duplicateCurrentSlide,
+    deleteSlides: deleteCurrentSlide,
+    move: moveSlides,
+    toggleBold,
+    toggleItalic,
+    align: alignText,
+    run: runCommand,
+  });
+  api.current = {
+    undo,
+    redo,
+    cut: cutSelection,
+    copy: copySelection,
+    paste: pasteClipboard,
+    insertTextBox: addTextBox,
+    insertImage: () => imageInputRef.current?.click(),
+    insertShape: addShape,
+    newSlide: () => addSlide(),
+    duplicate: duplicateCurrentSlide,
+    deleteSlides: deleteCurrentSlide,
+    move: moveSlides,
+    toggleBold,
+    toggleItalic,
+    align: alignText,
+    run: runCommand,
   };
 
   // Mouse drag & resize handlers for elements
@@ -393,6 +759,7 @@ export default function Slides({
     handle?: ResizeHandle,
   ) => {
     e.stopPropagation();
+    selectedElementRef.current = elementId;
     setSelectedElementId(elementId);
     const el = activeSlide.elements.find((item) => item.id === elementId);
     if (!el) return;
@@ -451,21 +818,27 @@ export default function Slides({
           newH = Math.round(initH - change);
         }
 
-        updateElement(elementId, {
-          x: newX,
-          y: newY,
-          width: newW,
-          height: newH,
-        });
+        updateElement(
+          elementId,
+          { x: newX, y: newY, width: newW, height: newH },
+          { live: true },
+        );
       } else {
         const newX = Math.round(initX + dx);
         const newY = Math.round(initY + dy);
-        updateElement(elementId, { x: newX, y: newY });
+        updateElement(elementId, { x: newX, y: newY }, { live: true });
       }
     };
 
     const onMouseUp = () => {
+      if (!draggingRef.current) return;
       draggingRef.current = null;
+      if (!liveDirty.current) return;
+      liveDirty.current = false;
+      const next = deckRef.current;
+      if (JSON.stringify(next) === JSON.stringify(historyRef.current!.tip))
+        return;
+      commitRef.current(next);
     };
 
     window.addEventListener("mousemove", onMouseMove);
@@ -608,6 +981,38 @@ ${slidesHtml}
   }, []);
 
   const currentSlideIndex = Math.max(0, deck.slideOrder.indexOf(activeSlideId));
+  const slideApi = useRef({
+    undo,
+    redo,
+    duplicate: duplicateCurrentSlide,
+    delete: deleteCurrentSlide,
+    undoReason: (): string | undefined =>
+      historyRef.current?.canUndo ? undefined : "Nothing to undo",
+    redoReason: (): string | undefined =>
+      historyRef.current?.canRedo ? undefined : "Nothing to redo",
+    deleteReason: (): string | undefined =>
+      canDeleteSlides(deckRef.current.slideOrder, chosenSlides())
+        ? undefined
+        : deckRef.current.slideOrder.length <= 1
+          ? "Presentations must have at least one slide."
+          : "Select a slide to delete.",
+  });
+  slideApi.current = {
+    undo,
+    redo,
+    duplicate: duplicateCurrentSlide,
+    delete: deleteCurrentSlide,
+    undoReason: () =>
+      historyRef.current?.canUndo ? undefined : "Nothing to undo",
+    redoReason: () =>
+      historyRef.current?.canRedo ? undefined : "Nothing to redo",
+    deleteReason: () =>
+      canDeleteSlides(deckRef.current.slideOrder, chosenSlides())
+        ? undefined
+        : deckRef.current.slideOrder.length <= 1
+          ? "Presentations must have at least one slide."
+          : "Select a slide to delete.",
+  };
 
   // Wire editor actions for workspace header
   useEffect(() => {
@@ -622,20 +1027,87 @@ ${slidesHtml}
         beginShow(
           Math.max(0, deckRef.current.slideOrder.indexOf(activeSlideId)),
         ),
+      slideActions: {
+        undo: () => api.current.undo(),
+        redo: () => api.current.redo(),
+        cut: () => api.current.cut(),
+        copy: () => api.current.copy(),
+        paste: () => api.current.paste(),
+        insertTextBox: () => api.current.insertTextBox(),
+        insertImage: () => api.current.insertImage(),
+        insertShape: (shape) => api.current.insertShape(shape),
+        newSlide: () => api.current.newSlide(),
+        duplicate: () => api.current.duplicate(),
+        deleteSlides: () => api.current.deleteSlides(),
+        move: (where) => api.current.move(where),
+        toggleBold: () => api.current.toggleBold(),
+        toggleItalic: () => api.current.toggleItalic(),
+        align: (alignment) => api.current.align(alignment),
+        applyLayout: (layout) => apiRef.current.applyLayout(layout),
+        openTheme: () => apiRef.current.openTheme(),
+        openTransition: () => apiRef.current.openTransition(),
+        undoReason: () => slideApi.current.undoReason(),
+        redoReason: () => slideApi.current.redoReason(),
+        deleteReason: () => slideApi.current.deleteReason(),
+      },
     });
   }, [onActions, onChange, activeSlideId, beginShow]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (presentingRef.current) return;
+      if (e.key === "Escape") {
+        setContextMenu(null);
+        return;
+      }
+      const command = commandFromKey(e, typingContext(e.target));
+      if (!command) return;
+      e.preventDefault();
+      api.current.run(command);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = (e: PointerEvent) => {
+      const menu = document.getElementById("slide-context-menu");
+      if (e.target instanceof Node && menu?.contains(e.target)) return;
+      setContextMenu(null);
+    };
+    window.addEventListener("pointerdown", close);
+    return () => window.removeEventListener("pointerdown", close);
+  }, [contextMenu]);
+
+  useEffect(() => {
+    const id = pendingFocus.current;
+    if (!id) return;
+    const node = stageRef.current?.querySelector<HTMLTextAreaElement>(
+      `[data-element-id="${CSS.escape(id)}"] textarea`,
+    );
+    if (!node) return;
+    node.focus();
+    pendingFocus.current = null;
+  }, [deck, selectedElementId]);
 
   // Cmd/Ctrl+Enter presents from the current slide, adding Shift from the start
   useEffect(() => {
     if (presenting) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "Enter" || !(e.metaKey || e.ctrlKey)) return;
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.key === "Enter") {
+        e.preventDefault();
+        beginShow(
+          e.shiftKey
+            ? 0
+            : Math.max(0, deckRef.current.slideOrder.indexOf(activeSlideId)),
+        );
+        return;
+      }
+      if (e.key.toLowerCase() !== "m" || e.shiftKey || e.altKey) return;
       e.preventDefault();
-      beginShow(
-        e.shiftKey
-          ? 0
-          : Math.max(0, deckRef.current.slideOrder.indexOf(activeSlideId)),
-      );
+      apiRef.current.addSlide("title-body");
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -743,6 +1215,27 @@ ${slidesHtml}
     const timer = setInterval(() => setClock(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [presenting, showSpeakerNotes]);
+
+  const showArmed = useRef(false);
+  if (!presenting) {
+    showArmed.current = false;
+    if (showMotion.type) setShowMotion({ index: -1, type: null });
+  } else if (!showArmed.current) {
+    showArmed.current = true;
+    if (showMotion.index !== presentSlideIndex)
+      setShowMotion({ index: presentSlideIndex, type: null });
+  } else if (showMotion.index !== presentSlideIndex) {
+    const incoming = deck.slides[deck.slideOrder[presentSlideIndex]]?.transition;
+    const ms = transitionMs(incoming, reducedMotion);
+    setShowMotion({
+      index: presentSlideIndex,
+      type: ms > 0 && incoming && incoming.type !== "none" ? incoming.type : null,
+    });
+  }
+  const showMotionClass =
+    showMotion.index === presentSlideIndex && showMotion.type
+      ? ` deck-motion-${showMotion.type}`
+      : "";
 
   const presentSlide =
     deck.slides[deck.slideOrder[presentSlideIndex]] || activeSlide;
@@ -897,7 +1390,76 @@ ${slidesHtml}
   );
 
   return (
-    <div className="slides-editor">
+    <div
+      className="slides-editor"
+      data-deck-snapshot={JSON.stringify(deck)}
+    >
+      {notice && !presenting ? (
+        <div className="slides-notice" role="status">
+          <span>{deletedSlidesMessage(notice.count)}</span>
+          <span aria-hidden="true">·</span>
+          <button type="button" onClick={undo}>
+            Undo
+          </button>
+        </div>
+      ) : null}
+      {contextMenu ? (
+        <div
+          id="slide-context-menu"
+          className="menu-content slide-context-menu"
+          role="menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="menu-item"
+            onClick={() => {
+              setContextMenu(null);
+              duplicateCurrentSlide();
+            }}
+          >
+            <span className="menu-item-label">Duplicate slide</span>
+            <span className="menu-item-shortcut">Cmd+D</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="menu-item"
+            onClick={() => {
+              setContextMenu(null);
+              deleteCurrentSlide();
+            }}
+          >
+            <span className="menu-item-label">Delete slide</span>
+            <span className="menu-item-shortcut">Delete</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="menu-item"
+            onClick={() => {
+              setContextMenu(null);
+              moveSlides("start");
+            }}
+          >
+            <span className="menu-item-label">Move to start</span>
+            <span className="menu-item-shortcut">Cmd+Shift+Up</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="menu-item"
+            onClick={() => {
+              setContextMenu(null);
+              moveSlides("end");
+            }}
+          >
+            <span className="menu-item-label">Move to end</span>
+            <span className="menu-item-shortcut">Cmd+Shift+Down</span>
+          </button>
+        </div>
+      ) : null}
       {/* Slides Toolbar */}
       <div
         className="slides-toolbar"
@@ -905,6 +1467,17 @@ ${slidesHtml}
         aria-label="Slides toolbar"
       >
         <div className="tool-group">
+          <MenuSearchPill />
+          <button
+            type="button"
+            className="menu-trigger theme-toggle"
+            aria-pressed={panel === "theme"}
+            onClick={() =>
+              setPanel((open) => (open === "theme" ? null : "theme"))
+            }
+          >
+            Theme
+          </button>
           <Menu label="+ New slide">
             <MenuItem onSelect={() => addSlide("title-body")}>
               Title & body
@@ -922,14 +1495,14 @@ ${slidesHtml}
           <Tool
             label="Undo (Cmd+Z)"
             onClick={undo}
-            disabled={historyIndex.current <= 0}
+            disabled={!historyMarks.undo}
           >
             <Undo2 size={16} />
           </Tool>
           <Tool
             label="Redo (Cmd+Y)"
             onClick={redo}
-            disabled={historyIndex.current >= history.current.length - 1}
+            disabled={!historyMarks.redo}
           >
             <Redo2 size={16} />
           </Tool>
@@ -944,7 +1517,7 @@ ${slidesHtml}
           <Tool
             label="Select tool"
             active={!selectedElementId}
-            onClick={() => setSelectedElementId(null)}
+            onClick={() => selectElement(null)}
           >
             <MousePointer2 size={16} />
           </Tool>
@@ -997,7 +1570,10 @@ ${slidesHtml}
                 <MenuItem
                   key={c.val}
                   onSelect={() =>
-                    updateElement(selectedElement.id, { fill: c.val })
+                    updateElement(
+                      selectedElement.id,
+                      handStyle({ fill: c.val }),
+                    )
                   }
                 >
                   <span
@@ -1022,10 +1598,10 @@ ${slidesHtml}
                 <MenuItem
                   key={c.val}
                   onSelect={() =>
-                    updateElement(selectedElement.id, {
-                      stroke: c.val,
-                      strokeWidth: 2,
-                    })
+                    updateElement(
+                      selectedElement.id,
+                      handStyle({ stroke: c.val, strokeWidth: 2 }),
+                    )
                   }
                 >
                   <span
@@ -1044,18 +1620,19 @@ ${slidesHtml}
                   aria-label="Font family"
                   value={selectedElement.fontFamily || "Arial"}
                   onChange={(e) =>
-                    updateElement(selectedElement.id, {
-                      fontFamily: e.target.value,
-                    })
+                    updateElement(
+                      selectedElement.id,
+                      handStyle({ fontFamily: e.target.value }),
+                    )
                   }
                 >
-                  <option value="Arial">Arial</option>
+                  {THEME_FONTS.map((font) => (
+                    <option key={font} value={font}>
+                      {font}
+                    </option>
+                  ))}
                   <option value="Roboto">Roboto</option>
                   <option value="Helvetica">Helvetica</option>
-                  <option value="Georgia">Georgia</option>
-                  <option value="Times New Roman">Times New Roman</option>
-                  <option value="Courier New">Courier New</option>
-                  <option value="Trebuchet MS">Trebuchet MS</option>
                 </select>
 
                 <div className="font-size-stepper">
@@ -1082,9 +1659,11 @@ ${slidesHtml}
                     onChange={(e) => {
                       const val = Number(e.target.value);
                       if (val > 0)
-                        updateElement(selectedElement.id, {
-                          fontSize: val,
-                        });
+                        updateElement(
+                          selectedElement.id,
+                          { fontSize: val },
+                          { coalesce: `size:${selectedElement.id}` },
+                        );
                     }}
                   />
                   <button
@@ -1247,21 +1826,6 @@ ${slidesHtml}
               ))}
             </Menu>
 
-            <Menu label="Theme">
-              {[
-                { label: "Simple Light", val: "#ffffff" },
-                { label: "Streamline", val: "#f8fafc" },
-                { label: "Focus (Dark)", val: "#0f172a" },
-                { label: "Warm Sand", val: "#fef3c7" },
-              ].map((theme) => (
-                <MenuItem
-                  key={theme.val}
-                  onSelect={() => setDeckBackground(theme.val, true)}
-                >
-                  {theme.label}
-                </MenuItem>
-              ))}
-            </Menu>
           </div>
         )}
 
@@ -1313,6 +1877,23 @@ ${slidesHtml}
         </div>
       </div>
 
+      {selectedElement?.themeOverride && deck.theme ? (
+        <div className="theme-override-bar" role="status">
+          <span>Overrides theme</span>
+          <button
+            type="button"
+            onClick={() =>
+              updateElement(
+                selectedElement.id,
+                resetToTheme(selectedElement, deck.theme!),
+              )
+            }
+          >
+            Reset to theme
+          </button>
+        </div>
+      ) : null}
+
       {/* Main Slides Editor Body */}
       <div className="slides-main">
         {/* Left Thumbnails Panel */}
@@ -1323,19 +1904,16 @@ ${slidesHtml}
               <button
                 type="button"
                 title="Move slide up"
-                onClick={() => moveSlide("up")}
-                disabled={deck.slideOrder.indexOf(activeSlideId) <= 0}
+                onClick={() => moveSlides("up")}
+                disabled={!canMove(deck.slideOrder, selectedSlideIds, "up")}
               >
                 <ChevronUp size={14} />
               </button>
               <button
                 type="button"
                 title="Move slide down"
-                onClick={() => moveSlide("down")}
-                disabled={
-                  deck.slideOrder.indexOf(activeSlideId) >=
-                  deck.slideOrder.length - 1
-                }
+                onClick={() => moveSlides("down")}
+                disabled={!canMove(deck.slideOrder, selectedSlideIds, "down")}
               >
                 <ChevronDown size={14} />
               </button>
@@ -1350,7 +1928,7 @@ ${slidesHtml}
                 type="button"
                 title="Delete slide"
                 onClick={deleteCurrentSlide}
-                disabled={deck.slideOrder.length <= 1}
+                disabled={!canDeleteSlides(deck.slideOrder, selectedSlideIds)}
               >
                 <Trash2 size={14} />
               </button>
@@ -1362,21 +1940,39 @@ ${slidesHtml}
             ref={thumbnailsRef}
             role="listbox"
             aria-label="Slides"
+            aria-multiselectable="true"
             tabIndex={0}
             onKeyDown={(e) => {
               if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+              if (e.metaKey || e.ctrlKey || e.altKey) return;
               e.preventDefault();
-              const idx = deck.slideOrder.indexOf(activeSlideId);
+              const order = deck.slideOrder;
+              if (e.shiftKey) {
+                const next = extendSelection(
+                  order,
+                  anchorRef.current,
+                  activeRef.current,
+                  e.key === "ArrowUp" ? "up" : "down",
+                );
+                applySelection(next.activeId, next.selected, null);
+                return;
+              }
+              const idx = order.indexOf(activeRef.current);
               const to = e.key === "ArrowUp" ? idx - 1 : idx + 1;
-              if (to < 0 || to >= deck.slideOrder.length) return;
-              if (e.metaKey || e.ctrlKey) moveSlideTo(idx, to);
-              else setActiveSlideId(deck.slideOrder[to]);
-              setSelectedElementId(null);
+              if (to < 0 || to >= order.length) return;
+              const nextId = order[to];
+              anchorRef.current = nextId;
+              applySelection(nextId, [nextId], null);
             }}
           >
             {deck.slideOrder.map((id, index) => {
               const slide = deck.slides[id];
               const isActive = id === activeSlideId;
+              const isChosen = selectedSlideIds.includes(id);
+              const heading = slide?.elements
+                .find((el) => el.type === "text" && el.content?.trim())
+                ?.content?.trim()
+                .split("\n")[0];
               const bg = slide?.background?.color || "#ffffff";
               const dropClass =
                 slideDrag?.over === index
@@ -1390,17 +1986,59 @@ ${slidesHtml}
                 <div
                   key={id}
                   role="option"
-                  aria-selected={isActive}
-                  aria-label={`Slide ${index + 1}`}
-                  className={`thumbnail-row ${isActive ? "selected" : ""} ${slideDrag?.over != null && slideDrag.from === index ? "drag-source" : ""} ${dropClass}`}
+                  data-slide-id={id}
+                  aria-selected={isChosen}
+                  aria-label={`Slide ${index + 1}${slide?.transition && slide.transition.type !== "none" ? `, ${slide.transition.type} transition` : ""}${heading ? `: ${heading}` : ""}`}
+                  className={`thumbnail-row ${isChosen ? "selected" : ""} ${isActive ? "active" : ""} ${slideDrag?.over != null && slideDrag.ids.includes(id) ? "drag-source" : ""} ${dropClass}`}
                   onMouseDown={(e) => {
-                    if (e.button !== 0) return;
-                    setSlideDrag({ from: index, startY: e.clientY, over: null });
+                    if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey)
+                      return;
+                    // Firefox starts a native drag unless the press is cancelled,
+                    // and then the thumbnail never lands in the new gap.
+                    e.preventDefault();
+                    const ids = selectedRef.current.includes(id)
+                      ? [...selectedRef.current]
+                      : [id];
+                    if (!selectedRef.current.includes(id)) {
+                      anchorRef.current = id;
+                      applySelection(id, [id], null);
+                    }
+                    const next = { ids, startY: e.clientY, over: null };
+                    dragRef.current = next;
+                    setSlideDrag(next);
                   }}
-                  onClick={() => {
+                  onClick={(e) => {
                     if (suppressThumbnailClick.current) return;
-                    setActiveSlideId(id);
-                    setSelectedElementId(null);
+                    thumbnailsRef.current?.focus();
+                    if (e.shiftKey) {
+                      const ids = rangeIds(deck.slideOrder, anchorRef.current, id);
+                      applySelection(id, ids, null);
+                      if (ids.length > 1) setTransitionScope("selected");
+                      return;
+                    }
+                    if (e.metaKey || e.ctrlKey) {
+                      const ids = toggleId(selectedRef.current, id);
+                      anchorRef.current = id;
+                      applySelection(
+                        ids.includes(id) ? id : ids[ids.length - 1],
+                        ids,
+                        null,
+                      );
+                      return;
+                    }
+                    anchorRef.current = id;
+                    applySelection(id, [id], null);
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    if (!selectedRef.current.includes(id)) {
+                      anchorRef.current = id;
+                      applySelection(id, [id], null);
+                    }
+                    setContextMenu({
+                      x: Math.max(8, Math.min(e.clientX, window.innerWidth - 230)),
+                      y: Math.max(8, Math.min(e.clientY, window.innerHeight - 210)),
+                    });
                   }}
                 >
                   <span className="thumbnail-num">{index + 1}</span>
@@ -1465,6 +2103,14 @@ ${slidesHtml}
                         return null;
                       })}
                     </div>
+                    {slide?.transition && slide.transition.type !== "none" ? (
+                      <span
+                        className="thumbnail-transition"
+                        title={slide.transition.type}
+                      >
+                        <Blend size={10} />
+                      </span>
+                    ) : null}
                   </div>
                 </div>
               );
@@ -1488,16 +2134,17 @@ ${slidesHtml}
           <div
             className="slide-stage-viewport"
             ref={stageRef}
-            onClick={() => setSelectedElementId(null)}
+            onClick={() => selectElement(null)}
           >
             <div
-              className="slide-canvas print-slide"
+              className={`slide-canvas print-slide${canvasMotion ? ` deck-motion-${canvasMotion.type}` : ""}`}
               style={{
-                backgroundColor: activeSlide?.background?.color || "#ffffff",
+                backgroundColor: shownSlide?.background?.color || "#ffffff",
                 aspectRatio: `${deck.width || 960} / ${deck.height || 540}`,
+                ["--deck-motion" as string]: `${canvasMotion?.ms ?? 0}ms`,
               }}
             >
-              {activeSlide?.elements.map((el) => {
+              {shownSlide?.elements.map((el) => {
                 const isSelected = el.id === selectedElementId;
                 const posStyle: React.CSSProperties = {
                   position: "absolute",
@@ -1511,6 +2158,9 @@ ${slidesHtml}
                   return (
                     <div
                       key={el.id}
+                      data-element-id={el.id}
+                      data-x={el.x}
+                      data-y={el.y}
                       className={`slide-element slide-text ${isSelected ? "selected" : ""}`}
                       style={{
                         ...posStyle,
@@ -1524,15 +2174,20 @@ ${slidesHtml}
                         backgroundColor: el.fill || "transparent",
                       }}
                       onMouseDown={(e) => onElementMouseDown(e, el.id)}
+                      onClick={(e) => e.stopPropagation()}
                     >
                       <textarea
                         className="element-textarea"
                         value={el.content || ""}
                         placeholder={el.placeholder ?? "Click to add text"}
                         onChange={(e) =>
-                          updateElement(el.id, { content: e.target.value })
+                          updateElement(
+                            el.id,
+                            { content: e.target.value },
+                            { coalesce: `type:${el.id}` },
+                          )
                         }
-                        onFocus={() => setSelectedElementId(el.id)}
+                        onFocus={() => selectElement(el.id)}
                       />
                       {isSelected ? renderHandles(el.id) : null}
                     </div>
@@ -1543,9 +2198,13 @@ ${slidesHtml}
                   return (
                     <div
                       key={el.id}
+                      data-element-id={el.id}
+                      data-x={el.x}
+                      data-y={el.y}
                       className={`slide-element slide-image ${isSelected ? "selected" : ""}`}
                       style={posStyle}
                       onMouseDown={(e) => onElementMouseDown(e, el.id)}
+                      onClick={(e) => e.stopPropagation()}
                     >
                       <img src={el.src} alt={el.alt || "Slide asset"} />
                       {isSelected ? renderHandles(el.id) : null}
@@ -1567,6 +2226,9 @@ ${slidesHtml}
                   return (
                     <div
                       key={el.id}
+                      data-element-id={el.id}
+                      data-x={el.x}
+                      data-y={el.y}
                       className={`slide-element slide-shape ${isSelected ? "selected" : ""}`}
                       style={{
                         ...posStyle,
@@ -1575,6 +2237,7 @@ ${slidesHtml}
                         borderRadius: rad,
                       }}
                       onMouseDown={(e) => onElementMouseDown(e, el.id)}
+                      onClick={(e) => e.stopPropagation()}
                     >
                       {isSelected ? renderHandles(el.id) : null}
                     </div>
@@ -1585,9 +2248,13 @@ ${slidesHtml}
                   return (
                     <div
                       key={el.id}
+                      data-element-id={el.id}
+                      data-x={el.x}
+                      data-y={el.y}
                       className={`slide-element slide-table ${isSelected ? "selected" : ""}`}
                       style={posStyle}
                       onMouseDown={(e) => onElementMouseDown(e, el.id)}
+                      onClick={(e) => e.stopPropagation()}
                     >
                       <table>
                         <tbody>
@@ -1626,11 +2293,56 @@ ${slidesHtml}
                 className="notes-textarea"
                 placeholder="Click to add speaker notes"
                 value={activeSlide?.notes || ""}
-                onChange={(e) => updateSlide({ notes: e.target.value })}
+                onChange={(e) =>
+                  updateSlide(
+                    { notes: e.target.value },
+                    activeSlide ? `notes:${activeSlide.id}` : undefined,
+                  )
+                }
               />
             ) : null}
           </div>
         </div>
+        {panel ? (
+          <SlideDesignPanel
+            mode={panel}
+            onClose={() => {
+              setPreviewTheme(null);
+              setPanel(null);
+            }}
+            themes={DECK_THEMES}
+            current={deck.theme}
+            resolve={resolveTheme}
+            onHoverTheme={setPreviewTheme}
+            onApplyTheme={useTheme}
+            onCustomize={(patch) => {
+              if (!deck.theme) return;
+              const next = { ...deck.theme, ...patch };
+              themeEdits.current.set(next.id, next);
+              setPreviewTheme(null);
+              commit(customizeTheme(deck, patch));
+            }}
+            duration={transitionDuration}
+            onDuration={(seconds) => {
+              setDuration(seconds);
+              const ids = transitionTargets();
+              if (ids.some((id) => deck.slides[id]?.transition))
+                commit(setTransitionDuration(deck, ids, seconds));
+            }}
+            scope={transitionScope}
+            onScope={setTransitionScope}
+            selectedCount={selectedSlideIds.length}
+            slideCount={deck.slideOrder.length}
+            chosen={chosenTransition}
+            onPickTransition={pickTransition}
+            onApplyAll={() => {
+              setTransitionScope("all");
+              applyTransitionTo(chosenTransition ?? "fade", deck.slideOrder);
+            }}
+            onPlay={playTransition}
+            status={transitionStatus}
+          />
+        ) : null}
       </div>
 
       {/* Presentation Fullscreen Mode Modal */}
@@ -1644,9 +2356,11 @@ ${slidesHtml}
           tabIndex={-1}
         >
           <div
-            className="presenter-slide-box show-slide"
+            key={presentSlideIndex}
+            className={`presenter-slide-box show-slide${showMotionClass}`}
             style={{
               backgroundColor: presentSlide?.background?.color || "#ffffff",
+              ["--deck-motion" as string]: `${transitionMs(presentSlide?.transition, reducedMotion)}ms`,
               aspectRatio: `${deck.width || 960} / ${deck.height || 540}`,
               width: showSpeakerNotes
                 ? `min(62vw, calc((100vh - 112px) * ${deck.width || 960} / ${deck.height || 540}))`

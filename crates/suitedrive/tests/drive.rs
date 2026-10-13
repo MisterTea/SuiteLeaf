@@ -205,6 +205,88 @@ fn sharing_is_inherited_by_folder_contents_and_enforced() {
 }
 
 #[test]
+fn a_commenter_can_comment_but_cannot_change_the_file() {
+    let n = node();
+    let (ann, bob, eve) = (user("ann"), user("bob"), user("eve"));
+    let file = n
+        .drive
+        .create(&ann, None, "rota.sldoc", "file", None)
+        .unwrap();
+    n.drive
+        .share(&ann, &file.id, "user", "bob", Some(Role::Commenter))
+        .unwrap();
+    assert_eq!(
+        n.drive.get(&bob, &file.id).unwrap().role,
+        Some(Role::Commenter)
+    );
+    assert!(matches!(
+        n.drive.write(&bob, &file.id, None, None, b"changed"),
+        Err(DriveError::Forbidden)
+    ));
+    let comment = n
+        .drive
+        .add_comment(&bob, &file.id, "Can I swap Tuesday?")
+        .unwrap();
+    assert_eq!(comment.body, "Can I swap Tuesday?");
+    assert_eq!(n.drive.comments(&ann, &file.id).unwrap().len(), 1);
+    n.drive
+        .share(&ann, &file.id, "user", "eve", Some(Role::Viewer))
+        .unwrap();
+    assert!(matches!(
+        n.drive.add_comment(&eve, &file.id, "I can only read"),
+        Err(DriveError::Forbidden)
+    ));
+    assert!(n.drive.add_comment(&bob, &file.id, "  ").is_err());
+}
+
+#[test]
+fn access_lists_inherited_folder_roles_above_weaker_direct_ones() {
+    let n = node();
+    let ann = user("ann");
+    let folder = n
+        .drive
+        .create(&ann, None, "Garden club", "folder", None)
+        .unwrap();
+    let file = n
+        .drive
+        .create(&ann, Some(&folder.id), "rota.sldoc", "file", None)
+        .unwrap();
+    n.drive
+        .share(&ann, &file.id, "user", "bob", Some(Role::Viewer))
+        .unwrap();
+    n.drive
+        .share(&ann, &folder.id, "user", "bob", Some(Role::Editor))
+        .unwrap();
+    let access = n.drive.access(&ann, &file.id).unwrap();
+    assert_eq!(access.your_role, Role::Owner);
+    assert_eq!(access.parent.as_ref().unwrap().name, "Garden club");
+    let bob_grant = access
+        .grants
+        .iter()
+        .find(|g| g.principal_id == "bob")
+        .unwrap();
+    assert_eq!(bob_grant.role, Role::Editor);
+    assert_eq!(
+        bob_grant.inherited_from.as_ref().unwrap().name,
+        "Garden club"
+    );
+    assert!(access.grants.iter().any(|g| {
+        g.principal_type == "owner" && g.principal_id == "ann" && g.inherited_from.is_none()
+    }));
+    n.drive.share(&ann, &file.id, "user", "bob", None).unwrap();
+    let only_folder = n.drive.access(&ann, &file.id).unwrap();
+    assert_eq!(
+        only_folder
+            .grants
+            .iter()
+            .find(|g| g.principal_id == "bob")
+            .unwrap()
+            .role,
+        Role::Editor
+    );
+}
+
+#[test]
 fn moves_rename_and_trash_respect_the_folder_tree() {
     let n = node();
     let ann = user("ann");
@@ -242,4 +324,89 @@ fn moves_rename_and_trash_respect_the_folder_tree() {
         .unwrap();
     assert!(n.drive.list(&ann, Some(&outer.id)).unwrap().is_empty());
     assert_eq!(n.drive.list(&ann, None).unwrap().len(), 1);
+}
+
+#[test]
+fn naming_restore_and_copy_keep_every_version_byte_for_byte() {
+    let (a, b) = (node(), node());
+    let ann = user("ann");
+    let folder = a
+        .drive
+        .create(&ann, None, "Garden club", "folder", None)
+        .unwrap();
+    let file = a
+        .drive
+        .create(&ann, Some(&folder.id), "rota.sldoc", "file", None)
+        .unwrap();
+    let monday = b"monday rota";
+    let tuesday = b"tuesday rota";
+    let first = a.drive.write(&ann, &file.id, None, None, monday).unwrap();
+    let first_id = first.head_version_id.clone().unwrap();
+    let second = a
+        .drive
+        .write(&ann, &file.id, Some(&first_id), None, tuesday)
+        .unwrap();
+    let second_id = second.head_version_id.clone().unwrap();
+
+    let named = a
+        .drive
+        .name_version(&ann, &file.id, &first_id, Some("Agreed rota"))
+        .unwrap();
+    assert_eq!(named.name.as_deref(), Some("Agreed rota"));
+    sync(&a, &b);
+    let replicated = b.drive.versions(&ann, &file.id).unwrap();
+    assert_eq!(
+        replicated
+            .iter()
+            .find(|v| v.id == first_id)
+            .unwrap()
+            .name
+            .as_deref(),
+        Some("Agreed rota")
+    );
+
+    let restored = a
+        .drive
+        .restore(&ann, &file.id, &first_id, Some(&second_id))
+        .unwrap();
+    let (_, bytes) = a.drive.read(&ann, &file.id, None).unwrap();
+    assert_eq!(bytes, monday);
+    let history = a.drive.versions(&ann, &file.id).unwrap();
+    assert_eq!(history.len(), 3);
+    assert!(history.iter().any(|v| v.id == first_id));
+    assert!(history.iter().any(|v| v.id == second_id));
+    let head = history
+        .iter()
+        .find(|v| Some(&v.id) == restored.head_version_id.as_ref())
+        .unwrap();
+    assert_eq!(head.restored_from.as_deref(), Some(first_id.as_str()));
+    assert_eq!(
+        bytes,
+        a.drive.read(&ann, &file.id, Some(&first_id)).unwrap().1
+    );
+
+    let again = a
+        .drive
+        .restore(
+            &ann,
+            &file.id,
+            &second_id,
+            restored.head_version_id.as_deref(),
+        )
+        .unwrap();
+    assert_eq!(a.drive.read(&ann, &file.id, None).unwrap().1, tuesday);
+    assert_ne!(again.head_version_id.as_deref(), Some(second_id.as_str()));
+    assert_eq!(a.drive.versions(&ann, &file.id).unwrap().len(), 4);
+
+    let copy = a
+        .drive
+        .copy_version(&ann, &file.id, &first_id, "rota (Sam's draft).sldoc")
+        .unwrap();
+    assert_eq!(copy.parent_id.as_deref(), Some(folder.id.as_str()));
+    assert_eq!(a.drive.read(&ann, &copy.id, None).unwrap().1, monday);
+
+    assert!(matches!(
+        a.drive.restore(&ann, &file.id, &first_id, Some("stale")),
+        Err(DriveError::Conflict(_))
+    ));
 }

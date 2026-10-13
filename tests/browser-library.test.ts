@@ -2,7 +2,7 @@ import "fake-indexeddb/auto";
 import Dexie from "dexie";
 import { it, expect } from "vitest";
 import { Library } from "../apps/web/src/browser-library";
-import { createFile } from "../packages/core/src";
+import { createFile, serializeFile } from "../packages/core/src";
 it("atomically migrates v1 documents and sheets into indexed native strings", async () => {
   const name = "migration-" + crypto.randomUUID(),
     old = new Dexie(name);
@@ -57,6 +57,27 @@ it("persists large native documents in atomic chunks and retains the previous fi
     expect(restored.file.content.content![0].content![0].text).toBe(text);
     await db.remove(f.id);
     expect(await db.chunks.count()).toBe(0);
+  } finally {
+    await db.delete();
+  }
+});
+
+it("remembers a star and Trash without rewriting the native file", async () => {
+  const db = new Library("marks-" + crypto.randomUUID());
+  try {
+    const file = createFile("doc", "Lasagne");
+    const before = serializeFile(file);
+    const trashedAt = "2026-03-01T12:00:00.000Z";
+    await db.save({ file, starred: true, trashedAt });
+    const got = await db.get(file.id);
+    expect(got?.starred).toBe(true);
+    expect(got?.trashedAt).toBe(trashedAt);
+    expect(serializeFile(got!.file)).toBe(before);
+    await db.save({ file, starred: true });
+    const back = await db.get(file.id);
+    expect(back?.trashedAt).toBeUndefined();
+    expect(back?.starred).toBe(true);
+    expect(serializeFile(back!.file)).toBe(before);
   } finally {
     await db.delete();
   }

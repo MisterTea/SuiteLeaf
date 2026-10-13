@@ -14,7 +14,13 @@ test("home shows the new-file cards in one row on a laptop screen", async ({ pag
 
 test("docs toolbar fits one row, outline entries align left, indent works in lists", async ({
   page,
-}) => {
+}, testInfo) => {
+  const pressEnter = async () => {
+    await page.keyboard.press("Enter");
+    // iPhone WebKit applies Enter on a short timer instead of in the keydown.
+    if (testInfo.project.name === "mobile-safari")
+      await page.waitForTimeout(300);
+  };
   await page.goto("/");
   await page.getByRole("button", { name: "New document" }).click();
   const editor = page.getByRole("textbox", { name: "Document content" });
@@ -26,11 +32,13 @@ test("docs toolbar fits one row, outline entries align left, indent works in lis
     await expect(toolbar.getByRole("button", { name, exact: true })).toBeVisible();
 
   await page.keyboard.type("Plan");
-  await page.keyboard.press("Enter");
+  await pressEnter();
   await page.keyboard.type("A heading long enough that the outline panel has to shorten it");
   const style = page.getByRole("combobox", { name: "Paragraph style" });
   await style.selectOption({ label: "Heading 1" });
-  await editor.getByText("Plan", { exact: true }).click();
+  // WebKit's accessibility tree joins adjacent blocks, so an exact "Plan"
+  // name never appears. The paragraph element stays separate.
+  await editor.locator("p", { hasText: /^Plan$/ }).click();
   // The caret reaches the editor on the browser's next selectionchange, so
   // pick the style once the menu shows the clicked line's.
   await expect(style).toHaveValue("0");
@@ -56,11 +64,11 @@ test("docs toolbar fits one row, outline entries align left, indent works in lis
   const outdent = toolbar.getByRole("button", { name: "Decrease indent" });
   await expect(indent).toBeDisabled();
   await page.keyboard.press("ControlOrMeta+End");
-  await page.keyboard.press("Enter");
+  await pressEnter();
   await style.selectOption({ label: "Normal text" });
   await toolbar.getByRole("button", { name: "Bulleted list" }).click();
   await page.keyboard.type("Tomatoes");
-  await page.keyboard.press("Enter");
+  await pressEnter();
   await page.keyboard.type("Cherry");
   await indent.click();
   await expect(editor.locator("ul ul li")).toHaveText("Cherry");

@@ -141,7 +141,11 @@ export const DocumentPagination = Extension.create({
                 view.dom.getBoundingClientRect().width /
                   (view.dom as HTMLElement).offsetWidth || 1;
               const boundaries: Boundary[] = [];
+              const reserves = noteReserves(view);
               view.state.doc.descendants((node, pos, parent) => {
+                // Footnote bodies are positioned on the page that cites them.
+                if (node.type.name === "note" && node.attrs.kind !== "endnote")
+                  return false;
                 const dom = view.nodeDOM(pos);
                 if (!(dom instanceof HTMLElement)) return;
                 const rect = dom.getBoundingClientRect();
@@ -199,7 +203,7 @@ export const DocumentPagination = Extension.create({
                 page = 0;
               for (const [i, next] of boundaries.entries()) {
                 const start = page * (height + 24),
-                  end = start + bodyHeight;
+                  end = start + bodyHeight - (reserves[page] ?? 0);
                 if (
                   (next.bottom + added > end + 0.5 &&
                     next.top + added > start + 0.5) ||
@@ -287,6 +291,7 @@ export const DocumentPagination = Extension.create({
             }
           };
           let observedWidth = 0;
+          let seenReserve = "";
           const observer = new ResizeObserver((entries) => {
             const width = entries[0]?.contentRect.width ?? 0;
             if (Math.abs(width - observedWidth) > 0.5) {
@@ -300,7 +305,11 @@ export const DocumentPagination = Extension.create({
           schedule();
           return {
             update(v, previous) {
-              if (!v.state.doc.eq(previous.doc)) schedule();
+              const reserve = (v.dom as HTMLElement).dataset.noteReserveGen ?? "";
+              if (!v.state.doc.eq(previous.doc) || reserve !== seenReserve) {
+                seenReserve = reserve;
+                schedule();
+              }
             },
             destroy() {
               destroyed = true;
@@ -314,6 +323,15 @@ export const DocumentPagination = Extension.create({
     ];
   },
 });
+function noteReserves(view: EditorView): number[] {
+  const raw = (view.dom as HTMLElement).dataset.noteReserve;
+  if (!raw) return [];
+  return raw.split(",").map((part) => {
+    const n = Number(part);
+    return Number.isFinite(n) ? Math.max(0, n) : 0;
+  });
+}
+
 function textLines(
   view: EditorView,
   dom: HTMLElement,

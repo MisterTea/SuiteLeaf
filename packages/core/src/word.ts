@@ -6,11 +6,24 @@ import { parseDocument } from "htmlparser2";
 import type { AnyNode, Element } from "domhandler";
 import { XMLParser } from "fast-xml-parser";
 import { createFile, safeLink, type JsonNode, type DocFile } from "./index";
+import { commentImportSummary, importWordComments } from "./doc-comments";
+import {
+  absorbSuggestionMarkers,
+  annotateTrackedChanges,
+  resolveSuggestions,
+} from "./suggestions";
 import { type OfficeImport, parseXml } from "./office";
+import {
+  applyImportedNotes,
+  notesImportSummary,
+  rewriteWordNotes,
+} from "./doc-notes";
 
 type Mark = NonNullable<JsonNode["marks"]>[number];
 const normalize = (s: string) => s.replace(/[\s\u200b\ufeff]+/gu, "");
 export function documentText(n: JsonNode): string {
+  if (n.type === "noteReference") return String(n.attrs?.label ?? "");
+  if (n.type === "tableOfContents") return "";
   return (n.text ?? "") + (n.content ?? []).map(documentText).join("");
 }
 /** `droppedLinks` collects the addresses of links removed as unsafe. */
@@ -1019,10 +1032,30 @@ export async function importDocx(
     zip,
     xml,
   );
+  const annotated = annotateTrackedChanges(updatedXml);
+  if (annotated !== updatedXml) zip.file("word/document.xml", annotated);
   const source = wordParagraphs(updatedXml);
+  const footnotesXml = zip.file("word/footnotes.xml")
+    ? await zip.file("word/footnotes.xml")!.async("string")
+    : "";
+  const endnotesXml = zip.file("word/endnotes.xml")
+    ? await zip.file("word/endnotes.xml")!.async("string")
+    : "";
+  const rewritten = rewriteWordNotes(annotated, footnotesXml, endnotesXml);
+  if (rewritten.changed) {
+    zip.file("word/document.xml", rewritten.xml);
+    const norm = (s: string) => s.replace(/[\s\u200b\ufeff]+/gu, "");
+    for (const text of rewritten.removedParagraphs) {
+      const at = source.findIndex((paragraph) => norm(paragraph) === norm(text));
+      if (at >= 0) source.splice(at, 1);
+    }
+  }
   try {
     const input =
-      features.includes("strict-ooxml") || modified
+      features.includes("strict-ooxml") ||
+      modified ||
+      annotated !== updatedXml ||
+      rewritten.changed
         ? await zip.generateAsync({ type: "uint8array" })
         : bytes;
     const result = await mammoth.convertToHtml(
@@ -1058,21 +1091,12 @@ export async function importDocx(
     if (isCoverPage) {
       html = html.replace(/(<h1\b[^>]*>[\s\S]*?<\/h1>)/g, (m) => m + "<hr />");
     }
-    let footnoteIdx = 0;
-    let endnoteIdx = 0;
-    html = html.replace(
-      /<sup>\s*<a\b[^>]*href="#(footnote|endnote)-[^"]*"[^>]*>\s*\[?\d+\]?\s*<\/a>\s*<\/sup>/gi,
-      (_match, type) => {
-        if (type.toLowerCase() === "footnote") {
-          footnoteIdx++;
-          return `<sup>${footnoteIdx}</sup>`;
-        } else {
-          endnoteIdx++;
-          return `<sup>${toLowerRoman(endnoteIdx)}</sup>`;
-        }
-      },
-    );
     html = html.replace(/<a href="#(?:footnote|endnote)-ref-[^"]*">↑<\/a>/gi, "");
+    html = html.replace(
+      /<(?:ol|ul)\b[^>]*>[\s\S]*?<\/(?:ol|ul)>/gi,
+      (list) =>
+        /id="(?:footnote|endnote)-/i.test(list) ? "" : list,
+    );
     warnings.push(...result.messages.map((m) => m.message));
   } catch (e) {
     fallback = 1;
@@ -1104,9 +1128,27 @@ export async function importDocx(
       })),
     };
   }
+  const imported = applyImportedNotes(content, rewritten.notes);
+  content = imported.content;
+  const noteSummary = notesImportSummary(imported);
+  if (noteSummary) warnings.unshift(noteSummary);
+  if (imported.tocs && !features.includes("table_of_contents"))
+    features.push("table_of_contents");
   if (!content.content?.length)
     content = { type: "doc", content: [{ type: "paragraph" }] };
-  let output = normalize(documentText(content));
+  const absorbed = absorbSuggestionMarkers(content);
+  content = absorbed.doc;
+  const suggestionCount = absorbed.count;
+  if (suggestionCount)
+    content = {
+      ...content,
+      attrs: { ...(content.attrs ?? {}), editingMode: "suggesting" },
+    };
+  let output = normalize(
+    documentText(
+      suggestionCount ? resolveSuggestions(content, "accepted") : content,
+    ),
+  );
   const missing = source.filter((t) => {
     const normT = normalize(t);
     if (!normT) return false;
@@ -1246,7 +1288,11 @@ export async function importDocx(
   };
   for (const [name, re] of Object.entries(checks))
     if (re.test(xml)) features.push(name);
-  if (features.includes("tracked_changes"))
+  if (suggestionCount)
+    warnings.push(
+      `${suggestionCount} suggestion${suggestionCount === 1 ? "" : "s"} imported`,
+    );
+  else if (features.includes("tracked_changes"))
     warnings.push(
       "Tracked changes are imported as accepted text; review history is not retained.",
     );
@@ -1275,6 +1321,19 @@ export async function importDocx(
   warnings.push(
     "SuiteLeaf lays out its own pages, so Word's exact line and page breaks, floating placement and font styling may differ.",
   );
+  const commentsXml = await zip.file("word/comments.xml")?.async("string");
+  if (commentsXml?.includes("<w:comment")) {
+    const imported = importWordComments(content, {
+      documentXml: (await zip.file("word/document.xml")?.async("string")) ?? xml,
+      commentsXml,
+      extendedXml: await zip.file("word/commentsExtended.xml")?.async("string"),
+    });
+    content = imported.content;
+    if (imported.count) {
+      features.push("comments");
+      warnings.push(commentImportSummary(imported.count));
+    }
+  }
   const file = createFile("doc", title) as DocFile;
   file.content = content;
   const stats: Record<string, number> = {

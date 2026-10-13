@@ -7,7 +7,7 @@ import {
   type CSSProperties,
 } from "react";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
-import { generateJSON, type Extensions } from "@tiptap/core";
+import { generateHTML, generateJSON, type Extensions } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { TextStyleKit } from "@tiptap/extension-text-style";
 import Highlight from "@tiptap/extension-highlight";
@@ -48,6 +48,7 @@ import {
   Outdent,
   FileCog,
   SeparatorHorizontal,
+  EllipsisVertical,
   Check,
   X,
 } from "lucide-react";
@@ -59,6 +60,8 @@ import {
 } from "@suiteleaf/core";
 import { exportBinary, exportText, printDocument } from "../storage";
 import { Tool, type EditorActions, type TableAction } from "../ui";
+import { MenuSearchPill } from "../command-palette";
+import { useToolbarOverflow } from "./toolbar-overflow";
 import { linkTarget } from "./doc-links";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import {
@@ -73,9 +76,25 @@ import {
   type Point,
 } from "./doc-find";
 import { documentPlainText } from "./doc-text";
+import { commentExtensions, DocComments } from "./doc-comments";
 import { slugify, uniqueSlug, anchorHref, isInternalAnchor } from "../anchors";
+import { Suggestions } from "./doc-suggestions";
+import {
+  SuggestionBridge,
+  SuggestionFlag,
+  SuggestionModeSwitch,
+  SuggestionProvider,
+  SuggestionRail,
+} from "./doc-suggestions-ui";
+import {
+  listSuggestions,
+  resolveSuggestions,
+} from "@suiteleaf/core/suggestions";
 
 import { DocumentPagination, PageBreak } from "./doc-pagination";
+import { Proofing } from "./doc-spelling";
+import { useDocProofing, type ProofingContext } from "./doc-proofing";
+import { documentNotes } from "./doc-notes";
 import {
   documentHtml,
   documentPageSettings,
@@ -86,6 +105,7 @@ import {
 export const extensions: Extensions = [
   DocumentPagination,
   PageBreak,
+  ...documentNotes,
   StarterKit.configure({
     link: { openOnClick: false, isAllowedUri: (url) => safeLink(url) },
   }),
@@ -105,8 +125,19 @@ export const extensions: Extensions = [
   TableKit.configure({ table: { resizable: true } }),
   CharacterCount,
   DocumentSearchHighlight,
+  ...commentExtensions,
+  Suggestions,
+  Proofing,
   Superscript,
   Subscript,
+  Extension.create({
+    name: "suiteleafStrikeShortcut",
+    addKeyboardShortcuts() {
+      return {
+        "Mod-Shift-x": () => this.editor.commands.toggleStrike(),
+      };
+    },
+  }),
   Extension.create({
     name: "importAttributes",
     addGlobalAttributes() {
@@ -148,11 +179,14 @@ export default function Docs({
   onChange,
   onActions,
   onError,
+  readOnly = false,
 }: {
   file: DocFile;
   onChange: (content: DocFile["content"]) => void;
   onActions: (actions: EditorActions) => void;
   onError: (s: string) => void;
+  /** Viewers and commenters can read, but not change the document. */
+  readOnly?: boolean;
 }) {
   const changes = useRef(onChange);
   changes.current = onChange;
@@ -185,10 +219,18 @@ export default function Docs({
     error: string;
   } | null>(null);
   const openLink = useRef(() => {});
+  const insertComment = useRef(() => {});
+  const openComments = useRef(() => {});
+  const [commentGutter, setCommentGutter] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(() =>
     window.innerWidth < 700 ? "Fit" : "100%",
   );
   const paperContainer = useRef<HTMLDivElement>(null);
+  const docTools = useRef<HTMLFieldSetElement>(null);
+  const moreDocTools = useToolbarOverflow(
+    docTools,
+    '[aria-label="Page setup"], [aria-label="Page break"], [aria-label="Superscript"], [aria-label="Subscript"], [aria-label="Bulleted list"], [aria-label="Decrease indent"], [aria-label="Increase indent"], [aria-label="Find and replace"], [aria-label="Insert table"], [aria-label="Insert link"], .mode-switch',
+  );
   const [pageViewportWidth, setPageViewportWidth] = useState(
     window.innerWidth - 32,
   );
@@ -196,6 +238,11 @@ export default function Docs({
   const [highlightColor, setHighlightColor] = useState("#ffff00");
   const imageInput = useRef<HTMLInputElement>(null);
   const documentStage = useRef<HTMLDivElement>(null);
+  const suggestionApi = useRef<{
+    askPlainExport: () => Promise<"accepted" | "original" | null>;
+    openReview: () => void;
+  } | null>(null);
+  const proofingContext = useRef<ProofingContext>(() => false);
   const [activeHeading, setActiveHeading] = useState<number | null>(null);
   const [pageCount, setPageCount] = useState(1);
   const [pageSetupOpen, setPageSetupOpen] = useState(false);
@@ -203,21 +250,96 @@ export default function Docs({
     documentPageSettings(file.content),
   );
 
+  const readOnlyRef = useRef(readOnly);
+  readOnlyRef.current = readOnly;
   const editor = useEditor({
     immediatelyRender: false,
+    editable: !readOnly,
     extensions,
     content: file.content,
     editorProps: {
       attributes: {
         class: "document-content",
-        spellcheck: "true",
+        spellcheck: "false",
         "aria-label": "Document content",
       },
       // Keep a few lines of context around the caret when typing scrolls the page.
       scrollMargin: { top: 64, bottom: 64, left: 5, right: 5 },
       handleKeyDown: (view, event): boolean => {
+        // Ctrl+A is "start of paragraph" on iPhone WebKit, and that command
+        // runs after select-all and collapses the range. Select the document
+        // and put the range back on the next frame.
+        if (
+          (event.metaKey || event.ctrlKey) &&
+          !event.altKey &&
+          !event.shiftKey &&
+          event.key.toLowerCase() === "a"
+        ) {
+          event.preventDefault();
+          const apply = () => {
+            if (view.isDestroyed) return;
+            const doc = view.state.doc;
+            const next = TextSelection.create(doc, 0, doc.content.size);
+            if (!view.state.selection.eq(next))
+              view.dispatch(view.state.tr.setSelection(next));
+          };
+          apply();
+          requestAnimationFrame(apply);
+          return true;
+        }
         // Home and End move to the start or end of the line, as in Word.
         // macOS scrolls the page instead, and Linux does too inside this editor.
+        // Shift+arrow extends by one character in the document, on every
+        // platform. Linux otherwise drops the first character of the word.
+        if (
+          (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
+          event.shiftKey &&
+          !event.altKey &&
+          !event.metaKey &&
+          !event.ctrlKey &&
+          view.state.selection instanceof TextSelection
+        ) {
+          const sel = view.state.selection;
+          const dir = event.key === "ArrowRight" ? 1 : -1;
+          const doc = view.state.doc;
+          let pos = sel.head;
+          for (let step = 0; step < 8; step++) {
+            pos += dir;
+            if (pos < 0 || pos > doc.content.size) break;
+            let moved: TextSelection;
+            try {
+              moved = TextSelection.create(doc, sel.anchor, pos);
+            } catch {
+              continue;
+            }
+            if (moved.anchor === sel.anchor && moved.head === sel.head) continue;
+            event.preventDefault();
+            view.dispatch(view.state.tr.setSelection(moved).scrollIntoView());
+            return true;
+          }
+          return false;
+        }
+        // A right or left arrow collapses a selection to that edge first,
+        // including when the browser leaves the range in place.
+        if (
+          (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
+          !event.shiftKey &&
+          !event.altKey &&
+          !event.metaKey &&
+          !event.ctrlKey &&
+          !view.state.selection.empty &&
+          !(view.state.selection instanceof CellSelection)
+        ) {
+          const pos =
+            event.key === "ArrowRight"
+              ? view.state.selection.to
+              : view.state.selection.from;
+          event.preventDefault();
+          view.dispatch(
+            view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(pos))),
+          );
+          return true;
+        }
         if (
           (event.key === "Home" || event.key === "End") &&
           !event.metaKey &&
@@ -247,9 +369,20 @@ export default function Docs({
         }
         if (
           (event.metaKey || event.ctrlKey) &&
+          event.altKey &&
+          !event.shiftKey &&
+          event.code === "KeyF"
+        ) {
+          event.preventDefault();
+          return editor?.commands.insertFootnote() ?? false;
+        }
+        if (
+          (event.metaKey || event.ctrlKey) &&
+          !event.altKey &&
           (event.key.toLowerCase() === "f" ||
             (event.shiftKey && event.key.toLowerCase() === "h"))
         ) {
+          if (readOnlyRef.current) return true;
           event.preventDefault();
           setFindOpen(true);
           findInput.current?.focus();
@@ -261,8 +394,21 @@ export default function Docs({
           !event.shiftKey &&
           event.key.toLowerCase() === "k"
         ) {
+          if (readOnlyRef.current) return true;
           event.preventDefault();
           openLink.current();
+          return true;
+        }
+        if (
+          (navigator.platform.includes("Mac")
+            ? event.metaKey && !event.ctrlKey
+            : event.ctrlKey) &&
+          event.altKey &&
+          !event.shiftKey &&
+          event.code === "KeyM"
+        ) {
+          event.preventDefault();
+          insertComment.current();
           return true;
         }
         if (
@@ -270,11 +416,27 @@ export default function Docs({
           !event.shiftKey &&
           !event.altKey &&
           event.key === "Enter"
-        )
+        ) {
+          if (readOnlyRef.current) return true;
           return editor?.commands.setPageBreak() ?? false;
+        }
+        // iOS WebKit does not run the Enter keymap on keydown. It retries
+        // handleKeyDown 200ms later with a plain Event, not a KeyboardEvent.
+        if (
+          event.key === "Enter" &&
+          !event.shiftKey &&
+          !event.altKey &&
+          !event.metaKey &&
+          !event.ctrlKey &&
+          !(event instanceof KeyboardEvent)
+        ) {
+          if (readOnlyRef.current) return true;
+          return editor?.commands.keyboardShortcut("Enter") ?? false;
+        }
         return false;
       },
       handlePaste: (_view, event) => {
+        if (readOnlyRef.current) return true;
         if (event.clipboardData?.getData("text/html")) {
           editor?.commands.insertContent(
             importHTML(event.clipboardData.getData("text/html")),
@@ -285,6 +447,39 @@ export default function Docs({
       },
       // Internal "#anchor" links scroll to the heading that owns that slug.
       handleDOMEvents: {
+        // iPhone WebKit inserts a paragraph with its own editing command and
+        // can leave the previous line in the same box as the new one.
+        beforeinput: (view, event) => {
+          if (event.inputType !== "insertParagraph" || event.defaultPrevented)
+            return false;
+          if (!view.state.selection.empty) return false;
+          event.preventDefault();
+          const parent = view.state.selection.$from.parent;
+          // Enter already opened a fresh paragraph. A second split would add a blank line.
+          if (parent.content.size === 0) return true;
+          const pos = view.state.selection.from;
+          try {
+            view.dispatch(view.state.tr.split(pos));
+          } catch {
+            return false;
+          }
+          // iPhone WebKit keeps the DOM caret in the previous paragraph, so
+          // the next character is typed onto that line.
+          const dom = view.domAtPos(view.state.selection.from);
+          const selection = view.dom.ownerDocument.getSelection();
+          if (selection && dom.node) {
+            const range = view.dom.ownerDocument.createRange();
+            try {
+              range.setStart(dom.node, dom.offset);
+              range.collapse(true);
+              selection.removeAllRanges();
+              selection.addRange(range);
+            } catch {
+              // A fresh block can reject the range until the next frame.
+            }
+          }
+          return true;
+        },
         click: (view, event) => {
           const target = event.target as HTMLElement | null;
           const anchor = target?.closest?.("a[href^='#']");
@@ -315,7 +510,9 @@ export default function Docs({
         contextmenu: (view, event) => {
           const target = event.target as HTMLElement | null;
           const cell = target?.closest?.("td, th");
-          if (!cell || cell.closest(".doc-page-spacer")) return false;
+          const inTable = !!cell && !cell.closest(".doc-page-spacer");
+          if (!inTable && proofingContext.current(view, event)) return true;
+          if (!inTable) return false;
           const hit = view.posAtCoords({
             left: event.clientX,
             top: event.clientY,
@@ -337,8 +534,16 @@ export default function Docs({
         },
       },
     },
-    onUpdate: ({ editor }) => changes.current(editor.getJSON() as JsonNode),
+    onUpdate: ({ editor }) => {
+      if (!readOnlyRef.current) changes.current(editor.getJSON() as JsonNode);
+    },
   });
+
+  const proofing = useDocProofing(editor, pageCount, proofingContext);
+
+  useEffect(() => {
+    if (editor && editor.isEditable === readOnly) editor.setEditable(!readOnly);
+  }, [editor, readOnly]);
 
   const state = useEditorState({
     editor,
@@ -366,7 +571,6 @@ export default function Docs({
               )
             : "11";
         })(),
-        words: e?.getText().trim().split(/\s+/).filter(Boolean).length ?? 0,
         headings: (() => {
           const h: {
             text: string;
@@ -573,6 +777,17 @@ export default function Docs({
     onActions({
       flush: async () => {},
       async export(format) {
+        let content = editor.getJSON() as JsonNode;
+        let resolved = false;
+        if (
+          (format === "html" || format === "txt") &&
+          listSuggestions(content).length
+        ) {
+          const choice = await suggestionApi.current?.askPlainExport();
+          if (!choice) return;
+          content = resolveSuggestions(content, choice);
+          resolved = true;
+        }
         if (format === "docx") {
           const { exportDocx } = await import("@suiteleaf/core/docx-export");
           await exportBinary(
@@ -588,15 +803,15 @@ export default function Docs({
             filename(file.title, "html"),
             documentHtml(
               file.title,
-              editor.getHTML(),
-              documentPageSettings(editor.getJSON() as JsonNode),
+              resolved ? generateHTML(content, extensions) : editor.getHTML(),
+              documentPageSettings(content),
             ),
             "text/html",
           );
         else
           await exportText(
             filename(file.title, "txt"),
-            documentPlainText(editor.getJSON() as JsonNode),
+            documentPlainText(content),
           );
       },
       print: () => printDocument(file.title),
@@ -606,12 +821,29 @@ export default function Docs({
         openFind: () => setFindOpen(true),
         selectAll: () => editor.chain().focus().selectAll().run(),
         insertLink: () => openLink.current(),
+        linkState: () => {
+          const { empty } = editor.state.selection;
+          if (!empty || editor.isActive("link")) return { ok: true as const };
+          return {
+            ok: false as const,
+            reason: "Select text to add a link",
+          };
+        },
         insertImage: () => imageInput.current?.click(),
         insertTable: () => setTableOpen(true),
         insertHorizontalRule: () =>
           editor.chain().focus().setHorizontalRule().run(),
         insertPageBreak: () => editor.chain().focus().setPageBreak().run(),
+        insertComment: () => insertComment.current(),
+        openComments: () => openComments.current(),
+        insertTableOfContents: (pageNumbers = true) =>
+          editor.chain().focus().insertTableOfContents(pageNumbers).run(),
+        insertFootnote: () => editor.chain().focus().insertFootnote().run(),
+        insertEndnote: () => editor.chain().focus().insertEndnote().run(),
         openPageSetup,
+        openWordCount: proofing.openWordCount,
+        openSpelling: proofing.openSpelling,
+        openDictionary: proofing.openDictionary,
         clearFormatting: () =>
           editor.chain().focus().unsetAllMarks().clearNodes().run(),
         align: (alignment) =>
@@ -627,9 +859,10 @@ export default function Docs({
         toggleOrderedList: () =>
           editor.chain().focus().toggleOrderedList().run(),
         tableActions,
+        openSuggestions: () => suggestionApi.current?.openReview(),
       },
     });
-  }, [editor, file.title, onActions]);
+  }, [editor, file.title, onActions, proofing.openWordCount, proofing.openSpelling, proofing.openDictionary]);
 
   useEffect(() => {
     if (!editor) return;
@@ -771,10 +1004,13 @@ export default function Docs({
     pageDraft.margin >= 24 &&
     pageDraft.margin <= 144;
   const dimensions = pageDimensions(pageSettings);
-  const pageZoom =
-    zoomLevel === "Fit"
+  const requestedZoom =
+    zoomLevel === "Fit" ? 1 : Number.parseInt(zoomLevel, 10) / 100;
+  const pageZoom = commentGutter
+    ? Math.min(requestedZoom, pageViewportWidth / dimensions.width)
+    : zoomLevel === "Fit"
       ? Math.min(1, pageViewportWidth / dimensions.width)
-      : parseInt(zoomLevel) / 100;
+      : requestedZoom;
   const search = documentMatches(editor.state.doc, findOpen ? query : "", {
     matchCase,
     regex: useRegex,
@@ -852,14 +1088,19 @@ export default function Docs({
   };
 
   return (
+    <SuggestionProvider editor={editor}>
+    <SuggestionBridge api={suggestionApi} />
     <div className="docs-editor">
-      <div className="toolbar" role="toolbar" aria-label="Document formatting">
-        <Tool label="Undo" onClick={() => editor.commands.undo()}>
-          <Undo2 size={16} />
-        </Tool>
-        <Tool label="Redo" onClick={() => editor.commands.redo()}>
-          <Redo2 size={16} />
-        </Tool>
+      <div className="toolbar docs-toolbar" role="toolbar" aria-label="Document formatting">
+        <MenuSearchPill />
+        <fieldset className="toolbar-edits" disabled={readOnly}>
+          <Tool label="Undo" onClick={() => editor.commands.undo()}>
+            <Undo2 size={16} />
+          </Tool>
+          <Tool label="Redo" onClick={() => editor.commands.redo()}>
+            <Redo2 size={16} />
+          </Tool>
+        </fieldset>
         <Tool label="Print" onClick={() => printDocument(file.title)}>
           <Printer size={16} />
         </Tool>
@@ -880,6 +1121,11 @@ export default function Docs({
           <option value="200%">200%</option>
         </select>
 
+        <fieldset
+          ref={docTools}
+          className={`toolbar-edits toolbar-edits-rest docs-toolbar-tools${moreDocTools.overflowing ? " has-overflow" : ""}${moreDocTools.open ? " show-more" : ""}`}
+          disabled={readOnly}
+        >
         <Tool label="Page setup" onClick={openPageSetup}>
           <FileCog size={16} />
         </Tool>
@@ -1141,6 +1387,21 @@ export default function Docs({
         <Tool label="Find and replace" onClick={() => setFindOpen((v) => !v)}>
           <Search size={16} />
         </Tool>
+        <SuggestionModeSwitch />
+        {moreDocTools.open ? (
+          <span className="toolbar-break" aria-hidden="true" />
+        ) : null}
+        <button
+          type="button"
+          className="tool more-tools"
+          title="More tools"
+          aria-label="More tools"
+          aria-expanded={moreDocTools.open}
+          onClick={() => moreDocTools.setOpen(!moreDocTools.open)}
+        >
+          <EllipsisVertical size={16} />
+        </button>
+        </fieldset>
       </div>
 
       {pageSetupOpen ? (
@@ -1708,7 +1969,10 @@ export default function Docs({
         </div>
       ) : null}
 
-      <div className="document-stage" ref={documentStage}>
+      <div
+        className={`document-stage${commentGutter ? " with-comments" : ""}`}
+        ref={documentStage}
+      >
         <aside className="outline">
           <div className="outline-header">
             <span className="outline-tab active">Outline</span>
@@ -1767,7 +2031,9 @@ export default function Docs({
                 "--page-margin": `${pageSettings.margin}px`,
                 "--page-stride": `${dimensions.height + 24}px`,
                 minHeight: `${pageCount * dimensions.height + (pageCount - 1) * 24}px`,
-                zoom: pageZoom,
+                // zoom: 1 still makes WebKit a zoom container, and then a
+                // heading shares its line with the paragraph above it.
+                ...(pageZoom === 1 ? {} : { zoom: pageZoom }),
               } as CSSProperties
             }
           >
@@ -1793,9 +2059,20 @@ export default function Docs({
             <EditorContent editor={editor} />
           </div>
         </div>
+        <DocComments
+          editor={editor}
+          stageRef={documentStage}
+          onGutter={setCommentGutter}
+          bind={(api) => {
+            insertComment.current = api.insert;
+            openComments.current = api.openPanel;
+          }}
+        />
+        <SuggestionRail />
       </div>
+      {proofing.ui}
       <footer className="editor-status">
-        {state?.words} words{" "}
+        <span className="word-count">{proofing.label}</span> <SuggestionFlag />{" "}
         <span>
           {pageCount} {pageCount === 1 ? "page" : "pages"} · English
         </span>
@@ -1811,5 +2088,6 @@ export default function Docs({
         }}
       />
     </div>
+    </SuggestionProvider>
   );
 }

@@ -19,6 +19,13 @@ Each storyboard is `NN-slug.md` with these sections:
 - **Success looks like:** the end state.
 - **Gaps and notes:** anything SuiteLeaf couldn't do, or did differently from Docs, Sheets, Word, or Excel, found while recording.
 
+Storyboards 27 onward describe experiences where SuiteLeaf falls short of Google Workspace. They add two sections between **Scenes** and **Success looks like**:
+
+- **Google Workspace benchmark:** how the same task works in Google Docs, Sheets, Slides, or Drive today, step by step, with click and keystroke counts and the pain points people report, with links.
+- **Better than Google Workspace when:** a numbered list of criteria that a recording or a test can check, such as "restoring a version takes at most 3 clicks from the editor".
+
+Their **Gaps and notes** list what SuiteLeaf can't do yet for that storyboard, checked against the code, so whoever implements it knows the starting point. Each has its own script, `scenes/NN-slug.spec.ts`.
+
 ## Recordings
 
 Each storyboard's script is a Playwright test in [scenes/](scenes) whose title is the storyboard slug. A passing run saves `videos/<slug>.mp4`. The videos show captions for each scene and a dot for the pointer.
@@ -75,3 +82,17 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 24 | [Pick up on another server](24-pick-up-on-another-server.md) | cluster (two servers) | Slides |
 | 25 | [When someone else saved first](25-when-someone-else-saved-first.md) | cluster | Docs |
 | 26 | [Sign out and go back to this computer](26-sign-out-and-disconnect.md) | cluster → single-node | Home |
+| 27 | [Share a document with a teammate](27-share-a-document-with-a-teammate.md) | cluster | Docs |
+| 28 | [Restore an earlier version](28-restore-an-earlier-version.md) | cluster | Docs |
+| 29 | [Comment on a document](29-comment-on-a-document.md) | single-node | Docs |
+| 30 | [Suggest changes and accept them](30-suggest-changes-and-accept-them.md) | single-node | Docs |
+| 31 | [Rearrange a deck](31-rearrange-a-deck.md) | single-node | Slides |
+| 32 | [Give a deck a theme and transitions](32-give-a-deck-a-theme-and-transitions.md) | single-node | Slides |
+| 33 | [Start from a template](33-start-from-a-template.md) | single-node | Home |
+| 34 | [Count words and check spelling](34-count-words-and-check-spelling.md) | single-node | Docs |
+| 35 | [Add a table of contents and footnotes](35-add-a-table-of-contents-and-footnotes.md) | single-node | Docs |
+| 36 | [Find any command](36-find-any-command.md) | single-node | Docs, Sheets, Slides |
+| 37 | [Dropdown lists in a sheet](37-dropdown-lists-in-a-sheet.md) | single-node | Sheets |
+| 38 | [Clean up messy data](38-clean-up-messy-data.md) | single-node | Sheets |
+| 39 | [Insert a function with help](39-insert-a-function-with-help.md) | single-node | Sheets |
+| 40 | [Trash, star, and restore files](40-trash-star-and-restore.md) | single-node | Files |

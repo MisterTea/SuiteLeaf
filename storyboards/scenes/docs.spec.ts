@@ -201,11 +201,9 @@ test("02-find-and-organize-files", async ({ page }) => {
   await caption(page, "Both newsletters are listed, each with its own name.", 1600);
 
   await caption(page, "Finally, remove the sample she no longer needs.", 1100);
-  await page.getByRole("button", { name: "Remove Welcome to SuiteLeaf", exact: true }).click();
-  const confirm = page.getByRole("dialog", { name: "Delete this file?" });
-  await expect(confirm).toContainText("“Welcome to SuiteLeaf” will be deleted from this browser.");
-  await caption(page, "SuiteLeaf asks first, and says exactly what will go.", 2000);
-  await confirm.getByRole("button", { name: "Delete" }).click();
+  await page.getByRole("button", { name: "Move Welcome to SuiteLeaf to Trash", exact: true }).click();
+  await expect(page.locator(".trash-toast")).toContainText("Moved “Welcome to SuiteLeaf” to Trash");
+  await caption(page, "It goes to Trash, with Undo if that was a mistake. The sample leaves the list.", 2000);
   await expect(page.getByRole("link", { name: "Welcome to SuiteLeaf", exact: true })).toHaveCount(0);
   await expect(rows).toHaveCount(4);
   await caption(page, "Four garden club files, easy to find by name, by what's inside, or by type.", 2200);
@@ -634,14 +632,23 @@ test("08-carry-a-file-to-another-computer", async ({ page }) => {
 
   await backToFiles(page);
   await caption(page, "To prove the file is all she needs, she removes the list from this browser.", 1200);
-  await page.getByRole("button", { name: "Remove Lisbon trip packing list", exact: true }).click();
-  const confirm = page.getByRole("dialog", { name: "Delete this file?" });
+  await page.getByRole("button", { name: "Move Lisbon trip packing list to Trash", exact: true }).click();
+  await page.getByRole("button", { name: "Trash", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Delete Lisbon trip packing list forever", exact: true })
+    .click();
+  const confirm = page.getByRole("dialog", {
+    name: "Delete “Lisbon trip packing list” forever?",
+  });
   await expect(confirm).toContainText(
-    "“Lisbon trip packing list” will be deleted from this browser. This can't be undone.",
+    "“Lisbon trip packing list” will be deleted from this browser forever. This can't be undone.",
   );
-  await expect(confirm).toContainText("A copy you downloaded isn't affected: open it again with Open / import.");
-  await caption(page, "SuiteLeaf asks first, and says the downloaded copy isn't affected.", 2600);
-  await confirm.getByRole("button", { name: "Delete" }).click();
+  await expect(confirm).toContainText(
+    "A copy you downloaded isn't affected: open it again with Open / import.",
+  );
+  await caption(page, "Deleting it for good still asks, and says the downloaded copy isn't affected.", 2600);
+  await confirm.getByRole("button", { name: "Delete forever" }).click();
+  await page.getByRole("button", { name: "All files", exact: true }).click();
   await expect(page.getByRole("heading", { name: "A workspace waiting for you" })).toBeVisible();
   await caption(page, "The library is empty, as on a computer that has never seen it.", 1600);
 

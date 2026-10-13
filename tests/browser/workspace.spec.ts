@@ -215,14 +215,24 @@ test("a downloaded native file says what it is and reopens over its library copy
   await expect(rows).toHaveCount(2);
 
   await page
-    .getByRole("button", { name: "Remove Packing list", exact: true })
+    .getByRole("button", { name: "Move Packing list to Trash", exact: true })
     .click();
-  const confirm = page.getByRole("dialog", { name: "Delete this file?" });
+  await expect(page.locator(".trash-toast")).toContainText(
+    "Moved “Packing list” to Trash",
+  );
+  await page.getByRole("button", { name: "Trash", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Delete Packing list forever", exact: true })
+    .click();
+  const confirm = page.getByRole("dialog", {
+    name: "Delete “Packing list” forever?",
+  });
   await expect(confirm).toContainText(
-    "“Packing list” will be deleted from this browser. This can't be undone.",
+    "“Packing list” will be deleted from this browser forever. This can't be undone.",
   );
   await expect(confirm).toContainText("open it again with Open / import");
-  await confirm.getByRole("button", { name: "Delete" }).click();
+  await confirm.getByRole("button", { name: "Delete forever" }).click();
+  await page.getByRole("button", { name: "All files", exact: true }).click();
   await expect(rows).toHaveCount(1);
 });
 test("cached application and local files work offline", async ({ page }) => {
@@ -693,10 +703,9 @@ test("slides use placeholders, re-apply layouts, and reorder by dragging thumbna
 
   for (const label of ["Line", "Grid view", "Zoom"])
     await expect(page.getByLabel(label, { exact: true })).toHaveCount(0);
-  for (const text of ["Transition", "Menus"])
-    await expect(
-      page.getByRole("button", { name: text, exact: true }),
-    ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Transition", exact: true }),
+  ).toHaveCount(0);
 
   // Layout on an existing slide moves its text into the new arrangement.
   await page.locator(".slide-canvas").click({ position: { x: 10, y: 10 } });
