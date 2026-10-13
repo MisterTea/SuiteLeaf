@@ -115,3 +115,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 57 | [Crop a photo](57-crop-a-photo.md) | single-node | Docs |
 | 58 | [Group rows](58-group-rows.md) | single-node | Sheets |
 | 59 | [Print the budget](59-print-the-budget.md) | single-node | Sheets |
+| 60 | [Comment on a slide](60-comment-on-a-slide.md) | single-node | Slides |
