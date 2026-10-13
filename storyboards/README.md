@@ -129,3 +129,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 72 | [Mark a draft](72-mark-a-draft.md) | single-node | Docs |
 | 74 | [Two columns for the news](74-two-columns-for-the-news.md) | single-node | Docs |
 | 83 | [Line up the times](83-line-up-the-times.md) | single-node | Docs |
+| 86 | [Keep the heading with the list](86-keep-the-heading-with-the-list.md) | single-node | Docs |
