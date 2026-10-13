@@ -299,6 +299,8 @@ export interface WorkspaceAgentContext {
   rename: (title: string) => void;
   /** Download (or, on desktop, Save As): the file's name, and where it went when known; null if cancelled. */
   download: () => Promise<{ name: string; path?: string } | null>;
+  /** The desktop app saves through a Save As dialog instead of downloading. */
+  saveAs?: boolean;
   back: () => Promise<void>;
   /** File > New: save this file, then create and open a new one. */
   create?: (kind: Kind, title?: string) => Promise<void>;
@@ -325,8 +327,8 @@ export function workspaceTools(ctx: WorkspaceAgentContext): SuiteTool[] {
     }),
     tool({
       name: "download_file",
-      label: "Download",
-      description: "Download a SuiteLeaf copy of the open file to the computer, to keep or move to another computer.",
+      label: ctx.saveAs ? "Save As" : "Download",
+      description: `${ctx.saveAs ? "Save the open file to a file on the computer (Save As)" : "Download the open file"} as one SuiteLeaf file that keeps everything in it, to keep or move to another computer. Use this when the user asks to download or save the file.`,
       parameters: Type.Object({}),
       target: () => document.querySelector(".save-copy"),
       async execute() {

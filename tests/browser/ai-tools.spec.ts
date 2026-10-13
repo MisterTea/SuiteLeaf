@@ -139,7 +139,10 @@ test("file tools download a file, remove it, and open it again without replacing
   await call(page, "create_file", { kind: "document", title: "Trip list" });
   await waitForTools(page, "write_text");
   expect(await call(page, "write_text", { text: "# Trip\n- Passport\n- Plug adapter" })).toContain("2 as bulleted list items");
-  expect(await call(page, "set_list", { from_text: "- Passport", to_text: "Plug adapter", list: "bullet" })).toContain("already a bullet list");
+  expect(await call(page, "set_list", { from_text: "- Passport", to_text: "Plug adapter", list: "bullet" })).toContain(
+    'The paragraphs from "- Passport" to "Plug adapter" are already in a bullet list; nothing changed.',
+  );
+  expect(await call(page, "set_list", { from_text: "Plug adapter", list: "bullet" })).toContain("give to_text");
   const downloading = page.waitForEvent("download");
   expect(await call(page, "download_file")).toContain('Downloaded "Trip list.sldoc": one SuiteLeaf file with the whole document');
   const saved = test.info().outputPath("Trip list.sldoc");

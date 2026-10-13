@@ -1465,6 +1465,7 @@ function Workspace() {
                   }
                 : null,
             ),
+          saveAs: !!window.suiteleaf && !cluster,
           back: () => save().then(() => navigate("/")),
           create: async (kind, title) => {
             await save();

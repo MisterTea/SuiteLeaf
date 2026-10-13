@@ -367,8 +367,9 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         editor.chain().setTextSelection({ from: start.from, to: Math.max(start.to, end.to) }).run();
         const bullet = editor.isActive("bulletList"),
           numbered = editor.isActive("orderedList");
+        const which = to_text ? `The paragraphs from "${from_text}" to "${to_text}" are` : `Only the paragraph containing "${from_text}" was covered, and it is`;
         if ((list === "bullet" && bullet) || (list === "numbered" && numbered) || (list === "none" && !bullet && !numbered))
-          return `Those paragraphs are already ${list === "none" ? "plain paragraphs" : `a ${list} list`}; nothing changed.`;
+          return `${which} already ${list === "none" ? "plain paragraphs" : `in a ${list} list`}; nothing changed.${to_text ? "" : " To cover the paragraphs after it too, give to_text (text in the last one)."}`;
         const chain = editor.chain();
         if (list === "bullet" && !bullet) chain.toggleBulletList().run();
         else if (list === "numbered" && !numbered) chain.toggleOrderedList().run();
@@ -609,7 +610,8 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
     tool({
       name: "export_document",
       label: "Export",
-      description: "Export the document as a Word file (docx), a web page (html) or plain text (txt). The file downloads.",
+      description:
+        "Export a copy in another format, for other apps: a Word file (docx), a web page (html) or plain text (txt). Only when the user asks for one of these; to download or save the file itself, use download_file.",
       parameters: Type.Object({ format: Type.String({ enum: ["docx", "html", "txt"] }) }),
       target: () => document.querySelector(".workspace-header .menu-trigger, .workspace-header [aria-haspopup]"),
       async execute({ format }) {
