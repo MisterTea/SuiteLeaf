@@ -114,9 +114,30 @@ test("spreadsheet tools write, format, sort, chart and pivot", async ({ page }) 
   expect(await call(page, "freeze", { rows: 1 })).toMatch(
     /^Row 1 \(Category, Budget, .*\) now stays at the top while scrolling\. No columns are frozen\.$/,
   );
-  expect(
-    await call(page, "create_pivot", { range: "A1:C5", rows: ["Category"], value: "Actual", summarize: "SUM" }),
-  ).toContain("Pivot table");
+  await expect(
+    call(page, "create_pivot", { range: "A1:C5", rows: ["Category"], value: "Actual", summarize: "SUM", filter_column: "Category", filter_value: "October" }),
+  ).rejects.toThrow(/No row has Category equal to "October"; its values are Engineering, .*Leave filter_column/);
+  const pivot = await call(page, "create_pivot", {
+    range: "A1:C5",
+    rows: ["Category"],
+    value: "Actual",
+    summarize: "SUM",
+    filter_column: "Category",
+    number_format: "accounting",
+  });
+  expect(pivot).toContain("Pivot table");
+  expect(pivot).toMatch(/Grand Total\t\d+/);
+  expect(pivot).toMatch(/as accounting \(.+\): the source cells C2:C5 on sheet "Sheet1" were formatted that way/);
+  expect(await call(page, "format_cells", { range: "B2:B6", number_format: "currency" })).toMatch(
+    /source cells C2:C5 on sheet "Sheet1" were formatted as currency .* the pivot followed\. Shown as:\n.*\n1\tCategory\t[^\n]*\n2\t\w+\t\$/,
+  );
+  await expect(call(page, "format_cells", { range: "B2:B6", bold: true })).rejects.toThrow(
+    /read-only: it follows A1:C5 on sheet "Sheet1".*its values are C2:C5/,
+  );
+  await expect(call(page, "set_cells", { start: "D2", values: [["note"]] })).rejects.toThrow(/use copy_pivot/);
+  await call(page, "switch_sheet", { name: "Sheet1" });
+  expect(await call(page, "copy_pivot")).toMatch(/new sheet "Pivot table \(copy\)", now the active sheet:\n.*\n1\tCategory/);
+  expect(await call(page, "set_cells", { start: "D2", values: [["note"]] })).toContain("Wrote D2.");
 });
 
 test("spreadsheet filter tools say which rows are showing and what they add up to", async ({ page }) => {
