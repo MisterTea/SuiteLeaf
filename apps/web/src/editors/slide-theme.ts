@@ -149,6 +149,10 @@ export function resetToTheme(
     fill: painted.fill,
     stroke: painted.stroke,
     themeOverride: false,
+    runs: undefined,
+    bold: false,
+    italic: false,
+    underline: false,
   };
 }
 
