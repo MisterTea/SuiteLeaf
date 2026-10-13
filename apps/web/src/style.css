@@ -3967,6 +3967,80 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
   gap: 2px;
   padding-right: 6px;
 }
+.drive-keep {
+  flex-shrink: 0;
+  margin-right: 8px;
+  padding: 6px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.drive-keep:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+.drive-keep:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+.drive-kept {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--toolbar-active);
+  color: var(--toolbar-active-text);
+  font-size: 13px;
+}
+.share-arrivals {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.share-arrivals.floating {
+  position: fixed;
+  z-index: 50;
+  top: 64px;
+  right: 16px;
+  width: min(420px, calc(100vw - 32px));
+}
+.share-arrival {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--google-blue);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-primary);
+  box-shadow: 0 8px 24px rgba(32, 33, 36, 0.16);
+}
+.share-arrival p {
+  margin: 0;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.share-arrival-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+@media (max-width: 700px) {
+  .drive-row {
+    flex-wrap: wrap;
+  }
+  .drive-keep {
+    margin: 0 8px 8px auto;
+  }
+  .share-arrivals.floating {
+    top: 8px;
+    right: 8px;
+    left: 8px;
+    width: auto;
+  }
+}
 .drive-row-actions button {
   padding: 6px;
   border: 0;
