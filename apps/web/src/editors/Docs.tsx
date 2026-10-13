@@ -97,6 +97,7 @@ import {
   documentHtml,
   documentPageSettings,
   pageDimensions,
+  pageFurniture,
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
 
@@ -1353,7 +1354,11 @@ export default function Docs({
                 <span>Header</span>
                 <input
                   aria-label="Page header"
-                  placeholder="Text at the top of every page"
+                  placeholder={
+                    pageDraft.differentFirstPage
+                      ? "Text at the top of later pages"
+                      : "Text at the top of every page"
+                  }
                   value={pageDraft.header}
                   maxLength={500}
                   onChange={(e) =>
@@ -1365,7 +1370,11 @@ export default function Docs({
                 <span>Footer</span>
                 <input
                   aria-label="Page footer"
-                  placeholder="Text at the bottom of every page"
+                  placeholder={
+                    pageDraft.differentFirstPage
+                      ? "Text at the bottom of later pages"
+                      : "Text at the bottom of every page"
+                  }
                   value={pageDraft.footer}
                   maxLength={500}
                   onChange={(e) =>
@@ -1389,9 +1398,66 @@ export default function Docs({
                   Page numbers
                 </label>
                 <span id="page-numbers-hint" className="page-setup-hint">
-                  Bottom right of every page, as “1 / 3”
+                  {pageDraft.differentFirstPage
+                    ? "Page 1 has no number. Page 2 shows 2."
+                    : "Bottom right of every page, as “1 / 3”"}
                 </span>
               </div>
+              <div className="page-setup-check">
+                <label>
+                  <input
+                    type="checkbox"
+                    aria-describedby="different-first-page-hint"
+                    checked={pageDraft.differentFirstPage}
+                    onChange={(e) =>
+                      setPageDraft({
+                        ...pageDraft,
+                        differentFirstPage: e.target.checked,
+                      })
+                    }
+                  />
+                  Different first page
+                </label>
+                <span id="different-first-page-hint" className="page-setup-hint">
+                  Page 1 gets its own header and footer. Later pages keep the
+                  header above.
+                </span>
+              </div>
+              {pageDraft.differentFirstPage ? (
+                <fieldset className="page-setup-first">
+                  <legend>First page</legend>
+                  <label>
+                    <span>Header</span>
+                    <input
+                      aria-label="First page header"
+                      placeholder="Letterhead, or leave blank"
+                      value={pageDraft.firstHeader}
+                      maxLength={500}
+                      onChange={(e) =>
+                        setPageDraft({
+                          ...pageDraft,
+                          firstHeader: e.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    <span>Footer</span>
+                    <input
+                      aria-label="First page footer"
+                      placeholder="Cover footer, or leave blank"
+                      value={pageDraft.firstFooter}
+                      maxLength={500}
+                      onChange={(e) =>
+                        setPageDraft({
+                          ...pageDraft,
+                          firstFooter: e.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                </fieldset>
+              ) : null}
             </div>
             <div className="dialog-footer">
               <button
@@ -1893,23 +1959,24 @@ export default function Docs({
             }
           >
             <div className="page-furniture" aria-hidden="true">
-              {Array.from({ length: pageCount }, (_, i) => (
-                <div
-                  key={i}
-                  className="page-furniture-page"
-                  style={{ "--page-index": i } as CSSProperties}
-                >
-                  <div className="page-header">{pageSettings.header}</div>
-                  <div className="page-footer">
-                    <span>{pageSettings.footer}</span>
-                    {pageSettings.pageNumbers ? (
-                      <span>
-                        {i + 1} / {pageCount}
-                      </span>
-                    ) : null}
+              {Array.from({ length: pageCount }, (_, i) => {
+                const furniture = pageFurniture(pageSettings, i, pageCount);
+                return (
+                  <div
+                    key={i}
+                    className="page-furniture-page"
+                    style={{ "--page-index": i } as CSSProperties}
+                  >
+                    <div className="page-header">{furniture.header}</div>
+                    <div className="page-footer">
+                      <span>{furniture.footer}</span>
+                      {furniture.pageNumber ? (
+                        <span className="page-number">{furniture.pageNumber}</span>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
             <EditorContent editor={editor} />
           </div>

@@ -3,6 +3,7 @@ import {
   defaultPageSettings,
   documentHtml,
   documentPageSettings,
+  pageFurniture,
 } from "../packages/core/src/document-layout";
 
 describe("document page settings", () => {
@@ -20,6 +21,43 @@ describe("document page settings", () => {
     expect(saved({ header: "Old file" }).pageNumbers).toBe(true);
     expect(saved({ pageNumbers: true }).pageNumbers).toBe(true);
     expect(saved({ pageNumbers: false }).pageNumbers).toBe(false);
+  });
+  it("keeps a different first page, and leaves older files unchanged", () => {
+    const saved = (pageSettings: object) =>
+      documentPageSettings({ type: "doc", attrs: { pageSettings } });
+    const older = saved({ header: "Garden club minutes", footer: "Draft" });
+    expect(older.differentFirstPage).toBe(false);
+    expect(older.firstHeader).toBe("");
+    expect(pageFurniture(older, 0, 2)).toEqual({
+      header: "Garden club minutes",
+      footer: "Draft",
+      pageNumber: "1 / 2",
+    });
+    const cover = saved({
+      header: "Garden club minutes",
+      footer: "Draft",
+      pageNumbers: true,
+      differentFirstPage: true,
+      firstHeader: "Riverside Garden Club",
+      firstFooter: "",
+    });
+    expect(cover.differentFirstPage).toBe(true);
+    expect(cover.firstHeader).toBe("Riverside Garden Club");
+    expect(pageFurniture(cover, 0, 2)).toEqual({
+      header: "Riverside Garden Club",
+      footer: "",
+      pageNumber: "",
+    });
+    expect(pageFurniture(cover, 1, 2)).toEqual({
+      header: "Garden club minutes",
+      footer: "Draft",
+      pageNumber: "2 / 2",
+    });
+    expect(pageFurniture({ ...cover, differentFirstPage: false }, 0, 2)).toEqual({
+      header: "Garden club minutes",
+      footer: "Draft",
+      pageNumber: "1 / 2",
+    });
   });
 });
 
