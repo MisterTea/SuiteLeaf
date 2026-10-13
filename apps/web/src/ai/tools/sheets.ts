@@ -376,7 +376,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       name: "format_cells",
       label: "Format cells",
       description:
-        "Format a range: number_format (currency $1,020.00, accounting, percent 54.3%, percent_whole 54%, number 1,020.00, date, plain), decimals (how many decimal places to show, e.g. 0 for $1,020 or 2 for 54.26%; leave it out to keep the format's usual places), bold, italic, text_color and fill_color (#rrggbb), align (left, center, right), borders (true for thin borders on every cell), wrap. Set only what the user asked for on this range; anything you leave out stays as it is (bold=false removes bold).",
+        "Format a range: number_format (currency $1,234.50, accounting, percent 12.5%, percent_whole 13%, number 1,234.50 without a $ sign, date, plain), decimals (how many decimal places to show, e.g. 0 for $1,235 or 2 for 12.46%; leave it out to keep the format's usual places), bold, italic, text_color and fill_color (#rrggbb), align (left, center, right), borders (true for thin borders on every cell), wrap. Set only what the user asked for on this range; anything you leave out stays as it is (bold=false removes bold).",
       parameters: Type.Object({
         range: Type.String(),
         number_format: Type.Optional(
