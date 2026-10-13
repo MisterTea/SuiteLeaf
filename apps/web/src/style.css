@@ -1608,6 +1608,84 @@ a {
     display: none !important;
   }
 }
+.image-alt-card {
+  position: fixed;
+  z-index: 50;
+  width: min(320px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 10px 12px 12px;
+  border: 1px solid #dadce0;
+  border-radius: 12px;
+  background: #fff;
+  color: #1f1f1f;
+  font: 14px/1.4 Arial, sans-serif;
+  box-shadow: 0 8px 28px rgba(32, 33, 36, 0.18);
+}
+.image-alt-launch {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  min-height: 40px;
+  border: 0;
+  border-radius: 8px;
+  background: #e8f0fe;
+  color: #174ea6;
+  font: 600 14px/1.2 Arial, sans-serif;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+.image-alt-launch:hover {
+  background: #d2e3fc;
+}
+.image-alt-status {
+  margin: 8px 2px 0;
+  color: #1f1f1f;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.image-alt-status.is-empty {
+  color: #8a4b08;
+}
+.image-alt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.image-alt-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.image-alt-hint {
+  margin: 4px 0 8px;
+  color: #5f6368;
+  font-size: 12px;
+}
+.image-alt-card textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 72px;
+  resize: vertical;
+  border: 1px solid #c4c7c5;
+  border-radius: 8px;
+  padding: 8px;
+  font: 14px/1.4 Arial, sans-serif;
+  color: #1f1f1f;
+}
+.image-alt-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+@media print {
+  .image-alt-card {
+    display: none;
+  }
+}
 .document-content hr {
   border: none;
   border-top: 1.5px solid #4f81bd;
