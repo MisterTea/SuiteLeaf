@@ -49,6 +49,7 @@ import {
   guardFormulaSuggestions,
   rankFormulaSuggestions,
 } from "./formula-suggestions";
+import { useSheetFunctions } from "./function-help-ui";
 import SortRangeDialog from "./SortRangeDialog";
 import { useToolbarOverflow } from "./toolbar-overflow";
 import "@univerjs/preset-sheets-core/lib/index.css";
@@ -758,6 +759,7 @@ export default function Sheets({
   const host = useRef<HTMLDivElement>(null),
     api = useRef<any>(null),
     book = useRef<any>(null),
+    injectorRef = useRef<any>(null),
     content = useRef(structuredClone(file.content)),
     changes = useRef(onChange),
     error = useRef(onError);
@@ -802,8 +804,15 @@ export default function Sheets({
   const toolbar = useRef<HTMLDivElement>(null);
   const moreTools = useToolbarOverflow(
     toolbar,
-    '[aria-label^="Insert comment"], .chart-btn, .filter-btn, .pivot-btn, .sheet-analyses-dropdown',
+    '[aria-label^="Insert comment"], .chart-btn, .filter-btn, .functions-btn, .pivot-btn, .sheet-analyses-dropdown',
   );
+  const functionActions = useRef<{
+    insertFunction: (name: string) => void;
+    autoSum: () => void;
+  }>({
+    insertFunction: () => {},
+    autoSum: () => {},
+  });
   const persist = useRef<() => void>(() => {}),
     refreshCharts = useRef<() => void>(() => {}),
     syncTextStyle = useRef<() => void>(() => {}),
@@ -924,6 +933,7 @@ export default function Sheets({
       });
       const injector = univer.__getInjector();
       engine.current = injector;
+      injectorRef.current = injector;
       const stopSuggestionGuard = guardFormulaSuggestions(
         injector.get(IShortcutService),
         injector.get(IEditorService),
@@ -935,6 +945,7 @@ export default function Sheets({
         api.current = null;
         book.current = null;
         engine.current = null;
+        injectorRef.current = null;
         persist.current = () => {};
         refreshCharts.current = () => {};
         refreshPivots.current = () => {};
@@ -1880,6 +1891,7 @@ export default function Sheets({
         deleteValues,
         insertChart: () => startPanel("chart"),
         insertPivot: () => startPanel("pivot"),
+        insertFunction: (name: string) => functionActions.current.insertFunction(name),
         toggleFilter,
         sortRange: openSortRange,
         trimWhitespace: () => cleanup.current?.trim(),
@@ -2193,8 +2205,23 @@ export default function Sheets({
   const activePivotError = activePivot
     ? pivotErrors.current.get(activePivot.id)
     : undefined;
+  const functions = useSheetFunctions({
+    ready,
+    hostRef: host,
+    bookRef: book,
+    apiRef: api,
+    injectorRef,
+    persist: () => persist.current(),
+    notify: setNotice,
+  });
+  functionActions.current = {
+    insertFunction: functions.insertFunction,
+    autoSum: functions.autoSum,
+  };
   return (
     <div className="sheets-editor">
+      {functions.panel}
+      {functions.stats}
       {notice ? (
         <div className="sheet-notice" role="status">
           {notice}
@@ -2518,13 +2545,7 @@ export default function Sheets({
           className="tool functions-btn"
           title="Functions"
           aria-label="Functions"
-          onClick={() => {
-            const r = book.current?.getActiveRange();
-            if (r) {
-              r.setValue("=SUM()");
-              persist.current();
-            }
-          }}
+          onClick={() => functions.autoSum()}
         >
           <span
             style={{

@@ -73,6 +73,7 @@ import {
   TableMenuItems,
   type EditorActions,
 } from "./ui";
+import { FunctionMenu } from "./editors/function-help-ui";
 import { SheetViewMenu } from "./editors/SheetViewMenu";
 import {
   DriveConflict,
@@ -1978,8 +1979,13 @@ function Workspace() {
                   >
                     Pivot table
                   </MenuItem>
-                  <MenuItem onSelect={() => {}}>Function: SUM</MenuItem>
-                  <MenuItem onSelect={() => {}}>Function: AVERAGE</MenuItem>
+                  <SubMenu label="Function">
+                    <FunctionMenu
+                      onInsert={(name) =>
+                        actions.current?.sheetActions?.insertFunction?.(name)
+                      }
+                    />
+                  </SubMenu>
                   <MenuItem shortcut="Cmd+K" onSelect={() => {}}>
                     Link
                   </MenuItem>
