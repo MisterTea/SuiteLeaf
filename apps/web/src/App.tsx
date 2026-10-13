@@ -1258,6 +1258,12 @@ function Workspace() {
     try {
       await driveQueue.current.enqueue(async () => {
         const base = current.current!.drive!;
+        // A restore can replace the document while this snapshot is still queued.
+        if (
+          JSON.stringify(current.current!.file.content) !==
+          JSON.stringify(snapshot.content)
+        )
+          return;
         const link = await uploadDriveFile(snapshot, base);
         // Saving to a new SuiteDrive item may have relinked the file meanwhile.
         if (current.current!.drive?.itemId !== base.itemId) return;
@@ -1442,8 +1448,11 @@ function Workspace() {
     openEditors.add(flush);
     return () => void openEditors.delete(flush);
   }, [save, syncDrive]);
+  // The editor that was just replaced can flush its old document while unmounting.
+  const ignoreEditorUpdates = useRef(false);
   const update = useCallback(
     (content: SuiteFile["content"]) => {
+      if (ignoreEditorUpdates.current) return;
       if (!canEditRef.current || !current.current) return;
       current.current = {
         ...current.current,
@@ -3086,6 +3095,10 @@ function Workspace() {
             onRestored={(next) => {
               clearTimeout(timer.current);
               clearTimeout(driveTimer.current);
+              ignoreEditorUpdates.current = true;
+              requestAnimationFrame(() => {
+                ignoreEditorUpdates.current = false;
+              });
               current.current = next;
               version.current = 0;
               savedVersion.current = 0;
