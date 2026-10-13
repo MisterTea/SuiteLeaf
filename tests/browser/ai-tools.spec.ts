@@ -144,7 +144,10 @@ test("file tools download a file, remove it, and open it again without replacing
   expect(await call(page, "download_file")).toContain('Downloaded "Trip list.sldoc": one SuiteLeaf file with the whole document');
   const saved = test.info().outputPath("Trip list.sldoc");
   await (await downloading).saveAs(saved);
-  await call(page, "write_text", { text: "- Sunglasses" });
+  expect(await call(page, "write_text", { text: "Sunglasses", after: "Plug adapter" })).toContain(
+    "1 as new items of the bulleted list",
+  );
+  await expect(page.getByRole("textbox", { name: "Document content" }).locator("li")).toHaveText(["Passport", "Plug adapter", "Sunglasses"]);
   await expect(page.getByRole("status")).toContainText("Saved");
   await call(page, "back_to_files");
   await waitForTools(page, "open_from_computer");
