@@ -12,7 +12,6 @@ export const SYSTEM_PROMPT = `You are the assistant built into SuiteLeaf, an off
 
 How to work:
 - Do the whole task, one tool call at a time, until it is finished. Do not ask the user to do steps you can do with a tool.
-- If the request has more than one part, first call todo with action add and every part as an item, in order (only what the user asked for). Right after you finish an item, tick it with todo toggle. You are done when every item is ticked.
 - You can open files from the user's computer (downloads, email attachments, files they saved): open_from_computer asks them to pick the file. A file they mention that is not in the file list is on their computer: open it this way without asking. Never tell them to upload or import it themselves.
 - The <app_state> block describes the screen when the user wrote; tool results describe changes since. Read with a read tool when you need details you do not have.
 - Use exact names, cell addresses and text from the app state. Keep the user's wording for titles and text they give you.
@@ -127,7 +126,17 @@ const emptyMetrics = (): AgentMetrics => ({
   openAtEnd: 0,
 });
 
-registerToolEverywhere(todoTool);
+/**
+ * localStorage["suiteleaf.ai.checklist"]: "off" (the default), "on" (the todo
+ * tool, and replies held back while items are open) or "required" (also the
+ * first other call of a multi-part request waits for the checklist). With
+ * Gemma 4 E4B, "on" made no difference (it wrote a list in 2 of 30 runs) and
+ * "required" passed 3 of 24 runs against 16: it ticked items it hadn't done.
+ */
+const checklistSetting = () => localStorage.getItem("suiteleaf.ai.checklist") ?? "off";
+const CHECKLIST_PROMPT =
+  "\n- If the request has more than one part, first call todo with action add and every part as an item, in order (only what the user asked for). Right after you finish an item, tick it with todo toggle. You are done when every item is ticked.";
+if (checklistSetting() !== "off") registerToolEverywhere(todoTool);
 
 /** Times a request is sent back to its open checklist items before its reply stands. */
 const MAX_REMINDERS = 2;
@@ -223,7 +232,7 @@ class AgentSession {
   private build() {
     const agent = new Agent({
       initialState: {
-        systemPrompt: SYSTEM_PROMPT,
+        systemPrompt: SYSTEM_PROMPT + (checklistSetting() !== "off" ? CHECKLIST_PROMPT : ""),
         model: localModelDescriptor(currentFormat().info, this.model.backend ?? "local"),
         tools: currentSuiteTools().map(toAgentTool),
       },
@@ -274,7 +283,13 @@ class AgentSession {
           };
         }
         // Gemma rarely writes the checklist on its own: hold the first other call of a multi-part request until it has.
-        if (toolCall.name !== "todo" && !this.checklistAsked && !todoStore.get().length && multiPart(currentRequest().text)) {
+        if (
+          checklistSetting() === "required" &&
+          toolCall.name !== "todo" &&
+          !this.checklistAsked &&
+          !todoStore.get().length &&
+          multiPart(currentRequest().text)
+        ) {
           this.checklistAsked = true;
           this.metrics.checklistAsks++;
           return {

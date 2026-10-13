@@ -64,6 +64,7 @@ The browser runs need the model weights in `~/.cache/suiteleaf-models` (`onnx-co
 | `STORYBOARD_AI_MODEL` | Browser model: `gemma-4-e4b` (default) or `frognano-4b`. |
 | `STORYBOARD_AI_THINKING` | FrogNano's thinking budget per reply, in tokens (default: no limit). |
 | `STORYBOARD_AI_REVIEW` | The check before the final reply: `issues` (default: only when the app sees a problem), `always` or `off`. |
+| `STORYBOARD_AI_CHECKLIST` | The todo checklist: `off` (default), `on`, or `required` (the first step of a multi-part request waits for it). |
 | `STORYBOARD_AI_CAPTURE` | `1` keeps every prompt in the metrics, for `scripts/ai-fidelity.mjs`. |
 | `STORYBOARD_AI_REVIEW` | The check before the final reply: `issues` (default: only when the app sees a problem), `always` or `off`. |
 | `STORYBOARD_AI_CAPTURE` | `1` keeps every prompt in the metrics, for `scripts/ai-fidelity.mjs`. |
