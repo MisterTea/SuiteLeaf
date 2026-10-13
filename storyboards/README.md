@@ -135,3 +135,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 80 | [Send an outline to Excel](80-send-an-outline-to-excel.md) | single-node | Sheets |
 | 82 | [Use a two-inch margin](82-use-a-two-inch-margin.md) | single-node | Docs |
 | 83 | [Line up the times](83-line-up-the-times.md) | single-node | Docs |
+| 84 | [Set how far the header sits from the edge](84-header-from-the-edge.md) | single-node | Docs |

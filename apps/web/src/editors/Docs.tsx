@@ -104,8 +104,10 @@ import { documentCitations } from "./doc-citations";
 import { DocCitations } from "./doc-citations-panel";
 import { Equation, EquationDialog } from "./doc-equations";
 import {
+  bodyEdgeInsets,
   documentHtml,
   documentPageSettings,
+  edgeDistancesValid,
   pageDimensions,
   pageMarginsValid,
   type PageSettings,
@@ -117,6 +119,7 @@ import { LineSpacingControl } from "./doc-line-spacing-ui";
 import { DocWatermarkField, pageSetupToSave } from "./doc-watermark";
 import { columnLayout } from "./doc-columns";
 import { PageMarginFields } from "./page-setup-margins";
+import { HeaderEdgeFields } from "./header-edge";
 
 export const extensions: Extensions = [
   DocumentPagination,
@@ -970,10 +973,12 @@ export default function Docs({
   const pageSettings = documentPageSettings(editor.getJSON() as JsonNode);
   const pageDraftValid =
     pageMarginsValid(pageDraft) &&
+    edgeDistancesValid(pageDraft) &&
     Number.isInteger(pageDraft.pageNumberStart) &&
     pageDraft.pageNumberStart >= 1 &&
     pageDraft.pageNumberStart <= 9999;
   const dimensions = pageDimensions(pageSettings);
+  const edgeInsets = bodyEdgeInsets(pageSettings, dimensions.width);
   const requestedZoom =
     zoomLevel === "Fit" ? 1 : Number.parseInt(zoomLevel, 10) / 100;
   const pageZoom = commentGutter || citationsOpen
@@ -1450,6 +1455,7 @@ export default function Docs({
                 ))}
               </fieldset>
               <PageMarginFields draft={pageDraft} onChange={setPageDraft} />
+              <HeaderEdgeFields draft={pageDraft} onChange={setPageDraft} />
               <PageSetupFields
                 draft={pageDraft}
                 pageCount={pageCount}
@@ -1966,6 +1972,10 @@ export default function Docs({
                 "--page-margin-right": `${pageSettings.marginRight}px`,
                 "--page-margin-bottom": `${pageSettings.marginBottom}px`,
                 "--page-margin-left": `${pageSettings.marginLeft}px`,
+                "--header-from-edge": `${pageSettings.headerFromEdge}px`,
+                "--footer-from-edge": `${pageSettings.footerFromEdge}px`,
+                "--body-inset-top": `${edgeInsets.top}px`,
+                "--body-inset-bottom": `${edgeInsets.bottom}px`,
                 "--page-stride": `${dimensions.height + 24}px`,
                 minHeight: `${pageCount * dimensions.height + (pageCount - 1) * 24}px`,
                 zoom: pageZoom,

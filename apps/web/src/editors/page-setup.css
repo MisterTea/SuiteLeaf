@@ -1,10 +1,10 @@
 .gdocs-dialog.page-setup-dialog {
   width: min(640px, calc(100vw - 32px));
-  max-height: calc(100vh - 32px);
+  max-height: calc(100vh - 180px);
   overflow: hidden;
 }
 .page-setup-dialog .dialog-body {
-  max-height: calc(100vh - 168px);
+  max-height: calc(100vh - 300px);
   overflow: auto;
   min-height: 0;
   padding-right: 4px;
@@ -247,7 +247,7 @@
 .page-number-top {
   position: absolute;
   right: 0;
-  top: calc(var(--page-margin) / 2 - 10px);
+  top: var(--header-from-edge, calc(var(--page-margin) / 2 - 10px));
 }
 .page-number {
   color: #174ea6;

@@ -4352,15 +4352,15 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
 
 /* Page spacers are decorations: pagination leaves the editable document intact. */
 .paginated-paper { position: relative; width: var(--page-width); max-width: none; flex-shrink: 0; border: 0; background: repeating-linear-gradient(to bottom, white 0, white var(--page-height), var(--viewport-bg) var(--page-height), var(--viewport-bg) var(--page-stride)); }
-.paginated-paper .document-content { padding: var(--page-margin-top, var(--page-margin)) var(--page-margin-right, var(--page-margin)) var(--page-margin-bottom, var(--page-margin)) var(--page-margin-left, var(--page-margin)); min-height: var(--page-height); position: relative; z-index: 1; }
+.paginated-paper .document-content { padding: var(--body-inset-top, var(--page-margin-top, var(--page-margin))) var(--page-margin-right, var(--page-margin)) var(--body-inset-bottom, var(--page-margin-bottom, var(--page-margin))) var(--page-margin-left, var(--page-margin)); min-height: var(--page-height); position: relative; z-index: 1; }
 .doc-page-spacer { display: block; height: var(--spacer-height); margin: 0 !important; padding: 0 !important; border: 0 !important; pointer-events: none; }
 tr.doc-page-spacer { display: table-row; }
 tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; background: transparent; }
 .manual-page-break { height: 0; margin: 0; }
 .page-furniture { position: absolute; inset: 0; pointer-events: none; color: #555; font: 10pt Arial, sans-serif; }
 .page-furniture-page { position: absolute; left: var(--page-margin-left, var(--page-margin)); right: var(--page-margin-right, var(--page-margin)); top: calc(var(--page-index) * var(--page-stride)); height: var(--page-height); }
-.page-header { position: absolute; top: calc(var(--page-margin-top, var(--page-margin)) / 2 - 8px); white-space: pre-wrap; z-index: 1; }
-.page-footer { position: absolute; bottom: calc(var(--page-margin-bottom, var(--page-margin)) / 2 - 8px); display: flex; justify-content: space-between; gap: 16px; width: 100%; white-space: pre-wrap; z-index: 1; }
+.page-header { position: absolute; top: var(--header-from-edge, calc(var(--page-margin-top, var(--page-margin)) / 2 - 8px)); line-height: 16px; white-space: pre-wrap; z-index: 2; }
+.page-footer { position: absolute; bottom: var(--footer-from-edge, calc(var(--page-margin-bottom, var(--page-margin)) / 2 - 8px)); display: flex; justify-content: space-between; gap: 16px; width: 100%; line-height: 16px; white-space: pre-wrap; z-index: 2; }
 .page-watermark { position: absolute; left: 0; right: 0; top: calc(var(--page-margin-top, var(--page-margin)) + 28px); height: 210px; z-index: 0; display: flex; align-items: center; justify-content: center; overflow: visible; pointer-events: none; user-select: none; }
 .page-watermark span { font-family: Arial, sans-serif; font-weight: 700; line-height: 1; letter-spacing: 0.06em; color: rgba(95, 99, 104, 0.36); white-space: nowrap; font-size: min(108px, calc(var(--page-width) / var(--mark-em, 5))); }
 .feature-dialog { width: min(560px, calc(100vw - 32px)); max-height: 85vh; overflow: auto; }
@@ -4548,7 +4548,7 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 .tab-settings-row input[type="color"] { width: 30px; }
 @media print {
   .paginated-paper { width: var(--page-width); background: white; box-shadow: none; min-height: 0 !important; zoom: 1 !important; }
-  .paginated-paper .document-content { padding: var(--page-margin-top, var(--page-margin)) var(--page-margin-right, var(--page-margin)) var(--page-margin-bottom, var(--page-margin)) var(--page-margin-left, var(--page-margin)); }
+  .paginated-paper .document-content { padding: var(--body-inset-top, var(--page-margin-top, var(--page-margin))) var(--page-margin-right, var(--page-margin)) var(--body-inset-bottom, var(--page-margin-bottom, var(--page-margin))) var(--page-margin-left, var(--page-margin)); }
   .doc-page-spacer { height: calc(var(--spacer-height) - 24px); }
   tr.doc-page-spacer td { height: calc(var(--spacer-height) - 24px); }
   .page-furniture-page { top: calc(var(--page-index) * var(--page-height)); }

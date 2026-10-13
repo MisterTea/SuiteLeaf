@@ -320,6 +320,28 @@ export function VersionHistory({
           preview.current(step.preview);
           return;
         }
+        if (before.kind === "doc" && current.kind === "doc") {
+          const againstCurrent = compareParagraphs(before.content, current.content);
+          setChangeCount(againstCurrent.changedParagraphs);
+          setChangeUnit("paragraph");
+          const source = selected.name
+            ? `"${selected.name}"`
+            : versionWhen(selected.createdAt);
+          const controls = againstCurrent.offers.map((offer) =>
+            offer
+              ? { key: offer.key, prompt: paragraphRestorePrompt(offer, source) }
+              : null,
+          );
+          setViewSummary("");
+          preview.current({
+            kind: "doc",
+            content: againstCurrent.content,
+            label:
+              "Comparing with the current version · read-only. Green underline was added later. Red strikethrough was removed.",
+            offers: controls,
+          });
+          return;
+        }
         setViewSummary(against.summary);
         if (
           before.kind === "doc" &&
