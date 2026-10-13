@@ -6,6 +6,7 @@ import {
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
 import { EdgeField } from "./header-edge";
+import { GutterField } from "./page-gutter";
 import "./page-setup-margins.css";
 import "./page-setup-fit.css";
 
@@ -152,6 +153,10 @@ export function PageSetupFit({
           {field("marginLeft")}
           {field("marginRight")}
         </div>
+        <GutterField
+          px={draft.gutter}
+          onPx={(gutter) => onChange({ ...draft, gutter })}
+        />
         <p
           className="page-margin-note"
           aria-live="polite"

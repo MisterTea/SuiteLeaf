@@ -112,7 +112,9 @@ import {
   pageMarginsValid,
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
-import { PageFurniture, PageSetupFields } from "./page-setup";
+import { PageSetupFields } from "./page-setup";
+import { PageFurniture } from "./doc-header-editor";
+import { PageGutterBands } from "./page-gutter";
 import { ArabicNumberStart, ArabicStartControl } from "./doc-arabic-start";
 import { paragraphLineSpacing } from "./doc-line-spacing";
 import { LineSpacingControl } from "./doc-line-spacing-ui";
@@ -2125,10 +2127,13 @@ export default function Docs({
             }
           >
             <PageFurniture
+              editor={editor}
               settings={shownSettings}
               pageCount={pageCount}
+              readOnly={readOnly}
               arabicStart={arabicPage}
             />
+            <PageGutterBands settings={shownSettings} pageCount={pageCount} />
             <EditorContent editor={editor} />
             <KeepWithNextControl editor={editor} readOnly={readOnly} />
             <DontLeaveOneLineControl editor={editor} readOnly={readOnly} />

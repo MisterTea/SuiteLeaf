@@ -89,6 +89,7 @@ export function GutterField({
       <label>
         <span>Gutter (inches)</span>
         <input
+          aria-label="Gutter (inches)"
           aria-describedby="gutter-hint"
           aria-invalid={invalid}
           type="number"
@@ -110,7 +111,7 @@ export function GutterField({
       >
         {note}
       </p>
-      {invalid ? null : (
+      {invalid || !(inches > 0) ? null : (
         <div className="gutter-preview">
           <div className="gutter-spread">
             <MiniSheet label="Even page" pageNumber={2} gutterPx={next} />

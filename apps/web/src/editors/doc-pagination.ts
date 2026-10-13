@@ -22,6 +22,7 @@ import {
 } from "./doc-keep-next";
 import { annotateWidowLines, avoidSingleLine } from "./doc-widow-control";
 import { keepParagraphTogether, keepsLines } from "./doc-keep-lines";
+import { gutterDecorations } from "./doc-gutter";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -192,6 +193,7 @@ export const DocumentPagination = Extension.create({
                   "--body-inset-bottom",
                   `${insets.bottom}px`,
                 );
+                paper.style.setProperty("--page-gutter", `${settings.gutter}px`);
               }
               const origin = view.dom.getBoundingClientRect().top;
               const scale =
@@ -385,6 +387,17 @@ export const DocumentPagination = Extension.create({
                 Math.ceil(
                   (naturalBottom + added + topMargin + bottomMargin + 24) /
                     (height + 24),
+                ),
+              );
+              const breaks = boundaries
+                .filter((boundary) => boundary.manual)
+                .map((boundary) => boundary.pos);
+              decorations.push(
+                ...gutterDecorations(
+                  view.state.doc,
+                  boundaries,
+                  breaks,
+                  settings,
                 ),
               );
               view.dispatch(

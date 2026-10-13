@@ -75,7 +75,7 @@
 }
 .page-setup-preview:not(.is-parity) .page-setup-preview-sheet {
   width: 176px;
-  height: 220px;
+  height: 72px;
 }
 .page-setup-preview-sheet {
   position: relative;
@@ -450,4 +450,18 @@
   .page-setup-check label,
   .page-setup-hint { grid-column: 1; }
   .page-setup-orientation legend { float: none; }
+}
+
+.page-gutter-band {
+  position: absolute;
+  z-index: 1;
+  height: var(--page-height);
+  background: rgba(232, 234, 237, 0.85);
+  pointer-events: none;
+}
+.paginated-paper .doc-bind-odd {
+  margin-left: var(--page-gutter, 0px);
+}
+.paginated-paper .doc-bind-even {
+  margin-right: var(--page-gutter, 0px);
 }

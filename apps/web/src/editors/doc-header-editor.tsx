@@ -125,17 +125,23 @@ export function PageFurniture({
   editor,
   pageCount,
   readOnly,
+  settings: liveSettings,
+  arabicStart = null,
 }: {
   editor: Editor;
   pageCount: number;
   readOnly: boolean;
+  /** Draft page setup while the dialog is open. The saved document is used otherwise. */
+  settings?: PageSettings;
+  arabicStart?: number | null;
 }) {
-  const settings =
+  const saved =
     useEditorState({
       editor,
       selector: ({ editor: current }) =>
         documentPageSettings(current.getJSON() as JsonNode),
     }) ?? documentPageSettings({ type: "doc" });
+  const settings = liveSettings ?? saved;
   const [editing, setEditing] = useState<{
     field: FurnitureField;
     pageIndex: number;
@@ -205,6 +211,7 @@ export function PageFurniture({
           pageIndex={i}
           pageCount={pageCount}
           settings={settings}
+          arabicStart={arabicStart}
           editing={editing}
           readOnly={readOnly}
           onOpen={open}
@@ -228,6 +235,7 @@ function FurniturePage({
   pageIndex,
   pageCount,
   settings,
+  arabicStart = null,
   editing,
   readOnly,
   onOpen,
@@ -237,13 +245,14 @@ function FurniturePage({
   pageIndex: number;
   pageCount: number;
   settings: PageSettings;
+  arabicStart?: number | null;
   editing: { field: FurnitureField; pageIndex: number } | null;
   readOnly: boolean;
   onOpen: (field: FurnitureField, pageIndex: number) => void;
   onCommit: (field: FurnitureField, value: string) => void;
   onTab: (field: FurnitureField, pageIndex: number) => void;
 }) {
-  const face = pageFace(settings, pageIndex, pageCount);
+  const face = pageFace(settings, pageIndex, pageCount, arabicStart);
   const insets = pageSideInsets(settings, pageIndex + 1);
   const headerSlot = furnitureSlot(settings, "header", pageIndex);
   const footerSlot = furnitureSlot(settings, "footer", pageIndex);
@@ -271,8 +280,10 @@ function FurniturePage({
       }
     >
       <DocWatermark text={settings.watermark} />
-      {face.numberSide === "top-right" ? (
-        <span className="page-number page-number-top">{face.pageNumber}</span>
+      {face.numberSide === "top-right" || face.numberSide === "top-left" ? (
+        <span className={`page-number page-number-top side-${face.numberSide}`}>
+          {face.pageNumber}
+        </span>
       ) : null}
       <div
         className={`page-header align-${face.headerAlign}${face.header ? "" : " is-empty"}${headerHere ? " is-active" : ""}`}
@@ -313,7 +324,7 @@ function FurniturePage({
         )}
       </div>
       <div
-        className={`page-footer number-${face.numberSide === "top-right" ? "none" : face.numberSide}${footerHere ? " is-active" : ""}`}
+        className={`page-footer number-${face.numberSide === "top-right" || face.numberSide === "top-left" ? "none" : face.numberSide}${footerHere ? " is-active" : ""}`}
         onMouseDown={(event) => {
           if (readOnly || editingTargetIsField(event.target)) return;
           event.preventDefault();
