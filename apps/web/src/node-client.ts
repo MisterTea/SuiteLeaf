@@ -502,9 +502,20 @@ export async function openDriveFile(item: DriveItem): Promise<FileRecord> {
   };
 }
 
-/** Upload `file` as a new version. Throws [`DriveConflict`] if someone else
- * saved after `link.versionId`. */
-export async function uploadDriveFile(
+let driveWrite: Promise<void> = Promise.resolve();
+
+/** Run drive content writes one at a time so a restore cannot be overwritten
+ * by a save that was already queued. */
+export function withDriveLock<T>(task: () => Promise<T>): Promise<T> {
+  const run = driveWrite.then(task, task);
+  driveWrite = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+export async function uploadDriveFileUnlocked(
   file: SuiteFile,
   link: DriveLink,
 ): Promise<DriveLink> {
@@ -523,6 +534,15 @@ export async function uploadDriveFile(
     syncedAt: file.updatedAt,
     name: item.name,
   };
+}
+
+/** Upload `file` as a new version. Throws [`DriveConflict`] if someone else
+ * saved after `link.versionId`. */
+export async function uploadDriveFile(
+  file: SuiteFile,
+  link: DriveLink,
+): Promise<DriveLink> {
+  return withDriveLock(() => uploadDriveFileUnlocked(file, link));
 }
 
 export async function saveNewDriveFile(
