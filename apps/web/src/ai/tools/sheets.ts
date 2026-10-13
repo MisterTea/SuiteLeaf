@@ -599,19 +599,19 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       name: "insert_chart",
       label: "Insert chart",
       description:
-        "Insert a chart from a range whose first row is headers and first column is labels (e.g. A1:C5). type: column, line, pie or scatter. The chart appears below the table.",
+        "Insert a chart from a range whose first row is headers and first column is labels (e.g. A1:C5); include only the columns and rows the user wants charted. type: column (the default), line, pie or scatter. The chart appears below the table.",
       parameters: Type.Object({
         range: Type.String(),
-        type: Type.String({ enum: ["column", "line", "pie", "scatter"] }),
+        type: Type.Optional(Type.String({ enum: ["column", "line", "pie", "scatter"] })),
         title: Type.Optional(Type.String()),
       }),
       target: () => document.querySelector(".chart-btn") ?? undefined,
-      async execute({ range, type, title }) {
-        checkHeaderRow(sheet(), range);
+      async execute({ range: asked, type = "column", title }) {
+        const { range, note } = checkHeaderRow(sheet(), asked);
         select(range);
         const before = new Set(ctx.content().charts.map((c) => c.id));
         ctx.openPanel("chart", {
-          range: a1(parseA1(range)),
+          range,
           sheetId: sheet().getSheetId(),
           title: title ?? "",
           chartType: type === "column" ? "bar" : (type as ChartDefinition["type"]),
@@ -621,7 +621,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         await wait(400);
         const chart = ctx.content().charts.find((c) => !before.has(c.id));
         if (!chart) throw new ToolError("The chart was not created. Check that the range has a header row and numbers.");
-        return `Inserted a ${type} chart "${chart.title}" from ${range} (${chart.width}×${chart.height}px, at x=${chart.x}, y=${chart.y}).`;
+        return `Inserted a ${type} chart "${chart.title}" from ${a1(chart.source)} (${chart.width}×${chart.height}px), below the table: it covers ${chartCells(sheet(), chart)}. The table is ${a1(usedRange(sheet()))}.${note ? ` ${note}` : ""} ${chartContents(sheet(), chart.source)}`;
       },
     }),
     tool({
@@ -644,30 +644,43 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       },
       async execute(args) {
         const c = findChart(ctx, args.chart);
-        if (!c) throw new ToolError("There is no chart on this sheet.");
+        if (!c) throw new ToolError("There is no chart on this sheet yet. Make one with insert_chart first, then edit it.");
+        // Check everything before changing anything, so an error means nothing moved.
+        const range = args.range ? checkHeaderRow(sheet(), args.range).range : undefined;
+        if (args.move_to) parseCell(args.move_to);
         const changed: string[] = [];
         if (args.move_to || args.width || args.height) {
           if (args.move_to) {
             const cell = parseCell(args.move_to);
             const origin = JSON.parse(sheet().getRange(0, 0, 1, 1).getCellRect().toJSON());
             const at = JSON.parse(sheet().getRange(cell.row, cell.column, 1, 1).getCellRect().toJSON());
-            c.x = at.left - origin.left;
-            c.y = at.top - origin.top;
+            // Charts made in SuiteLeaf are placed in canvas pixels (headers included); Excel ones from A1.
+            c.x = at.left - (c.excel ? origin.left : 0);
+            c.y = at.top - (c.excel ? origin.top : 0);
             changed.push(`moved to ${args.move_to}`);
           }
+          const was = { width: c.width, height: c.height };
           if (args.width) c.width = Math.max(200, Math.round(args.width));
           if (args.height) c.height = Math.max(150, Math.round(args.height));
-          if (args.width || args.height) changed.push(`resized to ${c.width}×${c.height}`);
+          const grew = c.width * c.height - was.width * was.height;
+          if (args.width || args.height)
+            changed.push(`resized to ${c.width}×${c.height} (from ${was.width}×${was.height}, so ${grew > 0 ? "larger" : grew < 0 ? "smaller" : "the same size"})`);
           book.getSheetBySheetId(c.sheetId)?.removeFloatDom(c.id);
           ctx.refreshCharts();
           ctx.persist();
+          await wait(300);
+          await moveCursor(document.querySelector(`[data-chart-id="${c.id}"]`), "Edit chart");
         }
-        if (args.range || args.type || args.title) {
-          if (args.range) checkHeaderRow(sheet(), args.range);
+        const typeName = (t: string) => (t === "column" ? "bar" : t);
+        if (
+          (range && a1(parseA1(range)) !== a1(c.source)) ||
+          (args.type && typeName(args.type) !== c.type) ||
+          (args.title && args.title.trim() !== c.title)
+        ) {
           ctx.openPanel(
             "chart",
             {
-              range: args.range ? a1(parseA1(args.range)) : a1(c.source),
+              range: range ? a1(parseA1(range)) : a1(c.source),
               sheetId: c.source.sheetId,
               title: args.title ?? c.title,
               chartType: args.type ? (args.type === "column" ? "bar" : (args.type as ChartDefinition["type"])) : c.type,
@@ -678,7 +691,8 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
           await ctx.submitPanel();
           changed.push("updated its settings");
         }
-        return `Chart "${c.title}": ${changed.join(", ") || "no change"}.`;
+        const now = ctx.content().charts.find((x) => x.id === c.id) ?? c;
+        return `Chart "${now.title}": ${changed.join(", ") || "no change"}. It is ${now.width}×${now.height}px and covers ${chartCells(sheet(), now)}; the table is ${a1(usedRange(sheet()))}.${changed.includes("updated its settings") ? ` ${chartContents(sheet(), now.source)}` : ""}`;
       },
     }),
     tool({
@@ -947,20 +961,24 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
   ];
 }
 
-/** A chart range must start with its header row, as the Insert chart panel expects. */
-function checkHeaderRow(sheet: any, input: string) {
+/**
+ * A chart range must start with its header row, as the Insert chart panel expects. A range that starts
+ * just below the headers is extended up to them; returns the range to use and a note saying so.
+ */
+function checkHeaderRow(sheet: any, input: string): { range: string; note: string } {
   const r = parseA1(input);
   const width = r.endColumn - r.startColumn + 1;
   const first = sheet.getRange(r.startRow, r.startColumn, 1, width).getValues()[0] as unknown[];
   const numeric = first.slice(1).some((v) => typeof v === "number");
-  if (!numeric) return;
+  if (!numeric) return { range: a1(r), note: "" };
   const above =
     r.startRow > 0 ? (sheet.getRange(r.startRow - 1, r.startColumn, 1, width).getValues()[0] as unknown[]) : [];
-  const fix = above.some((v) => typeof v === "string" && v.trim())
-    ? ` Row ${r.startRow} looks like the headers; use ${a1({ ...r, startRow: r.startRow - 1 })}.`
-    : "";
+  if (above.some((v) => typeof v === "string" && v.trim())) {
+    const range = a1({ ...r, startRow: r.startRow - 1 });
+    return { range, note: `${a1(r)} starts below the header row, so the chart uses ${range} and takes its series names from row ${r.startRow}.` };
+  }
   throw new ToolError(
-    `The first row of ${input} holds numbers (${first.map(display).join(", ")}), so the chart would have no series names. Include the header row.${fix}`,
+    `The first row of ${input} holds numbers (${first.map(display).join(", ")}), so the chart would have no series names. Include the header row.`,
   );
 }
 
@@ -969,6 +987,52 @@ function findChart(ctx: SheetsAgentContext, title?: string) {
   const charts = ctx.content().charts.filter((c) => c.sheetId === sheetId);
   if (title) return charts.find((c) => c.title.toLowerCase().includes(title.toLowerCase())) ?? charts.at(-1);
   return charts.at(-1);
+}
+
+/** What a chart range plots: "It shows Budget, Actual (A1:C5's header row) for Design, … (column A)." */
+function chartContents(sheet: any, source: { startRow: number; endRow: number; startColumn: number; endColumn: number }) {
+  try {
+    const values = sheet
+      .getRange(source.startRow, source.startColumn, source.endRow - source.startRow + 1, source.endColumn - source.startColumn + 1)
+      .getValues() as unknown[][];
+    const series = values[0].slice(1).map(display);
+    const labels = values.slice(1).map((row) => display(row[0]));
+    const formulas = (sheet
+      .getRange(source.startRow, source.startColumn, source.endRow - source.startRow + 1, source.endColumn - source.startColumn + 1)
+      .getFormulas?.() ?? []) as string[][];
+    const totals = labels
+      .map((label, i) => ({ label, row: source.startRow + i + 2, formulas: formulas[i + 1]?.slice(1) ?? [] }))
+      .filter((r) => /^(grand\s+)?totals?\b/i.test(r.label) || (r.formulas.length && r.formulas.every((f) => /^=SUM\(/i.test(f ?? ""))));
+    const total = totals.length
+      ? ` Row ${totals.map((r) => r.row).join(", ")} (${totals.map((r) => r.label).join(", ")}) adds up the rows above, so it dwarfs the others; charts usually leave totals out.`
+      : "";
+    return `It shows ${series.join(", ")} (from the header row) for ${labels.join(", ")} (from column ${columnLetter(source.startColumn)}).${total} If that is more than the user asked for, narrow the range with edit_chart.`;
+  } catch {
+    return "";
+  }
+}
+
+/** The cells a chart sits over, e.g. "F1:J12". */
+function chartCells(sheet: any, c: ChartDefinition) {
+  try {
+    const rect = (row: number, col: number) => JSON.parse(sheet.getRange(row, col, 1, 1).getCellRect().toJSON());
+    const origin = rect(0, 0);
+    const x = c.x + (c.excel ? origin.left : 0),
+      y = c.y + (c.excel ? origin.top : 0);
+    const column = (px: number) => {
+      let i = 0;
+      while (i < 200 && rect(0, i).right <= px) i++;
+      return i;
+    };
+    const row = (px: number) => {
+      let i = 0;
+      while (i < 2000 && rect(i, 0).bottom <= px) i++;
+      return i;
+    };
+    return a1({ startRow: row(y), endRow: row(y + c.height - 1), startColumn: column(x), endColumn: column(x + c.width - 1) });
+  } catch {
+    return `x=${c.x}, y=${c.y}`;
+  }
 }
 
 /** "The sheet has a filter on A1:D11: column C (Status) shows only Pending; 6 rows hidden." */
@@ -1004,7 +1068,7 @@ export function sheetSnapshot(ctx: SheetsAgentContext) {
       `Open spreadsheet: "${ctx.title}". Sheets: ${sheets.join(", ")}. Active sheet: "${s.getSheetName()}", used range ${a1(used)}${selection ? `, selected ${selection}` : ""}.`,
       freeze?.ySplit || freeze?.xSplit ? `Frozen: ${freeze.startRow} row(s), ${freeze.startColumn} column(s).` : "",
       filterSummary(s),
-      charts.length ? `Charts: ${charts.map((c) => `"${c.title}" (${c.type === "bar" ? "column" : c.type}, ${a1(c.source)})`).join("; ")}.` : "",
+      charts.length ? `Charts: ${charts.map((c) => `"${c.title}" (${c.type === "bar" ? "column" : c.type}, ${a1(c.source)}, over ${chartCells(s, c)})`).join("; ")}.` : "",
       pivots.length ? `Pivot tables: ${pivots.join("; ")}.` : "",
       `Cells:\n${grid(s, used, 25, 12)}`,
     ]

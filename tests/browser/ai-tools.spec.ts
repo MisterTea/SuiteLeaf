@@ -85,12 +85,29 @@ test("spreadsheet tools write, format, sort, chart and pivot", async ({ page }) 
   await waitForTools(page, "read_sheet");
   expect(await call(page, "read_sheet")).toContain("Engineering\t12000\t10800");
 
-  await expect(call(page, "insert_chart", { range: "A2:C5", type: "column" })).rejects.toThrow(/use A1:C5/);
-  expect(await call(page, "insert_chart", { range: "A1:C5", type: "column", title: "Studio costs" })).toContain(
-    'column chart "Studio costs"',
-  );
+  await expect(call(page, "insert_chart", { range: "B3:C5" })).rejects.toThrow(/no series names/);
+  await expect(call(page, "edit_chart", { width: 400 })).rejects.toThrow(/insert_chart first/);
+  const inserted = await call(page, "insert_chart", { range: "A2:C5", title: "Studio costs" });
+  expect(inserted).toContain('column chart "Studio costs" from A1:C5');
+  expect(inserted).toContain("A2:C5 starts below the header row, so the chart uses A1:C5");
+  expect(inserted).toContain("It shows Budget, Actual (from the header row) for Design, Engineering, Research, Operations (from column A).");
   await expect(page.locator('[aria-label="Chart: Studio costs"]')).toBeVisible();
-  expect(await call(page, "edit_chart", { move_to: "F1", width: 420 })).toContain("moved to F1");
+  const moved = await call(page, "edit_chart", { move_to: "F1", width: 420, range: "A1:C5" });
+  expect(moved).toContain("moved to F1, resized to 420×340 (from 520×340, so smaller)");
+  expect(moved).toMatch(/covers F1:\w+; the table is A1:D6/);
+  expect(moved).not.toContain("updated its settings");
+  const host = (await page.locator(".sheet-host").boundingBox())!;
+  const placed = (await page.locator('[aria-label="Chart: Studio costs"]').boundingBox())!;
+  expect(Math.abs(placed.x - host.x - (46 + 5 * 100))).toBeLessThan(6);
+  expect(Math.abs(placed.y - host.y - 46)).toBeLessThan(6);
+  expect(await call(page, "edit_chart", { range: "A1:D6" })).toContain(
+    "for Design, Engineering, Research, Operations, Total (from column A). Row 6 (Total) adds up the rows above",
+  );
+  const own = await call(page, "edit_chart", { range: "A2:D6", width: 380 });
+  expect(own).toContain("resized to 380×340");
+  expect(own).not.toContain("updated its settings");
+  await expect(call(page, "edit_chart", { range: "B3:C5", move_to: "H1" })).rejects.toThrow(/no series names/);
+  expect((await page.locator('[aria-label="Chart: Studio costs"]').boundingBox())!.x).toBeCloseTo(placed.x, 0);
 
   expect(await call(page, "set_cells", { start: "A8", values: [["'Code'", "Amount"], ["007", "12.5"]] })).toMatch(/8\tCode\tAmount\n9\t007/);
   expect(await call(page, "set_cells", { range: "A10:B10", values: ["Double", "=B9*2"] })).toContain("Wrote A10:B10.");
