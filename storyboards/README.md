@@ -169,3 +169,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 143 | [Skip the draft slide](143-skip-the-draft-slide.md) | single-node | Slides |
 | 145 | [Sort the table](145-sort-the-table.md) | single-node | Docs |
 | 147 | [Merge the title row](147-merge-the-title-row.md) | single-node | Docs |
+| 148 | [Make the columns equal](148-make-the-columns-equal.md) | single-node | Docs |
