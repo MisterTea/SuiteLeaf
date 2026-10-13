@@ -572,14 +572,14 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       name: "insert_chart",
       label: "Insert chart",
       description:
-        "Insert a chart from a range whose first row is headers and first column is labels (e.g. A1:C5). type: column, line, pie or scatter. The chart appears below the table.",
+        "Insert a chart from a range whose first row is headers and first column is labels (e.g. A1:C5); include only the columns and rows the user wants charted. type: column (the default), line, pie or scatter. The chart appears below the table.",
       parameters: Type.Object({
         range: Type.String(),
-        type: Type.String({ enum: ["column", "line", "pie", "scatter"] }),
+        type: Type.Optional(Type.String({ enum: ["column", "line", "pie", "scatter"] })),
         title: Type.Optional(Type.String()),
       }),
       target: () => document.querySelector(".chart-btn") ?? undefined,
-      async execute({ range, type, title }) {
+      async execute({ range, type = "column", title }) {
         checkHeaderRow(sheet(), range);
         select(range);
         const before = new Set(ctx.content().charts.map((c) => c.id));
@@ -594,7 +594,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         await wait(400);
         const chart = ctx.content().charts.find((c) => !before.has(c.id));
         if (!chart) throw new ToolError("The chart was not created. Check that the range has a header row and numbers.");
-        return `Inserted a ${type} chart "${chart.title}" from ${range} (${chart.width}×${chart.height}px), below the table: it covers ${chartCells(sheet(), chart)}. The table is ${a1(usedRange(sheet()))}.`;
+        return `Inserted a ${type} chart "${chart.title}" from ${a1(chart.source)} (${chart.width}×${chart.height}px), below the table: it covers ${chartCells(sheet(), chart)}. The table is ${a1(usedRange(sheet()))}. ${chartContents(sheet(), chart.source)}`;
       },
     }),
     tool({
@@ -617,7 +617,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       },
       async execute(args) {
         const c = findChart(ctx, args.chart);
-        if (!c) throw new ToolError("There is no chart on this sheet.");
+        if (!c) throw new ToolError("There is no chart on this sheet yet. Make one with insert_chart first, then edit it.");
         const changed: string[] = [];
         if (args.move_to || args.width || args.height) {
           if (args.move_to) {
@@ -660,7 +660,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
           changed.push("updated its settings");
         }
         const now = ctx.content().charts.find((x) => x.id === c.id) ?? c;
-        return `Chart "${now.title}": ${changed.join(", ") || "no change"}. It is ${now.width}×${now.height}px and covers ${chartCells(sheet(), now)}; the table is ${a1(usedRange(sheet()))}.`;
+        return `Chart "${now.title}": ${changed.join(", ") || "no change"}. It is ${now.width}×${now.height}px and covers ${chartCells(sheet(), now)}; the table is ${a1(usedRange(sheet()))}.${changed.includes("updated its settings") ? ` ${chartContents(sheet(), now.source)}` : ""}`;
       },
     }),
     tool({
@@ -894,6 +894,20 @@ function findChart(ctx: SheetsAgentContext, title?: string) {
   const charts = ctx.content().charts.filter((c) => c.sheetId === sheetId);
   if (title) return charts.find((c) => c.title.toLowerCase().includes(title.toLowerCase())) ?? charts.at(-1);
   return charts.at(-1);
+}
+
+/** What a chart range plots: "It shows Budget, Actual (A1:C5's header row) for Design, … (column A)." */
+function chartContents(sheet: any, source: { startRow: number; endRow: number; startColumn: number; endColumn: number }) {
+  try {
+    const values = sheet
+      .getRange(source.startRow, source.startColumn, source.endRow - source.startRow + 1, source.endColumn - source.startColumn + 1)
+      .getValues() as unknown[][];
+    const series = values[0].slice(1).map(display);
+    const labels = values.slice(1).map((row) => display(row[0]));
+    return `It shows ${series.join(", ")} (from the header row) for ${labels.join(", ")} (from column ${columnLetter(source.startColumn)}).`;
+  } catch {
+    return "";
+  }
 }
 
 /** The cells a chart sits over, e.g. "F1:J12". */
