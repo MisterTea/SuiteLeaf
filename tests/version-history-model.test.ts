@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  changeSentence,
   copyFilename,
   groupVersions,
   restoreHeading,
@@ -73,6 +74,12 @@ describe("version history list", () => {
     expect(restoreHeading(named, "Rosa Diaz")).toBe('Restored "Agreed rota" · Rosa Diaz');
     expect(restorePrompt(named, 4, now)).toBe(
       'Restore "Agreed rota"? 4 paragraphs change. The current version stays in history.',
+    );
+    expect(changeSentence(8, "cell")).toBe("8 cells change");
+    expect(changeSentence(1, "slide")).toBe("1 slide changes");
+    expect(changeSentence(2, "slide")).toBe("2 slides change");
+    expect(restorePrompt(named, 8, now, "cell")).toBe(
+      'Restore "Agreed rota"? 8 cells change. The current version stays in history.',
     );
   });
 

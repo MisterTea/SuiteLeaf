@@ -1,6 +1,6 @@
 # 44 · Compare a spreadsheet or a slide version in color
 
-**Mode:** single-node · **App:** Sheets, Slides · **Video:** [videos/44-compare-sheet-and-slide-versions.mp4](videos/44-compare-sheet-and-slide-versions.mp4) · **Script:** [scenes/44-compare-sheet-and-slide-versions.spec.ts](scenes/44-compare-sheet-and-slide-versions.spec.ts)
+**Mode:** cluster · **App:** Sheets, Slides · **Video:** [videos/44-compare-a-sheet-or-slide-version.mp4](videos/44-compare-a-sheet-or-slide-version.mp4) · **Script:** [scenes/44-compare-a-sheet-or-slide-version.spec.ts](scenes/44-compare-a-sheet-or-slide-version.spec.ts)
 
 ## Who and why
 
@@ -16,15 +16,15 @@ Lena saved "Volunteer roster" yesterday with 40 people, then this morning change
 
 ## Scenes
 
-1. **Two versions of the roster.** Lena opens "Volunteer roster". Yesterday's snapshot and this morning's save are in the history. The morning save is current: six Status cells differ, and row 1 is bold.
-2. **Compare the sheet.** She clicks the clock, then yesterday. Changed cells are marked on the grid against the current roster: the six old statuses in red, the new ones in green, and the header's bold marked as a format change. The panel says "7 cells change". Unchanged rows stay visible. The grid is read-only.
-3. **Just this version.** "Changes in this version" compares yesterday with the version before it and says what that step itself changed. Switching back to "Compare with current" returns the 7-cell view.
-4. **She does not restore.** She closes the panel. The live roster is still this morning's, including the bold header.
-5. **Two versions of the deck.** Dev opens "Fundraiser pitch". The older snapshot has the original title and a "Thank you" slide. The current deck says "Spring fair" and has no thank-you slide.
-6. **Compare the slides.** The clock, then the older version. The title slide shows the old title struck in red and "Spring fair" in green. The deleted thank-you slide appears ghosted in red, and the panel says "2 slides change". The filmstrip is read-only.
-7. **A document is unchanged.** Opening version history on "Quarterly Report" still shows the green and red paragraph compare from storyboard 28, with a paragraph count.
+1. **Two versions of the roster.** Lena signs in and opens "Volunteer roster" in SuiteDrive. Yesterday's snapshot and this morning's save are in the history, and the day before that is there too. The morning save is current: six Status cells differ, the Name and Status headers are bold, and Noah's row did not change.
+2. **Compare the sheet.** She clicks the clock, then yesterday. Changed cells are marked on the grid against the current roster: the six old statuses struck in red, the new ones in green, and both header cells marked Bold. The panel says "8 cells change". Noah's row stays on screen, unmarked. The grid is read-only.
+3. **Just this version.** "Changes in this version" compares yesterday with the day before and says "6 cells change in this version": Invited became Maybe, Yes, or No, and the header is not marked, because it was not bold yet. Switching back to "Compare with current" returns the 8-cell view. Each switch is one click.
+4. **She does not restore.** Typing in the preview changes nothing. She closes the panel. The live roster is still this morning's, including the bold header and Rosa's Confirmed status.
+5. **Two versions of the deck.** She opens "Fundraiser pitch". Dev saved the current deck this morning: the title is "Spring fair" and there is no thank-you slide. Yesterday's snapshot, saved by Lena, still has "Fundraiser pitch" and a thank-you slide.
+6. **Compare the slides.** The clock, then yesterday. The title slide shows "Fundraiser pitch" struck in red and "Spring fair" in green. The deleted thank-you slide stays in the filmstrip, and opening it shows the slide ghosted in red with a Deleted mark. The panel says "2 slides change". The preview is read-only. She does not restore, and the live deck is still "Spring fair" with two slides.
+7. **A document is unchanged.** Opening version history on "Quarterly Report" still shows the green and red paragraph compare from storyboard 28. The panel says "2 paragraphs change". She closes without restoring.
 
-On a server, the same panel reads SuiteDrive versions. The colors and the counts are the same.
+The same colors and counts are used for a snapshot kept on this computer. The recording uses SuiteDrive versions.
 
 ## Google Workspace benchmark
 
@@ -48,11 +48,25 @@ Known pain points:
 
 ## Success looks like
 
-- Yesterday's roster shows 7 marked cells against this morning, and closing the panel leaves the morning file in place.
+- Yesterday's roster shows 8 marked cells against this morning, Noah's unchanged row stays visible, and closing the panel leaves the morning file in place, header still bold.
 - The older deck shows the old title and the deleted thank-you slide in color, and the live deck is still "Spring fair".
+- The quarterly report still compares paragraphs in green and red.
 
 ## Gaps and notes
 
-- `version-history.tsx` loads both versions, then returns immediately when either file is not a document: the preview is cleared and the change count stays empty. The restore line for a sheet or a deck does not say how much would change.
-- `diffDocuments` is the only compare. There is no cell diff and no slide diff.
-- Naming, Make a copy, and Restore this version already work for sheets and slides (storyboard 28). This story adds the color preview. Restoring still replaces the whole file; one paragraph is storyboard 52, and this story does not restore.
+- Restoring still replaces the whole file. One paragraph is storyboard 52, and this story does not restore.
+- A row that was inserted is compared cell by cell, so the cells below it each count as a change. There is no single "row inserted" mark.
+- While "Changes in this version" is selected, the green summary is the step count and the restore line stays the count against the current file. The two numbers are both true, and the wording has to carry the difference.
+- The document compare is unchanged from storyboard 28, including putting a removed word and its replacement on the same line.
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| 1. A spreadsheet version marks new values in green, removed values in red, and format-only changes, and the panel states the cell count. No second file is created. | Met | Video ~14s: six old statuses struck in red, new ones green, Bold badges on the header, panel "8 cells change". `spreadsheet version diff` in `tests/sheet-slide-diff.test.ts`. |
+| 2. Rows that did not change stay on screen. | Met | Video ~14s and ~18s: Noah's row stays, with Confirmed unmarked. |
+| 3. A slide version marks added text in green, removed text in red, and a deleted or added slide so it can be seen. The panel states how many slides changed. | Met | Video ~29s: "Fundraiser pitch" struck, "Spring fair" green, panel "2 slides change". Video ~31s: thank-you slide ghosted with Deleted. |
+| 4. "Changes in this version" compares that version with the one before it. "Compare with current" compares it with the head. Both are one click. | Met | Video ~18s: "6 cells change in this version" (Invited to Maybe). The next click returns "8 cells change". |
+| 5. The preview is read-only: typing or pasting changes nothing in the current file. | Met | Video ~21s: typing in the sheet preview does not appear. Browser tests type and insert text into both previews. |
+| 6. A document still uses the paragraph compare from storyboard 28, including its paragraph count. | Met | Video ~38s: north struck, west green, panel "2 paragraphs change". `tests/doc-diff.test.ts` and `tests/browser/version-history.spec.ts`. |
+| 7. The same compare works for a snapshot kept on this computer and for a SuiteDrive version. | Met | The recording is a SuiteDrive file. `tests/browser/version-compare.spec.ts` seeds local snapshots for a sheet and a deck. Both paths call `diffSheets` / `diffSlides`. |

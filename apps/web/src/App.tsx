@@ -58,7 +58,6 @@ import {
   type DocFile,
   type SheetFile,
   type SlideFile,
-  type JsonNode,
 } from "@suiteleaf/core";
 import { storage, SaveQueue, exportText } from "./storage";
 import { importFile, type DelimitedDraft } from "./imports";
@@ -110,6 +109,11 @@ import {
 import { ConnectDialog, SignInScreen, useNodeSession } from "./drive/SignIn";
 import { syncSummary, useServerSync } from "./drive/status";
 import { VersionHistory, VersionPreview } from "./editors/version-history";
+import {
+  SheetVersionPreview,
+  SlideVersionPreview,
+  type HistoryPreview,
+} from "./editors/version-compare";
 import { noteLocalSnapshot } from "./editors/local-versions";
 import { completeHandoff } from "./node-client";
 import {
@@ -1186,10 +1190,7 @@ function Workspace() {
     snapshotExplicit = useRef(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [editorEpoch, setEditorEpoch] = useState(0);
-  const [historyPreview, setHistoryPreview] = useState<{
-    content: JsonNode;
-    label: string;
-  } | null>(null);
+  const [historyPreview, setHistoryPreview] = useState<HistoryPreview | null>(null);
   const [driveConflict, setDriveConflictState] = useState<DriveItem | null>(
       null,
     ),
@@ -2861,12 +2862,16 @@ function Workspace() {
       ) : null}
       <div className={`editor-and-history${historyOpen ? " history-open" : ""}`}>
         <div className="editor-and-history-main">
-          {historyPreview ? (
+          {historyPreview?.kind === "doc" ? (
             <VersionPreview
               key={JSON.stringify(historyPreview.content)}
               content={historyPreview.content}
               label={historyPreview.label}
             />
+          ) : historyPreview?.kind === "sheet" ? (
+            <SheetVersionPreview diff={historyPreview.diff} label={historyPreview.label} />
+          ) : historyPreview?.kind === "slide" ? (
+            <SlideVersionPreview diff={historyPreview.diff} label={historyPreview.label} />
           ) : null}
           <div
             className={`live-editor${historyPreview ? " previewing" : ""}`}
@@ -2924,9 +2929,7 @@ function Workspace() {
               setHistoryOpen(false);
               setHistoryPreview(null);
             }}
-            onPreview={(content, label) =>
-              setHistoryPreview(content ? { content, label } : null)
-            }
+            onPreview={setHistoryPreview}
             onStatus={setStatus}
             onRestored={(next) => {
               clearTimeout(timer.current);
