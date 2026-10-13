@@ -27,7 +27,7 @@ use tokio::sync::Notify;
 pub use blobs::{BlobStore, CHUNK_SIZE, Hash, Manifest};
 
 /// Bump when the drive tables change.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 const MAX_BLOB_RESPONSE: usize = 24 * 1024 * 1024;
 const MAX_DEPTH: usize = 64;
 
@@ -53,6 +53,8 @@ pub fn tables() -> Vec<TableDef> {
             .column("size", Integer)
             .column("authorId", Text)
             .column("createdAt", Text)
+            .column("name", Text)
+            .column("restoredFrom", Text)
             .index("itemId")
             .index("contentHash"),
         TableDef::new("drive_acl", "id")
@@ -128,6 +130,8 @@ pub struct Version {
     pub size: i64,
     pub author_id: String,
     pub created_at: String,
+    pub name: Option<String>,
+    pub restored_from: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -175,6 +179,19 @@ fn int(row: &Row, key: &str) -> i64 {
     match row.get(key) {
         Some(Value::Integer(i)) => *i,
         _ => 0,
+    }
+}
+
+fn version_from_row(row: &Row) -> Version {
+    Version {
+        id: text(row, "id").unwrap_or_default(),
+        item_id: text(row, "itemId").unwrap_or_default(),
+        content_hash: text(row, "contentHash").unwrap_or_default(),
+        size: int(row, "size"),
+        author_id: text(row, "authorId").unwrap_or_default(),
+        created_at: text(row, "createdAt").unwrap_or_default(),
+        name: text(row, "name").filter(|s| !s.is_empty()),
+        restored_from: text(row, "restoredFrom").filter(|s| !s.is_empty()),
     }
 }
 
@@ -624,6 +641,24 @@ impl Drive {
         self.get(who, id)
     }
 
+    fn version_row(&self, item_id: &str, version_id: &str) -> DriveResult<Row> {
+        let row = self
+            .db
+            .get("drive_version", version_id)?
+            .ok_or(DriveError::NotFound)?;
+        if text(&row, "itemId").as_deref() != Some(item_id) {
+            return Err(DriveError::NotFound);
+        }
+        Ok(row)
+    }
+
+    fn head_matches(head: Option<&str>, if_match: Option<&str>) -> bool {
+        match if_match.map(|m| m.trim_matches('"')) {
+            Some(expected) if expected != "*" => Some(expected) == head,
+            _ => true,
+        }
+    }
+
     pub fn versions(&self, who: &Principal, id: &str) -> DriveResult<Vec<Version>> {
         self.require(who, id, Role::Viewer)?;
         Ok(self
@@ -633,15 +668,123 @@ impl Drive {
                 &[Value::Text(id.into())],
             )?
             .into_iter()
-            .map(|r| Version {
-                id: text(&r, "id").unwrap_or_default(),
-                item_id: text(&r, "itemId").unwrap_or_default(),
-                content_hash: text(&r, "contentHash").unwrap_or_default(),
-                size: int(&r, "size"),
-                author_id: text(&r, "authorId").unwrap_or_default(),
-                created_at: text(&r, "createdAt").unwrap_or_default(),
-            })
+            .map(|r| version_from_row(&r))
             .collect())
+    }
+
+    /// Set or clear the name people see in version history. The name replicates
+    /// with the version row, so another server shows it after sync.
+    pub fn name_version(
+        &self,
+        who: &Principal,
+        id: &str,
+        version_id: &str,
+        name: Option<&str>,
+    ) -> DriveResult<Version> {
+        self.require(who, id, Role::Editor)?;
+        self.version_row(id, version_id)?;
+        let name = match name.map(str::trim).filter(|s| !s.is_empty()) {
+            Some(name) => {
+                if name.chars().count() > 80 || name.contains(['\n', '\r', '\0']) {
+                    return Err(DriveError::BadRequest(
+                        "Use a version name of 1–80 characters on one line.".into(),
+                    ));
+                }
+                Some(name.to_owned())
+            }
+            None => None,
+        };
+        self.db.transact(|tx| {
+            tx.upsert(
+                "drive_version",
+                version_id,
+                [("name", Value::from(name.clone()))],
+            )
+        })?;
+        Ok(version_from_row(
+            &self
+                .db
+                .get("drive_version", version_id)?
+                .unwrap_or_default(),
+        ))
+    }
+
+    /// Make `version_id` the file's content again, as a new version. The
+    /// previous head stays in history and the saved bytes are the same blob.
+    pub fn restore(
+        &self,
+        who: &Principal,
+        id: &str,
+        version_id: &str,
+        if_match: Option<&str>,
+    ) -> DriveResult<Item> {
+        self.require(who, id, Role::Editor)?;
+        let row = self.item_row(id)?;
+        if text(&row, "kind").as_deref() != Some("file") {
+            return Err(DriveError::BadRequest("Folders have no content.".into()));
+        }
+        let head = text(&row, "headVersionId");
+        if !Self::head_matches(head.as_deref(), if_match) {
+            let role = self.role(who, id)?;
+            return Err(DriveError::Conflict(Box::new(self.to_item(&row, role)?)));
+        }
+        let source = self.version_row(id, version_id)?;
+        let hash = text(&source, "contentHash")
+            .ok_or_else(|| DriveError::Other(anyhow::anyhow!("version has no content")))?;
+        let parsed: Hash = hash
+            .parse()
+            .map_err(|_| DriveError::Other(anyhow::anyhow!("corrupt content hash")))?;
+        if !self.blobs.missing(&parsed)?.is_empty() {
+            return Err(DriveError::Unavailable);
+        }
+        let version = uuid::Uuid::now_v7().to_string();
+        let now = iso_now();
+        let size = int(&source, "size");
+        self.db.transact(|tx| {
+            tx.upsert(
+                "drive_version",
+                &version,
+                [
+                    ("itemId", Value::from(id)),
+                    ("contentHash", hash.into()),
+                    ("size", Value::Integer(size)),
+                    ("authorId", who.id.clone().into()),
+                    ("createdAt", now.clone().into()),
+                    ("restoredFrom", Value::from(version_id)),
+                ],
+            )?;
+            tx.upsert(
+                "drive_item",
+                id,
+                [
+                    ("headVersionId", Value::Text(version.clone())),
+                    ("size", Value::Integer(size)),
+                    ("updatedAt", now.into()),
+                ],
+            )
+        })?;
+        self.get(who, id)
+    }
+
+    /// A new file in the same folder, holding this version's bytes.
+    pub fn copy_version(
+        &self,
+        who: &Principal,
+        id: &str,
+        version_id: &str,
+        name: &str,
+    ) -> DriveResult<Item> {
+        let item = self.get(who, id)?;
+        self.version_row(id, version_id)?;
+        let (_, bytes) = self.read(who, id, Some(version_id))?;
+        let created = self.create(
+            who,
+            item.parent_id.as_deref(),
+            name,
+            "file",
+            item.mime.as_deref(),
+        )?;
+        self.write(who, &created.id, None, item.mime.as_deref(), &bytes)
     }
 
     pub fn acl(&self, who: &Principal, id: &str) -> DriveResult<Vec<AclEntry>> {

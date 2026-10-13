@@ -9,11 +9,13 @@ use axum::{
     extract::{DefaultBodyLimit, Path, Query, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{get, patch, post},
 };
 use serde::Deserialize;
-use serde_json::json;
-use suitedrive::{BlobTransport, Drive, DriveError, Principal, Role};
+use serde_json::{Value as JsonValue, json};
+use std::collections::BTreeMap;
+use suitedb::{Db, Value};
+use suitedrive::{BlobTransport, Drive, DriveError, Principal, Role, Version};
 use suiteleaf_net::{NetHandle, PeerId, Protocol};
 
 use crate::{
@@ -294,16 +296,129 @@ async fn write_content(
     Ok(response)
 }
 
+fn display_name(row: &BTreeMap<String, Value>) -> Option<String> {
+    match row.get("name") {
+        Some(Value::Text(name)) if !name.trim().is_empty() => Some(name.clone()),
+        _ => match row.get("email") {
+            Some(Value::Text(email)) if !email.trim().is_empty() => Some(email.clone()),
+            _ => None,
+        },
+    }
+}
+
+fn author_names(db: &Db, versions: &[Version]) -> BTreeMap<String, String> {
+    let mut names = BTreeMap::new();
+    for version in versions {
+        if names.contains_key(&version.author_id) {
+            continue;
+        }
+        let name = db
+            .get("user", &version.author_id)
+            .ok()
+            .flatten()
+            .and_then(|row| display_name(&row))
+            .unwrap_or_else(|| "Former member".into());
+        names.insert(version.author_id.clone(), name);
+    }
+    names
+}
+
+fn version_json(version: &Version, names: &BTreeMap<String, String>) -> JsonValue {
+    let mut value = serde_json::to_value(version).unwrap_or_else(|_| json!({}));
+    if let Some(object) = value.as_object_mut() {
+        object.insert(
+            "authorName".into(),
+            JsonValue::String(
+                names
+                    .get(&version.author_id)
+                    .cloned()
+                    .unwrap_or_else(|| "Former member".into()),
+            ),
+        );
+    }
+    value
+}
+
 async fn versions(
     State(s): State<AppState>,
     RequireUser(user): RequireUser,
     Path(id): Path<String>,
 ) -> ApiResult<Response> {
     let who = principal(&user);
-    Ok(
-        Json(json!({ "versions": blocking(&s.drive, move |d| d.versions(&who, &id)).await? }))
-            .into_response(),
-    )
+    let list = blocking(&s.drive, move |d| d.versions(&who, &id)).await?;
+    let db = s.db.clone();
+    let owned = list.clone();
+    let names = tokio::task::spawn_blocking(move || author_names(&db, &owned))
+        .await
+        .map_err(|e| ApiError(DriveError::Other(e.into())))?;
+    let views: Vec<JsonValue> = list.iter().map(|v| version_json(v, &names)).collect();
+    Ok(Json(json!({ "versions": views })).into_response())
+}
+
+#[derive(Deserialize)]
+struct NameBody {
+    name: Option<String>,
+}
+
+async fn name_version(
+    State(s): State<AppState>,
+    RequireUser(user): RequireUser,
+    Path((id, version_id)): Path<(String, String)>,
+    Json(body): Json<NameBody>,
+) -> ApiResult<Response> {
+    let who = principal(&user);
+    let version = blocking(&s.drive, move |d| {
+        d.name_version(&who, &id, &version_id, body.name.as_deref())
+    })
+    .await?;
+    let db = s.db.clone();
+    let owned = version.clone();
+    let named =
+        tokio::task::spawn_blocking(move || author_names(&db, std::slice::from_ref(&owned)))
+            .await
+            .map_err(|e| ApiError(DriveError::Other(e.into())))?;
+    Ok(Json(version_json(&version, &named)).into_response())
+}
+
+async fn restore_version(
+    State(s): State<AppState>,
+    RequireUser(user): RequireUser,
+    Path((id, version_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
+    let who = principal(&user);
+    let if_match = headers
+        .get(header::IF_MATCH)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
+    let item = blocking(&s.drive, move |d| {
+        d.restore(&who, &id, &version_id, if_match.as_deref())
+    })
+    .await?;
+    let mut response = Json(&item).into_response();
+    if let Some(tag) = etag(item.head_version_id.as_deref()) {
+        response.headers_mut().insert(header::ETAG, tag);
+    }
+    Ok(response)
+}
+
+#[derive(Deserialize)]
+struct CopyBody {
+    name: String,
+}
+
+async fn copy_version(
+    State(s): State<AppState>,
+    RequireUser(user): RequireUser,
+    Path((id, version_id)): Path<(String, String)>,
+    Json(body): Json<CopyBody>,
+) -> ApiResult<Response> {
+    let who = principal(&user);
+    let item = blocking(&s.drive, move |d| {
+        d.copy_version(&who, &id, &version_id, &body.name)
+    })
+    .await?;
+    Ok((StatusCode::CREATED, Json(item)).into_response())
 }
 
 async fn get_acl(
@@ -365,6 +480,18 @@ pub fn router(state: AppState) -> Router {
                 .layer(DefaultBodyLimit::max(MAX_UPLOAD)),
         )
         .route("/api/drive/items/{id}/versions", get(versions))
+        .route(
+            "/api/drive/items/{id}/versions/{version_id}",
+            patch(name_version),
+        )
+        .route(
+            "/api/drive/items/{id}/versions/{version_id}/restore",
+            post(restore_version),
+        )
+        .route(
+            "/api/drive/items/{id}/versions/{version_id}/copy",
+            post(copy_version),
+        )
         .route("/api/drive/items/{id}/acl", get(get_acl).put(put_acl))
         .with_state(state)
 }

@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+export { diffDocuments, type DocDiff } from "./doc-diff";
 export type Kind = "doc" | "sheet" | "slide";
 export type JsonNode = {
   type: string;
