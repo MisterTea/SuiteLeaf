@@ -45,6 +45,35 @@ export function indentTwips(inches: number): number {
   return Math.round(inches * TWIPS_PER_INCH);
 }
 
+/** Inches from Word twips on `w:ind`. Zero and junk are no indent. */
+export function indentInchesFromTwips(twips: unknown): number {
+  const n =
+    typeof twips === "number"
+      ? twips
+      : typeof twips === "string" && twips.trim() !== ""
+        ? Number(twips)
+        : NaN;
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return indentInches(n / TWIPS_PER_INCH);
+}
+
+/**
+ * Paragraph attributes for one Word `w:ind`.
+ * Hanging is `w:hanging`, which Word pairs with `w:left` of the same distance.
+ * First line is `w:firstLine` when there is no hanging indent.
+ * A left indent by itself is not this special indent.
+ * The two stay mutually exclusive: hanging wins when both are set.
+ */
+export function paragraphIndentFromWord(
+  ind: { firstLine?: unknown; hanging?: unknown } | null | undefined,
+): { firstLineIndent: number } | { hangingIndent: number } | null {
+  const hanging = indentInchesFromTwips(ind?.hanging);
+  if (hanging > 0) return { hangingIndent: hanging };
+  const first = indentInchesFromTwips(ind?.firstLine);
+  if (first > 0) return { firstLineIndent: first };
+  return null;
+}
+
 /** The special indent stored on a paragraph. Both values set prefers hanging. */
 export function indentChoice(
   attrs:
