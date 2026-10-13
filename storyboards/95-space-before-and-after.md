@@ -42,16 +42,17 @@ The welcome has a gap under it. The Motion heading has a gap above it. The motio
 
 | Criterion | Met | Evidence |
 | --- | --- | --- |
-| Space before and Space after are on the paragraph control, next to line spacing. No second dialog. | Met | Video 0:06. The line spacing menu shows 1.5 checked, then Space before and Space after in points. The closed button already reads the points. `tests/browser/paragraph-spacing.spec.ts` |
-| The control shows the current before and after for the caret's paragraph, in points. | Met | Video 0:04 the button reads 0 pt before and 0 pt after. Video 0:11 Space after is 12 pt. Video 0:16 the Motion heading reads 0 pt before. Video 0:28 the motion reads 0 pt after and Double is still checked. |
-| Space after on the welcome does not change the motion's space after, and does not change the welcome's line spacing. | Met | Video 0:11. A gap opens under the welcome. The motion lines stay together, and the button still reads 1.5. `tests/doc-paragraph-spacing.test.ts` |
-| Space before on the heading does not clear the welcome's space after. | Met | Video 0:18. The gap above Motion grows while the welcome stays at 12 pt after. Video 0:33 both gaps are still there. `tests/doc-paragraph-spacing.test.ts` |
-| Setting a value to 0 removes that gap. Line spacing stays. | Met | Video 0:26 she sets Space after to 0. Video 0:28 the extra gap between the motion lines is gone and Double stays checked. `tests/doc-paragraph-spacing.test.ts` |
-| The values survive save and reopen. | Met | Video 0:32. She is back in Garden club minutes and both gaps are still there. `tests/browser/paragraph-spacing.spec.ts` |
+| Space before and Space after are on the paragraph control, next to line spacing. No second dialog. | Met | Video 0:06. The line-spacing menu shows 1.5 checked, then Space before and Space after in points. There is no second dialog. `tests/browser/paragraph-spacing.spec.ts` |
+| The control shows the current before and after for the caret's paragraph, in points. | Met | Video 0:06 both fields read 0 pt on the welcome. Video 0:10 the welcome is 12 pt after and the button still reads 1.5. Video 0:16 the Motion heading's fields read 0 pt before. Video 0:25 the motion reads Double. |
+| Space after on the welcome does not change the motion's space after, and does not change the welcome's line spacing. | Met | Video 0:10. A gap opens under the welcome. The motion lines stay together, and the button still reads 1.5. `tests/doc-paragraph-spacing.test.ts` |
+| Space before on the heading does not clear the welcome's space after. | Met | Video 0:19. The gap above Motion grows while the welcome still has space under it. `tests/doc-paragraph-spacing.test.ts` |
+| Setting a value to 0 removes that gap. Line spacing stays. | Met | Video 0:25 the first motion line has an extra gap and Double is checked. Video 0:28 that gap is gone and Double is still checked. `tests/doc-paragraph-spacing.test.ts` |
+| The values survive save and reopen. | Met | Video 0:36. Both gaps are still in the reopened minutes. `tests/browser/paragraph-spacing.spec.ts` |
 | The .docx writes `w:before` and `w:after` only on paragraphs that have them. | Met | Video 0:36 File, Export DOCX. Welcome is `w:after="240"`, Motion is `w:before="240"`, and a motion line left at 0 has neither. `tests/doc-paragraph-spacing.test.ts` |
 
 ## Gaps and notes
 
 - Opening a Word file still does not read `w:before` and `w:after` back in. Export writes them.
 - 12 pt after the welcome and 12 pt before Motion both stay, so the gap between them is the sum. Neither value is cleared.
-- The point values live in `packages/core/src/paragraph-spacing.ts`. Line spacing, Keep with next, Don't leave one line, and Keep lines together were left in place.
+- The point values live in `packages/core/src/paragraph-spacing.ts`. Line spacing, Keep with next, Don't leave one line, and Keep lines together were left in place. Those three switches still float beside the caret, so they sit on top of a short motion line.
+- The closed button shows the line spacing. Space before and Space after are the fields in that same menu, so the font tools stay on the toolbar.

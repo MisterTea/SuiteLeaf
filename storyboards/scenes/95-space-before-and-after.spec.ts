@@ -207,7 +207,7 @@ test("95-space-before-and-after", async ({ page }) => {
     el.scrollIntoView({ block: "center", inline: "nearest" });
   });
   await expect(spacing).toContainText("Double");
-  await expect(spacing).toContainText("0 pt after");
+  await expect(spacing).toHaveAttribute("aria-label", /Space after 0 points/);
   await beat(page, 900);
   await spacing.click();
   await setPoints(page, "Space after", "12");
