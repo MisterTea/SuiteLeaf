@@ -105,6 +105,7 @@ import {
   documentHtml,
   documentPageSettings,
   pageDimensions,
+  pageMarginsValid,
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
 import { PageFurniture, PageSetupFields } from "./page-setup";
@@ -113,6 +114,7 @@ import { paragraphLineSpacing } from "./doc-line-spacing";
 import { LineSpacingControl } from "./doc-line-spacing-ui";
 import { DocWatermarkField, pageSetupToSave } from "./doc-watermark";
 import { columnLayout } from "./doc-columns";
+import { PageMarginFields } from "./page-setup-margins";
 
 export const extensions: Extensions = [
   DocumentPagination,
@@ -962,9 +964,7 @@ export default function Docs({
 
   const pageSettings = documentPageSettings(editor.getJSON() as JsonNode);
   const pageDraftValid =
-    Number.isFinite(pageDraft.margin) &&
-    pageDraft.margin >= 24 &&
-    pageDraft.margin <= 144 &&
+    pageMarginsValid(pageDraft) &&
     Number.isInteger(pageDraft.pageNumberStart) &&
     pageDraft.pageNumberStart >= 1 &&
     pageDraft.pageNumberStart <= 9999;
@@ -1444,23 +1444,7 @@ export default function Docs({
                   </label>
                 ))}
               </fieldset>
-              <label>
-                <span>Margins (inches)</span>
-                <input
-                  aria-label="Page margins"
-                  type="number"
-                  min="0.25"
-                  max="1.5"
-                  step="0.125"
-                  value={pageDraft.margin / 96}
-                  onChange={(e) =>
-                    setPageDraft({
-                      ...pageDraft,
-                      margin: Number(e.target.value) * 96,
-                    })
-                  }
-                />
-              </label>
+              <PageMarginFields draft={pageDraft} onChange={setPageDraft} />
               <PageSetupFields
                 draft={pageDraft}
                 pageCount={pageCount}
@@ -1971,7 +1955,11 @@ export default function Docs({
               {
                 "--page-width": `${dimensions.width}px`,
                 "--page-height": `${dimensions.height}px`,
-                "--page-margin": `${pageSettings.margin}px`,
+                "--page-margin": `${pageSettings.marginTop}px`,
+                "--page-margin-top": `${pageSettings.marginTop}px`,
+                "--page-margin-right": `${pageSettings.marginRight}px`,
+                "--page-margin-bottom": `${pageSettings.marginBottom}px`,
+                "--page-margin-left": `${pageSettings.marginLeft}px`,
                 "--page-stride": `${dimensions.height + 24}px`,
                 minHeight: `${pageCount * dimensions.height + (pageCount - 1) * 24}px`,
                 zoom: pageZoom,

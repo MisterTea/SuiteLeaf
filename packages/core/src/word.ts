@@ -33,6 +33,7 @@ import {
   extractOfficeMath,
   spliceEquationTokens,
 } from "./equations";
+import { firstSectionPageMargins } from "./word-page-margins";
 
 type Mark = NonNullable<JsonNode["marks"]>[number];
 const normalize = (s: string) => s.replace(/[\s\u200b\ufeff]+/gu, "");
@@ -1382,6 +1383,23 @@ export async function importDocx(
       features.push("comments");
       warnings.push(commentImportSummary(imported.count));
     }
+  }
+  const pageMargins = firstSectionPageMargins(xml);
+  if (pageMargins) {
+    const previous = content.attrs?.pageSettings;
+    content = {
+      ...content,
+      attrs: {
+        ...(content.attrs ?? {}),
+        pageSettings: {
+          ...(previous && typeof previous === "object" ? previous : {}),
+          ...pageMargins,
+          // A stored page setup otherwise turns page numbers on. This file
+          // did not ask for them.
+          pageNumbers: false,
+        },
+      },
+    };
   }
   const file = createFile("doc", title) as DocFile;
   file.content = content;

@@ -559,7 +559,10 @@ function layoutNotes(view: EditorView) {
   const paper = view.dom.closest(".paginated-paper") as HTMLElement | null;
   if (!paper) return;
   const pageHeight = parseFloat(paper.style.getPropertyValue("--page-height")) || 0;
-  const margin = parseFloat(paper.style.getPropertyValue("--page-margin")) || 0;
+  const margin =
+    parseFloat(paper.style.getPropertyValue("--page-margin-bottom")) ||
+    parseFloat(paper.style.getPropertyValue("--page-margin")) ||
+    0;
   if (!pageHeight) return;
   const spots: HeadingSpot[] = [];
   view.state.doc.descendants((node, pos) => {

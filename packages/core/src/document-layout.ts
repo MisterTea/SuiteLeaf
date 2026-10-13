@@ -6,10 +6,19 @@ const pageNumberPositions: PageNumberPosition[] = [
   "bottom-center",
   "top-right",
 ];
+/** Page setup accepts 0.25–1.5 inches. CSS pixels at 96 per inch. */
+export const MARGIN_MIN_PX = 24;
+export const MARGIN_MAX_PX = 144;
+export const MARGIN_DEFAULT_PX = 72;
 export type PageSettings = {
   size: "letter" | "a4";
   landscape: boolean;
+  /** Older files stored this one inset, in CSS pixels, for every edge. */
   margin: number;
+  marginTop: number;
+  marginBottom: number;
+  marginLeft: number;
+  marginRight: number;
   header: string;
   footer: string;
   pageNumbers: boolean;
@@ -60,7 +69,11 @@ export function watermarkText(value: unknown): string {
 export const defaultPageSettings: PageSettings = {
   size: "letter",
   landscape: false,
-  margin: 72,
+  margin: MARGIN_DEFAULT_PX,
+  marginTop: MARGIN_DEFAULT_PX,
+  marginBottom: MARGIN_DEFAULT_PX,
+  marginLeft: MARGIN_DEFAULT_PX,
+  marginRight: MARGIN_DEFAULT_PX,
   header: "",
   footer: "",
   pageNumbers: false,
@@ -81,15 +94,28 @@ export const defaultPageSettings: PageSettings = {
 };
 const pageText = (value: unknown) =>
   typeof value === "string" ? value.slice(0, 500) : "";
+function clampMargin(value: unknown, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.min(MARGIN_MAX_PX, Math.max(MARGIN_MIN_PX, value));
+}
+function storedMargin(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
 export function documentPageSettings(content: JsonNode): PageSettings {
   const a = content.attrs?.pageSettings as Partial<PageSettings> | undefined;
+  const uniform = clampMargin(a?.margin, MARGIN_DEFAULT_PX);
+  // A SuiteLeaf file that stored one margin opens with that inset on every
+  // edge. An edge that is present replaces it; Word cannot be stored as one.
+  const edge = (value: unknown) =>
+    storedMargin(value) === undefined ? uniform : clampMargin(value, uniform);
   return {
     size: a?.size === "a4" ? "a4" : "letter",
     landscape: a?.landscape === true,
-    margin:
-      typeof a?.margin === "number" && Number.isFinite(a.margin)
-        ? Math.min(144, Math.max(24, a.margin))
-        : 72,
+    margin: uniform,
+    marginTop: edge(a?.marginTop),
+    marginBottom: edge(a?.marginBottom),
+    marginLeft: edge(a?.marginLeft),
+    marginRight: edge(a?.marginRight),
     header: pageText(a?.header),
     footer: pageText(a?.footer),
     // Like Docs and Word, page numbers are off until chosen; settings saved
@@ -356,6 +382,25 @@ export function pageNumberHint(settings: PageSettings, pageCount = 2): string {
     return `No number on page 1. ${place} on later pages, as “${sample}”. ${kept}`;
   return `${place} of every page, as “${sample}”. ${kept}`;
 }
+export function pageMarginsValid(
+  settings: Pick<
+    PageSettings,
+    "marginTop" | "marginBottom" | "marginLeft" | "marginRight"
+  >,
+): boolean {
+  return [
+    settings.marginTop,
+    settings.marginBottom,
+    settings.marginLeft,
+    settings.marginRight,
+  ].every(
+    (n) => Number.isFinite(n) && n >= MARGIN_MIN_PX && n <= MARGIN_MAX_PX,
+  );
+}
+/** Inches for Page setup, trimmed so 0.75 does not show as a long decimal. */
+export function formatMarginInches(px: number): string {
+  return String(Math.round((px / 96) * 1000) / 1000);
+}
 export function pageDimensions(settings: PageSettings) {
   const [width, height] = settings.size === "a4" ? [794, 1123] : [816, 1056];
   return {
@@ -405,9 +450,10 @@ export function documentHtml(
   settings: PageSettings,
 ) {
   const { width, height } = pageDimensions(settings);
+  const edges = `${settings.marginTop / 96}in ${settings.marginRight / 96}in ${settings.marginBottom / 96}in ${settings.marginLeft / 96}in`;
   const pageRule = [
     `size: ${width / 96}in ${height / 96}in;`,
-    `margin: ${settings.margin / 96}in;`,
+    `margin: ${edges};`,
     printedPageStart(settings),
     pageNumberMarginBox(settings),
   ]
@@ -431,7 +477,7 @@ main { position: relative; z-index: 1; }`
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title>
 <style>
-body { max-width: ${width / 96}in; margin: 0 auto; padding: ${settings.margin / 96}in; box-sizing: border-box; font: 11pt/1.5 Arial, sans-serif; }
+body { max-width: ${width / 96}in; margin: 0 auto; padding: ${edges}; box-sizing: border-box; font: 11pt/1.5 Arial, sans-serif; }
 .page-header, .page-footer { color: #555; font-size: 10pt; white-space: pre-wrap; }
 .page-header { margin-bottom: 2em; }
 .page-footer { margin-top: 2em; }

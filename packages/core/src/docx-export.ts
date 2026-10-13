@@ -44,6 +44,7 @@ import {
   type PageSettings,
 } from "./document-layout";
 import { docxWatermarkParagraph } from "./doc-watermark";
+import { pagePxToTwips } from "./word-page-margins";
 import {
   planDocxComments,
   stampDocxComments,
@@ -548,10 +549,10 @@ function docxSection(
           height: settings.landscape ? width : height,
         },
         margin: {
-          top: settings.margin * 15,
-          bottom: settings.margin * 15,
-          left: settings.margin * 15,
-          right: settings.margin * 15,
+              top: pagePxToTwips(settings.marginTop),
+              bottom: pagePxToTwips(settings.marginBottom),
+              left: pagePxToTwips(settings.marginLeft),
+              right: pagePxToTwips(settings.marginRight),
           header: 360,
           footer: 360,
         },

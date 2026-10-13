@@ -131,3 +131,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 74 | [Two columns for the news](74-two-columns-for-the-news.md) | single-node | Docs |
 | 75 | [Start numbering at](75-start-numbering-at.md) | single-node | Docs |
 | 77 | [Number the front in roman](77-number-the-front-in-roman.md) | single-node | Docs |
+| 78 | [Keep the Word file's margins](78-keep-the-word-margins.md) | single-node | Docs |

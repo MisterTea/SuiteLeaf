@@ -17,6 +17,37 @@ describe("document page settings", () => {
         .pageNumbers,
     ).toBe(false);
   });
+  it("opens a single stored margin as four equal edges", () => {
+    const settings = documentPageSettings({
+      type: "doc",
+      attrs: { pageSettings: { margin: 96 } },
+    });
+    expect(settings.marginTop).toBe(96);
+    expect(settings.marginBottom).toBe(96);
+    expect(settings.marginLeft).toBe(96);
+    expect(settings.marginRight).toBe(96);
+  });
+  it("keeps four stored edges when they differ", () => {
+    const settings = documentPageSettings({
+      type: "doc",
+      attrs: {
+        pageSettings: {
+          margin: 72,
+          marginTop: 144,
+          marginBottom: 72,
+          marginLeft: 96,
+          marginRight: 48,
+        },
+      },
+    });
+    expect(settings).toMatchObject({
+      margin: 72,
+      marginTop: 144,
+      marginBottom: 72,
+      marginLeft: 96,
+      marginRight: 48,
+    });
+  });
   it("keeps the page numbers saved with a document", () => {
     const saved = (pageSettings: object) =>
       documentPageSettings({ type: "doc", attrs: { pageSettings } });

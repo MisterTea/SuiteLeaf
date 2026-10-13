@@ -138,8 +138,9 @@ export const DocumentPagination = Extension.create({
                 view.state.doc.toJSON() as JsonNode,
               );
               const { height } = pageDimensions(settings);
-              const margin = settings.margin,
-                bodyHeight = height - margin * 2;
+              const topMargin = settings.marginTop,
+                bottomMargin = settings.marginBottom,
+                bodyHeight = height - topMargin - bottomMargin;
               const origin = view.dom.getBoundingClientRect().top;
               const scale =
                 view.dom.getBoundingClientRect().width /
@@ -153,8 +154,8 @@ export const DocumentPagination = Extension.create({
                 const dom = view.nodeDOM(pos);
                 if (!(dom instanceof HTMLElement)) return;
                 const rect = dom.getBoundingClientRect();
-                const top = (rect.top - origin) / scale - margin;
-                const bottom = (rect.bottom - origin) / scale - margin;
+                const top = (rect.top - origin) / scale - topMargin;
+                const bottom = (rect.bottom - origin) / scale - topMargin;
                 if (node.type.name === "pageBreak") {
                   boundaries.push({ pos, top, bottom, manual: true });
                   return false;
@@ -206,7 +207,7 @@ export const DocumentPagination = Extension.create({
                 }
                 // A paragraph taller than a page is split at visual line boundaries.
                 boundaries.push(
-                  ...textLines(view, dom, pos, origin, scale, margin),
+                  ...textLines(view, dom, pos, origin, scale, topMargin),
                 );
                 return false;
               });
@@ -233,7 +234,10 @@ export const DocumentPagination = Extension.create({
                   const b = boundaries[first];
                   for (let k = first; k <= i; k++) boundaries[k].page = page + 1;
                   const gap =
-                    Math.max(0, end - (b.top + added)) + 2 * margin + 24;
+                    Math.max(0, end - (b.top + added)) +
+                    topMargin +
+                    bottomMargin +
+                    24;
                   decorations.push(
                     Decoration.widget(
                       b.pos,
@@ -280,7 +284,8 @@ export const DocumentPagination = Extension.create({
               const pages = Math.max(
                 page + 1,
                 Math.ceil(
-                  (naturalBottom + added + margin * 2 + 24) / (height + 24),
+                  (naturalBottom + added + topMargin + bottomMargin + 24) /
+                    (height + 24),
                 ),
               );
               view.dispatch(

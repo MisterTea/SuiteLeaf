@@ -4283,16 +4283,16 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
 
 /* Page spacers are decorations: pagination leaves the editable document intact. */
 .paginated-paper { position: relative; width: var(--page-width); max-width: none; flex-shrink: 0; border: 0; background: repeating-linear-gradient(to bottom, white 0, white var(--page-height), var(--viewport-bg) var(--page-height), var(--viewport-bg) var(--page-stride)); }
-.paginated-paper .document-content { padding: var(--page-margin); min-height: var(--page-height); position: relative; z-index: 1; }
+.paginated-paper .document-content { padding: var(--page-margin-top, var(--page-margin)) var(--page-margin-right, var(--page-margin)) var(--page-margin-bottom, var(--page-margin)) var(--page-margin-left, var(--page-margin)); min-height: var(--page-height); position: relative; z-index: 1; }
 .doc-page-spacer { display: block; height: var(--spacer-height); margin: 0 !important; padding: 0 !important; border: 0 !important; pointer-events: none; }
 tr.doc-page-spacer { display: table-row; }
 tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; background: transparent; }
 .manual-page-break { height: 0; margin: 0; }
 .page-furniture { position: absolute; inset: 0; pointer-events: none; color: #555; font: 10pt Arial, sans-serif; }
-.page-furniture-page { position: absolute; left: var(--page-margin); right: var(--page-margin); top: calc(var(--page-index) * var(--page-stride)); height: var(--page-height); }
-.page-header { position: absolute; top: calc(var(--page-margin) / 2 - 8px); white-space: pre-wrap; z-index: 1; }
-.page-footer { position: absolute; bottom: calc(var(--page-margin) / 2 - 8px); display: flex; justify-content: space-between; gap: 16px; width: 100%; white-space: pre-wrap; z-index: 1; }
-.page-watermark { position: absolute; left: 0; right: 0; top: calc(var(--page-margin) + 28px); height: 210px; z-index: 0; display: flex; align-items: center; justify-content: center; overflow: visible; pointer-events: none; user-select: none; }
+.page-furniture-page { position: absolute; left: var(--page-margin-left, var(--page-margin)); right: var(--page-margin-right, var(--page-margin)); top: calc(var(--page-index) * var(--page-stride)); height: var(--page-height); }
+.page-header { position: absolute; top: calc(var(--page-margin-top, var(--page-margin)) / 2 - 8px); white-space: pre-wrap; z-index: 1; }
+.page-footer { position: absolute; bottom: calc(var(--page-margin-bottom, var(--page-margin)) / 2 - 8px); display: flex; justify-content: space-between; gap: 16px; width: 100%; white-space: pre-wrap; z-index: 1; }
+.page-watermark { position: absolute; left: 0; right: 0; top: calc(var(--page-margin-top, var(--page-margin)) + 28px); height: 210px; z-index: 0; display: flex; align-items: center; justify-content: center; overflow: visible; pointer-events: none; user-select: none; }
 .page-watermark span { font-family: Arial, sans-serif; font-weight: 700; line-height: 1; letter-spacing: 0.06em; color: rgba(95, 99, 104, 0.36); white-space: nowrap; font-size: min(108px, calc(var(--page-width) / var(--mark-em, 5))); }
 .feature-dialog { width: min(560px, calc(100vw - 32px)); max-height: 85vh; overflow: auto; }
 .feature-dialog fieldset { margin: 12px 0; padding: 12px; }
@@ -4479,7 +4479,7 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 .tab-settings-row input[type="color"] { width: 30px; }
 @media print {
   .paginated-paper { width: var(--page-width); background: white; box-shadow: none; min-height: 0 !important; zoom: 1 !important; }
-  .paginated-paper .document-content { padding: var(--page-margin); }
+  .paginated-paper .document-content { padding: var(--page-margin-top, var(--page-margin)) var(--page-margin-right, var(--page-margin)) var(--page-margin-bottom, var(--page-margin)) var(--page-margin-left, var(--page-margin)); }
   .doc-page-spacer { height: calc(var(--spacer-height) - 24px); }
   tr.doc-page-spacer td { height: calc(var(--spacer-height) - 24px); }
   .page-furniture-page { top: calc(var(--page-index) * var(--page-height)); }
@@ -4511,10 +4511,10 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 .doc-toc-empty { margin: 4px 0; color: #5f6368; font-size: 11pt; }
 .doc-note-ref { color: #1a73e8; cursor: pointer; font-size: 0.75em; line-height: 0; }
 .doc-note { font-size: 10pt; line-height: 1.4; }
-.doc-note[data-kind="footnote"] { position: absolute; left: var(--page-margin); right: var(--page-margin); margin: 0; top: 0; }
+.doc-note[data-kind="footnote"] { position: absolute; left: var(--page-margin-left, var(--page-margin)); right: var(--page-margin-right, var(--page-margin)); margin: 0; top: 0; }
 .doc-note[data-kind="footnote"]:not(.doc-note-placed) { opacity: 0; pointer-events: none; }
 .doc-note[data-kind="footnote"].doc-note-placed { opacity: 1; top: calc(var(--page-index) * var(--page-stride) + var(--note-top)); }
-.doc-note-continued { position: absolute; left: var(--page-margin); right: var(--page-margin); overflow: hidden; top: calc(var(--page-index) * var(--page-stride) + var(--note-top)); font-size: 10pt; line-height: 1.4; }
+.doc-note-continued { position: absolute; left: var(--page-margin-left, var(--page-margin)); right: var(--page-margin-right, var(--page-margin)); overflow: hidden; top: calc(var(--page-index) * var(--page-stride) + var(--note-top)); font-size: 10pt; line-height: 1.4; }
 .doc-note-continued-inner, .doc-note-row { display: flex; gap: 0.45em; align-items: flex-start; }
 .doc-note-rule { border-top: 1px solid #202124; padding-top: 4px; }
 .doc-note-label { border: 0; background: transparent; color: #1a73e8; cursor: pointer; font: inherit; padding: 0; min-width: 1.2em; text-align: left; }
