@@ -2117,6 +2117,27 @@ function Workspace() {
                     Spelling
                   </MenuItem>
                   <MenuItem
+                    synonyms={[
+                      "grammar",
+                      "grammar check",
+                      "check grammar",
+                      "spelling and grammar",
+                    ]}
+                    focusesTarget
+                    onSelect={() => actions.current?.docActions?.openGrammar()}
+                  >
+                    Grammar
+                  </MenuItem>
+                  <MenuItem
+                    synonyms={["ignored grammar", "restore grammar"]}
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.docActions?.openIgnoredGrammar()
+                    }
+                  >
+                    Ignored grammar
+                  </MenuItem>
+                  <MenuItem
                     focusesTarget
                     onSelect={() =>
                       actions.current?.docActions?.openDictionary()

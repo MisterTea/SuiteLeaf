@@ -3577,6 +3577,10 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 .spelling-actions .dialog-text-btn { margin: 0; }
 .document-content .spelling-misspelling { text-decoration: underline wavy #d93025; text-decoration-thickness: 1px; text-underline-offset: 2px; }
 .document-content .spelling-current { background: #fce8e6; border-radius: 2px; }
+.document-content .grammar-issue { text-decoration: underline dotted #1a73e8; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+.document-content .grammar-current { background: #e8f0fe; border-radius: 2px; }
+.grammar-panel { border-top: 3px solid #1a73e8; }
+.grammar-suggestion { font-weight: 600; }
 .dictionary-section h3 { margin: 0 0 6px; font-size: 13px; font-weight: 500; color: #1f1f1f; }
 .dictionary-section { display: grid; gap: 8px; }
 .dictionary-section ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
