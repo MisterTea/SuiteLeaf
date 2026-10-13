@@ -134,7 +134,7 @@ function message(e: unknown) {
 }
 function isImportFeature(warning: string): boolean {
   return (
-    /^\d+ (?:footnote|endnote|table)/.test(warning) ||
+    /^\d+ (?:footnote|endnote|table|citation|bibliography)/.test(warning) ||
     /^\d+ comment threads? imported$/.test(warning) ||
     /^\d+ suggestions? imported$/.test(warning)
   );
@@ -2123,6 +2123,21 @@ function Workspace() {
                     }
                   >
                     Personal dictionary
+                  </MenuItem>
+                  <MenuItem
+                    synonyms={[
+                      "citations",
+                      "cite",
+                      "bibliography",
+                      "references",
+                      "sources",
+                    ]}
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.docActions?.openCitations()
+                    }
+                  >
+                    Citations
                   </MenuItem>
                   <MenuItem
                     onSelect={() => actions.current?.docActions?.openFind()}

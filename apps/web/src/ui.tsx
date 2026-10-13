@@ -321,6 +321,7 @@ export type EditorActions = {
     openWordCount: () => void;
     openSpelling: () => void;
     openDictionary: () => void;
+    openCitations: () => void;
     clearFormatting: () => void;
     align: (alignment: "left" | "center" | "right" | "justify") => void;
     toggleBold: () => void;

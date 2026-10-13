@@ -93,6 +93,8 @@ import { DocumentPagination, PageBreak } from "./doc-pagination";
 import { Proofing } from "./doc-spelling";
 import { useDocProofing, type ProofingContext } from "./doc-proofing";
 import { documentNotes } from "./doc-notes";
+import { documentCitations } from "./doc-citations";
+import { DocCitations } from "./doc-citations-panel";
 import {
   documentHtml,
   documentPageSettings,
@@ -104,6 +106,7 @@ export const extensions: Extensions = [
   DocumentPagination,
   PageBreak,
   ...documentNotes,
+  ...documentCitations,
   StarterKit.configure({
     link: { openOnClick: false, isAllowedUri: (url) => safeLink(url) },
   }),
@@ -220,6 +223,7 @@ export default function Docs({
   const insertComment = useRef(() => {});
   const openComments = useRef(() => {});
   const [commentGutter, setCommentGutter] = useState(false);
+  const [citationsOpen, setCitationsOpen] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(() =>
     window.innerWidth < 700 ? "Fit" : "100%",
   );
@@ -718,6 +722,7 @@ export default function Docs({
         openWordCount: proofing.openWordCount,
         openSpelling: proofing.openSpelling,
         openDictionary: proofing.openDictionary,
+        openCitations: () => setCitationsOpen(true),
         clearFormatting: () =>
           editor.chain().focus().unsetAllMarks().clearNodes().run(),
         align: (alignment) =>
@@ -880,7 +885,7 @@ export default function Docs({
   const dimensions = pageDimensions(pageSettings);
   const requestedZoom =
     zoomLevel === "Fit" ? 1 : Number.parseInt(zoomLevel, 10) / 100;
-  const pageZoom = commentGutter
+  const pageZoom = commentGutter || citationsOpen
     ? Math.min(requestedZoom, pageViewportWidth / dimensions.width)
     : zoomLevel === "Fit"
       ? Math.min(1, pageViewportWidth / dimensions.width)
@@ -1827,7 +1832,7 @@ export default function Docs({
       ) : null}
 
       <div
-        className={`document-stage${commentGutter ? " with-comments" : ""}`}
+        className={`document-stage${commentGutter ? " with-comments" : ""}${citationsOpen ? " with-citations" : ""}`}
         ref={documentStage}
       >
         <aside className="outline">
@@ -1924,6 +1929,12 @@ export default function Docs({
           }}
         />
         <SuggestionRail />
+        <DocCitations
+          editor={editor}
+          open={citationsOpen}
+          onOpen={setCitationsOpen}
+          readOnly={readOnly}
+        />
       </div>
       {proofing.ui}
       <footer className="editor-status">
