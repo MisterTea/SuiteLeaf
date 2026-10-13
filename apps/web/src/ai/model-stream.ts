@@ -103,7 +103,8 @@ export function createLocalStreamFn(model: LocalModel, options: LocalStreamOptio
     const [callOpen, callClose] = format.toolCall;
     const markers = [callOpen, format.thinking.marker, ...format.info.stop];
     const messages = context.messages as Message[];
-    const tools = getCurrentTools(messages);
+    const declared = getCurrentTools(messages);
+    const tools = declared.length ? declared : ((context as { tools?: typeof declared }).tools ?? []);
     const prompt = format.render(
       getCurrentSystemPrompt(messages),
       tools,
@@ -194,7 +195,15 @@ export function createLocalStreamFn(model: LocalModel, options: LocalStreamOptio
               mode = "tool";
               continue;
             }
-            if (!final && format.bareCall.startsWith(rest)) return;
+            const named = format.bareName ? /^([A-Za-z_][\w.-]*)\{/.exec(rest) : null;
+            if (named && tools.some((t) => t.name === named[1])) {
+              const at = raw.indexOf(named[0], done);
+              raw = raw.slice(0, at) + callOpen + format.bareCall + raw.slice(at);
+              done = at + callOpen.length;
+              mode = "tool";
+              continue;
+            }
+            if (!final && (format.bareCall.startsWith(rest) || (format.bareName && /^[A-Za-z_][\w.-]*$/.test(rest)))) return;
           }
           let at = -1,
             marker = "";

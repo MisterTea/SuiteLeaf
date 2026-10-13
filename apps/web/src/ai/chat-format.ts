@@ -28,6 +28,8 @@ export interface ChatFormat {
   startsThinking: boolean;
   /** How a reply begins when the model writes a call but leaves out its opening marker. */
   bareCall: string;
+  /** The model also writes calls as just the tool's name and arguments (`todo{…}`), leaving out `bareCall` too. */
+  bareName?: boolean;
   /** The whole prompt. `raw` returns what the model wrote for an earlier reply, when known. */
   render(
     systemPrompt: string,
@@ -49,6 +51,7 @@ export const gemmaFormat: ChatFormat = {
   thinking: { marker: "<|channel>", open: THOUGHT, close: THOUGHT_END },
   startsThinking: false,
   bareCall: "call:",
+  bareName: true,
   render: (systemPrompt, tools, messages, raw) => renderSystem(systemPrompt, tools) + renderConversation(messages, raw),
   parseCall: (body) => parseToolCall(body),
   draftName: (body) => /^\s*call:([\w.-]+)/.exec(body)?.[1],

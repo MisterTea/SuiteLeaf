@@ -221,6 +221,13 @@ describe("Gemma 4 stream", () => {
     expect(call.arguments[PARSE_ERROR]).toMatch(/reached its 2048-token limit/);
   });
 
+  it("reads a call written as just the tool's name and arguments", async () => {
+    const message = await streamed(["insert_", "chart{type:<|\"|>column<|\"|>}<tool_call|>", "<eos>"]);
+    expect(message.content).toEqual([expect.objectContaining({ type: "toolCall", name: "insert_chart", arguments: { type: "column" } })]);
+    const text = await streamed(["Charting{ideas} is fun."]);
+    expect(text.content).toEqual([{ type: "text", text: "Charting{ideas} is fun." }]);
+  });
+
   it("keeps ordinary replies as text", async () => {
     const message = await streamed(["Ca", "lled the club. Done."]);
     expect(message.content).toEqual([{ type: "text", text: "Called the club. Done." }]);
