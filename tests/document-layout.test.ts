@@ -117,6 +117,93 @@ describe("document page settings", () => {
     expect(unknown.pageNumberPositionSet).toBe(false);
     expect(pageFace(unknown, 0, 2).pageNumber).toBe("1 / 2");
   });
+  it("starts numbering at a chosen page and keeps a cover from counting", () => {
+    const saved = (pageSettings: object) =>
+      documentPageSettings({ type: "doc", attrs: { pageSettings } });
+    const older = saved({ pageNumbers: true, footer: "Committee draft" });
+    expect(older.pageNumberStart).toBe(1);
+    expect(older.coverHasNoNumber).toBe(false);
+    expect(pageFace(older, 0, 2).pageNumber).toBe("1 / 2");
+    const started = saved({
+      pageNumbers: true,
+      pageNumberFormat: "page",
+      pageNumberPosition: "bottom-center",
+      pageNumberPositionSet: true,
+      pageNumberStart: 4,
+      footer: "Committee draft",
+    });
+    expect(started.pageNumberStart).toBe(4);
+    expect(pageFace(started, 0, 2)).toMatchObject({
+      footer: "Committee draft",
+      numberSide: "center",
+      pageNumber: "Page 4",
+    });
+    expect(pageFace(started, 1, 2)).toMatchObject({
+      footer: "Committee draft",
+      pageNumber: "Page 5",
+    });
+    expect(pageNumberHint(started)).toContain("Page 4");
+    expect(pageNumberHint(started)).toContain("Page 5");
+    const covered = saved({
+      ...started,
+      pageNumberStart: 4,
+      coverHasNoNumber: true,
+    });
+    expect(covered.pageNumberStart).toBe(4);
+    expect(covered.coverHasNoNumber).toBe(true);
+    expect(pageFace(covered, 0, 2)).toMatchObject({
+      footer: "Committee draft",
+      numberSide: "none",
+      pageNumber: "",
+    });
+    expect(pageFace(covered, 1, 2)).toMatchObject({
+      footer: "Committee draft",
+      numberSide: "center",
+      pageNumber: "Page 1",
+    });
+    expect(pageFace(covered, 1, 2).pageNumber).not.toBe("Page 2");
+    expect(pageNumberHint(covered)).toContain("Page 1");
+    expect(pageNumberHint(covered)).toContain("Page 2");
+    const hidden = { ...covered, pageNumbers: false };
+    expect(hidden.pageNumberStart).toBe(4);
+    expect(hidden.coverHasNoNumber).toBe(true);
+    expect(pageFace(hidden, 0, 2)).toMatchObject({
+      numberSide: "none",
+      pageNumber: "",
+      footer: "Committee draft",
+    });
+    expect(pageFace(hidden, 1, 2).pageNumber).toBe("");
+    expect(pageFace({ ...hidden, pageNumbers: true }, 1, 2).pageNumber).toBe("Page 1");
+    expect(saved({ pageNumberStart: 0 }).pageNumberStart).toBe(1);
+    expect(saved({ pageNumberStart: 4.5 }).pageNumberStart).toBe(1);
+    expect(saved({ pageNumberStart: "4" }).pageNumberStart).toBe(1);
+    expect(saved({ pageNumberStart: 10000 }).pageNumberStart).toBe(1);
+    const html = documentHtml("Minutes", "<p>Text</p>", {
+      ...defaultPageSettings,
+      pageNumbers: true,
+      pageNumberFormat: "page",
+      pageNumberPosition: "bottom-center",
+      pageNumberPositionSet: true,
+      pageNumberStart: 4,
+      footer: "Committee draft",
+    });
+    expect(html).toContain("counter-reset: page 3;");
+    expect(html).toContain('"Page " counter(page)');
+    const coverHtml = documentHtml("Minutes", "<p>Text</p>", {
+      ...defaultPageSettings,
+      pageNumbers: true,
+      pageNumberFormat: "page",
+      pageNumberPosition: "bottom-center",
+      pageNumberPositionSet: true,
+      coverHasNoNumber: true,
+      footer: "Committee draft",
+    });
+    expect(coverHtml).toContain("counter-reset: page -1;");
+    expect(coverHtml).toContain("@page:first {");
+    expect(coverHtml).toContain(
+      '<footer class="page-footer">Committee draft</footer>',
+    );
+  });
 });
 
 describe("document HTML export", () => {
