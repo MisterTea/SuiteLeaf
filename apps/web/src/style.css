@@ -796,6 +796,11 @@ a {
   position: fixed;
   display: flex;
   flex-direction: column;
+  width: max-content;
+  max-width: min(360px, calc(100vw - 16px));
+}
+.table-context-menu .menu-item-label {
+  white-space: nowrap;
 }
 .table-context-menu .menu-item {
   border: 0;

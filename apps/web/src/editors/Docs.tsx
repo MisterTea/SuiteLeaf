@@ -63,7 +63,8 @@ import { Tool, type EditorActions, type TableAction } from "../ui";
 import { MenuSearchPill } from "../command-palette";
 import { useToolbarOverflow } from "./toolbar-overflow";
 import { linkTarget } from "./doc-links";
-import { NodeSelection, TextSelection } from "@tiptap/pm/state";
+import type { Node as ProseNode } from "@tiptap/pm/model";
+import { NodeSelection, TextSelection, type Selection } from "@tiptap/pm/state";
 import {
   DocumentSearchHighlight,
   documentMatches,
@@ -130,6 +131,13 @@ import {
   copyTextFormat,
   type CopiedTextFormat,
 } from "./doc-paint-format";
+import {
+  columnHeaderName,
+  columnSortsAsNumber,
+  nextSortAscending,
+  sortColumnLabel,
+  sortTableRows,
+} from "./doc-table-sort";
 
 export const extensions: Extensions = [
   DocumentPagination,
@@ -224,6 +232,38 @@ function activeTextColor(color: unknown): string | null {
   return match ? `#${match[1].toLowerCase()}` : null;
 }
 
+function selectedTableColumn(selection: Selection): number | null {
+  const $pos =
+    selection instanceof CellSelection ? selection.$anchorCell : selection.$from;
+  for (let depth = $pos.depth; depth > 0; depth--) {
+    const name = $pos.node(depth).type.name;
+    if (name === "tableCell" || name === "tableHeader")
+      return $pos.index(depth - 1);
+  }
+  return null;
+}
+
+/** A cursor inside the body cell of `column`, so the next Sort names that column. */
+function caretInColumn(table: ProseNode, tablePos: number, column: number): number {
+  let pos = tablePos + 1;
+  let target = tablePos + 1;
+  table.forEach((row) => {
+    let header = row.childCount > 0;
+    row.forEach((cell) => {
+      if (cell.type.name !== "tableHeader") header = false;
+    });
+    let cellAt = pos + 1;
+    let index = 0;
+    row.forEach((cell) => {
+      if (!header && index === column) target = cellAt + 2;
+      index += 1;
+      cellAt += cell.nodeSize;
+    });
+    pos += row.nodeSize;
+  });
+  return target;
+}
+
 export default function Docs({
   file,
   onChange,
@@ -259,6 +299,11 @@ export default function Docs({
   const [tableMenu, setTableMenu] = useState<{ x: number; y: number } | null>(
     null,
   );
+  const sortMemory = useRef<{
+    pos: number;
+    column: number;
+    ascending: boolean;
+  } | null>(null);
   const [link, setLink] = useState<{
     from: number;
     to: number;
@@ -685,6 +730,39 @@ export default function Docs({
     setTableOpen(false);
   };
 
+  const sortTableColumn = (column: number | null, ascending: boolean) => {
+    if (!editor?.isEditable || column === null) return false;
+    const found = findParentNode((n) => n.type.name === "table")(
+      editor.state.selection,
+    );
+    if (!found) return false;
+    const json = found.node.toJSON() as JsonNode;
+    const next = editor.schema.nodeFromJSON({
+      ...json,
+      content: sortTableRows(json.content ?? [], column, ascending),
+    });
+    const tr = editor.state.tr.replaceWith(
+      found.pos,
+      found.pos + found.node.nodeSize,
+      next,
+    );
+    const placed = tr.doc.nodeAt(found.pos);
+    if (placed) {
+      try {
+        const at = Math.min(
+          caretInColumn(placed, found.pos, column),
+          tr.doc.content.size,
+        );
+        tr.setSelection(TextSelection.near(tr.doc.resolve(at)));
+      } catch {
+        // The rows are already reordered if the caret cannot sit in that cell.
+      }
+    }
+    editor.view.dispatch(tr.scrollIntoView());
+    sortMemory.current = { pos: found.pos, column, ascending };
+    return true;
+  };
+
   const tableActions = (): TableAction[] => {
     const table = editor
       ? findParentNode((n) => n.type.name === "table")(editor.state.selection)
@@ -695,29 +773,61 @@ export default function Docs({
     };
     const chain = () => editor!.chain().focus();
     const firstRow = table?.node.firstChild;
-    const commands: [string, () => boolean][] = [
-      ["Insert row above", () => chain().addRowBefore().run()],
-      ["Insert row below", () => chain().addRowAfter().run()],
-      ["Insert column left", () => chain().addColumnBefore().run()],
-      ["Insert column right", () => chain().addColumnAfter().run()],
-      ["Delete row", () => chain().deleteRow().run()],
-      ["Delete column", () => chain().deleteColumn().run()],
-      ["Delete table", () => chain().deleteTable().run()],
-      ["Header row", () => chain().toggleHeaderRow().run()],
-    ];
-    return commands.map(([label, command], i) => ({
+    const headerOn =
+      !!firstRow?.childCount &&
+      firstRow.content.content.every(
+        (cell) => cell.type.name === "tableHeader",
+      );
+    const column = editor ? selectedTableColumn(editor.state.selection) : null;
+    const rows = ((table?.node.toJSON() as JsonNode | undefined)?.content ??
+      []) as JsonNode[];
+    const numeric = column !== null && columnSortsAsNumber(rows, column);
+    const previous =
+      table && sortMemory.current?.pos === table.pos
+        ? {
+            column: sortMemory.current.column,
+            ascending: sortMemory.current.ascending,
+          }
+        : null;
+    const ascending =
+      column === null ? true : nextSortAscending(previous, column);
+    const sortLabel =
+      column === null
+        ? "Sort"
+        : sortColumnLabel(columnHeaderName(rows, column), numeric, ascending);
+    const command = (
+      label: string,
+      action: () => boolean,
+      options: {
+        separatorBefore?: boolean;
+        checked?: boolean;
+        disabled?: boolean;
+      } = {},
+    ): TableAction => ({
       label,
-      run: run(command),
-      disabled: !table,
-      separatorBefore: i === 4 || i === 7,
-      checked:
-        label === "Header row"
-          ? !!firstRow?.childCount &&
-            firstRow.content.content.every(
-              (cell) => cell.type.name === "tableHeader",
-            )
-          : undefined,
-    }));
+      run: run(action),
+      disabled: options.disabled ?? !table,
+      separatorBefore: options.separatorBefore,
+      checked: options.checked,
+    });
+    return [
+      command("Insert row above", () => chain().addRowBefore().run()),
+      command("Insert row below", () => chain().addRowAfter().run()),
+      command("Insert column left", () => chain().addColumnBefore().run()),
+      command("Insert column right", () => chain().addColumnAfter().run()),
+      command("Delete row", () => chain().deleteRow().run(), {
+        separatorBefore: true,
+      }),
+      command("Delete column", () => chain().deleteColumn().run()),
+      command("Delete table", () => chain().deleteTable().run()),
+      command(sortLabel, () => sortTableColumn(column, ascending), {
+        separatorBefore: true,
+        disabled: !table || column === null || !editor?.isEditable,
+      }),
+      command("Header row", () => chain().toggleHeaderRow().run(), {
+        checked: headerOn,
+      }),
+    ];
   };
 
   const openLinkDialog = () => {
@@ -2003,8 +2113,8 @@ export default function Docs({
             role="menu"
             aria-label="Table options"
             style={{
-              left: Math.min(tableMenu.x, window.innerWidth - 230),
-              top: Math.min(tableMenu.y, window.innerHeight - 300),
+              left: Math.min(tableMenu.x, window.innerWidth - 300),
+              top: Math.min(tableMenu.y, window.innerHeight - 380),
             }}
             onMouseDown={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
