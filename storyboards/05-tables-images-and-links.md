@@ -31,6 +31,25 @@ Asha is making a seed swap sign-up sheet: a short note, a table of who is bringi
 - A 5-row, 3-column table with a header row and the sign-ups in order, a resized photo, and a working link to the rules.
 - Everything autosaved, including the photo's new size.
 
+## AI version
+
+**Script:** [scenes/ai/05-tables-images-and-links-ai.spec.ts](scenes/ai/05-tables-images-and-links-ai.spec.ts) · **Video:** [videos/05-tables-images-and-links-ai.mp4](videos/05-tables-images-and-links-ai.mp4) · **Desktop video:** [videos/electron/05-tables-images-and-links-ai.mp4](videos/electron/05-tables-images-and-links-ai.mp4)
+
+Asha starts on the home screen, opens the assistant and types one request:
+
+> Make a new document called Seed swap sign-up. Put the heading Seed swap at the top, then the line: Bring seeds to share on Saturday 14 November at the garden shed. Then add a sign-up table with the columns Name, Bringing and Hoping for, and these sign-ups in this order: Asha brings Runner beans and hopes for Chillies; Marek brings Calendula and hopes for Squash; Priya brings Tomatoes and hopes for Herbs; Joy brings Sweet peas and hopes for Anything! Below the table write "Last year's swap table:" and add a photo I'll pick. Finish with the line: Full rules are on the club website. Link the words club website to example.org/seed-swap.
+
+When Gemma asks for the photo, a "Choose a photo to insert" card appears in the panel and Asha picks `garden.png` herself. The script checks the original's end state: a 5-row, 3-column table whose first row is a header row, with the sign-ups in order; the photo below "Last year's swap table:" and outside the table; "club website" linked to `https://example.org/seed-swap` inside "Full rules are on the club website."; and the file saved. Asha then shrinks the photo by dragging a corner, because no assistant tool resizes photos. The script checks that it got smaller and that the status reads "Saved on this device" ("Draft saved" on desktop).
+
+**Tools used:** `create_file`, `write_text` (for the heading and line, "Last year's swap table:" with `after: "table"`, and the rules line with `after: "photo"`), `insert_table` (all five rows in one call, with `header_row`), `insert_image` and `insert_link`.
+
+**What the recordings show.** The purple pointer goes to Insert table on the toolbar, and the whole table appears filled in, with the bold, shaded header row. The pointer then goes to Insert image while the panel asks for the photo. Once Asha picks it, the photo appears under its line. The rules line is typed below the photo, and the pointer lands on "club website" as the words turn into a link. The assistant's part took 28 to 39 seconds on the web build (WebGPU), or 87 seconds in the first run, and 19 to 31 seconds on desktop (llama.cpp). Then Asha resizes the photo, and the document reads top to bottom: heading, line, table, photo line, photo and link.
+
+**How Gemma did.** After the last fix, it passed 3 out of 3 web runs and the final desktop run, with no tool errors. Across the whole loop it passed 5 of 6 web runs and 2 of 3 desktop runs. Gemma always set out the table correctly, as a header row plus four rows in order. The failures and errors were about where to put things after the table and photo, and about writing the table's arguments:
+- **"Below the table" had no way to say it** (web run 2). Gemma wrote `after: "[Table]"`, then `after: "[Image]"`, and in between `insert_image` with `after: "Photo should be inserted after …"`. All three failed. It then linked "club website" anyway (the tool added those words on their own at the end) and said it had added the finishing line, the photo and the table line. None of that had happened. `write_text`, `insert_table` and `insert_image` now take "table" or "photo" (or text from a table cell, or the photo's file name) to mean "right below it". `insert_link` now says when it had to add the words itself. Since then Gemma has used `after: "table"` and `after: "photo"` in every run.
+- **Too many brackets on desktop** (desktop run 1). llama.cpp wrote the rows as `cells: [[[…], […]]` with one `[` too many. It retried the same broken call six times, because the error it got back ("cells: must have required properties") hid the real problem. Before that, it had made an empty 3×1 table and typed the column names as a paragraph. The parser now drops a surplus `[`, and an unreadable call is reported as unreadable.
+- **Quoting the photo's file name** (desktop run 2). Gemma wrote `after: "garden.png"`, which failed once before it switched to "photo". The file name now works.
+
 ## Gaps and notes
 
 - The same table commands are under **Format → Table** in the menu bar (greyed out when the caret isn't in a table). After **Insert row above/below** the caret stays where it was, as in Google Docs and Word, so you click into the new row to type.
