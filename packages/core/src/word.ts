@@ -36,6 +36,7 @@ import {
 import { lineSpacingFromWord, type LineSpacing } from "./line-spacing";
 import { paragraphIndentFromWord } from "./paragraph-indent";
 import { applyImportedParagraphSpacing } from "./paragraph-spacing-import";
+import { applyWordHighlights } from "./word-highlight";
 import { firstSectionPageMargins } from "./word-page-margins";
 
 type Mark = NonNullable<JsonNode["marks"]>[number];
@@ -1588,6 +1589,7 @@ export async function importDocx(
   const indentXml =
     (await zip.file("word/document.xml")?.async("string")) ?? xml;
   content = applyWordParagraphIndents(content, indentXml);
+  content = applyWordHighlights(content, indentXml, documentText);
   const file = createFile("doc", title) as DocFile;
   file.content = content;
   const stats: Record<string, number> = {

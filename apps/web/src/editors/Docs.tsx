@@ -207,6 +207,13 @@ export function importHTML(html: string): JsonNode {
   return generateJSON(container.innerHTML, extensions) as JsonNode;
 }
 
+/** Hex under the caret. Null means that word is not highlighted. */
+function activeHighlight(color: unknown): string {
+  if (typeof color !== "string") return "#ffff00";
+  const match = /^#([\da-f]{6})$/i.exec(color.trim());
+  return match ? `#${match[1].toLowerCase()}` : "#ffff00";
+}
+
 export default function Docs({
   file,
   onChange,
@@ -263,7 +270,7 @@ export default function Docs({
   const docTools = useRef<HTMLFieldSetElement>(null);
   const moreDocTools = useToolbarOverflow(
     docTools,
-    '[aria-label="Page setup"], [aria-label="Page break"], [aria-label="Bold"], .paint-format, [aria-label="Superscript"], [aria-label="Subscript"], [aria-label="Bulleted list"], [aria-label="Decrease indent"], [aria-label="Increase indent"], [aria-label="Find and replace"], [aria-label="Insert table"], [aria-label="Insert link"], .mode-switch',
+    '[aria-label="Page setup"], [aria-label="Page break"], [aria-label="Bold"], .paint-format, .highlight-color-picker, [aria-label="Superscript"], [aria-label="Subscript"], [aria-label="Bulleted list"], [aria-label="Decrease indent"], [aria-label="Increase indent"], [aria-label="Find and replace"], [aria-label="Insert table"], [aria-label="Insert link"], .mode-switch',
   );
   const [copiedFormat, setCopiedFormat] = useState<CopiedTextFormat | null>(
     null,
@@ -600,6 +607,9 @@ export default function Docs({
         strike: e?.isActive("strike"),
         superscript: e?.isActive("superscript"),
         subscript: e?.isActive("subscript"),
+        highlight: e?.isActive("highlight")
+          ? activeHighlight(e.getAttributes("highlight").color)
+          : null,
         fontFamily: e?.getAttributes("textStyle").fontFamily ?? "Arial",
         fontSize: (() => {
           const raw = e?.getAttributes("textStyle").fontSize as
@@ -1366,18 +1376,23 @@ export default function Docs({
         <label
           className="color-tool highlight-color-picker"
           title="Highlight color"
+          data-highlight={state?.highlight ?? "none"}
         >
           <span className="color-icon-wrapper">
             <Highlighter size={15} />
             <span
               className="color-bar"
-              style={{ backgroundColor: highlightColor }}
+              style={
+                state?.highlight
+                  ? { backgroundColor: state.highlight }
+                  : undefined
+              }
             />
           </span>
           <input
             aria-label="Highlight color"
             type="color"
-            value={highlightColor}
+            value={state?.highlight ?? highlightColor}
             onChange={(e) => {
               setHighlightColor(e.target.value);
               editor

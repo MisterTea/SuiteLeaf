@@ -1414,6 +1414,17 @@ a {
   border-radius: 1px;
   margin-top: 1px;
 }
+.highlight-color-picker .color-bar {
+  width: 18px;
+  height: 6px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.28);
+}
+.highlight-color-picker[data-highlight="none"] .color-bar {
+  background: #fff;
+}
+.document-content mark {
+  color: inherit;
+}
 .color-tool input {
   opacity: 0;
   position: absolute;
