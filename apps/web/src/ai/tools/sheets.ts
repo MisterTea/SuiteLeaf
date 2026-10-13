@@ -670,7 +670,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       name: "create_pivot",
       label: "Pivot table",
       description:
-        "Summarize a table with a pivot table on a new, read-only sheet that updates by itself when the source changes. rows: headers whose values go down the side; columns: headers whose values go across the top (\"split by who paid\" is columns [\"Paid by\"]); value: the header to summarize; summarize: SUM, COUNT, AVERAGE, MIN or MAX. Grand totals are added. Numbers keep the source column's number format. Only use filter_column/filter_value when the user asks to leave some rows out (keeps rows whose filter_column equals filter_value).",
+        "Summarize a table with a pivot table on a new, read-only sheet that updates by itself when the source changes. rows: headers whose values go down the side; columns: headers whose values go across the top (\"split by who paid\" is columns [\"Paid by\"]); value: the header to summarize; summarize: SUM, COUNT, AVERAGE, MIN or MAX. Grand totals are added. Numbers keep the source column's number format; number_format (e.g. currency for dollars) sets it on the source's value cells, which the pivot follows. Only use filter_column/filter_value when the user asks to leave some rows out (keeps rows whose filter_column equals filter_value).",
       parameters: Type.Object({
         range: Type.Optional(Type.String()),
         rows: Type.Array(Type.String({ description: "Header names; their values go down the side" })),
@@ -680,6 +680,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         filter_column: Type.Optional(Type.String()),
         filter_value: Type.Optional(Type.String()),
         title: Type.Optional(Type.String()),
+        number_format: Type.Optional(Type.String({ enum: ["currency", "accounting", "percent", "percent_whole", "number", "plain"] })),
       }),
       target: () => document.querySelector(".pivot-btn") ?? undefined,
       async execute(args) {
@@ -687,8 +688,10 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         const r = args.range ? parseA1(args.range) : usedRange(s);
         const field = (name: string) => resolveColumn(s, r, name) - r.startColumn;
         let filterValue = args.filter_value ?? "";
-        if (args.filter_column) {
-          const col = resolveColumn(s, r, args.filter_column);
+        // A filter column without a value (Gemma sometimes sends one) filters nothing.
+        const filtering = !!args.filter_column && !!filterValue.trim();
+        if (filtering) {
+          const col = resolveColumn(s, r, args.filter_column!);
           const values = [
             ...new Set<string>(
               s
@@ -704,6 +707,15 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
             );
           filterValue = match;
         }
+        const valueColumn = resolveColumn(s, r, args.value);
+        const valueCells = a1({ startRow: r.startRow + 1, endRow: r.endRow, startColumn: valueColumn, endColumn: valueColumn });
+        if (args.number_format) {
+          const id = NUMBER_FORMATS[args.number_format];
+          if (!id || !applyNamedFormat(id, (code) => s.getRange(valueCells).setNumberFormat(code)).ok)
+            throw new ToolError(`Unknown number format ${args.number_format}.`);
+          ctx.persist();
+          await ctx.settle();
+        }
         const before = new Set(ctx.content().pivots.map((p) => p.id));
         select(a1(r));
         ctx.openPanel("pivot", {
@@ -714,7 +726,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
           columns: (args.columns ?? []).map(field),
           value: field(args.value),
           aggregate: args.summarize as PivotDefinition["aggregate"],
-          filterColumn: args.filter_column ? field(args.filter_column) : -1,
+          filterColumn: filtering ? field(args.filter_column!) : -1,
           filterValue,
         });
         await wait(1300);
@@ -723,10 +735,13 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         const p = ctx.content().pivots.find((x) => !before.has(x.id));
         if (!p) throw new ToolError("The pivot table was not created.");
         const target = book.getSheetBySheetId(p.targetSheetId);
-        const valueCells = a1({ startRow: r.startRow + 1, endRow: r.endRow, startColumn: r.startColumn + p.value, endColumn: r.startColumn + p.value });
-        const code = s.getRange(r.startRow + 1, r.startColumn + p.value, 1, 1).getNumberFormat?.() || "";
-        const format = code && code !== "General" ? `in the source's number format (${code})` : "as plain numbers, like the source";
-        return `Created pivot table "${p.title}" on sheet "${target?.getSheetName()}" (read-only; it follows the source):\n${grid(target, usedRange(target), 30, 10)}\nNumbers are shown ${format}. To change how they look, format the source cells ${valueCells} on sheet "${s.getSheetName()}"; the pivot follows.`;
+        const code = s.getRange(r.startRow + 1, valueColumn, 1, 1).getNumberFormat?.() || "";
+        const format = args.number_format
+          ? `as ${args.number_format} (${code}): the source cells ${valueCells} on sheet "${s.getSheetName()}" were formatted that way, and the pivot follows them`
+          : code && code !== "General"
+            ? `in the source's number format (${code})`
+            : `as plain numbers, like the source cells ${valueCells} on sheet "${s.getSheetName()}" (format those, or pass number_format, to change it)`;
+        return `Created pivot table "${p.title}" on sheet "${target?.getSheetName()}" (read-only; it follows the source):\n${grid(target, usedRange(target), 30, 10)}\nNumbers are shown ${format}.`;
       },
     }),
     tool({
