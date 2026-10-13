@@ -2316,6 +2316,9 @@ ${slidesHtml}
                   onMouseDown={(e) => {
                     if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey)
                       return;
+                    // Firefox starts a native drag unless the press is cancelled,
+                    // and then the thumbnail never lands in the new gap.
+                    e.preventDefault();
                     const ids = selectedRef.current.includes(id)
                       ? [...selectedRef.current]
                       : [id];

@@ -304,6 +304,9 @@ export function CommandPalette({
         setMode((current) => (current === "search" ? null : "search"));
         return;
       }
+      const inDocument =
+        event.target instanceof Element &&
+        !!event.target.closest(".document-content");
       const slideComment =
         event.code === "KeyM" &&
         event.altKey &&
@@ -312,9 +315,14 @@ export function CommandPalette({
         (mac
           ? event.metaKey && !event.ctrlKey
           : event.ctrlKey && !event.metaKey);
+      // Ctrl+Alt+M focuses the menu bar, except where that chord comments:
+      // in a document, or on a slide, on keyboards that use Control for it.
+      // Commenting wins there. F10 focuses the menu bar everywhere.
       if (
         eventMatchesShortcut("F10", keyEvent, mac) ||
-        (eventMatchesShortcut("Ctrl+Alt+M", keyEvent, mac) && !slideComment)
+        (eventMatchesShortcut("Ctrl+Alt+M", keyEvent, mac) &&
+          (mac || !inDocument) &&
+          !slideComment)
       ) {
         event.preventDefault();
         event.stopPropagation();
