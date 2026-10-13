@@ -998,6 +998,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
           throw new ToolError(
             `The formula ${formulaText} gives ${broken.value} on row ${broken.row + 1}, so the rule would never apply. Write it as a true/false test for the range's first row, with $ before the column, e.g. =$A${r.startRow + 1}=TRUE or =$C${r.startRow + 1}>100.`,
           );
+        select(range);
         let builder = s
           .newConditionalFormattingRule()
           .whenFormulaSatisfied(formulaText)
