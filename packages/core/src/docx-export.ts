@@ -11,6 +11,7 @@ import {
   FootnoteReferenceRun,
   Header,
   HeadingLevel,
+  HeightRule,
   ImageRun,
   Math as OfficeMath,
   MathFraction,
@@ -353,6 +354,12 @@ function columnPixelWidths(table: JsonNode): number[] | null {
   if (known.some((width) => width === undefined)) return null;
   return known as number[];
 }
+/** Stored row height in CSS pixels. Absent on rows that were never equalized. */
+function rowHeightPx(row: JsonNode): number | null {
+  const height = row.attrs?.height;
+  const value = typeof height === "number" ? height : Number.NaN;
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
 function blocks(
   nodes: JsonNode[],
   plan: DocxCommentPlan,
@@ -397,13 +404,21 @@ function blocks(
           ...(columnWidths && total
             ? { columnWidths, layout: TableLayoutType.FIXED }
             : {}),
-          rows: (n.content ?? []).map(
-            (row) =>
-              new TableRow({
+          rows: (n.content ?? []).map((row) => {
+            const height = rowHeightPx(row);
+            return new TableRow({
                 tableHeader:
                   (!!row.content?.length &&
                     row.content.every((cell) => cell.type === "tableHeader")) ||
                   undefined,
+                ...(height
+                  ? {
+                      height: {
+                        value: pagePxToTwips(height),
+                        rule: HeightRule.ATLEAST,
+                      },
+                    }
+                  : {}),
                 children: (row.content ?? []).map(
                   (cell) =>
                     new TableCell({
@@ -416,8 +431,8 @@ function blocks(
                       ),
                     }),
                 ),
-              }),
-          ),
+              });
+          }),
         }),
       ];
     }

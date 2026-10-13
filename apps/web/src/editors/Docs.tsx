@@ -133,6 +133,11 @@ import {
 } from "./doc-paint-format";
 import { equalizeTableColumns, tableColumnWidths } from "./doc-table-columns";
 import {
+  equalizeTableRows,
+  measureTableRowHeights,
+  tableRowWithHeight,
+} from "./doc-table-rows";
+import {
   columnHeaderName,
   columnSortsAsNumber,
   nextSortAscending,
@@ -160,7 +165,8 @@ export const extensions: Extensions = [
   WidowControl,
   KeepLines,
   croppableImage,
-  TableKit.configure({ table: { resizable: true } }),
+  TableKit.configure({ table: { resizable: true }, tableRow: false }),
+  tableRowWithHeight,
   CharacterCount,
   DocumentSearchHighlight,
   ...commentExtensions,
@@ -825,6 +831,53 @@ export default function Docs({
     return true;
   };
 
+  const equalizeRows = () => {
+    if (!editor?.isEditable) return false;
+    const found = findParentNode((n) => n.type.name === "table")(
+      editor.state.selection,
+    );
+    if (!found) return false;
+    const dom = editor.view.nodeDOM(found.pos);
+    const table =
+      dom instanceof HTMLTableElement
+        ? dom
+        : dom instanceof HTMLElement
+          ? dom.querySelector("table")
+          : null;
+    const json = found.node.toJSON() as JsonNode;
+    const rowCount = (json.content ?? []).filter(
+      (row) => row.type === "tableRow",
+    ).length;
+    const measured =
+      table instanceof HTMLTableElement
+        ? measureTableRowHeights(table)
+        : undefined;
+    if (measured && measured.length !== rowCount) return false;
+    const nextJson = equalizeTableRows(json, measured);
+    if (nextJson === json) return false;
+    const next = editor.schema.nodeFromJSON(nextJson);
+    const column = selectedTableColumn(editor.state.selection);
+    const tr = editor.state.tr.replaceWith(
+      found.pos,
+      found.pos + found.node.nodeSize,
+      next,
+    );
+    const placed = tr.doc.nodeAt(found.pos);
+    if (placed && column !== null) {
+      try {
+        const at = Math.min(
+          caretInColumn(placed, found.pos, column),
+          tr.doc.content.size,
+        );
+        tr.setSelection(TextSelection.near(tr.doc.resolve(at)));
+      } catch {
+        // The rows are already equal if the caret cannot sit in that cell.
+      }
+    }
+    editor.view.dispatch(tr.scrollIntoView());
+    return true;
+  };
+
   const tableActions = (): TableAction[] => {
     const table = editor
       ? findParentNode((n) => n.type.name === "table")(editor.state.selection)
@@ -865,6 +918,9 @@ export default function Docs({
       (unmerge ? editor.can().splitCell() : editor.can().mergeCells());
     const canEqualize =
       !!editor?.isEditable && (tableColumnWidths(rows)?.length ?? 0) > 1;
+    const canEqualizeRows =
+      !!editor?.isEditable &&
+      rows.filter((row) => row.type === "tableRow").length > 1;
     const command = (
       label: string,
       action: () => boolean,
@@ -887,6 +943,9 @@ export default function Docs({
       command("Insert column right", () => chain().addColumnAfter().run()),
       command("Equal columns", () => equalizeColumns(), {
         disabled: !canEqualize,
+      }),
+      command("Equal rows", () => equalizeRows(), {
+        disabled: !canEqualizeRows,
       }),
       command("Delete row", () => chain().deleteRow().run(), {
         separatorBefore: true,
@@ -2193,7 +2252,7 @@ export default function Docs({
             aria-label="Table options"
             style={{
               left: Math.min(tableMenu.x, window.innerWidth - 300),
-              top: Math.min(tableMenu.y, window.innerHeight - 380),
+              top: Math.min(tableMenu.y, window.innerHeight - 430),
             }}
             onMouseDown={(e) => e.stopPropagation()}
             onKeyDown={(e) => {

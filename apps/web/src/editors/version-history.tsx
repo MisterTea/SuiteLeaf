@@ -7,6 +7,7 @@ import Highlight from "@tiptap/extension-highlight";
 import TextAlign from "@tiptap/extension-text-align";
 import { croppableImage } from "./doc-image-crop";
 import { TableKit } from "@tiptap/extension-table";
+import { tableRowWithHeight } from "./doc-table-rows";
 import Superscript from "@tiptap/extension-superscript";
 import Subscript from "@tiptap/extension-subscript";
 import { columnLayout } from "./doc-columns";
@@ -62,7 +63,8 @@ const previewExtensions: Extensions = [
   Highlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ["heading", "paragraph"] }),
   croppableImage,
-  TableKit,
+  TableKit.configure({ tableRow: false }),
+  tableRowWithHeight,
   Superscript,
   Subscript,
   Equation,
