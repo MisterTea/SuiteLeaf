@@ -104,12 +104,12 @@ test("a theme restyles free text, and reduced motion cuts transitions", async ({
   await page.getByRole("button", { name: "Meadow", exact: true }).click();
   await expect(page.locator(".slide-canvas")).toHaveCSS("background-color", "rgb(13, 40, 24)");
   await expect.poll(() => family(page, "Hello")).toMatch(/Montserrat/);
-  await expect.poll(() => family(page, "A free box")).toMatch(/Source Sans 3/);
+  await expect.poll(() => family(page, "A free box")).toMatch(/Source Sans/);
   await expect(page.locator(".slide-shape")).toHaveCSS("background-color", "rgb(149, 213, 178)");
 
   await page.getByLabel("Heading font").selectOption("Georgia");
   await expect.poll(() => family(page, "Hello")).toMatch(/Georgia/);
-  await expect.poll(() => family(page, "A free box")).toMatch(/Source Sans 3/);
+  await expect.poll(() => family(page, "A free box")).toMatch(/Source Sans/);
   await page.getByLabel("Accent hex").fill("#2e7d32");
   await expect(page.locator(".slide-shape")).toHaveCSS("background-color", "rgb(46, 125, 50)");
 

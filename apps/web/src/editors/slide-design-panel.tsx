@@ -110,7 +110,10 @@ export function SlideDesignPanel({
               One background, two fonts, and an accent. Hover to preview the
               current slide, then click to restyle the whole deck.
             </p>
-            <div className="theme-grid">
+            <div
+              className="theme-grid"
+              onMouseLeave={() => onHoverTheme(null)}
+            >
               {themes.map((theme) => {
                 const shown = resolve(theme);
                 return (
@@ -121,9 +124,7 @@ export function SlideDesignPanel({
                     aria-label={shown.name}
                     aria-pressed={current?.id === theme.id}
                     onMouseEnter={() => onHoverTheme(shown)}
-                    onMouseLeave={() => onHoverTheme(null)}
                     onFocus={() => onHoverTheme(shown)}
-                    onBlur={() => onHoverTheme(null)}
                     onClick={() => onApplyTheme(shown)}
                   >
                     <span

@@ -274,23 +274,23 @@ test("32-give-a-deck-a-theme-and-transitions", async ({ page }) => {
   await expect(meadowCard).toBeVisible();
   await beat(page, 500);
 
-  await caption(page, "Hovering Meadow previews it on this slide, Georgia note included.", 1200);
   await meadowCard.hover();
+  await caption(page, "Hovering Meadow previews it on this slide, Georgia note included.", 1600);
   await expect(page.locator(".slide-canvas")).toHaveCSS("background-color", meadow);
-  await expect.poll(() => family(page, aside)).toMatch(/Source Sans 3/);
+  await expect.poll(() => family(page, aside)).toMatch(/Source Sans/);
   await expect.poll(() => family(page, "The hall")).toMatch(/Montserrat/);
   await page.getByRole("heading", { name: "Theme" }).hover();
+  await caption(page, "Move away and the slide returns to the way Dev wrote it.", 1000);
   await expect(page.locator(".slide-canvas")).toHaveCSS("background-color", "rgb(255, 255, 255)");
   await expect.poll(() => family(page, aside)).toMatch(/Georgia/);
-  await beat(page, 400);
 
   await caption(page, "One click puts Meadow on every slide. The Georgia notes follow too.", 1200);
   await meadowCard.click();
   await expect(meadowCard).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".slide-canvas")).toHaveCSS("background-color", meadow);
-  await expect.poll(() => family(page, aside)).toMatch(/Source Sans 3/);
+  await expect.poll(() => family(page, aside)).toMatch(/Source Sans/);
   await page.getByRole("option", { name: "Slide 8" }).click();
-  await expect.poll(() => family(page, neighbour)).toMatch(/Source Sans 3/);
+  await expect.poll(() => family(page, neighbour)).toMatch(/Source Sans/);
   await page.getByRole("option", { name: "Slide 9" }).click();
   await expect(page.locator(".slide-canvas")).toHaveCSS("background-color", meadow);
   await expect.poll(() => family(page, "Join us")).toMatch(/Montserrat/);
@@ -328,7 +328,7 @@ test("32-give-a-deck-a-theme-and-transitions", async ({ page }) => {
   await page.getByRole("button", { name: "Meadow", exact: true }).click();
   await expect.poll(() => family(page, quote)).toMatch(/Georgia/);
   await expect.poll(() => fontStyle(page, quote)).toBe("italic");
-  await expect.poll(() => family(page, follows)).toMatch(/Source Sans 3/);
+  await expect.poll(() => family(page, follows)).toMatch(/Source Sans/);
   await expect.poll(() => family(page, "A line from the chair")).toMatch(/Montserrat/);
   await page.getByRole("option", { name: "Slide 3" }).click();
   await expect(page.locator(".slide-canvas .slide-shape")).toHaveCSS("background-color", centre);
@@ -360,7 +360,10 @@ test("32-give-a-deck-a-theme-and-transitions", async ({ page }) => {
   await caption(page, "Slide, Transition, Fade. 0.4 seconds, on every slide.", 1400);
   await page.getByRole("button", { name: "Slide", exact: true }).click();
   await page.getByRole("menuitem", { name: "Transition", exact: true }).click();
-  await expect(page.getByRole("button", { name: "All slides" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "All slides", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await page.getByRole("button", { name: "Fade", exact: true }).click();
   await expect(page.locator(".transition-status")).toHaveText("Fade · 0.4 s · all slides");
   await expect(page.locator(".thumbnail-transition")).toHaveCount(11);
@@ -372,6 +375,7 @@ test("32-give-a-deck-a-theme-and-transitions", async ({ page }) => {
   await beat(page, 700);
 
   await caption(page, "The slideshow fades from one slide to the next.", 1000);
+  await page.getByRole("option", { name: "Slide 1, fade transition" }).click();
   await page.keyboard.press("ControlOrMeta+Enter");
   const show = page.locator(".presenter-overlay");
   await expect(show).toBeVisible();
@@ -418,12 +422,13 @@ test("32-give-a-deck-a-theme-and-transitions", async ({ page }) => {
   await page.getByRole("button", { name: "Download", exact: true }).click();
   const download = await downloading;
   expect(download.suggestedFilename()).toBe("Fundraiser pitch.slslides");
-  const saved = JSON.parse(readFileSync((await download.path())!, "utf8"));
+  const bytes = readFileSync((await download.path())!);
+  const saved = JSON.parse(bytes.toString("utf8"));
   expect(saved.content.theme).toMatchObject({
     name: "Meadow",
     accent: "#2e7d32",
     headingFont: "Montserrat",
-    bodyFont: "Source Sans 3",
+    bodyFont: "Source Sans",
   });
   const slides = saved.content.slideOrder.map((id: string) => saved.content.slides[id]);
   const quoteEl = slides[6].elements.find((el: { content?: string }) => el.content === quote);
@@ -434,11 +439,19 @@ test("32-give-a-deck-a-theme-and-transitions", async ({ page }) => {
   expect(slides[6].transition.type).toBe("fade");
 
   await page.goto("/");
-  await caption(page, "Opened again: Meadow, the italic Georgia line, and the same fades.", 1400);
+  await caption(page, "The deck is already on this computer. Open the downloaded file anyway.", 1400);
   const again = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: "Open / import" }).click();
-  await (await again).setFiles(await download.path());
-  await expect(page.getByLabel("File title")).toHaveValue("Fundraiser pitch");
+  await (await again).setFiles({
+    name: "Fundraiser pitch.slslides",
+    mimeType: "application/json",
+    buffer: bytes,
+  });
+  const same = page.getByRole("dialog");
+  await expect(same).toContainText("already in this browser");
+  await caption(page, "Keep both. The copy that just came in still has Meadow, the quote, and the fades.", 1600);
+  await same.getByRole("button", { name: "Keep both" }).click();
+  await expect(page.getByLabel("File title")).toHaveValue(/Fundraiser pitch/);
   await page.getByRole("button", { name: "Theme", exact: true }).click();
   await expect(page.getByRole("button", { name: "Meadow", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByLabel("Accent hex")).toHaveValue("#2e7d32");

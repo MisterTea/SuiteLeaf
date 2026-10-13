@@ -443,10 +443,10 @@ export default function Slides({
     const newEl: SlideElement = {
       id: crypto.randomUUID(),
       type: "shape",
-      x: 150,
-      y: 150,
-      width: shapeType === "ellipse" ? 160 : 220,
-      height: shapeType === "ellipse" ? 160 : 140,
+      x: 680,
+      y: 420,
+      width: shapeType === "ellipse" ? 100 : 200,
+      height: shapeType === "ellipse" ? 100 : 64,
       shapeType,
       ...shapeDefaults(deck.theme),
       strokeWidth: 2,
@@ -1665,7 +1665,10 @@ ${slidesHtml}
           <div
             className="slide-stage-viewport"
             ref={stageRef}
-            onClick={() => setSelectedElementId(null)}
+            onClick={(e) => {
+              if ((e.target as HTMLElement).closest(".slide-element")) return;
+              setSelectedElementId(null);
+            }}
           >
             <div
               className={`slide-canvas print-slide${canvasMotion ? ` deck-motion-${canvasMotion.type}` : ""}`}

@@ -113,10 +113,10 @@ describe("slide themes", () => {
       color: "#ffffff",
     });
     expect(byId(slide, "body")).toMatchObject({
-      fontFamily: "Source Sans 3",
+      fontFamily: "Source Sans",
       color: meadow.bodyColor,
     });
-    expect(byId(slide, "aside").fontFamily).toBe("Source Sans 3");
+    expect(byId(slide, "aside").fontFamily).toBe("Source Sans");
     expect(byId(slide, "quote")).toMatchObject({
       fontFamily: "Georgia",
       italic: true,
@@ -136,7 +136,7 @@ describe("slide themes", () => {
     expect(byId(themed.slides.s1, "chip").fill).toBe("#2e7d32");
     expect(byId(themed.slides.s1, "title").fontFamily).toBe("Georgia");
     expect(byId(themed.slides.s1, "quote").fontFamily).toBe("Georgia");
-    expect(byId(themed.slides.s1, "body").fontFamily).toBe("Source Sans 3");
+    expect(byId(themed.slides.s1, "body").fontFamily).toBe("Source Sans");
     const next = applyDeckTheme(themed, ink);
     expect(byId(next.slides.s1, "quote")).toMatchObject({
       fontFamily: "Georgia",
@@ -153,7 +153,7 @@ describe("slide themes", () => {
     const slide = applyDeckTheme(deck(), meadow).slides.s1;
     const quote = byId(slide, "quote");
     expect(resetToTheme(quote, meadow)).toMatchObject({
-      fontFamily: "Source Sans 3",
+      fontFamily: "Source Sans",
       themeOverride: false,
     });
   });
@@ -169,7 +169,7 @@ describe("slide themes", () => {
       fontFamily: "Montserrat",
       color: "#ffffff",
     });
-    expect(textDefaults(meadow).fontFamily).toBe("Source Sans 3");
+    expect(textDefaults(meadow).fontFamily).toBe("Source Sans");
     expect(shapeDefaults(meadow).fill).toBe(meadow.accent);
     const kept = layoutWithTheme(
       applyDeckTheme(deck(), meadow).slides.s1,

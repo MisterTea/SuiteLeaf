@@ -31,7 +31,7 @@ export const DECK_THEMES: SlideTheme[] = [
     bodyColor: "#d8f3dc",
     accent: "#95d5b2",
     headingFont: "Montserrat",
-    bodyFont: "Source Sans 3",
+    bodyFont: "Source Sans",
   },
   {
     id: "ink",
@@ -57,7 +57,7 @@ export const DECK_THEMES: SlideTheme[] = [
 
 export const THEME_FONTS = [
   "Montserrat",
-  "Source Sans 3",
+  "Source Sans",
   "Arial",
   "Georgia",
   "Trebuchet MS",
