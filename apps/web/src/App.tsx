@@ -419,7 +419,23 @@ function LocalHome() {
    * opens that copy if it is the same, and otherwise asks what to keep. */
   const importRecord = useCallback(
     async (r: FileRecord, name?: string) => {
-      if (!name) return open(r);
+      if (!name) {
+        // The desktop store leaves a different version in the library alone.
+        const existing = r.path ? await storage.get(r.file.id) : undefined;
+        if (
+          existing &&
+          !existing.drive &&
+          existing.path !== r.path &&
+          serializeFile(existing.file) !== serializeFile(r.file)
+        )
+          setSameFile({
+            name: r.path!.split(/[\\/]/).pop()!,
+            existing,
+            incoming: r,
+          });
+        else await open(r);
+        return;
+      }
       const existing =
         r.path || r.recovery ? undefined : await storage.get(r.file.id);
       if (!existing || existing.drive || existing.path)
@@ -458,10 +474,10 @@ function LocalHome() {
       if (action === "open")
         void storage
           .open()
-          .then((r) => r && open(r))
+          .then((r) => r && importRecord(r))
           .catch((e) => setError(message(e)));
     },
-    [make, open],
+    [make, importRecord],
   );
   useEffect(() => window.suiteleaf?.onMenu(menu), [menu]);
   const rename = async (r: FileRecord, title: string) => {
@@ -1435,13 +1451,13 @@ function Workspace() {
     else navigate(`/file/${(await storage.save({ file: copy })).file.id}`);
   };
   /** In cluster mode files live in SuiteDrive, so downloads are copies. */
-  const download = () =>
-    void (cluster ? exportNative().then(() => true) : saveAs())
-      .then((done) => {
-        if (done && !cluster && !window.suiteleaf && alive.current)
-          setStatus(`Downloaded “${nativeFilename(current.current!.file)}”`);
-      })
-      .catch((e) => setError(message(e)));
+  const downloadFile = () =>
+    (cluster ? exportNative().then(() => true) : saveAs()).then((done) => {
+      if (done && !cluster && !window.suiteleaf && alive.current)
+        setStatus(`Downloaded “${nativeFilename(current.current!.file)}”`);
+      return done;
+    });
+  const download = () => void downloadFile().catch((e) => setError(message(e)));
   const onActions = useCallback((a: EditorActions) => {
     actions.current = a;
     setActionsReady(true);
@@ -1454,7 +1470,18 @@ function Workspace() {
           kind: file.kind,
           status,
           rename: changeTitle,
-          download,
+          download: () =>
+            downloadFile().then((done) =>
+              done
+                ? {
+                    name:
+                      (!cluster && current.current?.path?.split(/[\\/]/).pop()) ||
+                      nativeFilename(current.current!.file),
+                    path: cluster ? undefined : current.current?.path,
+                  }
+                : null,
+            ),
+          saveAs: !!window.suiteleaf && !cluster,
           back: () => save().then(() => navigate("/")),
           create: async (kind, title) => {
             await save();

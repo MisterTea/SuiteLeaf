@@ -208,7 +208,7 @@ export function describeRun(run: AgentRun) {
 }
 export { expect };
 
-/** Show a caption bar describing the current scene, then let viewers read it. */
+/** Show a caption bar describing the current scene, then let viewers read it. An empty text hides it. */
 export async function caption(page: Page, text: string, hold = 1400) {
   await page.evaluate((value) => {
     let bar = document.getElementById("storyboard-caption");
@@ -224,6 +224,7 @@ export async function caption(page: Page, text: string, hold = 1400) {
     bar.style.left = `calc(50% - ${panel / 2}px)`;
     bar.style.maxWidth = `calc(80% - ${panel}px)`;
     bar.textContent = value;
+    bar.style.display = value ? "" : "none";
   }, text);
   await page.waitForTimeout(hold);
 }

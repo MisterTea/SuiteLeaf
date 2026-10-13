@@ -192,6 +192,49 @@ test("document tools say where a table and a photo went", async ({ page }) => {
   );
 });
 
+test("file tools download a file, remove it, and open it again without replacing newer changes", async ({ page }) => {
+  // The AI panel is open, so files the tools ask for can be chosen there.
+  await page.addInitScript(() => sessionStorage.setItem("suiteleaf.ai.open", "1"));
+  await page.goto("/");
+  await waitForTools(page, "create_file");
+  await call(page, "create_file", { kind: "document", title: "Trip list" });
+  await waitForTools(page, "write_text");
+  expect(await call(page, "write_text", { text: "# Trip\n- Passport\n- Plug adapter" })).toContain("2 as bulleted list items");
+  expect(await call(page, "set_list", { from_text: "- Passport", to_text: "Plug adapter", list: "bullet" })).toContain(
+    'The paragraphs from "- Passport" to "Plug adapter" are already in a bullet list; nothing changed.',
+  );
+  expect(await call(page, "set_list", { from_text: "Plug adapter", list: "bullet" })).toContain("give to_text");
+  const downloading = page.waitForEvent("download");
+  expect(await call(page, "download_file")).toContain('Downloaded "Trip list.sldoc": one SuiteLeaf file with the whole document');
+  const saved = test.info().outputPath("Trip list.sldoc");
+  await (await downloading).saveAs(saved);
+  expect(await call(page, "write_text", { text: "Sunglasses", after: "Plug adapter" })).toContain(
+    "1 as new items of the bulleted list",
+  );
+  await expect(page.getByRole("textbox", { name: "Document content" }).locator("li")).toHaveText(["Passport", "Plug adapter", "Sunglasses"]);
+  await expect(page.getByRole("status")).toContainText("Saved");
+  await call(page, "back_to_files");
+  await waitForTools(page, "open_from_computer");
+
+  const choose = async () => {
+    const chooser = page.waitForEvent("filechooser");
+    await page.getByRole("button", { name: "Choose file…" }).click();
+    await (await chooser).setFiles(saved);
+  };
+  const [again] = await Promise.all([call(page, "open_from_computer"), choose()]);
+  expect(again).toContain("“Trip list” is already in this browser");
+  expect(again).toContain("The one here has newer changes");
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
+
+  expect(await call(page, "remove_file", { name: "Trip list" })).toContain("A copy that was downloaded or saved elsewhere is not affected");
+  await expect(page.locator(".file-row")).toHaveCount(0);
+  const [opened] = await Promise.all([call(page, "open_from_computer"), choose()]);
+  expect(opened).toContain('Opened "Trip list.sldoc"');
+  await expect(page.getByRole("textbox", { name: "Document content" }).locator("li")).toHaveText(["Passport", "Plug adapter"]);
+  await waitForTools(page, "set_list");
+  expect(await call(page, "set_list", { from_text: "Trip", list: "bullet" })).toBe('Made 1 paragraph(s) a bullet list: "Trip" (was Heading 1).');
+});
+
 test("file list tools search, filter, copy, rename and remove", async ({ page }) => {
   await page.goto("/");
   await waitForTools(page, "create_file");

@@ -167,6 +167,8 @@ function locate(editor: Editor, raw: string, occurrence = 1) {
     matches = documentMatches(editor.state.doc, text, { matchCase: false, regex: false, ignoreDiacritics: true }).matches;
   if (!matches.length && text.normalize("NFKC") !== text)
     matches = documentMatches(editor.state.doc, text.normalize("NFKC"), { matchCase: false, regex: false, ignoreDiacritics: true }).matches;
+  if (!matches.length && unmark(text) !== text)
+    matches = documentMatches(editor.state.doc, unmark(text), { matchCase: false, regex: false, ignoreDiacritics: true }).matches;
   if (!matches.length)
     throw new ToolError(`"${text}" is not in the document. Use read_document to see the exact text.`);
   const match = matches[Math.min(Math.max(1, occurrence), matches.length) - 1];
@@ -191,13 +193,18 @@ const endOfDocument = (editor: Editor) => {
 /** Text the model quoted with Markdown marks ("# Volunteers"), as it reads in the document. */
 const withoutMarks = (text: string) => text.replace(/^\s*(#{1,6}|[-*•]|\d+[.)])\s+/, "").replace(/\*\*/g, "");
 
-/** Insert lightweight Markdown: "# " headings, "- " bullets, "1. " numbers, **bold**. */
-async function writeLines(editor: Editor, text: string, animate: boolean) {
+/**
+ * Insert lightweight Markdown: "# " headings, "- " bullets, "1. " numbers, **bold**.
+ * With `keepList`, plain lines typed in a list stay list items (as Enter in a list does).
+ * Returns how many plain lines became list items that way.
+ */
+async function writeLines(editor: Editor, text: string, animate: boolean, keepList = false) {
   // Blank lines separate paragraphs; they don't become empty paragraphs.
   const lines = text
     .replace(/\r\n?/g, "\n")
     .split("\n")
     .filter((line) => line.trim());
+  let continued = 0;
   for (let i = 0; i < lines.length; i++) {
     let line = lines[i];
     if (i > 0) {
@@ -223,6 +230,8 @@ async function writeLines(editor: Editor, text: string, animate: boolean) {
         else editor.chain().toggleOrderedList().run();
       }
       line = (bullet ?? numbered)![1];
+    } else if (keepList && editor.isActive("listItem")) {
+      continued++;
     } else {
       leaveList();
       editor.chain().setParagraph().run();
@@ -242,6 +251,7 @@ async function writeLines(editor: Editor, text: string, animate: boolean) {
       editor.chain().unsetBold().run();
     }
   }
+  return continued;
 }
 
 export function docTools(ctx: DocsAgentContext): SuiteTool[] {
@@ -275,7 +285,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       name: "write_text",
       label: "Type text",
       description:
-        "Type text into the document. Each line becomes a paragraph. Start a line with '# ' for a Heading 1 (a main section), '## ' for a Heading 2 (a sub-section) or '### ' for a Heading 3, '- ' for a bullet, '1. ' for a numbered item; wrap words in **double asterisks** for bold. By default the text goes at the end of the document (leave out `after` to keep adding to the end); give `after` to insert it right after the one paragraph or heading containing that text (text that starts with a heading goes after that heading's paragraphs), or set `replace_document` to start over.",
+        "Type text into the document. Each line becomes a paragraph. Start a line with '# ' for a Heading 1 (a main section), '## ' for a Heading 2 (a sub-section) or '### ' for a Heading 3, '- ' for a bullet, '1. ' for a numbered item; wrap words in **double asterisks** for bold. By default the text goes at the end of the document (leave out `after` to keep adding to the end); give `after` to insert it right after the one paragraph or heading containing that text (text that starts with a heading goes after that heading's paragraphs; lines typed after a list item become items of that list), or set `replace_document` to start over.",
       parameters: Type.Object({
         text: Type.String({ description: "The text to type." }),
         after: Type.Optional(
@@ -302,6 +312,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         const empty = list.length === 1 && !list[0].text;
         const quote = (b: { text: string; label: string }) => `"${b.text.length > 60 ? `${b.text.slice(0, 60)}…` : b.text}" (${b.label})`;
         let where = "at the end of the document";
+        let listKind = "";
         if (after) {
           const want = unmark(unlabel(after)).trim();
           const found = (want ? list.find((b) => b.text.trim() === want) : undefined) ?? findBlock(list, after);
@@ -318,8 +329,13 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
             const block = list[i - 1],
               next = list.slice(i).find((b) => b.text);
             where = `right after ${quote(block)}${next ? `, before ${quote(next)}` : ", at the end of the document"}`;
-            editor.chain().setTextSelection(block.end - 1).splitBlock().run();
-            editor.chain().setParagraph().run();
+            listKind = block.label === "Bullet" ? "bulleted" : block.label === "Numbered item" ? "numbered" : "";
+            // setParagraph on a list item's paragraph would lift it out of the list.
+            if (listKind) editor.chain().setTextSelection(block.end - 1).splitListItem("listItem").run();
+            else {
+              editor.chain().setTextSelection(block.end - 1).splitBlock().run();
+              editor.chain().setParagraph().run();
+            }
           }
         } else {
           const last = blocks(editor).at(-1);
@@ -330,7 +346,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
             editor.chain().setParagraph().run();
           }
         }
-        await writeLines(editor, text, text.length < 1500);
+        const continued = await writeLines(editor, text, text.length < 1500, !!listKind);
         // Typing in the middle can leave the old empty last paragraph behind.
         const [prev, last] = blocks(editor).slice(-2);
         if (last && prev && !last.text && last.type === "paragraph" && prev.label === "Paragraph" && last.pos > editor.state.selection.to)
@@ -338,8 +354,15 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         const typed = text.split("\n").filter((l) => l.trim()).length;
         const typedHeadings = [...text.matchAll(/^#{1,3}\s+(.*)$/gm)].map((m) => `"${m[1].replace(/\*\*/g, "").trim()}"`);
         const bold = [...text.matchAll(/\*\*(.+?)\*\*/g)].map((m) => `"${m[1]}"`);
+        const bullets = text.match(/^\s*[-*•]\s+\S/gm)?.length ?? 0;
+        const numbered = text.match(/^\s*\d+[.)]\s+\S/gm)?.length ?? 0;
+        const lists = [
+          continued && `${continued} as new items of the ${listKind} list`,
+          bullets && `${bullets} as bulleted list items`,
+          numbered && `${numbered} as numbered list items`,
+        ].filter(Boolean);
         const headings = blocks(editor).filter((b) => b.type === "heading").map((b) => `${b.label}: ${b.text}`);
-        return `Typed ${typed} paragraph(s) ${where}${typedHeadings.length ? `; heading(s): ${typedHeadings.join(", ")}` : ""}${bold.length ? `; in bold: ${bold.join(", ")}` : ""}. The document now has ${contents(editor)}.${headings.length ? `\nHeadings in the document now: ${headings.join(" | ")}` : ""}`;
+        return `Typed ${typed} paragraph(s) ${where}${typedHeadings.length ? `; heading(s): ${typedHeadings.join(", ")}` : ""}${lists.length ? `; ${lists.join(", ")} (already a list, no need to set it)` : ""}${bold.length ? `; in bold: ${bold.join(", ")}` : ""}. The document now has ${contents(editor)}.${headings.length ? `\nHeadings in the document now: ${headings.join(" | ")}` : ""}`;
       },
     }),
     tool({
@@ -422,6 +445,10 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         editor.chain().setTextSelection({ from: start.from, to: Math.max(start.to, end.to) }).run();
         const bullet = editor.isActive("bulletList"),
           numbered = editor.isActive("orderedList");
+        const which = to_text ? `The paragraphs from "${from_text}" to "${to_text}" are` : `Only the paragraph containing "${from_text}" was covered, and it is`;
+        if ((list === "bullet" && bullet) || (list === "numbered" && numbered) || (list === "none" && !bullet && !numbered))
+          return `${which} already ${list === "none" ? "plain paragraphs" : `in a ${list} list`}; nothing changed.${to_text ? "" : " To cover the paragraphs after it too, give to_text (text in the last one)."}`;
+        const covered = blocks(editor).filter((b) => b.end > start.from && b.pos < Math.max(start.to, end.to));
         const chain = editor.chain();
         if (list === "bullet" && !bullet) chain.toggleBulletList().run();
         else if (list === "numbered" && !numbered) chain.toggleOrderedList().run();
@@ -429,7 +456,8 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
           if (bullet) chain.toggleBulletList().run();
           else if (numbered) chain.toggleOrderedList().run();
         }
-        return `Set the paragraphs to ${list === "none" ? "plain paragraphs" : `a ${list} list`}.`;
+        const named = covered.slice(0, 12).map((b) => `"${b.text.slice(0, 50)}" (was ${b.label})`);
+        return `Made ${covered.length} paragraph(s) ${list === "none" ? "plain paragraphs" : `a ${list} list`}: ${named.join(", ")}${covered.length > 12 ? ", …" : ""}.`;
       },
     }),
     tool({
@@ -720,7 +748,8 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
     tool({
       name: "export_document",
       label: "Export",
-      description: "Export the document as a Word file (docx), a web page (html) or plain text (txt). The file downloads.",
+      description:
+        "Export a copy in another format, for other apps: a Word file (docx), a web page (html) or plain text (txt). Only when the user asks for one of these; to download or save the file itself, use download_file.",
       parameters: Type.Object({ format: Type.String({ enum: ["docx", "html", "txt"] }) }),
       target: () => document.querySelector(".workspace-header .menu-trigger, .workspace-header [aria-haspopup]"),
       async execute({ format }) {
