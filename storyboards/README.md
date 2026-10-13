@@ -124,3 +124,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 79 | [Insert a picture on a blank line](79-insert-a-picture-on-a-blank-line.md) | single-node | Docs |
 | 81 | [Put a picture behind the text](81-put-a-picture-behind-the-text.md) | single-node | Docs |
 | 78 | [Keep the Word file's margins](78-keep-the-word-margins.md) | single-node | Docs |
+| 82 | [Use a two-inch margin](82-use-a-two-inch-margin.md) | single-node | Docs |
