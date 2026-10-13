@@ -4018,8 +4018,10 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 .feature-dialog fieldset { margin: 12px 0; padding: 12px; }
 .feature-dialog button { margin: 4px; padding: 6px 10px; }
 .page-setup-overlay { pointer-events: auto; align-items: center; justify-content: center; padding: 16px; background: rgba(32, 33, 36, 0.32); }
-.page-setup-dialog { margin: 0; color-scheme: light; }
-.page-setup-fields { display: grid; gap: 14px; font-size: 14px; color: #1f1f1f; }
+.page-setup-dialog { margin: 0; color-scheme: light; max-height: calc(100vh - 32px); }
+.page-setup-dialog > .dialog-header,
+.page-setup-dialog > .dialog-footer { flex-shrink: 0; }
+.page-setup-fields { display: grid; gap: 14px; font-size: 14px; color: #1f1f1f; overflow: auto; min-height: 0; }
 .page-setup-fields > label { display: grid; grid-template-columns: 9em 1fr; gap: 12px; align-items: center; }
 .page-setup-fields select, .page-setup-fields input:not([type]), .page-setup-fields input[type="number"] { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #c4c7c5; border-radius: 4px; font: inherit; }
 .page-setup-orientation { display: grid; grid-template-columns: 9em auto auto 1fr; gap: 12px; align-items: center; margin: 0; padding: 0; border: 0; }
@@ -4028,6 +4030,9 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 .page-setup-check { display: grid; grid-template-columns: 9em 1fr; column-gap: 12px; align-items: center; }
 .page-setup-check label { grid-column: 2; }
 .page-setup-hint { grid-column: 2; font-size: 12px; color: #5f6368; }
+.page-setup-first { display: grid; gap: 10px; margin: 0; padding: 10px 12px 12px; border: 1px solid #dadce0; border-radius: 8px; background: #f8f9fa; }
+.page-setup-first legend { padding: 0 4px; font-size: 13px; font-weight: 500; color: #1f1f1f; }
+.page-setup-first label { display: grid; grid-template-columns: 4.5em 1fr; gap: 12px; align-items: center; }
 .word-count { color: #1f1f1f; font-weight: 600; font-size: 13px; }
 .word-count-dialog,
 .dictionary-dialog,

@@ -6,6 +6,10 @@ export type PageSettings = {
   header: string;
   footer: string;
   pageNumbers: boolean;
+  /** Page 1 uses firstHeader and firstFooter. Later pages keep header and footer. */
+  differentFirstPage: boolean;
+  firstHeader: string;
+  firstFooter: string;
 };
 export const defaultPageSettings: PageSettings = {
   size: "letter",
@@ -14,6 +18,9 @@ export const defaultPageSettings: PageSettings = {
   header: "",
   footer: "",
   pageNumbers: false,
+  differentFirstPage: false,
+  firstHeader: "",
+  firstFooter: "",
 };
 export function documentPageSettings(content: JsonNode): PageSettings {
   const a = content.attrs?.pageSettings as Partial<PageSettings> | undefined;
@@ -29,6 +36,34 @@ export function documentPageSettings(content: JsonNode): PageSettings {
     // Like Docs and Word, page numbers are off until chosen; settings saved
     // before that default changed keep numbering unless it was turned off.
     pageNumbers: a ? a.pageNumbers !== false : false,
+    differentFirstPage: a?.differentFirstPage === true,
+    firstHeader: typeof a?.firstHeader === "string" ? a.firstHeader : "",
+    firstFooter: typeof a?.firstFooter === "string" ? a.firstFooter : "",
+  };
+}
+export type PageFurniture = {
+  header: string;
+  footer: string;
+  /** "2 / 3", or "" when this page shows no number. */
+  pageNumber: string;
+};
+/**
+ * Header, footer, and page number for one page. Index 0 is page 1.
+ * A different first page starts blank (its own header and footer) and shows
+ * no page number. Later pages keep the shared header and footer, and the
+ * number stays the real page, so page 2 shows 2 rather than restarting at 1.
+ */
+export function pageFurniture(
+  settings: PageSettings,
+  pageIndex: number,
+  pageCount: number,
+): PageFurniture {
+  const cover = settings.differentFirstPage && pageIndex === 0;
+  const numbered = settings.pageNumbers && !cover && pageCount > 0;
+  return {
+    header: cover ? settings.firstHeader : settings.header,
+    footer: cover ? settings.firstFooter : settings.footer,
+    pageNumber: numbered ? `${pageIndex + 1} / ${pageCount}` : "",
   };
 }
 export function pageDimensions(settings: PageSettings) {
