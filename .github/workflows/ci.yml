@@ -1,7 +1,9 @@
 name: Checks and desktop builds
 on:
-  push:
   pull_request:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -29,20 +31,43 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
-      # The better-auth adapter suite and the SuiteDrive browser test run
-      # against a real node and auth sidecar.
+      # The better-auth adapter suite runs against a real node and auth sidecar.
       - run: cargo build -p suiteleaf-node
       - run: npm run build:auth
       - run: npm test
       - run: npm run build
-      - run: npx playwright install --with-deps chromium firefox webkit
-      - run: npm run test:e2e
       - run: node node_modules/electron/install.js
       - run: xvfb-run --auto-servernum npm run test:electron
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: test-results
+          path: test-results/
+  e2e:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: npm ci
+      # The SuiteDrive browser test runs against a real node and auth sidecar.
+      - run: cargo build -p suiteleaf-node
+      - run: npm run build:auth
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test --shard=${{ matrix.shard }}/4
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-results-${{ matrix.shard }}
           path: test-results/
   desktop:
     strategy:
