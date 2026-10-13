@@ -129,3 +129,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 71 | [Group columns](71-group-columns.md) | single-node | Sheets |
 | 72 | [Mark a draft](72-mark-a-draft.md) | single-node | Docs |
 | 75 | [Start numbering at](75-start-numbering-at.md) | single-node | Docs |
+| 77 | [Number the front in roman](77-number-the-front-in-roman.md) | single-node | Docs |
