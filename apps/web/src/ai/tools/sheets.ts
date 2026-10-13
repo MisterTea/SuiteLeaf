@@ -280,7 +280,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
     const source = book.getSheetBySheetId(p.source.sheetId)?.getSheetName() ?? "the source sheet";
     const values = a1({ ...p.source, startRow: p.source.startRow + 1, startColumn: p.source.startColumn + p.value, endColumn: p.source.startColumn + p.value });
     throw new ToolError(
-      `Sheet "${sheet().getSheetName()}" is the pivot table "${p.title}", which is read-only: it follows ${a1(p.source)} on sheet "${source}" by itself. To change its numbers or their format (e.g. currency), switch_sheet to "${source}" and change or format the source cells (its values are ${values}); the pivot updates. For an editable version, use copy_pivot.`,
+      `Sheet "${sheet().getSheetName()}" is the pivot table "${p.title}", which is read-only: it follows ${a1(p.source)} on sheet "${source}" by itself. To change its numbers, switch_sheet to "${source}" and change the source cells (its values are ${values}); the pivot updates. Here, format_cells with only number_format (e.g. currency) formats those source numbers, which the pivot follows. For an editable version, use copy_pivot.`,
     );
   };
   return [
@@ -376,7 +376,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       name: "format_cells",
       label: "Format cells",
       description:
-        "Format a range: number_format (currency, accounting, percent, percent_whole, number, date, plain), decimals (+1 or -1 to add or remove a decimal place), bold, italic, text_color and fill_color (#rrggbb), align (left, center, right), borders (true for thin borders on every cell), wrap.",
+        "Format a range: number_format (currency, accounting, percent, percent_whole, number, date, plain), decimals (+1 or -1 to add or remove a decimal place), bold, italic, text_color and fill_color (#rrggbb), align (left, center, right), borders (true for thin borders on every cell), wrap. On a pivot table's sheet only number_format applies (to the source numbers the pivot shows).",
       parameters: Type.Object({
         range: Type.String(),
         number_format: Type.Optional(
@@ -393,6 +393,19 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       }),
       target: ({ range }) => target(range),
       async execute(args) {
+        const pivot = ctx.content().pivots.find((x) => x.targetSheetId === sheet().getSheetId());
+        const { range: _, number_format, ...others } = args;
+        if (pivot && number_format && Object.values(others).every((v) => v === undefined)) {
+          const id = NUMBER_FORMATS[number_format];
+          const source = book.getSheetBySheetId(pivot.source.sheetId);
+          const values = a1({ ...pivot.source, startRow: pivot.source.startRow + 1, startColumn: pivot.source.startColumn + pivot.value, endColumn: pivot.source.startColumn + pivot.value });
+          if (!id || !source || !applyNamedFormat(id, (code) => source.getRange(values).setNumberFormat(code)).ok)
+            throw new ToolError(`Unknown number format ${number_format}.`);
+          ctx.persist();
+          await wait(900);
+          await ctx.settle();
+          return `"${sheet().getSheetName()}" is a read-only pivot table that shows numbers in its source's format, so the source cells ${values} on sheet "${source.getSheetName()}" were formatted as ${number_format} (${numberFormatById(id)!.code}) and the pivot followed. Shown as:\n${grid(sheet(), usedRange(sheet()), 12, 8)}`;
+        }
         writable();
         select(args.range);
         const range = sheet().getRange(a1(parseA1(args.range)));
@@ -743,7 +756,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
           ? `as ${args.number_format} (${code}): the source cells ${valueCells} on sheet "${s.getSheetName()}" were formatted that way, and the pivot follows them`
           : code && code !== "General"
             ? `in the source's number format (${code})`
-            : `as plain numbers, like the source cells ${valueCells} on sheet "${s.getSheetName()}" (format those, or pass number_format, to change it)`;
+            : `as plain numbers, like the source cells ${valueCells} on sheet "${s.getSheetName()}". If the user asked for another format (e.g. dollars), call format_cells on this pivot sheet with that number_format; it formats the source numbers, which the pivot follows`;
         return `Created pivot table "${p.title}" on sheet "${target?.getSheetName()}" (read-only; it follows the source):\n${grid(target, usedRange(target), 30, 10)}\nNumbers are shown ${format}.`;
       },
     }),
