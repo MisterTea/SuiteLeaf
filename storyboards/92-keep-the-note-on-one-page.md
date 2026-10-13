@@ -36,8 +36,20 @@ In Google Docs the path is Format, Line & paragraph spacing, Keep lines together
 
 The reminder sits together on page 2. Turning the control off lets it split again. Word keeps the same rule.
 
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| 1. One control on the paragraph that has the caret. No second dialog. | Met | Video 0:07. Keep lines together appears beside the reminder. `tests/browser/keep-lines.spec.ts` finds no dialog. |
+| 2. The control shows that it is on, and it is separate from Don’t leave one line and Keep with next. | Met | Video 0:13. The purple switch reads On. Keep with next and Don’t leave one line stay Off. |
+| 3. With it on, every line of that paragraph stays on the same page. A paragraph that would split moves wholly to the next page. | Met | Video 0:13. All three reminder lines are on page 2. What to bring stays on page 1. |
+| 4. Turning it off allows the split again. | Met | Video 0:19. “Bring gloves, a hat, and a trowel.” is the last line of page 1 again. |
+| 5. The choice survives save and reopen. | Met | Video 0:26. After reopen the reminder is still together and the switch is On. |
+| 6. The exported .docx sets keep-lines on that paragraph only. | Met | Video 0:28 Export DOCX. `tests/doc-keep-lines.test.ts` expects `<w:keepLines` on the reminder and not on the heading or “The board meets Monday.” |
+
 ## Gaps and notes
 
-- Don’t leave one line and Keep with next already exist or are in progress. Do not replace them.
+- Don’t leave one line and Keep with next stay separate switches. A heading still travels with the paragraph after it, so the reminder is not that paragraph.
 - A paragraph longer than one page is out of scope.
-- Do not change margins, columns, or line spacing.
+- Opening a Word file does not read keep-lines back. Export writes it.
+- Margins, columns, and line spacing are unchanged.

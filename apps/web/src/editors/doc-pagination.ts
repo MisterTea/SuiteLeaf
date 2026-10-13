@@ -16,6 +16,7 @@ import {
   staysWithFollowingBlock,
 } from "./doc-keep-next";
 import { annotateWidowLines, avoidSingleLine } from "./doc-widow-control";
+import { keepParagraphTogether, keepsLines } from "./doc-keep-lines";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -227,11 +228,18 @@ export const DocumentPagination = Extension.create({
                 )
                   return;
                 // A paragraph can break between lines, so widow control can
-                // keep two of them together. Keep-with-next stays one block.
+                // keep two of them together. Keep lines together, and
+                // keep-with-next, each stay one block instead.
+                const together = keepParagraphTogether(
+                  keepsLines(node),
+                  bottom - top,
+                  bodyHeight,
+                );
                 if (
                   node.type.name === "paragraph" &&
                   node.textContent &&
-                  !keepsWithNext(node)
+                  !keepsWithNext(node) &&
+                  !together
                 ) {
                   const lines = textLines(
                     view,
