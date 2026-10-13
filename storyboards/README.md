@@ -121,3 +121,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 70 | [Put a picture beside the text](70-put-a-picture-beside-the-text.md) | single-node | Docs |
 | 73 | [Put a picture in the sentence](73-put-a-picture-in-the-sentence.md) | single-node | Docs |
 | 76 | [Insert a picture at the caret](76-insert-a-picture-at-the-caret.md) | single-node | Docs |
+| 78 | [Keep the Word file's margins](78-keep-the-word-margins.md) | single-node | Docs |
