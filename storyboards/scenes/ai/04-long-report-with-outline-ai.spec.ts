@@ -33,9 +33,11 @@ test("04-long-report-with-outline-ai", async ({ page }) => {
   await expect(outline.locator(".outline-item.level-2"), why).toHaveText(
     report.filter(([, style]) => style === "Heading 2").map(([heading]) => heading),
   );
-  for (const [heading, style] of report)
-    await expect(editor.locator(style === "Heading 1" ? "h1" : "h2").filter({ hasText: heading }), why).toHaveCount(1);
-  for (const [, , body] of report) if (body) await expect(editor, why).toContainText(body);
+  for (const [heading, style, body] of report) {
+    const title = editor.locator(style === "Heading 1" ? "h1" : "h2").filter({ hasText: heading });
+    await expect(title, why).toHaveCount(1);
+    if (body) await expect(title.locator("xpath=following-sibling::*[1]"), why).toHaveText(body);
+  }
   await expect(page.locator(".editor-status"), why).toContainText(/[2-9] pages/);
   await caption(page, "Five sections and four sub-sections, over two pages. The outline on the left lists them all.", 2200);
 
