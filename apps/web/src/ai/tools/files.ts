@@ -1,6 +1,6 @@
 import { Type } from "@earendil-works/pi-ai";
 import type { FileRecord, SuiteFile } from "@suiteleaf/core";
-import { ToolError, currentSnapshot, tool, waitForHost, type SuiteTool } from "../host";
+import { ToolError, currentSnapshot, currentSuiteTools, tool, waitForHost, type SuiteTool } from "../host";
 import { requestFile } from "../file-request";
 import { moveCursor } from "../cursor";
 
@@ -191,16 +191,22 @@ export function homeTools(ctx: HomeAgentContext): SuiteTool[] {
     tool({
       name: "open_file",
       label: "Open file",
-      description: "Open a file from the library by its name.",
+      description:
+        "Open a file by its name. If it is not in the library, it is on the user's computer, so they are asked to pick it (as open_from_computer does).",
       parameters: Type.Object({ name: Type.String() }),
-      target: async ({ name }) => (await revealRow(ctx, name))?.querySelector("a"),
-      async execute({ name }) {
+      target: async ({ name }) =>
+        (await revealRow(ctx, name).catch(() => undefined))?.querySelector("a") ??
+        [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Open / import")),
+      async execute({ name }, signal) {
         let r: FileRecord;
         try {
           r = findRecord(ctx.records, name);
         } catch (e) {
-          if (!(e instanceof ToolError)) throw e;
-          throw new ToolError(`${e.message} ${ON_COMPUTER}`);
+          const fromComputer = currentSuiteTools().find((t) => t.name === "open_from_computer");
+          if (!(e instanceof ToolError) || !fromComputer) throw e;
+          const out = await fromComputer.execute({}, signal);
+          const files = e.message.slice(e.message.indexOf("Files:")).replace(/\.$/, "");
+          return `"${name}" is not in the library (${files}), so the user was asked to pick it from their computer. ${typeof out === "string" ? out : out.text}`;
         }
         ctx.open(r);
         return opened(r.file.kind, `Opened "${r.file.title}".`);

@@ -406,7 +406,6 @@ test("file list tools search, filter, copy, rename and remove", async ({ page })
   expect(await call(page, "show_files", { show: "all" })).toBe(
     'Showing all.\n- "Club newsletter"\n- "Club newsletter - November"',
   );
-  await expect(call(page, "open_file", { name: "Garden slides" })).rejects.toThrow(/No file is called "Garden slides".*call open_from_computer, which asks them to pick it/);
 });
 
 test("a CSV opens through its import preview, with codes kept as text, and exports back", async ({ page }) => {
@@ -433,6 +432,19 @@ test("a CSV opens through its import preview, with codes kept as text, and expor
   );
   const csv = readFileSync((await (await download).path())!, "utf8");
   expect(csv.trim().split(/\r?\n/)).toEqual(["ID,Name,ZIP,Paid", "00412,Rosa,02139,45", "01205,Mei,10001,0"]);
+});
+
+test("open_file asks the user to pick a file that isn't in the library", async ({ page }) => {
+  await page.addInitScript(() => sessionStorage.setItem("suiteleaf.ai.open", "1"));
+  await page.goto("/");
+  await waitForTools(page, "open_file");
+  const choose = async () => {
+    const chooser = page.waitForEvent("filechooser");
+    await page.getByRole("button", { name: "Choose file…" }).click();
+    await (await chooser).setFiles({ name: "Members.csv", mimeType: "text/csv", buffer: Buffer.from("Name,Paid\nRosa,45\n") });
+  };
+  const [opened] = await Promise.all([call(page, "open_file", { name: "Members list" }), choose()]);
+  expect(opened).toContain('"Members list" is not in the library (Files: none), so the user was asked to pick it from their computer. Imported "Members.csv"');
 });
 
 test("an Excel workbook opens with its import notes and frozen panes", async ({ page }) => {
