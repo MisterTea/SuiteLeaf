@@ -1,6 +1,6 @@
 # 47 · Save a slide theme and use it again
 
-**Mode:** single-node · **App:** Slides · **Video:** [videos/47-save-a-slide-theme.mp4](videos/47-save-a-slide-theme.mp4) · **Script:** [scenes/47-save-a-slide-theme.spec.ts](scenes/47-save-a-slide-theme.spec.ts)
+**Mode:** single-node · **App:** Slides · **Video:** [videos/47-save-a-theme-for-another-deck.mp4](videos/47-save-a-theme-for-another-deck.mp4) · **Script:** [scenes/47-save-a-theme-for-another-deck.spec.ts](scenes/47-save-a-theme-for-another-deck.spec.ts)
 
 ## Who and why
 
@@ -20,9 +20,9 @@ Dev already applied Meadow to "Fundraiser pitch" and set the accent to the centr
 2. **Save it.** In the theme panel Dev clicks **Save to library**, types "Centre green", and confirms. That is the click on Save to library, the name, and Save: the name is visible in the panel's Library list immediately.
 3. **It is still there later.** Dev closes the deck and opens "Spring classes", a plain Paper deck. Theme › Library lists "Centre green" after the reload.
 4. **Apply it.** Clicking "Centre green" restyles every slide: background, heading font, body font, and the green accent. A free text box follows. A quote Dev already set in italic Georgia stays, with "Overrides theme".
-5. **The first deck is a copy, not a link.** Dev changes the accent on "Spring classes" to a lighter green. "Fundraiser pitch" still uses #2E7D32. Changing "Centre green" is not required; the applied theme is stored on the deck.
-6. **Built-ins remain.** Paper, Meadow, Ink, and Warm Sand are still in the panel. Applying Paper to a scratch slide still works.
-7. **Hand off.** The downloaded "Spring classes" file opens on another computer with Centre green's colors and fonts, including the Georgia quote. The other computer's library does not need to contain "Centre green" for that file to look right.
+5. **The first deck is a copy, not a link.** Dev changes the accent on "Spring classes" to a lighter green, #66BB6A. The library row still reads #2E7D32, and the panel says this deck has its own copy. "Fundraiser pitch" still uses #2E7D32. Applying "Centre green" again puts the saved green back on "Spring classes" only.
+6. **Built-ins remain.** Paper, Meadow, Ink, and Warm Sand are still in the panel. Applying Paper to a one-slide "Scratch" deck turns its dark title slide white, with a Georgia heading.
+7. **Hand off.** The downloaded "Spring classes" file opens after the library is cleared. The slides still use Centre green, including the cream italic Georgia quote, and the library says "No saved themes yet."
 
 ## Google Workspace benchmark
 
@@ -47,11 +47,24 @@ Known pain points:
 
 - "Spring classes" uses Centre green, except the italic Georgia quote.
 - "Fundraiser pitch" is still #2E7D32 after the second deck's accent changed.
-- The downloaded file looks the same on a computer that has never saved "Centre green".
+- The downloaded file looks the same when the library does not contain "Centre green".
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| 1. Save to library stores the accent and both fonts under a typed name, in at most 3 clicks plus typing | Met | Video ~0:08 Save to library, type "Centre green", Save. The row shows the name and #2E7D32. `tests/slide-theme-library.test.ts` |
+| 2. That name is listed on another deck after a reload | Met | Video ~0:16, after reload, Spring classes (Paper) lists Centre green. `tests/browser/slide-theme-library.spec.ts` |
+| 3. Applying it takes at most 2 clicks and restyles every slide, except "Overrides theme" | Met | Video ~0:18 one click. Saturday mornings, the free text, and the shape follow. ~0:22 the italic Georgia quote stays, with Overrides theme. |
+| 4. The applied theme is a copy. Editing one deck does not change the other deck or the library entry | Met | Video ~0:25 accent #66BB6A on Spring classes; the library row stays #2E7D32. ~0:28 Fundraiser pitch is still #2E7D32. |
+| 5. Paper, Meadow, Ink, and Warm Sand stay and still apply | Met | Video ~0:32 the four names, then Paper turns the scratch slide white with a Georgia heading. |
+| 6. The deck keeps the theme in the `.slslides` file without the library entry | Met | Video ~0:41 the opened file is Centre green, the quote is still italic Georgia, and the library says "No saved themes yet." The scene reads the downloaded file. |
 
 ## Gaps and notes
 
-- `DECK_THEMES` is four built-in themes in `slide-theme.ts`. Customizing the accent or fonts writes onto that deck's `theme`. `themeEdits` is a ref inside the open editor, so a custom Meadow does not appear in another deck.
-- There is no library list and no Save to library. Applying a theme already restyles a deck (storyboard 32); this story adds a saved source for that same apply.
-- PowerPoint export is still absent (`packages/core/src/pptx.ts` is import-only). This story does not add it. The theme travels in the native file of each deck it is applied to.
-- Transitions are per deck (storyboard 32) and are not part of the saved theme.
+- PowerPoint export is still absent (`packages/core/src/pptx.ts` is import-only). The theme travels in the `.slslides` file of each deck it is applied to.
+- Transitions stay on the deck (storyboard 32). A saved theme does not include them, and applying one does not change them.
+- The library is stored in this browser. It is not synced. Another computer gets the look from the file, not from the library.
+- Saving the same name again replaces that library entry. A deck that already applied the theme keeps the copy it has.
+- There is no slide-master editor. The theme panel is still the control for background, fonts, and accent.
+- The recording clears the library and opens the downloaded file under a new id, so this browser does not ask whether to replace a copy it already has.
