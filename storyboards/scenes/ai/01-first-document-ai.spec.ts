@@ -5,7 +5,7 @@ test("01-first-document-ai", async ({ page }) => {
   await caption(page, "Sam asks SuiteLeaf's on-device assistant to start the garden plan.");
   const run = await askAgent(
     page,
-    "Start a new document called Garden plan. At the top put the heading Spring planting, then this sentence: Tomatoes and basil go in the sunny bed after the last frost. Make the word last bold.",
+    "Start a new document called Garden plan. At the top put the heading Spring planting, then this sentence: Tomatoes and basil go in the sunny bed after the last frost. Make the word \"last\" bold.",
   );
   const why = describeRun(run);
   expect(run.state, why).toBe("done");
