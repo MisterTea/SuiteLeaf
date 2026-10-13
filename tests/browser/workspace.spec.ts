@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { resolve, extname, sep } from "node:path";
@@ -93,6 +93,18 @@ test("spreadsheet formulas → embedded chart → pivot worksheet → save and r
     edited.content.workbook.sheets[edited.content.workbook.sheetOrder[0]]
       .cellData[1][3].v,
   ).toBe(1800);
+  const pivotCell = async (row: number) =>
+    (await exported(page)).content.workbook.sheets[
+      file.content.pivots[0].targetSheetId
+    ].cellData[row][1].v;
+  await expect.poll(() => pivotCell(1)).toBe(7000);
+  expect(await pivotCell(5)).toBe(24000);
+  const undo = page.getByRole("button", { name: /^Undo/ }).first();
+  if (!(await undo.isVisible()))
+    await page.getByRole("button", { name: "More tools" }).click();
+  await undo.click();
+  await expect.poll(() => pivotCell(1)).toBe(6000);
+  expect(await pivotCell(5)).toBe(23000);
   await page.getByText("Charts & pivots (2)", { exact: true }).click();
   await page
     .getByRole("button", { name: "Delete Studio costs", exact: true })
@@ -128,6 +140,90 @@ test("safe HTML import and malformed native files", async ({ page }) => {
   await expect(
     page.getByRole("link", { name: "Imported", exact: true }),
   ).toBeVisible();
+});
+test("a downloaded native file says what it is and reopens over its library copy only when asked", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "New document" }).click();
+  await page.getByLabel("File title").fill("Packing list");
+  const editor = page.getByRole("textbox", { name: "Document content" });
+  await editor.fill("Passport");
+  await expect(page.getByRole("status")).toContainText("Saved");
+  const button = page.getByRole("button", { name: "Download", exact: true });
+  await expect(button).toHaveAttribute("title", /Packing list\.sldoc/);
+  await page.getByRole("button", { name: "File", exact: true }).click();
+  await expect(
+    page.getByRole("menuitem", { name: "Download SuiteLeaf file (.sldoc)" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("menuitem", { name: "Export native copy" }),
+  ).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  const downloading = page.waitForEvent("download");
+  await button.click();
+  const path = (await (await downloading).path())!;
+  await expect(page.getByRole("status")).toHaveText(
+    "Downloaded “Packing list.sldoc”",
+  );
+  const chooseDownloaded = () =>
+    page.locator("input[type=file]").setInputFiles({
+      name: "Packing list.sldoc",
+      mimeType: "application/json",
+      buffer: readFileSync(path),
+    });
+  const back = async () => {
+    await page.getByRole("button", { name: "Back to files" }).click();
+    await page.getByRole("button", { name: "Open / import" }).waitFor();
+  };
+  const rows = page.locator(".file-row");
+
+  await back();
+  await chooseDownloaded();
+  await expect(page.getByRole("status")).toContainText(
+    "“Packing list.sldoc” matches the copy here",
+  );
+  await back();
+  await expect(rows).toHaveCount(1);
+
+  await page.getByRole("link", { name: "Packing list" }).click();
+  await editor.press("ControlOrMeta+End");
+  await editor.pressSequentially(" and shoes");
+  await expect(page.getByRole("status")).toContainText("Saved");
+  await back();
+  await chooseDownloaded();
+  const dialog = page.getByRole("dialog", {
+    name: "“Packing list” is already in this browser",
+  });
+  await expect(dialog).toContainText("The one here has newer changes.");
+  await dialog.getByRole("button", { name: "Keep both" }).click();
+  await expect(page.getByLabel("File title")).toHaveValue("Packing list copy");
+  await expect(editor).toContainText("Passport");
+  await expect(editor).not.toContainText("shoes");
+  await back();
+  await expect(rows).toHaveCount(2);
+
+  await chooseDownloaded();
+  await dialog.getByRole("button", { name: "Replace" }).click();
+  await expect(page.getByLabel("File title")).toHaveValue("Packing list");
+  await expect(editor).toContainText("Passport");
+  await expect(editor).not.toContainText("shoes");
+  await expect(page.getByRole("status")).toContainText(
+    "Replaced with “Packing list.sldoc”",
+  );
+  await back();
+  await expect(rows).toHaveCount(2);
+
+  await page
+    .getByRole("button", { name: "Remove Packing list", exact: true })
+    .click();
+  const confirm = page.getByRole("dialog", { name: "Delete this file?" });
+  await expect(confirm).toContainText(
+    "“Packing list” will be deleted from this browser. This can't be undone.",
+  );
+  await expect(confirm).toContainText("open it again with Open / import");
+  await confirm.getByRole("button", { name: "Delete" }).click();
+  await expect(rows).toHaveCount(1);
 });
 test("cached application and local files work offline", async ({ page }) => {
   // Stop a real origin: WebKit's setOffline emulation blocks even SW responses.
@@ -285,7 +381,6 @@ test("CSV import preview preserves identifiers and formula-looking text, and exp
   page,
 }) => {
   await page.goto("/");
-  page.on("dialog", (d) => d.accept());
   await page.locator("input[type=file]").setInputFiles({
     name: "sales.csv",
     mimeType: "text/csv",
@@ -293,6 +388,12 @@ test("CSV import preview preserves identifiers and formula-looking text, and exp
       'Item,Amount,Identifier,Literal\n"North, studio",12.5,00123,=SUM(A1:A2)\nSouth,20,00999,hello',
     ),
   });
+  const dialog = page.getByRole("dialog", { name: "Import sales.csv" });
+  await expect(dialog.getByRole("status")).toHaveText(
+    "2 data rows · 4 columns · comma-separated, plus a header row",
+  );
+  await expect(dialog).toContainText("Formulas are not run");
+  await dialog.getByRole("button", { name: "Import", exact: true }).click();
   await page.getByText("Sheet1", { exact: true }).first().waitFor();
   const saved = await exported(page);
   const cells =
@@ -317,6 +418,59 @@ test("CSV import preview preserves identifiers and formula-looking text, and exp
   ]);
 });
 
+test("CSV import dialog chooses the separator, header row, and code columns", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const pick = () =>
+    page.locator("input[type=file]").setInputFiles({
+      name: "members.csv",
+      mimeType: "text/csv",
+      buffer: Buffer.from(
+        "Member ID;Name;ZIP;Dues\n00412;Rosa;02139;45\n01205;Mei;10001;0\n00038;Luis;07302;45\n",
+      ),
+    });
+  await pick();
+  const dialog = page.getByRole("dialog", { name: "Import members.csv" });
+  const summary = dialog.getByRole("status");
+  const zip = dialog.getByRole("columnheader", { name: /^ZIP/ });
+  await expect(summary).toHaveText(
+    "3 data rows · 4 columns · semicolon-separated, plus a header row",
+  );
+  await expect(dialog.getByLabel("Separator")).toHaveValue(";");
+  await expect(dialog).toContainText(
+    "Member ID and ZIP have codes with leading zeros",
+  );
+  await expect(zip).toHaveText("ZIPText");
+  await dialog.getByLabel("Keep code columns as text").uncheck();
+  await expect(zip).toHaveText("ZIPMixed");
+  await dialog.getByLabel("Keep code columns as text").check();
+  await dialog.getByLabel("First row is a header").uncheck();
+  await expect(summary).toHaveText(
+    "4 data rows · 4 columns · semicolon-separated",
+  );
+  await dialog.getByLabel("First row is a header").check();
+  await dialog.getByLabel("Separator").selectOption(",");
+  await expect(summary).toContainText("1 column · comma-separated");
+  await dialog.getByLabel("Separator").selectOption(";");
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator(".error")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Open / import" }),
+  ).toBeEnabled();
+
+  await pick();
+  await dialog.getByRole("button", { name: "Import", exact: true }).click();
+  await page.getByText("Sheet1", { exact: true }).first().waitFor();
+  const saved = await exported(page);
+  const cells =
+    saved.content.workbook.sheets[saved.content.workbook.sheetOrder[0]]
+      .cellData;
+  expect(cells[1][0]).toMatchObject({ v: "00412", t: 1 });
+  expect(cells[2][2]).toMatchObject({ v: "10001", t: 1 });
+  expect(cells[2][3]).toMatchObject({ v: 0, t: 2 });
+});
 test("document outline, images, tables, find/replace, and print layout", async ({
   page,
   browserName,
@@ -357,6 +511,80 @@ test("document outline, images, tables, find/replace, and print layout", async (
     await page.pdf({ path: "test-results/document-print.pdf" });
 });
 
+test("find and replace keeps the current match in view and reports what is left", async ({
+  page,
+  isMobile,
+}) => {
+  test.skip(isMobile, "the dialog fills the width of a phone screen");
+  const overlaps = (
+    a: { x: number; y: number; width: number; height: number },
+    b: { x: number; y: number; width: number; height: number },
+  ) =>
+    a.x < b.x + b.width &&
+    b.x < a.x + a.width &&
+    a.y < b.y + b.height &&
+    b.y < a.y + a.height;
+  await page.goto("/");
+  await page.getByRole("button", { name: "New document" }).click();
+  const editor = page.getByRole("textbox", { name: "Document content" });
+  await editor.click();
+  await page.keyboard.type("We were happy to recieve so many seed donations.");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type(
+    "Ruth keeps spare gloves at the shed for any volunteer who did not recieve",
+  );
+  const find = page.getByRole("search", { name: "Find and replace" });
+  await page.keyboard.press("ControlOrMeta+f");
+  const usual = (await find.boundingBox())!;
+  await page.keyboard.press("Escape");
+  await expect(find).toBeHidden();
+  await expect(editor).toBeFocused();
+
+  // The selected word fills Find; its match sits where the dialog usually is.
+  for (let i = 0; i < "recieve".length; i++)
+    await page.keyboard.press("Shift+ArrowLeft");
+  await expect
+    .poll(() =>
+      editor.evaluate((el: any) => {
+        const { from, to } = el.editor.state.selection;
+        return el.editor.state.doc.textBetween(from, to);
+      }),
+    )
+    .toBe("recieve");
+  await page.keyboard.press("ControlOrMeta+f");
+  await expect(find.getByLabel("Find text")).toHaveValue("recieve");
+  const counter = find.locator(".match-counter");
+  await expect(counter).toHaveText("2 of 2");
+  const match = (await page.locator(".doc-search-current").boundingBox())!;
+  expect(overlaps(match, usual)).toBe(true);
+  expect(overlaps(match, (await find.boundingBox())!)).toBe(false);
+
+  await find.getByLabel("Find text").press("Shift+Enter");
+  await expect(counter).toHaveText("1 of 2");
+  await find.getByLabel("Find text").press("Enter");
+  await expect(counter).toHaveText("2 of 2");
+
+  const before = (await find.boundingBox())!;
+  const title = (await find.getByRole("heading").boundingBox())!;
+  await page.mouse.move(title.x + 20, title.y + title.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(title.x - 280, title.y + title.height / 2 + 60, {
+    steps: 5,
+  });
+  await page.mouse.up();
+  const after = (await find.boundingBox())!;
+  expect(after.x).toBeCloseTo(before.x - 300, 0);
+  expect(after.y).toBeCloseTo(before.y + 60, 0);
+
+  await find.getByLabel("Replacement text").fill("receive");
+  await find.getByRole("button", { name: "Replace all", exact: true }).click();
+  await expect(counter).toHaveText("No results");
+  await expect(find).toContainText(
+    "Replaced 2 instances of “recieve” with “receive”.",
+  );
+  await expect(editor).not.toContainText("recieve");
+});
+
 test("presentation lifecycle → slide creation, editing, thumbnail selection, presentation mode, notes, and native export", async ({
   page,
 }) => {
@@ -394,7 +622,7 @@ test("presentation lifecycle → slide creation, editing, thumbnail selection, p
   await notesArea.fill("Remember to emphasize zero cloud telemetry.");
 
   // 5. Test Presentation mode (fullscreen slide show)
-  await page.getByRole("button", { name: "Present", exact: true }).click();
+  await page.getByRole("button", { name: "Slideshow", exact: true }).click();
   await expect(page.locator(".presenter-overlay")).toBeVisible();
   await expect(page.locator(".presenter-overlay")).toContainText(
     "Key Features",
@@ -437,6 +665,87 @@ test("presentation lifecycle → slide creation, editing, thumbnail selection, p
     exportedFile.content.slides[exportedFile.content.slideOrder[1]];
   expect(slide2.notes).toBe("Remember to emphasize zero cloud telemetry.");
 
+  expect(errors).toEqual([]);
+});
+
+test("slides use placeholders, re-apply layouts, and reorder by dragging thumbnails", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/");
+  await page.getByRole("button", { name: "New presentation" }).click();
+
+  const boxes = page.locator(".slide-canvas .slide-element textarea");
+  await expect(boxes).toHaveCount(2);
+  await expect(boxes.nth(0)).toHaveValue("");
+  await expect(boxes.nth(0)).toHaveAttribute(
+    "placeholder",
+    "Click to add title",
+  );
+  await expect(boxes.nth(1)).toHaveAttribute(
+    "placeholder",
+    "Click to add subtitle",
+  );
+  await boxes.nth(0).click();
+  await page.keyboard.type("Kickoff");
+  await expect(boxes.nth(0)).toHaveValue("Kickoff");
+
+  for (const label of ["Line", "Grid view", "Zoom"])
+    await expect(page.getByLabel(label, { exact: true })).toHaveCount(0);
+  for (const text of ["Transition", "Menus"])
+    await expect(
+      page.getByRole("button", { name: text, exact: true }),
+    ).toHaveCount(0);
+
+  // Layout on an existing slide moves its text into the new arrangement.
+  await page.locator(".slide-canvas").click({ position: { x: 10, y: 10 } });
+  await page.getByRole("button", { name: "Layout" }).click();
+  await page.getByRole("menuitem", { name: "Two columns" }).click();
+  await expect(boxes).toHaveCount(3);
+  await expect(boxes.nth(0)).toHaveValue("Kickoff");
+  await expect(boxes.nth(2)).toHaveAttribute(
+    "placeholder",
+    "Click to add text",
+  );
+  const title = (await boxes.nth(0).boundingBox())!;
+  const canvas = (await page.locator(".slide-canvas").boundingBox())!;
+  expect(title.y - canvas.y).toBeLessThan(canvas.height * 0.2);
+
+  for (const name of ["Title & body", "Section header"]) {
+    await page.getByRole("button", { name: "+ New slide" }).click();
+    await page.getByRole("menuitem", { name }).click();
+  }
+  await boxes.nth(0).fill("Questions?");
+  const rows = page.locator(".thumbnail-row");
+  await expect(rows).toHaveCount(3);
+  await expect(rows.nth(2)).toContainText("Questions?");
+
+  // Drag the last thumbnail above the first.
+  const from = (await rows.nth(2).boundingBox())!;
+  const to = (await rows.nth(0).boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(to.x + to.width / 2, to.y + 4, { steps: 10 });
+  await page.mouse.up();
+  await expect(rows.nth(0)).toContainText("Questions?");
+  await expect(rows.nth(1)).toContainText("Kickoff");
+  await expect(rows.nth(0)).toHaveAttribute("aria-selected", "true");
+
+  // Ctrl/Cmd+Down moves the selected slide back down.
+  await page.getByRole("listbox", { name: "Slides" }).focus();
+  await page.keyboard.press("ControlOrMeta+ArrowDown");
+  await expect(rows.nth(1)).toContainText("Questions?");
+  await expect(rows.nth(0)).toContainText("Kickoff");
+
+  const file = await exported(page);
+  const first = file.content.slides[file.content.slideOrder[0]];
+  expect(first.layout).toBe("two-column");
+  expect(first.elements.map((el: { content: string }) => el.content)).toEqual([
+    "Kickoff",
+    "",
+    "",
+  ]);
   expect(errors).toEqual([]);
 });
 

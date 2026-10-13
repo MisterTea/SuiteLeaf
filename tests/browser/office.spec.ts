@@ -28,10 +28,22 @@ test("DOCX worker import → editing → native copy → reopen", async ({
   await expect(
     page.locator('.document-content a[href^="javascript:"]'),
   ).toHaveCount(0);
-  await expect(page.locator(".import-notes")).toContainText("DOCX");
+  const notes = page.locator(".import-notes");
+  await expect(notes.locator("summary")).toHaveText(
+    "Imported DOCX: Office notes.docx · 2 compatibility notes",
+  );
+  await notes.locator("summary").click();
+  await expect(notes.locator("li").first()).toHaveText(
+    "1 link with an unsafe or unsupported address (javascript:) was removed; its text was kept.",
+  );
+  await expect(notes).not.toContainText("Continuous layout");
+  await notes.locator("summary").click();
   const editor = page.getByRole("textbox", { name: "Document content" });
   await editor.click();
   await editor.press("ControlOrMeta+End");
+  await expect(
+    page.getByRole("button", { name: "Superscript", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
   await editor.press("Enter");
   await editor.pressSequentially("Reviewed in SuiteLeaf");
   await expect(page.getByRole("status")).toContainText("Saved");

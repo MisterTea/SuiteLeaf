@@ -36,11 +36,13 @@ import {
   Star,
   Clock,
   MessageSquare,
-  Play,
   Cloud,
   LogIn,
   LogOut,
   Unplug,
+  Pencil,
+  ArrowDown,
+  ArrowUp,
 } from "lucide-react";
 import {
   createFile,
@@ -58,9 +60,19 @@ import {
   type SlideFile,
 } from "@suiteleaf/core";
 import { storage, SaveQueue, exportText } from "./storage";
-import { importFile } from "./imports";
+import { importFile, type DelimitedDraft } from "./imports";
+import { CsvImportDialog } from "./csv-import";
+import type { DelimitedOptions } from "./csv";
+import { SameFileDialog, openNotices } from "./same-file";
 import { sampleDoc, sampleSheet, sampleSlide } from "./samples";
-import { Menu, MenuItem, type EditorActions } from "./ui";
+import {
+  Menu,
+  MenuItem,
+  SubMenu,
+  TableMenuItems,
+  type EditorActions,
+} from "./ui";
+import { SheetViewMenu } from "./editors/SheetViewMenu";
 import {
   DriveConflict,
   finishSignOut,
@@ -72,13 +84,17 @@ import {
   uploadDriveFile,
   type DriveItem,
 } from "./node-client";
-import { DriveBrowser } from "./drive/DriveBrowser";
+import { DriveBrowser, DriveDialog, NameDialog } from "./drive/DriveBrowser";
+import { searchFile } from "./library-search";
 import { ConnectDialog, SignInScreen, useNodeSession } from "./drive/SignIn";
+import { formatModified, syncSummary, useServerSync } from "./drive/status";
 import { completeHandoff } from "./node-client";
 import {
   ModeContext,
+  disconnect,
+  forgetLeftServer,
+  leftServer,
   resolveMode,
-  switchMode,
   useMode,
   type ResolvedMode,
 } from "./mode";
@@ -125,10 +141,10 @@ async function forgetDriveFiles() {
   for (const r of cached) await storage.remove(r.file.id);
   return true;
 }
-async function disconnect() {
+/** Purge this device's SuiteDrive cache, sign out, and return to single-node mode. */
+async function disconnectFromServer(serverUrl: string) {
   if (!(await forgetDriveFiles())) return;
-  await signOut();
-  await switchMode({ kind: "single" });
+  await disconnect(serverUrl);
 }
 /** Cache a SuiteDrive file locally and open it in the editor. A local file
  * that merely shares the ID gets a fresh one instead of being replaced, and
@@ -157,6 +173,20 @@ async function openFromDrive(item: DriveItem, navigate: NavigateFunction) {
 function driveName(name: string, kind: SuiteFile["kind"]) {
   return kindFromName(name) === kind ? name : `${name}.${extensionFor(kind)}`;
 }
+/** "A newer version was saved at 2:14 PM." (or "on Oct 12 at 2:14 PM."). */
+function savedWhen(iso: string) {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "";
+  const time = at.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  const day =
+    at.toDateString() === new Date().toDateString()
+      ? ""
+      : `on ${at.toLocaleDateString(undefined, { month: "short", day: "numeric" })} `;
+  return `A newer version was saved ${day}at ${time}.`;
+}
 class ErrorBoundary extends Component<
   { children: ReactNode },
   { error: string }
@@ -177,6 +207,10 @@ class ErrorBoundary extends Component<
     );
   }
 }
+/** Menu content mounts each time the menu opens, so this label reads current state. */
+function LiveLabel({ text }: { text: () => string }) {
+  return <>{text()}</>;
+}
 function Logo() {
   return (
     <span className="logo">
@@ -192,13 +226,18 @@ function ImportButton({
   onError,
   filePicker = false,
 }: {
-  onImport: (r: FileRecord) => Promise<void>;
+  /** `name` is the chosen file's name when it came from the file picker. */
+  onImport: (r: FileRecord, name?: string) => Promise<void>;
   onError: (s: string) => void;
   /** Always use the browser file picker, even on desktop. */
   filePicker?: boolean;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
+  const [review, setReview] = useState<{
+    draft: DelimitedDraft;
+    resolve: (options: DelimitedOptions | null) => void;
+  } | null>(null);
   const open = async () => {
     setImporting(true);
     try {
@@ -229,7 +268,12 @@ function ImportButton({
           if (!f) return;
           setImporting(true);
           try {
-            await onImport({ file: await importFile(f) });
+            const file = await importFile(
+              f,
+              (draft) =>
+                new Promise((resolve) => setReview({ draft, resolve })),
+            );
+            if (file) await onImport({ file }, f.name);
           } catch (e) {
             onError(message(e));
           } finally {
@@ -241,6 +285,15 @@ function ImportButton({
         <button onClick={() => input.current?.click()}>
           Import Office / HTML / CSV
         </button>
+      ) : null}
+      {review ? (
+        <CsvImportDialog
+          draft={review.draft}
+          onDone={(options) => {
+            setReview(null);
+            review.resolve(options);
+          }}
+        />
       ) : null}
     </>
   );
@@ -258,9 +311,13 @@ async function createInDrive(
 }
 function NewCards({
   onCreate,
+  folder,
 }: {
   onCreate: (kind: SuiteFile["kind"]) => void;
+  /** The SuiteDrive folder new files go in, when it isn't the top level. */
+  folder?: string;
 }) {
+  const where = folder ? <small>In {folder}</small> : null;
   return (
     <div className="new-cards">
       <button className="new-card" onClick={() => onCreate("doc")}>
@@ -269,7 +326,7 @@ function NewCards({
         </span>
         <span>
           <strong>New document</strong>
-          <small>A fresh page for your next idea</small>
+          {where ?? <small>A fresh page for your next idea</small>}
         </span>
         <Plus size={22} />
       </button>
@@ -279,7 +336,7 @@ function NewCards({
         </span>
         <span>
           <strong>New spreadsheet</strong>
-          <small>A little structure for the big picture</small>
+          {where ?? <small>A little structure for the big picture</small>}
         </span>
         <Plus size={22} />
       </button>
@@ -289,7 +346,7 @@ function NewCards({
         </span>
         <span>
           <strong>New presentation</strong>
-          <small>A clean canvas for your next pitch</small>
+          {where ?? <small>A clean canvas for your next pitch</small>}
         </span>
         <Plus size={22} />
       </button>
@@ -330,7 +387,20 @@ function LocalHome() {
   const [records, setRecords] = useState<FileRecord[]>([]),
     [query, setQuery] = useState(""),
     [error, setError] = useState(""),
-    [filter, setFilter] = useState("all");
+    [filter, setFilter] = useState("all"),
+    [sort, setSort] = useState<{ by: "name" | "edited"; desc: boolean }>({
+      by: "edited",
+      desc: true,
+    }),
+    [asking, setAsking] = useState<{
+      action: "rename" | "remove";
+      record: FileRecord;
+    } | null>(null),
+    [sameFile, setSameFile] = useState<{
+      name: string;
+      existing: FileRecord;
+      incoming: FileRecord;
+    } | null>(null);
   const refresh = useCallback(
     () =>
       storage
@@ -344,14 +414,44 @@ function LocalHome() {
     void refresh();
   }, [refresh]);
   const open = useCallback(
-    async (r: FileRecord) => {
+    async (r: FileRecord, notice?: string) => {
       if (!r.path && !r.recovery && (await storage.get(r.file.id)))
         r = { file: duplicateFile(r.file) };
       const saved = r.path ? r : await storage.save(r);
+      if (notice) openNotices.set(saved.file.id, notice);
       navigate(`/file/${saved.file.id}`);
     },
     [navigate],
   );
+  /** A SuiteLeaf file carries its ID, so opening one already in the library
+   * opens that copy if it is the same, and otherwise asks what to keep. */
+  const importRecord = useCallback(
+    async (r: FileRecord, name?: string) => {
+      if (!name) return open(r);
+      const existing =
+        r.path || r.recovery ? undefined : await storage.get(r.file.id);
+      if (!existing || existing.drive || existing.path)
+        return open(r, `Opened “${name}”`);
+      if (serializeFile(existing.file) !== serializeFile(r.file)) {
+        setSameFile({ name, existing, incoming: r });
+        return;
+      }
+      openNotices.set(r.file.id, `“${name}” matches the copy here`);
+      navigate(`/file/${r.file.id}`);
+    },
+    [open, navigate],
+  );
+  const replaceWith = async (name: string, incoming: FileRecord) => {
+    const id = incoming.file.id;
+    const held = navigator.locks ? (await navigator.locks.query()).held : [];
+    if (held?.some((lock) => lock.name === `suiteleaf:${id}`))
+      throw new Error(
+        `“${incoming.file.title}” is open in another tab. Close it there, then try again.`,
+      );
+    await storage.save({ file: incoming.file });
+    openNotices.set(id, `Replaced with “${name}”`);
+    navigate(`/file/${id}`);
+  };
   const make = useCallback(
     (kind: SuiteFile["kind"]) =>
       void open({ file: createFile(kind) }).catch((e) => setError(message(e))),
@@ -372,6 +472,102 @@ function LocalHome() {
     [make, open],
   );
   useEffect(() => window.suiteleaf?.onMenu(menu), [menu]);
+  const rename = async (r: FileRecord, title: string) => {
+    const write = async () => {
+      const latest = (await storage.get(r.file.id)) ?? r;
+      await storage.save({
+        ...latest,
+        file: {
+          ...latest.file,
+          title: title.slice(0, 200),
+          updatedAt: new Date().toISOString(),
+        },
+      });
+      return true;
+    };
+    // An editor holding the file would save its old title over the new one.
+    const done = navigator.locks
+      ? await navigator.locks.request(
+          `suiteleaf:${r.file.id}`,
+          { ifAvailable: true },
+          (lock) => (lock ? write() : false),
+        )
+      : await write();
+    if (!done)
+      throw new Error(
+        `"${r.file.title}" is open in another tab. Rename it there, or close it first.`,
+      );
+    await refresh();
+  };
+  const searching = query.trim() !== "",
+    kindLabel =
+      filter === "all"
+        ? "Your files"
+        : filter === "doc"
+          ? "Documents"
+          : filter === "sheet"
+            ? "Spreadsheets"
+            : "Presentations",
+    heading = !searching
+      ? kindLabel
+      : filter === "all"
+        ? `Results for “${query.trim()}”`
+        : `${kindLabel} matching “${query.trim()}”`;
+  const shown = records
+    .filter((r) => filter === "all" || r.file.kind === filter)
+    .flatMap((r) => {
+      const hit = searchFile(r.file, query);
+      return hit ? [{ r, snippet: hit.snippet }] : [];
+    })
+    .sort((a, b) => {
+      const order =
+        sort.by === "name"
+          ? a.r.file.title.localeCompare(b.r.file.title, undefined, {
+              numeric: true,
+              sensitivity: "base",
+            })
+          : a.r.file.updatedAt.localeCompare(b.r.file.updatedAt);
+      return sort.desc ? -order : order;
+    });
+  const sortBy = (by: "name" | "edited", label: string) => (
+    <button
+      className={`sort-head ${sort.by === by ? "active" : ""}`}
+      aria-label={`Sort by ${label.toLowerCase()}`}
+      title={`Sort by ${label.toLowerCase()}`}
+      onClick={() =>
+        setSort(
+          sort.by === by
+            ? { by, desc: !sort.desc }
+            : { by, desc: by === "edited" },
+        )
+      }
+    >
+      {label}
+      {sort.by === by ? (
+        sort.desc ? (
+          <ArrowDown size={12} />
+        ) : (
+          <ArrowUp size={12} />
+        )
+      ) : null}
+    </button>
+  );
+  const samples = (
+    [
+      ["Sample document", sampleDoc],
+      ["Sample budget", sampleSheet],
+      ["Sample presentation", sampleSlide],
+    ] as const
+  ).map(([label, sample]) => (
+    <button
+      key={label}
+      onClick={() =>
+        void open({ file: sample() }).catch((e) => setError(message(e)))
+      }
+    >
+      {label}
+    </button>
+  ));
   return (
     <div className="home">
       <aside className="sidebar">
@@ -416,7 +612,9 @@ function LocalHome() {
           <small>
             {demo
               ? "Download a copy to keep your work."
-              : "Offline ready. No account needed."}
+              : window.suiteleaf
+                ? "Offline ready. No account needed."
+                : "Offline ready. Download a file to back it up or move it."}
           </small>
           {locked ? null : (
             <button
@@ -438,148 +636,191 @@ function LocalHome() {
               placeholder="Search your files"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setQuery("");
+              }}
             />
           </label>
           <span className="version">OPEN SOURCE · v0.1</span>
         </header>
-        <section className="welcome">
-          <p className="eyebrow">YOUR EVERYDAY WORKSPACE</p>
-          <h1>Good ideas start here.</h1>
-          <p>Write something. Work out the numbers. Make it yours.</p>
-        </section>
-        <NewCards onCreate={make} />
+        <LeftServerNotice />
+        {searching ? null : (
+          <>
+            <section className="welcome">
+              <p className="eyebrow">YOUR EVERYDAY WORKSPACE</p>
+              <h1>Good ideas start here.</h1>
+              <p>Write something. Work out the numbers. Make it yours.</p>
+            </section>
+            <NewCards onCreate={make} />
+          </>
+        )}
         <ErrorBanner error={error} onDismiss={() => setError("")} />
         {connecting ? (
           <ConnectDialog onClose={() => setConnecting(false)} />
         ) : null}
-        <section className="file-section">
+        <section className={`file-section ${searching ? "searching" : ""}`}>
           <header>
-            <h2>
-              {filter === "all"
-                ? "Your files"
-                : filter === "doc"
-                  ? "Documents"
-                  : filter === "sheet"
-                    ? "Spreadsheets"
-                    : "Presentations"}
-            </h2>
-            <ImportButton onImport={open} onError={setError} />
+            <h2>{heading}</h2>
+            {searching ? (
+              <button onClick={() => setQuery("")}>Clear search</button>
+            ) : (
+              <ImportButton onImport={importRecord} onError={setError} />
+            )}
           </header>
-          {records.length === 0 ? (
+          {sameFile ? (
+            <SameFileDialog
+              {...sameFile}
+              where={window.suiteleaf ? "on this computer" : "in this browser"}
+              onClose={() => setSameFile(null)}
+              onReplace={() => {
+                setSameFile(null);
+                void replaceWith(sameFile.name, sameFile.incoming).catch((e) =>
+                  setError(message(e)),
+                );
+              }}
+              onKeepBoth={() => {
+                setSameFile(null);
+                void open(
+                  { file: duplicateFile(sameFile.incoming.file) },
+                  `Opened “${sameFile.name}” as a copy`,
+                ).catch((e) => setError(message(e)));
+              }}
+            />
+          ) : null}
+          {records.length === 0 && !searching ? (
             <div className="empty">
               <FolderOpen size={34} />
               <h3>A workspace waiting for you</h3>
               <p>Create your first file, or explore a sample.</p>
-              <div>
-                <button
-                  onClick={() =>
-                    void open({ file: sampleDoc() }).catch((e) =>
-                      setError(message(e)),
-                    )
-                  }
-                >
-                  Sample document
-                </button>
-                <button
-                  onClick={() =>
-                    void open({ file: sampleSheet() }).catch((e) =>
-                      setError(message(e)),
-                    )
-                  }
-                >
-                  Sample budget
-                </button>
-                <button
-                  onClick={() =>
-                    void open({ file: sampleSlide() }).catch((e) =>
-                      setError(message(e)),
-                    )
-                  }
-                >
-                  Sample presentation
-                </button>
-              </div>
+              <div>{samples}</div>
+            </div>
+          ) : shown.length === 0 ? (
+            <div className="empty">
+              {searching ? <Search size={30} /> : <FolderOpen size={34} />}
+              <h3>
+                {searching
+                  ? `No files match “${query.trim()}”`
+                  : `No ${kindLabel.toLowerCase()} yet`}
+              </h3>
+              <p>
+                {searching
+                  ? "Search looks at file names and the words inside them."
+                  : "Files you create or import appear here."}
+              </p>
             </div>
           ) : (
             <div className="file-list">
               <div className="file-list-head">
-                <span>Name</span>
-                <span>Last edited</span>
+                {sortBy("name", "Name")}
+                {sortBy("edited", "Last edited")}
                 <span />
               </div>
-              {records
-                .filter(
-                  (r) =>
-                    (filter === "all" || r.file.kind === filter) &&
-                    r.file.title.toLowerCase().includes(query.toLowerCase()),
-                )
-                .sort((a, b) =>
-                  b.file.updatedAt.localeCompare(a.file.updatedAt),
-                )
-                .map((r) => (
-                  <div className="file-row" key={r.file.id}>
-                    <Link to={`/file/${r.file.id}`}>
-                      <span className={`file-icon ${r.file.kind}`}>
-                        {r.file.kind === "doc" ? (
-                          <FileText size={21} />
-                        ) : r.file.kind === "sheet" ? (
-                          <Sheet size={21} />
-                        ) : (
-                          <Presentation size={21} />
-                        )}
-                      </span>
-                      <span>
-                        {r.file.title}
-                        {r.recovery ? (
-                          <small>Recovery draft available</small>
-                        ) : r.path ? (
-                          <small>{r.path}</small>
-                        ) : null}
-                      </span>
-                    </Link>
-                    <time>
-                      {new Date(r.file.updatedAt).toLocaleDateString(
-                        undefined,
-                        { month: "short", day: "numeric" },
+              {shown.map(({ r, snippet }) => (
+                <div className="file-row" key={r.file.id}>
+                  <Link to={`/file/${r.file.id}`}>
+                    <span className={`file-icon ${r.file.kind}`}>
+                      {r.file.kind === "doc" ? (
+                        <FileText size={21} />
+                      ) : r.file.kind === "sheet" ? (
+                        <Sheet size={21} />
+                      ) : (
+                        <Presentation size={21} />
                       )}
-                    </time>
-                    <div className="file-controls">
-                      <button
-                        title="Duplicate"
-                        aria-label={`Duplicate ${r.file.title}`}
-                        onClick={() =>
-                          void storage
-                            .save({ file: duplicateFile(r.file) })
-                            .then(refresh)
-                            .catch((e) => setError(message(e)))
-                        }
-                      >
-                        <Copy size={16} />
-                      </button>
-                      <button
-                        title="Remove from library"
-                        aria-label={`Remove ${r.file.title}`}
-                        onClick={() => {
-                          if (
-                            window.confirm(
-                              window.suiteleaf
-                                ? "Remove this entry and its recovery draft? Your saved file remains on disk."
-                                : "Delete this file from this browser?",
-                            )
-                          )
-                            void storage
-                              .remove(r.file.id)
-                              .then(refresh)
-                              .catch((e) => setError(message(e)));
-                        }}
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
+                    </span>
+                    <span>
+                      {r.file.title}
+                      {snippet ? (
+                        <small className="file-snippet">{snippet}</small>
+                      ) : r.recovery ? (
+                        <small>Recovery draft available</small>
+                      ) : r.path ? (
+                        <small>{r.path}</small>
+                      ) : null}
+                    </span>
+                  </Link>
+                  <time
+                    dateTime={r.file.updatedAt}
+                    title={new Date(r.file.updatedAt).toLocaleString()}
+                  >
+                    {formatModified(r.file.updatedAt)}
+                  </time>
+                  <div className="file-controls">
+                    <button
+                      title="Rename"
+                      aria-label={`Rename ${r.file.title}`}
+                      onClick={() => setAsking({ action: "rename", record: r })}
+                    >
+                      <Pencil size={16} />
+                    </button>
+                    <button
+                      title="Make a copy"
+                      aria-label={`Duplicate ${r.file.title}`}
+                      onClick={() =>
+                        void storage
+                          .save({ file: duplicateFile(r.file) })
+                          .then(refresh)
+                          .catch((e) => setError(message(e)))
+                      }
+                    >
+                      <Copy size={16} />
+                    </button>
+                    <button
+                      title="Remove from library"
+                      aria-label={`Remove ${r.file.title}`}
+                      onClick={() => setAsking({ action: "remove", record: r })}
+                    >
+                      <Trash2 size={16} />
+                    </button>
                   </div>
-                ))}
+                </div>
+              ))}
             </div>
           )}
+          {records.length > 0 && !searching ? (
+            <p className="sample-strip">Explore a sample: {samples}</p>
+          ) : null}
+          {asking?.action === "rename" ? (
+            <NameDialog
+              title="Rename"
+              submitLabel="OK"
+              initial={asking.record.file.title}
+              onClose={() => setAsking(null)}
+              onSubmit={(title) => {
+                const { record } = asking;
+                setAsking(null);
+                if (title !== record.file.title)
+                  void rename(record, title).catch((e) => setError(message(e)));
+              }}
+            />
+          ) : asking?.action === "remove" ? (
+            <DriveDialog
+              title={
+                window.suiteleaf ? "Remove from library?" : "Delete this file?"
+              }
+              submitLabel={window.suiteleaf ? "Remove" : "Delete"}
+              onClose={() => setAsking(null)}
+              onSubmit={() => {
+                const { record } = asking;
+                setAsking(null);
+                void storage
+                  .remove(record.file.id)
+                  .then(refresh)
+                  .catch((e) => setError(message(e)));
+              }}
+            >
+              <p className="dialog-note">
+                {window.suiteleaf
+                  ? `“${asking.record.file.title}” and its recovery draft leave the library. Your saved file remains on disk.`
+                  : `“${asking.record.file.title}” will be deleted from this browser. This can't be undone.`}
+              </p>
+              {window.suiteleaf ? null : (
+                <p className="dialog-note">
+                  A copy you downloaded isn&apos;t affected: open it again with
+                  Open / import.
+                </p>
+              )}
+            </DriveDialog>
+          ) : null}
         </section>
         <footer className="home-footer">
           A calmer place to get things done.<span>SuiteLeaf · Apache-2.0</span>
@@ -605,48 +846,83 @@ function AccountChip({
       .finally(() => setBusy(false));
   };
   if (!session) return null;
+  const name =
+    session.user.name || session.user.username || session.user.email || "";
+  const host = new URL(serverUrl).host;
   return (
     <div className="account-chip">
-      <span className="account-avatar" aria-hidden="true">
-        {(session.user.name || session.user.email || "?")
-          .slice(0, 1)
-          .toUpperCase()}
-      </span>
-      <span className="account-name">
-        {session.user.name || session.user.username || session.user.email}
-        <small>{new URL(serverUrl).host}</small>
-      </span>
-      <button
-        title="Sign out"
-        aria-label="Sign out"
-        disabled={busy}
-        onClick={() =>
-          leave(async () => {
-            if (await forgetDriveFiles()) await signOut();
-          })
-        }
+      <div
+        className="account-who"
+        title={`${name}${session.user.email ? ` (${session.user.email})` : ""} on ${host}`}
       >
-        <LogOut size={16} />
-      </button>
-      {locked ? null : (
+        <span className="account-avatar" aria-hidden="true">
+          {(name || "?").slice(0, 1).toUpperCase()}
+        </span>
+        <span className="account-name">
+          {name}
+          <small>{host}</small>
+        </span>
+      </div>
+      <div className="account-actions">
         <button
-          title="Disconnect and work on this computer"
-          aria-label="Disconnect from server"
+          title={`Sign out of ${host}`}
+          aria-label="Sign out"
           disabled={busy}
-          onClick={() => leave(disconnect)}
+          onClick={() =>
+            leave(async () => {
+              if (await forgetDriveFiles()) await signOut();
+            })
+          }
         >
-          <Unplug size={16} />
+          <LogOut size={14} />
+          <span className="account-action-label">Sign out</span>
         </button>
-      )}
+        {locked ? null : (
+          <button
+            title="Sign out and work on this computer without a server"
+            aria-label="Disconnect from server"
+            disabled={busy}
+            onClick={() => leave(() => disconnectFromServer(serverUrl))}
+          >
+            <Unplug size={14} />
+            <span className="account-action-label">Disconnect</span>
+          </button>
+        )}
+      </div>
     </div>
   );
+}
+/** One-time confirmation after disconnecting, like a "signed out" page. */
+function LeftServerNotice() {
+  const [host, setHost] = useState(leftServer);
+  useEffect(forgetLeftServer, []);
+  return host ? (
+    <div className="notice" role="status">
+      <Unplug size={18} />
+      <span>
+        Disconnected from {host} and signed out. Files in SuiteDrive stay on the
+        server; connect again to open them.
+      </span>
+      <button aria-label="Dismiss" onClick={() => setHost(null)}>
+        ×
+      </button>
+    </div>
+  ) : null;
 }
 /** Cluster mode: a signed-in client of a SuiteLeaf server, with SuiteDrive
  * as the file list. */
 function ClusterHome({ serverUrl }: { serverUrl: string }) {
   const navigate = useNavigate();
+  const { locked } = useMode();
   const [error, setError] = useState("");
   const folder = useRef<string | null>(null);
+  const [folderName, setFolderName] = useState<string>();
+  const onFolderChange = useCallback((id: string | null, name: string) => {
+    folder.current = id;
+    setFolderName(id ? name : undefined);
+  }, []);
+  const sync = useServerSync(serverUrl);
+  const summary = syncSummary(sync);
   const make = useCallback(
     (kind: SuiteFile["kind"]) =>
       void createInDrive(createFile(kind), folder.current, navigate).catch(
@@ -672,7 +948,19 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
           Your organization&apos;s workspace.
           <small>
             Files are saved to SuiteDrive on {new URL(serverUrl).host}.
+            {locked
+              ? null
+              : " Your files on this computer are kept for when you disconnect."}
           </small>
+          {summary ? (
+            <small
+              className={`cluster-sync ${sync?.replicating ? "copying" : ""}`}
+              aria-live="polite"
+            >
+              <span className="local-dot" />
+              {summary}
+            </small>
+          ) : null}
         </div>
         <AccountChip serverUrl={serverUrl} onError={setError} />
       </aside>
@@ -685,11 +973,11 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
           <p className="eyebrow">YOUR TEAM WORKSPACE</p>
           <h1>Good ideas start here.</h1>
           <p>
-            Everything you create is saved to SuiteDrive and shared with your
-            servers.
+            Everything you create is saved to SuiteDrive, on your team&apos;s
+            server.
           </p>
         </section>
-        <NewCards onCreate={make} />
+        <NewCards onCreate={make} folder={folderName} />
         <ErrorBanner error={error} onDismiss={() => setError("")} />
         <section className="file-section">
           <header>
@@ -703,8 +991,9 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
           <DriveBrowser
             inline
             mode="open"
-            onFolderChange={(id) => (folder.current = id)}
+            onFolderChange={onFolderChange}
             onOpen={(item) => openFromDrive(item, navigate)}
+            refreshKey={sync ? `${sync.heads}:${sync.replicating}` : undefined}
           />
         </section>
         <footer className="home-footer">
@@ -738,7 +1027,8 @@ function Workspace() {
       null,
     ),
     [driveDialog, setDriveDialog] = useState<"open" | "save" | null>(null),
-    cluster = useMode().mode.kind === "cluster";
+    { mode } = useMode(),
+    cluster = mode.kind === "cluster";
   const setDriveConflict = (item: DriveItem | null) => {
     driveConflictRef.current = item;
     setDriveConflictState(item);
@@ -851,17 +1141,18 @@ function Workspace() {
           void syncDrive();
           return;
         }
-        setStatus(
-          r.drive
-            ? "Saved to SuiteDrive"
-            : r.recovery
-              ? "Recovered draft · review and save"
-              : r.path
-                ? "Saved to file"
-                : window.suiteleaf
-                  ? "Draft saved · choose Save As"
-                  : "Saved on this device",
-        );
+        const saved = r.drive
+          ? "Saved to SuiteDrive"
+          : r.recovery
+            ? "Recovered draft · review and save"
+            : r.path
+              ? "Saved to file"
+              : window.suiteleaf
+                ? "Draft saved · choose Save As"
+                : "Saved on this device";
+        const notice = openNotices.get(id!);
+        openNotices.delete(id!);
+        setStatus(notice ? `${notice} · ${saved}` : saved);
       } catch (e) {
         if (!cancel) setError(message(e));
       }
@@ -952,8 +1243,10 @@ function Workspace() {
         if (at === version.current) await save();
         else void save().catch(() => {});
       }
+      return !!saved;
     } catch (e) {
       setError(message(e));
+      return false;
     }
   }, [save]);
   const doAction = useCallback(
@@ -1079,9 +1372,12 @@ function Workspace() {
   };
   /** In cluster mode files live in SuiteDrive, so downloads are copies. */
   const download = () =>
-    void (cluster ? exportNative() : saveAs()).catch((e) =>
-      setError(message(e)),
-    );
+    void (cluster ? exportNative().then(() => true) : saveAs())
+      .then((done) => {
+        if (done && !cluster && !window.suiteleaf && alive.current)
+          setStatus(`Downloaded “${nativeFilename(current.current!.file)}”`);
+      })
+      .catch((e) => setError(message(e)));
   const onActions = useCallback((a: EditorActions) => {
     actions.current = a;
     setActionsReady(true);
@@ -1232,20 +1528,24 @@ function Workspace() {
                 </>
               ) : (
                 <MenuItem disabled={!actionsReady} onSelect={download}>
-                  {window.suiteleaf ? "Save As…" : "Download SuiteLeaf file"}
+                  {window.suiteleaf
+                    ? "Save As…"
+                    : `Download SuiteLeaf file (.${extensionFor(f.kind)})`}
                 </MenuItem>
               )}
               <MenuItem onSelect={() => void save().catch(() => {})}>
                 Save now
               </MenuItem>
-              <MenuItem
-                onSelect={() =>
-                  void exportNative().catch((e) => setError(message(e)))
-                }
-                disabled={!actionsReady}
-              >
-                Export native copy
-              </MenuItem>
+              {window.suiteleaf && !cluster ? (
+                <MenuItem
+                  onSelect={() =>
+                    void exportNative().catch((e) => setError(message(e)))
+                  }
+                  disabled={!actionsReady}
+                >
+                  Export native copy
+                </MenuItem>
+              ) : null}
               {(f.kind === "doc"
                 ? ["docx", "html", "txt"]
                 : f.kind === "sheet"
@@ -1271,6 +1571,15 @@ function Workspace() {
               >
                 Make a copy
               </MenuItem>
+              {f.kind === "doc" ? (
+                <MenuItem
+                  disabled={!actionsReady}
+                  focusesTarget
+                  onSelect={() => actions.current?.docActions?.openPageSetup()}
+                >
+                  Page setup…
+                </MenuItem>
+              ) : null}
               <MenuItem onSelect={() => void doAction("print")}>
                 Print / Save as PDF
               </MenuItem>
@@ -1327,6 +1636,15 @@ function Workspace() {
                     Horizontal line
                   </MenuItem>
                   <MenuItem
+                    shortcut="Cmd+Enter"
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.docActions?.insertPageBreak()
+                    }
+                  >
+                    Page break
+                  </MenuItem>
+                  <MenuItem
                     shortcut="Cmd+K"
                     onSelect={() => actions.current?.docActions?.insertLink()}
                   >
@@ -1358,6 +1676,22 @@ function Workspace() {
                     onSelect={() => actions.current?.docActions?.toggleStrike()}
                   >
                     Strikethrough
+                  </MenuItem>
+                  <MenuItem
+                    shortcut="Cmd+."
+                    onSelect={() =>
+                      actions.current?.docActions?.toggleSuperscript()
+                    }
+                  >
+                    Superscript
+                  </MenuItem>
+                  <MenuItem
+                    shortcut="Cmd+,"
+                    onSelect={() =>
+                      actions.current?.docActions?.toggleSubscript()
+                    }
+                  >
+                    Subscript
                   </MenuItem>
                   <MenuItem
                     onSelect={() => actions.current?.docActions?.align("left")}
@@ -1397,6 +1731,13 @@ function Workspace() {
                   >
                     Numbered list
                   </MenuItem>
+                  <SubMenu label="Table">
+                    <TableMenuItems
+                      actions={() =>
+                        actions.current?.docActions?.tableActions() ?? []
+                      }
+                    />
+                  </SubMenu>
                   <MenuItem
                     shortcut="Cmd+\"
                     onSelect={() =>
@@ -1446,44 +1787,36 @@ function Workspace() {
                   </MenuItem>
                   <MenuItem
                     shortcut="Cmd+X"
-                    onSelect={() => actions.current?.sheetActions?.toggleBold()}
+                    onSelect={() => actions.current?.sheetActions?.cut()}
                   >
                     Cut
                   </MenuItem>
                   <MenuItem
                     shortcut="Cmd+C"
-                    onSelect={() => actions.current?.sheetActions?.toggleBold()}
+                    onSelect={() => actions.current?.sheetActions?.copy()}
                   >
                     Copy
                   </MenuItem>
                   <MenuItem
                     shortcut="Cmd+V"
-                    onSelect={() => actions.current?.sheetActions?.toggleBold()}
+                    onSelect={() => actions.current?.sheetActions?.paste()}
                   >
                     Paste
                   </MenuItem>
                   <MenuItem
                     shortcut="Delete"
                     onSelect={() =>
-                      actions.current?.sheetActions?.clearFormatting()
+                      actions.current?.sheetActions?.deleteValues()
                     }
                   >
                     Delete values
                   </MenuItem>
                 </Menu>
                 <Menu label="View">
-                  <MenuItem onSelect={() => void doAction("print")}>
-                    Print layout
-                  </MenuItem>
-                  <MenuItem
-                    onSelect={() =>
-                      actions.current?.sheetActions?.toggleFilter()
-                    }
-                  >
-                    Toggle filter
-                  </MenuItem>
-                  <MenuItem onSelect={() => {}}>Show formula bar</MenuItem>
-                  <MenuItem onSelect={() => {}}>Show gridlines</MenuItem>
+                  <SheetViewMenu
+                    actions={actions}
+                    onPrint={() => void doAction("print")}
+                  />
                 </Menu>
                 <Menu label="Insert">
                   <MenuItem
@@ -1599,7 +1932,13 @@ function Workspace() {
                       actions.current?.sheetActions?.toggleFilter()
                     }
                   >
-                    Create a filter
+                    <LiveLabel
+                      text={() =>
+                        actions.current?.sheetActions?.hasFilter?.()
+                          ? "Remove filter"
+                          : "Create a filter"
+                      }
+                    />
                   </MenuItem>
                   <MenuItem
                     onSelect={() =>
@@ -1608,7 +1947,13 @@ function Workspace() {
                   >
                     Pivot table
                   </MenuItem>
-                  <MenuItem onSelect={() => {}}>Sort range</MenuItem>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.sheetActions?.sortRange?.()
+                    }
+                  >
+                    Sort range
+                  </MenuItem>
                   <MenuItem
                     onSelect={() =>
                       actions.current?.sheetActions?.dataValidation?.()
@@ -1726,26 +2071,29 @@ function Workspace() {
           >
             <MessageSquare size={18} />
           </button>
-          {f.kind === "slide" ? (
-            <button
-              type="button"
-              className="slideshow-header-btn"
-              aria-label="Slideshow"
-              title="Slideshow"
-              onClick={() => void actions.current?.present?.()}
+          {mode.kind === "cluster" ? (
+            <span
+              className="workspace-brand workspace-server"
+              title={`Saving to SuiteDrive on ${new URL(mode.serverUrl).host}`}
             >
-              <Play size={14} fill="currentColor" />
-              <span>Slideshow</span>
-            </button>
-          ) : null}
-          <span className="workspace-brand">
-            <Leaf size={16} />
-            SuiteLeaf
-          </span>
+              <Cloud size={16} />
+              {new URL(mode.serverUrl).host}
+            </span>
+          ) : (
+            <span className="workspace-brand">
+              <Leaf size={16} />
+              SuiteLeaf
+            </span>
+          )}
           <button
             className="save-copy"
             disabled={!actionsReady}
             onClick={download}
+            title={
+              window.suiteleaf && !cluster
+                ? `Save to a .${extensionFor(f.kind)} file`
+                : `Download “${nativeFilename(f)}”, a SuiteLeaf file you can open again with Open / import`
+            }
           >
             <Download size={16} />
             {window.suiteleaf && !cluster ? "Save As" : "Download"}
@@ -1791,27 +2139,37 @@ function Workspace() {
       {driveConflict ? (
         <div className="error drive-conflict" role="alert">
           <CircleAlert size={18} />
-          This file was changed in SuiteDrive after you opened it. Your edits
-          are saved on this device.
-          <button
-            onClick={() => {
-              if (
-                window.confirm(
-                  "Replace your edits with the SuiteDrive version?",
+          <span className="drive-conflict-text">
+            <strong>
+              This file was changed in SuiteDrive after you opened it.
+            </strong>{" "}
+            {savedWhen(driveConflict.updatedAt)} Your edits weren't uploaded and
+            are safe on this device. Save them as a copy to keep both versions,
+            or reload the SuiteDrive version and discard your edits.
+          </span>
+          <span className="drive-conflict-actions">
+            <button
+              title="Upload your edits as a new file and leave the SuiteDrive version as it is"
+              onClick={() =>
+                void saveDriveCopy().catch((e) => setError(message(e)))
+              }
+            >
+              Save as copy
+            </button>
+            <button
+              title="Discard your edits and open the newer SuiteDrive version"
+              onClick={() => {
+                if (
+                  window.confirm(
+                    "Discard your edits and open the newer version from SuiteDrive? Your edits will be lost.",
+                  )
                 )
-              )
-                void reloadFromDrive().catch((e) => setError(message(e)));
-            }}
-          >
-            Reload from SuiteDrive
-          </button>
-          <button
-            onClick={() =>
-              void saveDriveCopy().catch((e) => setError(message(e)))
-            }
-          >
-            Save as copy
-          </button>
+                  void reloadFromDrive().catch((e) => setError(message(e)));
+              }}
+            >
+              Reload from SuiteDrive
+            </button>
+          </span>
         </div>
       ) : null}
       {driveDialog ? (
@@ -1838,7 +2196,7 @@ function Workspace() {
             Imported {f.importInfo.sourceFormat.toUpperCase()}:{" "}
             {f.importInfo.sourceName}
             {f.importInfo.warnings.length
-              ? ` · ${f.importInfo.warnings.length} compatibility notes`
+              ? ` · ${f.importInfo.warnings.length} compatibility ${f.importInfo.warnings.length === 1 ? "note" : "notes"}`
               : ""}
           </summary>
           {f.importInfo.warnings.length ? (
@@ -1949,8 +2307,10 @@ function ClusterGate({ children }: { children: ReactNode }) {
     () =>
       cluster
         ? window.suiteleaf?.onMenu((action) => {
-            if (action === "disconnect")
-              void disconnect().catch((e) => window.alert(message(e)));
+            if (action === "disconnect" && mode.kind === "cluster")
+              void disconnectFromServer(mode.serverUrl).catch((e) =>
+                window.alert(message(e)),
+              );
           })
         : undefined,
     [cluster],
@@ -1960,7 +2320,11 @@ function ClusterGate({ children }: { children: ReactNode }) {
   return (
     <SignInScreen
       serverUrl={mode.serverUrl}
-      onDisconnect={locked ? undefined : disconnect}
+      onDisconnect={
+        locked || mode.kind !== "cluster"
+          ? undefined
+          : () => disconnectFromServer(mode.serverUrl)
+      }
     />
   );
 }

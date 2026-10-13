@@ -886,4 +886,64 @@ test.describe("SuiteDrive across two nodes", () => {
     });
     expect(me.status).toBe(200);
   });
+
+  test("folders use in-app dialogs, and leaving a file returns to its folder", async ({
+    browser,
+  }) => {
+    const page = await (await browser.newContext()).newPage();
+    const native: string[] = [];
+    page.on("dialog", (d) => {
+      native.push(d.message());
+      void d.dismiss();
+    });
+    await signUp(page, "folders@example.com");
+    const item = (name: string) =>
+      page.getByRole("button", { name, exact: true });
+    const crumbs = page.getByLabel("Folder path");
+
+    await page.getByRole("button", { name: "New folder" }).click();
+    const create = page.getByRole("dialog", { name: "New folder" });
+    await expect(create.getByLabel("Name")).toBeFocused();
+    await page.keyboard.type("Club");
+    await create.getByRole("button", { name: "Create" }).click();
+    await item("Club").click();
+    await expect(crumbs).toContainText("Club");
+    const newDocument = page.getByRole("button", { name: /New document/ });
+    await expect(newDocument).toContainText("In Club");
+
+    await newDocument.click();
+    await page.getByLabel("File title").fill("Rota");
+    await page
+      .getByRole("textbox", { name: "Document content" })
+      .fill("Mon Rosa");
+    await expect(page.getByRole("status")).toHaveText("Saved to SuiteDrive", {
+      timeout: 20000,
+    });
+    await page.getByRole("button", { name: "Back to files" }).click();
+    await expect(crumbs).toContainText("Club");
+    await expect(item("Rota.sldoc")).toBeVisible();
+    await page.reload();
+    await expect(crumbs).toContainText("Club");
+    await expect(item("Rota.sldoc")).toBeVisible();
+
+    await page.getByRole("button", { name: "Rename Rota.sldoc" }).click();
+    const rename = page.getByRole("dialog", { name: "Rename" });
+    await expect(rename.getByLabel("Name")).toBeFocused();
+    await page.keyboard.type("Watering rota");
+    await rename.getByRole("button", { name: "OK" }).click();
+    await expect(item("Watering rota.sldoc")).toBeVisible();
+
+    const trash = page.getByRole("button", {
+      name: "Move Watering rota.sldoc to trash",
+    });
+    const confirm = page.getByRole("dialog", { name: "Move to trash?" });
+    await trash.click();
+    await page.keyboard.press("Escape");
+    await expect(confirm).toHaveCount(0);
+    await expect(item("Watering rota.sldoc")).toBeVisible();
+    await trash.click();
+    await confirm.getByRole("button", { name: "Move to trash" }).click();
+    await expect(page.getByText("This folder is empty.")).toBeVisible();
+    expect(native).toEqual([]);
+  });
 });

@@ -105,3 +105,216 @@ test("currency budget charts retain numeric bars, labels, order, formulas and fi
   expect(pivot.cellData[2][1].v).toBe(1200);
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
+
+test("View menu freezes rows and columns, hides gridlines and the formula bar, and keeps them on reopen", async ({
+  page,
+}) => {
+  const file = createFile("sheet", "Freeze regression");
+  if (file.kind !== "sheet") throw new Error("Expected spreadsheet");
+  const id = file.content.workbook.sheetOrder[0];
+  file.content.workbook.sheets[id].cellData = Object.fromEntries(
+    Array.from({ length: 40 }, (_, r) => [
+      r,
+      { 0: { v: r ? `Guest ${r}` : "Guest", t: 1 }, 1: { v: r || "RSVP", t: r ? 2 : 1 } },
+    ]),
+  );
+  await page.goto("/");
+  await page.locator("input[type=file]").setInputFiles({
+    name: "freeze.slsheet",
+    mimeType: "application/json",
+    buffer: Buffer.from(serializeFile(file)),
+  });
+  // The name box ignores Enter until the grid has finished starting.
+  await expect(page.getByLabel("Spreadsheet grid")).toHaveAttribute(
+    "aria-busy",
+    "false",
+  );
+  const box = page.locator(".sheet-host input.univer-size-full");
+  await box.fill("B3");
+  await box.press("Enter");
+  const view = async (submenu: "Show" | "Freeze") => {
+    await page.getByRole("button", { name: "View", exact: true }).click();
+    await page.getByRole("menuitem", { name: submenu }).click();
+  };
+  const choice = (name: string) =>
+    page.getByRole("menuitemcheckbox", { name, exact: true });
+  const freezeOf = async () =>
+    (await snapshot(page)).content.workbook.sheets[id].freeze;
+
+  await view("Freeze");
+  await expect(choice("No rows")).toHaveAttribute("aria-checked", "true");
+  await choice("Up to row 3").click();
+  await expect.poll(freezeOf).toMatchObject({ startRow: 3, ySplit: 3 });
+  await view("Freeze");
+  await expect(choice("Up to row 3")).toHaveAttribute("aria-checked", "true");
+  await choice("1 row").click();
+  await view("Freeze");
+  await choice("Up to column B").click();
+  await expect
+    .poll(freezeOf)
+    .toMatchObject({ startRow: 1, ySplit: 1, startColumn: 2, xSplit: 2 });
+  await view("Freeze");
+  await choice("No columns").click();
+  await expect
+    .poll(freezeOf)
+    .toMatchObject({ startRow: 1, ySplit: 1, startColumn: -1, xSplit: 0 });
+
+  await view("Show");
+  await expect(choice("Gridlines")).toHaveAttribute("aria-checked", "true");
+  await choice("Gridlines").click();
+  await expect
+    .poll(async () => (await snapshot(page)).content.workbook.sheets[id].showGridlines)
+    .toBe(0);
+  await view("Show");
+  await choice("Formula bar").click();
+  await expect(box).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Back to files" }).click();
+  await page.getByRole("link", { name: "Freeze regression" }).click();
+  await expect(page.getByRole("button", { name: "Sheet tools", exact: true })).toBeVisible();
+  await view("Freeze");
+  await expect(choice("1 row")).toHaveAttribute("aria-checked", "true");
+  await expect(choice("No columns")).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("Escape");
+  await view("Show");
+  await expect(choice("Gridlines")).toHaveAttribute("aria-checked", "false");
+  await expect(choice("Formula bar")).toHaveAttribute("aria-checked", "false");
+  await expect(box).toHaveCount(0);
+  await choice("Formula bar").click();
+  await expect(box).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+async function newSheet(page: Page, rows: string[][]) {
+  await page.goto("/");
+  await page.getByRole("button", { name: "New spreadsheet" }).click();
+  await page
+    .getByRole("button", { name: "Sheet tools", exact: true })
+    .waitFor();
+  const box = page.locator(".sheet-host input.univer-size-full");
+  const select = async (ref: string) => {
+    await box.fill(ref);
+    await box.press("Enter");
+  };
+  for (const [r, row] of rows.entries()) {
+    await select(`A${r + 1}`);
+    for (const value of row) {
+      await page.keyboard.type(value);
+      await page.keyboard.press("Tab");
+    }
+    await page.keyboard.press("Enter");
+  }
+  return select;
+}
+const styleOf = (file: any, cell: { s?: unknown }) =>
+  typeof cell.s === "string" ? file.content.workbook.styles[cell.s] : cell.s;
+const cellsOf = (file: any) =>
+  file.content.workbook.sheets[file.content.workbook.sheetOrder[0]].cellData;
+
+test("toolbar and Format menu bold, italic and strikethrough style the selection", async ({
+  page,
+  isMobile,
+}) => {
+  test.skip(isMobile, "The formatting toolbar is a desktop layout.");
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const select = await newSheet(page, [
+    ["Service", "Hours"],
+    ["Logo", "12"],
+  ]);
+  await select("A1:B1");
+  const bold = page.getByRole("button", { name: "Bold (Cmd+B)" });
+  for (const name of [
+    "Bold (Cmd+B)",
+    "Italic (Cmd+I)",
+    "Strikethrough (Alt+Shift+5)",
+  ]) {
+    await page.getByRole("button", { name }).click();
+    await expect(page.getByRole("button", { name })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  }
+  let file = await snapshot(page);
+  for (const column of [0, 1])
+    expect(styleOf(file, cellsOf(file)[0][column])).toMatchObject({
+      bl: 1,
+      it: 1,
+      st: { s: 1 },
+    });
+  await select("A2");
+  await expect(bold).toHaveAttribute("aria-pressed", "false");
+  await select("B1");
+  await expect(bold).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Format", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Bold" }).click();
+  await expect(bold).toHaveAttribute("aria-pressed", "false");
+  file = await snapshot(page);
+  expect(styleOf(file, cellsOf(file)[0][1]).bl ?? 0).toBe(0);
+  expect(styleOf(file, cellsOf(file)[0][0]).bl).toBe(1);
+  expect(errors).toEqual([]);
+});
+
+test("$ applies plain currency and Edit menu cut, copy, paste and delete use the clipboard", async ({
+  page,
+  context,
+}, info) => {
+  test.skip(
+    info.project.name !== "chromium",
+    "Clipboard permissions can only be granted in desktop Chromium.",
+  );
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const select = await newSheet(page, [["-5", "=1020/1880"]]);
+  await select("A1");
+  await page.getByRole("button", { name: "Format as currency" }).click();
+  const edit = async (item: string) => {
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    await page.getByRole("menuitem", { name: item }).click();
+  };
+  // Menu clipboard actions finish asynchronously; wait for each to land
+  // before moving the selection, as a person would.
+  const clipboard = () => page.evaluate(() => navigator.clipboard.readText());
+  const value = async (row: number, column: number) =>
+    cellsOf(await snapshot(page))[row]?.[column]?.v ?? null;
+  await edit("Copy");
+  await expect.poll(clipboard).toBe("-$5.00");
+  await select("A3");
+  await edit("Paste");
+  await expect.poll(() => value(2, 0)).toBe(-5);
+  await select("B1");
+  await edit("Cut");
+  await expect.poll(clipboard).toMatch(/^0\.5425/);
+  await select("B3");
+  await edit("Paste");
+  await expect.poll(() => value(2, 1)).toBeCloseTo(1020 / 1880);
+  await expect.poll(() => value(0, 1)).toBeNull();
+  await select("A1");
+  await edit("Delete values");
+  await expect.poll(() => value(0, 0)).toBeNull();
+  const file = await snapshot(page);
+  const cells = cellsOf(file);
+  expect(styleOf(file, cells[2][0]).n.pattern).toBe('"$"#,##0.00');
+  expect(styleOf(file, cells[0][0]).n.pattern).toBe('"$"#,##0.00');
+  await expect(page.locator(".sheet-notice")).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test("Edit menu paste explains the shortcut when the browser blocks clipboard reads", async ({
+  page,
+}, info) => {
+  test.skip(
+    info.project.name !== "chromium",
+    "Clipboard permissions are denied by default in headless Chromium.",
+  );
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await newSheet(page, [["Hello"]]);
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Paste" }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "paste" }),
+  ).toHaveText(/Use (⌘|Ctrl\+)V to paste\./);
+  expect(errors).toEqual([]);
+});

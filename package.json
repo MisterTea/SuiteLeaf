@@ -34,7 +34,8 @@
     "test:office-corpus": "node scripts/verify-office-imports.mjs",
     "build:auth": "npm run build -w @suiteleaf/auth",
     "build:node": "cargo build --release -p suiteleaf-node",
-    "test:rust": "cargo test --workspace"
+    "test:rust": "cargo test --workspace",
+    "storyboards": "playwright test --config playwright.storyboards.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",

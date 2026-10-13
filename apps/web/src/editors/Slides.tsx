@@ -31,9 +31,9 @@ import {
   Printer,
   MousePointer2,
   Minus,
-  Search,
-  Grid,
+  StickyNote,
 } from "lucide-react";
+import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import {
   filename,
   type SlideFile,
@@ -42,6 +42,13 @@ import {
 } from "@suiteleaf/core";
 import { exportText, printDocument } from "../storage";
 import { Menu, MenuItem, Tool, type EditorActions } from "../ui";
+import {
+  applyBackground,
+  applyLayout,
+  newSlide,
+  reorder,
+  type Layout,
+} from "./slide-layouts";
 
 type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
@@ -68,6 +75,10 @@ export default function Slides({
   const [showNotes, setShowNotes] = useState(true);
   const [presenting, setPresenting] = useState(false);
   const [presentSlideIndex, setPresentSlideIndex] = useState(0);
+  const [showSpeakerNotes, setShowSpeakerNotes] = useState(false);
+  const [blankScreen, setBlankScreen] = useState<string | null>(null);
+  const [showStartedAt, setShowStartedAt] = useState(0);
+  const [clock, setClock] = useState(0);
 
   // Undo/Redo history
   const history = useRef<SlideFile["content"][]>([
@@ -130,130 +141,9 @@ export default function Slides({
     activeSlide?.elements.find((el) => el.id === selectedElementId) || null;
 
   // Add new slide
-  const addSlide = (layout: Slide["layout"] = "title-body") => {
-    const newId = crypto.randomUUID();
-    const newSlide: Slide = {
-      id: newId,
-      title: layout === "blank" ? "Untitled slide" : "Slide Title",
-      layout,
-      elements: [],
-      notes: "",
-    };
-
-    if (layout === "title") {
-      newSlide.elements.push(
-        {
-          id: crypto.randomUUID(),
-          type: "text",
-          x: 100,
-          y: 160,
-          width: 760,
-          height: 100,
-          content: "Presentation Title",
-          fontSize: 44,
-          bold: true,
-          align: "center",
-          color: "#0f172a",
-        },
-        {
-          id: crypto.randomUUID(),
-          type: "text",
-          x: 100,
-          y: 280,
-          width: 760,
-          height: 60,
-          content: "Click to add subtitle",
-          fontSize: 22,
-          align: "center",
-          color: "#64748b",
-        },
-      );
-    } else if (layout === "title-body") {
-      newSlide.elements.push(
-        {
-          id: crypto.randomUUID(),
-          type: "text",
-          x: 80,
-          y: 50,
-          width: 800,
-          height: 70,
-          content: "Slide Title",
-          fontSize: 34,
-          bold: true,
-          align: "left",
-          color: "#0f172a",
-        },
-        {
-          id: crypto.randomUUID(),
-          type: "text",
-          x: 80,
-          y: 150,
-          width: 800,
-          height: 320,
-          content: "• First key point\n• Second key point\n• Third key point",
-          fontSize: 20,
-          bullet: true,
-          align: "left",
-          color: "#334155",
-        },
-      );
-    } else if (layout === "two-column") {
-      newSlide.elements.push(
-        {
-          id: crypto.randomUUID(),
-          type: "text",
-          x: 80,
-          y: 50,
-          width: 800,
-          height: 70,
-          content: "Comparison Title",
-          fontSize: 34,
-          bold: true,
-          align: "left",
-          color: "#0f172a",
-        },
-        {
-          id: crypto.randomUUID(),
-          type: "text",
-          x: 80,
-          y: 150,
-          width: 380,
-          height: 320,
-          content: "Column 1 Details\n• Point A\n• Point B",
-          fontSize: 18,
-          align: "left",
-          color: "#334155",
-        },
-        {
-          id: crypto.randomUUID(),
-          type: "text",
-          x: 500,
-          y: 150,
-          width: 380,
-          height: 320,
-          content: "Column 2 Details\n• Point C\n• Point D",
-          fontSize: 18,
-          align: "left",
-          color: "#334155",
-        },
-      );
-    } else if (layout === "section") {
-      newSlide.background = { color: "#1e293b" };
-      newSlide.elements.push({
-        id: crypto.randomUUID(),
-        type: "text",
-        x: 100,
-        y: 200,
-        width: 760,
-        height: 120,
-        content: "Section Header",
-        fontSize: 46,
-        bold: true,
-        align: "center",
-        color: "#f8fafc",
-      });
-    }
-
+  const addSlide = (layout: Layout = "title-body") => {
+    const slide = newSlide(layout);
+    const newId = slide.id;
     const currentIdx = deck.slideOrder.indexOf(activeSlideId);
     const newOrder = [...deck.slideOrder];
     newOrder.splice(currentIdx + 1, 0, newId);
@@ -261,7 +151,7 @@ export default function Slides({
     const updated = {
       ...deck,
       slideOrder: newOrder,
-      slides: { ...deck.slides, [newId]: newSlide },
+      slides: { ...deck.slides, [newId]: slide },
     };
     commit(updated);
     setActiveSlideId(newId);
@@ -274,7 +164,7 @@ export default function Slides({
     const newId = crypto.randomUUID();
     const clonedSlide: Slide = structuredClone(activeSlide);
     clonedSlide.id = newId;
-    clonedSlide.title = `${activeSlide.title || "Slide"} (copy)`;
+    if (activeSlide.title) clonedSlide.title = `${activeSlide.title} (copy)`;
     clonedSlide.elements = clonedSlide.elements.map((el) => ({
       ...el,
       id: crypto.randomUUID(),
@@ -316,14 +206,69 @@ export default function Slides({
     const idx = deck.slideOrder.indexOf(activeSlideId);
     if (direction === "up" && idx <= 0) return;
     if (direction === "down" && idx >= deck.slideOrder.length - 1) return;
-
-    const targetIdx = direction === "up" ? idx - 1 : idx + 1;
-    const newOrder = [...deck.slideOrder];
-    const [moved] = newOrder.splice(idx, 1);
-    newOrder.splice(targetIdx, 0, moved);
-
-    commit({ ...deck, slideOrder: newOrder });
+    moveSlideTo(idx, direction === "up" ? idx - 1 : idx + 1);
   };
+
+  const moveSlideTo = (from: number, to: number) => {
+    if (from === to) return;
+    commit({ ...deck, slideOrder: reorder(deck.slideOrder, from, to) });
+  };
+
+  // Drag a thumbnail to reorder: `over` is the gap index (0..n) it would land in
+  const [slideDrag, setSlideDrag] = useState<{
+    from: number;
+    startY: number;
+    over: number | null;
+  } | null>(null);
+  const thumbnailsRef = useRef<HTMLDivElement>(null);
+  const suppressThumbnailClick = useRef(false);
+
+  useEffect(() => {
+    if (!slideDrag) return;
+    const gapAt = (y: number) => {
+      const rows = [
+        ...(thumbnailsRef.current?.querySelectorAll(".thumbnail-row") ?? []),
+      ];
+      const i = rows.findIndex((row) => {
+        const r = row.getBoundingClientRect();
+        return y < r.top + r.height / 2;
+      });
+      return i === -1 ? rows.length : i;
+    };
+    const onMove = (e: MouseEvent) => {
+      if (slideDrag.over === null && Math.abs(e.clientY - slideDrag.startY) < 6)
+        return;
+      const over = gapAt(e.clientY);
+      if (over !== slideDrag.over) setSlideDrag({ ...slideDrag, over });
+    };
+    const onUp = () => {
+      const { from, over } = slideDrag;
+      setSlideDrag(null);
+      if (over === null) return;
+      suppressThumbnailClick.current = true;
+      setTimeout(() => (suppressThumbnailClick.current = false));
+      setActiveSlideId(deck.slideOrder[from]);
+      setSelectedElementId(null);
+      moveSlideTo(from, over > from ? over - 1 : over);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  });
+
+  const applyLayoutToSlide = (layout: Layout) => {
+    if (!activeSlide) return;
+    commit({
+      ...deck,
+      slides: { ...deck.slides, [activeSlide.id]: applyLayout(activeSlide, layout) },
+    });
+  };
+
+  const setDeckBackground = (color: string, keepSections: boolean) =>
+    commit({ ...deck, slides: applyBackground(deck.slides, color, keepSections) });
 
   // Update active slide properties
   const updateSlide = useCallback(
@@ -375,7 +320,7 @@ export default function Slides({
       y: 180,
       width: 400,
       height: 80,
-      content: "Click to edit text",
+      content: "",
       fontSize: 22,
       fontFamily: "Arial",
       color: "#1e293b",
@@ -392,8 +337,8 @@ export default function Slides({
       type: "shape",
       x: 150,
       y: 150,
-      width: 220,
-      height: 140,
+      width: shapeType === "ellipse" ? 160 : 220,
+      height: shapeType === "ellipse" ? 160 : 140,
       shapeType,
       fill: "#e2e8f0",
       stroke: "#94a3b8",
@@ -540,7 +485,11 @@ export default function Slides({
     deck.slideOrder.forEach((id, i) => {
       const s = deck.slides[id];
       if (!s) return;
-      lines.push(`--- Slide ${i + 1}: ${s.title || "Untitled"} ---`);
+      const heading = s.elements
+        .find((el) => el.type === "text" && el.content?.trim())
+        ?.content?.trim()
+        .split("\n")[0];
+      lines.push(`--- Slide ${i + 1}: ${s.title || heading || "Untitled"} ---`);
       for (const el of s.elements) {
         if (el.type === "text" && el.content) lines.push(el.content);
         if (el.type === "table" && el.rows) {
@@ -619,6 +568,47 @@ ${slidesHtml}
   const exportHtmlRef = useRef(exportHtml);
   exportHtmlRef.current = exportHtml;
 
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const controlsHoveredRef = useRef(false);
+  const showFullscreenRef = useRef(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
+
+  const beginShow = useCallback((fromIndex: number, withNotes?: boolean) => {
+    setPresentSlideIndex(fromIndex);
+    if (withNotes !== undefined) setShowSpeakerNotes(withNotes);
+    setBlankScreen(null);
+    setControlsVisible(true);
+    const now = Date.now();
+    setShowStartedAt(now);
+    setClock(now);
+    setPresenting(true);
+    // Browsers only allow fullscreen from inside the click or key press.
+    const root = document.documentElement;
+    if (!document.fullscreenElement && root.requestFullscreen) {
+      showFullscreenRef.current = true;
+      root.requestFullscreen().then(
+        () => {
+          if (!showFullscreenRef.current)
+            document.exitFullscreen().catch(() => {});
+        },
+        () => {
+          showFullscreenRef.current = false;
+        },
+      );
+    }
+  }, []);
+
+  const endShow = useCallback(() => {
+    setPresenting(false);
+    if (showFullscreenRef.current) {
+      showFullscreenRef.current = false;
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    }
+  }, []);
+
+  const currentSlideIndex = Math.max(0, deck.slideOrder.indexOf(activeSlideId));
+
   // Wire editor actions for workspace header
   useEffect(() => {
     onActions({
@@ -628,45 +618,96 @@ ${slidesHtml}
         else await exportTxtRef.current();
       },
       print: async () => printDocument(),
-      present: () => {
-        const currentIdx = Math.max(
-          0,
-          deckRef.current.slideOrder.indexOf(activeSlideId),
-        );
-        setPresentSlideIndex(currentIdx);
-        setPresenting(true);
-      },
+      present: () =>
+        beginShow(
+          Math.max(0, deckRef.current.slideOrder.indexOf(activeSlideId)),
+        ),
     });
-  }, [onActions, onChange, activeSlideId]);
+  }, [onActions, onChange, activeSlideId, beginShow]);
 
-  const [controlsVisible, setControlsVisible] = useState(true);
-  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Cmd/Ctrl+Enter presents from the current slide, adding Shift from the start
+  useEffect(() => {
+    if (presenting) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Enter" || !(e.metaKey || e.ctrlKey)) return;
+      e.preventDefault();
+      beginShow(
+        e.shiftKey
+          ? 0
+          : Math.max(0, deckRef.current.slideOrder.indexOf(activeSlideId)),
+      );
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [presenting, activeSlideId, beginShow]);
 
   // Keyboard navigation and auto-hiding controls for presentation mode
   useEffect(() => {
     if (!presenting) return;
+    const last = deck.slideOrder.length - 1;
+    const goTo = (index: (prev: number) => number) => {
+      setBlankScreen(null);
+      setPresentSlideIndex((prev) => Math.max(0, Math.min(last, index(prev))));
+    };
+    const toggleBlank = (color: string) =>
+      setBlankScreen((prev) => (prev === color ? null : color));
     const onKeyDown = (e: KeyboardEvent) => {
-      setControlsVisible(true);
-      if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown") {
-        e.preventDefault();
-        setPresentSlideIndex((prev) =>
-          Math.min(deck.slideOrder.length - 1, prev + 1),
-        );
-      } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
-        e.preventDefault();
-        setPresentSlideIndex((prev) => Math.max(0, prev - 1));
-      } else if (e.key === "Escape") {
-        setPresenting(false);
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      switch (e.key) {
+        case "ArrowRight":
+        case "ArrowDown":
+        case "PageDown":
+        case " ":
+        case "n":
+          goTo((prev) => prev + 1);
+          break;
+        case "ArrowLeft":
+        case "ArrowUp":
+        case "PageUp":
+        case "Backspace":
+        case "p":
+          goTo((prev) => prev - 1);
+          break;
+        case "Home":
+          goTo(() => 0);
+          break;
+        case "End":
+          goTo(() => last);
+          break;
+        case "b":
+        case "B":
+        case ".":
+          toggleBlank("#000000");
+          break;
+        case "w":
+        case "W":
+        case ",":
+          toggleBlank("#ffffff");
+          break;
+        case "s":
+        case "S":
+          setShowSpeakerNotes((prev) => !prev);
+          break;
+        case "Escape":
+          endShow();
+          break;
+        default:
+          return;
       }
+      e.preventDefault();
     };
 
-    const onMouseMove = () => {
-      setControlsVisible(true);
+    const scheduleHide = () => {
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
       idleTimerRef.current = setTimeout(() => {
-        setControlsVisible(false);
+        if (!controlsHoveredRef.current) setControlsVisible(false);
       }, 2500);
     };
+    const onMouseMove = () => {
+      setControlsVisible(true);
+      scheduleHide();
+    };
+    scheduleHide();
 
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("mousemove", onMouseMove);
@@ -675,17 +716,148 @@ ${slidesHtml}
       window.removeEventListener("mousemove", onMouseMove);
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     };
-  }, [presenting, deck.slideOrder.length]);
+  }, [presenting, deck.slideOrder.length, endShow]);
 
-  // Start presenting
-  const startPresenting = () => {
-    const currentIdx = Math.max(0, deck.slideOrder.indexOf(activeSlideId));
-    setPresentSlideIndex(currentIdx);
-    setPresenting(true);
-  };
+  // Leaving fullscreen (the browser's own Esc or exit button) ends the show
+  useEffect(() => {
+    if (!presenting) return;
+    overlayRef.current?.focus();
+    const onFullscreenChange = () => {
+      if (!document.fullscreenElement && showFullscreenRef.current) {
+        showFullscreenRef.current = false;
+        setPresenting(false);
+      }
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
+      if (showFullscreenRef.current && document.fullscreenElement) {
+        showFullscreenRef.current = false;
+        document.exitFullscreen().catch(() => {});
+      }
+    };
+  }, [presenting]);
+
+  useEffect(() => {
+    if (!presenting || !showSpeakerNotes) return;
+    const timer = setInterval(() => setClock(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [presenting, showSpeakerNotes]);
 
   const presentSlide =
     deck.slides[deck.slideOrder[presentSlideIndex]] || activeSlide;
+  const nextPresentSlide = deck.slides[deck.slideOrder[presentSlideIndex + 1]];
+  const elapsedSeconds = Math.max(
+    0,
+    Math.floor((clock - showStartedAt) / 1000),
+  );
+  const elapsedLabel = `${Math.floor(elapsedSeconds / 60)}:${String(
+    elapsedSeconds % 60,
+  ).padStart(2, "0")}`;
+
+  /** Slide content for the show, sized in container units so it scales with
+   * whatever box it is drawn in (the full screen or the next-slide preview). */
+  const renderShowElements = (slide: Slide | undefined) => {
+    const w = deck.width || 960;
+    const h = deck.height || 540;
+    const units = (n: number) => `calc(${n} / ${w} * 100cqw)`;
+    return slide?.elements.map((el) => {
+      const posStyle: React.CSSProperties = {
+        position: "absolute",
+        left: `${(el.x / w) * 100}%`,
+        top: `${(el.y / h) * 100}%`,
+        width: `${(el.width / w) * 100}%`,
+        height: `${(el.height / h) * 100}%`,
+      };
+
+      if (el.type === "text") {
+        return (
+          <div
+            key={el.id}
+            className="show-text"
+            style={{
+              ...posStyle,
+              fontSize: units((el.fontSize || 20) * 0.95),
+              padding: units(4),
+              fontWeight: el.bold ? "bold" : "normal",
+              fontStyle: el.italic ? "italic" : "normal",
+              textDecoration: el.underline ? "underline" : "none",
+              fontFamily: el.fontFamily || "Arial",
+              color: el.color || "#1e293b",
+              textAlign: el.align || "left",
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+              backgroundColor: el.fill || "transparent",
+            }}
+          >
+            {el.content}
+          </div>
+        );
+      }
+      if (el.type === "image" && el.src) {
+        return (
+          <img
+            key={el.id}
+            src={el.src}
+            alt={el.alt || "Slide asset"}
+            style={{ ...posStyle, objectFit: "contain" }}
+          />
+        );
+      }
+      if (el.type === "shape") {
+        const border = el.stroke
+          ? `${units(el.strokeWidth || 1)} solid ${el.stroke}`
+          : "none";
+        const rad =
+          el.shapeType === "ellipse"
+            ? "50%"
+            : el.shapeType === "roundRect"
+              ? units(16)
+              : "0px";
+        return (
+          <div
+            key={el.id}
+            style={{
+              ...posStyle,
+              backgroundColor: el.fill || "#e2e8f0",
+              border,
+              borderRadius: rad,
+            }}
+          />
+        );
+      }
+      if (el.type === "table" && el.rows) {
+        return (
+          <table key={el.id} className="show-table" style={posStyle}>
+            <tbody>
+              {el.rows.map((row, rIdx) => (
+                <tr key={rIdx}>
+                  {row.map((cell, cIdx) => (
+                    <td
+                      key={cIdx}
+                      style={{
+                        fontSize: units(14),
+                        padding: `${units(4)} ${units(8)}`,
+                      }}
+                    >
+                      {cell}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        );
+      }
+      return null;
+    });
+  };
+
+  const slideHeading = (slide: Slide) =>
+    slide.elements
+      .find((el) => el.type === "text" && el.content?.trim())
+      ?.content?.trim()
+      .split("\n")[0];
 
   const renderHandles = (elementId: string) => (
     <div className="selection-handles">
@@ -721,8 +893,6 @@ ${slidesHtml}
         className="resize-handle handle-w"
         onMouseDown={(e) => onElementMouseDown(e, elementId, "w")}
       />
-      <div className="rotation-stem" />
-      <div className="rotation-handle" title="Rotate" />
     </div>
   );
 
@@ -734,16 +904,6 @@ ${slidesHtml}
         role="toolbar"
         aria-label="Slides toolbar"
       >
-        <button
-          type="button"
-          className="menu-search-pill"
-          title="Search the menus (Option+/)"
-          onClick={() => {}}
-        >
-          <Search size={14} className="menu-search-icon" />
-          <span>Menus</span>
-        </button>
-
         <div className="tool-group">
           <Menu label="+ New slide">
             <MenuItem onSelect={() => addSlide("title-body")}>
@@ -776,15 +936,6 @@ ${slidesHtml}
           <Tool label="Print (Cmd+P)" onClick={() => printDocument()}>
             <Printer size={16} />
           </Tool>
-          <select
-            className="toolbar-select zoom-select"
-            aria-label="Zoom"
-            defaultValue="Fit"
-          >
-            <option value="Fit">Fit</option>
-            <option value="50%">50%</option>
-            <option value="100%">100%</option>
-          </select>
         </div>
 
         <div className="toolbar-divider" />
@@ -812,9 +963,6 @@ ${slidesHtml}
           <Tool label="Circle" onClick={() => addShape("ellipse")}>
             <Circle size={16} />
           </Tool>
-          <Tool label="Line" onClick={() => {}}>
-            <Minus size={16} />
-          </Tool>
           <input
             hidden
             type="file"
@@ -836,10 +984,15 @@ ${slidesHtml}
                 { label: "White", val: "#ffffff" },
                 { label: "Soft grey", val: "#f1f3f4" },
                 { label: "Slate", val: "#e2e8f0" },
-                { label: "Blue", val: "#d2e3fc" },
-                { label: "Green", val: "#ceead6" },
-                { label: "Yellow", val: "#feefc3" },
-                { label: "Red", val: "#fad2cf" },
+                { label: "Light blue", val: "#d2e3fc" },
+                { label: "Light green", val: "#ceead6" },
+                { label: "Light yellow", val: "#feefc3" },
+                { label: "Light red", val: "#fad2cf" },
+                { label: "Blue", val: "#4285f4" },
+                { label: "Green", val: "#34a853" },
+                { label: "Yellow", val: "#fbbc04" },
+                { label: "Red", val: "#ea4335" },
+                { label: "Dark", val: "#202124" },
               ].map((c) => (
                 <MenuItem
                   key={c.val}
@@ -1044,7 +1197,16 @@ ${slidesHtml}
                 <MenuItem
                   key={color.val}
                   onSelect={() =>
-                    updateSlide({ background: { color: color.val } })
+                    commit({
+                      ...deck,
+                      slides: {
+                        ...deck.slides,
+                        ...applyBackground(
+                          { [activeSlide.id]: activeSlide },
+                          color.val,
+                        ),
+                      },
+                    })
                   }
                 >
                   <span
@@ -1054,80 +1216,100 @@ ${slidesHtml}
                   {color.label}
                 </MenuItem>
               ))}
+              <MenuItem
+                onSelect={() =>
+                  setDeckBackground(
+                    activeSlide?.background?.color || "#ffffff",
+                    false,
+                  )
+                }
+              >
+                Apply to all slides
+              </MenuItem>
             </Menu>
 
             <Menu label="Layout">
-              <MenuItem onSelect={() => updateSlide({ layout: "title" })}>
-                Title slide
-              </MenuItem>
-              <MenuItem onSelect={() => updateSlide({ layout: "title-body" })}>
-                Title & body
-              </MenuItem>
-              <MenuItem onSelect={() => updateSlide({ layout: "two-column" })}>
-                Two columns
-              </MenuItem>
-              <MenuItem onSelect={() => updateSlide({ layout: "section" })}>
-                Section header
-              </MenuItem>
-              <MenuItem onSelect={() => updateSlide({ layout: "blank" })}>
-                Blank slide
-              </MenuItem>
+              {(
+                [
+                  ["title", "Title slide"],
+                  ["title-body", "Title & body"],
+                  ["two-column", "Two columns"],
+                  ["section", "Section header"],
+                  ["blank", "Blank slide"],
+                ] as const
+              ).map(([layout, label]) => (
+                <MenuItem
+                  key={layout}
+                  onSelect={() => applyLayoutToSlide(layout)}
+                >
+                  {label}
+                </MenuItem>
+              ))}
             </Menu>
 
             <Menu label="Theme">
-              <MenuItem
-                onSelect={() =>
-                  updateSlide({ background: { color: "#ffffff" } })
-                }
-              >
-                Simple Light
-              </MenuItem>
-              <MenuItem
-                onSelect={() =>
-                  updateSlide({ background: { color: "#f8fafc" } })
-                }
-              >
-                Streamline
-              </MenuItem>
-              <MenuItem
-                onSelect={() =>
-                  updateSlide({ background: { color: "#0f172a" } })
-                }
-              >
-                Focus (Dark)
-              </MenuItem>
-              <MenuItem
-                onSelect={() =>
-                  updateSlide({ background: { color: "#fef3c7" } })
-                }
-              >
-                Warm Sand
-              </MenuItem>
+              {[
+                { label: "Simple Light", val: "#ffffff" },
+                { label: "Streamline", val: "#f8fafc" },
+                { label: "Focus (Dark)", val: "#0f172a" },
+                { label: "Warm Sand", val: "#fef3c7" },
+              ].map((theme) => (
+                <MenuItem
+                  key={theme.val}
+                  onSelect={() => setDeckBackground(theme.val, true)}
+                >
+                  {theme.label}
+                </MenuItem>
+              ))}
             </Menu>
-
-            <button
-              type="button"
-              className="toolbar-text-btn"
-              onClick={() => {}}
-            >
-              Transition
-            </button>
           </div>
         )}
 
         {/* Google Slides styled Slideshow button */}
         <div className="tool-group right-tools" style={{ marginLeft: "auto" }}>
-          <button
-            type="button"
-            className="slideshow-btn"
-            aria-label="Present"
-            onClick={startPresenting}
-            title="Slideshow (Cmd+Enter)"
-          >
-            <Play size={14} fill="currentColor" />
-            <span>Slideshow</span>
-            <ChevronDown size={12} />
-          </button>
+          <div className="slideshow-split">
+            <button
+              type="button"
+              className="slideshow-btn"
+              onClick={() => beginShow(currentSlideIndex)}
+              title="Present from current slide (Cmd+Enter)"
+            >
+              <Play size={14} fill="currentColor" />
+              <span>Slideshow</span>
+            </button>
+            <Dropdown.Root>
+              <Dropdown.Trigger
+                className="slideshow-btn slideshow-menu-btn"
+                aria-label="Slideshow options"
+                title="Slideshow options"
+              >
+                <ChevronDown size={12} />
+              </Dropdown.Trigger>
+              <Dropdown.Portal>
+                <Dropdown.Content
+                  className="menu-content"
+                  sideOffset={4}
+                  align="end"
+                >
+                  <MenuItem
+                    shortcut="Cmd+Shift+Enter"
+                    onSelect={() => beginShow(0)}
+                  >
+                    Present from beginning
+                  </MenuItem>
+                  <MenuItem
+                    shortcut="Cmd+Enter"
+                    onSelect={() => beginShow(currentSlideIndex)}
+                  >
+                    Present from current slide
+                  </MenuItem>
+                  <MenuItem onSelect={() => beginShow(currentSlideIndex, true)}>
+                    Present with speaker notes
+                  </MenuItem>
+                </Dropdown.Content>
+              </Dropdown.Portal>
+            </Dropdown.Root>
+          </div>
         </div>
       </div>
 
@@ -1175,17 +1357,48 @@ ${slidesHtml}
             </div>
           </div>
 
-          <div className="thumbnails-list">
+          <div
+            className={`thumbnails-list ${slideDrag?.over != null ? "dragging" : ""}`}
+            ref={thumbnailsRef}
+            role="listbox"
+            aria-label="Slides"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+              e.preventDefault();
+              const idx = deck.slideOrder.indexOf(activeSlideId);
+              const to = e.key === "ArrowUp" ? idx - 1 : idx + 1;
+              if (to < 0 || to >= deck.slideOrder.length) return;
+              if (e.metaKey || e.ctrlKey) moveSlideTo(idx, to);
+              else setActiveSlideId(deck.slideOrder[to]);
+              setSelectedElementId(null);
+            }}
+          >
             {deck.slideOrder.map((id, index) => {
               const slide = deck.slides[id];
               const isActive = id === activeSlideId;
               const bg = slide?.background?.color || "#ffffff";
+              const dropClass =
+                slideDrag?.over === index
+                  ? "drop-before"
+                  : slideDrag?.over === index + 1 &&
+                      index === deck.slideOrder.length - 1
+                    ? "drop-after"
+                    : "";
 
               return (
                 <div
                   key={id}
-                  className={`thumbnail-row ${isActive ? "selected" : ""}`}
+                  role="option"
+                  aria-selected={isActive}
+                  aria-label={`Slide ${index + 1}`}
+                  className={`thumbnail-row ${isActive ? "selected" : ""} ${slideDrag?.over != null && slideDrag.from === index ? "drag-source" : ""} ${dropClass}`}
+                  onMouseDown={(e) => {
+                    if (e.button !== 0) return;
+                    setSlideDrag({ from: index, startY: e.clientY, over: null });
+                  }}
                   onClick={() => {
+                    if (suppressThumbnailClick.current) return;
                     setActiveSlideId(id);
                     setSelectedElementId(null);
                   }}
@@ -1267,14 +1480,6 @@ ${slidesHtml}
             >
               <Plus size={16} /> New slide
             </button>
-            <button
-              type="button"
-              className="grid-view-btn"
-              title="Grid view"
-              aria-label="Grid view"
-            >
-              <Grid size={15} />
-            </button>
           </div>
         </aside>
 
@@ -1323,7 +1528,7 @@ ${slidesHtml}
                       <textarea
                         className="element-textarea"
                         value={el.content || ""}
-                        placeholder="Click to type text..."
+                        placeholder={el.placeholder ?? "Click to add text"}
                         onChange={(e) =>
                           updateElement(el.id, { content: e.target.value })
                         }
@@ -1430,84 +1635,92 @@ ${slidesHtml}
 
       {/* Presentation Fullscreen Mode Modal */}
       {presenting ? (
-        <div className="presenter-overlay" role="dialog" aria-modal="true">
+        <div
+          ref={overlayRef}
+          className={`presenter-overlay ${showSpeakerNotes ? "with-notes" : ""} ${controlsVisible ? "" : "idle"}`}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Slideshow"
+          tabIndex={-1}
+        >
           <div
-            className="presenter-slide-box"
+            className="presenter-slide-box show-slide"
             style={{
               backgroundColor: presentSlide?.background?.color || "#ffffff",
               aspectRatio: `${deck.width || 960} / ${deck.height || 540}`,
+              width: showSpeakerNotes
+                ? `min(62vw, calc((100vh - 112px) * ${deck.width || 960} / ${deck.height || 540}))`
+                : `min(100vw, calc(100vh * ${deck.width || 960} / ${deck.height || 540}))`,
+            }}
+            onClick={() => {
+              setBlankScreen(null);
+              setPresentSlideIndex((prev) =>
+                Math.min(deck.slideOrder.length - 1, prev + 1),
+              );
             }}
           >
-            {presentSlide?.elements.map((el) => {
-              const posStyle: React.CSSProperties = {
-                position: "absolute",
-                left: `${(el.x / (deck.width || 960)) * 100}%`,
-                top: `${(el.y / (deck.height || 540)) * 100}%`,
-                width: `${(el.width / (deck.width || 960)) * 100}%`,
-                height: `${(el.height / (deck.height || 540)) * 100}%`,
-              };
-
-              if (el.type === "text") {
-                return (
-                  <div
-                    key={el.id}
-                    style={{
-                      ...posStyle,
-                      fontSize: `${(el.fontSize || 20) * 1.5}px`,
-                      fontWeight: el.bold ? "bold" : "normal",
-                      fontStyle: el.italic ? "italic" : "normal",
-                      textDecoration: el.underline ? "underline" : "none",
-                      fontFamily: el.fontFamily || "Arial",
-                      color: el.color || "#1e293b",
-                      textAlign: el.align || "left",
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
-                      backgroundColor: el.fill || "transparent",
-                    }}
-                  >
-                    {el.content}
-                  </div>
-                );
-              }
-              if (el.type === "image" && el.src) {
-                return (
-                  <img
-                    key={el.id}
-                    src={el.src}
-                    alt={el.alt || "Slide asset"}
-                    style={{ ...posStyle, objectFit: "contain" }}
-                  />
-                );
-              }
-              if (el.type === "shape") {
-                const border = el.stroke
-                  ? `${el.strokeWidth || 1}px solid ${el.stroke}`
-                  : "none";
-                const rad =
-                  el.shapeType === "ellipse"
-                    ? "50%"
-                    : el.shapeType === "roundRect"
-                      ? "16px"
-                      : "0px";
-                return (
-                  <div
-                    key={el.id}
-                    style={{
-                      ...posStyle,
-                      backgroundColor: el.fill || "#e2e8f0",
-                      border,
-                      borderRadius: rad,
-                    }}
-                  />
-                );
-              }
-              return null;
-            })}
+            {renderShowElements(presentSlide)}
+            {blankScreen ? (
+              <div
+                className="presenter-blank"
+                style={{ backgroundColor: blankScreen }}
+              />
+            ) : null}
           </div>
+
+          {showSpeakerNotes ? (
+            <aside className="presenter-notes-panel" aria-label="Speaker notes">
+              <div className="presenter-notes-header">
+                <span>Speaker notes</span>
+                <span
+                  className="presenter-timer"
+                  title="Time since the show started"
+                >
+                  {elapsedLabel}
+                </span>
+              </div>
+              <div className="presenter-notes-text">
+                {presentSlide?.notes?.trim() || (
+                  <span className="presenter-notes-empty">
+                    No speaker notes for this slide.
+                  </span>
+                )}
+              </div>
+              <div className="presenter-next">
+                {nextPresentSlide ? (
+                  <>
+                    <span>
+                      Next:{" "}
+                      {slideHeading(nextPresentSlide) ||
+                        `Slide ${presentSlideIndex + 2}`}
+                    </span>
+                    <div
+                      className="presenter-next-slide show-slide"
+                      style={{
+                        backgroundColor:
+                          nextPresentSlide.background?.color || "#ffffff",
+                        aspectRatio: `${deck.width || 960} / ${deck.height || 540}`,
+                      }}
+                    >
+                      {renderShowElements(nextPresentSlide)}
+                    </div>
+                  </>
+                ) : (
+                  <span>End of presentation</span>
+                )}
+              </div>
+            </aside>
+          ) : null}
 
           {/* Presenter bottom floating controls */}
           <div
             className={`presenter-controls ${controlsVisible ? "visible" : "hidden"}`}
+            onMouseEnter={() => {
+              controlsHoveredRef.current = true;
+            }}
+            onMouseLeave={() => {
+              controlsHoveredRef.current = false;
+            }}
           >
             <button
               type="button"
@@ -1538,8 +1751,17 @@ ${slidesHtml}
             </button>
             <button
               type="button"
+              className="presenter-notes-btn"
+              aria-pressed={showSpeakerNotes}
+              onClick={() => setShowSpeakerNotes((prev) => !prev)}
+              title="Show or hide speaker notes (S)"
+            >
+              <StickyNote size={15} /> Notes
+            </button>
+            <button
+              type="button"
               className="exit-present-btn"
-              onClick={() => setPresenting(false)}
+              onClick={endShow}
               title="Exit presentation (Esc)"
             >
               <X size={15} /> Exit

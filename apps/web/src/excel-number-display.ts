@@ -1,7 +1,8 @@
 import { FontCache, SpreadsheetSkeleton } from "@univerjs/engine-render";
 
 /** General numbers lose fractional places before switching to scientific
- * notation. Do not reserve an extra digit after measuring the rounded text. */
+ * notation, as in Excel's General and Sheets' Automatic formats. Do not
+ * reserve an extra digit after measuring the rounded text. */
 export function excelGeneralNumberText(
   value: number,
   display: string,
@@ -44,8 +45,10 @@ prototype._applyNumberDisplay = function (
   const display = cache.displayText;
   original.call(this, row, col, cache, style);
   const cell = cache.cellData;
+  const excel = !!this.worksheet.getConfig().custom?.excelLayout;
+  // Native sheets keep the engine's text unless it gave up on decimals.
+  if (!excel && !/E[+-]\d+$|^#+$/.test(cache.displayText ?? "")) return;
   if (
-    !this.worksheet.getConfig().custom?.excelLayout ||
     !cell ||
     typeof cell.v !== "number" ||
     (cell.t !== undefined && cell.t !== 2) ||
@@ -63,9 +66,11 @@ prototype._applyNumberDisplay = function (
     (style.pd?.r ?? 2) -
     (cell.fontRenderExtension?.leftOffset ?? 0) -
     (cell.fontRenderExtension?.rightOffset ?? 0);
+  const full = String(Number(cell.v.toPrecision(15)));
   cache.displayText = excelGeneralNumberText(
     cell.v,
-    display ?? String(cell.v),
+    display ??
+      (excel ? String(cell.v) : full.includes("e") ? cache.displayText : full),
     width,
     (text) => FontCache.getMeasureText(text, cache.fontString).width,
   );

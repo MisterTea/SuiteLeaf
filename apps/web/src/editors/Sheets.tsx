@@ -7,9 +7,17 @@ import {
   LifecycleStages,
   mergeLocales,
   numfmt,
+  UserManagerService,
   type IWorkbookData,
 } from "@univerjs/presets";
-import { UniverSheetsCorePreset } from "@univerjs/preset-sheets-core";
+import {
+  IDescriptionService,
+  IEditorService,
+  IShortcutService,
+  KeyCode,
+  SheetsSelectionsService,
+  UniverSheetsCorePreset,
+} from "@univerjs/preset-sheets-core";
 import CoreEnUS from "@univerjs/preset-sheets-core/locales/en-US";
 import { UniverSheetsDrawingPreset } from "@univerjs/preset-sheets-drawing";
 import DrawingEnUS from "@univerjs/preset-sheets-drawing/locales/en-US";
@@ -28,10 +36,19 @@ import "@univerjs/preset-sheets-conditional-formatting/lib/index.css";
 import { UniverSheetsThreadCommentPreset } from "@univerjs/preset-sheets-thread-comment";
 import CommentEnUS from "@univerjs/preset-sheets-thread-comment/locales/en-US";
 import "@univerjs/preset-sheets-thread-comment/lib/index.css";
-import { UniverSheetsNotePreset } from "@univerjs/preset-sheets-note";
+import {
+  SheetsNotePopupService,
+  UniverSheetsNotePreset,
+} from "@univerjs/preset-sheets-note";
 import NoteEnUS from "@univerjs/preset-sheets-note/locales/en-US";
 import "@univerjs/preset-sheets-note/lib/index.css";
 import SheetFeatures from "./sheet-features";
+import {
+  guardFormulaSuggestions,
+  rankFormulaSuggestions,
+} from "./formula-suggestions";
+import SortRangeDialog from "./SortRangeDialog";
+import { useToolbarOverflow } from "./toolbar-overflow";
 import "@univerjs/preset-sheets-core/lib/index.css";
 import "@univerjs/preset-sheets-drawing/lib/index.css";
 import "@univerjs/preset-sheets-filter/lib/index.css";
@@ -80,6 +97,8 @@ import {
   Link,
   MessageSquarePlus,
   ChevronDown,
+  EllipsisVertical,
+  Lock,
 } from "lucide-react";
 import {
   filename,
@@ -90,17 +109,55 @@ import {
   type PivotDefinition,
   type SourceRange,
 } from "@suiteleaf/core";
-import { pivotResult, shiftRange, type CellValue } from "../analysis";
-import { numberFormatsByGroup, applyNamedFormat } from "../formats";
+import {
+  copySheetName,
+  defaultValueField,
+  pivotCells,
+  pivotResult,
+  shiftRange,
+  uniqueSheetName,
+  valueFormat,
+  valueTicks,
+  type CellValue,
+} from "../analysis";
+import { sortBody, type GridRange, type SortRule } from "../sort-range";
+import {
+  numberFormatsByGroup,
+  applyNamedFormat,
+  numberFormatById,
+} from "../formats";
 import { exportBinary, exportText, printDocument } from "../storage";
-import { Tool, type EditorActions } from "../ui";
+import { Tool, type EditorActions, type SheetView } from "../ui";
 import "../excel-overflow";
 import "../excel-number-display";
 import "../excel-wrap";
 import "../excel-cell";
 import { resolveExcelColumnWidths } from "../excel-layout";
 import { useTheme } from "../theme";
+import { currentAuthor, onAuthorChange } from "../identity";
+import { useMode } from "../mode";
+import { getSession } from "../node-client";
 
+const FORMULA_BAR_KEY = "suiteleaf_sheets_formula_bar";
+/** Formula bar visibility is a per-person preference, not part of the workbook. */
+function formulaBarVisible() {
+  try {
+    return localStorage.getItem(FORMULA_BAR_KEY) !== "hidden";
+  } catch {
+    return true;
+  }
+}
+function setFormulaBarVisible(visible: boolean) {
+  try {
+    if (visible) localStorage.removeItem(FORMULA_BAR_KEY);
+    else localStorage.setItem(FORMULA_BAR_KEY, "hidden");
+  } catch {
+    // ignore localStorage failures
+  }
+}
+
+const shortcut = (key: string) =>
+  `${navigator.platform.includes("Mac") ? "⌘" : "Ctrl+"}${key}`;
 type ChartState = {
   definition: ChartDefinition;
   values: CellValue[][];
@@ -486,6 +543,21 @@ function suggestedChartTitle(headers: CellValue[]) {
     ? names[0]
     : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 }
+const rowVisibilityMutation =
+  /^sheet\.mutation\.(set-filter-criteria|set-filter-range|re-calc-filter|remove-filter|set-row-hidden|set-row-visible)$/;
+/**
+ * Univer's filter list toggles a value only from its small checkbox. As in Sheets and
+ * Excel, clicking the value's label or count toggles it too. Rows with an expand arrow
+ * (date groups) keep expanding on a label click.
+ */
+function toggleFilterValueFromLabel(event: MouseEvent) {
+  const target = event.target instanceof Element ? event.target : null;
+  if (!target?.closest('[data-u-comp="sheets-filter-panel"]')) return;
+  if (target.closest('label[data-u-comp="checkbox"], a')) return;
+  const row = target.closest('div:has(> label[data-u-comp="checkbox"])');
+  if (!row || row.firstElementChild?.tagName !== "LABEL") return;
+  row.querySelector<HTMLInputElement>("input[type=checkbox]")?.click();
+}
 const charts = new Map<string, ChartState>();
 const emptyChart: ChartState | undefined = undefined;
 function EmbeddedChart({ data }: { data?: { chartId: string } }) {
@@ -520,7 +592,7 @@ function EmbeddedChart({ data }: { data?: { chartId: string } }) {
   };
   if (c.invalid)
     return (
-      <div className="suiteleaf-chart">
+      <div className="suiteleaf-chart" data-chart-id={c.id}>
         <strong>{c.title}</strong>
         <p>Source range unavailable. Edit this chart to select a new range.</p>
       </div>
@@ -543,10 +615,23 @@ function EmbeddedChart({ data }: { data?: { chartId: string } }) {
     "#2C4D75",
     "#267C60",
   ];
+  const ticks = valueTicks(values.slice(1).flatMap((r) => r.slice(1)));
+  const valueAxis = {
+    tickFormatter: formatAxis,
+    ...(ticks && { ticks, domain: [ticks[0], ticks.at(-1)!] }),
+    width: Math.max(
+      36,
+      12 + 7 * Math.max(0, ...(ticks ?? []).map((t) => formatAxis(t).length)),
+    ),
+  };
   return (
-    <div className="suiteleaf-chart" aria-label={`Chart: ${c.title}`}>
+    <div
+      className="suiteleaf-chart"
+      aria-label={`Chart: ${c.title}`}
+      data-chart-id={c.id}
+    >
       <strong>{c.title}</strong>
-      <ResponsiveContainer width="100%" height="88%">
+      <ResponsiveContainer width="100%" height="100%">
         {c.type === "pie" ? (
           <PieChart>
             <Pie
@@ -599,13 +684,17 @@ function EmbeddedChart({ data }: { data?: { chartId: string } }) {
               label={{
                 value: String(headers[0] ?? ""),
                 position: "insideBottom",
-                offset: -5,
+                offset: 0,
               }}
-              height={48}
+              height={44}
             />
-            <YAxis tickFormatter={formatAxis} width={85} />
+            <YAxis {...valueAxis} />
             <Tooltip formatter={formatTooltip} />
-            <Legend itemSorter={null} verticalAlign="top" />
+            <Legend
+              itemSorter={null}
+              verticalAlign="top"
+              wrapperStyle={{ paddingBottom: 8 }}
+            />
             {keys.map((k, i) => (
               <Line
                 key={k}
@@ -625,13 +714,17 @@ function EmbeddedChart({ data }: { data?: { chartId: string } }) {
               label={{
                 value: String(headers[0] ?? ""),
                 position: "insideBottom",
-                offset: -5,
+                offset: 0,
               }}
-              height={48}
+              height={44}
             />
-            <YAxis tickFormatter={formatAxis} width={85} />
+            <YAxis {...valueAxis} />
             <Tooltip formatter={formatTooltip} />
-            <Legend itemSorter={null} verticalAlign="top" />
+            <Legend
+              itemSorter={null}
+              verticalAlign="top"
+              wrapperStyle={{ paddingBottom: 8 }}
+            />
             {keys.map((k, i) => (
               <Bar
                 key={k}
@@ -659,6 +752,7 @@ export default function Sheets({
   onError: (s: string) => void;
 }) {
   const { isDark } = useTheme();
+  const cluster = useMode().mode.kind === "cluster";
   const host = useRef<HTMLDivElement>(null),
     api = useRef<any>(null),
     book = useRef<any>(null),
@@ -691,17 +785,78 @@ export default function Sheets({
     [fillColor, setFillColor] = useState("#ffffff"),
     [hAlign, setHAlign] = useState<"left" | "center" | "right">("left"),
     [vAlign, setVAlign] = useState<"top" | "middle" | "bottom">("middle"),
-    [isWrap, setIsWrap] = useState(false);
+    [isWrap, setIsWrap] = useState(false),
+    [sorting, setSorting] = useState<{
+      range: GridRange;
+      values: CellValue[][];
+    } | null>(null),
+    [notice, setNotice] = useState("");
   const pending = useRef(false);
   const tabSettings = useRef<{ openTabs: () => void }>(null);
+  const toolbar = useRef<HTMLDivElement>(null);
+  const moreTools = useToolbarOverflow(
+    toolbar,
+    '[aria-label^="Insert comment"], .chart-btn, .filter-btn, .pivot-btn, .sheet-analyses-dropdown',
+  );
   const persist = useRef<() => void>(() => {}),
-    refreshCharts = useRef<() => void>(() => {});
+    refreshCharts = useRef<() => void>(() => {}),
+    syncTextStyle = useRef<() => void>(() => {}),
+    editChart = useRef<(id: string) => void>(() => {}),
+    refreshPivots = useRef<(sheetIds: Set<string>) => void>(() => {});
+  /** Last result written per pivot, so unchanged recalculations leave the sheet alone. */
+  const pivotWrites = useRef(new Map<string, string>()),
+    writingPivot = useRef(false),
+    pivotErrors = useRef(new Map<string, string>()),
+    valueChosen = useRef(false);
+  const startingUp = useRef(true);
+  // Univer focuses its hidden cell editor while it starts, which would send
+  // keystrokes meant for the file title (or another field) into the grid.
+  useEffect(() => {
+    const container = host.current;
+    if (!container) return;
+    let touched = false;
+    const touch = () => {
+      touched = true;
+    };
+    const keep = (e: FocusEvent) => {
+      const from = e.relatedTarget,
+        to = e.target;
+      if (
+        startingUp.current &&
+        !touched &&
+        from instanceof HTMLElement &&
+        from.isConnected &&
+        !container.contains(from) &&
+        from.matches("input, textarea, select, [contenteditable='true']") &&
+        to instanceof HTMLElement &&
+        !!to.closest('[data-u-comp="editor"]')
+      )
+        from.focus();
+    };
+    container.addEventListener("pointerdown", touch, true);
+    document.addEventListener("focusin", keep, true);
+    return () => {
+      container.removeEventListener("pointerdown", touch, true);
+      document.removeEventListener("focusin", keep, true);
+    };
+  }, []);
+  useEffect(() => {
+    if (!ready) return;
+    const settled = setTimeout(() => (startingUp.current = false), 1000);
+    return () => clearTimeout(settled);
+  }, [ready]);
   const readRange = (r: SourceRange): CellValue[][] => {
     const s = book.current?.getSheetBySheetId(r.sheetId);
     if (!s || r.endRow >= s.getMaxRows() || r.endColumn >= s.getMaxColumns())
       throw new Error("Source range is unavailable.");
     return s.getRange(rangeLabel(r)).getRawValues();
   };
+  useEffect(() => {
+    // Capture phase: the filter list's label stops click propagation in React.
+    document.addEventListener("click", toggleFilterValueFromLabel, true);
+    return () =>
+      document.removeEventListener("click", toggleFilterValueFromLabel, true);
+  }, []);
   useEffect(() => {
     if (!host.current) return;
     const container = host.current;
@@ -730,6 +885,19 @@ export default function Sheets({
             ConditionalEnUS,
             CommentEnUS,
             NoteEnUS,
+            // mergeLocales only merges top-level keys, so keep the rest of Univer's ui strings.
+            {
+              ui: {
+                ...CoreEnUS.ui,
+                clipboard: {
+                  ...CoreEnUS.ui.clipboard,
+                  authentication: {
+                    title: "Clipboard access blocked",
+                    content: `Use ${shortcut("C")}, ${shortcut("X")} and ${shortcut("V")} to copy, cut and paste.`,
+                  },
+                },
+              },
+            },
           ),
         },
         presets: [
@@ -748,21 +916,90 @@ export default function Sheets({
           UniverSheetsNotePreset(),
         ],
       });
+      const injector = univer.__getInjector();
+      const stopSuggestionGuard = guardFormulaSuggestions(
+        injector.get(IShortcutService),
+        injector.get(IEditorService),
+        [KeyCode.ENTER, KeyCode.TAB],
+      );
       partialCleanup = () => {
+        stopSuggestionGuard();
         clearTimeout(timer);
         api.current = null;
         book.current = null;
         persist.current = () => {};
         refreshCharts.current = () => {};
+        refreshPivots.current = () => {};
         for (const c of sessionContent.charts) charts.delete(c.id);
         univer.dispose();
       };
       api.current = univerAPI;
+      if (!formulaBarVisible())
+        univerAPI.setUIVisible(univerAPI.Enum.BuiltInUIPart.HEADER, false);
       univerAPI.registerComponent("suiteleaf-chart", EmbeddedChart);
+      const users = injector.get(UserManagerService);
+      const author = () => {
+        const a = currentAuthor(cluster ? getSession()?.user : null);
+        // Univer's local permissions only let user IDs starting with "Owner" edit.
+        return { ...a, userID: `Owner_${a.id}` };
+      };
+      let me = author();
+      const signIn = () =>
+        users.setCurrentUser({ userID: me.userID, name: me.name, avatar: "" });
+      signIn();
+      const stopAuthor = onAuthorChange(() => {
+        me = author();
+        signIn();
+      });
+      const signComments = univerAPI.addEvent(
+        univerAPI.Event.BeforeCommandExecute,
+        ({ id, params }) => {
+          const comment = (params as any)?.comment;
+          if (
+            id === "thread-comment.command.add-comment" &&
+            comment?.personId === me.userID &&
+            me.signature &&
+            !comment.authorName
+          )
+            comment.authorName = me.signature;
+        },
+      );
       const workbook = univerAPI.createWorkbook(
         content.current.workbook as unknown as IWorkbookData,
       );
       book.current = workbook;
+      rankFormulaSuggestions(injector.get(IDescriptionService));
+      // Authors from other devices are unknown here; without a profile Univer
+      // hides their name and the reply-to button.
+      for (const thread of workbook.getComments())
+        for (const comment of [thread, ...(thread.getReplies() ?? [])]) {
+          const { personId, authorName } = comment.getCommentData();
+          if (personId && personId !== me.userID && !users.getUser(personId))
+            users.addUser({
+              userID: personId,
+              name: authorName || "Anonymous",
+              avatar: "",
+            });
+        }
+      // Univer closes an open note only when a selection move ends, not when the
+      // name box or a command sets the selection.
+      const notePopups = injector.get(SheetsNotePopupService);
+      const closeNoteOnMove = injector
+        .get(SheetsSelectionsService)
+        .selectionChanged$.subscribe((selections) => {
+          const popup = notePopups.activePopup,
+            range = selections?.[0]?.range;
+          if (
+            popup &&
+            range &&
+            !(
+              popup.subUnitId === workbook.getActiveSheet().getSheetId() &&
+              range.startRow === popup.row &&
+              range.startColumn === popup.col
+            )
+          )
+            notePopups.hidePopup(true);
+        });
       // Excel stores a cached result for every formula cell but recalculates formulas on
       // open. An imported snapshot can carry a stale or missing cached value that would
       // display 0 while the formula resolves to a real number, so force one explicit full
@@ -1028,10 +1265,29 @@ export default function Sheets({
         changes.current(structuredClone(content.current));
         setRevision((v) => v + 1);
       };
+      syncTextStyle.current = () => {
+        const style = workbook.getActiveRange()?.getCellStyleData();
+        setIsBold(style?.bl === 1);
+        setIsItalic(style?.it === 1);
+        setIsStrike(style?.st?.s === 1);
+      };
+      const changedSheets = new Set<string>();
       const listener = workbook.onCommandExecuted((command: any) => {
+        if (
+          !disposed &&
+          (command.id === "sheet.operation.set-selections" ||
+            command.id === "sheet.mutation.set-range-values")
+        )
+          syncTextStyle.current();
         if (busy || disposed || !command.id.includes("mutation")) return;
         pending.current = true;
         const p = command.params ?? {};
+        // A pivot's own output never triggers further pivot refreshes, so pivots of pivots cannot loop.
+        if (!writingPivot.current) {
+          if (typeof p.subUnitId === "string") changedSheets.add(p.subUnitId);
+          for (const unit of Object.values(p.unitData ?? {}))
+            for (const id of Object.keys(unit ?? {})) changedSheets.add(id);
+        }
         const structural = /sheet\.mutation\.(insert|remove)-(row|col)$/.exec(
           command.id,
         );
@@ -1083,7 +1339,20 @@ export default function Sheets({
         timer = setTimeout(() => {
           refreshCharts.current();
           persist.current();
+          if (changedSheets.size) {
+            refreshPivots.current(new Set(changedSheets));
+            changedSheets.clear();
+          }
         }, 180);
+      });
+      // Univer's status bar only recalculates when the selection changes, so a filter
+      // that hides or reveals rows under the selection would leave Sum and Average
+      // counting rows that are no longer visible.
+      const selections = univer.__getInjector().get(SheetsSelectionsService);
+      const rowsShown = workbook.onCommandExecuted((command: any) => {
+        if (!rowVisibilityMutation.test(command.id)) return;
+        const current = selections.getCurrentSelections();
+        if (current.length) selections.setSelections([...current]);
       });
       const activeSheetChanged = univerAPI.addEvent(
         univerAPI.Event.ActiveSheetChanged,
@@ -1154,9 +1423,13 @@ export default function Sheets({
         clearTimeout(timer);
         clearTimeout(chartHydrationTimer);
         listener.dispose();
+        rowsShown.dispose();
         lifecycleReady.dispose();
         removed.dispose();
         activeSheetChanged.dispose();
+        stopAuthor();
+        signComments.dispose();
+        closeNoteOnMove.unsubscribe();
         partialCleanup?.();
         partialCleanup = undefined;
       };
@@ -1213,15 +1486,26 @@ export default function Sheets({
     // The workspace mounts a fresh editor per file. Changes must not recreate the engine.
   }, []);
   useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(""), 8000);
+    return () => clearTimeout(t);
+  }, [notice]);
+  useEffect(() => {
     if (!api.current) return;
     try {
       api.current.toggleDarkMode?.(isDark);
       api.current.setTheme?.(isDark ? darkBlueTheme : defaultTheme);
     } catch {}
   }, [isDark]);
+  // Univer's own currency command applies an accounting pattern with red
+  // parentheses; the toolbar $ follows Sheets' plain currency instead.
   const formatCurrency = () => {
+    const ranges =
+      book.current?.getActiveSheet()?.getSelection()?.getActiveRangeList() ??
+      [];
     try {
-      api.current?.executeCommand("sheet.command.numfmt.set.currency");
+      for (const r of ranges)
+        r.setNumberFormat(numberFormatById("currency2")!.code);
     } catch {}
     persist.current();
   };
@@ -1258,32 +1542,39 @@ export default function Sheets({
     });
     if (applied.ok) persist.current();
   };
-  const toggleBold = () => {
-    const r = book.current?.getActiveRange();
-    if (r) {
-      const next = r.getFontWeight() !== "bold";
-      r.setFontWeight(next ? "bold" : "normal");
-      setIsBold(next);
-      persist.current();
-    }
+  // The same commands as Cmd+B/I and Alt+Shift+5: they toggle from the active
+  // cell's style and also format the text being edited inside a cell.
+  const toggleTextStyle = (command: string) =>
+    void Promise.resolve(api.current?.executeCommand(command))
+      .then(() => {
+        syncTextStyle.current();
+        persist.current();
+      })
+      .catch((e) => onError(e instanceof Error ? e.message : String(e)));
+  const toggleBold = () => toggleTextStyle("sheet.command.set-range-bold");
+  const toggleItalic = () => toggleTextStyle("sheet.command.set-range-italic");
+  const toggleStrike = () => toggleTextStyle("sheet.command.set-range-stroke");
+  const clipboard = async (action: "cut" | "copy" | "paste") => {
+    let done = false;
+    try {
+      done = !!(await api.current?.executeCommand(`univer.command.${action}`));
+    } catch {}
+    if (done) return;
+    const key = shortcut({ cut: "X", copy: "C", paste: "V" }[action]);
+    setNotice(
+      `Your browser doesn't let the Edit menu ${action} here. Use ${key} to ${action}.`,
+    );
   };
-  const toggleItalic = () => {
-    const r = book.current?.getActiveRange();
-    if (r) {
-      const next = r.getFontStyle() !== "italic";
-      r.setFontStyle(next ? "italic" : "normal");
-      setIsItalic(next);
-      persist.current();
+  const deleteValues = () => {
+    const ranges =
+      book.current?.getActiveSheet()?.getSelection()?.getActiveRangeList() ??
+      [];
+    try {
+      for (const r of ranges) r.clearContent();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
     }
-  };
-  const toggleStrike = () => {
-    const r = book.current?.getActiveRange();
-    if (r) {
-      const next = r.getFontLine() !== "line-through";
-      r.setFontLine(next ? "line-through" : "none");
-      setIsStrike(next);
-      persist.current();
-    }
+    persist.current();
   };
   const handleTextColor = (color: string) => {
     setTextColor(color);
@@ -1398,6 +1689,63 @@ export default function Sheets({
       onError(e instanceof Error ? e.message : String(e));
     }
   };
+  const openSortRange = () => {
+    const sheet = book.current?.getActiveSheet();
+    if (!sheet) return;
+    const selected = book.current?.getActiveRange();
+    const target =
+      selected && selected.getRange().endRow > selected.getRange().startRow
+        ? selected
+        : sheet.getDataRange();
+    setSorting({ range: target.getRange(), values: target.getValues() });
+  };
+  const sortRange = (rules: SortRule[], hasHeader: boolean) => {
+    try {
+      const body = sortBody(sorting!.range, hasHeader);
+      book.current
+        .getActiveSheet()
+        .getRange(
+          body.startRow,
+          body.startColumn,
+          body.endRow - body.startRow + 1,
+          body.endColumn - body.startColumn + 1,
+        )
+        .sort(rules);
+      persist.current();
+      setSorting(null);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+    }
+  };
+  const view = (): SheetView => {
+    const sheet = book.current?.getActiveSheet();
+    const freeze = sheet?.getFreeze();
+    const cell = book.current?.getActiveCell();
+    const frozenRows = freeze?.ySplit ? freeze.startRow : 0;
+    const frozenColumns = freeze?.xSplit ? freeze.startColumn : 0;
+    // The main viewport excludes frozen panes; keep at least two of its rows/columns scrollable.
+    const visible = sheet?.getVisibleRange();
+    return {
+      frozenRows,
+      frozenColumns,
+      row: (cell?.getRow() ?? 0) + 1,
+      column: (cell?.getColumn() ?? 0) + 1,
+      maxFrozenRows: visible
+        ? frozenRows + visible.endRow - visible.startRow - 1
+        : 0,
+      maxFrozenColumns: visible
+        ? frozenColumns + visible.endColumn - visible.startColumn - 1
+        : 0,
+      gridlines: !sheet?.hasHiddenGridLines(),
+      formulaBar: formulaBarVisible(),
+    };
+  };
+  const setFrozen = (axis: "rows" | "columns", count: number) => {
+    const sheet = book.current?.getActiveSheet();
+    if (!sheet) return;
+    if (axis === "rows") sheet.setFrozenRows(count);
+    else sheet.setFrozenColumns(count);
+  };
   useEffect(() => {
     if (!ready) return;
     onActions({
@@ -1425,7 +1773,7 @@ export default function Sheets({
             delimiter: format === "tsv" ? "\t" : ",",
             escapeFormulae: true,
           }),
-          "text/csv",
+          format === "tsv" ? "text/tab-separated-values" : "text/csv",
         );
       },
       async print() {
@@ -1487,16 +1835,42 @@ export default function Sheets({
           const range = book.current?.getActiveRange();
           if (range) {
             range.setDataValidation(
-              api.current.newDataValidation().requireCheckbox().build(),
+              api.current
+                .newDataValidation()
+                .requireCheckbox("TRUE", "FALSE")
+                .build(),
             );
-            persist.current();
+            const { startRow, startColumn } = range.getRange();
+            const unticked: Record<number, Record<number, { v: boolean }>> =
+              {};
+            range.getCellDatas().forEach((row: any[], r: number) =>
+              row.forEach((cell, c) => {
+                if (!cell?.f && !cell?.p && (cell?.v ?? "") === "")
+                  (unticked[startRow + r] ??= {})[startColumn + c] = {
+                    v: false,
+                  };
+              }),
+            );
+            void (
+              Object.keys(unticked).length
+                ? api.current.executeCommand("sheet.command.set-range-values", {
+                    value: unticked,
+                  })
+                : Promise.resolve()
+            ).then(() => persist.current());
           }
         },
         undo: () => void api.current?.undo(),
         redo: () => void api.current?.redo(),
+        cut: () => void clipboard("cut"),
+        copy: () => void clipboard("copy"),
+        paste: () => void clipboard("paste"),
+        deleteValues,
         insertChart: () => startPanel("chart"),
         insertPivot: () => startPanel("pivot"),
         toggleFilter,
+        sortRange: openSortRange,
+        hasFilter: () => !!book.current?.getActiveSheet()?.getFilter(),
         formatCurrency,
         formatPercent,
         toggleBold,
@@ -1512,10 +1886,23 @@ export default function Sheets({
           book.current?.getActiveRange()?.setHorizontalAlignment(al);
           persist.current();
         },
+        view,
+        freezeRows: (count) => setFrozen("rows", count),
+        freezeColumns: (count) => setFrozen("columns", count),
+        showGridlines: (visible) =>
+          void book.current?.getActiveSheet()?.setHiddenGridlines(!visible),
+        showFormulaBar: (visible) => {
+          setFormulaBarVisible(visible);
+          api.current?.setUIVisible(
+            api.current.Enum.BuiltInUIPart.HEADER,
+            visible,
+          );
+        },
       },
     });
   }, [ready, file.title, onActions]);
   const startPanel = (type: "chart" | "pivot", id?: string) => {
+    moreTools.setOpen(false);
     setPanel(type);
     setEditing(id);
     const c =
@@ -1533,6 +1920,7 @@ export default function Sheets({
     if (type === "chart") setChartType((c as ChartDefinition)?.type ?? "bar");
     else {
       const p = c as PivotDefinition | undefined;
+      valueChosen.current = !!p;
       setRowFields(p?.rows.join(",") ?? "0");
       setColumnFields(p?.columns.join(",") ?? "");
       setValueField(p?.value ?? 1);
@@ -1541,35 +1929,147 @@ export default function Sheets({
       setFilterValue(p?.filterValue ?? "");
     }
   };
-  const refreshPivot = async (p: PivotDefinition) => {
+  editChart.current = (id) => startPanel("chart", id);
+  useEffect(() => {
+    const container = host.current;
+    if (!container) return;
+    // Like Sheets, double-clicking a chart opens its editor. Univer hands a
+    // selected chart's pointer events to the canvas (re-dispatching each
+    // press), so no native dblclick reaches the chart element.
+    let last = { id: "", time: 0, x: 0, y: 0 };
+    const pointerDown = (e: PointerEvent) => {
+      if (e.button !== 0 || !e.isTrusted) return;
+      const id =
+        [...container.querySelectorAll<HTMLElement>("[data-chart-id]")].find(
+          (el) => {
+            const r = el.getBoundingClientRect();
+            return (
+              e.clientX >= r.left &&
+              e.clientX <= r.right &&
+              e.clientY >= r.top &&
+              e.clientY <= r.bottom
+            );
+          },
+        )?.dataset.chartId ?? "";
+      if (
+        id &&
+        id === last.id &&
+        e.timeStamp - last.time < 500 &&
+        Math.hypot(e.clientX - last.x, e.clientY - last.y) < 8
+      ) {
+        last = { id: "", time: 0, x: 0, y: 0 };
+        editChart.current(id);
+      } else last = { id, time: e.timeStamp, x: e.clientX, y: e.clientY };
+    };
+    container.addEventListener("pointerdown", pointerDown, true);
+    return () =>
+      container.removeEventListener("pointerdown", pointerDown, true);
+  }, []);
+  const takeSelection = () => {
+    const r = book.current?.getActiveRange();
+    if (!r) return;
+    setSourceSheet(book.current.getActiveSheet().getSheetId());
+    setRange(r.getA1Notation());
+  };
+  const refreshPivot = async (p: PivotDefinition, onlyIfChanged = false) => {
     await api.current.getFormula().onCalculationResultApplied(10000);
-    const values = readRange(p.source);
-    const result = pivotResult(values, p);
     const s = book.current.getSheetBySheetId(p.targetSheetId);
     if (!s) throw new Error("The pivot worksheet has been deleted.");
+    const values = readRange(p.source);
+    const result = pivotResult(values, p);
+    const numberFormat =
+      p.aggregate === "COUNT"
+        ? undefined
+        : valueFormat(
+            values,
+            book.current
+              .getSheetBySheetId(p.source.sheetId)
+              .getRange(rangeLabel(p.source))
+              .getNumberFormats(),
+            p.value,
+          );
+    const signature = JSON.stringify([result, numberFormat]);
+    pivotErrors.current.delete(p.id);
+    if (onlyIfChanged && pivotWrites.current.get(p.id) === signature) return;
     const permission = s.getWorksheetPermission();
-    if (permission.isProtected()) await permission.setEditable();
+    const grow =
+      result.length > s.getMaxRows() || result[0].length > s.getMaxColumns();
     try {
-      s.clear({ contentsOnly: true });
-      if (result.length > s.getMaxRows())
-        s.insertRows(s.getMaxRows() - 1, result.length - s.getMaxRows() + 1);
-      if (result[0].length > s.getMaxColumns())
-        s.insertColumns(
-          s.getMaxColumns() - 1,
-          result[0].length - s.getMaxColumns() + 1,
-        );
-      s.getRange(0, 0, result.length, result[0].length).setValues(
-        result.map((row) =>
-          row.map((v) => (typeof v === "string" ? { v, t: 1 } : v)),
-        ),
-      );
-      s.getRange(0, 0, 1, result[0].length).setFontWeight("bold");
+      if (grow) {
+        if (permission.isProtected()) await permission.setEditable();
+        if (result.length > s.getMaxRows())
+          s.insertRows(s.getMaxRows() - 1, result.length - s.getMaxRows() + 1);
+        if (result[0].length > s.getMaxColumns())
+          s.insertColumns(
+            s.getMaxColumns() - 1,
+            result[0].length - s.getMaxColumns() + 1,
+          );
+      }
+      // A direct mutation keeps recalculation out of the undo stack, so Cmd+Z after a
+      // source edit undoes the edit itself; the pivot then follows it back.
+      writingPivot.current = true;
+      try {
+        api.current.syncExecuteCommand("sheet.mutation.set-range-values", {
+          unitId: book.current.getId(),
+          subUnitId: p.targetSheetId,
+          cellValue: pivotCells(result, {
+            rowFields: p.rows.length,
+            numberFormat,
+            previous: {
+              rows: s.getLastRow() + 1,
+              columns: s.getLastColumn() + 1,
+            },
+          }),
+          isOverrideStyle: true,
+        });
+      } finally {
+        writingPivot.current = false;
+      }
+      pivotWrites.current.set(p.id, signature);
       p.invalid = false;
     } finally {
-      if (!permission.isProtected())
-        await permission.protect({ name: "Generated pivot" });
-      await permission.setReadOnly();
+      if (grow || !permission.isProtected()) {
+        if (!permission.isProtected())
+          await permission.protect({ name: "Generated pivot" });
+        await permission.setReadOnly();
+      }
     }
+    persist.current();
+  };
+  refreshPivots.current = (sheetIds) => {
+    for (const p of content.current.pivots)
+      if (
+        !p.invalid &&
+        p.source.sheetId !== p.targetSheetId &&
+        sheetIds.has(p.source.sheetId)
+      )
+        void refreshPivot(p, true).catch((e) => {
+          pivotErrors.current.set(
+            p.id,
+            e instanceof Error ? e.message : String(e),
+          );
+          setRevision((v) => v + 1);
+        });
+  };
+  const copyPivot = (p: PivotDefinition) => {
+    const s = book.current.getSheetBySheetId(p.targetSheetId);
+    if (!s) return;
+    const rows = s.getLastRow() + 1,
+      columns = s.getLastColumn() + 1;
+    if (rows < 1 || columns < 1) return;
+    const cells = s.getRange(0, 0, rows, columns).getCellDatas();
+    const copy = book.current.create(
+      copySheetName(
+        p.title,
+        book.current.getSheets().map((x: any) => x.getSheetName()),
+      ),
+      Math.max(1000, rows),
+      Math.max(26, columns),
+    );
+    copy
+      .getRange(0, 0, rows, columns)
+      .setValues(cells.map((r: any[]) => r.map((c) => c ?? {})));
+    book.current.setActiveSheet(copy.getSheetId());
     persist.current();
   };
   const submit = async () => {
@@ -1617,28 +2117,35 @@ export default function Sheets({
         const config = {
           rows,
           columns,
-          value: valueField,
+          value: valueChosen.current
+            ? valueField
+            : defaultValueField(values, rows),
           aggregate,
           filterColumn,
           filterValue,
         };
         const result = pivotResult(values, config);
+        const name = title.trim() || "Pivot table";
         let p = content.current.pivots.find((p) => p.id === editing);
         if (!p) {
           const target = book.current.create(
-            `${title.slice(0, 20)} ${content.current.pivots.length + 1}`,
+            uniqueSheetName(
+              name.slice(0, 31),
+              book.current.getSheets().map((s: any) => s.getSheetName()),
+            ),
             Math.max(1000, result.length),
             Math.max(26, result[0].length),
           );
           p = {
             id: crypto.randomUUID(),
-            title,
+            title: name,
             source,
             targetSheetId: target.getSheetId(),
             ...config,
           };
           content.current.pivots.push(p);
-        } else Object.assign(p, { title, source, ...config, invalid: false });
+        } else
+          Object.assign(p, { title: name, source, ...config, invalid: false });
         await refreshPivot(p);
         book.current.setActiveSheet(p.targetSheetId);
       }
@@ -1647,15 +2154,44 @@ export default function Sheets({
       onError(e instanceof Error ? e.message : String(e));
     }
   };
-  let fields: CellValue[] = [];
+  let fields: CellValue[] = [],
+    shownValueField = valueField;
   try {
-    fields = readRange(parseRange(range, sourceSheet))[0] ?? [];
+    const values = readRange(parseRange(range, sourceSheet));
+    fields = values[0] ?? [];
+    // Until a value field is chosen, follow the range and rows to the first numeric field.
+    if (panel === "pivot" && !valueChosen.current)
+      shownValueField = defaultValueField(
+        values,
+        rowFields ? rowFields.split(",").map(Number) : [],
+      );
   } catch {
     /* The inline editor allows temporarily incomplete ranges. */
   }
   const items = content.current;
+  const activePivot = ready
+    ? items.pivots.find(
+        (p) =>
+          p.targetSheetId === book.current?.getActiveSheet()?.getSheetId(),
+      )
+    : undefined;
+  const activePivotError = activePivot
+    ? pivotErrors.current.get(activePivot.id)
+    : undefined;
   return (
     <div className="sheets-editor">
+      {notice ? (
+        <div className="sheet-notice" role="status">
+          {notice}
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={() => setNotice("")}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      ) : null}
       {ready && api.current ? (
         <SheetFeatures
           ref={tabSettings}
@@ -1663,9 +2199,12 @@ export default function Sheets({
           persist={() => persist.current()}
           onError={onError}
         />
-      ) : null}
+      ) : (
+        <div className="sheet-features" aria-hidden="true" />
+      )}
       <div
-        className="sheets-toolbar"
+        ref={toolbar}
+        className={`sheets-toolbar${moreTools.overflowing ? " has-overflow" : ""}${moreTools.open ? " show-more" : ""}`}
         role="toolbar"
         aria-label="Spreadsheet formatting"
       >
@@ -2022,7 +2561,11 @@ export default function Sheets({
               <div key={p.id}>
                 <button onClick={() => startPanel("pivot", p.id)}>
                   {p.title}
-                  {p.invalid ? " · source missing" : ""}
+                  {p.invalid
+                    ? " · source missing"
+                    : pivotErrors.current.has(p.id)
+                      ? " · not updated"
+                      : ""}
                 </button>
                 <button
                   title="Refresh pivot"
@@ -2035,27 +2578,7 @@ export default function Sheets({
                 </button>
                 <button
                   title="Make editable copy"
-                  onClick={() => {
-                    const s = book.current.getSheetBySheetId(p.targetSheetId);
-                    if (!s) return;
-                    const v = s.getDataRange().getValues();
-                    const copy = book.current.create(
-                      `Pivot copy ${Date.now().toString().slice(-5)}`,
-                      Math.max(1000, v.length),
-                      Math.max(26, v[0].length),
-                    );
-                    copy
-                      .getRange(0, 0, v.length, v[0].length)
-                      .setValues(
-                        v.map((r: any[]) =>
-                          r.map((v) =>
-                            typeof v === "string" ? { v, t: 1 } : v,
-                          ),
-                        ),
-                      );
-                    book.current.setActiveSheet(copy.getSheetId());
-                    persist.current();
-                  }}
+                  onClick={() => copyPivot(p)}
                 >
                   Copy
                 </button>
@@ -2063,7 +2586,62 @@ export default function Sheets({
             ))}
           </div>
         </details>
+        {moreTools.open ? (
+          <span className="toolbar-break" aria-hidden="true" />
+        ) : null}
+        <button
+          type="button"
+          className="tool more-tools"
+          title="More tools"
+          aria-label="More tools"
+          aria-expanded={moreTools.open}
+          onClick={() => moreTools.setOpen(!moreTools.open)}
+        >
+          <EllipsisVertical size={16} />
+        </button>
       </div>
+      {activePivot ? (
+        <div
+          className="pivot-bar"
+          role="region"
+          aria-label="Pivot table details"
+        >
+          <Lock size={14} aria-hidden="true" />
+          <span className="pivot-bar-text">
+            <strong>Pivot table</strong> from{" "}
+            {book.current
+              ?.getSheetBySheetId(activePivot.source.sheetId)
+              ?.getSheetName() ?? "a deleted sheet"}{" "}
+            {rangeLabel(activePivot.source)} ·{" "}
+            {activePivot.invalid ? (
+              <span className="pivot-bar-warning">
+                Source missing. Edit the pivot to choose a new range.
+              </span>
+            ) : activePivotError ? (
+              <span className="pivot-bar-warning">
+                Not updated: {activePivotError}
+              </span>
+            ) : (
+              "Updates when the source changes"
+            )}
+          </span>
+          <button onClick={() => startPanel("pivot", activePivot.id)}>
+            Edit
+          </button>
+          <button
+            title="Refresh pivot"
+            aria-label="Refresh pivot"
+            onClick={() =>
+              void refreshPivot(activePivot).catch((e) => onError(String(e)))
+            }
+          >
+            <RefreshCw size={14} />
+          </button>
+          <button onClick={() => copyPivot(activePivot)}>
+            Make editable copy
+          </button>
+        </div>
+      ) : null}
       <div
         className="sheet-host"
         ref={host}
@@ -2071,8 +2649,18 @@ export default function Sheets({
         aria-busy={!ready}
         style={{ pointerEvents: ready ? undefined : "none" }}
       />
+      {sorting ? (
+        <SortRangeDialog
+          {...sorting}
+          onSort={sortRange}
+          onClose={() => setSorting(null)}
+        />
+      ) : null}
       {panel ? (
-        <aside className="analysis-panel">
+        <aside
+          className="analysis-panel"
+          style={{ top: host.current?.offsetTop }}
+        >
           <header>
             <h2>
               {editing ? "Edit" : "Insert"}{" "}
@@ -2109,14 +2697,23 @@ export default function Sheets({
               ))}
             </select>
           </label>
-          <label>
-            Source range
-            <input
-              value={range}
-              onChange={(e) => setRange(e.target.value)}
-              placeholder="A1:D20"
-            />
-          </label>
+          <div className="range-field">
+            <label>
+              Source range
+              <input
+                value={range}
+                onChange={(e) => setRange(e.target.value)}
+                placeholder="A1:D20"
+              />
+            </label>
+            <button
+              type="button"
+              title="Use the cells selected in the grid"
+              onClick={takeSelection}
+            >
+              Use selection
+            </button>
+          </div>
           <p className="hint">
             First row supplies field names. The full source range is used,
             including filtered rows.
@@ -2185,8 +2782,11 @@ export default function Sheets({
               <label>
                 Value field
                 <select
-                  value={valueField}
-                  onChange={(e) => setValueField(+e.target.value)}
+                  value={shownValueField}
+                  onChange={(e) => {
+                    valueChosen.current = true;
+                    setValueField(+e.target.value);
+                  }}
                 >
                   {fields.map((v, i) => (
                     <option key={i} value={i}>
@@ -2232,8 +2832,9 @@ export default function Sheets({
                 </label>
               ) : null}
               <p className="hint">
-                Pivot results appear in a protected worksheet. Refresh after
-                source edits, or make an editable copy.
+                Pivot results appear in a protected worksheet with grand totals
+                and update when the source changes. Make an editable copy to
+                annotate them.
               </p>
             </>
           )}

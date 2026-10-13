@@ -1,6 +1,7 @@
 import { defineConfig } from "electron-vite";
 import react from "@vitejs/plugin-react";
 import { resolve } from "node:path";
+import { conditionalFormatDefaults } from "../web/conditional-format-defaults";
 export default defineConfig({
   main: {
     build: {
@@ -20,7 +21,7 @@ export default defineConfig({
   },
   renderer: {
     root: resolve(import.meta.dirname, "../web"),
-    plugins: [react()],
+    plugins: [react(), conditionalFormatDefaults()],
     base: "./",
     worker: {
       format: "es",

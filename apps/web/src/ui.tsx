@@ -1,5 +1,13 @@
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
-import type { ReactNode } from "react";
+import { Check } from "lucide-react";
+import {
+  createContext,
+  Fragment,
+  useContext,
+  useRef,
+  type ReactNode,
+} from "react";
+const AfterClose = createContext<{ current: (() => void) | null } | null>(null);
 export function Menu({
   label,
   children,
@@ -7,12 +15,25 @@ export function Menu({
   label: string;
   children: ReactNode;
 }) {
+  const afterClose = useRef<(() => void) | null>(null);
   return (
     <Dropdown.Root>
       <Dropdown.Trigger className="menu-trigger">{label}</Dropdown.Trigger>
       <Dropdown.Portal>
-        <Dropdown.Content className="menu-content" sideOffset={4}>
-          {children}
+        <Dropdown.Content
+          className="menu-content"
+          sideOffset={4}
+          onCloseAutoFocus={(e) => {
+            const run = afterClose.current;
+            afterClose.current = null;
+            if (!run) return;
+            e.preventDefault();
+            run();
+          }}
+        >
+          <AfterClose.Provider value={afterClose}>
+            {children}
+          </AfterClose.Provider>
         </Dropdown.Content>
       </Dropdown.Portal>
     </Dropdown.Root>
@@ -23,21 +44,121 @@ export function MenuItem({
   onSelect,
   disabled = false,
   shortcut,
+  focusesTarget = false,
 }: {
   children: ReactNode;
   onSelect: () => void;
   disabled?: boolean;
   shortcut?: string;
+  /** Run after the menu closes, so focus can go to the editor or a dialog. */
+  focusesTarget?: boolean;
 }) {
+  const afterClose = useContext(AfterClose);
   return (
     <Dropdown.Item
       className="menu-item"
       disabled={disabled}
-      onSelect={onSelect}
+      onSelect={
+        focusesTarget && afterClose
+          ? () => (afterClose.current = onSelect)
+          : onSelect
+      }
     >
       <span className="menu-item-label">{children}</span>
       {shortcut ? <span className="menu-item-shortcut">{shortcut}</span> : null}
     </Dropdown.Item>
+  );
+}
+export function SubMenu({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <Dropdown.Sub>
+      <Dropdown.SubTrigger className="menu-item">
+        <span className="menu-item-label">{label}</span>
+        <span className="menu-item-shortcut" aria-hidden="true">
+          ›
+        </span>
+      </Dropdown.SubTrigger>
+      <Dropdown.Portal>
+        <Dropdown.SubContent className="menu-content" sideOffset={6}>
+          {children}
+        </Dropdown.SubContent>
+      </Dropdown.Portal>
+    </Dropdown.Sub>
+  );
+}
+export function MenuSeparator() {
+  return <Dropdown.Separator className="menu-separator" />;
+}
+export function MenuCheckItem({
+  children,
+  checked,
+  onSelect,
+  disabled = false,
+}: {
+  children: ReactNode;
+  checked: boolean;
+  onSelect: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <Dropdown.CheckboxItem
+      className="menu-item menu-check-item"
+      checked={checked}
+      disabled={disabled}
+      onSelect={onSelect}
+    >
+      <span className="menu-item-check" aria-hidden="true">
+        {checked ? "✓" : ""}
+      </span>
+      <span className="menu-item-label">{children}</span>
+    </Dropdown.CheckboxItem>
+  );
+}
+/** A table command, shared by the Format menu and the table's right-click menu. */
+export type TableAction = {
+  label: string;
+  run: () => void;
+  disabled: boolean;
+  checked?: boolean;
+  separatorBefore?: boolean;
+};
+/** Rendered when the submenu opens, so `actions()` reads the current selection. */
+export function TableMenuItems({ actions }: { actions: () => TableAction[] }) {
+  return (
+    <>
+      {actions().map((action) => (
+        <Fragment key={action.label}>
+          {action.separatorBefore ? (
+            <Dropdown.Separator className="menu-separator" />
+          ) : null}
+          {action.checked === undefined ? (
+            <Dropdown.Item
+              className="menu-item"
+              disabled={action.disabled}
+              onSelect={action.run}
+            >
+              <span className="menu-item-label">{action.label}</span>
+            </Dropdown.Item>
+          ) : (
+            <Dropdown.CheckboxItem
+              className="menu-item"
+              disabled={action.disabled}
+              checked={action.checked}
+              onSelect={action.run}
+            >
+              <span className="menu-item-label">{action.label}</span>
+              {action.checked ? <Check size={14} /> : null}
+            </Dropdown.CheckboxItem>
+          )}
+        </Fragment>
+      ))}
+    </>
   );
 }
 export function Tool({
@@ -82,20 +203,19 @@ export type EditorActions = {
     insertImage: () => void;
     insertTable: () => void;
     insertHorizontalRule: () => void;
+    insertPageBreak: () => void;
+    openPageSetup: () => void;
     clearFormatting: () => void;
     align: (alignment: "left" | "center" | "right" | "justify") => void;
     toggleBold: () => void;
     toggleItalic: () => void;
     toggleUnderline: () => void;
     toggleStrike: () => void;
+    toggleSuperscript: () => void;
+    toggleSubscript: () => void;
     toggleBulletList: () => void;
     toggleOrderedList: () => void;
-    tableAddRow: () => void;
-    tableAddColumn: () => void;
-    tableDeleteRow: () => void;
-    tableDeleteColumn: () => void;
-    tableDelete: () => void;
-    hasTable: boolean;
+    tableActions: () => TableAction[];
   };
   sheetActions?: {
     dataValidation?: () => void;
@@ -106,9 +226,15 @@ export type EditorActions = {
     insertCheckbox?: () => void;
     undo: () => void;
     redo: () => void;
+    cut: () => void;
+    copy: () => void;
+    paste: () => void;
+    deleteValues: () => void;
     insertChart: () => void;
     insertPivot: () => void;
     toggleFilter: () => void;
+    sortRange?: () => void;
+    hasFilter?: () => boolean;
     formatCurrency: () => void;
     formatPercent: () => void;
     toggleBold: () => void;
@@ -116,5 +242,22 @@ export type EditorActions = {
     toggleStrike: () => void;
     clearFormatting: () => void;
     align: (alignment: "left" | "center" | "right") => void;
+    view: () => SheetView;
+    freezeRows: (count: number) => void;
+    freezeColumns: (count: number) => void;
+    showGridlines: (visible: boolean) => void;
+    showFormulaBar: (visible: boolean) => void;
   };
+};
+export type SheetView = {
+  frozenRows: number;
+  frozenColumns: number;
+  /** 1-based row and column of the active cell. */
+  row: number;
+  column: number;
+  /** The most rows or columns that can be frozen and still leave room to scroll. */
+  maxFrozenRows: number;
+  maxFrozenColumns: number;
+  gridlines: boolean;
+  formulaBar: boolean;
 };

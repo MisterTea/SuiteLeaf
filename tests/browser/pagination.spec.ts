@@ -58,3 +58,52 @@ test("long paragraphs and tables paginate without changing document content", as
   await page.getByRole("button", { name: "Undo", exact: true }).click();
   await expect(page.locator(".manual-page-break")).toHaveCount(0);
 });
+test("a page break leaves the caret at the top of the new page", async ({
+  page,
+  isMobile,
+}) => {
+  test.skip(isMobile, "Ctrl+End and Ctrl+Enter are desktop shortcuts.");
+  await page.goto("/");
+  await page.getByRole("button", { name: "New document" }).click();
+  const editor = page.getByRole("textbox", { name: "Document content" });
+  const status = page.locator(".editor-status");
+  // Let pagination redraw after typing before moving the caret, as a person would.
+  const press = async (key: string) => {
+    await page.waitForTimeout(100);
+    await page.keyboard.press(key);
+  };
+  await editor.click();
+  await page.keyboard.type("Minutes");
+  await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: "Page break", exact: true }).click();
+  await page.keyboard.type("Appendix A");
+  await expect(page.locator(".manual-page-break")).toHaveCount(1);
+  await expect(status).toContainText("2 pages");
+  await expect(editor.locator(":scope > p")).toHaveText([
+    "Minutes",
+    "Appendix A",
+  ]);
+  await page.waitForTimeout(300);
+  await expect(editor.locator(":scope > p").last()).toBeInViewport();
+  await press("ArrowUp");
+  await page.keyboard.type("!");
+  await expect(editor.locator(":scope > p").first()).toHaveText("Minutes!");
+  await expect(page.locator(".manual-page-break")).toHaveCount(1);
+
+  const mac = process.platform === "darwin";
+  await press(mac ? "Meta+ArrowDown" : "Control+End");
+  await press("ControlOrMeta+Enter");
+  await page.keyboard.type("Appendix B");
+  await expect(page.locator(".manual-page-break")).toHaveCount(2);
+  await expect(status).toContainText("3 pages");
+  await expect(editor.locator(":scope > p")).toHaveText([
+    "Minutes!",
+    "Appendix A",
+    "Appendix B",
+  ]);
+
+  await press(mac ? "Meta+ArrowLeft" : "Home");
+  await press("Backspace");
+  await expect(page.locator(".manual-page-break")).toHaveCount(1);
+  await expect(status).toContainText("2 pages");
+});

@@ -13,7 +13,11 @@ const normalize = (s: string) => s.replace(/[\s\u200b\ufeff]+/gu, "");
 export function documentText(n: JsonNode): string {
   return (n.text ?? "") + (n.content ?? []).map(documentText).join("");
 }
-export function htmlToDocument(html: string): JsonNode {
+/** `droppedLinks` collects the addresses of links removed as unsafe. */
+export function htmlToDocument(
+  html: string,
+  droppedLinks: string[] = [],
+): JsonNode {
   const root = parseDocument(html, { decodeEntities: true });
   function inline(nodes: AnyNode[], marks: Mark[] = []): JsonNode[] {
     const out: JsonNode[] = [];
@@ -88,11 +92,13 @@ export function htmlToDocument(html: string): JsonNode {
       const next = [...marks];
       if (markType && !next.some((m) => m.type === markType))
         next.push({ type: markType });
-      if (tag === "a" && safeLink(e.attribs.href ?? ""))
+      const href = tag === "a" ? (e.attribs.href ?? "") : "";
+      if (href && safeLink(href))
         next.push({
           type: "link",
-          attrs: { href: e.attribs.href, target: null },
+          attrs: { href, target: null },
         });
+      else if (href) droppedLinks.push(href);
       out.push(...inline(e.children, next));
     }
     return out;
@@ -1075,9 +1081,10 @@ export async function importDocx(
     );
   }
   let content: JsonNode;
+  let droppedLinks: string[] = [];
   try {
     content = html
-      ? htmlToDocument(html)
+      ? htmlToDocument(html, droppedLinks)
       : ({
           type: "doc",
           content: source.map((t) => ({
@@ -1087,6 +1094,7 @@ export async function importDocx(
         } as JsonNode);
   } catch {
     fallback = 1;
+    droppedLinks = [];
     warnings.push("Deeply nested layout was flattened to editable paragraphs.");
     content = {
       type: "doc",
@@ -1250,8 +1258,22 @@ export async function importDocx(
     warnings.push(
       "Embedded OLE objects are not executed or embedded into the document editor.",
     );
+  if (droppedLinks.length) {
+    const schemes = [
+      ...new Set(
+        droppedLinks.flatMap((href) => {
+          const scheme = /^\s*([a-z][a-z0-9+.-]*):/i.exec(href)?.[1];
+          return scheme ? [`${scheme.toLowerCase()}:`] : [];
+        }),
+      ),
+    ];
+    const one = droppedLinks.length === 1;
+    warnings.push(
+      `${droppedLinks.length} ${one ? "link" : "links"} with an unsafe or unsupported address${schemes.length ? ` (${schemes.join(", ")})` : ""} ${one ? "was" : "were"} removed; ${one ? "its" : "their"} text was kept.`,
+    );
+  }
   warnings.push(
-    "Continuous layout preserves semantic content; exact Word pagination, floating placement and font styling may differ.",
+    "SuiteLeaf lays out its own pages, so Word's exact line and page breaks, floating placement and font styling may differ.",
   );
   const file = createFile("doc", title) as DocFile;
   file.content = content;

@@ -1,5 +1,9 @@
-import Papa from "papaparse";
-import { csvCell } from "./csv";
+import {
+  defaultDelimitedOptions,
+  delimitedCellData,
+  parseDelimited,
+  type DelimitedOptions,
+} from "./csv";
 import {
   createFile,
   isNativeName,
@@ -7,7 +11,25 @@ import {
   type SuiteFile,
   type SheetFile,
 } from "@suiteleaf/core";
-export async function importFile(file: File): Promise<SuiteFile> {
+
+export const maxDelimitedCells = 200000;
+/** A parsed CSV/TSV file awaiting the person's import choices. */
+export interface DelimitedDraft {
+  name: string;
+  text: string;
+  rows: string[][];
+  delimiter: string;
+}
+/** Shows a delimited import for review; resolves to null when cancelled. */
+export type ReviewDelimited = (
+  draft: DelimitedDraft,
+) => Promise<DelimitedOptions | null>;
+
+/** Converts a picked file; resolves to null if the person cancels a review step. */
+export async function importFile(
+  file: File,
+  review?: ReviewDelimited,
+): Promise<SuiteFile | null> {
   const ext = file.name.split(".").pop()?.toLowerCase();
   if (["docx", "xlsx", "xls", "xlsm", "xlsb", "xltx"].includes(ext ?? "")) {
     if (file.size > 120 * 1024 * 1024)
@@ -47,40 +69,29 @@ export async function importFile(file: File): Promise<SuiteFile> {
       },
     };
   if (ext === "csv" || ext === "tsv") {
-    const parsed = Papa.parse<string[]>(text, {
-      delimiter: ext === "tsv" ? "\t" : "",
-      skipEmptyLines: "greedy",
-    });
-    if (parsed.errors.some((e) => e.code !== "UndetectableDelimiter"))
-      throw new Error(
-        `Could not parse delimited file: ${parsed.errors[0].message}`,
-      );
-    if (!parsed.data.length) throw new Error("This file has no rows.");
-    const delimiter =
-      parsed.meta.delimiter === "\t" ? "tab" : parsed.meta.delimiter;
-    const preview = parsed.data
-      .slice(0, 4)
-      .map((r) => r.slice(0, 5).join(" | "))
-      .join("\n");
-    if (
-      !window.confirm(
-        `Import ${parsed.data.length} rows using ${delimiter} delimiter?\n\n${preview}\n\nThe first row is retained. Numbers are recognized; formulas and identifiers with leading zeros stay text.`,
-      )
-    )
-      throw new Error("Import cancelled.");
+    const parsed = parseDelimited(text, ext === "tsv" ? "\t" : "");
+    if (parsed.error)
+      throw new Error(`Could not parse delimited file: ${parsed.error}`);
+    if (!parsed.rows.length) throw new Error("This file has no rows.");
+    const options = review
+      ? await review({ name: file.name, text, ...parsed })
+      : defaultDelimitedOptions(parsed.rows, parsed.delimiter);
+    if (!options) return null;
+    let rows = parsed.rows;
+    if (options.delimiter !== parsed.delimiter) {
+      const again = parseDelimited(text, options.delimiter);
+      if (again.error)
+        throw new Error(`Could not parse delimited file: ${again.error}`);
+      rows = again.rows;
+    }
     const out = createFile("sheet", title) as SheetFile,
       sheet = out.content.workbook.sheets[out.content.workbook.sheetOrder[0]];
-    const cols = parsed.data.reduce((max, r) => Math.max(max, r.length), 0);
-    if (parsed.data.length * cols > 200000)
+    const cols = rows.reduce((max, r) => Math.max(max, r.length), 0);
+    if (rows.length * cols > maxDelimitedCells)
       throw new Error("Imports are limited to 200,000 cells.");
-    sheet.rowCount = Math.max(1000, parsed.data.length);
+    sheet.rowCount = Math.max(1000, rows.length);
     sheet.columnCount = Math.max(26, cols);
-    sheet.cellData = Object.fromEntries(
-      parsed.data.map((r, i) => [
-        i,
-        Object.fromEntries(r.map((v, j) => [j, csvCell(v)])),
-      ]),
-    );
+    sheet.cellData = delimitedCellData(rows, options);
     return out;
   }
   if (

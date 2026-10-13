@@ -83,6 +83,35 @@ describe("local Office export", () => {
     );
     expect(parseFile(serializeFile(file)).content).toEqual(file.content);
   });
+  it("marks a document table's header row as a repeating Word header row", async () => {
+    const file = createFile("doc", "Sign-up");
+    if (file.kind !== "doc") throw new Error();
+    const row = (type: string, texts: string[]) => ({
+      type: "tableRow",
+      content: texts.map((text) => ({
+        type,
+        content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+      })),
+    });
+    file.content = {
+      type: "doc",
+      content: [
+        {
+          type: "table",
+          content: [
+            row("tableHeader", ["Name", "Bringing"]),
+            row("tableCell", ["Asha", "Beans"]),
+          ],
+        },
+      ],
+    };
+    const zip = await JSZip.loadAsync(await exportDocx(file));
+    const doc = await zip.file("word/document.xml")!.async("string");
+    const rows = doc.match(/<w:tr>[\s\S]*?<\/w:tr>/g) ?? [];
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toContain("<w:tblHeader");
+    expect(rows[1]).not.toContain("<w:tblHeader");
+  });
   it("exports all sheets with formulas, cached values, styles, notes, validation and conditional rules", async () => {
     const file = createFile("sheet", "Budget");
     if (file.kind !== "sheet") throw new Error();
@@ -240,5 +269,49 @@ describe("local Office export", () => {
     ).toContain("Check & verify");
     expect(imported.file.content.charts).toHaveLength(1);
     expect(imported.file.content.images).toHaveLength(1);
+  });
+  it("exports ticked checkboxes as TRUE/FALSE cells and keeps older 1/0 checkboxes consistent", async () => {
+    const file = createFile("sheet", "Bake sale prep");
+    if (file.kind !== "sheet") throw new Error();
+    const id = file.content.workbook.sheetOrder[0];
+    const column = (c: number) => [
+      { startRow: 1, endRow: 2, startColumn: c, endColumn: c },
+    ];
+    file.content.workbook.sheets[id].cellData = {
+      1: { 0: { v: 1, t: 3 }, 1: { v: 1, t: 2 }, 2: { f: "=A2=TRUE", v: 1, t: 3 } },
+      2: { 0: { v: 0, t: 3 }, 1: { v: 0, t: 2 } },
+    };
+    file.content.workbook.resources = [
+      {
+        name: "SHEET_DATA_VALIDATION_PLUGIN",
+        data: JSON.stringify({
+          [id]: [
+            {
+              uid: "done",
+              type: "checkbox",
+              formula1: "TRUE",
+              formula2: "FALSE",
+              ranges: column(0),
+            },
+            { uid: "legacy", type: "checkbox", ranges: column(1) },
+          ],
+        }),
+      },
+    ];
+    const bytes = await exportXlsx(file);
+    const exported = XLSX.read(bytes, { type: "array" }).Sheets.Sheet1;
+    expect(exported.A2).toMatchObject({ t: "b", v: true });
+    expect(exported.A3).toMatchObject({ t: "b", v: false });
+    expect(exported.C2).toMatchObject({ t: "b", v: true, f: "A2=TRUE" });
+    expect(exported.B2).toMatchObject({ t: "n", v: 1 });
+    const xml = await (await JSZip.loadAsync(bytes))
+      .file("xl/worksheets/sheet1.xml")!
+      .async("string");
+    expect(xml).toMatch(
+      /sqref="A2:A3"[^>]*><formula1>&quot;TRUE,FALSE&quot;<\/formula1>/,
+    );
+    expect(xml).toMatch(
+      /sqref="B2:B3"[^>]*><formula1>&quot;1,0&quot;<\/formula1>/,
+    );
   });
 });

@@ -67,16 +67,22 @@ let session: NodeSession | null = (() => {
   }
 })();
 let jwtCache: { token: string; expires: number } | null = null;
+/** Why the last session ended, so the sign-in page can say so. */
+let ended: "signed-out" | "expired" | null = null;
 
 export function getSession() {
   return session;
+}
+export function sessionEndReason() {
+  return ended;
 }
 export function onSession(listener: (session: NodeSession | null) => void) {
   listeners.add(listener);
   return () => void listeners.delete(listener);
 }
-function setSession(next: NodeSession | null) {
+function setSession(next: NodeSession | null, reason: typeof ended = null) {
   session = next;
+  ended = next ? null : reason;
   jwtCache = null;
   if (next) localStorage.setItem(SESSION_KEY, JSON.stringify(next));
   else localStorage.removeItem(SESSION_KEY);
@@ -172,7 +178,7 @@ export async function signOut() {
   if (!current) return;
   const pending = JSON.stringify({ url: current.url, token: current.token });
   localStorage.setItem(SIGNING_OUT_KEY, pending);
-  setSession(null);
+  setSession(null, "signed-out");
   await revoke(pending);
 }
 
@@ -221,7 +227,7 @@ async function api(path: string, init: RequestInit = {}): Promise<Response> {
     );
   }
   if (response.status === 401) {
-    setSession(null);
+    setSession(null, "expired");
     throw new Error("Your SuiteDrive session ended. Sign in again.");
   }
   if (!response.ok && response.status !== 409) {
