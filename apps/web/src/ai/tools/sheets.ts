@@ -429,8 +429,12 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
     tool({
       name: "freeze",
       label: "Freeze",
-      description: "Freeze the top rows and/or left columns so they stay visible while scrolling. 0 unfreezes.",
-      parameters: Type.Object({ rows: Type.Optional(Type.Number()), columns: Type.Optional(Type.Number()) }),
+      description:
+        "Freeze the top rows and/or left columns so they stay visible while scrolling (a header row is rows=1). 0 unfreezes. Leave out what the user did not ask to change.",
+      parameters: Type.Object({
+        rows: Type.Optional(Type.Number({ description: "How many top rows stay visible" })),
+        columns: Type.Optional(Type.Number({ description: "How many left columns stay visible; only if the user asked" })),
+      }),
       target: ({ rows, columns }) => {
         const used = usedRange(sheet());
         const r = Math.max(0, Math.round(rows ?? 0)),
