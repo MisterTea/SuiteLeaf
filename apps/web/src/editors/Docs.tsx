@@ -121,6 +121,7 @@ import { columnLayout } from "./doc-columns";
 import { PageMarginFields } from "./page-setup-margins";
 import { HeaderEdgeFields } from "./header-edge";
 import { KeepWithNext, KeepWithNextControl } from "./doc-keep-next";
+import { DontLeaveOneLineControl, WidowControl } from "./doc-widow-control";
 
 export const extensions: Extensions = [
   DocumentPagination,
@@ -137,6 +138,7 @@ export const extensions: Extensions = [
   TextAlign.configure({ types: ["heading", "paragraph"] }),
   paragraphLineSpacing,
   KeepWithNext,
+  WidowControl,
   croppableImage,
   TableKit.configure({ table: { resizable: true } }),
   CharacterCount,
@@ -1991,6 +1993,7 @@ export default function Docs({
             />
             <EditorContent editor={editor} />
             <KeepWithNextControl editor={editor} readOnly={readOnly} />
+            <DontLeaveOneLineControl editor={editor} readOnly={readOnly} />
           </div>
         </div>
         <DocComments

@@ -15,6 +15,7 @@ import {
   nextBlockType,
   staysWithFollowingBlock,
 } from "./doc-keep-next";
+import { annotateWidowLines, avoidSingleLine } from "./doc-widow-control";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -92,6 +93,11 @@ type Boundary = {
   arabic?: boolean;
   /** 0-based page this block lands on, after breaks. */
   page?: number;
+  /** Set on each visual line of a paragraph with widow/orphan control. */
+  widowControl?: boolean;
+  blockPos?: number;
+  line?: number;
+  lineCount?: number;
 };
 
 /** Layout decorations never alter document content or enter undo history. */
@@ -220,6 +226,33 @@ export const DocumentPagination = Extension.create({
                   parent?.type.name === "tableHeader"
                 )
                   return;
+                // A paragraph can break between lines, so widow control can
+                // keep two of them together. Keep-with-next stays one block.
+                if (
+                  node.type.name === "paragraph" &&
+                  node.textContent &&
+                  !keepsWithNext(node)
+                ) {
+                  const lines = textLines(
+                    view,
+                    dom,
+                    pos,
+                    origin,
+                    scale,
+                    topMargin,
+                  );
+                  lines.sort((a, b) => a.top - b.top || a.pos - b.pos);
+                  if (lines.length > 1) {
+                    const beforeList = breakPosBeforeList(view.state.doc, pos);
+                    if (beforeList != null && lines[0]) lines[0].pos = beforeList;
+                    boundaries.push(
+                      ...(node.attrs.widowControl === true
+                        ? annotateWidowLines(lines, pos, true)
+                        : lines),
+                    );
+                    return false;
+                  }
+                }
                 if (bottom - top <= bodyHeight) {
                   boundaries.push({
                     pos: breakPosBeforeList(view.state.doc, pos) ?? pos,
@@ -236,11 +269,15 @@ export const DocumentPagination = Extension.create({
                   return false;
                 }
                 // A paragraph taller than a page is split at visual line boundaries.
+                const lines = markKeepNextLine(
+                  textLines(view, dom, pos, origin, scale, topMargin),
+                  keepsWithNext(node),
+                );
                 boundaries.push(
-                  ...markKeepNextLine(
-                    textLines(view, dom, pos, origin, scale, topMargin),
-                    keepsWithNext(node),
-                  ),
+                  ...(node.type.name === "paragraph" &&
+                  node.attrs.widowControl === true
+                    ? annotateWidowLines(lines, pos, true)
+                    : lines),
                 );
                 return false;
               });
@@ -256,9 +293,17 @@ export const DocumentPagination = Extension.create({
                     next.top + added > start + 0.5) ||
                   next.manual
                 ) {
-                  // Headings stay with the next paragraph. Keep with next is what
-                  // also carries a heading onto the list that follows it.
-                  const first = keepWithNextBreak(boundaries, i, start, added);
+                  // Widow control keeps two lines of one paragraph together.
+                  // Keep with next still carries a heading onto what follows.
+                  const adjusted = next.manual
+                    ? i
+                    : avoidSingleLine(boundaries, i, start, added);
+                  const first = keepWithNextBreak(
+                    boundaries,
+                    adjusted,
+                    start,
+                    added,
+                  );
                   const b = boundaries[first];
                   for (let k = first; k <= i; k++) boundaries[k].page = page + 1;
                   const gap =
