@@ -3741,6 +3741,13 @@ body.agent-open .gdocs-modal-overlay {
   padding: 12px 14px;
   font-size: 13px;
 }
+/* Beside the AI panel there is no room for the outline as well; the page would shrink to unreadable. */
+body.agent-open .document-stage:has(> .spelling-panel) > .outline {
+  display: none;
+}
+body.agent-open .spelling-panel {
+  flex-basis: 240px;
+}
 .spelling-panel header {
   display: flex;
   align-items: center;
