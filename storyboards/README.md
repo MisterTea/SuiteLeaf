@@ -144,3 +144,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 105 | [See landscape before you apply](105-see-landscape.md) | single-node | Docs |
 | 106 | [See the header text before you apply](106-see-the-header-text.md) | single-node | Docs |
 | 110 | [See the page number before you apply](110-see-the-page-number.md) | single-node | Docs |
+| 113 | [See where the page number goes](113-see-where-the-number-goes.md) | single-node | Docs |

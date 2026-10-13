@@ -237,9 +237,15 @@
   text-align: right;
 }
 .page-footer.number-none .page-footer-text { grid-column: 1 / -1; }
+.page-furniture {
+  /* Same size the pill uses, so the header can leave room for it. */
+  --page-number-size: calc(14px / var(--page-zoom, 1));
+}
 .page-furniture-page[data-number-side="top-right"] .page-header {
   left: 0;
-  right: 8em;
+  /* The pill stays a readable size when the sheet zooms down, so the
+     header inset grows with it. The words stop short of the number. */
+  right: max(8em, calc(var(--page-number-size, 14px) * 6.8));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -255,7 +261,7 @@
   font-variant-numeric: tabular-nums;
   /* The sheet zooms down beside Page setup. Counter that zoom so the
      number stays a readable label instead of shrinking with the paper. */
-  font-size: calc(14px / var(--page-zoom, 1));
+  font-size: var(--page-number-size, calc(14px / var(--page-zoom, 1)));
   background: #e8f0fe;
   border-radius: 999px;
   padding: 0.05em 0.55em;
