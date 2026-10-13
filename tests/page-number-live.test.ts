@@ -4,7 +4,10 @@ import {
   pageFace,
   type PageSettings,
 } from "../packages/core/src/document-layout";
-import { livePageNumbers } from "../apps/web/src/editors/page-number-live";
+import {
+  acceptPageNumberStart,
+  livePageNumbers,
+} from "../apps/web/src/editors/page-number-live";
 import { livePageSettings } from "../apps/web/src/editors/margin-live";
 
 const inch = (n: number) => n * 96;
@@ -67,7 +70,6 @@ describe("live page numbers", () => {
       pageNumberFormat: "page" as const,
       pageNumberPosition: "top-right" as const,
       pageNumberPositionSet: true,
-      pageNumberStart: 4,
       coverHasNoNumber: true,
       differentFirstPage: true,
       watermark: "DRAFT",
@@ -92,24 +94,71 @@ describe("live page numbers", () => {
     expect(pageFace(saved, 1, 2).pageNumber).toBe("2 / 2");
   });
 
-  it("leaves the start, the cover, a different first page, and the watermark until apply", () => {
-    const saved = page({ pageNumbers: true });
-    const shown = livePageNumbers(saved, {
-      ...saved,
+  it("shows Page 12 and Page 13 before apply and leaves the cover until apply", () => {
+    const saved = page({
+      pageNumbers: true,
       pageNumberFormat: "page",
       pageNumberPosition: "top-right",
       pageNumberPositionSet: true,
-      pageNumberStart: 4,
+    });
+    const shown = livePageNumbers(saved, {
+      ...saved,
+      pageNumberStart: 12,
       coverHasNoNumber: true,
       differentFirstPage: true,
       watermark: "DRAFT",
     });
-    expect(shown.pageNumberStart).toBe(1);
+    expect(shown.pageNumberStart).toBe(12);
     expect(shown.coverHasNoNumber).toBe(false);
     expect(shown.differentFirstPage).toBe(false);
     expect(shown.watermark).toBe("");
-    expect(pageFace(shown, 0, 2).pageNumber).toBe("Page 1");
-    expect(pageFace(shown, 0, 2).header).toBe("Draft minutes");
+    expect(pageFace(shown, 0, 2)).toMatchObject({
+      header: "Draft minutes",
+      pageNumber: "Page 12",
+      numberSide: "top-right",
+    });
+    expect(pageFace(shown, 1, 2)).toMatchObject({
+      pageNumber: "Page 13",
+      numberSide: "top-right",
+    });
+    expect(pageFace(saved, 0, 2).pageNumber).toBe("Page 1");
+    expect(pageFace(saved, 1, 2).pageNumber).toBe("Page 2");
+  });
+
+  it("refuses a start below 1 and keeps the last valid number", () => {
+    expect(acceptPageNumberStart(12, "0")).toEqual({
+      start: 12,
+      refused: true,
+      text: "0",
+    });
+    expect(acceptPageNumberStart(12, "-2")).toEqual({
+      start: 12,
+      refused: true,
+      text: "-2",
+    });
+    expect(acceptPageNumberStart(1, "12")).toEqual({
+      start: 12,
+      refused: false,
+      text: "12",
+    });
+    expect(acceptPageNumberStart(12, "")).toEqual({
+      start: 12,
+      refused: false,
+      text: "",
+    });
+    const saved = page({
+      pageNumbers: true,
+      pageNumberFormat: "page",
+      pageNumberPosition: "top-right",
+      pageNumberPositionSet: true,
+      pageNumberStart: 12,
+    });
+    const shown = livePageNumbers(saved, { ...saved, pageNumberStart: 0 });
+    expect(shown).toBe(saved);
+    expect(pageFace(shown, 0, 2).pageNumber).toBe("Page 12");
+    expect(pageFace(shown, 1, 2).pageNumber).toBe("Page 13");
+    const atOne = page({ pageNumbers: true });
+    expect(livePageNumbers(atOne, { ...atOne, pageNumberStart: 0 })).toBe(atOne);
   });
 
   it("draws a roman format before apply and ignores a format it does not know", () => {
@@ -138,10 +187,12 @@ describe("live page numbers", () => {
         ...saved,
         watermark: "DRAFT",
         coverHasNoNumber: true,
-        pageNumberStart: 8,
         differentFirstPage: true,
       }),
     ).toBe(saved);
+    expect(livePageSettings(saved, { ...saved, pageNumberStart: 12 }).pageNumberStart).toBe(
+      12,
+    );
     expect(
       livePageNumbers(saved, {
         ...saved,

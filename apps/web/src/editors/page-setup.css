@@ -189,6 +189,14 @@
   outline: 2px solid #1a73e8;
   outline-offset: 2px;
 }
+.page-setup-check.page-setup-numbers .page-number-start.is-refused input[type="number"] {
+  border-color: #d93025;
+  background: #fce8e6;
+}
+.page-setup-check.page-setup-numbers > .page-setup-hint.is-refused {
+  color: #a50e0e;
+  font-weight: 600;
+}
 .page-setup-check.page-setup-numbers > .page-number-cover {
   grid-column: 1 / -1;
   display: flex;

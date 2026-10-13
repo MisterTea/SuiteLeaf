@@ -1,9 +1,8 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import {
   PAGE_NUMBER_START_MAX,
   pageFace,
   pageNumberHint,
-  pageNumberStartValue,
   pageNumberText,
   setDifferentFirstPage,
   setDifferentOddEven,
@@ -11,6 +10,7 @@ import {
 } from "@suiteleaf/core/document-layout";
 import "./page-setup.css";
 import { DocWatermark } from "./doc-watermark";
+import { acceptPageNumberStart } from "./page-number-live";
 
 function TextField({
   span,
@@ -97,6 +97,13 @@ export function PageSetupFields({
   onChange: (next: PageSettings) => void;
 }) {
   const shared = draft.header.trim() || "one shared header";
+  const [startText, setStartText] = useState(String(draft.pageNumberStart));
+  const [startRefused, setStartRefused] = useState(false);
+  const stayed = pageNumberText(
+    draft.pageNumberFormat,
+    draft.pageNumberStart,
+    Math.max(pageCount, 1),
+  );
   return (
     <>
       <fieldset className="page-setup-variants">
@@ -202,28 +209,29 @@ export function PageSetupFields({
           ))}
         </fieldset>
         <fieldset
-          className="page-number-choice page-number-start"
+          className={`page-number-choice page-number-start${startRefused ? " is-refused" : ""}`}
           disabled={!draft.pageNumbers || draft.coverHasNoNumber}
         >
           <legend>Start at</legend>
           <input
             aria-label="Start at"
             aria-describedby="page-numbers-hint"
+            aria-invalid={startRefused || undefined}
             type="number"
             inputMode="numeric"
             min={1}
             max={PAGE_NUMBER_START_MAX}
             step={1}
-            value={draft.pageNumberStart}
+            value={startText}
             onChange={(e) => {
-              const raw = e.target.value.trim();
-              if (!raw) return;
-              const next = Number(raw);
-              if (!Number.isInteger(next)) return;
-              onChange({
-                ...draft,
-                pageNumberStart: pageNumberStartValue(next),
-              });
+              const next = acceptPageNumberStart(
+                draft.pageNumberStart,
+                e.target.value,
+              );
+              setStartText(next.text);
+              setStartRefused(next.refused);
+              if (!next.refused && next.start !== draft.pageNumberStart)
+                onChange({ ...draft, pageNumberStart: next.start });
             }}
           />
         </fieldset>
@@ -239,8 +247,14 @@ export function PageSetupFields({
           />
           Cover has no number
         </label>
-        <p id="page-numbers-hint" className="page-setup-hint">
-          {pageNumberHint(draft, pageCount)}
+        <p
+          id="page-numbers-hint"
+          className={`page-setup-hint${startRefused ? " is-refused" : ""}`}
+          role={startRefused ? "alert" : undefined}
+        >
+          {startRefused
+            ? `Numbering starts at 1 or later. The page stays on ${stayed}.`
+            : pageNumberHint(draft, pageCount)}
         </p>
       </div>
       <Preview draft={draft} pageCount={pageCount} />

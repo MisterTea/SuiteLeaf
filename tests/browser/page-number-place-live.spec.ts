@@ -205,7 +205,7 @@ test("page number format and position show before apply", async ({ page }) => {
   await dialog.getByRole("checkbox", { name: "Cover has no number" }).check();
   await dialog.getByRole("checkbox", { name: "Different first page" }).check();
   await dialog.getByLabel("Watermark").fill("DRAFT");
-  await expect.poll(() => numbers(page)).toEqual(["Page 1", "Page 2"]);
+  await expect.poll(() => numbers(page)).toEqual(["Page 4", "Page 5"]);
   await expect(page.locator(".page-watermark")).toHaveCount(0);
   await expect(page.locator(".paginated-paper .page-header").first()).toHaveText(longHeader);
   const unsaved = await savedPage(page);
