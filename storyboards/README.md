@@ -108,3 +108,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 50 | [Add a citation and a bibliography](50-citations-and-a-bibliography.md) | single-node | Docs |
 | 51 | [Hand over a file, and let a share expire](51-transfer-ownership-and-expire-a-share.md) | cluster | Docs |
 | 52 | [Restore one paragraph](52-restore-one-paragraph.md) | cluster | Docs |
+| 53 | [Link a cell](53-link-a-cell.md) | single-node | Sheets |
