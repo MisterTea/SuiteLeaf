@@ -8,6 +8,8 @@ import { ToolError, currentSnapshot, tool, waitForHost, type SuiteTool } from ".
 type Kind = SuiteFile["kind"];
 const KINDS: Record<string, Kind> = { document: "doc", spreadsheet: "sheet", presentation: "slide" };
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const leftServer = (host: string) =>
+  `Signed out of ${host} and left the server. SuiteLeaf is back to the files on this computer (listed below); files in SuiteDrive stayed on the server.`;
 
 /** Single-node home: connecting to a team's server. */
 export function connectTools(ctx: { probe: (address: string) => Promise<string>; connect: (url: string) => Promise<void> }): SuiteTool[] {
@@ -67,7 +69,7 @@ export function signInTools(ctx: {
             target: () =>
               [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Work on this computer")),
             execute: () =>
-              agentSession.reloadAndResume(`Disconnected from ${ctx.host}; files now live on this computer.`, ctx.leave),
+              agentSession.reloadAndResume(leftServer(ctx.host), ctx.leave),
           }),
         ]
       : []),
@@ -86,6 +88,8 @@ export interface DriveAgentContext {
   open: (item: DriveItem) => Promise<void>;
   signOut: () => Promise<boolean>;
   canDisconnect: boolean;
+  /** Asks first when SuiteDrive files have changes that haven't uploaded; false if the user said no. */
+  mayDisconnect: () => Promise<boolean>;
   disconnect: () => Promise<void>;
 }
 
@@ -223,7 +227,7 @@ export function driveTools(ctx: DriveAgentContext): SuiteTool[] {
       target: () => document.querySelector('[aria-label="Sign out"]'),
       async execute() {
         if (!(await ctx.signOut())) return "The user chose not to sign out.";
-        return `Signed out of ${ctx.host}.`;
+        return `Signed out of ${ctx.host}. The sign-in screen shows now; the server's files are hidden until someone signs in.`;
       },
     }),
     ...(ctx.canDisconnect
@@ -234,8 +238,11 @@ export function driveTools(ctx: DriveAgentContext): SuiteTool[] {
             description: "Sign out and disconnect from this server, going back to files on this computer. The page reloads.",
             parameters: Type.Object({}),
             target: () => document.querySelector('[aria-label="Disconnect from server"]'),
-            execute: () =>
-              agentSession.reloadAndResume(`Disconnected from ${ctx.host}; files now live on this computer.`, ctx.disconnect),
+            async execute() {
+              if (!(await ctx.mayDisconnect()))
+                return "The user chose to stay connected, because a SuiteDrive file has changes that haven't uploaded yet.";
+              return agentSession.reloadAndResume(leftServer(ctx.host), ctx.disconnect);
+            },
           }),
         ]
       : []),

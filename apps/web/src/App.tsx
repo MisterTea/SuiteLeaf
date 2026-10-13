@@ -1024,9 +1024,8 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
         return true;
       },
       canDisconnect: !locked,
-      disconnect: async () => {
-        if (await confirmLeave(serverUrl, "Disconnect")) await disconnect(serverUrl);
-      },
+      mayDisconnect: () => confirmLeave(serverUrl, "Disconnect"),
+      disconnect: () => disconnect(serverUrl),
     };
     return { kind: "home", snapshot: () => driveSnapshot(ctx), tools: driveTools(ctx) };
   });
