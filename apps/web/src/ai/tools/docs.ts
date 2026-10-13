@@ -312,7 +312,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
             let i = list.indexOf(found!) + 1;
             if (found!.type === "heading" && /^\s*#{1,3}\s/.test(text)) while (list[i]?.label === "Paragraph") i++;
             const block = list[i - 1],
-              next = list[i];
+              next = list.slice(i).find((b) => b.text);
             where = `right after ${quote(block)}${next ? `, before ${quote(next)}` : ", at the end of the document"}`;
             editor.chain().setTextSelection(block.end - 1).splitBlock().run();
             editor.chain().setParagraph().run();
