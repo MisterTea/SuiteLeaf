@@ -36,6 +36,22 @@ Priya wrote a thank-you letter to the garden volunteers and spelled "receive" as
 - Text selected in the document when the dialog opens fills Find, as in Google Docs and Word.
 - When the cursor isn't on a match, the counter shows how many there are ("3 results") rather than "0 of 3".
 
+## AI version
+
+**Videos:** [videos/06-find-and-replace-ai.mp4](videos/06-find-and-replace-ai.mp4) (web, WebGPU) · [videos/electron/06-find-and-replace-ai.mp4](videos/electron/06-find-and-replace-ai.mp4) (desktop, llama.cpp) · **Script:** [scenes/ai/06-find-and-replace-ai.spec.ts](scenes/ai/06-find-and-replace-ai.spec.ts)
+
+Priya types the same six-line letter, with "recieve" three times, into a new document called "Thank-you letter". Then she opens the assistant and asks:
+
+> Could you check the spelling in my letter and fix any mistakes?
+
+**Tools used:** `check_spelling`, which opens **Tools → Spelling and grammar** (the pointer goes to the Tools menu) and returns `"recieve" (3×): receive, relieve`. Then `find_and_replace` with `all: true`, which opens the Find and replace dialog with both fields filled, highlights the three matches ("1 of 3"), replaces them, shows "Replaced 3 instances…", and closes. Its result quotes each change and says `No "recieve" is left in the document`.
+
+**What the recording shows:** the Spelling panel opens beside the page and lists "recieve 3×" with the suggestions receive and relieve. The dialog appears and the three highlighted matches are visible to its left. Then the panel switches to "No spelling mistakes found." Gemma replies in one sentence, for example "I have checked the spelling and corrected all instances of "recieve" to "receive" throughout the letter." The script checks that no "recieve" is left, that "receive" appears three times, that the other lines are unchanged, that the Spelling panel has nothing left to check, and that the letter saved ("Saved on this device" on the web, "Draft saved · choose Save As" on the desktop).
+
+**How Gemma did:** 9 of 9 web runs and 2 of 2 desktop runs passed. That includes the last three web runs, done after the final fix, which all passed. It always picked the right two tools with the right arguments. In most runs it then made one unneeded `find_and_replace` call to check its work (once with `match_case: true` first, then false; once with a misspelled `"reciev"`), even though the first result said none were left. That call now returns "Nothing to replace: … already replaced" rather than an error. Once it ran `check_spelling` again to confirm. In the first recording, before the tool results said what was left, it repeated the replace until the loop guard stopped it, so it never replied.
+
+**Fixed along the way:** `find_and_replace` now says where each change went and whether any matches are left. Not finding text that is already replaced is reported as done, not as an error. The spelling check's pointer goes to the Tools menu. With the AI panel and the Spelling panel both open, the outline hides and the Spelling panel narrows, so the page is about 75% size instead of about 40%. The page also fits beside the Spelling panel when the AI panel is closed, instead of running under it.
+
 ## Gaps and notes
 
 - Spellcheck works: the editor's text box has `spellcheck="true"`, and the browser underlines each "recieve" in red. Recordings use full Chromium (`channel: "chromium"` in `playwright.storyboards.config.ts`) because Playwright's default headless shell has no spellchecker.
