@@ -203,6 +203,25 @@ test("spreadsheet filter tools say which rows are showing and what they add up t
   expect(await call(page, "read_sheet")).toContain("Shipped");
 });
 
+test("checkbox and highlight rule tools say what the boxes hold and which rows a rule styles", async ({ page }) => {
+  await page.goto("/");
+  await waitForTools(page, "create_file");
+  await call(page, "create_file", { kind: "spreadsheet", title: "Chores" });
+  await waitForTools(page, "insert_checkboxes");
+  await call(page, "set_cells", { start: "A1", values: [["Done", "Task"], ["", "Dishes"], ["", "Laundry"], ["", "Bins"]] });
+  expect(await call(page, "insert_checkboxes", { range: "A2:A4" })).toBe(
+    "Added unticked checkboxes to A2:A4: each holds FALSE, and ticking one makes it TRUE (so a rule can test =$A2=TRUE).",
+  );
+  expect(await call(page, "highlight_rule", { range: "A2:B4", formula: "$=A2=TRUE", fill_color: "#d9ead3", strikethrough: true })).toBe(
+    "Added a rule on A2:B4: when =$A2=TRUE (=$A3=TRUE on row 3, and so on), fill #d9ead3, strikethrough. Right now it is not true on any row, so nothing is styled yet; a row is styled as soon as its formula becomes true.",
+  );
+  await expect(call(page, "highlight_rule", { range: "A2:B4", formula: "=$A2=DONE", fill_color: "#d9ead3" })).rejects.toThrow(
+    /gives #NAME\? on row 2, so the rule would never apply.*=\$A2=TRUE/,
+  );
+  await call(page, "set_checkbox", { cells: ["A3"], checked: true });
+  expect(await call(page, "highlight_rule", { range: "B2:B4", formula: "=$A2", bold: true })).toContain("Right now it applies to row(s) 3.");
+});
+
 test("presentation tools build slides and present", async ({ page }) => {
   await page.goto("/");
   await waitForTools(page, "create_file");

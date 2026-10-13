@@ -285,6 +285,26 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
   const select = (range: string) => {
     sheet().getRange(a1(parseA1(range))).activate();
   };
+  /** What a rule's formula gives on each row of `r`, with its references moved down row by row as the rule does. */
+  const ruleResults = async (formula: string, r: ReturnType<typeof parseA1>) => {
+    try {
+      const engine = ctx.api.getFormula();
+      const unit = book.getId(),
+        id = sheet().getSheetId();
+      const rows: Record<number, Record<number, string[]>> = {};
+      for (let row = r.startRow; row <= Math.min(r.endRow, usedRange(sheet()).endRow, r.startRow + 199); row++)
+        rows[row] = { [r.startColumn]: [engine.moveFormulaRefOffset(formula, 0, row - r.startRow)] };
+      const out = (await engine.executeFormulas({ [unit]: { [id]: rows } }, 3000))?.[unit]?.[id] ?? {};
+      return Object.keys(rows).map((row) => {
+        let value = out[row]?.[r.startColumn]?.[0]?.value;
+        while (Array.isArray(value)) value = value[0];
+        return { row: Number(row), value };
+      });
+    } catch {
+      // Checking is best effort; Univer still evaluates the rule itself.
+      return [];
+    }
+  };
   /** Pivot sheets are read-only; say where their numbers come from instead. */
   const writable = () => {
     const p = ctx.content().pivots.find((x) => x.targetSheetId === sheet().getSheetId());
@@ -923,7 +943,17 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         select(range);
         ctx.insertCheckbox();
         await wait(400);
-        return `Added checkboxes to ${range}.`;
+        const r = parseA1(range);
+        const kept: string[] = [];
+        (sheet().getRange(a1(r)).getValues() as unknown[][]).forEach((row, i) =>
+          row.forEach((v, j) => {
+            if (typeof v === "boolean" || v === 0 || v === 1 || v === "" || v == null) return;
+            const at = { startRow: r.startRow + i, endRow: r.startRow + i, startColumn: r.startColumn + j, endColumn: r.startColumn + j };
+            kept.push(`${a1(at)} "${display(v)}"`);
+          }),
+        );
+        const first = `$${columnLetter(r.startColumn)}${r.startRow + 1}`;
+        return `Added unticked checkboxes to ${a1(r)}: each holds FALSE, and ticking one makes it TRUE (so a rule can test =${first}=TRUE).${kept.length ? ` These cells kept their text instead of a tick: ${kept.join(", ")}.` : ""}`;
       },
     }),
     tool({
@@ -945,7 +975,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       name: "highlight_rule",
       label: "Conditional formatting",
       description:
-        "Add a conditional formatting rule: cells in `range` get fill_color (and optional text_color/bold) when the custom formula is true for that row, e.g. range A2:C10 with formula =$A2=TRUE, or =$C2>100. Write the formula for the range's first row with $ before the column.",
+        "Add a conditional formatting rule: cells in `range` get the style when the custom formula is true for that row, e.g. range A2:C10 with formula =$A2=TRUE, or =$C2>100. Write the formula for the range's first row with $ before the column. Style: fill_color (#rrggbb; light shades such as #d9ead3 green or #fff2cc yellow keep the text readable), text_color, bold, strikethrough. Set only the styles the user asked for.",
       parameters: Type.Object({
         range: Type.String(),
         formula: Type.String(),
@@ -954,10 +984,20 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         bold: Type.Optional(Type.Boolean()),
         strikethrough: Type.Optional(Type.Boolean()),
       }),
+      // "$ before the column" sometimes comes back as $=A2 instead of =$A2.
+      prepare: (args) =>
+        typeof args.formula === "string" ? { ...args, formula: args.formula.trim().replace(/^=?\$=/, "=$") } : args,
       target: ({ range }) => target(range),
       async execute({ range, formula, fill_color, text_color, bold, strikethrough }) {
         const s = sheet();
         const formulaText = formula.startsWith("=") ? formula : `=${formula}`;
+        const r = parseA1(range);
+        const results = await ruleResults(formulaText, r);
+        const broken = results.find((x) => typeof x.value === "string" && x.value.startsWith("#"));
+        if (broken)
+          throw new ToolError(
+            `The formula ${formulaText} gives ${broken.value} on row ${broken.row + 1}, so the rule would never apply. Write it as a true/false test for the range's first row, with $ before the column, e.g. =$A${r.startRow + 1}=TRUE or =$C${r.startRow + 1}>100.`,
+          );
         let builder = s
           .newConditionalFormattingRule()
           .whenFormulaSatisfied(formulaText)
@@ -969,7 +1009,14 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         s.addConditionalFormattingRule(builder.build());
         ctx.persist();
         await wait(300);
-        return `Added a rule on ${range}: when ${formulaText}, ${[fill_color && `fill ${fill_color}`, text_color && `text ${text_color}`, bold && "bold", strikethrough && "strikethrough"].filter(Boolean).join(", ")}.`;
+        const on = results.filter((x) => x.value === true || x.value === 1).map((x) => x.row + 1);
+        const next = results.length > 1 ? ` (${ctx.api.getFormula().moveFormulaRefOffset(formulaText, 0, 1)} on row ${r.startRow + 2}, and so on)` : "";
+        const now = !results.length
+          ? ""
+          : on.length
+            ? ` Right now it applies to row(s) ${on.join(", ")}.`
+            : " Right now it is not true on any row, so nothing is styled yet; a row is styled as soon as its formula becomes true.";
+        return `Added a rule on ${a1(r)}: when ${formulaText}${next}, ${[fill_color && `fill ${fill_color}`, text_color && `text ${text_color}`, bold && "bold", strikethrough && "strikethrough"].filter(Boolean).join(", ")}.${now}`;
       },
     }),
     tool({
