@@ -358,6 +358,11 @@ export type EditorActions = {
     insertPivot: () => void;
     insertFunction?: (name: string) => void;
     toggleFilter: () => void;
+    /** Unsaved filter for someone who cannot edit. Not stored in the file. */
+    createFilterView?: () => void;
+    applyFilterView?: (value: string) => void;
+    clearFilterView?: () => void;
+    filterViewChoices?: () => { label: string; value: string }[];
     sortRange?: () => void;
     namedRanges?: () => void;
     groupRows?: () => void;
