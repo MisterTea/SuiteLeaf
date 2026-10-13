@@ -62,5 +62,8 @@ mod tests {
         let versions = schema.table("drive_version").unwrap();
         assert!(versions.column_type("name").is_some());
         assert!(versions.column_type("restoredFrom").is_some());
+        let notices = schema.table("drive_notice").unwrap();
+        assert!(notices.column_type("sharerId").is_some());
+        assert!(notices.column_type("dismissedAt").is_some());
     }
 }

@@ -23,6 +23,7 @@ import {
 import { isNativeName, kindFromName } from "@suiteleaf/core";
 import { drive, getSession, type DriveItem } from "../node-client";
 import { accessLabel } from "./roles";
+import { ShareNotices } from "./share-notices";
 import { formatModified } from "./status";
 
 type Crumb = { id: string | null; name: string };
@@ -226,6 +227,7 @@ export function DriveBrowser({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [name, setName] = useState(defaultName);
+  const [kept, setKept] = useState("");
   const [asking, setAsking] = useState<
     | { action: "new-folder" }
     | { action: "rename" | "trash"; item: DriveItem }
@@ -289,6 +291,7 @@ export function DriveBrowser({
   const switchView = (next: View) => {
     setView(next);
     setPath(rootOf(next).path);
+    setKept("");
   };
 
   const choose = (item: DriveItem) => {
@@ -363,6 +366,14 @@ export function DriveBrowser({
           {error}
         </p>
       ) : null}
+      {inline && mode === "open" && onOpen ? (
+        <ShareNotices onOpen={(item) => act(async () => onOpen(item))} />
+      ) : null}
+      {kept ? (
+        <p className="drive-kept" role="status">
+          {kept}
+        </p>
+      ) : null}
       <div className="drive-list" role="list" aria-busy={loading}>
         {loading ? (
           <p className="drive-empty">Loading…</p>
@@ -408,6 +419,25 @@ export function DriveBrowser({
                   {formatModified(item.updatedAt)}
                 </time>
               </button>
+              {view === "shared" && item.kind === "file" ? (
+                <button
+                  type="button"
+                  className="drive-keep"
+                  title="A copy you own in My Drive. It stays if access to the original is removed."
+                  disabled={busy}
+                  onClick={() =>
+                    void act(async () => {
+                      await drive.keepCopy(item.id);
+                      setKept(
+                        `Kept a copy of ${item.name} in My Drive. This copy is yours.`,
+                      );
+                      await refresh();
+                    })
+                  }
+                >
+                  Keep a copy
+                </button>
+              ) : null}
               {item.role === "owner" || item.role === "editor" ? (
                 <span className="drive-row-actions">
                   <button

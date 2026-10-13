@@ -592,6 +592,62 @@ async fn add_comment(
     Ok((StatusCode::CREATED, Json(comment)).into_response())
 }
 
+async fn list_notices(
+    State(s): State<AppState>,
+    RequireUser(user): RequireUser,
+) -> ApiResult<Response> {
+    let who = principal(&user);
+    let notices = blocking(&s.drive, move |d| d.notices(&who)).await?;
+    let ids: Vec<String> = notices.iter().map(|n| n.sharer_id.clone()).collect();
+    let auth = s.auth.clone();
+    let profiles = tokio::task::spawn_blocking(move || auth.accounts(&ids))
+        .await
+        .map_err(|e| ApiError(DriveError::Other(e.into())))?
+        .map_err(|e| ApiError(DriveError::Other(e)))?;
+    let by_id: std::collections::HashMap<_, _> =
+        profiles.into_iter().map(|p| (p.id.clone(), p)).collect();
+    let views: Vec<_> = notices
+        .into_iter()
+        .map(|n| {
+            let name = by_id
+                .get(&n.sharer_id)
+                .and_then(|p| p.name.clone())
+                .filter(|name| !name.trim().is_empty());
+            json!({
+                "id": n.id,
+                "itemId": n.item_id,
+                "itemName": n.item_name,
+                "sharerId": n.sharer_id,
+                "sharerName": name,
+                "role": n.role,
+                "createdAt": n.created_at,
+            })
+        })
+        .collect();
+    Ok(Json(json!({ "notices": views })).into_response())
+}
+
+async fn dismiss_notice(
+    State(s): State<AppState>,
+    RequireUser(user): RequireUser,
+    Path(id): Path<String>,
+) -> ApiResult<Response> {
+    let who = principal(&user);
+    blocking(&s.drive, move |d| d.dismiss_notice(&who, &id)).await?;
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// An owned copy in the caller's My Drive. Not a shortcut, and not mail.
+async fn keep_copy(
+    State(s): State<AppState>,
+    RequireUser(user): RequireUser,
+    Path(id): Path<String>,
+) -> ApiResult<Response> {
+    let who = principal(&user);
+    let item = blocking(&s.drive, move |d| d.keep_copy(&who, &id)).await?;
+    Ok((StatusCode::CREATED, Json(item)).into_response())
+}
+
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/me", get(me))
@@ -626,5 +682,8 @@ pub fn router(state: AppState) -> Router {
             "/api/drive/items/{id}/comments",
             get(list_comments).post(add_comment),
         )
+        .route("/api/drive/items/{id}/copy", post(keep_copy))
+        .route("/api/drive/notices", get(list_notices))
+        .route("/api/drive/notices/{id}/dismiss", post(dismiss_notice))
         .with_state(state)
 }
