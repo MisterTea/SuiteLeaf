@@ -2,8 +2,13 @@ import { Extension, Node } from "@tiptap/core";
 import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import {
+  bodyTextHeight,
+  bodyTop,
   documentPageSettings,
+  laidOutPageCount,
+  pageBreakSpacer,
   pageDimensions,
+  pageMargins,
 } from "@suiteleaf/core/document-layout";
 import type { JsonNode } from "@suiteleaf/core";
 import { gutterDecorations } from "./doc-gutter";
@@ -135,8 +140,8 @@ export const DocumentPagination = Extension.create({
                 view.state.doc.toJSON() as JsonNode,
               );
               const { height } = pageDimensions(settings);
-              const margin = settings.margin,
-                bodyHeight = height - margin * 2;
+              const margins = pageMargins(settings);
+              const bodyHeight = bodyTextHeight(height, margins);
               const origin = view.dom.getBoundingClientRect().top;
               const scale =
                 view.dom.getBoundingClientRect().width /
@@ -150,8 +155,8 @@ export const DocumentPagination = Extension.create({
                 const dom = view.nodeDOM(pos);
                 if (!(dom instanceof HTMLElement)) return;
                 const rect = dom.getBoundingClientRect();
-                const top = (rect.top - origin) / scale - margin;
-                const bottom = (rect.bottom - origin) / scale - margin;
+                const top = bodyTop((rect.top - origin) / scale, margins);
+                const bottom = bodyTop((rect.bottom - origin) / scale, margins);
                 if (node.type.name === "pageBreak") {
                   boundaries.push({ pos, top, bottom, manual: true });
                   return false;
@@ -200,7 +205,7 @@ export const DocumentPagination = Extension.create({
                 }
                 // A paragraph taller than a page is split at visual line boundaries.
                 boundaries.push(
-                  ...textLines(view, dom, pos, origin, scale, margin),
+                  ...textLines(view, dom, pos, origin, scale, margins.top),
                 );
                 return false;
               });
@@ -226,8 +231,10 @@ export const DocumentPagination = Extension.create({
                   )
                     first--;
                   const b = boundaries[first];
-                  const gap =
-                    Math.max(0, end - (b.top + added)) + 2 * margin + 24;
+                  const gap = pageBreakSpacer(
+                    end - (b.top + added),
+                    margins,
+                  );
                   decorations.push(
                     Decoration.widget(
                       b.pos,
@@ -272,9 +279,7 @@ export const DocumentPagination = Extension.create({
               );
               const pages = Math.max(
                 page + 1,
-                Math.ceil(
-                  (naturalBottom + added + margin * 2 + 24) / (height + 24),
-                ),
+                laidOutPageCount(naturalBottom, added, height, margins),
               );
               view.dispatch(
                 view.state.tr

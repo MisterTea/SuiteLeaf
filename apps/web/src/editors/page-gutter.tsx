@@ -143,8 +143,8 @@ export function PageGutterBands({
               top: `calc(${i} * var(--page-stride))`,
               width: settings.gutter,
               ...(odd
-                ? { left: settings.margin }
-                : { right: settings.margin }),
+                ? { left: settings.left }
+                : { right: settings.right }),
             }}
           />
         );

@@ -75,6 +75,9 @@ describe("local Office export", () => {
     expect(doc).toContain("<w:pageBreakBefore");
     expect(doc).toContain('w:w="16838"');
     expect(doc).toContain('w:top="720"');
+    expect(doc).toContain('w:bottom="720"');
+    expect(doc).toContain('w:left="720"');
+    expect(doc).toContain('w:right="720"');
     expect(await zip.file("word/header1.xml")!.async("string")).toContain(
       "Confidential &amp; internal",
     );
@@ -120,6 +123,23 @@ describe("local Office export", () => {
     );
     expect(footers.some((xml) => xml.includes("NUMPAGES"))).toBe(true);
     expect(footers.some((xml) => !xml.includes("PAGE"))).toBe(true);
+  });
+  it("writes a different Word margin for each edge", async () => {
+    const file = createFile("doc", "Minutes");
+    if (file.kind !== "doc") throw new Error();
+    file.content = {
+      type: "doc",
+      attrs: {
+        pageSettings: { top: 144, bottom: 72, left: 96, right: 48, margin: 72 },
+      },
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Minutes" }] }],
+    };
+    const zip = await JSZip.loadAsync(await exportDocx(file));
+    const doc = await zip.file("word/document.xml")!.async("string");
+    expect(doc).toContain('w:top="2160"');
+    expect(doc).toContain('w:bottom="1080"');
+    expect(doc).toContain('w:left="1440"');
+    expect(doc).toContain('w:right="720"');
   });
   it("marks a document table's header row as a repeating Word header row", async () => {
     const file = createFile("doc", "Sign-up");

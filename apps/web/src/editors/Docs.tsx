@@ -105,7 +105,9 @@ import {
   documentHtml,
   documentPageSettings,
   gutterAccepted,
+  marginsValid,
   pageDimensions,
+  pageMarginVars,
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
 import { PageSetupFields } from "./page-setup";
@@ -115,6 +117,7 @@ import { LineSpacingControl } from "./doc-line-spacing-ui";
 import { pageSetupToSave } from "./doc-watermark";
 import { columnLayout } from "./doc-columns";
 import { GutterField, PageGutterBands } from "./page-gutter";
+import { PageMarginFields } from "./page-margins";
 
 export const extensions: Extensions = [
   DocumentPagination,
@@ -956,10 +959,7 @@ export default function Docs({
 
   const pageSettings = documentPageSettings(editor.getJSON() as JsonNode);
   const pageDraftValid =
-    Number.isFinite(pageDraft.margin) &&
-    pageDraft.margin >= 24 &&
-    pageDraft.margin <= 144 &&
-    gutterAccepted(pageDraft.gutter);
+    marginsValid(pageDraft) && gutterAccepted(pageDraft.gutter);
   const dimensions = pageDimensions(pageSettings);
   const requestedZoom =
     zoomLevel === "Fit" ? 1 : Number.parseInt(zoomLevel, 10) / 100;
@@ -1372,6 +1372,7 @@ export default function Docs({
             role="dialog"
             aria-modal="true"
             aria-label="Page setup"
+            noValidate
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
               if (e.key === "Escape") closePageSetup();
@@ -1436,23 +1437,7 @@ export default function Docs({
                   </label>
                 ))}
               </fieldset>
-              <label>
-                <span>Margins (inches)</span>
-                <input
-                  aria-label="Page margins"
-                  type="number"
-                  min="0.25"
-                  max="1.5"
-                  step="0.125"
-                  value={pageDraft.margin / 96}
-                  onChange={(e) =>
-                    setPageDraft({
-                      ...pageDraft,
-                      margin: Number(e.target.value) * 96,
-                    })
-                  }
-                />
-              </label>
+              <PageMarginFields draft={pageDraft} onChange={setPageDraft} />
               <GutterField
                 px={pageDraft.gutter}
                 onPx={(gutter) => setPageDraft({ ...pageDraft, gutter })}
@@ -1959,7 +1944,7 @@ export default function Docs({
               {
                 "--page-width": `${dimensions.width}px`,
                 "--page-height": `${dimensions.height}px`,
-                "--page-margin": `${pageSettings.margin}px`,
+                ...pageMarginVars(pageSettings),
                 "--page-gutter": `${pageSettings.gutter}px`,
                 "--page-stride": `${dimensions.height + 24}px`,
                 minHeight: `${pageCount * dimensions.height + (pageCount - 1) * 24}px`,

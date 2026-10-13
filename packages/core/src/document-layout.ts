@@ -1,4 +1,21 @@
 import type { JsonNode } from "./index";
+
+/** On-screen pages use CSS pixels: 96px is one inch. */
+export const PX_PER_INCH = 96;
+/** Smallest margin Page setup will apply. */
+export const MIN_MARGIN_PX = 0.25 * PX_PER_INCH;
+/** Largest margin Page setup will apply. */
+export const MAX_MARGIN_PX = 3 * PX_PER_INCH;
+
+export type MarginEdge = "top" | "bottom" | "left" | "right";
+
+export type PageMargins = {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+};
+
 export type PageNumberFormat = "fraction" | "page";
 export type PageNumberPosition = "bottom-right" | "bottom-center" | "top-right";
 const pageNumberPositions: PageNumberPosition[] = [
@@ -9,9 +26,18 @@ const pageNumberPositions: PageNumberPosition[] = [
 export type PageSettings = {
   size: "letter" | "a4";
   landscape: boolean;
+  /**
+   * Legacy uniform margin in CSS pixels. Files saved before each edge had
+   * its own field store only this. When top, bottom, left, and right are
+   * present they win; this value is the fallback for any edge that is missing.
+   */
   margin: number;
   /** Extra inside margin, in CSS pixels. 0 means the edges stay equal. */
   gutter: number;
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
   header: string;
   footer: string;
   pageNumbers: boolean;
@@ -56,6 +82,10 @@ export const defaultPageSettings: PageSettings = {
   landscape: false,
   margin: 72,
   gutter: 0,
+  top: 72,
+  bottom: 72,
+  left: 72,
+  right: 72,
   header: "",
   footer: "",
   pageNumbers: false,
@@ -83,16 +113,71 @@ function clampGutter(value: unknown): number {
     return 0;
   return Math.min(maxGutter, value);
 }
+function finitePx(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+/** Pull a stored margin into the range the page can actually use. */
+export function clampMarginPx(px: number): number {
+  return Math.min(MAX_MARGIN_PX, Math.max(MIN_MARGIN_PX, px));
+}
+/**
+ * Why a margin cannot be applied, or null when it is inside 0.25–3 inches.
+ * `px` is CSS pixels. A non-finite value has not been entered as a number.
+ */
+export function marginError(px: number): string | null {
+  if (!Number.isFinite(px)) return "Enter each margin in inches.";
+  if (px < MIN_MARGIN_PX) return "A margin must be at least 0.25 inches.";
+  if (px > MAX_MARGIN_PX) return "A margin must be at most 3 inches.";
+  return null;
+}
+/** True when every edge can be applied. One bad edge blocks the whole dialog. */
+export function marginsValid(margins: PageMargins): boolean {
+  return (
+    marginError(margins.top) === null &&
+    marginError(margins.bottom) === null &&
+    marginError(margins.left) === null &&
+    marginError(margins.right) === null
+  );
+}
+/** Replace one edge. The other three stay exactly as they were. */
+export function setPageMargin(
+  settings: PageSettings,
+  edge: MarginEdge,
+  px: number,
+): PageSettings {
+  return { ...settings, [edge]: px };
+}
+export function pageMargins(settings: PageMargins): PageMargins {
+  return {
+    top: settings.top,
+    bottom: settings.bottom,
+    left: settings.left,
+    right: settings.right,
+  };
+}
 export function documentPageSettings(content: JsonNode): PageSettings {
   const a = content.attrs?.pageSettings as Partial<PageSettings> | undefined;
+  const stored = finitePx(a?.margin);
+  const uniform = stored === undefined ? 72 : clampMarginPx(stored);
+  // An edge that was never stored follows the single margin, so older files
+  // open with the same gap on every side.
+  const edge = (value: unknown) => {
+    const px = finitePx(value);
+    return px === undefined ? uniform : clampMarginPx(px);
+  };
+  const top = edge(a?.top);
+  const bottom = edge(a?.bottom);
+  const left = edge(a?.left);
+  const right = edge(a?.right);
   return {
     size: a?.size === "a4" ? "a4" : "letter",
     landscape: a?.landscape === true,
-    margin:
-      typeof a?.margin === "number" && Number.isFinite(a.margin)
-        ? Math.min(144, Math.max(24, a.margin))
-        : 72,
+    margin: uniform,
     gutter: clampGutter(a?.gutter),
+    top,
+    bottom,
+    left,
+    right,
     header: pageText(a?.header),
     footer: pageText(a?.footer),
     // Like Docs and Word, page numbers are off until chosen; settings saved
@@ -249,8 +334,8 @@ export function pageSideInsets(
 ): { left: number; right: number } {
   const odd = Math.abs(pageNumber) % 2 === 1;
   return odd
-    ? { left: settings.margin + settings.gutter, right: settings.margin }
-    : { left: settings.margin, right: settings.margin + settings.gutter };
+    ? { left: settings.left + settings.gutter, right: settings.right }
+    : { left: settings.left, right: settings.right + settings.gutter };
 }
 export function pageDimensions(settings: PageSettings) {
   const [width, height] = settings.size === "a4" ? [794, 1123] : [816, 1056];
@@ -258,6 +343,62 @@ export function pageDimensions(settings: PageSettings) {
     width: settings.landscape ? height : width,
     height: settings.landscape ? width : height,
   };
+}
+/** CSS variables the page, furniture, and notes read. */
+export function pageMarginVars(settings: PageMargins): {
+  "--page-margin": string;
+  "--page-margin-top": string;
+  "--page-margin-right": string;
+  "--page-margin-bottom": string;
+  "--page-margin-left": string;
+} {
+  return {
+    "--page-margin": `${settings.top}px`,
+    "--page-margin-top": `${settings.top}px`,
+    "--page-margin-right": `${settings.right}px`,
+    "--page-margin-bottom": `${settings.bottom}px`,
+    "--page-margin-left": `${settings.left}px`,
+  };
+}
+/** Vertical room for body text between the top and bottom margins. */
+export function bodyTextHeight(pageHeight: number, margins: PageMargins): number {
+  return pageHeight - margins.top - margins.bottom;
+}
+/** Distance from the top of the page, expressed from the top of the body. */
+export function bodyTop(fromPageTop: number, margins: PageMargins): number {
+  return fromPageTop - margins.top;
+}
+/**
+ * Spacer that carries a block onto the next page: leftover body, this page's
+ * bottom margin, the gap between pages, and the next page's top margin.
+ * Left and right do not add to it.
+ */
+export function pageBreakSpacer(
+  remainingBody: number,
+  margins: PageMargins,
+  pageGap = 24,
+): number {
+  return Math.max(0, remainingBody) + margins.bottom + pageGap + margins.top;
+}
+/**
+ * How many pages a measured body occupies. `contentBottom` is in body
+ * coordinates (after the first top margin). `spacers` already includes the
+ * margins and gaps of earlier page breaks.
+ */
+export function laidOutPageCount(
+  contentBottom: number,
+  spacers: number,
+  pageHeight: number,
+  margins: PageMargins,
+  pageGap = 24,
+): number {
+  return Math.max(
+    1,
+    Math.ceil(
+      (contentBottom + spacers + margins.top + margins.bottom + pageGap) /
+        (pageHeight + pageGap),
+    ),
+  );
 }
 function pageNumberMarginBox(settings: PageSettings): string {
   if (!settings.pageNumbers) return "";
@@ -289,11 +430,15 @@ export function documentHtml(
   settings: PageSettings,
 ) {
   const { width, height } = pageDimensions(settings);
-  const margin = settings.margin / 96;
+  const top = settings.top / 96;
+  const right = settings.right / 96;
+  const bottom = settings.bottom / 96;
+  const left = settings.left / 96;
   const gutter = settings.gutter / 96;
+  const box = `${top}in ${right}in ${bottom}in ${left}in`;
   const pageRule = [
     `size: ${width / 96}in ${height / 96}in;`,
-    `margin: ${margin}in;`,
+    `margin: ${box};`,
     pageNumberMarginBox(settings),
   ].join(" ");
   // The web page starts on page 1, so a different first page shows its letterhead
@@ -317,7 +462,7 @@ export function documentHtml(
   // CSS :right is the odd (recto) page. The gutter swaps onto the inside edge.
   const mirror =
     gutter > 0
-      ? `@page :right { margin-left: ${margin + gutter}in; margin-right: ${margin}in; } @page :left { margin-left: ${margin}in; margin-right: ${margin + gutter}in; }`
+      ? `@page :right { margin-left: ${left + gutter}in; margin-right: ${right}in; } @page :left { margin-left: ${left}in; margin-right: ${right + gutter}in; }`
       : "";
   const furniture = (tag: "header" | "footer", text: string) =>
     text ? `<${tag} class="page-${tag}">${escapeHtml(text)}</${tag}>` : "";
@@ -336,7 +481,7 @@ main { position: relative; z-index: 1; }`
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title>
 <style>
-body { max-width: ${width / 96}in; margin: 0 auto; padding: ${settings.margin / 96}in; box-sizing: border-box; font: 11pt/1.5 Arial, sans-serif; }
+body { max-width: ${width / 96}in; margin: 0 auto; padding: ${box}; box-sizing: border-box; font: 11pt/1.5 Arial, sans-serif; }
 .page-header, .page-footer { color: #555; font-size: 10pt; white-space: pre-wrap; }
 .page-header { margin-bottom: 2em; }
 .page-footer { margin-top: 2em; }

@@ -265,8 +265,8 @@ function FurniturePage({
       style={
         {
           ["--page-index" as string]: pageIndex,
-          ["--gutter-left" as string]: `${insets.left - settings.margin}px`,
-          ["--gutter-right" as string]: `${insets.right - settings.margin}px`,
+          ["--gutter-left" as string]: `${insets.left - settings.left}px`,
+          ["--gutter-right" as string]: `${insets.right - settings.right}px`,
         } as CSSProperties
       }
     >
