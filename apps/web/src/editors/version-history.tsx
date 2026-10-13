@@ -9,6 +9,7 @@ import Image from "@tiptap/extension-image";
 import { TableKit } from "@tiptap/extension-table";
 import Superscript from "@tiptap/extension-superscript";
 import Subscript from "@tiptap/extension-subscript";
+import { Equation } from "./doc-equations";
 import { MoreHorizontal, X } from "lucide-react";
 import {
   diffDocuments,
@@ -51,6 +52,7 @@ const previewExtensions: Extensions = [
   TableKit,
   Superscript,
   Subscript,
+  Equation,
 ];
 
 function message(error: unknown) {

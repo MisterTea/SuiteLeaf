@@ -5653,3 +5653,147 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
     width: calc(100vw - 16px);
   }
 }
+
+.eq {
+  display: inline-block;
+  vertical-align: baseline;
+  margin: 0 0.08em;
+  font-family: "Cambria Math", "STIX Two Math", "Times New Roman", serif;
+  font-style: italic;
+  font-size: 1.15em;
+  line-height: 1;
+  color: inherit;
+}
+.eq[data-structure="frac"],
+.eq[data-structure="row"] {
+  vertical-align: middle;
+}
+.eq-selected {
+  border-radius: 3px;
+}
+.eq-sup,
+.eq-sub {
+  display: inline-block;
+  line-height: 1;
+}
+.eq-exp,
+.eq-subexp {
+  display: inline-block;
+  font-size: 0.65em;
+  line-height: 1;
+}
+.eq-exp {
+  vertical-align: super;
+}
+.eq-subexp {
+  vertical-align: sub;
+}
+.eq-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.16em;
+}
+.eq-frac {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 0 0.08em;
+  line-height: 1.05;
+  font-size: 0.92em;
+}
+.eq-num,
+.eq-den {
+  display: flex;
+  justify-content: center;
+  padding: 0 0.28em;
+}
+.eq-bar {
+  align-self: stretch;
+  min-width: 1.1em;
+  height: 0;
+  margin: 1px 0;
+  border-top: 1.25px solid currentColor;
+}
+.eq-slot,
+.eq-slot-input {
+  font: inherit;
+  font-style: italic;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  margin: 0;
+  padding: 0 1px;
+  line-height: inherit;
+  border-radius: 2px;
+  cursor: text;
+}
+.eq-slot:hover,
+.eq-slot:focus-visible {
+  background: #d2e3fc;
+  border-radius: 2px;
+}
+.eq-slot-input {
+  box-sizing: content-box;
+  background: #fff;
+  border: 1px solid #1a73e8;
+  min-width: 1ch;
+  padding: 0 2px;
+}
+.equation-dialog {
+  width: min(440px, calc(100vw - 32px));
+}
+.equation-help {
+  margin: 0 0 14px;
+  color: #3c4043;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.equation-sample {
+  font-family: "Cambria Math", "STIX Two Math", "Times New Roman", serif;
+  font-style: italic;
+}
+.equation-field {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: #202124;
+}
+.equation-field input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid #c4c7c5;
+  border-radius: 4px;
+  font: 16px "Cambria Math", "STIX Two Math", "Times New Roman", serif;
+  font-style: italic;
+}
+.equation-field input:focus {
+  outline: 2px solid #1a73e8;
+  border-color: transparent;
+}
+.equation-preview {
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 28px;
+}
+.equation-placeholder {
+  color: #80868b;
+  font: 14px Arial, sans-serif;
+  font-style: normal;
+}
+.equation-status {
+  margin: 8px 0 0;
+  min-height: 1.3em;
+  font-size: 12px;
+  color: #5f6368;
+}
+.equation-status[data-invalid="true"] {
+  color: #b3261e;
+}

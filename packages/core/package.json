@@ -9,7 +9,8 @@
     "./doc-comments": "./src/doc-comments.ts",
     "./xlsx-export": "./src/xlsx-export.ts",
     "./document-layout": "./src/document-layout.ts",
-    "./suggestions": "./src/suggestions.ts"
+    "./suggestions": "./src/suggestions.ts",
+    "./equations": "./src/equations.ts"
   },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",

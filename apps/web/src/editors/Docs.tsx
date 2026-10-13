@@ -93,6 +93,7 @@ import { DocumentPagination, PageBreak } from "./doc-pagination";
 import { Proofing } from "./doc-spelling";
 import { useDocProofing, type ProofingContext } from "./doc-proofing";
 import { documentNotes } from "./doc-notes";
+import { Equation, EquationDialog } from "./doc-equations";
 import {
   documentHtml,
   documentPageSettings,
@@ -128,6 +129,7 @@ export const extensions: Extensions = [
   Proofing,
   Superscript,
   Subscript,
+  Equation,
   Extension.create({
     name: "suiteleafStrikeShortcut",
     addKeyboardShortcuts() {
@@ -239,6 +241,7 @@ export default function Docs({
   const [activeHeading, setActiveHeading] = useState<number | null>(null);
   const [pageCount, setPageCount] = useState(1);
   const [pageSetupOpen, setPageSetupOpen] = useState(false);
+  const [equationOpen, setEquationOpen] = useState(false);
   const [pageDraft, setPageDraft] = useState<PageSettings>(() =>
     documentPageSettings(file.content),
   );
@@ -714,6 +717,9 @@ export default function Docs({
           editor.chain().focus().insertTableOfContents(pageNumbers).run(),
         insertFootnote: () => editor.chain().focus().insertFootnote().run(),
         insertEndnote: () => editor.chain().focus().insertEndnote().run(),
+        insertEquation: () => {
+          if (!readOnlyRef.current) setEquationOpen(true);
+        },
         openPageSetup,
         openWordCount: proofing.openWordCount,
         openSpelling: proofing.openSpelling,
@@ -1583,6 +1589,10 @@ export default function Docs({
             </div>
           </div>
         </div>
+      ) : null}
+
+      {equationOpen && editor ? (
+        <EquationDialog editor={editor} onClose={() => setEquationOpen(false)} />
       ) : null}
 
       {tableOpen ? (
