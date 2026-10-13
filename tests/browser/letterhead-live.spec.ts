@@ -120,10 +120,13 @@ test("the letterhead moves before apply, and cancel puts it back", async ({ page
   await dialog.getByLabel("Bottom margin").fill("2");
   await expect(dialog.getByLabel("Bottom margin")).toHaveValue("2");
   await expect.poll(async () => Math.abs((await places(page)).footerBottom - before.footerBottom) <= 0.12).toBe(true);
-  await expect.poll(async () => Math.abs((await places(page)).padBottom - before.padBottom) <= 0.12).toBe(true);
+  await expect.poll(async () => Math.abs((await places(page)).padBottom - 2) <= 0.12).toBe(true);
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(dialog).toBeHidden();
   await near(page, "footerBottom", 1);
+  await expect
+    .poll(async () => Math.abs((await places(page)).padBottom - before.padBottom) <= 0.12)
+    .toBe(true);
 
   dialog = await openSetup(page);
   await dialog.getByLabel("Footer from edge").fill("1.5");

@@ -35,25 +35,32 @@ function MarginField({
   onActive: (update: (current: MarginEdge | null) => MarginEdge | null) => void;
 }) {
   const side = edgeName[edge];
+  // Text, not a number box: "1." has to stay on screen long enough to become 1.5.
+  const [text, setText] = useState(() => formatMarginInches(draft[edge]));
+  const px = text.trim() === "" ? Number.NaN : Number(text) * 96;
   return (
     <label className={`measure-margin${active === edge ? " is-active" : ""}`}>
       <span>{side}</span>
       <span className="page-margin-input">
         <input
           aria-label={`${side} margin`}
-          type="number"
           inputMode="decimal"
-          step="0.05"
-          aria-invalid={pageMarginError(draft[edge]) ? true : undefined}
-          value={formatMarginInches(draft[edge])}
+          autoComplete="off"
+          spellCheck={false}
+          aria-invalid={pageMarginError(px) ? true : undefined}
+          value={text}
           onFocus={() => onActive(() => edge)}
           onBlur={() => onActive((current) => (current === edge ? null : current))}
-          onChange={(e) =>
+          onChange={(e) => {
+            const next = e.target.value;
+            if (next !== "" && !/^\d*\.?\d*$/.test(next)) return;
+            setText(next);
+            const inches = next.trim() === "" ? Number.NaN : Number(next);
             onChange({
               ...draft,
-              [edge]: Number(e.target.value) * 96,
-            })
-          }
+              [edge]: Number.isFinite(inches) ? inches * 96 : Number.NaN,
+            });
+          }}
         />
         <span aria-hidden="true">in</span>
       </span>
@@ -68,8 +75,12 @@ function MarginPreview({
   draft: PageSettings;
   active: MarginEdge | null;
 }) {
-  const inches = (edge: MarginEdge) => formatMarginInches(draft[edge]);
-  const band = (edge: MarginEdge) => `${(draft[edge] / 96) * PREVIEW_SCALE}px`;
+  const inches = (edge: MarginEdge) =>
+    Number.isFinite(draft[edge]) ? formatMarginInches(draft[edge]) : "–";
+  const band = (edge: MarginEdge) =>
+    Number.isFinite(draft[edge])
+      ? `${(draft[edge] / 96) * PREVIEW_SCALE}px`
+      : "0px";
   return (
     <div className="margin-preview" aria-hidden="true">
       <span className={active === "marginTop" ? "is-active" : ""}>

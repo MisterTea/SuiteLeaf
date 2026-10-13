@@ -117,7 +117,8 @@ import { LineSpacingControl } from "./doc-line-spacing-ui";
 import { DocWatermarkField, pageSetupToSave } from "./doc-watermark";
 import { columnLayout } from "./doc-columns";
 import { PageSetupFit } from "./page-setup-fit";
-import { liveEdgeDistances, publishLiveEdges } from "./letterhead-live";
+import { publishLiveEdges } from "./letterhead-live";
+import { livePageSettings, publishLiveMargins } from "./margin-live";
 import "./letterhead-live.css";
 
 export const extensions: Extensions = [
@@ -840,15 +841,18 @@ export default function Docs({
     return () => editor.view.dom.removeEventListener("suiteleaf-pages", pages);
   }, [editor]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!editor) return;
     const root = editor.view.dom as HTMLElement;
     if (!pageSetupOpen) {
       publishLiveEdges(root, null);
+      publishLiveMargins(root, null);
       return;
     }
     const saved = documentPageSettings(editor.getJSON() as JsonNode);
-    publishLiveEdges(root, liveEdgeDistances(saved, pageDraft));
+    const shown = livePageSettings(saved, pageDraft);
+    publishLiveEdges(root, shown);
+    publishLiveMargins(root, shown);
   }, [editor, pageSetupOpen, pageDraft]);
 
   // The outline highlights the section being read: the last heading above a
@@ -979,7 +983,7 @@ export default function Docs({
 
   const pageSettings = documentPageSettings(editor.getJSON() as JsonNode);
   const shownSettings = pageSetupOpen
-    ? liveEdgeDistances(pageSettings, pageDraft)
+    ? livePageSettings(pageSettings, pageDraft)
     : pageSettings;
   const pageDraftValid =
     pageMarginsValid(pageDraft) &&
@@ -1977,11 +1981,11 @@ export default function Docs({
               {
                 "--page-width": `${dimensions.width}px`,
                 "--page-height": `${dimensions.height}px`,
-                "--page-margin": `${pageSettings.marginTop}px`,
-                "--page-margin-top": `${pageSettings.marginTop}px`,
-                "--page-margin-right": `${pageSettings.marginRight}px`,
-                "--page-margin-bottom": `${pageSettings.marginBottom}px`,
-                "--page-margin-left": `${pageSettings.marginLeft}px`,
+                "--page-margin": `${shownSettings.marginTop}px`,
+                "--page-margin-top": `${shownSettings.marginTop}px`,
+                "--page-margin-right": `${shownSettings.marginRight}px`,
+                "--page-margin-bottom": `${shownSettings.marginBottom}px`,
+                "--page-margin-left": `${shownSettings.marginLeft}px`,
                 "--header-from-edge": `${shownSettings.headerFromEdge}px`,
                 "--footer-from-edge": `${shownSettings.footerFromEdge}px`,
                 "--body-inset-top": `${edgeInsets.top}px`,

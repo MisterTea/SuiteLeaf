@@ -5,8 +5,9 @@ import {
 
 /**
  * Header and footer distances are drawn while Page setup is open.
- * Every other field, including the margins, stays on the saved page until
- * Apply. A distance Page setup would refuse is not drawn.
+ * This leaves every other field, including the margins, on the saved page.
+ * Live margins are applied beside this. A distance Page setup would refuse
+ * is not drawn.
  */
 export function liveEdgeDistances(
   saved: PageSettings,
