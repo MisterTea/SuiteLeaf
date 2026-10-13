@@ -123,8 +123,9 @@ function noBlock(list: ReturnType<typeof blocks>, text: string) {
 
 /**
  * The table or photo `after` points at, to put things right below it: text in
- * a table cell means below the whole table; "table", "[Photo]" or "the image"
- * mean the last one, unless a paragraph contains that word.
+ * a table cell means below the whole table; a photo's file name means that
+ * photo; "table", "[Photo]" or "the image" mean the last one, unless a
+ * paragraph contains that word.
  */
 function objectAfter(editor: Editor, after: string, found?: { pos: number; label: string }) {
   const doc = editor.state.doc;
@@ -132,6 +133,8 @@ function objectAfter(editor: Editor, after: string, found?: { pos: number; label
     const $pos = doc.resolve(found.pos);
     for (let d = $pos.depth; d > 0; d--) if ($pos.node(d).type.name === "table") return { end: $pos.after(d), label: "the table" };
   }
+  const named = !found && images(editor).filter((p) => loose(after).includes(loose(p.name))).at(-1);
+  if (named) return { end: named.end, label: `the photo "${named.name}"` };
   const word = /^\W*(?:the\s+)?(table|photo|image|picture)\W*$/i.exec(after)?.[1]?.toLowerCase();
   if (!word || (found && !/^\s*\[/.test(after))) return undefined;
   const type = word === "table" ? "table" : "image";

@@ -169,8 +169,9 @@ test("document tools say where a table and a photo went", async ({ page }) => {
   const caption = await call(page, "write_text", { after: "photo", text: "Taken in May." });
   expect(caption).toContain('right after the photo "garden.png", before "Full rules online."');
   expect(caption).toContain("6 paragraph(s) with text, 1 table(s), 1 photo(s).");
+  expect(await call(page, "write_text", { after: "garden.png", text: "By Ruth." })).toContain('right after the photo "garden.png", before "Taken in May."');
   expect(await call(page, "read_document")).toMatch(
-    /\[Paragraph\] Last year's table:\n\d+\. \[Photo\] garden\.png\n\d+\. \[Paragraph\] Taken in May\.\n\d+\. \[Paragraph\] Full rules online\./,
+    /\[Paragraph\] Last year's table:\n\d+\. \[Photo\] garden\.png\n\d+\. \[Paragraph\] By Ruth\.\n\d+\. \[Paragraph\] Taken in May\.\n\d+\. \[Paragraph\] Full rules online\./,
   );
   expect(await call(page, "insert_link", { text: "club site", url: "example.org" })).toContain(
     '"club site" was not in the document, so it was added at the end',
