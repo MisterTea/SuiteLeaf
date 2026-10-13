@@ -99,6 +99,7 @@ import {
   pageDimensions,
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
+import { PageFurniture, PageSetupFields } from "./page-setup";
 
 export const extensions: Extensions = [
   DocumentPagination,
@@ -1349,49 +1350,11 @@ export default function Docs({
                   }
                 />
               </label>
-              <label>
-                <span>Header</span>
-                <input
-                  aria-label="Page header"
-                  placeholder="Text at the top of every page"
-                  value={pageDraft.header}
-                  maxLength={500}
-                  onChange={(e) =>
-                    setPageDraft({ ...pageDraft, header: e.target.value })
-                  }
-                />
-              </label>
-              <label>
-                <span>Footer</span>
-                <input
-                  aria-label="Page footer"
-                  placeholder="Text at the bottom of every page"
-                  value={pageDraft.footer}
-                  maxLength={500}
-                  onChange={(e) =>
-                    setPageDraft({ ...pageDraft, footer: e.target.value })
-                  }
-                />
-              </label>
-              <div className="page-setup-check">
-                <label>
-                  <input
-                    type="checkbox"
-                    aria-describedby="page-numbers-hint"
-                    checked={pageDraft.pageNumbers}
-                    onChange={(e) =>
-                      setPageDraft({
-                        ...pageDraft,
-                        pageNumbers: e.target.checked,
-                      })
-                    }
-                  />
-                  Page numbers
-                </label>
-                <span id="page-numbers-hint" className="page-setup-hint">
-                  Bottom right of every page, as “1 / 3”
-                </span>
-              </div>
+              <PageSetupFields
+                draft={pageDraft}
+                pageCount={pageCount}
+                onChange={setPageDraft}
+              />
             </div>
             <div className="dialog-footer">
               <button
@@ -1892,25 +1855,7 @@ export default function Docs({
               } as CSSProperties
             }
           >
-            <div className="page-furniture" aria-hidden="true">
-              {Array.from({ length: pageCount }, (_, i) => (
-                <div
-                  key={i}
-                  className="page-furniture-page"
-                  style={{ "--page-index": i } as CSSProperties}
-                >
-                  <div className="page-header">{pageSettings.header}</div>
-                  <div className="page-footer">
-                    <span>{pageSettings.footer}</span>
-                    {pageSettings.pageNumbers ? (
-                      <span>
-                        {i + 1} / {pageCount}
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <PageFurniture settings={pageSettings} pageCount={pageCount} />
             <EditorContent editor={editor} />
           </div>
         </div>
