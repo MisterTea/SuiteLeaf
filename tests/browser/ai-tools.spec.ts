@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { wordFixture } from "../office-fixtures";
 
 // The assistant's tools, run directly against the real editors. These test
 // the tools, not the model: each call is what Gemma would send.
@@ -92,4 +93,27 @@ test("presentation tools build slides and present", async ({ page }) => {
   await call(page, "start_presentation", { with_notes: true });
   expect(await call(page, "next_slide")).toContain("slide 2 of 2");
   await call(page, "end_presentation");
+});
+
+test("document tools find superscript text the way people type it", async ({ page }) => {
+  await page.goto("/");
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Open / import" }).click();
+  await (await chooser).setFiles({
+    name: "Office field notes.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    buffer: Buffer.from(await wordFixture()),
+  });
+  await waitForTools(page, "write_text");
+  expect(await call(page, "read_document")).toContain("[Paragraph] North plot: 40 m²");
+  await call(page, "write_text", { after: "40 m²", text: "Reviewed: figures confirmed." });
+  const doc = page.getByRole("textbox", { name: "Document content" });
+  const last = doc.locator(":scope > p").last();
+  await expect(last).toHaveText("Reviewed: figures confirmed.");
+  await expect(last.locator("sup")).toHaveCount(0);
+  await call(page, "write_text", { after: "[Paragraph] North plot: 40 m2", text: "Second note." });
+  await expect(doc.locator(":scope > p").nth(-2)).toHaveText("Second note.");
+  await call(page, "format_text", { text: "m²", bold: true });
+  await expect(doc.locator("strong").last()).toHaveText("m2");
+  await expect(call(page, "write_text", { after: "South plot", text: "x" })).rejects.toThrow(/copied exactly.*"North plot: 40 m²"/);
 });

@@ -80,6 +80,8 @@ export const test = base.extend<{ page: Page }>({
         recordVideo: { dir, size },
       });
       page = await app.firstWindow();
+      // The video is cropped to the window, so the window must match the viewport.
+      await app.evaluate(({ BrowserWindow }, s) => BrowserWindow.getAllWindows()[0]?.setContentSize(s.width, s.height), size);
       await page.setViewportSize(size);
       await page.context().addInitScript(cursorScript);
       await page.reload();
@@ -163,6 +165,8 @@ export async function askAgent(
     if (Date.now() - started > timeout) break;
     const choose = page.getByRole("button", { name: "Choose file…" });
     if (files.length && (await choose.isVisible().catch(() => false))) {
+      // Let viewers see the request before the person answers it.
+      await beat(page, 1200);
       const chooser = page.waitForEvent("filechooser");
       await choose.click();
       await (await chooser).setFiles(files.shift()!);

@@ -1,4 +1,5 @@
 import type { Editor } from "@tiptap/core";
+import type { Node as PMNode } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
 import { Type } from "@earendil-works/pi-ai";
 import type { PageSettings } from "@suiteleaf/core/document-layout";
@@ -45,18 +46,55 @@ function blocks(editor: Editor) {
           : editor.state.doc.resolve(pos).node(-1)?.type.name?.startsWith("table")
             ? "Table cell"
             : "Paragraph";
-    list.push({ pos, end: pos + node.nodeSize, type: node.type.name, text: node.textContent, label });
+    list.push({ pos, end: pos + node.nodeSize, type: node.type.name, text: shownText(node), label });
     return false;
   });
   return list;
 }
 
+const SUPER: Record<string, string> = { "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹", "+": "⁺", "-": "⁻", "=": "⁼", "(": "⁽", ")": "⁾", n: "ⁿ", i: "ⁱ" };
+const SUB: Record<string, string> = { "0": "₀", "1": "₁", "2": "₂", "3": "₃", "4": "₄", "5": "₅", "6": "₆", "7": "₇", "8": "₈", "9": "₉", "+": "₊", "-": "₋", "=": "₌", "(": "₍", ")": "₎" };
+
+/** A block's text as it looks: superscript and subscript digits read as ² and ₂, the way people type them. */
+function shownText(node: PMNode) {
+  let text = "";
+  node.forEach((child) => {
+    const t = child.textContent;
+    const map = child.marks.some((m) => m.type.name === "superscript")
+      ? SUPER
+      : child.marks.some((m) => m.type.name === "subscript")
+        ? SUB
+        : undefined;
+    text += map && [...t].every((c) => map[c]) ? [...t].map((c) => map[c]).join("") : t;
+  });
+  return text;
+}
+
+/** Text compared loosely: any case, and ² the same as 2. */
+const loose = (text: string) => text.normalize("NFKC").toLowerCase();
+/** Drop a "6. [Paragraph] " prefix copied from read_document. */
+const unlabel = (text: string) => text.replace(/^\s*(\d+\.\s*)?\[(Heading \d|Paragraph|Bullet|Numbered item|Table cell)\]\s*/, "");
+
+/** The first block containing `text`, matched loosely if not exactly. */
+function findBlock(list: ReturnType<typeof blocks>, text: string) {
+  const want = unlabel(text);
+  return list.find((b) => b.text.includes(want)) ?? list.find((b) => loose(b.text).includes(loose(want)));
+}
+
+function noBlock(list: ReturnType<typeof blocks>, text: string) {
+  const texts = list.filter((b) => b.text).slice(0, 20).map((b) => `"${b.text.slice(0, 60)}"`);
+  return new ToolError(`No paragraph contains "${text}". Use a few words copied exactly from one of these: ${texts.join(", ")}.`);
+}
+
 /** Find the n-th (1-based) occurrence of `text`, ignoring case if needed. */
-function locate(editor: Editor, text: string, occurrence = 1) {
+function locate(editor: Editor, raw: string, occurrence = 1) {
+  const text = unlabel(raw);
   if (!text) throw new ToolError("Say which text to use.");
   let matches = documentMatches(editor.state.doc, text, { matchCase: true, regex: false, ignoreDiacritics: false }).matches;
   if (!matches.length)
     matches = documentMatches(editor.state.doc, text, { matchCase: false, regex: false, ignoreDiacritics: true }).matches;
+  if (!matches.length && text.normalize("NFKC") !== text)
+    matches = documentMatches(editor.state.doc, text.normalize("NFKC"), { matchCase: false, regex: false, ignoreDiacritics: true }).matches;
   if (!matches.length)
     throw new ToolError(`"${text}" is not in the document. Use read_document to see the exact text.`);
   const match = matches[Math.min(Math.max(1, occurrence), matches.length) - 1];
@@ -167,7 +205,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       }),
       target: ({ after }) => {
         try {
-          return rectAt(editor, after ? blocks(editor).find((b) => b.text.includes(after))?.end ?? 0 : endOfDocument(editor));
+          return rectAt(editor, after ? findBlock(blocks(editor), after)?.end ?? 0 : endOfDocument(editor));
         } catch {
           return editor.view.dom;
         }
@@ -177,8 +215,8 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         const list = blocks(editor);
         const empty = list.length === 1 && !list[0].text;
         if (after) {
-          const block = list.find((b) => b.text.includes(after)) ?? list.find((b) => b.text.toLowerCase().includes(after.toLowerCase()));
-          if (!block) throw new ToolError(`No paragraph contains "${after}".`);
+          const block = findBlock(list, after);
+          if (!block) throw noBlock(list, after);
           editor.chain().setTextSelection(block.end - 1).splitBlock().run();
           editor.chain().setParagraph().run();
         } else {
@@ -315,8 +353,8 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         const rows = Math.max(1, cells.length);
         const cols = Math.max(1, ...cells.map((r) => r.length));
         const list = blocks(editor);
-        const block = after ? list.find((b) => b.text.includes(after)) : list.at(-1);
-        if (after && !block) throw new ToolError(`No paragraph contains "${after}".`);
+        const block = after ? findBlock(list, after) : list.at(-1);
+        if (after && !block) throw noBlock(list, after);
         editor.chain().setTextSelection((block?.end ?? 1) - 1).run();
         if (block?.text) editor.chain().splitBlock().run();
           editor.chain().setParagraph().run();
@@ -371,8 +409,8 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         const file = await requestFile("Choose a photo to insert", "image/png,image/jpeg,image/gif,image/webp");
         if (!file) return "The user did not choose a photo.";
         if (after) {
-          const block = blocks(editor).find((b) => b.text.includes(after));
-          if (!block) throw new ToolError(`No paragraph contains "${after}".`);
+          const block = findBlock(blocks(editor), after);
+          if (!block) throw noBlock(blocks(editor), after);
           editor.chain().setTextSelection(block.end - 1).splitBlock().run();
           editor.chain().setParagraph().run();
         }
@@ -474,8 +512,8 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       parameters: Type.Object({ before_text: Type.String() }),
       target: ({ before_text }) => rectAt(editor, locate(editor, before_text).from),
       execute({ before_text }) {
-        const block = blocks(editor).find((b) => b.text.includes(before_text));
-        if (!block) throw new ToolError(`No paragraph contains "${before_text}".`);
+        const block = findBlock(blocks(editor), before_text);
+        if (!block) throw noBlock(blocks(editor), before_text);
         editor.chain().setTextSelection(block.pos + 1).setPageBreak().run();
         return `Inserted a page break before "${before_text}".`;
       },
