@@ -1,3 +1,4 @@
+import { IUndoRedoService } from "@univerjs/core";
 import { X } from "lucide-react";
 import {
   Fragment,
@@ -19,18 +20,25 @@ import {
   type PersonalDictionary,
 } from "./doc-spelling";
 import {
+  changeAllCells,
+  changeAllValues,
   collectSheetIssues,
   collectSlideIssues,
   misspellingsInText,
   plainCellText,
+  readIgnoredCells,
   readIgnoredWords,
   replaceWordAt,
   spellingMenuPosition,
   suggestionsFor,
   withIgnored,
+  withIgnoredCell,
+  withoutIgnoredCells,
   wordBand,
+  writeIgnoredCells,
   writeIgnoredWords,
   type Box,
+  type ChangeAllCell,
   type SheetIssue,
   type SlideIssue,
   type SpellHit,
@@ -66,6 +74,33 @@ function useIgnoredWords(fileId: string) {
   return words;
 }
 
+function useIgnoredCells(fileId: string) {
+  const [cells, setCells] = useState(() => readIgnoredCells(fileId));
+  useEffect(() => {
+    const sync = () => setCells(readIgnoredCells(fileId));
+    window.addEventListener(SPELLING_CHANGED_EVENT, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(SPELLING_CHANGED_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, [fileId]);
+  return cells;
+}
+
+function markedText(text: string, hits: { from: number; to: number }[]) {
+  const ordered = [...hits].sort((a, b) => a.from - b.from);
+  const parts: ReactNode[] = [];
+  let cursor = 0;
+  ordered.forEach((hit, index) => {
+    if (hit.from > cursor) parts.push(text.slice(cursor, hit.from));
+    parts.push(<mark key={index}>{text.slice(hit.from, hit.to)}</mark>);
+    cursor = hit.to;
+  });
+  if (cursor < text.length) parts.push(text.slice(cursor));
+  return parts;
+}
+
 function SpellingPanel({
   issue,
   index,
@@ -73,6 +108,7 @@ function SpellingPanel({
   onReplace,
   onIgnore,
   onAdd,
+  onChangeAll,
   onClose,
   hadIssues,
 }: {
@@ -82,6 +118,7 @@ function SpellingPanel({
   onReplace: (replacement: string) => void;
   onIgnore: () => void;
   onAdd: () => void;
+  onChangeAll?: () => void;
   onClose: () => void;
   hadIssues: boolean;
 }) {
@@ -136,12 +173,19 @@ function SpellingPanel({
               <p className="word-count-hint">No suggestion. Add the word to your dictionary if it is a name.</p>
             )}
             <p className="word-count-hint">
-              One click replaces this word. The rest stays as it is. Checked on this computer.
+              {onChangeAll
+                ? "Change replaces this word. Change all lists every matching cell before editing."
+                : "One click replaces this word. The rest stays as it is. Checked on this computer."}
             </p>
             <div className="spelling-actions">
               <button type="submit" className="dialog-primary-btn" disabled={!first}>
                 Change
               </button>
+              {onChangeAll && first ? (
+                <button type="button" className="dialog-text-btn" onClick={onChangeAll}>
+                  Change all
+                </button>
+              ) : null}
               <button type="button" className="dialog-text-btn" onClick={onIgnore}>
                 Ignore
               </button>
@@ -247,6 +291,7 @@ function cellFont(sheet: any, row: number, column: number) {
 
 type Mark = {
   key: string;
+  cellKey: string;
   word: string;
   label: string;
   left: number;
@@ -308,6 +353,7 @@ function placeMarks(workbook: any, host: HTMLElement, issues: SheetIssue[]): Mar
     if (hitWidth < 4 || cell.height < 4) continue;
     marks.push({
       key: issue.key,
+      cellKey: `${issue.sheetId}:${issue.row}:${issue.column}`,
       word: issue.word,
       label: issue.label,
       left,
@@ -352,7 +398,7 @@ function SheetMarks({ marks, activeKey }: { marks: Mark[]; activeKey: string | n
   );
 }
 
-function focusSheetIssue(workbook: any, issue: SheetIssue) {
+function focusSheetIssue(workbook: any, issue: { sheetId: string; row: number; column: number }) {
   const sheet = workbook.getSheetBySheetId?.(issue.sheetId);
   if (!sheet) return;
   if (workbook.getActiveSheet?.()?.getSheetId() !== issue.sheetId)
@@ -399,18 +445,22 @@ function editingText(target: EventTarget | null) {
 function SpellContextMenu({
   menu,
   onReplace,
+  onChangeAll,
   onIgnore,
+  onIgnoreCell,
   onAdd,
   onClose,
 }: {
   menu: SpellMenu;
   onReplace: (replacement: string) => void;
+  onChangeAll: (replacement: string) => void;
   onIgnore: () => void;
+  onIgnoreCell: () => void;
   onAdd: () => void;
   onClose: () => void;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({ width: 220, height: 148 });
+  const [size, setSize] = useState({ width: 240, height: 220 });
   useLayoutEffect(() => {
     const el = menuRef.current;
     if (!el) return;
@@ -464,16 +514,27 @@ function SpellContextMenu({
       >
         {menu.suggestions.length ? (
           menu.suggestions.map((suggestion, index) => (
-            <button
-              type="button"
-              role="menuitem"
-              className="menu-item spelling-suggestion"
-              key={suggestion}
-              autoFocus={index === 0}
-              onClick={() => onReplace(suggestion)}
-            >
-              {suggestion}
-            </button>
+            <Fragment key={suggestion}>
+              <button
+                type="button"
+                role="menuitem"
+                className="menu-item spelling-suggestion"
+                autoFocus={index === 0}
+                onClick={() => onReplace(suggestion)}
+              >
+                {suggestion}
+              </button>
+              {index === 0 ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="menu-item"
+                  onClick={() => onChangeAll(suggestion)}
+                >
+                  Change all to {suggestion}
+                </button>
+              ) : null}
+            </Fragment>
           ))
         ) : (
           <div className="menu-item" data-disabled="true" aria-disabled="true">
@@ -483,6 +544,9 @@ function SpellContextMenu({
         <div className="menu-separator" role="separator" />
         <button type="button" role="menuitem" className="menu-item" onClick={onIgnore}>
           Ignore
+        </button>
+        <button type="button" role="menuitem" className="menu-item" onClick={onIgnoreCell}>
+          Ignore this cell
         </button>
         <button
           type="button"
@@ -498,9 +562,135 @@ function SpellContextMenu({
   );
 }
 
+let changeAllSteps = 0;
+
+/** One set of cell writes, so Undo restores every cell Change all edited. */
+function applyChangeAll(workbook: any, engine: any, cells: ChangeAllCell[], replacement: string) {
+  const values = changeAllValues(
+    cells,
+    (cell) => {
+      const sheet = workbook?.getSheetBySheetId?.(cell.sheetId);
+      if (!sheet) return null;
+      try {
+        return plainCellText(sheet.getRange(cell.row, cell.column, 1, 1).getCellData?.());
+      } catch {
+        return null;
+      }
+    },
+    replacement,
+  );
+  if (!values.size) return false;
+  const write = () => {
+    for (const [sheetId, matrix] of values)
+      workbook.getSheetBySheetId?.(sheetId)?.getRange(0, 0).setValues(matrix);
+  };
+  const unitId = workbook?.getId?.();
+  if (engine?.get && unitId) {
+    const undo = engine.get(IUndoRedoService);
+    const group = undo.beginUndoRedoGroup(
+      unitId,
+      `suiteleaf.sheet.change-all.${++changeAllSteps}`,
+      "append",
+    );
+    try {
+      write();
+    } finally {
+      group.dispose();
+    }
+  } else write();
+  return true;
+}
+
+function previewHighlights(marks: Mark[], cells: ChangeAllCell[]) {
+  const wanted = new Set(cells.map((cell) => cell.key));
+  const seen = new Set<string>();
+  const boxes: { key: string; label: string; box: Box }[] = [];
+  for (const mark of marks) {
+    if (!wanted.has(mark.cellKey) || seen.has(mark.cellKey)) continue;
+    seen.add(mark.cellKey);
+    boxes.push({ key: mark.cellKey, label: mark.label, box: mark.cell });
+  }
+  return boxes;
+}
+
+function ChangeAllDialog({
+  replacement,
+  cells,
+  onConfirm,
+  onCancel,
+  onFocusCell,
+}: {
+  replacement: string;
+  cells: ChangeAllCell[];
+  onConfirm: () => void;
+  onCancel: () => void;
+  onFocusCell: (cell: ChangeAllCell) => void;
+}) {
+  const title = `Change all to ${replacement}`;
+  const count =
+    cells.length === 1 ? "1 cell will change" : `${cells.length} cells will change`;
+  return (
+    <div className="gdocs-modal-overlay spelling-layer">
+      <form
+        className="gdocs-dialog spelling-panel change-all-panel"
+        role="dialog"
+        aria-modal="false"
+        aria-labelledby="change-all-title"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            onCancel();
+          }
+        }}
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (cells.length) onConfirm();
+        }}
+      >
+        <div className="dialog-header">
+          <h2 id="change-all-title">{title}</h2>
+          <button type="button" className="dialog-close-btn" aria-label="Cancel change all" onClick={onCancel}>
+            <X size={18} />
+          </button>
+        </div>
+        <p className="spelling-progress" data-change-count={cells.length}>
+          {count}
+        </p>
+        <p className="word-count-hint">
+          Nothing changes until you confirm. Other spellings stay as they are.
+        </p>
+        <ul className="change-all-list">
+          {cells.map((cell) => (
+            <li key={cell.key}>
+              <button
+                type="button"
+                className="change-all-cell"
+                data-change-cell={cell.label}
+                onClick={() => onFocusCell(cell)}
+              >
+                <span className="change-all-ref">{cell.label}</span>
+                <span className="spelling-quote">{markedText(cell.text, cell.hits)}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+        <div className="dialog-footer">
+          <button type="button" className="dialog-text-btn" onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="submit" className="dialog-primary-btn" disabled={!cells.length} autoFocus>
+            Change all
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export function SheetSpelling({
   bookRef,
   hostRef,
+  engineRef,
   fileId,
   ready,
   persist,
@@ -508,6 +698,7 @@ export function SheetSpelling({
 }: {
   bookRef: RefObject<any>;
   hostRef: RefObject<HTMLElement | null>;
+  engineRef: RefObject<any>;
   fileId: string;
   ready: boolean;
   persist: () => void;
@@ -515,15 +706,21 @@ export function SheetSpelling({
 }) {
   const personal = usePersonalDictionary();
   const ignored = useIgnoredWords(fileId);
+  const ignoredCells = useIgnoredCells(fileId);
   const [open, setOpen] = useState(false);
   const [hadIssues, setHadIssues] = useState(false);
   const [tick, setTick] = useState(0);
   const [marks, setMarks] = useState<Mark[]>([]);
   const [menu, setMenu] = useState<SpellMenu | null>(null);
+  const [preview, setPreview] = useState<{ replacement: string; cells: ChangeAllCell[] } | null>(
+    null,
+  );
   const personalRef = useRef(personal);
   personalRef.current = personal;
   const ignoredRef = useRef(ignored);
   ignoredRef.current = ignored;
+  const ignoredCellsRef = useRef(ignoredCells);
+  ignoredCellsRef.current = ignoredCells;
 
   useEffect(() => {
     if (!ready) return;
@@ -546,8 +743,11 @@ export function SheetSpelling({
     if (!ready) return [];
     // `tick` reruns the scan after a cell edit. The workbook object itself does not change.
     void tick;
-    return collectSheetIssues(bookRef.current, personal, ignored);
-  }, [ready, personal, ignored, tick, bookRef]);
+    return withoutIgnoredCells(
+      collectSheetIssues(bookRef.current, personal, ignored),
+      ignoredCells,
+    );
+  }, [ready, personal, ignored, ignoredCells, tick, bookRef]);
   const marksRef = useRef(marks);
   marksRef.current = marks;
   const issuesRef = useRef(issues);
@@ -556,9 +756,15 @@ export function SheetSpelling({
   const issue = open && issues.length ? issues[index] : null;
 
   useEffect(() => {
-    if (!open || !issue) return;
+    if (preview || !open || !issue) return;
     focusSheetIssue(bookRef.current, issue);
-  }, [open, issue, bookRef]);
+  }, [open, issue, preview, bookRef]);
+
+  useEffect(() => {
+    const first = preview?.cells[0];
+    if (!first) return;
+    focusSheetIssue(bookRef.current, first);
+  }, [preview, bookRef]);
 
   useEffect(() => {
     if (!ready) return;
@@ -648,8 +854,14 @@ export function SheetSpelling({
 
   const openSession = () => {
     setMenu(null);
+    setPreview(null);
     restart();
-    setHadIssues(collectSheetIssues(bookRef.current, personalRef.current, ignoredRef.current).length > 0);
+    setHadIssues(
+      withoutIgnoredCells(
+        collectSheetIssues(bookRef.current, personalRef.current, ignoredRef.current),
+        ignoredCellsRef.current,
+      ).length > 0,
+    );
     setOpen(true);
     setTick((value) => value + 1);
   };
@@ -689,20 +901,66 @@ export function SheetSpelling({
     remember(addToPersonalDictionary(personalRef.current, current.word));
     setMenu(null);
   };
+  const ignoreCellFromMenu = () => {
+    const current = menuIssue();
+    if (!current) return;
+    writeIgnoredCells(
+      fileId,
+      withIgnoredCell(ignoredCellsRef.current, {
+        sheetId: current.sheetId,
+        row: current.row,
+        column: current.column,
+        word: current.word,
+      }),
+    );
+    setMenu(null);
+  };
+  const openChangeAll = (word: string, replacement: string) => {
+    const cells = changeAllCells(issuesRef.current, word);
+    if (!cells.length || !replacement.trim()) return;
+    setMenu(null);
+    setPreview({ replacement, cells });
+  };
+  const confirmChangeAll = () => {
+    if (!preview) return;
+    if (applyChangeAll(bookRef.current, engineRef.current, preview.cells, preview.replacement))
+      persist();
+    setPreview(null);
+    setTick((value) => value + 1);
+  };
+  const highlights = preview ? previewHighlights(marks, preview.cells) : [];
 
   return (
     <>
+      {highlights.map((item) => (
+        <div
+          key={item.key}
+          className="sheet-spell-preview"
+          data-change-cell={item.label}
+          style={{
+            left: item.box.left,
+            top: item.box.top,
+            width: item.box.width,
+            height: item.box.height,
+          }}
+        />
+      ))}
       <SheetMarks marks={marks} activeKey={issue?.key ?? menu?.key ?? null} />
       {menu ? (
         <SpellContextMenu
           menu={menu}
           onReplace={replaceFromMenu}
+          onChangeAll={(replacement) => {
+            const current = menuIssue();
+            if (current) openChangeAll(current.word, replacement);
+          }}
           onIgnore={ignoreFromMenu}
+          onIgnoreCell={ignoreCellFromMenu}
           onAdd={addFromMenu}
           onClose={() => setMenu(null)}
         />
       ) : null}
-      {open ? (
+      {open && !preview ? (
         <SpellingPanel
           key={issue?.key ?? "done"}
           issue={issue}
@@ -712,7 +970,21 @@ export function SheetSpelling({
           onReplace={replace}
           onIgnore={ignore}
           onAdd={add}
+          onChangeAll={
+            issue && suggestionsFor(issue.word)[0]
+              ? () => openChangeAll(issue.word, suggestionsFor(issue.word)[0]!)
+              : undefined
+          }
           onClose={() => setOpen(false)}
+        />
+      ) : null}
+      {preview ? (
+        <ChangeAllDialog
+          replacement={preview.replacement}
+          cells={preview.cells}
+          onConfirm={confirmChangeAll}
+          onCancel={() => setPreview(null)}
+          onFocusCell={(cell) => focusSheetIssue(bookRef.current, cell)}
         />
       ) : null}
     </>
