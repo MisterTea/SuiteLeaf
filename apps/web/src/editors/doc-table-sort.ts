@@ -1,9 +1,10 @@
 import type { JsonNode } from "@suiteleaf/core";
 
 /**
- * Sort the body rows of a document table. Header rows stay first, and each
- * body row moves as a whole. A column of numbers sorts numerically, so 10
- * follows 2. Anything else sorts A to Z, ignoring case.
+ * Sort the body rows of a document table. Header rows stay first. A merged
+ * title row above the header stays above them, colspan included. Each body
+ * row moves as a whole. A column of numbers sorts numerically, so 10 follows
+ * 2. Anything else sorts A to Z, ignoring case.
  */
 
 /** The direction the next click will apply. The same column flips; another starts A to Z. */
@@ -51,6 +52,23 @@ function cellText(row: JsonNode, column: number): string {
   return plainText(row.content?.[column]);
 }
 
+/** A title that already spans columns, sitting above the first header row. */
+function mergedTitleRows(rows: JsonNode[]): JsonNode[] {
+  const firstHeader = rows.findIndex((row) => isHeaderRow(row));
+  if (firstHeader <= 0) return [];
+  return rows.slice(0, firstHeader).filter((row) => {
+    if (row.type !== "tableRow" || isHeaderRow(row)) return false;
+    return (row.content ?? []).some((cell) => Number(cell.attrs?.colspan) > 1);
+  });
+}
+
+function bodyRows(rows: JsonNode[]): JsonNode[] {
+  const titles = new Set(mergedTitleRows(rows));
+  return rows.filter(
+    (row) => row.type === "tableRow" && !isHeaderRow(row) && !titles.has(row),
+  );
+}
+
 /** A body cell counts as a number only when the whole cell is one. */
 export function parseSortNumber(text: string): number | null {
   const trimmed = text.trim();
@@ -65,9 +83,7 @@ export function columnHeaderName(rows: JsonNode[], column: number): string {
 }
 
 export function columnSortsAsNumber(rows: JsonNode[], column: number): boolean {
-  const body = rows.filter(
-    (row) => row.type === "tableRow" && !isHeaderRow(row),
-  );
+  const body = bodyRows(rows);
   return (
     body.length > 0 &&
     body.every((row) => parseSortNumber(cellText(row, column)) !== null)
@@ -79,23 +95,22 @@ function compareCells(a: string, b: string, numeric: boolean): number {
   return a.trim().localeCompare(b.trim(), undefined, { sensitivity: "base" });
 }
 
-/** Header rows stay at the top, in their original order. Only body rows move. */
+/** A merged title stays above the header. Header rows stay next, in their original order. Only body rows move. */
 export function sortTableRows(
   rows: JsonNode[],
   column: number,
   ascending: boolean,
 ): JsonNode[] {
+  const titles = mergedTitleRows(rows);
   const headers = rows.filter((row) => isHeaderRow(row));
-  const body = rows.filter(
-    (row) => row.type === "tableRow" && !isHeaderRow(row),
-  );
+  const body = bodyRows(rows);
   const rest = rows.filter((row) => row.type !== "tableRow");
   const numeric = columnSortsAsNumber(rows, column);
   const sorted = [...body].sort((a, b) => {
     const cmp = compareCells(cellText(a, column), cellText(b, column), numeric);
     return ascending ? cmp : -cmp;
   });
-  return [...headers, ...sorted, ...rest];
+  return [...titles, ...headers, ...sorted, ...rest];
 }
 
 /** Reorder the first table. Everything outside it, including the next paragraph, stays put. */

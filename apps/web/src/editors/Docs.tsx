@@ -243,6 +243,35 @@ function selectedTableColumn(selection: Selection): number | null {
   return null;
 }
 
+function selectedTableCell(selection: Selection): ProseNode | null {
+  if (selection instanceof CellSelection) return selection.$anchorCell.nodeAfter;
+  for (let depth = selection.$from.depth; depth > 0; depth--) {
+    const node = selection.$from.node(depth);
+    if (node.type.name === "tableCell" || node.type.name === "tableHeader")
+      return node;
+  }
+  return null;
+}
+
+/** Two or more cells are selected, so Merge cells is the command that applies. */
+function selectionCoversSeveralCells(selection: Selection): boolean {
+  return (
+    selection instanceof CellSelection &&
+    selection.$anchorCell.pos !== selection.$headCell.pos
+  );
+}
+
+/** The caret is in one cell that already spans columns or rows. */
+function selectionIsMergedCell(selection: Selection): boolean {
+  if (selectionCoversSeveralCells(selection)) return false;
+  const cell = selectedTableCell(selection);
+  if (!cell) return false;
+  return (
+    (Number(cell.attrs.colspan) || 1) > 1 ||
+    (Number(cell.attrs.rowspan) || 1) > 1
+  );
+}
+
 /** A cursor inside the body cell of `column`, so the next Sort names that column. */
 function caretInColumn(table: ProseNode, tablePos: number, column: number): number {
   let pos = tablePos + 1;
@@ -795,6 +824,12 @@ export default function Docs({
       column === null
         ? "Sort"
         : sortColumnLabel(columnHeaderName(rows, column), numeric, ascending);
+    const selection = editor?.state.selection;
+    const unmerge = !!selection && selectionIsMergedCell(selection);
+    const mergeLabel = unmerge ? "Unmerge" : "Merge cells";
+    const mergeEnabled =
+      !!editor?.isEditable &&
+      (unmerge ? editor.can().splitCell() : editor.can().mergeCells());
     const command = (
       label: string,
       action: () => boolean,
@@ -827,6 +862,12 @@ export default function Docs({
       command("Header row", () => chain().toggleHeaderRow().run(), {
         checked: headerOn,
       }),
+      command(
+        mergeLabel,
+        () =>
+          unmerge ? chain().splitCell().run() : chain().mergeCells().run(),
+        { separatorBefore: true, disabled: !mergeEnabled },
+      ),
     ];
   };
 
@@ -2148,6 +2189,7 @@ export default function Docs({
                       : "menuitemcheckbox"
                   }
                   aria-checked={action.checked}
+                  disabled={action.disabled}
                   autoFocus={action.label === "Insert row above"}
                   onClick={action.run}
                 >
