@@ -103,6 +103,7 @@ import {
   textInnerHtml,
 } from "./slide-runs";
 import { boxFont, RunSpans, SlideTextBody } from "./slide-text";
+import { useSlideThemeLibrary } from "./slide-theme-library";
 
 type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
@@ -184,6 +185,7 @@ export default function Slides({
     openTransition: () => {},
   });
   const reducedMotion = useReducedMotion();
+  const { themes: libraryThemes, save: saveLibraryTheme } = useSlideThemeLibrary();
 
   // Undo/Redo history. Typing in one box collapses into a single step.
   const historyRef = useRef<DeckHistory | null>(null);
@@ -458,9 +460,11 @@ export default function Slides({
     previewTheme && activeSlide ? paintSlide(activeSlide, previewTheme) : activeSlide;
 
   const useTheme = (theme: SlideTheme) => {
-    themeEdits.current.set(theme.id, theme);
+    // Copy so a library snapshot and this deck do not share one object.
+    const copy = { ...theme };
+    themeEdits.current.set(copy.id, copy);
     setPreviewTheme(null);
-    commit(applyDeckTheme(deck, theme));
+    commit(applyDeckTheme(deck, copy));
   };
   const transitionTargets = () =>
     transitionScope === "all" ? deck.slideOrder : selectedSlideIds;
@@ -2535,6 +2539,12 @@ ${slidesHtml}
               themeEdits.current.set(next.id, next);
               setPreviewTheme(null);
               commit(customizeTheme(deck, patch));
+            }}
+            library={libraryThemes}
+            onSaveToLibrary={(name) => {
+              if (!deck.theme)
+                return { ok: false, error: "Pick a theme, then save it." };
+              return saveLibraryTheme(deck.theme, name);
             }}
             duration={transitionDuration}
             onDuration={(seconds) => {

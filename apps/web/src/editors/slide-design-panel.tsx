@@ -7,6 +7,8 @@ import {
   normalizeHex,
   type TransitionType,
 } from "./slide-theme";
+import type { SaveThemeResult } from "./slide-theme-library";
+import { ThemeLibrarySection } from "./slide-theme-library-ui";
 
 export function useReducedMotion() {
   const [reduced, setReduced] = useState(
@@ -63,6 +65,8 @@ export function SlideDesignPanel({
   onHoverTheme,
   onApplyTheme,
   onCustomize,
+  library,
+  onSaveToLibrary,
   duration,
   onDuration,
   scope,
@@ -83,6 +87,8 @@ export function SlideDesignPanel({
   onHoverTheme: (theme: SlideTheme | null) => void;
   onApplyTheme: (theme: SlideTheme) => void;
   onCustomize: (patch: Partial<SlideTheme>) => void;
+  library: SlideTheme[];
+  onSaveToLibrary: (name: string) => SaveThemeResult;
   duration: number;
   onDuration: (seconds: number) => void;
   scope: "all" | "selected";
@@ -161,10 +167,18 @@ export function SlideDesignPanel({
             </div>
             {current ? (
               <p className="transition-status">
-                {current.name} is on every slide. Headings in {current.headingFont},
-                body in {current.bodyFont}.
+                {current.name} is on every slide. Accent {current.accent.toUpperCase()},
+                headings in {current.headingFont}, body in {current.bodyFont}.
               </p>
             ) : null}
+            <ThemeLibrarySection
+              themes={library}
+              current={current}
+              canSave={!!current}
+              onHover={onHoverTheme}
+              onApply={onApplyTheme}
+              onSave={onSaveToLibrary}
+            />
             <div className="theme-customize">
               <h3>Customize</h3>
               {current ? (
