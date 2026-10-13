@@ -131,6 +131,7 @@ import {
   copyTextFormat,
   type CopiedTextFormat,
 } from "./doc-paint-format";
+import { equalizeTableColumns, tableColumnWidths } from "./doc-table-columns";
 import {
   columnHeaderName,
   columnSortsAsNumber,
@@ -792,6 +793,38 @@ export default function Docs({
     return true;
   };
 
+  const equalizeColumns = () => {
+    if (!editor?.isEditable) return false;
+    const found = findParentNode((n) => n.type.name === "table")(
+      editor.state.selection,
+    );
+    if (!found) return false;
+    const json = found.node.toJSON() as JsonNode;
+    const nextJson = equalizeTableColumns(json);
+    if (nextJson === json) return false;
+    const next = editor.schema.nodeFromJSON(nextJson);
+    const column = selectedTableColumn(editor.state.selection);
+    const tr = editor.state.tr.replaceWith(
+      found.pos,
+      found.pos + found.node.nodeSize,
+      next,
+    );
+    const placed = tr.doc.nodeAt(found.pos);
+    if (placed && column !== null) {
+      try {
+        const at = Math.min(
+          caretInColumn(placed, found.pos, column),
+          tr.doc.content.size,
+        );
+        tr.setSelection(TextSelection.near(tr.doc.resolve(at)));
+      } catch {
+        // The columns are already equal if the caret cannot sit in that cell.
+      }
+    }
+    editor.view.dispatch(tr.scrollIntoView());
+    return true;
+  };
+
   const tableActions = (): TableAction[] => {
     const table = editor
       ? findParentNode((n) => n.type.name === "table")(editor.state.selection)
@@ -830,6 +863,8 @@ export default function Docs({
     const mergeEnabled =
       !!editor?.isEditable &&
       (unmerge ? editor.can().splitCell() : editor.can().mergeCells());
+    const canEqualize =
+      !!editor?.isEditable && (tableColumnWidths(rows)?.length ?? 0) > 1;
     const command = (
       label: string,
       action: () => boolean,
@@ -850,6 +885,9 @@ export default function Docs({
       command("Insert row below", () => chain().addRowAfter().run()),
       command("Insert column left", () => chain().addColumnBefore().run()),
       command("Insert column right", () => chain().addColumnAfter().run()),
+      command("Equal columns", () => equalizeColumns(), {
+        disabled: !canEqualize,
+      }),
       command("Delete row", () => chain().deleteRow().run(), {
         separatorBefore: true,
       }),

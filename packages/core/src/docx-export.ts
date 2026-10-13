@@ -27,6 +27,7 @@ import {
   TabStopType,
   Table,
   TableCell,
+  TableLayoutType,
   TableOfContents,
   TableRow,
   TextRun,
@@ -326,6 +327,32 @@ function columnSegments(
   walk(nodes, 1);
   return out;
 }
+/** One pixel width per logical column. A colspan cell contributes each column it spans. */
+function columnPixelWidths(table: JsonNode): number[] | null {
+  let count = 0;
+  const widths: Array<number | undefined> = [];
+  for (const row of table.content ?? []) {
+    if (row.type !== "tableRow") continue;
+    let column = 0;
+    for (const cell of row.content ?? []) {
+      const span = Math.max(1, Number(cell.attrs?.colspan) || 1);
+      const colwidth = cell.attrs?.colwidth;
+      for (let offset = 0; offset < span; offset += 1) {
+        const value = Array.isArray(colwidth) ? colwidth[offset] : undefined;
+        const width = typeof value === "number" ? value : Number.NaN;
+        const index = column + offset;
+        if (Number.isFinite(width) && width > 0 && widths[index] === undefined)
+          widths[index] = width;
+      }
+      column += span;
+    }
+    count = Math.max(count, column);
+  }
+  if (count < 1) return null;
+  const known = widths.slice(0, count);
+  if (known.some((width) => width === undefined)) return null;
+  return known as number[];
+}
 function blocks(
   nodes: JsonNode[],
   plan: DocxCommentPlan,
@@ -357,10 +384,19 @@ function blocks(
       });
     if (n.type === "listItem" || n.type === "blockquote")
       return blocks(n.content ?? [], plan, notes, library, list);
-    if (n.type === "table")
+    if (n.type === "table") {
+      const pixels = columnPixelWidths(n);
+      const columnWidths = pixels?.map((px) => pagePxToTwips(px));
+      const total = columnWidths?.reduce((sum, width) => sum + width, 0);
       return [
         new Table({
-          width: { size: 100, type: WidthType.PERCENTAGE },
+          width:
+            columnWidths && total
+              ? { size: total, type: WidthType.DXA }
+              : { size: 100, type: WidthType.PERCENTAGE },
+          ...(columnWidths && total
+            ? { columnWidths, layout: TableLayoutType.FIXED }
+            : {}),
           rows: (n.content ?? []).map(
             (row) =>
               new TableRow({
@@ -384,6 +420,7 @@ function blocks(
           ),
         }),
       ];
+    }
     if (n.type === "pageBreak")
       return [new Paragraph({ pageBreakBefore: true })];
     if (n.type === "horizontalRule")
