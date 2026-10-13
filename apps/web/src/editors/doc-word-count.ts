@@ -7,12 +7,15 @@ export type ProofingSettings = {
   /** Word and Docs leave footnotes out until the reader asks for them. */
   countFootnotes: boolean;
   ignored: string[];
+  /** Grammar phrases the reader skipped. Separate from ignored spellings. */
+  ignoredGrammar: string[];
 };
 
 export const defaultProofing: ProofingSettings = {
   stopAtHeading: null,
   countFootnotes: false,
   ignored: [],
+  ignoredGrammar: [],
 };
 
 export const WORD_COUNT_VISIBILITY_KEY = "suiteleaf.doc-word-count";
@@ -38,15 +41,19 @@ export function setWordCountVisible(visible: boolean) {
 
 export function readProofing(doc: JsonNode | null | undefined): ProofingSettings {
   const raw = doc?.attrs?.proofing;
-  if (!raw || typeof raw !== "object") return { ...defaultProofing, ignored: [] };
+  if (!raw || typeof raw !== "object")
+    return { ...defaultProofing, ignored: [], ignoredGrammar: [] };
   const value = raw as Partial<ProofingSettings>;
   const stop = typeof value.stopAtHeading === "string" ? value.stopAtHeading.trim() : "";
+  const phrases = (list: unknown) =>
+    Array.isArray(list)
+      ? list.filter((word): word is string => typeof word === "string" && word.trim().length > 0)
+      : [];
   return {
     stopAtHeading: stop || null,
     countFootnotes: value.countFootnotes === true,
-    ignored: Array.isArray(value.ignored)
-      ? value.ignored.filter((word): word is string => typeof word === "string" && word.trim().length > 0)
-      : [],
+    ignored: phrases(value.ignored),
+    ignoredGrammar: phrases(value.ignoredGrammar),
   };
 }
 
