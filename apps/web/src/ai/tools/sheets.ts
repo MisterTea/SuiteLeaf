@@ -241,6 +241,12 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         start: Type.String({ description: "Top-left cell, e.g. A1" }),
         values: Type.Array(Type.Array(Type.String())),
       }),
+      // A flat list is one row (the schema check would make it a column), and a range names its top-left cell.
+      prepare: ({ values, ...args }) => ({
+        ...args,
+        ...(args.start === undefined && typeof args.range === "string" ? { start: args.range.split(":")[0] } : {}),
+        values: Array.isArray(values) && values.length && values.every((v) => !Array.isArray(v)) ? [values] : values,
+      }),
       target: ({ start, values }) => {
         const s = parseCell(start);
         return target(

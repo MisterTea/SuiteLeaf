@@ -437,7 +437,8 @@ window.__suiteleafAgent = {
   async callTool(name, args) {
     const t = currentSuiteTools().find((x) => x.name === name);
     if (!t) throw new Error(`No tool ${name} here.`);
-    const result = await toAgentTool(t).execute("test", args as never);
+    const agentTool = toAgentTool(t);
+    const result = await agentTool.execute("test", (agentTool.prepareArguments?.(args) ?? args) as never);
     return result.content.map((c) => (c.type === "text" ? c.text : "")).join("");
   },
 };

@@ -15,6 +15,8 @@ export interface SuiteTool<P extends TSchema = TSchema> {
   parameters: P;
   /** Where the agent's pointer goes before the tool runs. */
   target?: (args: Static<P>) => Target | Promise<Target>;
+  /** Reshapes the model's raw arguments before schema checks (which would otherwise coerce them in unhelpful ways). */
+  prepare?: (args: Record<string, unknown>) => Record<string, unknown>;
   execute: (args: Static<P>, signal?: AbortSignal) => Promise<ToolOutput> | ToolOutput;
 }
 
@@ -156,7 +158,7 @@ export function toAgentTool(t: SuiteTool): AgentTool {
     prepareArguments(args) {
       const error = (args as Record<string, unknown> | undefined)?.[PARSE_ERROR];
       if (error) throw new Error(`This tool call could not be read: ${error} Write the call again with valid arguments.`);
-      return args as never;
+      return (t.prepare && args && typeof args === "object" ? t.prepare(args as Record<string, unknown>) : args) as never;
     },
     async execute(_id, params, signal) {
       // Screens rebuild their tools as their state changes (and calls in one
