@@ -4901,6 +4901,91 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
   background: transparent;
   border-bottom-color: transparent;
 }
+.doc-mention-compose {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.doc-mention-field {
+  min-height: 64px;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--input-bg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+.doc-mention-field:focus {
+  outline: 2px solid #1a73e8;
+  border-color: transparent;
+}
+.doc-mention-field.is-empty::before {
+  content: attr(data-placeholder);
+  color: #80868b;
+  pointer-events: none;
+}
+.doc-mention {
+  display: inline;
+  padding: 0 6px;
+  margin: 0 1px;
+  border-radius: 999px;
+  background: #e8f0fe;
+  color: #174ea6;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.doc-mention-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(60, 64, 67, 0.15);
+}
+.doc-comment-card .doc-mention-list button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  gap: 1px;
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+  color: var(--text-primary);
+  font-weight: 600;
+  text-align: left;
+}
+.doc-comment-card .doc-mention-list button[aria-selected="true"],
+.doc-comment-card .doc-mention-list button:hover {
+  background: #e8f0fe;
+}
+.doc-mention-list small {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+.doc-comment-card.is-for-you {
+  border-color: #188038;
+  box-shadow: 0 0 0 2px #188038;
+}
+.doc-mention-flag {
+  display: inline-block;
+  margin: 0 0 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e6f4ea;
+  color: #137333;
+  font-size: 12px;
+  font-weight: 700;
+}
 @media (max-width: 900px) {
   .document-stage.with-comments {
     flex-wrap: wrap;

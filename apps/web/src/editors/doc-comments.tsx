@@ -7,11 +7,20 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { Check, MessageSquarePlus } from "lucide-react";
 import {
   commentThreads,
+  threadForReader,
   type DocCommentMessage,
   type DocCommentThread,
 } from "@suiteleaf/core/doc-comments";
-import { currentAuthor, localName, onAuthorChange, setLocalName } from "../identity";
+import {
+  currentAuthor,
+  localName,
+  onAuthorChange,
+  rememberName,
+  setLocalName,
+} from "../identity";
 import { getSession } from "../node-client";
+import { mentionReader } from "./doc-mentions";
+import { MentionField, MentionText, type MentionFieldHandle } from "./doc-mention-field";
 
 const MARK = "comment";
 const syncMeta = "suiteleafCommentSync";
@@ -181,6 +190,30 @@ function authorNow() {
   return currentAuthor(session?.user);
 }
 
+/** Move the named comment to the middle of the page so the scroll is visible. */
+function scrollCommentIntoView(anchor: Element) {
+  const stage = anchor.closest(".document-stage");
+  if (!(stage instanceof HTMLElement)) {
+    anchor.scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+  const stageBox = stage.getBoundingClientRect();
+  const box = anchor.getBoundingClientRect();
+  const delta = box.top - stageBox.top - stage.clientHeight / 2 + box.height / 2;
+  if (Math.abs(delta) < 24) return;
+  const start = stage.scrollTop;
+  const target = Math.max(0, start + delta);
+  const began = performance.now();
+  const duration = 720;
+  const step = (now: number) => {
+    const t = Math.min(1, (now - began) / duration);
+    const eased = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+    stage.scrollTop = start + (target - start) * eased;
+    if (t < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
 export function DocComments({
   editor,
   stageRef,
@@ -194,13 +227,13 @@ export function DocComments({
 }) {
   const gutter = useRef<HTMLElement>(null);
   const nameInput = useRef<HTMLInputElement>(null);
-  const draftInput = useRef<HTMLTextAreaElement>(null);
+  const draftInput = useRef<MentionFieldHandle>(null);
   const replyInput = useRef<HTMLTextAreaElement>(null);
   const [threads, setThreads] = useState<DocCommentThread[]>(() =>
     threadsIn(editor.state.doc),
   );
   const [composing, setComposing] = useState(false);
-  const [draft, setDraft] = useState("");
+  const [composerTick, setComposerTick] = useState(0);
   const [name, setName] = useState(localName);
   const [nameError, setNameError] = useState("");
   const [hint, setHint] = useState("");
@@ -217,7 +250,9 @@ export function DocComments({
   const [tops, setTops] = useState<Record<string, number>>({});
   const [layoutTick, setLayoutTick] = useState(0);
   const [hasSelection, setHasSelection] = useState(false);
+  const [forYou, setForYou] = useState<string | null>(null);
   const started = useRef(false);
+  const landed = useRef(false);
 
   const needsName = !authorNow().signature;
   // The add button floats over the selection. Reserving the margin before
@@ -228,6 +263,43 @@ export function DocComments({
   useEffect(() => onGutter(showGutter), [onGutter, showGutter]);
 
   useEffect(() => onAuthorChange(() => setName(localName())), []);
+
+  useEffect(() => {
+    for (const thread of threads) {
+      for (const message of thread.messages) {
+        rememberName(message.authorName);
+        for (const mention of message.mentions ?? []) rememberName(mention.name);
+      }
+    }
+  }, [threads]);
+
+  useEffect(() => {
+    if (landed.current) return;
+    const reader = mentionReader();
+    if (!reader.name && !reader.email && !reader.accountId) return;
+    const thread = threadForReader(threads, reader);
+    if (!thread) {
+      if (threads.some((item) => item.messages.length)) landed.current = true;
+      return;
+    }
+    landed.current = true;
+    setActive(thread.id);
+    setForYou(thread.id);
+  }, [threads]);
+
+  useEffect(() => {
+    if (!forYou) return;
+    const id = forYou;
+    let frame = 0;
+    const timer = window.setTimeout(() => {
+      const anchor = editor.view.dom.querySelector(`[data-thread="${CSS.escape(id)}"]`);
+      if (anchor) frame = requestAnimationFrame(() => scrollCommentIntoView(anchor));
+    }, 60);
+    return () => {
+      window.clearTimeout(timer);
+      cancelAnimationFrame(frame);
+    };
+  }, [editor, forYou]);
 
   useEffect(() => {
     const refresh = () => {
@@ -321,9 +393,9 @@ export function DocComments({
     });
   }, [
     composing,
-    draft,
     editor,
     hasSelection,
+    composerTick,
     hint,
     layoutTick,
     nameError,
@@ -388,7 +460,6 @@ export function DocComments({
       editor.state.tr.setMeta(commentDraftKey, { from, to }),
     );
     setComposing(true);
-    setDraft("");
     setNameError("");
     setPanel(false);
     setActive(null);
@@ -408,7 +479,6 @@ export function DocComments({
   const cancel = () => {
     editor.view.dispatch(editor.state.tr.setMeta(commentDraftKey, null));
     setComposing(false);
-    setDraft("");
     setNameError("");
   };
 
@@ -428,8 +498,9 @@ export function DocComments({
   };
 
   const post = () => {
-    const text = draft.trim();
-    if (!text) {
+    const body = draftInput.current?.read() ?? { text: "", mentions: [] };
+    const text = body.mentions.length ? body.text : body.text.trim();
+    if (!text.trim() && !body.mentions.length) {
       draftInput.current?.focus();
       return;
     }
@@ -451,6 +522,7 @@ export function DocComments({
           authorName: display,
           createdAt: new Date().toISOString(),
           text,
+          ...(body.mentions.length ? { mentions: body.mentions } : {}),
         },
       ],
     };
@@ -465,7 +537,6 @@ export function DocComments({
     tr.setMeta(commentDraftKey, null);
     editor.view.dispatch(tr);
     setComposing(false);
-    setDraft("");
     setActive(id);
   };
 
@@ -547,6 +618,11 @@ export function DocComments({
     }
   };
 
+  const shortcutHint =
+    typeof navigator !== "undefined" && navigator.platform.includes("Mac")
+      ? "⌘↩ to post"
+      : "Ctrl+Enter to post";
+
   const posted = threads.filter((thread) => thread.messages.length);
   const listed = posted.filter((thread) =>
     tab === "resolved" ? thread.resolved : !thread.resolved,
@@ -601,7 +677,12 @@ export function DocComments({
           </div>
           {listed.length ? (
             listed.map((thread) => (
-              <article key={thread.id} className="doc-comment-panel-card">
+              <article
+                key={thread.id}
+                className={`doc-comment-panel-card${forYou === thread.id ? " is-for-you" : ""}`}
+                data-for-you={forYou === thread.id ? "true" : undefined}
+              >
+                {forYou === thread.id ? <p className="doc-mention-flag">For you</p> : null}
                 <button
                   type="button"
                   className="doc-comment-jump"
@@ -661,14 +742,13 @@ export function DocComments({
                 <p className="doc-comment-as">Commenting as {authorNow().signature}</p>
               )}
               {nameError ? <p className="doc-comment-error">{nameError}</p> : null}
-              <textarea
+              <MentionField
                 ref={draftInput}
-                aria-label="Comment"
-                rows={3}
-                value={draft}
+                label="Comment"
                 placeholder="Add a comment"
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={(event) => onComposerKey(event, "comment")}
+                onPost={post}
+                onEscape={cancel}
+                onInput={() => setComposerTick((tick) => tick + 1)}
               />
               <div className="doc-comment-actions">
                 <button type="button" onClick={cancel}>
@@ -676,9 +756,7 @@ export function DocComments({
                 </button>
                 <button type="submit">Comment</button>
               </div>
-              <p className="doc-comment-hint">
-                {navigator.platform.includes("Mac") ? "⌘↩ to post" : "Ctrl+Enter to post"}
-              </p>
+              <p className="doc-comment-hint">Type @ and a name. Nobody is emailed. {shortcutHint}</p>
             </form>
           ) : null}
           {posted.map((thread, index) =>
@@ -697,12 +775,14 @@ export function DocComments({
             ) : (
               <article
                 key={thread.id}
-                className={`doc-comment-card${active === thread.id ? " is-active" : ""}`}
+                className={`doc-comment-card${active === thread.id ? " is-active" : ""}${forYou === thread.id ? " is-for-you" : ""}`}
                 data-comment-card={thread.id}
+                data-for-you={forYou === thread.id ? "true" : undefined}
                 data-anchor-top={place(thread.id, 24 + index * 120)}
                 style={{ top: tops[thread.id] ?? 0 }}
                 onClick={() => setActive(thread.id)}
               >
+                {forYou === thread.id ? <p className="doc-mention-flag">For you</p> : null}
                 {thread.orphaned ? (
                   <p className="doc-comment-deleted">Original text deleted</p>
                 ) : (
@@ -766,7 +846,7 @@ function Message({ message }: { message: DocCommentMessage }) {
         <strong>{message.authorName}</strong>
         <time dateTime={message.createdAt}>{formatWhen(message.createdAt)}</time>
       </p>
-      <p>{message.text}</p>
+      <MentionText text={message.text} mentions={message.mentions} />
     </div>
   );
 }
