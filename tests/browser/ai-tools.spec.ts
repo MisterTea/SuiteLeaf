@@ -12,6 +12,9 @@ async function waitForTools(page: Page, name: string) {
   await expect.poll(() => page.evaluate(() => window.__suiteleafAgent?.tools() ?? []), { timeout: 20000 }).toContain(name);
 }
 
+// Each test drives several tools end to end, with the pauses the agent's pointer needs.
+test.describe.configure({ timeout: 120_000 });
+
 test.skip(({ browserName, isMobile }) => browserName !== "chromium" || !!isMobile, "Tool behaviour is browser-independent.");
 
 test("document tools write, style, find, replace and check spelling", async ({ page }) => {
