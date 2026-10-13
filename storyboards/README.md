@@ -116,5 +116,6 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 58 | [Group rows](58-group-rows.md) | single-node | Sheets |
 | 59 | [Print the budget](59-print-the-budget.md) | single-node | Sheets |
 | 60 | [Comment on a slide](60-comment-on-a-slide.md) | single-node | Slides |
+| 61 | [Fade in on click](61-fade-in-on-click.md) | single-node | Slides |
 | 61 | [A different first page](61-different-first-page.md) | single-node | Docs |
 | 62 | [Odd and even pages](62-odd-and-even-pages.md) | single-node | Docs |
