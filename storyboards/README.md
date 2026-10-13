@@ -117,3 +117,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 59 | [Print the budget](59-print-the-budget.md) | single-node | Sheets |
 | 60 | [Comment on a slide](60-comment-on-a-slide.md) | single-node | Slides |
 | 61 | [A different first page](61-different-first-page.md) | single-node | Docs |
+| 63 | [Right-click a misspelling](63-right-click-a-misspelling.md) | single-node | Sheets |
