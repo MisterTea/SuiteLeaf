@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { X } from "lucide-react";
 import { Node, type Editor } from "@tiptap/core";
 import type { Node as ProseNode } from "@tiptap/pm/model";
+import { Selection } from "@tiptap/pm/state";
 import {
   asEquation,
   plainOf,
@@ -279,12 +280,18 @@ export function EquationDialog({
 
   const insert = () => {
     if (!parsed) return;
+    const expr = parsed;
     editor
       .chain()
       .focus()
       .insertContent({
         type: "equation",
-        attrs: { expr: parsed, plain: plainOf(parsed) },
+        attrs: { expr, plain: plainOf(expr) },
+      })
+      .command(({ tr }) => {
+        const after = tr.selection.to;
+        tr.setSelection(Selection.near(tr.doc.resolve(after), 1));
+        return true;
       })
       .run();
     onClose();
@@ -362,6 +369,7 @@ export function EquationDialog({
             type="button"
             className="dialog-primary-btn"
             disabled={!parsed}
+            onMouseDown={(event) => event.preventDefault()}
             onClick={insert}
           >
             Insert equation
