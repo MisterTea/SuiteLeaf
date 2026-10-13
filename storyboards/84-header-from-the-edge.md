@@ -45,6 +45,7 @@ Google Docs puts Header and Footer next to the margins ([Docs Help](https://supp
 - Different first page and odd/even headers use this one header distance and one footer distance.
 - Word export writes the distances on `w:pgMar`. Opening a Word file does not read `w:header` or `w:footer` yet.
 - A short page does not show the footer push until the notes reach the bottom margin. The inset still grows.
+- Storyboard 91 keeps a one-line header above the title when the distance equals the margin. This video still shows the earlier shared line.
 
 ## Result
 

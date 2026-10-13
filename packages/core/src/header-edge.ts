@@ -3,9 +3,10 @@
  * (96 per inch). One header distance and one footer distance apply to every
  * page, including a different first page and odd or even headers.
  *
- * The body margin is a separate inset. A distance inside the margin only
- * moves the header or footer. A distance past the margin pushes the body
- * clear of that text and leaves the margin value alone.
+ * The body margin is a separate inset. A distance whose text stays inside
+ * the margin only moves the header or footer. When that text reaches the
+ * body, including a one-line header whose distance equals the margin, the
+ * body moves clear and the stored margin stays as it was.
  */
 
 /** Same floor as the body margin: a quarter inch. */
@@ -44,7 +45,7 @@ export type EdgeLayout = {
 
 /**
  * A stored distance, or the body margin when the file never set one.
- * That keeps the header on the same line as the text until someone moves it.
+ * A one-line header at that shared distance still sits above the text.
  */
 export function resolveEdgePx(value: unknown, marginPx: number): number {
   if (
@@ -119,14 +120,27 @@ function distanceFor(settings: EdgeLayout, kind: EdgeKind): number {
   return kind === "header" ? settings.headerFromEdge : settings.footerFromEdge;
 }
 
-/** The distance reaches past the body margin, so the text has to move. */
+function contentWidthOf(settings: EdgeLayout, pageWidth: number): number {
+  return Math.max(120, pageWidth - settings.marginLeft - settings.marginRight);
+}
+
+/** The letterhead's own text crosses into the body, even when the distance equals the margin. */
+function furnitureReachesBody(
+  kind: EdgeKind,
+  settings: EdgeLayout,
+  contentWidth: number,
+): boolean {
+  const distance = distanceFor(settings, kind);
+  if (edgeDistanceError(kind, distance)) return false;
+  const band = bandPx(settings, kind, contentWidth);
+  if (band <= 0) return false;
+  return distance + band > marginFor(settings, kind) + 0.5;
+}
+
+/** The distance itself is past the body margin, so the text has to move. */
 export function edgeReachesText(kind: EdgeKind, settings: EdgeLayout): boolean {
-  if (edgeDistanceError(kind, distanceFor(settings, kind))) return false;
-  const contentWidth = Math.max(
-    120,
-    816 - settings.marginLeft - settings.marginRight,
-  );
-  if (bandPx(settings, kind, contentWidth) <= 0) return false;
+  if (!furnitureReachesBody(kind, settings, contentWidthOf(settings, 816)))
+    return false;
   return distanceFor(settings, kind) > marginFor(settings, kind) + 0.5;
 }
 
@@ -134,34 +148,34 @@ export function edgeIntrusionNote(
   kind: EdgeKind,
   settings: EdgeLayout,
 ): string | null {
-  if (!edgeReachesText(kind, settings)) return null;
+  const width = contentWidthOf(settings, 816);
+  if (!furnitureReachesBody(kind, settings, width)) return null;
+  if (edgeReachesText(kind, settings)) {
+    if (kind === "header")
+      return "The header is inside the text area, so the text moves down below it. The top margin does not change.";
+    return "The footer is inside the text area, so the text moves up above it. The bottom margin does not change.";
+  }
   if (kind === "header")
-    return "The header is inside the text area, so the text moves down below it. The top margin does not change.";
-  return "The footer is inside the text area, so the text moves up above it. The bottom margin does not change.";
+    return "The header reaches the text, so the text starts below it. The top margin does not change.";
+  return "The footer reaches the text, so the text stops above it. The bottom margin does not change.";
 }
 
 /**
  * Padding that keeps the body at the margin, unless the header or footer
- * crosses that line. Crossing does not change the stored margin.
+ * reaches that line. Reaching it does not change the stored margin.
  */
 export function bodyEdgeInsets(
   settings: EdgeLayout,
   pageWidth = 816,
 ): { top: number; bottom: number } {
-  const contentWidth = Math.max(
-    120,
-    pageWidth - settings.marginLeft - settings.marginRight,
-  );
+  const contentWidth = contentWidthOf(settings, pageWidth);
   const inset = (kind: EdgeKind, margin: number) => {
-    const distance = distanceFor(settings, kind);
-    const band = bandPx(settings, kind, contentWidth);
-    if (
-      band > 0 &&
-      edgeDistanceError(kind, distance) == null &&
-      distance > margin + 0.5
-    )
-      return distance + band + FURNITURE_GAP_PX;
-    return margin;
+    if (!furnitureReachesBody(kind, settings, contentWidth)) return margin;
+    return (
+      distanceFor(settings, kind) +
+      bandPx(settings, kind, contentWidth) +
+      FURNITURE_GAP_PX
+    );
   };
   return {
     top: inset("header", settings.marginTop),

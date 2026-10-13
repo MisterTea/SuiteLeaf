@@ -87,10 +87,10 @@ test("header and footer distances stay separate from the margin", async ({ page 
   await openThesis(page);
   const start = await places(page);
   near(start.headerTop, 1);
-  near(start.textTop, 1);
-  near(start.padTop, 1);
+  expect(start.textTop).toBeGreaterThan(start.headerTop + 0.12);
+  expect(start.padTop).toBeGreaterThan(1.1);
   near(start.footerBottom, 1);
-  near(start.padBottom, 1);
+  expect(start.padBottom).toBeGreaterThan(1.1);
 
   await page.getByRole("button", { name: "Page setup", exact: true }).click();
   const setup = page.getByRole("dialog", { name: "Page setup" });
@@ -108,7 +108,7 @@ test("header and footer distances stay separate from the margin", async ({ page 
   near(half.headerTop, 0.5);
   near(half.textTop, 1);
   near(half.padTop, 1);
-  near(half.padBottom, 1);
+  expect(half.padBottom).toBeGreaterThan(1.1);
 
   await page.getByRole("button", { name: "Page setup", exact: true }).click();
   await expect(setup.getByLabel("Header from edge")).toHaveValue("0.5");
@@ -124,7 +124,7 @@ test("header and footer distances stay separate from the margin", async ({ page 
   near(into.headerTop, 1.5);
   expect(into.textTop).toBeGreaterThan(into.headerTop);
   expect(into.padTop).toBeGreaterThan(1.5);
-  near(into.padBottom, 1);
+  expect(into.padBottom).toBeGreaterThan(1.1);
 
   await page.getByRole("button", { name: "Page setup", exact: true }).click();
   await expect(setup.getByLabel("Top margin")).toHaveValue("1");

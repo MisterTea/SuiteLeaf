@@ -85,8 +85,8 @@ test("header and footer distances stay separate from the page margin", async ({
 
   const same = await placement(page);
   expect(Math.abs(same.header - inch(1))).toBeLessThan(6);
-  expect(Math.abs(same.body - inch(1))).toBeLessThan(6);
-  expect(Math.abs(same.paddingTop - inch(1))).toBeLessThan(2);
+  expect(same.body).toBeGreaterThan(same.header + 12);
+  expect(same.paddingTop).toBeGreaterThan(inch(1) + 12);
 
   let dialog = await openSetup(page);
   await expect(dialog.getByLabel("Header from edge")).toHaveValue("1");
@@ -99,7 +99,7 @@ test("header and footer distances stay separate from the page margin", async ({
 
   const half = await placement(page);
   expect(Math.abs(half.header - inch(0.5))).toBeLessThan(6);
-  expect(Math.abs(half.body - same.body)).toBeLessThan(6);
+  expect(Math.abs(half.body - inch(1))).toBeLessThan(6);
   expect(Math.abs(half.paddingTop - inch(1))).toBeLessThan(2);
 
   dialog = await openSetup(page);

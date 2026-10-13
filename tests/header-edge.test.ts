@@ -5,6 +5,10 @@ import {
   edgeDistanceError,
   edgeIntrusionNote,
 } from "../packages/core/src/document-layout";
+import {
+  FURNITURE_GAP_PX,
+  FURNITURE_LINE_PX,
+} from "../packages/core/src/header-edge";
 import { exportDocx } from "../packages/core/src/docx-export";
 import { createFile } from "../packages/core/src";
 import JSZip from "jszip";
@@ -25,7 +29,7 @@ function layout(headerFromEdge: number, footerFromEdge = inch(1)) {
 }
 
 describe("header and footer distance from the edge", () => {
-  it("opens without a distance on the margin, the same inset as the text", () => {
+  it("opens without a distance on the margin, with a one-line header above the text", () => {
     const settings = documentPageSettings({
       type: "doc",
       attrs: { pageSettings: { margin: 96, header: "Town council" } },
@@ -33,7 +37,8 @@ describe("header and footer distance from the edge", () => {
     expect(settings.marginTop).toBe(96);
     expect(settings.headerFromEdge).toBe(96);
     expect(settings.footerFromEdge).toBe(96);
-    expect(bodyEdgeInsets(settings).top).toBe(96);
+    expect(bodyEdgeInsets(settings).top).toBe(96 + FURNITURE_LINE_PX + FURNITURE_GAP_PX);
+    expect(bodyEdgeInsets(settings).bottom).toBe(96);
   });
 
   it("keeps a saved distance and does not pull it back to the margin", () => {
@@ -61,11 +66,47 @@ describe("header and footer distance from the edge", () => {
     expect(edgeDistanceError("header", inch(1.5))).toBeNull();
   });
 
+  it("puts a one-line header and footer above and below the text when the distances equal the margins", () => {
+    const even = layout(inch(1), inch(1));
+    const insets = bodyEdgeInsets(even);
+    const line = FURNITURE_LINE_PX + FURNITURE_GAP_PX;
+    expect(even.marginTop).toBe(inch(1));
+    expect(even.marginBottom).toBe(inch(1));
+    expect(insets.top).toBe(inch(1) + line);
+    expect(insets.bottom).toBe(inch(1) + line);
+    expect(edgeIntrusionNote("header", even)).toMatch(/starts below/);
+    expect(edgeIntrusionNote("header", even)).toMatch(/does not change/);
+    expect(edgeIntrusionNote("header", even)).not.toMatch(/inside the text area/);
+    expect(edgeIntrusionNote("footer", even)).toMatch(/stops above/);
+    expect(edgeIntrusionNote("footer", even)).toMatch(/does not change/);
+  });
+
+  it("does not move the body when the header and footer lines are empty", () => {
+    const blank = { ...layout(inch(1), inch(1)), header: "", footer: " " };
+    expect(bodyEdgeInsets(blank)).toEqual({ top: inch(1), bottom: inch(1) });
+    expect(edgeIntrusionNote("header", blank)).toBeNull();
+    expect(edgeIntrusionNote("footer", blank)).toBeNull();
+  });
+
+  it("moves the body when header text crosses the margin even though the distance is inside it", () => {
+    const tall = {
+      ...layout(inch(0.5), inch(0.5)),
+      header: ["Town", "council", "orders", "of", "business"].join("\n"),
+    };
+    expect(bodyEdgeInsets(tall).top).toBe(
+      inch(0.5) + 5 * FURNITURE_LINE_PX + FURNITURE_GAP_PX,
+    );
+    expect(bodyEdgeInsets(tall).bottom).toBe(inch(1));
+    expect(tall.marginTop).toBe(inch(1));
+    expect(edgeIntrusionNote("header", tall)).toMatch(/starts below/);
+    expect(edgeIntrusionNote("header", tall)).not.toMatch(/inside the text area/);
+  });
+
   it("moves only the header at 0.5 inches and pushes the body at 1.5 without changing the margin", () => {
     const clear = layout(inch(0.5));
     expect(bodyEdgeInsets(clear).top).toBe(inch(1));
     expect(edgeIntrusionNote("header", clear)).toBeNull();
-    const into = layout(inch(1.5));
+    const into = layout(inch(1.5), inch(0.5));
     const insets = bodyEdgeInsets(into);
     expect(insets.top).toBeGreaterThan(inch(1.5));
     expect(insets.bottom).toBe(inch(1));
@@ -75,7 +116,7 @@ describe("header and footer distance from the edge", () => {
   });
 
   it("pushes the body up when the footer crosses the bottom margin", () => {
-    const into = layout(inch(1), inch(1.5));
+    const into = layout(inch(0.5), inch(1.5));
     expect(bodyEdgeInsets(into).bottom).toBeGreaterThan(inch(1.5));
     expect(bodyEdgeInsets(into).top).toBe(inch(1));
     expect(edgeIntrusionNote("footer", into)).toMatch(/moves up/);
