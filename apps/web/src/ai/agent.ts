@@ -213,7 +213,8 @@ class AgentSession {
             reason: `There is no tool named ${toolCall.name} here. Available tools: ${context.tools?.map((t) => t.name).join(", ")}.`,
           };
         }
-        if (this.lastCalls.slice(-2).every((k) => k === key) && this.lastCalls.length >= 2) {
+        const repeatable = currentSuiteTools().find((t) => t.name === toolCall.name)?.repeatable;
+        if (!repeatable && this.lastCalls.slice(-2).every((k) => k === key) && this.lastCalls.length >= 2) {
           this.metrics.repeatedCalls++;
           return {
             block: true,

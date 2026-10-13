@@ -262,8 +262,11 @@ test("presentation tools build slides and present", async ({ page }) => {
   await expect(call(page, "add_shape", { slide: 1, shape: "circle", fill: "gold" })).rejects.toThrow(/Fill menu color: .*Yellow/);
   expect(await call(page, "move_slide", { slide: 3, before: "Planted" })).toContain('Moved "Help" from slide 3 to slide 1: it now comes first, before "Planted"');
   expect(await call(page, "move_slide", { slide: 1, after: "Club update" })).toMatch(/Order: 1\. Planted; 2\. Club update; 3\. Help; 4\. Questions\?/);
-  await call(page, "start_presentation", { with_notes: true });
+  expect(await call(page, "start_presentation", { with_notes: true })).toContain('from slide 1 of 4, "Planted", with the speaker notes beside it');
   expect(await call(page, "next_slide")).toContain("slide 2 of 4");
+  expect(await call(page, "next_slide")).toContain('slide 3 of 4, "Help"');
+  expect(await call(page, "next_slide")).toContain('slide 4 of 4, "Questions?". This is the last slide.');
+  await expect(call(page, "next_slide")).rejects.toThrow(/already on the last slide/);
   await call(page, "end_presentation");
 });
 
