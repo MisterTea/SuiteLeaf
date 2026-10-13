@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   copyFilename,
   groupVersions,
+  partialRestoreTitle,
   restoreHeading,
   restorePrompt,
   shouldSnapshot,
@@ -74,6 +75,7 @@ describe("version history list", () => {
     expect(restorePrompt(named, 4, now)).toBe(
       'Restore "Agreed rota"? 4 paragraphs change. The current version stays in history.',
     );
+    expect(partialRestoreTitle("north-bed")).toBe("Restored the north-bed paragraph");
   });
 
   it("snapshots an explicit save and otherwise waits a few minutes", () => {

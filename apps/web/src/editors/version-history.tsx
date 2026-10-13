@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import type { Extensions } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
@@ -11,9 +11,12 @@ import Superscript from "@tiptap/extension-superscript";
 import Subscript from "@tiptap/extension-subscript";
 import { MoreHorizontal, X } from "lucide-react";
 import {
+  applyParagraphRestore,
+  compareParagraphs,
   diffDocuments,
   duplicateFile,
   extensionFor,
+  paragraphRestorePrompt,
   parseFile,
   parseNamedFile,
   serializeFile,
@@ -21,11 +24,18 @@ import {
   type JsonNode,
   type SuiteFile,
 } from "@suiteleaf/core";
-import { drive } from "../node-client";
+import { drive, uploadDriveFile } from "../node-client";
 import { storage } from "../storage";
+import {
+  paragraphRestoreExtension,
+  type ParagraphRestoreControl,
+} from "./doc-paragraph-restore-ui";
+
+export type { ParagraphRestoreControl };
 import {
   localVersions,
   nameLocalVersion,
+  recordLocalParagraphRestore,
   restoreLocalVersion,
   type LocalVersion,
 } from "./local-versions";
@@ -34,6 +44,7 @@ import {
   copyTitle,
   dayHeading,
   groupVersions,
+  partialRestoreTitle,
   restoreHeading,
   restorePrompt,
   versionWhen,
@@ -87,14 +98,25 @@ function entryLines(
 export function VersionPreview({
   content,
   label,
+  offers = null,
+  onRestoreParagraph,
 }: {
   content: JsonNode;
   label: string;
+  offers?: (ParagraphRestoreControl | null)[] | null;
+  onRestoreParagraph?: (key: string) => void;
 }) {
+  const offersRef = useRef(offers);
+  const restoreRef = useRef(onRestoreParagraph);
+  offersRef.current = offers;
+  restoreRef.current = onRestoreParagraph;
+  const [restoreExtension] = useState(() =>
+    paragraphRestoreExtension(offersRef, restoreRef),
+  );
   const editor = useEditor({
     immediatelyRender: true,
     editable: false,
-    extensions: previewExtensions,
+    extensions: [...previewExtensions, restoreExtension],
     content,
     editorProps: {
       attributes: {
@@ -124,13 +146,19 @@ export function VersionHistory({
   onPreview,
   onRestored,
   onStatus,
+  bindParagraphRestore,
 }: {
   record: FileRecord;
   getFile: () => SuiteFile;
   onClose: () => void;
-  onPreview: (content: JsonNode | null, label: string) => void;
+  onPreview: (
+    content: JsonNode | null,
+    label: string,
+    offers?: (ParagraphRestoreControl | null)[] | null,
+  ) => void;
   onRestored: (record: FileRecord) => void;
   onStatus: (status: string) => void;
+  bindParagraphRestore?: MutableRefObject<(key: string) => void>;
 }) {
   const [versions, setVersions] = useState<HistoryVersion[]>([]);
   const natives = useRef(new Map<string, string>());
@@ -233,6 +261,21 @@ export function VersionHistory({
     };
   }, [menu]);
 
+  async function loadVersion(version: HistoryVersion) {
+    const cached = natives.current.get(version.id);
+    if (cached) return cached;
+    if (version.id === headId && version.id === "current")
+      return serializeFile(fileNow.current());
+    const link = record.drive;
+    if (!link) throw new Error("That version is no longer on this computer.");
+    const text =
+      version.id === headId
+        ? (await drive.read(link.itemId)).text
+        : await drive.readVersion(link.itemId, version.id);
+    natives.current.set(version.id, text);
+    return text;
+  }
+
   useEffect(() => {
     let cancel = false;
     if (!selected || !head || selected.id === head.id) {
@@ -242,15 +285,15 @@ export function VersionHistory({
     }
     void (async () => {
       try {
-        const before = parseFile(await loadNative(selected));
-        const current = parseFile(await loadNative(head));
+        const before = parseFile(await loadVersion(selected));
+        const current = parseFile(await loadVersion(head));
         if (cancel) return;
         if (before.kind !== "doc" || current.kind !== "doc") {
           preview.current(null, "");
           setChangeCount(null);
           return;
         }
-        const againstCurrent = diffDocuments(before.content, current.content);
+        const againstCurrent = compareParagraphs(before.content, current.content);
         setChangeCount(againstCurrent.changedParagraphs);
         if (mode === "previous") {
           const index = versions.findIndex((version) => version.id === selected.id);
@@ -262,18 +305,28 @@ export function VersionHistory({
             );
             return;
           }
-          const previous = parseFile(await loadNative(older));
+          const previous = parseFile(await loadVersion(older));
           if (cancel || previous.kind !== "doc") return;
           const within = diffDocuments(previous.content, before.content);
           preview.current(
             within.content,
             "Changes in this version · read-only. Green underline was added here. Red strikethrough was removed.",
+            null,
           );
           return;
         }
+        const source = selected.name
+          ? `"${selected.name}"`
+          : versionWhen(selected.createdAt);
+        const controls = againstCurrent.offers.map((offer) =>
+          offer
+            ? { key: offer.key, prompt: paragraphRestorePrompt(offer, source) }
+            : null,
+        );
         preview.current(
           againstCurrent.content,
           "Comparing with the current version · read-only. Green underline was added later. Red strikethrough was removed.",
+          controls,
         );
       } catch (e) {
         if (!cancel) setError(message(e));
@@ -282,21 +335,8 @@ export function VersionHistory({
     return () => {
       cancel = true;
     };
-
-    async function loadNative(version: HistoryVersion) {
-      const cached = natives.current.get(version.id);
-      if (cached) return cached;
-      if (version.id === headId && version.id === "current")
-        return serializeFile(fileNow.current());
-      const link = record.drive;
-      if (!link) throw new Error("That version is no longer on this computer.");
-      const text =
-        version.id === headId
-          ? (await drive.read(link.itemId)).text
-          : await drive.readVersion(link.itemId, version.id);
-      natives.current.set(version.id, text);
-      return text;
-    }
+    // loadVersion closes over the version cache and the open drive link.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, head, headId, mode, versions, record.drive]);
 
   const groups = groupVersions(versions).filter(
@@ -406,6 +446,49 @@ export function VersionHistory({
       setBusy(false);
     }
   };
+
+  const restoreParagraph = async (key: string) => {
+    if (!selected || !head || selected.id === head.id || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const beforeFile = parseFile(await loadVersion(selected));
+      const live = fileNow.current();
+      if (beforeFile.kind !== "doc" || live.kind !== "doc")
+        throw new Error("Only a document can restore one paragraph.");
+      const offer = compareParagraphs(beforeFile.content, live.content).offers.find(
+        (item) => item?.key === key,
+      );
+      if (!offer) throw new Error("That paragraph matches the current document.");
+      const content = applyParagraphRestore(live.content, beforeFile.content, key);
+      const nextFile: SuiteFile = {
+        ...live,
+        content,
+        updatedAt: new Date().toISOString(),
+      };
+      const name = partialRestoreTitle(offer.label);
+      if (record.drive) {
+        let link = record.drive;
+        const stored = parseFile(await loadVersion(head));
+        if (
+          stored.kind !== "doc" ||
+          JSON.stringify(stored.content) !== JSON.stringify(live.content)
+        )
+          link = await uploadDriveFile(live, link);
+        link = await uploadDriveFile(nextFile, link);
+        if (link.versionId)
+          await drive.nameVersion(link.itemId, link.versionId, name);
+        onRestored({ file: nextFile, drive: link });
+      } else {
+        await recordLocalParagraphRestore(live, nextFile, name);
+        onRestored({ ...record, file: nextFile });
+      }
+    } catch (e) {
+      setError(message(e));
+      setBusy(false);
+    }
+  };
+  if (bindParagraphRestore) bindParagraphRestore.current = (key) => void restoreParagraph(key);
 
   return (
     <aside className="version-history" aria-label="Version history">
