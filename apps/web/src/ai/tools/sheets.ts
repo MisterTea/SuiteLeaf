@@ -376,7 +376,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       name: "format_cells",
       label: "Format cells",
       description:
-        "Format a range: number_format (currency $1,020.00, accounting, percent 54.3%, percent_whole 54%, number 1,020.00, date, plain), decimals (how many decimal places to show, e.g. 0 for $1,020 or 2 for 54.26%; leave it out to keep the format's usual places), bold, italic, text_color and fill_color (#rrggbb), align (left, center, right), borders (true for thin borders on every cell), wrap.",
+        "Format a range: number_format (currency $1,020.00, accounting, percent 54.3%, percent_whole 54%, number 1,020.00, date, plain), decimals (how many decimal places to show, e.g. 0 for $1,020 or 2 for 54.26%; leave it out to keep the format's usual places), bold, italic, text_color and fill_color (#rrggbb), align (left, center, right), borders (true for thin borders on every cell), wrap. Set only what the user asked for on this range; anything you leave out stays as it is (bold=false removes bold).",
       parameters: Type.Object({
         range: Type.String(),
         number_format: Type.Optional(
@@ -440,7 +440,16 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         ctx.persist();
         await ctx.settle();
         const sample = range.getRange();
-        return `Formatted ${args.range}: ${done.join(", ") || "nothing changed"}. Shown as:\n${grid(sheet(), { ...sample, endRow: Math.min(sample.endRow, sample.startRow + 11) }, 12, 8)}`;
+        const cells: { ref: string; bold: boolean }[] = [];
+        for (let row = sample.startRow; row <= Math.min(sample.endRow, sample.startRow + 11); row++)
+          for (let column = sample.startColumn; column <= Math.min(sample.endColumn, sample.startColumn + 7); column++)
+            cells.push({
+              ref: a1({ startRow: row, endRow: row, startColumn: column, endColumn: column }),
+              bold: sheet().getRange(row, column, 1, 1).getCellStyleData()?.bl === 1,
+            });
+        const bolded = cells.filter((c) => c.bold);
+        const boldText = !bolded.length ? "none of it" : bolded.length === cells.length ? "all of it" : bolded.map((c) => c.ref).join(", ");
+        return `Formatted ${args.range}: ${done.join(", ") || "nothing changed"}. Bold: ${boldText}. Shown as:\n${grid(sheet(), { ...sample, endRow: Math.min(sample.endRow, sample.startRow + 11) }, 12, 8)}`;
       },
     }),
     tool({
