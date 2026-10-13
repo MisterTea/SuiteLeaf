@@ -6,9 +6,9 @@ const pageNumberPositions: PageNumberPosition[] = [
   "bottom-center",
   "top-right",
 ];
-/** Page setup accepts 0.25–1.5 inches. CSS pixels at 96 per inch. */
+/** Page setup accepts 0.25–3 inches. CSS pixels at 96 per inch. */
 export const MARGIN_MIN_PX = 24;
-export const MARGIN_MAX_PX = 144;
+export const MARGIN_MAX_PX = 288;
 export const MARGIN_DEFAULT_PX = 72;
 export type PageSettings = {
   size: "letter" | "a4";
@@ -388,14 +388,31 @@ export function pageMarginsValid(
     "marginTop" | "marginBottom" | "marginLeft" | "marginRight"
   >,
 ): boolean {
-  return [
+  return pageMarginsError(settings) === null;
+}
+/** Why Apply must stay off, or null when every edge is inside 0.25–3 inches. */
+export function pageMarginError(marginPx: number): string | null {
+  if (!Number.isFinite(marginPx)) return "Enter a margin in inches.";
+  if (marginPx > MARGIN_MAX_PX) return "A margin cannot be more than 3 inches.";
+  if (marginPx < MARGIN_MIN_PX) return "A margin must be at least 0.25 inches.";
+  return null;
+}
+export function pageMarginsError(
+  settings: Pick<
+    PageSettings,
+    "marginTop" | "marginBottom" | "marginLeft" | "marginRight"
+  >,
+): string | null {
+  for (const n of [
     settings.marginTop,
     settings.marginBottom,
     settings.marginLeft,
     settings.marginRight,
-  ].every(
-    (n) => Number.isFinite(n) && n >= MARGIN_MIN_PX && n <= MARGIN_MAX_PX,
-  );
+  ]) {
+    const error = pageMarginError(n);
+    if (error) return error;
+  }
+  return null;
 }
 /** Inches for Page setup, trimmed so 0.75 does not show as a long decimal. */
 export function formatMarginInches(px: number): string {

@@ -5,6 +5,8 @@ import {
   documentPageSettings,
   lowerRoman,
   pageFace,
+  pageMarginError,
+  pageMarginsError,
   pageNumberHint,
 } from "../packages/core/src/document-layout";
 
@@ -47,6 +49,17 @@ describe("document page settings", () => {
       marginLeft: 96,
       marginRight: 48,
     });
+  });
+  it("accepts a two-inch margin and refuses 4 inches or zero", () => {
+    const two = documentPageSettings({
+      type: "doc",
+      attrs: { pageSettings: { margin: 192 } },
+    });
+    expect(two.marginLeft).toBe(192);
+    expect(pageMarginsError(two)).toBeNull();
+    expect(pageMarginError(192)).toBeNull();
+    expect(pageMarginError(384)).toBe("A margin cannot be more than 3 inches.");
+    expect(pageMarginError(0)).toBe("A margin must be at least 0.25 inches.");
   });
   it("keeps the page numbers saved with a document", () => {
     const saved = (pageSettings: object) =>

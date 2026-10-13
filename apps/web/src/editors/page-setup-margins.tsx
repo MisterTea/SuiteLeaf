@@ -1,7 +1,8 @@
 import { useState } from "react";
 import {
   formatMarginInches,
-  pageMarginsValid,
+  pageMarginError,
+  pageMarginsError,
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
 import "./page-setup-margins.css";
@@ -32,7 +33,7 @@ export function PageMarginFields({
   onChange: (next: PageSettings) => void;
 }) {
   const [active, setActive] = useState<Edge | null>(null);
-  const valid = pageMarginsValid(draft);
+  const error = pageMarginsError(draft);
   const inches = (edge: Edge) => formatMarginInches(draft[edge]);
   const band = (edge: Edge) =>
     `${(draft[edge] / 96) * PREVIEW_SCALE}px`;
@@ -76,9 +77,8 @@ export function PageMarginFields({
                   aria-label={label}
                   type="number"
                   inputMode="decimal"
-                  min="0.25"
-                  max="1.5"
                   step="0.05"
+                  aria-invalid={pageMarginError(draft[edge]) ? true : undefined}
                   value={inches(edge)}
                   onFocus={() => setActive(edge)}
                   onBlur={() => setActive((current) => (current === edge ? null : current))}
@@ -95,9 +95,9 @@ export function PageMarginFields({
           ))}
         </div>
       </div>
-      <p className="page-margin-note" aria-live="polite">
-        {!valid
-          ? "Each margin is from 0.25 to 1.5 inches."
+      <p className="page-margin-note" aria-live="polite" role={error ? "alert" : undefined}>
+        {error
+          ? error
           : active
             ? `${edgeName[active]} is the edge that will move. The others stay as they are.`
             : "The blue band is the margin. The white box is where the text sits."}
