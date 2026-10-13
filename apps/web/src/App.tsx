@@ -2106,6 +2106,31 @@ function Workspace() {
                   >
                     Sort range
                   </MenuItem>
+                  <SubMenu label="Data cleanup">
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.sheetActions?.trimWhitespace?.()
+                      }
+                    >
+                      Trim whitespace
+                    </MenuItem>
+                    <MenuItem
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.sheetActions?.removeDuplicates?.()
+                      }
+                    >
+                      Remove duplicates
+                    </MenuItem>
+                  </SubMenu>
+                  <MenuItem
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.sheetActions?.splitTextToColumns?.()
+                    }
+                  >
+                    Split text to columns
+                  </MenuItem>
                   <MenuItem
                     onSelect={() =>
                       actions.current?.sheetActions?.dataValidation?.()

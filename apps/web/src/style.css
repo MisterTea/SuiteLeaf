@@ -1477,6 +1477,128 @@ a {
   background: transparent;
   color: inherit;
 }
+.sheet-notice-undo {
+  padding: 4px 2px;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.cleanup-notice {
+  z-index: 40;
+  top: 108px;
+  bottom: auto;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.cleanup-panel {
+  position: absolute;
+  top: 92px;
+  right: 20px;
+  z-index: 35;
+  width: 340px;
+  max-height: min(560px, calc(100% - 210px));
+  padding: 16px 18px 12px;
+  gap: 10px;
+  overflow: hidden;
+}
+.cleanup-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+.cleanup-body fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cleanup-body legend {
+  font-size: 12px;
+  font-weight: 600;
+  color: #3c4043;
+  margin-bottom: 2px;
+}
+.cleanup-column {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cleanup-column .dialog-text-btn {
+  padding: 2px 8px;
+}
+.cleanup-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #3c4043;
+}
+.cleanup-field select,
+.cleanup-field input {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 8px;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  color: #1f1f1f;
+}
+.cleanup-names {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.cleanup-preview {
+  border: 1px solid #dadce0;
+  border-radius: 6px;
+  overflow: auto;
+}
+.cleanup-preview table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+.cleanup-preview td {
+  padding: 6px 10px;
+  border-bottom: 1px solid #f1f3f4;
+  white-space: nowrap;
+}
+.cleanup-preview tr:last-child td {
+  border-bottom: 0;
+}
+.cleanup-summary,
+.cleanup-warning,
+.cleanup-hint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.cleanup-summary {
+  color: #174ea6;
+  font-weight: 500;
+}
+.cleanup-warning {
+  color: #b06000;
+}
+.cleanup-hint {
+  color: #5f6368;
+}
+@media (max-width: 700px) {
+  .cleanup-panel {
+    left: 8px;
+    right: 8px;
+    top: auto;
+    bottom: 8px;
+    width: auto;
+    max-height: 70%;
+  }
+}
 .sheets-toolbar {
   background: #edf2fa;
   margin: 6px 16px 8px;
