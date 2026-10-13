@@ -3,6 +3,7 @@ import type { SuiteFile } from "@suiteleaf/core";
 import type { DriveControl } from "../../drive/DriveBrowser";
 import type { DriveItem } from "../../node-client";
 import { agentSession } from "../agent";
+import { moveCursor } from "../cursor";
 import { ToolError, currentSnapshot, tool, waitForHost, type SuiteTool } from "../host";
 
 type Kind = SuiteFile["kind"];
@@ -45,12 +46,17 @@ export function signInTools(ctx: {
       description:
         "Wait while the user signs in or creates an account on the sign-in screen (you never type passwords). Returns once they are signed in, or after a few minutes.",
       parameters: Type.Object({}),
-      target: () => document.querySelector('[aria-label="Sign in to SuiteLeaf"] h2'),
+      // Just above the card, clear of the fields the user types into.
+      target: () => {
+        const r = document.querySelector('[aria-label="Sign in to SuiteLeaf"]')?.getBoundingClientRect();
+        return r && { x: r.left + r.width / 2, y: r.top - 28 };
+      },
       async execute() {
         for (let i = 0; i < 1800; i++) {
           if (ctx.signedIn()) {
             await waitForHost("home", 30000).catch(() => {});
             for (let j = 0; j < 50 && currentSnapshot().includes(DRIVE_LOADING); j++) await wait(100);
+            await moveCursor(document.querySelector(".account-chip"), "Signed in");
             return `The user signed in to ${ctx.host}. New files are saved to SuiteDrive on that server; the files on this computer are kept and come back when they disconnect.\n${currentSnapshot()}`;
           }
           await wait(200);
