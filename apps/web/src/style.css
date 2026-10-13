@@ -3397,3 +3397,260 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
     flex-direction: column;
   }
 }
+
+.document-stage.with-comments {
+  align-items: flex-start;
+}
+.document-stage.with-comments .outline {
+  width: 168px;
+}
+.document-stage.with-comments .paper-container {
+  min-width: 0;
+  overflow: hidden;
+}
+.doc-comment-gutter {
+  position: relative;
+  width: 280px;
+  flex-shrink: 0;
+}
+.doc-comment-gutter[hidden] {
+  display: none;
+}
+.doc-comment-card,
+.doc-comment-add,
+.doc-comment-panel {
+  width: 268px;
+  box-sizing: border-box;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(60, 64, 67, 0.2);
+  color: var(--text-primary);
+}
+.doc-comment-card {
+  position: absolute;
+  left: 0;
+}
+.doc-comment-add {
+  position: fixed;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #fff;
+  color: #174ea6;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.doc-comment-add:hover,
+.doc-comment-card button:hover,
+.doc-comment-panel button:hover {
+  background: #e8f0fe;
+}
+.doc-comment-card {
+  padding: 10px 12px 8px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.doc-comment-card.is-active {
+  border-color: #1a73e8;
+  box-shadow: 0 0 0 1px #1a73e8;
+}
+.doc-comment-card.is-resolved {
+  padding: 8px 12px;
+}
+.doc-comment-quote,
+.doc-comment-deleted {
+  margin: 0 0 8px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: #fff4c2;
+  color: #3c4043;
+  font-size: 12px;
+}
+.doc-comment-deleted {
+  background: #f1f3f4;
+  color: #5f6368;
+  font-style: italic;
+}
+.doc-comment-message p {
+  margin: 0;
+}
+.doc-comment-byline {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.doc-comment-byline time {
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.doc-comment-message + .doc-comment-message {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+.doc-comment-name,
+.doc-comment-as,
+.doc-comment-error,
+.doc-comment-hint,
+.doc-comment-empty,
+.doc-comment-resolved {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.doc-comment-name {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.doc-comment-card textarea,
+.doc-comment-name input,
+.doc-comment-panel textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--input-bg);
+  resize: vertical;
+}
+.doc-comment-card textarea:focus,
+.doc-comment-name input:focus {
+  outline: 2px solid #1a73e8;
+  border-color: transparent;
+}
+.doc-comment-error {
+  color: #c5221f;
+}
+.doc-comment-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 8px;
+}
+.doc-comment-actions button,
+.doc-comment-resolved button,
+.doc-comment-panel-head button,
+.doc-comment-jump {
+  border: 0;
+  background: transparent;
+  color: #174ea6;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.doc-comment-actions button[type="submit"],
+.doc-comment-actions button:last-child {
+  background: #1a73e8;
+  color: #fff;
+}
+.doc-comment-actions button[aria-label="Resolve"] {
+  background: transparent;
+  color: #188038;
+  margin-right: auto;
+  padding: 4px;
+}
+.doc-comment-resolved {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  color: #137333;
+  font-weight: 600;
+}
+.doc-comment-panel {
+  position: sticky;
+  top: 0;
+  width: 280px;
+  max-height: calc(100vh - 140px);
+  overflow: auto;
+  padding: 10px;
+}
+.doc-comment-panel-head,
+.doc-comment-tabs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.doc-comment-panel-head h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.doc-comment-tabs {
+  margin: 8px 0;
+  padding: 2px;
+  border-radius: 999px;
+  background: #f1f3f4;
+}
+.doc-comment-tabs button {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  border-radius: 999px;
+  padding: 6px 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.doc-comment-tabs button[aria-selected="true"] {
+  background: #fff;
+  color: #174ea6;
+  box-shadow: 0 1px 2px rgba(60, 64, 67, 0.2);
+}
+.doc-comment-panel-card {
+  border-top: 1px solid var(--border-subtle);
+  padding: 8px 0;
+}
+.doc-comment-jump {
+  display: block;
+  width: 100%;
+  text-align: left;
+  color: var(--text-primary);
+  font-weight: 500;
+  padding: 4px 0;
+}
+.comment-anchor,
+.comment-draft {
+  background: #fff2a8;
+  border-bottom: 2px solid #f9ab00;
+  border-radius: 2px;
+}
+.comment-anchor.is-resolved {
+  background: transparent;
+  border-bottom-color: transparent;
+}
+@media (max-width: 900px) {
+  .document-stage.with-comments {
+    flex-wrap: wrap;
+  }
+  .doc-comment-gutter {
+    width: 100%;
+    margin-top: 12px;
+  }
+  .doc-comment-card,
+  .doc-comment-panel {
+    position: relative;
+    top: auto !important;
+    width: 100%;
+    margin-bottom: 8px;
+  }
+}
+@media print {
+  .doc-comment-gutter {
+    display: none !important;
+  }
+}

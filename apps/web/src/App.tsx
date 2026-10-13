@@ -1400,6 +1400,13 @@ function Workspace() {
       </div>
     );
   const f = record.file;
+  const commentNote = f.importInfo?.warnings.find((w) =>
+    /^\d+ comment threads? imported$/.test(w),
+  );
+  const importNotes =
+    f.importInfo?.warnings.filter(
+      (w) => !/^\d+ comment threads? imported$/.test(w),
+    ) ?? [];
   return (
     <div className="workspace">
       <header className="workspace-header">
@@ -1649,6 +1656,13 @@ function Workspace() {
                     onSelect={() => actions.current?.docActions?.insertLink()}
                   >
                     Link
+                  </MenuItem>
+                  <MenuItem
+                    shortcut="Cmd+Alt+M"
+                    focusesTarget
+                    onSelect={() => actions.current?.docActions?.insertComment?.()}
+                  >
+                    Comment
                   </MenuItem>
                 </Menu>
                 <Menu label="Format">
@@ -2067,7 +2081,10 @@ function Workspace() {
             className="doc-icon-btn"
             title="Comments"
             aria-label="Comments"
-            onClick={() => actions.current?.sheetActions?.openComments?.()}
+            onClick={() => {
+              actions.current?.docActions?.openComments?.();
+              actions.current?.sheetActions?.openComments?.();
+            }}
           >
             <MessageSquare size={18} />
           </button>
@@ -2195,13 +2212,14 @@ function Workspace() {
           <summary>
             Imported {f.importInfo.sourceFormat.toUpperCase()}:{" "}
             {f.importInfo.sourceName}
-            {f.importInfo.warnings.length
-              ? ` · ${f.importInfo.warnings.length} compatibility ${f.importInfo.warnings.length === 1 ? "note" : "notes"}`
+            {commentNote ? ` · ${commentNote}` : ""}
+            {importNotes.length
+              ? ` · ${importNotes.length} compatibility ${importNotes.length === 1 ? "note" : "notes"}`
               : ""}
           </summary>
-          {f.importInfo.warnings.length ? (
+          {importNotes.length ? (
             <ul>
-              {f.importInfo.warnings.map((w, i) => (
+              {importNotes.map((w, i) => (
                 <li key={i}>{w}</li>
               ))}
             </ul>

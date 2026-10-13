@@ -1,6 +1,9 @@
 import {
   AlignmentType,
   BorderStyle,
+  CommentRangeEnd,
+  CommentRangeStart,
+  CommentReference,
   Document,
   ExternalHyperlink,
   Footer,
@@ -21,8 +24,12 @@ import {
   type ParagraphChild,
 } from "docx";
 import type { DocFile, JsonNode } from "./index";
-
 import { documentPageSettings } from "./document-layout";
+import {
+  planDocxComments,
+  stampDocxComments,
+  type DocxCommentPlan,
+} from "./doc-comments";
 
 const color = (v: unknown) =>
   typeof v === "string" && /^#[\da-f]{6}$/i.test(v) ? v.slice(1) : undefined;
@@ -55,7 +62,18 @@ function imageSize(data: Uint8Array, type: string): [number, number] {
     }
   return [480, 320];
 }
-function runs(node: JsonNode): ParagraphChild[] {
+function marked(
+  plan: DocxCommentPlan,
+  index: number,
+  edge: "starts" | "ends",
+): ParagraphChild[] {
+  return (plan[edge].get(index) ?? []).flatMap((id) =>
+    edge === "starts"
+      ? [new CommentRangeStart(id)]
+      : [new CommentRangeEnd(id), new CommentReference(id)],
+  );
+}
+function runs(node: JsonNode, plan: DocxCommentPlan): ParagraphChild[] {
   return (node.content ?? []).flatMap((n): ParagraphChild[] => {
     if (n.type === "hardBreak") return [new TextRun({ break: 1 })];
     if (n.type === "image") {
@@ -86,7 +104,9 @@ function runs(node: JsonNode): ParagraphChild[] {
         }),
       ];
     }
-    if (n.type !== "text") return runs(n);
+    if (n.type !== "text") return runs(n, plan);
+    const index = plan.index;
+    plan.index += 1;
     const opts: { -readonly [K in keyof IRunOptions]: IRunOptions[K] } = {
       text: n.text ?? "",
     };
@@ -115,28 +135,33 @@ function runs(node: JsonNode): ParagraphChild[] {
     }
     const run = new TextRun(opts);
     const link = n.marks?.find((m) => m.type === "link");
-    if (link && /^(https?:|mailto:|tel:)/i.test(String(link.attrs?.href)))
-      return [
-        new ExternalHyperlink({
-          link: String(link.attrs?.href),
-          children: [run],
-        }),
-      ];
-    return [run];
+    const body: ParagraphChild =
+      link && /^(https?:|mailto:|tel:)/i.test(String(link.attrs?.href))
+        ? new ExternalHyperlink({
+            link: String(link.attrs?.href),
+            children: [run],
+          })
+        : run;
+    return [...marked(plan, index, "starts"), body, ...marked(plan, index, "ends")];
   });
 }
 function blocks(
   nodes: JsonNode[],
+  plan: DocxCommentPlan,
   list?: { ordered: boolean; level: number },
 ): (Paragraph | Table)[] {
   return nodes.flatMap((n): (Paragraph | Table)[] => {
     if (n.type === "bulletList" || n.type === "orderedList")
-      return blocks(n.content ?? [], {
-        ordered: n.type === "orderedList",
-        level: list ? Math.min(8, list.level + 1) : 0,
-      });
+      return blocks(
+        n.content ?? [],
+        plan,
+        {
+          ordered: n.type === "orderedList",
+          level: list ? Math.min(8, list.level + 1) : 0,
+        },
+      );
     if (n.type === "listItem" || n.type === "blockquote")
-      return blocks(n.content ?? [], list);
+      return blocks(n.content ?? [], plan, list);
     if (n.type === "table")
       return [
         new Table({
@@ -154,7 +179,7 @@ function blocks(
                       columnSpan: Number(cell.attrs?.colspan) || 1,
                       rowSpan: Number(cell.attrs?.rowspan) || 1,
                       verticalAlign: VerticalAlign.TOP,
-                      children: blocks(cell.content ?? []),
+                      children: blocks(cell.content ?? [], plan),
                     }),
                 ),
               }),
@@ -172,7 +197,9 @@ function blocks(
         }),
       ];
     const children =
-      n.type === "image" ? runs({ type: "paragraph", content: [n] }) : runs(n);
+      n.type === "image"
+        ? runs({ type: "paragraph", content: [n] }, plan)
+        : runs(n, plan);
     return [
       new Paragraph({
         children,
@@ -225,6 +252,18 @@ export async function exportDocx(
   };
   await prepareImages(content);
   const settings = documentPageSettings(content);
+  const comments = planDocxComments(content);
+  const children = blocks(content.content ?? [], comments);
+  if (comments.trailing.length)
+    children.push(
+      new Paragraph({
+        children: comments.trailing.flatMap((id) => [
+          new CommentRangeStart(id),
+          new CommentRangeEnd(id),
+          new CommentReference(id),
+        ]),
+      }),
+    );
   const [width, height] =
     settings.size === "a4" ? [11906, 16838] : [12240, 15840];
   const doc = new Document({
@@ -247,6 +286,19 @@ export async function exportDocx(
         },
       ],
     },
+    comments: comments.comments.length
+      ? {
+          children: comments.comments.map((comment) => ({
+            id: comment.wordId,
+            author: comment.author,
+            initials: comment.initials,
+            date: comment.date,
+            parentId: comment.parentWordId,
+            resolved: comment.resolved,
+            children: [new Paragraph(comment.text)],
+          })),
+        }
+      : undefined,
     sections: [
       {
         properties: {
@@ -291,9 +343,12 @@ export async function exportDocx(
             ],
           }),
         },
-        children: blocks(content.content ?? []),
+        children,
       },
     ],
   });
-  return new Uint8Array(await Packer.toArrayBuffer(doc));
+  const packed = new Uint8Array(await Packer.toArrayBuffer(doc));
+  return comments.comments.length
+    ? stampDocxComments(packed, comments.resolvedWordIds)
+    : packed;
 }

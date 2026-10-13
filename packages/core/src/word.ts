@@ -6,6 +6,7 @@ import { parseDocument } from "htmlparser2";
 import type { AnyNode, Element } from "domhandler";
 import { XMLParser } from "fast-xml-parser";
 import { createFile, safeLink, type JsonNode, type DocFile } from "./index";
+import { commentImportSummary, importWordComments } from "./doc-comments";
 import { type OfficeImport, parseXml } from "./office";
 
 type Mark = NonNullable<JsonNode["marks"]>[number];
@@ -1275,6 +1276,19 @@ export async function importDocx(
   warnings.push(
     "SuiteLeaf lays out its own pages, so Word's exact line and page breaks, floating placement and font styling may differ.",
   );
+  const commentsXml = await zip.file("word/comments.xml")?.async("string");
+  if (commentsXml?.includes("<w:comment")) {
+    const imported = importWordComments(content, {
+      documentXml: (await zip.file("word/document.xml")?.async("string")) ?? xml,
+      commentsXml,
+      extendedXml: await zip.file("word/commentsExtended.xml")?.async("string"),
+    });
+    content = imported.content;
+    if (imported.count) {
+      features.push("comments");
+      warnings.push(commentImportSummary(imported.count));
+    }
+  }
   const file = createFile("doc", title) as DocFile;
   file.content = content;
   const stats: Record<string, number> = {
