@@ -72,6 +72,21 @@ function rectAt(editor: Editor, pos: number) {
   }
 }
 
+/** The paragraph containing `text`, ignoring Markdown copied from write_text ("# ", "- ", "**"). */
+function blockContaining(editor: Editor, text: string) {
+  const list = blocks(editor);
+  const plain = text.replace(/\*\*/g, "").replace(/^\s*(#{1,3}|[-*•]|\d+[.)])\s+/, "").trim() || text;
+  const block =
+    list.find((b) => b.text.includes(plain)) ?? list.find((b) => b.text.toLowerCase().includes(plain.toLowerCase()));
+  if (!block) {
+    const texts = list.filter((b) => b.text).slice(0, 12).map((b) => `"${b.text.slice(0, 60)}"`);
+    throw new ToolError(
+      `No paragraph contains "${text}". ${texts.length ? `The paragraphs are: ${texts.join(", ")}.` : "The document is empty."}`,
+    );
+  }
+  return block;
+}
+
 const endOfDocument = (editor: Editor) => {
   const last = blocks(editor).at(-1);
   return last ? last.end - 1 : 1;
@@ -167,7 +182,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       }),
       target: ({ after }) => {
         try {
-          return rectAt(editor, after ? blocks(editor).find((b) => b.text.includes(after))?.end ?? 0 : endOfDocument(editor));
+          return rectAt(editor, after ? blockContaining(editor, after).end : endOfDocument(editor));
         } catch {
           return editor.view.dom;
         }
@@ -177,8 +192,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         const list = blocks(editor);
         const empty = list.length === 1 && !list[0].text;
         if (after) {
-          const block = list.find((b) => b.text.includes(after)) ?? list.find((b) => b.text.toLowerCase().includes(after.toLowerCase()));
-          if (!block) throw new ToolError(`No paragraph contains "${after}".`);
+          const block = blockContaining(editor, after);
           editor.chain().setTextSelection(block.end - 1).splitBlock().run();
           editor.chain().setParagraph().run();
         } else {
@@ -317,8 +331,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         const rows = Math.max(1, cells.length);
         const cols = Math.max(1, ...cells.map((r) => r.length));
         const list = blocks(editor);
-        const block = after ? list.find((b) => b.text.includes(after)) : list.at(-1);
-        if (after && !block) throw new ToolError(`No paragraph contains "${after}".`);
+        const block = after ? blockContaining(editor, after) : list.at(-1);
         editor.chain().setTextSelection((block?.end ?? 1) - 1).run();
         if (block?.text) editor.chain().splitBlock().run();
           editor.chain().setParagraph().run();
@@ -373,8 +386,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         const file = await requestFile("Choose a photo to insert", "image/png,image/jpeg,image/gif,image/webp");
         if (!file) return "The user did not choose a photo.";
         if (after) {
-          const block = blocks(editor).find((b) => b.text.includes(after));
-          if (!block) throw new ToolError(`No paragraph contains "${after}".`);
+          const block = blockContaining(editor, after);
           editor.chain().setTextSelection(block.end - 1).splitBlock().run();
           editor.chain().setParagraph().run();
         }
@@ -491,8 +503,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       parameters: Type.Object({ before_text: Type.String() }),
       target: ({ before_text }) => rectAt(editor, locate(editor, before_text).from),
       execute({ before_text }) {
-        const block = blocks(editor).find((b) => b.text.includes(before_text));
-        if (!block) throw new ToolError(`No paragraph contains "${before_text}".`);
+        const block = blockContaining(editor, before_text);
         editor.chain().setTextSelection(block.pos + 1).setPageBreak().run();
         return `Inserted a page break before "${before_text}".`;
       },
