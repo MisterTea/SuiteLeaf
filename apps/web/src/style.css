@@ -1582,6 +1582,203 @@ a {
     "Segoe UI",
     sans-serif !important;
 }
+/* Univer's argument help floats over the cells a formula refers to. */
+div.univer-w-\[250px\].univer-select-none.univer-list-none,
+div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
+  display: none !important;
+}
+.sheet-host [data-u-comp="formula-bar"]:has(.function-help) {
+  height: auto !important;
+  min-height: 28px;
+  align-items: stretch;
+}
+.sheet-host [data-u-comp="formula-bar"]:has(.function-help) > div:nth-child(2) {
+  width: auto !important;
+  height: auto !important;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.function-help {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  flex: 1 1 340px;
+  max-width: min(520px, 46vw);
+  box-sizing: border-box;
+  padding: 4px 6px 6px 10px;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-family: var(--font-google, Roboto, sans-serif);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.function-help.is-collapsed {
+  flex: 0 0 auto;
+  max-width: none;
+  padding: 2px;
+  border-left: 0;
+}
+.function-help-body {
+  flex: 1;
+  min-width: 0;
+}
+.function-help-syntax {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+.function-help-arg {
+  font-weight: 700;
+  color: var(--sheet-color);
+}
+.function-help-detail,
+.function-help-example {
+  margin: 2px 0 0;
+  color: var(--text-secondary);
+}
+.function-help-detail strong {
+  color: var(--text-primary);
+  font-weight: 650;
+}
+.function-help-example span {
+  color: var(--text-primary);
+}
+.function-help-toggle {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-top: 1px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.function-help-toggle:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.function-menu {
+  display: flex;
+  flex-direction: column;
+  width: min(360px, 72vw);
+  max-height: min(560px, 74vh);
+  overflow: auto;
+}
+.function-menu .menu-item {
+  padding: 3px 10px;
+}
+.function-menu-search {
+  margin: 2px 4px 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+}
+.function-menu-label,
+.function-menu-empty {
+  margin: 0;
+  padding: 4px 12px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.function-menu-empty {
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 13px;
+}
+.function-menu-item .function-result {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  white-space: normal;
+}
+.function-menu-item .function-result small {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.35;
+}
+.sheet-stats-slot {
+  max-width: min(760px, 62vw) !important;
+  width: auto !important;
+  overflow: hidden !important;
+}
+.sheet-host [data-u-comp="status-bar-statistic-picker"] {
+  display: none !important;
+}
+.sheet-stats {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.sheet-stat-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+.sheet-stat-dot {
+  color: var(--text-muted);
+}
+.sheet-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.sheet-stat:hover,
+.sheet-stat:focus-visible {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.sheet-stat-action {
+  display: none;
+  color: var(--sheet-color);
+  font-weight: 650;
+}
+.sheet-stat:hover .sheet-stat-action,
+.sheet-stat:focus-visible .sheet-stat-action {
+  display: inline;
+}
+@media (max-width: 720px) {
+  .sheet-host [data-u-comp="formula-bar"]:has(.function-help:not(.is-collapsed)) {
+    flex-wrap: wrap;
+  }
+  .function-help:not(.is-collapsed) {
+    flex-basis: 100%;
+    max-width: none;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+  .sheet-stats-slot {
+    max-width: 46vw !important;
+  }
+}
 
 /* Sheet tabs footer Google Sheets parity */
 .sheet-host footer {

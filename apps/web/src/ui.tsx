@@ -92,6 +92,10 @@ export function SubMenu({
     </Dropdown.Sub>
   );
 }
+/** Run a menu action after the menu closes, so the editor can take focus. */
+export function useMenuClose() {
+  return useContext(AfterClose);
+}
 export function MenuSeparator() {
   return <Dropdown.Separator className="menu-separator" />;
 }
@@ -232,6 +236,7 @@ export type EditorActions = {
     deleteValues: () => void;
     insertChart: () => void;
     insertPivot: () => void;
+    insertFunction?: (name: string) => void;
     toggleFilter: () => void;
     sortRange?: () => void;
     hasFilter?: () => boolean;
