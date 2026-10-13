@@ -1,0 +1,45 @@
+/* The object stays on the slide while editing. The ring and the pill are the mark. */
+.slide-element.has-fade-on-click {
+  box-shadow: 0 0 0 2px #1a73e8;
+}
+.fade-on-click-mark {
+  position: absolute;
+  z-index: 6;
+  top: -24px;
+  left: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #1a73e8;
+  color: #fff;
+  font: 650 12px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.show-object.fade-on-click-hidden {
+  opacity: 0;
+  visibility: hidden;
+}
+.show-object.fade-on-click-shown {
+  opacity: 1;
+  visibility: visible;
+}
+.show-object.fade-on-click-enter {
+  animation: fade-in-on-click 1.15s ease both;
+}
+@keyframes fade-in-on-click {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .show-object.fade-on-click-enter {
+    animation: none;
+    opacity: 1;
+  }
+}
+@media print {
+  .fade-on-click-mark { display: none !important; }
+  .slide-element.has-fade-on-click { box-shadow: none; }
+}
