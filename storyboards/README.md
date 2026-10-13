@@ -157,3 +157,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 123 | [Paste the number, not the formula](123-paste-the-number.md) | single-node | Sheets |
 | 126 | [Fill the formula down](126-fill-the-formula-down.md) | single-node | Sheets |
 | 127 | [Fill the formula across](127-fill-the-formula-across.md) | single-node | Sheets |
+| 129 | [Paint the format](129-paint-the-format.md) | single-node | Docs |
