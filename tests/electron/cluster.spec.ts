@@ -1,11 +1,12 @@
 import { test, expect, _electron as electron } from "@playwright/test";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
+import { createFile, type FileRecord } from "../../packages/core/src";
 
 const binary = resolve("target/debug/suiteleaf-node");
 const sidecar = resolve("services/auth/dist/server.mjs");
@@ -79,17 +80,60 @@ test("the desktop app works as a cluster client and can switch back", async () =
       settings,
       JSON.stringify({ mode: { kind: "cluster", serverUrl } }),
     );
+    const library = join(dir, "library");
+    const local = createFile("doc");
+    local.title = "Kept locally";
+    await mkdir(library);
+    await writeFile(
+      join(library, "library.json"),
+      JSON.stringify([{ file: local, recovery: false }]),
+    );
+    const cachedFromDrive = async () =>
+      (
+        JSON.parse(
+          await readFile(join(library, "library.json"), "utf8"),
+        ) as FileRecord[]
+      )
+        .filter((r) => r.drive)
+        .map((r) => r.file.title);
     const app = await electron.launch({
       args: [resolve("apps/desktop/out/main/index.js")],
       env: {
         ...process.env,
-        SUITELEAF_TEST_DATA: join(dir, "library"),
+        SUITELEAF_TEST_DATA: library,
         SUITELEAF_SETTINGS: settings,
       },
     });
     try {
       const page = await app.firstWindow();
       const card = page.getByLabel("Sign in to SuiteLeaf");
+      const stored = () =>
+        page.evaluate(() => localStorage.getItem("suiteleaf:node-session"));
+      const me = async (token: string) =>
+        (
+          await fetch(`${serverUrl}/api/me`, {
+            headers: { authorization: `Bearer ${token}` },
+          })
+        ).status;
+      const reconnect = async () => {
+        await page.getByRole("button", { name: "Connect to a server" }).click();
+        const connect = page.getByRole("dialog", {
+          name: "Connect to a SuiteLeaf server",
+        });
+        await connect.getByLabel("Server address").fill(serverUrl);
+        await connect
+          .getByRole("button", { name: "Connect", exact: true })
+          .click();
+        await card
+          .getByLabel("Email or username", { exact: true })
+          .fill("desk@example.com");
+        await card
+          .getByLabel("Password", { exact: true })
+          .fill("correct-horse-battery");
+        await card
+          .getByRole("button", { name: "Sign in", exact: true })
+          .click();
+      };
       await card.getByRole("button", { name: "Create an account" }).click();
       await card.getByLabel("Email", { exact: true }).fill("desk@example.com");
       await card
@@ -110,6 +154,8 @@ test("the desktop app works as a cluster client and can switch back", async () =
         page.getByRole("button", { name: "Team budget.slsheet", exact: true }),
       ).toBeVisible();
 
+      const first = JSON.parse((await stored())!).token;
+      expect(await me(first)).toBe(200);
       await page
         .getByRole("button", { name: "Disconnect from server" })
         .click();
@@ -122,6 +168,49 @@ test("the desktop app works as a cluster client and can switch back", async () =
       await expect(page.getByRole("link", { name: /Team budget/ })).toHaveCount(
         0,
       );
+      await expect(
+        page.getByRole("link", { name: /Kept locally/ }),
+      ).toBeVisible();
+      expect(await cachedFromDrive()).toEqual([]);
+      // Disconnecting signs out, so the next connection asks for a password.
+      expect(await stored()).toBeNull();
+      expect(await me(first)).toBe(401);
+
+      // Disconnecting from the Server menu saves the open file first.
+      await reconnect();
+      await page
+        .getByRole("button", { name: "Team budget.slsheet", exact: true })
+        .click();
+      await expect(page.getByRole("status")).toHaveText("Saved to SuiteDrive");
+      await page.getByLabel("File title").fill("Team budget 2027");
+      const second = JSON.parse((await stored())!).token;
+      await app.evaluate(({ Menu }) => {
+        const server = Menu.getApplicationMenu()!.items.find(
+          (i) => i.label === "Server",
+        )!;
+        server
+          .submenu!.items.find((i) => i.label.startsWith("Disconnect"))!
+          .click();
+      });
+      await expect(
+        page.getByText("Your files, on this computer."),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("link", { name: /Kept locally/ }),
+      ).toBeVisible();
+      expect(await cachedFromDrive()).toEqual([]);
+      expect(await stored()).toBeNull();
+      expect(await me(second)).toBe(401);
+      await reconnect();
+      await expect(
+        page.getByRole("button", {
+          name: "Team budget 2027.slsheet",
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "Team budget.slsheet", exact: true }),
+      ).toHaveCount(0);
     } finally {
       await app.close();
     }

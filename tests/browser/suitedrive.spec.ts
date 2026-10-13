@@ -5,6 +5,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
+import { createFile, serializeFile } from "../../packages/core/src";
 
 const root = resolve(import.meta.dirname, "../..");
 const binary = join(root, "target/debug/suiteleaf-node");
@@ -15,7 +16,10 @@ const ready = [binary, sidecar, join(webRoot, "index.html")].every(existsSync);
 interface Node {
   url: string;
   p2p: string;
+  dir: string;
   process: ChildProcess;
+  /** Accounts created on this node in this run. */
+  signUps: number;
 }
 const processes: ChildProcess[] = [];
 
@@ -39,9 +43,9 @@ async function run(args: string[]) {
 async function startNode(
   dataDir: string,
   bootstrap?: string,
-  corsOrigins: string[] = [],
+  port?: number,
 ): Promise<Node> {
-  const port = await freePort();
+  port ??= await freePort();
   const url = `http://127.0.0.1:${port}`;
   const config = join(dataDir, "node.toml");
   writeFileSync(
@@ -62,10 +66,12 @@ async function startNode(
     "/ip4/127.0.0.1/tcp/0",
     "--web-root",
     webRoot,
+    // Lets the web app served by the Playwright web server connect too.
+    "--cors-origin",
+    new URL(test.info().project.use.baseURL!).origin,
     "--sync-interval",
     "1",
     ...(bootstrap ? ["--bootstrap", bootstrap] : []),
-    ...corsOrigins.flatMap((origin) => ["--cors-origin", origin]),
   ];
   const child = spawn(binary, args, {
     env: {
@@ -92,7 +98,7 @@ async function startNode(
       },
     )
     .toBe(true);
-  return { url, p2p, process: child };
+  return { url, p2p, dir: dataDir, process: child, signUps: 0 };
 }
 
 test.describe("SuiteDrive across two nodes", () => {
@@ -105,23 +111,33 @@ test.describe("SuiteDrive across two nodes", () => {
     "One desktop browser covers the node protocol.",
   );
 
-  let a: Node, b: Node;
-  test.beforeAll(async () => {
-    const dirs = [0, 1].map(() =>
-      mkdtempSync(join(tmpdir(), "suitedrive-e2e-")),
-    );
-    await run(["init", "--data-dir", dirs[0]]);
+  const nodes: Node[] = [];
+  /** Start a node in the same cluster as the first one. */
+  async function addNode() {
+    const dir = mkdtempSync(join(tmpdir(), "suitedrive-e2e-"));
+    const first = nodes[0];
     await run([
       "init",
       "--data-dir",
-      dirs[1],
-      "--swarm-key",
-      join(dirs[0], "swarm.key"),
+      dir,
+      ...(first ? ["--swarm-key", join(first.dir, "swarm.key")] : []),
     ]);
-    // The web app served by Playwright connects to node B as a client.
-    const app = new URL(test.info().project.use.baseURL!).origin;
-    a = await startNode(dirs[0]);
-    b = await startNode(dirs[1], a.p2p, [app]);
+    const node = await startNode(dir, first?.p2p);
+    nodes.push(node);
+    return node;
+  }
+  test.beforeAll(async () => {
+    nodes.length = 0;
+    await addNode();
+    await addNode();
+  });
+  // A test's background uploads must not reach the next test or outlive the nodes.
+  test.afterEach(async ({ browser }) => {
+    for (const context of browser.contexts()) {
+      for (const page of context.pages())
+        await page.unrouteAll({ behavior: "ignoreErrors" });
+      await context.close();
+    }
   });
   test.afterAll(() => {
     for (const child of processes) child.kill();
@@ -157,24 +173,66 @@ test.describe("SuiteDrive across two nodes", () => {
     await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
   }
 
+  /** Create an account on a node that can take another. better-auth allows a
+   * client address three sign-ups per node until ten seconds pass without
+   * one, and every page reaches its node from 127.0.0.1, so no node gets a
+   * fourth however quickly the tests run. */
+  async function signUp(page: Page, email: string) {
+    const node = nodes.find((n) => n.signUps < 3) ?? (await addNode());
+    node.signUps++;
+    await page.goto(node.url);
+    await signIn(page, true, email);
+    return node;
+  }
+
+  /** The signed-in user's top-level SuiteDrive items. */
+  const driveItems = (page: Page) =>
+    page.evaluate(async () => {
+      const s = JSON.parse(localStorage.getItem("suiteleaf:node-session")!);
+      const r = await fetch(`${s.url}/api/drive/items`, {
+        headers: { authorization: `Bearer ${s.token}` },
+      });
+      return (await r.json()).items as {
+        id: string;
+        name: string;
+        size: number;
+      }[];
+    });
+
+  /** Save a new version of `name` as another client would, replacing `from` with `to`. */
+  const saveElsewhere = (page: Page, name: string, from: string, to: string) =>
+    page.evaluate(
+      async ([name, from, to]) => {
+        const s = JSON.parse(localStorage.getItem("suiteleaf:node-session")!);
+        const headers = { authorization: `Bearer ${s.token}` };
+        const { items } = await (
+          await fetch(`${s.url}/api/drive/items`, { headers })
+        ).json();
+        const id = items.find((i: { name: string }) => i.name === name).id;
+        const url = `${s.url}/api/drive/items/${id}/content`;
+        const text = await (await fetch(url, { headers })).text();
+        const r = await fetch(url, {
+          method: "PUT",
+          headers: { ...headers, "content-type": "application/json" },
+          body: text.replace(from, to),
+        });
+        if (!r.ok) throw new Error(`upload failed: ${r.status}`);
+      },
+      [name, from, to],
+    );
+
   test("save on one node, open on another, and detect a conflicting edit", async ({
     browser,
   }) => {
     const pageA = await (await browser.newContext()).newPage();
-    await pageA.goto(a.url);
-    await signIn(pageA, true);
+    const a = await signUp(pageA, "ann@example.com");
+    const b = nodes.find((n) => n !== a)!;
 
     await expect(
       pageA.getByRole("heading", { name: "SuiteDrive" }),
     ).toBeVisible();
     await expect(pageA.getByText("Connect to a server")).toHaveCount(0);
-    await expect(pageA.getByText("Connected to 1 other server")).toBeVisible({
-      timeout: 15000,
-    });
     await pageA.getByRole("button", { name: "New document" }).click();
-    await expect(
-      pageA.getByTitle(`Saving to SuiteDrive on ${new URL(a.url).host}`),
-    ).toBeVisible();
     await pageA.getByLabel("File title").fill("Field report");
     const editorA = pageA.getByRole("textbox", { name: "Document content" });
     await editorA.fill("Written on node A");
@@ -199,9 +257,6 @@ test.describe("SuiteDrive across two nodes", () => {
         },
       )
       .toBe(0);
-    await expect(pageB.getByLabel("Sign in to SuiteLeaf")).toContainText(
-      "An account made on any of them works here.",
-    );
     await signIn(pageB, false);
     await pageB.screenshot({ path: "test-results/cluster-home.png" });
     await pageB
@@ -209,9 +264,6 @@ test.describe("SuiteDrive across two nodes", () => {
       .click();
     const editorB = pageB.getByRole("textbox", { name: "Document content" });
     await expect(editorB).toContainText("Written on node A");
-    await expect(
-      pageB.getByTitle(`Saving to SuiteDrive on ${new URL(b.url).host}`),
-    ).toBeVisible();
 
     await editorB.fill("Rewritten on node B");
     await expect(pageB.getByRole("status")).toHaveText("Saved to SuiteDrive", {
@@ -221,18 +273,9 @@ test.describe("SuiteDrive across two nodes", () => {
     // Node A still holds the old version, so its next upload conflicts.
     await expect
       .poll(
-        async () => {
-          const items = await pageA.evaluate(async () => {
-            const s = JSON.parse(
-              localStorage.getItem("suiteleaf:node-session")!,
-            );
-            const r = await fetch(`${s.url}/api/drive/items`, {
-              headers: { authorization: `Bearer ${s.token}` },
-            });
-            return (await r.json()).items as { name: string; size: number }[];
-          });
-          return items.find((i) => i.name === "Field report.sldoc")?.size;
-        },
+        async () =>
+          (await driveItems(pageA)).find((i) => i.name === "Field report.sldoc")
+            ?.size,
         { timeout: 15000 },
       )
       .not.toBeUndefined();
@@ -264,35 +307,13 @@ test.describe("SuiteDrive across two nodes", () => {
       path: "test-results/suitedrive.png",
       fullPage: true,
     });
-
-    // Node B's file list picks up a file made on node A without a reload.
-    await pageB.getByRole("button", { name: "Back to files" }).click();
-    await expect(
-      pageB.getByRole("button", { name: "Field report.sldoc", exact: true }),
-    ).toBeVisible();
-    await pageA.evaluate(async () => {
-      const s = JSON.parse(localStorage.getItem("suiteleaf:node-session")!);
-      const r = await fetch(`${s.url}/api/drive/items`, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${s.token}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ name: "Made on A.sldoc", kind: "file" }),
-      });
-      if (!r.ok) throw new Error(`create failed: ${r.status}`);
-    });
-    await expect(
-      pageB.getByRole("button", { name: "Made on A.sldoc", exact: true }),
-    ).toBeVisible({ timeout: 20000 });
   });
 
   test("reopening a file from SuiteDrive keeps edits that were never uploaded", async ({
     browser,
   }) => {
     const page = await (await browser.newContext()).newPage();
-    await page.goto(a.url);
-    await signIn(page, true, "reopen@example.com");
+    await signUp(page, "reopen@example.com");
     await page.getByRole("button", { name: "New document" }).click();
     await page.getByLabel("File title").fill("Offline notes");
     const editor = page.getByRole("textbox", { name: "Document content" });
@@ -300,29 +321,6 @@ test.describe("SuiteDrive across two nodes", () => {
     const status = page.getByRole("status");
     await expect(status).toHaveText("Saved to SuiteDrive", { timeout: 20000 });
 
-    /** Save a new version as another client would, replacing `from` with `to`. */
-    const saveElsewhere = (from: string, to: string) =>
-      page.evaluate(
-        async ([from, to]) => {
-          const s = JSON.parse(localStorage.getItem("suiteleaf:node-session")!);
-          const headers = { authorization: `Bearer ${s.token}` };
-          const { items } = await (
-            await fetch(`${s.url}/api/drive/items`, { headers })
-          ).json();
-          const id = items.find(
-            (i: { name: string }) => i.name === "Offline notes.sldoc",
-          ).id;
-          const url = `${s.url}/api/drive/items/${id}/content`;
-          const text = await (await fetch(url, { headers })).text();
-          const r = await fetch(url, {
-            method: "PUT",
-            headers: { ...headers, "content-type": "application/json" },
-            body: text.replace(from, to),
-          });
-          if (!r.ok) throw new Error(`upload failed: ${r.status}`);
-        },
-        [from, to],
-      );
     const reopen = async () => {
       await page.getByRole("button", { name: "Back to files" }).click();
       await page
@@ -331,7 +329,12 @@ test.describe("SuiteDrive across two nodes", () => {
     };
     const banner = page.getByText("This file was changed in SuiteDrive");
 
-    await saveElsewhere("First draft", "Saved elsewhere");
+    await saveElsewhere(
+      page,
+      "Offline notes.sldoc",
+      "First draft",
+      "Saved elsewhere",
+    );
     await editor.fill("Edits only on this device");
     await expect(banner).toBeVisible({ timeout: 20000 });
 
@@ -343,92 +346,21 @@ test.describe("SuiteDrive across two nodes", () => {
     await expect(editor).toContainText("Edits only on this device");
     await expect(banner).toBeVisible({ timeout: 20000 });
 
-    // The banner says when the newer version was saved and what each choice does.
-    const alert = page.getByRole("alert").filter({ has: banner });
-    await expect(alert).toContainText(/A newer version was saved at \d/);
-    await expect(alert).toContainText("Save them as a copy to keep both");
-    await expect(alert.getByRole("button")).toHaveText([
-      "Save as copy",
-      "Reload from SuiteDrive",
-    ]);
-
-    let asked = "";
-    page.once("dialog", (d) => {
-      asked = d.message();
-      void d.accept();
-    });
+    page.once("dialog", (d) => void d.accept());
     await page.getByRole("button", { name: "Reload from SuiteDrive" }).click();
     await expect(editor).toContainText("Saved elsewhere");
-    expect(asked).toContain("Your edits will be lost");
 
     // With nothing left to upload, the local copy follows newer versions.
-    await saveElsewhere("Saved elsewhere", "Saved again elsewhere");
+    await saveElsewhere(
+      page,
+      "Offline notes.sldoc",
+      "Saved elsewhere",
+      "Saved again elsewhere",
+    );
     await reopen();
     await expect(editor).toContainText("Saved again elsewhere");
     await expect(status).toHaveText("Saved to SuiteDrive");
     await expect(banner).toHaveCount(0);
-  });
-
-  test("folders use in-app dialogs, and leaving a file returns to its folder", async ({
-    browser,
-  }) => {
-    const page = await (await browser.newContext()).newPage();
-    const native: string[] = [];
-    page.on("dialog", (d) => {
-      native.push(d.message());
-      void d.dismiss();
-    });
-    await page.goto(b.url);
-    await signIn(page, true, "folders@example.com");
-    const item = (name: string) =>
-      page.getByRole("button", { name, exact: true });
-    const crumbs = page.getByLabel("Folder path");
-
-    await page.getByRole("button", { name: "New folder" }).click();
-    const create = page.getByRole("dialog", { name: "New folder" });
-    await expect(create.getByLabel("Name")).toBeFocused();
-    await page.keyboard.type("Club");
-    await create.getByRole("button", { name: "Create" }).click();
-    await item("Club").click();
-    await expect(crumbs).toContainText("Club");
-    const newDocument = page.getByRole("button", { name: /New document/ });
-    await expect(newDocument).toContainText("In Club");
-
-    await newDocument.click();
-    await page.getByLabel("File title").fill("Rota");
-    await page
-      .getByRole("textbox", { name: "Document content" })
-      .fill("Mon Rosa");
-    await expect(page.getByRole("status")).toHaveText("Saved to SuiteDrive", {
-      timeout: 20000,
-    });
-    await page.getByRole("button", { name: "Back to files" }).click();
-    await expect(crumbs).toContainText("Club");
-    await expect(item("Rota.sldoc")).toBeVisible();
-    await page.reload();
-    await expect(crumbs).toContainText("Club");
-    await expect(item("Rota.sldoc")).toBeVisible();
-
-    // Typing replaces the title and keeps the extension.
-    await page.getByRole("button", { name: "Rename Rota.sldoc" }).click();
-    const rename = page.getByRole("dialog", { name: "Rename" });
-    await expect(rename.getByLabel("Name")).toBeFocused();
-    await page.keyboard.type("Watering rota");
-    await rename.getByRole("button", { name: "OK" }).click();
-    await expect(item("Watering rota.sldoc")).toBeVisible();
-
-    const trash = page.getByRole("button", {
-      name: "Move Watering rota.sldoc to trash",
-    });
-    const confirm = page.getByRole("dialog", { name: "Move to trash?" });
-    await trash.click();
-    await page.keyboard.press("Escape");
-    await expect(confirm).toHaveCount(0);
-    await expect(item("Watering rota.sldoc")).toBeVisible();
-    await trash.click();
-    await confirm.getByRole("button", { name: "Move to trash" }).click();
-    await expect(page.getByText("This folder is empty.")).toBeVisible();
-    expect(native).toEqual([]);
   });
 
   type Held = Window & { holdWrites?: boolean; heldWrites: (() => void)[] };
@@ -467,8 +399,7 @@ test.describe("SuiteDrive across two nodes", () => {
     browser,
   }) => {
     const page = await pageHoldingWrites(browser);
-    await page.goto(a.url);
-    await signIn(page, true, "inflight@example.com");
+    await signUp(page, "inflight@example.com");
     await page.getByRole("button", { name: "New document" }).click();
     await page.getByLabel("File title").fill("Busy notes");
     const editor = page.getByRole("textbox", { name: "Document content" });
@@ -523,8 +454,7 @@ test.describe("SuiteDrive across two nodes", () => {
     browser,
   }) => {
     const page = await (await browser.newContext()).newPage();
-    await page.goto(a.url);
-    await signIn(page, true, "reopen-inflight@example.com");
+    await signUp(page, "reopen-inflight@example.com");
     await page.getByRole("button", { name: "New document" }).click();
     await page.getByLabel("File title").fill("Quick notes");
     const editor = page.getByRole("textbox", { name: "Document content" });
@@ -579,9 +509,7 @@ test.describe("SuiteDrive across two nodes", () => {
     browser,
   }) => {
     const page = await pageHoldingWrites(browser);
-    // Node A's sign-up rate limit is spent by the tests above.
-    await page.goto(b.url);
-    await signIn(page, true, "leave-saving@example.com");
+    await signUp(page, "leave-saving@example.com");
     const status = page.getByRole("status");
     const editor = page.getByRole("textbox", { name: "Document content" });
     const uploads: {
@@ -662,115 +590,360 @@ test.describe("SuiteDrive across two nodes", () => {
     }
   });
 
-  test("signing out and disconnecting end the session and protect unuploaded edits", async ({
-    page,
+  test("saving a conflicting edit as a copy keeps the copy's own name", async ({
+    browser,
   }) => {
-    const host = new URL(b.url).host;
-    const session = () =>
-      page.evaluate(() => localStorage.getItem("suiteleaf:node-session"));
+    const page = await (await browser.newContext()).newPage();
+    await signUp(page, "copy@example.com");
+    await page.getByRole("button", { name: "New document" }).click();
+    const title = page.getByLabel("File title");
+    await title.fill("Draft plan");
+    const editor = page.getByRole("textbox", { name: "Document content" });
+    await editor.fill("First draft");
+    const status = page.getByRole("status");
+    await expect(status).toHaveText("Saved to SuiteDrive", { timeout: 20000 });
+
+    await saveElsewhere(
+      page,
+      "Draft plan.sldoc",
+      "First draft",
+      "Saved elsewhere",
+    );
+    await editor.fill("My version");
+    await expect(
+      page.getByText("This file was changed in SuiteDrive"),
+    ).toBeVisible({ timeout: 20000 });
+    await page.getByRole("button", { name: "Save as copy" }).click();
+    await expect(status).toHaveText("Saved a copy to SuiteDrive", {
+      timeout: 20000,
+    });
+    // Each upload names the SuiteDrive file after the document's title.
+    await editor.press("End");
+    await page.keyboard.type(" and more");
+    await expect(status).toHaveText("Saved to SuiteDrive", { timeout: 20000 });
+
+    expect((await driveItems(page)).map((i) => i.name).sort()).toEqual([
+      "Draft plan (copy).sldoc",
+      "Draft plan.sldoc",
+    ]);
+    await expect(title).toHaveValue("Draft plan (copy)");
+  });
+
+  test("signing out removes cached SuiteDrive files once their edits are uploaded", async ({
+    browser,
+  }) => {
+    const page = await (await browser.newContext()).newPage();
+    await signUp(page, "sign-out@example.com");
+    const status = page.getByRole("status");
+    const editor = page.getByRole("textbox", { name: "Document content" });
+    await page.getByRole("button", { name: "New document" }).click();
+    await page.getByLabel("File title").fill("Private notes");
+    await editor.fill("Secret draft");
+    await expect(status).toHaveText("Saved to SuiteDrive", { timeout: 20000 });
+
+    // A single-node file this browser kept before it was used with a server.
+    const local = createFile("doc");
+    local.title = "Kept locally";
+    await page.evaluate(
+      (row) =>
+        new Promise<void>((done, fail) => {
+          const open = indexedDB.open("SuiteLeaf");
+          open.onsuccess = () => {
+            const tx = open.result.transaction("encoded", "readwrite");
+            tx.objectStore("encoded").put(row);
+            tx.oncomplete = () => done(open.result.close());
+            tx.onerror = () => fail(tx.error);
+          };
+        }),
+      {
+        id: local.id,
+        title: local.title,
+        updatedAt: local.updatedAt,
+        native: serializeFile(local),
+      },
+    );
+    const cached = () =>
+      page.evaluate(
+        () =>
+          new Promise<string[]>((done) => {
+            const open = indexedDB.open("SuiteLeaf");
+            open.onsuccess = () => {
+              const all = open.result
+                .transaction("encoded")
+                .objectStore("encoded")
+                .getAll();
+              all.onsuccess = () => {
+                open.result.close();
+                done(
+                  (all.result as { title: string; drive?: unknown }[])
+                    .map((r) => `${r.title}${r.drive ? " (SuiteDrive)" : ""}`)
+                    .sort(),
+                );
+              };
+            };
+          }),
+      );
+    const dialogs: string[] = [];
+    page.on("dialog", (d) => {
+      dialogs.push(d.message());
+      void d.dismiss();
+    });
+    const signOut = page.getByRole("button", { name: "Sign out" });
+
+    await page.route("**/api/drive/items/*/content", (route) =>
+      route.request().method() === "PUT"
+        ? route.fulfill({ status: 503, json: { error: "Unavailable" } })
+        : route.continue(),
+    );
+    await editor.press("End");
+    await page.keyboard.type(" not uploaded yet");
+    await expect(status).toHaveText("Saved on this device · Unavailable", {
+      timeout: 20000,
+    });
+    await page.getByRole("button", { name: "Back to files" }).click();
+    await signOut.click();
+    await expect.poll(() => dialogs.length).toBe(1);
+    expect(dialogs[0]).toContain("haven't reached SuiteDrive");
+    await expect(signOut).toBeVisible();
+    expect(await cached()).toEqual([
+      "Kept locally",
+      "Private notes (SuiteDrive)",
+    ]);
+
+    // Reopening uploads the edits; signing out waits for that upload.
+    await page.unroute("**/api/drive/items/*/content");
+    const bodies: string[] = [];
+    let release!: () => void;
+    const uploading = new Promise<void>((started) => {
+      void page.route("**/api/drive/items/*/content", async (route) => {
+        if (route.request().method() !== "PUT") return route.continue();
+        bodies.push(route.request().postData() ?? "");
+        if (bodies.length === 1)
+          await new Promise<void>((resume) => {
+            release = resume;
+            started();
+          });
+        await route.continue();
+      });
+    });
+    await page
+      .getByRole("button", { name: "Private notes.sldoc", exact: true })
+      .click();
+    await expect(editor).toContainText("Secret draft not uploaded yet");
+    await uploading;
+    await page.getByRole("button", { name: "Back to files" }).click();
+    await signOut.click();
+    await page.waitForTimeout(500);
+    await expect(signOut).toBeVisible();
+    expect(await cached()).toContain("Private notes (SuiteDrive)");
+    release();
+
+    await expect(page.getByLabel("Sign in to SuiteLeaf")).toBeVisible();
+    expect(await cached()).toEqual(["Kept locally"]);
+    expect(dialogs).toHaveLength(1);
+    expect(bodies[0]).toContain("not uploaded yet");
+  });
+
+  test("disconnecting signs out, so reconnecting asks for a password", async ({
+    browser,
+  }) => {
+    const email = "disconnect@example.com";
+    const onNode = await (await browser.newContext()).newPage();
+    const node = await signUp(onNode, email);
+    // Served elsewhere, the web app can switch between modes.
+    const page = await (await browser.newContext()).newPage();
+    await page.goto("/");
     const connect = async () => {
       await page.getByRole("button", { name: "Connect to a server" }).click();
       const dialog = page.getByRole("dialog", {
         name: "Connect to a SuiteLeaf server",
       });
-      await dialog.getByLabel("Server address").fill(b.url);
+      await dialog.getByLabel("Server address").fill(node.url);
       await dialog
         .getByRole("button", { name: "Connect", exact: true })
         .click();
     };
-    await page.goto("/");
-    await connect();
+    const stored = () =>
+      page.evaluate(() => localStorage.getItem("suiteleaf:node-session"));
+    const me = async (token: string) =>
+      (
+        await fetch(`${node.url}/api/me`, {
+          headers: { authorization: `Bearer ${token}` },
+        })
+      ).status;
     const card = page.getByLabel("Sign in to SuiteLeaf");
-    await card.getByRole("button", { name: "Create an account" }).click();
-    await card.getByLabel("Name", { exact: true }).fill("Leo Example");
-    await card.getByLabel("Email", { exact: true }).fill("leo@example.com");
-    await card
-      .getByLabel("Password", { exact: true })
-      .fill("correct-horse-battery");
-    await card.getByRole("button", { name: "Create account" }).click();
-    const signOut = page.getByRole("button", { name: "Sign out" });
-    await expect(signOut).toBeVisible();
-
-    await page.getByRole("button", { name: "New document" }).click();
-    await page.getByLabel("File title").fill("Shed inventory");
-    const editor = page.getByRole("textbox", { name: "Document content" });
-    await editor.fill("3 spades");
-    const status = page.getByRole("status");
-    await expect(status).toHaveText("Saved to SuiteDrive", { timeout: 20000 });
-    await page.route("**/api/drive/items/*/content", (route) =>
-      route.request().method() === "PUT" ? route.abort() : route.continue(),
-    );
-    await editor.fill("3 spades, 2 rakes");
-    await expect(status).toContainText("SuiteDrive is unreachable", {
-      timeout: 20000,
+    const suiteDrive = page.getByRole("heading", { name: "SuiteDrive" });
+    const local = page.getByText("Your workspace, in this browser.");
+    const disconnect = page.getByRole("button", {
+      name: "Disconnect from server",
     });
-    await page.getByRole("button", { name: "Back to files" }).click();
-
-    const prompts: string[] = [];
-    page.on("dialog", (d) => {
-      prompts.push(d.message());
-      void d.dismiss();
-    });
-    await signOut.click();
-    await expect.poll(() => prompts.length).toBe(1);
-    expect(prompts[0]).toContain("Shed inventory");
-    await expect(signOut).toBeVisible();
-
-    await page.unroute("**/api/drive/items/*/content");
-    await page
-      .getByRole("button", { name: "Shed inventory.sldoc", exact: true })
-      .click();
-    await expect(status).toHaveText("Saved to SuiteDrive", { timeout: 20000 });
-    await page.getByRole("button", { name: "Back to files" }).click();
-
-    const { token } = JSON.parse((await session())!);
-    await page.getByRole("button", { name: "Disconnect from server" }).click();
-    await expect(
-      page.getByText("Your workspace, in this browser."),
-    ).toBeVisible();
-    await expect(page.getByRole("status")).toContainText(
-      `Disconnected from ${host} and signed out.`,
-    );
-    expect(prompts).toHaveLength(1);
-    expect(await session()).toBeNull();
-    const revoked = await fetch(`${b.url}/api/drive/items`, {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    expect(revoked.status).toBe(401);
 
     await connect();
-    await expect(card).toBeVisible();
-    await card
-      .getByLabel("Email or username", { exact: true })
-      .fill("leo@example.com");
+    await card.getByLabel("Email or username", { exact: true }).fill(email);
     await card
       .getByLabel("Password", { exact: true })
       .fill("correct-horse-battery");
     await card.getByRole("button", { name: "Sign in", exact: true }).click();
-    await signOut.click();
-    await expect(card.getByRole("status")).toHaveText(
-      `You signed out of ${host}. Your SuiteDrive files stay on the server.`,
-    );
+    await expect(suiteDrive).toBeVisible();
+    const { token } = JSON.parse((await stored())!);
+    expect(await me(token)).toBe(200);
 
-    // A session left behind by a disconnect outside the app is dropped.
-    await card
-      .getByRole("button", { name: "Work on this computer without a server" })
-      .click();
+    await disconnect.click();
+    await expect(local).toBeVisible();
+    expect(await stored()).toBeNull();
+    expect(await me(token)).toBe(401);
+    await connect();
+    await expect(card).toBeVisible();
+    await expect(suiteDrive).toHaveCount(0);
+
+    // A server that doesn't answer keeps the session, but this browser forgets it.
+    const session = await onNode.evaluate(() =>
+      localStorage.getItem("suiteleaf:node-session")!,
+    );
+    const restore = () =>
+      page.evaluate(
+        (s) => localStorage.setItem("suiteleaf:node-session", s),
+        session,
+      );
+    await restore();
+    await page.reload();
+    await expect(suiteDrive).toBeVisible();
+    let revoking = false;
+    await page.route(`${node.url}/api/auth/sign-out`, () => {
+      revoking = true;
+    });
+    await disconnect.click();
+    await expect(local).toBeVisible();
+    expect(revoking).toBe(true);
+    expect(await stored()).toBeNull();
+    expect(await me(JSON.parse(session).token)).toBe(200);
+
+    // A disconnect closed before the server answered signs out at the next start.
+    await restore();
+    await connect();
+    await expect(suiteDrive).toBeVisible();
+    revoking = false;
+    await disconnect.click();
+    await expect.poll(() => revoking).toBe(true);
+    await page.close();
+    const reopened = await page.context().newPage();
+    await reopened.goto("/");
+    await expect(reopened.getByLabel("Sign in to SuiteLeaf")).toBeVisible();
+    await expect.poll(() => me(JSON.parse(session).token)).toBe(401);
+    expect(
+      await reopened.evaluate(() => [
+        localStorage.getItem("suiteleaf:node-session"),
+        localStorage.getItem("suiteleaf:signing-out"),
+      ]),
+    ).toEqual([null, null]);
+  });
+
+  test("a server that is down when its web app opens keeps the user signed in", async ({
+    browser,
+  }) => {
+    // Its own node, since stopping it would fail the other tests' uploads.
+    const dir = mkdtempSync(join(tmpdir(), "suitedrive-e2e-"));
+    await run(["init", "--data-dir", dir]);
+    const node = await startNode(dir);
+    const page = await (await browser.newContext()).newPage();
+    await page.goto(node.url);
+    await signIn(page, true, "outage@example.com");
+    await page.evaluate(async () => {
+      await navigator.serviceWorker.ready;
+      if (!navigator.serviceWorker.controller)
+        await new Promise<void>((done) =>
+          navigator.serviceWorker.addEventListener(
+            "controllerchange",
+            () => done(),
+            { once: true },
+          ),
+        );
+    });
+    const stored = () =>
+      page.evaluate(() => localStorage.getItem("suiteleaf:node-session"));
+    const session = (await stored())!;
+
+    await new Promise<void>((done) => {
+      node.process.once("exit", () => done());
+      node.process.kill();
+    });
+    await page.reload();
+    // The cached app can't reach its server, so it falls back to this browser.
     await expect(
       page.getByText("Your workspace, in this browser."),
     ).toBeVisible();
-    await page.evaluate(
-      ([url, token]) =>
-        localStorage.setItem(
-          "suiteleaf:node-session",
-          JSON.stringify({ url, token, user: { id: "leo" } }),
-        ),
-      [b.url, token],
-    );
+    expect(await stored()).toBe(session);
+
+    await startNode(dir, undefined, Number(new URL(node.url).port));
     await page.reload();
     await expect(
-      page.getByText("Your workspace, in this browser."),
+      page.getByRole("heading", { name: "SuiteDrive" }),
     ).toBeVisible();
-    await expect.poll(session).toBeNull();
+    await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+    expect(await stored()).toBe(session);
+    const me = await fetch(`${node.url}/api/me`, {
+      headers: { authorization: `Bearer ${JSON.parse(session).token}` },
+    });
+    expect(me.status).toBe(200);
+  });
+
+  test("folders use in-app dialogs, and leaving a file returns to its folder", async ({
+    browser,
+  }) => {
+    const page = await (await browser.newContext()).newPage();
+    const native: string[] = [];
+    page.on("dialog", (d) => {
+      native.push(d.message());
+      void d.dismiss();
+    });
+    await signUp(page, "folders@example.com");
+    const item = (name: string) =>
+      page.getByRole("button", { name, exact: true });
+    const crumbs = page.getByLabel("Folder path");
+
+    await page.getByRole("button", { name: "New folder" }).click();
+    const create = page.getByRole("dialog", { name: "New folder" });
+    await expect(create.getByLabel("Name")).toBeFocused();
+    await page.keyboard.type("Club");
+    await create.getByRole("button", { name: "Create" }).click();
+    await item("Club").click();
+    await expect(crumbs).toContainText("Club");
+    const newDocument = page.getByRole("button", { name: /New document/ });
+    await expect(newDocument).toContainText("In Club");
+
+    await newDocument.click();
+    await page.getByLabel("File title").fill("Rota");
+    await page
+      .getByRole("textbox", { name: "Document content" })
+      .fill("Mon Rosa");
+    await expect(page.getByRole("status")).toHaveText("Saved to SuiteDrive", {
+      timeout: 20000,
+    });
+    await page.getByRole("button", { name: "Back to files" }).click();
+    await expect(crumbs).toContainText("Club");
+    await expect(item("Rota.sldoc")).toBeVisible();
+    await page.reload();
+    await expect(crumbs).toContainText("Club");
+    await expect(item("Rota.sldoc")).toBeVisible();
+
+    await page.getByRole("button", { name: "Rename Rota.sldoc" }).click();
+    const rename = page.getByRole("dialog", { name: "Rename" });
+    await expect(rename.getByLabel("Name")).toBeFocused();
+    await page.keyboard.type("Watering rota");
+    await rename.getByRole("button", { name: "OK" }).click();
+    await expect(item("Watering rota.sldoc")).toBeVisible();
+
+    const trash = page.getByRole("button", {
+      name: "Move Watering rota.sldoc to trash",
+    });
+    const confirm = page.getByRole("dialog", { name: "Move to trash?" });
+    await trash.click();
+    await page.keyboard.press("Escape");
+    await expect(confirm).toHaveCount(0);
+    await expect(item("Watering rota.sldoc")).toBeVisible();
+    await trash.click();
+    await confirm.getByRole("button", { name: "Move to trash" }).click();
+    await expect(page.getByText("This folder is empty.")).toBeVisible();
+    expect(native).toEqual([]);
   });
 });

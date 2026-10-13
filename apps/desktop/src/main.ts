@@ -315,7 +315,8 @@ function buildMenu() {
                 },
                 {
                   label: "Disconnect and work on this computer",
-                  click: () => void setMode({ kind: "single" }),
+                  // The app removes cached SuiteDrive files before switching.
+                  click: () => send("disconnect"),
                 },
               ],
       },

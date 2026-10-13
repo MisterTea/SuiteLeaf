@@ -75,6 +75,7 @@ import {
 import { SheetViewMenu } from "./editors/SheetViewMenu";
 import {
   DriveConflict,
+  finishSignOut,
   getSession,
   openDriveFile,
   pendingHandoffUrl,
@@ -111,6 +112,39 @@ function driveQueueFor(id: string) {
   let queue = driveQueues.get(id);
   if (!queue) driveQueues.set(id, (queue = new SaveQueue()));
   return queue;
+}
+/** Each open editor's "save and upload now". */
+const openEditors = new Set<() => Promise<void>>();
+/** Remove cached SuiteDrive files from this device once open editors and
+ * pending uploads finish. Resolves false if edits never reached SuiteDrive
+ * and the user chooses to keep them. */
+async function forgetDriveFiles() {
+  const flushed = await Promise.all(
+    [...openEditors].map((flush) =>
+      flush().then(
+        () => true,
+        () => false,
+      ),
+    ),
+  );
+  await Promise.all(
+    [...driveQueues.values()].map((q) => q.flush().catch(() => {})),
+  );
+  const cached = (await storage.list()).filter((r) => r.drive);
+  if (
+    (flushed.includes(false) || cached.some(hasUnsyncedEdits)) &&
+    !window.confirm(
+      "Some changes haven't reached SuiteDrive and are only saved on this device. Remove them from this device anyway?",
+    )
+  )
+    return false;
+  for (const r of cached) await storage.remove(r.file.id);
+  return true;
+}
+/** Purge this device's SuiteDrive cache, sign out, and return to single-node mode. */
+async function disconnectFromServer(serverUrl: string) {
+  if (!(await forgetDriveFiles())) return;
+  await disconnect(serverUrl);
 }
 /** Cache a SuiteDrive file locally and open it in the editor. A local file
  * that merely shares the ID gets a fresh one instead of being replaced, and
@@ -795,34 +829,26 @@ function LocalHome() {
     </div>
   );
 }
-/** Ask before leaving `serverUrl` while SuiteDrive edits exist only on this
- * device; with none, leaving needs no confirmation. */
-async function confirmLeave(serverUrl: string, action: string) {
-  await Promise.all(
-    [...driveQueues.values()].map((q) => q.flush().catch(() => {})),
-  );
-  const unsynced = (await storage.list()).filter(
-    (r) => r.drive?.nodeUrl === serverUrl && hasUnsyncedEdits(r),
-  );
-  if (!unsynced.length) return true;
-  return window.confirm(
-    `${unsynced.length === 1 ? "1 file has" : `${unsynced.length} files have`} changes that haven't reached SuiteDrive yet:\n\n` +
-      unsynced.map((r) => `• ${r.file.title}`).join("\n") +
-      `\n\nThe changes stay on this device and upload when you sign in again and open the file. ${action} anyway?`,
-  );
-}
-function AccountChip({ serverUrl }: { serverUrl: string }) {
+function AccountChip({
+  serverUrl,
+  onError,
+}: {
+  serverUrl: string;
+  onError: (error: string) => void;
+}) {
   const session = useNodeSession();
   const { locked } = useMode();
-  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const leave = (work: () => Promise<unknown>) => {
+    setBusy(true);
+    void work()
+      .catch((e) => onError(message(e)))
+      .finally(() => setBusy(false));
+  };
   if (!session) return null;
   const name =
     session.user.name || session.user.username || session.user.email || "";
   const host = new URL(serverUrl).host;
-  const leave = (action: string, work: () => Promise<unknown>) =>
-    void confirmLeave(serverUrl, action)
-      .then((ok) => ok && work())
-      .catch((e) => setError(message(e)));
   return (
     <div className="account-chip">
       <div
@@ -841,7 +867,12 @@ function AccountChip({ serverUrl }: { serverUrl: string }) {
         <button
           title={`Sign out of ${host}`}
           aria-label="Sign out"
-          onClick={() => leave("Sign out", signOut)}
+          disabled={busy}
+          onClick={() =>
+            leave(async () => {
+              if (await forgetDriveFiles()) await signOut();
+            })
+          }
         >
           <LogOut size={14} />
           <span className="account-action-label">Sign out</span>
@@ -850,18 +881,14 @@ function AccountChip({ serverUrl }: { serverUrl: string }) {
           <button
             title="Sign out and work on this computer without a server"
             aria-label="Disconnect from server"
-            onClick={() => leave("Disconnect", () => disconnect(serverUrl))}
+            disabled={busy}
+            onClick={() => leave(() => disconnectFromServer(serverUrl))}
           >
             <Unplug size={14} />
             <span className="account-action-label">Disconnect</span>
           </button>
         )}
       </div>
-      {error ? (
-        <p className="account-error" role="alert">
-          {error}
-        </p>
-      ) : null}
     </div>
   );
 }
@@ -935,7 +962,7 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
             </small>
           ) : null}
         </div>
-        <AccountChip serverUrl={serverUrl} />
+        <AccountChip serverUrl={serverUrl} onError={setError} />
       </aside>
       <main className="home-main">
         <header className="home-top">
@@ -1164,6 +1191,14 @@ function Workspace() {
       release?.();
     };
   }, [id, syncDrive]);
+  useEffect(() => {
+    const flush = async () => {
+      await save();
+      if (alive.current) await syncDrive();
+    };
+    openEditors.add(flush);
+    return () => void openEditors.delete(flush);
+  }, [save, syncDrive]);
   const update = useCallback(
     (content: SuiteFile["content"]) => {
       if (!current.current) return;
@@ -1280,15 +1315,20 @@ function Workspace() {
   const saveDriveCopy = async () => {
     const conflict = driveConflictRef.current;
     if (!conflict) return;
-    const file = current.current!.file;
-    const name = conflict.name.replace(/(\.[^.]+)?$/, (ext) => ` (copy)${ext}`);
+    // Uploads rename SuiteDrive files after their title, so the copy gets its own.
+    const title = `${current.current!.file.title} (copy)`.slice(0, 200);
+    const file = { ...current.current!.file, title } as SuiteFile;
     setDriveConflict(null);
     const link = await saveNewDriveFile(
       file,
       conflict.parentId,
-      driveName(name, file.kind),
+      nativeFilename(file),
     );
-    current.current = { ...current.current!, drive: link };
+    current.current = {
+      ...current.current!,
+      file: { ...current.current!.file, title } as SuiteFile,
+      drive: link,
+    };
     await storage.save(current.current);
     setRecord(current.current);
     setStatus("Saved a copy to SuiteDrive");
@@ -2103,9 +2143,9 @@ function Workspace() {
             <strong>
               This file was changed in SuiteDrive after you opened it.
             </strong>{" "}
-            {savedWhen(driveConflict.updatedAt)} Your edits weren't uploaded and are safe on this device. Save them
-            as a copy to keep both versions, or reload the SuiteDrive version
-            and discard your edits.
+            {savedWhen(driveConflict.updatedAt)} Your edits weren't uploaded and
+            are safe on this device. Save them as a copy to keep both versions,
+            or reload the SuiteDrive version and discard your edits.
           </span>
           <span className="drive-conflict-actions">
             <button
@@ -2262,18 +2302,37 @@ function FileRoute() {
 function ClusterGate({ children }: { children: ReactNode }) {
   const { mode, locked } = useMode();
   const session = useNodeSession();
+  const cluster = mode.kind === "cluster";
+  useEffect(
+    () =>
+      cluster
+        ? window.suiteleaf?.onMenu((action) => {
+            if (action === "disconnect" && mode.kind === "cluster")
+              void disconnectFromServer(mode.serverUrl).catch((e) =>
+                window.alert(message(e)),
+              );
+          })
+        : undefined,
+    [cluster],
+  );
   if (mode.kind !== "cluster" || session?.url === mode.serverUrl)
     return <>{children}</>;
-  return <SignInScreen serverUrl={mode.serverUrl} canDisconnect={!locked} />;
+  return (
+    <SignInScreen
+      serverUrl={mode.serverUrl}
+      onDisconnect={
+        locked || mode.kind !== "cluster"
+          ? undefined
+          : () => disconnectFromServer(mode.serverUrl)
+      }
+    />
+  );
 }
 export default function App() {
   const [mode, setMode] = useState<ResolvedMode>();
   useEffect(() => {
-    void resolveMode().then((resolved) => {
-      // Disconnecting can happen outside the app (the desktop Server menu).
-      if (resolved.mode.kind === "single" && getSession()) void signOut();
-      setMode(resolved);
-    });
+    void finishSignOut();
+    void resolveMode().then(setMode);
   }, []);
   if (!mode) return <div className="loading">Opening SuiteLeaf…</div>;
   return (
