@@ -163,6 +163,8 @@ export async function askAgent(
     if (Date.now() - started > timeout) break;
     const choose = page.getByRole("button", { name: "Choose file…" });
     if (files.length && (await choose.isVisible().catch(() => false))) {
+      // Let viewers see the request before the person answers it.
+      await beat(page, 1200);
       const chooser = page.waitForEvent("filechooser");
       await choose.click();
       await (await chooser).setFiles(files.shift()!);
