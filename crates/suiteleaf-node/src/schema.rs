@@ -65,5 +65,12 @@ mod tests {
         let notices = schema.table("drive_notice").unwrap();
         assert!(notices.column_type("sharerId").is_some());
         assert!(notices.column_type("dismissedAt").is_some());
+        assert!(
+            schema
+                .table("drive_acl")
+                .unwrap()
+                .column_type("expiresAt")
+                .is_some()
+        );
     }
 }
