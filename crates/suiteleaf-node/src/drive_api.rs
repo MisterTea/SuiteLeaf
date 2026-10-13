@@ -9,7 +9,7 @@ use axum::{
     extract::{DefaultBodyLimit, Path, Query, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
-    routing::{get, patch, post},
+    routing::{get, patch, post, put},
 };
 use serde::Deserialize;
 use serde_json::{Value as JsonValue, json};
@@ -491,6 +491,50 @@ async fn put_acl(
     Ok(Json(json!({ "acl": acl })).into_response())
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExpiryBody {
+    principal_id: String,
+    expires_at: Option<String>,
+}
+
+async fn put_expiry(
+    State(s): State<AppState>,
+    RequireUser(user): RequireUser,
+    Path(id): Path<String>,
+    Json(body): Json<ExpiryBody>,
+) -> ApiResult<Response> {
+    let who = principal(&user);
+    let access = blocking(&s.drive, move |d| {
+        d.set_expiry(
+            &who,
+            &id,
+            "user",
+            &body.principal_id,
+            body.expires_at.as_deref(),
+        )
+    })
+    .await?;
+    Ok(Json(json!({ "yourRole": access.your_role })).into_response())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TransferBody {
+    user_id: String,
+}
+
+async fn transfer_owner(
+    State(s): State<AppState>,
+    RequireUser(user): RequireUser,
+    Path(id): Path<String>,
+    Json(body): Json<TransferBody>,
+) -> ApiResult<Response> {
+    let who = principal(&user);
+    let item = blocking(&s.drive, move |d| d.transfer(&who, &id, &body.user_id)).await?;
+    Ok(Json(item).into_response())
+}
+
 async fn me(RequireUser(user): RequireUser) -> Json<AuthUser> {
     Json(user)
 }
@@ -553,6 +597,8 @@ async fn get_access(
                 "name": profile.and_then(|p| p.name.clone()),
                 "email": profile.and_then(|p| p.email.clone()),
                 "inheritedFrom": g.inherited_from,
+                "expiresAt": g.expires_at,
+                "expired": g.expired,
             })
         })
         .collect();
@@ -621,6 +667,8 @@ pub fn router(state: AppState) -> Router {
             post(copy_version),
         )
         .route("/api/drive/items/{id}/acl", get(get_acl).put(put_acl))
+        .route("/api/drive/items/{id}/expiry", put(put_expiry))
+        .route("/api/drive/items/{id}/owner", post(transfer_owner))
         .route("/api/drive/items/{id}/access", get(get_access))
         .route(
             "/api/drive/items/{id}/comments",

@@ -90,6 +90,7 @@ import {
   type DriveRole,
 } from "./node-client";
 import { DriveBrowser, DriveDialog, NameDialog } from "./drive/DriveBrowser";
+import { FileComments } from "./drive/file-comments";
 import { ShareDialog } from "./drive/ShareDialog";
 import { searchFile } from "./library-search";
 import { FileLibraryRow, TrashToast } from "./library-trash-ui";
@@ -1354,7 +1355,11 @@ function Workspace() {
         if (r.drive && getSession()) {
           try {
             role = (await drive.get(r.drive.itemId)).role ?? "viewer";
-          } catch {
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            if (/do not have access|not found/i.test(msg)) {
+              throw new Error("You no longer have access to this file.");
+            }
             role = "viewer";
           }
         }
@@ -1644,7 +1649,13 @@ function Workspace() {
   if (!record)
     return (
       <div className="loading">
-        {error || "Opening your file…"}
+        {error ? (
+          <p className="access-refused" role="alert">
+            {error}
+          </p>
+        ) : (
+          "Opening your file…"
+        )}
         <p>
           <Link to="/">Return to files</Link>
         </p>
@@ -2886,6 +2897,9 @@ function Workspace() {
                   </div>
                 }
               >
+                {driveRole === "commenter" && record.drive ? (
+                  <FileComments itemId={record.drive.itemId} />
+                ) : null}
                 {f.kind === "doc" ? (
                   <Docs
                     key={`${id}:${editorEpoch}`}

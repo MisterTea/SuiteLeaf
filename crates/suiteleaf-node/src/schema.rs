@@ -62,5 +62,12 @@ mod tests {
         let versions = schema.table("drive_version").unwrap();
         assert!(versions.column_type("name").is_some());
         assert!(versions.column_type("restoredFrom").is_some());
+        assert!(
+            schema
+                .table("drive_acl")
+                .unwrap()
+                .column_type("expiresAt")
+                .is_some()
+        );
     }
 }

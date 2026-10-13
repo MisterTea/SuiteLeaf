@@ -410,3 +410,215 @@ fn naming_restore_and_copy_keep_every_version_byte_for_byte() {
         Err(DriveError::Conflict(_))
     ));
 }
+
+#[test]
+fn ownership_moves_immediately_and_a_share_can_expire() {
+    let (a, b) = (node(), node());
+    let (rosa, sam, priya, eve) = (user("rosa"), user("sam"), user("priya"), user("eve"));
+    let file = a
+        .drive
+        .create(&rosa, None, "Watering rota.sldoc", "file", None)
+        .unwrap();
+    a.drive
+        .write(&rosa, &file.id, None, None, b"Monday: Rosa")
+        .unwrap();
+    a.drive
+        .share(&rosa, &file.id, "user", "sam", Some(Role::Editor))
+        .unwrap();
+    a.drive
+        .share(&rosa, &file.id, "user", "priya", Some(Role::Commenter))
+        .unwrap();
+    a.drive
+        .share(&rosa, &file.id, "user", "eve", Some(Role::Viewer))
+        .unwrap();
+
+    let saturday = "2099-01-03T00:00:00.000Z";
+    for person in ["priya", "eve", "sam"] {
+        a.drive
+            .set_expiry(&rosa, &file.id, "user", person, Some(saturday))
+            .unwrap();
+    }
+    assert!(
+        a.drive
+            .set_expiry(&rosa, &file.id, "user", "rosa", Some(saturday))
+            .is_err()
+    );
+    assert!(
+        a.drive
+            .set_expiry(&rosa, &file.id, "user", "priya", Some("next saturday"))
+            .is_err()
+    );
+    // A role change keeps the end date.
+    a.drive
+        .share(&rosa, &file.id, "user", "sam", Some(Role::Editor))
+        .unwrap();
+    let before = a.drive.access(&rosa, &file.id).unwrap();
+    let sam_grant = before
+        .grants
+        .iter()
+        .find(|g| g.principal_id == "sam")
+        .unwrap();
+    assert_eq!(sam_grant.role, Role::Editor);
+    assert_eq!(sam_grant.expires_at.as_deref(), Some(saturday));
+    assert!(!sam_grant.expired);
+    assert!(matches!(
+        a.drive.transfer(&sam, &file.id, "priya"),
+        Err(DriveError::Forbidden)
+    ));
+    assert!(matches!(
+        a.drive
+            .set_expiry(&sam, &file.id, "user", "priya", Some(saturday)),
+        Err(DriveError::Forbidden)
+    ));
+
+    assert_eq!(
+        a.drive.get(&priya, &file.id).unwrap().role,
+        Some(Role::Commenter)
+    );
+    a.drive
+        .add_comment(&priya, &file.id, "I can cover Wednesday.")
+        .unwrap();
+    assert!(matches!(
+        a.drive.write(&priya, &file.id, None, None, b"no"),
+        Err(DriveError::Forbidden)
+    ));
+    assert_eq!(
+        a.drive.get(&eve, &file.id).unwrap().role,
+        Some(Role::Viewer)
+    );
+    assert!(matches!(
+        a.drive.add_comment(&eve, &file.id, "no"),
+        Err(DriveError::Forbidden)
+    ));
+    assert_eq!(a.drive.shared(&priya).unwrap().len(), 1);
+    assert_eq!(
+        a.drive.get(&sam, &file.id).unwrap().role,
+        Some(Role::Editor)
+    );
+
+    let handed = a.drive.transfer(&rosa, &file.id, "sam").unwrap();
+    assert_eq!(handed.owner_id, "sam");
+    assert_eq!(handed.role, Some(Role::Editor));
+    assert_eq!(a.drive.get(&sam, &file.id).unwrap().role, Some(Role::Owner));
+    a.drive
+        .write(
+            &rosa,
+            &file.id,
+            None,
+            None,
+            b"Monday: Rosa. Sunday: rotate.",
+        )
+        .unwrap();
+    let after = a.drive.access(&sam, &file.id).unwrap();
+    assert_eq!(after.your_role, Role::Owner);
+    let rosa_grant = after
+        .grants
+        .iter()
+        .find(|g| g.principal_id == "rosa")
+        .unwrap();
+    assert_eq!(rosa_grant.role, Role::Editor);
+    assert!(rosa_grant.expires_at.is_none());
+    assert!(
+        after
+            .grants
+            .iter()
+            .any(|g| g.principal_type == "owner" && g.principal_id == "sam")
+    );
+    assert_eq!(
+        after
+            .grants
+            .iter()
+            .find(|g| g.principal_id == "priya")
+            .unwrap()
+            .expires_at
+            .as_deref(),
+        Some(saturday)
+    );
+    assert!(matches!(
+        a.drive.transfer(&rosa, &file.id, "priya"),
+        Err(DriveError::Forbidden)
+    ));
+    assert!(
+        a.drive
+            .share(&sam, &file.id, "user", "eve", Some(Role::Owner))
+            .is_err()
+    );
+    assert!(
+        a.drive
+            .set_expiry(&sam, &file.id, "user", "sam", Some(saturday))
+            .is_err()
+    );
+
+    let ended = "2000-01-01T00:00:00.000Z";
+    a.drive
+        .set_expiry(&sam, &file.id, "user", "priya", Some(ended))
+        .unwrap();
+    a.drive
+        .set_expiry(&sam, &file.id, "user", "eve", Some(ended))
+        .unwrap();
+    assert!(matches!(
+        a.drive.get(&priya, &file.id),
+        Err(DriveError::Forbidden)
+    ));
+    assert!(a.drive.shared(&priya).unwrap().is_empty());
+    assert!(matches!(
+        a.drive.read(&priya, &file.id, None),
+        Err(DriveError::Forbidden)
+    ));
+    assert!(matches!(
+        a.drive.get(&eve, &file.id),
+        Err(DriveError::Forbidden)
+    ));
+    let priya_ended = a
+        .drive
+        .access(&sam, &file.id)
+        .unwrap()
+        .grants
+        .into_iter()
+        .find(|g| g.principal_id == "priya")
+        .unwrap();
+    assert!(priya_ended.expired);
+    assert_eq!(priya_ended.role, Role::Commenter);
+
+    a.drive.share(&sam, &file.id, "user", "eve", None).unwrap();
+    a.drive
+        .share(&sam, &file.id, "user", "eve", Some(Role::Editor))
+        .unwrap();
+    assert_eq!(
+        a.drive.get(&eve, &file.id).unwrap().role,
+        Some(Role::Editor)
+    );
+    a.drive
+        .set_expiry(&sam, &file.id, "user", "eve", Some(ended))
+        .unwrap();
+    assert!(matches!(
+        a.drive.write(&eve, &file.id, None, None, b"x"),
+        Err(DriveError::Forbidden)
+    ));
+
+    sync(&a, &b);
+    let remote = b.drive.access(&sam, &file.id).unwrap();
+    assert_eq!(remote.your_role, Role::Owner);
+    assert_eq!(
+        remote
+            .grants
+            .iter()
+            .find(|g| g.principal_id == "rosa")
+            .unwrap()
+            .role,
+        Role::Editor
+    );
+    let remote_priya = remote
+        .grants
+        .iter()
+        .find(|g| g.principal_id == "priya")
+        .unwrap();
+    assert!(remote_priya.expired);
+    assert_eq!(remote_priya.expires_at.as_deref(), Some(ended));
+    assert!(b.drive.shared(&priya).unwrap().is_empty());
+    assert_eq!(b.drive.get(&sam, &file.id).unwrap().owner_id, "sam");
+    assert_eq!(
+        b.drive.get(&rosa, &file.id).unwrap().role,
+        Some(Role::Editor)
+    );
+}
