@@ -5,8 +5,9 @@ import { excelFixture, wordFixture } from "../office-fixtures";
 // The assistant's tools, run directly against the real editors. These test
 // the tools, not the model: each call is what Gemma would send.
 
-const call = (page: Page, name: string, args: unknown = {}) =>
-  page.evaluate(([n, a]) => window.__suiteleafAgent!.callTool(n as string, a), [name, args] as const);
+/** Run a tool as the assistant would. `request` starts a new user request with those words (they decide what needs asking first). */
+const call = (page: Page, name: string, args: unknown = {}, request?: string) =>
+  page.evaluate(([n, a, r]) => window.__suiteleafAgent!.callTool(n as string, a, r as string | undefined), [name, args, request] as const);
 
 async function waitForTools(page: Page, name: string) {
   await expect.poll(() => page.evaluate(() => window.__suiteleafAgent?.tools() ?? []), { timeout: 20000 }).toContain(name);
@@ -258,7 +259,7 @@ test("checkbox and highlight rule tools say what the boxes hold and which rows a
   await expect(call(page, "highlight_rule", { range: "A2:B4", formula: "=$A2=DONE", fill_color: "#d9ead3" })).rejects.toThrow(
     /gives #NAME\? on row 2, so the rule would never apply.*=\$A2=TRUE/,
   );
-  await call(page, "set_checkbox", { cells: ["A3"], checked: true });
+  await call(page, "set_checkbox", { cells: ["A3"], checked: true }, "Tick Laundry off as done.");
   expect(await call(page, "highlight_rule", { range: "B2:B4", formula: "=$A2", bold: true })).toContain("Right now it applies to row(s) 3.");
 });
 
@@ -400,7 +401,7 @@ test("file tools download a file, remove it, and open it again without replacing
   expect(again).toContain("The one here has newer changes");
   await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
 
-  expect(await call(page, "remove_file", { name: "Trip list" })).toContain("A copy that was downloaded or saved elsewhere is not affected");
+  expect(await call(page, "remove_file", { name: "Trip list" }, "Delete the trip list.")).toContain("A copy that was downloaded or saved elsewhere is not affected");
   await expect(page.locator(".file-row")).toHaveCount(0);
   const [opened] = await Promise.all([call(page, "open_from_computer"), choose()]);
   expect(opened).toContain('Opened "Trip list.sldoc"');
@@ -427,7 +428,7 @@ test("file list tools search, filter, copy, rename and remove", async ({ page })
   await call(page, "rename_file", { name: "Club newsletter copy", new_name: "Club newsletter - November" });
   expect(await call(page, "show_files", { show: "documents", sort_by: "name" })).toContain('matching the search "harvest"');
   await expect(rows).toHaveText([/^Club newsletter(?! -)/, /^Club newsletter - November/]);
-  await call(page, "remove_file", { name: "Club budget" });
+  await call(page, "remove_file", { name: "Club budget" }, "Remove the club budget.");
   await expect(page.getByLabel("Search files")).toHaveValue("");
   expect(await call(page, "show_files", { show: "all" })).toBe(
     'Showing all.\n- "Club newsletter"\n- "Club newsletter - November"',
@@ -490,4 +491,32 @@ test("an Excel workbook opens with its import notes and frozen panes", async ({ 
   expect(opened).toContain('Opened "Studio budget.xlsx". It was converted into an editable SuiteLeaf copy; the original file is unchanged. Import notes:');
   expect(opened).toContain("Excel formulas were kept with their last calculated results");
   expect(opened).toContain("Frozen: 1 row(s), 1 column(s).");
+});
+
+test("guardrails ask before destroying work, undo only the request's own changes, and review its cells", async ({ page }) => {
+  await page.goto("/");
+  await waitForTools(page, "create_file");
+  await call(page, "create_file", { kind: "spreadsheet", title: "Invoice" }, "Make an invoice.");
+  await waitForTools(page, "set_cells");
+  await call(page, "set_cells", { start: "A1", values: [["Item", "Amount"], ["Logo", "450"], ["Site", "1200"], ["Photos", "230"], ["Total", "=SUM(B2:B4)"]] });
+
+  // A new request: the cells above are the user's now.
+  await call(page, "select_range", { range: "B2" }, "Show the amounts as dollars.");
+  await expect(call(page, "undo")).rejects.toThrow(/Nothing you changed in this request is left to undo/);
+  await call(page, "format_cells", { range: "B2:B4", number_format: "currency" });
+  const issues = await page.evaluate(() => window.__suiteleafAgent!.review());
+  expect(issues.join("\n")).toContain("B5 (1880) is a number in the same column as B2:B4, which you formatted as");
+  expect(await call(page, "undo")).toMatch(/^Undid your last change: B\d number format .+ → none/);
+
+  await call(page, "back_to_files");
+  await waitForTools(page, "remove_file");
+  const removing = call(page, "remove_file", { name: "Invoice" }, "Open the invoice again.").then(
+    () => "removed",
+    (e: Error) => e.message,
+  );
+  const asks = page.getByRole("alertdialog", { name: /asks$/ });
+  await expect(asks).toContainText("Remove “Invoice” from SuiteLeaf?");
+  await asks.getByRole("button", { name: "Don't allow" }).click();
+  expect(await removing).toMatch(/The user answered no/);
+  await expect(page.locator(".file-row")).toHaveCount(1);
 });

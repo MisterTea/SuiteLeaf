@@ -3855,3 +3855,52 @@ body.agent-open .new-cards {
 body.agent-open .sign-in-screen {
   margin-right: var(--agent-width);
 }
+.agent-approval {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 14px 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--agent-accent);
+  background: var(--agent-accent-soft);
+  font-size: 13px;
+}
+.agent-approval span {
+  flex: 1;
+}
+.agent-approval button,
+.agent-changes button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 14px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.agent-approval button.primary {
+  background: var(--agent-accent);
+  border-color: var(--agent-accent);
+  color: #fff;
+}
+.agent-review {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.agent-review ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+.agent-changes {
+  font-size: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.agent-changes ul {
+  margin: 0 0 6px;
+  padding-left: 18px;
+}

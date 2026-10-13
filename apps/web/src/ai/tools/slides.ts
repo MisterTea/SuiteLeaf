@@ -11,6 +11,7 @@ import {
 } from "../../editors/slide-layouts";
 import { ToolError, tool, type SuiteTool } from "../host";
 import { requestFile } from "../file-request";
+import { REMOVE_INTENT } from "./files";
 
 type Deck = SlideFile["content"];
 
@@ -476,6 +477,12 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
       label: "Delete slide",
       description: "Delete a slide.",
       parameters: Type.Object({ slide: Type.Number() }),
+      intent: REMOVE_INTENT,
+      confirm: ({ slide }) => {
+        const deck = ctx.deck();
+        const id = deck.slideOrder[slide - 1];
+        return id ? `Delete slide ${slide} (“${titleOf(deck.slides[id])}”)?` : undefined;
+      },
       target: ({ slide }) => thumbnail(slide - 1),
       execute({ slide }) {
         const deck = ctx.deck();

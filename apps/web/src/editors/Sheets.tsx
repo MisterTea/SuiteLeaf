@@ -8,6 +8,7 @@ import {
   mergeLocales,
   numfmt,
   UserManagerService,
+  IUndoRedoService,
   type IWorkbookData,
 } from "@univerjs/presets";
 import {
@@ -49,7 +50,7 @@ import {
 } from "./formula-suggestions";
 import SortRangeDialog from "./SortRangeDialog";
 import { useAgentHost } from "../ai/host";
-import { sheetSnapshot, sheetTools, type SheetsAgentContext } from "../ai/tools/sheets";
+import { sheetBeforeTool, sheetReview, sheetSnapshot, sheetTools, type SheetsAgentContext } from "../ai/tools/sheets";
 import { useToolbarOverflow } from "./toolbar-overflow";
 import "@univerjs/preset-sheets-core/lib/index.css";
 import "@univerjs/preset-sheets-drawing/lib/index.css";
@@ -758,6 +759,7 @@ export default function Sheets({
   const host = useRef<HTMLDivElement>(null),
     api = useRef<any>(null),
     book = useRef<any>(null),
+    injectorRef = useRef<any>(null),
     content = useRef(structuredClone(file.content)),
     changes = useRef(onChange),
     error = useRef(onError);
@@ -923,7 +925,7 @@ export default function Sheets({
           UniverSheetsNotePreset(),
         ],
       });
-      const injector = univer.__getInjector();
+      const injector = (injectorRef.current = univer.__getInjector());
       const stopSuggestionGuard = guardFormulaSuggestions(
         injector.get(IShortcutService),
         injector.get(IEditorService),
@@ -2216,12 +2218,16 @@ export default function Sheets({
           setAuthor: cluster ? undefined : setLocalName,
           signature: () =>
             currentAuthor(cluster ? getSession()?.user : null).signature,
+          undoCount: () =>
+            injectorRef.current?.get(IUndoRedoService).getUndoRedoStatus(book.current.getId()).undos ?? 0,
         }
       : null;
     return {
       kind: "sheet",
       snapshot: () => (ctx ? sheetSnapshot(ctx) : "A spreadsheet is opening."),
       tools: ctx ? sheetTools(ctx) : [],
+      beforeTool: () => ctx && sheetBeforeTool(ctx),
+      review: () => (ctx ? sheetReview(ctx) : []),
     };
   });
   let fields: CellValue[] = [],

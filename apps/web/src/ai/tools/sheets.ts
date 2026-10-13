@@ -2,6 +2,7 @@ import { Type } from "@earendil-works/pi-ai";
 import type { ChartDefinition, PivotDefinition, SheetFile } from "@suiteleaf/core";
 import { applyNamedFormat, numberFormatById } from "../../formats";
 import { moveCursor } from "../cursor";
+import { baselineSnapshot, markBaseline, ownUndoSteps } from "../guard";
 import { ToolError, tool, type SuiteTool } from "../host";
 
 /** What the Sheets editor lends the agent. */
@@ -33,6 +34,8 @@ export interface SheetsAgentContext {
   setAuthor?: (name: string) => void;
   /** The name saved with new comments ("" when none is set). */
   signature?: () => string;
+  /** Steps in the workbook's undo history. */
+  undoCount: () => number;
 }
 
 export interface PanelValues {
@@ -288,6 +291,108 @@ const NUMBER_FORMATS: Record<string, string> = {
   date: "dateShort",
   plain: "general",
 };
+
+const UNDO_LIMIT = 50;
+
+/** Each filled cell's value, formula and number format, by "Sheet!A1". */
+type CellStates = Map<string, { v: unknown; f: string; n: string }>;
+
+function cellStates(book: any): CellStates {
+  const states: CellStates = new Map();
+  for (const sheet of book.getSheets()) {
+    const r = usedRange(sheet);
+    const rows = Math.min(r.endRow - r.startRow + 1, 300),
+      columns = Math.min(r.endColumn - r.startColumn + 1, 40);
+    const range = sheet.getRange(r.startRow, r.startColumn, rows, columns);
+    // Raw values: getValues() gives formatted cells as their display text ("$450.00").
+    const values = (range.getRawValues?.() ?? range.getValues()) as unknown[][];
+    const formulas = (range.getFormulas?.() ?? []) as string[][];
+    const formats = (range.getNumberFormats?.() ?? []) as string[][];
+    const name = sheet.getSheetName();
+    values.forEach((row, i) =>
+      row.forEach((v, j) => {
+        const f = formulas[i]?.[j] ?? "",
+          n = formats[i]?.[j] && formats[i][j] !== "General" ? formats[i][j] : "";
+        if (v === null || v === undefined || v === "") if (!f && !n) return;
+        states.set(`${name}!${a1({ startRow: r.startRow + i, endRow: r.startRow + i, startColumn: r.startColumn + j, endColumn: r.startColumn + j })}`, { v, f, n });
+      }),
+    );
+  }
+  return states;
+}
+
+const shown = (c?: { v: unknown; f: string }) => (!c ? "empty" : c.f ? `${c.f} (${display(c.v)})` : JSON.stringify(c.v ?? ""));
+
+/** "D5 1880 → empty; B2 number format "$"#,##0.00 → none", for the cells that differ. */
+function describeCellChanges(before: CellStates, after: CellStates, limit = 8) {
+  const keys = [...new Set([...before.keys(), ...after.keys()])];
+  const lines: string[] = [];
+  for (const key of keys) {
+    const a = before.get(key),
+      b = after.get(key);
+    const cell = key.replace(/^Sheet1!/, "");
+    if ((a?.v ?? "") !== (b?.v ?? "") || (a?.f ?? "") !== (b?.f ?? "")) lines.push(`${cell} ${shown(a)} → ${shown(b)}`);
+    else if ((a?.n ?? "") !== (b?.n ?? "")) lines.push(`${cell} number format ${a?.n || "none"} → ${b?.n || "none"}`);
+  }
+  return lines.slice(0, limit).join("; ") + (lines.length > limit ? `; and ${lines.length - limit} more cells` : "");
+}
+
+/** Notes the workbook before the request's first change, for undo and the review. */
+export const sheetBeforeTool = (ctx: SheetsAgentContext) => markBaseline(ctx.book, ctx.undoCount(), () => cellStates(ctx.book));
+
+/** Problems in the cells this request changed. */
+export function sheetReview(ctx: SheetsAgentContext) {
+  const before = baselineSnapshot<CellStates>(ctx.book);
+  if (!before) return [];
+  const now = cellStates(ctx.book);
+  const changed = [...now].filter(([key, c]) => {
+    const old = before.get(key);
+    return !old || old.v !== c.v || old.f !== c.f || old.n !== c.n;
+  });
+  const issues: string[] = [];
+  for (const [key, c] of changed) {
+    const [sheetName, cell] = key.split("!");
+    const label = sheetName === "Sheet1" ? cell : key;
+    if (typeof c.v === "string" && /^#(REF!|DIV\/0!|VALUE!|NAME\?|N\/A|NUM!|NULL!)/.test(c.v)) issues.push(`${label} ${c.f || ""} shows the error ${c.v}.`);
+    if (c.f) {
+      const sheet = ctx.book.getSheetByName(sheetName);
+      const empty = sheet ? emptyReferences(sheet, c.f) : [];
+      if (empty.length) issues.push(`${label} ${c.f} uses only empty cells (${empty.join(", ")}).`);
+    }
+  }
+  // A number left unformatted in a column whose neighbours you just formatted (often a total row).
+  const formatted = new Map<string, { rows: number[]; format: string }>();
+  for (const [key, c] of changed) {
+    const old = before.get(key);
+    if (!c.n || old?.n === c.n || typeof c.v !== "number") continue;
+    const [sheetName, cell] = key.split("!");
+    const { row, column } = parseCell(cell);
+    const group = formatted.get(`${sheetName}|${column}|${c.n}`) ?? { rows: [], format: c.n };
+    group.rows.push(row);
+    formatted.set(`${sheetName}|${column}|${c.n}`, group);
+  }
+  for (const [groupKey, { rows, format }] of formatted) {
+    if (rows.length < 2) continue;
+    const [sheetName, columnText] = groupKey.split("|");
+    const column = Number(columnText);
+    const at = (row: number) => now.get(`${sheetName}!${a1({ startRow: row, endRow: row, startColumn: column, endColumn: column })}`);
+    const numeric = (row: number) => typeof at(row)?.v === "number";
+    let top = Math.min(...rows),
+      bottom = Math.max(...rows);
+    while (top > 0 && numeric(top - 1)) top--;
+    while (numeric(bottom + 1)) bottom++;
+    const span = a1({ startRow: Math.min(...rows), endRow: Math.max(...rows), startColumn: column, endColumn: column });
+    for (let row = top; row <= bottom; row++) {
+      const c = at(row);
+      if (!c || c.n || rows.includes(row)) continue;
+      const cell = a1({ startRow: row, endRow: row, startColumn: column, endColumn: column });
+      issues.push(
+        `${sheetName === "Sheet1" ? cell : `${sheetName}!${cell}`} (${display(c.v)}) is a number in the same column as ${span}, which you formatted as ${format}, but it has no number format. If it belongs with them (a total, for example), format it the same way.`,
+      );
+    }
+  }
+  return issues.slice(0, 10);
+}
 
 export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
   const { book } = ctx;
@@ -1031,8 +1136,11 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
     tool({
       name: "set_checkbox",
       label: "Tick box",
-      description: "Tick (true) or untick (false) checkbox cells.",
+      description: "Tick (true) or untick (false) checkbox cells. Only when the user asks to tick or untick something.",
       parameters: Type.Object({ cells: Type.Array(Type.String()), checked: Type.Boolean() }),
+      // "When I tick a task…" describes the user's own ticking, not a request to tick one.
+      intent: /\b(un)?(tick|check|mark)(ed)?\b[^.?!]{0,40}\b(off|done|complete|completed|finished)\b|\b(untick|uncheck)\b/i,
+      confirm: ({ cells, checked }) => `${checked ? "Tick" : "Untick"} ${cells.join(", ")}?`,
       target: ({ cells }) => target(cells[0]),
       async execute({ cells, checked }) {
         for (const cell of cells) {
@@ -1129,13 +1237,23 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
     tool({
       name: "undo",
       label: "Undo",
-      description: "Undo the last change.",
+      description: "Undo your own last change in this request. Changes from before the request are the user's and can't be undone with this.",
       parameters: Type.Object({}),
       target: () => document.querySelector('[aria-label="Undo"]'),
       async execute() {
+        const steps = ctx.undoCount();
+        const own = ownUndoSteps(book, steps);
+        // A full history (Univer keeps 50 steps) can't tell whose the oldest steps are, so it doesn't block.
+        if (!own && steps < UNDO_LIMIT)
+          throw new ToolError(
+            "Nothing you changed in this request is left to undo. Earlier changes in this workbook are the user's, so undo would take away their work.",
+          );
+        const before = cellStates(book);
         await ctx.api.undo();
+        await ctx.settle();
         ctx.persist();
-        return "Undid the last change.";
+        const change = describeCellChanges(before, cellStates(book));
+        return `Undid your last change: ${change || "nothing visible changed (a setting or a style)"}. ${own > 1 ? `${own - 1} more of your changes in this request can be undone.` : "None of your changes in this request are left to undo."}`;
       },
     }),
   ];

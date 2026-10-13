@@ -42,9 +42,14 @@ export const electronApps = new WeakMap<Page, ElectronApplication>();
 
 /** STORYBOARD_AI_THINKING: the model's thinking budget in tokens (0 for no limit). */
 const thinking = process.env.STORYBOARD_AI_THINKING;
-const thinkingScript = thinking
-  ? `localStorage.setItem("suiteleaf.ai.thinkingBudget", ${JSON.stringify(thinking)});`
-  : `localStorage.removeItem("suiteleaf.ai.thinkingBudget");`;
+const thinkingScript =
+  (thinking
+    ? `localStorage.setItem("suiteleaf.ai.thinkingBudget", ${JSON.stringify(thinking)});`
+    : `localStorage.removeItem("suiteleaf.ai.thinkingBudget");`) +
+  // STORYBOARD_AI_CAPTURE=1 also keeps every prompt in the metrics, for backend comparisons.
+  (process.env.STORYBOARD_AI_CAPTURE ? `localStorage.setItem("suiteleaf.ai.capture", "1");` : "") +
+  // STORYBOARD_AI_REVIEW: "always" (default), "issues" or "off", for the check before the final reply.
+  (process.env.STORYBOARD_AI_REVIEW ? `localStorage.setItem("suiteleaf.ai.review", ${JSON.stringify(process.env.STORYBOARD_AI_REVIEW)});` : "");
 
 /** Settings the in-app assistant reads, for AI storyboards. */
 function assistantScript(baseURL: string | undefined) {
@@ -186,6 +191,8 @@ export interface AgentRun {
   items: { kind: string; name?: string; args?: unknown; status?: string; result?: string; text?: string }[];
   /** The model's raw output, one entry per request. */
   raws?: string[];
+  /** What the assistant asked before destructive actions, and the person's answer. */
+  approvals?: { question: string; allowed: boolean }[];
   seconds: number;
 }
 
@@ -199,7 +206,13 @@ export interface AgentRun {
 export async function askAgent(
   page: Page,
   prompt: string,
-  options: { files?: { name: string; mimeType: string; buffer: Buffer }[]; timeoutMs?: number; paste?: string } = {},
+  options: {
+    files?: { name: string; mimeType: string; buffer: Buffer }[];
+    timeoutMs?: number;
+    paste?: string;
+    /** Questions the person says yes to when the assistant asks before a destructive action (default: none). */
+    allow?: RegExp;
+  } = {},
 ): Promise<AgentRun> {
   const panel = page.locator(".agent-sidebar");
   if (!(await panel.isVisible())) {
@@ -219,6 +232,7 @@ export async function askAgent(
   const started = Date.now();
   const timeout = options.timeoutMs ?? 15 * 60_000;
   const files = [...(options.files ?? [])];
+  const approvals: { question: string; allowed: boolean }[] = [];
   for (;;) {
     const state = await panel.getAttribute("data-agent-state");
     if (state === "done" || state === "error") break;
@@ -231,13 +245,22 @@ export async function askAgent(
       await choose.click();
       await (await chooser).setFiles(files.shift()!);
     }
+    const asks = page.getByRole("alertdialog", { name: /asks$/ });
+    if (await asks.isVisible().catch(() => false)) {
+      const question = ((await asks.textContent().catch(() => "")) ?? "").replace(/Allow\s*Don't allow\s*$/, "").trim();
+      const allowed = !!options.allow?.test(question);
+      await beat(page, 1200);
+      await asks.getByRole("button", { name: allowed ? "Allow" : "Don't allow" }).click();
+      approvals.push({ question, allowed });
+    }
     await page.waitForTimeout(500);
   }
   const run = (await page.evaluate(() => {
     const agent = (window as unknown as { __suiteleafAgent: Record<string, () => unknown> }).__suiteleafAgent;
-    return { state: agent.state(), metrics: agent.metrics(), items: agent.items(), raws: agent.raws() };
+    const prompts = agent.prompts();
+    return { state: agent.state(), metrics: agent.metrics(), items: agent.items(), raws: agent.raws(), ...(prompts.length ? { prompts } : {}) };
   })) as Omit<AgentRun, "seconds">;
-  const result = { ...run, seconds: Math.round((Date.now() - started) / 1000) };
+  const result = { ...run, approvals, seconds: Math.round((Date.now() - started) / 1000) };
   const info = base.info();
   const out = metricsPath(info);
   const runs = (agentRuns.get(info.testId) ?? []).concat({ prompt, ...result });

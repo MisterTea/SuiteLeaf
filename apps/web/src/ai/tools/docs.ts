@@ -1,12 +1,14 @@
 import type { Editor } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
+import { undoDepth } from "@tiptap/pm/history";
 import { Type } from "@earendil-works/pi-ai";
 import type { PageSettings } from "@suiteleaf/core/document-layout";
 import { documentMatches } from "../../editors/doc-search-plugin";
 import { findMisspellings, spellchecker } from "../../editors/doc-spelling";
 import { ToolError, tool, type SuiteTool } from "../host";
 import { requestFile } from "../file-request";
+import { baselineSnapshot, markBaseline, ownUndoSteps } from "../guard";
 
 /** What the Docs editor lends the agent. */
 export interface DocsAgentContext {
@@ -296,6 +298,11 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         ),
         replace_document: Type.Optional(Type.Boolean({ description: "Replace everything in the document." })),
       }),
+      intent: /\b(replace|rewrite|re-?type|start (over|again)|overwrite|clear|wipe|instead of (what|everything))\b/i,
+      confirm: ({ replace_document }) => {
+        const words = editor.getText().trim().split(/\s+/).filter(Boolean).length;
+        return replace_document && words ? `Replace everything in this document (${words} words) with new text?` : undefined;
+      },
       target: ({ after }) => {
         try {
           if (!after) return rectAt(editor, endOfDocument(editor));
@@ -762,15 +769,63 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
     tool({
       name: "undo",
       label: "Undo",
-      description: "Undo the last change.",
+      description: "Undo your own last change in this request. Changes from before the request are the user's and can't be undone with this.",
       parameters: Type.Object({}),
       target: () => document.querySelector('[aria-label="Undo"]'),
       execute() {
+        const own = ownUndoSteps(editor, undoDepth(editor.state));
+        if (!own)
+          throw new ToolError(
+            "Nothing you changed in this request is left to undo. Earlier changes in this document are the user's, so undo would take away their work.",
+          );
+        const before = blockLines(editor),
+          beforeJson = JSON.stringify(editor.getJSON());
         editor.commands.undo();
-        return "Undid the last change.";
+        const change = describeChange(before, blockLines(editor), beforeJson !== JSON.stringify(editor.getJSON()));
+        return `Undid your last change: ${change}. ${own > 1 ? `${own - 1} more of your changes in this request can be undone.` : "That was your first change in this request; none of yours are left to undo."}`;
       },
     }),
   ];
+}
+
+/** Each paragraph as "Label: text", to tell what a change did. */
+const blockLines = (editor: Editor) => blocks(editor).map((b) => `${b.label}: ${b.text}`);
+
+/** What an undo changed, from the paragraphs before and after it. */
+function describeChange(before: string[], after: string[], changed: boolean) {
+  let start = 0;
+  while (start < before.length && start < after.length && before[start] === after[start]) start++;
+  let end = 0;
+  while (end < before.length - start && end < after.length - start && before[before.length - 1 - end] === after[after.length - 1 - end]) end++;
+  const gone = before.slice(start, before.length - end),
+    back = after.slice(start, after.length - end);
+  const quote = (lines: string[]) =>
+    lines
+      .slice(0, 3)
+      .map((l) => `"${l.length > 70 ? `${l.slice(0, 70)}…` : l}"`)
+      .join(", ") + (lines.length > 3 ? ` and ${lines.length - 3} more` : "");
+  const parts = [gone.length ? `the document no longer has ${quote(gone)}` : "", back.length ? `it has back ${quote(back)}` : ""].filter(Boolean);
+  return parts.length ? parts.join("; ") : changed ? "a formatting change, the text is the same" : "nothing visible changed";
+}
+
+/** Notes the editor's state before the request's first change, for undo and the review. */
+export const docBeforeTool = (ctx: DocsAgentContext) => markBaseline(ctx.editor, undoDepth(ctx.editor.state), () => blockLines(ctx.editor));
+
+/** Problems in the paragraphs this request wrote or changed. */
+export function docReview(ctx: DocsAgentContext) {
+  const before = baselineSnapshot<string[]>(ctx.editor);
+  if (!before) return [];
+  const old = new Set(before);
+  const issues: string[] = [];
+  for (const b of blocks(ctx.editor)) {
+    if (old.has(`${b.label}: ${b.text}`)) continue;
+    const short = b.text.length > 60 ? `${b.text.slice(0, 60)}…` : b.text;
+    if (/\*\*[^*]+\*\*|__[^_]+__/.test(b.text)) issues.push(`"${short}" shows ** or __ as text instead of bold.`);
+    else if (b.label === "Paragraph" && /^(#{1,6}|[-*]|\d+\.)\s/.test(b.text))
+      issues.push(`"${short}" starts with Markdown (# , - or 1.) shown as text instead of a heading or list.`);
+    if (b.type === "heading" && !b.text.trim()) issues.push("There is an empty heading.");
+  }
+  return issues;
 }
 
 export function docSnapshot(ctx: DocsAgentContext) {

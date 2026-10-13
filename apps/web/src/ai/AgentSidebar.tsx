@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { ArrowUp, Check, CircleAlert, FileUp, Loader2, RotateCcw, Sparkles, Square, X } from "lucide-react";
+import { ArrowUp, Check, CircleAlert, FileUp, Loader2, RotateCcw, ShieldQuestion, Sparkles, Square, Undo2, X } from "lucide-react";
 import { agentSession, currentFormat, type TranscriptItem } from "./agent";
 import { cursorStore } from "./cursor";
 import { fileRequestStore } from "./file-request";
+import { approvalStore } from "./guard";
 import { PARSE_ERROR } from "./model-stream";
 
 /** What the panel calls the assistant: the short name of the model it runs ("Gemma", "FrogNano"). */
@@ -81,6 +82,20 @@ function Item({ item }: { item: TranscriptItem }) {
         <CircleAlert size={14} /> {item.text}
       </div>
     );
+  if (item.kind === "review")
+    return (
+      <div className="agent-review">
+        <Check size={14} /> Checked the result against your request
+        {item.issues.length ? (
+          <ul>
+            {item.issues.map((issue, i) => (
+              <li key={i}>{issue}</li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+    );
+  if (item.kind === "changes") return <Changes item={item} />;
   return (
     <div className={`agent-tool ${item.status}`} data-tool={item.name}>
       <span className="agent-tool-icon">
@@ -103,6 +118,51 @@ function Item({ item }: { item: TranscriptItem }) {
           </>
         )}
       </span>
+    </div>
+  );
+}
+
+// A question needs the panel open to be answered.
+approvalStore.subscribe(() => {
+  if (approvalStore.get() && !panel.get()) panel.set(true);
+});
+
+const CHANGE_WORDS = { created: "Created", changed: "Changed", removed: "Removed" };
+
+function Changes({ item }: { item: Extract<TranscriptItem, { kind: "changes" }> }) {
+  return (
+    <div className="agent-changes" aria-label="Changes from this request">
+      <ul>
+        {item.changes.map((c, i) => (
+          <li key={i}>
+            {CHANGE_WORDS[c.kind]} “{c.title}”{c.drive ? " (SuiteDrive)" : ""}
+          </li>
+        ))}
+      </ul>
+      {item.undone ? (
+        <span className="agent-note">{item.undone}</span>
+      ) : item.undo ? (
+        <button type="button" onClick={() => void item.undo?.()}>
+          <Undo2 size={14} /> Undo all of this
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function ApprovalPrompt() {
+  const approval = useSyncExternalStore(approvalStore.subscribe, approvalStore.get);
+  if (!approval) return null;
+  return (
+    <div className="agent-approval" role="alertdialog" aria-label={`${assistantName()} asks`}>
+      <ShieldQuestion size={16} />
+      <span>{approval.question}</span>
+      <button type="button" className="primary" onClick={() => approval.resolve(true)}>
+        Allow
+      </button>
+      <button type="button" onClick={() => approval.resolve(false)}>
+        Don't allow
+      </button>
     </div>
   );
 }
@@ -220,6 +280,7 @@ export function AgentSidebar() {
           <p className="agent-note">{assistantName()} finished without a summary. The steps above are what it did.</p>
         ) : null}
       </div>
+      <ApprovalPrompt />
       <FilePrompt />
       <form
         className="agent-composer"

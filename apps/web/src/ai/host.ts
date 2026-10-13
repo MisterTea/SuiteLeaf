@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { Static, TSchema } from "@earendil-works/pi-ai";
 import { moveCursor, type Target } from "./cursor";
+import { requestApproval, requested } from "./guard";
 import { PARSE_ERROR } from "./model-stream";
 
 /** What a SuiteLeaf tool returns to the model. */
@@ -19,6 +20,13 @@ export interface SuiteTool<P extends TSchema = TSchema> {
   prepare?: (args: Record<string, unknown>) => Record<string, unknown>;
   /** The same call does something new each time (e.g. the next slide), so repeating it is not a loop. */
   repeatable?: boolean;
+  /**
+   * For actions that destroy or overwrite the user's work: the question to ask
+   * before running, or undefined when nothing would be lost. Not asked when the
+   * request's words match `intent` (the user asked for it).
+   */
+  confirm?: (args: Static<P>) => string | undefined;
+  intent?: RegExp;
   execute: (args: Static<P>, signal?: AbortSignal) => Promise<ToolOutput> | ToolOutput;
 }
 
@@ -35,6 +43,10 @@ export interface AgentHost {
   /** Short description of the current state, given to the model with each request. */
   snapshot: () => string;
   tools: SuiteTool[];
+  /** Runs before every tool call, e.g. to note the editor's undo depth before the request's first change. */
+  beforeTool?: () => void;
+  /** Problems the screen can see in the request's changes, checked before the assistant says it is done. */
+  review?: () => string[];
 }
 
 const hosts = new Map<string, AgentHost>();
@@ -76,6 +88,8 @@ export function useAgentHost(id: string, build: () => AgentHost) {
         get tools() {
           return latest.current().tools;
         },
+        beforeTool: () => latest.current().beforeTool?.(),
+        review: () => latest.current().review?.() ?? [],
       }),
     [id],
   );
@@ -141,6 +155,9 @@ export function currentSuiteTools(): SuiteTool[] {
   return list;
 }
 
+/** The problems every open screen sees in the request's changes. */
+export const currentReview = () => mounted().flatMap((h) => h.review?.() ?? []);
+
 export function currentSnapshot() {
   return mounted()
     .map((h) => h.snapshot())
@@ -176,6 +193,12 @@ export function toAgentTool(t: SuiteTool): AgentTool {
         target = undefined;
       }
       await moveCursor(target, live.label);
+      for (const h of mounted()) h.beforeTool?.();
+      const question = live.intent && requested(live.intent) ? undefined : live.confirm?.(params as never);
+      if (question && !(await requestApproval(question)))
+        throw new ToolError(
+          `The user answered no to "${question}", so nothing was changed. Don't try it another way; finish the rest of the request, then say what you left alone.`,
+        );
       const out = await live.execute(params as never, signal);
       const text = typeof out === "string" ? out : out.text;
       return {

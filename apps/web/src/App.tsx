@@ -404,6 +404,10 @@ function LocalHome() {
   );
   useEffect(() => {
     void refresh();
+    // The assistant's "Undo all of this" puts files back behind the list's back.
+    const changed = () => void refresh();
+    window.addEventListener("suiteleaf:library-changed", changed);
+    return () => window.removeEventListener("suiteleaf:library-changed", changed);
   }, [refresh]);
   const open = useCallback(
     async (r: FileRecord, notice?: string) => {

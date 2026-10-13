@@ -4,6 +4,17 @@ import { ToolError, currentSnapshot, currentSuiteTools, tool, waitForHost, type 
 import { requestFile } from "../file-request";
 import { moveCursor } from "../cursor";
 
+/** Words that ask for a file, slide or text to go. */
+export const REMOVE_INTENT = /\b(remove|delete|trash|get rid of|throw (it |them )?away|bin it|discard)\b/i;
+
+const safe = <T>(f: () => T) => {
+  try {
+    return f();
+  } catch {
+    return undefined;
+  }
+};
+
 export const IMPORT_ACCEPT =
   ".sldoc,.slsheet,.slslides,.suiteleaf,.docx,.xlsx,.xls,.xlsm,.xlsb,.xltx,.pptx,.ppt,.ppsx,.pptm,.potx,.ppsm,.html,.htm,.txt,.csv,.tsv";
 
@@ -254,6 +265,11 @@ export function homeTools(ctx: HomeAgentContext): SuiteTool[] {
       label: "Remove file",
       description: "Delete a file from the library. Only do this when the user asked to delete or remove that file.",
       parameters: Type.Object({ name: Type.String() }),
+      intent: REMOVE_INTENT,
+      confirm: ({ name }) => {
+        const r = ctx.records.find((x) => x.file.title === name) ?? safe(() => findRecord(ctx.records, name));
+        return r && `Remove “${r.file.title}” from SuiteLeaf?${r.path ? " Its saved file stays on disk." : " This can't be undone."}`;
+      },
       target: async ({ name }) => (await revealRow(ctx, name))?.querySelector('[aria-label^="Remove"]'),
       async execute({ name }) {
         const r = findRecord(ctx.records, name);

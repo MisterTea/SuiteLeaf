@@ -79,7 +79,7 @@ import { DocumentPagination, PageBreak } from "./doc-pagination";
 import SpellingPanel from "./SpellingPanel";
 import { useAgentHost } from "../ai/host";
 import { useAgentPanelOpen } from "../ai/AgentSidebar";
-import { docSnapshot, docTools, type DocsAgentContext } from "../ai/tools/docs";
+import { docBeforeTool, docReview, docSnapshot, docTools, type DocsAgentContext } from "../ai/tools/docs";
 import {
   documentHtml,
   documentPageSettings,
@@ -638,6 +638,8 @@ export default function Docs({
       kind: "doc",
       snapshot: () => (ctx ? docSnapshot(ctx) : "A document is opening."),
       tools: ctx ? docTools(ctx) : [],
+      beforeTool: () => ctx && docBeforeTool(ctx),
+      review: () => (ctx ? docReview(ctx) : []),
     };
   });
 

@@ -4,7 +4,8 @@ import { localModel, selectedModel } from "./backend";
 import { formatFor } from "./chat-format";
 import { hideCursor, showCursor } from "./cursor";
 import { PARSE_ERROR, createLocalStreamFn, localModelDescriptor, type GenerationStats } from "./model-stream";
-import { activeHost, currentSnapshot, currentSuiteTools, toAgentTool, toolScreen } from "./host";
+import { cancelApproval, startRequest, takeCheckpoint, type Checkpoint, type FileChange } from "./guard";
+import { activeHost, currentReview, currentSnapshot, currentSuiteTools, toAgentTool, toolScreen } from "./host";
 
 export const SYSTEM_PROMPT = `You are the assistant built into SuiteLeaf, an office suite with documents, spreadsheets and presentations. You do the user's task yourself by calling tools; each tool acts in the app the user is looking at, and they watch you work.
 
@@ -41,7 +42,18 @@ export type TranscriptItem =
       status: "running" | "ok" | "error";
       result?: string;
     }
-  | { kind: "error"; text: string };
+  | { kind: "error"; text: string }
+  /** The assistant checked its work before replying; `issues` are what the app pointed out. */
+  | { kind: "review"; issues: string[] }
+  /** Files the request changed, which "Undo all of this" puts back while `undo` is set. */
+  | { kind: "changes"; changes: FileChange[]; undo?: () => Promise<void>; undone?: string };
+
+/**
+ * localStorage["suiteleaf.ai.review"]: "always" (the default) checks the work
+ * whenever a request changed a file, "issues" only when the app found a
+ * problem, "off" never.
+ */
+const reviewSetting = () => localStorage.getItem("suiteleaf.ai.review") ?? "always";
 
 export interface AgentMetrics {
   backend?: string;
@@ -64,6 +76,9 @@ export interface AgentMetrics {
   wallMs: number;
   stopReason?: string;
   tools: string[];
+  /** Reviews before the final reply, and the problems the app pointed out in them. */
+  reviews: number;
+  reviewIssues: number;
 }
 
 const MAX_TURNS = 40;
@@ -93,6 +108,8 @@ const emptyMetrics = (): AgentMetrics => ({
   generateMs: 0,
   wallMs: 0,
   tools: [],
+  reviews: 0,
+  reviewIssues: 0,
 });
 
 const textOf = (result: unknown) =>
@@ -134,6 +151,8 @@ class AgentSession {
   metrics = emptyMetrics();
   /** The model's raw output for each request, for transcripts and debugging. */
   raws: string[] = [];
+  /** Each request's whole prompt, kept only when localStorage["suiteleaf.ai.capture"] is set (they are large). */
+  prompts: string[] = [];
   model: AiStatus = localModel().status();
   /** The tool call Gemma is still writing (long text takes a while). */
   draft?: { label: string; chars: number };
@@ -191,6 +210,7 @@ class AgentSession {
         onStats: this.onStats,
         onRaw: (prompt, output) => {
           this.raws = [...this.raws.slice(-199), output];
+          if (localStorage.getItem("suiteleaf.ai.capture")) this.prompts = [...this.prompts.slice(-199), prompt];
           if (localStorage.getItem("suiteleaf.ai.debug"))
             console.debug("[suiteleaf-ai] prompt\n" + prompt + "\n[suiteleaf-ai] output\n" + output);
         },
@@ -311,11 +331,73 @@ class AgentSession {
   async prompt(text: string) {
     if (this.state === "working" || this.state === "loading") return;
     this.items.push({ kind: "user", text });
-    await this.run(() => this.agent!.prompt(`<app_state>\n${currentSnapshot()}\n</app_state>\n\n${text}`));
+    startRequest(text);
+    this.state = "loading";
+    this.emit();
+    const checkpoint = await takeCheckpoint().catch(() => undefined);
+    await this.run(() => this.agent!.prompt(`<app_state>\n${currentSnapshot()}\n</app_state>\n\n${text}`), true, true);
+    if ((this.state as AgentUiState) === "working") {
+      const changes = (await checkpoint?.changes().catch(() => undefined)) ?? [];
+      if (this.metrics.stopReason !== "aborted" && this.endedInWords()) await this.review(text, changes.length > 0);
+      if (checkpoint) await this.listChanges(checkpoint);
+      if ((this.state as AgentUiState) === "working") this.state = "done";
+      this.emit();
+    }
   }
 
-  /** Load the model, then run the agent until it stops. */
-  private async run(go: () => Promise<void>, fresh = true) {
+  /** The run ended with a reply in words (not stopped, not cut off by the turn limit). */
+  private endedInWords() {
+    const last = this.agent?.state.messages.at(-1);
+    return last?.role === "assistant" && last.content.some((c) => c.type === "text" && c.text.trim()) && !last.content.some((c) => c.type === "toolCall");
+  }
+
+  /**
+   * Before the reply stands, show the model the request, the app as it is
+   * now and any problems the app can see, and let it fix what it missed.
+   */
+  private async review(text: string, changedFiles: boolean) {
+    const mode = reviewSetting();
+    const issues = mode === "off" ? [] : currentReview();
+    if (mode === "off" || (!issues.length && (mode === "issues" || !changedFiles))) return;
+    this.metrics.reviews++;
+    this.metrics.reviewIssues += issues.length;
+    // The first summary is replaced by the one after the check.
+    const last = this.items.at(-1);
+    if (last?.kind === "assistant") this.items.pop();
+    this.items.push({ kind: "review", issues });
+    const noticed = issues.length ? `The app noticed:\n${issues.map((i) => `- ${i}`).join("\n")}` : "The app noticed no problems.";
+    await this.run(
+      () =>
+        this.agent!.prompt(
+          `<review>\nBefore you reply, check your work against the user's request: "${text}"\n<app_state>\n${currentSnapshot()}\n</app_state>\n${noticed}\nIf something the user asked for is missing or wrong, fix it now with tools. Do not change anything the user did not ask for. When everything they asked for is done, reply with your one or two sentence summary for the user.\n</review>`,
+        ),
+      false,
+      true,
+    );
+  }
+
+  /** Add the request's file changes to the transcript, with a way to put them back. */
+  private async listChanges(checkpoint: Checkpoint) {
+    const changes = await checkpoint.changes().catch(() => []);
+    if (!changes.length) return;
+    // Only the latest request can be undone: later edits would be lost otherwise.
+    for (const item of this.items) if (item.kind === "changes") delete item.undo;
+    const item: Extract<TranscriptItem, { kind: "changes" }> = {
+      kind: "changes",
+      changes,
+      undo: async () => {
+        delete item.undo;
+        this.emit();
+        item.undone = await checkpoint.restore().catch((e) => `Could not put the files back: ${(e as Error).message ?? e}`);
+        this.emit();
+      },
+    };
+    this.items.push(item);
+    this.emit();
+  }
+
+  /** Load the model, then run the agent until it stops. `more` keeps the session working for a review that follows. */
+  private async run(go: () => Promise<void>, fresh = true, more = false) {
     const started = (this.runStarted = performance.now());
     this.state = "loading";
     this.emit();
@@ -344,7 +426,7 @@ class AgentSession {
     try {
       await go();
       const error = this.agent.state.errorMessage;
-      this.state = error && this.metrics.stopReason !== "aborted" ? "error" : "done";
+      this.state = error && this.metrics.stopReason !== "aborted" ? "error" : more ? "working" : "done";
     } catch (error) {
       this.items.push({ kind: "error", text: String((error as Error).message ?? error) });
       this.state = "error";
@@ -413,6 +495,7 @@ class AgentSession {
   }
 
   stop() {
+    cancelApproval();
     this.agent?.abort();
   }
 
@@ -423,6 +506,7 @@ class AgentSession {
     this.explained.clear();
     this.items = [];
     this.raws = [];
+    this.prompts = [];
     this.metrics = { ...emptyMetrics(), backend: this.metrics.backend, model: this.metrics.model, loadMs: this.metrics.loadMs };
     this.state = "idle";
     this.emit();
@@ -444,19 +528,27 @@ declare global {
       metrics: () => AgentMetrics;
       items: () => TranscriptItem[];
       raws: () => string[];
+      prompts: () => string[];
       tools: () => string[];
       /** Run one tool directly, as the agent would (tests the tool, not the model). */
-      callTool: (name: string, args: unknown) => Promise<string>;
+      /** Run one tool as the assistant would; `request` is the user's request it answers (for confirmations). */
+      callTool: (name: string, args: unknown, request?: string) => Promise<string>;
+      /** The problems the open screens see in the current request's changes. */
+      review: () => string[];
     };
   }
 }
 window.__suiteleafAgent = {
   state: () => agentSession.state,
   metrics: () => structuredClone(agentSession.metrics),
-  items: () => structuredClone(agentSession.items),
+  // JSON drops the undo functions, which can't be cloned.
+  items: () => JSON.parse(JSON.stringify(agentSession.items)),
   raws: () => [...agentSession.raws],
+  prompts: () => [...agentSession.prompts],
   tools: () => currentSuiteTools().map((t) => t.name),
-  async callTool(name, args) {
+  review: () => currentReview(),
+  async callTool(name, args, request) {
+    if (request !== undefined) startRequest(request);
     const t = currentSuiteTools().find((x) => x.name === name);
     if (!t) throw new Error(`No tool ${name} here.`);
     const agentTool = toAgentTool(t);
