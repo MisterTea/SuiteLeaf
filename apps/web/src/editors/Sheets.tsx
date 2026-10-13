@@ -130,6 +130,7 @@ import {
   numberFormatById,
 } from "../formats";
 import { exportBinary, exportText, printDocument } from "../storage";
+import { placeSheetImage, readImageFile } from "../templates/sheet-image";
 import { Tool, type EditorActions, type SheetView } from "../ui";
 import "../excel-overflow";
 import "../excel-number-display";
@@ -817,7 +818,8 @@ export default function Sheets({
     refreshCharts = useRef<() => void>(() => {}),
     syncTextStyle = useRef<() => void>(() => {}),
     editChart = useRef<(id: string) => void>(() => {}),
-    refreshPivots = useRef<(sheetIds: Set<string>) => void>(() => {});
+    refreshPivots = useRef<(sheetIds: Set<string>) => void>(() => {}),
+    insertImage = useRef<(src: string) => Promise<void>>(async () => {});
   /** Last result written per pivot, so unchanged recalculations leave the sheet alone. */
   const pivotWrites = useRef(new Map<string, string>()),
     writingPivot = useRef(false),
@@ -987,6 +989,16 @@ export default function Sheets({
       const workbook = univerAPI.createWorkbook(
         content.current.workbook as unknown as IWorkbookData,
       );
+      insertImage.current = async (src) => {
+        await placeSheetImage(
+          workbook.getActiveSheet(),
+          univerAPI.Enum.ImageSourceType.BASE64,
+          content.current,
+          src,
+        );
+        pending.current = true;
+        persist.current();
+      };
       book.current = workbook;
       rankFormulaSuggestions(injector.get(IDescriptionService));
       // Authors from other devices are unknown here; without a profile Univer
@@ -1830,6 +1842,22 @@ export default function Sheets({
         }
       },
       sheetActions: {
+        insertImage: () => {
+          const input = document.createElement("input");
+          input.type = "file";
+          input.accept =
+            "image/png,image/jpeg,image/gif,image/webp,image/svg+xml,.svg";
+          input.onchange = () => {
+            const chosen = input.files?.[0];
+            if (!chosen) return;
+            void readImageFile(chosen)
+              .then((src) => insertImage.current(src))
+              .catch((e: unknown) =>
+                error.current(e instanceof Error ? e.message : String(e)),
+              );
+          };
+          input.click();
+        },
         dataValidation: () => {
           if (dropdowns.current?.openExisting()) return;
           void api.current?.executeCommand(

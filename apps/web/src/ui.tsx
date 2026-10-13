@@ -245,6 +245,7 @@ export type EditorActions = {
     paste: () => void;
     deleteValues: () => void;
     insertChart: () => void;
+    insertImage?: () => void;
     insertPivot: () => void;
     insertFunction?: (name: string) => void;
     toggleFilter: () => void;

@@ -17,15 +17,15 @@ Tomás runs a two-person bakery. This week he needs an invoice for a café that 
 
 ## Scenes
 
-1. **Home.** Tomás opens SuiteLeaf. Under the three "New" cards there's a row titled "Start from a template" with cards for Invoice, Meeting notes, Budget, Project tracker, Pitch deck, and Letter, plus **Template gallery ›**.
+1. **Home.** Tomás opens SuiteLeaf. Under the three "New" cards there's a row titled "Start from a template" with Invoice, Meeting notes, Budget, Project tracker, Pitch deck, Letter, and Announcement (a second presentation, so slides aren't a single card), plus **Template gallery ›**.
 2. **Browse.** He clicks Template gallery. A full-page view groups templates by Documents, Spreadsheets, and Presentations, with a search box. He types "inv" and Invoice is the only result.
 3. **Preview.** Clicking Invoice opens a large preview of the sheet with its formulas visible as results ("Total $0.00"). **Use template** and **Cancel** sit underneath. Esc closes the preview without creating anything.
-4. **Create.** He clicks Use template. A spreadsheet opens titled "Invoice" with the title box selected. He types "Invoice · Café Lune · October" and fills in two lines. The total updates.
-5. **Make it his.** He adds the bakery's name and logo, then chooses File › Save as template. A dialog suggests "Bakery invoice". He clicks Save, and it appears under "Your templates" in the gallery and on the home row.
-6. **Reuse next month.** In November he clicks "Bakery invoice" on Home. A new file opens with his logo and layout. October's invoice is unchanged, and so is the template.
-7. **From inside an editor.** Writing the meeting notes, he wants a fresh agenda, so he chooses File › New › From template. The gallery opens filtered to Documents.
-8. **Offline.** At the market with no signal, he opens the gallery and creates a pitch deck from "Pitch deck". Everything works.
-9. **Tidy up.** In the gallery, the ⋯ menu on "Bakery invoice" offers Rename and Remove. Removing a template doesn't affect any file made from it.
+4. **Create.** From Home he clicks Invoice, then Use template. A spreadsheet opens titled "Invoice" with the title box selected. He types "Invoice · Café Lune · October" and fills in sourdough (24 × $6.50) and rye (12 × $7). The total becomes $240.00.
+5. **Make it his.** He types "Hearth & Rye" in From and inserts a logo, then chooses File › Save as template. The dialog starts from the file's name with the month removed ("Invoice · Café Lune"). He names it "Bakery invoice" and clicks Save. It appears on the home row.
+6. **Reuse next month.** He clicks "Bakery invoice" on Home. A new file opens with the logo, the name, and the two lines. He retitles it "Invoice · Café Lune · November" and changes the sourdough quantity to 40; the total becomes $344.00. October is still 24 loaves and $240.00, and the template preview is too.
+7. **From inside an editor.** He starts Meeting notes, titles it "Landlord meeting", and adds "Rent is due Friday." under Next steps. File › New › From template opens the gallery filtered to Documents. He starts a fresh Meeting notes file.
+8. **Offline.** With the network off, he opens the gallery and creates a deck from "Pitch deck". The title slide opens.
+9. **Tidy up.** In the gallery, the ⋯ menu on "Bakery invoice" offers Rename and Remove. He removes it. October's invoice, November's invoice, the notes, and the pitch deck are still in the library.
 
 ## Google Workspace benchmark
 
@@ -51,12 +51,26 @@ Known pain points:
 
 ## Success looks like
 
-- Tomás has October's and November's invoices, both from "Bakery invoice", and the template is unchanged.
-- He made meeting notes and a pitch deck from templates, one of them offline.
+- Tomás has October's and November's invoices, both started from "Bakery invoice". November's quantity change did not touch October or the template, and removing the template left both invoices in the library.
+- He has "Landlord meeting" plus a fresh Meeting notes file, and a pitch deck created with the network off.
 
 ## Gaps and notes
 
-- **No templates or gallery.** The home screen's `NewCards` creates a blank document, spreadsheet, or presentation, and the File menu only has New document, New spreadsheet, and New presentation.
-- **The three samples are hidden once you have files.** "Sample document", "Sample budget", and "Sample presentation" (`samples.ts`) only appear in the empty state, when the library has no files. They're the natural first templates.
-- There's no Save as template, and the library has no notion of a template (`storage.ts` and `browser-library.ts` store ordinary file records only).
-- Nothing previews a file without opening it, so the gallery needs a thumbnail renderer for each file type.
+- Templates are stored on this computer, separate from the file library. There is no shared or organization gallery.
+- The preview evaluates `SUM`, `IF`, and `+ - * /`. A formula it doesn't understand shows the value Univer saved, or the formula text.
+- A logo on a spreadsheet is a floating image at the top of the sheet. It does not repeat as a page header.
+- Built-in templates can't be renamed or removed. "Your templates" can.
+- The sample document, budget, and presentation are still the separate "Explore a sample" strip. They are not the templates.
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| 1. Home shows at least two templates for each app, gallery one click away | Met | 0:02 home row (Invoice, Budget, Project tracker; Meeting notes, Letter; Pitch deck, Announcement) and Template gallery. `home shows two templates of each kind` |
+| 2. Create from Home in at most 2 clicks, title selected | Met | 0:13 the new invoice is open and the caption is on the selected title; he has renamed it to Invoice · Café Lune · October. `using a template opens a new file with the title selected` |
+| 3. Preview before any file is created; closing creates nothing | Met | 0:08 preview shows Total $0.00; Escape returns to an empty library. `previewing a template creates nothing` |
+| 4. Built-in templates work offline | Met | 0:56 the Pitch deck preview opens with the network off; 0:58 the deck itself is open. `built-in templates create a file with the network blocked` creates all seven |
+| 5. Save as template in at most 2 clicks, no account | Met | 0:28 File › Save as template has opened the naming dialog (two clicks) with no account. Enter confirms; the video clicks Save after he types "Bakery invoice". `Save as template takes two menu clicks` |
+| 6. Editing a copy never changes the template; removing it never changes files | Met | 0:39 November is 40 / $344.00; 0:43 October is still 24 / $240.00; 0:47 the template preview is still 24 / $240.00; 0:62 both invoices remain after Remove. Unit test `keeps a saved template independent of the file` |
+| 7. Invoice formulas update the total | Met | 0:26 October's total is $240.00; 0:39 November's total is $344.00. `an invoice copy keeps live formulas` expects `=SUM(D6:D8)` → 240 |
+| 8. File › New › From template filters to that app | Met | 0:53 the gallery says "Showing documents" and lists Meeting notes and Letter; 0:54 a fresh Meeting notes file is open. `File › New › From template filters to that editor` also covers spreadsheets and presentations |
