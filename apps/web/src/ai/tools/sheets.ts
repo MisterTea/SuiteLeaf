@@ -1,6 +1,7 @@
 import { Type } from "@earendil-works/pi-ai";
 import type { ChartDefinition, PivotDefinition, SheetFile } from "@suiteleaf/core";
 import { applyNamedFormat, numberFormatById } from "../../formats";
+import { moveCursor } from "../cursor";
 import { ToolError, tool, type SuiteTool } from "../host";
 
 /** What the Sheets editor lends the agent. */
@@ -17,7 +18,12 @@ export interface SheetsAgentContext {
   submitPanel: () => Promise<void>;
   refreshCharts: () => void;
   copyPivot: (p: PivotDefinition) => void;
-  showSort: (range: { startRow: number; endRow: number; startColumn: number; endColumn: number }) => void;
+  /** Open Data › Sort range on `range`, filled in with `rules` (columns counted from the range's first column). */
+  showSort: (
+    range: { startRow: number; endRow: number; startColumn: number; endColumn: number },
+    rules?: { column: number; ascending: boolean }[],
+    hasHeader?: boolean,
+  ) => void;
   sort: (rules: { column: number; ascending: boolean }[], hasHeader: boolean) => void;
   freeze: (axis: "rows" | "columns", count: number) => void;
   insertCheckbox: () => void;
@@ -117,12 +123,12 @@ export function rangeScreenRect(book: any, input: string): DOMRect | undefined {
 /** Find a column by letter or by its header text. */
 function resolveColumn(sheet: any, used: ReturnType<typeof parseA1>, column: string) {
   const trimmed = column.trim();
-  if (/^[A-Za-z]{1,3}$/.test(trimmed)) return columnIndex(trimmed);
   const header = sheet.getRange(used.startRow, used.startColumn, 1, used.endColumn - used.startColumn + 1).getValues()[0];
   const i = header.findIndex((h: unknown) => String(h ?? "").trim().toLowerCase() === trimmed.toLowerCase());
-  if (i < 0)
-    throw new ToolError(`No column is headed "${column}". Headers: ${header.map(display).filter(Boolean).join(", ")}.`);
-  return used.startColumn + i;
+  // Short headers such as "Qty" look like column letters; a matching header wins.
+  if (i >= 0) return used.startColumn + i;
+  if (/^[A-Za-z]{1,3}$/.test(trimmed)) return columnIndex(trimmed);
+  throw new ToolError(`No column is headed "${column}". Headers: ${header.map(display).filter(Boolean).join(", ")}.`);
 }
 
 function usedRange(sheet: any) {
@@ -327,14 +333,24 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         order: Type.String({ enum: ["ascending", "descending"] }),
         has_header: Type.Boolean(),
       }),
-      target: () => document.querySelector('[aria-label="Data"], .sheet-menu-data') ?? target(a1(usedRange(sheet()))),
+      target: ({ range, column }) => {
+        const r = range ? parseA1(range) : usedRange(sheet());
+        try {
+          return target(`${columnLetter(resolveColumn(sheet(), r, column))}${r.startRow + 1}`);
+        } catch {
+          return target(a1(r));
+        }
+      },
       async execute({ range, column, order, has_header }) {
         const r = range ? parseA1(range) : usedRange(sheet());
         const col = resolveColumn(sheet(), r, column);
         if (col < r.startColumn || col > r.endColumn) throw new ToolError(`Column ${columnLetter(col)} is outside ${a1(r)}.`);
-        ctx.showSort(r);
-        await wait(900);
-        ctx.sort([{ column: col, ascending: order === "ascending" }], has_header);
+        const rules = [{ column: col - r.startColumn, ascending: order === "ascending" }];
+        select(a1(r));
+        ctx.showSort(r, rules, has_header);
+        await wait(700);
+        await moveCursor(document.querySelector(".sort-range-dialog [type=submit]"), "Sort range");
+        ctx.sort(rules, has_header);
         await ctx.settle();
         return `Sorted ${a1(r)} by column ${columnLetter(col)} ${order}${has_header ? ", keeping the header row" : ""}. Now:\n${grid(sheet(), r, 12, 10)}`;
       },

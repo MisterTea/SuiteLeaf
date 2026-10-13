@@ -13,18 +13,25 @@ import {
 export default function SortRangeDialog({
   range,
   values,
+  initialRules,
+  initialHeader,
   onSort,
   onClose,
 }: {
   range: GridRange;
   values: CellValue[][];
+  /** Choices to show already filled in (when the assistant sorts). */
+  initialRules?: SortRule[];
+  initialHeader?: boolean;
   onSort: (rules: SortRule[], hasHeader: boolean) => void;
   onClose: () => void;
 }) {
-  const [hasHeader, setHasHeader] = useState(() => detectHeaderRow(values));
-  const [rules, setRules] = useState<SortRule[]>([
-    { column: 0, ascending: true },
-  ]);
+  const [hasHeader, setHasHeader] = useState(
+    () => initialHeader ?? detectHeaderRow(values),
+  );
+  const [rules, setRules] = useState<SortRule[]>(
+    initialRules ?? [{ column: 0, ascending: true }],
+  );
   const labels = sortColumnLabels(values, range, hasHeader);
   const span = rangeSpan(range);
   const update = (i: number, change: Partial<SortRule>) =>
