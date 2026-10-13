@@ -577,8 +577,11 @@ function LocalHome() {
           file: (kind === "doc" ? sampleDoc : kind === "sheet" ? sampleSheet : sampleSlide)(),
         }),
       rename,
-      duplicate: (r) =>
-        storage.save({ file: duplicateFile(r.file) }).then(refresh),
+      duplicate: async (r) => {
+        const copy = await storage.save({ file: duplicateFile(r.file) });
+        await refresh();
+        return copy;
+      },
       showRemove: (record) => setAsking({ action: "remove", record }),
       remove: async (r) => {
         setAsking(null);

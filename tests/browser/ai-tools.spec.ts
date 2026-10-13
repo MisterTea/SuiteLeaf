@@ -93,3 +93,29 @@ test("presentation tools build slides and present", async ({ page }) => {
   expect(await call(page, "next_slide")).toContain("slide 2 of 2");
   await call(page, "end_presentation");
 });
+
+test("file list tools search, filter, copy, rename and remove", async ({ page }) => {
+  await page.goto("/");
+  await waitForTools(page, "create_file");
+  await call(page, "create_file", { kind: "document", title: "Club newsletter" });
+  await waitForTools(page, "write_text");
+  await call(page, "write_text", { text: "Harvest supper on Saturday." });
+  await call(page, "back_to_files");
+  await waitForTools(page, "create_file");
+  await call(page, "create_file", { kind: "spreadsheet", title: "Club budget" });
+  await waitForTools(page, "back_to_files");
+  await call(page, "back_to_files");
+  await waitForTools(page, "search_files");
+  const rows = page.locator(".file-row");
+
+  expect(await call(page, "search_files", { query: "harvest" })).toMatch(/Club newsletter.*Harvest supper/);
+  await expect(rows).toHaveCount(1);
+  await call(page, "search_files", { query: "" });
+  expect(await call(page, "duplicate_file", { name: "Club newsletter" })).toContain('called "Club newsletter copy"');
+  await call(page, "rename_file", { name: "Club newsletter copy", new_name: "Club newsletter - November" });
+  await call(page, "show_files", { show: "documents", sort_by: "name" });
+  await expect(rows).toHaveText([/^Club newsletter(?! -)/, /^Club newsletter - November/]);
+  await call(page, "remove_file", { name: "Club budget" });
+  await call(page, "show_files", { show: "all" });
+  await expect(rows).toHaveCount(2);
+});

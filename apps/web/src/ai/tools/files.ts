@@ -33,7 +33,7 @@ export interface HomeAgentContext {
   open: (record: FileRecord) => void;
   openSample: (kind: Kind) => void;
   rename: (record: FileRecord, title: string) => Promise<void>;
-  duplicate: (record: FileRecord) => Promise<void>;
+  duplicate: (record: FileRecord) => Promise<FileRecord>;
   showRemove: (record: FileRecord) => void;
   remove: (record: FileRecord) => Promise<void>;
   /** Import a file the user chose, as Open / import does. */
@@ -202,8 +202,8 @@ export function homeTools(ctx: HomeAgentContext): SuiteTool[] {
       },
       async execute({ name }) {
         const r = findRecord(ctx.records, name);
-        await ctx.duplicate(r);
-        return `Made a copy of "${r.file.title}".`;
+        const copy = await ctx.duplicate(r);
+        return `Made a copy of "${r.file.title}" called "${copy.file.title}".`;
       },
     }),
     tool({
