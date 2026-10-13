@@ -99,6 +99,7 @@ import {
   pageDimensions,
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
+import { PageFurniture } from "./doc-header-editor";
 
 export const extensions: Extensions = [
   DocumentPagination,
@@ -1892,25 +1893,11 @@ export default function Docs({
               } as CSSProperties
             }
           >
-            <div className="page-furniture" aria-hidden="true">
-              {Array.from({ length: pageCount }, (_, i) => (
-                <div
-                  key={i}
-                  className="page-furniture-page"
-                  style={{ "--page-index": i } as CSSProperties}
-                >
-                  <div className="page-header">{pageSettings.header}</div>
-                  <div className="page-footer">
-                    <span>{pageSettings.footer}</span>
-                    {pageSettings.pageNumbers ? (
-                      <span>
-                        {i + 1} / {pageCount}
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <PageFurniture
+              editor={editor}
+              pageCount={pageCount}
+              readOnly={readOnly}
+            />
             <EditorContent editor={editor} />
           </div>
         </div>
