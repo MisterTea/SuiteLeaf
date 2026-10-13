@@ -146,12 +146,20 @@
   border-radius: 999px;
   padding: 1px 6px;
   white-space: nowrap;
-  transition: top 180ms ease, left 180ms ease, transform 180ms ease;
+  transition: top 480ms ease, left 480ms ease, transform 480ms ease;
 }
 .page-setup-preview-number.side-top-right {
   top: 8px;
   left: calc(100% - 8px);
   transform: translateX(-100%);
+}
+.page-setup-preview-number.side-top-left {
+  top: 8px;
+  left: 8px;
+  transform: none;
+}
+.page-setup-preview-sheet[data-number-corner="top-left"] .page-setup-preview-header {
+  left: 52px;
 }
 .page-setup-preview-number.side-center {
   top: calc(100% - 8px);
@@ -387,10 +395,27 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.page-furniture-page[data-number-side="top-left"] .page-header {
+  right: 0;
+  /* The even-page number sits on the outside left. The words start after it. */
+  left: max(8em, calc(var(--page-number-size, 14px) * 6.8));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .page-number-top {
   position: absolute;
-  right: 0;
+  left: 0;
   top: var(--header-from-edge, calc(var(--page-margin) / 2 - 10px));
+  transition: left 480ms ease, transform 480ms ease;
+}
+.page-number-top.side-top-right {
+  left: 100%;
+  transform: translateX(-100%);
+}
+.page-number-top.side-top-left {
+  left: 0;
+  transform: none;
 }
 .page-number {
   color: #174ea6;

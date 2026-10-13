@@ -57,9 +57,11 @@ export type PageSettings = {
   firstFooter: string;
   /**
    * Pages after the first split by parity. Even pages use evenHeader/evenFooter
-   * and put the page number on the left; odd pages use oddHeader/oddFooter and
-   * put it on the right. The shared header/footer stay stored so turning this
-   * off puts one header back on every later page.
+   * and put the page number on the outside left; odd pages use oddHeader/oddFooter
+   * and put it on the outside right. A number already at the top right moves to
+   * the top left on even pages. A number at the bottom center or bottom right
+   * moves to the outside bottom edge. The shared header/footer stay stored so
+   * turning this off puts one header, and the chosen corner, back on every page.
    */
   differentOddEven: boolean;
   evenHeader: string;
@@ -168,7 +170,13 @@ export function documentPageSettings(content: JsonNode): PageSettings {
     watermark: watermarkText(a?.watermark),
   };
 }
-export type PageNumberSide = "left" | "right" | "center" | "top-right" | "none";
+export type PageNumberSide =
+  | "left"
+  | "right"
+  | "center"
+  | "top-right"
+  | "top-left"
+  | "none";
 export type PageFace = {
   header: string;
   footer: string;
@@ -297,10 +305,21 @@ function chosenNumberSide(settings: PageSettings): PageNumberSide {
   return "right";
 }
 /**
+ * The outside edge of a corner the reader already chose.
+ * Top right stays on the right of an odd page and moves to the top left of an
+ * even page. Bottom center and bottom right both sit on the outside bottom edge.
+ */
+function outsideNumberSide(settings: PageSettings, even: boolean): PageNumberSide {
+  if (settings.pageNumberPosition === "top-right")
+    return even ? "top-left" : "top-right";
+  return even ? "left" : "right";
+}
+/**
  * Which header, footer, and page-number edge a page uses.
  * Page 1 keeps its letterhead when different first page is on.
- * With odd and even pages, later even pages number on the left and later
- * odd pages number on the right. Otherwise every numbered page numbers on the right.
+ * With odd and even pages, the number sits on the outside edge: left on even
+ * pages, right on odd pages. A chosen top-right corner stays at the top.
+ * Otherwise every numbered page uses the chosen corner, or the bottom right.
  */
 export function pageFace(
   settings: PageSettings,
@@ -330,8 +349,12 @@ export function pageFace(
     header = even ? settings.evenHeader : settings.oddHeader;
     footer = even ? settings.evenFooter : settings.oddFooter;
     headerAlign = even ? "left" : "right";
-    if (settings.pageNumbers && !settings.pageNumberPositionSet)
-      numberSide = even ? "left" : "right";
+    if (settings.pageNumbers)
+      numberSide = settings.pageNumberPositionSet
+        ? outsideNumberSide(settings, even)
+        : even
+          ? "left"
+          : "right";
   }
   // A cover keeps its footer and drops only the number. It is not page 1.
   if (page === 1 && settings.coverHasNoNumber) numberSide = "none";
@@ -381,6 +404,13 @@ export function setDifferentFirstPage(
 ): PageSettings {
   return { ...settings, differentFirstPage: on };
 }
+/** Where a chosen number goes once odd and even pages are on, or null when they are not. */
+function mirroredNumberPlace(settings: PageSettings): string | null {
+  if (!settings.differentOddEven || !settings.pageNumberPositionSet) return null;
+  return settings.pageNumberPosition === "top-right"
+    ? "Top left on even pages, top right on odd pages"
+    : "Bottom left on even pages, bottom right on odd pages";
+}
 function numberPlace(settings: PageSettings): string {
   return settings.pageNumberPositionSet && settings.pageNumberPosition === "bottom-center"
     ? "Bottom center"
@@ -406,6 +436,38 @@ export function pageNumberHint(settings: PageSettings, pageCount = 2): string {
       counted.total,
     );
     return `No number on the cover. The next page is “${shown}”, not “${asTwo}”. Start at stays for when the cover has a number. ${kept}`;
+  }
+  const mirrored = mirroredNumberPlace(settings);
+  if (mirrored) {
+    const where = settings.differentFirstPage
+      ? `No number on page 1. ${mirrored}`
+      : mirrored;
+    if (settings.pageNumberStart !== 1) {
+      const count = Math.max(1, Math.floor(pageCount) || 1);
+      const first = pageNumberAt(settings, 0, count);
+      const started = pageNumberText(
+        settings.pageNumberFormat,
+        first.page,
+        first.total,
+      );
+      if (count < 2) return `${where}, “${started}”. ${kept}`;
+      const second = pageNumberAt(settings, 1, count);
+      const next = pageNumberText(
+        settings.pageNumberFormat,
+        second.page,
+        second.total,
+      );
+      return `${where}, starting at “${started}”. The next page is “${next}”. ${kept}`;
+    }
+    const sample =
+      settings.pageNumberFormat === "page"
+        ? "Page 1"
+        : settings.pageNumberFormat === "roman"
+          ? settings.differentFirstPage
+            ? "ii"
+            : "i"
+          : pageNumberText("fraction", 1, pageCount);
+    return `${where}, as “${sample}”. ${kept}`;
   }
   if (settings.pageNumberStart !== 1) {
     const count = Math.max(1, Math.floor(pageCount) || 1);
@@ -491,21 +553,34 @@ export function pageDimensions(settings: PageSettings) {
     height: settings.landscape ? width : height,
   };
 }
+function pageNumberContent(settings: PageSettings): string {
+  return settings.pageNumberFormat === "page"
+    ? '"Page " counter(page)'
+    : settings.pageNumberFormat === "roman"
+      ? "counter(page, lower-roman)"
+      : 'counter(page) " / " counter(pages)';
+}
 function pageNumberMarginBox(settings: PageSettings): string {
   if (!settings.pageNumbers) return "";
+  if (settings.differentOddEven && settings.pageNumberPositionSet) return "";
   const slot =
     settings.pageNumberPositionSet && settings.pageNumberPosition === "bottom-center"
       ? "bottom-center"
       : settings.pageNumberPositionSet && settings.pageNumberPosition === "top-right"
         ? "top-right"
         : "bottom-right";
-  const content =
-    settings.pageNumberFormat === "page"
-      ? '"Page " counter(page)'
-      : settings.pageNumberFormat === "roman"
-        ? "counter(page, lower-roman)"
-        : 'counter(page) " / " counter(pages)';
-  return `@${slot} { content: ${content}; font: 10pt Arial, sans-serif; color: #555; }`;
+  return `@${slot} { content: ${pageNumberContent(settings)}; font: 10pt Arial, sans-serif; color: #555; }`;
+}
+/** Print the outside edge: even pages on the left, odd pages on the right. */
+function printedOutsideRule(settings: PageSettings): string {
+  if (!settings.pageNumbers || !settings.differentOddEven || !settings.pageNumberPositionSet)
+    return "";
+  const content = pageNumberContent(settings);
+  const box = (slot: string) =>
+    `@${slot} { content: ${content}; font: 10pt Arial, sans-serif; color: #555; }`;
+  if (settings.pageNumberPosition === "top-right")
+    return `@page:left { ${box("top-left")} } @page:right { ${box("top-right")} }`;
+  return `@page:left { ${box("bottom-left")} } @page:right { ${box("bottom-right")} }`;
 }
 /** Print the same start the screen uses. A cover's hidden first page is 0. */
 function printedPageStart(settings: PageSettings): string {
@@ -550,6 +625,7 @@ export function documentHtml(
     .filter(Boolean)
     .join(" ");
   const coverRule = printedCoverRule(settings);
+  const outsideRule = printedOutsideRule(settings);
   const furniture = (tag: "header" | "footer", text: string) =>
     text ? `<${tag} class="page-${tag}">${escapeHtml(text)}</${tag}>` : "";
   const mark = watermarkText(settings.watermark);
@@ -576,6 +652,7 @@ ${watermarkCss}
 [data-columns="2"] { column-count: 2; column-gap: 0.5in; }
 .doc-columns { column-count: 2; column-gap: 0.5in; }
 @page { ${pageRule} }
+${outsideRule}
 ${coverRule}
 @media print { body { max-width: none; padding: 0; } }
 </style>

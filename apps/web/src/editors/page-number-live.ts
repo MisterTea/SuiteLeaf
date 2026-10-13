@@ -40,10 +40,11 @@ function livePageNumberStart(base: number, draft: unknown): number {
 }
 
 /**
- * The page-number switch, the format, the position, and where numbering
- * starts are drawn while Page setup is open. The cover, a different first
- * page, and the watermark stay on the saved page until Apply. Cancel drops
- * the draft.
+ * The page-number switch, the format, the position, where numbering starts,
+ * and different odd and even pages are drawn while Page setup is open. A
+ * number already in a corner moves to the outside edge before Apply. The
+ * cover, a different first page, and the watermark stay on the saved page
+ * until Apply. Cancel drops the draft.
  */
 export function livePageNumbers(
   base: PageSettings,
@@ -61,12 +62,14 @@ export function livePageNumbers(
     base.pageNumberStart,
     draft.pageNumberStart,
   );
+  const differentOddEven = draft.differentOddEven === true;
   if (
     draft.pageNumbers === base.pageNumbers &&
     pageNumberFormat === base.pageNumberFormat &&
     pageNumberPosition === base.pageNumberPosition &&
     pageNumberPositionSet === base.pageNumberPositionSet &&
-    pageNumberStart === base.pageNumberStart
+    pageNumberStart === base.pageNumberStart &&
+    differentOddEven === base.differentOddEven
   )
     return base;
   return {
@@ -76,5 +79,6 @@ export function livePageNumbers(
     pageNumberPosition,
     pageNumberPositionSet,
     pageNumberStart,
+    differentOddEven,
   };
 }

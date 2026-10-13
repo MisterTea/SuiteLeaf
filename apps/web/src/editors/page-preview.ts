@@ -66,6 +66,7 @@ export function previewPlan(
 
 export type PreviewNumberCorner =
   | "top-right"
+  | "top-left"
   | "bottom-center"
   | "bottom-right"
   | "bottom-left"
@@ -73,11 +74,13 @@ export type PreviewNumberCorner =
 
 /**
  * Where the numeral is drawn on the miniature page.
- * Top right is the top-right corner. Center is the bottom center.
+ * Top right is the top-right corner. Top left is the outside edge of an even
+ * page once odd and even pages are on. Center is the bottom center.
  * The glyph is the page number itself, not a caption about the corner.
  */
 export function previewNumberCorner(side: PageNumberSide): PreviewNumberCorner {
   if (side === "top-right") return "top-right";
+  if (side === "top-left") return "top-left";
   if (side === "center") return "bottom-center";
   if (side === "left") return "bottom-left";
   if (side === "right") return "bottom-right";

@@ -455,7 +455,11 @@ function docxSection(
     settings.pageNumbers &&
     settings.pageNumberPositionSet &&
     settings.pageNumberPosition === "top-right";
-  const headerPart = (text: string, withNumber = false) =>
+  const headerPart = (
+    text: string,
+    withNumber = false,
+    alignment: (typeof AlignmentType)["LEFT"] | (typeof AlignmentType)["RIGHT"] = AlignmentType.RIGHT,
+  ) =>
     new Header({
       children: [
         ...(watermark ? [watermark] : []),
@@ -463,7 +467,7 @@ function docxSection(
         ...(withNumber
           ? [
               new Paragraph({
-                alignment: AlignmentType.RIGHT,
+                alignment,
                 children: [numberRun()],
               }),
             ]
@@ -505,9 +509,13 @@ function docxSection(
       ],
     });
   };
-  const placedFooterSide = (): "right" | "center" | "none" => {
-    if (!settings.pageNumberPositionSet || !settings.pageNumbers) return "right";
+  const placedFooterSide = (
+    even = false,
+  ): "left" | "right" | "center" | "none" => {
+    if (!settings.pageNumbers) return "none";
+    if (!settings.pageNumberPositionSet) return even ? "left" : "right";
     if (settings.pageNumberPosition === "top-right") return "none";
+    if (settings.differentOddEven) return even ? "left" : "right";
     if (settings.pageNumberPosition === "bottom-center") return "center";
     return "right";
   };
@@ -566,7 +574,13 @@ function docxSection(
             topRight,
           ),
           ...(settings.differentOddEven
-            ? { even: headerPart(settings.evenHeader, topRight) }
+            ? {
+                even: headerPart(
+                  settings.evenHeader,
+                  topRight,
+                  AlignmentType.LEFT,
+                ),
+              }
             : {}),
           ...(firstPage
             ? { first: headerPart(settings.firstHeader) }
@@ -581,14 +595,14 @@ function docxSection(
       ? {
           default: footerPart(
             settings.differentOddEven ? settings.oddFooter : settings.footer,
-            settings.pageNumberPositionSet ? placedFooterSide() : "right",
+            placedFooterSide(false),
             settings.pageNumbers && !topRight,
           ),
           ...(settings.differentOddEven
             ? {
                 even: footerPart(
                   settings.evenFooter,
-                  settings.pageNumberPositionSet ? placedFooterSide() : "left",
+                  placedFooterSide(true),
                   settings.pageNumbers && !topRight,
                 ),
               }

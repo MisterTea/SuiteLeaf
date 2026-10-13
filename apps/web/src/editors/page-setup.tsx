@@ -70,9 +70,27 @@ function numberPlacePhrase(face: {
   if (face.numberSide === "none") return "No number";
   if (face.numberSide === "left") return `${face.pageNumber} on the left`;
   if (face.numberSide === "center") return `${face.pageNumber} in the center`;
+  if (face.numberSide === "top-left")
+    return `${face.pageNumber} at the top left`;
   if (face.numberSide === "top-right")
     return `${face.pageNumber} at the top right`;
   return `${face.pageNumber} on the right`;
+}
+
+function oddEvenHint(draft: PageSettings): string {
+  const shared = draft.header.trim() || "one shared header";
+  if (!draft.differentOddEven)
+    return "Even and odd pages after the first can each have a header and a footer.";
+  if (draft.pageNumbers && draft.pageNumberPositionSet) {
+    const back =
+      draft.pageNumberPosition === "top-right"
+        ? "the top right"
+        : draft.pageNumberPosition === "bottom-center"
+          ? "the bottom center"
+          : "the bottom right";
+    return `The number sits on the outside edge. Untick to put it back at ${back}.`;
+  }
+  return `Untick to put “${shared}” back on every later page.`;
 }
 
 function PreviewSheet({
@@ -192,7 +210,6 @@ export function PageSetupFields({
   pageCount: number;
   onChange: (next: PageSettings) => void;
 }) {
-  const shared = draft.header.trim() || "one shared header";
   const [startText, setStartText] = useState(String(draft.pageNumberStart));
   const [startRefused, setStartRefused] = useState(false);
   const stayed = pageNumberText(
@@ -226,9 +243,7 @@ export function PageSetupFields({
           Different odd and even pages
         </label>
         <p className="page-setup-hint">
-          {draft.differentOddEven
-            ? `Untick to put “${shared}” back on every later page.`
-            : "Even and odd pages after the first can each have a header and a footer."}
+          {oddEvenHint(draft)}
         </p>
       </fieldset>
       <div className="page-setup-check page-setup-numbers">
@@ -484,13 +499,15 @@ export function PageFurniture({
             data-header-align={face.headerAlign}
             style={{ "--page-index": i } as CSSProperties}
           >
-            {face.numberSide === "top-right" ? (
-              <span className="page-number page-number-top">{face.pageNumber}</span>
+            {face.numberSide === "top-right" || face.numberSide === "top-left" ? (
+              <span className={`page-number page-number-top side-${face.numberSide}`}>
+                {face.pageNumber}
+              </span>
             ) : null}
             <div className={`page-header align-${face.headerAlign}`}>{face.header}</div>
             <DocWatermark text={settings.watermark} />
             <div
-              className={`page-footer number-${face.numberSide === "top-right" ? "none" : face.numberSide}`}
+              className={`page-footer number-${face.numberSide === "top-right" || face.numberSide === "top-left" ? "none" : face.numberSide}`}
             >
               {face.numberSide === "left" ? (
                 <span className="page-number">{face.pageNumber}</span>

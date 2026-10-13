@@ -129,15 +129,16 @@ describe("document page settings", () => {
     expect(chosen.pageNumberPosition).toBe("bottom-center");
     expect(pageFace(chosen, 0, 2)).toMatchObject({
       footer: "Right edge",
-      numberSide: "center",
+      numberSide: "right",
       pageNumber: "Page 1",
     });
     expect(pageFace(chosen, 1, 2)).toMatchObject({
       footer: "Left edge",
-      numberSide: "center",
+      numberSide: "left",
       pageNumber: "Page 2",
     });
-    expect(pageNumberHint(chosen)).toContain("Bottom center");
+    expect(pageNumberHint(chosen)).toContain("Bottom left on even pages");
+    expect(pageNumberHint(chosen)).toContain("bottom right on odd pages");
     expect(pageNumberHint(chosen)).toContain("Page 1");
     const top = saved({
       pageNumbers: true,
