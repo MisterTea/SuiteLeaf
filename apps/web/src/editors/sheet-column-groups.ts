@@ -159,6 +159,11 @@ export function showOnlyColumn(group: ColumnGroup, keepColumn: number): ColumnGr
   return { ...group, collapsed };
 }
 
+/** Visible name of the columns a control will hide, before the click. */
+export function columnSpanLabel(group: Pick<ColumnGroup, "startColumn" | "endColumn">): string {
+  return `Columns ${columnName(group.startColumn)}–${columnName(group.endColumn)}`;
+}
+
 export function collapseColumnLabel(group: ColumnGroup): string {
   return `Collapse columns ${columnName(group.startColumn)} to ${columnName(group.endColumn)}`;
 }
@@ -188,7 +193,7 @@ export function columnsInGroups(groups: ColumnGroup[]): number[] {
 }
 
 export function collapsedColumns(groups: ColumnGroup[]): number[] {
-  return groups.flatMap((group) => group.collapsed);
+  return [...new Set(groups.flatMap((group) => group.collapsed))].sort((a, b) => a - b);
 }
 
 export function readColumnGroups(custom: unknown): ColumnGroup[] {

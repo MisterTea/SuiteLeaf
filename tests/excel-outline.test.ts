@@ -8,6 +8,11 @@ import {
 import { importOffice } from "../packages/core/src/office";
 import { exportXlsx } from "../packages/core/src/xlsx-export";
 import {
+  collapseAllColumns,
+  collapsedColumns,
+  expandAllColumns,
+} from "../apps/web/src/editors/sheet-column-groups";
+import {
   collapseAll,
   collapsedRows,
   expandAll,
@@ -213,7 +218,7 @@ describe("Excel outline export and import", () => {
     expect(next.rowData?.[2]?.hd).toBeUndefined();
   });
 
-  it("collapses a whole Excel group from the summary flag and flattens a second level", () => {
+  it("keeps a collapsed inner column group when the summary column carries the flag", () => {
     const expanded = `<worksheet><sheetFormatPr outlineLevelCol="2" outlineLevelRow="1"/>
       <cols>
         <col min="2" max="3" outlineLevel="2" hidden="1"/>
@@ -227,19 +232,20 @@ describe("Excel outline export and import", () => {
       </sheetData></worksheet>`;
     const outline = readWorksheetOutline(expanded);
     expect(outline.columnGroups).toEqual([
-      { id: "cols-B-F", startColumn: 1, endColumn: 5, collapsed: [1, 2] },
+      { id: "cols-B-F", startColumn: 1, endColumn: 5, collapsed: [] },
+      { id: "cols-B-C", startColumn: 1, endColumn: 2, collapsed: [1, 2] },
     ]);
     expect(outline.rowGroups).toEqual([
       { id: "rows-2-3", startRow: 1, endRow: 2, collapsed: [1, 2] },
     ]);
-    expect(outline.nested).toBe(true);
+    expect(outline.nested).toBe(false);
     const roundTrip = readWorksheetOutline(
       applyWorksheetOutline(`<worksheet><sheetData/></worksheet>`, {
         suiteleafColumnGroups: outline.columnGroups,
         suiteleafRowGroups: outline.rowGroups,
       }),
     );
-    expect(roundTrip.columnGroups[0]?.collapsed).toEqual([1, 2]);
+    expect(roundTrip.columnGroups).toEqual(outline.columnGroups);
     expect(roundTrip.rowGroups[0]?.collapsed).toEqual([1, 2]);
     expect(roundTrip.nested).toBe(false);
   });
@@ -336,5 +342,94 @@ describe("Excel outline export and import", () => {
     expect(again.rowData?.[5]?.hd).toBe(1);
     expect(again.rowData?.[6]?.hd).toBeUndefined();
     expect(again.rowData?.[0]?.hd).toBeUndefined();
+  });
+
+  it("keeps a level-2 week of columns inside a level-1 quarter", async () => {
+    const file = createFile("sheet", "Quarterly budget");
+    if (file.kind !== "sheet") throw new Error("Expected a workbook");
+    const sheet = file.content.workbook.sheets[file.content.workbook.sheetOrder[0]];
+    const headers = ["Category", "Oct 1", "Oct 2", "Oct 6", "Oct 7", "Oct 8", "Oct 9", "Oct 10"];
+    const body = [
+      ["Rent", 120, 120, 40, 40, 40, 80, 145],
+      ["Food", 30, 25, 18, 22, 15, 35, 20],
+    ];
+    sheet.cellData = {
+      0: Object.fromEntries(headers.map((name, column) => [column, { v: name, t: 1 }])),
+      ...Object.fromEntries(
+        body.map((row, index) => [
+          index + 1,
+          Object.fromEntries(row.map((value, column) => [column, { v: value, t: column === 0 ? 1 : 2 }])),
+        ]),
+      ),
+    };
+    sheet.columnData = Object.fromEntries([0, 1, 2, 3, 4, 5, 6, 7].map((column) => [column, { w: 120 }]));
+    const zip = await JSZip.loadAsync(await exportXlsx(file));
+    const plain = await zip.file("xl/worksheets/sheet1.xml")!.async("string");
+    const levels: Record<number, number> = { 2: 1, 3: 1, 4: 2, 5: 2, 6: 2, 7: 1, 8: 1 };
+    const seen = new Set<number>();
+    const outlined = plain.replace(/<col\b([^>]*?)(\/>|>)/g, (full, body: string, end: string) => {
+      const min = Number(/\bmin="(\d+)"/.exec(body)?.[1]);
+      const max = Number(/\bmax="(\d+)"/.exec(body)?.[1] ?? min);
+      if (!Number.isInteger(min) || max !== min) return full;
+      const level = levels[min];
+      if (!level) return full;
+      seen.add(min);
+      return `<col${body} outlineLevel="${level}"${end}`;
+    });
+    for (const column of Object.keys(levels))
+      if (!seen.has(Number(column))) throw new Error(`Column ${column} was not in the worksheet`);
+    const outline = readWorksheetOutline(outlined);
+    expect(outline.nested).toBe(false);
+    expect(outline.columnGroups).toEqual([
+      { id: "cols-B-H", startColumn: 1, endColumn: 7, collapsed: [] },
+      { id: "cols-D-F", startColumn: 3, endColumn: 5, collapsed: [] },
+    ]);
+    expect(outline.columnGroups.every((group) => group.startColumn >= 1)).toBe(true);
+    const weekClosed = outline.columnGroups.map((group) =>
+      group.id === "cols-D-F" ? collapseAllColumns(group) : group,
+    );
+    expect(collapsedColumns(weekClosed)).toEqual([3, 4, 5]);
+    const bothClosed = weekClosed.map((group) =>
+      group.id === "cols-B-H" ? collapseAllColumns(group) : group,
+    );
+    expect(collapsedColumns(bothClosed)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(
+      collapsedColumns(bothClosed.map((group) => (group.id === "cols-B-H" ? expandAllColumns(group) : group))),
+    ).toEqual([3, 4, 5]);
+
+    zip.file("xl/worksheets/sheet1.xml", outlined);
+    const imported = await importOffice(
+      await zip.generateAsync({ type: "uint8array" }),
+      "xlsx",
+      "Quarterly budget.xlsx",
+    );
+    if (imported.file.kind !== "sheet") throw new Error("Expected a workbook");
+    const opened = imported.file.content.workbook.sheets[imported.file.content.workbook.sheetOrder[0]];
+    expect(opened.custom?.suiteleafColumnGroups).toEqual(outline.columnGroups);
+    expect(opened.columnData?.[0]?.hd).toBeUndefined();
+    expect(imported.report.warnings.join("\n")).not.toMatch(/not kept separate|flattened/i);
+
+    sheet.custom = { suiteleafColumnGroups: weekClosed };
+    const xml = await sheetXml(await exportXlsx(file));
+    const written = colMap(xml);
+    expect(written.get(1)?.outlineLevel).toBeUndefined();
+    for (const column of [2, 3, 7, 8]) {
+      expect(written.get(column)?.outlineLevel).toBe("1");
+      expect(written.get(column)?.hidden).toBeUndefined();
+    }
+    for (const column of [4, 5, 6]) {
+      expect(written.get(column)?.outlineLevel).toBe("2");
+      expect(written.get(column)?.hidden === "1" || written.get(column)?.hidden === "true").toBe(true);
+    }
+    expect(xml).toContain('outlineLevelCol="2"');
+    const roundTrip = await importOffice(await exportXlsx(file), "xlsx", "Quarterly budget.xlsx");
+    if (roundTrip.file.kind !== "sheet") throw new Error("Expected a workbook");
+    const again = roundTrip.file.content.workbook.sheets[roundTrip.file.content.workbook.sheetOrder[0]];
+    expect(again.custom?.suiteleafColumnGroups).toEqual(weekClosed);
+    expect(again.columnData?.[0]?.hd).toBeUndefined();
+    expect(again.columnData?.[1]?.hd).toBeUndefined();
+    expect(again.columnData?.[3]?.hd).toBe(1);
+    expect(again.columnData?.[5]?.hd).toBe(1);
+    expect(again.columnData?.[6]?.hd).toBeUndefined();
   });
 });

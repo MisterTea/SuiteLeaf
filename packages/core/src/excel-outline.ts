@@ -5,9 +5,8 @@ import { columnName } from "./index";
  * left and the total stays above, so exported outlines use summaryRight="0"
  * and summaryBelow="0". Excel's own default puts the summary after the
  * detail; import honors whichever side outlinePr names.
- * Row groups keep every outline level, so a week at level 2 stays inside
- * the month at level 1. Column outlines still flatten a second level into
- * one group.
+ * Row and column groups keep every outline level, so a week at level 2
+ * stays inside the month or quarter at level 1.
  */
 
 type Attrs = Record<string, string>;
@@ -30,7 +29,7 @@ export type OutlineRowGroup = {
 export type WorksheetOutline = {
   columnGroups: OutlineColumnGroup[];
   rowGroups: OutlineRowGroup[];
-  /** True when an outline level deeper than 1 was flattened into one group. */
+  /** True when an outline level was not kept as its own group. */
   nested: boolean;
 };
 
@@ -102,10 +101,6 @@ function isFull(span: Span): boolean {
   for (let index = span.start; index <= span.end; index++)
     if (!hidden.has(index)) return false;
   return true;
-}
-
-function covered(spans: Span[], index: number): boolean {
-  return spans.some((span) => index >= span.start && index <= span.end);
 }
 
 function loadCols(xml: string): ColRange[] {
@@ -185,19 +180,36 @@ function writeCols(xml: string, ranges: ColRange[]): string {
   return xml.replace(/<(?:\w+:)?sheetData\b/, (match) => `${cols}${match}`);
 }
 
+/**
+ * A fully collapsed inner group that starts on the same column as a larger
+ * open group must not set the shared summary flag. That flag would collapse
+ * the outer group on the way back in. Hidden columns already record the
+ * inner group.
+ */
+function markCollapsedSummary(span: Span, spans: Span[]): boolean {
+  if (!isFull(span) || span.start <= 0) return false;
+  return !spans.some(
+    (other) =>
+      other.start === span.start && other.end > span.end && !isFull(other),
+  );
+}
+
 function patchColumns(xml: string, columns: Span[]): string {
   if (!columns.length) return xml;
   const ranges = loadCols(xml);
+  const levelAt = new Map<number, number>();
+  for (const span of columns)
+    for (let index = span.start; index <= span.end; index++)
+      levelAt.set(index, (levelAt.get(index) ?? 0) + 1);
   for (const span of columns) {
     const hidden = new Set(span.collapsed);
     for (let index = span.start; index <= span.end; index++) {
       const column = carve(ranges, index + 1);
-      column.attrs.outlineLevel = "1";
-      if (hidden.has(index) && !flag(column.attrs.hidden))
-        column.attrs.hidden = "1";
+      column.attrs.outlineLevel = String(levelAt.get(index) ?? 1);
+      if (hidden.has(index)) column.attrs.hidden = "1";
     }
     const summary = span.start - 1;
-    if (isFull(span) && summary >= 0 && !covered(columns, summary)) {
+    if (markCollapsedSummary(span, columns)) {
       const column = carve(ranges, summary + 1);
       column.attrs.collapsed = "1";
     }
@@ -322,7 +334,7 @@ export function applyWorksheetOutline(xml: string, custom: unknown): string {
   let next = patchColumns(xml, columns);
   next = patchRows(next, rows);
   next = ensureOutlinePr(next);
-  next = ensureFormatLevels(next, outlineDepth(rows), columns.length ? 1 : 0);
+  next = ensureFormatLevels(next, outlineDepth(rows), outlineDepth(columns));
   return next;
 }
 
@@ -383,8 +395,8 @@ function columnMarks(xml: string): Map<number, Mark> {
   return marks;
 }
 
-/** One group per outline level, so a week inside a month stays its own span. */
-function nestedRowSpans(marks: Map<number, Mark>, before: boolean): Span[] {
+/** One group per outline level, so a week inside a month or quarter stays its own span. */
+function nestedSpans(marks: Map<number, Mark>, before: boolean): Array<Span & { level: number }> {
   let maxLevel = 0;
   for (const mark of marks.values()) if (mark.level > maxLevel) maxLevel = mark.level;
   const spans: Array<Span & { level: number }> = [];
@@ -446,8 +458,8 @@ function rowGroupId(start: number, end: number, used: Set<string>): string {
   return id;
 }
 
-/** True when a row's outline level is deeper than the groups that contain it. */
-function rowLevelsFlattened(marks: Map<number, Mark>, spans: Span[]): boolean {
+/** True when an outline level is deeper than the groups that contain it. */
+function levelsFlattened(marks: Map<number, Mark>, spans: Span[]): boolean {
   for (const [index, mark] of marks) {
     if (mark.level <= 0) continue;
     let depth = 0;
@@ -457,48 +469,33 @@ function rowLevelsFlattened(marks: Map<number, Mark>, spans: Span[]): boolean {
   return false;
 }
 
-function spansFrom(marks: Map<number, Mark>, before: boolean): Array<Span & { maxLevel: number }> {
-  const members = [...marks.entries()]
-    .filter(([, mark]) => mark.level > 0)
-    .sort((a, b) => a[0] - b[0]);
-  const spans: Array<Span & { maxLevel: number }> = [];
-  let index = 0;
-  while (index < members.length) {
-    const start = members[index]![0];
-    let end = start;
-    let maxLevel = members[index]![1].level;
-    const hidden: number[] = [];
-    if (members[index]![1].hidden) hidden.push(start);
-    while (index + 1 < members.length && members[index + 1]![0] === end + 1) {
-      index += 1;
-      end = members[index]![0];
-      maxLevel = Math.max(maxLevel, members[index]![1].level);
-      if (members[index]![1].hidden) hidden.push(end);
-    }
-    const summary = before ? start - 1 : end + 1;
-    const whole =
-      marks.get(summary)?.collapsed === true || hidden.length === end - start + 1;
-    const collapsed = whole
-      ? Array.from({ length: end - start + 1 }, (_, offset) => start + offset)
-      : hidden;
-    spans.push({ start, end, collapsed, maxLevel });
-    index += 1;
+function columnGroupId(start: number, end: number, used: Set<string>): string {
+  const base = `cols-${columnName(start)}-${columnName(end)}`;
+  if (!used.has(base)) {
+    used.add(base);
+    return base;
   }
-  return spans;
+  let level = 2;
+  while (used.has(`${base}-l${level}`)) level += 1;
+  const id = `${base}-l${level}`;
+  used.add(id);
+  return id;
 }
 
 /** Read an Excel outline into SuiteLeaf row and column groups. Hidden columns that are not outlined are ignored. */
 export function readWorksheetOutline(xml: string): WorksheetOutline {
-  const columnSpans = spansFrom(columnMarks(xml), summaryBefore(xml, "summaryRight"));
+  const columns = columnMarks(xml);
+  const columnSpans = nestedSpans(columns, summaryBefore(xml, "summaryRight"));
   const rowMarks = marksFrom(xml, /<(?:\w+:)?row\b([^>]*?)(?:\/>|>)/g, (attrs) => {
     const row = Number(attrs.r);
     return Number.isInteger(row) ? row - 1 : null;
   });
-  const rowSpans = nestedRowSpans(rowMarks, summaryBefore(xml, "summaryBelow"));
+  const rowSpans = nestedSpans(rowMarks, summaryBefore(xml, "summaryBelow"));
+  const usedColumnIds = new Set<string>();
   const usedRowIds = new Set<string>();
   return {
     columnGroups: columnSpans.map((span) => ({
-      id: `cols-${columnName(span.start)}-${columnName(span.end)}`,
+      id: columnGroupId(span.start, span.end, usedColumnIds),
       startColumn: span.start,
       endColumn: span.end,
       collapsed: span.collapsed,
@@ -509,8 +506,6 @@ export function readWorksheetOutline(xml: string): WorksheetOutline {
       endRow: span.end,
       collapsed: span.collapsed,
     })),
-    nested:
-      columnSpans.some((span) => span.maxLevel > 1) ||
-      rowLevelsFlattened(rowMarks, rowSpans),
+    nested: levelsFlattened(columns, columnSpans) || levelsFlattened(rowMarks, rowSpans),
   };
 }

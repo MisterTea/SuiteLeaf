@@ -12,6 +12,7 @@ import {
   collapseAllColumns,
   collapseColumnLabel,
   collapsedColumns,
+  columnSpanLabel,
   columnsInGroups,
   contiguousColumnRanges,
   expandAllColumns,
@@ -50,10 +51,25 @@ type Button = {
   text: string;
   left: number;
   top: number;
+  depth: number;
   kind: "toggle" | "only";
   run: () => void;
 };
-type Line = { key: string; left: number; top: number; width: number };
+type Line = { key: string; left: number; top: number; width: number; depth: number };
+
+function controlWidth(text: string): number {
+  return Math.max(22, Math.ceil(text.length * 6.7 + 18));
+}
+
+function groupDepth(group: ColumnGroup, groups: ColumnGroup[]): number {
+  return groups.filter(
+    (other) =>
+      other.id !== group.id &&
+      other.startColumn <= group.startColumn &&
+      other.endColumn >= group.endColumn &&
+      (other.startColumn < group.startColumn || other.endColumn > group.endColumn),
+  ).length;
+}
 
 function worksheetOf(engine: Engine, unitId: string, sheetId: string) {
   return engine
@@ -380,28 +396,33 @@ export default function SheetColumnGroups({
           return null;
         }
       };
-      const size = 18;
       const px = (value: number) => Math.round(value / 2) * 2;
+      const hiddenByAny = new Set(current.groups.flatMap((group) => group.collapsed));
       const onScreen = (left: number, top: number) =>
         left >= hostBox.left + 4 &&
-        left <= hostBox.right - size - 4 &&
+        left <= hostBox.right - 28 &&
         top >= hostBox.top &&
         top <= hostBox.bottom - 28;
       for (const group of current.groups) {
         const hidden = new Set(group.collapsed);
         const open = hidden.size < group.endColumn - group.startColumn + 1;
         const closed = hidden.size > 0;
+        const depth = groupDepth(group, current.groups);
+        const anchor = group.startColumn > 0 ? group.startColumn - 1 : group.startColumn;
+        if (hiddenByAny.has(anchor)) continue;
         const visible: number[] = [];
         for (let column = group.startColumn; column <= group.endColumn; column++)
-          if (!hidden.has(column)) visible.push(column);
+          if (!hiddenByAny.has(column)) visible.push(column);
+        const span = columnSpanLabel(group);
         const toggles: Button[] = [];
         if (open)
           toggles.push({
             key: `${group.id}-collapse`,
             label: collapseColumnLabel(group),
-            text: "−",
+            text: `− ${span}`,
             left: 0,
             top: 0,
+            depth,
             kind: "toggle",
             run: () => actions.current(group, collapseAllColumns(group)),
           });
@@ -409,52 +430,43 @@ export default function SheetColumnGroups({
           toggles.push({
             key: `${group.id}-expand`,
             label: expandColumnLabel(group),
-            text: "+",
+            text: `+ ${span}`,
             left: 0,
             top: 0,
+            depth,
             kind: "toggle",
             run: () => actions.current(group, expandAllColumns(group)),
           });
-        const gap = 4;
-        let anchorLeft = 0;
-        let anchorTop = 0;
+        const anchorRect = place(0, anchor);
+        if (anchorRect && anchorRect.width > 2) {
+          const pillHeight = 22;
+          let left = anchorRect.left + 8;
+          const top = anchorRect.top - pillHeight - depth * 4;
+          if (onScreen(left, top)) {
+            toggles.forEach((button) => {
+              button.left = px(left);
+              button.top = px(top);
+              left += controlWidth(button.text) + 6;
+              if (onScreen(button.left, button.top)) nextButtons.push(button);
+            });
+          }
+        }
         if (visible.length) {
           const placed = visible
             .map((column) => place(0, column))
             .filter((rect): rect is SceneRect => !!rect);
           if (placed.length) {
-            const visibleRect =
-              placed.find(
-                (rect) => rect.right > hostBox.left + 24 && rect.left < hostBox.right - 24,
-              ) ?? placed[0]!;
             const lineLeft = Math.max(placed[0]!.left, hostBox.left + 4);
-            const lineRight = Math.min(
-              placed[placed.length - 1]!.right,
-              hostBox.right - 8,
-            );
-            anchorLeft = visibleRect.left + 8;
-            anchorTop = visibleRect.top - size;
+            const lineRight = Math.min(placed[placed.length - 1]!.right, hostBox.right - 8);
             if (lineRight - lineLeft > 8)
               nextLines.push({
                 key: group.id,
                 left: px(lineLeft),
-                top: px(visibleRect.top - 1),
+                top: px(placed[0]!.top - 1 - depth * 7),
                 width: px(lineRight - lineLeft),
+                depth,
               });
           }
-        } else if (group.startColumn > 0) {
-          const neighbor = place(0, group.startColumn - 1);
-          if (neighbor) {
-            anchorLeft = neighbor.right - size - 2;
-            anchorTop = neighbor.top - size;
-          }
-        }
-        if (anchorLeft && onScreen(anchorLeft, anchorTop)) {
-          toggles.forEach((button, index) => {
-            button.left = px(anchorLeft + index * (size + gap));
-            button.top = px(anchorTop);
-            if (onScreen(button.left, button.top)) nextButtons.push(button);
-          });
         }
         const selected = current.selection;
         if (
@@ -476,6 +488,7 @@ export default function SheetColumnGroups({
               text: label,
               left: px(Math.min(Math.max(cell.left + 4, hostBox.left + 4), hostBox.right - 180)),
               top: px(cell.top + Math.max(0, (cell.height - 26) / 2)),
+              depth: 0,
               kind: "only",
               run: () => actions.current(group, showOnlyColumn(group, column)),
             });
@@ -491,11 +504,23 @@ export default function SheetColumnGroups({
         return prevSignature === signature ? prev : nextButtons;
       });
       const lineSignature = JSON.stringify(
-        nextLines.map((line) => [line.key, Math.round(line.left), Math.round(line.top), Math.round(line.width)]),
+        nextLines.map((line) => [
+          line.key,
+          Math.round(line.left),
+          Math.round(line.top),
+          Math.round(line.width),
+          line.depth,
+        ]),
       );
       setLines((prev) => {
         const prevSignature = JSON.stringify(
-          prev.map((line) => [line.key, Math.round(line.left), Math.round(line.top), Math.round(line.width)]),
+          prev.map((line) => [
+            line.key,
+            Math.round(line.left),
+            Math.round(line.top),
+            Math.round(line.width),
+            line.depth,
+          ]),
         );
         return prevSignature === lineSignature ? prev : nextLines;
       });
@@ -515,6 +540,7 @@ export default function SheetColumnGroups({
           <span
             key={line.key}
             className="column-group-line"
+            data-depth={line.depth}
             style={{ left: line.left, top: line.top, width: line.width }}
           />
         ))}
@@ -523,6 +549,7 @@ export default function SheetColumnGroups({
             key={button.key}
             type="button"
             className={button.kind === "only" ? "column-group-only" : "column-group-toggle"}
+            data-depth={button.kind === "toggle" ? button.depth : undefined}
             aria-label={button.label}
             style={{ left: button.left, top: button.top }}
             onMouseDown={(event) => {

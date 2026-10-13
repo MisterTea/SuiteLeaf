@@ -5,6 +5,7 @@ import {
   collapseAllColumns,
   columnIsLabel,
   columnName,
+  columnSpanLabel,
   contiguousColumnRanges,
   expandAllColumns,
   formulaTouchesEarlierColumns,
@@ -78,6 +79,7 @@ test("show only keeps one month and does not change the span", () => {
   expect(only.endColumn).toBe(12);
   expect(only.collapsed).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
   expect(expandAllColumns(collapseAllColumns(group)).collapsed).toEqual([]);
+  expect(columnSpanLabel(makeColumnGroup(3, 5))).toBe("Columns D–F");
   expect(showOnlyColumnLabel("January", 1)).toBe("Show only January");
   expect(showOnlyColumnLabel("", 4)).toBe("Show only column E");
   expect(columnName(0)).toBe("A");
