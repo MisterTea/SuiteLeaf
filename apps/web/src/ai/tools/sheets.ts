@@ -395,8 +395,9 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       target: ({ range }) => target(range),
       async execute(args) {
         const pivot = ctx.content().pivots.find((x) => x.targetSheetId === sheet().getSheetId());
-        const { range: _, number_format, ...others } = args;
-        if (pivot && number_format && Object.values(others).every((v) => v === undefined)) {
+        const { number_format, ...others } = args;
+        const onlyFormat = Object.entries(others).every(([k, v]) => k === "range" || v === undefined);
+        if (pivot && number_format && onlyFormat) {
           const id = NUMBER_FORMATS[number_format];
           const source = book.getSheetBySheetId(pivot.source.sheetId);
           const values = a1({ ...pivot.source, startRow: pivot.source.startRow + 1, startColumn: pivot.source.startColumn + pivot.value, endColumn: pivot.source.startColumn + pivot.value });
