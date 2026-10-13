@@ -205,6 +205,10 @@ export async function caption(page: Page, text: string, hold = 1400) {
         "position:fixed;left:50%;bottom:24px;transform:translateX(-50%);max-width:80%;padding:10px 18px;border-radius:10px;background:rgba(32,33,36,.88);color:#fff;font:500 17px/1.4 -apple-system,Segoe UI,Roboto,sans-serif;text-align:center;z-index:2147483646;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,.25);";
       document.documentElement.appendChild(bar);
     }
+    // Centre it over the app, clear of the assistant panel when that is open.
+    const panel = document.querySelector(".agent-sidebar")?.getBoundingClientRect().width ?? 0;
+    bar.style.left = `calc(50% - ${panel / 2}px)`;
+    bar.style.maxWidth = `calc(80% - ${panel}px)`;
     bar.textContent = value;
   }, text);
   await page.waitForTimeout(hold);
