@@ -11,6 +11,7 @@ import {
   readRowGroups,
   replaceGroups,
   shiftRowGroups,
+  shrinkRowGroups,
   showOnly,
   showOnlyLabel,
 } from "../apps/web/src/editors/sheet-row-groups";
@@ -78,6 +79,60 @@ test("inserting a row shifts a nested group and a collapsed week", () => {
     [4, 7, [4, 5, 6, 7]],
   ]);
   expect(stillCollapsed.some((group) => group.startRow <= 1 && group.endRow >= 1)).toBe(false);
+});
+
+test("deleting a row shrinks a nested group and a collapsed week", () => {
+  const month = makeGroup(1, 7);
+  const week = makeGroup(3, 5);
+  const spans = (groups: { startRow: number; endRow: number; collapsed: number[] }[]) =>
+    groups.map((group) => [group.startRow, group.endRow, group.collapsed]);
+
+  const inside = shrinkRowGroups([month, week], 4);
+  expect(spans(inside)).toEqual([
+    [1, 6, []],
+    [3, 4, []],
+  ]);
+  expect(inside.every((group) => group.startRow > 0)).toBe(true);
+  expect(inside.some((group) => group.startRow <= 0 && group.endRow >= 0)).toBe(false);
+
+  const fromTop = shrinkRowGroups(inside, 1);
+  expect(spans(fromTop)).toEqual([
+    [1, 5, []],
+    [2, 3, []],
+  ]);
+  expect(fromTop.some((group) => group.startRow <= 1 && group.endRow >= 1)).toBe(true);
+  expect(fromTop.every((group) => group.startRow > 0)).toBe(true);
+
+  expect(spans(shrinkRowGroups([month, week], 8))).toEqual([
+    [1, 7, []],
+    [3, 5, []],
+  ]);
+
+  const collapsedInside = shrinkRowGroups([month, collapseAll(week)], 4);
+  expect(spans(collapsedInside)).toEqual([
+    [1, 6, []],
+    [3, 4, [3, 4]],
+  ]);
+  const hiddenWeek = collapsedInside[1]!;
+  expect(hiddenWeek.collapsed.length).toBe(hiddenWeek.endRow - hiddenWeek.startRow + 1);
+
+  const collapsedAbove = shrinkRowGroups([month, collapseAll(week)], 1);
+  expect(spans(collapsedAbove)).toEqual([
+    [1, 6, []],
+    [2, 4, [2, 3, 4]],
+  ]);
+  const shiftedWeek = collapsedAbove[1]!;
+  expect(shiftedWeek.collapsed.length).toBe(shiftedWeek.endRow - shiftedWeek.startRow + 1);
+  expect(collapsedAbove.every((group) => group.startRow > 0)).toBe(true);
+
+  const lastRow = shrinkRowGroups([month, week], 5);
+  expect(spans(lastRow)).toEqual([
+    [1, 6, []],
+    [3, 4, []],
+  ]);
+  expect(lastRow.every((group) => group.endRow >= group.startRow)).toBe(true);
+
+  expect(shrinkRowGroups([makeGroup(4, 4)], 4)).toEqual([]);
 });
 
 test("stored groups ignore a summary row and survive a round trip", () => {

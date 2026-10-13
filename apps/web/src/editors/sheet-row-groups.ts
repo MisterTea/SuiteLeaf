@@ -118,6 +118,56 @@ function shiftGroupForInsert(group: RowGroup, at: number, count: number): RowGro
   return { ...group, endRow: group.endRow + count, collapsed };
 }
 
+/**
+ * Shrink row groups when `count` rows are deleted at the 0-based index `at`.
+ * A delete inside a group shortens its end. Deleting the group's first row
+ * shrinks it from the top: the next row slides into that index and stays in
+ * the group. A delete above a group shifts the span and its hidden indexes
+ * up without expanding it. A delete below a group leaves it. Hidden indexes
+ * drop the deleted rows and move down for every hidden row below the delete.
+ * A group that loses every row is removed, so `endRow` never falls below
+ * `startRow`.
+ */
+export function shrinkRowGroups(groups: RowGroup[], at: number, count = 1): RowGroup[] {
+  if (!Number.isInteger(at) || at < 0 || !Number.isInteger(count) || count < 1)
+    return groups;
+  const next: RowGroup[] = [];
+  for (const group of groups) {
+    const shrunk = shrinkGroupForDelete(group, at, count);
+    if (shrunk) next.push(shrunk);
+  }
+  return next;
+}
+
+/** Where a row lands after a delete, or null when that row is deleted. */
+function survivingIndex(row: number, at: number, count: number): number | null {
+  if (row >= at && row < at + count) return null;
+  return row >= at + count ? row - count : row;
+}
+
+function shrinkGroupForDelete(group: RowGroup, at: number, count: number): RowGroup | null {
+  if (at > group.endRow) return group;
+  let startRow: number | null = null;
+  let endRow: number | null = null;
+  for (let row = group.startRow; row <= group.endRow; row++) {
+    const mapped = survivingIndex(row, at, count);
+    if (mapped == null) continue;
+    if (startRow == null) startRow = mapped;
+    endRow = mapped;
+  }
+  if (startRow == null || endRow == null || endRow < startRow) return null;
+  const start = startRow;
+  const end = endRow;
+  const collapsed = [
+    ...new Set(
+      group.collapsed
+        .map((row) => survivingIndex(row, at, count))
+        .filter((row): row is number => row != null && row >= start && row <= end),
+    ),
+  ].sort((a, b) => a - b);
+  return { ...group, startRow: start, endRow: end, collapsed };
+}
+
 export function replaceGroups(existing: RowGroup[], next: RowGroup): RowGroup[] {
   return [
     ...existing.filter(

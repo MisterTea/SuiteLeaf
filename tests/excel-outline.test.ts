@@ -16,6 +16,8 @@ import {
   collapseAll,
   collapsedRows,
   expandAll,
+  makeGroup,
+  shrinkRowGroups,
 } from "../apps/web/src/editors/sheet-row-groups";
 
 const months = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
@@ -342,6 +344,40 @@ describe("Excel outline export and import", () => {
     expect(again.rowData?.[5]?.hd).toBe(1);
     expect(again.rowData?.[6]?.hd).toBeUndefined();
     expect(again.rowData?.[0]?.hd).toBeUndefined();
+  });
+
+  it("writes outline level 2 only on the week that remains after deletes", async () => {
+    const file = createFile("sheet", "Household budget");
+    if (file.kind !== "sheet") throw new Error("Expected a workbook");
+    const sheet = file.content.workbook.sheets[file.content.workbook.sheetOrder[0]];
+    const labels = [
+      "October total",
+      "Oct 1 groceries",
+      "Oct 2 transit",
+      "Oct 6 groceries",
+      "Oct 8 transit",
+      "Oct 9 utilities",
+      "Oct 10 rent",
+    ];
+    sheet.cellData = Object.fromEntries(
+      labels.map((label, index) => [index, { 0: { v: label, t: 1 } }]),
+    );
+    const inside = shrinkRowGroups([makeGroup(1, 7), makeGroup(3, 5)], 4);
+    const closed = inside.map((group) =>
+      group.startRow === 3 ? collapseAll(group) : group,
+    );
+    sheet.custom = { suiteleafRowGroups: shrinkRowGroups(closed, 1) };
+    const written = rowMap(await sheetXml(await exportXlsx(file)));
+    expect(written.get(1)?.outlineLevel).toBeUndefined();
+    for (const row of [2, 5, 6]) {
+      expect(written.get(row)?.outlineLevel).toBe("1");
+      expect(written.get(row)?.hidden).toBeUndefined();
+    }
+    for (const row of [3, 4]) {
+      expect(written.get(row)?.outlineLevel).toBe("2");
+      expect(written.get(row)?.hidden === "1" || written.get(row)?.hidden === "true").toBe(true);
+    }
+    for (const row of [7, 8]) expect(written.get(row)?.outlineLevel).toBeUndefined();
   });
 
   it("keeps a level-2 week of columns inside a level-1 quarter", async () => {

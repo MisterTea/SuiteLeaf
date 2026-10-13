@@ -53,6 +53,7 @@ import {
   contiguousRanges,
   readRowGroups,
   shiftRowGroups,
+  shrinkRowGroups,
 } from "./sheet-row-groups";
 import SheetColumnGroups, { type SheetColumnGroupsHandle } from "./sheet-column-groups-ui";
 import SheetFeatures from "./sheet-features";
@@ -1428,6 +1429,33 @@ export default function Sheets({
             facade.hideRows(range.startRow, range.endRow - range.startRow + 1);
         });
       };
+      const shrinkGroupsForDeletedRows = (
+        at: number,
+        count: number,
+        params: { unitId?: unknown; subUnitId?: unknown },
+      ) => {
+        if (!Number.isInteger(at) || !Number.isInteger(count) || count < 1)
+          return;
+        const subUnitId =
+          typeof params.subUnitId === "string" ? params.subUnitId : "";
+        if (!subUnitId) return;
+        const unitId =
+          typeof params.unitId === "string" ? params.unitId : workbook.getId();
+        const worksheet = injector
+          .get(IUniverInstanceService)
+          .getUnit(unitId, UniverInstanceType.UNIVER_SHEET)
+          ?.getSheetBySheetId(subUnitId);
+        if (!worksheet) return;
+        const before = readRowGroups(worksheet.getCustomMetadata());
+        if (!before.length) return;
+        const after = shrinkRowGroups(before, at, count);
+        const custom = { ...(worksheet.getCustomMetadata() ?? {}) };
+        if (after.length) custom.suiteleafRowGroups = after;
+        else delete custom.suiteleafRowGroups;
+        worksheet.setCustomMetadata(
+          Object.keys(custom).length ? custom : undefined,
+        );
+      };
       const listener = workbook.onCommandExecuted((command: any) => {
         if (
           !disposed &&
@@ -1484,6 +1512,13 @@ export default function Sheets({
               if (shifted) item.source = shifted;
               else item.invalid = true;
             }
+        }
+        // Univer names this mutation remove-rows, so the insert/remove regex above does not see it.
+        if (command.id === "sheet.mutation.remove-rows" && p.range) {
+          const start = p.range.startRow;
+          const end = p.range.endRow;
+          if (Number.isInteger(start) && Number.isInteger(end) && end >= start)
+            shrinkGroupsForDeletedRows(start, end - start + 1, p);
         }
         for (const item of [
           ...content.current.charts,
