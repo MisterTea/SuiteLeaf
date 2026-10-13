@@ -10,6 +10,9 @@ export type PersonalDictionary = { added: string[]; flagged: string[] };
 
 export const PERSONAL_DICTIONARY_KEY = "suiteleaf.personal-dictionary";
 
+/** Sheets and Slides listen for this so they share the Docs dictionary. */
+export const SPELLING_CHANGED_EVENT = "suiteleaf-spelling-changed";
+
 const emptyDictionary = (): PersonalDictionary => ({ added: [], flagged: [] });
 
 export function readPersonalDictionary(): PersonalDictionary {
@@ -30,6 +33,8 @@ export function readPersonalDictionary(): PersonalDictionary {
 export function writePersonalDictionary(dictionary: PersonalDictionary) {
   try {
     localStorage.setItem(PERSONAL_DICTIONARY_KEY, JSON.stringify(dictionary));
+    if (typeof window !== "undefined")
+      window.dispatchEvent(new Event(SPELLING_CHANGED_EVENT));
   } catch {
     /* private mode */
   }
@@ -173,6 +178,13 @@ export function isMisspelling(
 }
 
 const WORD = /[A-Za-z]+(?:['’-][A-Za-z]+)*/g;
+
+export function spellingTokens(text: string): { word: string; from: number; to: number }[] {
+  return [...text.matchAll(WORD)].map((match) => {
+    const from = match.index ?? 0;
+    return { word: match[0], from, to: from + match[0].length };
+  });
+}
 const LETTERS = "abcdefghijklmnopqrstuvwxyz";
 
 function edits(word: string) {

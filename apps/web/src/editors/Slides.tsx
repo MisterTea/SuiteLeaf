@@ -93,6 +93,8 @@ import {
   type TransitionType,
 } from "./slide-theme";
 import { SlideDesignPanel, useReducedMotion } from "./slide-design-panel";
+import { replaceSlideWord } from "./grid-spelling";
+import { SlideSpellMirror, SlideSpelling } from "./grid-spelling-ui";
 
 type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
@@ -194,6 +196,7 @@ export default function Slides({
   >(() => {});
 
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const spellingRef = useRef<{ open: () => void }>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef<{
     elementId: string;
@@ -1042,6 +1045,7 @@ ${slidesHtml}
         undoReason: () => slideApi.current.undoReason(),
         redoReason: () => slideApi.current.redoReason(),
         deleteReason: () => slideApi.current.deleteReason(),
+        openSpelling: () => spellingRef.current?.open(),
       },
     });
   }, [onActions, onChange, activeSlideId, beginShow]);
@@ -2162,10 +2166,12 @@ ${slidesHtml}
                         color: el.color || "#1e293b",
                         textAlign: el.align || "left",
                         backgroundColor: el.fill || "transparent",
+                        ["--spell-caret" as string]: el.color || "#1e293b",
                       }}
                       onMouseDown={(e) => onElementMouseDown(e, el.id)}
                       onClick={(e) => e.stopPropagation()}
                     >
+                      <SlideSpellMirror text={el.content || ""} fileId={file.id} />
                       <textarea
                         className="element-textarea"
                         value={el.content || ""}
@@ -2333,6 +2339,24 @@ ${slidesHtml}
             status={transitionStatus}
           />
         ) : null}
+        <SlideSpelling
+          ref={spellingRef}
+          deck={deck}
+          fileId={file.id}
+          onFocus={(issue) => applySelection(issue.slideId, [issue.slideId], issue.elementId)}
+          onReplace={(issue, replacement) => {
+            const next = replaceSlideWord(
+              deckRef.current,
+              issue.slideId,
+              issue.elementId,
+              issue.from,
+              issue.to,
+              replacement,
+            );
+            commitRef.current(next);
+            applySelection(issue.slideId, [issue.slideId], issue.elementId);
+          }}
+        />
       </div>
 
       {/* Presentation Fullscreen Mode Modal */}

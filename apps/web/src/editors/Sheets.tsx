@@ -43,6 +43,7 @@ import {
 import NoteEnUS from "@univerjs/preset-sheets-note/locales/en-US";
 import "@univerjs/preset-sheets-note/lib/index.css";
 import SheetCleanup from "./sheet-cleanup-ui";
+import { SheetSpelling } from "./grid-spelling-ui";
 import SheetFeatures from "./sheet-features";
 import SheetDropdowns, { type SheetDropdownHandle } from "./sheet-dropdown-panel";
 import {
@@ -801,6 +802,7 @@ export default function Sheets({
   const dropdowns = useRef<SheetDropdownHandle>(null);
   const dropdownEngine = useRef<{ api: any; injector: any } | null>(null);
   const cleanup = useRef<{ trim: () => void; duplicates: () => void; split: () => void }>(null);
+  const spelling = useRef<{ open: () => void }>(null);
   const engine = useRef<any>(null);
   const toolbar = useRef<HTMLDivElement>(null);
   const moreTools = useToolbarOverflow(
@@ -1953,6 +1955,7 @@ export default function Sheets({
             visible,
           );
         },
+        openSpelling: () => spelling.current?.open(),
       },
     });
   }, [ready, file.title, onActions]);
@@ -2269,6 +2272,16 @@ export default function Sheets({
           engine={engine.current}
           persist={() => persist.current()}
           onError={onError}
+        />
+      ) : null}
+      {ready ? (
+        <SheetSpelling
+          ref={spelling}
+          bookRef={book}
+          hostRef={host}
+          fileId={file.id}
+          ready={ready}
+          persist={() => persist.current()}
         />
       ) : null}
       {ready && api.current ? (
