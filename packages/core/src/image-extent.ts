@@ -1,5 +1,11 @@
 import { XMLParser } from "fast-xml-parser";
 import type { JsonNode } from "./index";
+import {
+  imageCropActive,
+  imageCropFromSrcRect,
+  type ImageCrop,
+} from "./image-crop";
+import { type DrawingPlacement, type ImageWrap } from "./image-wrap";
 
 /**
  * Word's drawing extent is in English Metric Units. 914400 EMU is one inch,
@@ -56,6 +62,240 @@ export function applyImagePageSizes(
     return { ...node, content: node.content.map(walk) };
   };
   return walk(doc);
+}
+
+export type ImportedDrawing = {
+  size: ImagePageSize;
+  crop: ImageCrop | null;
+  placement: DrawingPlacement;
+  /** The Word paragraph also contained words, so Mammoth's split should be joined. */
+  sharesParagraph: boolean;
+};
+
+/**
+ * Body pictures in the order Mammoth emits them.
+ * Deleted drawings are skipped. A fallback picture keeps the choice drawing's
+ * extent, crop, and wrap, because that is the drawing Word showed.
+ */
+export function importedDrawings(xml: string): ImportedDrawing[] {
+  try {
+    const tree = parser.parse(xml) as OrderedNode[];
+    return drawingFacts(Array.isArray(tree) ? tree : []);
+  } catch {
+    return [];
+  }
+}
+
+/** Copy each body picture's extent, crop, and wrap. Header pictures are separate parts. */
+export function applyImportedDrawings(
+  doc: JsonNode,
+  xml: string,
+): { doc: JsonNode; placements: DrawingPlacement[]; sharesParagraph: boolean[] } {
+  const facts = importedDrawings(xml);
+  const placements: DrawingPlacement[] = [];
+  const sharesParagraph: boolean[] = [];
+  let index = 0;
+  const walk = (node: JsonNode): JsonNode => {
+    if (node.type === "image") {
+      const fact = facts[index++];
+      if (!fact) {
+        sharesParagraph.push(false);
+        return node;
+      }
+      placements.push(fact.placement);
+      sharesParagraph.push(fact.sharesParagraph);
+      const attrs = { ...(node.attrs ?? {}) };
+      if (fact.size) {
+        attrs.width = fact.size.width;
+        attrs.height = fact.size.height;
+      }
+      if (fact.crop) {
+        attrs.cropLeft = fact.crop.left;
+        attrs.cropTop = fact.crop.top;
+        attrs.cropRight = fact.crop.right;
+        attrs.cropBottom = fact.crop.bottom;
+      }
+      if (fact.placement.wrap) attrs.wrap = fact.placement.wrap;
+      return { ...node, attrs };
+    }
+    if (!node.content) return node;
+    return { ...node, content: node.content.map(walk) };
+  };
+  return { doc: walk(doc), placements, sharesParagraph };
+}
+
+function drawingFacts(
+  nodes: OrderedNode[],
+  sharesParagraph = false,
+): ImportedDrawing[] {
+  const facts: ImportedDrawing[] = [];
+  for (const node of nodes) {
+    const name = tag(node);
+    if (!name || name === ":@") continue;
+    if (name === "del" || name === "moveFrom") continue;
+    if (name === "tr" && rowDeleted(node)) continue;
+    if (name === "p") {
+      facts.push(...drawingFacts(childNodes(node), paragraphHasText(node)));
+      continue;
+    }
+    if (name === "AlternateContent") {
+      facts.push(...alternateFacts(node, sharesParagraph));
+      continue;
+    }
+    if (name === "inline" || name === "anchor") {
+      const fact = drawingFact(name, node, sharesParagraph);
+      const blips = countTags(node, "blip");
+      for (let i = 0; i < blips; i++) facts.push(fact);
+      continue;
+    }
+    if (name === "imagedata") {
+      facts.push({
+        size: null,
+        crop: null,
+        placement: { wrap: null, floating: false, represented: true },
+        sharesParagraph,
+      });
+      continue;
+    }
+    facts.push(...drawingFacts(childNodes(node), sharesParagraph));
+  }
+  return facts;
+}
+
+function paragraphHasText(node: OrderedNode): boolean {
+  const walk = (current: OrderedNode): boolean => {
+    const name = tag(current);
+    if (!name || name === "drawing" || name === "pict") return false;
+    if (name === "t" && textOf(current).trim()) return true;
+    return childNodes(current).some(walk);
+  };
+  return childNodes(node).some(walk);
+}
+
+function alternateFacts(
+  node: OrderedNode,
+  sharesParagraph: boolean,
+): ImportedDrawing[] {
+  const choice = childNodes(node).find((part) => tag(part) === "Choice");
+  const fallback = childNodes(node).find((part) => tag(part) === "Fallback");
+  const fallen = fallback
+    ? drawingFacts(childNodes(fallback), sharesParagraph)
+    : [];
+  if (!fallen.length) return [];
+  const chosen = choice
+    ? drawingFacts(childNodes(choice), sharesParagraph)
+    : [];
+  return fallen.map((fact, index) => {
+    const alt = chosen[index];
+    return {
+      size: fact.size ?? alt?.size ?? null,
+      crop: alt?.crop ?? fact.crop,
+      placement: alt?.placement ?? fact.placement,
+      sharesParagraph,
+    };
+  });
+}
+
+function drawingFact(
+  name: string,
+  node: OrderedNode,
+  sharesParagraph: boolean,
+): ImportedDrawing {
+  return {
+    size: extentIn(node),
+    crop: srcRectCrop(node),
+    placement: name === "inline" ? inlinePlacement : anchorPlacement(node),
+    sharesParagraph,
+  };
+}
+
+const inlinePlacement: DrawingPlacement = {
+  wrap: null,
+  floating: false,
+  represented: true,
+};
+
+function anchorPlacement(node: OrderedNode): DrawingPlacement {
+  const wrap = findTag(node, [
+    "wrapSquare",
+    "wrapTight",
+    "wrapThrough",
+    "wrapTopAndBottom",
+    "wrapNone",
+  ]);
+  if (!wrap || wrap.name === "wrapNone")
+    return { wrap: null, floating: true, represented: false };
+  if (wrap.name === "wrapTopAndBottom")
+    return { wrap: "break", floating: true, represented: true };
+  return {
+    wrap: squareSide(node, wrap.attrs),
+    floating: true,
+    represented: true,
+  };
+}
+
+function squareSide(
+  node: OrderedNode,
+  wrapAttrs: string,
+): Extract<ImageWrap, "left" | "right"> {
+  const position = findTag(node, ["positionH"]);
+  const align = position
+    ? textOf(position.node).match(/\b(left|right|center)\b/)?.[1]
+    : undefined;
+  if (align === "right") return "right";
+  if (align === "left") return "left";
+  const offset = position
+    ? textOf(position.node).match(/(-?\d+)/)?.[1]
+    : undefined;
+  if (offset && Number(offset) > 3_000_000) return "right";
+  const side = /\bwrapText="(left|right|bothSides|largest)"/.exec(wrapAttrs);
+  if (side?.[1] === "left") return "right";
+  if (side?.[1] === "right") return "left";
+  return "left";
+}
+
+function srcRectCrop(node: OrderedNode): ImageCrop | null {
+  const rect = findTag(node, ["srcRect"]);
+  if (!rect) return null;
+  const crop = imageCropFromSrcRect({
+    l: attr(rect.node, "l"),
+    t: attr(rect.node, "t"),
+    r: attr(rect.node, "r"),
+    b: attr(rect.node, "b"),
+  });
+  return imageCropActive(crop) ? crop : null;
+}
+
+function findTag(
+  node: OrderedNode,
+  names: string[],
+): { name: string; node: OrderedNode; attrs: string } | null {
+  let found: { name: string; node: OrderedNode; attrs: string } | null = null;
+  const walk = (current: OrderedNode) => {
+    if (found) return;
+    const name = tag(current);
+    if (name && names.includes(name)) {
+      const wrapText = attr(current, "wrapText");
+      found = {
+        name,
+        node: current,
+        attrs: wrapText ? ` wrapText="${wrapText}"` : "",
+      };
+      return;
+    }
+    for (const child of childNodes(current)) walk(child);
+  };
+  walk(node);
+  return found;
+}
+
+function textOf(node: OrderedNode): string {
+  const name = tag(node);
+  if (!name) return "";
+  const value = node[name];
+  if (typeof value === "string") return value;
+  if (!Array.isArray(value)) return "";
+  return value.map((child) => textOf(child as OrderedNode)).join("");
 }
 
 function pageSizes(nodes: OrderedNode[]): ImagePageSize[] {

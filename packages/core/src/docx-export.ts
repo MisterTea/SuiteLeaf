@@ -11,6 +11,8 @@ import {
   FootnoteReferenceRun,
   Header,
   HeadingLevel,
+  HorizontalPositionAlign,
+  HorizontalPositionRelativeFrom,
   ImageRun,
   Math as OfficeMath,
   MathFraction,
@@ -30,8 +32,12 @@ import {
   TableOfContents,
   TableRow,
   TextRun,
+  TextWrappingSide,
+  TextWrappingType,
   UnderlineType,
   VerticalAlign,
+  VerticalPositionAlign,
+  VerticalPositionRelativeFrom,
   WidthType,
   type IRunOptions,
   type MathComponent,
@@ -63,6 +69,7 @@ import {
   type CitationLibrary,
 } from "./citations";
 import { croppedFrame, docxImageCrop, imageCrop } from "./image-crop";
+import { imageWrap } from "./image-wrap";
 
 const color = (v: unknown) =>
   typeof v === "string" && /^#[\da-f]{6}$/i.test(v) ? v.slice(1) : undefined;
@@ -231,18 +238,23 @@ function runs(
     }
     if (n.type === "hardBreak") return [new TextRun({ break: 1 })];
     if (n.type === "tab") return [new TextRun({ children: [new Tab()] })];
-    if (n.type === "image") {
+    if (n.type === "image" || n.type === "inlineImage") {
       const match = /^data:image\/(png|jpeg|gif);base64,(.*)$/i.exec(
         String(n.attrs?.src),
       );
       if (!match) return [new TextRun(String(n.attrs?.alt ?? "[Image]"))];
       const data = Uint8Array.from(atob(match[2]), (c) => c.charCodeAt(0));
       const [naturalWidth, naturalHeight] = imageSize(data, match[1]);
-      const requestedWidth = Number(n.attrs?.width) || naturalWidth;
-      const requestedHeight =
-        Number(n.attrs?.height) ||
-        (naturalHeight * requestedWidth) / naturalWidth;
-      const scale = Math.min(1, 600 / requestedWidth, 800 / requestedHeight);
+      const explicitWidth = Number(n.attrs?.width);
+      const explicitHeight = Number(n.attrs?.height);
+      const sized = explicitWidth > 0 && explicitHeight > 0;
+      const requestedWidth = sized ? explicitWidth : naturalWidth;
+      const requestedHeight = sized
+        ? explicitHeight
+        : (naturalHeight * requestedWidth) / naturalWidth;
+      const scale = sized
+        ? 1
+        : Math.min(1, 600 / requestedWidth, 800 / requestedHeight);
       const crop = imageCrop(n.attrs);
       // The frame is the cropped region at the same scale as the full picture.
       // `data` stays the whole image so Word's crop reset can reveal it.
@@ -251,6 +263,8 @@ function runs(
         crop,
       );
       const docxCrop = docxImageCrop(crop);
+      const wrap = n.type === "image" ? imageWrap(n.attrs) : null;
+      const beside = wrap === "left" || wrap === "right";
       return [
         new ImageRun({
           type: match[1] === "jpeg" ? "jpg" : (match[1] as "png" | "gif"),
@@ -260,6 +274,27 @@ function runs(
             height: Math.max(1, frame.height),
           },
           ...(docxCrop ? { crop: docxCrop } : {}),
+          ...(beside
+            ? {
+                floating: {
+                  horizontalPosition: {
+                    relative: HorizontalPositionRelativeFrom.COLUMN,
+                    align:
+                      wrap === "right"
+                        ? HorizontalPositionAlign.RIGHT
+                        : HorizontalPositionAlign.LEFT,
+                  },
+                  verticalPosition: {
+                    relative: VerticalPositionRelativeFrom.PARAGRAPH,
+                    align: VerticalPositionAlign.TOP,
+                  },
+                  wrap: {
+                    type: TextWrappingType.SQUARE,
+                    side: TextWrappingSide.BOTH_SIDES,
+                  },
+                },
+              }
+            : {}),
           altText: docxImageAlt(n.attrs?.alt),
         }),
       ];
@@ -682,7 +717,7 @@ export async function exportDocx(
   const content = embedSuggestionMarkers(structuredClone(file.content));
   const prepareImages = async (node: JsonNode): Promise<void> => {
     if (
-      node.type === "image" &&
+      (node.type === "image" || node.type === "inlineImage") &&
       String(node.attrs?.src).startsWith("data:image/webp")
     ) {
       if (typeof document === "undefined")
