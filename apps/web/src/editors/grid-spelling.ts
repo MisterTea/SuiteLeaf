@@ -48,6 +48,113 @@ export function replaceWordAt(text: string, from: number, to: number, replacemen
   return text.slice(0, from) + replacement + text.slice(to);
 }
 
+export function sameMisspelling(left: string, right: string) {
+  return left.toLowerCase().replace(/’/g, "'") === right.toLowerCase().replace(/’/g, "'");
+}
+
+/** "Recieve" becomes "Receive"; a fully capital word stays capital. */
+export function applySuggestionCase(sample: string, replacement: string) {
+  if (!sample) return replacement;
+  if (sample === sample.toUpperCase()) return replacement.toUpperCase();
+  const head = sample.charAt(0);
+  const tail = sample.slice(1);
+  if (head === head.toUpperCase() && head !== head.toLowerCase() && tail === tail.toLowerCase())
+    return replacement.charAt(0).toUpperCase() + replacement.slice(1);
+  return replacement;
+}
+
+export type ChangeAllHit = { from: number; to: number; word: string };
+
+export type ChangeAllCell = {
+  key: string;
+  label: string;
+  text: string;
+  sheetId: string;
+  row: number;
+  column: number;
+  hits: ChangeAllHit[];
+};
+
+/** Every cell that contains this misspelling, one entry per cell. */
+export function changeAllCells(issues: readonly SheetIssue[], word: string): ChangeAllCell[] {
+  const grouped = new Map<string, ChangeAllCell>();
+  for (const issue of issues) {
+    if (!sameMisspelling(issue.word, word)) continue;
+    const key = `${issue.sheetId}:${issue.row}:${issue.column}`;
+    const hit = { from: issue.from, to: issue.to, word: issue.word };
+    const existing = grouped.get(key);
+    if (existing) existing.hits.push(hit);
+    else
+      grouped.set(key, {
+        key,
+        label: issue.label,
+        text: issue.text,
+        sheetId: issue.sheetId,
+        row: issue.row,
+        column: issue.column,
+        hits: [hit],
+      });
+  }
+  return [...grouped.values()];
+}
+
+/** Null when a hit no longer matches the cell, so a stale preview cannot rewrite it. */
+export function textAfterChangeAll(
+  text: string,
+  hits: readonly ChangeAllHit[],
+  replacement: string,
+) {
+  let next = text;
+  for (const hit of [...hits].sort((a, b) => b.from - a.from)) {
+    if (next.slice(hit.from, hit.to) !== hit.word) return null;
+    next = replaceWordAt(next, hit.from, hit.to, applySuggestionCase(hit.word, replacement));
+  }
+  return next;
+}
+
+export function changeAllValues(
+  cells: readonly ChangeAllCell[],
+  readText: (cell: ChangeAllCell) => string | null,
+  replacement: string,
+) {
+  const bySheet = new Map<string, Record<number, Record<number, string>>>();
+  for (const cell of cells) {
+    const text = readText(cell);
+    if (text == null) continue;
+    const next = textAfterChangeAll(text, cell.hits, replacement);
+    if (next == null || next === text) continue;
+    const matrix = bySheet.get(cell.sheetId) ?? {};
+    (matrix[cell.row] ??= {})[cell.column] = next;
+    bySheet.set(cell.sheetId, matrix);
+  }
+  return bySheet;
+}
+
+export type IgnoredCell = {
+  sheetId: string;
+  row: number;
+  column: number;
+  word: string;
+};
+
+export function cellIsIgnored(
+  cells: readonly IgnoredCell[],
+  issue: { sheetId: string; row: number; column: number; word: string },
+) {
+  return cells.some(
+    (cell) =>
+      cell.sheetId === issue.sheetId &&
+      cell.row === issue.row &&
+      cell.column === issue.column &&
+      sameMisspelling(cell.word, issue.word),
+  );
+}
+
+export function withoutIgnoredCells(issues: SheetIssue[], cells: readonly IgnoredCell[]) {
+  if (!cells.length) return issues;
+  return issues.filter((issue) => !cellIsIgnored(cells, issue));
+}
+
 export function suggestionsFor(word: string) {
   return spellingSuggestions(word);
 }
@@ -310,4 +417,53 @@ export function withIgnored(words: readonly string[], word: string) {
   if (!cleaned || words.some((item) => item.toLowerCase() === cleaned.toLowerCase()))
     return [...words];
   return [...words, cleaned];
+}
+
+const IGNORED_CELLS_KEY = "suiteleaf.spelling-ignored-cells";
+
+function isIgnoredCell(value: unknown): value is IgnoredCell {
+  if (!value || typeof value !== "object") return false;
+  const cell = value as IgnoredCell;
+  return (
+    typeof cell.sheetId === "string" &&
+    typeof cell.row === "number" &&
+    typeof cell.column === "number" &&
+    typeof cell.word === "string" &&
+    cell.word.trim().length > 0
+  );
+}
+
+/** A cell the user left on purpose. The word stays flagged everywhere else. */
+export function readIgnoredCells(fileId: string): IgnoredCell[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(IGNORED_CELLS_KEY) || "null") as
+      | Record<string, unknown>
+      | null;
+    const list = raw?.[fileId];
+    return Array.isArray(list) ? list.filter(isIgnoredCell) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function writeIgnoredCells(fileId: string, cells: IgnoredCell[]) {
+  try {
+    const raw = JSON.parse(localStorage.getItem(IGNORED_CELLS_KEY) || "{}") as Record<
+      string,
+      unknown
+    >;
+    const store = raw && typeof raw === "object" ? raw : {};
+    store[fileId] = cells;
+    localStorage.setItem(IGNORED_CELLS_KEY, JSON.stringify(store));
+    if (typeof window !== "undefined")
+      window.dispatchEvent(new Event(SPELLING_CHANGED_EVENT));
+  } catch {
+    /* private mode */
+  }
+}
+
+export function withIgnoredCell(cells: readonly IgnoredCell[], cell: IgnoredCell) {
+  const word = cell.word.trim();
+  if (!word || cellIsIgnored(cells, { ...cell, word })) return [...cells];
+  return [...cells, { ...cell, word }];
 }
