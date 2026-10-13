@@ -1,4 +1,5 @@
 @import "./excel-fonts.css";
+@import "./editors/slide-theme.css";
 
 :root {
   font-family:

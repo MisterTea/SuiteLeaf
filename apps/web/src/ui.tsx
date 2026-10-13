@@ -273,6 +273,11 @@ export type EditorActions = {
     toggleBold: () => void;
     toggleItalic: () => void;
     align: (alignment: "left" | "center" | "right") => void;
+    applyLayout: (
+      layout: "title" | "title-body" | "section" | "two-column" | "blank",
+    ) => void;
+    openTheme: () => void;
+    openTransition: () => void;
   };
 };
 export type SheetView = {

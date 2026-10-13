@@ -2317,6 +2317,55 @@ function Workspace() {
                   >
                     Move to end
                   </MenuItem>
+                  <SubMenu label="Apply layout">
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.slideActions?.applyLayout("title")
+                      }
+                    >
+                      Title slide
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.slideActions?.applyLayout("title-body")
+                      }
+                    >
+                      Title & body
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.slideActions?.applyLayout("two-column")
+                      }
+                    >
+                      Two columns
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.slideActions?.applyLayout("section")
+                      }
+                    >
+                      Section header
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.slideActions?.applyLayout("blank")
+                      }
+                    >
+                      Blank slide
+                    </MenuItem>
+                  </SubMenu>
+                  <MenuItem
+                    onSelect={() => actions.current?.slideActions?.openTheme()}
+                  >
+                    Change theme
+                  </MenuItem>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.slideActions?.openTransition()
+                    }
+                  >
+                    Transition
+                  </MenuItem>
                 </Menu>
                 <Menu label="Tools">
                   <MenuItem onSelect={() => {}}>Spelling</MenuItem>

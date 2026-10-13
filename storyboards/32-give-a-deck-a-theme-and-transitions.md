@@ -19,14 +19,14 @@ Dev is making a 10-slide pitch for the community centre's fundraiser. The slides
 
 1. **Open the deck.** Dev opens "Fundraiser pitch". The slides are white with Arial text, and two text boxes use Georgia.
 2. **Open themes.** Dev clicks **Theme** in the toolbar (also Slide › Change theme). A side panel shows theme cards, each a small title slide drawn with the theme's background, accent colour, heading font, and body font.
-3. **Preview and apply.** Hovering "Meadow" (deep green, white headings in Montserrat, body text in Source Sans) previews it on the current slide. Clicking applies it to every slide. Titles, body text, shapes, and the section slide all change, and the two Georgia text boxes switch to the theme's body font too.
+3. **Preview and apply.** Hovering "Meadow" (deep green, white headings in Montserrat, body text in Source Sans) previews it on the current slide. Moving away restores the slide. Clicking applies Meadow to every slide. Titles, body text, shapes, and the section slide all change, and the two Georgia text boxes switch to Source Sans too.
 4. **Customize the theme.** Under "Customize", Dev changes the accent colour to the centre's green (#2E7D32) with a colour picker. Every shape and accent on every slide follows.
 5. **Keep a deliberate exception.** On one slide Dev sets a quote in italic Georgia. A small "Overrides theme" marker appears in the Format panel with **Reset to theme**. Applying another theme later leaves this quote alone and restyles everything else.
 6. **New slides match.** Cmd/Ctrl+M adds a "Title & body" slide that already uses Meadow's colours and fonts. So do the layouts under Slide › Apply layout.
-7. **Add transitions.** Dev opens Slide › Transition. A panel offers None, Fade, Slide from right, and Push, with a duration slider. Dev picks Fade, 0.4 s, and clicks **Apply to all slides**. Each thumbnail gets a small transition icon.
+7. **Add transitions.** Dev opens Slide › Transition. A panel offers None, Fade, Slide from right, and Push, with All slides already chosen and the duration at 0.4 s. Clicking Fade applies it to every slide (Apply to all slides does the same thing when a range is selected). Each thumbnail gets a small transition icon.
 8. **Preview.** **Play** in the panel previews the fade on the current slide. The slideshow (Cmd/Ctrl+Enter) fades between every slide.
 9. **Remove them all.** Dev decides it's too much for one section, selects slides 4 to 6, and sets None. Those slides cut, and the others still fade.
-10. **Hand off.** Dev downloads the SuiteLeaf file. Opened on another computer, the theme, the exception, and the transitions are all there.
+10. **Hand off.** Dev downloads the SuiteLeaf file. Opening it in a browser that already has the deck offers Keep both; the copy still has Meadow, the italic Georgia quote, and the same fades.
 
 ## Google Workspace benchmark
 
@@ -55,11 +55,22 @@ Known pain points:
 - Every slide uses Meadow with the centre's green, except the deliberate quote.
 - New slides match without any extra work, and the slideshow fades except across slides 4 to 6.
 
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| 1. A theme is at most 2 clicks and restyles every slide | Met | Video 0:07 hover, 0:11 Theme then Meadow. Titles, body, the section slide, and the shape all change. |
+| 2. Free text boxes and shapes follow, except an explicit override | Met | Video 0:07 the Georgia note becomes Source Sans while hovering, and stays after the click. The quote set by hand does not. `tests/slide-theme.test.ts` |
+| 3. Accent, heading font, and body font edit in the theme panel, in one step | Met | Video ~0:14 types `#2E7D32`; the shape and accent field follow. Heading and body font dropdowns are in the same panel. `tests/slide-theme.test.ts` and `tests/browser/slide-theme.spec.ts` |
+| 4. "Overrides theme" and Reset to theme; the next theme leaves it alone | Met | Video ~0:16 the bar and Reset to theme. Ink restyles the line under the quote and leaves the quote in italic Georgia; Meadow comes back the same way. Reset is clicked in `tests/browser/slide-theme.spec.ts` |
+| 5. New slides, text boxes, and shapes use the theme | Met | Video 0:24 Cmd+M, Slide › Apply layout › Section header, then a rectangle in the centre's green. `tests/slide-theme.test.ts` |
+| 6. One transition on every slide in at most 3 clicks; None on a selection in at most 2 more | Met | Video ~0:30 Slide, Transition, Fade (All slides is already selected, duration 0.4 s). Shift-click slides 4–6, then None. |
+| 7. The slideshow plays the transition; reduced motion is instant | Met | The scene asserts a fade into slide 2 and a cut into slide 4, then a fade into slide 7. `transitionMs` in `tests/slide-theme.test.ts` and the reduced-motion half of `tests/browser/slide-theme.spec.ts` |
+| 8. Theme, overrides, and transitions survive save and reopen | Met | The scene reads the downloaded `.slslides` file, then Keep both opens that copy. Video ~0:40. |
+
 ## Gaps and notes
 
-- **"Theme" only changes the background.** The toolbar's Theme menu offers 4 background colours ("Simple Light", "Streamline", "Focus (Dark)", "Warm Sand"). `applyBackground` sets every slide's background and flips text between light and dark for contrast. There are no theme fonts, accent colours, previews, or customization, and the deck doesn't record which theme it uses.
-- **New slides ignore the theme.** `newSlide()` builds slides from fixed layout templates with white backgrounds and dark text (section slides use a fixed navy), so after a dark theme the next slide comes out white.
-- Each text box stores its own `fontFamily` (default Arial), and nothing marks an element as following the theme or overriding it.
-- **No transitions.** There's no transition field on slides and no transition panel. The slideshow cuts between slides.
-- Layouts exist (Title slide, Title & body, Two columns, Section header, Blank) and are applied from the toolbar's Layout menu. There's no Slide › Apply layout menu item and no way to edit a layout.
-- Slides exports TXT and HTML only, so a theme can't reach PowerPoint yet. PPTX is import-only (`packages/core/src/pptx.ts`).
+- Themes and transitions travel in the native `.slslides` file. PowerPoint export still does not exist; PPTX remains import-only (`packages/core/src/pptx.ts`).
+- Transitions are between slides. Objects on a slide do not animate on their own.
+- There is no separate slide-master editor. The theme panel is the control for background, fonts, and accent.
+- Opening a downloaded file in the browser that already has that deck asks whether to replace it or keep both, instead of behaving like a second computer with an empty library.

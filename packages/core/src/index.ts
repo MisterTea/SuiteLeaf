@@ -126,11 +126,18 @@ export const slideElementSchema = z.object({
   fill: z.string().optional(),
   stroke: z.string().optional(),
   strokeWidth: z.number().optional(),
+  /** Set when someone chose this element's font or colour by hand. */
+  themeOverride: z.boolean().optional(),
   src: z.string().optional(),
   alt: z.string().optional(),
   rows: z.array(z.array(z.string())).optional(),
 });
 export type SlideElement = z.infer<typeof slideElementSchema>;
+export const slideTransitionSchema = z.object({
+  type: z.enum(["none", "fade", "slide", "push"]),
+  duration: z.number().min(0).max(10),
+});
+export type SlideTransition = z.infer<typeof slideTransitionSchema>;
 export const slideSchema = z.object({
   id: z.string(),
   title: z.string().optional(),
@@ -145,14 +152,27 @@ export const slideSchema = z.object({
     .optional(),
   elements: z.array(slideElementSchema),
   notes: z.string().optional(),
+  transition: slideTransitionSchema.optional(),
 });
 export type Slide = z.infer<typeof slideSchema>;
+export const slideThemeSchema = z.object({
+  id: z.string().min(1).max(80),
+  name: z.string().min(1).max(80),
+  background: z.string().min(1).max(40),
+  headingColor: z.string().min(1).max(40),
+  bodyColor: z.string().min(1).max(40),
+  accent: z.string().min(1).max(40),
+  headingFont: z.string().min(1).max(80),
+  bodyFont: z.string().min(1).max(80),
+});
+export type SlideTheme = z.infer<typeof slideThemeSchema>;
 export const presentationSchema = z.object({
   id: z.string(),
   width: z.number().positive(),
   height: z.number().positive(),
   slideOrder: z.array(z.string()),
   slides: z.record(z.string(), slideSchema),
+  theme: slideThemeSchema.optional(),
 });
 export type Presentation = z.infer<typeof presentationSchema>;
 type NativeCell = {
