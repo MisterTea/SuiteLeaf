@@ -73,20 +73,53 @@ describe("page preview ends", () => {
     expect(pageNumberFormatChips(4, 3).fraction).toBe("4 / 6");
   });
 
-  it("keeps the odd and even sample on the first three faces of a long file", () => {
+  it("previews the last even page and the last odd page, not the first three faces", () => {
     const settings = pages({
-      pageNumberFormat: "fraction",
+      pageNumberFormat: "page",
       pageNumberStart: 1,
-      differentOddEven: true,
+      pageNumberPosition: "bottom-right",
       pageNumberPositionSet: false,
+      differentOddEven: true,
     });
-    expect(previewPlan(4, true).slots).toEqual([
+    expect(previewPlan(5, true)).toEqual({
+      slots: [
+        { kind: "page", index: 3, role: "last-even" },
+        { kind: "page", index: 4, role: "last-odd" },
+      ],
+      total: 5,
+    });
+    expect(previewSheetNumbers(settings, 5)).toEqual(["Page 4", "Page 5"]);
+    expect(pageFace(settings, 3, 5)).toMatchObject({
+      numberSide: "left",
+      pageNumber: "Page 4",
+    });
+    expect(pageFace(settings, 4, 5)).toMatchObject({
+      numberSide: "right",
+      pageNumber: "Page 5",
+    });
+    expect(previewNumberCorner(pageFace(settings, 3, 5).numberSide)).toBe(
+      "bottom-left",
+    );
+    expect(previewNumberCorner(pageFace(settings, 4, 5).numberSide)).toBe(
+      "bottom-right",
+    );
+    const off = { ...settings, differentOddEven: false };
+    expect(previewPlan(5, false).slots).toEqual([
       { kind: "page", index: 0 },
-      { kind: "page", index: 1 },
-      { kind: "page", index: 2 },
+      { kind: "skip", firstIndex: 1, lastIndex: 3 },
+      { kind: "page", index: 4 },
     ]);
-    expect(previewPlan(4, true).total).toBe(4);
-    expect(previewSheetNumbers(settings, 4)).toEqual(["1 / 4", "2 / 4", "3 / 4"]);
+    expect(previewSheetNumbers(off, 5)).toEqual(["Page 1", "Page 5"]);
+    expect(previewNumberCorner(pageFace(off, 0, 5).numberSide)).toBe("bottom-right");
+    expect(previewNumberCorner(pageFace(off, 4, 5).numberSide)).toBe("bottom-right");
+    expect(previewSkipLabel(off, 1, 3, 5)).toBe("Pages 2\u20134 skipped");
+    expect(previewPlan(4, true).slots).toEqual([
+      { kind: "page", index: 2, role: "last-odd" },
+      { kind: "page", index: 3, role: "last-even" },
+    ]);
+    expect(previewPlan(1, true).slots).toEqual([
+      { kind: "page", index: 0, role: "last-odd" },
+    ]);
   });
 
   it("draws iv and viii in the selected corner, and a two-page file has two sheets", () => {

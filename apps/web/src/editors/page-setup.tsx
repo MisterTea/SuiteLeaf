@@ -16,6 +16,7 @@ import {
   previewNumberCorner,
   previewPlan,
   previewSkipLabel,
+  type PreviewPageRole,
   type PreviewSlot,
 } from "./page-preview";
 
@@ -51,8 +52,11 @@ function sheetLabel(
   shifted: boolean,
   ends: boolean,
   total: number,
+  role?: "last-even" | "last-odd",
 ) {
   const name = `${shifted ? "File page" : "Page"} ${index + 1}`;
+  if (role === "last-even") return `${name} · last even`;
+  if (role === "last-odd") return `${name} · last odd`;
   if (ends && index === 0) return `${name} · first`;
   if (ends && index === total - 1) return `${name} · last`;
   if (index === 0) return name;
@@ -76,18 +80,24 @@ function PreviewSheet({
   index,
   total,
   ends,
+  role,
 }: {
   draft: PageSettings;
   index: number;
   total: number;
   ends: boolean;
+  role?: PreviewPageRole;
 }) {
   const face = pageFace(draft, index, total);
   const corner = previewNumberCorner(face.numberSide);
   const shifted = draft.coverHasNoNumber || draft.pageNumberStart !== 1;
   const phrase = numberPlacePhrase(face);
   return (
-    <div className="page-setup-preview-page" data-preview-index={index}>
+    <div
+      className="page-setup-preview-page"
+      data-preview-index={index}
+      data-preview-role={role}
+    >
       <div className="page-setup-preview-sheet" data-number-corner={corner}>
         {face.header ? (
           <span className={`page-setup-preview-header align-${face.headerAlign}`}>
@@ -103,7 +113,7 @@ function PreviewSheet({
         )}
       </div>
       <span className="page-setup-preview-label">
-        {sheetLabel(index, shifted, ends, total)}
+        {sheetLabel(index, shifted, ends, total, role)}
       </span>
       {face.numberSide === "none" ? null : (
         <span className="page-setup-preview-place">{phrase}</span>
@@ -141,9 +151,16 @@ function Preview({
 }) {
   const plan = previewPlan(pageCount, draft.differentOddEven);
   const ends = plan.slots.some((slot) => slot.kind === "skip");
+  const parity = draft.differentOddEven;
   return (
     <div
-      className={ends ? "page-setup-preview is-ends" : "page-setup-preview"}
+      className={
+        ends
+          ? "page-setup-preview is-ends"
+          : parity
+            ? "page-setup-preview is-parity"
+            : "page-setup-preview"
+      }
       role="group"
       aria-label="Page preview"
       style={{ "--preview-columns": plan.slots.length } as CSSProperties}
@@ -158,6 +175,7 @@ function Preview({
             index={slot.index}
             total={plan.total}
             ends={ends}
+            role={slot.role}
           />
         ),
       )}

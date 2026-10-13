@@ -6,27 +6,45 @@ import {
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
 
+export type PreviewPageRole = "last-even" | "last-odd";
+
 export type PreviewSlot =
-  | { kind: "page"; index: number }
+  | { kind: "page"; index: number; role?: PreviewPageRole }
   | { kind: "skip"; firstIndex: number; lastIndex: number };
 
 /**
+ * The last even page and the last odd page, earlier page first.
+ * A five-page file puts page 4 on the left and page 5 on the right.
+ * A one-page file has only the odd page.
+ */
+function lastParitySlots(count: number): PreviewSlot[] {
+  let lastEven = -1;
+  let lastOdd = -1;
+  for (let index = 0; index < count; index += 1) {
+    if ((index + 1) % 2 === 0) lastEven = index;
+    else lastOdd = index;
+  }
+  const slots: Array<Extract<PreviewSlot, { kind: "page" }>> = [];
+  if (lastEven >= 0)
+    slots.push({ kind: "page", index: lastEven, role: "last-even" });
+  if (lastOdd >= 0) slots.push({ kind: "page", index: lastOdd, role: "last-odd" });
+  slots.sort((a, b) => a.index - b.index);
+  return slots;
+}
+
+/**
  * Which miniature sheets Page setup draws.
- * Odd and even pages still sample the first three faces, so a left number
- * and a right number both appear. Every other file shows each page it has,
- * up to three. A longer file shows the first sheet and the last sheet.
+ * Different odd and even pages shows the last even page and the last odd
+ * page, so the outside edges of a long file are visible before Apply.
+ * Every other file shows each page it has, up to three. A longer file shows
+ * the first sheet and the last sheet.
  */
 export function previewPlan(
   pageCount: number,
   differentOddEven: boolean,
 ): { slots: PreviewSlot[]; total: number } {
   const count = Math.max(1, Math.floor(pageCount) || 1);
-  if (differentOddEven) {
-    return {
-      slots: [0, 1, 2].map((index) => ({ kind: "page", index })),
-      total: Math.max(count, 3),
-    };
-  }
+  if (differentOddEven) return { slots: lastParitySlots(count), total: count };
   if (count <= 3) {
     return {
       slots: Array.from({ length: count }, (_, index) => ({
