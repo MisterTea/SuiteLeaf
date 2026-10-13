@@ -98,6 +98,13 @@ export const test = base.extend<{ page: Page }>({
       await page.reload();
       page.context().setDefaultTimeout(15000);
       close = async () => {
+        // A failed check can end the test within the autosave delay. The hidden window can't answer
+        // "Changes are still being saved", so let the save finish, then close without asking.
+        const settled = await page
+          .waitForFunction(() => !/Unsaved|Saving/.test(document.querySelector(".save-status")?.textContent ?? ""), null, { timeout: 10000 })
+          .then(() => true, () => false);
+        if (!settled)
+          await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().forEach((w) => w.destroy())).catch(() => {});
         await app.close();
         rmSync(data, { recursive: true, force: true });
       };
@@ -120,7 +127,7 @@ export const test = base.extend<{ page: Page }>({
       const saved = JSON.parse(readFileSync(metricsPath(info), "utf8"));
       writeFileSync(
         metricsPath(info),
-        JSON.stringify({ ...saved, status: info.status, error: info.error?.message?.split("\n")[0] }, null, 2),
+        JSON.stringify({ ...saved, status: info.status, error: failedCheck(info.error?.message) }, null, 2),
       );
     }
     const video = page.video();
@@ -145,6 +152,14 @@ export const test = base.extend<{ page: Page }>({
 export async function openApp(page: Page) {
   if (electronMode) await page.evaluate(() => (location.hash = "#/"));
   else await page.goto("/");
+}
+
+/** The check that failed, without the transcript that `describeRun` puts in front of it. */
+function failedCheck(message: string | undefined) {
+  if (!message) return undefined;
+  const lines = message.replace(/\u001b\[[\d;]*m/g, "").split("\n");
+  const at = lines.findIndex((l) => /^\s*(Error: )?(expect\(|Expected|Timeout|Locator:|Test timeout|Tearing down)/.test(l));
+  return (at < 0 ? lines[0] : lines.slice(at, at + 12).join("\n")).slice(0, 800);
 }
 
 const agentRuns = new Map<string, unknown[]>();

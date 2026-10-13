@@ -60,7 +60,7 @@ for (const a of apps)
 
 console.log(`\n### Agent behaviour per backend\n`);
 console.log(
-  "| Run | Storyboard runs | Passed | Requests | Tool calls | Tool errors | Unreadable calls | Unknown tools | Repeated calls blocked | Empty replies retried | Output tok/s | Prompt tok/s | Median time per request |",
+  "| Run | Storyboard runs | Passed | Requests | Tool calls | Tool errors | Unreadable calls | Unknown tools | Repeated calls blocked | Empty replies retried | Output tok/s | Prompt tok/s | Median time per user prompt |",
 );
 console.log("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
 for (const tag of tags) {
@@ -79,4 +79,6 @@ console.log(`\n### Failed runs\n`);
 for (const tag of tags)
   for (const [title, runs] of Object.entries(byTag[tag] ?? {}))
     for (const r of runs.filter((x) => x.status !== "passed"))
-      console.log(`- **${tag} · ${title}**: ${(r.error ?? r.status ?? "no outcome").replace(/\s+/g, " ").slice(0, 300)}`);
+      console.log(
+        `- **${tag} · ${title}**: ${(r.error ?? r.status ?? "no outcome").replace(/\s+/g, " ").slice(0, 300)} Tools: ${(r.runs ?? []).map((x) => (x.metrics?.tools ?? []).join(", ") || "none").join(" / ")}.`,
+      );
