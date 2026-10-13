@@ -149,3 +149,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 117 | [Show the starting number on the format chips](117-show-the-start-on-the-chips.md) | single-node | Docs |
 | 119 | [Show the starting number on the roman chip](119-show-the-start-in-roman.md) | single-node | Docs |
 | 122 | [List only the roman pages you have](122-list-the-roman-pages-you-have.md) | single-node | Docs |
+| 124 | [Preview the first and last roman pages](124-preview-the-roman-ends.md) | single-node | Docs |

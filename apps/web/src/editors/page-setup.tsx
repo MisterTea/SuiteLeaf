@@ -12,6 +12,11 @@ import {
 import "./page-setup.css";
 import { DocWatermark } from "./doc-watermark";
 import { acceptPageNumberStart } from "./page-number-live";
+import {
+  previewPlan,
+  previewSkipLabel,
+  type PreviewSlot,
+} from "./page-preview";
 
 function TextField({
   span,
@@ -40,6 +45,77 @@ function TextField({
   );
 }
 
+function sheetLabel(
+  index: number,
+  shifted: boolean,
+  ends: boolean,
+  total: number,
+) {
+  const name = `${shifted ? "File page" : "Page"} ${index + 1}`;
+  if (ends && index === 0) return `${name} · first`;
+  if (ends && index === total - 1) return `${name} · last`;
+  if (index === 0) return name;
+  return `${name}${index % 2 === 1 ? " · even" : " · odd"}`;
+}
+
+function PreviewSheet({
+  draft,
+  index,
+  total,
+  ends,
+}: {
+  draft: PageSettings;
+  index: number;
+  total: number;
+  ends: boolean;
+}) {
+  const face = pageFace(draft, index, total);
+  const shifted = draft.coverHasNoNumber || draft.pageNumberStart !== 1;
+  const where =
+    face.numberSide === "none"
+      ? "No number"
+      : face.numberSide === "left"
+        ? `${face.pageNumber} on the left`
+        : face.numberSide === "center"
+          ? `${face.pageNumber} in the center`
+          : face.numberSide === "top-right"
+            ? `${face.pageNumber} at the top right`
+            : `${face.pageNumber} on the right`;
+  return (
+    <div className="page-setup-preview-page" data-preview-index={index}>
+      <span className="page-setup-preview-label">
+        {sheetLabel(index, shifted, ends, total)}
+      </span>
+      <span className={`page-setup-preview-header align-${face.headerAlign}`}>
+        {face.header || "No header"}
+      </span>
+      <span className={`page-setup-preview-number side-${face.numberSide}`}>
+        {where}
+      </span>
+    </div>
+  );
+}
+
+function PreviewSkip({
+  draft,
+  slot,
+  total,
+}: {
+  draft: PageSettings;
+  slot: Extract<PreviewSlot, { kind: "skip" }>;
+  total: number;
+}) {
+  const label = previewSkipLabel(draft, slot.firstIndex, slot.lastIndex, total);
+  return (
+    <div className="page-setup-preview-skip">
+      <span className="page-setup-preview-skip-mark" aria-hidden="true">
+        …
+      </span>
+      <span className="page-setup-preview-skip-label">{label}</span>
+    </div>
+  );
+}
+
 function Preview({
   draft,
   pageCount,
@@ -47,43 +123,28 @@ function Preview({
   draft: PageSettings;
   pageCount: number;
 }) {
-  const count = draft.differentOddEven ? 3 : Math.min(3, Math.max(pageCount, 1));
-  const total = Math.max(pageCount, count);
+  const plan = previewPlan(pageCount, draft.differentOddEven);
+  const ends = plan.slots.some((slot) => slot.kind === "skip");
   return (
     <div
-      className="page-setup-preview"
+      className={ends ? "page-setup-preview is-ends" : "page-setup-preview"}
       role="group"
       aria-label="Page preview"
-      style={{ "--preview-columns": count } as CSSProperties}
+      style={{ "--preview-columns": plan.slots.length } as CSSProperties}
     >
-      {Array.from({ length: count }, (_, index) => {
-        const face = pageFace(draft, index, total);
-        const shifted = draft.coverHasNoNumber || draft.pageNumberStart !== 1;
-        const where =
-          face.numberSide === "none"
-            ? "No number"
-            : face.numberSide === "left"
-              ? `${face.pageNumber} on the left`
-              : face.numberSide === "center"
-                ? `${face.pageNumber} in the center`
-                : face.numberSide === "top-right"
-                  ? `${face.pageNumber} at the top right`
-                  : `${face.pageNumber} on the right`;
-        return (
-          <div key={index} className="page-setup-preview-page">
-            <span className="page-setup-preview-label">
-              {shifted ? "File page" : "Page"} {index + 1}
-              {index === 0 ? "" : index % 2 === 1 ? " · even" : " · odd"}
-            </span>
-            <span className={`page-setup-preview-header align-${face.headerAlign}`}>
-              {face.header || "No header"}
-            </span>
-            <span className={`page-setup-preview-number side-${face.numberSide}`}>
-              {where}
-            </span>
-          </div>
-        );
-      })}
+      {plan.slots.map((slot) =>
+        slot.kind === "skip" ? (
+          <PreviewSkip key="skip" draft={draft} slot={slot} total={plan.total} />
+        ) : (
+          <PreviewSheet
+            key={slot.index}
+            draft={draft}
+            index={slot.index}
+            total={plan.total}
+            ends={ends}
+          />
+        ),
+      )}
     </div>
   );
 }
