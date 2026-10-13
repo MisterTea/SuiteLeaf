@@ -2477,7 +2477,14 @@ function Workspace() {
                   </MenuItem>
                 </Menu>
                 <Menu label="Tools">
-                  <MenuItem onSelect={() => {}}>Spelling</MenuItem>
+                  <MenuItem
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.sheetActions?.openSpelling?.()
+                    }
+                  >
+                    Spelling
+                  </MenuItem>
                 </Menu>
                 <EditorHelp />
               </>
@@ -2732,7 +2739,14 @@ function Workspace() {
                   </MenuItem>
                 </Menu>
                 <Menu label="Tools">
-                  <MenuItem onSelect={() => {}}>Spelling</MenuItem>
+                  <MenuItem
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.slideActions?.openSpelling?.()
+                    }
+                  >
+                    Spelling
+                  </MenuItem>
                 </Menu>
                 <EditorHelp />
               </>
