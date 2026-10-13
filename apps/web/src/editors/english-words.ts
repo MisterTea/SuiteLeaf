@@ -1546,6 +1546,7 @@ allows
 rest
 protein
 plant
+compost
 reported
 hit
 transportation

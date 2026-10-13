@@ -2,6 +2,8 @@ import type { JsonNode } from "@suiteleaf/core";
 const newline = "\r\n";
 function text(node: JsonNode): string {
   if (node.type === "text") return node.text ?? "";
+  if (node.type === "equation") return String(node.attrs?.plain ?? "");
+  if (node.type === "tab") return "\t";
   if (node.type === "hardBreak") return newline;
   if (node.type === "image") return "";
   if (node.type === "table") {
@@ -27,6 +29,7 @@ function text(node: JsonNode): string {
     "orderedList",
     "listItem",
     "blockquote",
+    "columnLayout",
     "tableCell",
     "tableHeader",
   ].includes(node.type);

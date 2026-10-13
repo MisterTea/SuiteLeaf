@@ -5,6 +5,7 @@ import {
   formatShortcut,
   isUnimplemented,
   searchCommands,
+  synonymsFor,
   type CommandView,
 } from "../apps/web/src/commands";
 
@@ -87,6 +88,14 @@ describe("command search", () => {
     expect(searchCommands(commands, "page numbers")[0].label).toBe("Page setup…");
   });
 
+  it("finds page setup from watermark", () => {
+    const [top] = searchCommands(
+      [{ ...pageSetup, synonyms: synonymsFor("Page setup…") }],
+      "watermark",
+    );
+    expect(top.label).toBe("Page setup…");
+  });
+
   it("ranks freeze 1 row ahead of the other freeze commands", () => {
     expect(searchCommands(commands, "freeze")[0]).toMatchObject({
       label: "1 row",
@@ -162,6 +171,8 @@ describe("shortcut labels", () => {
     expect(appHandlesShortcut("Cmd+B", "doc", false)).toBe(false);
     expect(appHandlesShortcut("Cmd+Shift+H", "doc", false)).toBe(true);
     expect(appHandlesShortcut("Cmd+D", "slide", false)).toBe(true);
+    expect(appHandlesShortcut("Cmd+K", "sheet", false)).toBe(true);
+    expect(appHandlesShortcut("Cmd+K", "sheet", true)).toBe(false);
     expect(appHandlesShortcut("Cmd+D", "slide", true)).toBe(false);
   });
 

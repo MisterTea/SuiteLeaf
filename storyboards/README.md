@@ -99,7 +99,7 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 41 | [A viewer cannot edit a spreadsheet or a presentation](41-view-only-sheets-and-slides.md) | cluster | Sheets, Slides |
 | 42 | [Hear that a file was shared, and keep a copy](42-you-were-shared-a-file.md) | cluster | Files |
 | 43 | [See who last edited a file](43-who-last-edited.md) | cluster | Files, Docs |
-| 44 | [Compare a spreadsheet or a slide version in color](44-compare-sheet-and-slide-versions.md) | single-node | Sheets, Slides |
+| 44 | [Compare a spreadsheet or a slide version in color](44-compare-sheet-and-slide-versions.md) | cluster | Sheets, Slides |
 | 45 | [Check grammar while you write](45-check-grammar.md) | single-node | Docs |
 | 46 | [Bold one word in a slide](46-format-one-word-on-a-slide.md) | single-node | Slides |
 | 47 | [Save a slide theme and use it again](47-save-a-slide-theme.md) | single-node | Slides |
@@ -119,16 +119,25 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 61 | [Fade in on click](61-fade-in-on-click.md) | single-node | Slides |
 | 61 | [A different first page](61-different-first-page.md) | single-node | Docs |
 | 62 | [Odd and even pages](62-odd-and-even-pages.md) | single-node | Docs |
+| 63 | [Right-click a misspelling](63-right-click-a-misspelling.md) | single-node | Sheets |
 | 63 | [Open a letterhead from Word](63-open-a-letterhead-from-word.md) | single-node | Docs |
+| 64 | [Change every copy of a typo](64-change-every-copy-of-a-typo.md) | single-node | Sheets |
 | 64 | [Edit the header on the page](64-edit-the-header-on-the-page.md) | single-node | Docs |
 | 65 | [Choose a page number](65-choose-a-page-number.md) | single-node | Docs |
 | 66 | [Leave room for the binding](66-leave-room-for-the-binding.md) | single-node | Docs |
 | 67 | [Set each margin](67-set-each-margin.md) | single-node | Docs |
 | 66 | [Describe a photo](66-describe-a-photo.md) | single-node | Docs |
 | 68 | [Space the lines](68-space-the-lines.md) | single-node | Docs |
+| 71 | [Group columns](71-group-columns.md) | single-node | Sheets |
 | 72 | [Mark a draft](72-mark-a-draft.md) | single-node | Docs |
 | 74 | [Two columns for the news](74-two-columns-for-the-news.md) | single-node | Docs |
+| 75 | [Start numbering at](75-start-numbering-at.md) | single-node | Docs |
+| 77 | [Number the front in roman](77-number-the-front-in-roman.md) | single-node | Docs |
+| 78 | [Keep the Word file's margins](78-keep-the-word-margins.md) | single-node | Docs |
+| 80 | [Send an outline to Excel](80-send-an-outline-to-excel.md) | single-node | Sheets |
+| 82 | [Use a two-inch margin](82-use-a-two-inch-margin.md) | single-node | Docs |
 | 83 | [Line up the times](83-line-up-the-times.md) | single-node | Docs |
+| 84 | [Set how far the header sits from the edge](84-header-from-the-edge.md) | single-node | Docs |
 | 86 | [Keep the heading with the list](86-keep-the-heading-with-the-list.md) | single-node | Docs |
 | 89 | [Don't leave one line behind](89-dont-leave-one-line-behind.md) | single-node | Docs |
 | 92 | [Keep the note on one page](92-keep-the-note-on-one-page.md) | single-node | Docs |

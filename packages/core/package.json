@@ -9,7 +9,11 @@
     "./doc-comments": "./src/doc-comments.ts",
     "./xlsx-export": "./src/xlsx-export.ts",
     "./document-layout": "./src/document-layout.ts",
-    "./suggestions": "./src/suggestions.ts"
+    "./suggestions": "./src/suggestions.ts",
+    "./citations": "./src/citations.ts",
+    "./equations": "./src/equations.ts",
+    "./image-crop": "./src/image-crop.ts",
+    "./line-spacing": "./src/line-spacing.ts"
   },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",

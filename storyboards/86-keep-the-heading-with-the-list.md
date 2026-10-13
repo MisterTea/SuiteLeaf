@@ -13,11 +13,11 @@ Nia’s newsletter has a heading, “This week”, at the bottom of page 1 and t
 
 ## Scenes
 
-1. **The split.** Nia opens “Garden club news”. Enough text fills page 1 so “This week” sits on the last line. The three items start on page 2.
-2. **Keep them together.** She puts the caret in “This week” and turns on Keep with next. No second dialog.
-3. **The page.** “This week” moves to page 2, above the three items. Page 1 no longer ends with a stranded heading.
-4. **Off.** She turns Keep with next off. “This week” returns to the bottom of page 1.
-5. **Save and Word.** She turns it on again, reopens the file, and the heading is still with the items. The exported .docx marks that heading to keep with the next paragraph.
+1. **The split.** Nia opens “Garden club news”. “This week” is the last line of page 1. Seed swap, garden class, and work day start on page 2.
+2. **Keep them together.** She clicks “This week”. A Keep with next control appears on that heading and reads Off. One click turns it On. No second dialog.
+3. **The page.** “This week” moves to page 2, above the three items. A blue bar marks the heading. Page 1 now ends on the line before it.
+4. **Off.** She turns Keep with next off. “This week” returns to the bottom of page 1 and the items stay on page 2.
+5. **Save and Word.** She turns it on again. The status says saved. She reopens the file: the heading is still with the items, and the control still says On. File, Export DOCX writes keep-with-next on that heading only.
 
 ## Google Workspace benchmark
 
@@ -36,8 +36,19 @@ In Google Docs the path is Format, Line & paragraph spacing, Keep with next ([Do
 
 “This week” and the three items start together on page 2. Turning the control off separates them again. Word keeps the heading with what follows.
 
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| One control on the paragraph with the caret. No second dialog. | Met | Video 0:08, control beside “This week”. `tests/browser/keep-next.spec.ts` |
+| The control shows that it is on. | Met | Video 0:11, blue badge reads On. Same test, `aria-pressed` |
+| On moves a last-line heading onto the next page with the following paragraph. | Met | Video 0:11, “This week” joins the three items on page 2 |
+| Off puts the heading back. | Met | Video 0:14, heading on page 1, items on page 2 |
+| The choice survives save and reopen. | Met | Video 0:17 saved, 0:21 reopened with the badge still On |
+| Exported .docx sets keep-with-next on that heading only. | Met | Video 0:23 Export DOCX. `tests/doc-keep-next.test.ts` and the browser test check `w:keepNext` |
+
 ## Gaps and notes
 
-- Pagination does not keep a paragraph with the next one.
-- Keep lines together and widow/orphan control are out of scope.
-- Do not change columns, margins, or line spacing.
+- Keep lines together and widow/orphan control are still out of scope.
+- Columns, margins, line spacing, tab stops, and headers are unchanged.
+- A Word file’s existing keep-with-next is not read on import.

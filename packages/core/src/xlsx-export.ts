@@ -1,8 +1,10 @@
 import * as XLSX from "xlsx";
 import JSZip from "jszip";
 import { addXlsxDrawings } from "./xlsx-drawings";
+import { applyWorksheetOutline } from "./excel-outline";
 import { excelErrorStyle } from "./excel-validation";
 import { columnName, type SheetFile } from "./index";
+import { cellHyperlink } from "./sheet-links";
 
 type Data = Record<string, any>;
 const esc = (v: unknown) =>
@@ -215,8 +217,9 @@ export async function exportXlsx(
           r = Number(row),
           c = Number(col),
           ref = XLSX.utils.encode_cell({ r, c });
+        const href = cellHyperlink(cell);
         const stored =
-          cell.v ?? cell.p?.body?.dataStream?.replace(/\r?\n$/, "") ?? "";
+          cell.v ?? cell.p?.body?.dataStream?.replace(/[\r\n]+$/g, "") ?? "";
         const value =
           cell.t === 3
             ? stored === true ||
@@ -250,6 +253,7 @@ export async function exportXlsx(
               ? String(value)
               : value,
           ...(cell.f ? { f: String(cell.f).replace(/^=/, "") } : {}),
+          ...(href ? { l: { Target: href } } : {}),
         };
         const style = {
           ...resolve(s.defaultStyle),
@@ -458,7 +462,7 @@ export async function exportXlsx(
         `<sheetProtection sheet="1" objects="1" scenarios="1"/>${extra}`,
       );
     else text = text.replace(after, `${after}${extra}`);
-    zip.file(path, text);
+    zip.file(path, applyWorksheetOutline(text, s.custom));
   }
   const formats = styles
     .map(

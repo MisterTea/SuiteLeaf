@@ -164,6 +164,95 @@
   color: var(--text-primary);
   padding: 0 2px 2px;
 }
+.theme-card-hex {
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-secondary);
+  padding: 0 2px;
+}
+.theme-library {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+.theme-library h3 {
+  margin: 8px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.theme-library .theme-grid {
+  grid-template-columns: 1fr;
+}
+.theme-library .theme-card {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  scroll-margin-bottom: 12px;
+}
+.theme-library .theme-card-slide {
+  width: 92px;
+  height: 52px;
+  flex: none;
+}
+.theme-card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.theme-library .theme-card-name,
+.theme-library .theme-card-hex {
+  padding: 0;
+}
+.theme-save-open {
+  width: 100%;
+  border: 1px solid #1a73e8;
+  background: #e8f0fe;
+  color: #041e49;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.theme-save-open:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.theme-save-open:focus-visible,
+.theme-save-actions button:focus-visible {
+  outline: 2px solid #1a73e8;
+  outline-offset: 1px;
+}
+.theme-save-actions {
+  display: flex;
+  gap: 8px;
+}
+.theme-save-actions button {
+  flex: 1;
+  min-height: 36px;
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.theme-save-actions .primary {
+  background: #1a73e8;
+  border-color: #1a73e8;
+  color: #fff;
+}
+.theme-save-actions .primary:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.theme-library-error {
+  margin: 0;
+  color: #c5221f;
+  font-size: 12px;
+}
 .theme-customize {
   display: flex;
   flex-direction: column;
@@ -311,14 +400,21 @@
 }
 
 @media (max-width: 700px) {
-  .slides-main { position: relative; }
+  .slides-main {
+    flex-wrap: wrap;
+    overflow: auto;
+  }
+  .slides-canvas-stage {
+    flex: 1 1 calc(100% - 80px);
+    min-width: 0;
+  }
   .slide-side-panel {
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: min(292px, 100%);
-    z-index: 4;
-    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.16);
+    position: static;
+    flex: 1 1 100%;
+    width: auto;
+    max-height: 42vh;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    box-shadow: none;
   }
 }

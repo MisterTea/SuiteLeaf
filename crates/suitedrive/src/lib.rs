@@ -27,7 +27,7 @@ use tokio::sync::Notify;
 pub use blobs::{BlobStore, CHUNK_SIZE, Hash, Manifest};
 
 /// Bump when the drive tables change.
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 const MAX_BLOB_RESPONSE: usize = 24 * 1024 * 1024;
 const MAX_DEPTH: usize = 64;
 
@@ -62,6 +62,7 @@ pub fn tables() -> Vec<TableDef> {
             .column("principalType", Text)
             .column("principalId", Text)
             .column("role", Text)
+            .column("expiresAt", Text)
             .index("itemId")
             .index("principalId"),
         TableDef::new("drive_comment", "id")
@@ -69,6 +70,17 @@ pub fn tables() -> Vec<TableDef> {
             .column("authorId", Text)
             .column("body", Text)
             .column("createdAt", Text)
+            .index("itemId"),
+        // An in-app notice that a file was shared. Dismissal lives here because
+        // drive_acl has no sharer, time, or seen flag, and there is no mail step.
+        TableDef::new("drive_notice", "id")
+            .column("itemId", Text)
+            .column("recipientId", Text)
+            .column("sharerId", Text)
+            .column("role", Text)
+            .column("createdAt", Text)
+            .column("dismissedAt", Text)
+            .index("recipientId")
             .index("itemId"),
     ]
 }
@@ -125,6 +137,12 @@ pub struct Item {
     pub content_hash: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    /// Who wrote the head version, and when. Absent for folders and for files
+    /// that have never been saved. This is the last editor, not the owner.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_author_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_edited_at: Option<String>,
     pub trashed: bool,
     pub role: Option<Role>,
     /// Whether this node holds every blob of the head version.
@@ -150,6 +168,10 @@ pub struct AclEntry {
     pub principal_type: String,
     pub principal_id: String,
     pub role: Role,
+    /// When this grant stops working, as UTC `YYYY-MM-DDTHH:MM:SS.mmmZ`.
+    /// Absent means it lasts until someone removes it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<String>,
 }
 
 /// A folder whose sharing also applies to a file inside it.
@@ -169,6 +191,13 @@ pub struct AccessGrant {
     pub principal_id: String,
     pub role: Role,
     pub inherited_from: Option<InheritedFrom>,
+    /// When a direct or inherited grant stops working.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<String>,
+    /// The moment has passed. The person can no longer open the file, but the
+    /// owner still sees the row so they can remove it.
+    #[serde(default)]
+    pub expired: bool,
 }
 
 /// Who can open an item, and the folder it lives in.
@@ -188,6 +217,18 @@ pub struct DriveComment {
     pub item_id: String,
     pub author_id: String,
     pub body: String,
+    pub created_at: String,
+}
+
+/// An undismissed in-app notice that `sharer_id` shared `item_id`.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ShareNotice {
+    pub id: String,
+    pub item_id: String,
+    pub item_name: String,
+    pub sharer_id: String,
+    pub role: Role,
     pub created_at: String,
 }
 
@@ -257,6 +298,73 @@ fn check_name(name: &str) -> DriveResult<String> {
         ));
     }
     Ok(name.to_owned())
+}
+
+/// A grant with no end, or an end still in the future, still opens the file.
+fn grant_live(expires_at: Option<&str>, now: &str) -> bool {
+    match expires_at.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(at) => at > now,
+        None => true,
+    }
+}
+
+/// Store an end time in the same UTC shape as [`iso_now`], so a string
+/// comparison is a time comparison.
+fn normalize_expiry(raw: &str) -> DriveResult<String> {
+    let s = raw.trim();
+    let Some((date, time)) = s.split_once('T') else {
+        return Err(DriveError::BadRequest("Choose the day access ends.".into()));
+    };
+    let mut ymd = date.split('-');
+    let (Some(y), Some(m), Some(d), None) = (ymd.next(), ymd.next(), ymd.next(), ymd.next()) else {
+        return Err(DriveError::BadRequest("Choose the day access ends.".into()));
+    };
+    let year: u16 = y.parse().unwrap_or(0);
+    let month: u8 = m.parse().unwrap_or(0);
+    let day: u8 = d.parse().unwrap_or(0);
+    if y.len() != 4
+        || m.len() != 2
+        || d.len() != 2
+        || !(1970..=9999).contains(&year)
+        || !(1..=12).contains(&month)
+        || !(1..=31).contains(&day)
+    {
+        return Err(DriveError::BadRequest("Choose the day access ends.".into()));
+    }
+    let time = time
+        .strip_suffix('Z')
+        .ok_or_else(|| DriveError::BadRequest("Choose the day access ends.".into()))?;
+    let mut clock = time.split(':');
+    let (Some(hh), Some(mm), Some(rest), None) =
+        (clock.next(), clock.next(), clock.next(), clock.next())
+    else {
+        return Err(DriveError::BadRequest("Choose the day access ends.".into()));
+    };
+    let hour: u8 = hh.parse().unwrap_or(99);
+    let minute: u8 = mm.parse().unwrap_or(99);
+    let (sec, millis) = if let Some((sec, frac)) = rest.split_once('.') {
+        let digits: String = frac.chars().take(3).collect();
+        let millis: u16 = if digits.is_empty() {
+            0
+        } else {
+            digits.parse().unwrap_or(1000)
+        };
+        (sec, millis)
+    } else {
+        (rest, 0)
+    };
+    let second: u8 = sec.parse().unwrap_or(99);
+    if hh.len() != 2
+        || mm.len() != 2
+        || sec.len() != 2
+        || hour > 23
+        || minute > 59
+        || second > 60
+        || millis > 999
+    {
+        return Err(DriveError::BadRequest("Choose the day access ends.".into()));
+    }
+    Ok(format!("{y}-{m}-{d}T{hh}:{mm}:{second:02}.{millis:03}Z"))
 }
 
 /// Requests and responses of the blob protocol.
@@ -367,6 +475,7 @@ impl Drive {
             return Ok(Some(Role::Owner));
         }
         let orgs = self.orgs(who)?;
+        let now = iso_now();
         let mut best = None;
         for _ in 0..MAX_DEPTH {
             let Some(row) = current.take() else { break };
@@ -387,12 +496,15 @@ impl Drive {
             };
             let grants = self.db.query(
                 &format!(
-                    "SELECT role FROM drive_acl WHERE itemId = ?1
+                    "SELECT role, expiresAt FROM drive_acl WHERE itemId = ?1
                      AND ((principalType = 'user' AND principalId = ?2){org_clause})"
                 ),
                 &params,
             )?;
             for grant in grants {
+                if !grant_live(text(&grant, "expiresAt").as_deref(), &now) {
+                    continue;
+                }
                 best = best.max(text(&grant, "role").and_then(|r| Role::parse(&r)));
             }
             current = match text(&row, "parentId") {
@@ -412,13 +524,19 @@ impl Drive {
 
     fn to_item(&self, row: &Row, role: Option<Role>) -> DriveResult<Item> {
         let head = text(row, "headVersionId");
-        let content_hash = match &head {
-            Some(v) => self
-                .db
-                .get("drive_version", v)?
-                .and_then(|r| text(&r, "contentHash")),
+        let head_row = match &head {
+            Some(v) => self.db.get("drive_version", v)?,
             None => None,
         };
+        let content_hash = head_row.as_ref().and_then(|r| text(r, "contentHash"));
+        let last_author_id = head_row
+            .as_ref()
+            .and_then(|r| text(r, "authorId"))
+            .filter(|id| !id.is_empty());
+        let last_edited_at = last_author_id
+            .as_ref()
+            .and_then(|_| head_row.as_ref().and_then(|r| text(r, "createdAt")))
+            .filter(|at| !at.is_empty());
         let available = match content_hash.as_deref().map(str::parse::<Hash>) {
             Some(Ok(hash)) => self
                 .blobs
@@ -440,6 +558,8 @@ impl Drive {
             content_hash,
             created_at: text(row, "createdAt").unwrap_or_default(),
             updated_at: text(row, "updatedAt").unwrap_or_default(),
+            last_author_id,
+            last_edited_at,
             trashed: int(row, "trashed") != 0,
             role,
             available,
@@ -484,12 +604,13 @@ impl Drive {
 
     /// Items shared directly with the caller or their organizations.
     pub fn shared(&self, who: &Principal) -> DriveResult<Vec<Item>> {
-        let mut params = vec![Value::Text(who.id.clone())];
+        let now = iso_now();
+        let mut params = vec![Value::Text(who.id.clone()), Value::Text(now)];
         let orgs = self.orgs(who)?;
         let org_clause = if orgs.is_empty() {
             String::new()
         } else {
-            let marks: Vec<String> = (0..orgs.len()).map(|i| format!("?{}", i + 2)).collect();
+            let marks: Vec<String> = (0..orgs.len()).map(|i| format!("?{}", i + 3)).collect();
             params.extend(orgs);
             format!(
                 " OR (a.principalType = 'org' AND a.principalId IN ({}))",
@@ -501,6 +622,7 @@ impl Drive {
                 "SELECT DISTINCT i.* FROM drive_item i JOIN drive_acl a ON a.itemId = i.id
                  WHERE i.trashed = 0 AND i.ownerId != ?1
                    AND ((a.principalType = 'user' AND a.principalId = ?1){org_clause})
+                   AND (a.expiresAt IS NULL OR a.expiresAt > ?2)
                  ORDER BY i.name COLLATE NOCASE"
             ),
             &params,
@@ -850,6 +972,7 @@ impl Drive {
                     principal_type: text(&r, "principalType")?,
                     principal_id: text(&r, "principalId")?,
                     role: Role::parse(&text(&r, "role")?)?,
+                    expires_at: text(&r, "expiresAt").filter(|s| !s.is_empty()),
                 })
             })
             .collect())
@@ -861,6 +984,7 @@ impl Drive {
     /// from when that role is not on the item itself.
     pub fn access(&self, who: &Principal, id: &str) -> DriveResult<ItemAccess> {
         let your_role = self.require(who, id, Role::Viewer)?;
+        let now = iso_now();
         let mut best: BTreeMap<String, AccessGrant> = BTreeMap::new();
         let mut parent = None;
         let mut current = Some(id.to_owned());
@@ -891,6 +1015,8 @@ impl Drive {
                                 id: item_id.clone(),
                                 name: name.clone(),
                             }),
+                            expires_at: None,
+                            expired: false,
                         },
                     );
                 }
@@ -900,7 +1026,7 @@ impl Drive {
                 name: name.clone(),
             });
             for grant in self.db.query(
-                "SELECT principalType, principalId, role FROM drive_acl WHERE itemId = ?1",
+                "SELECT principalType, principalId, role, expiresAt FROM drive_acl WHERE itemId = ?1",
                 &[Value::Text(item_id.clone())],
             )? {
                 let Some(ptype) = text(&grant, "principalType") else {
@@ -912,9 +1038,19 @@ impl Drive {
                 let Some(role) = text(&grant, "role").and_then(|r| Role::parse(&r)) else {
                     continue;
                 };
+                let expires_at = text(&grant, "expiresAt").filter(|s| !s.is_empty());
+                let expired = !grant_live(expires_at.as_deref(), &now);
                 let key = format!("{ptype}:{pid}");
-                let higher = best.get(&key).is_none_or(|existing| role > existing.role);
-                if higher {
+                let replace = match best.get(&key) {
+                    None => true,
+                    // A live grant beats an ended one, and a higher live role
+                    // beats a weaker one. An ended grant stays visible only
+                    // when the person has no live access left.
+                    Some(existing) if existing.expired && !expired => true,
+                    Some(existing) if !existing.expired && expired => false,
+                    Some(existing) => role > existing.role,
+                };
+                if replace {
                     best.insert(
                         key,
                         AccessGrant {
@@ -922,6 +1058,8 @@ impl Drive {
                             principal_id: pid,
                             role,
                             inherited_from: via.clone(),
+                            expires_at,
+                            expired,
                         },
                     );
                 }
@@ -930,7 +1068,15 @@ impl Drive {
         }
         let mut grants: Vec<_> = best.into_values().collect();
         grants.sort_by(|a, b| {
-            let rank = |g: &AccessGrant| if g.principal_type == "owner" { 0 } else { 1 };
+            let rank = |g: &AccessGrant| {
+                if g.principal_type == "owner" {
+                    0
+                } else if g.expired {
+                    2
+                } else {
+                    1
+                }
+            };
             rank(a)
                 .cmp(&rank(b))
                 .then(b.role.cmp(&a.role))
@@ -997,6 +1143,10 @@ impl Drive {
     }
 
     /// Grant a user or organization a role, or remove it with `None`.
+    /// A user grant also writes an in-app notice for that person. There is no
+    /// mail step. An organization grant has no single recipient, so it does not.
+    /// Changing a role leaves an end date already stored on the grant.
+    /// Ownership is [`Self::transfer`], not a role in this list.
     pub fn share(
         &self,
         who: &Principal,
@@ -1006,26 +1156,262 @@ impl Drive {
         role: Option<Role>,
     ) -> DriveResult<Vec<AclEntry>> {
         self.require(who, id, Role::Owner)?;
+        if role == Some(Role::Owner) {
+            return Err(DriveError::BadRequest(
+                "Hand over the file to make someone the owner.".into(),
+            ));
+        }
         if principal_type != "user" && principal_type != "org" {
             return Err(DriveError::BadRequest(
                 "principalType must be user or org".into(),
             ));
         }
         let key = format!("{id}:{principal_type}:{principal_id}");
-        self.db.transact(|tx| match role {
-            Some(role) => tx.upsert(
-                "drive_acl",
-                &key,
-                [
-                    ("itemId", Value::from(id)),
-                    ("principalType", principal_type.into()),
-                    ("principalId", principal_id.into()),
-                    ("role", role.as_str().into()),
-                ],
-            ),
-            None => tx.delete("drive_acl", &key),
+        let now = iso_now();
+        let dismiss_ids = if principal_type == "user" {
+            self.open_notice_ids(id, principal_id)?
+        } else {
+            Vec::new()
+        };
+        let notice_id = (role.is_some() && principal_type == "user" && principal_id != who.id)
+            .then(|| uuid::Uuid::now_v7().to_string());
+        self.db.transact(|tx| {
+            match role {
+                Some(role) => tx.upsert(
+                    "drive_acl",
+                    &key,
+                    [
+                        ("itemId", Value::from(id)),
+                        ("principalType", principal_type.into()),
+                        ("principalId", principal_id.into()),
+                        ("role", role.as_str().into()),
+                    ],
+                )?,
+                None => tx.delete("drive_acl", &key)?,
+            }
+            for nid in &dismiss_ids {
+                tx.upsert(
+                    "drive_notice",
+                    nid,
+                    [("dismissedAt", Value::Text(now.clone()))],
+                )?;
+            }
+            if let (Some(role), Some(notice_id)) = (role, notice_id.as_deref()) {
+                tx.upsert(
+                    "drive_notice",
+                    notice_id,
+                    [
+                        ("itemId", Value::from(id)),
+                        ("recipientId", principal_id.into()),
+                        ("sharerId", who.id.clone().into()),
+                        ("role", role.as_str().into()),
+                        ("createdAt", now.clone().into()),
+                    ],
+                )?;
+            }
+            Ok(())
         })?;
         self.acl(who, id)
+    }
+
+    fn open_notice_ids(&self, item_id: &str, recipient_id: &str) -> DriveResult<Vec<String>> {
+        Ok(self
+            .db
+            .query(
+                "SELECT id FROM drive_notice WHERE itemId = ?1 AND recipientId = ?2 AND dismissedAt IS NULL",
+                &[
+                    Value::Text(item_id.into()),
+                    Value::Text(recipient_id.into()),
+                ],
+            )?
+            .into_iter()
+            .filter_map(|row| text(&row, "id"))
+            .collect())
+    }
+
+    /// Undismissed notices for files the caller can still open.
+    pub fn notices(&self, who: &Principal) -> DriveResult<Vec<ShareNotice>> {
+        let mut out = Vec::new();
+        for row in self.db.query(
+            "SELECT * FROM drive_notice WHERE recipientId = ?1 AND dismissedAt IS NULL ORDER BY createdAt DESC, id DESC",
+            &[Value::Text(who.id.clone())],
+        )? {
+            let Some(item_id) = text(&row, "itemId") else {
+                continue;
+            };
+            let Some(item) = self.db.get("drive_item", &item_id)? else {
+                continue;
+            };
+            if int(&item, "trashed") != 0 {
+                continue;
+            }
+            if self.role(who, &item_id)?.is_none() {
+                continue;
+            }
+            let Some(role) = text(&row, "role").and_then(|r| Role::parse(&r)) else {
+                continue;
+            };
+            out.push(ShareNotice {
+                id: text(&row, "id").unwrap_or_default(),
+                item_id,
+                item_name: text(&item, "name").unwrap_or_default(),
+                sharer_id: text(&row, "sharerId").unwrap_or_default(),
+                role,
+                created_at: text(&row, "createdAt").unwrap_or_default(),
+            });
+        }
+        Ok(out)
+    }
+
+    /// Hide a notice. The file stays shared. Only the recipient can do this.
+    pub fn dismiss_notice(&self, who: &Principal, id: &str) -> DriveResult<()> {
+        let row = self
+            .db
+            .get("drive_notice", id)?
+            .ok_or(DriveError::NotFound)?;
+        if text(&row, "recipientId").as_deref() != Some(who.id.as_str()) && !who.admin {
+            return Err(DriveError::Forbidden);
+        }
+        if text(&row, "dismissedAt").is_some() {
+            return Ok(());
+        }
+        let now = iso_now();
+        self.db
+            .transact(|tx| tx.upsert("drive_notice", id, [("dismissedAt", Value::Text(now))]))?;
+        Ok(())
+    }
+
+    /// A new file the caller owns at the top of My Drive, with the same name
+    /// and the same bytes. Access to the original is unchanged.
+    pub fn keep_copy(&self, who: &Principal, id: &str) -> DriveResult<Item> {
+        let item = self.get(who, id)?;
+        if item.kind != "file" {
+            return Err(DriveError::BadRequest(
+                "Only files can be kept as a copy in My Drive.".into(),
+            ));
+        }
+        if let Some(hash) = item.content_hash.as_deref() {
+            let parsed: Hash = hash
+                .parse()
+                .map_err(|_| DriveError::Other(anyhow::anyhow!("corrupt content hash")))?;
+            if !self.blobs.missing(&parsed)?.is_empty() {
+                return Err(DriveError::Unavailable);
+            }
+        }
+        let created = self.create(who, None, &item.name, "file", item.mime.as_deref())?;
+        let Some(hash) = item.content_hash.clone() else {
+            return Ok(created);
+        };
+        let version = uuid::Uuid::now_v7().to_string();
+        let now = iso_now();
+        self.db.transact(|tx| {
+            tx.upsert(
+                "drive_version",
+                &version,
+                [
+                    ("itemId", Value::Text(created.id.clone())),
+                    ("contentHash", hash.into()),
+                    ("size", Value::Integer(item.size)),
+                    ("authorId", who.id.clone().into()),
+                    ("createdAt", now.clone().into()),
+                ],
+            )?;
+            tx.upsert(
+                "drive_item",
+                &created.id,
+                [
+                    ("headVersionId", Value::Text(version)),
+                    ("size", Value::Integer(item.size)),
+                    ("updatedAt", now.into()),
+                ],
+            )
+        })?;
+        self.get(who, &created.id)
+    }
+
+    /// Set or clear the moment a grant stops working. `None` clears it.
+    /// The owner's own access has no end date. A past time ends access now.
+    pub fn set_expiry(
+        &self,
+        who: &Principal,
+        id: &str,
+        principal_type: &str,
+        principal_id: &str,
+        expires_at: Option<&str>,
+    ) -> DriveResult<ItemAccess> {
+        self.require(who, id, Role::Owner)?;
+        if principal_type != "user" && principal_type != "org" {
+            return Err(DriveError::BadRequest(
+                "principalType must be user or org".into(),
+            ));
+        }
+        if principal_type == "user"
+            && text(&self.item_row(id)?, "ownerId").as_deref() == Some(principal_id)
+        {
+            return Err(DriveError::BadRequest(
+                "The owner's access does not expire.".into(),
+            ));
+        }
+        let key = format!("{id}:{principal_type}:{principal_id}");
+        if self.db.get("drive_acl", &key)?.is_none() {
+            return Err(DriveError::BadRequest(
+                "Share the file with them before setting an end date.".into(),
+            ));
+        }
+        let stored = match expires_at.map(str::trim).filter(|s| !s.is_empty()) {
+            Some(raw) => Value::Text(normalize_expiry(raw)?),
+            None => Value::Null,
+        };
+        self.db
+            .transact(|tx| tx.upsert("drive_acl", &key, [("expiresAt", stored)]))?;
+        self.access(who, id)
+    }
+
+    /// Make `new_owner` the owner immediately. The caller becomes an editor.
+    /// There is no invitation and nothing to accept.
+    pub fn transfer(&self, who: &Principal, id: &str, new_owner: &str) -> DriveResult<Item> {
+        self.require(who, id, Role::Owner)?;
+        let new_owner = new_owner.trim();
+        if new_owner.is_empty() || new_owner.len() > 128 || new_owner.contains(['/', '\\', '\0']) {
+            return Err(DriveError::BadRequest(
+                "Choose a person to own this file.".into(),
+            ));
+        }
+        let current = text(&self.item_row(id)?, "ownerId").unwrap_or_default();
+        if new_owner == current {
+            return Err(DriveError::BadRequest("They already own this file.".into()));
+        }
+        // Folder owners can manage what is inside, but only this item's owner
+        // can hand the item itself to someone else.
+        if !who.admin && current != who.id {
+            return Err(DriveError::Forbidden);
+        }
+        let previous = current;
+        let editor_key = format!("{id}:user:{previous}");
+        let dropped_key = format!("{id}:user:{new_owner}");
+        self.db.transact(|tx| {
+            tx.upsert(
+                "drive_item",
+                id,
+                [
+                    ("ownerId", Value::Text(new_owner.to_owned())),
+                    ("updatedAt", iso_now().into()),
+                ],
+            )?;
+            tx.upsert(
+                "drive_acl",
+                &editor_key,
+                [
+                    ("itemId", Value::from(id)),
+                    ("principalType", Value::from("user")),
+                    ("principalId", Value::from(previous.as_str())),
+                    ("role", Value::from(Role::Editor.as_str())),
+                    ("expiresAt", Value::Null),
+                ],
+            )?;
+            tx.delete("drive_acl", &dropped_key)
+        })?;
+        self.get(who, id)
     }
 
     /// Answer a peer's blob request with as many requested blobs as fit.

@@ -39,6 +39,19 @@ In Google Docs the path is Format, Line & paragraph spacing, Prevent single line
 
 ## Gaps and notes
 
-- Keep with next (storyboard 86) is a different control. Do not replace it.
+- Keep with next (storyboard 86) is a different control. It still sits on the paragraph, and headings still travel with the following block.
+- A one-line paragraph has nothing to pair, so the control cannot pull another line.
 - Keeping a whole paragraph on one page is out of scope.
-- Do not change margins, columns, or line spacing.
+- The .docx write sets `w:widowControl` only on the paragraph that is on. Opening a Word file does not read that flag back.
+- Margins, columns, and line spacing are unchanged.
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| 1. One control on the paragraph that has the caret. No second dialog. | Met | Video 0:09. The switch appears beside “See you Saturday.” Browser test finds no dialog. |
+| 2. The control shows that it is on for that paragraph. | Met | Video 0:12. The switch reads On and is pressed. |
+| 3. With it on, that paragraph does not leave a single line alone. At least two lines stay together. | Met | Video 0:12. “Bring a chair if you can.” moves onto page 2 with “See you Saturday.” “This month” stays on page 1. Unit test `avoidSingleLine` covers the opening line as well. |
+| 4. Turning it off allows the single line again. | Met | Video 0:16. “See you Saturday.” is alone at the top of page 2. |
+| 5. The choice survives save and reopen. | Met | Video 0:22. After reopen the two lines are still together and the switch is On. |
+| 6. The exported .docx sets widow and orphan control on that paragraph only. | Met | Video 0:27 export. `tests/doc-widow-control.test.ts` and the browser test expect `<w:widowControl` on the closing paragraph and not on “The board meets Monday.” or the heading. |

@@ -93,6 +93,36 @@ import {
   type TransitionType,
 } from "./slide-theme";
 import { SlideDesignPanel, useReducedMotion } from "./slide-design-panel";
+import {
+  hasTextRuns,
+  rangeColor,
+  rangeHas,
+  replaceRunRange,
+  runsOf,
+  styleSelection,
+  styleWholeBox,
+  textInnerHtml,
+} from "./slide-runs";
+import { boxFont, RunSpans, SlideTextBody } from "./slide-text";
+import { useSlideThemeLibrary } from "./slide-theme-library";
+import { replaceSlideWord } from "./grid-spelling";
+import { SlideSpellMirror, SlideSpelling } from "./grid-spelling-ui";
+import { useSlideComments } from "./slide-comments-ui";
+import {
+  applyFadeOnClick,
+  audienceClass,
+  audiencePhase,
+  editorFadeAttrs,
+  editorFadeClass,
+  fadeOnClickIds,
+  fadeOnClickReason,
+  moveShowCursor,
+  samePlace,
+  startOfShow,
+  type ShowCursor,
+  type ShowMove,
+} from "./slide-fade-in";
+import { FadeOnClickMark } from "./slide-fade-mark";
 
 type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
@@ -101,11 +131,14 @@ export default function Slides({
   onChange,
   onActions,
   onError,
+  readOnly = false,
 }: {
   file: SlideFile;
   onChange: (content: SlideFile["content"]) => void;
   onActions: (actions: EditorActions) => void;
   onError: (s: string) => void;
+  /** Viewers can present, but not change slides or text. */
+  readOnly?: boolean;
 }) {
   const [deck, setDeck] = useState<SlideFile["content"]>(() =>
     structuredClone(file.content),
@@ -116,6 +149,14 @@ export default function Slides({
   const [selectedElementId, setSelectedElementId] = useState<string | null>(
     null,
   );
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [caretMarks, setCaretMarks] = useState<{
+    id: string;
+    bold: boolean;
+    italic: boolean;
+    underline: boolean;
+    color?: string;
+  } | null>(null);
   const [selectedSlideIds, setSelectedSlideIds] = useState<string[]>([
     file.content.slideOrder[0] || "",
   ]);
@@ -130,7 +171,8 @@ export default function Slides({
   });
   const [showNotes, setShowNotes] = useState(true);
   const [presenting, setPresenting] = useState(false);
-  const [presentSlideIndex, setPresentSlideIndex] = useState(0);
+  const [showCursor, setShowCursor] = useState<ShowCursor>(() => startOfShow());
+  const presentSlideIndex = showCursor.slideIndex;
   const [showSpeakerNotes, setShowSpeakerNotes] = useState(false);
   const [blankScreen, setBlankScreen] = useState<string | null>(null);
   const [showStartedAt, setShowStartedAt] = useState(0);
@@ -166,6 +208,7 @@ export default function Slides({
     openTransition: () => {},
   });
   const reducedMotion = useReducedMotion();
+  const { themes: libraryThemes, save: saveLibraryTheme } = useSlideThemeLibrary();
 
   // Undo/Redo history. Typing in one box collapses into a single step.
   const historyRef = useRef<DeckHistory | null>(null);
@@ -179,9 +222,17 @@ export default function Slides({
   selectedRef.current = selectedSlideIds;
   const selectedElementRef = useRef(selectedElementId);
   selectedElementRef.current = selectedElementId;
+  const editingRef = useRef(editingId);
+  editingRef.current = editingId;
+  const textRange = useRef<{ id: string; start: number; end: number } | null>(
+    null,
+  );
   const anchorRef = useRef(activeSlideId);
   const presentingRef = useRef(false);
   presentingRef.current = presenting;
+  const showCursorRef = useRef(showCursor);
+  showCursorRef.current = showCursor;
+  const moveShowRef = useRef<(where: ShowMove) => void>(() => {});
   const pendingFocus = useRef<string | null>(null);
   const liveDirty = useRef(false);
   const clipboard = useRef<
@@ -192,8 +243,11 @@ export default function Slides({
   const commitRef = useRef<
     (next: SlideFile["content"], key?: string) => void
   >(() => {});
+  const readOnlyRef = useRef(readOnly);
+  readOnlyRef.current = readOnly;
 
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const spellingRef = useRef<{ open: () => void }>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef<{
     elementId: string;
@@ -213,6 +267,7 @@ export default function Slides({
     });
 
   const applyDeck = (next: SlideFile["content"]) => {
+    if (readOnlyRef.current) return;
     deckRef.current = next;
     setDeck(next);
     onChange(next);
@@ -230,11 +285,17 @@ export default function Slides({
     if (elementId !== undefined) {
       selectedElementRef.current = elementId;
       setSelectedElementId(elementId);
+      if (elementId !== editingRef.current) {
+        editingRef.current = null;
+        setEditingId(null);
+        textRange.current = null;
+      }
     }
   };
 
   // Commit changes and push to undo history
   const commit = (next: SlideFile["content"], key?: string) => {
+    if (readOnlyRef.current) return;
     historyRef.current!.commit(next, key);
     applyDeck(next);
     setNotice(null);
@@ -292,6 +353,22 @@ export default function Slides({
     deck.slides[activeSlideId] || deck.slides[deck.slideOrder[0]];
   const selectedElement =
     activeSlide?.elements.find((el) => el.id === selectedElementId) || null;
+  const slideComments = useSlideComments({
+    deck,
+    activeSlideId: activeSlide?.id ?? activeSlideId,
+    selectedElementId,
+    presenting,
+    commit,
+    onActivate: (slideId, elementId) => {
+      anchorRef.current = slideId;
+      applySelection(slideId, [slideId], elementId);
+    },
+  });
+  const {
+    openComposer: openSlideComment,
+    openPanel: openSlideCommentPanel,
+    openResolved: openSlideResolved,
+  } = slideComments;
 
   const chosenSlides = () => {
     const order = deckRef.current.slideOrder;
@@ -430,9 +507,11 @@ export default function Slides({
     previewTheme && activeSlide ? paintSlide(activeSlide, previewTheme) : activeSlide;
 
   const useTheme = (theme: SlideTheme) => {
-    themeEdits.current.set(theme.id, theme);
+    // Copy so a library snapshot and this deck do not share one object.
+    const copy = { ...theme };
+    themeEdits.current.set(copy.id, copy);
     setPreviewTheme(null);
-    commit(applyDeckTheme(deck, theme));
+    commit(applyDeckTheme(deck, copy));
   };
   const transitionTargets = () =>
     transitionScope === "all" ? deck.slideOrder : selectedSlideIds;
@@ -496,6 +575,7 @@ export default function Slides({
       partial: Partial<SlideElement>,
       mode?: { live?: boolean; coalesce?: string },
     ) => {
+      if (readOnlyRef.current) return;
       const prev = deckRef.current;
       const active =
         prev.slides[activeRef.current] || prev.slides[prev.slideOrder[0]];
@@ -527,6 +607,40 @@ export default function Slides({
   const selectElement = (id: string | null) => {
     selectedElementRef.current = id;
     setSelectedElementId(id);
+    if (id !== editingRef.current) {
+      editingRef.current = null;
+      setEditingId(null);
+      textRange.current = null;
+    }
+  };
+
+  const rememberCaret = (
+    id: string,
+    sel: { start: number; end: number } | null,
+  ) => {
+    if (!sel) return;
+    textRange.current = { id, ...sel };
+    const slide = activeDeckSlide(deckRef.current);
+    const el = slide?.elements.find((item) => item.id === id);
+    if (!el) return;
+    const runs = runsOf(el);
+    const next = {
+      id,
+      bold: rangeHas(runs, sel.start, sel.end, "bold"),
+      italic: rangeHas(runs, sel.start, sel.end, "italic"),
+      underline: rangeHas(runs, sel.start, sel.end, "underline"),
+      color: rangeColor(runs, sel.start, sel.end),
+    };
+    setCaretMarks((prev) =>
+      prev &&
+      prev.id === next.id &&
+      prev.bold === next.bold &&
+      prev.italic === next.italic &&
+      prev.underline === next.underline &&
+      prev.color === next.color
+        ? prev
+        : next,
+    );
   };
 
   const insertOnActive = (elements: SlideElement[], focusId?: string) => {
@@ -602,13 +716,77 @@ export default function Slides({
     return el?.type === "text" ? el : null;
   };
 
-  const toggleBold = () => {
-    const el = selectedText();
-    if (el) updateElement(el.id, { bold: !el.bold });
+  const selectionIn = (id: string) => {
+    const stored = textRange.current;
+    if (editingRef.current === id && stored?.id === id && stored.end > stored.start)
+      return stored;
+    const area = stageRef.current?.querySelector<HTMLTextAreaElement>(
+      `[data-element-id="${CSS.escape(id)}"] textarea`,
+    );
+    if (
+      area &&
+      document.activeElement === area &&
+      area.selectionEnd > area.selectionStart
+    )
+      return { id, start: area.selectionStart, end: area.selectionEnd };
+    return null;
   };
-  const toggleItalic = () => {
+  const formatText = (kind: "bold" | "italic" | "underline") => {
     const el = selectedText();
-    if (el) updateElement(el.id, { italic: !el.italic });
+    if (!el) return;
+    const range = selectionIn(el.id);
+    if (range) {
+      const next = styleSelection(el, range.start, range.end, { type: kind });
+      updateElement(el.id, next);
+      textRange.current = range;
+      if (editingRef.current !== el.id) {
+        editingRef.current = el.id;
+        setEditingId(el.id);
+      }
+      const runs = runsOf(next);
+      setCaretMarks({
+        id: el.id,
+        bold: rangeHas(runs, range.start, range.end, "bold"),
+        italic: rangeHas(runs, range.start, range.end, "italic"),
+        underline: rangeHas(runs, range.start, range.end, "underline"),
+        color: rangeColor(runs, range.start, range.end),
+      });
+      return;
+    }
+    if (editingRef.current === el.id) return;
+    updateElement(el.id, styleWholeBox(el, kind));
+  };
+  const toggleBold = () => formatText("bold");
+  const toggleItalic = () => formatText("italic");
+  const toggleUnderline = () => formatText("underline");
+  const applyAccent = () => {
+    const el = selectedText();
+    if (!el) return;
+    const color = (deckRef.current.theme?.accent ?? "#188038").toLowerCase();
+    const range = selectionIn(el.id);
+    if (range) {
+      const next = styleSelection(el, range.start, range.end, {
+        type: "color",
+        color,
+      });
+      updateElement(el.id, next);
+      textRange.current = range;
+      if (editingRef.current !== el.id) {
+        editingRef.current = el.id;
+        setEditingId(el.id);
+      }
+      const runs = runsOf(next);
+      setCaretMarks({
+        id: el.id,
+        bold: rangeHas(runs, range.start, range.end, "bold"),
+        italic: rangeHas(runs, range.start, range.end, "italic"),
+        underline: rangeHas(runs, range.start, range.end, "underline"),
+        color: rangeColor(runs, range.start, range.end),
+      });
+      return;
+    }
+    if (editingRef.current === el.id) return;
+    updateElement(el.id, handStyle({ color }));
   };
   const alignText = (alignment: "left" | "center" | "right") => {
     const el = selectedText();
@@ -702,10 +880,28 @@ export default function Slides({
       case "italic":
         toggleItalic();
         break;
+      case "underline":
+        toggleUnderline();
+        break;
       case "move":
         moveSlides(command.where);
         break;
     }
+  };
+
+  const applyFadeToSelection = () => {
+    const elementId = selectedElementRef.current;
+    const slideId = activeRef.current;
+    if (!elementId || !slideId) return;
+    const next = applyFadeOnClick(deckRef.current, slideId, elementId);
+    if (next) commit(next);
+  };
+  const fadeReason = () => {
+    const slide = deckRef.current.slides[activeRef.current];
+    const el = slide?.elements.find(
+      (item) => item.id === selectedElementRef.current,
+    );
+    return fadeOnClickReason(el);
   };
 
   const api = useRef({
@@ -723,7 +919,10 @@ export default function Slides({
     move: moveSlides,
     toggleBold,
     toggleItalic,
+    toggleUnderline,
     align: alignText,
+    fadeOnClick: applyFadeToSelection,
+    fadeOnClickReason: fadeReason,
     run: runCommand,
   });
   api.current = {
@@ -741,7 +940,10 @@ export default function Slides({
     move: moveSlides,
     toggleBold,
     toggleItalic,
+    toggleUnderline,
     align: alignText,
+    fadeOnClick: applyFadeToSelection,
+    fadeOnClickReason: fadeReason,
     run: runCommand,
   };
 
@@ -754,8 +956,13 @@ export default function Slides({
     e.stopPropagation();
     selectedElementRef.current = elementId;
     setSelectedElementId(elementId);
+    if (!handle && editingRef.current && editingRef.current !== elementId) {
+      editingRef.current = null;
+      setEditingId(null);
+      textRange.current = null;
+    }
     const el = activeSlide.elements.find((item) => item.id === elementId);
-    if (!el) return;
+    if (!el || readOnlyRef.current) return;
 
     draggingRef.current = {
       elementId,
@@ -881,8 +1088,10 @@ export default function Slides({
           .map((el) => {
             const pos = `position: absolute; left: ${(el.x / (deck.width || 960)) * 100}%; top: ${(el.y / (deck.height || 540)) * 100}%; width: ${(el.width / (deck.width || 960)) * 100}%; height: ${(el.height / (deck.height || 540)) * 100}%;`;
             if (el.type === "text") {
-              const style = `${pos} font-size: ${(el.fontSize || 20) * 1.5}px; font-weight: ${el.bold ? "bold" : "normal"}; font-style: ${el.italic ? "italic" : "normal"}; color: ${el.color || "#1e293b"}; text-align: ${el.align || "left"}; white-space: pre-wrap; word-break: break-word;`;
-              return `<div style="${style}">${el.content || ""}</div>`;
+              const weight = hasTextRuns(el) ? "normal" : el.bold ? "bold" : "normal";
+              const family = JSON.stringify(el.fontFamily || "Arial");
+              const style = `${pos} font-size: ${(el.fontSize || 20) * 1.5}px; font-weight: ${weight}; font-style: ${hasTextRuns(el) ? "normal" : el.italic ? "italic" : "normal"}; color: ${el.color || "#1e293b"}; text-align: ${el.align || "left"}; white-space: pre-wrap; word-break: break-word; font-family: ${family};`;
+              return `<div style="${style}">${textInnerHtml(el)}</div>`;
             }
             if (el.type === "image" && el.src) {
               return `<img src="${el.src}" alt="${el.alt || "image"}" style="${pos} object-fit: contain;" />`;
@@ -941,7 +1150,9 @@ ${slidesHtml}
   const overlayRef = useRef<HTMLDivElement>(null);
 
   const beginShow = useCallback((fromIndex: number, withNotes?: boolean) => {
-    setPresentSlideIndex(fromIndex);
+    const next = startOfShow(fromIndex);
+    showCursorRef.current = next;
+    setShowCursor(next);
     if (withNotes !== undefined) setShowSpeakerNotes(withNotes);
     setBlankScreen(null);
     setControlsVisible(true);
@@ -964,6 +1175,23 @@ ${slidesHtml}
       );
     }
   }, []);
+
+  moveShowRef.current = (where) => {
+    setBlankScreen(null);
+    const order = deckRef.current.slideOrder;
+    const current = showCursorRef.current;
+    const next = moveShowCursor(
+      current,
+      where,
+      (index) =>
+        fadeOnClickIds(deckRef.current.slides[order[index]]?.elements ?? []),
+      order.length,
+    );
+    if (samePlace(current, next) && current.enteringId === next.enteringId)
+      return;
+    showCursorRef.current = next;
+    setShowCursor(next);
+  };
 
   const endShow = useCallback(() => {
     setPresenting(false);
@@ -1039,22 +1267,51 @@ ${slidesHtml}
         applyLayout: (layout) => apiRef.current.applyLayout(layout),
         openTheme: () => apiRef.current.openTheme(),
         openTransition: () => apiRef.current.openTransition(),
+        insertComment: () => openSlideComment(),
+        openComments: () => openSlideCommentPanel(),
+        openResolved: () => openSlideResolved(),
+        fadeOnClick: () => api.current.fadeOnClick(),
+        fadeOnClickReason: () => api.current.fadeOnClickReason(),
         undoReason: () => slideApi.current.undoReason(),
         redoReason: () => slideApi.current.redoReason(),
         deleteReason: () => slideApi.current.deleteReason(),
+        openSpelling: () => spellingRef.current?.open(),
       },
     });
-  }, [onActions, onChange, activeSlideId, beginShow]);
+  }, [
+    onActions,
+    onChange,
+    activeSlideId,
+    beginShow,
+    openSlideComment,
+    openSlideCommentPanel,
+    openSlideResolved,
+  ]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (presentingRef.current) return;
       if (e.key === "Escape") {
         setContextMenu(null);
+        const editing = editingRef.current;
+        const area =
+          document.activeElement instanceof HTMLTextAreaElement &&
+          document.activeElement.classList.contains("element-textarea");
+        if (editing || area) {
+          editingRef.current = null;
+          setEditingId(null);
+          textRange.current = null;
+          if (document.activeElement instanceof HTMLElement)
+            document.activeElement.blur();
+        }
         return;
       }
       const command = commandFromKey(e, typingContext(e.target));
       if (!command) return;
+      if (readOnlyRef.current && command.type !== "copy") {
+        e.preventDefault();
+        return;
+      }
       e.preventDefault();
       api.current.run(command);
     };
@@ -1090,6 +1347,11 @@ ${slidesHtml}
     const onKeyDown = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key === "Enter") {
+        if (
+          e.target instanceof Element &&
+          e.target.closest(".slide-comment-dock")
+        )
+          return;
         e.preventDefault();
         beginShow(
           e.shiftKey
@@ -1100,6 +1362,7 @@ ${slidesHtml}
       }
       if (e.key.toLowerCase() !== "m" || e.shiftKey || e.altKey) return;
       e.preventDefault();
+      if (readOnlyRef.current) return;
       apiRef.current.addSlide("title-body");
     };
     window.addEventListener("keydown", onKeyDown);
@@ -1109,11 +1372,6 @@ ${slidesHtml}
   // Keyboard navigation and auto-hiding controls for presentation mode
   useEffect(() => {
     if (!presenting) return;
-    const last = deck.slideOrder.length - 1;
-    const goTo = (index: (prev: number) => number) => {
-      setBlankScreen(null);
-      setPresentSlideIndex((prev) => Math.max(0, Math.min(last, index(prev))));
-    };
     const toggleBlank = (color: string) =>
       setBlankScreen((prev) => (prev === color ? null : color));
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1124,20 +1382,20 @@ ${slidesHtml}
         case "PageDown":
         case " ":
         case "n":
-          goTo((prev) => prev + 1);
+          moveShowRef.current("next");
           break;
         case "ArrowLeft":
         case "ArrowUp":
         case "PageUp":
         case "Backspace":
         case "p":
-          goTo((prev) => prev - 1);
+          moveShowRef.current("prev");
           break;
         case "Home":
-          goTo(() => 0);
+          moveShowRef.current("home");
           break;
         case "End":
-          goTo(() => last);
+          moveShowRef.current("end");
           break;
         case "b":
         case "B":
@@ -1181,7 +1439,7 @@ ${slidesHtml}
       window.removeEventListener("mousemove", onMouseMove);
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     };
-  }, [presenting, deck.slideOrder.length, endShow]);
+  }, [presenting, endShow]);
 
   // Leaving fullscreen (the browser's own Esc or exit button) ends the show
   useEffect(() => {
@@ -1233,6 +1491,17 @@ ${slidesHtml}
   const presentSlide =
     deck.slides[deck.slideOrder[presentSlideIndex]] || activeSlide;
   const nextPresentSlide = deck.slides[deck.slideOrder[presentSlideIndex + 1]];
+  const fadeIdsAt = (index: number) =>
+    fadeOnClickIds(deck.slides[deck.slideOrder[index]]?.elements ?? []);
+  const cannotAdvance = samePlace(
+    showCursor,
+    moveShowCursor(showCursor, "next", fadeIdsAt, deck.slideOrder.length),
+  );
+  const cannotRetreat = samePlace(
+    showCursor,
+    moveShowCursor(showCursor, "prev", fadeIdsAt, deck.slideOrder.length),
+  );
+  const fadeWaiting = showCursor.revealed < fadeIdsAt(presentSlideIndex).length;
   const elapsedSeconds = Math.max(
     0,
     Math.floor((clock - showStartedAt) / 1000),
@@ -1242,12 +1511,26 @@ ${slidesHtml}
   ).padStart(2, "0")}`;
 
   /** Slide content for the show, sized in container units so it scales with
-   * whatever box it is drawn in (the full screen or the next-slide preview). */
-  const renderShowElements = (slide: Slide | undefined) => {
+   * whatever box it is drawn in (the full screen or the next-slide preview).
+   * The audience view hides fade-on-click objects until they are revealed.
+   * The speaker's next-slide preview shows them. */
+  const renderShowElements = (slide: Slide | undefined, audience: boolean) => {
     const w = deck.width || 960;
     const h = deck.height || 540;
     const units = (n: number) => `calc(${n} / ${w} * 100cqw)`;
+    const order = fadeOnClickIds(slide?.elements ?? []);
+    const revealed = audience ? showCursor.revealed : order.length;
+    const enteringId = audience ? showCursor.enteringId : null;
     return slide?.elements.map((el) => {
+      const phase = audiencePhase(el, revealed, order, enteringId);
+      const fadeProps = {
+        "data-element-id": el.id,
+        className: audienceClass(phase),
+        ...(phase === "plain"
+          ? {}
+          : { "data-fade": phase === "hidden" ? ("hidden" as const) : ("visible" as const) }),
+        ...(phase === "hidden" ? { "aria-hidden": true as const } : {}),
+      };
       const posStyle: React.CSSProperties = {
         position: "absolute",
         left: `${(el.x / w) * 100}%`,
@@ -1260,14 +1543,13 @@ ${slidesHtml}
         return (
           <div
             key={el.id}
-            className="show-text"
+            {...fadeProps}
+            className={`${fadeProps.className} show-text`}
             style={{
               ...posStyle,
               fontSize: units((el.fontSize || 20) * 0.95),
               padding: units(4),
-              fontWeight: el.bold ? "bold" : "normal",
-              fontStyle: el.italic ? "italic" : "normal",
-              textDecoration: el.underline ? "underline" : "none",
+              ...boxFont(el),
               fontFamily: el.fontFamily || "Arial",
               color: el.color || "#1e293b",
               textAlign: el.align || "left",
@@ -1276,7 +1558,13 @@ ${slidesHtml}
               backgroundColor: el.fill || "transparent",
             }}
           >
-            {el.content}
+            <RunSpans
+              content={el.content}
+              runs={el.runs}
+              bold={el.bold}
+              italic={el.italic}
+              underline={el.underline}
+            />
           </div>
         );
       }
@@ -1284,6 +1572,7 @@ ${slidesHtml}
         return (
           <img
             key={el.id}
+            {...fadeProps}
             src={el.src}
             alt={el.alt || "Slide asset"}
             style={{ ...posStyle, objectFit: "contain" }}
@@ -1303,6 +1592,7 @@ ${slidesHtml}
         return (
           <div
             key={el.id}
+            {...fadeProps}
             style={{
               ...posStyle,
               backgroundColor: el.fill || "#e2e8f0",
@@ -1314,7 +1604,12 @@ ${slidesHtml}
       }
       if (el.type === "table" && el.rows) {
         return (
-          <table key={el.id} className="show-table" style={posStyle}>
+          <table
+            key={el.id}
+            {...fadeProps}
+            className={`${fadeProps.className} show-table`}
+            style={posStyle}
+          >
             <tbody>
               {el.rows.map((row, rIdx) => (
                 <tr key={rIdx}>
@@ -1459,6 +1754,7 @@ ${slidesHtml}
         role="toolbar"
         aria-label="Slides toolbar"
       >
+        <fieldset className="toolbar-edits" disabled={readOnly}>
         <div className="tool-group">
           <MenuSearchPill />
           <button
@@ -1488,19 +1784,16 @@ ${slidesHtml}
           <Tool
             label="Undo (Cmd+Z)"
             onClick={undo}
-            disabled={!historyMarks.undo}
+            disabled={!historyMarks.undo || readOnly}
           >
             <Undo2 size={16} />
           </Tool>
           <Tool
             label="Redo (Cmd+Y)"
             onClick={redo}
-            disabled={!historyMarks.redo}
+            disabled={!historyMarks.redo || readOnly}
           >
             <Redo2 size={16} />
-          </Tool>
-          <Tool label="Print (Cmd+P)" onClick={() => printDocument()}>
-            <Printer size={16} />
           </Tool>
         </div>
 
@@ -1679,36 +1972,59 @@ ${slidesHtml}
 
                 <Tool
                   label="Bold"
-                  active={!!selectedElement.bold}
-                  onClick={() =>
-                    updateElement(selectedElement.id, {
-                      bold: !selectedElement.bold,
-                    })
+                  active={
+                    editingId === selectedElement.id && caretMarks?.id === selectedElement.id
+                      ? caretMarks.bold
+                      : hasTextRuns(selectedElement)
+                        ? !!selectedElement.runs?.every((run) => run.bold)
+                        : !!selectedElement.bold
                   }
+                  onClick={toggleBold}
                 >
                   <Bold size={16} />
                 </Tool>
                 <Tool
                   label="Italic"
-                  active={!!selectedElement.italic}
-                  onClick={() =>
-                    updateElement(selectedElement.id, {
-                      italic: !selectedElement.italic,
-                    })
+                  active={
+                    editingId === selectedElement.id && caretMarks?.id === selectedElement.id
+                      ? caretMarks.italic
+                      : hasTextRuns(selectedElement)
+                        ? !!selectedElement.runs?.every((run) => run.italic)
+                        : !!selectedElement.italic
                   }
+                  onClick={toggleItalic}
                 >
                   <Italic size={16} />
                 </Tool>
                 <Tool
                   label="Underline"
-                  active={!!selectedElement.underline}
-                  onClick={() =>
-                    updateElement(selectedElement.id, {
-                      underline: !selectedElement.underline,
-                    })
+                  active={
+                    editingId === selectedElement.id && caretMarks?.id === selectedElement.id
+                      ? caretMarks.underline
+                      : hasTextRuns(selectedElement)
+                        ? !!selectedElement.runs?.every((run) => run.underline)
+                        : !!selectedElement.underline
                   }
+                  onClick={toggleUnderline}
                 >
                   <Underline size={16} />
+                </Tool>
+                <Tool
+                  label="Accent colour for the selection"
+                  active={
+                    editingId === selectedElement.id &&
+                    caretMarks?.id === selectedElement.id &&
+                    caretMarks.color === (deck.theme?.accent ?? "").toLowerCase()
+                  }
+                  onClick={applyAccent}
+                >
+                  <span className="text-color-tool">
+                    <span className="text-color-a">A</span>
+                    <span
+                      className="text-color-bar"
+                      style={{ background: deck.theme?.accent ?? "#188038" }}
+                    />
+                  </span>
                 </Tool>
                 <Tool
                   label="Align left"
@@ -1821,6 +2137,11 @@ ${slidesHtml}
 
           </div>
         )}
+        </fieldset>
+
+        <Tool label="Print (Cmd+P)" onClick={() => printDocument()}>
+          <Printer size={16} />
+        </Tool>
 
         {/* Google Slides styled Slideshow button */}
         <div className="tool-group right-tools" style={{ marginLeft: "auto" }}>
@@ -1885,6 +2206,10 @@ ${slidesHtml}
             Reset to theme
           </button>
         </div>
+      ) : selectedElement?.type === "text" && editingId !== selectedElement.id ? (
+        <div className="format-hint-bar">
+          Double-click a word to format just that word.
+        </div>
       ) : null}
 
       {/* Main Slides Editor Body */}
@@ -1898,7 +2223,7 @@ ${slidesHtml}
                 type="button"
                 title="Move slide up"
                 onClick={() => moveSlides("up")}
-                disabled={!canMove(deck.slideOrder, selectedSlideIds, "up")}
+                disabled={readOnly || !canMove(deck.slideOrder, selectedSlideIds, "up")}
               >
                 <ChevronUp size={14} />
               </button>
@@ -1906,13 +2231,16 @@ ${slidesHtml}
                 type="button"
                 title="Move slide down"
                 onClick={() => moveSlides("down")}
-                disabled={!canMove(deck.slideOrder, selectedSlideIds, "down")}
+                disabled={
+                  readOnly || !canMove(deck.slideOrder, selectedSlideIds, "down")
+                }
               >
                 <ChevronDown size={14} />
               </button>
               <button
                 type="button"
                 title="Duplicate slide"
+                disabled={readOnly}
                 onClick={duplicateCurrentSlide}
               >
                 <Copy size={14} />
@@ -1921,7 +2249,9 @@ ${slidesHtml}
                 type="button"
                 title="Delete slide"
                 onClick={deleteCurrentSlide}
-                disabled={!canDeleteSlides(deck.slideOrder, selectedSlideIds)}
+                disabled={
+                  readOnly || !canDeleteSlides(deck.slideOrder, selectedSlideIds)
+                }
               >
                 <Trash2 size={14} />
               </button>
@@ -1986,6 +2316,9 @@ ${slidesHtml}
                   onMouseDown={(e) => {
                     if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey)
                       return;
+                    // Firefox starts a native drag unless the press is cancelled,
+                    // and then the thumbnail never lands in the new gap.
+                    e.preventDefault();
                     const ids = selectedRef.current.includes(id)
                       ? [...selectedRef.current]
                       : [id];
@@ -2021,6 +2354,7 @@ ${slidesHtml}
                   }}
                   onContextMenu={(e) => {
                     e.preventDefault();
+                    if (readOnlyRef.current) return;
                     if (!selectedRef.current.includes(id)) {
                       anchorRef.current = id;
                       applySelection(id, [id], null);
@@ -2054,10 +2388,16 @@ ${slidesHtml}
                                 ...miniStyle,
                                 color: el.color || "#1e293b",
                                 textAlign: el.align || "left",
-                                fontWeight: el.bold ? "bold" : "normal",
+                                ...boxFont(el),
                               }}
                             >
-                              {el.content}
+                              <RunSpans
+                                content={el.content}
+                                runs={el.runs}
+                                bold={el.bold}
+                                italic={el.italic}
+                                underline={el.underline}
+                              />
                             </div>
                           );
                         }
@@ -2111,6 +2451,7 @@ ${slidesHtml}
             <button
               type="button"
               className="add-slide-sidebar-btn"
+              disabled={readOnly}
               onClick={() => addSlide("title-body")}
               title="New slide (Cmd+M)"
             >
@@ -2121,6 +2462,8 @@ ${slidesHtml}
 
         {/* Center Slide Canvas */}
         <div className="slides-canvas-stage">
+          {slideComments.notice}
+          <div className="slide-stage-row">
           <div
             className="slide-stage-viewport"
             ref={stageRef}
@@ -2151,35 +2494,81 @@ ${slidesHtml}
                       data-element-id={el.id}
                       data-x={el.x}
                       data-y={el.y}
-                      className={`slide-element slide-text ${isSelected ? "selected" : ""}`}
+                      className={`slide-element slide-text ${isSelected ? "selected" : ""}${editorFadeClass(el)}`}
+                      {...editorFadeAttrs(el)}
                       style={{
                         ...posStyle,
                         fontSize: `${(el.fontSize || 20) * 0.95}px`,
-                        fontWeight: el.bold ? "bold" : "normal",
-                        fontStyle: el.italic ? "italic" : "normal",
-                        textDecoration: el.underline ? "underline" : "none",
+                        ...boxFont(el),
                         fontFamily: el.fontFamily || "Arial",
                         color: el.color || "#1e293b",
                         textAlign: el.align || "left",
                         backgroundColor: el.fill || "transparent",
+                        ["--spell-caret" as string]: el.color || "#1e293b",
                       }}
-                      onMouseDown={(e) => onElementMouseDown(e, el.id)}
+                      onMouseDown={(e) => {
+                        const inEditor = (e.target as HTMLElement).closest?.(
+                          ".element-editor",
+                        );
+                        if (editingRef.current === el.id && inEditor) return;
+                        onElementMouseDown(e, el.id);
+                      }}
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        if (readOnlyRef.current) return;
+                        editingRef.current = el.id;
+                        textRange.current = null;
+                        setEditingId(el.id);
+                        selectedElementRef.current = el.id;
+                        setSelectedElementId(el.id);
+                      }}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <textarea
-                        className="element-textarea"
-                        value={el.content || ""}
-                        placeholder={el.placeholder ?? "Click to add text"}
-                        onChange={(e) =>
-                          updateElement(
-                            el.id,
-                            { content: e.target.value },
-                            { coalesce: `type:${el.id}` },
-                          )
-                        }
-                        onFocus={() => selectElement(el.id)}
-                      />
-                      {isSelected ? renderHandles(el.id) : null}
+                      <FadeOnClickMark element={el} />
+                      {editingId === el.id || hasTextRuns(el) ? (
+                        <SlideTextBody
+                          content={el.content}
+                          runs={el.runs}
+                          bold={el.bold}
+                          italic={el.italic}
+                          underline={el.underline}
+                          placeholder={el.placeholder}
+                          editing={editingId === el.id && !readOnly}
+                          onText={(runs) =>
+                            updateElement(
+                              el.id,
+                              {
+                                content: runs.map((run) => run.text).join(""),
+                                runs: hasTextRuns({ runs }) ? runs : undefined,
+                                bold: false,
+                                italic: false,
+                                underline: false,
+                              },
+                              { coalesce: `type:${el.id}` },
+                            )
+                          }
+                          onCaret={(sel) => rememberCaret(el.id, sel)}
+                        />
+                      ) : (
+                        <>
+                          <SlideSpellMirror text={el.content || ""} fileId={file.id} />
+                          <textarea
+                            className="element-textarea"
+                            readOnly={readOnly}
+                            value={el.content || ""}
+                            placeholder={el.placeholder ?? "Click to add text"}
+                            onChange={(e) =>
+                              updateElement(
+                                el.id,
+                                { content: e.target.value },
+                                { coalesce: `type:${el.id}` },
+                              )
+                            }
+                            onFocus={() => selectElement(el.id)}
+                          />
+                        </>
+                      )}
+                      {isSelected && !readOnly ? renderHandles(el.id) : null}
                     </div>
                   );
                 }
@@ -2191,13 +2580,15 @@ ${slidesHtml}
                       data-element-id={el.id}
                       data-x={el.x}
                       data-y={el.y}
-                      className={`slide-element slide-image ${isSelected ? "selected" : ""}`}
+                      className={`slide-element slide-image ${isSelected ? "selected" : ""}${editorFadeClass(el)}`}
+                      {...editorFadeAttrs(el)}
                       style={posStyle}
                       onMouseDown={(e) => onElementMouseDown(e, el.id)}
                       onClick={(e) => e.stopPropagation()}
                     >
+                      <FadeOnClickMark element={el} />
                       <img src={el.src} alt={el.alt || "Slide asset"} />
-                      {isSelected ? renderHandles(el.id) : null}
+                      {isSelected && !readOnly ? renderHandles(el.id) : null}
                     </div>
                   );
                 }
@@ -2219,7 +2610,8 @@ ${slidesHtml}
                       data-element-id={el.id}
                       data-x={el.x}
                       data-y={el.y}
-                      className={`slide-element slide-shape ${isSelected ? "selected" : ""}`}
+                      className={`slide-element slide-shape ${isSelected ? "selected" : ""}${editorFadeClass(el)}`}
+                      {...editorFadeAttrs(el)}
                       style={{
                         ...posStyle,
                         backgroundColor: el.fill || "#e2e8f0",
@@ -2229,7 +2621,8 @@ ${slidesHtml}
                       onMouseDown={(e) => onElementMouseDown(e, el.id)}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      {isSelected ? renderHandles(el.id) : null}
+                      <FadeOnClickMark element={el} />
+                      {isSelected && !readOnly ? renderHandles(el.id) : null}
                     </div>
                   );
                 }
@@ -2241,11 +2634,13 @@ ${slidesHtml}
                       data-element-id={el.id}
                       data-x={el.x}
                       data-y={el.y}
-                      className={`slide-element slide-table ${isSelected ? "selected" : ""}`}
+                      className={`slide-element slide-table ${isSelected ? "selected" : ""}${editorFadeClass(el)}`}
+                      {...editorFadeAttrs(el)}
                       style={posStyle}
                       onMouseDown={(e) => onElementMouseDown(e, el.id)}
                       onClick={(e) => e.stopPropagation()}
                     >
+                      <FadeOnClickMark element={el} />
                       <table>
                         <tbody>
                           {el.rows.map((row, rIdx) => (
@@ -2257,14 +2652,17 @@ ${slidesHtml}
                           ))}
                         </tbody>
                       </table>
-                      {isSelected ? renderHandles(el.id) : null}
+                      {isSelected && !readOnly ? renderHandles(el.id) : null}
                     </div>
                   );
                 }
 
                 return null;
               })}
+              {slideComments.marks}
             </div>
+          </div>
+          {slideComments.dock}
           </div>
 
           {/* Speaker Notes Pane */}
@@ -2281,6 +2679,7 @@ ${slidesHtml}
             {showNotes ? (
               <textarea
                 className="notes-textarea"
+                readOnly={readOnly}
                 placeholder="Click to add speaker notes"
                 value={activeSlide?.notes || ""}
                 onChange={(e) =>
@@ -2312,6 +2711,12 @@ ${slidesHtml}
               setPreviewTheme(null);
               commit(customizeTheme(deck, patch));
             }}
+            library={libraryThemes}
+            onSaveToLibrary={(name) => {
+              if (!deck.theme)
+                return { ok: false, error: "Pick a theme, then save it." };
+              return saveLibraryTheme(deck.theme, name);
+            }}
             duration={transitionDuration}
             onDuration={(seconds) => {
               setDuration(seconds);
@@ -2333,6 +2738,34 @@ ${slidesHtml}
             status={transitionStatus}
           />
         ) : null}
+        <SlideSpelling
+          ref={spellingRef}
+          deck={deck}
+          fileId={file.id}
+          onFocus={(issue) => applySelection(issue.slideId, [issue.slideId], issue.elementId)}
+          onReplace={(issue, replacement) => {
+            const next = replaceSlideWord(
+              deckRef.current,
+              issue.slideId,
+              issue.elementId,
+              issue.from,
+              issue.to,
+              replacement,
+            );
+            const slide = next.slides[issue.slideId];
+            const element = slide?.elements.find((item) => item.id === issue.elementId);
+            if (element?.runs?.length) {
+              element.runs = replaceRunRange(
+                element.runs,
+                issue.from,
+                issue.to,
+                replacement,
+              );
+            }
+            commitRef.current(next);
+            applySelection(issue.slideId, [issue.slideId], issue.elementId);
+          }}
+        />
       </div>
 
       {/* Presentation Fullscreen Mode Modal */}
@@ -2356,14 +2789,9 @@ ${slidesHtml}
                 ? `min(62vw, calc((100vh - 112px) * ${deck.width || 960} / ${deck.height || 540}))`
                 : `min(100vw, calc(100vh * ${deck.width || 960} / ${deck.height || 540}))`,
             }}
-            onClick={() => {
-              setBlankScreen(null);
-              setPresentSlideIndex((prev) =>
-                Math.min(deck.slideOrder.length - 1, prev + 1),
-              );
-            }}
+            onClick={() => moveShowRef.current("next")}
           >
-            {renderShowElements(presentSlide)}
+            {renderShowElements(presentSlide, true)}
             {blankScreen ? (
               <div
                 className="presenter-blank"
@@ -2406,7 +2834,7 @@ ${slidesHtml}
                         aspectRatio: `${deck.width || 960} / ${deck.height || 540}`,
                       }}
                     >
-                      {renderShowElements(nextPresentSlide)}
+                      {renderShowElements(nextPresentSlide, false)}
                     </div>
                   </>
                 ) : (
@@ -2428,11 +2856,13 @@ ${slidesHtml}
           >
             <button
               type="button"
-              onClick={() =>
-                setPresentSlideIndex((prev) => Math.max(0, prev - 1))
+              onClick={() => moveShowRef.current("prev")}
+              disabled={cannotRetreat}
+              title={
+                showCursor.revealed > 0
+                  ? "Hide fade-in (Left arrow)"
+                  : "Previous slide (Left arrow)"
               }
-              disabled={presentSlideIndex <= 0}
-              title="Previous slide (Left arrow)"
             >
               <ChevronLeft size={16} />
               Previous
@@ -2442,13 +2872,11 @@ ${slidesHtml}
             </span>
             <button
               type="button"
-              onClick={() =>
-                setPresentSlideIndex((prev) =>
-                  Math.min(deck.slideOrder.length - 1, prev + 1),
-                )
+              onClick={() => moveShowRef.current("next")}
+              disabled={cannotAdvance}
+              title={
+                fadeWaiting ? "Fade in (Right arrow)" : "Next slide (Right arrow)"
               }
-              disabled={presentSlideIndex >= deck.slideOrder.length - 1}
-              title="Next slide (Right arrow)"
             >
               Next
               <ChevronRight size={16} />

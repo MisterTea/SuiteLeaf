@@ -14,10 +14,10 @@ Nia is typing the garden-club agenda. Each line is a name, then a time. She pres
 ## Scenes
 
 1. **The agenda.** Nia opens "Saturday agenda". Three lines read "Plant sale", "Compost", and "Officers", each followed by a time. The times do not line up.
-2. **One stop.** She selects the three lines and sets a tab stop at 3 inches from one control. No ruler drag.
-3. **The jump.** She puts the caret after "Plant sale" and presses Tab. "9:00" lands at that stop. She does the same for the other two lines. 9:00, 10:30, and 11:00 share a column.
-4. **One line.** She moves the stop on the Officers line to 4 inches. Only that time moves. The first two stay at 3 inches.
-5. **Save and Word.** She reopens the file. The first two times are still at 3 inches and Officers is still at 4. The exported .docx keeps those tab stops.
+2. **One stop.** She selects the three lines and types 3 in the Tab stop field. A guide appears on each line. No ruler drag.
+3. **The jump.** She puts the caret before each time and presses Tab. 9:00, 10:30, and 11:00 land on that guide and share a column.
+4. **One line.** She clicks Officers and changes that line's stop to 4 inches. Only 11:00 moves. The first two stay at 3 inches.
+5. **Save and Word.** She reopens the file. The first two times are still at 3 inches and Officers is still at 4. File, Export DOCX keeps those tab stops.
 
 ## Google Workspace benchmark
 
@@ -34,10 +34,22 @@ In Google Docs you show the ruler, click it, then press Tab ([Docs Help](https:/
 
 ## Success looks like
 
-9:00, 10:30, and 11:00 line up. Officers can sit further right without pulling the other two with it.
+9:00, 10:30, and 11:00 line up on a guide. Officers can sit further right without pulling the other two with it.
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| A tab stop is a number in one control, in inches. No ruler drag. | Met | Video 0:08–0:11. The Tab stop field reads 3, and the hint says the three lines share that stop. `tests/browser/doc-tab-stops.spec.ts` |
+| Tab after the name moves the time to that stop. | Met | Video 0:13–0:17. Each time jumps to the guide as Nia presses Tab. |
+| The three times share a column when they use the same stop. | Met | Video 0:19. Their left edges are within 2px. Same assertion in the scene and the browser test. |
+| Changing the stop on one line does not move the others. | Met | Video 0:22. Officers goes to 4 in; 9:00 and 10:30 stay together, about an inch to the left. |
+| The stops survive save and reopen. | Met | Video 0:26. After reopen, two paragraphs are still 3 in and Officers is still 4. |
+| The exported .docx keeps each paragraph's tab stop. | Met | Scene export check and `tests/doc-tab-stops.test.ts`: left stops at 4320, 4320, and 5760 twips, each with a tab. |
 
 ## Gaps and notes
 
-- There is no tab stop today.
-- Decimal tabs, center tabs, and a visible ruler are out of scope.
-- Do not change margins, columns, or line spacing.
+- One left stop per paragraph. Decimal, center, and right tabs, and more than one custom stop on a line, are out of scope.
+- The guide is a screen aid. It is not part of the printed page.
+- Opening a Word file does not restore its tab stops. Export does write them.
+- Margins, columns, line spacing, and page numbers are unchanged.

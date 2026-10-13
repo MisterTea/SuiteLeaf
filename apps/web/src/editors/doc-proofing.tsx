@@ -1,6 +1,6 @@
 import { useEditorState, type Editor } from "@tiptap/react";
 import type { EditorView } from "@tiptap/pm/view";
-import { TextSelection } from "@tiptap/pm/state";
+import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import type { JsonNode } from "@suiteleaf/core";
 import { X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
@@ -76,6 +76,7 @@ export function useDocProofing(
   editor: Editor | null,
   pageCount: number,
   onContext: MutableRefObject<ProofingContext>,
+  grammarContext?: MutableRefObject<ProofingContext>,
 ) {
   const [dialog, setDialog] = useState<"count" | "spelling" | "dictionary" | null>(null);
   const [menu, setMenu] = useState<SpellingMenuHit | null>(null);
@@ -94,11 +95,15 @@ export function useDocProofing(
       if (!current) return null;
       const json = current.getJSON() as JsonNode;
       const settings = readProofing(json);
-      const { from, to, empty } = current.state.selection;
+      const selection = current.state.selection;
+      const { from, to, empty } = selection;
+      // A selected photo is not a text selection. Counting it says "0 of N words".
+      const image =
+        selection instanceof NodeSelection && selection.node.type.name === "image";
       return {
         settings,
         counts: countDocument(json, settings),
-        selection: empty
+        selection: empty || image
           ? null
           : selectionSnapshot(
               current.state.doc,
@@ -125,6 +130,7 @@ export function useDocProofing(
 
   useEffect(() => {
     onContext.current = (view, event) => {
+      if (grammarContext?.current(view, event)) return true;
       const hit = spellingHit(view, event, personalRef.current);
       if (!hit) return false;
       event.preventDefault();

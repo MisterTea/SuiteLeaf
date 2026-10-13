@@ -2,10 +2,20 @@ import { Extension, Node } from "@tiptap/core";
 import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import {
+  bodyEdgeInsets,
   documentPageSettings,
   pageDimensions,
 } from "@suiteleaf/core/document-layout";
 import type { JsonNode } from "@suiteleaf/core";
+import {
+  breakPosBeforeList,
+  keepWithNextBreak,
+  keepsWithNext,
+  markKeepNextLine,
+  nextBlockType,
+  staysWithFollowingBlock,
+} from "./doc-keep-next";
+import { annotateWidowLines, avoidSingleLine } from "./doc-widow-control";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -77,7 +87,17 @@ type Boundary = {
   row?: boolean;
   columns?: number;
   manual?: boolean;
-  heading?: boolean;
+  /** The user asked this block to stay with the one after it. */
+  keepNext?: boolean;
+  /** This heading is where arabic page numbers restart at 1. */
+  arabic?: boolean;
+  /** 0-based page this block lands on, after breaks. */
+  page?: number;
+  /** Set on each visual line of a paragraph with widow/orphan control. */
+  widowControl?: boolean;
+  blockPos?: number;
+  line?: number;
+  lineCount?: number;
 };
 
 /** Layout decorations never alter document content or enter undo history. */
@@ -133,9 +153,27 @@ export const DocumentPagination = Extension.create({
               const settings = documentPageSettings(
                 view.state.doc.toJSON() as JsonNode,
               );
-              const { height } = pageDimensions(settings);
-              const margin = settings.margin,
-                bodyHeight = height - margin * 2;
+              const { width, height } = pageDimensions(settings);
+              const insets = bodyEdgeInsets(settings, width);
+              const topMargin = insets.top,
+                bottomMargin = insets.bottom,
+                bodyHeight = height - topMargin - bottomMargin;
+              const paper = view.dom.closest(".paginated-paper");
+              if (paper instanceof HTMLElement) {
+                paper.style.setProperty(
+                  "--header-from-edge",
+                  `${settings.headerFromEdge}px`,
+                );
+                paper.style.setProperty(
+                  "--footer-from-edge",
+                  `${settings.footerFromEdge}px`,
+                );
+                paper.style.setProperty("--body-inset-top", `${insets.top}px`);
+                paper.style.setProperty(
+                  "--body-inset-bottom",
+                  `${insets.bottom}px`,
+                );
+              }
               const origin = view.dom.getBoundingClientRect().top;
               const scale =
                 view.dom.getBoundingClientRect().width /
@@ -149,8 +187,8 @@ export const DocumentPagination = Extension.create({
                 const dom = view.nodeDOM(pos);
                 if (!(dom instanceof HTMLElement)) return;
                 const rect = dom.getBoundingClientRect();
-                const top = (rect.top - origin) / scale - margin;
-                const bottom = (rect.bottom - origin) / scale - margin;
+                const top = (rect.top - origin) / scale - topMargin;
+                const bottom = (rect.bottom - origin) / scale - topMargin;
                 if (node.type.name === "pageBreak") {
                   boundaries.push({ pos, top, bottom, manual: true });
                   return false;
@@ -176,24 +214,70 @@ export const DocumentPagination = Extension.create({
                   boundaries.push({ pos, top, bottom });
                   return false;
                 }
+                if (node.type.name === "columnLayout") {
+                  // The two columns share one vertical band, so a page break
+                  // belongs to the group rather than to each paragraph.
+                  boundaries.push({ pos, top, bottom });
+                  return false;
+                }
                 if (
                   !node.isTextblock ||
                   parent?.type.name === "tableCell" ||
                   parent?.type.name === "tableHeader"
                 )
                   return;
+                // A paragraph can break between lines, so widow control can
+                // keep two of them together. Keep-with-next stays one block.
+                if (
+                  node.type.name === "paragraph" &&
+                  node.textContent &&
+                  !keepsWithNext(node)
+                ) {
+                  const lines = textLines(
+                    view,
+                    dom,
+                    pos,
+                    origin,
+                    scale,
+                    topMargin,
+                  );
+                  lines.sort((a, b) => a.top - b.top || a.pos - b.pos);
+                  if (lines.length > 1) {
+                    const beforeList = breakPosBeforeList(view.state.doc, pos);
+                    if (beforeList != null && lines[0]) lines[0].pos = beforeList;
+                    boundaries.push(
+                      ...(node.attrs.widowControl === true
+                        ? annotateWidowLines(lines, pos, true)
+                        : lines),
+                    );
+                    return false;
+                  }
+                }
                 if (bottom - top <= bodyHeight) {
                   boundaries.push({
-                    pos,
+                    pos: breakPosBeforeList(view.state.doc, pos) ?? pos,
                     top,
                     bottom,
-                    heading: node.type.name === "heading",
+                    keepNext: staysWithFollowingBlock(
+                      { type: node.type.name, keepNext: keepsWithNext(node) },
+                      nextBlockType(parent, node),
+                    ),
+                    arabic:
+                      node.type.name === "heading" &&
+                      node.attrs.startArabic === true,
                   });
                   return false;
                 }
                 // A paragraph taller than a page is split at visual line boundaries.
+                const lines = markKeepNextLine(
+                  textLines(view, dom, pos, origin, scale, topMargin),
+                  keepsWithNext(node),
+                );
                 boundaries.push(
-                  ...textLines(view, dom, pos, origin, scale, margin),
+                  ...(node.type.name === "paragraph" &&
+                  node.attrs.widowControl === true
+                    ? annotateWidowLines(lines, pos, true)
+                    : lines),
                 );
                 return false;
               });
@@ -209,17 +293,24 @@ export const DocumentPagination = Extension.create({
                     next.top + added > start + 0.5) ||
                   next.manual
                 ) {
-                  // Headings move with the block that follows them, as in Word and Docs.
-                  let first = i;
-                  while (
-                    !next.manual &&
-                    boundaries[first - 1]?.heading &&
-                    boundaries[first - 1].top + added > start + 0.5
-                  )
-                    first--;
+                  // Widow control keeps two lines of one paragraph together.
+                  // Keep with next still carries a heading onto what follows.
+                  const adjusted = next.manual
+                    ? i
+                    : avoidSingleLine(boundaries, i, start, added);
+                  const first = keepWithNextBreak(
+                    boundaries,
+                    adjusted,
+                    start,
+                    added,
+                  );
                   const b = boundaries[first];
+                  for (let k = first; k <= i; k++) boundaries[k].page = page + 1;
                   const gap =
-                    Math.max(0, end - (b.top + added)) + 2 * margin + 24;
+                    Math.max(0, end - (b.top + added)) +
+                    topMargin +
+                    bottomMargin +
+                    24;
                   decorations.push(
                     Decoration.widget(
                       b.pos,
@@ -247,8 +338,18 @@ export const DocumentPagination = Extension.create({
                   );
                   added += gap;
                   page++;
-                }
+                } else if (next.page == null) next.page = page;
               }
+              let arabicPage: number | null = null;
+              for (const boundary of boundaries) {
+                if (!boundary.arabic || boundary.page == null) continue;
+                arabicPage =
+                  arabicPage == null
+                    ? boundary.page
+                    : Math.min(arabicPage, boundary.page);
+              }
+              (view.dom as HTMLElement).dataset.arabicPage =
+                arabicPage == null ? "" : String(arabicPage);
               const naturalBottom = Math.max(
                 0,
                 ...boundaries.map((b) => b.bottom),
@@ -256,7 +357,8 @@ export const DocumentPagination = Extension.create({
               const pages = Math.max(
                 page + 1,
                 Math.ceil(
-                  (naturalBottom + added + margin * 2 + 24) / (height + 24),
+                  (naturalBottom + added + topMargin + bottomMargin + 24) /
+                    (height + 24),
                 ),
               );
               view.dispatch(

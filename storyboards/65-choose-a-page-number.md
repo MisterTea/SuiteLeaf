@@ -14,11 +14,13 @@ Ben's minutes always print "1 / 3" in the bottom right. The committee wants "Pag
 
 ## Scenes
 
-1. **The default.** Ben opens "Minutes". Each page ends with "1 / 2" at the bottom right.
-2. **The choice.** In Page setup, with page numbers on, he picks "Page 1" instead of "1 / 2", and Bottom center instead of Bottom right.
+1. **The default.** Ben opens "Minutes". Page 1 ends with "1 / 2" at the bottom right, and page 2 ends with "2 / 2" there too.
+2. **The choice.** Page setup, one dialog, shows the format and the position next to the page-numbers checkbox. He picks "Page 1" and Bottom center. The hint and the little page preview follow.
 3. **The page.** Page 1 shows "Page 1" in the center of the footer. Page 2 shows "Page 2". Neither shows a total.
-4. **Top right.** He switches the position to Top right. The footer number is gone. "Page 1" sits in the header area on the right.
-5. **Save.** He reopens the file. The position and the "Page N" wording are unchanged.
+4. **The footer.** He types "Committee draft" in the footer. That text sits on the left. The "Page 1" pill stays in the center.
+5. **Top right.** He switches the position to Top right. The footer number is gone. "Page 1" and "Page 2" sit in the header area on the right. "Committee draft" is still in the footer.
+6. **Save.** He reopens the file. The position and the "Page N" wording are unchanged.
+7. **Off, then on.** Turning page numbers off removes the pills and leaves the footer text. Turning them on again restores "Page 1" at the top right.
 
 ## Google Workspace benchmark
 
@@ -35,10 +37,22 @@ In Google Docs you open the header, then Options, then Page numbers ([Docs Help]
 
 ## Success looks like
 
-The minutes show "Page 1" and "Page 2" at the bottom center. The total is gone. Reopening the file keeps that choice.
+The minutes show "Page 1" at the top right, with "Committee draft" still in the footer. Reopening the file keeps that wording and place. Turning numbers off clears the pills, and turning them on brings the same choice back.
 
 ## Gaps and notes
 
-- Numbers are always "n / total" at the bottom right.
-- Do not rebuild on-page header editing or odd/even layouts. If those exist on this base, the chosen position must still be used.
 - Roman numerals and a custom start number are out of scope.
+- A different first page still hides the number on page 1. Odd and even pages still put the number on the outside edge until a position is chosen. Bottom right, Bottom center, and Top right then apply to every numbered page.
+- Word and HTML export follow the format and position. Opening a Word file does not read a number format back in.
+- The page preview still marks pages as even and odd when that option is off, so the sample can show a left-hand page.
+
+## Result
+
+| Criterion | Met? | Evidence |
+| --- | --- | --- |
+| Page setup shows the format and the position next to the page-numbers checkbox. No second dialog. | Met | Video ~0:07. One Page setup dialog; Format and Position sit under the checkbox. `tests/browser/page-numbers.spec.ts` |
+| "1 / 2" and "Page 1" are both available. Choosing "Page 1" hides the total. | Met | Video ~0:11–0:13. The pills read "Page 1" and "Page 2". |
+| Bottom center, bottom right, and top right each place the number there and remove it from the other spot. | Met | Video ~0:03 bottom right, ~0:12 bottom center, ~0:20 top right (the footer no longer has the number). |
+| The number is not ordinary text. Editing the footer does not delete it. | Met | Video ~0:17. "Committee draft" is on the left and the "Page 1" pill stays in the center. |
+| The format and position survive save and reopen. | Met | Video ~0:25. The browser test downloads the file and opens it again. |
+| Turning page numbers off removes them from every page in one step. | Met | Video ~0:28. The footer text remains. ~0:32 turns them on again and "Page 1" returns at the top right. |

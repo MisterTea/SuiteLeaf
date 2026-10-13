@@ -173,7 +173,12 @@ export function FunctionMenu({ onInsert }: { onInsert: (name: string) => void })
                 </span>
               </Dropdown.SubTrigger>
               <Dropdown.Portal>
-                <Dropdown.SubContent className="menu-content" sideOffset={6}>
+                <Dropdown.SubContent
+                  className="menu-content"
+                  sideOffset={-4}
+                  alignOffset={-4}
+                  collisionPadding={8}
+                >
                   {functionsIn(category).map((entry) => (
                     <Pick key={entry.name} entry={entry} onInsert={onInsert} />
                   ))}

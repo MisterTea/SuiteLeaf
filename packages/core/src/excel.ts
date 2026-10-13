@@ -3,6 +3,7 @@ import { officeZlib } from "./zip-inflater";
 XLSX.CFB.utils.use_zlib(officeZlib);
 import JSZip from "jszip";
 import { importExcelFeatures } from "./excel-features";
+import { readWorksheetOutline } from "./excel-outline";
 import { readExcelImages } from "./excel-images";
 import { readBinaryExcelLayout } from "./excel-binary-metadata";
 import { readBinaryLineCharts } from "./excel-binary-charts";
@@ -13,6 +14,7 @@ import {
   type SheetFile,
   type ChartDefinition,
 } from "./index";
+import { removedLinkWarning, takeExcelHyperlink } from "./sheet-links";
 import {
   array,
   parseXml,
@@ -546,6 +548,7 @@ export async function importXlsx(
     compression: "DEFLATE",
   });
   let textUnits = 0;
+  const droppedLinks: string[] = [];
   let book: XLSX.WorkBook;
   try {
     book = XLSX.read(readBytes, {
@@ -697,6 +700,7 @@ export async function importXlsx(
         }
       }
       if (cell.z && cell.z !== "General") target.s = { n: { pattern: cell.z } };
+      takeExcelHyperlink(cell, target, droppedLinks);
       if (Object.keys(target).length) {
         (cellData[coords.r] ??= {})[coords.c] = target;
         maxRow = Math.max(maxRow, coords.r);
@@ -859,6 +863,20 @@ export async function importXlsx(
         if (Object.keys(d).length) columnData[c] = d;
       }
     }
+    const outline = readWorksheetOutline(raw);
+    for (const column of outline.columnGroups.flatMap((group) => group.collapsed))
+      (columnData[column] ??= {}).hd = 1;
+    for (const row of outline.rowGroups.flatMap((group) => group.collapsed))
+      (rowData[row] ??= {}).hd = 1;
+    for (const group of outline.columnGroups)
+      maxCol = Math.max(maxCol, group.endColumn);
+    for (const group of outline.rowGroups) maxRow = Math.max(maxRow, group.endRow);
+    if (outline.columnGroups.length || outline.rowGroups.length)
+      features.push("outline");
+    if (outline.nested)
+      warnings.push(
+        "Nested Excel outlines were opened as one group. Inner outline levels were not kept separate.",
+      );
     const merges = (source["!merges"] ?? [])
       .filter(
         (r) => r.s.r >= 0 && r.s.c >= 0 && r.e.r <= 1048575 && r.e.c <= 16383,
@@ -928,6 +946,12 @@ export async function importXlsx(
           characterPixels: 7,
           defaultColumnPixels: defaultColumnWidth,
         },
+        ...(outline.columnGroups.length
+          ? { suiteleafColumnGroups: outline.columnGroups }
+          : {}),
+        ...(outline.rowGroups.length
+          ? { suiteleafRowGroups: outline.rowGroups }
+          : {}),
       },
       defaultStyle: styles["excel-0"] ? "excel-0" : undefined,
       defaultColumnWidth,
@@ -1040,8 +1064,6 @@ export async function importXlsx(
       "Autofilter definitions are not recreated; the data can be filtered with the Sheets toolbar.",
     sheet_protection:
       "Protected Excel sheets open read-only; local protection can be removed in Sheet tools.",
-    hyperlinks:
-      "Hyperlink cell labels are preserved; hyperlink targets are not recreated.",
     pivot_tables:
       "Excel pivot results are retained as cells, but Excel pivot definitions are not recreated.",
 
@@ -1049,6 +1071,7 @@ export async function importXlsx(
       "External workbook links are retained as formula text and cached values; no external files are fetched.",
   }))
     if (features.includes(feature)) warnings.push(warning);
+  if (droppedLinks.length) warnings.push(removedLinkWarning(droppedLinks));
   if (stats.formulas) {
     features.push("formulas");
     warnings.push(

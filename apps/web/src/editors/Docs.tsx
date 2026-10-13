@@ -12,7 +12,7 @@ import StarterKit from "@tiptap/starter-kit";
 import { TextStyleKit } from "@tiptap/extension-text-style";
 import Highlight from "@tiptap/extension-highlight";
 import TextAlign from "@tiptap/extension-text-align";
-import Image from "@tiptap/extension-image";
+import { croppableImage } from "./doc-image-crop";
 import { TableKit } from "@tiptap/extension-table";
 import Superscript from "@tiptap/extension-superscript";
 import Subscript from "@tiptap/extension-subscript";
@@ -48,6 +48,7 @@ import {
   Outdent,
   FileCog,
   SeparatorHorizontal,
+  EllipsisVertical,
   Check,
   X,
 } from "lucide-react";
@@ -60,6 +61,7 @@ import {
 import { exportBinary, exportText, printDocument } from "../storage";
 import { Tool, type EditorActions, type TableAction } from "../ui";
 import { MenuSearchPill } from "../command-palette";
+import { useToolbarOverflow } from "./toolbar-overflow";
 import { linkTarget } from "./doc-links";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import {
@@ -90,44 +92,66 @@ import {
 } from "@suiteleaf/core/suggestions";
 
 import { DocumentPagination, PageBreak } from "./doc-pagination";
+import { Grammar } from "./doc-grammar";
+import { useDocGrammar } from "./doc-grammar-ui";
+import { focusTabStop, TabCharacter, TabStops } from "./doc-tab-stops";
+import { TabStopBar } from "./doc-tab-stops-ui";
 import { Proofing } from "./doc-spelling";
 import { useDocProofing, type ProofingContext } from "./doc-proofing";
+import { DocImageAlt } from "./doc-image-alt-ui";
 import { documentNotes } from "./doc-notes";
+import { documentCitations } from "./doc-citations";
+import { DocCitations } from "./doc-citations-panel";
+import { Equation, EquationDialog } from "./doc-equations";
 import {
+  bodyEdgeInsets,
   documentHtml,
   documentPageSettings,
+  edgeDistancesValid,
   pageDimensions,
+  pageMarginsValid,
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
+import { PageFurniture, PageSetupFields } from "./page-setup";
+import { ArabicNumberStart, ArabicStartControl } from "./doc-arabic-start";
+import { paragraphLineSpacing } from "./doc-line-spacing";
+import { LineSpacingControl } from "./doc-line-spacing-ui";
+import { DocWatermarkField, pageSetupToSave } from "./doc-watermark";
+import { columnLayout } from "./doc-columns";
+import { PageMarginFields } from "./page-setup-margins";
+import { HeaderEdgeFields } from "./header-edge";
+import { KeepWithNext, KeepWithNextControl } from "./doc-keep-next";
+import { DontLeaveOneLineControl, WidowControl } from "./doc-widow-control";
 
 export const extensions: Extensions = [
   DocumentPagination,
   PageBreak,
+  columnLayout,
+  ArabicNumberStart,
   ...documentNotes,
+  ...documentCitations,
   StarterKit.configure({
     link: { openOnClick: false, isAllowedUri: (url) => safeLink(url) },
   }),
   TextStyleKit,
   Highlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ["heading", "paragraph"] }),
-  Image.configure({
-    allowBase64: true,
-    resize: {
-      enabled: true,
-      directions: ["top-left", "top-right", "bottom-left", "bottom-right"],
-      minWidth: 32,
-      minHeight: 32,
-      alwaysPreserveAspectRatio: true,
-    },
-  }),
+  paragraphLineSpacing,
+  KeepWithNext,
+  WidowControl,
+  croppableImage,
   TableKit.configure({ table: { resizable: true } }),
   CharacterCount,
   DocumentSearchHighlight,
   ...commentExtensions,
   Suggestions,
   Proofing,
+  Grammar,
   Superscript,
   Subscript,
+  Equation,
+  TabCharacter,
+  TabStops,
   Extension.create({
     name: "suiteleafStrikeShortcut",
     addKeyboardShortcuts() {
@@ -220,10 +244,16 @@ export default function Docs({
   const insertComment = useRef(() => {});
   const openComments = useRef(() => {});
   const [commentGutter, setCommentGutter] = useState(false);
+  const [citationsOpen, setCitationsOpen] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(() =>
     window.innerWidth < 700 ? "Fit" : "100%",
   );
   const paperContainer = useRef<HTMLDivElement>(null);
+  const docTools = useRef<HTMLFieldSetElement>(null);
+  const moreDocTools = useToolbarOverflow(
+    docTools,
+    '[aria-label="Page setup"], [aria-label="Page break"], [aria-label="Superscript"], [aria-label="Subscript"], [aria-label="Bulleted list"], [aria-label="Decrease indent"], [aria-label="Increase indent"], [aria-label="Find and replace"], [aria-label="Insert table"], .mode-switch',
+  );
   const [pageViewportWidth, setPageViewportWidth] = useState(
     window.innerWidth - 32,
   );
@@ -236,9 +266,12 @@ export default function Docs({
     openReview: () => void;
   } | null>(null);
   const proofingContext = useRef<ProofingContext>(() => false);
+  const grammarContext = useRef<ProofingContext>(() => false);
   const [activeHeading, setActiveHeading] = useState<number | null>(null);
   const [pageCount, setPageCount] = useState(1);
+  const [arabicPage, setArabicPage] = useState<number | null>(null);
   const [pageSetupOpen, setPageSetupOpen] = useState(false);
+  const [equationOpen, setEquationOpen] = useState(false);
   const [pageDraft, setPageDraft] = useState<PageSettings>(() =>
     documentPageSettings(file.content),
   );
@@ -259,13 +292,64 @@ export default function Docs({
       // Keep a few lines of context around the caret when typing scrolls the page.
       scrollMargin: { top: 64, bottom: 64, left: 5, right: 5 },
       handleKeyDown: (view, event): boolean => {
-        // macOS browsers scroll the page on Home/End; Word and Docs move to the line start/end.
+        // Home and End move to the start or end of the line, as in Word.
+        // macOS scrolls the page instead, and Linux does too inside this editor.
+        // Shift+arrow extends by one character in the document, on every
+        // platform. Linux otherwise drops the first character of the word.
+        if (
+          (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
+          event.shiftKey &&
+          !event.altKey &&
+          !event.metaKey &&
+          !event.ctrlKey &&
+          view.state.selection instanceof TextSelection
+        ) {
+          const sel = view.state.selection;
+          const dir = event.key === "ArrowRight" ? 1 : -1;
+          const doc = view.state.doc;
+          let pos = sel.head;
+          for (let step = 0; step < 8; step++) {
+            pos += dir;
+            if (pos < 0 || pos > doc.content.size) break;
+            let moved: TextSelection;
+            try {
+              moved = TextSelection.create(doc, sel.anchor, pos);
+            } catch {
+              continue;
+            }
+            if (moved.anchor === sel.anchor && moved.head === sel.head) continue;
+            event.preventDefault();
+            view.dispatch(view.state.tr.setSelection(moved).scrollIntoView());
+            return true;
+          }
+          return false;
+        }
+        // A right or left arrow collapses a selection to that edge first,
+        // including when the browser leaves the range in place.
+        if (
+          (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
+          !event.shiftKey &&
+          !event.altKey &&
+          !event.metaKey &&
+          !event.ctrlKey &&
+          !view.state.selection.empty &&
+          !(view.state.selection instanceof CellSelection)
+        ) {
+          const pos =
+            event.key === "ArrowRight"
+              ? view.state.selection.to
+              : view.state.selection.from;
+          event.preventDefault();
+          view.dispatch(
+            view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(pos))),
+          );
+          return true;
+        }
         if (
           (event.key === "Home" || event.key === "End") &&
           !event.metaKey &&
           !event.ctrlKey &&
-          !event.altKey &&
-          navigator.platform.includes("Mac")
+          !event.altKey
         ) {
           event.preventDefault();
           const selection = view.dom.ownerDocument.getSelection();
@@ -383,10 +467,11 @@ export default function Docs({
           return true;
         },
         contextmenu: (view, event) => {
-          if (proofingContext.current(view, event)) return true;
           const target = event.target as HTMLElement | null;
           const cell = target?.closest?.("td, th");
-          if (!cell || cell.closest(".doc-page-spacer")) return false;
+          const inTable = !!cell && !cell.closest(".doc-page-spacer");
+          if (!inTable && proofingContext.current(view, event)) return true;
+          if (!inTable) return false;
           const hit = view.posAtCoords({
             left: event.clientX,
             top: event.clientY,
@@ -408,12 +493,15 @@ export default function Docs({
         },
       },
     },
-    onUpdate: ({ editor }) => {
+    onUpdate: ({ editor, transaction }) => {
+      if (!transaction.docChanged || transaction.getMeta("addToHistory") === false)
+        return;
       if (!readOnlyRef.current) changes.current(editor.getJSON() as JsonNode);
     },
   });
 
-  const proofing = useDocProofing(editor, pageCount, proofingContext);
+  const grammar = useDocGrammar(editor, grammarContext);
+  const proofing = useDocProofing(editor, pageCount, proofingContext, grammarContext);
 
   useEffect(() => {
     if (editor && editor.isEditable === readOnly) editor.setEditable(!readOnly);
@@ -623,7 +711,7 @@ export default function Docs({
       editor
         ?.chain()
         .focus()
-        .setImage({ src, alt: f.name })
+        .setImage({ src, alt: "" })
         .command(({ tr, state }) => {
           // Typing must continue after the photo, not replace it.
           if (!(tr.selection instanceof NodeSelection)) return true;
@@ -714,14 +802,23 @@ export default function Docs({
           editor.chain().focus().insertTableOfContents(pageNumbers).run(),
         insertFootnote: () => editor.chain().focus().insertFootnote().run(),
         insertEndnote: () => editor.chain().focus().insertEndnote().run(),
+        insertEquation: () => {
+          if (!readOnlyRef.current) setEquationOpen(true);
+        },
         openPageSetup,
         openWordCount: proofing.openWordCount,
         openSpelling: proofing.openSpelling,
+        openGrammar: grammar.openGrammar,
+        openIgnoredGrammar: grammar.openIgnoredGrammar,
         openDictionary: proofing.openDictionary,
+        openCitations: () => setCitationsOpen(true),
         clearFormatting: () =>
           editor.chain().focus().unsetAllMarks().clearNodes().run(),
         align: (alignment) =>
           editor.chain().focus().setTextAlign(alignment).run(),
+        setColumns: (columns: 1 | 2) =>
+          editor.chain().focus().setColumns(columns).run(),
+        columnCount: () => (editor.isActive("columnLayout") ? 2 : 1),
         toggleBold: () => editor.chain().focus().toggleBold().run(),
         toggleItalic: () => editor.chain().focus().toggleItalic().run(),
         toggleUnderline: () => editor.chain().focus().toggleUnderline().run(),
@@ -734,14 +831,19 @@ export default function Docs({
           editor.chain().focus().toggleOrderedList().run(),
         tableActions,
         openSuggestions: () => suggestionApi.current?.openReview(),
+        focusTabStop,
       },
     });
-  }, [editor, file.title, onActions, proofing.openWordCount, proofing.openSpelling, proofing.openDictionary]);
+  }, [editor, file.title, onActions, proofing.openWordCount, proofing.openSpelling, proofing.openDictionary, grammar.openGrammar, grammar.openIgnoredGrammar]);
 
   useEffect(() => {
     if (!editor) return;
-    const pages = (event: Event) =>
+    const pages = (event: Event) => {
       setPageCount((event as CustomEvent<number>).detail);
+      const raw = editor.view.dom.dataset.arabicPage ?? "";
+      const start = raw === "" ? Number.NaN : Number(raw);
+      setArabicPage(Number.isInteger(start) && start >= 0 ? start : null);
+    };
     editor.view.dom.addEventListener("suiteleaf-pages", pages);
     return () => editor.view.dom.removeEventListener("suiteleaf-pages", pages);
   }, [editor]);
@@ -874,13 +976,16 @@ export default function Docs({
 
   const pageSettings = documentPageSettings(editor.getJSON() as JsonNode);
   const pageDraftValid =
-    Number.isFinite(pageDraft.margin) &&
-    pageDraft.margin >= 24 &&
-    pageDraft.margin <= 144;
+    pageMarginsValid(pageDraft) &&
+    edgeDistancesValid(pageDraft) &&
+    Number.isInteger(pageDraft.pageNumberStart) &&
+    pageDraft.pageNumberStart >= 1 &&
+    pageDraft.pageNumberStart <= 9999;
   const dimensions = pageDimensions(pageSettings);
+  const edgeInsets = bodyEdgeInsets(pageSettings, dimensions.width);
   const requestedZoom =
     zoomLevel === "Fit" ? 1 : Number.parseInt(zoomLevel, 10) / 100;
-  const pageZoom = commentGutter
+  const pageZoom = commentGutter || citationsOpen
     ? Math.min(requestedZoom, pageViewportWidth / dimensions.width)
     : zoomLevel === "Fit"
       ? Math.min(1, pageViewportWidth / dimensions.width)
@@ -965,7 +1070,7 @@ export default function Docs({
     <SuggestionProvider editor={editor}>
     <SuggestionBridge api={suggestionApi} />
     <div className="docs-editor">
-      <div className="toolbar" role="toolbar" aria-label="Document formatting">
+      <div className="toolbar docs-toolbar" role="toolbar" aria-label="Document formatting">
         <MenuSearchPill />
         <fieldset className="toolbar-edits" disabled={readOnly}>
           <Tool label="Undo" onClick={() => editor.commands.undo()}>
@@ -995,7 +1100,11 @@ export default function Docs({
           <option value="200%">200%</option>
         </select>
 
-        <fieldset className="toolbar-edits toolbar-edits-rest" disabled={readOnly}>
+        <fieldset
+          ref={docTools}
+          className={`toolbar-edits toolbar-edits-rest docs-toolbar-tools${moreDocTools.overflowing ? " has-overflow" : ""}${moreDocTools.open ? " show-more" : ""}`}
+          disabled={readOnly}
+        >
         <Tool label="Page setup" onClick={openPageSetup}>
           <FileCog size={16} />
         </Tool>
@@ -1030,6 +1139,7 @@ export default function Docs({
           <option value="2">Heading 2</option>
           <option value="3">Heading 3</option>
         </select>
+        <LineSpacingControl editor={editor} />
 
         <span className="divider" />
 
@@ -1258,6 +1368,19 @@ export default function Docs({
           <Search size={16} />
         </Tool>
         <SuggestionModeSwitch />
+        {moreDocTools.open ? (
+          <span className="toolbar-break" aria-hidden="true" />
+        ) : null}
+        <button
+          type="button"
+          className="tool more-tools"
+          title="More tools"
+          aria-label="More tools"
+          aria-expanded={moreDocTools.open}
+          onClick={() => moreDocTools.setOpen(!moreDocTools.open)}
+        >
+          <EllipsisVertical size={16} />
+        </button>
         </fieldset>
       </div>
 
@@ -1279,7 +1402,10 @@ export default function Docs({
               e.preventDefault();
               if (!pageDraftValid) return;
               editor.view.dispatch(
-                editor.state.tr.setDocAttribute("pageSettings", pageDraft),
+                editor.state.tr.setDocAttribute(
+                  "pageSettings",
+                  pageSetupToSave(pageDraft),
+                ),
               );
               closePageSetup();
             }}
@@ -1332,66 +1458,19 @@ export default function Docs({
                   </label>
                 ))}
               </fieldset>
-              <label>
-                <span>Margins (inches)</span>
-                <input
-                  aria-label="Page margins"
-                  type="number"
-                  min="0.25"
-                  max="1.5"
-                  step="0.125"
-                  value={pageDraft.margin / 96}
-                  onChange={(e) =>
-                    setPageDraft({
-                      ...pageDraft,
-                      margin: Number(e.target.value) * 96,
-                    })
-                  }
-                />
-              </label>
-              <label>
-                <span>Header</span>
-                <input
-                  aria-label="Page header"
-                  placeholder="Text at the top of every page"
-                  value={pageDraft.header}
-                  maxLength={500}
-                  onChange={(e) =>
-                    setPageDraft({ ...pageDraft, header: e.target.value })
-                  }
-                />
-              </label>
-              <label>
-                <span>Footer</span>
-                <input
-                  aria-label="Page footer"
-                  placeholder="Text at the bottom of every page"
-                  value={pageDraft.footer}
-                  maxLength={500}
-                  onChange={(e) =>
-                    setPageDraft({ ...pageDraft, footer: e.target.value })
-                  }
-                />
-              </label>
-              <div className="page-setup-check">
-                <label>
-                  <input
-                    type="checkbox"
-                    aria-describedby="page-numbers-hint"
-                    checked={pageDraft.pageNumbers}
-                    onChange={(e) =>
-                      setPageDraft({
-                        ...pageDraft,
-                        pageNumbers: e.target.checked,
-                      })
-                    }
-                  />
-                  Page numbers
-                </label>
-                <span id="page-numbers-hint" className="page-setup-hint">
-                  Bottom right of every page, as “1 / 3”
-                </span>
-              </div>
+              <PageMarginFields draft={pageDraft} onChange={setPageDraft} />
+              <HeaderEdgeFields draft={pageDraft} onChange={setPageDraft} />
+              <PageSetupFields
+                draft={pageDraft}
+                pageCount={pageCount}
+                onChange={setPageDraft}
+              />
+              <DocWatermarkField
+                value={pageDraft.watermark}
+                onChange={(watermark) =>
+                  setPageDraft({ ...pageDraft, watermark })
+                }
+              />
             </div>
             <div className="dialog-footer">
               <button
@@ -1583,6 +1662,10 @@ export default function Docs({
             </div>
           </div>
         </div>
+      ) : null}
+
+      {equationOpen && editor ? (
+        <EquationDialog editor={editor} onClose={() => setEquationOpen(false)} />
       ) : null}
 
       {tableOpen ? (
@@ -1826,8 +1909,9 @@ export default function Docs({
         </div>
       ) : null}
 
+      <TabStopBar editor={editor} readOnly={readOnly} />
       <div
-        className={`document-stage${commentGutter ? " with-comments" : ""}`}
+        className={`document-stage${commentGutter ? " with-comments" : ""}${citationsOpen ? " with-citations" : ""}`}
         ref={documentStage}
       >
         <aside className="outline">
@@ -1867,7 +1951,9 @@ export default function Docs({
               <span>Headings you add to the document will appear here.</span>
             </div>
           )}
+          <ArabicStartControl editor={editor} readOnly={readOnly} />
         </aside>
+        <ArabicStartControl editor={editor} readOnly={readOnly} phone />
         <div
           className="paper-container"
           ref={paperContainer}
@@ -1885,33 +1971,29 @@ export default function Docs({
               {
                 "--page-width": `${dimensions.width}px`,
                 "--page-height": `${dimensions.height}px`,
-                "--page-margin": `${pageSettings.margin}px`,
+                "--page-margin": `${pageSettings.marginTop}px`,
+                "--page-margin-top": `${pageSettings.marginTop}px`,
+                "--page-margin-right": `${pageSettings.marginRight}px`,
+                "--page-margin-bottom": `${pageSettings.marginBottom}px`,
+                "--page-margin-left": `${pageSettings.marginLeft}px`,
+                "--header-from-edge": `${pageSettings.headerFromEdge}px`,
+                "--footer-from-edge": `${pageSettings.footerFromEdge}px`,
+                "--body-inset-top": `${edgeInsets.top}px`,
+                "--body-inset-bottom": `${edgeInsets.bottom}px`,
                 "--page-stride": `${dimensions.height + 24}px`,
                 minHeight: `${pageCount * dimensions.height + (pageCount - 1) * 24}px`,
                 zoom: pageZoom,
               } as CSSProperties
             }
           >
-            <div className="page-furniture" aria-hidden="true">
-              {Array.from({ length: pageCount }, (_, i) => (
-                <div
-                  key={i}
-                  className="page-furniture-page"
-                  style={{ "--page-index": i } as CSSProperties}
-                >
-                  <div className="page-header">{pageSettings.header}</div>
-                  <div className="page-footer">
-                    <span>{pageSettings.footer}</span>
-                    {pageSettings.pageNumbers ? (
-                      <span>
-                        {i + 1} / {pageCount}
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <PageFurniture
+              settings={pageSettings}
+              pageCount={pageCount}
+              arabicStart={arabicPage}
+            />
             <EditorContent editor={editor} />
+            <KeepWithNextControl editor={editor} readOnly={readOnly} />
+            <DontLeaveOneLineControl editor={editor} readOnly={readOnly} />
           </div>
         </div>
         <DocComments
@@ -1924,14 +2006,22 @@ export default function Docs({
           }}
         />
         <SuggestionRail />
+        <DocCitations
+          editor={editor}
+          open={citationsOpen}
+          onOpen={setCitationsOpen}
+          readOnly={readOnly}
+        />
       </div>
       {proofing.ui}
+      {grammar.ui}
       <footer className="editor-status">
         <span className="word-count">{proofing.label}</span> <SuggestionFlag />{" "}
         <span>
           {pageCount} {pageCount === 1 ? "page" : "pages"} · English
         </span>
       </footer>
+      <DocImageAlt editor={editor} />
       <input
         ref={imageInput}
         type="file"

@@ -14,11 +14,11 @@ Lena dropped a photo of the seed swap into the sign-up sheet. The photo includes
 
 ## Scenes
 
-1. **The photo.** Lena opens the sign-up note. The photo shows the stall and the parking lot.
-2. **Crop, not resize.** She selects the photo. A Crop control is separate from the corner resize handles. She drags the right edge in until the parking lot is gone. The stall stays the same size.
-3. **The pixels stay.** She opens Crop again and drags the edge back. The parking lot returns. Resize would have scaled the whole picture. Crop did not.
-4. **Save.** She downloads the SuiteLeaf file and opens the copy. The crop is still the stall, and choosing Reset crop shows the parking lot again.
-5. **Word.** She exports .docx. The picture in Word is cropped the same way, and the full image is still in the file so Word's own crop reset can show it.
+1. **The photo.** Lena starts the sign-up note and types a line. She inserts a photo: a striped stall on the left, a gray parking lot on the right.
+2. **Crop, not resize.** She selects the photo. **Crop** is a labeled button under the picture, separate from the blue corner handles. Crop mode shows orange edge bars, hides the corners, and says the rest of the photo stays the same size. She drags the right edge in. The stall does not grow or shrink. The parking lot is gone.
+3. **The pixels stay.** She clicks Done, opens Crop again, and drags the edge back. The parking lot returns.
+4. **Save.** She hides the parking lot again and downloads the note. Opening that file still shows the stall. **Reset crop** brings the parking lot back in one click.
+5. **Word.** She crops once more and chooses File → Export DOCX. The Word file shows the stall, and the original photo is still in the package so Word can reveal the parking lot.
 
 ## Google Workspace benchmark
 
@@ -35,10 +35,22 @@ In Google Docs the path is select the image, crop icon in the toolbar, drag an e
 
 ## Success looks like
 
-The note shows the stall and not the parking lot. Lena can bring the parking lot back without inserting the photo again.
+The note shows the stall and not the parking lot. Lena brings the parking lot back with Reset crop, without inserting the photo again.
+
+## Result
+
+| Criterion | Met? | Evidence |
+| --- | --- | --- |
+| 1. The selected image has a Crop control that is not one of the corner resize handles | Met | Video 0:11. Crop is a labeled button; the blue corner squares stay put until crop mode. `tests/browser/doc-image-crop.spec.ts` checks the button does not overlap a corner handle. |
+| 2. Dragging a crop edge hides part of the picture and does not change the size of the part that remains | Met | Video 0:13. The stall's left edge and height stay put while the parking lot disappears. The same browser test compares the frame with the image's full width. |
+| 3. Opening Crop again and dragging the edge back reveals the hidden part | Met | Video 0:16. The parking lot returns and the image source is unchanged. |
+| 4. Reset crop restores the full picture in one action | Met | Video 0:24. One Reset crop click after reopen. |
+| 5. The crop survives save and reopen in a SuiteLeaf file | Met | Video 0:22. The downloaded `.sldoc` opens still cropped to the stall. The browser test checks `cropRight` in the saved file. |
+| 6. A .docx export crops the same way and still contains the full image | Met | Video 0:27–0:30, File → Export DOCX. `tests/image-crop.test.ts` checks `a:srcRect` and that `word/media` is the original PNG. The scene checks the same bytes. |
 
 ## Gaps and notes
 
-- Docs can resize an image from the corners. It cannot crop.
-- Do not change the resize behavior from storyboard 05.
-- Do not rebuild equations, citations, or spelling.
+- Opening an exported .docx in SuiteLeaf does not read Word's crop back in. The export keeps the full image and the crop for Word.
+- HTML export keeps the crop attributes but does not clip the picture.
+- Crop is one edge at a time. There is no freeform crop or rotate.
+- Corner resize from storyboard 05 is unchanged. Equations, citations, and spelling were not rebuilt.

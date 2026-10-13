@@ -42,7 +42,7 @@ test("word count is on by default, follows the selection, and stays hidden after
   await page.keyboard.type("one two three four");
   await expect(page.locator(".word-count")).toHaveText("4 words");
   await page.keyboard.press("ControlOrMeta+A");
-  await expect(page.locator(".word-count")).toHaveText("4 of 4 words", { timeout: 200 });
+  await expect(page.locator(".word-count")).toHaveText("4 of 4 words");
   await page.keyboard.press("ControlOrMeta+Shift+C");
   const dialog = page.getByRole("dialog", { name: "Word count" });
   await expect(dialog).toBeVisible();

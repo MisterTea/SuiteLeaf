@@ -8,6 +8,8 @@ import {
   type AccountProfile,
   type ItemAccess,
 } from "../node-client";
+import { ExpiryCalendar } from "./ExpiryCalendar";
+import { endedPhrase, untilPhrase } from "./share-expiry";
 import { GRANT_ROLES, roleDescription, type GrantRole } from "./roles";
 
 const UNDO_MS = 8000;
@@ -39,12 +41,17 @@ function RoleMenu({
   label,
   allowRemove = false,
   disabled = false,
+  extras = [],
+  detail,
   onChange,
 }: {
   value: GrantRole;
   label: string;
   allowRemove?: boolean;
   disabled?: boolean;
+  extras?: { label: string; description: string; onPick: () => void }[];
+  /** Replaces the role description, for example "until Saturday". */
+  detail?: string;
   onChange: (next: GrantRole | "remove") => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -76,7 +83,7 @@ function RoleMenu({
         onClick={() => setOpen((v) => !v)}
       >
         <span>{GRANT_ROLES.find((r) => r.id === value)?.name}</span>
-        <small>{roleDescription(value)}</small>
+        <small>{detail || roleDescription(value)}</small>
       </button>
       {open ? (
         <ul className="share-role-menu" role="listbox" aria-label={label}>
@@ -94,6 +101,20 @@ function RoleMenu({
                 <span>{role.name}</span>
                 <small>{role.description}</small>
                 {role.id === value ? <Check size={14} /> : null}
+              </button>
+            </li>
+          ))}
+          {extras.map((extra) => (
+            <li key={extra.label}>
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  extra.onPick();
+                }}
+              >
+                <span>{extra.label}</span>
+                <small>{extra.description}</small>
               </button>
             </li>
           ))}
@@ -147,6 +168,8 @@ export function ShareDialog({
     person: AccessGrant;
     until: number;
   } | null>(null);
+  const [handover, setHandover] = useState<AccessGrant | null>(null);
+  const [expiring, setExpiring] = useState<AccessGrant | null>(null);
   const listRef = useRef(0);
   const you = getSession()?.user.id ?? "";
 
@@ -198,6 +221,14 @@ export function ShareDialog({
   }, [query, picked]);
 
   const canManage = access?.yourRole === "owner";
+  const accessNote =
+    access?.yourRole === "editor"
+      ? "You can edit this file. Only the owner can change who has access."
+      : access?.yourRole === "commenter"
+        ? "You can comment on this file. Only the owner can change who has access."
+        : access?.yourRole === "viewer"
+          ? "You can view this file. Only the owner can change who has access."
+          : "Only the owner can change who has access.";
   const unknown =
     !picked &&
     searched.includes("@") &&
@@ -260,6 +291,27 @@ export function ShareDialog({
     }, `${name} no longer has access`);
   };
 
+  const confirmHandover = () => {
+    if (!handover) return;
+    const person = handover;
+    setHandover(null);
+    void apply(
+      () => drive.transfer(target.id, person.principalId),
+      `${personLabel(person)} owns this file now`,
+    );
+  };
+
+  const pickExpiry = (iso: string) => {
+    if (!expiring) return;
+    const person = expiring;
+    setExpiring(null);
+    const when = untilPhrase(iso).replace(/^until /, "");
+    void apply(
+      () => drive.expire(target.id, person.principalId, iso),
+      `${givenName(person)}'s access ends ${when}`,
+    );
+  };
+
   const restore = () => {
     if (!undo || undo.person.role === "owner") return;
     const person = undo.person;
@@ -283,6 +335,8 @@ export function ShareDialog({
     setQuery("");
     setNotice("");
     setUndo(null);
+    setHandover(null);
+    setExpiring(null);
   };
 
   return createPortal(
@@ -392,7 +446,34 @@ export function ShareDialog({
             ) : null}
           </div>
         ) : access ? (
-          <p className="dialog-note">Only the owner can change who has access.</p>
+          <p className="dialog-note">{accessNote}</p>
+        ) : null}
+        {handover ? (
+          <div className="share-confirm" role="group" aria-label="Hand over this file">
+            <p>
+              Make {personLabel(handover)} the owner? You will become an editor.
+            </p>
+            <div>
+              <button type="button" onClick={() => setHandover(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="dialog-primary-btn"
+                disabled={busy}
+                onClick={confirmHandover}
+              >
+                Make owner
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {expiring ? (
+          <ExpiryCalendar
+            person={personLabel(expiring)}
+            onPick={pickExpiry}
+            onClose={() => setExpiring(null)}
+          />
         ) : null}
         <h3 className="share-list-title">People with access</h3>
         {access ? null : <p className="share-private">Loading…</p>}
@@ -400,11 +481,21 @@ export function ShareDialog({
           {(access?.grants ?? []).map((person) => {
             const yours = person.principalId === you;
             const inherited = person.inheritedFrom;
+            const roleName =
+              GRANT_ROLES.find((r) => r.id === person.role)?.name ?? person.role;
+            const ended = person.expired && person.expiresAt;
             const manageable =
               canManage &&
               person.principalType !== "owner" &&
               person.role !== "owner" &&
-              !inherited;
+              !inherited &&
+              !ended;
+            const when =
+              person.expiresAt && !person.expired
+                ? `${roleName} · ${untilPhrase(person.expiresAt)}`
+                : ended
+                  ? endedPhrase(person.expiresAt!)
+                  : "";
             return (
               <li key={`${person.principalType}:${person.principalId}`}>
                 <div>
@@ -413,26 +504,67 @@ export function ShareDialog({
                     {yours ? " (you)" : ""}
                   </strong>
                   {person.email ? <small>{person.email}</small> : null}
+                  {when ? <small className="share-until">{when}</small> : null}
                   {inherited ? (
                     <small className="share-via">from {inherited.name}</small>
                   ) : null}
                 </div>
                 {person.principalType === "owner" || person.role === "owner" ? (
                   <span className="share-owner">Owner</span>
+                ) : ended && canManage && !inherited ? (
+                  <button
+                    type="button"
+                    className="share-remove-btn"
+                    disabled={busy}
+                    onClick={() => remove(person)}
+                  >
+                    Remove
+                  </button>
                 ) : manageable ? (
                   <RoleMenu
-                    value={person.role === "commenter" ? "commenter" : person.role === "editor" ? "editor" : "viewer"}
+                    value={
+                      person.role === "commenter"
+                        ? "commenter"
+                        : person.role === "editor"
+                          ? "editor"
+                          : "viewer"
+                    }
                     label={`Role for ${personLabel(person)}`}
                     allowRemove
                     disabled={busy}
+                    detail={
+                      person.expiresAt && !person.expired
+                        ? untilPhrase(person.expiresAt)
+                        : undefined
+                    }
+                    extras={
+                      person.principalType === "user"
+                        ? [
+                            {
+                              label: "Make owner",
+                              description: "They own it immediately",
+                              onPick: () => {
+                                setExpiring(null);
+                                setHandover(person);
+                              },
+                            },
+                            {
+                              label: "Access expires",
+                              description: "Pick the day it ends",
+                              onPick: () => {
+                                setHandover(null);
+                                setExpiring(person);
+                              },
+                            },
+                          ]
+                        : []
+                    }
                     onChange={(next) =>
                       next === "remove" ? remove(person) : changeRole(person, next)
                     }
                   />
                 ) : (
-                  <span className="share-owner">
-                    {GRANT_ROLES.find((r) => r.id === person.role)?.name ?? person.role}
-                  </span>
+                  <span className="share-owner">{roleName}</span>
                 )}
               </li>
             );
@@ -472,6 +604,8 @@ export function ShareDialog({
                 setQuery("");
                 setNotice("");
                 setUndo(null);
+                setHandover(null);
+                setExpiring(null);
               }}
             >
               Back to “{back.name}”

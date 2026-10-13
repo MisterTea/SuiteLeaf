@@ -18,13 +18,40 @@ import {
   notesImportSummary,
   rewriteWordNotes,
 } from "./doc-notes";
+import {
+  applyImportedCitations,
+  bibliographyParts,
+  citationLibrary,
+  citationsImportSummary,
+  inText,
+  parseBibliographyXml,
+  rewriteWordCitations,
+  type CitationLibrary,
+} from "./citations";
+import {
+  EQUATION_LAYOUT_UNSUPPORTED,
+  extractOfficeMath,
+  spliceEquationTokens,
+} from "./equations";
+import { firstSectionPageMargins } from "./word-page-margins";
 
 type Mark = NonNullable<JsonNode["marks"]>[number];
 const normalize = (s: string) => s.replace(/[\s\u200b\ufeff]+/gu, "");
 export function documentText(n: JsonNode): string {
+  return textOf(n, n.type === "doc" ? citationLibrary(n) : undefined);
+}
+function textOf(n: JsonNode, library: CitationLibrary | undefined): string {
+  const next = n.type === "doc" ? citationLibrary(n) : library;
+  if (n.type === "equation") return String(n.attrs?.plain ?? "");
   if (n.type === "noteReference") return String(n.attrs?.label ?? "");
-  if (n.type === "tableOfContents") return "";
-  return (n.text ?? "") + (n.content ?? []).map(documentText).join("");
+  if (n.type === "tableOfContents" || n.type === "bibliography") return "";
+  if (n.type === "citation") {
+    const source = next?.sources.find(
+      (item) => item.id === String(n.attrs?.sourceId ?? ""),
+    );
+    return source && next ? inText(source, next.style) : "";
+  }
+  return (n.text ?? "") + (n.content ?? []).map((child) => textOf(child, next)).join("");
 }
 /** `droppedLinks` collects the addresses of links removed as unsafe. */
 export function htmlToDocument(
@@ -1042,20 +1069,34 @@ export async function importDocx(
     ? await zip.file("word/endnotes.xml")!.async("string")
     : "";
   const rewritten = rewriteWordNotes(annotated, footnotesXml, endnotesXml);
-  if (rewritten.changed) {
-    zip.file("word/document.xml", rewritten.xml);
+  const cited = rewriteWordCitations(rewritten.xml);
+  const bibliographyXml = await bibliographyParts(zip);
+  if (rewritten.changed || cited.changed)
+    zip.file("word/document.xml", cited.changed ? cited.xml : rewritten.xml);
+  {
     const norm = (s: string) => s.replace(/[\s\u200b\ufeff]+/gu, "");
-    for (const text of rewritten.removedParagraphs) {
+    for (const text of [
+      ...rewritten.removedParagraphs,
+      ...cited.removedParagraphs,
+    ]) {
       const at = source.findIndex((paragraph) => norm(paragraph) === norm(text));
       if (at >= 0) source.splice(at, 1);
     }
   }
+  let officeXml = updatedXml;
+  if (annotated !== updatedXml) officeXml = annotated;
+  if (rewritten.changed) officeXml = rewritten.xml;
+  if (cited.changed) officeXml = cited.xml;
+  const extracted = extractOfficeMath(officeXml);
+  if (extracted.equations.length) zip.file("word/document.xml", extracted.xml);
   try {
     const input =
       features.includes("strict-ooxml") ||
       modified ||
       annotated !== updatedXml ||
-      rewritten.changed
+      rewritten.changed ||
+      cited.changed ||
+      extracted.equations.length
         ? await zip.generateAsync({ type: "uint8array" })
         : bytes;
     const result = await mammoth.convertToHtml(
@@ -1130,8 +1171,17 @@ export async function importDocx(
   }
   const imported = applyImportedNotes(content, rewritten.notes);
   content = imported.content;
+  const withCitations = applyImportedCitations(
+    content,
+    parseBibliographyXml(bibliographyXml),
+  );
+  content = withCitations.content;
   const noteSummary = notesImportSummary(imported);
   if (noteSummary) warnings.unshift(noteSummary);
+  const citationSummary = citationsImportSummary(withCitations);
+  if (citationSummary) warnings.unshift(citationSummary);
+  if (withCitations.citations || withCitations.bibliographies)
+    features.push("citations");
   if (imported.tocs && !features.includes("table_of_contents"))
     features.push("table_of_contents");
   if (!content.content?.length)
@@ -1144,6 +1194,8 @@ export async function importDocx(
       ...content,
       attrs: { ...(content.attrs ?? {}), editingMode: "suggesting" },
     };
+  if (extracted.equations.length)
+    content = spliceEquationTokens(content, extracted.equations);
   let output = normalize(
     documentText(
       suggestionCount ? resolveSuggestions(content, "accepted") : content,
@@ -1296,10 +1348,8 @@ export async function importDocx(
     warnings.push(
       "Tracked changes are imported as accepted text; review history is not retained.",
     );
-  if (features.includes("math_equations"))
-    warnings.push(
-      "Equations are retained as recovered text when available; editable equation layout is not supported.",
-    );
+  if (features.includes("math_equations") && !extracted.equations.length)
+    warnings.push(EQUATION_LAYOUT_UNSUPPORTED);
   if (features.includes("embedded_objects"))
     warnings.push(
       "Embedded OLE objects are not executed or embedded into the document editor.",
@@ -1333,6 +1383,23 @@ export async function importDocx(
       features.push("comments");
       warnings.push(commentImportSummary(imported.count));
     }
+  }
+  const pageMargins = firstSectionPageMargins(xml);
+  if (pageMargins) {
+    const previous = content.attrs?.pageSettings;
+    content = {
+      ...content,
+      attrs: {
+        ...(content.attrs ?? {}),
+        pageSettings: {
+          ...(previous && typeof previous === "object" ? previous : {}),
+          ...pageMargins,
+          // A stored page setup otherwise turns page numbers on. This file
+          // did not ask for them.
+          pageNumbers: false,
+        },
+      },
+    };
   }
   const file = createFile("doc", title) as DocFile;
   file.content = content;
