@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { Static, TSchema } from "@earendil-works/pi-ai";
 import { moveCursor, type Target } from "./cursor";
+import { PARSE_ERROR } from "./gemma-stream";
 
 /** What a SuiteLeaf tool returns to the model. */
 export type ToolOutput = string | { text: string; details?: unknown };
@@ -151,6 +152,12 @@ export function toAgentTool(t: SuiteTool): AgentTool {
     description: t.description,
     parameters: t.parameters,
     executionMode: "sequential",
+    // Runs before schema checks, so an unreadable call is explained, not reported as missing arguments.
+    prepareArguments(args) {
+      const error = (args as Record<string, unknown> | undefined)?.[PARSE_ERROR];
+      if (error) throw new Error(`This tool call could not be read: ${error} Write the call again with valid arguments.`);
+      return args as never;
+    },
     async execute(_id, params, signal) {
       // Screens rebuild their tools as their state changes (and calls in one
       // turn can change it): once the last change has rendered, run the tool

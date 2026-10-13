@@ -155,4 +155,15 @@ describe("Gemma 4 tool-call parsing", () => {
     expect(parseToolCall('call:insert_chart{range:<|"|>A1').error).toBeTruthy();
     expect(parseToolCall("insert_chart{}").error).toBeTruthy();
   });
+
+  it("drops one '[' too many at the start of a list of rows", () => {
+    const parsed = parseToolCall(
+      'call:insert_table{cells:[[[<|"|>Name<|"|>,<|"|>Bringing<|"|>],[<|"|>Asha [A]<|"|>,<|"|>Beans<|"|>]],header_row:true}',
+    );
+    expect(parsed.error).toBeUndefined();
+    expect(parsed.arguments).toEqual({ cells: [["Name", "Bringing"], ["Asha [A]", "Beans"]], header_row: true });
+    expect(parseToolCall('call:insert_table{cells:[[<|"|>a<|"|>],[<|"|>b<|"|>],header_row:true}').error).toMatch(
+      /brackets do not match: there are 1 more "\[" than "\]"/,
+    );
+  });
 });
