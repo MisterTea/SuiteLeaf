@@ -252,15 +252,49 @@ export function parseToolCall(body: string): ParsedCall {
   const name = m[1];
   const rest = body.slice(m[0].length);
   if (!rest.trim()) return { name, arguments: {}, raw };
-  try {
-    const [value, end] = parseValue(rest, 0);
+  const parse = (src: string) => {
+    const [value, end] = parseValue(src, 0);
     if (!value || typeof value !== "object" || Array.isArray(value))
       throw new Error("Arguments must be an object.");
-    if (rest.slice(end).trim()) throw new Error("Unexpected text after the arguments.");
-    return { name, arguments: value as Record<string, unknown>, raw };
+    if (src.slice(end).trim()) throw new Error("Unexpected text after the arguments.");
+    return value as Record<string, unknown>;
+  };
+  try {
+    return { name, arguments: parse(rest), raw };
   } catch (error) {
-    return { name, arguments: {}, error: (error as Error).message, raw };
+    // Small models sometimes open a list of lists with one "[" too many ("[[[a, b], [c, d]]").
+    const surplus = bracketSurplus(rest);
+    if (surplus > 0) {
+      try {
+        const repaired = rest.replace(new RegExp(`\\[{${surplus + 2},}`), (run) => run.slice(surplus));
+        if (repaired !== rest) return { name, arguments: parse(repaired), raw };
+      } catch {
+        // Fall through to the original error.
+      }
+    }
+    const brackets = surplus
+      ? ` The brackets do not match: there are ${Math.abs(surplus)} more "${surplus > 0 ? "[" : "]"}" than "${surplus > 0 ? "]" : "["}".`
+      : "";
+    return { name, arguments: {}, error: (error as Error).message + brackets, raw };
   }
+}
+
+/** How many more "[" than "]" there are outside strings. */
+function bracketSurplus(src: string) {
+  let n = 0;
+  for (let i = 0; i < src.length; i++) {
+    if (src.startsWith(Q, i)) {
+      const end = src.indexOf(Q, i + Q.length);
+      if (end < 0) break;
+      i = end + Q.length - 1;
+    } else if (src[i] === '"') {
+      let j = i + 1;
+      while (j < src.length && src[j] !== '"') j += src[j] === "\\" ? 2 : 1;
+      i = j;
+    } else if (src[i] === "[") n++;
+    else if (src[i] === "]") n--;
+  }
+  return n;
 }
 
 /** Remove trailing stop markers the backend leaves on the output. */
