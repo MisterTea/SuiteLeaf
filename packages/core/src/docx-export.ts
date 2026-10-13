@@ -54,6 +54,7 @@ import {
 } from "./doc-comments";
 import { embedSuggestionMarkers, revisionizeDocx } from "./suggestions";
 import { docxLineSpacing } from "./line-spacing";
+import { docxParagraphGap } from "./paragraph-spacing";
 import {
   citationLibrary,
   inText,
@@ -398,7 +399,7 @@ function blocks(
         : runs(n, plan, notes, library);
     const spacing =
       n.type === "paragraph" || n.type === "heading"
-        ? docxLineSpacing(n.attrs?.lineSpacing)
+        ? { ...docxLineSpacing(n.attrs?.lineSpacing), ...docxParagraphGap(n.attrs) }
         : undefined;
     const stop = Number(n.attrs?.tabStop);
     const tabStops =
