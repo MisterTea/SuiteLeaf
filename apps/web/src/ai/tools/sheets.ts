@@ -181,6 +181,8 @@ function formulaCells(sheet: any, maxRows = 200, maxColumns = 26) {
 export function cellInput(value: unknown): unknown {
   if (typeof value === "number" || typeof value === "boolean") return value;
   const s = String(value ?? "");
+  // Gemma sometimes wraps text in single quotes, Python-style; nobody types 'Rent' meaning the quotes.
+  if (/^'[^']+'$/.test(s)) return cellInput(s.slice(1, -1));
   if (s.startsWith("=")) return s;
   // Univer would read "007" as the number 7; store it as text (t: 1).
   if (/^-?0\d+$/.test(s)) return { v: s, t: 1 };
