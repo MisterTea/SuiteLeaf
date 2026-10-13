@@ -59,5 +59,8 @@ mod tests {
                 .unique
                 .contains(&"email".to_owned())
         );
+        let versions = schema.table("drive_version").unwrap();
+        assert!(versions.column_type("name").is_some());
+        assert!(versions.column_type("restoredFrom").is_some());
     }
 }

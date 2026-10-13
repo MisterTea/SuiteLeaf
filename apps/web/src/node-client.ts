@@ -28,6 +28,17 @@ export interface NodeSession {
   token: string;
   user: NodeUser;
 }
+export interface DriveVersion {
+  id: string;
+  itemId: string;
+  contentHash: string;
+  size: number;
+  authorId: string;
+  authorName: string;
+  createdAt: string;
+  name: string | null;
+  restoredFrom: string | null;
+}
 export interface DriveItem {
   id: string;
   parentId: string | null;
@@ -353,6 +364,59 @@ export const drive = {
     const result = await response.json();
     if (response.status === 409) throw new DriveConflict(result.item);
     return result;
+  },
+  async versions(id: string): Promise<DriveVersion[]> {
+    return (
+      await (
+        await api(`/api/drive/items/${encodeURIComponent(id)}/versions`)
+      ).json()
+    ).versions;
+  },
+  async readVersion(id: string, versionId: string): Promise<string> {
+    return (
+      await api(
+        `/api/drive/items/${encodeURIComponent(id)}/content?version=${encodeURIComponent(versionId)}`,
+      )
+    ).text();
+  },
+  async nameVersion(
+    id: string,
+    versionId: string,
+    name: string,
+  ): Promise<DriveVersion> {
+    return (
+      await api(
+        `/api/drive/items/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}`,
+        { method: "PATCH", ...json({ name }) },
+      )
+    ).json();
+  },
+  async restoreVersion(
+    id: string,
+    versionId: string,
+    ifMatch?: string,
+  ): Promise<DriveItem> {
+    const headers: Record<string, string> = {};
+    if (ifMatch) headers["if-match"] = `"${ifMatch}"`;
+    const response = await api(
+      `/api/drive/items/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/restore`,
+      { method: "POST", headers },
+    );
+    const result = await response.json();
+    if (response.status === 409) throw new DriveConflict(result.item);
+    return result;
+  },
+  async copyVersion(
+    id: string,
+    versionId: string,
+    name: string,
+  ): Promise<DriveItem> {
+    return (
+      await api(
+        `/api/drive/items/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/copy`,
+        { method: "POST", ...json({ name }) },
+      )
+    ).json();
   },
 };
 

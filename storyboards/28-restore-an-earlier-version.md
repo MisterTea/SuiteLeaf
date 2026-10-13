@@ -17,16 +17,17 @@ On Tuesday morning Sam rewrote the "Watering rota" for a new schedule the commit
 
 ## Scenes
 
-1. **Open the rota.** Rosa opens "Watering rota". The header shows a clock button labelled "Version history".
-2. **Open the history.** She clicks the clock (File › Version history and Cmd/Ctrl+Alt+Shift+H do the same). A panel opens on the right listing versions newest first, grouped by day: "Current version", "Today 09:14 · Sam Okafor", and "Yesterday 18:02 · Rosa Diaz". Runs of autosaves by one person are collapsed into one entry with an expand arrow.
-3. **Preview with changes.** She clicks "Yesterday 18:02". The page shows that version read-only, with differences from the current version marked: Sam's additions underlined in green, his deletions struck through in red. A toggle switches between "Compare with current" and "Changes in this version".
-4. **Name it.** From the version's ⋯ menu she chooses "Name this version" and types "Agreed rota". A filter, "Named versions only", now shows just that entry.
-5. **Restore.** She clicks **Restore this version**. A confirmation says "Restore "Agreed rota"? 4 paragraphs change. The current version stays in history." She confirms.
-6. **Back to editing.** The panel closes, the document shows Monday's text, the status reads "Saved to SuiteDrive", and a new top entry reads "Restored "Agreed rota" · Rosa Diaz".
-7. **Keep Sam's draft.** In the history she opens Sam's 09:14 version and chooses "Make a copy". "Watering rota (Sam's draft, 13 Oct 09:14)" appears in the same folder.
-8. **Change her mind.** Restoring the 09:14 version brings Sam's text back exactly, which shows that nothing was lost.
+1. **Open the rota.** Rosa signs in and opens "Watering rota" in Garden club. The page is Sam's rewrite. The header shows a clock labelled "Version history".
+2. **Open the history.** File › Version history shows the shortcut Cmd+Alt+Shift+H. She clicks the clock. A panel opens on the right: "Current version", "Today 09:14 · Sam Okafor", and "Yesterday 18:02 · Rosa Diaz". Sam's 09:10 and 09:06 autosaves are folded under an arrow on the 09:14 entry.
+3. **Preview with changes.** She clicks yesterday. The page is read-only. Compared with the current version, Sam's additions are underlined in green and his deletions struck through in red. The note says 4 paragraphs change. "Changes in this version" shows Monday's text on its own, because nothing is earlier.
+4. **Name it.** From the version's ⋯ menu she chooses "Name this version" and types "Agreed rota". "Named versions only" leaves just that entry. After a reload the name is still there.
+5. **Restore.** From the editor that is three clicks: the clock, "Agreed rota", and **Restore this version**. The note already says `Restore "Agreed rota"? 4 paragraphs change. The current version stays in history.`
+6. **Back to editing.** The panel closes, the page is Monday's rota, and the status reads "Saved to SuiteDrive". Opening the history again, the top entry is `Restored "Agreed rota" · Rosa Diaz`. Yesterday's named version and Sam's 09:14 entry are still in the list.
+7. **Keep Sam's draft.** She opens Sam's 09:14 version and chooses "Make a copy". In Garden club, next to the rota, is "Watering rota (Sam's draft, 12 Oct 09:14).sldoc". The date is the version's local date, so a recording on another day uses that day.
+8. **Change her mind.** Restoring the 09:14 version puts Sam's text back. The saved file is the same bytes as his 09:14 upload.
+9. **Another server.** Rosa signs in on the club's other server, opens the rota, and "Agreed rota" is still the name.
 
-On a single-node computer the same button should show local snapshots kept with the file: one each time the file is saved or every few minutes of editing, all signed "You". Naming, preview, compare, and restore should work the same way.
+On a single-node computer the same button shows snapshots kept with the file in this browser: one when the file is saved, and another every few minutes of editing, each signed "You". Naming, preview, compare, and restore work the same way.
 
 ## Google Workspace benchmark
 
@@ -53,15 +54,26 @@ Known pain points:
 
 ## Success looks like
 
-- The rota shows the agreed Monday text, Sam's draft is a separate file, and the history lists the named "Agreed rota" version and the restore.
-- No version was lost: every earlier entry is still in the list.
+- The rota is Sam's text again, because Rosa restored 09:14 after trying Monday.
+- Garden club also has "Watering rota (Sam's draft, 12 Oct 09:14).sldoc".
+- The history still lists "Agreed rota", Sam's morning autosaves, and both restores.
 
 ## Gaps and notes
 
-- **The clock button does nothing.** The "Version history" button in `App.tsx` has no `onClick`, and the File menu has no Version history item.
-- **The server keeps versions, but nothing shows them.** `GET /api/drive/items/{id}/versions` returns `id`, `itemId`, `contentHash`, `size`, `authorId` and `createdAt`, and `GET …/content?version=` reads any version. `node-client.ts` uses neither.
-- There is no restore endpoint. A client can restore by reading an old version and writing it back as a new one with `If-Match`.
-- Versions have no name field, and authors are user IDs with no endpoint that turns them into names.
-- **Every autosave is a version.** The editor saves 500 ms after typing stops and every upload adds a `drive_version` row with no pruning or grouping, so a busy afternoon produces hundreds of entries. Grouping (criterion 2) is needed before the list is usable.
-- **Single-node has no history.** The browser library stores one record per file plus a recovery draft, and the desktop app saves over the file on disk.
-- There is no diff view for documents. A compare view would need a document-level diff of the Tiptap JSON (`packages/core`).
+- Restoring replaces the whole file. Taking one paragraph from an old version is still "Make a copy", then copy that paragraph.
+- Sheets and slides use the same panel to name, copy, and restore, without the green-and-red page compare. That compare is for documents.
+- The server still stores every autosave. The panel folds a person's saves from the same ten minutes into one row; expanding a long afternoon is still a long list.
+- On this computer, snapshots live in the browser next to the file, not inside the downloaded `.sldoc`. Carrying the file to another computer does not carry that history. SuiteDrive history does travel, because the version rows replicate.
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| 1. History opens in one click from the clock, and File › Version history shows Cmd/Ctrl+Alt+Shift+H | Met | Video 8s (menu and shortcut), 11s (clock). Test `28-restore-an-earlier-version` |
+| 2. Display name and local time; one person's autosaves within 10 minutes collapse | Met | Video 13s: Sam Okafor, Rosa Diaz, 09:14 with 09:10 and 09:06 underneath. `groupVersions` in `tests/version-history-model.test.ts` |
+| 3. Any version can be compared with the current one, additions and deletions marked, no extra file | Met | Video 15s: green underline, red strikethrough, "4 paragraphs change". `tests/doc-diff.test.ts` |
+| 4. Restore is at most 3 clicks, and the confirmation says how much changes | Met | Video 15s and 24s: clock, version, Restore this version, with the paragraph count already on screen |
+| 5. Restore adds a version; restoring the previous head returns the original bytes | Met | Video 27s Monday's text, 36s Sam's text back. The scene asserts the saved bytes equal the uploaded version |
+| 6. A name is kept on the server, after reload, and on another server; the named filter shows it | Met | Video 22s reload, 33s filter, 43s the other server. Rust test `naming_restore_and_copy_keep_every_version_byte_for_byte` |
+| 7. The preview is read-only | Met | Video 18s. Browser test types into the preview and the current document is unchanged |
+| 8. Make a copy is at most 2 clicks and lands in the same folder, named with the version's date | Met | Video 33s: `Watering rota (Sam's draft, 12 Oct 09:14).sldoc` in Garden club |

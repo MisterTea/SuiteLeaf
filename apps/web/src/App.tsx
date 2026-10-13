@@ -58,6 +58,7 @@ import {
   type DocFile,
   type SheetFile,
   type SlideFile,
+  type JsonNode,
 } from "@suiteleaf/core";
 import { storage, SaveQueue, exportText } from "./storage";
 import { importFile, type DelimitedDraft } from "./imports";
@@ -91,6 +92,8 @@ import { ShareDialog } from "./drive/ShareDialog";
 import { searchFile } from "./library-search";
 import { ConnectDialog, SignInScreen, useNodeSession } from "./drive/SignIn";
 import { formatModified, syncSummary, useServerSync } from "./drive/status";
+import { VersionHistory, VersionPreview } from "./editors/version-history";
+import { noteLocalSnapshot } from "./editors/local-versions";
 import { completeHandoff } from "./node-client";
 import {
   ModeContext,
@@ -1025,7 +1028,14 @@ function Workspace() {
     saveError = useRef(""),
     driveQueue = useRef(driveQueueFor(id!)),
     driveTimer = useRef<ReturnType<typeof setTimeout>>(undefined),
-    driveConflictRef = useRef<DriveItem | null>(null);
+    driveConflictRef = useRef<DriveItem | null>(null),
+    snapshotExplicit = useRef(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [editorEpoch, setEditorEpoch] = useState(0);
+  const [historyPreview, setHistoryPreview] = useState<{
+    content: JsonNode;
+    label: string;
+  } | null>(null);
   const [driveConflict, setDriveConflictState] = useState<DriveItem | null>(
       null,
     ),
@@ -1103,9 +1113,13 @@ function Workspace() {
       savedVersion.current = Math.max(savedVersion.current, at);
       // Once unmounted, the cleanup has already uploaded the latest content
       // and a reopened editor may hold the link a later upload would replace.
+      const explicit = snapshotExplicit.current;
+      snapshotExplicit.current = false;
       if (alive.current && current.current.drive && !driveConflictRef.current) {
         clearTimeout(driveTimer.current);
         driveTimer.current = setTimeout(() => void syncDrive(), 1500);
+      } else if (alive.current && !current.current.drive) {
+        void noteLocalSnapshot(snapshot, explicit).catch(() => {});
       }
       if (version.current === at) {
         setStatus(
@@ -1278,6 +1292,7 @@ function Workspace() {
     async (action: string) => {
       try {
         if (action === "save") {
+          snapshotExplicit.current = true;
           await save();
           if (alive.current) await syncDrive();
         } else if (action === "save-as") {
@@ -1364,6 +1379,16 @@ function Workspace() {
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
         e.preventDefault();
         void doAction(e.shiftKey ? "save-as" : "save");
+      }
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.altKey &&
+        e.shiftKey &&
+        e.key.toLowerCase() === "h"
+      ) {
+        e.preventDefault();
+        setHistoryOpen((open) => !open);
+        setHistoryPreview(null);
       }
     };
     const unload = (e: BeforeUnloadEvent) => {
@@ -1564,8 +1589,17 @@ function Workspace() {
                     : `Download SuiteLeaf file (.${extensionFor(f.kind)})`}
                 </MenuItem>
               )}
-              <MenuItem onSelect={() => void save().catch(() => {})}>
+              <MenuItem onSelect={() => void doAction("save")}>
                 Save now
+              </MenuItem>
+              <MenuItem
+                shortcut="Cmd+Alt+Shift+H"
+                onSelect={() => {
+                  setHistoryOpen((open) => !open);
+                  setHistoryPreview(null);
+                }}
+              >
+                Version history
               </MenuItem>
               {window.suiteleaf && !cluster ? (
                 <MenuItem
@@ -2090,6 +2124,12 @@ function Workspace() {
             className="doc-icon-btn"
             title="Version history"
             aria-label="Version history"
+            aria-expanded={historyOpen}
+            aria-keyshortcuts="Control+Alt+Shift+H"
+            onClick={() => {
+              setHistoryOpen((open) => !open);
+              setHistoryPreview(null);
+            }}
           >
             <Clock size={18} />
           </button>
@@ -2259,48 +2299,93 @@ function Workspace() {
           )}
         </details>
       ) : null}
-      <ErrorBoundary>
-        <Suspense
-          fallback={
-            <div className="loading">
-              Opening{" "}
-              {f.kind === "doc"
-                ? "document"
-                : f.kind === "sheet"
-                  ? "spreadsheet"
-                  : "presentation"}{" "}
-              editor…
-            </div>
-          }
-        >
-          {f.kind === "doc" ? (
-            <Docs
-              key={id}
-              file={f as DocFile}
-              readOnly={!canEdit}
-              onChange={update}
-              onActions={onActions}
-              onError={setError}
+      <div className={`editor-and-history${historyOpen ? " history-open" : ""}`}>
+        <div className="editor-and-history-main">
+          {historyPreview ? (
+            <VersionPreview
+              key={JSON.stringify(historyPreview.content)}
+              content={historyPreview.content}
+              label={historyPreview.label}
             />
-          ) : f.kind === "sheet" ? (
-            <Sheets
-              key={id}
-              file={f as SheetFile}
-              onChange={update}
-              onActions={onActions}
-              onError={setError}
-            />
-          ) : (
-            <Slides
-              key={id}
-              file={f as SlideFile}
-              onChange={update}
-              onActions={onActions}
-              onError={setError}
-            />
-          )}
-        </Suspense>
-      </ErrorBoundary>
+          ) : null}
+          <div
+            className={`live-editor${historyPreview ? " previewing" : ""}`}
+            inert={historyPreview ? true : undefined}
+          >
+            <ErrorBoundary>
+              <Suspense
+                fallback={
+                  <div className="loading">
+                    Opening{" "}
+                    {f.kind === "doc"
+                      ? "document"
+                      : f.kind === "sheet"
+                        ? "spreadsheet"
+                        : "presentation"}{" "}
+                    editor…
+                  </div>
+                }
+              >
+                {f.kind === "doc" ? (
+                  <Docs
+                    key={`${id}:${editorEpoch}`}
+                    file={f as DocFile}
+                    readOnly={!canEdit}
+                    onChange={update}
+                    onActions={onActions}
+                    onError={setError}
+                  />
+                ) : f.kind === "sheet" ? (
+                  <Sheets
+                    key={`${id}:${editorEpoch}`}
+                    file={f as SheetFile}
+                    onChange={update}
+                    onActions={onActions}
+                    onError={setError}
+                  />
+                ) : (
+                  <Slides
+                    key={`${id}:${editorEpoch}`}
+                    file={f as SlideFile}
+                    onChange={update}
+                    onActions={onActions}
+                    onError={setError}
+                  />
+                )}
+              </Suspense>
+            </ErrorBoundary>
+          </div>
+        </div>
+        {historyOpen ? (
+          <VersionHistory
+            record={record}
+            getFile={() => current.current?.file ?? record.file}
+            onClose={() => {
+              setHistoryOpen(false);
+              setHistoryPreview(null);
+            }}
+            onPreview={(content, label) =>
+              setHistoryPreview(content ? { content, label } : null)
+            }
+            onStatus={setStatus}
+            onRestored={(next) => {
+              clearTimeout(timer.current);
+              clearTimeout(driveTimer.current);
+              current.current = next;
+              version.current = 0;
+              savedVersion.current = 0;
+              setRecord(next);
+              setEditorEpoch((epoch) => epoch + 1);
+              setHistoryPreview(null);
+              setHistoryOpen(false);
+              setStatus(
+                next.drive ? "Saved to SuiteDrive" : "Saved on this device",
+              );
+              void storage.save(next).catch((e) => setError(message(e)));
+            }}
+          />
+        ) : null}
+      </div>
     </div>
   );
 }
