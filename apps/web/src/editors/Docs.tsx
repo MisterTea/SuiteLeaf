@@ -59,6 +59,7 @@ import {
 } from "@suiteleaf/core";
 import { exportBinary, exportText, printDocument } from "../storage";
 import { Tool, type EditorActions, type TableAction } from "../ui";
+import { MenuSearchPill } from "../command-palette";
 import { linkTarget } from "./doc-links";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import {
@@ -127,6 +128,14 @@ export const extensions: Extensions = [
   Proofing,
   Superscript,
   Subscript,
+  Extension.create({
+    name: "suiteleafStrikeShortcut",
+    addKeyboardShortcuts() {
+      return {
+        "Mod-Shift-x": () => this.editor.commands.toggleStrike(),
+      };
+    },
+  }),
   Extension.create({
     name: "importAttributes",
     addGlobalAttributes() {
@@ -684,6 +693,14 @@ export default function Docs({
         openFind: () => setFindOpen(true),
         selectAll: () => editor.chain().focus().selectAll().run(),
         insertLink: () => openLink.current(),
+        linkState: () => {
+          const { empty } = editor.state.selection;
+          if (!empty || editor.isActive("link")) return { ok: true as const };
+          return {
+            ok: false as const,
+            reason: "Select text to add a link",
+          };
+        },
         insertImage: () => imageInput.current?.click(),
         insertTable: () => setTableOpen(true),
         insertHorizontalRule: () =>
@@ -947,6 +964,7 @@ export default function Docs({
     <SuggestionBridge api={suggestionApi} />
     <div className="docs-editor">
       <div className="toolbar" role="toolbar" aria-label="Document formatting">
+        <MenuSearchPill />
         <fieldset className="toolbar-edits" disabled={readOnly}>
           <Tool label="Undo" onClick={() => editor.commands.undo()}>
             <Undo2 size={16} />

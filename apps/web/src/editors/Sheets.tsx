@@ -85,7 +85,6 @@ import {
   Redo2,
   Printer,
   PaintRoller,
-  Search,
   Minus,
   Plus,
   Bold,
@@ -132,6 +131,7 @@ import {
 import { exportBinary, exportText, printDocument } from "../storage";
 import { placeSheetImage, readImageFile } from "../templates/sheet-image";
 import { Tool, type EditorActions, type SheetView } from "../ui";
+import { MenuSearchPill } from "../command-palette";
 import "../excel-overflow";
 import "../excel-number-display";
 import "../excel-wrap";
@@ -2287,15 +2287,7 @@ export default function Sheets({
         role="toolbar"
         aria-label="Spreadsheet formatting"
       >
-        <button
-          type="button"
-          className="menu-search-pill"
-          title="Search the menus (Option+/)"
-          onClick={() => {}}
-        >
-          <Search size={14} className="menu-search-icon" />
-          <span>Menus</span>
-        </button>
+        <MenuSearchPill />
 
         <Tool label="Undo (Cmd+Z)" onClick={() => void api.current?.undo()}>
           <Undo2 size={16} />

@@ -29,8 +29,11 @@ export function SheetViewMenu({
     max: number,
   ) => {
     const noun = axis === "rows" ? "row" : "column";
-    const freeze = (count: number) =>
-      axis === "rows" ? sheet?.freezeRows(count) : sheet?.freezeColumns(count);
+    const freeze = (count: number) => {
+      const live = actions.current?.sheetActions;
+      if (axis === "rows") live?.freezeRows(count);
+      else live?.freezeColumns(count);
+    };
     const upTo = axis === "rows" ? String(current) : columnName(current - 1);
     const choices: [number, string][] = [
       [0, `No ${noun}s`],
@@ -43,6 +46,14 @@ export function SheetViewMenu({
         key={i}
         checked={i === 3 ? count > 2 && frozen === count : frozen === count}
         disabled={!view || count > max}
+        availability={() => {
+          const live = actions.current?.sheetActions;
+          if (!live) return "The spreadsheet is still opening.";
+          const current = live.view();
+          if (current.maxFrozenRows > 0 && count > current.maxFrozenRows)
+            return "There isn't room to freeze that many.";
+          return true;
+        }}
         onSelect={() => freeze(count)}
       >
         {label}

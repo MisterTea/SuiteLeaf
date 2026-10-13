@@ -44,6 +44,7 @@ import {
 } from "@suiteleaf/core";
 import { exportText, printDocument } from "../storage";
 import { Menu, MenuItem, Tool, type EditorActions } from "../ui";
+import { MenuSearchPill } from "../command-palette";
 import {
   applyBackground,
   applyLayout,
@@ -973,6 +974,38 @@ ${slidesHtml}
   }, []);
 
   const currentSlideIndex = Math.max(0, deck.slideOrder.indexOf(activeSlideId));
+  const slideApi = useRef({
+    undo,
+    redo,
+    duplicate: duplicateCurrentSlide,
+    delete: deleteCurrentSlide,
+    undoReason: (): string | undefined =>
+      historyRef.current?.canUndo ? undefined : "Nothing to undo",
+    redoReason: (): string | undefined =>
+      historyRef.current?.canRedo ? undefined : "Nothing to redo",
+    deleteReason: (): string | undefined =>
+      canDeleteSlides(deckRef.current.slideOrder, chosenSlides())
+        ? undefined
+        : deckRef.current.slideOrder.length <= 1
+          ? "Presentations must have at least one slide."
+          : "Select a slide to delete.",
+  });
+  slideApi.current = {
+    undo,
+    redo,
+    duplicate: duplicateCurrentSlide,
+    delete: deleteCurrentSlide,
+    undoReason: () =>
+      historyRef.current?.canUndo ? undefined : "Nothing to undo",
+    redoReason: () =>
+      historyRef.current?.canRedo ? undefined : "Nothing to redo",
+    deleteReason: () =>
+      canDeleteSlides(deckRef.current.slideOrder, chosenSlides())
+        ? undefined
+        : deckRef.current.slideOrder.length <= 1
+          ? "Presentations must have at least one slide."
+          : "Select a slide to delete.",
+  };
 
   // Wire editor actions for workspace header
   useEffect(() => {
@@ -1006,6 +1039,9 @@ ${slidesHtml}
         applyLayout: (layout) => apiRef.current.applyLayout(layout),
         openTheme: () => apiRef.current.openTheme(),
         openTransition: () => apiRef.current.openTransition(),
+        undoReason: () => slideApi.current.undoReason(),
+        redoReason: () => slideApi.current.redoReason(),
+        deleteReason: () => slideApi.current.deleteReason(),
       },
     });
   }, [onActions, onChange, activeSlideId, beginShow]);
@@ -1424,6 +1460,7 @@ ${slidesHtml}
         aria-label="Slides toolbar"
       >
         <div className="tool-group">
+          <MenuSearchPill />
           <button
             type="button"
             className="menu-trigger theme-toggle"

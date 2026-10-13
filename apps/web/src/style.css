@@ -714,9 +714,17 @@ a {
   font-size: 13px;
   color: var(--text-secondary);
 }
-.menu-trigger:hover {
+.menu-trigger:hover,
+.menu-trigger:focus-visible {
   background: var(--surface-hover);
   color: var(--text-primary);
+}
+.menu-trigger:focus-visible {
+  outline: 2px solid #1a73e8;
+  outline-offset: 1px;
+}
+.menu-content.menu-parked {
+  display: none !important;
 }
 .menu-content {
   background: var(--dialog-bg);
@@ -916,6 +924,167 @@ a {
 }
 .menu-search-icon {
   color: var(--text-secondary);
+}
+.command-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: transparent;
+}
+.command-search {
+  position: fixed;
+  z-index: 1200;
+  top: 78px;
+  left: 72px;
+  width: min(460px, calc(100vw - 32px));
+  background: var(--dialog-bg, #fff);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.command-search input,
+.command-shortcuts input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 14px;
+  background: var(--surface, #fff);
+  color: var(--text-primary);
+}
+.command-search input:focus,
+.command-shortcuts input:focus {
+  outline: 2px solid #1a73e8;
+  border-color: transparent;
+}
+.command-search ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow: auto;
+}
+.command-option {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  border: 0;
+  background: transparent;
+  text-align: start;
+  padding: 7px 8px;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.command-option.active {
+  background: var(--surface-hover);
+}
+.command-option.disabled {
+  opacity: 0.72;
+  cursor: default;
+}
+.command-option.disabled .command-path {
+  color: var(--text-secondary);
+}
+.command-path {
+  flex: 1;
+  min-width: 0;
+}
+.command-keys,
+.command-shortcut-list kbd {
+  font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.command-reason {
+  color: #8a5a00;
+  font-size: 12px;
+  text-align: end;
+  max-width: 46%;
+}
+.command-section,
+.command-hint,
+.command-empty {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.command-section {
+  padding: 2px 8px 0;
+  font-weight: 600;
+}
+.command-gap {
+  margin-top: 6px;
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
+.command-shortcuts {
+  position: fixed;
+  z-index: 1200;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 180px);
+  pointer-events: auto;
+}
+.command-shortcut-list {
+  overflow: auto;
+  max-height: min(480px, calc(100vh - 280px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.command-shortcut-list h3 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.command-shortcut-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.command-shortcut-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+.command-shortcut-list kbd {
+  background: var(--surface-hover);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+@media (max-width: 720px) {
+  .command-search {
+    left: 12px;
+    right: 12px;
+    width: auto;
+    top: 64px;
+  }
+  .command-reason {
+    max-width: 100%;
+  }
+  .command-option {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
 }
 .tool {
   border: 0;
