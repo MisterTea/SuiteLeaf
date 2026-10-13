@@ -1988,19 +1988,34 @@ function Workspace() {
             {f.kind === "slide" ? (
               <>
                 <Menu label="Edit">
-                  <MenuItem shortcut="Cmd+Z" onSelect={() => {}}>
+                  <MenuItem
+                    shortcut="Cmd+Z"
+                    onSelect={() => actions.current?.slideActions?.undo()}
+                  >
                     Undo
                   </MenuItem>
-                  <MenuItem shortcut="Cmd+Y" onSelect={() => {}}>
+                  <MenuItem
+                    shortcut="Cmd+Y"
+                    onSelect={() => actions.current?.slideActions?.redo()}
+                  >
                     Redo
                   </MenuItem>
-                  <MenuItem shortcut="Cmd+X" onSelect={() => {}}>
+                  <MenuItem
+                    shortcut="Cmd+X"
+                    onSelect={() => actions.current?.slideActions?.cut()}
+                  >
                     Cut
                   </MenuItem>
-                  <MenuItem shortcut="Cmd+C" onSelect={() => {}}>
+                  <MenuItem
+                    shortcut="Cmd+C"
+                    onSelect={() => actions.current?.slideActions?.copy()}
+                  >
                     Copy
                   </MenuItem>
-                  <MenuItem shortcut="Cmd+V" onSelect={() => {}}>
+                  <MenuItem
+                    shortcut="Cmd+V"
+                    onSelect={() => actions.current?.slideActions?.paste()}
+                  >
                     Paste
                   </MenuItem>
                 </Menu>
@@ -2016,31 +2031,147 @@ function Workspace() {
                   </MenuItem>
                 </Menu>
                 <Menu label="Insert">
-                  <MenuItem onSelect={() => {}}>Text box</MenuItem>
-                  <MenuItem onSelect={() => {}}>Image</MenuItem>
-                  <MenuItem onSelect={() => {}}>Shape</MenuItem>
-                  <MenuItem onSelect={() => void doAction("new-slide")}>
+                  <MenuItem
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.slideActions?.insertTextBox()
+                    }
+                  >
+                    Text box
+                  </MenuItem>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.slideActions?.insertImage()
+                    }
+                  >
+                    Image
+                  </MenuItem>
+                  <SubMenu label="Shape">
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.slideActions?.insertShape("rect")
+                      }
+                    >
+                      Rectangle
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.slideActions?.insertShape("roundRect")
+                      }
+                    >
+                      Rounded rectangle
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.slideActions?.insertShape("ellipse")
+                      }
+                    >
+                      Ellipse
+                    </MenuItem>
+                  </SubMenu>
+                  <MenuItem
+                    shortcut="Cmd+M"
+                    onSelect={() => actions.current?.slideActions?.newSlide()}
+                  >
                     New slide
                   </MenuItem>
                 </Menu>
                 <Menu label="Format">
-                  <MenuItem shortcut="Cmd+B" onSelect={() => {}}>
-                    Text: Bold
-                  </MenuItem>
-                  <MenuItem shortcut="Cmd+I" onSelect={() => {}}>
-                    Text: Italic
-                  </MenuItem>
-                  <MenuItem onSelect={() => {}}>Align & indent</MenuItem>
+                  <SubMenu label="Text">
+                    <MenuItem
+                      shortcut="Cmd+B"
+                      onSelect={() =>
+                        actions.current?.slideActions?.toggleBold()
+                      }
+                    >
+                      Bold
+                    </MenuItem>
+                    <MenuItem
+                      shortcut="Cmd+I"
+                      onSelect={() =>
+                        actions.current?.slideActions?.toggleItalic()
+                      }
+                    >
+                      Italic
+                    </MenuItem>
+                  </SubMenu>
+                  <SubMenu label="Align & indent">
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.slideActions?.align("left")
+                      }
+                    >
+                      Align left
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.slideActions?.align("center")
+                      }
+                    >
+                      Center
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.slideActions?.align("right")
+                      }
+                    >
+                      Align right
+                    </MenuItem>
+                  </SubMenu>
                 </Menu>
                 <Menu label="Slide">
                   <MenuItem
                     shortcut="Cmd+M"
-                    onSelect={() => void doAction("new-slide")}
+                    onSelect={() => actions.current?.slideActions?.newSlide()}
                   >
                     New slide
                   </MenuItem>
-                  <MenuItem onSelect={() => {}}>Duplicate slide</MenuItem>
-                  <MenuItem onSelect={() => {}}>Delete slide</MenuItem>
+                  <MenuItem
+                    shortcut="Cmd+D"
+                    onSelect={() => actions.current?.slideActions?.duplicate()}
+                  >
+                    Duplicate slide
+                  </MenuItem>
+                  <MenuItem
+                    shortcut="Delete"
+                    onSelect={() =>
+                      actions.current?.slideActions?.deleteSlides()
+                    }
+                  >
+                    Delete slide
+                  </MenuItem>
+                  <MenuItem
+                    shortcut="Cmd+Up"
+                    onSelect={() =>
+                      actions.current?.slideActions?.move("up")
+                    }
+                  >
+                    Move up
+                  </MenuItem>
+                  <MenuItem
+                    shortcut="Cmd+Down"
+                    onSelect={() =>
+                      actions.current?.slideActions?.move("down")
+                    }
+                  >
+                    Move down
+                  </MenuItem>
+                  <MenuItem
+                    shortcut="Cmd+Shift+Up"
+                    onSelect={() =>
+                      actions.current?.slideActions?.move("start")
+                    }
+                  >
+                    Move to start
+                  </MenuItem>
+                  <MenuItem
+                    shortcut="Cmd+Shift+Down"
+                    onSelect={() =>
+                      actions.current?.slideActions?.move("end")
+                    }
+                  >
+                    Move to end
+                  </MenuItem>
                 </Menu>
                 <Menu label="Tools">
                   <MenuItem onSelect={() => {}}>Spelling</MenuItem>

@@ -54,10 +54,23 @@ Known pain points:
 - "Q3 update" starts with Results, has the duplicated chart pair, has lost the two old slides, and has the new text box, logo, and callout.
 - Every menu item and shortcut Maria tried did something.
 
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| 1. Every Edit, Insert, Format, and Slide item does something | Met | `every Slides Edit, Insert, Format, and Slide menu item does something`; video ~5s (Slide menu), ~36s (Format), ~40s (Insert) |
+| 2. Undo, redo, duplicate, delete, and cut/copy/paste match the menus, from the canvas and the filmstrip | Met | `keyboard shortcuts work from the filmstrip and the canvas`; video ~14s (Cmd+D), ~20s (Delete), ~24s (Cmd+Z / Cmd+Shift+Z), ~48s (Edit › Cut / Paste) |
+| 3. Cmd/Ctrl+arrow moves by one; Cmd/Ctrl+Shift+arrow jumps to the start or end, with no Fn key | Met | Same keyboard test; video ~7s, shortcut labeled in the Slide menu |
+| 4. Shift-click and Cmd/Ctrl-click select several slides; drag, delete, duplicate, and move keep their order | Met | `shift-click selects a group that drags, deletes, and duplicates together`; video ~11s (both thumbnails outlined, blue drop line, pair lands together) |
+| 5. Deleting slides shows Undo, and one Undo restores that whole group in place | Met | Video ~20s “2 slides deleted · Undo”, ~24s both outlines return on Old pipeline and Old targets |
+| 6. Paste keeps the original position; a second paste on the same slide steps aside | Met | `paste keeps the original position and offsets a copy on the same slide`; video ~45s |
+| 7. Text box, image, and shape take at most 2 clicks and stay selected; the text box is ready to type | Met | Menu test; video ~34s (typing “Shipped.”), ~40s (QL logo), ~42s (rounded callout) |
+| 8. Ten mixed edits undo to the exact starting deck | Met | `ten mixed edits undo back to the exact starting deck` |
+
 ## Gaps and notes
 
-- **Most of the Slides menu bar does nothing.** In `App.tsx`, every Slides Edit item (Undo, Redo, Cut, Copy, Paste), every Insert item except New slide (Text box, Image, Shape), every Format item (Text: Bold, Text: Italic, Align & indent), and Slide › Duplicate slide and Delete slide have `onSelect={() => {}}`. The Slides editor only passes `flush`, `export`, `print`, and `present` to the header.
-- **The features exist in the editor, just not in the menus.** `Slides.tsx` already has `duplicateCurrentSlide`, `deleteCurrentSlide`, `moveSlide`, drag-to-reorder thumbnails, a 50-step undo history, `addTextBox`, `addShape`, and image upload. They're reachable from the toolbar and the filmstrip's header buttons.
-- **No editing keyboard shortcuts.** The editor's only key handlers are Cmd/Ctrl+Enter (present), Cmd/Ctrl+Up/Down in the filmstrip (move a slide), and the slideshow keys. Cmd/Ctrl+Z, Y, D, C, X, and V and Delete do nothing outside text fields, even though the toolbar tooltips say "Undo (Cmd+Z)".
-- There's no multi-select in the filmstrip, no right-click menu on thumbnails, no move to start or end, and no notice after deleting a slide.
-- Shapes are limited to rectangle, rounded rectangle, and ellipse.
+- Tools › Spelling, Tools › Preferences, and Help › Keyboard shortcuts still do nothing. Those belong to storyboard 36.
+- Themes and transitions are storyboard 32. The toolbar Theme menu is unchanged.
+- A text box is bold or centered as a whole. There is no selection inside the text.
+- Shapes are still rectangle, rounded rectangle, and ellipse. The callout is a rounded rectangle, not a speech-bubble tail.
+- Dragging a group does not auto-scroll the filmstrip. The recording scrolls the chart into view first so the drop line stays on screen.

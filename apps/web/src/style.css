@@ -2035,6 +2035,48 @@ a {
   flex: 1;
   min-height: 0;
   background: #f1f3f4;
+  position: relative;
+}
+.slides-notice {
+  position: absolute;
+  z-index: 40;
+  left: 50%;
+  bottom: 108px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 10px 16px;
+  border-radius: 8px;
+  background: #323232;
+  color: #fff;
+  font-size: 14px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+  white-space: nowrap;
+}
+.slides-notice button {
+  border: 0;
+  background: transparent;
+  color: #aecbfa;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+.slides-notice button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.slide-context-menu {
+  position: fixed;
+  z-index: 80;
+}
+.slide-context-menu button {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  color: inherit;
 }
 .slides-toolbar {
   background: #edf2fa;
@@ -2218,7 +2260,7 @@ a {
 .thumbnails-list:focus {
   outline: none;
 }
-.thumbnails-list:focus-visible .thumbnail-row.selected .thumbnail-card {
+.thumbnails-list:focus-visible .thumbnail-row.active .thumbnail-card {
   box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.35);
 }
 .thumbnails-list.dragging,
@@ -2238,9 +2280,10 @@ a {
   position: absolute;
   left: 22px;
   right: 4px;
-  height: 3px;
+  height: 4px;
   border-radius: 2px;
   background: var(--google-blue);
+  box-shadow: 0 0 0 1px #fff;
 }
 .thumbnail-row.drop-before::before {
   top: -8px;
@@ -2272,7 +2315,8 @@ a {
     border-color 0.15s,
     box-shadow 0.15s;
 }
-.thumbnail-row.selected .thumbnail-card {
+.thumbnail-row.selected .thumbnail-card,
+.thumbnail-row.active .thumbnail-card {
   border: 2.5px solid var(--google-blue);
   box-shadow: 0 0 0 1px var(--google-blue);
 }
