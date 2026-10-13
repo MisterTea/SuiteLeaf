@@ -38,4 +38,117 @@ Chromium's Cache API refused the 2 GB weight shards in Playwright's ephemeral pr
 - It sometimes splits a list into one call per item, each replacing the last, then corrects itself with a final call that has every item.
 - It sometimes opens a thought channel (`<|channel>thought`) even though thinking is off. The panel shows it collapsed as "Thinking".
 
-The storyboard pass rates and failure analysis follow in the sections below.
+## Stress test: every AI storyboard, three times per backend
+
+Each AI storyboard ran three times on each backend, with nothing scripted or mocked. Sampling is the model's defaults (temperature 1.0, top-k 64, top-p 0.95), so each repeat is an independent attempt. The three backends:
+
+- **web-q4:** the browser build on WebGPU, q4f16 ONNX weights. All 26 storyboards, 78 runs.
+- **electron-q4:** the desktop app on llama.cpp with Q4_0 weights. Storyboards 01–21, 63 runs.
+- **electron-q8:** the desktop app on llama.cpp with Q8_0 weights. Storyboards 01–21, 63 runs.
+
+Storyboards 22–26 need a cluster server, so they run only in the browser. To reproduce:
+
+```sh
+STORYBOARD_RUN_TAG=web-q4 npm run storyboards -- --project=ai --repeat-each=3
+STORYBOARD_RUN_TAG=electron-q4 npx playwright test --config playwright.storyboards-electron.config.ts --repeat-each=3
+STORYBOARD_RUN_TAG=electron-q8 SUITELEAF_MODEL_PATH=~/.cache/suiteleaf-models/gguf/gemma-4-E4B-it-Q8_0.gguf \
+  npx playwright test --config playwright.storyboards-electron.config.ts --repeat-each=3
+node scripts/ai-stress-report.mjs web-q4 electron-q4 electron-q8
+```
+
+### Summary
+
+Gemma 4 E4B passed 165 of 204 runs (81%). It is reliable at short, single-purpose requests: find and replace, page setup, sorting, filtering, freezing, notes and comments, CSV import, slides, presenting, and every cluster flow. It underperforms in three ways:
+
+1. **It does most of a multi-part request, then stops, and says it did all of it.** 37 of the 38 failures caused by the model ended with a confident summary claiming success. The other one asked for permission instead of acting. Nobody reading only the model's reply would know these tasks had failed.
+2. **It misses the one cell that breaks a pattern.** Storyboard 13 never passed: 0 of 9 runs here, and 0 of 12 before. The model formats the rate and amount columns as dollars but never the invoice total (D5), even though the request says "amounts" and the tool's reply shows D5 still unformatted.
+3. **It loses structure on long inputs.** Storyboard 04 asks it to turn a 700-word report into a document with two heading levels. It passed 1 of 9 runs. It makes "Volunteers" or "Next year" a sub-heading, adds a title the user didn't ask for, or retypes every paragraph as a heading.
+
+The 8-bit desktop build is clearly better than the 4-bit one, most of all in Sheets (91% against 64%). The browser's 4-bit q4f16 export sits between them (85%), which suggests the Q4_0 GGUF loses more accuracy than the q4f16 ONNX export does.
+
+### Pass rate per storyboard
+
+| Storyboard | web-q4 | electron-q4 | electron-q8 |
+| --- | --- | --- | --- |
+| 01-first-document | 2/3 | 3/3 | 3/3 |
+| 02-find-and-organize-files | 3/3 | 3/3 | 3/3 |
+| 03-import-word-document | 3/3 | 3/3 | 2/3 |
+| 04-long-report-with-outline | 1/3 | 0/3 | 0/3 |
+| 05-tables-images-and-links | 2/3 | 2/3 | 1/3 |
+| 06-find-and-replace | 3/3 | 3/3 | 3/3 |
+| 07-page-setup-and-export | 3/3 | 3/3 | 3/3 |
+| 08-carry-a-file-to-another-computer | 3/3 | 2/3 | 3/3 |
+| 09-household-budget-with-formulas | 2/3 | 0/3 | 3/3 |
+| 10-sort-without-the-header | 3/3 | 3/3 | 3/3 |
+| 11-filter-to-what-matters | 3/3 | 3/3 | 3/3 |
+| 12-freeze-the-header-row | 3/3 | 3/3 | 3/3 |
+| 13-format-money-and-percentages | 0/3 | 0/3 | 0/3 |
+| 14-chart-from-a-table | 1/3 | 1/3 | 3/3 |
+| 15-summarize-with-a-pivot | 3/3 | 1/3 | 3/3 |
+| 16-import-and-export-csv | 3/3 | 2/3 | 3/3 |
+| 17-review-a-budget-with-notes-and-comments | 3/3 | 3/3 | 3/3 |
+| 18-highlight-and-check-off | 3/3 | 2/3 | 3/3 |
+| 19-open-an-excel-workbook | 2/3 | 3/3 | 3/3 |
+| 20-build-a-presentation | 3/3 | 2/3 | 3/3 |
+| 21-present-with-speaker-notes | 3/3 | 3/3 | 3/3 |
+| 22-connect-to-your-team-server | 3/3 | – | – |
+| 23-start-a-document-in-suitedrive | 3/3 | – | – |
+| 24-pick-up-on-another-server | 2/3 | – | – |
+| 25-when-someone-else-saved-first | 3/3 | – | – |
+| 26-sign-out-and-disconnect | 3/3 | – | – |
+
+### Pass rate per app
+
+| App | web-q4 | electron-q4 | electron-q8 |
+| --- | --- | --- | --- |
+| Docs & files (01–08) | 20/24 (83%) | 19/24 (79%) | 18/24 (75%) |
+| Sheets (09–19) | 26/33 (79%) | 21/33 (64%) | 30/33 (91%) |
+| Slides (20–21) | 6/6 (100%) | 5/6 (83%) | 6/6 (100%) |
+| Server (22–26) | 14/15 (93%) | – | – |
+| **All** | **66/78 (85%)** | **45/63 (71%)** | **54/63 (86%)** |
+
+### Agent behaviour
+
+| Backend | Requests | Tool calls | Tool errors | Unreadable calls | Empty replies retried | Median time per prompt |
+| --- | --- | --- | --- | --- | --- | --- |
+| web-q4 | 712 | 527 | 5 (0.9%) | 0 | 14 (2.0%) | 18 s |
+| electron-q4 | 573 | 438 | 7 (1.6%) | 2 | 8 (1.4%) | 9 s |
+| electron-q8 | 592 | 455 | 2 (0.4%) | 0 | 4 (0.7%) | 8 s |
+
+The mechanics hold up. Tool-call syntax almost never fails: the parser now repairs the few slips it makes (an extra `[` or `}`, a missing `]`, or a call left open when the turn ends). It never called a tool that doesn't exist, and the repeated-call guard never had to step in. Empty replies still happen, more often at 4 bits, and one resample always recovered. Its failures are about judgment, not mechanics.
+
+### Why runs failed
+
+All but one of the 39 failures were the model's. The exception was desktop 08: the model saved the edited file back to disk, which is fine, but the check expected the draft status. That check now accepts both.
+
+| Failure | Runs | Storyboards |
+| --- | --- | --- |
+| Left a cell or series out of a multi-part request | 13 | 13 (invoice total never formatted, 9), 14 (charted only Budget, 3), 15 (ignored the tool's note to format the pivot as dollars, 1) |
+| Heading levels wrong on a long input | 8 | 04 |
+| Left the file it was working in (`back_to_files`) | 5 | 03, 05 (×2), 16, 24 |
+| Wrong rows or columns in formulas | 4 | 09 (total one column right, "Left to spend" one row low) |
+| Wrong layout or arguments | 7 | 05 (no header row, ×2), 14 (chart not beside the table), 15 (both fields as columns), 18 (filled every row green instead of a rule), 20 (sun on the wrong slide), 01 (typed "after the frost. last") |
+| Asked instead of acting | 1 | 19 ("Do you want me to change this to 1020?") |
+
+Failed runs are kept as videos under `test-results/ai-videos/runs/<backend>/`, and their transcripts are under `test-results/ai-metrics/runs/<backend>/`.
+
+### Speed
+
+| | electron-q4 | electron-q8 | web-q4 |
+| --- | --- | --- | --- |
+| Weights | 4.6 GB | 8.0 GB | 4.9 GB |
+| Load (weights in the OS file cache) | 2–3 s | 3 s | 6–8 s |
+| Generation, nothing else running | 96–98 tok/s | 68–71 tok/s | 25–40 tok/s |
+| Generation during the stress runs | 54 tok/s | 69 tok/s | 20 tok/s |
+
+The isolated figures come from `scripts/ai-bench-llama.mjs` and `scripts/ai-bench-web.mjs`. During the stress runs, the browser and the 4-bit desktop runs shared the GPU, so their figures are lower; the 8-bit run had the GPU to itself. Even so, the 8-bit model's median prompt took 8 s on the desktop, against 18 s in the browser. Q8_0 costs about 30% of generation speed and 3.4 GB of memory, and buys 15 points of pass rate. The desktop default is still Q4_0; set `SUITELEAF_MODEL_PATH` to the Q8_0 file to use it. These numbers argue for making Q8_0 the default on machines with the memory for it.
+
+### WebNN fallback, observed
+
+One more browser run used automatic device selection (`STORYBOARD_AI_DEVICE=auto`). WebNN used its full 240 s budget without finishing compilation, as described above. The worker then fell back to WebGPU and loaded in 7 s, so the first reply came about 4 minutes after the request.
+
+With today's ONNX exports, WebNN only adds that delay. So once WebNN has failed and WebGPU has worked, the browser saves the failure (`localStorage["suiteleaf.ai.webnnFailure"]`) and skips WebNN on later loads until the browser's user agent changes. In a persistent Chromium profile, the first load took 251 s and the next one 6 s. The panel shows a note, "WebNN couldn't run Gemma here, so it runs on WebGPU.", and expands it to give the reason.
+
+### GPUs without 16-bit floats
+
+The q4f16 weights need WebGPU's `shader-f16` feature. Where the adapter lacks it, the worker loads the q4 export instead: 4-bit weights with 32-bit activations, 5.6 GB, with every tensor under 2.1 GB. Forced with `localStorage["suiteleaf.ai.dtype"] = "q4"` on the M5 Max, it loaded in 15 s and ran. It has not been tried on a GPU that actually lacks `shader-f16`. Playwright's default headless shell only offers SwiftShader, a software adapter with 1 GB buffers. The worker now rejects that adapter immediately ("only a software (CPU) adapter is available"), because the model cannot run there. That's why the storyboards use full Chromium (`channel: "chromium"`), which gets the Metal GPU.
