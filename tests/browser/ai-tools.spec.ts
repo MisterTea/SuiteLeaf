@@ -247,12 +247,23 @@ test("presentation tools build slides and present", async ({ page }) => {
   await call(page, "set_speaker_notes", { slide: 2, notes: "We planted 40 seedlings." });
   await call(page, "set_background", { color: "#e2ece9", all_slides: true });
   const read = await call(page, "read_presentation");
-  expect(read).toContain("Slide 2 [title-body, background #e2ece9] title: Planted; box 2: Tomatoes / Beans; also ellipse shape");
+  expect(read).toContain("Slide 2 [title-body, background #e2ece9] title: Planted; body: • Tomatoes / • Beans; also ellipse shape (#fde68a, 160×160, top-right)");
   expect(read).toContain("notes: We planted 40 seedlings.");
   await call(page, "move_slide", { slide: 2, to: 1 });
   expect(await call(page, "read_presentation")).toMatch(/Slide 1 \[title-body/);
+  const columns = await call(page, "add_slide", { layout: "two-column", after: 2, title: "Help", column2: "In May\n- Plant sale" });
+  expect(columns).toContain("right column (column2): In May / • Plant sale");
+  expect(columns).toContain("Still empty: left column (column1).");
+  expect(await call(page, "set_slide_text", { slide: 3, column1: "Saturdays\n- Weeding" })).toContain("left column (column1): Saturdays / • Weeding");
+  expect(await call(page, "add_slide", { layout: "section", after: 3, title: "Questions?", subtitle: "Ask away" })).toContain("Not used: subtitle");
+  expect(await call(page, "set_background", { slide: 1, color: "sage green" })).toContain("sage green (#e2ece9) background; the other slides keep theirs");
+  expect(await call(page, "add_shape", { slide: 1, shape: "circle", fill: "yellow", position: "top-right" })).toContain("yellow (#fbbc04) circle, 160×160");
+  expect(await call(page, "add_shape", { slide: 1, shape: "circle", fill: "Transparent", width: 30, height: 20 })).toContain("transparent circle, 30×30");
+  await expect(call(page, "add_shape", { slide: 1, shape: "circle", fill: "gold" })).rejects.toThrow(/Fill menu color: .*Yellow/);
+  expect(await call(page, "move_slide", { slide: 3, before: "Planted" })).toContain('Moved "Help" from slide 3 to slide 1: it now comes first, before "Planted"');
+  expect(await call(page, "move_slide", { slide: 1, after: "Club update" })).toMatch(/Order: 1\. Planted; 2\. Club update; 3\. Help; 4\. Questions\?/);
   await call(page, "start_presentation", { with_notes: true });
-  expect(await call(page, "next_slide")).toContain("slide 2 of 2");
+  expect(await call(page, "next_slide")).toContain("slide 2 of 4");
   await call(page, "end_presentation");
 });
 
