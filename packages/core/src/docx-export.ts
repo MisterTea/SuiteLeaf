@@ -223,11 +223,20 @@ function runs(
       if (!match) return [new TextRun(String(n.attrs?.alt ?? "[Image]"))];
       const data = Uint8Array.from(atob(match[2]), (c) => c.charCodeAt(0));
       const [naturalWidth, naturalHeight] = imageSize(data, match[1]);
-      const requestedWidth = Number(n.attrs?.width) || naturalWidth;
+      const storedWidth = Number(n.attrs?.width);
+      const storedHeight = Number(n.attrs?.height);
+      const requestedWidth = storedWidth > 0 ? storedWidth : naturalWidth;
       const requestedHeight =
-        Number(n.attrs?.height) ||
-        (naturalHeight * requestedWidth) / naturalWidth;
-      const scale = Math.min(1, 600 / requestedWidth, 800 / requestedHeight);
+        storedHeight > 0
+          ? storedHeight
+          : (naturalHeight * requestedWidth) / naturalWidth;
+      // A stored size is the size on the page and has to survive a round trip.
+      // Pictures with no stored size still use the file's pixels, capped so a
+      // multi-megapixel photo does not become a huge drawing.
+      const scale =
+        storedWidth > 0
+          ? 1
+          : Math.min(1, 600 / requestedWidth, 800 / requestedHeight);
       const crop = imageCrop(n.attrs);
       // The frame is the cropped region at the same scale as the full picture.
       // `data` stays the whole image so Word's crop reset can reveal it.

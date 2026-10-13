@@ -43,6 +43,11 @@ import {
   imageCropFromSrcRect,
   type ImageCrop,
 } from "./image-crop";
+import {
+  applyImagePageSizes,
+  imagePageSizes,
+  type ImagePageSize,
+} from "./image-extent";
 
 type Mark = NonNullable<JsonNode["marks"]>[number];
 const normalize = (s: string) => s.replace(/[\s\u200b\ufeff]+/gu, "");
@@ -444,8 +449,13 @@ function applyWordPictureCrops(node: JsonNode, crops: PictureCrop[]): JsonNode {
         const crop = crops[at].crop;
         if (imageCropActive(crop)) {
           const round = (value: number) => Math.round(value * 1000) / 1000;
+          // The drawing extent is the cropped frame. Width stays the full
+          // picture, so a srcRect import does not keep that frame as width.
+          const attrs = { ...(current.attrs ?? {}) };
+          delete attrs.width;
+          delete attrs.height;
           current.attrs = {
-            ...current.attrs,
+            ...attrs,
             cropLeft: round(crop.left),
             cropTop: round(crop.top),
             cropRight: round(crop.right),
@@ -1204,6 +1214,7 @@ export async function importDocx(
   if (cited.changed) officeXml = cited.xml;
   const extracted = extractOfficeMath(officeXml);
   if (extracted.equations.length) zip.file("word/document.xml", extracted.xml);
+  const pictureSizes: ImagePageSize[] = [];
   try {
     const input =
       features.includes("strict-ooxml") ||
@@ -1214,6 +1225,10 @@ export async function importDocx(
       extracted.equations.length
         ? await zip.generateAsync({ type: "uint8array" })
         : bytes;
+    const documentXml =
+      (await zip.file("word/document.xml")?.async("string")) ?? officeXml;
+    const pageSizes = imagePageSizes(documentXml);
+    let imageCursor = 0;
     const result = await mammoth.convertToHtml(
       { arrayBuffer: input.slice().buffer },
       {
@@ -1227,6 +1242,7 @@ export async function importDocx(
           "p[style-name='Subtitle'] => h2:fresh",
         ],
         convertImage: mammoth.images.imgElement(async (image) => {
+          const pageSize = pageSizes[imageCursor++] ?? null;
           if (
             !["image/png", "image/jpeg", "image/gif", "image/webp"].includes(
               image.contentType,
@@ -1237,6 +1253,7 @@ export async function importDocx(
             );
             return { src: "", alt: `Unsupported ${image.contentType} image` };
           }
+          pictureSizes.push(pageSize);
           return {
             src: `data:${image.contentType};base64,${await image.readAsBase64String()}`,
           };
@@ -1284,6 +1301,7 @@ export async function importDocx(
       })),
     };
   }
+  if (pictureSizes.length) content = applyImagePageSizes(content, pictureSizes);
   const imported = applyImportedNotes(content, rewritten.notes);
   content = imported.content;
   const withCitations = applyImportedCitations(
