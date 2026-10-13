@@ -252,23 +252,42 @@ export function conflictTools(ctx: {
   conflict: () => boolean;
   saveCopy: () => Promise<void>;
   reload: () => Promise<void>;
+  title: () => string;
+  rename: (title: string) => void;
 }): SuiteTool[] {
   return [
     tool({
       name: "resolve_conflict",
       label: "Resolve conflict",
       description:
-        "When someone else saved this file in SuiteDrive first: save_copy keeps your version as a separate copy (nothing is lost); reload replaces your edits with their version (your edits are lost; only if the user said so). The page reloads after reload.",
-      parameters: Type.Object({ choice: Type.String({ enum: ["save_copy", "reload"] }) }),
+        "When someone else saved this file in SuiteDrive first: save_copy keeps your version as a separate copy (nothing is lost), named copy_name if the user gave a name for it; reload replaces your edits with their version (your edits are lost; only if the user said so). The page reloads after reload.",
+      parameters: Type.Object({
+        choice: Type.String({ enum: ["save_copy", "reload"] }),
+        copy_name: Type.Optional(Type.String()),
+      }),
       target: ({ choice }) =>
         [...document.querySelectorAll(".drive-conflict button")].find((b) =>
           b.textContent?.includes(choice === "save_copy" ? "Save as copy" : "Reload"),
         ),
-      async execute({ choice }) {
+      async execute({ choice, copy_name }) {
         if (!ctx.conflict()) return "There is no conflict on this file.";
         if (choice === "save_copy") {
+          const original = ctx.title();
           await ctx.saveCopy();
-          return "Saved your version as a copy in SuiteDrive; the other person's version is unchanged.";
+          const name = copy_name?.trim().replace(/\.(sldoc|slsheet|slslides)$/i, "");
+          if (name && name !== original) {
+            const input = document.querySelector<HTMLInputElement>(".workspace-header input");
+            input?.focus();
+            for (let i = 1; i <= name.length; i++) {
+              ctx.rename(name.slice(0, i));
+              await wait(30);
+            }
+            input?.blur();
+          }
+          const now = ctx.title();
+          return `Saved your version as a separate file in SuiteDrive called "${now}"; that copy is now the open file. The other person's version is still "${original}", unchanged.${
+            now === original ? ` Both files have the same name; rename_this_file gives the open copy its own name if the user wants.` : ""
+          }`;
         }
         return agentSession.reloadAndResume("Reloaded the file from SuiteDrive; it now shows the other version.", ctx.reload);
       },
