@@ -3424,6 +3424,12 @@ body.agent-open .loading {
 body.agent-open .workspace {
   width: calc(100vw - var(--agent-width));
 }
+body.agent-open .title-block input {
+  min-width: 0;
+}
+body.agent-open .save-status {
+  flex-shrink: 0;
+}
 body.agent-open .gdocs-modal-overlay {
   right: var(--agent-width);
 }

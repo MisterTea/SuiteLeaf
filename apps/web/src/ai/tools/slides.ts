@@ -264,7 +264,11 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
         column1: Type.Optional(Type.String({ description: "Left column of a two-column slide." })),
         column2: Type.Optional(Type.String({ description: "Right column of a two-column slide." })),
       }),
-      target: () => canvas()?.querySelector(".slide-element textarea") ?? canvas(),
+      target: ({ title, body, subtitle, column1, column2 }) => {
+        const boxes = canvas()?.querySelectorAll(".slide-element textarea") ?? [];
+        const first = title !== undefined ? 0 : [body ?? subtitle ?? column1, column2].findIndex((t) => t !== undefined) + 1;
+        return boxes[first] ?? boxes[0] ?? canvas();
+      },
       async execute({ slide, title, body, subtitle, column1, column2 }) {
         const { id, index } = findSlide(ctx.deck(), slide, ctx.activeSlideId);
         ctx.select(id, null);
