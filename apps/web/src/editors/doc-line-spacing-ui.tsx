@@ -94,6 +94,9 @@ export function LineSpacingControl({ editor }: { editor: Editor | null }) {
         }}
       >
         <span>{label}</span>
+        <span className="paragraph-space-readout">
+          {points(before)} pt before · {points(after)} pt after
+        </span>
       </button>
       {open ? (
         <div className="line-spacing-menu" id="line-spacing-menu">

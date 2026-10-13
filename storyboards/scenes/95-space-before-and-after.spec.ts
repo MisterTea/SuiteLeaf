@@ -200,31 +200,33 @@ test("95-space-before-and-after", async ({ page }) => {
 
   await caption(
     page,
-    "She selects the motion and sets Space after to 12, then back to 0. The extra gap goes away. The lines stay double-spaced.",
+    "She puts the caret in the motion and sets Space after to 12, then back to 0. The extra gap goes away. The lines stay double-spaced.",
   );
   await blockOf(page, motion[0]).click();
-  await beat(page, 400);
-  await blockOf(page, motion[2]).click({ modifiers: ["Shift"] });
+  await blockOf(page, motion[0]).evaluate((el) => {
+    el.scrollIntoView({ block: "center", inline: "nearest" });
+  });
   await expect(spacing).toContainText("Double");
-  await expect(spacing).toHaveAttribute("aria-label", /Space after 0 points/);
-  await beat(page, 800);
+  await expect(spacing).toContainText("0 pt after");
+  await beat(page, 900);
   await spacing.click();
   await setPoints(page, "Space after", "12");
-  await beat(page, 900);
+  await beat(page, 400);
   await page.keyboard.press("Escape");
-  for (const line of motion)
-    await expect(blockOf(page, line)).toHaveAttribute("data-space-after", "12");
-  const withGap = await textGap(page, motion[0], motion[2]);
-  await beat(page, 900);
+  await expect(blockOf(page, motion[0])).toHaveAttribute("data-space-after", "12");
+  await expect(blockOf(page, motion[1])).not.toHaveAttribute("data-space-after", "12");
+  await expect(blockOf(page, motion[0])).toHaveAttribute("data-line-spacing", "double");
+  const withGap = await textGap(page, motion[0], motion[1]);
+  await beat(page, 1400);
   await spacing.click();
   await setPoints(page, "Space after", "0");
-  await beat(page, 700);
+  await beat(page, 400);
   await page.keyboard.press("Escape");
-  for (const line of motion) {
-    await expect(blockOf(page, line)).toHaveAttribute("data-space-after", "0");
+  await expect(blockOf(page, motion[0])).toHaveAttribute("data-space-after", "0");
+  await expect(blockOf(page, motion[0])).toHaveAttribute("data-line-spacing", "double");
+  for (const line of motion.slice(1))
     await expect(blockOf(page, line)).toHaveAttribute("data-line-spacing", "double");
-  }
-  expect(await textGap(page, motion[0], motion[2])).toBeLessThan(withGap - 12);
+  expect(await textGap(page, motion[0], motion[1])).toBeLessThan(withGap - 12);
   await expect(blockOf(page, "greenhouse")).toHaveAttribute("data-line-spacing", "1.5");
   await beat(page, 1500);
 
@@ -239,8 +241,9 @@ test("95-space-before-and-after", async ({ page }) => {
   await expect(blockOf(page, "greenhouse")).toHaveAttribute("data-space-after", "12");
   await expect(blockOf(page, "greenhouse")).toHaveAttribute("data-line-spacing", "1.5");
   await expect(blockOf(page, "Motion")).toHaveAttribute("data-space-before", "12");
-  for (const line of motion)
-    await expect(blockOf(page, line)).toHaveAttribute("data-space-after", "0");
+  await expect(blockOf(page, motion[0])).toHaveAttribute("data-space-after", "0");
+  for (const line of motion.slice(1))
+    await expect(blockOf(page, line)).not.toHaveAttribute("data-space-after");
   await blockOf(page, "greenhouse").click();
   await expect(spacing).toHaveAttribute("aria-label", /Space after 12 points/);
   await beat(page, 700);

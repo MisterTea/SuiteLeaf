@@ -17,7 +17,7 @@ Priya wants a little air after the welcome paragraph and none after the motion l
 1. **Glued.** Priya opens "Garden club minutes". The welcome and the motion sit with no extra gap. Line spacing on the welcome is already 1.5.
 2. **After.** She puts the caret in the welcome and sets Space after to 12 pt. A gap opens under the welcome. The motion does not move apart from that gap. The lines inside the welcome stay at 1.5.
 3. **Before.** She puts the caret in the "Motion" heading and sets Space before to 12 pt. A gap opens above the heading. Space after on the welcome stays 12 pt.
-4. **Zero.** She selects the motion and sets Space after to 12, then back to 0. The extra gap between those lines goes away. The lines stay double-spaced from storyboard 68.
+4. **Zero.** She puts the caret in the first motion line and sets Space after to 12, then back to 0. The extra gap under that line goes away. The lines stay double-spaced from storyboard 68. The other motion lines were left at 0.
 5. **Save and Word.** She reopens the file. Welcome still has 12 pt after, the heading still has 12 pt before, and the motion still has 0 after. The exported .docx records those values on the right paragraphs.
 
 ## Google Workspace benchmark
@@ -42,13 +42,13 @@ The welcome has a gap under it. The Motion heading has a gap above it. The motio
 
 | Criterion | Met | Evidence |
 | --- | --- | --- |
-| Space before and Space after are on the paragraph control, next to line spacing. No second dialog. | Met | Video 0:08. The line spacing menu shows 1.5 checked, then Space before and Space after in points. `tests/browser/paragraph-spacing.spec.ts` |
-| The control shows the current before and after for the caret's paragraph, in points. | Met | Video 0:08 Space after is 12 pt. Video 0:16 Space before is 12 pt on Motion. Video 0:28 the motion shows Space after 0 pt and Double is still checked. |
-| Space after on the welcome does not change the motion's space after, and does not change the welcome's line spacing. | Met | Video 0:12. A gap opens under the welcome. The motion lines stay as they were, and the button still reads 1.5. `tests/doc-paragraph-spacing.test.ts` |
-| Space before on the heading does not clear the welcome's space after. | Met | Video 0:33. The gap above Motion is the welcome's 12 pt after plus the heading's 12 pt before. `tests/doc-paragraph-spacing.test.ts` |
-| Setting a value to 0 removes that gap. Line spacing stays. | Met | Video 0:28. She sets Space after to 0 while Double stays checked. Video 0:33 the motion lines have no extra gap after them. `tests/doc-paragraph-spacing.test.ts` |
-| The values survive save and reopen. | Met | Video 0:33. She is back in Garden club minutes and both gaps are still there. `tests/browser/paragraph-spacing.spec.ts` |
-| The .docx writes `w:before` and `w:after` only on paragraphs that have them. | Met | Video 0:37 File, Export DOCX. Welcome is `w:after="240"`, Motion is `w:before="240"`, and the motion line has neither. `tests/doc-paragraph-spacing.test.ts` |
+| Space before and Space after are on the paragraph control, next to line spacing. No second dialog. | Met | Video 0:06. The line spacing menu shows 1.5 checked, then Space before and Space after in points. The closed button already reads the points. `tests/browser/paragraph-spacing.spec.ts` |
+| The control shows the current before and after for the caret's paragraph, in points. | Met | Video 0:04 the button reads 0 pt before and 0 pt after. Video 0:11 Space after is 12 pt. Video 0:16 the Motion heading reads 0 pt before. Video 0:28 the motion reads 0 pt after and Double is still checked. |
+| Space after on the welcome does not change the motion's space after, and does not change the welcome's line spacing. | Met | Video 0:11. A gap opens under the welcome. The motion lines stay together, and the button still reads 1.5. `tests/doc-paragraph-spacing.test.ts` |
+| Space before on the heading does not clear the welcome's space after. | Met | Video 0:18. The gap above Motion grows while the welcome stays at 12 pt after. Video 0:33 both gaps are still there. `tests/doc-paragraph-spacing.test.ts` |
+| Setting a value to 0 removes that gap. Line spacing stays. | Met | Video 0:26 she sets Space after to 0. Video 0:28 the extra gap between the motion lines is gone and Double stays checked. `tests/doc-paragraph-spacing.test.ts` |
+| The values survive save and reopen. | Met | Video 0:32. She is back in Garden club minutes and both gaps are still there. `tests/browser/paragraph-spacing.spec.ts` |
+| The .docx writes `w:before` and `w:after` only on paragraphs that have them. | Met | Video 0:36 File, Export DOCX. Welcome is `w:after="240"`, Motion is `w:before="240"`, and a motion line left at 0 has neither. `tests/doc-paragraph-spacing.test.ts` |
 
 ## Gaps and notes
 

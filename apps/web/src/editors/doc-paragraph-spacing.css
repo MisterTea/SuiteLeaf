@@ -1,3 +1,12 @@
+.paragraph-space-readout {
+  margin-left: 4px;
+  padding-left: 6px;
+  border-left: 1px solid var(--border, #dadce0);
+  font-size: 12px;
+  font-weight: 600;
+  color: #202124;
+  font-variant-numeric: tabular-nums;
+}
 .paragraph-space-fields {
   display: grid;
   gap: 6px;

@@ -104,7 +104,7 @@ export function ParagraphSpaceFields({
         disabled={!editor}
         onCommit={(points) => apply("after", points)}
       />
-      <p className="paragraph-space-hint">Points. 0 removes the gap. Line spacing stays.</p>
+      <p className="paragraph-space-hint">0 removes the gap. Line spacing stays.</p>
     </div>
   );
 }
