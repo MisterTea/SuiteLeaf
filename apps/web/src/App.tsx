@@ -104,6 +104,13 @@ const Docs = lazy(() => import("./editors/Docs")),
 function message(e: unknown) {
   return e instanceof Error ? e.message : String(e);
 }
+function importFeatureLine(warnings: string[]): string {
+  return warnings.find((warning) => /^\d+ (footnote|endnote|table)/.test(warning)) ?? "";
+}
+function importCompatibilityNotes(warnings: string[]): string[] {
+  const feature = importFeatureLine(warnings);
+  return warnings.filter((warning) => warning !== feature);
+}
 /** SuiteDrive uploads by file ID, shared by every editor of a file so one
  * opened while an earlier editor's upload is in flight reads the version that
  * upload produces instead of uploading on top of the same base again. */
@@ -1644,6 +1651,43 @@ function Workspace() {
                   >
                     Page break
                   </MenuItem>
+                  <SubMenu label="Table of contents">
+                    <MenuItem
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.docActions?.insertTableOfContents(true)
+                      }
+                    >
+                      With page numbers
+                    </MenuItem>
+                    <MenuItem
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.docActions?.insertTableOfContents(
+                          false,
+                        )
+                      }
+                    >
+                      With links
+                    </MenuItem>
+                  </SubMenu>
+                  <MenuItem
+                    shortcut="Cmd+Alt+F"
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.docActions?.insertFootnote()
+                    }
+                  >
+                    Footnote
+                  </MenuItem>
+                  <MenuItem
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.docActions?.insertEndnote()
+                    }
+                  >
+                    Endnote
+                  </MenuItem>
                   <MenuItem
                     shortcut="Cmd+K"
                     onSelect={() => actions.current?.docActions?.insertLink()}
@@ -2195,13 +2239,16 @@ function Workspace() {
           <summary>
             Imported {f.importInfo.sourceFormat.toUpperCase()}:{" "}
             {f.importInfo.sourceName}
-            {f.importInfo.warnings.length
-              ? ` · ${f.importInfo.warnings.length} compatibility ${f.importInfo.warnings.length === 1 ? "note" : "notes"}`
+            {importFeatureLine(f.importInfo.warnings)
+              ? ` · ${importFeatureLine(f.importInfo.warnings)}`
+              : ""}
+            {importCompatibilityNotes(f.importInfo.warnings).length
+              ? ` · ${importCompatibilityNotes(f.importInfo.warnings).length} compatibility ${importCompatibilityNotes(f.importInfo.warnings).length === 1 ? "note" : "notes"}`
               : ""}
           </summary>
-          {f.importInfo.warnings.length ? (
+          {importCompatibilityNotes(f.importInfo.warnings).length ? (
             <ul>
-              {f.importInfo.warnings.map((w, i) => (
+              {importCompatibilityNotes(f.importInfo.warnings).map((w, i) => (
                 <li key={i}>{w}</li>
               ))}
             </ul>

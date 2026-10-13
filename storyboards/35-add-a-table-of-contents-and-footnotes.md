@@ -18,15 +18,15 @@ Kwame is writing a 20-page grant report for a youth football charity. The funder
 
 ## Scenes
 
-1. **Open the report.** Kwame opens "Grant report 2026". It has a title page, a page break, and 8 Heading 1 and Heading 2 sections. The outline lists them on the left.
-2. **Insert the contents.** On page 2 he chooses Insert › Table of contents › **With page numbers**. A table appears listing every heading, indented by level, with dotted leaders and page numbers.
-3. **It follows the document.** He renames "Results" to "What we achieved", adds a Heading 2 "Coaching hours", and cuts the "Budget" section and pastes it above "What we achieved". Within a second the table shows the new names, the new entry, and the new order and page numbers. There's no Refresh button to remember.
-4. **Use it as links.** Clicking "Budget" in the table scrolls to that heading. A small menu on the table switches between page numbers and plain links, and between showing Heading 1 only or levels 1 to 3.
-5. **Add a footnote.** After "attendance rose 40%" he presses Cmd/Ctrl+Alt+F (Insert › Footnote). A superscript "1" appears at the cursor, and the cursor jumps to footnote 1 at the bottom of the page, where he types the source.
+1. **Open the report.** Kwame opens "Grant report 2026" from his files. It has a title page, a page break, and 8 Heading 1 and Heading 2 sections. The outline lists them on the left.
+2. **Insert the contents.** On page 2 he chooses Insert › Table of contents › **With page numbers** (two clicks). A table appears listing every heading, indented by level, with dotted leaders and page numbers.
+3. **It follows the document.** He renames "Results" to "What we achieved", adds a Heading 2 "Coaching hours", and cuts the "Budget" section and pastes it above "What we achieved". Within a second the table shows the new names, the new entry, and the new order and page numbers. There's no Refresh button.
+4. **Use it as links.** Clicking "Budget" in the table scrolls to that heading. **Options** on the table switches between page numbers and plain links, and between Heading 1 only and levels 1 to 3.
+5. **Add a footnote.** After "attendance rose 40%" he presses Cmd/Ctrl+Alt+F. A superscript appears at the cursor, and he types the source in the note.
 6. **More footnotes.** He adds two more later in the report, then inserts one earlier. The numbers update to 1 to 4 in reading order. Clicking a number in the text jumps to its note, and clicking the note's number jumps back.
-7. **Print layout.** Each footnote sits at the bottom of the page its number is on, under a short rule. A note that doesn't fit continues onto the next page.
-8. **Export for the funder.** File › Export DOCX. In Word, the contents page is a real table of contents (References › Update Table works), and the notes are real footnotes (References › Next Footnote moves between them).
-9. **Back from Word.** The funder's officer adds an endnote in Word and returns the file. Kwame opens it in SuiteLeaf: the contents, the four footnotes, and the new endnote are all there, linked to their markers. The import summary lists "4 footnotes, 1 endnote, 1 table of contents".
+7. **Print layout.** The notes that belong on a page sit together at the bottom, under a short rule. A note taller than that band continues on the next page.
+8. **Export for the funder.** File › Export DOCX. The file Word opens has a real table-of-contents field (References › Update Table) and real footnotes (`footnotes.xml`, `w:footnoteReference`).
+9. **Back from Word.** The funder's officer adds an endnote and returns the file. Kwame opens it: the contents, the four footnotes, and the endnote are linked to their markers. The import summary reads "4 footnotes, 1 endnote, 1 table of contents". Endnotes stay endnotes.
 
 ## Google Workspace benchmark
 
@@ -53,13 +53,25 @@ Known pain points:
 
 ## Success looks like
 
-- Page 2 lists every heading with correct page numbers after all the late changes.
-- The report has four linked footnotes and the funder's endnote, and Word treats both the contents and the notes as its own.
+- Page 2 lists every heading with page numbers after the late changes, and Budget sits above What we achieved.
+- The report has four linked footnotes. The returned Word file opens with those footnotes, an endnote that stayed an endnote, and a live contents table. The import summary counts them.
 
 ## Gaps and notes
 
-- **No table of contents.** The Insert menu has Image, Table, Horizontal line, Page break, and Link. The building blocks exist: the outline sidebar collects headings with unique slugs, `#slug` links scroll to headings, and print layout knows the page count (`doc-pagination.ts`).
-- **No footnotes or endnotes.** The Tiptap schema has no footnote node, there's no Insert › Footnote, and Cmd/Ctrl+Alt+F does nothing.
-- **Word import flattens notes.** `word.ts` replaces each footnote reference with a plain `<sup>1</sup>` (endnotes become lower-case roman numerals) and strips the back-links. The note text stays wherever Mammoth put it, as an ordinary list at the end of the document, so markers and notes aren't connected and renumbering is impossible.
-- **DOCX export has no notes or contents.** `docx-export.ts` writes no `footnotes.xml`, `endnotes.xml`, or table-of-contents field.
-- Word's table of contents is a field. `word.ts` skips field instructions (`instrText`), so an imported contents page should arrive as ordinary paragraphs, though this hasn't been checked with a real file. The import should turn it into SuiteLeaf's own live table rather than leaving stale text.
+- A footnote taller than the band at the bottom of its page continues on the next page. The notes in this recording fit, so that split is not on screen.
+- Print / Save as PDF uses this same page layout. The recording exports DOCX and does not open the print dialog.
+- SuiteLeaf's page numbers follow its own pagination, so they can differ from the pages Word would have used before Update Table.
+- The contents options are page numbers or plain links, and Heading 1 only or levels 1 to 3.
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| Insert › Table of contents adds a table from the headings in at most 2 clicks, with page numbers or links | Met | Video ~8s (Insert, then With page numbers). Options also offers With links. |
+| Renaming, adding, or moving a heading updates the table within 1 second with no refresh, and page numbers match print layout | Met | Video ~12–18s. No Refresh control. `tests/browser/doc-notes.spec.ts` |
+| Every entry links to its heading, and options are 1 click away on the table | Met | Video ~20s (Budget jumps; Options opens in one click). |
+| Cmd/Ctrl+Alt+F and Insert › Footnote insert a marker and move into the note. Notes renumber in reading order | Met | Video ~28–34s, numbers 1–4. Shortcut is Cmd/Ctrl+Alt+F; Insert › Footnote is the same command. |
+| In print layout, each footnote is at the bottom of the page that holds its marker | Met | Video ~36s, notes under a short rule at the foot of the page. Print uses this layout. |
+| Export DOCX writes a Word TOC field and real footnotes | Met | `tests/doc-notes.test.ts` ("exports a Word table-of-contents field…"): `word/footnotes.xml`, `w:footnoteReference`, a TOC `instrText`. The recording's Export DOCX checks the same bytes. |
+| Opening a .docx keeps footnotes and endnotes linked, keeps endnotes as endnotes, and the import summary counts them | Met | Video ~48s: "4 footnotes, 1 endnote, 1 table of contents", endnote under Endnotes. `tests/doc-notes.test.ts` ("keeps Word's own endnotes…"). |
+| Exporting 4 footnotes and 1 endnote and re-importing returns the same notes | Met | `tests/doc-notes.test.ts` round trip: same four footnote texts, the endnote text, and a live table of contents. |

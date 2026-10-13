@@ -485,26 +485,31 @@ describe("editable Office imports", () => {
       const paragraphs = (file.content.content ?? []).filter(
         (n) => n.type === "paragraph",
       );
-      // Paragraph with footnote: Blahdeblah¹1
+      // Paragraph with footnote: Blahdeblah, a linked marker, then the literal 1.
       const pFootnote = paragraphs.find((p) =>
         documentText(p).startsWith("Blahdeblah1"),
       );
       expect(pFootnote).toBeDefined();
-      expect(pFootnote?.content).toEqual([
-        { type: "text", text: "Blahdeblah" },
-        { type: "text", text: "1", marks: [{ type: "superscript" }] },
-        { type: "text", text: "1" },
-      ]);
-      // Paragraph with endnote: Blahdeblahⁱ6
+      expect(pFootnote?.content?.[0]).toEqual({ type: "text", text: "Blahdeblah" });
+      expect(pFootnote?.content?.[1]).toMatchObject({
+        type: "noteReference",
+        attrs: { kind: "footnote", label: "1" },
+      });
+      expect(pFootnote?.content?.[2]).toEqual({ type: "text", text: "1" });
+      // Paragraph with endnote: Blahdeblah, a linked roman marker, then the literal 6.
       const pEndnote = paragraphs.find((p) =>
         documentText(p).startsWith("Blahdeblahi"),
       );
       expect(pEndnote).toBeDefined();
-      expect(pEndnote?.content).toEqual([
-        { type: "text", text: "Blahdeblah" },
-        { type: "text", text: "i", marks: [{ type: "superscript" }] },
-        { type: "text", text: "6" },
-      ]);
+      expect(pEndnote?.content?.[0]).toEqual({ type: "text", text: "Blahdeblah" });
+      expect(pEndnote?.content?.[1]).toMatchObject({
+        type: "noteReference",
+        attrs: { kind: "endnote", label: "i" },
+      });
+      expect(pEndnote?.content?.[2]).toEqual({ type: "text", text: "6" });
+      const notes = (file.content.content ?? []).filter((n) => n.type === "note");
+      expect(notes.some((n) => n.attrs?.kind === "footnote")).toBe(true);
+      expect(notes.some((n) => n.attrs?.kind === "endnote")).toBe(true);
     },
   );
   it("preserves Excel cell types, shared formulas, date system, named ranges, styles and dimensions", async () => {

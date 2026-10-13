@@ -2,8 +2,10 @@ import {
   AlignmentType,
   BorderStyle,
   Document,
+  EndnoteReferenceRun,
   ExternalHyperlink,
   Footer,
+  FootnoteReferenceRun,
   Header,
   HeadingLevel,
   ImageRun,
@@ -12,6 +14,7 @@ import {
   Paragraph,
   Table,
   TableCell,
+  TableOfContents,
   TableRow,
   TextRun,
   UnderlineType,
@@ -55,8 +58,51 @@ function imageSize(data: Uint8Array, type: string): [number, number] {
     }
   return [480, 320];
 }
-function runs(node: JsonNode): ParagraphChild[] {
+type NoteSlot = { kind: "footnote" | "endnote"; num: number };
+
+function noteIndex(content: JsonNode): Map<string, NoteSlot> {
+  const index = new Map<string, NoteSlot>();
+  let footnotes = 0;
+  let endnotes = 0;
+  const walk = (node: JsonNode) => {
+    if (node.type === "noteReference") {
+      const id = String(node.attrs?.id ?? "");
+      if (id && !index.has(id)) {
+        const kind = node.attrs?.kind === "endnote" ? "endnote" : "footnote";
+        index.set(id, {
+          kind,
+          num: kind === "endnote" ? ++endnotes : ++footnotes,
+        });
+      }
+    }
+    if (node.type !== "note") node.content?.forEach(walk);
+  };
+  walk(content);
+  return index;
+}
+
+function findNote(content: JsonNode, id: string): JsonNode | undefined {
+  let found: JsonNode | undefined;
+  const walk = (node: JsonNode) => {
+    if (found) return;
+    if (node.type === "note" && String(node.attrs?.id ?? "") === id) found = node;
+    else node.content?.forEach(walk);
+  };
+  walk(content);
+  return found;
+}
+
+function runs(node: JsonNode, notes: Map<string, NoteSlot>): ParagraphChild[] {
   return (node.content ?? []).flatMap((n): ParagraphChild[] => {
+    if (n.type === "noteReference") {
+      const slot = notes.get(String(n.attrs?.id ?? ""));
+      if (!slot) return [];
+      return [
+        slot.kind === "endnote"
+          ? new EndnoteReferenceRun(slot.num)
+          : new FootnoteReferenceRun(slot.num),
+      ];
+    }
     if (n.type === "hardBreak") return [new TextRun({ break: 1 })];
     if (n.type === "image") {
       const match = /^data:image\/(png|jpeg|gif);base64,(.*)$/i.exec(
@@ -86,7 +132,7 @@ function runs(node: JsonNode): ParagraphChild[] {
         }),
       ];
     }
-    if (n.type !== "text") return runs(n);
+    if (n.type !== "text") return runs(n, notes);
     const opts: { -readonly [K in keyof IRunOptions]: IRunOptions[K] } = {
       text: n.text ?? "",
     };
@@ -127,16 +173,29 @@ function runs(node: JsonNode): ParagraphChild[] {
 }
 function blocks(
   nodes: JsonNode[],
+  notes: Map<string, NoteSlot>,
   list?: { ordered: boolean; level: number },
-): (Paragraph | Table)[] {
-  return nodes.flatMap((n): (Paragraph | Table)[] => {
+): (Paragraph | Table | TableOfContents)[] {
+  return nodes.flatMap((n): (Paragraph | Table | TableOfContents)[] => {
+    if (n.type === "note") return [];
+    if (n.type === "tableOfContents") {
+      const max = Number(n.attrs?.maxLevel) === 1 ? "1-1" : "1-3";
+      const pageNumbers = n.attrs?.pageNumbers !== false;
+      return [
+        new TableOfContents("Contents", {
+          hyperlink: true,
+          headingStyleRange: max,
+          ...(pageNumbers ? {} : { pageNumbersEntryLevelsRange: max }),
+        }),
+      ];
+    }
     if (n.type === "bulletList" || n.type === "orderedList")
-      return blocks(n.content ?? [], {
+      return blocks(n.content ?? [], notes, {
         ordered: n.type === "orderedList",
         level: list ? Math.min(8, list.level + 1) : 0,
       });
     if (n.type === "listItem" || n.type === "blockquote")
-      return blocks(n.content ?? [], list);
+      return blocks(n.content ?? [], notes, list);
     if (n.type === "table")
       return [
         new Table({
@@ -154,7 +213,10 @@ function blocks(
                       columnSpan: Number(cell.attrs?.colspan) || 1,
                       rowSpan: Number(cell.attrs?.rowspan) || 1,
                       verticalAlign: VerticalAlign.TOP,
-                      children: blocks(cell.content ?? []),
+                      children: blocks(cell.content ?? [], notes).filter(
+                        (block): block is Paragraph | Table =>
+                          block instanceof Paragraph || block instanceof Table,
+                      ),
                     }),
                 ),
               }),
@@ -172,7 +234,9 @@ function blocks(
         }),
       ];
     const children =
-      n.type === "image" ? runs({ type: "paragraph", content: [n] }) : runs(n);
+      n.type === "image"
+        ? runs({ type: "paragraph", content: [n] }, notes)
+        : runs(n, notes);
     return [
       new Paragraph({
         children,
@@ -224,12 +288,28 @@ export async function exportDocx(
     await Promise.all((node.content ?? []).map(prepareImages));
   };
   await prepareImages(content);
+  const notes = noteIndex(content);
+  const noteBody = (id: string): Paragraph[] => {
+    const note = findNote(content, id);
+    const paragraphs = blocks(note?.content ?? [], notes).filter(
+      (block): block is Paragraph => block instanceof Paragraph,
+    );
+    return paragraphs.length ? paragraphs : [new Paragraph("")];
+  };
+  const footnotes: Record<string, { children: Paragraph[] }> = {};
+  const endnotes: Record<string, { children: Paragraph[] }> = {};
+  for (const [id, slot] of notes) {
+    const target = slot.kind === "endnote" ? endnotes : footnotes;
+    target[String(slot.num)] = { children: noteBody(id) };
+  }
   const settings = documentPageSettings(content);
   const [width, height] =
     settings.size === "a4" ? [11906, 16838] : [12240, 15840];
   const doc = new Document({
     title: file.title,
     creator: "SuiteLeaf",
+    ...(Object.keys(footnotes).length ? { footnotes } : {}),
+    ...(Object.keys(endnotes).length ? { endnotes } : {}),
     styles: { default: { document: { run: { font: "Arial", size: 22 } } } },
     numbering: {
       config: [
@@ -291,7 +371,7 @@ export async function exportDocx(
             ],
           }),
         },
-        children: blocks(content.content ?? []),
+        children: blocks(content.content ?? [], notes),
       },
     ],
   });
