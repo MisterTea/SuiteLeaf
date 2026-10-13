@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { flushSync } from "react-dom";
 import { X } from "lucide-react";
 import { Node, type Editor } from "@tiptap/core";
 import type { Node as ProseNode } from "@tiptap/pm/model";
@@ -281,13 +282,39 @@ export function EquationDialog({
     if (!parsed) return;
     editor
       .chain()
-      .focus()
       .insertContent({
         type: "equation",
         attrs: { expr: parsed, plain: plainOf(parsed) },
       })
       .run();
-    onClose();
+    // The dialog is aria-modal. Closing it moves focus to the page, and the
+    // browser does that after this click, so a plain focus() here does not
+    // stick. Catch the next typed character if it would otherwise land nowhere.
+    const place = () => {
+      if (editor.isDestroyed) return;
+      editor.commands.focus();
+      editor.view.dom.focus();
+    };
+    flushSync(() => onClose());
+    place();
+    const forward = (event: globalThis.KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey || event.isComposing) return;
+      if (event.key.length !== 1) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        target.closest(".ProseMirror, input, textarea, [contenteditable='true']")
+      ) {
+        window.removeEventListener("keydown", forward, true);
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      window.removeEventListener("keydown", forward, true);
+      editor.chain().focus().insertContent(event.key).run();
+    };
+    window.addEventListener("keydown", forward, true);
+    window.setTimeout(() => window.removeEventListener("keydown", forward, true), 1500);
   };
   const trimmed = value.trim();
   const unfinished =
