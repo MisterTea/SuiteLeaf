@@ -377,6 +377,29 @@ function blocks(
     ];
   });
 }
+function pageFooter(text: string, numbers: boolean) {
+  return new Footer({
+    children: [
+      new Paragraph({
+        children: [
+          new TextRun(text),
+          ...(numbers
+            ? [
+                new TextRun({
+                  children: [
+                    "  ",
+                    PageNumber.CURRENT,
+                    " / ",
+                    PageNumber.TOTAL_PAGES,
+                  ],
+                }),
+              ]
+            : []),
+        ],
+      }),
+    ],
+  });
+}
 export async function exportDocx(
   file: Pick<DocFile, "title" | "content">,
 ): Promise<Uint8Array> {
@@ -472,6 +495,7 @@ export async function exportDocx(
     sections: [
       {
         properties: {
+          ...(settings.differentFirstPage ? { titlePage: true } : {}),
           page: {
             size: {
               width: settings.landscape ? height : width,
@@ -489,29 +513,19 @@ export async function exportDocx(
         },
         headers: {
           default: new Header({ children: [new Paragraph(settings.header)] }),
+          ...(settings.differentFirstPage
+            ? {
+                first: new Header({
+                  children: [new Paragraph(settings.firstHeader)],
+                }),
+              }
+            : {}),
         },
         footers: {
-          default: new Footer({
-            children: [
-              new Paragraph({
-                children: [
-                  new TextRun(settings.footer),
-                  ...(settings.pageNumbers
-                    ? [
-                        new TextRun({
-                          children: [
-                            "  ",
-                            PageNumber.CURRENT,
-                            " / ",
-                            PageNumber.TOTAL_PAGES,
-                          ],
-                        }),
-                      ]
-                    : []),
-                ],
-              }),
-            ],
-          }),
+          default: pageFooter(settings.footer, settings.pageNumbers),
+          ...(settings.differentFirstPage
+            ? { first: pageFooter(settings.firstFooter, false) }
+            : {}),
         },
         children,
       },
