@@ -118,6 +118,7 @@ import { DocWatermarkField, pageSetupToSave } from "./doc-watermark";
 import { columnLayout } from "./doc-columns";
 import { PageSetupFit } from "./page-setup-fit";
 import { publishLiveOrientation } from "./landscape-live";
+import { publishLiveLetterhead } from "./letterhead-text-live";
 import { publishLiveEdges } from "./letterhead-live";
 import { livePageSettings, publishLiveMargins } from "./margin-live";
 import {
@@ -867,6 +868,7 @@ export default function Docs({
       publishLiveMargins(root, null);
       publishLivePaper(root, null);
       publishLiveOrientation(root, null);
+      publishLiveLetterhead(root, null);
       return;
     }
     const saved = documentPageSettings(editor.getJSON() as JsonNode);
@@ -875,6 +877,7 @@ export default function Docs({
     publishLiveMargins(root, shown);
     publishLivePaper(root, shown);
     publishLiveOrientation(root, shown);
+    publishLiveLetterhead(root, shown);
   }, [editor, pageSetupOpen, pageDraft]);
 
   // The outline highlights the section being read: the last heading above a

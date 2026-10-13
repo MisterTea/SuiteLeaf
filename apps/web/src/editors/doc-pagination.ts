@@ -10,6 +10,7 @@ import type { JsonNode } from "@suiteleaf/core";
 import { letterheadLiveEvent, readLiveEdges } from "./letterhead-live";
 import { readLiveMargins } from "./margin-live";
 import { readLiveOrientation } from "./landscape-live";
+import { readLiveLetterhead } from "./letterhead-text-live";
 import { readLivePaper } from "./paper-size-live";
 
 declare module "@tiptap/core" {
@@ -142,14 +143,15 @@ export const DocumentPagination = Extension.create({
               const saved = documentPageSettings(
                 view.state.doc.toJSON() as JsonNode,
               );
-              // Distances, margins, paper size, and orientation from the open
-              // Page setup dialog. Header and footer text stay on the saved page.
+              // Distances, margins, paper size, orientation, and header and
+              // footer wording from the open Page setup dialog.
               const settings = {
                 ...saved,
                 ...readLiveEdges(view.dom as HTMLElement),
                 ...readLiveMargins(view.dom as HTMLElement),
                 ...readLivePaper(view.dom as HTMLElement),
                 ...readLiveOrientation(view.dom as HTMLElement),
+                ...readLiveLetterhead(view.dom as HTMLElement),
               };
               const { width, height } = pageDimensions(settings);
               const insets = bodyEdgeInsets(settings, width);

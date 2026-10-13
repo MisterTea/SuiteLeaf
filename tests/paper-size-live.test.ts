@@ -34,7 +34,7 @@ function page(patch: Partial<PageSettings> = {}): PageSettings {
 }
 
 describe("live paper size", () => {
-  it("draws A4 before apply and leaves the header text and the margin", () => {
+  it("draws A4 before apply and draws the draft header with the margin", () => {
     const saved = page();
     const shown = livePageSettings(saved, {
       ...saved,
@@ -45,7 +45,7 @@ describe("live paper size", () => {
     expect(shown.size).toBe("a4");
     expect(shown.landscape).toBe(false);
     expect(pageDimensions(shown)).toEqual({ width: 794, height: 1123 });
-    expect(shown.header).toBe("Town council");
+    expect(shown.header).toBe("Agenda");
     expect(shown.footer).toBe("Hearing notes");
     expect(shown.marginTop).toBe(inch(1.5));
     expect(shown.headerFromEdge).toBe(inch(0.75));

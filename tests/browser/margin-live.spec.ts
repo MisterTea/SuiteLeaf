@@ -123,7 +123,7 @@ test("the margin moves before apply, and cancel puts it back", async ({ page }) 
   await dialog.getByLabel("Page header").fill("Agenda");
   await expect.poll(async () => (await places(page)).paperWidth).toBe(794);
   await expect.poll(async () => (await places(page)).paperHeight).toBe(1123);
-  await expect.poll(async () => (await places(page)).headerText).toBe("Town council");
+  await expect.poll(async () => (await places(page)).headerText).toBe("Agenda");
 
   for (const label of ["Top margin", "Bottom margin", "Left margin", "Right margin"])
     await dialog.getByLabel(label).fill("1.5");
@@ -133,7 +133,7 @@ test("the margin moves before apply, and cancel puts it back", async ({ page }) 
   await near(page, "headerTop", 0.5);
   await near(page, "footerBottom", 1);
   const moved = await places(page);
-  expect(moved.headerText).toBe("Town council");
+  expect(moved.headerText).toBe("Agenda");
   expect(moved.paperWidth).toBe(794);
   expect(moved.paperHeight).toBe(1123);
   for (const label of ["Top margin", "Bottom margin", "Left margin", "Right margin"])

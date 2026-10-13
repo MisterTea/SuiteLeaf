@@ -125,7 +125,7 @@ test("landscape turns before apply, and cancel restores portrait", async ({ page
   await expect.poll(async () => (await sheet(page)).height).toBe(816);
   const turned = await sheet(page);
   expect(turned.visualWide).toBe(true);
-  expect(turned.headerText).toBe("Town council");
+  expect(turned.headerText).toBe("Agenda");
   expect(turned.titleOnPage).toBe(true);
   expect(turned.pageInsideStage).toBe(true);
   expect(turned.pageBesideDialog).toBe(true);

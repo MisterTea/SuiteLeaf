@@ -34,7 +34,7 @@ function page(patch: Partial<PageSettings> = {}): PageSettings {
 }
 
 describe("live landscape", () => {
-  it("turns the page before apply and leaves the header text", () => {
+  it("turns the page before apply and draws the draft header", () => {
     const saved = page();
     const shown = livePageSettings(saved, {
       ...saved,
@@ -44,8 +44,8 @@ describe("live landscape", () => {
     });
     expect(shown.landscape).toBe(true);
     expect(pageDimensions(shown)).toEqual({ width: 1056, height: 816 });
-    expect(shown.header).toBe("Town council");
-    expect(shown.footer).toBe("Hearing notes");
+    expect(shown.header).toBe("Agenda");
+    expect(shown.footer).toBe("Draft");
     expect(shown.size).toBe("letter");
     expect(paperSizeCaption(shown)).toBe("Letter, 11 × 8.5 in");
   });
@@ -78,7 +78,7 @@ describe("live landscape", () => {
     expect(shown.landscape).toBe(true);
     expect(pageDimensions(shown)).toEqual({ width: 1123, height: 794 });
     expect(shown.marginTop).toBe(inch(1.5));
-    expect(shown.header).toBe("Town council");
+    expect(shown.header).toBe("Agenda");
     expect(shown.headerFromEdge).toBe(inch(0.75));
     expect(paperSizeCaption(shown)).toBe("A4, 11.7 × 8.27 in");
   });

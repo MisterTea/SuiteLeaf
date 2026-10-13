@@ -6,9 +6,9 @@ import {
 import { letterheadLiveEvent } from "./letterhead-live";
 
 /**
- * Paper size is drawn while Page setup is open. The header and footer
- * wording stay on the saved page. Orientation, live margins, and letterhead
- * distances are applied beside this.
+ * Paper size is drawn while Page setup is open. This function leaves header
+ * and footer wording on the page it was given. Orientation, live margins,
+ * and letterhead distances are applied beside this.
  */
 export function livePaperSize(
   base: PageSettings,

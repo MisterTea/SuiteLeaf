@@ -2,9 +2,9 @@ import type { PageSettings } from "@suiteleaf/core/document-layout";
 import { letterheadLiveEvent } from "./letterhead-live";
 
 /**
- * Orientation is drawn while Page setup is open. Paper size, margins, and
- * letterhead distances are applied beside this. Header and footer wording
- * stay on the saved page. Cancel drops the draft and the saved page returns.
+ * Orientation is drawn while Page setup is open. Paper size, margins,
+ * letterhead distances, and header and footer wording are applied beside
+ * this. Cancel drops the draft and the saved page returns.
  */
 export function liveOrientation(
   base: PageSettings,

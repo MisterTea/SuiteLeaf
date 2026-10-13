@@ -3,6 +3,7 @@ import {
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
 import { liveOrientation } from "./landscape-live";
+import { liveLetterheadText } from "./letterhead-text-live";
 import { letterheadLiveEvent, liveEdgeDistances } from "./letterhead-live";
 import { livePaperSize } from "./paper-size-live";
 
@@ -16,8 +17,8 @@ const marginEdges = [
 /**
  * Body margins are drawn while Page setup is open. Header and footer
  * distances stay on the letterhead preview: a new margin does not move them.
- * A margin Page setup would refuse stays on the saved page. Paper size and
- * orientation are drawn from the draft. The header and footer text are not.
+ * A margin Page setup would refuse stays on the saved page. Paper size,
+ * orientation, and header and footer wording are drawn beside this.
  */
 export function liveMargins(base: PageSettings, draft: PageSettings): PageSettings {
   let next: PageSettings | null = null;
@@ -30,12 +31,16 @@ export function liveMargins(base: PageSettings, draft: PageSettings): PageSettin
   return next ?? base;
 }
 
+/** What the page shows while Page setup is open. Cancel uses the saved page. */
 export function livePageSettings(
   saved: PageSettings,
   draft: PageSettings,
 ): PageSettings {
-  return liveOrientation(
-    livePaperSize(liveMargins(liveEdgeDistances(saved, draft), draft), draft),
+  return liveLetterheadText(
+    liveOrientation(
+      livePaperSize(liveMargins(liveEdgeDistances(saved, draft), draft), draft),
+      draft,
+    ),
     draft,
   );
 }

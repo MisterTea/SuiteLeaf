@@ -46,7 +46,7 @@ describe("live page margins", () => {
     expect(shown.marginRight).toBe(inch(1.5));
     expect(shown.headerFromEdge).toBe(inch(0.5));
     expect(shown.footerFromEdge).toBe(inch(1));
-    expect(shown.header).toBe("Town council");
+    expect(shown.header).toBe("Agenda");
     expect(shown.footer).toBe("Hearing notes");
     expect(shown.size).toBe("a4");
     expect(shown.landscape).toBe(false);

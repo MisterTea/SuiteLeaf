@@ -114,7 +114,7 @@ test("paper size changes before apply, and cancel restores letter", async ({ pag
   await expect.poll(async () => (await sheet(page)).width).toBe(794);
   await expect.poll(async () => (await sheet(page)).height).toBe(1123);
   const preview = await sheet(page);
-  expect(preview.headerText).toBe("Town council");
+  expect(preview.headerText).toBe("Agenda");
   expect(preview.titleOnPage).toBe(true);
   await expect(dialog.getByLabel("Paper size")).toHaveValue("a4");
   await expect(page.locator(".paper-size-live")).toHaveText("A4, 8.27 × 11.7 in");
