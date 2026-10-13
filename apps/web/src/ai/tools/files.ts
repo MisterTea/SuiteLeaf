@@ -243,11 +243,12 @@ export function homeTools(ctx: HomeAgentContext): SuiteTool[] {
         const r = findRecord(ctx.records, name);
         ctx.showRemove(r);
         await wait(500);
-        const note = [...document.querySelectorAll('[role="dialog"] .dialog-note')].map((p) => p.textContent?.trim()).join(" ");
         await moveCursor(document.querySelector('[role="dialog"] button[type="submit"]'), "Remove file");
         await wait(400);
         await ctx.remove(r);
-        return `Removed "${r.file.title}" from the library.${note ? ` SuiteLeaf's confirmation said: ${note}` : ""}`;
+        return r.path
+          ? `Removed "${r.file.title}" from the library. Its saved file stays on disk at ${r.path}; open_from_computer opens it again.`
+          : `Deleted "${r.file.title}" from ${window.suiteleaf ? "this computer" : "this browser"}; this can't be undone. A copy that was downloaded or saved elsewhere is not affected: open_from_computer opens it again.`;
       },
     }),
     tool({
@@ -331,7 +332,7 @@ export function workspaceTools(ctx: WorkspaceAgentContext): SuiteTool[] {
       async execute() {
         const saved = await ctx.download();
         if (!saved) return "Nothing was saved: the save was cancelled.";
-        return `${saved.path ? `Saved "${saved.name}" to ${saved.path}` : `Downloaded "${saved.name}"`}: one SuiteLeaf file with the whole ${NAMES[ctx.kind]}, to keep or move to another computer, where it opens with Open / import.`;
+        return `${saved.path ? `Saved "${saved.name}" to ${saved.path}` : `Downloaded "${saved.name}"`}: one SuiteLeaf file with the whole ${NAMES[ctx.kind]}, to keep or move to another computer. open_from_computer opens it again, here or on another computer.`;
       },
     }),
     tool({

@@ -162,7 +162,7 @@ test("file tools download a file, remove it, and open it again without replacing
   expect(again).toContain("The one here has newer changes");
   await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
 
-  expect(await call(page, "remove_file", { name: "Trip list" })).toContain("A copy you downloaded isn't affected");
+  expect(await call(page, "remove_file", { name: "Trip list" })).toContain("A copy that was downloaded or saved elsewhere is not affected");
   await expect(page.locator(".file-row")).toHaveCount(0);
   const [opened] = await Promise.all([call(page, "open_from_computer"), choose()]);
   expect(opened).toContain('Opened "Trip list.sldoc"');
