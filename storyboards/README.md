@@ -159,3 +159,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 127 | [Fill the formula across](127-fill-the-formula-across.md) | single-node | Sheets |
 | 129 | [Paint the format](129-paint-the-format.md) | single-node | Docs |
 | 131 | [Keep the highlight from Word](131-keep-the-highlight-from-word.md) | single-node | Docs |
+| 133 | [Keep the color from Word](133-keep-the-color-from-word.md) | single-node | Docs |
