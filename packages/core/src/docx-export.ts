@@ -429,16 +429,47 @@ export async function exportDocx(
     target[String(slot.num)] = { children: noteBody(id) };
   }
   const settings = documentPageSettings(content);
-  const headerPart = (text: string) =>
-    new Header({ children: [new Paragraph(text)] });
+  const numberRun = () =>
+    new TextRun({
+      children:
+        settings.pageNumberFormat === "page"
+          ? ["Page ", PageNumber.CURRENT]
+          : [PageNumber.CURRENT, " / ", PageNumber.TOTAL_PAGES],
+    });
+  const topRight =
+    settings.pageNumbers &&
+    settings.pageNumberPositionSet &&
+    settings.pageNumberPosition === "top-right";
+  const headerPart = (text: string, withNumber = false) =>
+    new Header({
+      children: [
+        new Paragraph(text),
+        ...(withNumber
+          ? [
+              new Paragraph({
+                alignment: AlignmentType.RIGHT,
+                children: [numberRun()],
+              }),
+            ]
+          : []),
+      ],
+    });
   const footerPart = (
     text: string,
-    side: "left" | "right" | "none",
+    side: "left" | "right" | "center" | "none",
     numbers: boolean,
   ) => {
-    const number = new TextRun({
-      children: [PageNumber.CURRENT, " / ", PageNumber.TOTAL_PAGES],
-    });
+    const number = numberRun();
+    if (numbers && side === "center")
+      return new Footer({
+        children: [
+          new Paragraph(text),
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            children: [number],
+          }),
+        ],
+      });
     const children = !numbers
       ? [new TextRun(text)]
       : side === "left"
@@ -457,6 +488,12 @@ export async function exportDocx(
         }),
       ],
     });
+  };
+  const placedFooterSide = (): "right" | "center" | "none" => {
+    if (!settings.pageNumberPositionSet || !settings.pageNumbers) return "right";
+    if (settings.pageNumberPosition === "top-right") return "none";
+    if (settings.pageNumberPosition === "bottom-center") return "center";
+    return "right";
   };
   const splitFurniture =
     settings.differentFirstPage || settings.differentOddEven;
@@ -535,32 +572,31 @@ export async function exportDocx(
           ? {
               default: headerPart(
                 settings.differentOddEven ? settings.oddHeader : settings.header,
+                topRight,
               ),
               ...(settings.differentOddEven
-                ? { even: headerPart(settings.evenHeader) }
+                ? { even: headerPart(settings.evenHeader, topRight) }
                 : {}),
               ...(settings.differentFirstPage
                 ? { first: headerPart(settings.firstHeader) }
                 : {}),
             }
           : {
-              default: new Header({
-                children: [new Paragraph(settings.header)],
-              }),
+              default: headerPart(settings.header, topRight),
             },
         footers: splitFurniture
           ? {
               default: footerPart(
                 settings.differentOddEven ? settings.oddFooter : settings.footer,
-                "right",
-                settings.pageNumbers,
+                settings.pageNumberPositionSet ? placedFooterSide() : "right",
+                settings.pageNumbers && !topRight,
               ),
               ...(settings.differentOddEven
                 ? {
                     even: footerPart(
                       settings.evenFooter,
-                      "left",
-                      settings.pageNumbers,
+                      settings.pageNumberPositionSet ? placedFooterSide() : "left",
+                      settings.pageNumbers && !topRight,
                     ),
                   }
                 : {}),
@@ -568,29 +604,48 @@ export async function exportDocx(
                 ? { first: footerPart(settings.firstFooter, "none", false) }
                 : {}),
             }
-          : {
-              default: new Footer({
-                children: [
-                  new Paragraph({
-                    children: [
-                      new TextRun(settings.footer),
-                      ...(settings.pageNumbers
-                        ? [
-                            new TextRun({
-                              children: [
-                                "  ",
-                                PageNumber.CURRENT,
-                                " / ",
-                                PageNumber.TOTAL_PAGES,
-                              ],
-                            }),
-                          ]
-                        : []),
-                    ],
-                  }),
-                ],
-              }),
-            },
+          : topRight
+            ? { default: footerPart(settings.footer, "none", false) }
+            : settings.pageNumberPositionSet &&
+                settings.pageNumberPosition === "bottom-center"
+              ? {
+                  default: footerPart(
+                    settings.footer,
+                    "center",
+                    settings.pageNumbers,
+                  ),
+                }
+              : settings.pageNumberFormat === "page"
+                ? {
+                    default: footerPart(
+                      settings.footer,
+                      "right",
+                      settings.pageNumbers,
+                    ),
+                  }
+                : {
+                    default: new Footer({
+                      children: [
+                        new Paragraph({
+                          children: [
+                            new TextRun(settings.footer),
+                            ...(settings.pageNumbers
+                              ? [
+                                  new TextRun({
+                                    children: [
+                                      "  ",
+                                      PageNumber.CURRENT,
+                                      " / ",
+                                      PageNumber.TOTAL_PAGES,
+                                    ],
+                                  }),
+                                ]
+                              : []),
+                          ],
+                        }),
+                      ],
+                    }),
+                  },
         children,
       },
     ],

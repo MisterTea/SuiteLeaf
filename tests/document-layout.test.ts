@@ -4,7 +4,7 @@ import {
   documentHtml,
   documentPageSettings,
   pageFace,
-  pageFurniture,
+  pageNumberHint,
 } from "../packages/core/src/document-layout";
 
 describe("document page settings", () => {
@@ -29,11 +29,14 @@ describe("document page settings", () => {
     const older = saved({ header: "Garden club minutes", footer: "Draft" });
     expect(older.differentFirstPage).toBe(false);
     expect(older.firstHeader).toBe("");
-    expect(pageFurniture(older, 0, 2)).toEqual({
+    expect(pageFace(older, 0, 2)).toMatchObject({
       header: "Garden club minutes",
       footer: "Draft",
+      numberSide: "right",
       pageNumber: "1 / 2",
     });
+    expect(older.pageNumberFormat).toBe("fraction");
+    expect(older.pageNumberPositionSet).toBe(false);
     const cover = saved({
       header: "Garden club minutes",
       footer: "Draft",
@@ -44,17 +47,19 @@ describe("document page settings", () => {
     });
     expect(cover.differentFirstPage).toBe(true);
     expect(cover.firstHeader).toBe("Riverside Garden Club");
-    expect(pageFurniture(cover, 0, 2)).toEqual({
+    expect(pageFace(cover, 0, 2)).toMatchObject({
       header: "Riverside Garden Club",
       footer: "",
+      numberSide: "none",
       pageNumber: "",
     });
-    expect(pageFurniture(cover, 1, 2)).toEqual({
+    expect(pageFace(cover, 1, 2)).toMatchObject({
       header: "Garden club minutes",
       footer: "Draft",
+      numberSide: "right",
       pageNumber: "2 / 2",
     });
-    expect(pageFurniture({ ...cover, differentFirstPage: false }, 0, 2)).toEqual({
+    expect(pageFace({ ...cover, differentFirstPage: false }, 0, 2)).toMatchObject({
       header: "Garden club minutes",
       footer: "Draft",
       pageNumber: "1 / 2",
@@ -93,6 +98,58 @@ describe("document page settings", () => {
       pageNumber: "3 / 3",
     });
   });
+  it("keeps a chosen page-number format and position, and ignores unknown values", () => {
+    const saved = (pageSettings: object) =>
+      documentPageSettings({ type: "doc", attrs: { pageSettings } });
+    const chosen = saved({
+      pageNumbers: true,
+      pageNumberFormat: "page",
+      pageNumberPosition: "bottom-center",
+      pageNumberPositionSet: true,
+      footer: "Committee draft",
+      differentOddEven: true,
+      evenFooter: "Left edge",
+      oddFooter: "Right edge",
+    });
+    expect(chosen.pageNumberFormat).toBe("page");
+    expect(chosen.pageNumberPosition).toBe("bottom-center");
+    expect(pageFace(chosen, 0, 2)).toMatchObject({
+      footer: "Right edge",
+      numberSide: "center",
+      pageNumber: "Page 1",
+    });
+    expect(pageFace(chosen, 1, 2)).toMatchObject({
+      footer: "Left edge",
+      numberSide: "center",
+      pageNumber: "Page 2",
+    });
+    expect(pageNumberHint(chosen)).toContain("Bottom center");
+    expect(pageNumberHint(chosen)).toContain("Page 1");
+    const top = saved({
+      pageNumbers: true,
+      pageNumberFormat: "page",
+      pageNumberPosition: "top-right",
+      pageNumberPositionSet: true,
+      header: "Garden club minutes",
+      footer: "Committee draft",
+    });
+    expect(pageFace(top, 0, 2).numberSide).toBe("top-right");
+    expect(pageFace(top, 0, 2).pageNumber).toBe("Page 1");
+    expect(pageFace({ ...top, pageNumbers: false }, 0, 2)).toMatchObject({
+      numberSide: "none",
+      pageNumber: "",
+      footer: "Committee draft",
+    });
+    const unknown = saved({
+      pageNumbers: true,
+      pageNumberFormat: "roman",
+      pageNumberPosition: "top-left",
+    });
+    expect(unknown.pageNumberFormat).toBe("fraction");
+    expect(unknown.pageNumberPosition).toBe("bottom-right");
+    expect(unknown.pageNumberPositionSet).toBe(false);
+    expect(pageFace(unknown, 0, 2).pageNumber).toBe("1 / 2");
+  });
 });
 
 describe("document HTML export", () => {
@@ -114,7 +171,31 @@ describe("document HTML export", () => {
     expect(header).toBeGreaterThan(0);
     expect(body).toBeGreaterThan(header);
     expect(footer).toBeGreaterThan(body);
-    expect(html).toContain('counter(page) " / " counter(pages)');
+    expect(html).toContain(
+      '@bottom-right { content: counter(page) " / " counter(pages); font: 10pt Arial, sans-serif; color: #555; }',
+    );
+    const centered = documentHtml("Minutes", "<p>Text</p>", {
+      ...defaultPageSettings,
+      pageNumbers: true,
+      pageNumberFormat: "page",
+      pageNumberPosition: "bottom-center",
+      pageNumberPositionSet: true,
+      footer: "Committee draft",
+    });
+    expect(centered).toContain('@bottom-center { content: "Page " counter(page);');
+    expect(centered).not.toContain("counter(pages)");
+    expect(centered).toContain(
+      '<footer class="page-footer">Committee draft</footer>',
+    );
+    const top = documentHtml("Minutes", "<p>Text</p>", {
+      ...defaultPageSettings,
+      pageNumbers: true,
+      pageNumberFormat: "page",
+      pageNumberPosition: "top-right",
+      pageNumberPositionSet: true,
+    });
+    expect(top).toContain('@top-right { content: "Page " counter(page);');
+    expect(top).not.toContain("@bottom-right");
     expect(html).toContain("size: 8.5in 11in;");
     expect(html).toContain("[data-page-break] { break-before: page; }");
   });

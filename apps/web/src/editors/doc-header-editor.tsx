@@ -261,6 +261,9 @@ function FurniturePage({
       }
       style={{ ["--page-index" as string]: pageIndex }}
     >
+      {face.numberSide === "top-right" ? (
+        <span className="page-number page-number-top">{face.pageNumber}</span>
+      ) : null}
       <div
         className={`page-header align-${face.headerAlign}${face.header ? "" : " is-empty"}${headerHere ? " is-active" : ""}`}
         role={headerHere || !keyboard ? undefined : "button"}
@@ -300,7 +303,7 @@ function FurniturePage({
         )}
       </div>
       <div
-        className={`page-footer number-${face.numberSide}${footerHere ? " is-active" : ""}`}
+        className={`page-footer number-${face.numberSide === "top-right" ? "none" : face.numberSide}${footerHere ? " is-active" : ""}`}
         onMouseDown={(event) => {
           if (readOnly || editingTargetIsField(event.target)) return;
           event.preventDefault();
@@ -343,7 +346,7 @@ function FurniturePage({
             face.footer
           )}
         </span>
-        {face.numberSide === "right" ? (
+        {face.numberSide === "right" || face.numberSide === "center" ? (
           <span className="page-number">{face.pageNumber}</span>
         ) : null}
       </div>
