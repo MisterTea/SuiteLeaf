@@ -4,9 +4,9 @@ import { localModel, selectedModel } from "./backend";
 import { formatFor } from "./chat-format";
 import { hideCursor, showCursor } from "./cursor";
 import { PARSE_ERROR, createLocalStreamFn, localModelDescriptor, type GenerationStats } from "./model-stream";
-import { cancelApproval, startRequest, takeCheckpoint, type Checkpoint, type FileChange } from "./guard";
+import { cancelApproval, currentRequest, startRequest, takeCheckpoint, type Checkpoint, type FileChange } from "./guard";
 import { activeHost, currentReview, currentSnapshot, currentSuiteTools, registerToolEverywhere, toAgentTool, toolScreen } from "./host";
-import { clearTodos, formatTodos, openTodos, todoStore, todoTool } from "./todo";
+import { clearTodos, formatTodos, multiPart, openTodos, todoStore, todoTool } from "./todo";
 
 export const SYSTEM_PROMPT = `You are the assistant built into SuiteLeaf, an office suite with documents, spreadsheets and presentations. You do the user's task yourself by calling tools; each tool acts in the app the user is looking at, and they watch you work.
 
@@ -86,6 +86,8 @@ export interface AgentMetrics {
   reviewIssues: number;
   /** Requests where the assistant wrote a checklist, times it was sent back to open items, and items still open at the end. */
   checklists: number;
+  /** Times a first tool call was held until the checklist was written. */
+  checklistAsks: number;
   checklistReminders: number;
   openAtEnd: number;
 }
@@ -120,6 +122,7 @@ const emptyMetrics = (): AgentMetrics => ({
   reviews: 0,
   reviewIssues: 0,
   checklists: 0,
+  checklistAsks: 0,
   checklistReminders: 0,
   openAtEnd: 0,
 });
@@ -128,6 +131,7 @@ registerToolEverywhere(todoTool);
 
 /** Times a request is sent back to its open checklist items before its reply stands. */
 const MAX_REMINDERS = 2;
+
 
 const textOf = (result: unknown) =>
   ((result as { content?: { type: string; text?: string }[] })?.content ?? [])
@@ -179,6 +183,8 @@ class AgentSession {
   private turns = 0;
   private emptyRetries = 0;
   private lastCalls: string[] = [];
+  /** The request's checklist was asked for already. */
+  private checklistAsked = false;
   private runningTool?: { id: string; name: string };
   private runStarted = 0;
   /** Tool results rewritten for the model (tools called from the wrong screen), by call id. */
@@ -267,6 +273,16 @@ class AgentSession {
             reason: `There is no tool named ${toolCall.name} here. Available tools: ${context.tools?.map((t) => t.name).join(", ")}.`,
           };
         }
+        // Gemma rarely writes the checklist on its own: hold the first other call of a multi-part request until it has.
+        if (toolCall.name !== "todo" && !this.checklistAsked && !todoStore.get().length && multiPart(currentRequest().text)) {
+          this.checklistAsked = true;
+          this.metrics.checklistAsks++;
+          return {
+            block: true,
+            reason:
+              "Before you start, write your checklist: call todo with action add and items listing each part of the request, in order (only what the user asked for). Then do the items one by one, ticking each when it is done.",
+          };
+        }
         const repeatable = currentSuiteTools().find((t) => t.name === toolCall.name)?.repeatable;
         if (!repeatable && this.lastCalls.slice(-2).every((k) => k === key) && this.lastCalls.length >= 2) {
           this.metrics.repeatedCalls++;
@@ -350,6 +366,7 @@ class AgentSession {
     this.items.push({ kind: "user", text });
     startRequest(text);
     clearTodos();
+    this.checklistAsked = false;
     this.state = "loading";
     this.emit();
     const checkpoint = await takeCheckpoint().catch(() => undefined);

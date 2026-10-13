@@ -34,6 +34,13 @@ export function clearTodos() {
 
 export const openTodos = () => todos.filter((t) => !t.done);
 
+/** A request with several parts (sentences, or a list of things to do), which gets a checklist first. */
+export function multiPart(text: string) {
+  const sentences = text.split(/(?<=[.!?])\s+/).filter((s) => /\w/.test(s)).length;
+  const joins = (text.match(/,|;|\bthen\b/gi) ?? []).length;
+  return sentences >= 2 || joins >= 2;
+}
+
 export const formatTodos = (list = todos) =>
   list.length ? list.map((t) => `[${t.done ? "x" : " "}] #${t.id}: ${t.text}`).join("\n") : "The checklist is empty.";
 

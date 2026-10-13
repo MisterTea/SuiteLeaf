@@ -38,3 +38,13 @@ describe("the assistant's checklist", () => {
     expect(renderQwenSystem("S", declared as never)).toContain('"name": "todo"');
   });
 });
+
+describe("which requests get a checklist first", () => {
+  it("counts sentences and lists of things to do", async () => {
+    const { multiPart } = await import("../apps/web/src/ai/todo");
+    expect(multiPart("Engineering's actual is now 13500.")).toBe(false);
+    expect(multiPart("Actually, put How you can help before This season's plan.")).toBe(false);
+    expect(multiPart("Make a document called Garden plan. Put the heading Spring planting at the top.")).toBe(true);
+    expect(multiPart("Show the rates as dollars, the shares as percentages, and make the header bold.")).toBe(true);
+  });
+});
