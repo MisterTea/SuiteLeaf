@@ -2898,6 +2898,64 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 .page-setup-check { display: grid; grid-template-columns: 9em 1fr; column-gap: 12px; align-items: center; }
 .page-setup-check label { grid-column: 2; }
 .page-setup-hint { grid-column: 2; font-size: 12px; color: #5f6368; }
+.word-count { color: #1f1f1f; font-weight: 600; font-size: 13px; }
+.word-count-dialog,
+.dictionary-dialog,
+.spelling-panel {
+  width: min(460px, calc(100vw - 32px));
+  max-height: min(640px, calc(100vh - 48px));
+  overflow: auto;
+  margin: 0;
+  color-scheme: light;
+}
+.word-count-table { width: 100%; border-collapse: collapse; font-size: 14px; color: #1f1f1f; }
+.word-count-table th,
+.word-count-table td { padding: 6px 8px; text-align: right; }
+.word-count-table th:first-child { text-align: left; font-weight: 500; }
+.word-count-table thead th { color: #5f6368; font-size: 12px; font-weight: 500; }
+.word-count-options { display: grid; gap: 10px; font-size: 14px; color: #1f1f1f; }
+.word-count-options label { display: flex; gap: 8px; align-items: center; }
+.word-count-stop { display: grid; gap: 6px; align-items: stretch; }
+.word-count-stop select,
+.word-count-stop input,
+.dictionary-flag input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid #c4c7c5;
+  border-radius: 4px;
+  font: inherit;
+}
+.word-count-hint { margin: 0; font-size: 12px; line-height: 1.4; color: #5f6368; }
+.spelling-layer { align-items: flex-start; justify-content: flex-end; padding: 92px 24px 0 0; }
+.spelling-panel { width: min(380px, calc(100vw - 32px)); }
+.spelling-progress { margin: 0; font-size: 16px; font-weight: 500; color: #1f1f1f; }
+.spelling-suggestions { display: flex; flex-wrap: wrap; gap: 6px; }
+.spelling-suggestions button {
+  border: 1px solid #c4c7c5;
+  background: #fff;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+.spelling-suggestions button.active { border-color: #1a73e8; background: #e8f0fe; color: #174ea6; }
+.spelling-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.spelling-actions .dialog-text-btn { margin: 0; }
+.document-content .spelling-misspelling { text-decoration: underline wavy #d93025; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+.document-content .spelling-current { background: #fce8e6; border-radius: 2px; }
+.dictionary-section h3 { margin: 0 0 6px; font-size: 13px; font-weight: 500; color: #1f1f1f; }
+.dictionary-section { display: grid; gap: 8px; }
+.dictionary-section ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.dictionary-section li { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; }
+.dictionary-section li button, .dictionary-flag button { border: 0; background: transparent; color: #1a73e8; cursor: pointer; font: inherit; padding: 4px; }
+.dictionary-flag { display: flex; gap: 8px; align-items: center; }
+.dictionary-flag input { flex: 1; }
+@media (max-width: 700px) {
+  .editor-status { flex-wrap: wrap; gap: 4px 12px; }
+  .spelling-layer { padding: 0 12px 64px 12px; }
+  .spelling-actions { display: grid; }
+}
 .sheet-features { display: flex; align-items: center; gap: 12px; min-height: 31px; padding: 4px 16px; border-bottom: 1px solid var(--border); }
 .tab-group { position: relative; }
 .tab-group[open] { padding: 6px; background: var(--surface); }
