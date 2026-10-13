@@ -86,7 +86,13 @@ async function scrolledTo<T extends Element>(el: T | undefined, block: ScrollLog
   const r = el?.getBoundingClientRect();
   if (el && r && (r.top < 0 || r.bottom > innerHeight)) {
     el.scrollIntoView({ behavior: "smooth", block });
-    await wait(500);
+    let last = NaN;
+    for (let i = 0; i < 40; i++) {
+      await wait(60);
+      const top = el.getBoundingClientRect().top;
+      if (top === last) break;
+      last = top;
+    }
   }
   return el;
 }
