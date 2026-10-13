@@ -41,16 +41,17 @@ export function signInTools(ctx: {
   return [
     tool({
       name: "wait_for_sign_in",
-      label: "Waiting for sign-in",
+      label: "Waiting for you to sign in",
       description:
         "Wait while the user signs in or creates an account on the sign-in screen (you never type passwords). Returns once they are signed in, or after a few minutes.",
       parameters: Type.Object({}),
-      target: () => document.querySelector('[aria-label="Sign in to SuiteLeaf"] input'),
+      target: () => document.querySelector('[aria-label="Sign in to SuiteLeaf"] h2'),
       async execute() {
         for (let i = 0; i < 1800; i++) {
           if (ctx.signedIn()) {
             await waitForHost("home", 30000).catch(() => {});
-            return `The user signed in.\n${currentSnapshot()}`;
+            for (let j = 0; j < 50 && currentSnapshot().includes(DRIVE_LOADING); j++) await wait(100);
+            return `The user signed in to ${ctx.host}. New files are saved to SuiteDrive on that server; the files on this computer are kept and come back when they disconnect.\n${currentSnapshot()}`;
           }
           await wait(200);
         }
@@ -220,9 +221,12 @@ export function driveTools(ctx: DriveAgentContext): SuiteTool[] {
   ];
 }
 
+const DRIVE_LOADING = "still loading";
+
 export function driveSnapshot(ctx: DriveAgentContext) {
   const c = ctx.drive();
-  return `Screen: SuiteDrive on ${ctx.host}, signed in as ${ctx.user}.${c ? ` Folder ${c.path.join(" › ")}: ${c.items.map(describeItem).join(", ") || "empty"}.` : ""}`;
+  const items = c?.loading ? DRIVE_LOADING : c?.items.map(describeItem).join(", ") || "empty";
+  return `Screen: SuiteDrive on ${ctx.host}, signed in as ${ctx.user}.${c ? ` Folder ${c.path.join(" › ")}: ${items}.` : ""}`;
 }
 
 /** An open file's SuiteDrive conflict banner. */
