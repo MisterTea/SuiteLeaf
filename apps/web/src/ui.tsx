@@ -183,10 +183,8 @@ export function SubMenu({
         <Dropdown.Portal>
           <Dropdown.SubContent
             className="menu-content"
-            side={narrow ? "bottom" : "right"}
-            align="start"
-            sideOffset={narrow ? 4 : -4}
-            alignOffset={narrow ? 0 : -4}
+            sideOffset={-4}
+            alignOffset={-4}
             collisionPadding={8}
           >
             {children}
