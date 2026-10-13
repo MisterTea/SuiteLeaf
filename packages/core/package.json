@@ -18,7 +18,8 @@
     "./paragraph-indent": "./src/paragraph-indent.ts",
     "./image-wrap": "./src/image-wrap.ts",
     "./image-inline": "./src/image-inline.ts",
-    "./image-extent": "./src/image-extent.ts"
+    "./image-extent": "./src/image-extent.ts",
+    "./image-rotation": "./src/image-rotation.ts"
   },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",

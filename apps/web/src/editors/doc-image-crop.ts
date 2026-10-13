@@ -13,6 +13,7 @@ import {
   imageCropActive,
   type ImageCrop,
 } from "@suiteleaf/core/image-crop";
+import { displayedImageBox, imageRotation } from "@suiteleaf/core/image-rotation";
 import {
   imageWrapAttribute,
   mountImageWrapMenu,
@@ -61,6 +62,7 @@ function keyPercent(edge: Edge, key: string): number | null {
 /**
  * Image node with a Crop control that is separate from the corner resize handles.
  * Crop changes only the hidden-edge percentages. Resize still writes width and height.
+ * Rotation is a quarter turn on the same card. It never rewrites width or height.
  */
 export const croppableImage = Image.extend({
   atom: true,
@@ -74,6 +76,15 @@ export const croppableImage = Image.extend({
         renderHTML: (attributes: Record<string, unknown>) => {
           const caption = typeof attributes.caption === "string" ? attributes.caption : "";
           return caption ? { "data-caption": caption } : {};
+        },
+      },
+      // Optional. Missing means upright, so older documents still open.
+      rotation: {
+        default: 0,
+        parseHTML: (element: HTMLElement) => imageRotation(element.getAttribute("data-rotation")),
+        renderHTML: (attributes: Record<string, unknown>) => {
+          const rotation = imageRotation(attributes.rotation);
+          return rotation ? { "data-rotation": String(rotation) } : {};
         },
       },
       cropLeft: cropAttribute("cropLeft", "data-crop-left"),
@@ -117,6 +128,8 @@ export const croppableImage = Image.extend({
       const frame = document.createElement("div");
       frame.className = "doc-image-frame";
       frame.dataset.cropFrame = "";
+      const turnInner = document.createElement("div");
+      turnInner.className = "doc-image-turn";
 
       const actions = document.createElement("div");
       actions.className = "doc-image-actions";
@@ -185,20 +198,138 @@ export const croppableImage = Image.extend({
         }
       };
 
-      const paint = (crop: ImageCrop) => {
-        current = crop;
-        if (!imageCropActive(crop)) {
-          frame.dataset.cropped = "false";
-          frame.style.width = "";
-          frame.style.height = "";
-          img.style.marginLeft = "";
-          img.style.marginTop = "";
-          img.style.maxWidth = "";
-          locked = false;
-          sync();
+      const liveAttrs = (): Record<string, unknown> => {
+        try {
+          const pos = getPos();
+          if (typeof pos === "number") {
+            const live = editor.state.doc.nodeAt(pos);
+            if (live) return live.attrs as Record<string, unknown>;
+          }
+        } catch {
+          // Reopening mounts this view before the editor view exists.
+        }
+        return start.attrs as Record<string, unknown>;
+      };
+
+      const clearTurnBox = () => {
+        turnInner.style.cssText = "";
+        frame.style.transform = "";
+        img.style.transform = "";
+        frame.dataset.turned = "0";
+      };
+
+      /** Stored width and height, never the swapped on-page box. */
+      const unrotatedSize = (attrs: Record<string, unknown>) => {
+        const swapped = imageRotation(attrs.rotation) === 90 || imageRotation(attrs.rotation) === 270;
+        if (locked && fullWidth > 2 && fullHeight > 2)
+          return { width: fullWidth, height: fullHeight };
+        const attrW = Number(attrs.width);
+        const attrH = Number(attrs.height);
+        if (attrW > 2 && attrH > 2) {
+          fullWidth = attrW;
+          fullHeight = attrH;
+          return { width: attrW, height: attrH };
+        }
+        if (swapped && fullWidth > 2 && fullHeight > 2)
+          return { width: fullWidth, height: fullHeight };
+        const width = img.offsetWidth || img.naturalWidth;
+        const height = img.offsetHeight || img.naturalHeight;
+        if (width < 2 || height < 2) return null;
+        fullWidth = width;
+        fullHeight = height;
+        return { width, height };
+      };
+
+      /**
+       * 90 and 270 swap the visible box and rotate the bitmap inside it.
+       * 180 rotates in place. The stored width and height are not written.
+       */
+      const layoutTurn = (crop: ImageCrop, attrs: Record<string, unknown>) => {
+        const angle = imageRotation(attrs.rotation);
+        const swapped = angle === 90 || angle === 270;
+        frame.dataset.turned = String(angle);
+        if (angle === 0) {
+          clearTurnBox();
+          if (!imageCropActive(crop)) {
+            frame.style.display = "";
+            frame.style.position = "";
+            frame.style.overflow = "";
+          }
           return;
         }
-        if (!locked) {
+        const size = unrotatedSize(attrs);
+        if (!size) return;
+        const visible = croppedFrame(size, crop);
+        if (!swapped) {
+          turnInner.style.cssText = "";
+          if (!imageCropActive(crop)) {
+            if (!(Number(attrs.width) > 0)) {
+              img.style.width = "";
+              img.style.maxWidth = "";
+              locked = false;
+            }
+            frame.style.width = "";
+            frame.style.height = "";
+            frame.style.display = "";
+            frame.style.position = "";
+            frame.style.overflow = "";
+            frame.style.transform = "";
+            img.style.transform = "rotate(180deg)";
+          } else {
+            img.style.transform = "";
+            frame.style.transform = "rotate(180deg)";
+          }
+          return;
+        }
+        img.style.width = `${size.width}px`;
+        img.style.maxWidth = "none";
+        img.style.marginLeft = `${-visible.offsetX}px`;
+        img.style.marginTop = `${-visible.offsetY}px`;
+        img.style.transform = "";
+        const box = displayedImageBox(
+          { width: visible.width, height: visible.height },
+          angle,
+        );
+        frame.dataset.cropped = imageCropActive(crop) ? "true" : "false";
+        frame.style.display = "block";
+        frame.style.position = "relative";
+        frame.style.overflow = "hidden";
+        frame.style.width = `${box.width}px`;
+        frame.style.height = `${box.height}px`;
+        frame.style.transform = "";
+        turnInner.style.display = "block";
+        turnInner.style.position = "absolute";
+        turnInner.style.left = "50%";
+        turnInner.style.top = "50%";
+        turnInner.style.width = `${visible.width}px`;
+        turnInner.style.height = `${visible.height}px`;
+        turnInner.style.overflow = "hidden";
+        turnInner.style.transform = `translate(-50%, -50%) rotate(${angle}deg)`;
+        locked = true;
+      };
+
+      const paint = (crop: ImageCrop) => {
+        current = crop;
+        const attrs = liveAttrs();
+        const angle = imageRotation(attrs.rotation);
+        const swapped = angle === 90 || angle === 270;
+        if (!imageCropActive(crop)) {
+          frame.dataset.cropped = "false";
+          img.style.marginLeft = "";
+          img.style.marginTop = "";
+          if (!swapped && angle !== 180) {
+            frame.style.width = "";
+            frame.style.height = "";
+            frame.style.display = "";
+            frame.style.position = "";
+            frame.style.overflow = "";
+            img.style.maxWidth = "";
+            clearTurnBox();
+            locked = false;
+            sync();
+            return;
+          }
+        } else if (!locked) {
           // offsetWidth is 0 while the editor is still mounting a saved photo.
           const width = img.offsetWidth || img.naturalWidth;
           const height = img.offsetHeight || img.naturalHeight;
@@ -209,12 +340,16 @@ export const croppableImage = Image.extend({
           img.style.maxWidth = "none";
           locked = true;
         }
-        const box = croppedFrame({ width: fullWidth, height: fullHeight }, crop);
-        frame.dataset.cropped = "true";
-        frame.style.width = `${box.width}px`;
-        frame.style.height = `${box.height}px`;
-        img.style.marginLeft = `${-box.offsetX}px`;
-        img.style.marginTop = `${-box.offsetY}px`;
+        if (imageCropActive(crop) && !swapped) {
+          const box = croppedFrame({ width: fullWidth, height: fullHeight }, crop);
+          frame.dataset.cropped = "true";
+          frame.style.display = "";
+          frame.style.width = `${box.width}px`;
+          frame.style.height = `${box.height}px`;
+          img.style.marginLeft = `${-box.offsetX}px`;
+          img.style.marginTop = `${-box.offsetY}px`;
+        }
+        layoutTurn(crop, attrs);
         sync();
       };
 
@@ -388,7 +523,8 @@ export const croppableImage = Image.extend({
       });
 
       nodeView.wrapper.insertBefore(frame, img);
-      frame.appendChild(img);
+      frame.appendChild(turnInner);
+      turnInner.appendChild(img);
       for (const handle of edgeButtons.values()) nodeView.wrapper.appendChild(handle);
       const host = nodeView.dom as HTMLElement;
       host.classList.add("doc-image-host");

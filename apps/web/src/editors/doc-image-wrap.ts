@@ -68,8 +68,11 @@ export function syncImageWrap(
   }
   const img = host.querySelector("img");
   const frame = host.querySelector("[data-crop-frame]");
+  const turned =
+    frame instanceof HTMLElement &&
+    (frame.dataset.turned === "90" || frame.dataset.turned === "270");
   const frameWidth =
-    frame instanceof HTMLElement && frame.dataset.cropped === "true"
+    frame instanceof HTMLElement && (frame.dataset.cropped === "true" || turned)
       ? frame.offsetWidth
       : 0;
   const laidOut = img instanceof HTMLElement ? img.offsetWidth : 0;

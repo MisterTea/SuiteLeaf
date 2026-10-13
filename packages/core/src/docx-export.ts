@@ -65,6 +65,7 @@ import {
   type CitationLibrary,
 } from "./citations";
 import { croppedFrame, docxImageCrop, imageCrop } from "./image-crop";
+import { docxImageRotation } from "./image-rotation";
 
 const color = (v: unknown) =>
   typeof v === "string" && /^#[\da-f]{6}$/i.test(v) ? v.slice(1) : undefined;
@@ -253,6 +254,8 @@ function runs(
         crop,
       );
       const docxCrop = docxImageCrop(crop);
+      // rot is degrees × 60,000. The stored width and height stay the unrotated pair.
+      const rotation = docxImageRotation(n.attrs?.rotation);
       return [
         new ImageRun({
           type: match[1] === "jpeg" ? "jpg" : (match[1] as "png" | "gif"),
@@ -260,6 +263,7 @@ function runs(
           transformation: {
             width: Math.max(1, frame.width),
             height: Math.max(1, frame.height),
+            ...(rotation ? { rotation } : {}),
           },
           ...(docxCrop ? { crop: docxCrop } : {}),
           altText: docxImageAlt(n.attrs?.alt),

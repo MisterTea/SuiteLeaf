@@ -1,5 +1,6 @@
 import type { Editor } from "@tiptap/core";
 import { NodeSelection, type EditorState, type Transaction } from "@tiptap/pm/state";
+import { imageRotation, turnImageRotation, type ImageRotation } from "@suiteleaf/core/image-rotation";
 import { imageWrap, type ImageWrap } from "@suiteleaf/core/image-wrap";
 
 /** The description stored on an image. A missing value is empty, not a file name. */
@@ -18,7 +19,14 @@ function isPhoto(name: string) {
 
 export function selectedImage(
   state: EditorState,
-): { pos: number; alt: string; caption: string; wrap: ImageWrap | null; inline: boolean } | null {
+): {
+  pos: number;
+  alt: string;
+  caption: string;
+  rotation: ImageRotation;
+  wrap: ImageWrap | null;
+  inline: boolean;
+} | null {
   const { selection } = state;
   if (!(selection instanceof NodeSelection)) return null;
   const name = selection.node.type.name;
@@ -27,6 +35,7 @@ export function selectedImage(
     pos: selection.from,
     alt: imageAlt(selection.node.attrs.alt),
     caption: imageCaption(selection.node.attrs.caption),
+    rotation: imageRotation(selection.node.attrs.rotation),
     wrap: imageWrap(selection.node.attrs),
     inline: name === "inlineImage",
   };
@@ -54,6 +63,36 @@ export function setImageCaption(
 
 export function applyImageCaption(editor: Editor, pos: number, caption: string): boolean {
   const tr = setImageCaption(editor.state, pos, caption);
+  if (!tr) return false;
+  editor.view.dispatch(tr);
+  return true;
+}
+
+/**
+ * One quarter turn. Width, height, caption, description, crop, and wrap stay,
+ * so turning back restores the box.
+ */
+export function turnImage(
+  state: EditorState,
+  pos: number,
+  direction: "left" | "right",
+): Transaction | null {
+  const node = state.doc.nodeAt(pos);
+  if (!node || !isPhoto(node.type.name)) return null;
+  const tr = state.tr.setNodeMarkup(pos, undefined, {
+    ...node.attrs,
+    rotation: turnImageRotation(node.attrs.rotation, direction),
+  });
+  tr.setSelection(NodeSelection.create(tr.doc, pos));
+  return tr;
+}
+
+export function applyImageTurn(
+  editor: Editor,
+  pos: number,
+  direction: "left" | "right",
+): boolean {
+  const tr = turnImage(editor.state, pos, direction);
   if (!tr) return false;
   editor.view.dispatch(tr);
   return true;

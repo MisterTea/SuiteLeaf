@@ -3,7 +3,13 @@ import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
 import { useEditorState } from "@tiptap/react";
 import { X } from "lucide-react";
-import { applyImageAlt, applyImageCaption, placeImageAltCard, selectedImage } from "./doc-image-alt";
+import {
+  applyImageAlt,
+  applyImageCaption,
+  applyImageTurn,
+  placeImageAltCard,
+  selectedImage,
+} from "./doc-image-alt";
 
 /** Alt text for the selected photo, beside the image and clear of the resize handles. */
 export function DocImageAlt({ editor }: { editor: Editor | null }) {
@@ -181,6 +187,21 @@ export function DocImageAlt({ editor }: { editor: Editor | null }) {
           }}
         />
       </label>
+      <p className="image-turn-angle">{selection.rotation} degrees</p>
+      <div className="image-turn-row">
+        <button
+          type="button"
+          onClick={() => editor && applyImageTurn(editor, selection.pos, "left")}
+        >
+          Turn left
+        </button>
+        <button
+          type="button"
+          onClick={() => editor && applyImageTurn(editor, selection.pos, "right")}
+        >
+          Turn right
+        </button>
+      </div>
     </div>,
     document.body,
   );
