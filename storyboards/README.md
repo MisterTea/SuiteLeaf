@@ -63,9 +63,9 @@ The browser runs need the model weights in `~/.cache/suiteleaf-models` (`onnx-co
 | `STORYBOARD_AI_DEVICE` | `webgpu` (default), or `auto` to try WebNN first and fall back to WebGPU. |
 | `STORYBOARD_AI_MODEL` | Browser model: `gemma-4-e4b` (default) or `frognano-4b`. |
 | `STORYBOARD_AI_THINKING` | FrogNano's thinking budget per reply, in tokens (default: no limit). |
-| `STORYBOARD_AI_REVIEW` | The check before the final reply: `always` (default), `issues` (only when the app sees a problem) or `off`. |
+| `STORYBOARD_AI_REVIEW` | The check before the final reply: `issues` (default: only when the app sees a problem), `always` or `off`. |
 | `STORYBOARD_AI_CAPTURE` | `1` keeps every prompt in the metrics, for `scripts/ai-fidelity.mjs`. |
-| `STORYBOARD_AI_REVIEW` | The check before the final reply: `always` (default), `issues` (only when the app sees a problem) or `off`. |
+| `STORYBOARD_AI_REVIEW` | The check before the final reply: `issues` (default: only when the app sees a problem), `always` or `off`. |
 | `STORYBOARD_AI_CAPTURE` | `1` keeps every prompt in the metrics, for `scripts/ai-fidelity.mjs`. |
 | `SUITELEAF_MODEL_PATH` | GGUF file for desktop runs, e.g. the Q8_0 build or a FrogNano GGUF (the model is read from the file name). |
 | `STORYBOARD_RUN_TAG` | Stress runs: with `--repeat-each=N`, keep every repeat's metrics and video under `test-results/ai-*/runs/<tag>/`. Summarize with `node scripts/ai-stress-report.mjs <tag> …`. |

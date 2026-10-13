@@ -49,11 +49,12 @@ export type TranscriptItem =
   | { kind: "changes"; changes: FileChange[]; undo?: () => Promise<void>; undone?: string };
 
 /**
- * localStorage["suiteleaf.ai.review"]: "always" (the default) checks the work
- * whenever a request changed a file, "issues" only when the app found a
- * problem, "off" never.
+ * localStorage["suiteleaf.ai.review"]: "issues" (the default) checks the work
+ * when the app found a problem in the request's changes, "always" whenever
+ * the request changed a file, "off" never. Checks without a problem to fix
+ * often made Gemma redo work it had done (a second table, the rows retyped).
  */
-const reviewSetting = () => localStorage.getItem("suiteleaf.ai.review") ?? "always";
+const reviewSetting = () => localStorage.getItem("suiteleaf.ai.review") ?? "issues";
 
 export interface AgentMetrics {
   backend?: string;
@@ -365,11 +366,13 @@ class AgentSession {
     const last = this.items.at(-1);
     if (last?.kind === "assistant") this.items.pop();
     this.items.push({ kind: "review", issues });
-    const noticed = issues.length ? `The app noticed:\n${issues.map((i) => `- ${i}`).join("\n")}` : "The app noticed no problems.";
+    const ask = issues.length
+      ? `The app checked your changes for the user's request ("${text}") and noticed:\n${issues.map((i) => `- ${i}`).join("\n")}\nFix only these problems, each with the smallest change (usually one call on the cells or text named).`
+      : `The app checked your changes for the user's request ("${text}") and noticed no problems. If something the user asked for is still missing, add only that.`;
     await this.run(
       () =>
         this.agent!.prompt(
-          `<review>\nBefore you reply, check your work against the user's request: "${text}"\n<app_state>\n${currentSnapshot()}\n</app_state>\n${noticed}\nIf something the user asked for is missing or wrong, fix it now with tools. Do not change anything the user did not ask for. When everything they asked for is done, reply with your one or two sentence summary for the user.\n</review>`,
+          `<review>\n${ask}\nEverything else you did is already in the app: do not redo it, retype it or add it again, and do not change anything the user did not ask for. Then reply with your one or two sentence summary for the user.\n<app_state>\n${currentSnapshot()}\n</app_state>\n</review>`,
         ),
       false,
       true,

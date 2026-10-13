@@ -48,7 +48,7 @@ const thinkingScript =
     : `localStorage.removeItem("suiteleaf.ai.thinkingBudget");`) +
   // STORYBOARD_AI_CAPTURE=1 also keeps every prompt in the metrics, for backend comparisons.
   (process.env.STORYBOARD_AI_CAPTURE ? `localStorage.setItem("suiteleaf.ai.capture", "1");` : "") +
-  // STORYBOARD_AI_REVIEW: "always" (default), "issues" or "off", for the check before the final reply.
+  // STORYBOARD_AI_REVIEW: "issues" (default), "always" or "off", for the check before the final reply.
   (process.env.STORYBOARD_AI_REVIEW ? `localStorage.setItem("suiteleaf.ai.review", ${JSON.stringify(process.env.STORYBOARD_AI_REVIEW)});` : "");
 
 /** Settings the in-app assistant reads, for AI storyboards. */
