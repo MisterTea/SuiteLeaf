@@ -13,6 +13,7 @@ import {
   Link,
   Route,
   Routes,
+  useLocation,
   useNavigate,
   useParams,
   useSearchParams,
@@ -98,6 +99,11 @@ import {
   useMode,
   type ResolvedMode,
 } from "./mode";
+import {
+  SaveTemplateDialog,
+  TemplateGallery,
+  TemplateHome,
+} from "./templates/gallery";
 const Docs = lazy(() => import("./editors/Docs")),
   Sheets = lazy(() => import("./editors/Sheets")),
   Slides = lazy(() => import("./editors/Slides"));
@@ -652,6 +658,7 @@ function LocalHome() {
               <p>Write something. Work out the numbers. Make it yours.</p>
             </section>
             <NewCards onCreate={make} />
+            <TemplateHome />
           </>
         )}
         <ErrorBanner error={error} onDismiss={() => setError("")} />
@@ -1006,11 +1013,13 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
 function Workspace() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [record, setRecord] = useState<FileRecord>(),
     [error, setError] = useState(""),
     [status, setStatus] = useState("Opening…"),
     [locked, setLocked] = useState(false),
-    [starred, setStarred] = useState(false);
+    [starred, setStarred] = useState(false),
+    [templateDraft, setTemplateDraft] = useState<SuiteFile | null>(null);
   const [actionsReady, setActionsReady] = useState(false);
   const current = useRef<FileRecord>(undefined),
     version = useRef(0),
@@ -1033,6 +1042,35 @@ function Workspace() {
     driveConflictRef.current = item;
     setDriveConflictState(item);
   };
+  const selectTitle = useRef(
+    !!(location.state as { selectTitle?: boolean } | null)?.selectTitle,
+  );
+  useEffect(() => {
+    if (!record || !selectTitle.current) return;
+    selectTitle.current = false;
+    let stop = false;
+    const focus = () => {
+      if (stop) return;
+      const input = document.querySelector<HTMLInputElement>(
+        '[aria-label="File title"]',
+      );
+      input?.focus();
+      input?.select();
+    };
+    focus();
+    const timers = [120, 500].map((ms) => setTimeout(focus, ms));
+    const input = document.querySelector('[aria-label="File title"]');
+    const halt = () => {
+      stop = true;
+    };
+    input?.addEventListener("keydown", halt, { once: true });
+    navigate(`/file/${record.file.id}`, { replace: true, state: null });
+    return () => {
+      stop = true;
+      timers.forEach(clearTimeout);
+      input?.removeEventListener("keydown", halt);
+    };
+  }, [record, navigate]);
   /** Upload the current file to SuiteDrive as a new version. */
   const syncDrive = useCallback(async () => {
     clearTimeout(driveTimer.current);
@@ -1266,6 +1304,9 @@ function Workspace() {
             const r = await storage.open();
             if (r) navigate(`/file/${r.file.id}`);
           }
+        } else if (action === "from-template") {
+          await save();
+          navigate(`/templates?kind=${current.current?.file.kind ?? "doc"}`);
         } else if (
           action === "new-doc" ||
           action === "new-sheet" ||
@@ -1505,15 +1546,20 @@ function Workspace() {
           </div>
           <div className="file-menu">
             <Menu label="File">
-              <MenuItem onSelect={() => void doAction("new-doc")}>
-                New document
-              </MenuItem>
-              <MenuItem onSelect={() => void doAction("new-sheet")}>
-                New spreadsheet
-              </MenuItem>
-              <MenuItem onSelect={() => void doAction("new-slide")}>
-                New presentation
-              </MenuItem>
+              <SubMenu label="New">
+                <MenuItem onSelect={() => void doAction("new-doc")}>
+                  Document
+                </MenuItem>
+                <MenuItem onSelect={() => void doAction("new-sheet")}>
+                  Spreadsheet
+                </MenuItem>
+                <MenuItem onSelect={() => void doAction("new-slide")}>
+                  Presentation
+                </MenuItem>
+                <MenuItem onSelect={() => void doAction("from-template")}>
+                  From template
+                </MenuItem>
+              </SubMenu>
               {cluster ? (
                 <>
                   <MenuItem onSelect={() => void doAction("open")}>
@@ -1535,6 +1581,20 @@ function Workspace() {
               )}
               <MenuItem onSelect={() => void save().catch(() => {})}>
                 Save now
+              </MenuItem>
+              <MenuItem
+                disabled={!actionsReady}
+                focusesTarget
+                onSelect={() => {
+                  void (async () => {
+                    await actions.current?.flush();
+                    await save();
+                    if (current.current)
+                      setTemplateDraft(structuredClone(current.current.file));
+                  })().catch((e) => setError(message(e)));
+                }}
+              >
+                Save as template
               </MenuItem>
               {window.suiteleaf && !cluster ? (
                 <MenuItem
@@ -1819,6 +1879,13 @@ function Workspace() {
                   />
                 </Menu>
                 <Menu label="Insert">
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.sheetActions?.insertImage?.()
+                    }
+                  >
+                    Image
+                  </MenuItem>
                   <MenuItem
                     onSelect={() =>
                       actions.current?.sheetActions?.insertChart()
@@ -2172,6 +2239,16 @@ function Workspace() {
           </span>
         </div>
       ) : null}
+      {templateDraft ? (
+        <SaveTemplateDialog
+          file={templateDraft}
+          onClose={() => setTemplateDraft(null)}
+          onSaved={(name) => {
+            setTemplateDraft(null);
+            setStatus(`Saved as template “${name}”`);
+          }}
+        />
+      ) : null}
       {driveDialog ? (
         <DriveBrowser
           mode={driveDialog}
@@ -2340,6 +2417,14 @@ export default function App() {
       <HashRouter>
         <Routes>
           <Route path="/auth-complete" element={<AuthComplete />} />
+          <Route
+            path="/templates"
+            element={
+              <ClusterGate>
+                <TemplateGallery />
+              </ClusterGate>
+            }
+          />
           <Route
             path="/file/:id"
             element={
