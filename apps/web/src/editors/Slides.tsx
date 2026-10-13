@@ -26,8 +26,10 @@ import {
   AlignRight,
   AlignStartHorizontal,
   AlignEndHorizontal,
+  AlignHorizontalSpaceBetween,
   AlignVerticalJustifyStart,
   AlignVerticalJustifyEnd,
+  AlignVerticalSpaceBetween,
   List,
   Undo2,
   Redo2,
@@ -57,6 +59,7 @@ import {
 import {
   DeckHistory,
   alignBoxes,
+  spaceBoxesEvenly,
   canDeleteSlides,
   canMove,
   centeredTextBox,
@@ -827,6 +830,27 @@ export default function Slides({
     );
     if (aligned.length < 2) return;
     const byId = new Map(aligned.map((el) => [el.id, el]));
+    const elements = slide.elements.map((el) => byId.get(el.id) ?? el);
+    const moved = elements.some((el, index) => el !== slide.elements[index]);
+    if (!moved) return;
+    commit({
+      ...prev,
+      slides: { ...prev.slides, [slide.id]: { ...slide, elements } },
+    });
+  };
+
+  const spaceSelectedBoxes = (axis: "across" | "down") => {
+    const prev = deckRef.current;
+    const slide =
+      prev.slides[activeRef.current] || prev.slides[prev.slideOrder[0]];
+    if (!slide) return;
+    const spaced = spaceBoxesEvenly(
+      slide.elements,
+      selectedElementIdsRef.current,
+      axis,
+    );
+    if (spaced.length < 3) return;
+    const byId = new Map(spaced.map((el) => [el.id, el]));
     const elements = slide.elements.map((el) => byId.get(el.id) ?? el);
     const moved = elements.some((el, index) => el !== slide.elements[index]);
     if (!moved) return;
@@ -1902,24 +1926,44 @@ ${slidesHtml}
 
         {/* Dynamic Contextual Tools: Fill, Border, Typography or Slide background/layout */}
         {selectedElementIds.length >= 2 ? (
-          <div className="tool-group">
-            <Tool label="Align left" onClick={() => alignSelectedBoxes("left")}>
-              <AlignStartHorizontal size={16} />
-              <span className="align-box-label">Align left</span>
-            </Tool>
-            <Tool label="Align top" onClick={() => alignSelectedBoxes("top")}>
-              <AlignVerticalJustifyStart size={16} />
-              <span className="align-box-label">Align top</span>
-            </Tool>
-            <Tool label="Align right" onClick={() => alignSelectedBoxes("right")}>
-              <AlignEndHorizontal size={16} />
-              <span className="align-box-label">Align right</span>
-            </Tool>
-            <Tool label="Align bottom" onClick={() => alignSelectedBoxes("bottom")}>
-              <AlignVerticalJustifyEnd size={16} />
-              <span className="align-box-label">Align bottom</span>
-            </Tool>
-          </div>
+          <>
+            <div className="tool-group">
+              <Tool label="Align left" onClick={() => alignSelectedBoxes("left")}>
+                <AlignStartHorizontal size={16} />
+                <span className="align-box-label">Align left</span>
+              </Tool>
+              <Tool label="Align top" onClick={() => alignSelectedBoxes("top")}>
+                <AlignVerticalJustifyStart size={16} />
+                <span className="align-box-label">Align top</span>
+              </Tool>
+              <Tool label="Align right" onClick={() => alignSelectedBoxes("right")}>
+                <AlignEndHorizontal size={16} />
+                <span className="align-box-label">Align right</span>
+              </Tool>
+              <Tool label="Align bottom" onClick={() => alignSelectedBoxes("bottom")}>
+                <AlignVerticalJustifyEnd size={16} />
+                <span className="align-box-label">Align bottom</span>
+              </Tool>
+            </div>
+            {selectedElementIds.length >= 3 ? (
+              <div className="tool-group space-evenly-tools">
+                <Tool
+                  label="Space evenly across"
+                  onClick={() => spaceSelectedBoxes("across")}
+                >
+                  <AlignHorizontalSpaceBetween size={16} />
+                  <span className="align-box-label">Space evenly across</span>
+                </Tool>
+                <Tool
+                  label="Space evenly down"
+                  onClick={() => spaceSelectedBoxes("down")}
+                >
+                  <AlignVerticalSpaceBetween size={16} />
+                  <span className="align-box-label">Space evenly down</span>
+                </Tool>
+              </div>
+            ) : null}
+          </>
         ) : selectedElement ? (
           <div className="tool-group">
             {/* Fill color */}

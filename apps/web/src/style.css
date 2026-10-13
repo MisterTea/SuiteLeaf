@@ -3998,6 +3998,17 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   background: #d3e3fd;
   color: #041e49;
 }
+.toolbar-edits:has(.space-evenly-tools) {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+.slides-toolbar .space-evenly-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1 0 100%;
+  min-inline-size: 100%;
+}
 .selection-handles {
   position: absolute;
   inset: 0;

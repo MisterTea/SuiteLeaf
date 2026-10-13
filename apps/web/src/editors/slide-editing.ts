@@ -468,6 +468,49 @@ export function alignBoxes(
   );
 }
 
+/**
+ * Space selected boxes so each gap, from one box's far edge to the next box's
+ * near edge, is the same. Across sorts by x and leaves the leftmost and
+ * rightmost where they are. Down sorts by y and leaves the topmost and
+ * bottommost where they are. Fewer than three boxes come back unchanged.
+ * Widths, words, and the other coordinate stay. Overlapping boxes keep a
+ * negative gap. The result is only the selected boxes.
+ */
+export function spaceBoxesEvenly(
+  elements: readonly SlideElement[],
+  selectedIds: readonly string[],
+  axis: "across" | "down",
+): SlideElement[] {
+  const selected = new Set(selectedIds);
+  const boxes = elements.filter((el) => selected.has(el.id));
+  if (boxes.length < 3) return boxes;
+  const across = axis === "across";
+  const sorted = [...boxes].sort((a, b) => (across ? a.x - b.x : a.y - b.y));
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  const middles = sorted.slice(1, -1);
+  const start = across ? first.x + first.width : first.y + first.height;
+  const end = across ? last.x : last.y;
+  const occupied = middles.reduce(
+    (sum, el) => sum + (across ? el.width : el.height),
+    0,
+  );
+  const gap = (end - start - occupied) / (sorted.length - 1);
+  const placed = new Map<string, SlideElement>([
+    [first.id, first],
+    [last.id, last],
+  ]);
+  let used = 0;
+  for (let index = 0; index < middles.length; index++) {
+    const el = middles[index];
+    const pos = start + gap * (index + 1) + used;
+    used += across ? el.width : el.height;
+    if (across) placed.set(el.id, el.x === pos ? el : { ...el, x: pos });
+    else placed.set(el.id, el.y === pos ? el : { ...el, y: pos });
+  }
+  return boxes.map((el) => placed.get(el.id) ?? el);
+}
+
 /** One undo step per edit, with typing in the same box collapsing into one step. */
 export class DeckHistory {
   private entries: Presentation[];

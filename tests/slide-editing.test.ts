@@ -5,6 +5,7 @@ import {
   PASTE_NUDGE,
   canDeleteSlides,
   alignBoxes,
+  spaceBoxesEvenly,
   centeredTextBox,
   commandFromKey,
   deleteSlides,
@@ -406,5 +407,204 @@ describe("alignBoxes", () => {
     const aloneBottom = alignBoxes(boxes, ["saturday"], "bottom");
     expect(aloneBottom[0]).toBe(narrow);
     expect(aloneBottom[0].y).toBe(220);
+  });
+});
+
+describe("spaceBoxesEvenly", () => {
+  const gapAcross = (
+    left: { x: number; width: number },
+    right: { x: number },
+  ) => right.x - (left.x + left.width);
+  const gapDown = (
+    upper: { y: number; height: number },
+    lower: { y: number },
+  ) => lower.y - (upper.y + upper.height);
+
+  const market = {
+    id: "market",
+    type: "text" as const,
+    x: 36,
+    y: 56,
+    width: 250,
+    height: 78,
+    content: "Market",
+  };
+  const saturday = {
+    id: "saturday",
+    type: "text" as const,
+    x: 600,
+    y: 56,
+    width: 170,
+    height: 78,
+    content: "Saturday",
+  };
+  const notes = {
+    id: "notes",
+    type: "text" as const,
+    x: 790,
+    y: 56,
+    width: 150,
+    height: 78,
+    content: "Notes",
+  };
+  const door = {
+    id: "door",
+    type: "text" as const,
+    x: 36,
+    y: 210,
+    width: 170,
+    height: 70,
+    content: "Door",
+  };
+  const elements = [market, door, saturday, notes];
+
+  it("evens the gaps between different widths and leaves the outer boxes and Door", () => {
+    expect(market.width).not.toBe(saturday.width);
+    expect(saturday.width).not.toBe(notes.width);
+    expect(gapAcross(market, saturday)).not.toBe(gapAcross(saturday, notes));
+
+    const spaced = spaceBoxesEvenly(
+      elements,
+      ["notes", "market", "saturday"],
+      "across",
+    );
+    expect(spaced.map((el) => el.id)).toEqual(["market", "saturday", "notes"]);
+    expect(spaced.find((el) => el.id === "door")).toBeUndefined();
+    expect(spaced.find((el) => el.id === "market")).toBe(market);
+    expect(spaced.find((el) => el.id === "notes")).toBe(notes);
+    const middle = spaced.find((el) => el.id === "saturday")!;
+    expect(middle).not.toBe(saturday);
+    expect(gapAcross(market, middle)).toBe(gapAcross(middle, notes));
+    expect(middle.x).toBe(453);
+    expect(middle.y).toBe(saturday.y);
+    expect(middle.width).toBe(saturday.width);
+    expect(middle.height).toBe(saturday.height);
+    expect(middle.content).toBe("Saturday");
+    expect(market.content).toBe("Market");
+    expect(notes.content).toBe("Notes");
+    expect(notes.width).toBe(150);
+
+    const byId = new Map(spaced.map((el) => [el.id, el]));
+    const next = elements.map((el) => byId.get(el.id) ?? el);
+    const moved = next.filter((el, index) => el !== elements[index]);
+    expect(moved.map((el) => el.id)).toEqual(["saturday"]);
+    expect(moved.map((el) => el.id)).not.toContain("door");
+    expect(next.find((el) => el.id === "door")).toBe(door);
+  });
+
+  it("evens vertical gaps and keeps each box's x", () => {
+    const cedar = {
+      id: "cedar",
+      type: "text" as const,
+      x: 64,
+      y: 24,
+      width: 230,
+      height: 88,
+      content: "Cedar",
+    };
+    const maple = {
+      id: "maple",
+      type: "text" as const,
+      x: 380,
+      y: 128,
+      width: 150,
+      height: 60,
+      content: "Maple",
+    };
+    const birch = {
+      id: "birch",
+      type: "text" as const,
+      x: 150,
+      y: 360,
+      width: 200,
+      height: 64,
+      content: "Birch",
+    };
+    const stacked = [birch, maple, cedar, door];
+    expect(cedar.height).not.toBe(maple.height);
+    expect(gapDown(cedar, maple)).not.toBe(gapDown(maple, birch));
+
+    const spaced = spaceBoxesEvenly(
+      stacked,
+      ["maple", "birch", "cedar"],
+      "down",
+    );
+    expect(spaced.map((el) => el.id)).toEqual(["birch", "maple", "cedar"]);
+    expect(spaced.find((el) => el.id === "door")).toBeUndefined();
+    expect(spaced.find((el) => el.id === "cedar")).toBe(cedar);
+    expect(spaced.find((el) => el.id === "birch")).toBe(birch);
+    const middle = spaced.find((el) => el.id === "maple")!;
+    expect(gapDown(cedar, middle)).toBe(gapDown(middle, birch));
+    expect(middle.y).toBe(206);
+    expect(middle.x).toBe(maple.x);
+    expect(middle.width).toBe(maple.width);
+    expect(middle.height).toBe(maple.height);
+    expect(middle.content).toBe("Maple");
+    expect(cedar.x).toBe(64);
+    expect(birch.x).toBe(150);
+
+    const byId = new Map(spaced.map((el) => [el.id, el]));
+    const next = stacked.map((el) => byId.get(el.id) ?? el);
+    const moved = next.filter((el, index) => el !== stacked[index]);
+    expect(moved.map((el) => el.id)).toEqual(["maple"]);
+    expect(next.find((el) => el.id === "door")).toBe(door);
+  });
+
+  it("leaves two boxes unchanged, including when they overlap", () => {
+    const two = spaceBoxesEvenly(elements, ["market", "saturday"], "across");
+    expect(two.map((el) => el.id)).toEqual(["market", "saturday"]);
+    expect(two[0]).toBe(market);
+    expect(two[1]).toBe(saturday);
+    expect(two.find((el) => el.id === "door")).toBeUndefined();
+    const down = spaceBoxesEvenly(elements, ["notes", "door"], "down");
+    expect(down[0]).toBe(door);
+    expect(down[1]).toBe(notes);
+
+    const wide = { ...market, id: "wide", x: 20, width: 300 };
+    const overlap = { ...saturday, id: "overlap", x: 40, width: 200 };
+    const end = { ...notes, id: "end", x: 80, width: 100 };
+    const crowded = [wide, overlap, end];
+    const spaced = spaceBoxesEvenly(
+      crowded,
+      ["end", "wide", "overlap"],
+      "across",
+    );
+    expect(spaced.find((el) => el.id === "wide")).toBe(wide);
+    expect(spaced.find((el) => el.id === "end")).toBe(end);
+    const middle = spaced.find((el) => el.id === "overlap")!;
+    expect(gapAcross(wide, middle)).toBe(gapAcross(middle, end));
+    expect(gapAcross(wide, middle)).toBeLessThan(0);
+    expect(middle.width).toBe(200);
+    expect(middle.y).toBe(overlap.y);
+  });
+
+  it("spaces four boxes so every gap matches", () => {
+    const fourth = {
+      id: "fourth",
+      type: "text" as const,
+      x: 500,
+      y: 56,
+      width: 40,
+      height: 78,
+      content: "End",
+    };
+    const row = [
+      { ...market, x: 0, width: 100 },
+      { ...saturday, x: 150, width: 50 },
+      { ...notes, x: 300, width: 80 },
+      fourth,
+    ];
+    const spaced = spaceBoxesEvenly(
+      row,
+      ["market", "saturday", "notes", "fourth"],
+      "across",
+    );
+    const [a, b, c, d] = spaced;
+    expect(a).toBe(row[0]);
+    expect(d).toBe(fourth);
+    expect(gapAcross(a, b)).toBe(gapAcross(b, c));
+    expect(gapAcross(b, c)).toBe(gapAcross(c, d));
+    expect(b.y).toBe(saturday.y);
+    expect(c.width).toBe(80);
   });
 });
