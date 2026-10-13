@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
-import { createFile } from "../packages/core/src";
 import { exportDocx } from "../packages/core/src/docx-export";
 import { importOffice } from "../packages/core/src/office";
 import {
