@@ -107,6 +107,8 @@ import {
 } from "@suiteleaf/core/document-layout";
 import { PageSetupFields } from "./page-setup";
 import { PageFurniture } from "./doc-header-editor";
+import { paragraphLineSpacing } from "./doc-line-spacing";
+import { LineSpacingControl } from "./doc-line-spacing-ui";
 
 export const extensions: Extensions = [
   DocumentPagination,
@@ -119,6 +121,7 @@ export const extensions: Extensions = [
   TextStyleKit,
   Highlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ["heading", "paragraph"] }),
+  paragraphLineSpacing,
   wrappedImage,
   TableKit.configure({ table: { resizable: true } }),
   CharacterCount,
@@ -1042,6 +1045,7 @@ export default function Docs({
           <option value="2">Heading 2</option>
           <option value="3">Heading 3</option>
         </select>
+        <LineSpacingControl editor={editor} />
 
         <span className="divider" />
 

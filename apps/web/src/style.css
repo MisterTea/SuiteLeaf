@@ -1211,6 +1211,81 @@ a {
 .font-family-select {
   max-width: 135px;
 }
+.line-spacing-control {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.line-spacing-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: 0;
+  background: transparent;
+  border-radius: 4px;
+  padding: 4px 4px 4px 5px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.line-spacing-button:hover,
+.line-spacing-button[aria-expanded="true"] {
+  background: var(--toolbar-tool-hover);
+}
+.line-spacing-button:focus-visible {
+  outline: 2px solid #1a73e8;
+  outline-offset: 1px;
+}
+.line-spacing-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 200;
+  min-width: 160px;
+  padding: 4px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+}
+.line-spacing-heading {
+  margin: 2px 8px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.line-spacing-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 13px;
+  text-align: left;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.line-spacing-menu button:hover,
+.line-spacing-menu button:focus {
+  background: var(--surface-hover, #f1f3f4);
+  outline: none;
+}
+.line-spacing-menu button[aria-selected="true"] {
+  background: #e8f0fe;
+  color: #174ea6;
+}
+.line-spacing-mark {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  display: inline-flex;
+}
 .font-size-stepper {
   display: inline-flex;
   align-items: center;
@@ -3252,7 +3327,8 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   .toolbar .color-tool,
   .toolbar .divider,
   .toolbar .menu-search-pill,
-  .toolbar .mode-switch {
+  .toolbar .mode-switch,
+  .toolbar .line-spacing-control {
     flex-shrink: 0;
   }
   .sheets-toolbar {
