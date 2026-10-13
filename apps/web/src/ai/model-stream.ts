@@ -60,10 +60,16 @@ const emptyUsage = (): Usage => ({
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 });
 
+/** Closes thinking that reached its budget (Qwen's documented early-stop phrase). */
+export const THINKING_STOP =
+  "\n\nConsidering the limited time by the user, I have to give the solution based on the thinking directly now.\n</think>\n\n";
+
 export interface LocalStreamOptions {
   /** The model's chat format; a function so it can follow the model the backend reports. */
   format?: ChatFormat | (() => ChatFormat);
   maxTokens?: number;
+  /** Thinking tokens per reply before the model is told to act; 0 for no limit. Defaults to the model's. */
+  thinkingBudget?: number;
   onStats?: (stats: GenerationStats) => void;
   /** Called with each request's rendered prompt length and raw output (debugging and tests). */
   onRaw?: (prompt: string, output: string) => void;
@@ -114,6 +120,9 @@ export function createLocalStreamFn(model: LocalModel, options: LocalStreamOptio
     let finished = false;
     let cutOff = false;
     const maxTokens = options.maxTokens ?? format.info.maxTokens;
+    const budget = format.startsThinking ? (options.thinkingBudget ?? format.info.thinkingBudget ?? 0) : 0;
+    // Numbers from a first, budget-capped generation, added to the continuation's.
+    let earlier: Extract<AiGenerateEvent, { type: "done" }> | undefined;
 
     const closeBlock = () => {
       if (block < 0) return;
@@ -287,20 +296,36 @@ export function createLocalStreamFn(model: LocalModel, options: LocalStreamOptio
       stream.push({ type: "done", reason: output.stopReason as "stop", message: output });
       stream.end(output);
     };
-    const cancel = model.generate(
-      {
-        prompt,
-        maxTokens,
-        stop: format.info.stop,
-        ...format.info.sampling,
-      },
-      (event) => {
-        if (event.type === "text") {
-          raw += event.text;
-          pump(false);
-        } else finish(event);
-      },
-    );
+    let cancel = () => {};
+    const generate = (text: string, limit: number, capped: boolean) => {
+      cancel = model.generate(
+        { prompt: text, maxTokens: limit, stop: format.info.stop, ...format.info.sampling },
+        (event) => {
+          if (event.type === "text") {
+            raw += event.text;
+            pump(false);
+          } else if (event.type === "done" && event.reason === "length" && capped && !streamOptions?.signal?.aborted) {
+            // The budget ran out. Still thinking: tell it to act. Already acting: let it finish the call.
+            earlier = event;
+            if (mode === "thinking") {
+              raw += THINKING_STOP;
+              pump(false);
+            }
+            generate(prompt + raw, maxTokens - event.outputTokens, false);
+          } else if (event.type === "done" && earlier) {
+            finish({
+              ...event,
+              promptTokens: earlier.promptTokens,
+              cachedTokens: earlier.cachedTokens,
+              outputTokens: earlier.outputTokens + event.outputTokens,
+              promptMs: earlier.promptMs + event.promptMs,
+              generateMs: earlier.generateMs + event.generateMs,
+            });
+          } else finish(event);
+        },
+      );
+    };
+    generate(prompt, budget > 0 && budget < maxTokens ? budget : maxTokens, budget > 0 && budget < maxTokens);
     const onAbort = () => cancel();
     streamOptions?.signal?.addEventListener("abort", onAbort);
     return stream;

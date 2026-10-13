@@ -40,6 +40,12 @@ export const electronMode = process.env.STORYBOARD_ELECTRON === "1";
 /** The desktop app behind a page, in Electron mode (e.g. to answer its save dialogs). */
 export const electronApps = new WeakMap<Page, ElectronApplication>();
 
+/** STORYBOARD_AI_THINKING: the model's thinking budget in tokens (0 for no limit). */
+const thinking = process.env.STORYBOARD_AI_THINKING;
+const thinkingScript = thinking
+  ? `localStorage.setItem("suiteleaf.ai.thinkingBudget", ${JSON.stringify(thinking)});`
+  : `localStorage.removeItem("suiteleaf.ai.thinkingBudget");`;
+
 /** Settings the in-app assistant reads, for AI storyboards. */
 function assistantScript(baseURL: string | undefined) {
   const models = process.env.STORYBOARD_MODEL_HOST ?? `${baseURL}/models/`;
@@ -48,6 +54,7 @@ function assistantScript(baseURL: string | undefined) {
   return `(() => {
     localStorage.setItem("suiteleaf.ai.modelHost", ${JSON.stringify(models)});
     localStorage.setItem("suiteleaf.ai.model", ${JSON.stringify(model)});
+    ${thinkingScript}
     if (${JSON.stringify(device)} === "auto") localStorage.removeItem("suiteleaf.ai.device");
     else localStorage.setItem("suiteleaf.ai.device", ${JSON.stringify(device)});
   })();`;
@@ -97,6 +104,7 @@ export const test = base.extend<{ page: Page }>({
       await app.evaluate(({ BrowserWindow }, s) => BrowserWindow.getAllWindows()[0]?.setContentSize(s.width, s.height), size);
       await page.setViewportSize(size);
       await page.context().addInitScript(cursorScript);
+      await page.context().addInitScript(thinkingScript);
       await page.reload();
       page.context().setDefaultTimeout(15000);
       close = async () => {

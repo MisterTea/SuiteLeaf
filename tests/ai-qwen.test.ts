@@ -4,7 +4,7 @@ import { Template } from "@huggingface/jinja";
 import type { AssistantMessage, Message, Tool } from "@earendil-works/pi-ai";
 import { templateTools } from "../apps/web/src/ai/gemma";
 import { frognanoFormat } from "../apps/web/src/ai/chat-format";
-import { createLocalStreamFn, localModelDescriptor } from "../apps/web/src/ai/model-stream";
+import { THINKING_STOP, createLocalStreamFn, localModelDescriptor } from "../apps/web/src/ai/model-stream";
 import { parseQwenCall, renderQwenConversation, renderQwenSystem } from "../apps/web/src/ai/qwen";
 
 const official = new Template(
@@ -142,5 +142,34 @@ describe("FrogNano tool calls", () => {
       expect.objectContaining({ type: "toolCall", name: "insert_chart", arguments: { range: "A1:C5" } }),
     ]);
     expect(message.stopReason).toBe("toolUse");
+  });
+
+  it("tells the model to act when its thinking reaches the budget, then lets it finish", async () => {
+    const requests: { prompt: string; maxTokens: number }[] = [];
+    const model = {
+      generate: (request: { prompt: string; maxTokens: number }, onEvent: (e: unknown) => void) => {
+        requests.push(request);
+        const first = requests.length === 1;
+        setTimeout(() => {
+          onEvent({ type: "text", text: first ? "Let me think about every cell in turn" : "\n<tool_call>\n<function=insert_chart>\n<parameter=range>\nA1:C5\n</parameter>\n</function>\n</tool_call>" });
+          onEvent({ type: "done", reason: first ? "length" : "stop", promptTokens: 10, cachedTokens: first ? 0 : 9, outputTokens: first ? 128 : 30, promptMs: 5, generateMs: 50 });
+        });
+        return () => {};
+      },
+    };
+    const stats: { outputTokens: number }[] = [];
+    const stream = createLocalStreamFn(model as never, { format: frognanoFormat, onStats: (s) => stats.push(s) })(
+      localModelDescriptor(frognanoFormat.info, "test"),
+      { systemPrompt: "S", messages: [conversation[0]], tools },
+      {},
+    );
+    const message = await (await stream).result();
+    expect(requests.map((r) => r.maxTokens)).toEqual([128, 4096 - 128]);
+    expect(requests[1].prompt).toBe(requests[0].prompt + "Let me think about every cell in turn" + THINKING_STOP);
+    expect(message.content).toEqual([
+      { type: "thinking", thinking: "Let me think about every cell in turn" + THINKING_STOP.split("</think>")[0] },
+      expect.objectContaining({ type: "toolCall", name: "insert_chart", arguments: { range: "A1:C5" } }),
+    ]);
+    expect(stats).toEqual([expect.objectContaining({ outputTokens: 158 })]);
   });
 });

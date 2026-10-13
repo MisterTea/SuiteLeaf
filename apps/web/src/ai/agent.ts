@@ -21,6 +21,12 @@ How to work:
 /** The chat format of the model the backend runs (the desktop app reports it; the browser uses the chosen one). */
 export const currentFormat = () => formatFor(localModel().status().modelId ?? selectedModel());
 
+/** localStorage["suiteleaf.ai.thinkingBudget"]: thinking tokens per reply (0 for no limit); otherwise the model's default. */
+function thinkingBudgetSetting() {
+  const value = localStorage.getItem("suiteleaf.ai.thinkingBudget");
+  return value !== null && /^\d+$/.test(value) ? Number(value) : undefined;
+}
+
 export type AgentUiState = "idle" | "loading" | "working" | "done" | "error";
 
 export type TranscriptItem =
@@ -181,6 +187,7 @@ class AgentSession {
       },
       streamFn: createLocalStreamFn(localModel(), {
         format: currentFormat,
+        thinkingBudget: thinkingBudgetSetting(),
         onStats: this.onStats,
         onRaw: (prompt, output) => {
           this.raws = [...this.raws.slice(-199), output];

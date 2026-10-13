@@ -61,7 +61,9 @@ The browser runs need the model weights in `~/.cache/suiteleaf-models` (`onnx-co
 | `STORYBOARD_MODELS` | Folder the static server serves as `/models/` (default `~/.cache/suiteleaf-models`). |
 | `STORYBOARD_MODEL_HOST` | Where the browser loads weights from (default the static server's `/models/`). |
 | `STORYBOARD_AI_DEVICE` | `webgpu` (default), or `auto` to try WebNN first and fall back to WebGPU. |
-| `SUITELEAF_MODEL_PATH` | GGUF file for desktop runs, e.g. the Q8_0 build. |
+| `STORYBOARD_AI_MODEL` | Browser model: `gemma-4-e4b` (default) or `frognano-4b`. |
+| `STORYBOARD_AI_THINKING` | FrogNano's thinking budget per reply, in tokens (`0` for no limit; default 128). |
+| `SUITELEAF_MODEL_PATH` | GGUF file for desktop runs, e.g. the Q8_0 build or a FrogNano GGUF (the model is read from the file name). |
 | `STORYBOARD_RUN_TAG` | Stress runs: with `--repeat-each=N`, keep every repeat's metrics and video under `test-results/ai-*/runs/<tag>/`. Summarize with `node scripts/ai-stress-report.mjs <tag> …`. |
 
 ## Index

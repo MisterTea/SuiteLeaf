@@ -72,6 +72,8 @@ export interface AiModelInfo {
   maxTokens: number;
   /** Context the backend allocates, in tokens. */
   contextSize: number;
+  /** For models that think first: thinking tokens per reply before it is told to act. */
+  thinkingBudget?: number;
   /** The transformers.js export the browser loads. */
   repo: string;
   /** A one-turn prompt that proves a device can run the graph. */
@@ -100,6 +102,7 @@ export const AI_MODELS: Record<AiModelId, AiModelInfo> = {
     maxTokens: 4096,
     // Its thinking stays in the prompt for the rest of a request. Only 8 of its 32 layers keep a growing cache.
     contextSize: 32768,
+    thinkingBudget: 128,
     repo: "RASMUS/FrogNano-4B-2609-ONNX",
     probe: "<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\n",
   },
