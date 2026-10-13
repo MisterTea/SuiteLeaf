@@ -3306,6 +3306,7 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
   font-size: 12px;
 }
 .sign-in-screen {
+  position: relative;
   min-height: 100vh;
   display: grid;
   place-items: center;
@@ -3834,4 +3835,14 @@ body.agent-open .save-status {
 }
 body.agent-open .new-cards {
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+
+/* The assistant stays reachable while the person signs in. */
+.sign-in-tools {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+}
+body.agent-open .sign-in-screen {
+  margin-right: var(--agent-width);
 }
