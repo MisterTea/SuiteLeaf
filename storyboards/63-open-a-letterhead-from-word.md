@@ -15,11 +15,11 @@ Ben receives the town council's minutes as a Word file. Page 1 is their letterhe
 ## Scenes
 
 1. **The file.** Ben uses Open / import on `council-minutes.docx`. The compatibility note is about page layout. It does not say the headers were flattened or merged.
-2. **Page 1.** The first page shows "Town Council" and no page number.
-3. **The back of the sheet.** Page 2 shows "Minutes" and "2 / 3" on the left.
+2. **Page 1.** The first page shows "Town Council" as the letterhead, with a line under the name, and no page number.
+3. **The back of the sheet.** Page 2 shows "2 / 3" and "Minutes" on the left.
 4. **The next face.** Page 3 shows "Council" and "3 / 3" on the right.
-5. **Page setup.** The dialog has Different first page and Different odd and even pages both ticked, and the three header fields match the pages.
-6. **Save.** He closes the file and opens it from the library. Page setup still shows the three headers.
+5. **Page setup.** Different first page and Different odd and even pages are both ticked. The fields read Town Council, Minutes, and Council. He closes the dialog. The letterhead is still on page 1.
+6. **Save.** He reopens the SuiteLeaf file from the library. Page 1 still shows Town Council and no page number.
 
 ## Google Workspace benchmark
 
@@ -36,21 +36,22 @@ Uploading a Word file to Google Docs keeps different first, odd, and even header
 
 ## Success looks like
 
-Ben opens the council file and sees the letterhead, then "Minutes" on the left of page 2 and "Council" on the right of page 3. Page setup already matches the file.
+Ben opens the council file and sees the letterhead, then "Minutes" on the left of page 2 with its number, and "Council" on the right of page 3 with its number. Page setup already matches the file, and reopening keeps the letterhead.
 
 ## Result
 
 | Criterion | Met | Evidence |
 | --- | --- | --- |
-| Importing does not add a note that headers were dropped or merged | Met | Video 0:04. The note only mentions page layout. `tests/word-headers.test.ts` |
-| Page 1 shows only the first-page header and no page number | Met | Video 0:08. "Town Council", no number. `tests/browser/word-letterhead.spec.ts` |
-| Even and odd pages show their own header text, on the left and the right | Met | Video 0:11 "Minutes" and "2 / 3" on the left. Video 0:14 "Council" and "3 / 3" on the right |
-| Page setup shows both checkboxes ticked and the three header strings | Met | Video 0:18. First header Town Council, even header Minutes, odd header Council |
-| Saving and reopening keeps all three | Met | Video 0:23. The same dialog after opening the file from the library |
-| A header that is only a page number stays a page number | Met | `tests/word-headers.test.ts`, both the complex PAGE field and `fldSimple` |
+| Importing the Word file does not add a note that headers were dropped or merged. | Met | Video 0:06. The note is only about SuiteLeaf's own page layout. `tests/word-headers.test.ts` |
+| Page 1 shows only the first-page header and no page number. | Met | Video 0:10. "Town Council" with a line under it, and no page number. |
+| Even and odd pages show their own header text, in the left and right positions. | Met | Video 0:13, "2 / 3" and "Minutes" on the left. Video 0:17, "Council" and "3 / 3" on the right. |
+| Page setup shows both checkboxes ticked and the three header strings. | Met | Video 0:21. Different first page, Different odd and even pages, Town Council, Minutes, and Council. |
+| Saving and reopening the SuiteLeaf file keeps all three. | Met | Video 0:28, the letterhead is still on page 1. `tests/browser/letterhead-import.spec.ts` edits the letterhead and checks all three after reopen. `tests/browser/word-letterhead.spec.ts` reopens Page setup. |
+| A header that is only a page number stays a page number, not a paragraph in the body. | Met | `tests/word-headers.test.ts` (complex PAGE field and fldSimple) and `tests/browser/letterhead-import.spec.ts`. |
 
 ## Gaps and notes
 
-- A logo image in a header is still placed in the document body, not in the page header.
-- Odd and even page numbers sit beside the header so the title and the number are on the same edge. Other documents still number at the bottom right.
-- The headers are edited in Page setup. They are not clicked directly on the page.
+- A picture inside a Word header is still placed in the document. The header text stays in the page header. This story's letterhead is text.
+- HTML export shows the first-page letterhead once. It does not repeat the even and odd running heads, and printed page numbers stay at the bottom right.
+- The header is edited in Page setup. Clicking the header on the page does not open it.
+- Exporting DOCX writes the first, even, and odd headers back, including the page-number fields.

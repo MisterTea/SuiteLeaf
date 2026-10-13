@@ -5,32 +5,43 @@ import { beat, caption, expect, test } from "./harness";
 const editorOf = (page: Page) =>
   page.getByRole("textbox", { name: "Document content" });
 
-/** Bring a page's top margin, where the header sits, into the document stage. */
+/** Page 1 is already at the top. Later pages scroll until the header is clear of the toolbar. */
 async function showPage(page: Page, index: number) {
+  if (index === 0) {
+    await page
+      .locator(".document-stage")
+      .evaluate((el) => el.scrollTo({ top: 0, behavior: "smooth" }));
+    await beat(page, 600);
+    return;
+  }
   await page
     .locator(".page-furniture-page")
     .nth(index)
     .evaluate((el) => {
       const stage = el.closest(".document-stage");
-      if (!(stage instanceof HTMLElement)) return;
+      const header = el.querySelector(".page-header");
+      if (!(stage instanceof HTMLElement) || !(header instanceof HTMLElement))
+        return;
       const top =
         stage.scrollTop +
-        el.getBoundingClientRect().top -
+        header.getBoundingClientRect().top -
         stage.getBoundingClientRect().top -
-        12;
+        36;
       stage.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
     });
   await beat(page, 900);
 }
 
-async function pointAt(page: Page, target: Locator) {
+/** Park the pointer beside the words so it does not cover them. */
+async function pointBeside(
+  page: Page,
+  target: Locator,
+  side: "left" | "right" = "left",
+) {
   const box = await target.boundingBox();
   if (!box) return;
-  await page.mouse.move(
-    box.x + Math.min(box.width / 2, 72),
-    box.y + box.height / 2,
-    { steps: 12 },
-  );
+  const x = side === "left" ? box.x - 28 : box.x + box.width + 16;
+  await page.mouse.move(x, box.y + box.height / 2, { steps: 12 });
 }
 
 test("63-open-a-letterhead-from-word", async ({ page }) => {
@@ -83,38 +94,41 @@ test("63-open-a-letterhead-from-word", async ({ page }) => {
   await expect(page1).toHaveAttribute("data-number-side", "none");
   await expect(page1.locator(".page-header-text")).toHaveText("Town Council");
   await expect(page1.locator(".page-number")).toHaveCount(0);
-  await pointAt(page, page1.locator(".page-header-text"));
   await caption(
     page,
     "Page 1 shows the letterhead, Town Council, and no page number.",
-    2400,
+    400,
   );
+  await pointBeside(page, page1.locator(".page-header-text"));
+  await beat(page, 2200);
 
+  await caption(
+    page,
+    "The back of the sheet: Minutes on the left, and the number on the left.",
+    400,
+  );
   const page2 = faces.nth(1);
   await showPage(page, 1);
   await expect(page2).toHaveAttribute("data-header-align", "left");
   await expect(page2).toHaveAttribute("data-number-side", "left");
   await expect(page2.locator(".page-header-text")).toHaveText("Minutes");
   await expect(page2.locator(".page-number")).toHaveText("2 / 3");
-  await pointAt(page, page2.locator(".page-header"));
+  await pointBeside(page, page2.locator(".page-number"));
+  await beat(page, 2000);
+
   await caption(
     page,
-    "The back of the sheet: Minutes on the left, and the number on the left.",
-    2400,
+    "The next face: Council on the right, and the number on the right.",
+    400,
   );
-
   const page3 = faces.nth(2);
   await showPage(page, 2);
   await expect(page3).toHaveAttribute("data-header-align", "right");
   await expect(page3).toHaveAttribute("data-number-side", "right");
   await expect(page3.locator(".page-header-text")).toHaveText("Council");
   await expect(page3.locator(".page-number")).toHaveText("3 / 3");
-  await pointAt(page, page3.locator(".page-header"));
-  await caption(
-    page,
-    "The next face: Council on the right, and the number on the right.",
-    2400,
-  );
+  await pointBeside(page, page3.locator(".page-number"), "right");
+  await beat(page, 2000);
 
   await caption(page, "File, Page setup already matches the Word file.", 1000);
   await page.getByRole("button", { name: "File", exact: true }).click();
@@ -134,14 +148,19 @@ test("63-open-a-letterhead-from-word", async ({ page }) => {
   await expect(evenHeader).toHaveValue("Minutes");
   await expect(oddHeader).toHaveValue("Council");
   await oddHeader.scrollIntoViewIfNeeded();
-  await pointAt(page, firstHeader);
   await caption(
     page,
     "Different first page and different odd and even pages are both ticked. The three headers match.",
-    2800,
+    400,
   );
+  const tick = await firstPage.boundingBox();
+  if (tick)
+    await page.mouse.move(tick.x + 9, tick.y + tick.height / 2, { steps: 12 });
+  await beat(page, 2400);
+  await caption(page, "He closes page setup. The letterhead is still on page 1.", 500);
   await setup.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(setup).toBeHidden();
+  await beat(page, 800);
 
   await expect(page.getByRole("status")).toContainText("Saved");
   await page.getByRole("button", { name: "Back to files" }).click();
@@ -166,10 +185,11 @@ test("63-open-a-letterhead-from-word", async ({ page }) => {
   );
   await expect(reopened.nth(2).locator(".page-number")).toHaveText("3 / 3");
   await showPage(page, 0);
-  await pointAt(page, reopened.nth(0).locator(".page-header-text"));
   await caption(
     page,
     "The letterhead, Minutes, and Council are unchanged.",
-    2400,
+    400,
   );
+  await pointBeside(page, reopened.nth(0).locator(".page-header-text"));
+  await beat(page, 2200);
 });
