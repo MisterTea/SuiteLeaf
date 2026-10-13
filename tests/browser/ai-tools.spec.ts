@@ -92,7 +92,7 @@ test("spreadsheet tools write, format, sort, chart and pivot", async ({ page }) 
   expect(inserted).toContain("It shows Budget, Actual (from the header row) for Design, Engineering, Research, Operations (from column A).");
   await expect(page.locator('[aria-label="Chart: Studio costs"]')).toBeVisible();
   const moved = await call(page, "edit_chart", { move_to: "F1", width: 420, range: "A1:C5" });
-  expect(moved).toContain("moved to F1, resized to 420×340");
+  expect(moved).toContain("moved to F1, resized to 420×340 (from 520×340, so smaller)");
   expect(moved).toMatch(/covers F1:\w+; the table is A1:D6/);
   expect(moved).not.toContain("updated its settings");
   const host = (await page.locator(".sheet-host").boundingBox())!;

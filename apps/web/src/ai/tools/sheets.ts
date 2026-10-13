@@ -632,9 +632,12 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
             c.y = at.top - (c.excel ? origin.top : 0);
             changed.push(`moved to ${args.move_to}`);
           }
+          const was = { width: c.width, height: c.height };
           if (args.width) c.width = Math.max(200, Math.round(args.width));
           if (args.height) c.height = Math.max(150, Math.round(args.height));
-          if (args.width || args.height) changed.push(`resized to ${c.width}×${c.height}`);
+          const grew = c.width * c.height - was.width * was.height;
+          if (args.width || args.height)
+            changed.push(`resized to ${c.width}×${c.height} (from ${was.width}×${was.height}, so ${grew > 0 ? "larger" : grew < 0 ? "smaller" : "the same size"})`);
           book.getSheetBySheetId(c.sheetId)?.removeFloatDom(c.id);
           ctx.refreshCharts();
           ctx.persist();
