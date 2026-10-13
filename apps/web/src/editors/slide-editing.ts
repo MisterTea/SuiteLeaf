@@ -204,7 +204,30 @@ function cloneSlide(slide: Slide, newId: () => string, markCopy: boolean): Slide
   const copy = structuredClone(slide);
   copy.id = newId();
   if (markCopy && copy.title) copy.title = `${copy.title} (copy)`;
-  copy.elements = copy.elements.map((el) => ({ ...el, id: newId() }));
+  const ids = new Map<string, string>();
+  copy.elements = copy.elements.map((el) => {
+    const id = newId();
+    ids.set(el.id, id);
+    return { ...el, id };
+  });
+  // A copied mark has to point at the copied object, not the original.
+  if (copy.comments?.length) {
+    copy.comments = copy.comments.flatMap((thread) => {
+      const elementId = ids.get(thread.elementId);
+      if (!elementId) return [];
+      return [
+        {
+          ...thread,
+          id: newId(),
+          elementId,
+          messages: thread.messages.map((message) => ({
+            ...message,
+            id: newId(),
+          })),
+        },
+      ];
+    });
+  }
   return copy;
 }
 

@@ -116,13 +116,22 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 58 | [Group rows](58-group-rows.md) | single-node | Sheets |
 | 59 | [Print the budget](59-print-the-budget.md) | single-node | Sheets |
 | 60 | [Comment on a slide](60-comment-on-a-slide.md) | single-node | Slides |
-| 67 | [Open a cropped Word picture](67-open-a-cropped-word-picture.md) | single-node | Docs |
-| 69 | [Open a picture at its page size](69-open-a-picture-at-its-page-size.md) | single-node | Docs |
-| 70 | [Put a picture beside the text](70-put-a-picture-beside-the-text.md) | single-node | Docs |
-| 73 | [Put a picture in the sentence](73-put-a-picture-in-the-sentence.md) | single-node | Docs |
-| 76 | [Insert a picture at the caret](76-insert-a-picture-at-the-caret.md) | single-node | Docs |
-| 79 | [Insert a picture on a blank line](79-insert-a-picture-on-a-blank-line.md) | single-node | Docs |
-| 81 | [Put a picture behind the text](81-put-a-picture-behind-the-text.md) | single-node | Docs |
+| 61 | [Fade in on click](61-fade-in-on-click.md) | single-node | Slides |
+| 61 | [A different first page](61-different-first-page.md) | single-node | Docs |
+| 62 | [Odd and even pages](62-odd-and-even-pages.md) | single-node | Docs |
+| 63 | [Right-click a misspelling](63-right-click-a-misspelling.md) | single-node | Sheets |
+| 63 | [Open a letterhead from Word](63-open-a-letterhead-from-word.md) | single-node | Docs |
+| 64 | [Change every copy of a typo](64-change-every-copy-of-a-typo.md) | single-node | Sheets |
+| 64 | [Edit the header on the page](64-edit-the-header-on-the-page.md) | single-node | Docs |
+| 65 | [Choose a page number](65-choose-a-page-number.md) | single-node | Docs |
+| 66 | [Describe a photo](66-describe-a-photo.md) | single-node | Docs |
+| 68 | [Space the lines](68-space-the-lines.md) | single-node | Docs |
+| 71 | [Group columns](71-group-columns.md) | single-node | Sheets |
+| 72 | [Mark a draft](72-mark-a-draft.md) | single-node | Docs |
+| 74 | [Two columns for the news](74-two-columns-for-the-news.md) | single-node | Docs |
+| 75 | [Start numbering at](75-start-numbering-at.md) | single-node | Docs |
+| 77 | [Number the front in roman](77-number-the-front-in-roman.md) | single-node | Docs |
 | 78 | [Keep the Word file's margins](78-keep-the-word-margins.md) | single-node | Docs |
+| 80 | [Send an outline to Excel](80-send-an-outline-to-excel.md) | single-node | Sheets |
 | 82 | [Use a two-inch margin](82-use-a-two-inch-margin.md) | single-node | Docs |
 | 84 | [Set how far the header sits from the edge](84-header-from-the-edge.md) | single-node | Docs |

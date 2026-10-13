@@ -9,16 +9,17 @@ Sam opens the council's Word template. The letterhead needs 1.5 inches at the to
 ## Inspired by
 
 - [Change page margins](https://support.google.com/docs/answer/10296618): a Word file opened in Docs keeps the section's top, bottom, left, and right. People still discover the values only after the text has jumped.
-- Word stores those edges on `w:pgMar` in twips (1/1440 inch). This base never reads that element. Page setup stores one `margin` in `packages/core/src/document-layout.ts`.
+- Word stores those edges on `w:pgMar` in twips (1/1440 inch). Page setup used to store one `margin` in `packages/core/src/document-layout.ts`.
 - Storyboard [07](07-page-setup-and-export.md) set that single margin. A separate branch adds four fields in the dialog; this story is the Word round trip, so the four edges have to exist here too.
 
 ## Scenes
 
-1. **The template.** Sam opens "Council letter.docx". The title starts the same distance from every edge.
-2. **What Word asked for.** Page setup shows Top 1.5 in, Bottom 0.75 in, Left 1 in, and Right 0.75 in. The first line sits further down. The left gap is wider than the right.
-3. **One change.** Sam sets Right to 1 inch and downloads a Word file. Opening that file again shows Right 1 inch and the other three unchanged.
-4. **No margins in the file.** A second Word file with no page margins opens at SuiteLeaf's usual default on every edge.
+1. **The template.** Sam opens "Council letter.docx". The title sits lower than it would on a default page, and the left gap is wider than the right.
+2. **What Word asked for.** Page setup already shows Top 1.5 in, Bottom 0.75 in, Left 1 in, and Right 0.75 in, next to a small page that draws each edge.
+3. **One change.** Sam sets Right to 1 inch. That edge lights up, and the note says the others stay. She downloads a Word file. Opening it again shows Right 1 inch and the other three unchanged.
+4. **No margins in the file.** A second Word file with no page margins opens at 0.75 in on every edge.
 5. **Save.** Sam downloads the SuiteLeaf file and opens the copy. The four values are unchanged.
+6. **An older file.** A SuiteLeaf file that stored one 1-inch margin opens with 1 inch on every edge.
 
 ## Google Workspace benchmark
 
@@ -35,11 +36,23 @@ Google Docs keeps a .docx section's margins, then hides them in File › Page se
 
 ## Success looks like
 
-Sam opens the council template and the letterhead has room. Page setup already shows the four Word margins. A one-edge change comes back from Word the same way.
+Sam opens the council template and the letterhead has room. Page setup already shows the four Word margins, and the edge she edits lights up before the page moves. A one-edge change comes back from Word the same way.
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| Opening a .docx reads Top, Bottom, Left, and Right from `w:pgMar` and shows them in Page setup, in inches | Met | Video 0:07–0:09; `imports a council letter's w:pgMar into four edges` |
+| The body inset on each edge matches that field, within a tenth of an inch | Met | Video 0:04–0:06; `Word's four page margins show, lay out, and round-trip` |
+| Changing one edge and downloading Word writes that edge back and leaves the other three | Met | Video 0:09–0:21; `writes the four edges back and leaves the others unchanged` |
+| A .docx with no page margins opens at SuiteLeaf's current default on every edge | Met | Video 0:22–0:25; `opens a Word file with no page margins at the current default` |
+| The four values survive save as a SuiteLeaf file and reopen | Met | Video 0:26–0:28; browser test reopens `Council letter.sldoc` |
+| A SuiteLeaf file that stored one margin opens with all four edges equal to that margin | Met | Video 0:30–0:32; `opens a one-margin SuiteLeaf file with that margin on every edge` |
 
 ## Gaps and notes
 
-- Import currently ignores `w:pgMar`. Layout uses one margin on every edge.
-- Use the first section when a Word file has several. Later sections are a future storyboard.
-- Header and footer distance, mirror margins, and a binding gutter are out of scope.
-- Inches on screen. Do not add a centimeter unit or Narrow / Wide presets in this story.
+- Margins outside 0.25–1.5 inches are brought into that range, the same limit Page setup already had.
+- Only the first section is read. Later sections are a future storyboard.
+- Header and footer distance, mirror margins, and a binding gutter are not read.
+- Inches on screen. No centimeter unit, and no Narrow or Wide presets.
+- Page numbers, headers, watermarks, and columns are unchanged.

@@ -17,9 +17,11 @@ import {
   MathRun,
   MathSubScript,
   MathSuperScript,
+  NumberFormat,
   Packer,
   PageNumber,
   Paragraph,
+  SectionType,
   SimpleField,
   Table,
   TableCell,
@@ -35,13 +37,21 @@ import {
 } from "docx";
 import type { DocFile, JsonNode } from "./index";
 import { asEquation, type EqNode } from "./equations";
-import { documentPageSettings } from "./document-layout";
+import {
+  documentPageSettings,
+  wordPageNumberStart,
+  type PageNumberFormat,
+  type PageSettings,
+} from "./document-layout";
+import { docxWatermarkParagraph } from "./doc-watermark";
+import { pagePxToTwips } from "./word-page-margins";
 import {
   planDocxComments,
   stampDocxComments,
   type DocxCommentPlan,
 } from "./doc-comments";
 import { embedSuggestionMarkers, revisionizeDocx } from "./suggestions";
+import { docxLineSpacing } from "./line-spacing";
 import {
   citationLibrary,
   inText,
@@ -59,6 +69,19 @@ const alignment = (v: unknown) =>
     center: AlignmentType.CENTER,
     justify: AlignmentType.JUSTIFIED,
   })[String(v) as "left"];
+/**
+ * Word announces `descr` and can fall back to the required drawing `name`.
+ * Both are the description someone wrote, never the file name or "Image".
+ */
+export function docxImageAlt(alt: unknown): {
+  title: string;
+  description: string;
+  name: string;
+} {
+  const description = typeof alt === "string" ? alt : "";
+  return { title: description, description, name: description || "photo" };
+}
+
 function imageSize(data: Uint8Array, type: string): [number, number] {
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   if (type === "png" && data.length >= 24)
@@ -232,11 +255,7 @@ function runs(
             height: Math.max(1, frame.height),
           },
           ...(docxCrop ? { crop: docxCrop } : {}),
-          altText: {
-            title: String(n.attrs?.alt ?? ""),
-            description: String(n.attrs?.alt ?? ""),
-            name: "Image",
-          },
+          altText: docxImageAlt(n.attrs?.alt),
         }),
       ];
     }
@@ -283,6 +302,25 @@ function runs(
     return [...marked(plan, index, "starts"), body, ...marked(plan, index, "ends")];
   });
 }
+function columnSegments(
+  nodes: JsonNode[],
+): { columns: 1 | 2; nodes: JsonNode[] }[] {
+  const out: { columns: 1 | 2; nodes: JsonNode[] }[] = [];
+  const push = (columns: 1 | 2, node: JsonNode) => {
+    const last = out[out.length - 1];
+    if (last && last.columns === columns) last.nodes.push(node);
+    else out.push({ columns, nodes: [node] });
+  };
+  const walk = (items: JsonNode[], columns: 1 | 2) => {
+    for (const node of items) {
+      if (node.type === "columnLayout")
+        walk(node.content ?? [], node.attrs?.columns === 1 ? 1 : 2);
+      else push(columns, node);
+    }
+  };
+  walk(nodes, 1);
+  return out;
+}
 function blocks(
   nodes: JsonNode[],
   plan: DocxCommentPlan,
@@ -292,6 +330,8 @@ function blocks(
 ): (Paragraph | Table | TableOfContents)[] {
   return nodes.flatMap((n): (Paragraph | Table | TableOfContents)[] => {
     if (n.type === "note") return [];
+    if (n.type === "columnLayout")
+      return blocks(n.content ?? [], plan, notes, library, list);
     if (n.type === "bibliography")
       return [new Paragraph({ children: [new TextRun("SLBIBFIELD")] })];
     if (n.type === "tableOfContents") {
@@ -353,10 +393,15 @@ function blocks(
       n.type === "image"
         ? runs({ type: "paragraph", content: [n] }, plan, notes, library)
         : runs(n, plan, notes, library);
+    const spacing =
+      n.type === "paragraph" || n.type === "heading"
+        ? docxLineSpacing(n.attrs?.lineSpacing)
+        : undefined;
     return [
       new Paragraph({
         children,
         alignment: alignment(n.attrs?.textAlign),
+        ...(spacing ? { spacing } : {}),
         heading:
           n.type === "heading"
             ? ([
@@ -376,6 +421,227 @@ function blocks(
       }),
     ];
   });
+}
+type ExportNumberFormat = PageNumberFormat | "arabic";
+/** The first heading marked startArabic begins a new page numbered 1. */
+function splitAtArabicRestart(nodes: JsonNode[]): {
+  front: JsonNode[];
+  body: JsonNode[] | null;
+} {
+  const at = nodes.findIndex(
+    (node) => node.type === "heading" && node.attrs?.startArabic === true,
+  );
+  if (at < 0) return { front: nodes, body: null };
+  const cut = at > 0 && nodes[at - 1]?.type === "pageBreak" ? at - 1 : at;
+  return { front: nodes.slice(0, cut), body: nodes.slice(at) };
+}
+function docxSection(
+  settings: PageSettings,
+  watermark: Paragraph | null,
+  format: ExportNumberFormat,
+  lead: boolean,
+  nextPage: boolean,
+) {
+  const numberRun = () =>
+    new TextRun({
+      children:
+        format === "page"
+          ? ["Page ", PageNumber.CURRENT]
+          : format === "fraction"
+            ? [PageNumber.CURRENT, " / ", PageNumber.TOTAL_PAGES]
+            : [PageNumber.CURRENT],
+    });
+  const topRight =
+    settings.pageNumbers &&
+    settings.pageNumberPositionSet &&
+    settings.pageNumberPosition === "top-right";
+  const headerPart = (text: string, withNumber = false) =>
+    new Header({
+      children: [
+        ...(watermark ? [watermark] : []),
+        new Paragraph(text),
+        ...(withNumber
+          ? [
+              new Paragraph({
+                alignment: AlignmentType.RIGHT,
+                children: [numberRun()],
+              }),
+            ]
+          : []),
+      ],
+    });
+  const footerPart = (
+    text: string,
+    side: "left" | "right" | "center" | "none",
+    numbers: boolean,
+  ) => {
+    const number = numberRun();
+    if (numbers && side === "center")
+      return new Footer({
+        children: [
+          new Paragraph(text),
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            children: [number],
+          }),
+        ],
+      });
+    const children = !numbers
+      ? [new TextRun(text)]
+      : side === "left"
+        ? text
+          ? [number, new TextRun(`  ${text}`)]
+          : [number]
+        : text
+          ? [new TextRun(`${text}  `), number]
+          : [number];
+    return new Footer({
+      children: [
+        new Paragraph({
+          alignment:
+            side === "right" ? AlignmentType.RIGHT : AlignmentType.LEFT,
+          children,
+        }),
+      ],
+    });
+  };
+  const placedFooterSide = (): "right" | "center" | "none" => {
+    if (!settings.pageNumberPositionSet || !settings.pageNumbers) return "right";
+    if (settings.pageNumberPosition === "top-right") return "none";
+    if (settings.pageNumberPosition === "bottom-center") return "center";
+    return "right";
+  };
+  const firstPage = lead && settings.differentFirstPage;
+  const coverPage =
+    lead &&
+    settings.pageNumbers &&
+    settings.coverHasNoNumber &&
+    !settings.differentFirstPage;
+  const coverHeader = settings.differentOddEven
+    ? settings.oddHeader
+    : settings.header;
+  const coverFooter = settings.differentOddEven
+    ? settings.oddFooter
+    : settings.footer;
+  const splitFurniture = firstPage || settings.differentOddEven || coverPage;
+  const start = lead ? wordPageNumberStart(settings) : null;
+  const pageNumbers = !settings.pageNumbers
+    ? undefined
+    : !lead || format === "arabic"
+      ? { start: 1, formatType: NumberFormat.DECIMAL }
+      : format === "roman"
+        ? {
+            ...(start == null ? {} : { start }),
+            formatType: NumberFormat.LOWER_ROMAN,
+          }
+        : start == null
+          ? undefined
+          : { start };
+  const [width, height] =
+    settings.size === "a4" ? [11906, 16838] : [12240, 15840];
+  return {
+    properties: {
+      ...(nextPage ? { type: SectionType.NEXT_PAGE } : {}),
+      ...(firstPage || coverPage ? { titlePage: true } : {}),
+      page: {
+        size: {
+          width: settings.landscape ? height : width,
+          height: settings.landscape ? width : height,
+        },
+        margin: {
+              top: pagePxToTwips(settings.marginTop),
+              bottom: pagePxToTwips(settings.marginBottom),
+              left: pagePxToTwips(settings.marginLeft),
+              right: pagePxToTwips(settings.marginRight),
+          header: 360,
+          footer: 360,
+        },
+        ...(pageNumbers ? { pageNumbers } : {}),
+      },
+    },
+    headers: splitFurniture
+      ? {
+          default: headerPart(
+            settings.differentOddEven ? settings.oddHeader : settings.header,
+            topRight,
+          ),
+          ...(settings.differentOddEven
+            ? { even: headerPart(settings.evenHeader, topRight) }
+            : {}),
+          ...(firstPage
+            ? { first: headerPart(settings.firstHeader) }
+            : coverPage
+              ? { first: headerPart(coverHeader) }
+              : {}),
+        }
+      : {
+          default: headerPart(settings.header, topRight),
+        },
+    footers: splitFurniture
+      ? {
+          default: footerPart(
+            settings.differentOddEven ? settings.oddFooter : settings.footer,
+            settings.pageNumberPositionSet ? placedFooterSide() : "right",
+            settings.pageNumbers && !topRight,
+          ),
+          ...(settings.differentOddEven
+            ? {
+                even: footerPart(
+                  settings.evenFooter,
+                  settings.pageNumberPositionSet ? placedFooterSide() : "left",
+                  settings.pageNumbers && !topRight,
+                ),
+              }
+            : {}),
+          ...(firstPage
+            ? { first: footerPart(settings.firstFooter, "none", false) }
+            : coverPage
+              ? { first: footerPart(coverFooter, "none", false) }
+              : {}),
+        }
+      : topRight
+        ? { default: footerPart(settings.footer, "none", false) }
+        : settings.pageNumberPositionSet &&
+            settings.pageNumberPosition === "bottom-center"
+          ? {
+              default: footerPart(
+                settings.footer,
+                "center",
+                settings.pageNumbers,
+              ),
+            }
+          : format === "fraction"
+            ? {
+                default: new Footer({
+                  children: [
+                    new Paragraph({
+                      children: [
+                        new TextRun(settings.footer),
+                        ...(settings.pageNumbers
+                          ? [
+                              new TextRun({
+                                children: [
+                                  "  ",
+                                  PageNumber.CURRENT,
+                                  " / ",
+                                  PageNumber.TOTAL_PAGES,
+                                ],
+                              }),
+                            ]
+                          : []),
+                      ],
+                    }),
+                  ],
+                }),
+              }
+            : {
+                default: footerPart(
+                  settings.footer,
+                  "right",
+                  settings.pageNumbers,
+                ),
+              },
+  };
 }
 export async function exportDocx(
   file: Pick<DocFile, "title" | "content">,
@@ -420,10 +686,48 @@ export async function exportDocx(
     target[String(slot.num)] = { children: noteBody(id) };
   }
   const settings = documentPageSettings(content);
+  const watermark = docxWatermarkParagraph(settings.watermark);
   const comments = planDocxComments(content);
-  const children = blocks(content.content ?? [], comments, notes, library);
+  const split = splitAtArabicRestart(content.content ?? []);
+  const parts: {
+    nodes: JsonNode[];
+    format: ExportNumberFormat;
+    lead: boolean;
+    nextPage: boolean;
+  }[] =
+    split.body && split.front.length
+      ? [
+          {
+            nodes: split.front,
+            format: settings.pageNumberFormat,
+            lead: true,
+            nextPage: false,
+          },
+          { nodes: split.body, format: "arabic", lead: false, nextPage: true },
+        ]
+      : [
+          {
+            nodes: split.body ?? split.front,
+            format: split.body ? "arabic" : settings.pageNumberFormat,
+            lead: split.body == null,
+            nextPage: false,
+          },
+        ];
+  const built = parts.flatMap((part) => {
+    const segments = columnSegments(part.nodes);
+    if (!segments.length) segments.push({ columns: 1, nodes: [] });
+    return segments.map((segment, index) => ({
+      format: part.format,
+      lead: part.lead && index === 0,
+      nextPage: part.nextPage && index === 0,
+      continuous: index > 0,
+      columns: segment.columns,
+      children: blocks(segment.nodes, comments, notes, library),
+    }));
+  });
+  const lastBuilt = built[built.length - 1];
   if (comments.trailing.length)
-    children.push(
+    lastBuilt.children.push(
       new Paragraph({
         children: comments.trailing.flatMap((id) => [
           new CommentRangeStart(id),
@@ -432,11 +736,32 @@ export async function exportDocx(
         ]),
       }),
     );
-  const [width, height] =
-    settings.size === "a4" ? [11906, 16838] : [12240, 15840];
+  const sections = built.map((part) => {
+    const section = docxSection(
+      settings,
+      watermark,
+      part.format,
+      part.lead,
+      part.nextPage,
+    );
+    return {
+      ...section,
+      properties: {
+        ...section.properties,
+        ...(part.continuous ? { type: SectionType.CONTINUOUS } : {}),
+        ...(part.columns === 2
+          ? { column: { count: 2, space: 720, equalWidth: true } }
+          : {}),
+      },
+      children: part.children,
+    };
+  });
   const doc = new Document({
     title: file.title,
     creator: "SuiteLeaf",
+    ...(settings.differentOddEven
+      ? { evenAndOddHeaderAndFooters: true }
+      : {}),
     ...(Object.keys(footnotes).length ? { footnotes } : {}),
     ...(Object.keys(endnotes).length ? { endnotes } : {}),
     styles: { default: { document: { run: { font: "Arial", size: 22 } } } },
@@ -469,53 +794,7 @@ export async function exportDocx(
           })),
         }
       : undefined,
-    sections: [
-      {
-        properties: {
-          page: {
-            size: {
-              width: settings.landscape ? height : width,
-              height: settings.landscape ? width : height,
-            },
-            margin: {
-              top: settings.margin * 15,
-              bottom: settings.margin * 15,
-              left: settings.margin * 15,
-              right: settings.margin * 15,
-              header: 360,
-              footer: 360,
-            },
-          },
-        },
-        headers: {
-          default: new Header({ children: [new Paragraph(settings.header)] }),
-        },
-        footers: {
-          default: new Footer({
-            children: [
-              new Paragraph({
-                children: [
-                  new TextRun(settings.footer),
-                  ...(settings.pageNumbers
-                    ? [
-                        new TextRun({
-                          children: [
-                            "  ",
-                            PageNumber.CURRENT,
-                            " / ",
-                            PageNumber.TOTAL_PAGES,
-                          ],
-                        }),
-                      ]
-                    : []),
-                ],
-              }),
-            ],
-          }),
-        },
-        children,
-      },
-    ],
+    sections,
   });
   const packed = await revisionizeDocx(
     new Uint8Array(await Packer.toArrayBuffer(doc)),

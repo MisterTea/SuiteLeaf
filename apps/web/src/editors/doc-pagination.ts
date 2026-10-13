@@ -78,6 +78,10 @@ type Boundary = {
   columns?: number;
   manual?: boolean;
   heading?: boolean;
+  /** This heading is where arabic page numbers restart at 1. */
+  arabic?: boolean;
+  /** 0-based page this block lands on, after breaks. */
+  page?: number;
 };
 
 /** Layout decorations never alter document content or enter undo history. */
@@ -134,8 +138,9 @@ export const DocumentPagination = Extension.create({
                 view.state.doc.toJSON() as JsonNode,
               );
               const { height } = pageDimensions(settings);
-              const margin = settings.margin,
-                bodyHeight = height - margin * 2;
+              const topMargin = settings.marginTop,
+                bottomMargin = settings.marginBottom,
+                bodyHeight = height - topMargin - bottomMargin;
               const origin = view.dom.getBoundingClientRect().top;
               const scale =
                 view.dom.getBoundingClientRect().width /
@@ -149,8 +154,8 @@ export const DocumentPagination = Extension.create({
                 const dom = view.nodeDOM(pos);
                 if (!(dom instanceof HTMLElement)) return;
                 const rect = dom.getBoundingClientRect();
-                const top = (rect.top - origin) / scale - margin;
-                const bottom = (rect.bottom - origin) / scale - margin;
+                const top = (rect.top - origin) / scale - topMargin;
+                const bottom = (rect.bottom - origin) / scale - topMargin;
                 if (node.type.name === "pageBreak") {
                   boundaries.push({ pos, top, bottom, manual: true });
                   return false;
@@ -176,6 +181,12 @@ export const DocumentPagination = Extension.create({
                   boundaries.push({ pos, top, bottom });
                   return false;
                 }
+                if (node.type.name === "columnLayout") {
+                  // The two columns share one vertical band, so a page break
+                  // belongs to the group rather than to each paragraph.
+                  boundaries.push({ pos, top, bottom });
+                  return false;
+                }
                 if (
                   !node.isTextblock ||
                   parent?.type.name === "tableCell" ||
@@ -188,12 +199,15 @@ export const DocumentPagination = Extension.create({
                     top,
                     bottom,
                     heading: node.type.name === "heading",
+                    arabic:
+                      node.type.name === "heading" &&
+                      node.attrs.startArabic === true,
                   });
                   return false;
                 }
                 // A paragraph taller than a page is split at visual line boundaries.
                 boundaries.push(
-                  ...textLines(view, dom, pos, origin, scale, margin),
+                  ...textLines(view, dom, pos, origin, scale, topMargin),
                 );
                 return false;
               });
@@ -218,8 +232,12 @@ export const DocumentPagination = Extension.create({
                   )
                     first--;
                   const b = boundaries[first];
+                  for (let k = first; k <= i; k++) boundaries[k].page = page + 1;
                   const gap =
-                    Math.max(0, end - (b.top + added)) + 2 * margin + 24;
+                    Math.max(0, end - (b.top + added)) +
+                    topMargin +
+                    bottomMargin +
+                    24;
                   decorations.push(
                     Decoration.widget(
                       b.pos,
@@ -247,8 +265,18 @@ export const DocumentPagination = Extension.create({
                   );
                   added += gap;
                   page++;
-                }
+                } else if (next.page == null) next.page = page;
               }
+              let arabicPage: number | null = null;
+              for (const boundary of boundaries) {
+                if (!boundary.arabic || boundary.page == null) continue;
+                arabicPage =
+                  arabicPage == null
+                    ? boundary.page
+                    : Math.min(arabicPage, boundary.page);
+              }
+              (view.dom as HTMLElement).dataset.arabicPage =
+                arabicPage == null ? "" : String(arabicPage);
               const naturalBottom = Math.max(
                 0,
                 ...boundaries.map((b) => b.bottom),
@@ -256,7 +284,8 @@ export const DocumentPagination = Extension.create({
               const pages = Math.max(
                 page + 1,
                 Math.ceil(
-                  (naturalBottom + added + margin * 2 + 24) / (height + 24),
+                  (naturalBottom + added + topMargin + bottomMargin + 24) /
+                    (height + 24),
                 ),
               );
               view.dispatch(

@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import JSZip from "jszip";
 import { addXlsxDrawings } from "./xlsx-drawings";
+import { applyWorksheetOutline } from "./excel-outline";
 import { excelErrorStyle } from "./excel-validation";
 import { columnName, type SheetFile } from "./index";
 import { cellHyperlink } from "./sheet-links";
@@ -461,7 +462,7 @@ export async function exportXlsx(
         `<sheetProtection sheet="1" objects="1" scenarios="1"/>${extra}`,
       );
     else text = text.replace(after, `${after}${extra}`);
-    zip.file(path, text);
+    zip.file(path, applyWorksheetOutline(text, s.custom));
   }
   const formats = styles
     .map(

@@ -4,8 +4,10 @@ import {
   createContext,
   Fragment,
   useContext,
+  useEffect,
   useMemo,
   useRef,
+  useState,
   type ReactNode,
 } from "react";
 import { isUnimplemented, pendingReason } from "./commands";
@@ -139,10 +141,33 @@ export function SubMenu({
   const parent = useContext(MenuPath);
   const path = useMemo(() => [...parent, label], [parent, label]);
   const registerOnly = useContext(MenuRegistrar);
+  const narrow = useNarrowScreen();
+  const [openNested, setOpenNested] = useState(false);
   if (registerOnly) {
     return (
       <MenuPath.Provider value={path}>
         <MenuRegistrar.Provider value={true}>{children}</MenuRegistrar.Provider>
+      </MenuPath.Provider>
+    );
+  }
+  // A side submenu opens off a phone screen, under the page, so the items
+  // are drawn in the same menu after the label is chosen.
+  if (narrow) {
+    return (
+      <MenuPath.Provider value={path}>
+        <Dropdown.Item
+          className="menu-item"
+          onSelect={(event) => {
+            event.preventDefault();
+            setOpenNested((value) => !value);
+          }}
+        >
+          <span className="menu-item-label">{label}</span>
+          <span className="menu-item-shortcut" aria-hidden="true">
+            ›
+          </span>
+        </Dropdown.Item>
+        {openNested ? children : null}
       </MenuPath.Provider>
     );
   }
@@ -156,13 +181,30 @@ export function SubMenu({
           </span>
         </Dropdown.SubTrigger>
         <Dropdown.Portal>
-          <Dropdown.SubContent className="menu-content" sideOffset={6}>
+          <Dropdown.SubContent
+            className="menu-content"
+            sideOffset={-4}
+            alignOffset={-4}
+            collisionPadding={8}
+          >
             {children}
           </Dropdown.SubContent>
         </Dropdown.Portal>
       </Dropdown.Sub>
     </MenuPath.Provider>
   );
+}
+function useNarrowScreen() {
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== "undefined" && window.innerWidth <= 700,
+  );
+  useEffect(() => {
+    const update = () => setNarrow(window.innerWidth <= 700);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+  return narrow;
 }
 /** Run a menu action after the menu closes, so the editor can take focus. */
 export function useMenuClose() {
@@ -327,6 +369,8 @@ export type EditorActions = {
     openCitations: () => void;
     clearFormatting: () => void;
     align: (alignment: "left" | "center" | "right" | "justify") => void;
+    setColumns: (columns: 1 | 2) => void;
+    columnCount: () => 1 | 2;
     toggleBold: () => void;
     toggleItalic: () => void;
     toggleUnderline: () => void;
@@ -366,6 +410,7 @@ export type EditorActions = {
     sortRange?: () => void;
     namedRanges?: () => void;
     groupRows?: () => void;
+    groupColumns?: () => void;
     trimWhitespace?: () => void;
     removeDuplicates?: () => void;
     splitTextToColumns?: () => void;
@@ -407,6 +452,13 @@ export type EditorActions = {
     ) => void;
     openTheme: () => void;
     openTransition: () => void;
+    insertComment?: () => void;
+    openComments?: () => void;
+    openResolved?: () => void;
+    /** Insert › Animation › Fade in on click, for the selected object. */
+    fadeOnClick?: () => void;
+    /** Why that command cannot run, if it cannot. */
+    fadeOnClickReason?: () => string | undefined;
     undoReason?: () => string | undefined;
     redoReason?: () => string | undefined;
     deleteReason?: () => string | undefined;

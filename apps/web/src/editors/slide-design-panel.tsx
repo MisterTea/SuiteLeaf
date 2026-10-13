@@ -179,7 +179,11 @@ export function SlideDesignPanel({
               onApply={onApplyTheme}
               onSave={onSaveToLibrary}
             />
-            <div className="theme-customize">
+            <div
+              className="theme-customize"
+              onMouseEnter={() => onHoverTheme(null)}
+              onFocus={() => onHoverTheme(null)}
+            >
               <h3>Customize</h3>
               {current ? (
                 <>

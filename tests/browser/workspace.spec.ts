@@ -99,7 +99,10 @@ test("spreadsheet formulas → embedded chart → pivot worksheet → save and r
     ].cellData[row][1].v;
   await expect.poll(() => pivotCell(1)).toBe(7000);
   expect(await pivotCell(5)).toBe(24000);
-  await page.getByRole("button", { name: /^Undo/ }).first().click();
+  const undo = page.getByRole("button", { name: /^Undo/ }).first();
+  if (!(await undo.isVisible()))
+    await page.getByRole("button", { name: "More tools" }).click();
+  await undo.click();
   await expect.poll(() => pivotCell(1)).toBe(6000);
   expect(await pivotCell(5)).toBe(23000);
   await page.getByText("Charts & pivots (2)", { exact: true }).click();
@@ -700,10 +703,9 @@ test("slides use placeholders, re-apply layouts, and reorder by dragging thumbna
 
   for (const label of ["Line", "Grid view", "Zoom"])
     await expect(page.getByLabel(label, { exact: true })).toHaveCount(0);
-  for (const text of ["Transition", "Menus"])
-    await expect(
-      page.getByRole("button", { name: text, exact: true }),
-    ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Transition", exact: true }),
+  ).toHaveCount(0);
 
   // Layout on an existing slide moves its text into the new arrangement.
   await page.locator(".slide-canvas").click({ position: { x: 10, y: 10 } });

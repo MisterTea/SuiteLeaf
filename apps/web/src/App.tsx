@@ -8,7 +8,6 @@ import {
   Component,
   type ReactNode,
 } from "react";
-import { flushSync } from "react-dom";
 import {
   HashRouter,
   Link,
@@ -86,8 +85,7 @@ import {
   pendingHandoffUrl,
   saveNewDriveFile,
   signOut,
-  uploadDriveFileUnlocked,
-  withDriveLock,
+  uploadDriveFile,
   type DriveItem,
   type DriveRole,
 } from "./node-client";
@@ -115,10 +113,7 @@ import {
 } from "./library-trash";
 import { ConnectDialog, SignInScreen, useNodeSession } from "./drive/SignIn";
 import { syncSummary, useServerSync } from "./drive/status";
-import {
-  VersionHistory,
-  VersionPreview,
-} from "./editors/version-history";
+import { VersionHistory, VersionPreview } from "./editors/version-history";
 import {
   SheetVersionPreview,
   SlideVersionPreview,
@@ -1259,22 +1254,14 @@ function Workspace() {
     const at = version.current;
     const snapshot = structuredClone(current.current.file);
     try {
-      await driveQueue.current.enqueue(() =>
-        withDriveLock(async () => {
+      await driveQueue.current.enqueue(async () => {
         const base = current.current!.drive!;
-        // A restore can replace the document while this snapshot is still queued.
-        if (
-          JSON.stringify(current.current!.file.content) !==
-          JSON.stringify(snapshot.content)
-        )
-          return;
-        const link = await uploadDriveFileUnlocked(snapshot, base);
+        const link = await uploadDriveFile(snapshot, base);
         // Saving to a new SuiteDrive item may have relinked the file meanwhile.
         if (current.current!.drive?.itemId !== base.itemId) return;
         current.current = { ...current.current!, drive: link };
         await storage.save(current.current);
-        }),
-      );
+      });
       if (alive.current && version.current === at) {
         setStatus("Saved to SuiteDrive");
         requestLastEditRefresh();
@@ -1453,12 +1440,11 @@ function Workspace() {
     openEditors.add(flush);
     return () => void openEditors.delete(flush);
   }, [save, syncDrive]);
-  // The editor that was just replaced can flush its old document while unmounting.
-  const ignoreEditorUpdates = useRef(false);
   const update = useCallback(
     (content: SuiteFile["content"]) => {
-      if (ignoreEditorUpdates.current) return;
       if (!canEditRef.current || !current.current) return;
+      if (JSON.stringify(content) === JSON.stringify(current.current.file.content))
+        return;
       current.current = {
         ...current.current,
         file: {
@@ -1652,13 +1638,21 @@ function Workspace() {
     else navigate(`/file/${(await storage.save({ file: copy })).file.id}`);
   };
   /** In cluster mode files live in SuiteDrive, so downloads are copies. */
-  const download = () =>
+  const download = () => {
+    const started = version.current;
     void (cluster ? exportNative().then(() => true) : saveAs())
       .then((done) => {
-        if (done && !cluster && !window.suiteleaf && alive.current)
+        if (
+          done &&
+          !cluster &&
+          !window.suiteleaf &&
+          alive.current &&
+          version.current === started
+        )
           setStatus(`Downloaded “${nativeFilename(current.current!.file)}”`);
       })
       .catch((e) => setError(message(e)));
+  };
   const onActions = useCallback((a: EditorActions) => {
     actions.current = a;
     setActionsReady(true);
@@ -2144,6 +2138,24 @@ function Workspace() {
                   >
                     Numbered list
                   </MenuItem>
+                  <MenuItem
+                    synonyms={["columns", "one column", "single column"]}
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.docActions?.setColumns(1)
+                    }
+                  >
+                    One column
+                  </MenuItem>
+                  <MenuItem
+                    synonyms={["columns", "two columns", "newspaper columns"]}
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.docActions?.setColumns(2)
+                    }
+                  >
+                    Two columns
+                  </MenuItem>
                   <SubMenu label="Table">
                     <TableMenuItems
                       actions={() =>
@@ -2521,6 +2533,19 @@ function Workspace() {
                   >
                     Group rows
                   </MenuItem>
+                  <MenuItem
+                    synonyms={[
+                      "group columns",
+                      "column group",
+                      "outline columns",
+                      "collapse columns",
+                    ]}
+                    onSelect={() =>
+                      actions.current?.sheetActions?.groupColumns?.()
+                    }
+                  >
+                    Group columns
+                  </MenuItem>
                   <SubMenu label="Data cleanup">
                     <MenuItem
                       onSelect={() =>
@@ -2671,6 +2696,25 @@ function Workspace() {
                       }
                     >
                       Ellipse
+                    </MenuItem>
+                  </SubMenu>
+                  <SubMenu label="Animation">
+                    <MenuItem
+                      synonyms={[
+                        "fade in",
+                        "fade in on click",
+                        "appear on click",
+                        "animation",
+                      ]}
+                      availability={() =>
+                        actions.current?.slideActions?.fadeOnClickReason?.() ??
+                        true
+                      }
+                      onSelect={() =>
+                        actions.current?.slideActions?.fadeOnClick?.()
+                      }
+                    >
+                      Fade in on click
                     </MenuItem>
                   </SubMenu>
                   <MenuItem
@@ -2829,6 +2873,31 @@ function Workspace() {
                     Transition
                   </MenuItem>
                 </Menu>
+                <Menu label="Comments">
+                  <MenuItem
+                    shortcut="Cmd+Alt+M"
+                    synonyms={["comment", "comments", "add comment"]}
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.slideActions?.insertComment?.()
+                    }
+                  >
+                    Comment
+                  </MenuItem>
+                  <MenuItem
+                    synonyms={[
+                      "resolved",
+                      "resolved comments",
+                      "reopen",
+                      "comment history",
+                    ]}
+                    onSelect={() =>
+                      actions.current?.slideActions?.openResolved?.()
+                    }
+                  >
+                    Resolved
+                  </MenuItem>
+                </Menu>
                 <Menu label="Tools">
                   <MenuItem
                     focusesTarget
@@ -2866,9 +2935,14 @@ function Workspace() {
             aria-label="Comments"
             onClick={() => {
               actions.current?.docActions?.openComments?.();
-              actions.current?.sheetActions?.openComments?.();
-              if (f.kind === "sheet")
-                window.dispatchEvent(new Event("suiteleaf:open-sheet-comments"));
+              if (f.kind === "sheet") {
+                // Opening and the header event both toggle the panel, so only one runs.
+                const open = actions.current?.sheetActions?.openComments;
+                if (open) open();
+                else
+                  window.dispatchEvent(new Event("suiteleaf:open-sheet-comments"));
+              }
+              actions.current?.slideActions?.openComments?.();
             }}
           >
             <MessageSquare size={18} />
@@ -3126,21 +3200,16 @@ function Workspace() {
             onRestored={(next) => {
               clearTimeout(timer.current);
               clearTimeout(driveTimer.current);
-              ignoreEditorUpdates.current = true;
               current.current = next;
               version.current = 0;
               savedVersion.current = 0;
-              // Commit the replacement before the old editor can flush its text.
-              flushSync(() => {
-                setRecord(next);
-                setEditorEpoch((epoch) => epoch + 1);
-                setHistoryPreview(null);
-                setHistoryOpen(false);
-                setStatus(
-                  next.drive ? "Saved to SuiteDrive" : "Saved on this device",
-                );
-              });
-              ignoreEditorUpdates.current = false;
+              setRecord(next);
+              setEditorEpoch((epoch) => epoch + 1);
+              setHistoryPreview(null);
+              setHistoryOpen(false);
+              setStatus(
+                next.drive ? "Saved to SuiteDrive" : "Saved on this device",
+              );
               void storage.save(next).catch((e) => setError(message(e)));
             }}
           />

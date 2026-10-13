@@ -9,6 +9,7 @@ import { croppableImage } from "./doc-image-crop";
 import { TableKit } from "@tiptap/extension-table";
 import Superscript from "@tiptap/extension-superscript";
 import Subscript from "@tiptap/extension-subscript";
+import { columnLayout } from "./doc-columns";
 import { Equation } from "./doc-equations";
 import { MoreHorizontal, X } from "lucide-react";
 import {
@@ -65,6 +66,7 @@ const previewExtensions: Extensions = [
   Superscript,
   Subscript,
   Equation,
+  columnLayout,
 ];
 
 function message(error: unknown) {
@@ -313,6 +315,8 @@ export function VersionHistory({
           const step = historyPreviewFor(previous, before, "previous");
           if (!step) return;
           setViewSummary(step.summary);
+          setChangeCount(step.count);
+          setChangeUnit(step.unit);
           preview.current(step.preview);
           return;
         }
@@ -339,6 +343,30 @@ export function VersionHistory({
           return;
         }
         setViewSummary(against.summary);
+        if (
+          before.kind === "doc" &&
+          current.kind === "doc" &&
+          against.preview.kind === "doc"
+        ) {
+          const againstCurrent = compareParagraphs(before.content, current.content);
+          const source = selected.name
+            ? `"${selected.name}"`
+            : versionWhen(selected.createdAt);
+          const controls = againstCurrent.offers.map((offer) =>
+            offer
+              ? { key: offer.key, prompt: paragraphRestorePrompt(offer, source) }
+              : null,
+          );
+          setChangeCount(againstCurrent.changedParagraphs);
+          setChangeUnit("paragraph");
+          preview.current({
+            kind: "doc",
+            content: againstCurrent.content,
+            label: against.preview.label,
+            offers: controls,
+          });
+          return;
+        }
         preview.current(against.preview);
       } catch (e) {
         if (!cancel) setError(message(e));

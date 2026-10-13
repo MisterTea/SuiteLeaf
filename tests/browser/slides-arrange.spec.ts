@@ -32,7 +32,9 @@ async function choose(
 ) {
   await menuBar(page).getByRole("button", { name: menu, exact: true }).click();
   if (submenu) {
-    await page.getByRole("menuitem", { name: named(submenu) }).hover();
+    // Tap the parent. Hover closes the submenu while the pointer crosses to it,
+    // which is also how a phone opens the item.
+    await page.getByRole("menuitem", { name: named(submenu) }).click();
     await expect(page.getByRole("menuitem", { name: named(item) })).toBeVisible();
   }
   await page.getByRole("menuitem", { name: named(item) }).click();

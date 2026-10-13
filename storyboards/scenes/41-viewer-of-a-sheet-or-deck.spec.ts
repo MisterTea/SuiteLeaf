@@ -296,7 +296,7 @@ test("41-viewer-of-a-sheet-or-deck", async ({ page, context }) => {
     await expect(commentsPanel.getByText("Rosa Diaz")).toBeVisible();
     await expect(commentsPanel.getByText("C4 · Sheet1")).toBeVisible();
     await caption(page, "Rosa's question is on Sam's cell. Priya replies.", 1400);
-    await page.getByText("Rosa Diaz", { exact: true }).click();
+    await commentsPanel.getByText("Rosa Diaz", { exact: true }).click();
     await beat(page, 400);
     await commentsPanel.locator("canvas").last().click({ force: true });
     await page.keyboard.type("Sam has the north bed.", { delay: 40 });
@@ -340,6 +340,11 @@ test("41-viewer-of-a-sheet-or-deck", async ({ page, context }) => {
     await caption(page, "Typing and Bold change nothing, and nothing tries to save.", 1600);
 
     await caption(page, "Slideshow still plays the deck.", 900);
+    const notices = page.getByRole("button", { name: "Dismiss" });
+    for (let n = 0; n < 4 && (await notices.count()) > 0; n++) {
+      await notices.first().click();
+      await beat(page, 200);
+    }
     await page.getByRole("button", { name: "Slideshow", exact: true }).click();
     const show = page.locator(".presenter-overlay");
     await expect(show).toBeVisible();

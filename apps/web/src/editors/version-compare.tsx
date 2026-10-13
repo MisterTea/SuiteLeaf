@@ -13,7 +13,6 @@ import {
   type SlideDiffFrame,
   type SuiteFile,
 } from "@suiteleaf/core";
-import type { ParagraphRestoreControl } from "./doc-paragraph-restore-ui";
 import {
   changeSentence,
   type ChangeUnit,
@@ -24,7 +23,8 @@ export type HistoryPreview =
       kind: "doc";
       content: JsonNode;
       label: string;
-      offers?: (ParagraphRestoreControl | null)[] | null;
+      /** Set while comparing a document with the current version, so one paragraph can be restored. */
+      offers?: ({ key: string; prompt: string } | null)[] | null;
     }
   | { kind: "sheet"; diff: SheetDiff; label: string }
   | { kind: "slide"; diff: SlideDiff; label: string };

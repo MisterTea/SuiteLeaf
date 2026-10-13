@@ -400,14 +400,21 @@
 }
 
 @media (max-width: 700px) {
-  .slides-main { position: relative; }
+  .slides-main {
+    flex-wrap: wrap;
+    overflow: auto;
+  }
+  .slides-canvas-stage {
+    flex: 1 1 calc(100% - 80px);
+    min-width: 0;
+  }
   .slide-side-panel {
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: min(292px, 100%);
-    z-index: 4;
-    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.16);
+    position: static;
+    flex: 1 1 100%;
+    width: auto;
+    max-height: 42vh;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    box-shadow: none;
   }
 }
