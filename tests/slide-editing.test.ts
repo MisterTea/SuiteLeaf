@@ -4,6 +4,7 @@ import {
   DeckHistory,
   PASTE_NUDGE,
   canDeleteSlides,
+  alignBoxes,
   centeredTextBox,
   commandFromKey,
   deleteSlides,
@@ -275,5 +276,66 @@ describe("slide rearranging", () => {
     }
     expect(history.undo()?.slides[slideId].elements[0].content).toBe("Results");
     expect(history.canUndo).toBe(false);
+  });
+});
+
+describe("alignBoxes", () => {
+  const market = {
+    id: "market",
+    type: "text" as const,
+    x: 72,
+    y: 150,
+    width: 180,
+    height: 72,
+    content: "Market",
+  };
+  const saturday = {
+    id: "saturday",
+    type: "text" as const,
+    x: 360,
+    y: 310,
+    width: 640,
+    height: 88,
+    content: "Saturday",
+  };
+  const notes = {
+    id: "notes",
+    type: "text" as const,
+    x: 760,
+    y: 40,
+    width: 160,
+    height: 64,
+    content: "Notes",
+  };
+  const elements = [market, saturday, notes];
+
+  it("lines up the left edge, then the top, and leaves everyone else alone", () => {
+    const left = alignBoxes(elements, ["market", "saturday"], "left");
+    expect(left.map((el) => el.id)).toEqual(["market", "saturday"]);
+    expect(left.find((el) => el.id === "notes")).toBeUndefined();
+    expect(left.find((el) => el.id === "market")).toBe(market);
+    const moved = left.find((el) => el.id === "saturday")!;
+    expect(moved.x).toBe(market.x);
+    expect(moved.y).toBe(saturday.y);
+    expect(moved.width).toBe(saturday.width);
+    expect(moved.content).toBe("Saturday");
+    expect(market.width).toBe(180);
+    expect(market.content).toBe("Market");
+
+    const afterLeft = elements.map(
+      (el) => left.find((aligned) => aligned.id === el.id) ?? el,
+    );
+    const top = alignBoxes(afterLeft, ["market", "saturday"], "top");
+    expect(top.map((el) => el.id)).not.toContain("notes");
+    const lifted = top.find((el) => el.id === "saturday")!;
+    expect(lifted.y).toBe(market.y);
+    expect(lifted.x).toBe(market.x);
+    expect(lifted.width).toBe(saturday.width);
+    expect(lifted.content).toBe("Saturday");
+
+    const alone = alignBoxes(elements, ["saturday"], "left");
+    expect(alone).toEqual([saturday]);
+    expect(alone[0]).toBe(saturday);
+    expect(alone[0].x).toBe(360);
   });
 });

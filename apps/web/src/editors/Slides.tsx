@@ -24,6 +24,8 @@ import {
   AlignLeft,
   AlignCenter,
   AlignRight,
+  AlignStartHorizontal,
+  AlignVerticalJustifyStart,
   List,
   Undo2,
   Redo2,
@@ -52,6 +54,7 @@ import {
 } from "./slide-layouts";
 import {
   DeckHistory,
+  alignBoxes,
   canDeleteSlides,
   canMove,
   centeredTextBox,
@@ -149,6 +152,7 @@ export default function Slides({
   const [selectedElementId, setSelectedElementId] = useState<string | null>(
     null,
   );
+  const [selectedElementIds, setSelectedElementIds] = useState<string[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [caretMarks, setCaretMarks] = useState<{
     id: string;
@@ -222,6 +226,9 @@ export default function Slides({
   selectedRef.current = selectedSlideIds;
   const selectedElementRef = useRef(selectedElementId);
   selectedElementRef.current = selectedElementId;
+  const selectedElementIdsRef = useRef(selectedElementIds);
+  selectedElementIdsRef.current = selectedElementIds;
+  const shiftSelecting = useRef(false);
   const editingRef = useRef(editingId);
   editingRef.current = editingId;
   const textRange = useRef<{ id: string; start: number; end: number } | null>(
@@ -285,6 +292,9 @@ export default function Slides({
     if (elementId !== undefined) {
       selectedElementRef.current = elementId;
       setSelectedElementId(elementId);
+      const ids = elementId ? [elementId] : [];
+      selectedElementIdsRef.current = ids;
+      setSelectedElementIds(ids);
       if (elementId !== editingRef.current) {
         editingRef.current = null;
         setEditingId(null);
@@ -614,6 +624,9 @@ export default function Slides({
   const selectElement = (id: string | null) => {
     selectedElementRef.current = id;
     setSelectedElementId(id);
+    const ids = id ? [id] : [];
+    selectedElementIdsRef.current = ids;
+    setSelectedElementIds(ids);
     if (id !== editingRef.current) {
       editingRef.current = null;
       setEditingId(null);
@@ -800,6 +813,27 @@ export default function Slides({
     if (el) updateElement(el.id, { align: alignment });
   };
 
+  const alignSelectedBoxes = (edge: "left" | "top") => {
+    const prev = deckRef.current;
+    const slide =
+      prev.slides[activeRef.current] || prev.slides[prev.slideOrder[0]];
+    if (!slide) return;
+    const aligned = alignBoxes(
+      slide.elements,
+      selectedElementIdsRef.current,
+      edge,
+    );
+    if (aligned.length < 2) return;
+    const byId = new Map(aligned.map((el) => [el.id, el]));
+    const elements = slide.elements.map((el) => byId.get(el.id) ?? el);
+    const moved = elements.some((el, index) => el !== slide.elements[index]);
+    if (!moved) return;
+    commit({
+      ...prev,
+      slides: { ...prev.slides, [slide.id]: { ...slide, elements } },
+    });
+  };
+
   const copySelection = () => {
     const deckNow = deckRef.current;
     const slide = activeDeckSlide(deckNow);
@@ -961,6 +995,29 @@ export default function Slides({
     handle?: ResizeHandle,
   ) => {
     e.stopPropagation();
+    if (e.shiftKey && !handle) {
+      e.preventDefault();
+      shiftSelecting.current = true;
+      const current = selectedElementIdsRef.current;
+      const next = current.includes(elementId)
+        ? current.filter((id) => id !== elementId)
+        : [...current, elementId];
+      selectedElementIdsRef.current = next;
+      setSelectedElementIds(next);
+      const primary = next.includes(elementId)
+        ? elementId
+        : (next.at(-1) ?? null);
+      selectedElementRef.current = primary;
+      setSelectedElementId(primary);
+      if (editingRef.current && !next.includes(editingRef.current)) {
+        editingRef.current = null;
+        setEditingId(null);
+        textRange.current = null;
+      }
+      return;
+    }
+    selectedElementIdsRef.current = [elementId];
+    setSelectedElementIds([elementId]);
     selectedElementRef.current = elementId;
     setSelectedElementId(elementId);
     if (!handle && editingRef.current && editingRef.current !== elementId) {
@@ -1038,6 +1095,7 @@ export default function Slides({
     };
 
     const onMouseUp = () => {
+      shiftSelecting.current = false;
       if (!draggingRef.current) return;
       draggingRef.current = null;
       if (!liveDirty.current) return;
@@ -1841,7 +1899,18 @@ ${slidesHtml}
         <div className="toolbar-divider" />
 
         {/* Dynamic Contextual Tools: Fill, Border, Typography or Slide background/layout */}
-        {selectedElement ? (
+        {selectedElementIds.length >= 2 ? (
+          <div className="tool-group">
+            <Tool label="Align left" onClick={() => alignSelectedBoxes("left")}>
+              <AlignStartHorizontal size={16} />
+              <span className="align-box-label">Align left</span>
+            </Tool>
+            <Tool label="Align top" onClick={() => alignSelectedBoxes("top")}>
+              <AlignVerticalJustifyStart size={16} />
+              <span className="align-box-label">Align top</span>
+            </Tool>
+          </div>
+        ) : selectedElement ? (
           <div className="tool-group">
             {/* Fill color */}
             <Menu label="Fill">
@@ -2485,7 +2554,7 @@ ${slidesHtml}
               }}
             >
               {shownSlide?.elements.map((el) => {
-                const isSelected = el.id === selectedElementId;
+                const isSelected = selectedElementIds.includes(el.id);
                 const posStyle: React.CSSProperties = {
                   position: "absolute",
                   left: `${(el.x / (deck.width || 960)) * 100}%`,
@@ -2501,6 +2570,7 @@ ${slidesHtml}
                       data-element-id={el.id}
                       data-x={el.x}
                       data-y={el.y}
+                      data-selected={isSelected ? "true" : "false"}
                       className={`slide-element slide-text ${isSelected ? "selected" : ""}${editorFadeClass(el)}`}
                       {...editorFadeAttrs(el)}
                       style={{
@@ -2528,6 +2598,8 @@ ${slidesHtml}
                         setEditingId(el.id);
                         selectedElementRef.current = el.id;
                         setSelectedElementId(el.id);
+                        selectedElementIdsRef.current = [el.id];
+                        setSelectedElementIds([el.id]);
                       }}
                       onClick={(e) => e.stopPropagation()}
                     >
@@ -2564,6 +2636,9 @@ ${slidesHtml}
                             readOnly={readOnly}
                             value={el.content || ""}
                             placeholder={el.placeholder ?? "Click to add text"}
+                            onMouseDown={(e) => {
+                              if (e.shiftKey) e.preventDefault();
+                            }}
                             onChange={(e) =>
                               updateElement(
                                 el.id,
@@ -2571,7 +2646,12 @@ ${slidesHtml}
                                 { coalesce: `type:${el.id}` },
                               )
                             }
-                            onFocus={() => selectElement(el.id)}
+                            onFocus={() => {
+                              if (shiftSelecting.current) return;
+                              const ids = selectedElementIdsRef.current;
+                              if (ids.length > 1 && ids.includes(el.id)) return;
+                              selectElement(el.id);
+                            }}
                           />
                         </>
                       )}

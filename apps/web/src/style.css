@@ -3984,6 +3984,19 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
 }
 .slide-element.selected {
   outline: 2px solid var(--google-blue);
+  outline-offset: 1px;
+  z-index: 3;
+}
+.slides-toolbar .align-box-label {
+  margin-left: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.slides-toolbar .tool:has(.align-box-label) {
+  padding: 5px 10px;
+  background: #d3e3fd;
+  color: #041e49;
 }
 .selection-handles {
   position: absolute;

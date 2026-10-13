@@ -433,6 +433,28 @@ export function logoImage(
   };
 }
 
+/**
+ * Line up selected boxes on one edge. The result is only those boxes.
+ * One selected box is returned as-is, so it does not jump to the slide edge.
+ * Align left uses the smallest x. Align top uses the smallest y.
+ * Widths, text, and the other coordinate stay.
+ */
+export function alignBoxes(
+  elements: readonly SlideElement[],
+  selectedIds: readonly string[],
+  edge: "left" | "top",
+): SlideElement[] {
+  const selected = new Set(selectedIds);
+  const boxes = elements.filter((el) => selected.has(el.id));
+  if (boxes.length < 2) return boxes;
+  if (edge === "left") {
+    const x = Math.min(...boxes.map((el) => el.x));
+    return boxes.map((el) => (el.x === x ? el : { ...el, x }));
+  }
+  const y = Math.min(...boxes.map((el) => el.y));
+  return boxes.map((el) => (el.y === y ? el : { ...el, y }));
+}
+
 /** One undo step per edit, with typing in the same box collapsing into one step. */
 export class DeckHistory {
   private entries: Presentation[];
