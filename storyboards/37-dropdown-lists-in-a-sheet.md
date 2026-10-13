@@ -18,15 +18,15 @@ Lena keeps the food bank's volunteer roster. The Status column is a mess of "con
 
 ## Scenes
 
-1. **Open the roster.** Lena opens "Volunteer roster". Column C, Status, has 40 rows of inconsistent text.
-2. **Make a dropdown.** She selects C2:C41 and chooses Insert › Dropdown (or right-clicks › Dropdown). A side panel opens with the options already filled in from the distinct values in the column, trimmed and grouped case-insensitively: "Confirmed", "Tentative", "yes", "tbc".
-3. **Tidy the options.** She deletes "yes" and "tbc", adds "Can't make it", and picks green, amber, and grey. A preview chip next to each option shows the colour with readable text. She leaves "Reject input" on and clicks **Done**.
-4. **Fix the leftovers.** Cells that don't match an option get a red corner, and a notice says "6 cells don't match the list · Review". **Review** steps through them, offering the closest option ("yes" → Confirmed?) with Accept and Skip.
-5. **Pick from the cell.** Clicking C5 shows a chip with a small arrow. Typing "ma" filters the list, and Enter picks "Can't make it".
-6. **Typing something else.** In C6 she types "maybe" and presses Enter. The cell is refused, with "Choose Confirmed, Tentative, or Can't make it."
-7. **Rename an option.** She reopens Data › Data validation, renames "Tentative" to "Maybe", and adds "Waitlist" in blue. Every cell that said Tentative now says Maybe and keeps its amber chip.
-8. **Filter by status.** Data › Create a filter, then the Status filter lists exactly the four options.
-9. **Send to Excel.** File › Export XLSX. In Excel the column has a list validation with the same four options and the same reject setting. Re-importing the file into SuiteLeaf restores the dropdown.
+1. **Open the roster.** Lena opens "Volunteer roster". Column C, Status, has 40 rows of inconsistent text: Confirmed, "Confirmed ", confirmed, Tentative, yes, tbc.
+2. **Make a dropdown.** She selects C2:C41 and chooses Insert › Dropdown. A side panel opens with the options already filled in from the distinct values, trimmed and grouped case-insensitively: Confirmed, Tentative, yes, tbc. Reject other values is already on.
+3. **Tidy the options.** She deletes yes and tbc, adds "Can't make it", and picks green, amber, and grey. A preview chip next to each option shows the colour with readable text. She clicks **Done**.
+4. **Fix the leftovers.** Cells that don't match get a red corner, and a notice says "6 cells don't match the list" with **Review**. Review steps through them — yes and tbc — offering Confirmed, with Accept and Skip. Accepting writes Confirmed and its green chip.
+5. **Pick from the cell.** In C5 she types "ma". The list filters to "Can't make it", and Enter picks it.
+6. **Typing something else.** In C6 she types "maybe" and presses Enter. The cell is refused, with "Choose Confirmed, Tentative, or Can't make it." Helen stays Confirmed.
+7. **Rename an option.** She reopens Data › Data validation, renames Tentative to Maybe, and adds Waitlist in blue. Every cell that said Tentative now says Maybe and keeps its amber chip. She sets Priya to Waitlist.
+8. **Filter by status.** Data › Create a filter, then the Status filter lists exactly Confirmed, Maybe, Can't make it, and Waitlist.
+9. **Send to Excel.** File › Export XLSX. The column has a list validation with those four options and error style stop. Opening the workbook again restores the dropdown and the reject setting. Chip colours stay in the SuiteLeaf file; Excel has no place for them.
 
 ## Google Workspace benchmark
 
@@ -54,11 +54,24 @@ Known pain points:
 ## Success looks like
 
 - Status holds only Confirmed, Maybe, Can't make it, and Waitlist, each with its own chip colour, and the filter lists exactly those four.
-- The exported workbook has the same list validation in Excel.
+- The exported workbook has the same list validation and reject setting. Re-importing restores the dropdown.
 
 ## Gaps and notes
 
-- **Dropdowns exist, but only through Univer's panel.** The data-validation preset is installed, and Data › Data validation (and Sheet tools › Data validation) runs Univer's `open-validation-panel` command, where a list rule can be created. Whether chips, colours, and reject-or-warn look and read well there needs checking in the recording.
-- **There's no quick way in.** The Insert menu has Checkbox (built with `requireCheckbox`) but no Dropdown, and nothing pre-fills options from existing cell values.
-- SuiteLeaf code doesn't propagate a renamed option to existing cells, trim when matching, or offer a review of non-matching cells. Whatever Univer does by default is the starting point.
-- **XLSX round trip is in place for list rules.** `excel-features.ts` imports `type="list"` validations, and `xlsx-export.ts` writes `dataValidation` with `showErrorMessage` and `errorStyle`. Chip colours have no Excel equivalent, so they only survive in the native file.
+- **The quick path is Insert › Dropdown and right-click › Dropdown.** Data › Data validation opens the same editor when the selection already has a list, and still opens Univer's panel for any other kind of rule.
+- **A comma can't be part of an option.** Excel stores a list as comma-separated text, so the editor blocks a comma instead of silently splitting the option on the way back from Excel.
+- **Chip colours have no Excel equivalent.** They travel in the SuiteLeaf file. After an XLSX round trip the list, the reject setting, and chip rendering come back; the colours are the palette defaults for those positions.
+- Multi-select dropdowns, and lists that read from another range, are not part of this story.
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| 1. Insert › Dropdown in 2 clicks, pre-filled, trimmed, de-duplicated ignoring case | Met | Video ~14–20s. Scene expects Confirmed, Tentative, yes, tbc from "Confirmed ", confirmed, yes, tbc. |
+| 2. Option colours, chip text at least 4.5:1 without picking a text colour | Met | Video ~20s (panel chips) and ~52s (green, amber, grey, blue cells). Test `every chip color has readable text without a chosen text color`. |
+| 3. Renaming an option updates every cell and keeps the colour | Met | Video ~45s: Tentative becomes Maybe and stays amber. Exported C16 and C17 are Maybe. |
+| 4. Matching ignores leading and trailing spaces | Met | "Confirmed " and confirmed become Confirmed and take the green chip. Test `matching ignores surrounding spaces and letter case`. |
+| 5. Non-matching cells are marked, counted, and reviewed with a suggestion | Met | Video ~23s: red corners, "6 cells don't match the list", yes → Confirmed, Accept. |
+| 6. A value that isn't an option is refused, naming the options. Pasting invalid values marks every one | Met | Video ~36s: "Choose Confirmed, Tentative, or Can't make it." Helen stays Confirmed. Test `a pasted block tidies every matching cell and leaves the rest`; leftovers get the same red corner as yes and tbc. |
+| 7. Typing filters the list; arrow keys and Enter choose | Met | Video ~30s: "ma" leaves only "Can't make it", Enter selects it. |
+| 8. Reject or warn survives save, reopen, and an XLSX round trip | Met | Video ~62–66s: the re-imported file opens Data › Data validation with the four options and Reject checked. Test `list rules round-trip through Excel with the same options and reject setting`. Browser test `dropdown lists are prefilled, reject bad values, and survive the file` checks the native file. |
