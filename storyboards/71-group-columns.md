@@ -52,10 +52,10 @@ Rosa sees the category and the year total side by side, with the months collapse
 
 | Criterion | Met | Evidence |
 | --- | --- | --- |
-| Group columns groups the selected months, and the column to the left is not grouped | Met | Video 0:16; `tests/browser/column-groups.spec.ts` |
-| Minus collapses the months, plus expands them, and the year total moves beside the category | Met | Video 0:18 and 0:22 |
-| Collapse does not change values or the year-total formula | Met | Video 0:21 (`=SUM(B2:M2)`, $14,400); browser test download |
-| One Undo removes the group and shows every column | Met | Video 0:24; browser test |
-| The group and its collapsed columns survive save and reopen | Met | Video 0:40, January open and February hidden; browser test reopen |
+| Group columns groups the selected months, and the column to the left is not grouped | Met | Video 0:12; `tests/browser/column-groups.spec.ts` |
+| Minus collapses the months, plus expands them, and the year total moves beside the category | Met | Video 0:14 and 0:18 |
+| Collapse does not change values or the year-total formula | Met | Video 0:16 (`=SUM(B2:M2)`, $14,400); browser test download |
+| One Undo removes the group and shows every column | Met | Video 0:23; browser test |
+| The group and its collapsed columns survive save and reopen | Met | Video 0:37, January open and February hidden; browser test reopen |
 | Selecting only the category explains and hides nothing | Met | Video 0:27; browser test |
-| An existing row group still collapses, and column groups do not clear it | Met | Video 0:46; browser test |
+| An existing row group still collapses, and column groups do not clear it | Met | Video 0:42; browser test |
