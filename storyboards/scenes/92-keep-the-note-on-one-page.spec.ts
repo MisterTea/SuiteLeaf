@@ -138,7 +138,6 @@ test("92-keep-the-note-on-one-page", async ({ page }) => {
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await beat(page, 1100);
 
-  await caption(page, "One click turns it on. There is no second dialog.", 700);
   await pressControl(page, "Keep lines together, off");
   await expect(page.getByRole("button", { name: "Keep lines together, on" })).toHaveAttribute(
     "aria-pressed",
@@ -154,7 +153,7 @@ test("92-keep-the-note-on-one-page", async ({ page }) => {
   );
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await showLine(page, keepLinesHeading, 0.18);
-  await caption(page, "The whole reminder moves to page 2. What to bring stays on page 1.", 2000);
+  await caption(page, "It is on. The whole reminder is on page 2. What to bring stays on page 1.", 2200);
   await expect.poll(() => pageOfText(page, keepLinesHeading)).toBe(0);
   await expect.poll(() => pageOfText(page, keepLinesSpacer)).toBe(0);
   await expect.poll(() => pageOfText(page, first)).toBe(1);

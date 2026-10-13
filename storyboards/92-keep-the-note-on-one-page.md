@@ -9,15 +9,14 @@ Nia’s three-line reminder splits so the first line sits at the bottom of page 
 ## Inspired by
 
 - [Keep lines and paragraphs together](https://support.google.com/docs/answer/1696498): Keep lines together is a separate item from Prevent single lines and Keep with next. People turn on the wrong one and still get a split paragraph.
-- SuiteLeaf can keep a heading with the next block, and can refuse to leave a single line alone. It cannot keep every line of one paragraph on the same page.
 
 ## Scenes
 
-1. **The split.** Nia opens “Garden club news”. The reminder “Bring gloves, a hat, and a trowel.” starts on the last line of page 1 and finishes on page 2.
-2. **The switch.** She puts the caret in that reminder and turns on Keep lines together. No second dialog. The control shows that it is on.
-3. **One page.** The whole reminder is on page 2. No line of it remains on page 1. The heading above it stays where it was.
-4. **Off.** She turns the control off. The reminder splits across the page break again.
-5. **Save and Word.** She turns it on, reopens the file, and the reminder is still on one page. The exported .docx sets keep-lines on that paragraph and not on a paragraph she left off.
+1. **The split.** Nia opens “Garden club news”. The reminder is three lines: “Bring gloves,” then “a hat,” then “and a trowel.” The first line is the last line of page 1. The other two start page 2.
+2. **The switch.** She puts the caret in that reminder. Keep lines together sits in the margin, separate from Keep with next and Don’t leave one line. No second dialog.
+3. **One page.** She turns it on. The switch reads On. The whole reminder is on page 2. “What to bring” and “Meet at the gate.” stay on page 1.
+4. **Off.** She turns the control off. “Bring gloves,” is the last line of page 1 again, and the other two lines start page 2.
+5. **Save and Word.** She turns it on, goes back to the file list, reopens “Garden club news”, and the reminder is still on one page. File, Export DOCX sets keep-lines on that paragraph and not on the others.
 
 ## Google Workspace benchmark
 
@@ -40,12 +39,12 @@ The reminder sits together on page 2. Turning the control off lets it split agai
 
 | Criterion | Met | Evidence |
 | --- | --- | --- |
-| 1. One control on the paragraph that has the caret. No second dialog. | Met | Video 0:07. Keep lines together appears beside the reminder. `tests/browser/keep-lines.spec.ts` finds no dialog. |
-| 2. The control shows that it is on, and it is separate from Don’t leave one line and Keep with next. | Met | Video 0:13. The purple switch reads On. Keep with next and Don’t leave one line stay Off. |
-| 3. With it on, every line of that paragraph stays on the same page. A paragraph that would split moves wholly to the next page. | Met | Video 0:13. All three reminder lines are on page 2. What to bring stays on page 1. |
-| 4. Turning it off allows the split again. | Met | Video 0:19. “Bring gloves, a hat, and a trowel.” is the last line of page 1 again. |
-| 5. The choice survives save and reopen. | Met | Video 0:26. After reopen the reminder is still together and the switch is On. |
-| 6. The exported .docx sets keep-lines on that paragraph only. | Met | Video 0:28 Export DOCX. `tests/doc-keep-lines.test.ts` expects `<w:keepLines` on the reminder and not on the heading or “The board meets Monday.” |
+| 1. One control on the paragraph that has the caret. No second dialog. | Met | Video 0:08. The switch is on the reminder. `tests/browser/keep-lines.spec.ts` finds no dialog. |
+| 2. The control shows that it is on, and it is separate from Don’t leave one line and Keep with next. | Met | Video 0:12. The switch reads On. The other two stay Off. |
+| 3. With it on, every line of that paragraph stays on the same page. A paragraph that would split moves wholly to the next page. | Met | Video 0:12. All three reminder lines are on page 2. “What to bring” stays on page 1. |
+| 4. Turning it off allows the split again. | Met | Video 0:18. “Bring gloves,” is the last line of page 1, and “a hat,” starts page 2. |
+| 5. The choice survives save and reopen. | Met | Video 0:24. After reopen the reminder is still together and the switch is On. |
+| 6. The exported .docx sets keep-lines on that paragraph only. | Met | Video 0:28, File › Export DOCX. `tests/doc-keep-lines.test.ts` expects `<w:keepLines` on the reminder and not on the heading or “The board meets Monday.” |
 
 ## Gaps and notes
 

@@ -11,8 +11,8 @@ export const keepLinesLeadIn = 41;
 
 export const reminderLines = [
   "Bring gloves,",
-  "a hat, and a trowel.",
-  "Leave the gate closed.",
+  "a hat,",
+  "and a trowel.",
 ] as const;
 
 export const keepLinesHeading = "What to bring";
