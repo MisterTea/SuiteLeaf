@@ -100,6 +100,7 @@ test("spreadsheet tools write, format, sort, chart and pivot", async ({ page }) 
     "These formulas were replaced by fixed values, which will not update any more: B10 was =B9*2.",
   );
   expect(await call(page, "format_cells", { range: "B2:D6", number_format: "currency" })).toContain("$6,000.00");
+  expect(await call(page, "format_cells", { range: "B2:D6", align: "right" })).toContain("aligned right");
   await expect(call(page, "format_cells", { range: "B2:B9,C2:C9", bold: true })).rejects.toThrow(/2 ranges; .*B2:C9 to cover them all/);
   expect(await call(page, "sort_range", { range: "A1:D5", column: "Budget", order: "descending", has_header: true })).toMatch(
     /2\tEngineering/,

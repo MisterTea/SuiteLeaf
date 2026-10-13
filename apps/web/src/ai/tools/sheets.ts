@@ -346,7 +346,8 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
           done.push(`fill ${args.fill_color}`);
         }
         if (args.align) {
-          range.setHorizontalAlignment(args.align);
+          // Univer's facade calls right alignment "normal".
+          range.setHorizontalAlignment(args.align === "right" ? "normal" : args.align);
           done.push(`aligned ${args.align}`);
         }
         if (args.borders) {
