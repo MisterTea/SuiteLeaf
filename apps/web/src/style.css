@@ -935,6 +935,9 @@ a {
   display: inline-flex;
   visibility: hidden;
 }
+.docs-toolbar-tools.show-more[data-measuring] {
+  flex-wrap: nowrap;
+}
 .docs-toolbar-tools.show-more {
   flex-wrap: wrap;
 }
@@ -1620,11 +1623,88 @@ a {
   min-width: 0;
   margin-top: 0;
 }
+.document-content p[data-tab-stop] {
+  position: relative;
+}
+.document-content .doc-tab-guide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(26, 115, 232, 0.8);
+  pointer-events: none;
+}
+.document-content .doc-tab {
+  display: inline-block;
+  width: 0;
+  vertical-align: baseline;
+}
+.tab-stop-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin: 0 16px 4px;
+  padding: 4px 12px;
+  min-height: 32px;
+  background: var(--toolbar-bg);
+  border-radius: 16px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.tab-stop-bar label {
+  font-weight: 600;
+}
+.tab-stop-bar input {
+  width: 4.5em;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: right;
+}
+.tab-stop-bar input:focus {
+  outline: 2px solid #1a73e8;
+  border-color: #1a73e8;
+}
+.tab-stop-unit {
+  color: var(--text-secondary);
+}
+.tab-stop-hint {
+  color: var(--text-secondary);
+  font-size: 12px;
+  min-width: 0;
+}
+@media (max-width: 700px) {
+  .tab-stop-bar {
+    margin: 0 8px 4px;
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+}
+@media print {
+  .tab-stop-bar {
+    display: none !important;
+  }
+  .document-content .doc-tab-guide {
+    display: none;
+  }
+}
 .document-content h1,
 .document-content h2,
 .document-content h3 {
   font-weight: 400;
   margin: 20pt 0 6pt;
+}
+/* iPhone WebKit lays headings out inline inside a contenteditable, so the
+   line above shares their box and cannot be clicked. */
+.document-content p,
+.document-content h1,
+.document-content h2,
+.document-content h3 {
+  display: block;
 }
 .document-content > :first-child {
   margin-top: 0;
@@ -2401,9 +2481,10 @@ a {
 }
 .sheets-toolbar.show-more {
   flex-wrap: wrap;
-  justify-content: flex-end;
+  justify-content: flex-start;
   align-content: flex-start;
   row-gap: 12px;
+  height: auto;
 }
 .sheets-toolbar.show-more > .toolbar-break {
   order: 1;
@@ -2412,6 +2493,12 @@ a {
 }
 .sheets-toolbar.show-more > [data-overflow] {
   order: 2;
+}
+/* show-more wraps, and it is declared after the measuring rule, so a second
+   pass would think every tool fits and close the menu. Nowrap has to win. */
+.sheets-toolbar.show-more[data-measuring] {
+  flex-wrap: nowrap;
+  height: 38px;
 }
 .sheets-toolbar.show-more::before {
   content: "";
@@ -3351,7 +3438,48 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
     margin: 4px 8px 6px;
     padding: 4px 6px;
     border-radius: 12px;
+    width: calc(100vw - 16px);
     max-width: calc(100vw - 16px);
+    box-sizing: border-box;
+  }
+  .sheets-toolbar .tool {
+    padding: 5px 4px;
+  }
+  .sheet-analyses-dropdown summary {
+    font-size: 11px;
+    padding: 4px 6px;
+  }
+  .sheets-toolbar .menu-search-pill {
+    padding: 4px 8px;
+  }
+  .sheets-toolbar .tool {
+    padding: 4px 2px;
+  }
+  .sheets-toolbar .menu-search-pill {
+    gap: 0;
+    padding: 4px;
+  }
+  .sheets-toolbar .menu-search-pill span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .sheet-analyses-dropdown summary {
+    font-size: 10px;
+    line-height: 1.2;
+    padding: 3px 4px;
+  }
+  /* The comment editor canvas is absolutely positioned and, on a phone,
+     covers the Comment button. Keep it to the text line. */
+  canvas#univer-doc-main-canvas {
+    height: 22px !important;
+    max-height: 22px !important;
   }
   .file-section > header {
     flex-wrap: wrap;
@@ -3710,6 +3838,29 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   border: 2.5px solid var(--google-blue);
   box-shadow: 0 0 0 1px var(--google-blue);
 }
+@media (max-height: 820px) {
+  .slides-sidebar {
+    width: 168px;
+  }
+  .thumbnail-card {
+    flex: 0 0 auto;
+    width: 120px;
+    height: 42px;
+    aspect-ratio: auto;
+  }
+  .thumbnails-list {
+    gap: 4px;
+    padding: 6px 8px;
+  }
+  .thumbnail-row {
+    gap: 4px;
+    padding: 1px;
+  }
+  .slides-sidebar-header,
+  .slides-sidebar-footer {
+    padding: 4px 8px;
+  }
+}
 .thumbnail-preview {
   position: relative;
   width: 100%;
@@ -3772,8 +3923,8 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
 .slide-stage-viewport {
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
   padding: 28px;
   overflow: auto;
   position: relative;
@@ -3781,6 +3932,9 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
 .slide-canvas {
   width: 100%;
   max-width: 960px;
+  margin-top: auto;
+  margin-bottom: auto;
+  flex-shrink: 0;
   position: relative;
   background: white;
   border-radius: 2px;

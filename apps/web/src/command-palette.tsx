@@ -112,6 +112,7 @@ export function MenuSearchPill() {
       type="button"
       className="menu-search-pill"
       title="Search the menus (Option+/)"
+      aria-label="Menus"
       onClick={openSearch}
     >
       <Search size={14} className="menu-search-icon" />

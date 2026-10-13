@@ -124,6 +124,8 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 64 | [Change every copy of a typo](64-change-every-copy-of-a-typo.md) | single-node | Sheets |
 | 64 | [Edit the header on the page](64-edit-the-header-on-the-page.md) | single-node | Docs |
 | 65 | [Choose a page number](65-choose-a-page-number.md) | single-node | Docs |
+| 66 | [Leave room for the binding](66-leave-room-for-the-binding.md) | single-node | Docs |
+| 67 | [Set each margin](67-set-each-margin.md) | single-node | Docs |
 | 66 | [Describe a photo](66-describe-a-photo.md) | single-node | Docs |
 | 68 | [Space the lines](68-space-the-lines.md) | single-node | Docs |
 | 71 | [Group columns](71-group-columns.md) | single-node | Sheets |
@@ -134,12 +136,19 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 78 | [Keep the Word file's margins](78-keep-the-word-margins.md) | single-node | Docs |
 | 80 | [Send an outline to Excel](80-send-an-outline-to-excel.md) | single-node | Sheets |
 | 82 | [Use a two-inch margin](82-use-a-two-inch-margin.md) | single-node | Docs |
+| 83 | [Line up the times](83-line-up-the-times.md) | single-node | Docs |
 | 84 | [Set how far the header sits from the edge](84-header-from-the-edge.md) | single-node | Docs |
+| 86 | [Keep the heading with the list](86-keep-the-heading-with-the-list.md) | single-node | Docs |
 | 87 | [Keep the letterhead's distance](87-keep-the-letterhead-distance.md) | single-node | Docs |
+| 89 | [Don't leave one line behind](89-dont-leave-one-line-behind.md) | single-node | Docs |
 | 91 | [Keep the letterhead off the title](91-keep-the-letterhead-off-the-title.md) | single-node | Docs |
+| 92 | [Keep the note on one page](92-keep-the-note-on-one-page.md) | single-node | Docs |
 | 94 | [See the margin and the reason](94-see-the-margin-and-the-reason.md) | single-node | Docs |
+| 95 | [Space before and after](95-space-before-and-after.md) | single-node | Docs |
 | 97 | [See the letterhead move](97-see-the-letterhead-move.md) | single-node | Docs |
+| 98 | [Indent the first line](98-indent-the-first-line.md) | single-node | Docs |
 | 100 | [See the margin move](100-see-the-margin-move.md) | single-node | Docs |
+| 102 | [Keep the indent from Word](102-keep-the-indent-from-word.md) | single-node | Docs |
 | 103 | [See the paper size change](103-see-the-paper-size.md) | single-node | Docs |
 | 105 | [See landscape before you apply](105-see-landscape.md) | single-node | Docs |
 | 106 | [See the header text before you apply](106-see-the-header-text.md) | single-node | Docs |

@@ -12,6 +12,16 @@ import { readLiveMargins } from "./margin-live";
 import { readLiveOrientation } from "./landscape-live";
 import { readLiveLetterhead } from "./letterhead-text-live";
 import { readLivePaper } from "./paper-size-live";
+import {
+  breakPosBeforeList,
+  keepWithNextBreak,
+  keepsWithNext,
+  markKeepNextLine,
+  nextBlockType,
+  staysWithFollowingBlock,
+} from "./doc-keep-next";
+import { annotateWidowLines, avoidSingleLine } from "./doc-widow-control";
+import { keepParagraphTogether, keepsLines } from "./doc-keep-lines";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -83,11 +93,17 @@ type Boundary = {
   row?: boolean;
   columns?: number;
   manual?: boolean;
-  heading?: boolean;
+  /** The user asked this block to stay with the one after it. */
+  keepNext?: boolean;
   /** This heading is where arabic page numbers restart at 1. */
   arabic?: boolean;
   /** 0-based page this block lands on, after breaks. */
   page?: number;
+  /** Set on each visual line of a paragraph with widow/orphan control. */
+  widowControl?: boolean;
+  blockPos?: number;
+  line?: number;
+  lineCount?: number;
 };
 
 /** Layout decorations never alter document content or enter undo history. */
@@ -229,12 +245,49 @@ export const DocumentPagination = Extension.create({
                   parent?.type.name === "tableHeader"
                 )
                   return;
+                // A paragraph can break between lines, so widow control can
+                // keep two of them together. Keep lines together, and
+                // keep-with-next, each stay one block instead.
+                const together = keepParagraphTogether(
+                  keepsLines(node),
+                  bottom - top,
+                  bodyHeight,
+                );
+                if (
+                  node.type.name === "paragraph" &&
+                  node.textContent &&
+                  !keepsWithNext(node) &&
+                  !together
+                ) {
+                  const lines = textLines(
+                    view,
+                    dom,
+                    pos,
+                    origin,
+                    scale,
+                    topMargin,
+                  );
+                  lines.sort((a, b) => a.top - b.top || a.pos - b.pos);
+                  if (lines.length > 1) {
+                    const beforeList = breakPosBeforeList(view.state.doc, pos);
+                    if (beforeList != null && lines[0]) lines[0].pos = beforeList;
+                    boundaries.push(
+                      ...(node.attrs.widowControl === true
+                        ? annotateWidowLines(lines, pos, true)
+                        : lines),
+                    );
+                    return false;
+                  }
+                }
                 if (bottom - top <= bodyHeight) {
                   boundaries.push({
-                    pos,
+                    pos: breakPosBeforeList(view.state.doc, pos) ?? pos,
                     top,
                     bottom,
-                    heading: node.type.name === "heading",
+                    keepNext: staysWithFollowingBlock(
+                      { type: node.type.name, keepNext: keepsWithNext(node) },
+                      nextBlockType(parent, node),
+                    ),
                     arabic:
                       node.type.name === "heading" &&
                       node.attrs.startArabic === true,
@@ -242,8 +295,15 @@ export const DocumentPagination = Extension.create({
                   return false;
                 }
                 // A paragraph taller than a page is split at visual line boundaries.
+                const lines = markKeepNextLine(
+                  textLines(view, dom, pos, origin, scale, topMargin),
+                  keepsWithNext(node),
+                );
                 boundaries.push(
-                  ...textLines(view, dom, pos, origin, scale, topMargin),
+                  ...(node.type.name === "paragraph" &&
+                  node.attrs.widowControl === true
+                    ? annotateWidowLines(lines, pos, true)
+                    : lines),
                 );
                 return false;
               });
@@ -259,14 +319,17 @@ export const DocumentPagination = Extension.create({
                     next.top + added > start + 0.5) ||
                   next.manual
                 ) {
-                  // Headings move with the block that follows them, as in Word and Docs.
-                  let first = i;
-                  while (
-                    !next.manual &&
-                    boundaries[first - 1]?.heading &&
-                    boundaries[first - 1].top + added > start + 0.5
-                  )
-                    first--;
+                  // Widow control keeps two lines of one paragraph together.
+                  // Keep with next still carries a heading onto what follows.
+                  const adjusted = next.manual
+                    ? i
+                    : avoidSingleLine(boundaries, i, start, added);
+                  const first = keepWithNextBreak(
+                    boundaries,
+                    adjusted,
+                    start,
+                    added,
+                  );
                   const b = boundaries[first];
                   for (let k = first; k <= i; k++) boundaries[k].page = page + 1;
                   const gap =

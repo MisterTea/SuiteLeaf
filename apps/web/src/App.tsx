@@ -2126,6 +2126,15 @@ function Workspace() {
                     Justify
                   </MenuItem>
                   <MenuItem
+                    focusesTarget
+                    synonyms={["tab", "tab stop", "tabs", "line up"]}
+                    onSelect={() =>
+                      actions.current?.docActions?.focusTabStop?.()
+                    }
+                  >
+                    Tab stop
+                  </MenuItem>
+                  <MenuItem
                     onSelect={() =>
                       actions.current?.docActions?.toggleBulletList()
                     }

@@ -39,6 +39,7 @@ import {
   readDefaultLetterhead,
   type LetterheadText,
 } from "./letterhead-distance";
+import { paragraphIndentFromWord } from "./paragraph-indent";
 import { firstSectionPageMargins } from "./word-page-margins";
 
 type Mark = NonNullable<JsonNode["marks"]>[number];
@@ -57,7 +58,10 @@ function textOf(n: JsonNode, library: CitationLibrary | undefined): string {
     );
     return source && next ? inText(source, next.style) : "";
   }
-  return (n.text ?? "") + (n.content ?? []).map((child) => textOf(child, next)).join("");
+  return (
+    (n.text ?? "") +
+    (n.content ?? []).map((child) => textOf(child, next)).join("")
+  );
 }
 /** `droppedLinks` collects the addresses of links removed as unsafe. */
 export function htmlToDocument(
@@ -194,9 +198,26 @@ export function htmlToDocument(
     return result;
   }
   const BLOCK_TAGS = new Set([
-    "p", "h1", "h2", "h3", "h4", "h5", "h6",
-    "ul", "ol", "li", "table", "tbody", "thead", "tfoot", "tr", "td", "th",
-    "blockquote", "pre", "hr",
+    "p",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "ul",
+    "ol",
+    "li",
+    "table",
+    "tbody",
+    "thead",
+    "tfoot",
+    "tr",
+    "td",
+    "th",
+    "blockquote",
+    "pre",
+    "hr",
   ]);
   const hasBlockElement = (children: AnyNode[]): boolean =>
     children.some((child) => {
@@ -247,7 +268,8 @@ export function htmlToDocument(
             const b = containerBlocks(li.children);
             return {
               type: "listItem",
-              content: b[0].type === "paragraph" ? b : [{ type: "paragraph" }, ...b],
+              content:
+                b[0].type === "paragraph" ? b : [{ type: "paragraph" }, ...b],
             };
           }),
         });
@@ -324,7 +346,12 @@ function detectImageMime(buf: Uint8Array): string | null {
   ) {
     return "image/png";
   }
-  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
+  if (
+    buf.length >= 3 &&
+    buf[0] === 0xff &&
+    buf[1] === 0xd8 &&
+    buf[2] === 0xff
+  ) {
     return "image/jpeg";
   }
   if (
@@ -397,23 +424,47 @@ const orderedParser = new XMLParser({
   parseTagValue: false,
   processEntities: true,
 });
-export function wordParagraphs(xml: string): string[] {
+type WordIndentAttrs = { firstLineIndent: number } | { hangingIndent: number };
+
+type WordBodyParagraph = { text: string; indent: WordIndentAttrs | null };
+
+function wordAttribute(attrs: Record<string, unknown>, name: string): unknown {
+  return attrs[`@_w:${name}`] ?? attrs[`@_${name}`];
+}
+
+/** `w:ind` on this paragraph's own `w:pPr`, not a nested paragraph. */
+function indentFromParagraph(nodes: any[]): WordIndentAttrs | null {
+  for (const node of nodes) {
+    for (const [key, value] of Object.entries(node)) {
+      if (key === ":@" || !(key.endsWith(":pPr") || key === "pPr")) continue;
+      if (!Array.isArray(value)) continue;
+      for (const child of value as any[]) {
+        const indKey = Object.keys(child).find(
+          (name) => name === "ind" || name.endsWith(":ind"),
+        );
+        if (!indKey) continue;
+        return paragraphIndentFromWord({
+          firstLine: wordAttribute(child[":@"] ?? {}, "firstLine"),
+          hanging: wordAttribute(child[":@"] ?? {}, "hanging"),
+        });
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Body paragraphs in document order, with the special indent from `w:ind`.
+ * Null means the XML could not be read as paragraphs.
+ */
+function readWordBody(xml: string): WordBodyParagraph[] | null {
   let tree: any[];
   try {
     tree = orderedParser.parse(xml) as any[];
   } catch {
-    const texts = [
-      ...xml.matchAll(/<(?:\w+:)?t\b[^>]*>([\s\S]*?)<\/(?:\w+:)?t>/g),
-    ];
-    return texts.map((m) =>
-      String(
-        new XMLParser({ parseTagValue: false, trimValues: false }).parse(
-          `<text>${m[1]}</text>`,
-        ).text ?? "",
-      ),
-    );
+    return null;
   }
-  const result: string[] = [];
+  const result: WordBodyParagraph[] = [];
   let footnoteCount = 0;
   let endnoteCount = 0;
   function text(nodes: any[]): string {
@@ -426,10 +477,16 @@ export function wordParagraphs(xml: string): string[] {
           s += (v as any[]).map((n) => n["#text"] ?? "").join("");
         else if (k.endsWith(":tab")) s += "\t";
         else if (k.endsWith(":br")) s += "\n";
-        else if (k.endsWith(":footnoteReference") || k === "footnoteReference") {
+        else if (
+          k.endsWith(":footnoteReference") ||
+          k === "footnoteReference"
+        ) {
           footnoteCount++;
           s += String(footnoteCount);
-        } else if (k.endsWith(":endnoteReference") || k === "endnoteReference") {
+        } else if (
+          k.endsWith(":endnoteReference") ||
+          k === "endnoteReference"
+        ) {
           endnoteCount++;
           s += toLowerRoman(endnoteCount);
         } else if (k.endsWith(":checkBox") || k === "checkBox") {
@@ -441,9 +498,17 @@ export function wordParagraphs(xml: string): string[] {
               for (const childKey of Object.keys(child)) {
                 if (childKey === ":@") continue;
                 if (childKey.endsWith(":checked") || childKey === "checked") {
-                  if (val === undefined || val === "1" || val === "true" || val === "on")
+                  if (
+                    val === undefined ||
+                    val === "1" ||
+                    val === "true" ||
+                    val === "on"
+                  )
                     checked = true;
-                } else if (childKey.endsWith(":default") || childKey === "default") {
+                } else if (
+                  childKey.endsWith(":default") ||
+                  childKey === "default"
+                ) {
                   if (val === "1" || val === "true" || val === "on")
                     checked = true;
                 }
@@ -461,12 +526,78 @@ export function wordParagraphs(xml: string): string[] {
         if (k === ":@" || k.endsWith(":del")) continue;
         if (k.endsWith(":p") || k === "p") {
           const t = text(v as any[]);
-          if (t) result.push(t);
+          if (t)
+            result.push({ text: t, indent: indentFromParagraph(v as any[]) });
         } else if (Array.isArray(v)) walk(v);
       }
   }
   walk(tree);
   return result;
+}
+
+export function wordParagraphs(xml: string): string[] {
+  const body = readWordBody(xml);
+  if (!body) {
+    const texts = [
+      ...xml.matchAll(/<(?:\w+:)?t\b[^>]*>([\s\S]*?)<\/(?:\w+:)?t>/g),
+    ];
+    return texts.map((m) =>
+      String(
+        new XMLParser({ parseTagValue: false, trimValues: false }).parse(
+          `<text>${m[1]}</text>`,
+        ).text ?? "",
+      ),
+    );
+  }
+  return body.map((paragraph) => paragraph.text);
+}
+
+/**
+ * Copies `w:ind` onto the imported paragraphs.
+ * First line becomes `firstLineIndent`. Hanging becomes `hangingIndent`.
+ * A paragraph with no `w:ind` is left alone, including any spacing it already has.
+ */
+function applyWordParagraphIndents(content: JsonNode, xml: string): JsonNode {
+  const sources = readWordBody(xml);
+  if (!sources) return content;
+  let cursor = 0;
+  const take = (value: string) => {
+    const key = normalize(value);
+    if (!key) return null;
+    for (let i = cursor; i < sources.length; i++) {
+      if (normalize(sources[i].text) !== key) continue;
+      cursor = i + 1;
+      return sources[i];
+    }
+    return null;
+  };
+  const stamp = (node: JsonNode, indent: WordIndentAttrs): JsonNode => {
+    const attrs = { ...(node.attrs ?? {}) };
+    if ("firstLineIndent" in indent) {
+      delete attrs.hangingIndent;
+      attrs.firstLineIndent = indent.firstLineIndent;
+    } else {
+      delete attrs.firstLineIndent;
+      attrs.hangingIndent = indent.hangingIndent;
+    }
+    return { ...node, attrs };
+  };
+  const visit = (node: JsonNode): JsonNode => {
+    if (node.type === "paragraph" || node.type === "heading") {
+      const source = take(documentText(node));
+      if (!source?.indent || node.type !== "paragraph") return node;
+      return stamp(node, source.indent);
+    }
+    if (!node.content?.length) return node;
+    let changed = false;
+    const next = node.content.map((child) => {
+      const updated = visit(child);
+      if (updated !== child) changed = true;
+      return updated;
+    });
+    return changed ? { ...node, content: next } : node;
+  };
+  return visit(content);
 }
 
 interface StyleInfo {
@@ -523,9 +654,8 @@ function parseWordStyles(stylesXml: string): Map<string, StyleInfo> {
       /<w:rPr>[\s\S]*?<w:b(?:\s+[^>]*w:val="(?:true|1|on)")?(?:\/|\s*>[\s\S]*?<\/w:b)[\s\S]*?<\/w:rPr>/.test(
         body,
       ) || /<w:rPr>[\s\S]*?<w:b\/>[\s\S]*?<\/w:rPr>/.test(body);
-    const boldDisabled = /<w:rPr>[\s\S]*?<w:b\s+[^>]*w:val="(?:false|0|off)"/.test(
-      body,
-    );
+    const boldDisabled =
+      /<w:rPr>[\s\S]*?<w:b\s+[^>]*w:val="(?:false|0|off)"/.test(body);
     const isBold = hasBold && !boldDisabled;
 
     let tableFirstRowBold = false;
@@ -654,9 +784,7 @@ function parseWordNumbering(numXml: string) {
   while ((numMatch = numRegex.exec(numXml)) !== null) {
     const numId = numMatch[1];
     const numBody = numMatch[0];
-    const absRefMatch = numBody.match(
-      /<w:abstractNumId\b[^>]*w:val="([^"]+)"/,
-    );
+    const absRefMatch = numBody.match(/<w:abstractNumId\b[^>]*w:val="([^"]+)"/);
     if (absRefMatch) {
       const absId = absRefMatch[1];
       nums.set(numId, absId);
@@ -705,7 +833,12 @@ function formatNumber(val: number, fmt: string): string {
 async function preprocessDocx(
   zip: JSZip,
   xml: string,
-): Promise<{ extraStyleMap: string[]; modified: boolean; updatedXml: string; isCoverPage: boolean }> {
+): Promise<{
+  extraStyleMap: string[];
+  modified: boolean;
+  updatedXml: string;
+  isCoverPage: boolean;
+}> {
   let docXml = xml;
   let stylesXml = zip.file("word/styles.xml")
     ? await zip.file("word/styles.xml")!.async("string")
@@ -726,8 +859,8 @@ async function preprocessDocx(
     /<w:docPartGallery\b[^>]*w:val="Cover Pages"/.test(docXml) ||
     Boolean(
       /<w:alias\b[^>]*w:val="Title"/.test(docXml) &&
-        (/<w:alias\b[^>]*w:val="Subtitle"/.test(docXml) ||
-          /<w:alias\b[^>]*w:val="Author"/.test(docXml)),
+      (/<w:alias\b[^>]*w:val="Subtitle"/.test(docXml) ||
+        /<w:alias\b[^>]*w:val="Author"/.test(docXml)),
     );
   if (isCoverPage) {
     if (stylesXml && !/<w:style\b[^>]*w:styleId="Heading2"/.test(stylesXml)) {
@@ -786,9 +919,9 @@ async function preprocessDocx(
       let trMatch: RegExpExecArray | null;
       while ((trMatch = trRegex.exec(tblXml)) !== null) {
         const tr = trMatch[0];
-        const rowTexts = [
-          ...tr.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g),
-        ].map((m) => m[1]);
+        const rowTexts = [...tr.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g)].map(
+          (m) => m[1],
+        );
         if (rowTexts.length === 0) continue;
 
         const isTitle =
@@ -848,7 +981,9 @@ async function preprocessDocx(
         (trAll, trAttrs, trBody) => {
           const isHeaderRow =
             /<w:tblHeader\/>/.test(trBody) ||
-            (rowIndex === 0 && isFirstRow && Boolean(tblStyle?.tableFirstRowBold)) ||
+            (rowIndex === 0 &&
+              isFirstRow &&
+              Boolean(tblStyle?.tableFirstRowBold)) ||
             /<w:cnfStyle\b[^>]*w:firstRow="1"/.test(trBody);
           let updatedTrBody = trBody;
 
@@ -961,8 +1096,7 @@ async function preprocessDocx(
 
           const numStr = levelDef.lvlText.replace(/%([1-9])/g, (_, d) => {
             const idx = parseInt(d, 10) - 1;
-            const cVal =
-              counters[numId][idx] ?? (levels.get(idx)?.start ?? 1);
+            const cVal = counters[numId][idx] ?? levels.get(idx)?.start ?? 1;
             const fmt = levels.get(idx)?.numFmt || "decimal";
             return formatNumber(cVal, fmt);
           });
@@ -1023,7 +1157,12 @@ async function preprocessDocx(
     zip.file("word/document.xml", docXml);
   }
 
-  return { extraStyleMap: [...new Set(extraStyleMap)], modified, updatedXml: docXml, isCoverPage };
+  return {
+    extraStyleMap: [...new Set(extraStyleMap)],
+    modified,
+    updatedXml: docXml,
+    isCoverPage,
+  };
 }
 
 export async function importDocx(
@@ -1061,10 +1200,8 @@ export async function importDocx(
       }
     warnings.push("Strict OOXML namespaces were normalized for conversion.");
   }
-  const { extraStyleMap, modified, updatedXml, isCoverPage } = await preprocessDocx(
-    zip,
-    xml,
-  );
+  const { extraStyleMap, modified, updatedXml, isCoverPage } =
+    await preprocessDocx(zip, xml);
   const annotated = annotateTrackedChanges(updatedXml);
   if (annotated !== updatedXml) zip.file("word/document.xml", annotated);
   const source = wordParagraphs(updatedXml);
@@ -1085,7 +1222,9 @@ export async function importDocx(
       ...rewritten.removedParagraphs,
       ...cited.removedParagraphs,
     ]) {
-      const at = source.findIndex((paragraph) => norm(paragraph) === norm(text));
+      const at = source.findIndex(
+        (paragraph) => norm(paragraph) === norm(text),
+      );
       if (at >= 0) source.splice(at, 1);
     }
   }
@@ -1138,11 +1277,12 @@ export async function importDocx(
     if (isCoverPage) {
       html = html.replace(/(<h1\b[^>]*>[\s\S]*?<\/h1>)/g, (m) => m + "<hr />");
     }
-    html = html.replace(/<a href="#(?:footnote|endnote)-ref-[^"]*">↑<\/a>/gi, "");
     html = html.replace(
-      /<(?:ol|ul)\b[^>]*>[\s\S]*?<\/(?:ol|ul)>/gi,
-      (list) =>
-        /id="(?:footnote|endnote)-/i.test(list) ? "" : list,
+      /<a href="#(?:footnote|endnote)-ref-[^"]*">↑<\/a>/gi,
+      "",
+    );
+    html = html.replace(/<(?:ol|ul)\b[^>]*>[\s\S]*?<\/(?:ol|ul)>/gi, (list) =>
+      /id="(?:footnote|endnote)-/i.test(list) ? "" : list,
     );
     warnings.push(...result.messages.map((m) => m.message));
   } catch (e) {
@@ -1232,9 +1372,7 @@ export async function importDocx(
   let supplementary = 0;
   const hasTitlePg =
     /<w:titlePg\b(?:\s+[^>]*w:val="(?:true|1|on)")?(?:\/|\s*>)/.test(xml);
-  const isPureCoverPage =
-    isCoverPage &&
-    !/<w:br\b[^>]*w:type="page"/.test(xml);
+  const isPureCoverPage = isCoverPage && !/<w:br\b[^>]*w:type="page"/.test(xml);
   const isSinglePage =
     source.length <= 10 &&
     !/<w:br\b[^>]*w:type="page"/.test(xml) &&
@@ -1386,7 +1524,8 @@ export async function importDocx(
   const commentsXml = await zip.file("word/comments.xml")?.async("string");
   if (commentsXml?.includes("<w:comment")) {
     const imported = importWordComments(content, {
-      documentXml: (await zip.file("word/document.xml")?.async("string")) ?? xml,
+      documentXml:
+        (await zip.file("word/document.xml")?.async("string")) ?? xml,
       commentsXml,
       extendedXml: await zip.file("word/commentsExtended.xml")?.async("string"),
     });
@@ -1419,6 +1558,9 @@ export async function importDocx(
       },
     };
   }
+  const indentXml =
+    (await zip.file("word/document.xml")?.async("string")) ?? xml;
+  content = applyWordParagraphIndents(content, indentXml);
   const file = createFile("doc", title) as DocFile;
   file.content = content;
   const stats: Record<string, number> = {

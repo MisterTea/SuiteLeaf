@@ -10,14 +10,14 @@ Lena cropped the parking lot out of a photo in SuiteLeaf, exported a Word file, 
 
 - Storyboard [57](57-crop-a-photo.md): a .docx export writes the crop and keeps the full image. The further-gaps note says opening that file does not read the crop back.
 - [Crop an image in Word](https://support.microsoft.com/office/crop-a-picture-in-word): Word stores a crop rectangle on the picture and can reset it.
-- `packages/core/src/word.ts` does not read `a:srcRect`. `packages/core/src/image-crop.ts` already knows how to store a crop in a SuiteLeaf file.
+- `packages/core/src/word.ts` did not read `a:srcRect`. `packages/core/src/image-crop.ts` already knew how to store a crop in a SuiteLeaf file.
 
 ## Scenes
 
-1. **The Word file.** Lena opens a .docx whose picture is cropped to the stall. The page shows the stall, not the parking lot. No compatibility note says the crop was dropped.
-2. **The hidden part is still there.** She selects the photo, chooses Crop, and drags the edge back. The parking lot returns. The pixels were not thrown away on import.
-3. **Reset.** Reset crop shows the full picture in one action, the same control as a photo cropped inside SuiteLeaf.
-4. **Round trip.** She crops the parking lot out again, exports .docx, and opens that file. The stall is still the frame she cropped.
+1. **The Word file.** Lena opens Seed swap sign-up.docx from the file list. The page shows the striped stall, not the parking lot. The one compatibility note is about page layout. It does not say the crop was dropped.
+2. **The hidden part is still there.** She selects the photo, chooses Crop, and drags the right edge out. The parking lot comes back and the stall stays the same size. The pixels were not thrown away on import.
+3. **Reset.** Reset crop shows the whole picture in one click, the same control as a photo cropped inside SuiteLeaf.
+4. **Round trip.** She crops the parking lot out again and chooses File → Export DOCX. She opens that file. The stall is still the frame, and the full photo is still in the package.
 
 ## Google Workspace benchmark
 
@@ -36,8 +36,22 @@ Google Docs opens a cropped Word picture as the cropped view, and the full image
 
 Lena opens the printer's Word file and sees the stall. She can still uncover the parking lot, and a second export keeps the crop.
 
+## Result
+
+| Criterion | Met? | Evidence |
+| --- | --- | --- |
+| 1. Opening a .docx with `a:srcRect` shows the cropped frame, not the full picture | Met | Video 0:03. The stall fills the frame and the parking lot is outside it. `tests/word-image-crop.test.ts` ("shows a srcRect crop") and `tests/browser/word-image-crop.spec.ts`. |
+| 2. The import does not add a note that says the crop was dropped | Met | Video 0:07. The only note is the page-layout sentence. The same unit test expects that single warning. |
+| 3. Crop can be dragged back to reveal the hidden part. The full image is still in the file | Met | Video 0:10. The parking lot returns and the stall does not grow. The browser test checks the image source is unchanged. |
+| 4. Reset crop restores the whole picture in one action | Met | Video 0:13. One Reset crop click shows the parking lot. |
+| 5. Exporting and opening the .docx again keeps the same crop | Met | Video 0:17 File → Export DOCX, 0:21 the reopened file is the stall again. `tests/word-image-crop.test.ts` ("keeps the crop through a second export") checks `a:srcRect` and the original PNG bytes. |
+| 6. A picture with no crop still opens at its full size | Met | `tests/word-image-crop.test.ts` ("leaves an uncropped picture full size") and `tests/browser/word-image-crop.spec.ts` ("a Word picture with no crop opens at full size"). |
+
 ## Gaps and notes
 
-- Export already writes the crop. Import ignores it.
-- Reuse the crop model from storyboard 57. Do not rebuild corner resize.
-- Do not rebuild equations, citations, or spelling.
+- Import reads `a:srcRect` as the same hidden-edge percentages storyboard 57 writes. The full image stays in the file. Corner resize was not rebuilt.
+- Word's on-page size is the cropped drawing extent. SuiteLeaf opens the photo at its pixel size, so a picture Word had scaled down can open larger. The crop percentages still match.
+- Pictures in headers and footers are not given this crop.
+- A negative source rectangle, which Word uses to pad a picture, is treated as no crop on that edge.
+- The usual Word layout note still appears. It does not mention the crop.
+- Equations, citations, and spelling were not rebuilt.

@@ -7,6 +7,10 @@ import {
   type LineSpacing,
 } from "@suiteleaf/core/line-spacing";
 import { selectionLineSpacing } from "./doc-line-spacing";
+import { selectionParagraphSpace } from "./doc-paragraph-spacing";
+import { ParagraphSpaceFields } from "./doc-paragraph-spacing-ui";
+import { selectionSpecialIndent } from "./doc-paragraph-indent";
+import { ParagraphIndentFields } from "./doc-paragraph-indent-ui";
 
 /** One control: Single, 1.15, 1.5, and Double. The closed button shows the caret's value. */
 export function LineSpacingControl({ editor }: { editor: Editor | null }) {
@@ -21,7 +25,41 @@ export function LineSpacingControl({ editor }: { editor: Editor | null }) {
   const trigger = useRef<HTMLButtonElement>(null);
   const options = useRef<(HTMLButtonElement | null)[]>([]);
   const fromKeyboard = useRef(false);
+  const before =
+    useEditorState({
+      editor,
+      selector: ({ editor: currentEditor }) =>
+        currentEditor
+          ? selectionParagraphSpace(currentEditor.state, "before")
+          : 0,
+    }) ?? 0;
+  const after =
+    useEditorState({
+      editor,
+      selector: ({ editor: currentEditor }) =>
+        currentEditor
+          ? selectionParagraphSpace(currentEditor.state, "after")
+          : 0,
+    }) ?? 0;
+  const indent = useEditorState({
+    editor,
+    selector: ({ editor: currentEditor }) =>
+      currentEditor
+        ? selectionSpecialIndent(currentEditor.state)
+        : { kind: "none" as const, inches: 0 as const },
+    equalityFn: (a, b) => a?.kind === b?.kind && a?.inches === b?.inches,
+  }) ?? { kind: "none" as const, inches: 0 as const };
+  const points = (value: number | "mixed") =>
+    value === "mixed" ? "mixed" : String(value);
   const label = current === "mixed" ? "Mixed" : LINE_SPACING_LABEL[current];
+  const indentLabel =
+    indent.kind === "mixed" || indent.inches === "mixed"
+      ? "Special indent mixed"
+      : indent.kind === "firstLine"
+        ? `First line indent ${indent.inches} inches`
+        : indent.kind === "hanging"
+          ? `Hanging indent ${indent.inches} inches`
+          : "Special indent none";
 
   useEffect(() => {
     if (!open) return;
@@ -62,7 +100,7 @@ export function LineSpacingControl({ editor }: { editor: Editor | null }) {
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? "line-spacing-menu" : undefined}
-        aria-label={`Line spacing, ${label}`}
+        aria-label={`Line spacing, ${label}. Space before ${points(before)} points. Space after ${points(after)} points. ${indentLabel}.`}
         title="Line spacing"
         disabled={!editor}
         onMouseDown={(event) => {
@@ -71,7 +109,11 @@ export function LineSpacingControl({ editor }: { editor: Editor | null }) {
           setOpen((value) => !value);
         }}
         onKeyDown={(event) => {
-          if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
+          if (
+            event.key === "ArrowDown" ||
+            event.key === "Enter" ||
+            event.key === " "
+          ) {
             event.preventDefault();
             fromKeyboard.current = true;
             setOpen(true);
@@ -100,7 +142,14 @@ export function LineSpacingControl({ editor }: { editor: Editor | null }) {
                   onKeyDown={(event) => {
                     if (event.key === "ArrowDown") {
                       event.preventDefault();
-                      options.current[Math.min(LINE_SPACINGS.length - 1, index + 1)]?.focus();
+                      if (index < LINE_SPACINGS.length - 1)
+                        options.current[index + 1]?.focus();
+                      else
+                        root.current
+                          ?.querySelector<HTMLInputElement>(
+                            '[aria-label="Space before"]',
+                          )
+                          ?.focus();
                     } else if (event.key === "ArrowUp") {
                       event.preventDefault();
                       options.current[Math.max(0, index - 1)]?.focus();
@@ -122,6 +171,12 @@ export function LineSpacingControl({ editor }: { editor: Editor | null }) {
               );
             })}
           </div>
+          <ParagraphSpaceFields editor={editor} before={before} after={after} />
+          <ParagraphIndentFields
+            editor={editor}
+            kind={indent.kind}
+            inches={indent.inches}
+          />
         </div>
       ) : null}
     </div>

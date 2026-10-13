@@ -15,11 +15,13 @@ Ben has the minutes open and wants to change the running header from "Garden clu
 ## Scenes
 
 1. **The minutes.** Ben opens "Minutes". The header on page 2 reads "Garden club minutes".
-2. **Click the header.** He double-clicks that header. The document text dims, and a caret appears in the header. He does not open Page setup.
-3. **Type.** He selects the words and types "October minutes". Page 2 shows the new header immediately.
-4. **The footer.** He clicks the footer and types nothing over the page number. The number stays. He adds "Draft" beside it.
-5. **Escape.** Escape returns him to the document. The body text is unchanged.
-6. **Save.** He reopens the file. Page 2 still says "October minutes", and the footer still says "Draft" next to the number.
+2. **Click the header.** He double-clicks that header. The minutes dim, the whole header is selected, and a label says "Header · all pages". Page setup does not open.
+3. **Type.** He types "October minutes". The page shows it before he leaves the header.
+4. **Back to the minutes.** A click on the body closes the header. The minutes are unchanged, and the text is no longer dim.
+5. **Every page.** Page 1 says "October minutes" too. This document has one shared header.
+6. **The footer.** He double-clicks the footer. The page number stays in its own pill. He types "Draft" beside it.
+7. **Escape.** Escape closes the footer. "Draft" and the number both stay.
+8. **Save.** He reopens the file. The header still says "October minutes", and the footer still says "Draft" next to the number.
 
 ## Google Workspace benchmark
 
@@ -36,10 +38,22 @@ In Google Docs, double-click the margin, type, and click back in the document ([
 
 ## Success looks like
 
-Ben changes the running header by typing on the page. Page 2 says "October minutes". The minutes themselves are the same.
+Ben changes the running header by typing on the page. The header says "October minutes". The footer says "Draft" beside the page number. The minutes themselves are the same.
 
 ## Gaps and notes
 
-- Headers and footers are drawn on the page and edited only in Page setup.
-- Different first page and odd/even headers may live on other branches. If they are present, a click must edit the header that belongs to that page. If they are not present yet, editing the shared header is enough, and say so in Gaps and notes.
-- Do not rebuild letterhead import.
+- Different first page and odd/even headers are not page settings on this base. Storyboards 61 and 62 describe them, and the code still stores one header and one footer for the whole document. A double-click edits that shared text. The blue label says "Header · all pages" or "Footer · all pages" so the scope is visible. Per-page headers remain for those storyboards.
+- The page number is drawn beside the footer text, not inside it, so typing in the footer cannot replace the number.
+- Page setup still edits the same header, footer, and page-number choice.
+- Letterhead import is unchanged.
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| Double-clicking the header places a caret there. Page setup does not open. | Met | Video 0:06. Test `double-click edits the header and footer on the page`. |
+| Typing replaces the header, and the page shows it before the editor closes. | Met | Video 0:08, "October minutes" in the open header field. |
+| The body dims while editing and is unchanged afterward. | Met | Video 0:06 (dimmed "Decisions") and 0:21 (same minutes, full contrast). |
+| Double-clicking the footer edits the footer. The page number stays a number. | Met | Video 0:17–0:19, "Draft" beside "1 / 2". Test asserts "2 / 2" is unchanged too. |
+| If different first page or odd/even headers are on, the click edits only that page. | Not on this base | Those settings are not implemented. The shared header is what a click edits. See Gaps. |
+| Escape or a click in the body leaves the editor. The text survives save and reopen. | Met | Click at 0:09, Escape at 0:21, reopen at 0:27. Test reopens "Minutes". |

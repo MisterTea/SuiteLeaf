@@ -58,4 +58,21 @@ describe("Google Docs reference plain-text export", () => {
       }),
     ).toBe("\ufeff<cedar>\r\nMaple");
   });
+  it("keeps a tab stop as a tab character", () => {
+    expect(
+      documentPlainText({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "Plant sale " },
+              { type: "tab" },
+              { type: "text", text: "9:00" },
+            ],
+          },
+        ],
+      }),
+    ).toBe("\ufeffPlant sale \t9:00");
+  });
 });

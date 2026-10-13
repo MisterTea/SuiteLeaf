@@ -23,6 +23,8 @@ import {
   Paragraph,
   SectionType,
   SimpleField,
+  Tab,
+  TabStopType,
   Table,
   TableCell,
   TableOfContents,
@@ -36,6 +38,7 @@ import {
   type ParagraphChild,
 } from "docx";
 import type { DocFile, JsonNode } from "./index";
+import { docxParagraphIndent } from "./paragraph-indent";
 import { asEquation, type EqNode } from "./equations";
 import {
   documentPageSettings,
@@ -52,6 +55,7 @@ import {
 } from "./doc-comments";
 import { embedSuggestionMarkers, revisionizeDocx } from "./suggestions";
 import { docxLineSpacing } from "./line-spacing";
+import { docxParagraphGap } from "./paragraph-spacing";
 import {
   citationLibrary,
   inText,
@@ -226,6 +230,7 @@ function runs(
       ];
     }
     if (n.type === "hardBreak") return [new TextRun({ break: 1 })];
+    if (n.type === "tab") return [new TextRun({ children: [new Tab()] })];
     if (n.type === "image") {
       const match = /^data:image\/(png|jpeg|gif);base64,(.*)$/i.exec(
         String(n.attrs?.src),
@@ -395,13 +400,24 @@ function blocks(
         : runs(n, plan, notes, library);
     const spacing =
       n.type === "paragraph" || n.type === "heading"
-        ? docxLineSpacing(n.attrs?.lineSpacing)
+        ? { ...docxLineSpacing(n.attrs?.lineSpacing), ...docxParagraphGap(n.attrs) }
+        : undefined;
+    const indent =
+      n.type === "paragraph" || n.type === "heading"
+        ? docxParagraphIndent(n.attrs)
+        : undefined;
+    const stop = Number(n.attrs?.tabStop);
+    const tabStops =
+      Number.isFinite(stop) && stop > 0 && stop <= 22
+        ? [{ type: TabStopType.LEFT, position: Math.round(stop * 1440) }]
         : undefined;
     return [
       new Paragraph({
         children,
+        tabStops,
         alignment: alignment(n.attrs?.textAlign),
         ...(spacing ? { spacing } : {}),
+        ...(indent ? { indent } : {}),
         heading:
           n.type === "heading"
             ? ([
@@ -413,6 +429,9 @@ function blocks(
                 HeadingLevel.HEADING_6,
               ][Number(n.attrs?.level) - 1] ?? HeadingLevel.HEADING_1)
             : undefined,
+        ...(n.attrs?.keepNext === true ? { keepNext: true } : {}),
+        ...(n.attrs?.keepLines === true ? { keepLines: true } : {}),
+        ...(n.attrs?.widowControl === true ? { widowControl: true } : {}),
         ...(list
           ? list.ordered
             ? { numbering: { reference: "suiteleaf-list", level: list.level } }

@@ -462,6 +462,9 @@ describe("editable Office imports", () => {
       );
       expect(images.length).toBe(1);
       expect(images[0].attrs?.src).toMatch(/^data:image\/png;base64,/);
+      expect(report.warnings.join("\n")).not.toContain(
+        "Header/footer text is retained as document sections rather than repeated page furniture.",
+      );
       expect(report.textPreserved).toBe(true);
     },
   );
