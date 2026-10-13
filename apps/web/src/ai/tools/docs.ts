@@ -103,6 +103,8 @@ function locate(editor: Editor, raw: string, occurrence = 1) {
     matches = documentMatches(editor.state.doc, text, { matchCase: false, regex: false, ignoreDiacritics: true }).matches;
   if (!matches.length && text.normalize("NFKC") !== text)
     matches = documentMatches(editor.state.doc, text.normalize("NFKC"), { matchCase: false, regex: false, ignoreDiacritics: true }).matches;
+  if (!matches.length && unmark(text) !== text)
+    matches = documentMatches(editor.state.doc, unmark(text), { matchCase: false, regex: false, ignoreDiacritics: true }).matches;
   if (!matches.length)
     throw new ToolError(`"${text}" is not in the document. Use read_document to see the exact text.`);
   const match = matches[Math.min(Math.max(1, occurrence), matches.length) - 1];
@@ -239,7 +241,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
           let i = list.indexOf(found) + 1;
           if (found.type === "heading" && /^\s*#{1,3}\s/.test(text)) while (list[i]?.label === "Paragraph") i++;
           const block = list[i - 1],
-            next = list[i];
+            next = list.slice(i).find((b) => b.text);
           where = `right after ${quote(block)}${next ? `, before ${quote(next)}` : ", at the end of the document"}`;
           editor.chain().setTextSelection(block.end - 1).splitBlock().run();
           editor.chain().setParagraph().run();
@@ -260,8 +262,11 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         const typed = text.split("\n").filter((l) => l.trim()).length;
         const typedHeadings = [...text.matchAll(/^#{1,3}\s+(.*)$/gm)].map((m) => `"${m[1].replace(/\*\*/g, "").trim()}"`);
         const bold = [...text.matchAll(/\*\*(.+?)\*\*/g)].map((m) => `"${m[1]}"`);
+        const bullets = text.match(/^\s*[-*•]\s+\S/gm)?.length ?? 0;
+        const numbered = text.match(/^\s*\d+[.)]\s+\S/gm)?.length ?? 0;
+        const lists = [bullets && `${bullets} as bulleted list items`, numbered && `${numbered} as numbered list items`].filter(Boolean);
         const headings = blocks(editor).filter((b) => b.type === "heading").map((b) => `${b.label}: ${b.text}`);
-        return `Typed ${typed} paragraph(s) ${where}${typedHeadings.length ? `; heading(s): ${typedHeadings.join(", ")}` : ""}${bold.length ? `; in bold: ${bold.join(", ")}` : ""}. The document now has ${blocks(editor).filter((b) => b.text).length} paragraph(s) with text.${headings.length ? `\nHeadings in the document now: ${headings.join(" | ")}` : ""}`;
+        return `Typed ${typed} paragraph(s) ${where}${typedHeadings.length ? `; heading(s): ${typedHeadings.join(", ")}` : ""}${lists.length ? `; ${lists.join(", ")} (already a list, no need to set it)` : ""}${bold.length ? `; in bold: ${bold.join(", ")}` : ""}. The document now has ${blocks(editor).filter((b) => b.text).length} paragraph(s) with text.${headings.length ? `\nHeadings in the document now: ${headings.join(" | ")}` : ""}`;
       },
     }),
     tool({
@@ -344,6 +349,8 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         editor.chain().setTextSelection({ from: start.from, to: Math.max(start.to, end.to) }).run();
         const bullet = editor.isActive("bulletList"),
           numbered = editor.isActive("orderedList");
+        if ((list === "bullet" && bullet) || (list === "numbered" && numbered) || (list === "none" && !bullet && !numbered))
+          return `Those paragraphs are already ${list === "none" ? "plain paragraphs" : `a ${list} list`}; nothing changed.`;
         const chain = editor.chain();
         if (list === "bullet" && !bullet) chain.toggleBulletList().run();
         else if (list === "numbered" && !numbered) chain.toggleOrderedList().run();

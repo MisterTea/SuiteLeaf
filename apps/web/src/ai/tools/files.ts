@@ -243,10 +243,11 @@ export function homeTools(ctx: HomeAgentContext): SuiteTool[] {
         const r = findRecord(ctx.records, name);
         ctx.showRemove(r);
         await wait(500);
+        const note = [...document.querySelectorAll('[role="dialog"] .dialog-note')].map((p) => p.textContent?.trim()).join(" ");
         await moveCursor(document.querySelector('[role="dialog"] button[type="submit"]'), "Remove file");
         await wait(400);
         await ctx.remove(r);
-        return `Removed "${r.file.title}".`;
+        return `Removed "${r.file.title}" from the library.${note ? ` SuiteLeaf's confirmation said: ${note}` : ""}`;
       },
     }),
     tool({
@@ -259,8 +260,17 @@ export function homeTools(ctx: HomeAgentContext): SuiteTool[] {
       async execute() {
         const file = await requestFile("Choose the file to open", IMPORT_ACCEPT);
         if (!file) return "The user did not choose a file.";
+        const banner = () => document.querySelector('.error[role="alert"]')?.textContent?.replace(/×$/, "").trim();
+        const earlier = banner();
         await ctx.importFile(file);
-        for (let i = 0; i < 1200 && !location.hash.startsWith("#/file/"); i++) await wait(100);
+        for (let i = 0; i < 1200 && !location.hash.startsWith("#/file/"); i++) {
+          const same = document.querySelector(".same-file-dialog");
+          if (same)
+            return `${same.querySelector("h2")?.textContent?.trim()}, so SuiteLeaf is asking the user what to do with "${file.name}": Cancel, Replace (the one here is replaced by the file) or Keep both (the file opens as a copy).${same.querySelector(".same-file-warning") ? " The one here has newer changes; replacing it discards them." : ""} Only the user can make this choice: tell them, and do not open or change the file yourself.`;
+          const failed = banner();
+          if (failed && failed !== earlier) throw new ToolError(`"${file.name}" could not be opened: ${failed}`);
+          await wait(100);
+        }
         if (!location.hash.startsWith("#/file/"))
           return `"${file.name}" was not opened (the import may be waiting for the user's choices).`;
         const kind = await Promise.race(
@@ -286,7 +296,8 @@ export interface WorkspaceAgentContext {
   kind: Kind;
   status: string;
   rename: (title: string) => void;
-  download: () => void;
+  /** Download (or, on desktop, Save As): the file's name, and where it went when known; null if cancelled. */
+  download: () => Promise<{ name: string; path?: string } | null>;
   back: () => Promise<void>;
   /** File > New: save this file, then create and open a new one. */
   create?: (kind: Kind, title?: string) => Promise<void>;
@@ -317,9 +328,10 @@ export function workspaceTools(ctx: WorkspaceAgentContext): SuiteTool[] {
       description: "Download a SuiteLeaf copy of the open file to the computer, to keep or move to another computer.",
       parameters: Type.Object({}),
       target: () => document.querySelector(".save-copy"),
-      execute() {
-        ctx.download();
-        return `Downloading "${ctx.title}".`;
+      async execute() {
+        const saved = await ctx.download();
+        if (!saved) return "Nothing was saved: the save was cancelled.";
+        return `${saved.path ? `Saved "${saved.name}" to ${saved.path}` : `Downloaded "${saved.name}"`}: one SuiteLeaf file with the whole ${NAMES[ctx.kind]}, to keep or move to another computer, where it opens with Open / import.`;
       },
     }),
     tool({
