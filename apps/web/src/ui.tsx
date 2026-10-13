@@ -323,6 +323,7 @@ export type EditorActions = {
     openGrammar: () => void;
     openIgnoredGrammar: () => void;
     openDictionary: () => void;
+    openCitations: () => void;
     clearFormatting: () => void;
     align: (alignment: "left" | "center" | "right" | "justify") => void;
     toggleBold: () => void;
