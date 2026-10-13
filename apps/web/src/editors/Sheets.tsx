@@ -136,7 +136,7 @@ import "../excel-wrap";
 import "../excel-cell";
 import { resolveExcelColumnWidths } from "../excel-layout";
 import { useTheme } from "../theme";
-import { currentAuthor, onAuthorChange } from "../identity";
+import { currentAuthor, onAuthorChange, setLocalName } from "../identity";
 import { useMode } from "../mode";
 import { getSession } from "../node-client";
 
@@ -2213,6 +2213,9 @@ export default function Sheets({
           freeze: setFrozen,
           insertCheckbox: () => agentActions.current?.sheetActions?.insertCheckbox?.(),
           exportAs: (format) => agentActions.current!.export(format),
+          setAuthor: cluster ? undefined : setLocalName,
+          signature: () =>
+            currentAuthor(cluster ? getSession()?.user : null).signature,
         }
       : null;
     return {

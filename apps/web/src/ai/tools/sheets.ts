@@ -29,7 +29,10 @@ export interface SheetsAgentContext {
   insertCheckbox: () => void;
   /** Undefined once the browser downloads it; on the desktop, the saved path or null if cancelled. */
   exportAs: (format: "xlsx" | "csv" | "tsv") => Promise<string | null | void>;
+  /** Set the name comments are signed with on this device; absent when a signed-in account names them. */
   setAuthor?: (name: string) => void;
+  /** The name saved with new comments ("" when none is set). */
+  signature?: () => string;
 }
 
 export interface PanelValues {
@@ -284,6 +287,22 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
   };
   const select = (range: string) => {
     sheet().getRange(a1(parseA1(range))).activate();
+  };
+  /** " (Engineering, Actual)": the cell's row label and column header, to say where it is. */
+  const cellLabel = (cell: string) => {
+    try {
+      const s = sheet(),
+        used = usedRange(s),
+        { row, column } = parseCell(cell);
+      const text = (r: number, c: number) => {
+        const v = s.getRange(r, c, 1, 1).getValue();
+        return typeof v === "string" ? v.trim() : "";
+      };
+      const parts = row > used.startRow ? [column > used.startColumn ? text(row, used.startColumn) : "", text(used.startRow, column)] : [];
+      return parts.some(Boolean) ? ` (${parts.filter(Boolean).join(", ")})` : "";
+    } catch {
+      return "";
+    }
   };
   /** Pivot sheets are read-only; say where their numbers come from instead. */
   const writable = () => {
@@ -870,24 +889,49 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       target: ({ cell }) => target(cell),
       async execute({ cell, text }) {
         select(cell);
-        sheet().getRange(cell).createOrUpdateNote({ note: text, show: true, width: 180, height: 90 });
+        sheet().getRange(cell).createOrUpdateNote({ note: text, width: 180, height: 90 });
         ctx.persist();
+        // Opened as Sheet tools › Add or edit cell note does; it closes when the selection moves.
+        await ctx.api.executeCommand("sheet.operation.add-note-popup");
         await wait(600);
-        return `Added a note to ${cell}.`;
+        return `Added a note to ${cell}${cellLabel(cell)}: "${text}". It pops up when the pointer is over the cell.`;
       },
     }),
     tool({
       name: "add_comment",
       label: "Add comment",
       description: "Add a comment (a discussion others can reply to) to a cell.",
-      parameters: Type.Object({ cell: Type.String(), text: Type.String() }),
+      parameters: Type.Object({
+        cell: Type.String(),
+        text: Type.String({ description: "The comment itself, without a signature" }),
+        signed_as: Type.Optional(
+          Type.String({
+            description:
+              "The user's own name, only when they say what to sign with (\"sign it as Sam\"); kept for their later comments on this computer. Never the person the comment is for, never your own name.",
+          }),
+        ),
+      }),
       target: ({ cell }) => target(cell),
-      async execute({ cell, text }) {
+      async execute({ cell, text, signed_as }) {
+        const name = signed_as?.trim();
+        if (name) {
+          ctx.setAuthor?.(name);
+          // The name goes with the comment, not into its text ("… -Sam").
+          const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          text = text.replace(new RegExp(`[\\s,]*(?:[-–—~]|\\n)\\s*${escaped}[.!]?\\s*$`, "i"), "") || text;
+        }
         select(cell);
         const ok = await sheet().getRange(cell).addCommentAsync(text);
         if (!ok) throw new ToolError(`Could not add a comment to ${cell}.`);
         ctx.persist();
-        return `Commented on ${cell}.`;
+        // Show the new thread on its cell, as Insert comment does.
+        await ctx.api.executeCommand("sheet.operation.show-comment-modal");
+        await wait(600);
+        const signature = ctx.signature?.() ?? "";
+        const signed = signature
+          ? `signed "${signature}"${name && signature !== name ? ` (the signed-in account's name; "${name}" can't be used)` : ""}`
+          : `unsigned: no name is set on this computer, so it shows as "You" here and "Anonymous" to others`;
+        return `Commented on ${cell}${cellLabel(cell)}, ${signed}: "${text}".`;
       },
     }),
     tool({
@@ -905,10 +949,14 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
             const range = s.getRange(row, col, 1, 1);
             const note = range.getNote?.();
             if (note?.note) found.push(`${a1({ startRow: row, endRow: row, startColumn: col, endColumn: col })} note: ${note.note}`);
-            for (const comment of range.getComments?.() ?? [])
-              found.push(
-                `${a1({ startRow: row, endRow: row, startColumn: col, endColumn: col })} comment: ${comment.getContent?.()?.toPlainText?.() ?? ""}`,
-              );
+            for (const comment of range.getComments?.() ?? []) {
+              const said = (c: any) => {
+                const { authorName, text } = c.getCommentData?.() ?? {};
+                return `${authorName ? ` by ${authorName}` : " (unsigned)"}: ${String(text?.dataStream ?? "").replace(/\r?\n$/, "").trim()}`;
+              };
+              found.push(`${a1({ startRow: row, endRow: row, startColumn: col, endColumn: col })} comment${said(comment)}`);
+              for (const reply of comment.getReplies?.() ?? []) found.push(`  reply${said(reply)}`);
+            }
           }
         return found.length ? found.join("\n") : "There are no notes or comments.";
       },

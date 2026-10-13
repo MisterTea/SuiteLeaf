@@ -175,6 +175,38 @@ test("spreadsheet tools write, format, sort, chart and pivot", async ({ page }) 
   expect(await call(page, "set_cells", { start: "D2", values: [["note"]] })).toContain("Wrote D2.");
 });
 
+test("note and comment tools say where they went and who signed the comment", async ({ page }) => {
+  await page.goto("/");
+  await waitForTools(page, "open_sample");
+  await call(page, "open_sample", { sample: "budget" });
+  await waitForTools(page, "add_note");
+  const note = page.locator('[data-u-comp="note-textarea"]');
+  expect(await call(page, "add_note", { cell: "C3", text: "Includes the September invoice." })).toBe(
+    'Added a note to C3 (Engineering, Actual): "Includes the September invoice.". It pops up when the pointer is over the cell.',
+  );
+  await expect(note).toBeVisible();
+  expect(await call(page, "add_comment", { cell: "B2", text: "Is this final?" })).toContain(
+    'Commented on B2 (Design, Budget), unsigned: no name is set on this computer, so it shows as "You" here',
+  );
+  await expect(note).toBeHidden();
+  expect(await call(page, "add_comment", { cell: "D3", text: "Can Research use $600 of it? - Alex", signed_as: "Alex" })).toBe(
+    'Commented on D3 (Engineering, Remaining), signed "Alex": "Can Research use $600 of it?".',
+  );
+  await expect(page.getByText("Alex", { exact: true }).first()).toBeVisible();
+  expect(await call(page, "read_notes_and_comments")).toBe(
+    "B2 comment (unsigned): Is this final?\nC3 note: Includes the September invoice.\nD3 comment by Alex: Can Research use $600 of it?",
+  );
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download", exact: true }).click();
+  const file = JSON.parse(readFileSync((await (await download).path())!, "utf8"));
+  const data = (name: string) => JSON.parse(file.content.workbook.resources.find((r: { name: string }) => r.name === name).data);
+  const sheetId = file.content.workbook.sheetOrder[0];
+  expect(data("SHEET_NOTE_PLUGIN")[sheetId][2][2]).not.toHaveProperty("show", true);
+  const threads = data("SHEET_UNIVER_THREAD_COMMENT_PLUGIN")[sheetId];
+  expect(threads.find((c: { ref: string }) => c.ref === "D3").authorName).toBe("Alex");
+  expect(threads.find((c: { ref: string }) => c.ref === "B2").authorName).toBeUndefined();
+});
+
 test("spreadsheet filter tools say which rows are showing and what they add up to", async ({ page }) => {
   await page.goto("/");
   await waitForTools(page, "create_file");
