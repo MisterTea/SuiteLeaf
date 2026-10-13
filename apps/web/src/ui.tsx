@@ -317,6 +317,7 @@ export type EditorActions = {
     insertTableOfContents: (pageNumbers?: boolean) => void;
     insertFootnote: () => void;
     insertEndnote: () => void;
+    insertEquation: () => void;
     openPageSetup: () => void;
     openWordCount: () => void;
     openSpelling: () => void;

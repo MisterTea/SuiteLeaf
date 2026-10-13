@@ -12,6 +12,11 @@ import {
   Header,
   HeadingLevel,
   ImageRun,
+  Math as OfficeMath,
+  MathFraction,
+  MathRun,
+  MathSubScript,
+  MathSuperScript,
   Packer,
   PageNumber,
   Paragraph,
@@ -25,9 +30,11 @@ import {
   VerticalAlign,
   WidthType,
   type IRunOptions,
+  type MathComponent,
   type ParagraphChild,
 } from "docx";
 import type { DocFile, JsonNode } from "./index";
+import { asEquation, type EqNode } from "./equations";
 import { documentPageSettings } from "./document-layout";
 import {
   planDocxComments,
@@ -129,6 +136,43 @@ function blankCommentPlan(): DocxCommentPlan {
   };
 }
 
+function exprToMath(node: EqNode): MathComponent[] {
+  switch (node.kind) {
+    case "text":
+      return node.text ? [new MathRun(node.text)] : [];
+    case "sup":
+      return [
+        new MathSuperScript({
+          children: exprToMath(node.base),
+          superScript: exprToMath(node.exp),
+        }),
+      ];
+    case "sub":
+      return [
+        new MathSubScript({
+          children: exprToMath(node.base),
+          subScript: exprToMath(node.sub),
+        }),
+      ];
+    case "frac":
+      return [
+        new MathFraction({
+          numerator: exprToMath(node.num),
+          denominator: exprToMath(node.den),
+          type: "stacked",
+        }),
+      ];
+    case "row":
+      return node.items.flatMap(exprToMath);
+  }
+}
+
+function equationChildren(node: JsonNode): ParagraphChild[] {
+  const children = exprToMath(asEquation(node.attrs?.expr));
+  if (!children.length) return [new TextRun(String(node.attrs?.plain ?? ""))];
+  return [new OfficeMath({ children })];
+}
+
 function runs(
   node: JsonNode,
   plan: DocxCommentPlan,
@@ -187,6 +231,7 @@ function runs(
       ];
     }
     if (n.type === "note") return [];
+    if (n.type === "equation") return equationChildren(n);
     if (n.type !== "text") return runs(n, plan, notes, library);
     const index = plan.index;
     plan.index += 1;
