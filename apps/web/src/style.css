@@ -3752,11 +3752,19 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
   justify-content: center;
   background: rgba(32, 33, 36, 0.4);
 }
+.modal-overlay:has(.share-dialog) {
+  align-items: flex-start;
+  padding-top: 28px;
+}
 .modal-overlay .gdocs-dialog {
   background: var(--dialog-bg);
   border-color: var(--border);
   color: var(--text-primary);
   max-height: 90vh;
+}
+.modal-overlay .share-dialog {
+  max-height: none;
+  overflow: visible;
 }
 .modal-overlay .dialog-header h2,
 .modal-overlay .floating-field input {
@@ -4375,7 +4383,8 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 }
 .share-dialog {
   width: min(520px, 92vw);
-  max-height: 90vh;
+  max-height: none;
+  overflow: visible;
   gap: 12px;
 }
 @media (max-width: 700px) {
@@ -4470,6 +4479,10 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 .share-role {
   position: relative;
   flex-shrink: 0;
+  z-index: 1;
+}
+.share-role:has(.share-role-menu) {
+  z-index: 5;
 }
 .share-role-btn {
   flex-direction: column;
@@ -4492,15 +4505,15 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
   position: absolute;
   right: 0;
   top: calc(100% + 4px);
-  z-index: 2;
   list-style: none;
   margin: 0;
   padding: 4px;
-  width: 240px;
+  width: 280px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+  z-index: 1100;
 }
 .share-role-menu button {
   align-items: center;
@@ -4543,6 +4556,146 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
   border-radius: 8px;
   background: var(--surface-muted);
   font-size: 13px;
+}
+.share-until {
+  color: var(--text-primary);
+  font-weight: 500;
+  font-size: 13px;
+}
+.share-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+.share-confirm p {
+  margin: 0;
+  font-size: 14px;
+}
+.share-confirm div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.share-remove-btn {
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 6px 12px;
+  color: var(--google-red);
+  font-weight: 500;
+}
+.share-expiry {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.share-expiry-head,
+.share-expiry-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.share-expiry-head button,
+.share-expiry-nav button {
+  border: 0;
+  background: transparent;
+  color: var(--google-blue);
+  font-weight: 500;
+  padding: 2px 6px;
+}
+.share-expiry-week,
+.share-expiry-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  text-align: center;
+}
+.share-expiry-week span {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.share-expiry-grid button {
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  padding: 6px 0;
+  font-size: 13px;
+}
+.share-expiry-grid button:hover:not(:disabled) {
+  background: var(--surface-muted);
+}
+.share-expiry-grid button:disabled {
+  color: var(--text-secondary);
+  opacity: 0.45;
+}
+.share-expiry-grid button.outside {
+  opacity: 0.7;
+}
+.share-expiry-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.access-refused {
+  margin: 0 0 12px;
+  color: var(--text-primary, #202124);
+  font-size: 18px;
+  font-weight: 500;
+}
+.file-comments {
+  margin: 12px auto 0;
+  width: min(640px, calc(100% - 32px));
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.file-comments h2,
+.file-comments p {
+  margin: 0;
+}
+.file-comments h2 {
+  font-size: 15px;
+}
+.file-comments p,
+.file-comments label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.file-comments ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.file-comments li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 14px;
+}
+.file-comments textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  font: inherit;
+}
+.file-comments > button {
+  align-self: flex-start;
 }
 .editor-and-history {
   flex: 1;
