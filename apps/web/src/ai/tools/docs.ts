@@ -102,16 +102,56 @@ const unmark = (text: string) =>
 /** The first block containing `text`, matched loosely if not exactly. */
 function findBlock(list: ReturnType<typeof blocks>, text: string) {
   const want = unmark(unlabel(text));
+  if (!want.trim()) return undefined;
   return list.find((b) => b.text.includes(want)) ?? list.find((b) => loose(b.text).includes(loose(want)));
 }
 
 function noBlock(list: ReturnType<typeof blocks>, text: string) {
-  const texts = list.filter((b) => b.text).slice(0, 20).map((b) => `"${b.text.slice(0, 60)}"`);
+  // A table reads as one entry, not one per cell.
+  const texts = list
+    .filter((b) => b.text)
+    .filter((b, i, all) => b.label !== "Table cell" || all[i - 1]?.label !== "Table cell")
+    .slice(0, 20)
+    .map((b) => (b.label === "Table cell" ? `a table starting "${b.text.slice(0, 40)}"` : `"${b.text.slice(0, 60)}"`));
+  const objects = list.some((b) => b.label === "Table cell") ? ' To go right below a table or photo, use "table" or "photo".' : "";
   return new ToolError(
     texts.length
-      ? `No paragraph contains "${text}". Use a few words copied exactly from one of them; the paragraphs are: ${texts.join(", ")}.`
+      ? `No paragraph contains "${text}". Use a few words copied exactly from one of them; the paragraphs are: ${texts.join(", ")}.${objects}`
       : `No paragraph contains "${text}". The document is empty.`,
   );
+}
+
+/**
+ * The table or photo `after` points at, to put things right below it: text in
+ * a table cell means below the whole table; "table", "[Photo]" or "the image"
+ * mean the last one, unless a paragraph contains that word.
+ */
+function objectAfter(editor: Editor, after: string, found?: { pos: number; label: string }) {
+  const doc = editor.state.doc;
+  if (found?.label === "Table cell") {
+    const $pos = doc.resolve(found.pos);
+    for (let d = $pos.depth; d > 0; d--) if ($pos.node(d).type.name === "table") return { end: $pos.after(d), label: "the table" };
+  }
+  const word = /^\W*(?:the\s+)?(table|photo|image|picture)\W*$/i.exec(after)?.[1]?.toLowerCase();
+  if (!word || (found && !/^\s*\[/.test(after))) return undefined;
+  const type = word === "table" ? "table" : "image";
+  let last: { end: number; label: string } | undefined;
+  doc.descendants((node, pos) => {
+    if (node.type.name === type)
+      last = { end: pos + node.nodeSize, label: type === "table" ? "the table" : `the photo "${node.attrs.alt || "photo"}"` };
+  });
+  return last;
+}
+
+/** Put the cursor in an empty paragraph at `pos` (between blocks), adding one if needed. */
+function openParagraphAt(editor: Editor, pos: number) {
+  const next = editor.state.doc.resolve(pos).nodeAfter;
+  if (next?.type.name === "paragraph" && !next.textContent) {
+    editor.chain().setTextSelection(pos + 1).run();
+    return;
+  }
+  const tr = editor.state.tr.insert(pos, editor.schema.nodes.paragraph.create());
+  editor.view.dispatch(tr.setSelection(TextSelection.create(tr.doc, pos + 1)));
 }
 
 /** Find the n-th (1-based) occurrence of `text`, ignoring case if needed. */
@@ -235,13 +275,18 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       parameters: Type.Object({
         text: Type.String({ description: "The text to type." }),
         after: Type.Optional(
-          Type.String({ description: "Insert the text right after the paragraph or heading containing this text, before whatever follows it." }),
+          Type.String({
+            description:
+              'Insert the text right after the paragraph or heading containing this text, before whatever follows it. "table" or "photo" means right below the last table or photo.',
+          }),
         ),
         replace_document: Type.Optional(Type.Boolean({ description: "Replace everything in the document." })),
       }),
       target: ({ after }) => {
         try {
-          return rectAt(editor, after ? findBlock(blocks(editor), after)?.end ?? 0 : endOfDocument(editor));
+          if (!after) return rectAt(editor, endOfDocument(editor));
+          const found = findBlock(blocks(editor), after);
+          return rectAt(editor, objectAfter(editor, after, found)?.end ?? found?.end ?? 0);
         } catch {
           return editor.view.dom;
         }
@@ -255,16 +300,23 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         let where = "at the end of the document";
         if (after) {
           const want = unmark(unlabel(after)).trim();
-          const found = list.find((b) => b.text.trim() === want) ?? findBlock(list, after);
-          if (!found) throw noBlock(list, after);
-          // A new section never goes between a heading and its own text.
-          let i = list.indexOf(found) + 1;
-          if (found.type === "heading" && /^\s*#{1,3}\s/.test(text)) while (list[i]?.label === "Paragraph") i++;
-          const block = list[i - 1],
-            next = list[i];
-          where = `right after ${quote(block)}${next ? `, before ${quote(next)}` : ", at the end of the document"}`;
-          editor.chain().setTextSelection(block.end - 1).splitBlock().run();
-          editor.chain().setParagraph().run();
+          const found = (want ? list.find((b) => b.text.trim() === want) : undefined) ?? findBlock(list, after);
+          const object = objectAfter(editor, after, found);
+          if (!found && !object) throw noBlock(list, after);
+          if (object) {
+            const next = list.find((b) => b.pos >= object.end && b.text);
+            where = `right after ${object.label}${next ? `, before ${quote(next)}` : ", at the end of the document"}`;
+            openParagraphAt(editor, object.end);
+          } else {
+            // A new section never goes between a heading and its own text.
+            let i = list.indexOf(found!) + 1;
+            if (found!.type === "heading" && /^\s*#{1,3}\s/.test(text)) while (list[i]?.label === "Paragraph") i++;
+            const block = list[i - 1],
+              next = list[i];
+            where = `right after ${quote(block)}${next ? `, before ${quote(next)}` : ", at the end of the document"}`;
+            editor.chain().setTextSelection(block.end - 1).splitBlock().run();
+            editor.chain().setParagraph().run();
+          }
         } else {
           const last = blocks(editor).at(-1);
           editor.chain().setTextSelection(endOfDocument(editor)).run();
@@ -397,7 +449,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       parameters: Type.Object({
         cells: Type.Array(Type.Array(Type.String())),
         header_row: Type.Optional(Type.Boolean()),
-        after: Type.Optional(Type.String()),
+        after: Type.Optional(Type.String({ description: 'Text in the paragraph to put the table after; "table" or "photo" means right below the last table or photo.' })),
       }),
       target: () => document.querySelector('[aria-label="Insert table"]'),
       async execute({ cells, header_row = true, after }) {
@@ -405,14 +457,18 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         const cols = Math.max(1, ...cells.map((r) => r.length));
         const list = blocks(editor);
         const block = after ? findBlock(list, after) : list.at(-1);
-        if (after && !block) throw noBlock(list, after);
+        const object = after ? objectAfter(editor, after, block) : undefined;
+        if (after && !block && !object) throw noBlock(list, after);
         const short = (text: string) => `"${text.length > 60 ? `${text.slice(0, 60)}…` : text}"`;
-        const next = block && list[list.indexOf(block) + 1];
-        const where = after && block
-          ? `right after ${short(block.text)}${next?.text ? `, before ${short(next.text)}` : ", at the end of the document"}`
+        const next = object ? list.find((b) => b.pos >= object.end && b.text) : block && list[list.indexOf(block) + 1];
+        const where = after && (object || block)
+          ? `right after ${object ? object.label : short(block!.text)}${next?.text ? `, before ${short(next.text)}` : ", at the end of the document"}`
           : "at the end of the document";
-        editor.chain().setTextSelection((block?.end ?? 1) - 1).run();
-        if (block?.text) editor.chain().splitBlock().run();
+        if (object) openParagraphAt(editor, object.end);
+        else {
+          editor.chain().setTextSelection((block?.end ?? 1) - 1).run();
+          if (block?.text) editor.chain().splitBlock().run();
+        }
           editor.chain().setParagraph().run();
         editor.chain().insertTable({ rows, cols, withHeaderRow: header_row }).run();
         // Fill cell by cell, moving with Tab like a person would.
@@ -443,6 +499,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       execute({ text, url }) {
         const href = /^[a-z]+:/i.test(url) || url.startsWith("#") ? url : `https://${url}`;
         let range: { from: number; to: number };
+        let added = false;
         try {
           range = selectMatch(text);
         } catch {
@@ -450,9 +507,14 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
           const from = editor.state.selection.from;
           editor.chain().insertContent(text).run();
           range = { from, to: from + text.length };
+          added = true;
         }
         editor.chain().setTextSelection(range).setLink({ href }).run();
         editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, range.to)));
+        if (added) {
+          const line = editor.state.selection.$from.parent.textContent.trim();
+          return `"${text}" was not in the document, so it was added at the end of the document as a link to ${href}; that paragraph now reads "${line}".`;
+        }
         return `Linked "${text}" to ${href}.`;
       },
     }),
@@ -461,16 +523,24 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       label: "Insert image",
       description:
         "Ask the user to choose a photo from their computer and insert it after the paragraph containing `after` (or at the cursor).",
-      parameters: Type.Object({ after: Type.Optional(Type.String()) }),
+      parameters: Type.Object({
+        after: Type.Optional(Type.String({ description: 'Text in the paragraph to put the photo after; "table" or "photo" means right below the last table or photo.' })),
+      }),
       target: () => document.querySelector('[aria-label="Insert image"]'),
       async execute({ after }) {
+        const place = () => {
+          const block = after ? findBlock(blocks(editor), after) : undefined;
+          const object = after ? objectAfter(editor, after, block) : undefined;
+          if (after && !block && !object) throw noBlock(blocks(editor), after);
+          return { block, object };
+        };
         // Check the place before asking, so the user never picks a photo twice.
-        if (after && !findBlock(blocks(editor), after)) throw noBlock(blocks(editor), after);
+        place();
         const file = await requestFile("Choose a photo to insert", "image/png,image/jpeg,image/gif,image/webp");
         if (!file) return "The user did not choose a photo.";
-        if (after) {
-          const block = findBlock(blocks(editor), after);
-          if (!block) throw noBlock(blocks(editor), after);
+        const { block, object } = place();
+        if (object) openParagraphAt(editor, object.end);
+        else if (block) {
           editor.chain().setTextSelection(block.end - 1).splitBlock().run();
           editor.chain().setParagraph().run();
         }

@@ -136,17 +136,26 @@ test("document tools say where a table and a photo went", async ({ page }) => {
   await waitForTools(page, "create_file");
   await call(page, "create_file", { kind: "document", title: "Seed swap" });
   await waitForTools(page, "write_text");
-  await call(page, "write_text", { text: "# Seed swap\nBring seeds on Saturday." });
+  await call(page, "write_text", { text: "# Seed swap\nBring seeds on Saturday.\nFull rules online." });
   expect(
     await call(page, "insert_table", { after: "Bring seeds", cells: [["Name", "Bringing"], ["Asha", "Beans"], ["Marek", "Squash"]] }),
   ).toBe(
-    'Inserted a 3×2 table right after "Bring seeds on Saturday.", at the end of the document: a header row (Name | Bringing), then 2 row(s) whose first cells are Asha, Marek.',
+    'Inserted a 3×2 table right after "Bring seeds on Saturday.", before "Full rules online.": a header row (Name | Bringing), then 2 row(s) whose first cells are Asha, Marek.',
   );
-  expect(await call(page, "write_text", { text: "Last year's table:" })).toContain("now has 3 paragraph(s) with text, 1 table(s).");
+  const doc = page.getByRole("textbox", { name: "Document content" });
+  const typed = await call(page, "write_text", { after: "[Table]", text: "Last year's table:" });
+  expect(typed).toContain('right after the table, before "Full rules online."');
+  expect(typed).toContain("now has 4 paragraph(s) with text, 1 table(s).");
+  await expect(doc.locator("table").locator("xpath=following::p[1]")).toHaveText("Last year's table:");
+  expect(await call(page, "write_text", { after: "Marek", text: "Sign up by Friday." })).toContain("right after the table");
+  await expect(doc.locator("table").locator("xpath=following::p[1]")).toHaveText("Sign up by Friday.");
+  await expect(doc.locator("table td, table th")).toHaveCount(6);
 
   await page.getByRole("button", { name: "AI assistant" }).first().click();
   const choose = page.getByRole("button", { name: "Choose file…" });
-  await expect(call(page, "insert_image", { after: "Nowhere" })).rejects.toThrow(/paragraphs are: "Seed swap"/);
+  await expect(call(page, "insert_image", { after: "Nowhere" })).rejects.toThrow(
+    /paragraphs are: "Seed swap", "Bring seeds on Saturday.", a table starting "Name", "Sign up by Friday.".*use "table" or "photo"/,
+  );
   await expect(choose).toHaveCount(0);
   const inserted = call(page, "insert_image", { after: "Last year's table:" });
   const chooser = page.waitForEvent("filechooser");
@@ -156,9 +165,16 @@ test("document tools say where a table and a photo went", async ({ page }) => {
     mimeType: "image/png",
     buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64"),
   });
-  expect(await inserted).toBe('Inserted the photo "garden.png" below "Last year\'s table:", at the end of the document.');
-  expect(await call(page, "write_text", { text: "Full rules online." })).toContain("4 paragraph(s) with text, 1 table(s), 1 photo(s).");
-  expect(await call(page, "read_document")).toMatch(/\[Paragraph\] Last year's table:\n\d+\. \[Photo\] garden\.png\n\d+\. \[Paragraph\] Full rules online\./);
+  expect(await inserted).toBe('Inserted the photo "garden.png" below "Last year\'s table:", above "Full rules online.".');
+  const caption = await call(page, "write_text", { after: "photo", text: "Taken in May." });
+  expect(caption).toContain('right after the photo "garden.png", before "Full rules online."');
+  expect(caption).toContain("6 paragraph(s) with text, 1 table(s), 1 photo(s).");
+  expect(await call(page, "read_document")).toMatch(
+    /\[Paragraph\] Last year's table:\n\d+\. \[Photo\] garden\.png\n\d+\. \[Paragraph\] Taken in May\.\n\d+\. \[Paragraph\] Full rules online\./,
+  );
+  expect(await call(page, "insert_link", { text: "club site", url: "example.org" })).toContain(
+    '"club site" was not in the document, so it was added at the end',
+  );
 });
 
 test("file list tools search, filter, copy, rename and remove", async ({ page }) => {
