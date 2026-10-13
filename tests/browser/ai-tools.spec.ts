@@ -108,14 +108,15 @@ test("file list tools search, filter, copy, rename and remove", async ({ page })
   await waitForTools(page, "search_files");
   const rows = page.locator(".file-row");
 
-  expect(await call(page, "search_files", { query: "harvest" })).toMatch(/Club newsletter.*Harvest supper/);
+  expect(await call(page, "search_files", { query: "harvest" })).toContain('1 file(s) match "harvest" (in the name or the text):\n- "Club newsletter": …Harvest supper');
   await expect(rows).toHaveCount(1);
-  await call(page, "search_files", { query: "" });
   expect(await call(page, "duplicate_file", { name: "Club newsletter" })).toContain('called "Club newsletter copy"');
   await call(page, "rename_file", { name: "Club newsletter copy", new_name: "Club newsletter - November" });
-  await call(page, "show_files", { show: "documents", sort_by: "name" });
+  expect(await call(page, "show_files", { show: "documents", sort_by: "name" })).toContain('matching the search "harvest"');
   await expect(rows).toHaveText([/^Club newsletter(?! -)/, /^Club newsletter - November/]);
   await call(page, "remove_file", { name: "Club budget" });
-  await call(page, "show_files", { show: "all" });
-  await expect(rows).toHaveCount(2);
+  await expect(page.getByLabel("Search files")).toHaveValue("");
+  expect(await call(page, "show_files", { show: "all" })).toBe(
+    'Showing all.\n- "Club newsletter"\n- "Club newsletter - November"',
+  );
 });

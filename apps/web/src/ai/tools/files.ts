@@ -2,6 +2,7 @@ import { Type } from "@earendil-works/pi-ai";
 import type { FileRecord, SuiteFile } from "@suiteleaf/core";
 import { ToolError, currentSnapshot, tool, waitForHost, type SuiteTool } from "../host";
 import { requestFile } from "../file-request";
+import { moveCursor } from "../cursor";
 
 export const IMPORT_ACCEPT =
   ".sldoc,.slsheet,.slslides,.suiteleaf,.docx,.xlsx,.xls,.xlsm,.xlsb,.xltx,.pptx,.ppt,.ppsx,.pptm,.potx,.ppsm,.html,.htm,.txt,.csv,.tsv";
@@ -59,8 +60,28 @@ export function findRecord(records: FileRecord[], name: string, kind?: Kind) {
   return match;
 }
 
-const row = (title: string) =>
-  [...document.querySelectorAll(".file-row")].find((el) => el.querySelector("a")?.textContent?.startsWith(title));
+/** The listed rows: each file's title and, while searching, the quoted match. */
+const listed = () =>
+  [...document.querySelectorAll(".file-row")].map((el) => ({
+    el,
+    title: el.querySelector("a > span:last-child")?.firstChild?.textContent?.trim() ?? "",
+    snippet: el.querySelector(".file-snippet")?.textContent?.trim(),
+  }));
+
+const row = (title: string) => listed().find((r) => r.title === title)?.el;
+
+/** The file's row, clearing a search or type filter that hides it (as a person would). */
+async function revealRow(ctx: HomeAgentContext, name: string) {
+  const { title } = findRecord(ctx.records, name).file;
+  if (!row(title)) {
+    ctx.setQuery("");
+    ctx.setFilter("all");
+    await wait(400);
+  }
+  return row(title);
+}
+
+const listing = () => listed().map((r) => `- "${r.title}"${r.snippet ? `: …${r.snippet}…` : ""}`);
 
 const kindParam = Type.String({ enum: ["document", "spreadsheet", "presentation"] });
 
@@ -103,8 +124,11 @@ export function homeTools(ctx: HomeAgentContext): SuiteTool[] {
           await wait(35);
         }
         await wait(300);
-        const hits = [...document.querySelectorAll(".file-row")].map((el) => el.textContent?.trim()).filter(Boolean);
-        return query ? (hits.length ? `Matches:\n${hits.join("\n")}` : `No files match "${query}".`) : "Cleared the search.";
+        const hits = listing();
+        if (!query) return "Cleared the search.";
+        return hits.length
+          ? `${hits.length} file(s) match "${query}" (in the name or the text):\n${hits.join("\n")}`
+          : `No files match "${query}".`;
       },
     }),
     tool({
@@ -119,10 +143,14 @@ export function homeTools(ctx: HomeAgentContext): SuiteTool[] {
         [...document.querySelectorAll(".sidebar-links button")].find((b) =>
           b.textContent?.toLowerCase().includes(show === "all" ? "all files" : show),
         ),
-      execute({ show, sort_by }) {
+      async execute({ show, sort_by }) {
         ctx.setFilter({ all: "all", documents: "doc", spreadsheets: "sheet", presentations: "slide" }[show] ?? "all");
         if (sort_by) ctx.setSort({ by: sort_by as "name", desc: sort_by === "edited" });
-        return `Showing ${show}${sort_by ? `, sorted by ${sort_by}` : ""}.`;
+        await wait(300);
+        const search = ctx.query.trim()
+          ? ` Only files matching the search "${ctx.query.trim()}" are listed; call search_files with an empty query to list them all.`
+          : "";
+        return `Showing ${show}${sort_by ? `, sorted by ${sort_by}` : ""}.${search}\n${listing().join("\n") || "No files listed."}`;
       },
     }),
     tool({
@@ -144,13 +172,7 @@ export function homeTools(ctx: HomeAgentContext): SuiteTool[] {
       label: "Open file",
       description: "Open a file from the library by its name.",
       parameters: Type.Object({ name: Type.String() }),
-      target: ({ name }) => {
-        try {
-          return row(findRecord(ctx.records, name).file.title)?.querySelector("a");
-        } catch {
-          return undefined;
-        }
-      },
+      target: async ({ name }) => (await revealRow(ctx, name))?.querySelector("a"),
       async execute({ name }) {
         const r = findRecord(ctx.records, name);
         ctx.open(r);
@@ -175,13 +197,7 @@ export function homeTools(ctx: HomeAgentContext): SuiteTool[] {
       label: "Rename file",
       description: "Rename a file in the library.",
       parameters: Type.Object({ name: Type.String(), new_name: Type.String() }),
-      target: ({ name }) => {
-        try {
-          return row(findRecord(ctx.records, name).file.title)?.querySelector('[aria-label^="Rename"]');
-        } catch {
-          return undefined;
-        }
-      },
+      target: async ({ name }) => (await revealRow(ctx, name))?.querySelector('[aria-label^="Rename"]'),
       async execute({ name, new_name }) {
         const r = findRecord(ctx.records, name);
         await ctx.rename(r, new_name);
@@ -193,13 +209,7 @@ export function homeTools(ctx: HomeAgentContext): SuiteTool[] {
       label: "Make a copy",
       description: "Make a copy of a file in the library.",
       parameters: Type.Object({ name: Type.String() }),
-      target: ({ name }) => {
-        try {
-          return row(findRecord(ctx.records, name).file.title)?.querySelector('[aria-label^="Duplicate"]');
-        } catch {
-          return undefined;
-        }
-      },
+      target: async ({ name }) => (await revealRow(ctx, name))?.querySelector('[aria-label^="Duplicate"]'),
       async execute({ name }) {
         const r = findRecord(ctx.records, name);
         const copy = await ctx.duplicate(r);
@@ -211,17 +221,13 @@ export function homeTools(ctx: HomeAgentContext): SuiteTool[] {
       label: "Remove file",
       description: "Delete a file from the library. Only do this when the user asked to delete or remove that file.",
       parameters: Type.Object({ name: Type.String() }),
-      target: ({ name }) => {
-        try {
-          return row(findRecord(ctx.records, name).file.title)?.querySelector('[aria-label^="Remove"]');
-        } catch {
-          return undefined;
-        }
-      },
+      target: async ({ name }) => (await revealRow(ctx, name))?.querySelector('[aria-label^="Remove"]'),
       async execute({ name }) {
         const r = findRecord(ctx.records, name);
         ctx.showRemove(r);
-        await wait(1000);
+        await wait(500);
+        await moveCursor(document.querySelector('[role="dialog"] button[type="submit"]'), "Remove file");
+        await wait(400);
         await ctx.remove(r);
         return `Removed "${r.file.title}".`;
       },
