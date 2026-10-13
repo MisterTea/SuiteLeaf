@@ -333,7 +333,7 @@ export function useDocProofing(
         role="menu"
         aria-label={`Spelling for ${menu.word}`}
         style={{
-          left: Math.max(8, Math.min(menu.x + 140, window.innerWidth - 260)),
+          left: Math.max(8, Math.min(menu.x + 230, window.innerWidth - 248)),
           top: Math.max(8, Math.min(menu.y - 24, window.innerHeight - 320)),
         }}
         onMouseDown={(event) => event.stopPropagation()}
