@@ -472,8 +472,9 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         const matches = documentMatches(editor.state.doc, find, options).matches;
         if (!matches.length) {
           ctx.closeFind();
+          const already = replace ? documentMatches(editor.state.doc, replace, options).matches.length : 0;
           throw new ToolError(
-            `"${find}" was not found.${/[#*]/.test(find) ? " The document's text has no Markdown marks such as # or **; use read_document to see the exact text." : ""}`,
+            `"${find}" was not found.${already ? ` "${replace}" is in the document ${already} time(s), so it is probably already replaced; nothing changed.` : ""}${/[#*]/.test(find) ? " The document's text has no Markdown marks such as # or **; use read_document to see the exact text." : ""}`,
           );
         }
         let tr = editor.state.tr;
@@ -495,7 +496,21 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         ctx.closeFind();
         const left = matches.length - chosen.length;
         const bold = boldMark ? parts.filter((p, i) => i % 2 && p).map((p) => `"${p}"`) : [];
-        return `Replaced ${chosen.length} of ${matches.length} "${find}" with "${replace}"${bold.length ? ` (${bold.join(", ")} in bold)` : ""}${left ? `; ${left} left` : ""}.`;
+        // Where each replacement went, as a short quote around it.
+        const doc = editor.state.doc;
+        const quotes = chosen
+          .map((m) => tr.mapping.map(m.from, -1))
+          .sort((a, b) => a - b)
+          .slice(0, 8)
+          .map((from) => {
+            const b = blocks(editor).find((x) => x.pos < from && from < x.end);
+            if (!b) return "";
+            const start = Math.max(b.pos + 1, from - 30),
+              end = Math.min(b.end - 1, from + replace.length + 30);
+            return `"${start > b.pos + 1 ? "…" : ""}${doc.textBetween(start, end)}${end < b.end - 1 ? "…" : ""}"`;
+          })
+          .filter(Boolean);
+        return `Replaced ${chosen.length} of ${matches.length} "${find}" with "${replace}"${bold.length ? ` (${bold.join(", ")} in bold)` : ""}${quotes.length ? `, in: ${quotes.join(", ")}` : ""}. ${left ? `${left} "${find}" left.` : `No "${find}" is left in the document.`}`;
       },
     }),
     tool({
@@ -504,7 +519,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       description:
         "Check the document's spelling. Returns each misspelled word with suggestions. Fix words with find_and_replace.",
       parameters: Type.Object({}),
-      target: () => editor.view.dom,
+      target: () => [...document.querySelectorAll(".menu-trigger")].find((el) => el.textContent === "Tools") ?? editor.view.dom,
       async execute() {
         ctx.showSpelling();
         const spell = await spellchecker();
