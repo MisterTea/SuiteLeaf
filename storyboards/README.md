@@ -146,3 +146,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 110 | [See the page number before you apply](110-see-the-page-number.md) | single-node | Docs |
 | 113 | [See where the page number goes](113-see-where-the-number-goes.md) | single-node | Docs |
 | 114 | [See the starting number before you apply](114-see-the-starting-number.md) | single-node | Docs |
+| 117 | [Show the starting number on the format chips](117-show-the-start-on-the-chips.md) | single-node | Docs |

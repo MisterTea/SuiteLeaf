@@ -2,6 +2,7 @@ import { useState, type CSSProperties } from "react";
 import {
   PAGE_NUMBER_START_MAX,
   pageFace,
+  pageNumberFormatChips,
   pageNumberHint,
   pageNumberText,
   setDifferentFirstPage,
@@ -104,6 +105,7 @@ export function PageSetupFields({
     draft.pageNumberStart,
     Math.max(pageCount, 1),
   );
+  const chips = pageNumberFormatChips(draft.pageNumberStart, pageCount);
   return (
     <>
       <fieldset className="page-setup-variants">
@@ -157,7 +159,7 @@ export function PageSetupFields({
                 onChange({ ...draft, pageNumberFormat: "fraction" })
               }
             />
-            {pageNumberText("fraction", 1, Math.max(pageCount, 1))}
+            {chips.fraction}
           </label>
           <label>
             <input
@@ -166,7 +168,7 @@ export function PageSetupFields({
               checked={draft.pageNumberFormat === "page"}
               onChange={() => onChange({ ...draft, pageNumberFormat: "page" })}
             />
-            Page 1
+            {chips.page}
           </label>
           <label>
             <input

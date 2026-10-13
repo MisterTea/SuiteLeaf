@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   documentPageSettings,
   pageFace,
+  pageNumberFormatChips,
   type PageSettings,
 } from "../packages/core/src/document-layout";
 import {
@@ -123,6 +124,35 @@ describe("live page numbers", () => {
     });
     expect(pageFace(saved, 0, 2).pageNumber).toBe("Page 1");
     expect(pageFace(saved, 1, 2).pageNumber).toBe("Page 2");
+  });
+
+  it("labels both format chips from the live start", () => {
+    const saved = page({
+      pageNumbers: true,
+      pageNumberFormat: "page",
+      pageNumberPosition: "top-right",
+      pageNumberPositionSet: true,
+    });
+    const atTwelve = livePageNumbers(saved, { ...saved, pageNumberStart: 12 });
+    expect(pageNumberFormatChips(atTwelve.pageNumberStart, 2)).toEqual({
+      fraction: "12 / 13",
+      page: "Page 12",
+    });
+    expect(pageFace(atTwelve, 0, 2).pageNumber).toBe("Page 12");
+    const atThree = livePageNumbers(atTwelve, { ...atTwelve, pageNumberStart: 3 });
+    expect(pageNumberFormatChips(atThree.pageNumberStart, 2)).toEqual({
+      fraction: "3 / 4",
+      page: "Page 3",
+    });
+    expect(pageFace(atThree, 0, 2).pageNumber).toBe("Page 3");
+    const refused = acceptPageNumberStart(atThree.pageNumberStart, "0");
+    expect(refused.refused).toBe(true);
+    const kept = refused.refused ? atThree.pageNumberStart : refused.start;
+    expect(pageNumberFormatChips(kept, 2)).toEqual({
+      fraction: "3 / 4",
+      page: "Page 3",
+    });
+    expect(pageFace(atThree, 0, 2).pageNumber).toBe("Page 3");
   });
 
   it("refuses a start below 1 and keeps the last valid number", () => {

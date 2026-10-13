@@ -7,6 +7,7 @@ import {
   pageFace,
   pageMarginError,
   pageMarginsError,
+  pageNumberFormatChips,
   pageNumberHint,
 } from "../packages/core/src/document-layout";
 
@@ -296,6 +297,43 @@ describe("document page settings", () => {
     expect(html).toContain("counter(page, lower-roman)");
     expect(html).not.toContain('"Page " counter(page)');
     expect(html).toContain('<footer class="page-footer">Draft</footer>');
+  });
+});
+
+describe("page number format chips", () => {
+  it("uses 1 on a two-page file that starts at 1", () => {
+    expect(pageNumberFormatChips(1, 2)).toEqual({
+      fraction: "1 / 2",
+      page: "Page 1",
+    });
+  });
+  it("follows a start of 12, then 3, on a two-page file", () => {
+    expect(pageNumberFormatChips(12, 2)).toEqual({
+      fraction: "12 / 13",
+      page: "Page 12",
+    });
+    expect(pageNumberFormatChips(3, 2)).toEqual({
+      fraction: "3 / 4",
+      page: "Page 3",
+    });
+  });
+  it("matches the number drawn on the first page", () => {
+    for (const start of [1, 3, 12]) {
+      const chips = pageNumberFormatChips(start, 2);
+      const shared = {
+        ...defaultPageSettings,
+        pageNumbers: true,
+        pageNumberPosition: "top-right" as const,
+        pageNumberPositionSet: true,
+        pageNumberStart: start,
+      };
+      expect(
+        pageFace({ ...shared, pageNumberFormat: "page" }, 0, 2).pageNumber,
+      ).toBe(chips.page);
+      expect(
+        pageFace({ ...shared, pageNumberFormat: "fraction" }, 0, 2).pageNumber,
+      ).toBe(chips.fraction);
+    }
   });
 });
 

@@ -216,6 +216,30 @@ export function pageNumberText(
   if (format === "roman") return lowerRoman(page);
   return `${page} / ${total}`;
 }
+/**
+ * Labels for the fraction and "Page N" chips. They use the number on the
+ * first page, so a start of 12 on two pages reads "12 / 13" and "Page 12".
+ * Pass the last accepted start. The caller keeps that number when the field
+ * is below 1, so the chips do not move.
+ */
+export function pageNumberFormatChips(
+  start: number,
+  pageCount: number,
+): { fraction: string; page: string } {
+  const count = Math.max(1, Math.floor(pageCount) || 1);
+  const shown = pageNumberAt(
+    {
+      ...defaultPageSettings,
+      pageNumberStart: pageNumberStartValue(start),
+    },
+    0,
+    count,
+  );
+  return {
+    fraction: pageNumberText("fraction", shown.page, shown.total),
+    page: pageNumberText("page", shown.page, shown.total),
+  };
+}
 /** A start number is a whole page from 1 through 9999. Anything else starts at 1. */
 export const PAGE_NUMBER_START_MAX = 9999;
 export function pageNumberStartValue(value: unknown): number {
