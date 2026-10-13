@@ -131,6 +131,36 @@ test("document tools find superscript text the way people type it", async ({ pag
   await expect(call(page, "write_text", { after: "South plot", text: "x" })).rejects.toThrow(/copied exactly.*"North plot: 40 m²"/);
 });
 
+test("document tools say where a table and a photo went", async ({ page }) => {
+  await page.goto("/");
+  await waitForTools(page, "create_file");
+  await call(page, "create_file", { kind: "document", title: "Seed swap" });
+  await waitForTools(page, "write_text");
+  await call(page, "write_text", { text: "# Seed swap\nBring seeds on Saturday." });
+  expect(
+    await call(page, "insert_table", { after: "Bring seeds", cells: [["Name", "Bringing"], ["Asha", "Beans"], ["Marek", "Squash"]] }),
+  ).toBe(
+    'Inserted a 3×2 table right after "Bring seeds on Saturday.", at the end of the document: a header row (Name | Bringing), then 2 row(s) whose first cells are Asha, Marek.',
+  );
+  expect(await call(page, "write_text", { text: "Last year's table:" })).toContain("now has 3 paragraph(s) with text, 1 table(s).");
+
+  await page.getByRole("button", { name: "AI assistant" }).first().click();
+  const choose = page.getByRole("button", { name: "Choose file…" });
+  await expect(call(page, "insert_image", { after: "Nowhere" })).rejects.toThrow(/paragraphs are: "Seed swap"/);
+  await expect(choose).toHaveCount(0);
+  const inserted = call(page, "insert_image", { after: "Last year's table:" });
+  const chooser = page.waitForEvent("filechooser");
+  await choose.click();
+  await (await chooser).setFiles({
+    name: "garden.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64"),
+  });
+  expect(await inserted).toBe('Inserted the photo "garden.png" below "Last year\'s table:", at the end of the document.');
+  expect(await call(page, "write_text", { text: "Full rules online." })).toContain("4 paragraph(s) with text, 1 table(s), 1 photo(s).");
+  expect(await call(page, "read_document")).toMatch(/\[Paragraph\] Last year's table:\n\d+\. \[Photo\] garden\.png\n\d+\. \[Paragraph\] Full rules online\./);
+});
+
 test("file list tools search, filter, copy, rename and remove", async ({ page }) => {
   await page.goto("/");
   await waitForTools(page, "create_file");

@@ -52,6 +52,26 @@ function blocks(editor: Editor) {
   return list;
 }
 
+/** Photos, which blocks() leaves out because they hold no text. */
+function images(editor: Editor) {
+  const list: { pos: number; end: number; name: string }[] = [];
+  editor.state.doc.descendants((node, pos) => {
+    if (node.type.name === "image") list.push({ pos, end: pos + node.nodeSize, name: String(node.attrs.alt || "photo") });
+  });
+  return list;
+}
+
+/** What the document holds, counting table cells as a table rather than as paragraphs. */
+function contents(editor: Editor) {
+  let tables = 0;
+  editor.state.doc.descendants((node) => {
+    if (node.type.name === "table") tables++;
+  });
+  const paragraphs = blocks(editor).filter((b) => b.text && b.label !== "Table cell").length;
+  const photos = images(editor).length;
+  return `${paragraphs} paragraph(s) with text${tables ? `, ${tables} table(s)` : ""}${photos ? `, ${photos} photo(s)` : ""}`;
+}
+
 const SUPER: Record<string, string> = { "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹", "+": "⁺", "-": "⁻", "=": "⁼", "(": "⁽", ")": "⁾", n: "ⁿ", i: "ⁱ" };
 const SUB: Record<string, string> = { "0": "₀", "1": "₁", "2": "₂", "3": "₃", "4": "₄", "5": "₅", "6": "₆", "7": "₇", "8": "₈", "9": "₉", "+": "₊", "-": "₋", "=": "₌", "(": "₍", ")": "₎" };
 
@@ -73,7 +93,7 @@ function shownText(node: PMNode) {
 /** Text compared loosely: any case, and ² the same as 2. */
 const loose = (text: string) => text.normalize("NFKC").toLowerCase();
 /** Drop a "6. [Paragraph] " prefix copied from read_document. */
-const unlabel = (text: string) => text.replace(/^\s*(\d+\.\s*)?\[(Heading \d|Paragraph|Bullet|Numbered item|Table cell)\]\s*/, "");
+const unlabel = (text: string) => text.replace(/^\s*(\d+\.\s*)?\[(Heading \d|Paragraph|Bullet|Numbered item|Table cell|Photo)\]\s*/, "");
 
 /** Drop Markdown marks ("# ", "- ", "**") the model copies from what it typed. */
 const unmark = (text: string) =>
@@ -196,11 +216,13 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       name: "read_document",
       label: "Read the document",
       description:
-        "Read the document's text, one numbered line per paragraph, heading, list item or table cell, with its style.",
+        "Read the document's text, one numbered line per paragraph, heading, list item, table cell or photo, with its style.",
       parameters: Type.Object({}),
       target: () => editor.view.dom,
       execute: () => {
-        const list = blocks(editor);
+        const list = [...blocks(editor), ...images(editor).map((p) => ({ pos: p.pos, label: "Photo", text: p.name }))].sort(
+          (a, b) => a.pos - b.pos,
+        );
         const lines = list.map((b, i) => `${i + 1}. [${b.label}] ${b.text || "(empty)"}`);
         return `"${ctx.title}", ${ctx.pageCount} page(s).\n${lines.join("\n") || "The document is empty."}`;
       },
@@ -261,7 +283,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         const typedHeadings = [...text.matchAll(/^#{1,3}\s+(.*)$/gm)].map((m) => `"${m[1].replace(/\*\*/g, "").trim()}"`);
         const bold = [...text.matchAll(/\*\*(.+?)\*\*/g)].map((m) => `"${m[1]}"`);
         const headings = blocks(editor).filter((b) => b.type === "heading").map((b) => `${b.label}: ${b.text}`);
-        return `Typed ${typed} paragraph(s) ${where}${typedHeadings.length ? `; heading(s): ${typedHeadings.join(", ")}` : ""}${bold.length ? `; in bold: ${bold.join(", ")}` : ""}. The document now has ${blocks(editor).filter((b) => b.text).length} paragraph(s) with text.${headings.length ? `\nHeadings in the document now: ${headings.join(" | ")}` : ""}`;
+        return `Typed ${typed} paragraph(s) ${where}${typedHeadings.length ? `; heading(s): ${typedHeadings.join(", ")}` : ""}${bold.length ? `; in bold: ${bold.join(", ")}` : ""}. The document now has ${contents(editor)}.${headings.length ? `\nHeadings in the document now: ${headings.join(" | ")}` : ""}`;
       },
     }),
     tool({
@@ -384,6 +406,11 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         const list = blocks(editor);
         const block = after ? findBlock(list, after) : list.at(-1);
         if (after && !block) throw noBlock(list, after);
+        const short = (text: string) => `"${text.length > 60 ? `${text.slice(0, 60)}…` : text}"`;
+        const next = block && list[list.indexOf(block) + 1];
+        const where = after && block
+          ? `right after ${short(block.text)}${next?.text ? `, before ${short(next.text)}` : ", at the end of the document"}`
+          : "at the end of the document";
         editor.chain().setTextSelection((block?.end ?? 1) - 1).run();
         if (block?.text) editor.chain().splitBlock().run();
           editor.chain().setParagraph().run();
@@ -396,7 +423,9 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
             await wait(25);
             if (r < rows - 1 || c < cols - 1) editor.chain().goToNextCell().run();
           }
-        return `Inserted a ${rows}×${cols} table.`;
+        const first = (row: string[] = []) => row.find((c) => c.trim()) ?? "(empty)";
+        const body = cells.slice(1).map((row) => first(row));
+        return `Inserted a ${rows}×${cols} table ${where}: ${header_row ? "a header row" : "first row"} (${(cells[0] ?? []).join(" | ")})${body.length ? `, then ${body.length} row(s) whose first cells are ${body.join(", ")}` : ""}.`;
       },
     }),
     tool({
@@ -435,6 +464,8 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       parameters: Type.Object({ after: Type.Optional(Type.String()) }),
       target: () => document.querySelector('[aria-label="Insert image"]'),
       async execute({ after }) {
+        // Check the place before asking, so the user never picks a photo twice.
+        if (after && !findBlock(blocks(editor), after)) throw noBlock(blocks(editor), after);
         const file = await requestFile("Choose a photo to insert", "image/png,image/jpeg,image/gif,image/webp");
         if (!file) return "The user did not choose a photo.";
         if (after) {
@@ -443,8 +474,17 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
           editor.chain().setTextSelection(block.end - 1).splitBlock().run();
           editor.chain().setParagraph().run();
         }
+        const before = images(editor).length;
         await ctx.insertImage(file);
-        return `Inserted the photo "${file.name}".`;
+        if (images(editor).length === before)
+          throw new ToolError(`"${file.name}" could not be inserted. Photos must be PNG, JPEG, GIF or WebP and smaller than 5 MB.`);
+        const cursor = editor.state.selection.from;
+        const photo = images(editor).filter((p) => p.end <= cursor).at(-1);
+        const list = blocks(editor);
+        const above = photo && list.filter((b) => b.end <= photo.pos && b.text).at(-1);
+        const below = photo && list.find((b) => b.pos >= photo.end && b.text);
+        const short = (text: string) => `"${text.length > 60 ? `${text.slice(0, 60)}…` : text}"`;
+        return `Inserted the photo "${file.name}"${above ? ` below ${short(above.text)}` : " at the top of the document"}${below ? `, above ${short(below.text)}` : ", at the end of the document"}.`;
       },
     }),
     tool({
