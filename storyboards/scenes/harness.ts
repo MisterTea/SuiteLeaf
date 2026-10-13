@@ -1,4 +1,4 @@
-import { test as base, expect, _electron as electron, type Page } from "@playwright/test";
+import { test as base, expect, _electron as electron, type ElectronApplication, type Page } from "@playwright/test";
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
@@ -29,6 +29,9 @@ const cursorScript = `
 
 /** Record the Electron desktop app instead of the web build (AI storyboards). */
 export const electronMode = process.env.STORYBOARD_ELECTRON === "1";
+
+/** The desktop app behind each recorded window, for answering native dialogs. */
+export const electronApps = new WeakMap<Page, ElectronApplication>();
 
 /** Settings the in-app assistant reads, for AI storyboards. */
 function assistantScript(baseURL: string | undefined) {
@@ -80,6 +83,7 @@ export const test = base.extend<{ page: Page }>({
         recordVideo: { dir, size },
       });
       page = await app.firstWindow();
+      electronApps.set(page, app);
       // The video is cropped to the window, so the window must match the viewport.
       await app.evaluate(({ BrowserWindow }, s) => BrowserWindow.getAllWindows()[0]?.setContentSize(s.width, s.height), size);
       await page.setViewportSize(size);
@@ -204,7 +208,7 @@ export function describeRun(run: AgentRun) {
 }
 export { expect };
 
-/** Show a caption bar describing the current scene, then let viewers read it. */
+/** Show a caption bar describing the current scene, then let viewers read it. An empty text hides it. */
 export async function caption(page: Page, text: string, hold = 1400) {
   await page.evaluate((value) => {
     let bar = document.getElementById("storyboard-caption");
@@ -220,6 +224,7 @@ export async function caption(page: Page, text: string, hold = 1400) {
     bar.style.left = `calc(50% - ${panel / 2}px)`;
     bar.style.maxWidth = `calc(80% - ${panel}px)`;
     bar.textContent = value;
+    bar.style.display = value ? "" : "none";
   }, text);
   await page.waitForTimeout(hold);
 }
