@@ -4,6 +4,7 @@ import { agentSession, currentFormat, type TranscriptItem } from "./agent";
 import { cursorStore } from "./cursor";
 import { fileRequestStore } from "./file-request";
 import { approvalStore } from "./guard";
+import { todoStore } from "./todo";
 import { PARSE_ERROR } from "./model-stream";
 
 /** What the panel calls the assistant: the short name of the model it runs ("Gemma", "FrogNano"). */
@@ -96,6 +97,12 @@ function Item({ item }: { item: TranscriptItem }) {
       </div>
     );
   if (item.kind === "changes") return <Changes item={item} />;
+  if (item.kind === "reminder")
+    return (
+      <div className="agent-review">
+        <CircleAlert size={14} /> Not finished yet: {item.open.length} item(s) on the checklist were still open
+      </div>
+    );
   return (
     <div className={`agent-tool ${item.status}`} data-tool={item.name}>
       <span className="agent-tool-icon">
@@ -146,6 +153,26 @@ function Changes({ item }: { item: Extract<TranscriptItem, { kind: "changes" }> 
           <Undo2 size={14} /> Undo all of this
         </button>
       ) : null}
+    </div>
+  );
+}
+
+function Checklist() {
+  const todos = useSyncExternalStore(todoStore.subscribe, todoStore.get);
+  if (!todos.length) return null;
+  const done = todos.filter((t) => t.done).length;
+  return (
+    <div className="agent-checklist" aria-label="Checklist">
+      <strong>
+        Checklist · {done}/{todos.length}
+      </strong>
+      <ul>
+        {todos.map((t) => (
+          <li key={t.id} className={t.done ? "done" : undefined}>
+            {t.done ? <Check size={13} /> : <span className="agent-checklist-dot" />} {t.text}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -280,6 +307,7 @@ export function AgentSidebar() {
           <p className="agent-note">{assistantName()} finished without a summary. The steps above are what it did.</p>
         ) : null}
       </div>
+      <Checklist />
       <ApprovalPrompt />
       <FilePrompt />
       <form

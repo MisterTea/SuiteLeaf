@@ -5,12 +5,14 @@ import { formatFor } from "./chat-format";
 import { hideCursor, showCursor } from "./cursor";
 import { PARSE_ERROR, createLocalStreamFn, localModelDescriptor, type GenerationStats } from "./model-stream";
 import { cancelApproval, startRequest, takeCheckpoint, type Checkpoint, type FileChange } from "./guard";
-import { activeHost, currentReview, currentSnapshot, currentSuiteTools, toAgentTool, toolScreen } from "./host";
+import { activeHost, currentReview, currentSnapshot, currentSuiteTools, registerToolEverywhere, toAgentTool, toolScreen } from "./host";
+import { clearTodos, formatTodos, openTodos, todoStore, todoTool } from "./todo";
 
 export const SYSTEM_PROMPT = `You are the assistant built into SuiteLeaf, an office suite with documents, spreadsheets and presentations. You do the user's task yourself by calling tools; each tool acts in the app the user is looking at, and they watch you work.
 
 How to work:
 - Do the whole task, one tool call at a time, until it is finished. Do not ask the user to do steps you can do with a tool.
+- If the request has more than one part, first call todo with action add and every part as an item, in order (only what the user asked for). Right after you finish an item, tick it with todo toggle. You are done when every item is ticked.
 - You can open files from the user's computer (downloads, email attachments, files they saved): open_from_computer asks them to pick the file. A file they mention that is not in the file list is on their computer: open it this way without asking. Never tell them to upload or import it themselves.
 - The <app_state> block describes the screen when the user wrote; tool results describe changes since. Read with a read tool when you need details you do not have.
 - Use exact names, cell addresses and text from the app state. Keep the user's wording for titles and text they give you.
@@ -43,6 +45,8 @@ export type TranscriptItem =
       result?: string;
     }
   | { kind: "error"; text: string }
+  /** The assistant replied with checklist items still open and was sent back to them. */
+  | { kind: "reminder"; open: string[] }
   /** The assistant checked its work before replying; `issues` are what the app pointed out. */
   | { kind: "review"; issues: string[] }
   /** Files the request changed, which "Undo all of this" puts back while `undo` is set. */
@@ -80,6 +84,10 @@ export interface AgentMetrics {
   /** Reviews before the final reply, and the problems the app pointed out in them. */
   reviews: number;
   reviewIssues: number;
+  /** Requests where the assistant wrote a checklist, times it was sent back to open items, and items still open at the end. */
+  checklists: number;
+  checklistReminders: number;
+  openAtEnd: number;
 }
 
 const MAX_TURNS = 40;
@@ -111,7 +119,15 @@ const emptyMetrics = (): AgentMetrics => ({
   tools: [],
   reviews: 0,
   reviewIssues: 0,
+  checklists: 0,
+  checklistReminders: 0,
+  openAtEnd: 0,
 });
+
+registerToolEverywhere(todoTool);
+
+/** Times a request is sent back to its open checklist items before its reply stands. */
+const MAX_REMINDERS = 2;
 
 const textOf = (result: unknown) =>
   ((result as { content?: { type: string; text?: string }[] })?.content ?? [])
@@ -333,16 +349,44 @@ class AgentSession {
     if (this.state === "working" || this.state === "loading") return;
     this.items.push({ kind: "user", text });
     startRequest(text);
+    clearTodos();
     this.state = "loading";
     this.emit();
     const checkpoint = await takeCheckpoint().catch(() => undefined);
     await this.run(() => this.agent!.prompt(`<app_state>\n${currentSnapshot()}\n</app_state>\n\n${text}`), true, true);
     if ((this.state as AgentUiState) === "working") {
+      await this.holdToChecklist();
+      if (todoStore.get().length) this.metrics.checklists++;
+      this.metrics.openAtEnd += openTodos().length;
       const changes = (await checkpoint?.changes().catch(() => undefined)) ?? [];
       if (this.metrics.stopReason !== "aborted" && this.endedInWords()) await this.review(text, changes.length > 0);
       if (checkpoint) await this.listChanges(checkpoint);
       if ((this.state as AgentUiState) === "working") this.state = "done";
       this.emit();
+    }
+  }
+
+  /**
+   * A reply with checklist items still open is not the end: send the model
+   * back to them, with the app as it is now, at most MAX_REMINDERS times.
+   */
+  private async holdToChecklist() {
+    for (let i = 0; i < MAX_REMINDERS; i++) {
+      const open = openTodos();
+      if (!open.length || this.metrics.stopReason === "aborted" || !this.endedInWords()) return;
+      if ((this.state as AgentUiState) !== "working") return;
+      this.metrics.checklistReminders++;
+      const last = this.items.at(-1);
+      if (last?.kind === "assistant") this.items.pop();
+      this.items.push({ kind: "reminder", open: open.map((t) => t.text) });
+      await this.run(
+        () =>
+          this.agent!.prompt(
+            `<checklist>\nYou replied, but your checklist still has open items:\n${formatTodos(open)}\nLook at the app below. If an item is already done, tick it with todo toggle and don't do it again. Do the items that are not done yet. If one can't be done, tick it and say why in your reply. Then reply with your one or two sentence summary for the user.\n<app_state>\n${currentSnapshot()}\n</app_state>\n</checklist>`,
+          ),
+        false,
+        true,
+      );
     }
   }
 

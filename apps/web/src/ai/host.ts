@@ -140,10 +140,17 @@ const toolScreens = new Map<string, string>();
 /** Where a tool that isn't available here was offered: "home", "doc", "sheet", "slide", "workspace" (any open file) or another screen's id. */
 export const toolScreen = (name: string) => toolScreens.get(name);
 
+/** Tools offered on every screen, such as the assistant's checklist. */
+const everywhere: SuiteTool[] = [];
+export function registerToolEverywhere(t: SuiteTool) {
+  if (!everywhere.some((x) => x.name === t.name)) everywhere.push(t);
+  changed();
+}
+
 /** Every tool available right now, from every mounted screen. */
 export function currentSuiteTools(): SuiteTool[] {
-  const seen = new Set<string>();
-  const list: SuiteTool[] = [];
+  const seen = new Set<string>(everywhere.map((t) => t.name));
+  const list: SuiteTool[] = [...everywhere];
   for (const [id, h] of [...hosts.entries(), ...(globalHost ? [["global", globalHost] as const] : [])]) {
     for (const t of h.tools) {
       if (id !== "global") toolScreens.set(t.name, id === "editor" ? h.kind : id);
