@@ -443,6 +443,37 @@ export async function exportDocx(
     target[String(slot.num)] = { children: noteBody(id) };
   }
   const settings = documentPageSettings(content);
+  const headerPart = (text: string) =>
+    new Header({ children: [new Paragraph(text)] });
+  const footerPart = (
+    text: string,
+    side: "left" | "right" | "none",
+    numbers: boolean,
+  ) => {
+    const number = new TextRun({
+      children: [PageNumber.CURRENT, " / ", PageNumber.TOTAL_PAGES],
+    });
+    const children = !numbers
+      ? [new TextRun(text)]
+      : side === "left"
+        ? text
+          ? [number, new TextRun(`  ${text}`)]
+          : [number]
+        : text
+          ? [new TextRun(`${text}  `), number]
+          : [number];
+    return new Footer({
+      children: [
+        new Paragraph({
+          alignment:
+            side === "right" ? AlignmentType.RIGHT : AlignmentType.LEFT,
+          children,
+        }),
+      ],
+    });
+  };
+  const splitFurniture =
+    settings.differentFirstPage || settings.differentOddEven;
   const comments = planDocxComments(content);
   const children = blocks(content.content ?? [], comments, notes, library);
   if (comments.trailing.length)
@@ -460,6 +491,9 @@ export async function exportDocx(
   const doc = new Document({
     title: file.title,
     creator: "SuiteLeaf",
+    ...(settings.differentOddEven
+      ? { evenAndOddHeaderAndFooters: true }
+      : {}),
     ...(Object.keys(footnotes).length ? { footnotes } : {}),
     ...(Object.keys(endnotes).length ? { endnotes } : {}),
     styles: { default: { document: { run: { font: "Arial", size: 22 } } } },
@@ -510,23 +544,68 @@ export async function exportDocx(
               footer: 360,
             },
           },
+          ...(settings.differentFirstPage ? { titlePage: true } : {}),
         },
-        headers: {
-          default: new Header({ children: [new Paragraph(settings.header)] }),
-          ...(settings.differentFirstPage
-            ? {
-                first: new Header({
-                  children: [new Paragraph(settings.firstHeader)],
-                }),
-              }
-            : {}),
-        },
-        footers: {
-          default: pageFooter(settings.footer, settings.pageNumbers),
-          ...(settings.differentFirstPage
-            ? { first: pageFooter(settings.firstFooter, false) }
-            : {}),
-        },
+        headers: splitFurniture
+          ? {
+              default: headerPart(
+                settings.differentOddEven ? settings.oddHeader : settings.header,
+              ),
+              ...(settings.differentOddEven
+                ? { even: headerPart(settings.evenHeader) }
+                : {}),
+              ...(settings.differentFirstPage
+                ? { first: headerPart(settings.firstHeader) }
+                : {}),
+            }
+          : {
+              default: new Header({
+                children: [new Paragraph(settings.header)],
+              }),
+            },
+        footers: splitFurniture
+          ? {
+              default: footerPart(
+                settings.differentOddEven ? settings.oddFooter : settings.footer,
+                "right",
+                settings.pageNumbers,
+              ),
+              ...(settings.differentOddEven
+                ? {
+                    even: footerPart(
+                      settings.evenFooter,
+                      "left",
+                      settings.pageNumbers,
+                    ),
+                  }
+                : {}),
+              ...(settings.differentFirstPage
+                ? { first: footerPart(settings.firstFooter, "none", false) }
+                : {}),
+            }
+          : {
+              default: new Footer({
+                children: [
+                  new Paragraph({
+                    children: [
+                      new TextRun(settings.footer),
+                      ...(settings.pageNumbers
+                        ? [
+                            new TextRun({
+                              children: [
+                                "  ",
+                                PageNumber.CURRENT,
+                                " / ",
+                                PageNumber.TOTAL_PAGES,
+                              ],
+                            }),
+                          ]
+                        : []),
+                    ],
+                  }),
+                ],
+              }),
+            },
         children,
       },
     ],
