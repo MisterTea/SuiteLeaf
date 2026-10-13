@@ -10,6 +10,7 @@ import {
   planGroupRows,
   readRowGroups,
   replaceGroups,
+  shiftRowGroups,
   showOnly,
   showOnlyLabel,
 } from "../apps/web/src/editors/sheet-row-groups";
@@ -45,6 +46,38 @@ test("show only keeps one detail row and does not change the span", () => {
   expect(expandAll(collapseAll(group)).collapsed).toEqual([]);
   expect(showOnlyLabel("January", 1)).toBe("Show only January");
   expect(showOnlyLabel("", 4)).toBe("Show only row 5");
+});
+
+test("inserting a row shifts a nested group and a collapsed week", () => {
+  const month = makeGroup(1, 7);
+  const week = makeGroup(3, 5);
+  const inside = shiftRowGroups([month, week], 4);
+  expect(inside.map((group) => [group.startRow, group.endRow, group.collapsed])).toEqual([
+    [1, 8, []],
+    [3, 6, []],
+  ]);
+  expect(inside.every((group) => group.startRow > 0)).toBe(true);
+  expect(inside.filter((group) => group.startRow <= 4 && group.endRow >= 4)).toHaveLength(2);
+
+  const above = shiftRowGroups(inside, 1);
+  expect(above.map((group) => [group.startRow, group.endRow, group.collapsed])).toEqual([
+    [2, 9, []],
+    [4, 7, []],
+  ]);
+  expect(above.some((group) => group.startRow <= 1 && group.endRow >= 1)).toBe(false);
+  expect(above.every((group) => group.startRow > 0)).toBe(true);
+
+  const collapsed = shiftRowGroups([month, collapseAll(week)], 4);
+  expect(collapsed.map((group) => [group.startRow, group.endRow, group.collapsed])).toEqual([
+    [1, 8, []],
+    [3, 6, [3, 4, 5, 6]],
+  ]);
+  const stillCollapsed = shiftRowGroups(collapsed, 1);
+  expect(stillCollapsed.map((group) => [group.startRow, group.endRow, group.collapsed])).toEqual([
+    [2, 9, []],
+    [4, 7, [4, 5, 6, 7]],
+  ]);
+  expect(stillCollapsed.some((group) => group.startRow <= 1 && group.endRow >= 1)).toBe(false);
 });
 
 test("stored groups ignore a summary row and survive a round trip", () => {

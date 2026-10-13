@@ -11,6 +11,10 @@ import {
   type IWorkbookData,
 } from "@univerjs/presets";
 import {
+  IUniverInstanceService,
+  UniverInstanceType,
+} from "@univerjs/core";
+import {
   IDescriptionService,
   IEditorService,
   IShortcutService,
@@ -45,6 +49,11 @@ import "@univerjs/preset-sheets-note/lib/index.css";
 import SheetCleanup from "./sheet-cleanup-ui";
 import { SheetSpelling } from "./grid-spelling-ui";
 import SheetRowGroups, { type SheetRowGroupsHandle } from "./sheet-row-groups-ui";
+import {
+  contiguousRanges,
+  readRowGroups,
+  shiftRowGroups,
+} from "./sheet-row-groups";
 import SheetColumnGroups, { type SheetColumnGroupsHandle } from "./sheet-column-groups-ui";
 import SheetFeatures from "./sheet-features";
 import SheetPrint, { type SheetPrintHandle } from "./sheet-print-ui";
@@ -1381,6 +1390,44 @@ export default function Sheets({
         }
       };
       publishValue();
+      const shiftGroupsForInsertedRows = (
+        at: number,
+        count: number,
+        params: { unitId?: unknown; subUnitId?: unknown },
+      ) => {
+        if (!Number.isInteger(at) || !Number.isInteger(count) || count < 1)
+          return;
+        const subUnitId =
+          typeof params.subUnitId === "string" ? params.subUnitId : "";
+        if (!subUnitId) return;
+        const unitId =
+          typeof params.unitId === "string" ? params.unitId : workbook.getId();
+        const worksheet = injector
+          .get(IUniverInstanceService)
+          .getUnit(unitId, UniverInstanceType.UNIVER_SHEET)
+          ?.getSheetBySheetId(subUnitId);
+        if (!worksheet) return;
+        const before = readRowGroups(worksheet.getCustomMetadata());
+        if (!before.length) return;
+        const after = shiftRowGroups(before, at, count);
+        const custom = { ...(worksheet.getCustomMetadata() ?? {}) };
+        custom.suiteleafRowGroups = after;
+        worksheet.setCustomMetadata(custom);
+        const hide = [
+          ...new Set(
+            after.flatMap((group) =>
+              group.collapsed.filter((row) => row >= at && row < at + count),
+            ),
+          ),
+        ].sort((a, b) => a - b);
+        if (!hide.length) return;
+        const facade = workbook.getSheetBySheetId(subUnitId);
+        queueMicrotask(() => {
+          if (disposed || !facade) return;
+          for (const range of contiguousRanges(hide))
+            facade.hideRows(range.startRow, range.endRow - range.startRow + 1);
+        });
+      };
       const listener = workbook.onCommandExecuted((command: any) => {
         if (
           !disposed &&
@@ -1406,6 +1453,8 @@ export default function Sheets({
           const axis = structural[2] === "row" ? "row" : "column";
           const start = axis === "row" ? p.range.startRow : p.range.startColumn;
           const end = axis === "row" ? p.range.endRow : p.range.endColumn;
+          if (structural[1] === "insert" && axis === "row")
+            shiftGroupsForInsertedRows(start, end - start + 1, p);
           for (const chart of content.current.charts) {
             for (const series of chart.excel?.series ?? []) {
               if (series.values.sheetId !== p.subUnitId) continue;

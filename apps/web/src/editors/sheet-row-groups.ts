@@ -85,6 +85,39 @@ export function makeGroup(startRow: number, endRow: number): RowGroup {
   };
 }
 
+/**
+ * Shift row groups when `count` rows are inserted at the 0-based index `at`.
+ * Inserting on the group's first row, or anywhere above it, moves the whole
+ * group down and leaves the new rows out. Inserting after that first row and
+ * within the span grows the group so the new rows belong to it. A group that
+ * was fully collapsed keeps the new rows collapsed; an insert above a
+ * collapsed group only moves the hidden indexes.
+ */
+export function shiftRowGroups(groups: RowGroup[], at: number, count = 1): RowGroup[] {
+  if (!Number.isInteger(at) || at < 0 || !Number.isInteger(count) || count < 1)
+    return groups;
+  return groups.map((group) => shiftGroupForInsert(group, at, count));
+}
+
+function shiftGroupForInsert(group: RowGroup, at: number, count: number): RowGroup {
+  if (at > group.endRow) return group;
+  if (at <= group.startRow) {
+    return {
+      ...group,
+      startRow: group.startRow + count,
+      endRow: group.endRow + count,
+      collapsed: group.collapsed.map((row) => row + count),
+    };
+  }
+  const span = group.endRow - group.startRow + 1;
+  const fullyCollapsed = group.collapsed.length === span;
+  const collapsed = group.collapsed.map((row) => (row >= at ? row + count : row));
+  if (fullyCollapsed)
+    for (let row = at; row < at + count; row++) collapsed.push(row);
+  collapsed.sort((a, b) => a - b);
+  return { ...group, endRow: group.endRow + count, collapsed };
+}
+
 export function replaceGroups(existing: RowGroup[], next: RowGroup): RowGroup[] {
   return [
     ...existing.filter(
