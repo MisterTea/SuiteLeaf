@@ -42,6 +42,7 @@ import {
   type DocxCommentPlan,
 } from "./doc-comments";
 import { embedSuggestionMarkers, revisionizeDocx } from "./suggestions";
+import { docxLineSpacing } from "./line-spacing";
 import {
   citationLibrary,
   inText,
@@ -362,10 +363,15 @@ function blocks(
       n.type === "image"
         ? runs({ type: "paragraph", content: [n] }, plan, notes, library)
         : runs(n, plan, notes, library);
+    const spacing =
+      n.type === "paragraph" || n.type === "heading"
+        ? docxLineSpacing(n.attrs?.lineSpacing)
+        : undefined;
     return [
       new Paragraph({
         children,
         alignment: alignment(n.attrs?.textAlign),
+        ...(spacing ? { spacing } : {}),
         heading:
           n.type === "heading"
             ? ([
