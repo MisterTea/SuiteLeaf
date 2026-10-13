@@ -242,6 +242,18 @@ function formulaCells(sheet: any, maxRows = 200, maxColumns = 26) {
 }
 
 /** A cell's typed value: numbers stay numbers, '=' starts a formula, codes with leading zeros stay text. */
+/** The references in `formula` (same sheet only) whose cells are all empty, e.g. ["B8", "C8"]. */
+function emptyReferences(sheet: any, formula: string) {
+  const refs = formula.replace(/"[^"]*"/g, "").match(/(?<![\w!$])\$?[A-Z]{1,3}\$?\d+(?::\$?[A-Z]{1,3}\$?\d+)?(?![\w(!])/gi) ?? [];
+  if (!refs.length) return [];
+  const empty = refs.filter((ref) => {
+    const r = parseA1(ref);
+    const values = sheet.getRange(r.startRow, r.startColumn, r.endRow - r.startRow + 1, r.endColumn - r.startColumn + 1).getValues() as unknown[][];
+    return values.every((row) => row.every((v) => v === null || v === undefined || v === ""));
+  });
+  return empty.length === refs.length ? empty : [];
+}
+
 export function cellInput(value: unknown): unknown {
   if (typeof value === "number" || typeof value === "boolean") return value;
   const s = String(value ?? "");
@@ -424,7 +436,12 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         const lost = [...before]
           .filter(([cell]) => !after.has(cell) && inside(parseCell(cell).row, parseCell(cell).column))
           .map(([cell, was]) => `${cell} was ${was.formula}`);
-        return `Wrote ${a1(end)}. Now:\n${grid(sheet(), end, 20, 12)}${recalculated.length ? `\nFormulas that recalculated by themselves: ${recalculated.join("; ")}.` : ""}${lost.length ? `\nThese formulas were replaced by fixed values, which will not update any more: ${lost.join("; ")}. If they should stay live, write the formulas back.` : ""}`;
+        const blank = [...after]
+          .filter(([cell]) => inside(parseCell(cell).row, parseCell(cell).column))
+          .map(([cell, now]) => ({ cell, formula: now.formula, refs: emptyReferences(sheet(), now.formula) }))
+          .filter((f) => f.refs.length)
+          .map((f) => `${f.cell} ${f.formula} uses only empty cells (${f.refs.join(", ")})`);
+        return `Wrote ${a1(end)}. Now:\n${grid(sheet(), end, 20, 12)}${recalculated.length ? `\nFormulas that recalculated by themselves: ${recalculated.join("; ")}.` : ""}${lost.length ? `\nThese formulas were replaced by fixed values, which will not update any more: ${lost.join("; ")}. If they should stay live, write the formulas back.` : ""}${blank.length ? `\nCheck these formulas: ${blank.join("; ")}. If they should use other rows or columns, write them again.` : ""}`;
       },
     }),
     tool({

@@ -113,7 +113,14 @@ test("spreadsheet tools write, format, sort, chart and pivot", async ({ page }) 
   expect((await page.locator('[aria-label="Chart: Studio costs"]').boundingBox())!.x).toBeCloseTo(placed.x, 0);
 
   expect(await call(page, "set_cells", { start: "A8", values: [["'Code'", "Amount"], ["007", "12.5"]] })).toMatch(/8\tCode\tAmount\n9\t007/);
-  expect(await call(page, "set_cells", { range: "A10:B10", values: ["Double", "=B9*2"] })).toContain("Wrote A10:B10.");  expect(await call(page, "set_cells", { start: "B9", values: [["20"]] })).toContain(
+  const double = await call(page, "set_cells", { range: "A10:B10", values: ["Double", "=B9*2"] });
+  expect(double).toContain("Wrote A10:B10.");
+  expect(double).not.toContain("Check these formulas");
+  expect(await call(page, "set_cells", { start: "A12", values: [["Left", "=B11-C11+SUM(D11:D11)"]] })).toContain(
+    "Check these formulas: B12 =B11-C11+SUM(D11:D11) uses only empty cells (B11, C11, D11:D11)",
+  );
+  await call(page, "set_cells", { start: "A12", values: [["", ""]] });
+  expect(await call(page, "set_cells", { start: "B9", values: [["20"]] })).toContain(
     "Formulas that recalculated by themselves: B10 =B9*2: 25 → 40.",
   );
   expect(await call(page, "set_cells", { start: "B10", values: [["40"]] })).toContain(

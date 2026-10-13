@@ -1,4 +1,4 @@
-import { askAgent, beat, caption, describeRun, expect, openApp, test } from "../harness";
+import { askAgent, beat, caption, describeRun, electronMode, expect, openApp, test } from "../harness";
 
 const report: [string, string, string?][] = [
   ["Summary", "Heading 1", "Riverside Community Garden had its busiest year yet. Forty-two households tended plots, the waiting list fell from thirty names to nine, and the new rainwater tanks carried us through the dry spell in July without a single hosepipe day. This report sets out what we grew, who helped, how the money was spent, and what we plan for next season."],
@@ -56,7 +56,7 @@ test("04-long-report-with-outline-ai", async ({ page }) => {
   await expect(volunteers.locator("xpath=following-sibling::*[1]"), why2).toHaveJSProperty("tagName", "P");
   await expect(editor, why2).toContainText(report[4][2]!);
   await expect(outline.locator(".outline-item"), why2).toHaveCount(report.length);
-  await expect(page.getByRole("status"), why2).toContainText("Saved");
+  await expect(page.getByRole("status"), why2).toContainText(electronMode ? "Draft saved" : "Saved on this device");
   await caption(page, "Gemma jumped to Volunteers with the outline and added the thank-you under the heading. It saved itself.", 2200);
   await beat(page, 600);
 });

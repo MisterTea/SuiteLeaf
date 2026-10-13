@@ -179,6 +179,13 @@ describe("Gemma 4 tool-call parsing", () => {
       /brackets do not match: there are 1 more "\[" than "\]"/,
     );
   });
+
+  it("drops a stray closing brace after the arguments", () => {
+    const parsed = parseToolCall('call:set_cells{start:<|"|>A7<|"|>,values:[[<|"|>Total<|"|>, "=SUM(B2:B6)"]]}}');
+    expect(parsed.error).toBeUndefined();
+    expect(parsed.arguments).toEqual({ start: "A7", values: [["Total", "=SUM(B2:B6)"]] });
+    expect(parseToolCall('call:set_cells{start:<|"|>A7<|"|>} start').error).toMatch(/Unexpected text/);
+  });
 });
 
 describe("Gemma 4 stream", () => {

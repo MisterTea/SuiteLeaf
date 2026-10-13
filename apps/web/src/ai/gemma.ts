@@ -259,7 +259,8 @@ export function parseToolCall(body: string): ParsedCall {
     const [value, end] = parseValue(src, 0);
     if (!value || typeof value !== "object" || Array.isArray(value))
       throw new Error("Arguments must be an object.");
-    if (src.slice(end).trim()) throw new Error("Unexpected text after the arguments.");
+    // A stray closing "}" after the arguments ("…]]}}") carries no meaning, so it is dropped.
+    if (src.slice(end).trim().replace(/^\}+$/, "")) throw new Error("Unexpected text after the arguments.");
     return value as Record<string, unknown>;
   };
   try {
