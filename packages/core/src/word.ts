@@ -28,6 +28,11 @@ import {
   rewriteWordCitations,
   type CitationLibrary,
 } from "./citations";
+import {
+  EQUATION_LAYOUT_UNSUPPORTED,
+  extractOfficeMath,
+  spliceEquationTokens,
+} from "./equations";
 
 type Mark = NonNullable<JsonNode["marks"]>[number];
 const normalize = (s: string) => s.replace(/[\s\u200b\ufeff]+/gu, "");
@@ -36,6 +41,7 @@ export function documentText(n: JsonNode): string {
 }
 function textOf(n: JsonNode, library: CitationLibrary | undefined): string {
   const next = n.type === "doc" ? citationLibrary(n) : library;
+  if (n.type === "equation") return String(n.attrs?.plain ?? "");
   if (n.type === "noteReference") return String(n.attrs?.label ?? "");
   if (n.type === "tableOfContents" || n.type === "bibliography") return "";
   if (n.type === "citation") {
@@ -1076,13 +1082,20 @@ export async function importDocx(
       if (at >= 0) source.splice(at, 1);
     }
   }
+  let officeXml = updatedXml;
+  if (annotated !== updatedXml) officeXml = annotated;
+  if (rewritten.changed) officeXml = rewritten.xml;
+  if (cited.changed) officeXml = cited.xml;
+  const extracted = extractOfficeMath(officeXml);
+  if (extracted.equations.length) zip.file("word/document.xml", extracted.xml);
   try {
     const input =
       features.includes("strict-ooxml") ||
       modified ||
       annotated !== updatedXml ||
       rewritten.changed ||
-      cited.changed
+      cited.changed ||
+      extracted.equations.length
         ? await zip.generateAsync({ type: "uint8array" })
         : bytes;
     const result = await mammoth.convertToHtml(
@@ -1180,6 +1193,8 @@ export async function importDocx(
       ...content,
       attrs: { ...(content.attrs ?? {}), editingMode: "suggesting" },
     };
+  if (extracted.equations.length)
+    content = spliceEquationTokens(content, extracted.equations);
   let output = normalize(
     documentText(
       suggestionCount ? resolveSuggestions(content, "accepted") : content,
@@ -1332,10 +1347,8 @@ export async function importDocx(
     warnings.push(
       "Tracked changes are imported as accepted text; review history is not retained.",
     );
-  if (features.includes("math_equations"))
-    warnings.push(
-      "Equations are retained as recovered text when available; editable equation layout is not supported.",
-    );
+  if (features.includes("math_equations") && !extracted.equations.length)
+    warnings.push(EQUATION_LAYOUT_UNSUPPORTED);
   if (features.includes("embedded_objects"))
     warnings.push(
       "Embedded OLE objects are not executed or embedded into the document editor.",

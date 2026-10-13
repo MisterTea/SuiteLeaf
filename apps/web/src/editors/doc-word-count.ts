@@ -97,6 +97,7 @@ function blockText(node: JsonNode): string {
   let text = "";
   for (const child of node.content ?? []) {
     if (child.type === "text") text += child.text ?? "";
+    else if (child.type === "equation") text += String(child.attrs?.plain ?? "");
     else if (child.type === "hardBreak") text += " ";
     else text += blockText(child);
   }

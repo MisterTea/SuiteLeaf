@@ -1947,6 +1947,15 @@ function Workspace() {
                     Table
                   </MenuItem>
                   <MenuItem
+                    synonyms={["equation", "math", "formula", "insert equation"]}
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.docActions?.insertEquation()
+                    }
+                  >
+                    Equation
+                  </MenuItem>
+                  <MenuItem
                     onSelect={() =>
                       actions.current?.docActions?.insertHorizontalRule()
                     }
