@@ -21,12 +21,15 @@ const browser = await chromium.launch({
 });
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 page.on("pageerror", (e) => console.log("[pageerror]", e.message));
+const debug = [];
 page.on("console", (m) => {
+  if (m.type() === "debug" && m.text().startsWith("[suiteleaf-ai] prompt")) debug.push(m.text());
   if (m.type() === "error" || m.text().includes("[suiteleaf-ai]")) console.log("[console]", m.text().slice(0, 300));
 });
 await page.addInitScript(
   ({ models, device }) => {
     localStorage.setItem("suiteleaf.ai.modelHost", models);
+    localStorage.setItem("suiteleaf.ai.debug", "1");
     if (device === "auto") localStorage.removeItem("suiteleaf.ai.device");
     else localStorage.setItem("suiteleaf.ai.device", device);
   },
@@ -60,4 +63,5 @@ for (;;) {
 }
 console.log("METRICS", JSON.stringify({ ...(await page.evaluate(() => window.__suiteleafAgent.metrics())), seconds: Math.round((Date.now() - started) / 1000) }));
 await page.screenshot({ path: shot });
+(await import("node:fs")).writeFileSync("/tmp/ai-try-raw.txt", debug.join("\n\n=========\n\n"));
 await browser.close();

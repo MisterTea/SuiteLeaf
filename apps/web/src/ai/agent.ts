@@ -1,4 +1,4 @@
-import { Agent, type AgentEvent } from "@earendil-works/pi-agent-core";
+import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AiStatus } from "@suiteleaf/core/ai";
 import { localModel } from "./backend";
 import { hideCursor, showCursor } from "./cursor";
@@ -42,6 +42,8 @@ export interface AgentMetrics {
   parseErrors: number;
   unknownTools: number;
   repeatedCalls: number;
+  /** Replies with no text and no tool call, which were asked again. */
+  emptyTurns: number;
   promptTokens: number;
   cachedTokens: number;
   outputTokens: number;
@@ -53,6 +55,16 @@ export interface AgentMetrics {
 }
 
 const MAX_TURNS = 40;
+const RESUME_KEY = "suiteleaf.ai.resume";
+
+interface SavedRun {
+  messages: AgentMessage[];
+  items: TranscriptItem[];
+  metrics: AgentMetrics;
+  pending: { id: string; name: string };
+  result: string;
+  turns: number;
+}
 const emptyMetrics = (): AgentMetrics => ({
   runs: 0,
   requests: 0,
@@ -61,6 +73,7 @@ const emptyMetrics = (): AgentMetrics => ({
   parseErrors: 0,
   unknownTools: 0,
   repeatedCalls: 0,
+  emptyTurns: 0,
   promptTokens: 0,
   cachedTokens: 0,
   outputTokens: 0,
@@ -84,7 +97,9 @@ class AgentSession {
   private listeners = new Set<() => void>();
   private version = 0;
   private turns = 0;
+  private emptyRetries = 0;
   private lastCalls: string[] = [];
+  private runningTool?: { id: string; name: string };
 
   constructor() {
     localModel().onStatus((status) => {
@@ -123,8 +138,24 @@ class AgentSession {
         model: gemmaModel(this.model.backend ?? "local"),
         tools: currentSuiteTools().map(toAgentTool),
       },
-      streamFn: createGemmaStreamFn(localModel(), { onStats: this.onStats }),
+      streamFn: createGemmaStreamFn(localModel(), {
+        onStats: this.onStats,
+        onRaw: localStorage.getItem("suiteleaf.ai.debug")
+          ? (prompt, output) => console.debug("[suiteleaf-ai] prompt\n" + prompt + "\n[suiteleaf-ai] output\n" + output)
+          : undefined,
+      }),
       toolExecution: "sequential",
+      // Retried empty replies leave the transcript, so the retry samples the
+      // same (cached) prompt again.
+      transformContext: async (messages) =>
+        messages.filter(
+          (m) =>
+            !(
+              m.role === "assistant" &&
+              m.stopReason === "stop" &&
+              !m.content.some((c) => (c.type === "text" && c.text.trim()) || c.type === "toolCall")
+            ),
+        ),
       // Each turn sees the tools of the screen the agent is on now.
       prepareNextTurnWithContext: ({ context }) => ({
         context: { ...context, tools: currentSuiteTools().map(toAgentTool) },
@@ -154,9 +185,20 @@ class AgentSession {
         this.lastCalls.push(key);
         return undefined;
       },
-      finishTurn: () => {
+      finishTurn: ({ message }) => {
         this.turns++;
-        return this.turns >= MAX_TURNS ? { action: "end" } : undefined;
+        if (this.turns >= MAX_TURNS) return { action: "end" };
+        // An empty reply (no words, no tool call) is a sampling failure, not
+        // an answer: ask again, at most twice in a run.
+        const empty =
+          message.stopReason === "stop" &&
+          !message.content.some((c) => (c.type === "text" && c.text.trim()) || c.type === "toolCall");
+        if (empty && this.emptyRetries < 2) {
+          this.emptyRetries++;
+          this.metrics.emptyTurns++;
+          return { action: "continue" };
+        }
+        return undefined;
       },
     });
     agent.subscribe((event) => this.onEvent(event));
@@ -187,6 +229,7 @@ class AgentSession {
       if (message.stopReason === "error") this.items.push({ kind: "error", text: message.errorMessage ?? "The model failed." });
       this.metrics.stopReason = message.stopReason;
     } else if (event.type === "tool_execution_start") {
+      this.runningTool = { id: event.toolCallId, name: event.toolName };
       const label = currentSuiteTools().find((t) => t.name === event.toolName)?.label ?? event.toolName;
       this.metrics.toolCalls++;
       this.metrics.tools.push(event.toolName);
@@ -207,8 +250,13 @@ class AgentSession {
   /** Send a request to the agent. Resolves when the agent has finished. */
   async prompt(text: string) {
     if (this.state === "working" || this.state === "loading") return;
-    const started = performance.now();
     this.items.push({ kind: "user", text });
+    await this.run(() => this.agent!.prompt(`<app_state>\n${currentSnapshot()}\n</app_state>\n\n${text}`));
+  }
+
+  /** Load the model, then run the agent until it stops. */
+  private async run(go: () => Promise<void>, fresh = true) {
+    const started = performance.now();
     this.state = "loading";
     this.emit();
     const status = await localModel().load();
@@ -224,14 +272,17 @@ class AgentSession {
     }
     this.agent ??= this.build();
     this.agent.state.tools = currentSuiteTools().map(toAgentTool);
-    this.turns = 0;
-    this.lastCalls = [];
-    this.metrics.runs++;
+    if (fresh) {
+      this.turns = 0;
+      this.emptyRetries = 0;
+      this.lastCalls = [];
+      this.metrics.runs++;
+    }
     this.state = "working";
     this.emit();
     showCursor(document.querySelector(".agent-sidebar textarea"));
     try {
-      await this.agent.prompt(`<app_state>\n${currentSnapshot()}\n</app_state>\n\n${text}`);
+      await go();
       const error = this.agent.state.errorMessage;
       this.state = error && this.metrics.stopReason !== "aborted" ? "error" : "done";
     } catch (error) {
@@ -242,6 +293,62 @@ class AgentSession {
       hideCursor();
       this.emit();
     }
+  }
+
+  /**
+   * For tools whose action reloads the page (connecting to or leaving a
+   * server): save the conversation, run `reload`, and let the reloaded page
+   * finish the tool call with `result` and carry on.
+   */
+  async reloadAndResume(result: string, reload: () => unknown): Promise<never> {
+    const pending = this.runningTool;
+    if (this.agent && pending) {
+      const saved: SavedRun = {
+        messages: this.agent.state.messages,
+        items: this.items,
+        metrics: this.metrics,
+        pending,
+        result,
+        turns: this.turns,
+      };
+      sessionStorage.setItem(RESUME_KEY, JSON.stringify(saved));
+    }
+    await reload();
+    return new Promise<never>(() => {});
+  }
+
+  /** After a reload started by a tool, finish that tool call and continue. */
+  async resume() {
+    const raw = sessionStorage.getItem(RESUME_KEY);
+    if (!raw) return;
+    sessionStorage.removeItem(RESUME_KEY);
+    const saved = JSON.parse(raw) as SavedRun;
+    this.items = saved.items;
+    this.metrics = saved.metrics;
+    const item = this.items.find((i) => i.kind === "tool" && i.id === saved.pending.id) as
+      | Extract<TranscriptItem, { kind: "tool" }>
+      | undefined;
+    if (item) {
+      item.status = "ok";
+      item.result = saved.result;
+    }
+    this.emit();
+    // Give the new screen a moment to register its tools.
+    await new Promise((r) => setTimeout(r, 1500));
+    this.agent = this.build();
+    this.agent.state.messages = [
+      ...saved.messages,
+      {
+        role: "toolResult",
+        toolCallId: saved.pending.id,
+        toolName: saved.pending.name,
+        content: [{ type: "text", text: `${saved.result}\n${currentSnapshot()}` }],
+        isError: false,
+        timestamp: Date.now(),
+      },
+    ];
+    this.turns = saved.turns;
+    await this.run(() => this.agent!.continue(), false);
   }
 
   stop() {

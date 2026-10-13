@@ -5,6 +5,7 @@ import {
   useState,
   type FormEvent,
   type ReactNode,
+  type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -25,6 +26,18 @@ import { drive, getSession, type DriveItem } from "../node-client";
 import { formatModified } from "./status";
 
 type Crumb = { id: string | null; name: string };
+/** The visible SuiteDrive folder and what can be done in it. */
+export interface DriveControl {
+  path: string[];
+  items: DriveItem[];
+  loading: boolean;
+  /** Open a folder, or a file (in open mode), as clicking it does. */
+  choose: (item: DriveItem) => void;
+  /** Go up to a folder in the path (1 = the top). */
+  goTo: (depth: number) => void;
+  switchView: (view: "mine" | "shared") => void;
+  newFolder: (name: string) => Promise<void>;
+}
 type View = "mine" | "shared";
 type Place = { view: View; path: Crumb[] };
 
@@ -204,6 +217,7 @@ export function DriveBrowser({
   onClose,
   onFolderChange,
   refreshKey,
+  control,
 }: {
   mode: "open" | "save";
   defaultName?: string;
@@ -216,6 +230,8 @@ export function DriveBrowser({
   /** Changing this re-lists the folder in place, e.g. when replication
    * brings in changes from another server. */
   refreshKey?: string;
+  /** Receives the browser's current folder and actions, for the assistant. */
+  control?: RefObject<DriveControl | null>;
 }) {
   const [initial] = useState(() => (inline && place.load()) || rootOf("mine"));
   const [view, setView] = useState<View>(initial.view);
@@ -298,6 +314,19 @@ export function DriveBrowser({
   const visible = items.filter(
     (i) => i.kind === "folder" || mode === "save" || isNativeName(i.name),
   );
+  if (control)
+    control.current = {
+      path: path.map((c) => c.name),
+      items: visible,
+      loading,
+      choose,
+      goTo: (depth) => setPath(path.slice(0, Math.max(1, depth))),
+      switchView,
+      newFolder: async (folderName) => {
+        await drive.create({ name: folderName, parentId: folder.id, kind: "folder" });
+        await refresh();
+      },
+    };
 
   const submit = (e: FormEvent) => {
     e.preventDefault();

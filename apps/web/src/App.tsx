@@ -96,6 +96,8 @@ import {
   leftServer,
   resolveMode,
   useMode,
+  probeServer,
+  switchMode,
   type ResolvedMode,
 } from "./mode";
 import { useAgentHost } from "./ai/host";
@@ -108,6 +110,14 @@ import {
   type HomeAgentContext,
   type WorkspaceAgentContext,
 } from "./ai/tools/files";
+import {
+  conflictTools,
+  connectTools,
+  driveSnapshot,
+  driveTools,
+  type DriveAgentContext,
+} from "./ai/tools/cluster";
+import type { DriveControl } from "./drive/DriveBrowser";
 const Docs = lazy(() => import("./editors/Docs")),
   Sheets = lazy(() => import("./editors/Sheets")),
   Slides = lazy(() => import("./editors/Slides"));
@@ -580,7 +590,19 @@ function LocalHome() {
         await importer.current(f);
       },
     };
-    return { kind: "home", snapshot: () => homeSnapshot(ctx), tools: homeTools(ctx) };
+    return {
+      kind: "home",
+      snapshot: () => homeSnapshot(ctx),
+      tools: [
+        ...homeTools(ctx),
+        ...(locked
+          ? []
+          : connectTools({
+              probe: probeServer,
+              connect: (serverUrl) => switchMode({ kind: "cluster", serverUrl }),
+            })),
+      ],
+    };
   });
   return (
     <div className="home">
@@ -965,6 +987,28 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
     [make],
   );
   useEffect(() => window.suiteleaf?.onMenu(menu), [menu]);
+  const driveControl = useRef<DriveControl | null>(null);
+  const session = useNodeSession();
+  useAgentHost("home", () => {
+    const ctx: DriveAgentContext = {
+      host: new URL(serverUrl).host,
+      user: session?.user.name || session?.user.username || session?.user.email || "",
+      drive: () => driveControl.current,
+      create: (kind, title) =>
+        createInDrive(createFile(kind, title), folder.current, navigate),
+      open: (item) => openFromDrive(item, navigate),
+      signOut: async () => {
+        if (!(await confirmLeave(serverUrl, "Sign out"))) return false;
+        await signOut();
+        return true;
+      },
+      canDisconnect: !locked,
+      disconnect: async () => {
+        if (await confirmLeave(serverUrl, "Disconnect")) await disconnect(serverUrl);
+      },
+    };
+    return { kind: "home", snapshot: () => driveSnapshot(ctx), tools: driveTools(ctx) };
+  });
   return (
     <div className="home">
       <aside className="sidebar">
@@ -1018,6 +1062,7 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
           <DriveBrowser
             inline
             mode="open"
+            control={driveControl}
             onFolderChange={onFolderChange}
             onOpen={(item) => openFromDrive(item, navigate)}
             refreshKey={sync ? `${sync.heads}:${sync.replicating}` : undefined}
@@ -1410,8 +1455,25 @@ function Workspace() {
       : null;
     return {
       kind: file?.kind ?? "doc",
-      snapshot: () => (ctx ? workspaceSnapshot(ctx) : ""),
-      tools: ctx ? workspaceTools(ctx) : [],
+      snapshot: () =>
+        ctx
+          ? workspaceSnapshot(ctx) +
+            (driveConflictRef.current
+              ? " Someone else saved a newer version of this file in SuiteDrive; changes here are not being uploaded until the conflict is resolved."
+              : "")
+          : "",
+      tools: ctx
+        ? [
+            ...workspaceTools(ctx),
+            ...(driveConflict
+              ? conflictTools({
+                  conflict: () => !!driveConflictRef.current,
+                  saveCopy: saveDriveCopy,
+                  reload: reloadFromDrive,
+                })
+              : []),
+          ]
+        : [],
     };
   });
   if (locked)

@@ -57,7 +57,12 @@ function electronModel(bridge: AiBridge): LocalModel {
  * How long a device may take to download and compile the model before the
  * next one is tried. WebNN can hang compiling a graph this size.
  */
-const COMPILE_BUDGET_MS: Record<string, number> = { "webnn-gpu": 240_000, webgpu: 900_000 };
+const COMPILE_BUDGET_MS: Record<string, number> = {
+  "webnn-gpu": 240_000,
+  "webnn-npu": 240_000,
+  "webnn-cpu": 240_000,
+  webgpu: 900_000,
+};
 
 /** Gemma running in a Web Worker: WebNN first, then WebGPU, each in its own worker. */
 function workerModel(): LocalModel {

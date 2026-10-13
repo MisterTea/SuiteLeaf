@@ -243,10 +243,8 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         set(args.superscript, "superscript");
         set(args.subscript, "subscript");
         if (args.color) editor.chain().focus().setColor(args.color).run();
-        if (args.highlight)
-          args.highlight === "none"
-            ? editor.chain().focus().unsetHighlight().run()
-            : editor.chain().focus().setHighlight({ color: args.highlight }).run();
+        if (args.highlight === "none") editor.chain().focus().unsetHighlight().run();
+        else if (args.highlight) editor.chain().focus().setHighlight({ color: args.highlight }).run();
         if (args.font) editor.chain().focus().setFontFamily(args.font).run();
         if (args.size) editor.chain().focus().setFontSize(`${args.size}pt`).run();
         return `Formatted "${args.text}".`;

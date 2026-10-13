@@ -48,6 +48,8 @@ import {
   rankFormulaSuggestions,
 } from "./formula-suggestions";
 import SortRangeDialog from "./SortRangeDialog";
+import { useAgentHost } from "../ai/host";
+import { sheetSnapshot, sheetTools, type SheetsAgentContext } from "../ai/tools/sheets";
 import { useToolbarOverflow } from "./toolbar-overflow";
 import "@univerjs/preset-sheets-core/lib/index.css";
 import "@univerjs/preset-sheets-drawing/lib/index.css";
@@ -792,6 +794,9 @@ export default function Sheets({
     } | null>(null),
     [notice, setNotice] = useState("");
   const pending = useRef(false);
+  const agentActions = useRef<EditorActions>(undefined);
+  const submitRef = useRef<() => Promise<void>>(async () => {});
+  const sortRef = useRef<(rules: SortRule[], hasHeader: boolean) => void>(() => {});
   const tabSettings = useRef<{ openTabs: () => void }>(null);
   const toolbar = useRef<HTMLDivElement>(null);
   const moreTools = useToolbarOverflow(
@@ -1748,7 +1753,7 @@ export default function Sheets({
   };
   useEffect(() => {
     if (!ready) return;
-    onActions({
+    onActions((agentActions.current = {
       flush: async () => {
         await api.current?.getFormula().onCalculationResultApplied(10000);
         if (pending.current) persist.current();
@@ -1899,7 +1904,7 @@ export default function Sheets({
           );
         },
       },
-    });
+    }));
   }, [ready, file.title, onActions]);
   const startPanel = (type: "chart" | "pivot", id?: string) => {
     moreTools.setOpen(false);
@@ -2154,6 +2159,62 @@ export default function Sheets({
       onError(e instanceof Error ? e.message : String(e));
     }
   };
+  submitRef.current = submit;
+  sortRef.current = sortRange;
+  useAgentHost("editor", () => {
+    const ctx: SheetsAgentContext | null = ready
+      ? {
+          api: api.current,
+          book: book.current,
+          title: file.title,
+          content: () => content.current,
+          persist: () => persist.current(),
+          settle: async () => {
+            await api.current?.getFormula().onCalculationResultApplied(10000);
+          },
+          openPanel: (type, v, id) => {
+            moreTools.setOpen(false);
+            setPanel(type);
+            setEditing(id);
+            setSourceSheet(v.sheetId);
+            setRange(v.range);
+            setTitle(v.title);
+            if (type === "chart") setChartType(v.chartType ?? "bar");
+            else {
+              valueChosen.current = v.value !== undefined;
+              setRowFields((v.rows ?? [0]).join(","));
+              setColumnFields((v.columns ?? []).join(","));
+              setValueField(v.value ?? 1);
+              setAggregate(v.aggregate ?? "SUM");
+              setFilterColumn(v.filterColumn ?? -1);
+              setFilterValue(v.filterValue ?? "");
+            }
+          },
+          submitPanel: () => submitRef.current(),
+          refreshCharts: () => refreshCharts.current(),
+          copyPivot,
+          showSort: (r) => {
+            const sheet = book.current.getActiveSheet();
+            const target = sheet.getRange(
+              r.startRow,
+              r.startColumn,
+              r.endRow - r.startRow + 1,
+              r.endColumn - r.startColumn + 1,
+            );
+            setSorting({ range: target.getRange(), values: target.getValues() });
+          },
+          sort: (rules, hasHeader) => sortRef.current(rules, hasHeader),
+          freeze: setFrozen,
+          insertCheckbox: () => agentActions.current?.sheetActions?.insertCheckbox?.(),
+          exportAs: (format) => agentActions.current!.export(format),
+        }
+      : null;
+    return {
+      kind: "sheet",
+      snapshot: () => (ctx ? sheetSnapshot(ctx) : "A spreadsheet is opening."),
+      tools: ctx ? sheetTools(ctx) : [],
+    };
+  });
   let fields: CellValue[] = [],
     shownValueField = valueField;
   try {

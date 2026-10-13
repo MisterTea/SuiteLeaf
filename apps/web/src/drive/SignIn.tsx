@@ -13,6 +13,8 @@ import {
 } from "../node-client";
 import { disconnect, probeServer, switchMode } from "../mode";
 import { useServerSync } from "./status";
+import { useAgentHost } from "../ai/host";
+import { signInSnapshot, signInTools } from "../ai/tools/cluster";
 
 export function useNodeSession() {
   const [session, setSession] = useState(getSession);
@@ -50,6 +52,16 @@ export function SignInScreen({
   const clustered = Boolean(useServerSync(serverUrl)?.peers);
   const [ended] = useState(sessionEndReason);
   const host = new URL(serverUrl).host;
+  useAgentHost("signin", () => ({
+    kind: "home",
+    snapshot: () => signInSnapshot(host),
+    tools: signInTools({
+      host,
+      signedIn: () => !!getSession(),
+      canLeave: canDisconnect,
+      leave: () => disconnect(serverUrl),
+    }),
+  }));
 
   useEffect(() => {
     loadProviders(serverUrl)

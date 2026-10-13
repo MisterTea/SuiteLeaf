@@ -58,6 +58,7 @@ function summarize(args: unknown) {
 
 function Item({ item }: { item: TranscriptItem }) {
   if (item.kind === "user") return <div className="agent-msg user">{item.text}</div>;
+  if (item.kind === "assistant" && !item.text.trim() && !item.thinking) return null;
   if (item.kind === "assistant")
     return (
       <div className="agent-msg assistant">
@@ -131,9 +132,10 @@ export function AgentSidebar() {
   const busy = session.state === "working" || session.state === "loading";
   const model = session.model;
   const m = session.metrics;
+  const version = session.getVersion();
   useEffect(() => {
     log.current?.scrollTo({ top: log.current.scrollHeight });
-  }, [session.items.length, session.getVersion()]);
+  }, [version]);
   const send = () => {
     const prompt = text.trim();
     if (!prompt || busy) return;
@@ -249,6 +251,7 @@ export function AgentCursor() {
 /** Mounted once at the app root: the panel (when open) and the pointer. */
 export function AgentLayer() {
   const isOpen = usePanelOpen();
+  useEffect(() => void agentSession.resume(), []);
   return (
     <>
       {isOpen ? <AgentSidebar /> : null}
