@@ -113,3 +113,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 55 | [Name a range](55-name-a-range.md) | single-node | Sheets |
 | 56 | [Insert an equation](56-insert-an-equation.md) | single-node | Docs |
 | 57 | [Crop a photo](57-crop-a-photo.md) | single-node | Docs |
+| 58 | [Group rows](58-group-rows.md) | single-node | Sheets |
