@@ -27,7 +27,7 @@ use tokio::sync::Notify;
 pub use blobs::{BlobStore, CHUNK_SIZE, Hash, Manifest};
 
 /// Bump when the drive tables change.
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 const MAX_BLOB_RESPONSE: usize = 24 * 1024 * 1024;
 const MAX_DEPTH: usize = 64;
 
@@ -69,6 +69,17 @@ pub fn tables() -> Vec<TableDef> {
             .column("authorId", Text)
             .column("body", Text)
             .column("createdAt", Text)
+            .index("itemId"),
+        // An in-app notice that a file was shared. Dismissal lives here because
+        // drive_acl has no sharer, time, or seen flag, and there is no mail step.
+        TableDef::new("drive_notice", "id")
+            .column("itemId", Text)
+            .column("recipientId", Text)
+            .column("sharerId", Text)
+            .column("role", Text)
+            .column("createdAt", Text)
+            .column("dismissedAt", Text)
+            .index("recipientId")
             .index("itemId"),
     ]
 }
@@ -188,6 +199,18 @@ pub struct DriveComment {
     pub item_id: String,
     pub author_id: String,
     pub body: String,
+    pub created_at: String,
+}
+
+/// An undismissed in-app notice that `sharer_id` shared `item_id`.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ShareNotice {
+    pub id: String,
+    pub item_id: String,
+    pub item_name: String,
+    pub sharer_id: String,
+    pub role: Role,
     pub created_at: String,
 }
 
@@ -997,6 +1020,8 @@ impl Drive {
     }
 
     /// Grant a user or organization a role, or remove it with `None`.
+    /// A user grant also writes an in-app notice for that person. There is no
+    /// mail step. An organization grant has no single recipient, so it does not.
     pub fn share(
         &self,
         who: &Principal,
@@ -1012,20 +1037,166 @@ impl Drive {
             ));
         }
         let key = format!("{id}:{principal_type}:{principal_id}");
-        self.db.transact(|tx| match role {
-            Some(role) => tx.upsert(
-                "drive_acl",
-                &key,
-                [
-                    ("itemId", Value::from(id)),
-                    ("principalType", principal_type.into()),
-                    ("principalId", principal_id.into()),
-                    ("role", role.as_str().into()),
-                ],
-            ),
-            None => tx.delete("drive_acl", &key),
+        let now = iso_now();
+        let dismiss_ids = if principal_type == "user" {
+            self.open_notice_ids(id, principal_id)?
+        } else {
+            Vec::new()
+        };
+        let notice_id = (role.is_some() && principal_type == "user" && principal_id != who.id)
+            .then(|| uuid::Uuid::now_v7().to_string());
+        self.db.transact(|tx| {
+            match role {
+                Some(role) => tx.upsert(
+                    "drive_acl",
+                    &key,
+                    [
+                        ("itemId", Value::from(id)),
+                        ("principalType", principal_type.into()),
+                        ("principalId", principal_id.into()),
+                        ("role", role.as_str().into()),
+                    ],
+                )?,
+                None => tx.delete("drive_acl", &key)?,
+            }
+            for nid in &dismiss_ids {
+                tx.upsert(
+                    "drive_notice",
+                    nid,
+                    [("dismissedAt", Value::Text(now.clone()))],
+                )?;
+            }
+            if let (Some(role), Some(notice_id)) = (role, notice_id.as_deref()) {
+                tx.upsert(
+                    "drive_notice",
+                    notice_id,
+                    [
+                        ("itemId", Value::from(id)),
+                        ("recipientId", principal_id.into()),
+                        ("sharerId", who.id.clone().into()),
+                        ("role", role.as_str().into()),
+                        ("createdAt", now.clone().into()),
+                    ],
+                )?;
+            }
+            Ok(())
         })?;
         self.acl(who, id)
+    }
+
+    fn open_notice_ids(&self, item_id: &str, recipient_id: &str) -> DriveResult<Vec<String>> {
+        Ok(self
+            .db
+            .query(
+                "SELECT id FROM drive_notice WHERE itemId = ?1 AND recipientId = ?2 AND dismissedAt IS NULL",
+                &[
+                    Value::Text(item_id.into()),
+                    Value::Text(recipient_id.into()),
+                ],
+            )?
+            .into_iter()
+            .filter_map(|row| text(&row, "id"))
+            .collect())
+    }
+
+    /// Undismissed notices for files the caller can still open.
+    pub fn notices(&self, who: &Principal) -> DriveResult<Vec<ShareNotice>> {
+        let mut out = Vec::new();
+        for row in self.db.query(
+            "SELECT * FROM drive_notice WHERE recipientId = ?1 AND dismissedAt IS NULL ORDER BY createdAt DESC, id DESC",
+            &[Value::Text(who.id.clone())],
+        )? {
+            let Some(item_id) = text(&row, "itemId") else {
+                continue;
+            };
+            let Some(item) = self.db.get("drive_item", &item_id)? else {
+                continue;
+            };
+            if int(&item, "trashed") != 0 {
+                continue;
+            }
+            if self.role(who, &item_id)?.is_none() {
+                continue;
+            }
+            let Some(role) = text(&row, "role").and_then(|r| Role::parse(&r)) else {
+                continue;
+            };
+            out.push(ShareNotice {
+                id: text(&row, "id").unwrap_or_default(),
+                item_id,
+                item_name: text(&item, "name").unwrap_or_default(),
+                sharer_id: text(&row, "sharerId").unwrap_or_default(),
+                role,
+                created_at: text(&row, "createdAt").unwrap_or_default(),
+            });
+        }
+        Ok(out)
+    }
+
+    /// Hide a notice. The file stays shared. Only the recipient can do this.
+    pub fn dismiss_notice(&self, who: &Principal, id: &str) -> DriveResult<()> {
+        let row = self
+            .db
+            .get("drive_notice", id)?
+            .ok_or(DriveError::NotFound)?;
+        if text(&row, "recipientId").as_deref() != Some(who.id.as_str()) && !who.admin {
+            return Err(DriveError::Forbidden);
+        }
+        if text(&row, "dismissedAt").is_some() {
+            return Ok(());
+        }
+        let now = iso_now();
+        self.db
+            .transact(|tx| tx.upsert("drive_notice", id, [("dismissedAt", Value::Text(now))]))?;
+        Ok(())
+    }
+
+    /// A new file the caller owns at the top of My Drive, with the same name
+    /// and the same bytes. Access to the original is unchanged.
+    pub fn keep_copy(&self, who: &Principal, id: &str) -> DriveResult<Item> {
+        let item = self.get(who, id)?;
+        if item.kind != "file" {
+            return Err(DriveError::BadRequest(
+                "Only files can be kept as a copy in My Drive.".into(),
+            ));
+        }
+        if let Some(hash) = item.content_hash.as_deref() {
+            let parsed: Hash = hash
+                .parse()
+                .map_err(|_| DriveError::Other(anyhow::anyhow!("corrupt content hash")))?;
+            if !self.blobs.missing(&parsed)?.is_empty() {
+                return Err(DriveError::Unavailable);
+            }
+        }
+        let created = self.create(who, None, &item.name, "file", item.mime.as_deref())?;
+        let Some(hash) = item.content_hash.clone() else {
+            return Ok(created);
+        };
+        let version = uuid::Uuid::now_v7().to_string();
+        let now = iso_now();
+        self.db.transact(|tx| {
+            tx.upsert(
+                "drive_version",
+                &version,
+                [
+                    ("itemId", Value::Text(created.id.clone())),
+                    ("contentHash", hash.into()),
+                    ("size", Value::Integer(item.size)),
+                    ("authorId", who.id.clone().into()),
+                    ("createdAt", now.clone().into()),
+                ],
+            )?;
+            tx.upsert(
+                "drive_item",
+                &created.id,
+                [
+                    ("headVersionId", Value::Text(version)),
+                    ("size", Value::Integer(item.size)),
+                    ("updatedAt", now.into()),
+                ],
+            )
+        })?;
+        self.get(who, &created.id)
     }
 
     /// Answer a peer's blob request with as many requested blobs as fit.

@@ -90,6 +90,7 @@ import {
 } from "./node-client";
 import { DriveBrowser, DriveDialog, NameDialog } from "./drive/DriveBrowser";
 import { ShareDialog } from "./drive/ShareDialog";
+import { ShareNotices } from "./drive/share-notices";
 import { searchFile } from "./library-search";
 import { FileLibraryRow, TrashToast } from "./library-trash-ui";
 import {
@@ -1356,7 +1357,10 @@ function Workspace() {
         if (r.drive && getSession()) {
           try {
             role = (await drive.get(r.drive.itemId)).role ?? "viewer";
-          } catch {
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            if (msg.includes("do not have access"))
+              throw new Error("You no longer have access to this file.");
             role = "viewer";
           }
         }
@@ -1657,6 +1661,12 @@ function Workspace() {
   return (
     <CommandPalette kind={f.kind}>
     <div className="workspace">
+      {cluster ? (
+        <ShareNotices
+          floating
+          onOpen={(item) => openFromDrive(item, navigate)}
+        />
+      ) : null}
       <header className="workspace-header">
         <button
           className="back"
