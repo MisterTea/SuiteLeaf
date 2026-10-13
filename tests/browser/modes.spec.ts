@@ -66,13 +66,35 @@ test("single-node mode keeps files in the browser without accounts", async ({
 test("connecting accepts a server address without http:// or https://", async ({
   page,
 }) => {
-  await fakeServer(page, "https://team.example.org");
-  await fakeServer(page, "http://team.example.org");
-  // The https attempt must fail immediately so the probe can try http.
-  await page.route("https://lan-box.test/**", (route) =>
-    route.fulfill({ status: 502, body: "" }),
-  );
-  await fakeServer(page, "http://lan-box.test");
+  // WebKit does not reliably intercept fetches to these hosts, so answer here.
+  await page.addInitScript(() => {
+    const info = JSON.stringify({
+      name: "SuiteLeaf node",
+      mode: "cluster",
+      auth: { enabled: true },
+    });
+    const orig = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      const url = String(input);
+      if (url.includes("://team.example.org/api/node/info"))
+        return Promise.resolve(
+          new Response(info, {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      if (url.startsWith("https://lan-box.test/"))
+        return Promise.resolve(new Response("", { status: 502 }));
+      if (url.startsWith("http://lan-box.test/api/node/info"))
+        return Promise.resolve(
+          new Response(info, {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      return orig(input, init);
+    };
+  });
   await page.goto("/");
 
   const connect = async (address: string) => {
