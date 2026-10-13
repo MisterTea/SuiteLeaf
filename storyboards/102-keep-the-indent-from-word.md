@@ -1,5 +1,7 @@
 # Keep the indent from Word
 
+**Mode:** single-node · **App:** Docs · **Video:** [videos/102-keep-the-indent-from-word.mp4](videos/102-keep-the-indent-from-word.mp4) · **Script:** [scenes/102-keep-the-indent-from-word.spec.ts](scenes/102-keep-the-indent-from-word.spec.ts)
+
 Who: Nia wrote a short story in Word. Each body paragraph indents the first line by half an inch, and the works-cited line uses a hanging indent. She opens that file in SuiteLeaf and expects both indents to still be there.
 
 Inspired by: Google Docs opens a Word file and keeps Format › Align & indent › Indentation options for First line and Hanging. Microsoft Word stores a first-line indent as `w:firstLine` and a hanging indent as `w:left` plus `w:hanging`.
@@ -32,7 +34,20 @@ Inspired by: Google Docs opens a Word file and keeps Format › Align & indent �
 
 - Nia opens the Word file and both indents are visible, named on the paragraph control, and still in the file she downloads.
 
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| Opening the Word file shows the first-line indent: only the first line moves half an inch, and the following line stays at the margin. | Met | Video ~0:04. The story's first line sits in and "on the far bank" stays at the margin. `tests/word-indent-import.test.ts` |
+| The citation's hanging indent leaves the first line at the margin and moves the wrapped line half an inch in. | Met | Video ~0:08 and ~0:18. "Okada, Mara" stays at the margin and "who wait" sits in. |
+| The paragraph with no `w:ind` stays at the margin, lined up with the story's second line. | Met | Video ~0:04. "By noon" lines up with "on the far bank." |
+| The line-spacing control shows First line, Hanging, or None, with 0.5 in where Word stored 720 twips. No second dialog. | Met | Video ~0:12 First line and By 0.5 in. ~0:14 None. ~0:17 Hanging and By 0.5 in. |
+| Line spacing and space before and after from the Word file stay as they were. | Unmet | The Word file stores 1.5 line spacing and 12 pt after on the story paragraph. Import does not read `w:spacing`, so the control shows Single and 0 pt. Indent import does not clear spacing attributes when they are already on the paragraph. This story does not add a spacing importer. |
+| Save and reopen keep both indents. | Met | Video ~0:22. Home, then the reopened page still shows both indents. |
+| Downloading Word again writes `w:firstLine="720"` on the story and `w:left="720"` `w:hanging="720"` on the citation. | Met | Video ~0:26 File, Export DOCX. The scene and `tests/word-indent-import.test.ts` check those attributes. The plain paragraph has no `w:ind`. |
+
 ## Gaps
 
-- `packages/core/src/word.ts` reads paragraph styles, outline level, and numbering from `w:pPr`. It never reads `w:ind`.
-- Export in `packages/core/src/docx-export.ts` already writes `w:firstLine` and `w:left`/`w:hanging` from `firstLineIndent` and `hangingIndent`. Import does not put those attributes back on the paragraph.
+- Import reads `w:ind` on the paragraph's `w:pPr` and stores `firstLineIndent` or `hangingIndent`. A hanging indent wins if both `w:hanging` and `w:firstLine` are set. A left indent alone is not a special indent.
+- Export already wrote `w:firstLine` and `w:left`/`w:hanging`. Re-export uses that same path.
+- Word line spacing and space before and after are still not imported.
