@@ -152,3 +152,5 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 124 | [Preview the first and last roman pages](124-preview-the-roman-ends.md) | single-node | Docs |
 | 127 | [Draw the number on the preview page](127-draw-the-number-on-the-preview.md) | single-node | Docs |
 | 128 | [Preview the last odd and even pages](128-preview-the-last-odd-and-even.md) | single-node | Docs |
+| 132 | [Put odd and even numbers on the outside](132-numbers-on-the-outside.md) | single-node | Docs |
+| 134 | [See the cover before you apply](134-see-the-cover.md) | single-node | Docs |

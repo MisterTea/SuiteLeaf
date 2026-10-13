@@ -71,7 +71,6 @@ describe("live page numbers", () => {
       pageNumberFormat: "page" as const,
       pageNumberPosition: "top-right" as const,
       pageNumberPositionSet: true,
-      coverHasNoNumber: true,
       differentFirstPage: true,
       watermark: "DRAFT",
     };
@@ -95,31 +94,33 @@ describe("live page numbers", () => {
     expect(pageFace(saved, 1, 2).pageNumber).toBe("2 / 2");
   });
 
-  it("shows Page 12 and Page 13 before apply and leaves the cover until apply", () => {
+  it("shows Page 12 and Page 13 before apply, then a blank cover and Page 1", () => {
     const saved = page({
       pageNumbers: true,
       pageNumberFormat: "page",
       pageNumberPosition: "top-right",
       pageNumberPositionSet: true,
     });
-    const shown = livePageNumbers(saved, {
-      ...saved,
-      pageNumberStart: 12,
+    const started = livePageNumbers(saved, { ...saved, pageNumberStart: 12 });
+    expect(pageFace(started, 0, 2).pageNumber).toBe("Page 12");
+    expect(pageFace(started, 1, 2).pageNumber).toBe("Page 13");
+    const shown = livePageNumbers(started, {
+      ...started,
       coverHasNoNumber: true,
       differentFirstPage: true,
       watermark: "DRAFT",
     });
     expect(shown.pageNumberStart).toBe(12);
-    expect(shown.coverHasNoNumber).toBe(false);
+    expect(shown.coverHasNoNumber).toBe(true);
     expect(shown.differentFirstPage).toBe(false);
     expect(shown.watermark).toBe("");
     expect(pageFace(shown, 0, 2)).toMatchObject({
       header: "Draft minutes",
-      pageNumber: "Page 12",
-      numberSide: "top-right",
+      pageNumber: "",
+      numberSide: "none",
     });
     expect(pageFace(shown, 1, 2)).toMatchObject({
-      pageNumber: "Page 13",
+      pageNumber: "Page 1",
       numberSide: "top-right",
     });
     expect(pageFace(saved, 0, 2).pageNumber).toBe("Page 1");
@@ -251,10 +252,12 @@ describe("live page numbers", () => {
       livePageSettings(saved, {
         ...saved,
         watermark: "DRAFT",
-        coverHasNoNumber: true,
         differentFirstPage: true,
       }),
     ).toBe(saved);
+    expect(
+      livePageNumbers(saved, { ...saved, coverHasNoNumber: true }).coverHasNoNumber,
+    ).toBe(true);
     expect(livePageSettings(saved, { ...saved, pageNumberStart: 12 }).pageNumberStart).toBe(
       12,
     );

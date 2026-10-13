@@ -202,10 +202,15 @@ test("page number format and position show before apply", async ({ page }) => {
   await clearOfHeader(page);
   await expect(page.locator(".page-watermark")).toHaveCount(0);
   await dialog.getByLabel("Start at").fill("4");
+  await expect.poll(() => numbers(page)).toEqual(["Page 4", "Page 5"]);
   await dialog.getByRole("checkbox", { name: "Cover has no number" }).check();
+  await expect.poll(() => numbers(page)).toEqual(["Page 1"]);
+  await expect(
+    page.locator(".page-furniture-page").nth(0).locator(".page-number"),
+  ).toHaveCount(0);
   await dialog.getByRole("checkbox", { name: "Different first page" }).check();
   await dialog.getByLabel("Watermark").fill("DRAFT");
-  await expect.poll(() => numbers(page)).toEqual(["Page 4", "Page 5"]);
+  await expect.poll(() => numbers(page)).toEqual(["Page 1"]);
   await expect(page.locator(".page-watermark")).toHaveCount(0);
   await expect(page.locator(".paginated-paper .page-header").first()).toHaveText(longHeader);
   const unsaved = await savedPage(page);
@@ -213,6 +218,8 @@ test("page number format and position show before apply", async ({ page }) => {
   expect(unsaved.pageNumberPositionSet).not.toBe(true);
   expect(unsaved.header).toBe("Draft minutes");
   expect(unsaved.pageNumberStart ?? 1).toBe(1);
+  expect(unsaved.coverHasNoNumber).not.toBe(true);
+  expect(unsaved.differentFirstPage).not.toBe(true);
   expect(unsaved.watermark ?? "").toBe("");
 
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();

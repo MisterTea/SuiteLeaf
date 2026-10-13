@@ -6,7 +6,7 @@ import {
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
 
-export type PreviewPageRole = "last-even" | "last-odd";
+export type PreviewPageRole = "last-even" | "last-odd" | "cover" | "next";
 
 export type PreviewSlot =
   | { kind: "page"; index: number; role?: PreviewPageRole }
@@ -33,17 +33,31 @@ function lastParitySlots(count: number): PreviewSlot[] {
 }
 
 /**
+ * The cover, then the next sheet, so a blank cover and page 1 on the
+ * outside edge are both visible before Apply.
+ */
+function coverSlots(count: number): PreviewSlot[] {
+  const slots: PreviewSlot[] = [{ kind: "page", index: 0, role: "cover" }];
+  if (count > 1) slots.push({ kind: "page", index: 1, role: "next" });
+  return slots;
+}
+
+/**
  * Which miniature sheets Page setup draws.
- * Different odd and even pages shows the last even page and the last odd
- * page, so the outside edges of a long file are visible before Apply.
- * Every other file shows each page it has, up to three. A longer file shows
- * the first sheet and the last sheet.
+ * A cover with odd and even pages already on shows the cover and the next
+ * sheet, so the blank cover and the outside-edge number are visible before
+ * Apply. Different odd and even pages otherwise shows the last even page
+ * and the last odd page. Every other file shows each page it has, up to
+ * three. A longer file shows the first sheet and the last sheet.
  */
 export function previewPlan(
   pageCount: number,
   differentOddEven: boolean,
+  coverHasNoNumber = false,
 ): { slots: PreviewSlot[]; total: number } {
   const count = Math.max(1, Math.floor(pageCount) || 1);
+  if (coverHasNoNumber && differentOddEven)
+    return { slots: coverSlots(count), total: count };
   if (differentOddEven) return { slots: lastParitySlots(count), total: count };
   if (count <= 3) {
     return {
@@ -92,7 +106,11 @@ export function previewSheetNumbers(
   settings: PageSettings,
   pageCount: number,
 ): string[] {
-  const plan = previewPlan(pageCount, settings.differentOddEven);
+  const plan = previewPlan(
+    pageCount,
+    settings.differentOddEven,
+    settings.coverHasNoNumber,
+  );
   return plan.slots.flatMap((slot) => {
     if (slot.kind !== "page") return [];
     return [pageFace(settings, slot.index, plan.total).pageNumber];

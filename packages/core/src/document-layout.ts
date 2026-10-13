@@ -319,8 +319,21 @@ function outsideNumberSide(settings: PageSettings, even: boolean): PageNumberSid
  * Page 1 keeps its letterhead when different first page is on.
  * With odd and even pages, the number sits on the outside edge: left on even
  * pages, right on odd pages. A chosen top-right corner stays at the top.
+ * A cover is not a numbered sheet. The next page is page 1, so its number
+ * sits on the outside right, and the page after that is page 2 on the left.
  * Otherwise every numbered page uses the chosen corner, or the bottom right.
  */
+function spreadEven(
+  settings: PageSettings,
+  pageIndex: number,
+  pageCount: number,
+): boolean {
+  const page = pageIndex + 1;
+  if (!settings.coverHasNoNumber) return page % 2 === 0;
+  // The cover keeps the odd-page header. Numbering starts on the next sheet.
+  if (page === 1) return false;
+  return pageNumberAt(settings, pageIndex, pageCount).page % 2 === 0;
+}
 export function pageFace(
   settings: PageSettings,
   pageIndex: number,
@@ -330,7 +343,7 @@ export function pageFace(
 ): PageFace {
   const page = pageIndex + 1;
   const first = page === 1 && settings.differentFirstPage;
-  const even = page % 2 === 0;
+  const even = spreadEven(settings, pageIndex, pageCount);
   let header = settings.header;
   let footer = settings.footer;
   let headerAlign: "left" | "right" = "left";
@@ -435,7 +448,10 @@ export function pageNumberHint(settings: PageSettings, pageCount = 2): string {
       counted.page,
       counted.total,
     );
-    return `No number on the cover. The next page is “${shown}”, not “${asTwo}”. Start at stays for when the cover has a number. ${kept}`;
+    const edge = settings.differentOddEven
+      ? " The next page’s number sits on the outside right, and the page after that on the left."
+      : "";
+    return `No number on the cover. The next page is “${shown}”, not “${asTwo}”. Start at stays for when the cover has a number.${edge} ${kept}`;
   }
   const mirrored = mirroredNumberPlace(settings);
   if (mirrored) {

@@ -52,8 +52,10 @@ function sheetLabel(
   shifted: boolean,
   ends: boolean,
   total: number,
-  role?: "last-even" | "last-odd",
+  role?: PreviewPageRole,
 ) {
+  if (role === "cover") return "Cover";
+  if (role === "next") return "Next page";
   const name = `${shifted ? "File page" : "Page"} ${index + 1}`;
   if (role === "last-even") return `${name} · last even`;
   if (role === "last-odd") return `${name} · last odd`;
@@ -167,7 +169,11 @@ function Preview({
   draft: PageSettings;
   pageCount: number;
 }) {
-  const plan = previewPlan(pageCount, draft.differentOddEven);
+  const plan = previewPlan(
+    pageCount,
+    draft.differentOddEven,
+    draft.coverHasNoNumber,
+  );
   const ends = plan.slots.some((slot) => slot.kind === "skip");
   const parity = draft.differentOddEven;
   return (
@@ -397,7 +403,11 @@ export function PageSetupFields({
         <>
           <p className="page-setup-group">
             Even pages
-            <span>Pages 2, 4, 6… Title and number on the left.</span>
+            <span>
+              {draft.coverHasNoNumber
+                ? "Page 2, then 4, 6… The number stays on the left."
+                : "Pages 2, 4, 6… Title and number on the left."}
+            </span>
           </p>
           <TextField
             span="Even header"
@@ -416,9 +426,11 @@ export function PageSetupFields({
           <p className="page-setup-group">
             Odd pages
             <span>
-              {draft.differentFirstPage
-                ? "Pages 3, 5, 7… Title and number on the right."
-                : "Pages 1, 3, 5… Title and number on the right."}
+              {draft.coverHasNoNumber
+                ? "Page 1 is the page after the cover. The number stays on the right."
+                : draft.differentFirstPage
+                  ? "Pages 3, 5, 7… Title and number on the right."
+                  : "Pages 1, 3, 5… Title and number on the right."}
             </span>
           </p>
           <TextField
