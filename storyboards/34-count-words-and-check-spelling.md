@@ -17,15 +17,15 @@ Amara is finishing a 1,500-word history essay. The limit excludes the reference 
 
 ## Scenes
 
-1. **Open the essay.** Amara opens "Independence essay". The status bar shows "1,612 words".
+1. **Open the essay.** Amara opens "Independence essay". The status bar already shows "1,612 words".
 2. **Count a selection.** She selects the introduction. The status bar changes to "318 of 1,612 words" while the selection lasts.
 3. **Word count details.** She opens Tools › Word count (Cmd/Ctrl+Shift+C). A dialog lists words, characters, characters without spaces, paragraphs, and pages, for the selection and for the whole document.
-4. **Exclude the references.** In the dialog she ticks "Stop counting at heading: References". The document total drops to 1,488. She leaves "Count footnotes" unticked. The status bar now reads "1,488 words (excludes References)", and that setting is saved with the essay.
-5. **Spelling as she types.** She types "the movment grew" and "movment" is underlined. Right-clicking shows "movement" first, then "Add to dictionary" and "Ignore". Clicking "movement" fixes it.
+4. **Exclude the references.** In the dialog she chooses "Stop counting at heading: References". The document total drops to 1,488. She leaves "Count footnotes" unticked. The status bar reads "1,488 words (excludes References)". She closes the essay and opens it again; the exclusion is still there.
+5. **Spelling as she types.** She retypes "movement" as "movment". It is underlined on this computer. Right-clicking shows "movement" first, then "Add to dictionary" and "Ignore". Clicking "movement" fixes it.
 6. **Teach it names.** She right-clicks "Nkrumah" and chooses Add to dictionary. Every other "Nkrumah" in the essay loses its underline.
-7. **Check the whole essay.** Tools › Spelling opens a panel that steps through issues one by one: "2 of 5 · "recieve" → "receive"", with **Change**, **Ignore**, and **Add to dictionary**. She works through them with Enter.
-8. **Change her mind.** Tools › Personal dictionary lists "Nkrumah". She'd accidentally added "teh" too, so she removes it, and "teh" is underlined again.
-9. **Offline.** All of this works on the train with no connection.
+7. **Check the whole essay.** Tools › Spelling opens a panel that steps through issues one by one. After the first Enter it shows "2 of 5 · recieve → receive", with **Change**, **Ignore**, and **Add to dictionary**. Enter keeps going, and the bold on "separate" stays.
+8. **Change her mind.** On the last issue she adds "teh" by mistake. Tools › Personal dictionary lists "Nkrumah" and "teh". She removes "teh", it is underlined again, and she corrects it to "the".
+9. **Offline.** The status bar still reads "1,488 words (excludes References)", nothing unknown is left, and none of the text left the computer.
 
 ## Google Workspace benchmark
 
@@ -52,12 +52,27 @@ Known pain points:
 
 ## Success looks like
 
-- The essay reads "1,488 words (excludes References)", and the introduction's length was checked from a selection.
-- The essay has no unknown words left, "Nkrumah" is in the personal dictionary, and "teh" isn't.
+- The essay reads "1,488 words (excludes References)" after it is closed and opened again, and the introduction's length was checked from a selection.
+- The essay has no unknown words left, "Nkrumah" is in the personal dictionary, and "teh" isn't. "separate" is still bold.
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| 1. Status-bar word count is on by default, and a hidden count stays hidden after reopening | Met | Video 0:02, count already shows "1,612 words". Browser test `word count is on by default, follows the selection, and stays hidden after reload` unchecks it, reloads, and the count stays hidden. |
+| 2. A selection changes the status bar to "N of M words" within 200 ms, with no dialog | Met | Video 0:08, "318 of 1,612 words". The same browser test expects "4 of 4 words" within 200 ms of select-all. |
+| 3. Tools › Word count and Cmd/Ctrl+Shift+C open words, characters, characters without spaces, paragraphs, and pages, for the selection and the document | Met | Video 0:10. The browser test opens the dialog with Cmd/Ctrl+Shift+C and checks each row. |
+| 4. Include or exclude footnotes, stop at a heading, save the choice in the file, and say what is excluded | Met | Video 0:12–0:18: footnotes stay off, stop at References, "1,488 words (excludes References)" after reopen. Browser test `essay word count excludes a heading and is saved with the file`. |
+| 5. A checked-in fixture matches Microsoft Word's count for the same .docx | Met | `tests/doc-proofing.test.ts` "matches Microsoft Word on the checked-in docx": 7 words, 38 characters, 33 without spaces, 2 paragraphs. Header and footer text is not in the body. |
+| 6. Right-click offers suggestions, Add to dictionary, and Ignore, and one click replaces the word | Met | Video 0:20, "movement" is first. Browser test replaces bold "seperate" with "separate" from the menu. |
+| 7. Tools › Spelling steps through issues from the keyboard; added and ignored words can be removed and are flagged again | Met | Video 0:28, "2 of 5 · recieve → receive", Enter to change. Video 0:32 removes "teh" and it is underlined again. Browser test focuses Ignore and presses Enter, then removes the word. |
+| 8. Spelling and word count work with the network blocked and send no document text off the device | Met | Browser test `spelling keeps formatting, stays on device, and the dictionary can be undone` sets the browser offline and asserts no request contains the document words. The dictionary is bundled. |
+| 9. Tools › Spelling never changes the document's formatting | Met | Video 0:36, "separate" is still bold. The browser test opens Spelling on a bold word and asserts the bold survives Ignore and Change. |
 
 ## Gaps and notes
 
-- **Tools › "Spelling and grammar" clears formatting.** Its `onSelect` calls `docActions.clearFormatting()`, so choosing it strips bold, italics, and links from the selection. It should either open a spelling check or be removed until one exists.
-- **A live count exists, but only for the whole document.** The status bar shows "N words · P pages · English", counting whitespace-separated words in all editor text. There's no selection count, no Word count dialog, no Cmd/Ctrl+Shift+C, and no exclusions. Tiptap's `CharacterCount` extension is loaded, but nothing shows character counts.
-- **Spelling is the browser's.** The editor sets `spellcheck="true"`, so underlines, suggestions, the dictionary, and the language come from the browser (and differ between Chrome, Firefox, Safari, and the desktop app). There's no in-app suggestion menu, spelling panel, or personal dictionary, and "English" in the status bar is a fixed label.
-- Footnotes don't exist yet (storyboard [35](35-add-a-table-of-contents-and-footnotes.md)), so "Count footnotes" depends on that work.
+- Grammar is not checked. Tools › "Spelling and grammar" is now **Spelling** and opens the spelling panel. It no longer runs Clear formatting.
+- Footnote nodes do not exist yet (storyboard [35](35-add-a-table-of-contents-and-footnotes.md)). "Count footnotes" is saved with the file and counted when a `footnote` or `endnote` node is present. This essay has none, and the dialog says so.
+- Page headers and footers drawn by SuiteLeaf are not in the word count, matching Word. An imported .docx that uses the importer's "Imported header" section puts that text in the body, so it is counted.
+- Added dictionary words and "always flag" words live on this device. Ignored words are saved in the file. Copying the essay to another computer does not bring the personal dictionary along.
+- The demo essay repeats a few paragraphs so the introduction stays 318 words and the whole essay stays 1,612. "Always flag" (for a real word such as "wer") is in Personal dictionary and covered by the browser test; the recording does not pause on it.

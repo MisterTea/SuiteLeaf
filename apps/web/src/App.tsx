@@ -1749,16 +1749,32 @@ function Workspace() {
                 </Menu>
                 <Menu label="Tools">
                   <MenuItem
+                    shortcut="Cmd+Shift+C"
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.docActions?.openWordCount()
+                    }
+                  >
+                    Word count
+                  </MenuItem>
+                  <MenuItem
+                    focusesTarget
+                    onSelect={() => actions.current?.docActions?.openSpelling()}
+                  >
+                    Spelling
+                  </MenuItem>
+                  <MenuItem
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.docActions?.openDictionary()
+                    }
+                  >
+                    Personal dictionary
+                  </MenuItem>
+                  <MenuItem
                     onSelect={() => actions.current?.docActions?.openFind()}
                   >
                     Find and replace
-                  </MenuItem>
-                  <MenuItem
-                    onSelect={() =>
-                      actions.current?.docActions?.clearFormatting()
-                    }
-                  >
-                    Spelling and grammar
                   </MenuItem>
                 </Menu>
                 <Menu label="Help">

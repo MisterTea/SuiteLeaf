@@ -76,6 +76,8 @@ import { documentPlainText } from "./doc-text";
 import { slugify, uniqueSlug, anchorHref, isInternalAnchor } from "../anchors";
 
 import { DocumentPagination, PageBreak } from "./doc-pagination";
+import { Proofing } from "./doc-spelling";
+import { useDocProofing, type ProofingContext } from "./doc-proofing";
 import {
   documentHtml,
   documentPageSettings,
@@ -105,6 +107,7 @@ export const extensions: Extensions = [
   TableKit.configure({ table: { resizable: true } }),
   CharacterCount,
   DocumentSearchHighlight,
+  Proofing,
   Superscript,
   Subscript,
   Extension.create({
@@ -196,6 +199,7 @@ export default function Docs({
   const [highlightColor, setHighlightColor] = useState("#ffff00");
   const imageInput = useRef<HTMLInputElement>(null);
   const documentStage = useRef<HTMLDivElement>(null);
+  const proofingContext = useRef<ProofingContext>(() => false);
   const [activeHeading, setActiveHeading] = useState<number | null>(null);
   const [pageCount, setPageCount] = useState(1);
   const [pageSetupOpen, setPageSetupOpen] = useState(false);
@@ -210,7 +214,7 @@ export default function Docs({
     editorProps: {
       attributes: {
         class: "document-content",
-        spellcheck: "true",
+        spellcheck: "false",
         "aria-label": "Document content",
       },
       // Keep a few lines of context around the caret when typing scrolls the page.
@@ -313,6 +317,7 @@ export default function Docs({
           return true;
         },
         contextmenu: (view, event) => {
+          if (proofingContext.current(view, event)) return true;
           const target = event.target as HTMLElement | null;
           const cell = target?.closest?.("td, th");
           if (!cell || cell.closest(".doc-page-spacer")) return false;
@@ -340,6 +345,8 @@ export default function Docs({
     onUpdate: ({ editor }) => changes.current(editor.getJSON() as JsonNode),
   });
 
+  const proofing = useDocProofing(editor, pageCount, proofingContext);
+
   const state = useEditorState({
     editor,
     selector: ({ transactionNumber }) => {
@@ -366,7 +373,6 @@ export default function Docs({
               )
             : "11";
         })(),
-        words: e?.getText().trim().split(/\s+/).filter(Boolean).length ?? 0,
         headings: (() => {
           const h: {
             text: string;
@@ -612,6 +618,9 @@ export default function Docs({
           editor.chain().focus().setHorizontalRule().run(),
         insertPageBreak: () => editor.chain().focus().setPageBreak().run(),
         openPageSetup,
+        openWordCount: proofing.openWordCount,
+        openSpelling: proofing.openSpelling,
+        openDictionary: proofing.openDictionary,
         clearFormatting: () =>
           editor.chain().focus().unsetAllMarks().clearNodes().run(),
         align: (alignment) =>
@@ -629,7 +638,7 @@ export default function Docs({
         tableActions,
       },
     });
-  }, [editor, file.title, onActions]);
+  }, [editor, file.title, onActions, proofing.openWordCount, proofing.openSpelling, proofing.openDictionary]);
 
   useEffect(() => {
     if (!editor) return;
@@ -1794,8 +1803,9 @@ export default function Docs({
           </div>
         </div>
       </div>
+      {proofing.ui}
       <footer className="editor-status">
-        {state?.words} words{" "}
+        <span className="word-count">{proofing.label}</span>
         <span>
           {pageCount} {pageCount === 1 ? "page" : "pages"} · English
         </span>
