@@ -127,10 +127,13 @@ export function groupVersions(versions: HistoryVersion[]): HistoryGroup[] {
   return groups;
 }
 
-export function changeSentence(count: number) {
+export type ChangeUnit = "paragraph" | "cell" | "slide";
+
+export function changeSentence(count: number, unit: ChangeUnit = "paragraph") {
   if (count === 0) return "Nothing will change";
-  if (count === 1) return "1 paragraph changes";
-  return `${count} paragraphs change`;
+  const noun = count === 1 ? unit : `${unit}s`;
+  const verb = count === 1 ? "changes" : "change";
+  return `${count} ${noun} ${verb}`;
 }
 
 /** History title for a restore that put one paragraph back. */
@@ -144,11 +147,12 @@ export function restorePrompt(
   version: HistoryVersion,
   count: number,
   now = new Date(),
+  unit: ChangeUnit = "paragraph",
 ) {
   const what = version.name
     ? `"${version.name}"`
     : `the version from ${versionWhen(version.createdAt, now)}`;
-  return `Restore ${what}? ${changeSentence(count)}. The current version stays in history.`;
+  return `Restore ${what}? ${changeSentence(count, unit)}. The current version stays in history.`;
 }
 
 export function shouldSnapshot(

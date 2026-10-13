@@ -13,7 +13,6 @@ import { MoreHorizontal, X } from "lucide-react";
 import {
   applyParagraphRestore,
   compareParagraphs,
-  diffDocuments,
   duplicateFile,
   extensionFor,
   paragraphRestorePrompt,
@@ -48,8 +47,10 @@ import {
   restoreHeading,
   restorePrompt,
   versionWhen,
+  type ChangeUnit,
   type HistoryVersion,
 } from "./version-history-model";
+import { historyPreviewFor, type HistoryPreview } from "./version-compare";
 
 const previewExtensions: Extensions = [
   StarterKit.configure({
@@ -151,11 +152,7 @@ export function VersionHistory({
   record: FileRecord;
   getFile: () => SuiteFile;
   onClose: () => void;
-  onPreview: (
-    content: JsonNode | null,
-    label: string,
-    offers?: (ParagraphRestoreControl | null)[] | null,
-  ) => void;
+  onPreview: (preview: HistoryPreview | null) => void;
   onRestored: (record: FileRecord) => void;
   onStatus: (status: string) => void;
   bindParagraphRestore?: MutableRefObject<(key: string) => void>;
@@ -173,6 +170,8 @@ export function VersionHistory({
   const [naming, setNaming] = useState<HistoryVersion | null>(null);
   const [nameDraft, setNameDraft] = useState("");
   const [changeCount, setChangeCount] = useState<number | null>(null);
+  const [changeUnit, setChangeUnit] = useState<ChangeUnit>("paragraph");
+  const [viewSummary, setViewSummary] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -279,8 +278,9 @@ export function VersionHistory({
   useEffect(() => {
     let cancel = false;
     if (!selected || !head || selected.id === head.id) {
-      preview.current(null, "");
+      preview.current(null);
       setChangeCount(null);
+      setViewSummary("");
       return;
     }
     void (async () => {
@@ -288,46 +288,51 @@ export function VersionHistory({
         const before = parseFile(await loadVersion(selected));
         const current = parseFile(await loadVersion(head));
         if (cancel) return;
-        if (before.kind !== "doc" || current.kind !== "doc") {
-          preview.current(null, "");
+        const against = historyPreviewFor(before, current, "current");
+        if (!against) {
+          preview.current(null);
           setChangeCount(null);
+          setViewSummary("");
           return;
         }
-        const againstCurrent = compareParagraphs(before.content, current.content);
-        setChangeCount(againstCurrent.changedParagraphs);
+        const docPair = before.kind === "doc" && current.kind === "doc";
+        const againstCurrent = docPair
+          ? compareParagraphs(before.content, current.content)
+          : null;
+        setChangeCount(againstCurrent ? againstCurrent.changedParagraphs : against.count);
+        setChangeUnit(againstCurrent ? "paragraph" : against.unit);
         if (mode === "previous") {
           const index = versions.findIndex((version) => version.id === selected.id);
           const older = versions[index + 1];
           if (!older) {
-            preview.current(
-              before.content,
-              "This is the earliest version, so there is nothing before it to compare. Read-only.",
-            );
+            const earliest = historyPreviewFor(before, before, "earliest");
+            setViewSummary(earliest?.summary ?? "");
+            preview.current(earliest?.preview ?? null);
             return;
           }
           const previous = parseFile(await loadVersion(older));
-          if (cancel || previous.kind !== "doc") return;
-          const within = diffDocuments(previous.content, before.content);
-          preview.current(
-            within.content,
-            "Changes in this version · read-only. Green underline was added here. Red strikethrough was removed.",
-            null,
-          );
+          if (cancel) return;
+          const step = historyPreviewFor(previous, before, "previous");
+          if (!step) return;
+          setViewSummary(step.summary);
+          preview.current(step.preview);
           return;
         }
-        const source = selected.name
-          ? `"${selected.name}"`
-          : versionWhen(selected.createdAt);
-        const controls = againstCurrent.offers.map((offer) =>
-          offer
-            ? { key: offer.key, prompt: paragraphRestorePrompt(offer, source) }
-            : null,
-        );
-        preview.current(
-          againstCurrent.content,
-          "Comparing with the current version · read-only. Green underline was added later. Red strikethrough was removed.",
-          controls,
-        );
+        if (againstCurrent && against.preview.kind === "doc") {
+          const source = selected.name
+            ? `"${selected.name}"`
+            : versionWhen(selected.createdAt);
+          const controls = againstCurrent.offers.map((offer) =>
+            offer
+              ? { key: offer.key, prompt: paragraphRestorePrompt(offer, source) }
+              : null,
+          );
+          setViewSummary("");
+          preview.current({ ...against.preview, offers: controls });
+          return;
+        }
+        setViewSummary(against.summary);
+        preview.current(against.preview);
       } catch (e) {
         if (!cancel) setError(message(e));
       }
@@ -522,6 +527,7 @@ export function VersionHistory({
           Changes in this version
         </button>
       </div>
+      {viewSummary ? <p className="version-compare-summary">{viewSummary}</p> : null}
       {naming ? (
         <form
           className="version-name-form"
@@ -632,8 +638,8 @@ export function VersionHistory({
       {selected && selected.id !== headId ? (
         <footer className="version-restore">
           <p>
-            {fileNow.current().kind === "doc" && changeCount !== null
-              ? restorePrompt(selected, changeCount)
+            {changeCount !== null
+              ? restorePrompt(selected, changeCount, new Date(), changeUnit)
               : `Restore ${selected.name ? `"${selected.name}"` : "this version"}? The current version stays in history.`}
           </p>
           <button type="button" disabled={busy} onClick={() => void restore()}>
