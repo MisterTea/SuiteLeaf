@@ -65,7 +65,7 @@ function Item({ item }: { item: TranscriptItem }) {
     return (
       <div className="agent-msg assistant">
         {item.thinking ? <details className="agent-thinking"><summary>Thinking</summary>{item.thinking}</details> : null}
-        {item.text}
+        {item.text.split(/\*\*(.+?)\*\*/g).map((part, i) => (i % 2 ? <strong key={i}>{part}</strong> : part))}
       </div>
     );
   if (item.kind === "error")

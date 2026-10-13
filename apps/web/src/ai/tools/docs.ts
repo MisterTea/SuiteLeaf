@@ -75,15 +75,23 @@ const loose = (text: string) => text.normalize("NFKC").toLowerCase();
 /** Drop a "6. [Paragraph] " prefix copied from read_document. */
 const unlabel = (text: string) => text.replace(/^\s*(\d+\.\s*)?\[(Heading \d|Paragraph|Bullet|Numbered item|Table cell)\]\s*/, "");
 
+/** Drop Markdown marks ("# ", "- ", "**") the model copies from what it typed. */
+const unmark = (text: string) =>
+  text.replace(/\*\*/g, "").replace(/^\s*(#{1,3}|[-*•]|\d+[.)])\s+/, "").trim() || text;
+
 /** The first block containing `text`, matched loosely if not exactly. */
 function findBlock(list: ReturnType<typeof blocks>, text: string) {
-  const want = unlabel(text);
+  const want = unmark(unlabel(text));
   return list.find((b) => b.text.includes(want)) ?? list.find((b) => loose(b.text).includes(loose(want)));
 }
 
 function noBlock(list: ReturnType<typeof blocks>, text: string) {
   const texts = list.filter((b) => b.text).slice(0, 20).map((b) => `"${b.text.slice(0, 60)}"`);
-  return new ToolError(`No paragraph contains "${text}". Use a few words copied exactly from one of these: ${texts.join(", ")}.`);
+  return new ToolError(
+    texts.length
+      ? `No paragraph contains "${text}". The paragraphs are: ${texts.join(", ")}. Use a few words copied exactly from one of them.`
+      : `No paragraph contains "${text}". The document is empty.`,
+  );
 }
 
 /** Find the n-th (1-based) occurrence of `text`, ignoring case if needed. */
@@ -110,6 +118,7 @@ function rectAt(editor: Editor, pos: number) {
   }
 }
 
+/** The paragraph containing `text`, ignoring Markdown copied from write_text ("# ", "- ", "**"). */
 const endOfDocument = (editor: Editor) => {
   const last = blocks(editor).at(-1);
   return last ? last.end - 1 : 1;
@@ -234,7 +243,9 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         if (last && prev && !last.text && last.type === "paragraph" && prev.label === "Paragraph" && last.pos > editor.state.selection.to)
           editor.view.dispatch(editor.state.tr.delete(last.pos, last.end));
         const typed = text.split("\n").filter((l) => l.trim()).length;
-        return `Typed ${typed} paragraph(s). The document now has ${blocks(editor).length} paragraph(s).`;
+        const headings = [...text.matchAll(/^#{1,3}\s+(.*)$/gm)].map((m) => `"${m[1].replace(/\*\*/g, "").trim()}"`);
+        const bold = [...text.matchAll(/\*\*(.+?)\*\*/g)].map((m) => `"${m[1]}"`);
+        return `Typed ${typed} paragraph(s)${headings.length ? `; heading(s): ${headings.join(", ")}` : ""}${bold.length ? `; in bold: ${bold.join(", ")}` : ""}. The document now has ${blocks(editor).filter((b) => b.text).length} paragraph(s) with text.`;
       },
     }),
     tool({
@@ -431,6 +442,10 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       }),
       target: () => document.querySelector('[aria-label="Find and replace"]') ?? editor.view.dom,
       async execute({ find, replace, all = true, match_case = false }) {
+        // **double asterisks** mean bold here too, as in write_text.
+        const parts = replace.split("**");
+        const boldMark = parts.length > 2 ? editor.schema.marks.bold : undefined;
+        if (boldMark) replace = parts.join("");
         ctx.showFind(find, replace, match_case);
         await wait(700);
         const options = { matchCase: match_case, regex: false, ignoreDiacritics: !match_case };
@@ -441,13 +456,24 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         }
         let tr = editor.state.tr;
         const chosen = all ? [...matches].reverse() : [matches[0]];
-        for (const m of chosen) tr = tr.insertText(replace, m.from, m.to);
+        for (const m of chosen) {
+          if (!boldMark) {
+            tr = tr.insertText(replace, m.from, m.to);
+            continue;
+          }
+          const marks = tr.doc.resolve(m.from).marksAcross(tr.doc.resolve(m.to)) ?? [];
+          const nodes = parts.flatMap((part, i) =>
+            part ? [editor.schema.text(part, i % 2 ? boldMark.create().addToSet(marks) : marks)] : [],
+          );
+          tr = tr.replaceWith(m.from, m.to, nodes);
+        }
         editor.view.dispatch(tr.scrollIntoView());
         ctx.showReplaced(chosen.length);
         await wait(900);
         ctx.closeFind();
         const left = matches.length - chosen.length;
-        return `Replaced ${chosen.length} of ${matches.length} "${find}"${left ? `; ${left} left` : ""}.`;
+        const bold = boldMark ? parts.filter((p, i) => i % 2 && p).map((p) => `"${p}"`) : [];
+        return `Replaced ${chosen.length} of ${matches.length} "${find}" with "${replace}"${bold.length ? ` (${bold.join(", ")} in bold)` : ""}${left ? `; ${left} left` : ""}.`;
       },
     }),
     tool({

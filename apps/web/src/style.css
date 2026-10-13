@@ -746,6 +746,7 @@ a {
   border: 1px solid var(--border);
   border-radius: 18px;
   padding: 6px 14px;
+  white-space: nowrap;
 }
 .save-copy:hover {
   background: var(--surface-hover);
@@ -3416,6 +3417,9 @@ body.agent-open .loading {
 }
 body.agent-open .workspace {
   width: calc(100vw - var(--agent-width));
+}
+body.agent-open .gdocs-modal-overlay {
+  right: var(--agent-width);
 }
 .ai-button {
   display: inline-flex;

@@ -1,11 +1,11 @@
-import { askAgent, beat, caption, describeRun, expect, openApp, test } from "../harness";
+import { askAgent, beat, caption, describeRun, electronMode, expect, openApp, test } from "../harness";
 
 test("01-first-document-ai", async ({ page }) => {
   await openApp(page);
   await caption(page, "Sam asks SuiteLeaf's on-device assistant to start the garden plan.");
   const run = await askAgent(
     page,
-    "Start a new document called Garden plan. At the top put the heading Spring planting, then this sentence: Tomatoes and basil go in the sunny bed after the last frost. Make the word last bold.",
+    "Start a new document called Garden plan. At the top put the heading Spring planting, then this sentence: Tomatoes and basil go in the sunny bed after the last frost. Make the word \"last\" bold.",
   );
   const why = describeRun(run);
   expect(run.state, why).toBe("done");
@@ -16,10 +16,16 @@ test("01-first-document-ai", async ({ page }) => {
   await expect(editor, why).toContainText("Tomatoes and basil go in the sunny bed after the last frost.");
   await expect(editor.locator("strong"), why).toHaveText("last");
   await expect(page.locator(".outline"), why).toContainText("Spring planting");
-  await caption(page, "Gemma made the document, the heading and the bold word. It saved itself on this device.", 2000);
+  await expect(page.getByRole("status"), why).toContainText(electronMode ? "Draft saved" : "Saved on this device");
+  await caption(page, "Gemma made the document, the heading and the bold word. It saved itself as it went.", 2000);
 
+  await page.getByRole("button", { name: "Close assistant" }).click();
   await page.getByRole("button", { name: "Back to files" }).click();
-  await page.getByRole("link", { name: /Garden plan/ }).click();
+  const row = page.getByRole("link", { name: /Garden plan/ });
+  await expect(row).toBeVisible();
+  await row.hover();
+  await caption(page, "Garden plan is in the library. Open it again.", 1400);
+  await row.click();
   await expect(editor.locator("h1")).toHaveText("Spring planting");
   await expect(editor.locator("strong")).toHaveText("last");
   await caption(page, "Reopened from the library, everything is still there.", 1600);

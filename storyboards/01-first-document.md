@@ -28,6 +28,22 @@ Sam just installed SuiteLeaf (or opened it in a browser) and wants to jot down a
 - The document is in the library under its new name, with the heading and bold preserved (the script checks both after reopening).
 - Autosave status was visible the whole time.
 
+## AI version
+
+**Videos:** [web](videos/01-first-document-ai.mp4) · [desktop (Electron)](videos/electron/01-first-document-ai.mp4) · **Script:** [scenes/ai/01-first-document-ai.spec.ts](scenes/ai/01-first-document-ai.spec.ts)
+
+Sam opens the AI panel on the home screen and types one request:
+
+> Start a new document called Garden plan. At the top put the heading Spring planting, then this sentence: Tomatoes and basil go in the sunny bed after the last frost. Make the word "last" bold.
+
+Gemma 4 E4B, running on the device (WebGPU in the browser, llama.cpp on Metal in the desktop app), does the rest. The purple "Gemma" pointer goes to the New document card (`create_file`), then to the page as it types (`write_text`, using `# ` for the heading and `**last**` for bold). In some runs it also restyles the heading (`set_style`) or bolds the word again with `format_text` or `find_and_replace`. These extra steps are harmless because the text is already right. The script then checks the title, the Heading 1, the sentence, the single bold word, the outline entry and the autosave status ("Saved on this device" on the web, "Draft saved" on the desktop). Then Sam closes the panel, goes back to files, sees Garden plan in the list and reopens it with the heading and bold intact. The model takes about 15–30 seconds on the web and about 8 seconds on the desktop, after the model has loaded.
+
+How Gemma did:
+
+- After the last app fix, the web storyboard passed 2 of 3 runs, and the desktop app passed its last 3 runs. Across the whole review, 4 of 10 web runs passed, but most early failures came from app problems that are now fixed (below).
+- Mistakes the model made that the app can't fix: it bolded "last frost" instead of "last" when the request said *Make the word last bold* without quotes. That's why the request now quotes the word. It typed "after the the last frost". Once it moved the word to the end ("after the frost. **last**"). Twice it closed the document after finishing, although nobody asked it to. Each time, it still reported that everything was done. It also often checks its own work by making the same change again (bolding "last" two or three times).
+- Problems the app caused, fixed during this review: `find_and_replace` typed `**last**` with the asterisks visible, while `write_text` treats `**` as bold. Now both treat it as bold. `write_text` didn't say what it had made bold or turned into a heading, so Gemma redid the formatting; it now does. `after: "# Spring planting"`, the heading written the way Gemma typed it, matched nothing, and the error didn't say what was in the document. On the desktop, Gemma repeated that call five times. Now `after` ignores the `# ` prefix, and the error lists the paragraphs. The `back_to_files` tool was described as "Save and close", which suggested closing a file saves it. The system prompt now also asks Gemma to leave its work open on screen. The find and replace dialog covered the AI panel. Bold in Gemma's replies showed raw asterisks. On the desktop, a brand-new document said "Recovered draft · review and save". Desktop videos were shrunk into a corner of the frame.
+
 ## Gaps and notes
 
 - Fixed while reviewing this storyboard:
@@ -39,6 +55,6 @@ Sam just installed SuiteLeaf (or opened it in a browser) and wants to jot down a
 - Follow-ups (not built here):
   - Paint format and document comments.
   - Paragraph indentation outside lists. Google Docs indents any paragraph.
-  - A Google Docs-style "more" overflow menu, so the toolbar stays on one row below about 1250 px.
+  - A Google Docs-style "more" overflow menu, so the toolbar stays on one row below about 1250 px. With the AI panel open at 1280 px, the editor is about 940 px wide, so the toolbar wraps onto two rows and the save status onto two lines.
   - Alignment buttons don't show which alignment is active.
   - Sheets and Slides still show a "Menus" search pill that does nothing.
