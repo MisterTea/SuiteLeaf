@@ -594,7 +594,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         await wait(400);
         const chart = ctx.content().charts.find((c) => !before.has(c.id));
         if (!chart) throw new ToolError("The chart was not created. Check that the range has a header row and numbers.");
-        return `Inserted a ${type} chart "${chart.title}" from ${range} (${chart.width}×${chart.height}px, at x=${chart.x}, y=${chart.y}).`;
+        return `Inserted a ${type} chart "${chart.title}" from ${range} (${chart.width}×${chart.height}px), below the table: it covers ${chartCells(sheet(), chart)}. The table is ${a1(usedRange(sheet()))}.`;
       },
     }),
     tool({
@@ -624,8 +624,9 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
             const cell = parseCell(args.move_to);
             const origin = JSON.parse(sheet().getRange(0, 0, 1, 1).getCellRect().toJSON());
             const at = JSON.parse(sheet().getRange(cell.row, cell.column, 1, 1).getCellRect().toJSON());
-            c.x = at.left - origin.left;
-            c.y = at.top - origin.top;
+            // Charts made in SuiteLeaf are placed in canvas pixels (headers included); Excel ones from A1.
+            c.x = at.left - (c.excel ? origin.left : 0);
+            c.y = at.top - (c.excel ? origin.top : 0);
             changed.push(`moved to ${args.move_to}`);
           }
           if (args.width) c.width = Math.max(200, Math.round(args.width));
@@ -634,8 +635,15 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
           book.getSheetBySheetId(c.sheetId)?.removeFloatDom(c.id);
           ctx.refreshCharts();
           ctx.persist();
+          await wait(300);
+          await moveCursor(document.querySelector(`[data-chart-id="${c.id}"]`), "Edit chart");
         }
-        if (args.range || args.type || args.title) {
+        const typeName = (t: string) => (t === "column" ? "bar" : t);
+        if (
+          (args.range && a1(parseA1(args.range)) !== a1(c.source)) ||
+          (args.type && typeName(args.type) !== c.type) ||
+          (args.title && args.title.trim() !== c.title)
+        ) {
           if (args.range) checkHeaderRow(sheet(), args.range);
           ctx.openPanel(
             "chart",
@@ -651,7 +659,8 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
           await ctx.submitPanel();
           changed.push("updated its settings");
         }
-        return `Chart "${c.title}": ${changed.join(", ") || "no change"}.`;
+        const now = ctx.content().charts.find((x) => x.id === c.id) ?? c;
+        return `Chart "${now.title}": ${changed.join(", ") || "no change"}. It is ${now.width}×${now.height}px and covers ${chartCells(sheet(), now)}; the table is ${a1(usedRange(sheet()))}.`;
       },
     }),
     tool({
@@ -887,6 +896,29 @@ function findChart(ctx: SheetsAgentContext, title?: string) {
   return charts.at(-1);
 }
 
+/** The cells a chart sits over, e.g. "F1:J12". */
+function chartCells(sheet: any, c: ChartDefinition) {
+  try {
+    const rect = (row: number, col: number) => JSON.parse(sheet.getRange(row, col, 1, 1).getCellRect().toJSON());
+    const origin = rect(0, 0);
+    const x = c.x + (c.excel ? origin.left : 0),
+      y = c.y + (c.excel ? origin.top : 0);
+    const column = (px: number) => {
+      let i = 0;
+      while (i < 200 && rect(0, i).right <= px) i++;
+      return i;
+    };
+    const row = (px: number) => {
+      let i = 0;
+      while (i < 2000 && rect(i, 0).bottom <= px) i++;
+      return i;
+    };
+    return a1({ startRow: row(y), endRow: row(y + c.height - 1), startColumn: column(x), endColumn: column(x + c.width - 1) });
+  } catch {
+    return `x=${c.x}, y=${c.y}`;
+  }
+}
+
 /** "The sheet has a filter on A1:D11: column C (Status) shows only Pending; 6 rows hidden." */
 function filterSummary(sheet: any) {
   const filter = sheet.getFilter();
@@ -915,7 +947,7 @@ export function sheetSnapshot(ctx: SheetsAgentContext) {
       `Open spreadsheet: "${ctx.title}". Sheets: ${sheets.join(", ")}. Active sheet: "${s.getSheetName()}", used range ${a1(used)}${selection ? `, selected ${selection}` : ""}.`,
       freeze?.ySplit || freeze?.xSplit ? `Frozen: ${freeze.startRow} row(s), ${freeze.startColumn} column(s).` : "",
       filterSummary(s),
-      charts.length ? `Charts: ${charts.map((c) => `"${c.title}" (${c.type === "bar" ? "column" : c.type}, ${a1(c.source)})`).join("; ")}.` : "",
+      charts.length ? `Charts: ${charts.map((c) => `"${c.title}" (${c.type === "bar" ? "column" : c.type}, ${a1(c.source)}, over ${chartCells(s, c)})`).join("; ")}.` : "",
       `Cells:\n${grid(s, used, 25, 12)}`,
     ]
       .filter(Boolean)
