@@ -900,14 +900,15 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
     tool({
       name: "add_comment",
       label: "Add comment",
-      description: "Add a comment (a discussion others can reply to) to a cell.",
+      description:
+        "Add a comment (a discussion others can reply to) to a cell. When the user says how to sign it (\"sign it as Sam\", \"from Sam\"), pass that name as signed_as.",
       parameters: Type.Object({
         cell: Type.String(),
         text: Type.String({ description: "The comment itself, without a signature" }),
         signed_as: Type.Optional(
           Type.String({
             description:
-              "The user's own name, only when they say what to sign with (\"sign it as Sam\"); kept for their later comments on this computer. Never the person the comment is for, never your own name.",
+              "The user's own name to sign with; kept for their later comments on this computer. Never the person the comment is for, never your own name.",
           }),
         ),
       }),
@@ -921,7 +922,13 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
           text = text.replace(new RegExp(`[\\s,]*(?:[-–—~]|\\n)\\s*${escaped}[.!]?\\s*$`, "i"), "") || text;
         }
         select(cell);
-        const ok = await sheet().getRange(cell).addCommentAsync(text);
+        // Without paragraphs, the comment card shows no text.
+        const lines = text.replace(/\r\n?/g, "\n").split("\n");
+        const dataStream = `${lines.join("\r")}\r\n`;
+        const paragraphs = [...dataStream].flatMap((c, i) => (c === "\r" ? [{ startIndex: i }] : []));
+        const ok = await sheet()
+          .getRange(cell)
+          .addCommentAsync({ dataStream, paragraphs, sectionBreaks: [{ startIndex: dataStream.length - 1 }] });
         if (!ok) throw new ToolError(`Could not add a comment to ${cell}.`);
         ctx.persist();
         // Show the new thread on its cell, as Insert comment does.

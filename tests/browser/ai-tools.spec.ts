@@ -193,6 +193,7 @@ test("note and comment tools say where they went and who signed the comment", as
     'Commented on D3 (Engineering, Remaining), signed "Alex": "Can Research use $600 of it?".',
   );
   await expect(page.getByText("Alex", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Can Research use $600 of it?")).toBeVisible();
   expect(await call(page, "read_notes_and_comments")).toBe(
     "B2 comment (unsigned): Is this final?\nC3 note: Includes the September invoice.\nD3 comment by Alex: Can Research use $600 of it?",
   );
