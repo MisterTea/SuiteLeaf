@@ -711,10 +711,13 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         const valueCells = a1({ startRow: r.startRow + 1, endRow: r.endRow, startColumn: valueColumn, endColumn: valueColumn });
         if (args.number_format) {
           const id = NUMBER_FORMATS[args.number_format];
+          await revealRange(book, valueCells);
+          await moveCursor(rangeScreenRect(book, valueCells), "Format cells");
           if (!id || !applyNamedFormat(id, (code) => s.getRange(valueCells).setNumberFormat(code)).ok)
             throw new ToolError(`Unknown number format ${args.number_format}.`);
           ctx.persist();
           await ctx.settle();
+          await moveCursor(document.querySelector(".pivot-btn"), "Pivot table");
         }
         const before = new Set(ctx.content().pivots.map((p) => p.id));
         select(a1(r));
@@ -751,7 +754,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         "Make an editable copy of a pivot table (pivot sheets are read-only) on a new sheet with the same numbers and formatting. Defaults to the pivot on the active sheet, or the only one.",
       parameters: Type.Object({ pivot: Type.Optional(Type.String({ description: "The pivot table's title" })) }),
       target: () => [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Make editable copy")),
-      execute({ pivot }) {
+      async execute({ pivot }) {
         const all = ctx.content().pivots;
         const p =
           (pivot && all.find((x) => x.title.toLowerCase() === pivot.trim().toLowerCase())) ||
@@ -762,6 +765,11 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
             all.length ? `Say which pivot table to copy: ${all.map((x) => `"${x.title}"`).join(", ")}.` : "There is no pivot table in this workbook.",
           );
         ctx.copyPivot(p);
+        await wait(300);
+        await moveCursor(
+          [...document.querySelectorAll('[role="tab"]')].find((t) => t.textContent?.trim() === sheet().getSheetName()),
+          "Editable copy",
+        );
         return `Made an editable copy of "${p.title}" on the new sheet "${sheet().getSheetName()}", now the active sheet:\n${grid(sheet(), usedRange(sheet()), 30, 10)}`;
       },
     }),
