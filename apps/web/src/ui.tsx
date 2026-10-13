@@ -248,6 +248,14 @@ export type EditorActions = {
     showGridlines: (visible: boolean) => void;
     showFormulaBar: (visible: boolean) => void;
   };
+  slideActions?: {
+    newSlide: () => void;
+    applyLayout: (
+      layout: "title" | "title-body" | "section" | "two-column" | "blank",
+    ) => void;
+    openTheme: () => void;
+    openTransition: () => void;
+  };
 };
 export type SheetView = {
   frozenRows: number;

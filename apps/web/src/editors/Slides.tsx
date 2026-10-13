@@ -32,6 +32,7 @@ import {
   MousePointer2,
   Minus,
   StickyNote,
+  Blend,
 } from "lucide-react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import {
@@ -39,16 +40,35 @@ import {
   type SlideFile,
   type Slide,
   type SlideElement,
+  type SlideTheme,
 } from "@suiteleaf/core";
 import { exportText, printDocument } from "../storage";
 import { Menu, MenuItem, Tool, type EditorActions } from "../ui";
 import {
   applyBackground,
   applyLayout,
-  newSlide,
   reorder,
   type Layout,
 } from "./slide-layouts";
+import {
+  DECK_THEMES,
+  THEME_FONTS,
+  TRANSITION_CHOICES,
+  applyDeckTheme,
+  customizeTheme,
+  handStyle,
+  layoutWithTheme,
+  paintSlide,
+  resetToTheme,
+  setTransitionDuration,
+  setTransitions,
+  shapeDefaults,
+  slideFromTheme,
+  textDefaults,
+  transitionMs,
+  type TransitionType,
+} from "./slide-theme";
+import { SlideDesignPanel, useReducedMotion } from "./slide-design-panel";
 
 type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
@@ -79,6 +99,41 @@ export default function Slides({
   const [blankScreen, setBlankScreen] = useState<string | null>(null);
   const [showStartedAt, setShowStartedAt] = useState(0);
   const [clock, setClock] = useState(0);
+  const [panel, setPanel] = useState<"theme" | "transition" | null>(null);
+  const [previewTheme, setPreviewTheme] = useState<SlideTheme | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>(() =>
+    file.content.slideOrder[0] ? [file.content.slideOrder[0]] : [],
+  );
+  const [transitionScope, setTransitionScope] = useState<"all" | "selected">(
+    "all",
+  );
+  const [transitionDuration, setDuration] = useState(0.4);
+  const [chosenTransition, setChosenTransition] = useState<TransitionType | null>(
+    null,
+  );
+  const [transitionStatus, setTransitionStatus] = useState("");
+  const [canvasMotion, setCanvasMotion] = useState<{
+    type: TransitionType;
+    ms: number;
+  } | null>(null);
+  const [showMotion, setShowMotion] = useState<{
+    index: number;
+    type: TransitionType | null;
+  }>({ index: -1, type: null });
+  const themeEdits = useRef(new Map<string, SlideTheme>());
+  const apiRef = useRef<{
+    addSlide: (layout: Layout) => void;
+    applyLayout: (layout: Layout) => void;
+    openTheme: () => void;
+    openTransition: () => void;
+  }>({
+    addSlide: () => {},
+    applyLayout: () => {},
+    openTheme: () => {},
+    openTransition: () => {},
+  });
+  const reducedMotion = useReducedMotion();
+  const anchorIndex = useRef(0);
 
   // Undo/Redo history
   const history = useRef<SlideFile["content"][]>([
@@ -142,7 +197,7 @@ export default function Slides({
 
   // Add new slide
   const addSlide = (layout: Layout = "title-body") => {
-    const slide = newSlide(layout);
+    const slide = slideFromTheme(layout, deck.theme, activeSlide?.transition);
     const newId = slide.id;
     const currentIdx = deck.slideOrder.indexOf(activeSlideId);
     const newOrder = [...deck.slideOrder];
@@ -155,6 +210,7 @@ export default function Slides({
     };
     commit(updated);
     setActiveSlideId(newId);
+    setSelectedIds([newId]);
     setSelectedElementId(null);
   };
 
@@ -261,14 +317,67 @@ export default function Slides({
 
   const applyLayoutToSlide = (layout: Layout) => {
     if (!activeSlide) return;
+    const next = deck.theme
+      ? layoutWithTheme(activeSlide, layout, deck.theme)
+      : applyLayout(activeSlide, layout);
     commit({
       ...deck,
-      slides: { ...deck.slides, [activeSlide.id]: applyLayout(activeSlide, layout) },
+      slides: { ...deck.slides, [activeSlide.id]: next },
     });
   };
 
   const setDeckBackground = (color: string, keepSections: boolean) =>
     commit({ ...deck, slides: applyBackground(deck.slides, color, keepSections) });
+
+  if (deck.theme) themeEdits.current.set(deck.theme.id, deck.theme);
+  const resolveTheme = (theme: SlideTheme) =>
+    themeEdits.current.get(theme.id) ?? theme;
+  const shownSlide =
+    previewTheme && activeSlide ? paintSlide(activeSlide, previewTheme) : activeSlide;
+
+  const useTheme = (theme: SlideTheme) => {
+    themeEdits.current.set(theme.id, theme);
+    setPreviewTheme(null);
+    commit(applyDeckTheme(deck, theme));
+  };
+  const transitionTargets = () =>
+    transitionScope === "all" ? deck.slideOrder : selectedIds;
+  const describeTransition = (type: TransitionType, count: number) => {
+    if (type === "none")
+      return count === deck.slideOrder.length
+        ? "Cut on every slide"
+        : `Cut on ${count} slides`;
+    const label = TRANSITION_CHOICES.find((choice) => choice.type === type)?.label;
+    const where =
+      count === deck.slideOrder.length ? "all slides" : `${count} slides`;
+    return `${label} · ${transitionDuration.toFixed(1)} s · ${where}`;
+  };
+  const pickTransition = (type: TransitionType) =>
+    applyTransitionTo(type, transitionTargets());
+  apiRef.current = {
+    addSlide,
+    applyLayout: applyLayoutToSlide,
+    openTheme: () => setPanel("theme"),
+    openTransition: () => setPanel("transition"),
+  };
+
+  const playTransition = () => {
+    const current = activeSlide?.transition;
+    const type = current?.type && current.type !== "none" ? current.type : chosenTransition;
+    if (!type || type === "none") return;
+    const ms = transitionMs(
+      { type, duration: current?.duration ?? transitionDuration },
+      reducedMotion,
+    );
+    if (ms === 0) return;
+    setCanvasMotion(null);
+    requestAnimationFrame(() => setCanvasMotion({ type, ms }));
+  };
+  const applyTransitionTo = (type: TransitionType, ids: readonly string[]) => {
+    setChosenTransition(type);
+    commit(setTransitions(deck, ids, { type, duration: transitionDuration }));
+    setTransitionStatus(describeTransition(type, ids.length));
+  };
 
   // Update active slide properties
   const updateSlide = useCallback(
@@ -322,8 +431,7 @@ export default function Slides({
       height: 80,
       content: "",
       fontSize: 22,
-      fontFamily: "Arial",
-      color: "#1e293b",
+      ...textDefaults(deck.theme),
       align: "left",
     };
     updateSlide({ elements: [...activeSlide.elements, newEl] });
@@ -340,8 +448,7 @@ export default function Slides({
       width: shapeType === "ellipse" ? 160 : 220,
       height: shapeType === "ellipse" ? 160 : 140,
       shapeType,
-      fill: "#e2e8f0",
-      stroke: "#94a3b8",
+      ...shapeDefaults(deck.theme),
       strokeWidth: 2,
     };
     updateSlide({ elements: [...activeSlide.elements, newEl] });
@@ -622,6 +729,12 @@ ${slidesHtml}
         beginShow(
           Math.max(0, deckRef.current.slideOrder.indexOf(activeSlideId)),
         ),
+      slideActions: {
+        newSlide: () => apiRef.current.addSlide("title-body"),
+        applyLayout: (layout) => apiRef.current.applyLayout(layout),
+        openTheme: () => apiRef.current.openTheme(),
+        openTransition: () => apiRef.current.openTransition(),
+      },
     });
   }, [onActions, onChange, activeSlideId, beginShow]);
 
@@ -629,13 +742,19 @@ ${slidesHtml}
   useEffect(() => {
     if (presenting) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "Enter" || !(e.metaKey || e.ctrlKey)) return;
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.key === "Enter") {
+        e.preventDefault();
+        beginShow(
+          e.shiftKey
+            ? 0
+            : Math.max(0, deckRef.current.slideOrder.indexOf(activeSlideId)),
+        );
+        return;
+      }
+      if (e.key.toLowerCase() !== "m" || e.shiftKey || e.altKey) return;
       e.preventDefault();
-      beginShow(
-        e.shiftKey
-          ? 0
-          : Math.max(0, deckRef.current.slideOrder.indexOf(activeSlideId)),
-      );
+      apiRef.current.addSlide("title-body");
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -743,6 +862,27 @@ ${slidesHtml}
     const timer = setInterval(() => setClock(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [presenting, showSpeakerNotes]);
+
+  const showArmed = useRef(false);
+  if (!presenting) {
+    showArmed.current = false;
+    if (showMotion.type) setShowMotion({ index: -1, type: null });
+  } else if (!showArmed.current) {
+    showArmed.current = true;
+    if (showMotion.index !== presentSlideIndex)
+      setShowMotion({ index: presentSlideIndex, type: null });
+  } else if (showMotion.index !== presentSlideIndex) {
+    const incoming = deck.slides[deck.slideOrder[presentSlideIndex]]?.transition;
+    const ms = transitionMs(incoming, reducedMotion);
+    setShowMotion({
+      index: presentSlideIndex,
+      type: ms > 0 && incoming && incoming.type !== "none" ? incoming.type : null,
+    });
+  }
+  const showMotionClass =
+    showMotion.index === presentSlideIndex && showMotion.type
+      ? ` deck-motion-${showMotion.type}`
+      : "";
 
   const presentSlide =
     deck.slides[deck.slideOrder[presentSlideIndex]] || activeSlide;
@@ -905,6 +1045,16 @@ ${slidesHtml}
         aria-label="Slides toolbar"
       >
         <div className="tool-group">
+          <button
+            type="button"
+            className="menu-trigger theme-toggle"
+            aria-pressed={panel === "theme"}
+            onClick={() =>
+              setPanel((open) => (open === "theme" ? null : "theme"))
+            }
+          >
+            Theme
+          </button>
           <Menu label="+ New slide">
             <MenuItem onSelect={() => addSlide("title-body")}>
               Title & body
@@ -997,7 +1147,10 @@ ${slidesHtml}
                 <MenuItem
                   key={c.val}
                   onSelect={() =>
-                    updateElement(selectedElement.id, { fill: c.val })
+                    updateElement(
+                      selectedElement.id,
+                      handStyle({ fill: c.val }),
+                    )
                   }
                 >
                   <span
@@ -1022,10 +1175,10 @@ ${slidesHtml}
                 <MenuItem
                   key={c.val}
                   onSelect={() =>
-                    updateElement(selectedElement.id, {
-                      stroke: c.val,
-                      strokeWidth: 2,
-                    })
+                    updateElement(
+                      selectedElement.id,
+                      handStyle({ stroke: c.val, strokeWidth: 2 }),
+                    )
                   }
                 >
                   <span
@@ -1044,18 +1197,19 @@ ${slidesHtml}
                   aria-label="Font family"
                   value={selectedElement.fontFamily || "Arial"}
                   onChange={(e) =>
-                    updateElement(selectedElement.id, {
-                      fontFamily: e.target.value,
-                    })
+                    updateElement(
+                      selectedElement.id,
+                      handStyle({ fontFamily: e.target.value }),
+                    )
                   }
                 >
-                  <option value="Arial">Arial</option>
+                  {THEME_FONTS.map((font) => (
+                    <option key={font} value={font}>
+                      {font}
+                    </option>
+                  ))}
                   <option value="Roboto">Roboto</option>
                   <option value="Helvetica">Helvetica</option>
-                  <option value="Georgia">Georgia</option>
-                  <option value="Times New Roman">Times New Roman</option>
-                  <option value="Courier New">Courier New</option>
-                  <option value="Trebuchet MS">Trebuchet MS</option>
                 </select>
 
                 <div className="font-size-stepper">
@@ -1247,21 +1401,6 @@ ${slidesHtml}
               ))}
             </Menu>
 
-            <Menu label="Theme">
-              {[
-                { label: "Simple Light", val: "#ffffff" },
-                { label: "Streamline", val: "#f8fafc" },
-                { label: "Focus (Dark)", val: "#0f172a" },
-                { label: "Warm Sand", val: "#fef3c7" },
-              ].map((theme) => (
-                <MenuItem
-                  key={theme.val}
-                  onSelect={() => setDeckBackground(theme.val, true)}
-                >
-                  {theme.label}
-                </MenuItem>
-              ))}
-            </Menu>
           </div>
         )}
 
@@ -1312,6 +1451,23 @@ ${slidesHtml}
           </div>
         </div>
       </div>
+
+      {selectedElement?.themeOverride && deck.theme ? (
+        <div className="theme-override-bar" role="status">
+          <span>Overrides theme</span>
+          <button
+            type="button"
+            onClick={() =>
+              updateElement(
+                selectedElement.id,
+                resetToTheme(selectedElement, deck.theme!),
+              )
+            }
+          >
+            Reset to theme
+          </button>
+        </div>
+      ) : null}
 
       {/* Main Slides Editor Body */}
       <div className="slides-main">
@@ -1370,7 +1526,10 @@ ${slidesHtml}
               const to = e.key === "ArrowUp" ? idx - 1 : idx + 1;
               if (to < 0 || to >= deck.slideOrder.length) return;
               if (e.metaKey || e.ctrlKey) moveSlideTo(idx, to);
-              else setActiveSlideId(deck.slideOrder[to]);
+              else {
+                setActiveSlideId(deck.slideOrder[to]);
+                setSelectedIds([deck.slideOrder[to]]);
+              }
               setSelectedElementId(null);
             }}
           >
@@ -1391,14 +1550,24 @@ ${slidesHtml}
                   key={id}
                   role="option"
                   aria-selected={isActive}
-                  aria-label={`Slide ${index + 1}`}
-                  className={`thumbnail-row ${isActive ? "selected" : ""} ${slideDrag?.over != null && slideDrag.from === index ? "drag-source" : ""} ${dropClass}`}
+                  aria-label={`Slide ${index + 1}${slide?.transition && slide.transition.type !== "none" ? `, ${slide.transition.type} transition` : ""}`}
+                  data-selected={selectedIds.includes(id) ? "true" : "false"}
+                  className={`thumbnail-row ${isActive ? "selected" : ""} ${selectedIds.includes(id) ? "grouped" : ""} ${slideDrag?.over != null && slideDrag.from === index ? "drag-source" : ""} ${dropClass}`}
                   onMouseDown={(e) => {
                     if (e.button !== 0) return;
                     setSlideDrag({ from: index, startY: e.clientY, over: null });
                   }}
-                  onClick={() => {
+                  onClick={(e) => {
                     if (suppressThumbnailClick.current) return;
+                    if (e.shiftKey) {
+                      const start = Math.min(anchorIndex.current, index);
+                      const end = Math.max(anchorIndex.current, index);
+                      setSelectedIds(deck.slideOrder.slice(start, end + 1));
+                      setTransitionScope("selected");
+                    } else {
+                      anchorIndex.current = index;
+                      setSelectedIds([id]);
+                    }
                     setActiveSlideId(id);
                     setSelectedElementId(null);
                   }}
@@ -1465,6 +1634,14 @@ ${slidesHtml}
                         return null;
                       })}
                     </div>
+                    {slide?.transition && slide.transition.type !== "none" ? (
+                      <span
+                        className="thumbnail-transition"
+                        title={slide.transition.type}
+                      >
+                        <Blend size={10} />
+                      </span>
+                    ) : null}
                   </div>
                 </div>
               );
@@ -1491,13 +1668,14 @@ ${slidesHtml}
             onClick={() => setSelectedElementId(null)}
           >
             <div
-              className="slide-canvas print-slide"
+              className={`slide-canvas print-slide${canvasMotion ? ` deck-motion-${canvasMotion.type}` : ""}`}
               style={{
-                backgroundColor: activeSlide?.background?.color || "#ffffff",
+                backgroundColor: shownSlide?.background?.color || "#ffffff",
                 aspectRatio: `${deck.width || 960} / ${deck.height || 540}`,
+                ["--deck-motion" as string]: `${canvasMotion?.ms ?? 0}ms`,
               }}
             >
-              {activeSlide?.elements.map((el) => {
+              {shownSlide?.elements.map((el) => {
                 const isSelected = el.id === selectedElementId;
                 const posStyle: React.CSSProperties = {
                   position: "absolute",
@@ -1631,6 +1809,46 @@ ${slidesHtml}
             ) : null}
           </div>
         </div>
+        {panel ? (
+          <SlideDesignPanel
+            mode={panel}
+            onClose={() => {
+              setPreviewTheme(null);
+              setPanel(null);
+            }}
+            themes={DECK_THEMES}
+            current={deck.theme}
+            resolve={resolveTheme}
+            onHoverTheme={setPreviewTheme}
+            onApplyTheme={useTheme}
+            onCustomize={(patch) => {
+              if (!deck.theme) return;
+              const next = { ...deck.theme, ...patch };
+              themeEdits.current.set(next.id, next);
+              setPreviewTheme(null);
+              commit(customizeTheme(deck, patch));
+            }}
+            duration={transitionDuration}
+            onDuration={(seconds) => {
+              setDuration(seconds);
+              const ids = transitionTargets();
+              if (ids.some((id) => deck.slides[id]?.transition))
+                commit(setTransitionDuration(deck, ids, seconds));
+            }}
+            scope={transitionScope}
+            onScope={setTransitionScope}
+            selectedCount={selectedIds.length}
+            slideCount={deck.slideOrder.length}
+            chosen={chosenTransition}
+            onPickTransition={pickTransition}
+            onApplyAll={() => {
+              setTransitionScope("all");
+              applyTransitionTo(chosenTransition ?? "fade", deck.slideOrder);
+            }}
+            onPlay={playTransition}
+            status={transitionStatus}
+          />
+        ) : null}
       </div>
 
       {/* Presentation Fullscreen Mode Modal */}
@@ -1644,9 +1862,11 @@ ${slidesHtml}
           tabIndex={-1}
         >
           <div
-            className="presenter-slide-box show-slide"
+            key={presentSlideIndex}
+            className={`presenter-slide-box show-slide${showMotionClass}`}
             style={{
               backgroundColor: presentSlide?.background?.color || "#ffffff",
+              ["--deck-motion" as string]: `${transitionMs(presentSlide?.transition, reducedMotion)}ms`,
               aspectRatio: `${deck.width || 960} / ${deck.height || 540}`,
               width: showSpeakerNotes
                 ? `min(62vw, calc((100vh - 112px) * ${deck.width || 960} / ${deck.height || 540}))`

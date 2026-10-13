@@ -2019,7 +2019,9 @@ function Workspace() {
                   <MenuItem onSelect={() => {}}>Text box</MenuItem>
                   <MenuItem onSelect={() => {}}>Image</MenuItem>
                   <MenuItem onSelect={() => {}}>Shape</MenuItem>
-                  <MenuItem onSelect={() => void doAction("new-slide")}>
+                  <MenuItem
+                    onSelect={() => actions.current?.slideActions?.newSlide()}
+                  >
                     New slide
                   </MenuItem>
                 </Menu>
@@ -2035,12 +2037,61 @@ function Workspace() {
                 <Menu label="Slide">
                   <MenuItem
                     shortcut="Cmd+M"
-                    onSelect={() => void doAction("new-slide")}
+                    onSelect={() => actions.current?.slideActions?.newSlide()}
                   >
                     New slide
                   </MenuItem>
                   <MenuItem onSelect={() => {}}>Duplicate slide</MenuItem>
                   <MenuItem onSelect={() => {}}>Delete slide</MenuItem>
+                  <SubMenu label="Apply layout">
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.slideActions?.applyLayout("title")
+                      }
+                    >
+                      Title slide
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.slideActions?.applyLayout("title-body")
+                      }
+                    >
+                      Title & body
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.slideActions?.applyLayout("two-column")
+                      }
+                    >
+                      Two columns
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.slideActions?.applyLayout("section")
+                      }
+                    >
+                      Section header
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.slideActions?.applyLayout("blank")
+                      }
+                    >
+                      Blank slide
+                    </MenuItem>
+                  </SubMenu>
+                  <MenuItem
+                    onSelect={() => actions.current?.slideActions?.openTheme()}
+                  >
+                    Change theme
+                  </MenuItem>
+                  <MenuItem
+                    onSelect={() =>
+                      actions.current?.slideActions?.openTransition()
+                    }
+                  >
+                    Transition
+                  </MenuItem>
                 </Menu>
                 <Menu label="Tools">
                   <MenuItem onSelect={() => {}}>Spelling</MenuItem>
