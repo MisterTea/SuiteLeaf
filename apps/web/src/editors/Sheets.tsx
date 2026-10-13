@@ -55,6 +55,14 @@ import { useSheetFunctions } from "./function-help-ui";
 import SortRangeDialog from "./SortRangeDialog";
 import NamedRanges, { type NamedRangesHandle } from "./named-ranges-ui";
 import { useToolbarOverflow } from "./toolbar-overflow";
+import {
+  attachSheetViewLock,
+  blocksSheetEdit,
+  filterViewChoices,
+  valueFilterCriteria,
+  watchFormulaBar,
+  type SheetAccess,
+} from "./view-lock";
 import "@univerjs/preset-sheets-core/lib/index.css";
 import "@univerjs/preset-sheets-drawing/lib/index.css";
 import "@univerjs/preset-sheets-filter/lib/index.css";
@@ -752,11 +760,17 @@ export default function Sheets({
   onChange,
   onActions,
   onError,
+  readOnly = false,
+  canComment = false,
 }: {
   file: SheetFile;
   onChange: (content: SheetFile["content"]) => void;
   onActions: (actions: EditorActions) => void;
   onError: (s: string) => void;
+  /** Viewers and commenters can read the grid, but not change cells. */
+  readOnly?: boolean;
+  /** Commenters may reply. Replies stay on this screen; saves are already skipped. */
+  canComment?: boolean;
 }) {
   const { isDark } = useTheme();
   const cluster = useMode().mode.kind === "cluster";
@@ -798,7 +812,12 @@ export default function Sheets({
       range: GridRange;
       values: CellValue[][];
     } | null>(null),
-    [notice, setNotice] = useState("");
+    [notice, setNotice] = useState(""),
+    [filterView, setFilterView] = useState<{
+      header: string;
+      value: string;
+      hidden: number;
+    } | null>(null);
   const pending = useRef(false);
   const tabSettings = useRef<{ openTabs: () => void }>(null);
   const dropdowns = useRef<SheetDropdownHandle>(null);
@@ -832,6 +851,12 @@ export default function Sheets({
     pivotErrors = useRef(new Map<string, string>()),
     valueChosen = useRef(false);
   const startingUp = useRef(true);
+  const readOnlyRef = useRef(readOnly);
+  readOnlyRef.current = readOnly;
+  const canCommentRef = useRef(canComment);
+  canCommentRef.current = canComment;
+  const access = (): SheetAccess =>
+    readOnlyRef.current ? (canCommentRef.current ? "comment" : "view") : "edit";
   // Univer focuses its hidden cell editor while it starts, which would send
   // keystrokes meant for the file title (or another field) into the grid.
   useEffect(() => {
@@ -892,7 +917,23 @@ export default function Sheets({
     const hydratedImageIds = new Set<string>();
     let cleanup: (() => void) | undefined;
     let partialCleanup: (() => void) | undefined;
+    let detachView = () => {};
     const initialize = () => {
+      // Register before Univer so a keystroke never opens the cell editor.
+      const stopViewLock = attachSheetViewLock(
+        () => readOnlyRef.current,
+        access,
+      );
+      const stopFormulaLock = watchFormulaBar(container, () => readOnlyRef.current);
+      const openFromHeader = () => {
+        void univerAPI.executeCommand("sheet.operation.toggle-comment-panel");
+      };
+      window.addEventListener("suiteleaf:open-sheet-comments", openFromHeader);
+      detachView = () => {
+        stopViewLock();
+        stopFormulaLock();
+        window.removeEventListener("suiteleaf:open-sheet-comments", openFromHeader);
+      };
       const { univer, univerAPI } = createUniver({
         theme: isDark ? darkBlueTheme : defaultTheme,
         darkMode: isDark,
@@ -979,9 +1020,17 @@ export default function Sheets({
         me = author();
         signIn();
       });
+      const releaseEngine = partialCleanup;
+      partialCleanup = () => {
+        stopViewLock();
+        stopFormulaLock();
+        releaseEngine?.();
+      };
       const signComments = univerAPI.addEvent(
         univerAPI.Event.BeforeCommandExecute,
-        ({ id, params }) => {
+        (event) => {
+          if (blocksSheetEdit(event.id, access())) event.cancel = true;
+          const { id, params } = event;
           const comment = (params as any)?.comment;
           if (
             id === "thread-comment.command.add-comment" &&
@@ -1264,6 +1313,8 @@ export default function Sheets({
       persist.current = () => {
         if (disposed) return;
         pending.current = false;
+        // A viewer filter or a comment reply stays on this screen. The file is unchanged.
+        if (readOnlyRef.current) return;
         if (content.current.images)
           content.current.images = content.current.images.filter(
             (image) =>
@@ -1310,13 +1361,24 @@ export default function Sheets({
         setIsStrike(style?.st?.s === 1);
       };
       const changedSheets = new Set<string>();
+      const publishValue = () => {
+        try {
+          const value = workbook.getActiveRange()?.getValue();
+          container.dataset.activeValue = value == null ? "" : String(value);
+        } catch {
+          container.dataset.activeValue = "";
+        }
+      };
+      publishValue();
       const listener = workbook.onCommandExecuted((command: any) => {
         if (
           !disposed &&
           (command.id === "sheet.operation.set-selections" ||
             command.id === "sheet.mutation.set-range-values")
-        )
+        ) {
           syncTextStyle.current();
+          publishValue();
+        }
         if (busy || disposed || !command.id.includes("mutation")) return;
         pending.current = true;
         const p = command.params ?? {};
@@ -1467,6 +1529,8 @@ export default function Sheets({
         activeSheetChanged.dispose();
         stopAuthor();
         signComments.dispose();
+        stopViewLock();
+        stopFormulaLock();
         closeNoteOnMove.unsubscribe();
         partialCleanup?.();
         partialCleanup = undefined;
@@ -1519,6 +1583,7 @@ export default function Sheets({
       });
     return () => {
       disposed = true;
+      detachView();
       cleanup?.();
     };
     // The workspace mounts a fresh editor per file. Changes must not recreate the engine.
@@ -1706,6 +1771,7 @@ export default function Sheets({
     } catch {}
   };
   const toggleFilter = () => {
+    if (readOnlyRef.current) return;
     try {
       const sheet = book.current?.getActiveSheet();
       if (!sheet) return;
@@ -1726,6 +1792,61 @@ export default function Sheets({
     } catch (e) {
       onError(e instanceof Error ? e.message : String(e));
     }
+  };
+  const sheetRows = (): string[][] => {
+    const sheet = book.current?.getActiveSheet();
+    if (!sheet) return [];
+    return (sheet.getDataRange().getDisplayValues() as unknown[][]).map((row) =>
+      row.map((cell) => String(cell ?? "")),
+    );
+  };
+  const createFilterView = () => {
+    if (!readOnlyRef.current) return;
+    try {
+      const sheet = book.current?.getActiveSheet();
+      if (!sheet) return;
+      const range = sheet.getDataRange();
+      if (!range.getFilter() && !range.createFilter())
+        throw new Error("This sheet has no header row to filter.");
+      setFilterView({ header: "", value: "", hidden: 0 });
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+    }
+  };
+  const applyFilterView = (value: string) => {
+    if (!readOnlyRef.current) return;
+    try {
+      const sheet = book.current?.getActiveSheet();
+      if (!sheet) return;
+      const choice = filterViewChoices(sheetRows()).find(
+        (item) => item.value === value,
+      );
+      if (!choice) return;
+      const range = sheet.getDataRange();
+      const filter = range.getFilter() ?? range.createFilter();
+      if (!filter) throw new Error("This sheet has no header row to filter.");
+      const criteria = valueFilterCriteria(
+        choice.column,
+        range.getRange().startColumn,
+        value,
+      );
+      filter.setColumnFilterCriteria(criteria.column, criteria.criteria);
+      setFilterView({
+        header: choice.header,
+        value,
+        hidden: filter.getFilteredOutRows().length,
+      });
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+    }
+  };
+  const clearFilterView = () => {
+    try {
+      book.current?.getActiveSheet()?.getFilter()?.remove();
+    } catch {
+      /* The filter is already gone. */
+    }
+    setFilterView(null);
   };
   const openSortRange = () => {
     const sheet = book.current?.getActiveSheet();
@@ -1928,6 +2049,17 @@ export default function Sheets({
         insertPivot: () => startPanel("pivot"),
         insertFunction: (name: string) => functionActions.current.insertFunction(name),
         toggleFilter,
+        createFilterView,
+        applyFilterView,
+        clearFilterView,
+        filterViewChoices: () => {
+          if (!readOnlyRef.current) return [];
+          try {
+            return filterViewChoices(sheetRows());
+          } catch {
+            return [];
+          }
+        },
         sortRange: openSortRange,
         namedRanges: () => names.current?.open(),
         trimWhitespace: () => cleanup.current?.trim(),
@@ -2256,7 +2388,7 @@ export default function Sheets({
     autoSum: functions.autoSum,
   };
   return (
-    <div className="sheets-editor">
+    <div className={`sheets-editor${readOnly ? " view-locked" : ""}`}>
       {functions.panel}
       {functions.stats}
       {notice ? (
@@ -2316,10 +2448,18 @@ export default function Sheets({
       >
         <MenuSearchPill />
 
-        <Tool label="Undo (Cmd+Z)" onClick={() => void api.current?.undo()}>
+        <Tool
+          label="Undo (Cmd+Z)"
+          disabled={readOnly}
+          onClick={() => void api.current?.undo()}
+        >
           <Undo2 size={16} />
         </Tool>
-        <Tool label="Redo (Cmd+Y)" onClick={() => void api.current?.redo()}>
+        <Tool
+          label="Redo (Cmd+Y)"
+          disabled={readOnly}
+          onClick={() => void api.current?.redo()}
+        >
           <Redo2 size={16} />
         </Tool>
         <Tool
@@ -2330,7 +2470,7 @@ export default function Sheets({
         >
           <Printer size={16} />
         </Tool>
-        <Tool label="Paint format" onClick={() => {}}>
+        <Tool label="Paint format" disabled={readOnly} onClick={() => {}}>
           <PaintRoller size={16} />
         </Tool>
 
@@ -2351,16 +2491,16 @@ export default function Sheets({
 
         <span className="toolbar-divider" />
 
-        <Tool label="Format as currency" onClick={formatCurrency}>
+        <Tool label="Format as currency" disabled={readOnly} onClick={formatCurrency}>
           <span style={{ fontSize: 14, fontWeight: 600 }}>$</span>
         </Tool>
-        <Tool label="Format as percent" onClick={formatPercent}>
+        <Tool label="Format as percent" disabled={readOnly} onClick={formatPercent}>
           <span style={{ fontSize: 13, fontWeight: 600 }}>%</span>
         </Tool>
-        <Tool label="Decrease decimal places" onClick={subtractDecimal}>
+        <Tool label="Decrease decimal places" disabled={readOnly} onClick={subtractDecimal}>
           <span style={{ fontSize: 12, fontWeight: 600 }}>.0←</span>
         </Tool>
-        <Tool label="Increase decimal places" onClick={addDecimal}>
+        <Tool label="Increase decimal places" disabled={readOnly} onClick={addDecimal}>
           <span style={{ fontSize: 12, fontWeight: 600 }}>.00→</span>
         </Tool>
         <details className="more-formats">
@@ -2368,6 +2508,7 @@ export default function Sheets({
             className="tool more-formats-btn"
             title="More formats"
             aria-label="More formats"
+            aria-disabled={readOnly}
           >
             <span style={{ fontSize: 12, fontWeight: 600 }}>123</span>
             <ChevronDown size={11} />
@@ -2399,6 +2540,7 @@ export default function Sheets({
         <select
           className="toolbar-select font-family-select"
           aria-label="Font family"
+          disabled={readOnly}
           value={fontFamily}
           onChange={(e) => handleFontFamily(e.target.value)}
         >
@@ -2418,6 +2560,7 @@ export default function Sheets({
             className="stepper-btn"
             title="Decrease font size"
             aria-label="Decrease font size"
+            disabled={readOnly}
             onClick={() => handleFontSize(Math.max(6, fontSize - 1))}
           >
             <Minus size={12} />
@@ -2425,6 +2568,7 @@ export default function Sheets({
           <input
             className="font-size-input"
             aria-label="Font size"
+            disabled={readOnly}
             value={fontSize}
             onChange={(e) => handleFontSize(Number(e.target.value) || 10)}
           />
@@ -2433,6 +2577,7 @@ export default function Sheets({
             className="stepper-btn"
             title="Increase font size"
             aria-label="Increase font size"
+            disabled={readOnly}
             onClick={() => handleFontSize(Math.min(72, fontSize + 1))}
           >
             <Plus size={12} />
@@ -2441,14 +2586,15 @@ export default function Sheets({
 
         <span className="toolbar-divider" />
 
-        <Tool label="Bold (Cmd+B)" active={isBold} onClick={toggleBold}>
+        <Tool label="Bold (Cmd+B)" disabled={readOnly} active={isBold} onClick={toggleBold}>
           <Bold size={16} />
         </Tool>
-        <Tool label="Italic (Cmd+I)" active={isItalic} onClick={toggleItalic}>
+        <Tool label="Italic (Cmd+I)" disabled={readOnly} active={isItalic} onClick={toggleItalic}>
           <Italic size={16} />
         </Tool>
         <Tool
           label="Strikethrough (Alt+Shift+5)"
+          disabled={readOnly}
           active={isStrike}
           onClick={toggleStrike}
         >
@@ -2465,6 +2611,7 @@ export default function Sheets({
           <input
             type="color"
             value={textColor}
+            disabled={readOnly}
             onChange={(e) => handleTextColor(e.target.value)}
           />
         </label>
@@ -2479,6 +2626,7 @@ export default function Sheets({
           <input
             type="color"
             value={fillColor}
+            disabled={readOnly}
             onChange={(e) => handleFillColor(e.target.value)}
           />
         </label>
@@ -2488,6 +2636,7 @@ export default function Sheets({
           className="tool borders-btn"
           title="Borders"
           aria-label="Borders"
+          disabled={readOnly}
           onClick={applyBorders}
         >
           <Grid size={16} />
@@ -2499,6 +2648,7 @@ export default function Sheets({
           className="tool merge-btn"
           title="Merge cells"
           aria-label="Merge cells"
+          disabled={readOnly}
           onClick={mergeCells}
         >
           <Split size={16} />
@@ -2512,6 +2662,7 @@ export default function Sheets({
           className="tool align-btn"
           title="Horizontal align"
           aria-label="Horizontal align"
+          disabled={readOnly}
           onClick={cycleHorizontalAlign}
         >
           <AlignLeft size={16} />
@@ -2523,6 +2674,7 @@ export default function Sheets({
           className="tool valign-btn"
           title="Vertical align"
           aria-label="Vertical align"
+          disabled={readOnly}
           onClick={cycleVerticalAlign}
         >
           <AlignVerticalSpaceAround size={16} />
@@ -2534,6 +2686,7 @@ export default function Sheets({
           className="tool wrap-btn"
           title="Text wrapping"
           aria-label="Text wrapping"
+          disabled={readOnly}
           onClick={toggleWrap}
         >
           <WrapText size={16} />
@@ -2542,11 +2695,12 @@ export default function Sheets({
 
         <span className="toolbar-divider" />
 
-        <Tool label="Insert link (Cmd+K)" onClick={() => links.current?.open()}>
+        <Tool label="Insert link (Cmd+K)" disabled={readOnly} onClick={() => links.current?.open()}>
           <Link size={16} />
         </Tool>
         <Tool
           label="Insert comment (Cmd+Option+M)"
+          disabled={readOnly}
           onClick={() =>
             void api.current?.executeCommand(
               "sheet.operation.show-comment-modal",
@@ -2561,7 +2715,7 @@ export default function Sheets({
           className="tool chart-btn"
           title="Insert chart"
           aria-label="Insert chart"
-          disabled={!ready}
+          disabled={!ready || readOnly}
           onClick={() => startPanel("chart")}
         >
           <BarChart3 size={16} />
@@ -2581,7 +2735,7 @@ export default function Sheets({
               : "Create a filter"
           }
           aria-pressed={!!book.current?.getActiveSheet()?.getFilter()}
-          disabled={!ready}
+          disabled={!ready || readOnly}
           onClick={toggleFilter}
         >
           <Filter size={16} />
@@ -2592,6 +2746,7 @@ export default function Sheets({
           className="tool functions-btn"
           title="Functions"
           aria-label="Functions"
+          disabled={readOnly}
           onClick={() => functions.autoSum()}
         >
           <span
@@ -2612,7 +2767,7 @@ export default function Sheets({
           className="tool pivot-btn"
           title="Pivot table"
           aria-label="Pivot table"
-          disabled={!ready}
+          disabled={!ready || readOnly}
           onClick={() => startPanel("pivot")}
         >
           <TableProperties size={16} />
@@ -2692,6 +2847,23 @@ export default function Sheets({
           <EllipsisVertical size={16} />
         </button>
       </div>
+      {filterView ? (
+        <div
+          className="filter-view-bar"
+          role="status"
+          data-filtered={filterView.hidden}
+        >
+          <span>
+            {filterView.value
+              ? `Showing ${filterView.header} is ${filterView.value}`
+              : "Filter view"}
+            {" · only on this screen"}
+          </span>
+          <button type="button" onClick={clearFilterView}>
+            Show all rows
+          </button>
+        </div>
+      ) : null}
       {activePivot ? (
         <div
           className="pivot-bar"
