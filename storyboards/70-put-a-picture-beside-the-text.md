@@ -42,12 +42,12 @@ The logo sits at the left of "Dear friend,". Lena can move it to the right or ba
 
 | Criterion | Met | Evidence |
 | --- | --- | --- |
-| Wrap text › Left, Right, and Break text are on the selected picture, and they are not the corner handles | Met | Video 0:06; `wrap text puts a picture beside the paragraph and keeps corner resize` |
+| Wrap text › Left, Right, and Break text are on the selected picture, and they are not the corner handles | Met | Video 0:05 and 0:07; `wrap text puts a picture beside the paragraph and keeps corner resize` |
 | Left puts the picture on the left and the paragraph beside it | Met | Video 0:09 |
-| Right mirrors that. Break text puts the picture on its own line | Met | Video 0:12 and 0:15 |
-| A square-wrapped Word picture opens beside the text, and the import note does not say floating placement was dropped | Met | Video 0:19 and 0:21; `a square-wrapped Word picture opens beside the text` |
-| The choice survives save and reopen in a SuiteLeaf file | Met | Video 0:26; the same browser test downloads and reopens `"wrap":"left"` |
-| A picture with no wrap still opens on its own line | Met | Video 0:04; the Word test opens an inline picture underneath the greeting |
+| Right mirrors that. Break text puts the picture on its own line | Met | Video 0:11 and 0:12 |
+| A square-wrapped Word picture opens beside the text, and the import note does not say floating placement was dropped | Met | Video 0:15 and 0:17; `a square-wrapped Word picture opens beside the text` |
+| The choice survives save and reopen in a SuiteLeaf file | Met | Video 0:21; the same browser test downloads and reopens `"wrap":"left"` |
+| A picture with no wrap still opens on its own line | Met | Video 0:05; the Word test opens an inline picture underneath the greeting |
 
 ## Gaps and notes
 

@@ -98,9 +98,7 @@ test("70-put-a-picture-beside-the-text", async ({ page }) => {
   ).toBe(false);
   await beat(page, 1100);
 
-  await caption(page, "Wrap text, Left. The greeting moves up and runs beside the logo.", 1000);
   await menu.getByRole("menuitemradio", { name: "Left", exact: true }).click();
-  await beat(page, 400);
   await expect
     .poll(async () => {
       const { picture, line } = await lineBox(page);
@@ -109,9 +107,8 @@ test("70-put-a-picture-beside-the-text", async ({ page }) => {
     })
     .toBe(true);
   await page.getByText("Dear friend").click();
-  await beat(page, 1200);
+  await caption(page, "Wrap text, Left. The greeting moves up and runs beside the logo.", 1600);
 
-  await caption(page, "Right puts the logo on the other side. The greeting stays on the left.", 1000);
   await image.click();
   await wrap.click();
   await menu.getByRole("menuitemradio", { name: "Right", exact: true }).click();
@@ -123,9 +120,8 @@ test("70-put-a-picture-beside-the-text", async ({ page }) => {
     })
     .toBe(true);
   await page.getByText("Dear friend").click();
-  await beat(page, 1200);
+  await caption(page, "Right puts the logo on the other side. The greeting stays on the left.", 1600);
 
-  await caption(page, "Break text puts the logo back on its own line. The greeting returns underneath.", 1000);
   await image.click();
   await wrap.click();
   await menu.getByRole("menuitemradio", { name: "Break text", exact: true }).click();
@@ -135,9 +131,9 @@ test("70-put-a-picture-beside-the-text", async ({ page }) => {
       return line.y >= picture.y + picture.height - 4;
     })
     .toBe(true);
-  await beat(page, 1200);
+  await page.getByText("Dear friend").click();
+  await caption(page, "Break text puts the logo back on its own line. The greeting returns underneath.", 1600);
 
-  await caption(page, "She opens a Word letter whose logo is already wrapped square on the left.", 1100);
   await page.getByRole("button", { name: "Back to files" }).click();
   await beat(page, 500);
   const wordChooser = page.waitForEvent("filechooser");
@@ -160,20 +156,19 @@ test("70-put-a-picture-beside-the-text", async ({ page }) => {
       return overlap >= 8 && line.x >= picture.x + picture.width - 8;
     })
     .toBe(true);
-  await beat(page, 900);
+  await page.getByText("Dear friend").click();
+  await caption(page, "She opens a Word letter whose logo is already wrapped square on the left.", 1500);
 
-  await caption(page, "The import note no longer says the floating placement was dropped.", 1000);
   const notes = page.locator(".import-notes");
   await notes.scrollIntoViewIfNeeded();
   await notes.locator("summary").click();
   await expect(notes).toContainText("line and page breaks");
   await expect(notes).not.toContainText("floating placement");
-  await beat(page, 1800);
+  await caption(page, "The import note no longer says the floating placement was dropped.", 1800);
   await notes.locator("summary").click();
   await image.scrollIntoViewIfNeeded();
   await beat(page, 400);
 
-  await caption(page, "She downloads the SuiteLeaf file and opens that copy. The logo is still beside the greeting.", 1100);
   await expect(page.getByRole("status")).toContainText("Saved");
   const downloading = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
