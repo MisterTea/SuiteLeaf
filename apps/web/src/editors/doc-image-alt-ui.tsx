@@ -35,6 +35,7 @@ export function DocImageAlt({ editor }: { editor: Editor | null }) {
         rect,
         { width: card.offsetWidth, height: card.offsetHeight },
         { width: window.innerWidth, height: window.innerHeight },
+        selection.wrap,
       );
       setBox((prev) =>
         prev && prev.top === next.top && prev.left === next.left ? prev : next,
