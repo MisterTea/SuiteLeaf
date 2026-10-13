@@ -123,3 +123,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 64 | [Edit the header on the page](64-edit-the-header-on-the-page.md) | single-node | Docs |
 | 65 | [Choose a page number](65-choose-a-page-number.md) | single-node | Docs |
 | 66 | [Describe a photo](66-describe-a-photo.md) | single-node | Docs |
+| 68 | [Space the lines](68-space-the-lines.md) | single-node | Docs |
