@@ -535,9 +535,14 @@ declare global {
       callTool: (name: string, args: unknown, request?: string) => Promise<string>;
       /** The problems the open screens see in the current request's changes. */
       review: () => string[];
+      /** Tests: snapshot the library as a request would, then list or undo what changed since. */
+      checkpoint: () => Promise<void>;
+      checkpointChanges: () => Promise<FileChange[]>;
+      checkpointRestore: () => Promise<string>;
     };
   }
 }
+let testCheckpoint: Checkpoint | undefined;
 window.__suiteleafAgent = {
   state: () => agentSession.state,
   metrics: () => structuredClone(agentSession.metrics),
@@ -547,6 +552,11 @@ window.__suiteleafAgent = {
   prompts: () => [...agentSession.prompts],
   tools: () => currentSuiteTools().map((t) => t.name),
   review: () => currentReview(),
+  async checkpoint() {
+    testCheckpoint = await takeCheckpoint();
+  },
+  checkpointChanges: () => testCheckpoint!.changes(),
+  checkpointRestore: () => testCheckpoint!.restore(),
   async callTool(name, args, request) {
     if (request !== undefined) startRequest(request);
     const t = currentSuiteTools().find((x) => x.name === name);

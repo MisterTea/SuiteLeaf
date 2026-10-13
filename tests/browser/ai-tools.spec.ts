@@ -520,3 +520,36 @@ test("guardrails ask before destroying work, undo only the request's own changes
   expect(await removing).toMatch(/The user answered no/);
   await expect(page.locator(".file-row")).toHaveCount(1);
 });
+
+test("undo all of this puts back the files a request changed and removes the ones it made", async ({ page }) => {
+  await page.goto("/");
+  await waitForTools(page, "create_file");
+  await call(page, "create_file", { kind: "document", title: "Garden plan" });
+  await waitForTools(page, "write_text");
+  await call(page, "write_text", { text: "Tomatoes go in the sunny bed." });
+  await expect(page.getByRole("status")).toContainText("Saved");
+
+  await page.evaluate(() => window.__suiteleafAgent!.checkpoint());
+  await call(page, "write_text", { text: "Basil goes next to them." });
+  await expect(page.getByRole("status")).toContainText("Saved");
+  await call(page, "back_to_files");
+  await waitForTools(page, "create_file");
+  await call(page, "create_file", { kind: "spreadsheet", title: "Seed costs" });
+  await waitForTools(page, "set_cells");
+  await call(page, "back_to_files");
+  await waitForTools(page, "remove_file");
+
+  const changes = await page.evaluate(() => window.__suiteleafAgent!.checkpointChanges());
+  expect(changes).toEqual(
+    expect.arrayContaining([
+      { kind: "changed", title: "Garden plan", drive: false },
+      { kind: "created", title: "Seed costs", drive: false },
+    ]),
+  );
+  expect(await page.evaluate(() => window.__suiteleafAgent!.checkpointRestore())).toBe("Put back 2 file(s) as they were before.");
+  await expect(page.locator(".file-row")).toHaveCount(1);
+  await page.getByRole("link", { name: "Garden plan" }).click();
+  const doc = page.getByRole("textbox", { name: "Document content" });
+  await expect(doc).toContainText("Tomatoes go in the sunny bed.");
+  await expect(doc).not.toContainText("Basil");
+});
