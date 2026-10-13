@@ -212,7 +212,8 @@ test("page number format and position show before apply", async ({ page }) => {
   await dialog.getByLabel("Watermark").fill("DRAFT");
   await expect.poll(() => numbers(page)).toEqual(["Page 1"]);
   await expect(page.locator(".page-watermark")).toHaveCount(0);
-  await expect(page.locator(".paginated-paper .page-header").first()).toHaveText(longHeader);
+  await expect(page.locator(".paginated-paper .page-header").nth(0)).toHaveText("");
+  await expect(page.locator(".paginated-paper .page-header").nth(1)).toHaveText(longHeader);
   const unsaved = await savedPage(page);
   expect(unsaved.pageNumberFormat).toBe("fraction");
   expect(unsaved.pageNumberPositionSet).not.toBe(true);

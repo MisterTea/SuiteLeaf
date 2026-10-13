@@ -3,6 +3,7 @@ import {
   documentPageSettings,
   pageFace,
   pageNumberFormatChips,
+  pageNumberHint,
   type PageSettings,
 } from "../packages/core/src/document-layout";
 import {
@@ -71,13 +72,14 @@ describe("live page numbers", () => {
       pageNumberFormat: "page" as const,
       pageNumberPosition: "top-right" as const,
       pageNumberPositionSet: true,
-      differentFirstPage: true,
       watermark: "DRAFT",
     };
     const shown = livePageSettings(saved, draft);
     expect(shown.pageNumberFormat).toBe("page");
     expect(shown.pageNumberPosition).toBe("top-right");
     expect(shown.pageNumberPositionSet).toBe(true);
+    expect(shown.watermark).toBe("");
+    expect(shown.differentFirstPage).toBe(false);
     expect(pageFace(shown, 0, 2)).toMatchObject({
       header: "Draft minutes",
       pageNumber: "Page 1",
@@ -107,7 +109,6 @@ describe("live page numbers", () => {
     const shown = livePageNumbers(started, {
       ...started,
       coverHasNoNumber: true,
-      differentFirstPage: true,
       watermark: "DRAFT",
     });
     expect(shown.pageNumberStart).toBe(12);
@@ -125,6 +126,57 @@ describe("live page numbers", () => {
     });
     expect(pageFace(saved, 0, 2).pageNumber).toBe("Page 1");
     expect(pageFace(saved, 1, 2).pageNumber).toBe("Page 2");
+  });
+
+  it("clears the first page before apply and keeps Page 2", () => {
+    const saved = page({
+      header: "Garden club minutes",
+      pageNumbers: true,
+      pageNumberFormat: "page",
+      pageNumberPosition: "top-right",
+      pageNumberPositionSet: true,
+    });
+    const shown = livePageSettings(saved, {
+      ...saved,
+      differentFirstPage: true,
+      watermark: "DRAFT",
+    });
+    expect(shown.differentFirstPage).toBe(true);
+    expect(shown.coverHasNoNumber).toBe(false);
+    expect(shown.pageNumberStart).toBe(1);
+    expect(shown.watermark).toBe("");
+    expect(pageFace(shown, 0, 2)).toMatchObject({
+      header: "",
+      pageNumber: "",
+      numberSide: "none",
+    });
+    expect(pageFace(shown, 1, 2)).toMatchObject({
+      header: "Garden club minutes",
+      pageNumber: "Page 2",
+      numberSide: "top-right",
+    });
+    const letterhead = livePageSettings(shown, {
+      ...shown,
+      firstHeader: "Riverside Garden Club",
+    });
+    expect(pageFace(letterhead, 0, 2)).toMatchObject({
+      header: "Riverside Garden Club",
+      pageNumber: "",
+      numberSide: "none",
+    });
+    expect(pageFace(letterhead, 1, 2)).toMatchObject({
+      header: "Garden club minutes",
+      pageNumber: "Page 2",
+      numberSide: "top-right",
+    });
+    expect(pageFace(saved, 0, 2)).toMatchObject({
+      header: "Garden club minutes",
+      pageNumber: "Page 1",
+      numberSide: "top-right",
+    });
+    expect(pageNumberHint(shown, 2)).toBe(
+      "No number on page 1. Top right on later pages, as “Page 2”. Editing the footer leaves it in place.",
+    );
   });
 
   it("labels both format chips from the live start", () => {
@@ -252,9 +304,19 @@ describe("live page numbers", () => {
       livePageSettings(saved, {
         ...saved,
         watermark: "DRAFT",
-        differentFirstPage: true,
       }),
     ).toBe(saved);
+    const first = livePageSettings(saved, {
+      ...saved,
+      differentFirstPage: true,
+      watermark: "DRAFT",
+    });
+    expect(first).not.toBe(saved);
+    expect(first.differentFirstPage).toBe(true);
+    expect(first.watermark).toBe("");
+    expect(livePageNumbers(saved, { ...saved, differentFirstPage: false })).toBe(
+      saved,
+    );
     expect(
       livePageNumbers(saved, { ...saved, coverHasNoNumber: true }).coverHasNoNumber,
     ).toBe(true);

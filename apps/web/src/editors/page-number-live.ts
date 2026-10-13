@@ -41,12 +41,14 @@ function livePageNumberStart(base: number, draft: unknown): number {
 
 /**
  * The page-number switch, the format, the position, where numbering starts,
- * different odd and even pages, and a cover with no number are drawn while
- * Page setup is open. A number already in a corner moves to the outside
- * edge before Apply. Turning the cover on drops the first page's number
- * before Apply, so the next page can show page 1 on that outside edge. A
- * different first page and the watermark stay on the saved page until
- * Apply. Cancel drops the draft.
+ * different odd and even pages, a cover with no number, and a different
+ * first page are drawn while Page setup is open. A number already in a
+ * corner moves to the outside edge before Apply. Turning the cover on drops
+ * the first page's number before Apply, so the next page can show page 1 on
+ * that outside edge. A different first page clears that page's shared header
+ * and number before Apply and does not restart numbering: the next page
+ * keeps its own number. The watermark stays on the saved page until Apply.
+ * Cancel drops the draft.
  */
 export function livePageNumbers(
   base: PageSettings,
@@ -66,6 +68,7 @@ export function livePageNumbers(
   );
   const differentOddEven = draft.differentOddEven === true;
   const coverHasNoNumber = draft.coverHasNoNumber === true;
+  const differentFirstPage = draft.differentFirstPage === true;
   if (
     draft.pageNumbers === base.pageNumbers &&
     pageNumberFormat === base.pageNumberFormat &&
@@ -73,7 +76,8 @@ export function livePageNumbers(
     pageNumberPositionSet === base.pageNumberPositionSet &&
     pageNumberStart === base.pageNumberStart &&
     differentOddEven === base.differentOddEven &&
-    coverHasNoNumber === base.coverHasNoNumber
+    coverHasNoNumber === base.coverHasNoNumber &&
+    differentFirstPage === base.differentFirstPage
   )
     return base;
   return {
@@ -85,5 +89,6 @@ export function livePageNumbers(
     pageNumberStart,
     differentOddEven,
     coverHasNoNumber,
+    differentFirstPage,
   };
 }

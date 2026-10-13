@@ -73,6 +73,10 @@
   min-width: 0;
   box-sizing: border-box;
 }
+.page-setup-preview:not(.is-parity) .page-setup-preview-sheet {
+  width: 176px;
+  height: 220px;
+}
 .page-setup-preview-sheet {
   position: relative;
   width: 136px;
@@ -89,7 +93,7 @@
   position: absolute;
   left: 16px;
   right: 16px;
-  top: 36px;
+  top: 44px;
   height: 88px;
   background:
     linear-gradient(#e8eaed, #e8eaed) 0 0 / 100% 2px no-repeat,
@@ -116,15 +120,19 @@
   right: 10px;
   font-size: 10px;
   font-weight: 600;
-  line-height: 1.2;
+  line-height: 1.15;
   color: #1f1f1f;
-  white-space: nowrap;
+  /* A running header such as "Garden club minutes" has to stay readable
+     beside a corner number, so it may use a second line. */
+  white-space: normal;
   overflow: hidden;
-  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 .page-setup-preview-header.align-right { text-align: right; }
 .page-setup-preview-sheet[data-number-corner="top-right"] .page-setup-preview-header {
-  right: 52px;
+  right: 72px;
 }
 .page-header.align-right {
   left: 0;
@@ -159,7 +167,7 @@
   transform: none;
 }
 .page-setup-preview-sheet[data-number-corner="top-left"] .page-setup-preview-header {
-  left: 52px;
+  left: 72px;
 }
 .page-setup-preview-number.side-center {
   top: calc(100% - 8px);

@@ -61,7 +61,7 @@ function sheetLabel(
   if (role === "last-odd") return `${name} · last odd`;
   if (ends && index === 0) return `${name} · first`;
   if (ends && index === total - 1) return `${name} · last`;
-  if (index === 0) return name;
+  if (index === 0 || total < 3) return name;
   return `${name}${index % 2 === 1 ? " · even" : " · odd"}`;
 }
 

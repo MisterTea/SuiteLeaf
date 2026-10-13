@@ -515,7 +515,9 @@ export function pageNumberHint(settings: PageSettings, pageCount = 2): string {
     return "Page 1 has no number. Page 2 shows 2.";
   const sample =
     settings.pageNumberFormat === "page"
-      ? "Page 1"
+      ? settings.differentFirstPage
+        ? "Page 2"
+        : "Page 1"
       : settings.pageNumberFormat === "roman"
         ? settings.differentFirstPage
           ? "ii"
