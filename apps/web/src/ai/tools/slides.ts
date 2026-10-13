@@ -51,14 +51,14 @@ const titleOf = (slide: Slide) => textOf(slide.elements.find((e) => e.type === "
 const BOX_NAMES: Record<string, string[]> = {
   title: ["title", "subtitle"],
   "title-body": ["title", "body"],
-  "two-column": ["title", "left column (body)", "right column (column2)"],
+  "two-column": ["title", "left column (column1)", "right column (column2)"],
   section: ["title"],
 };
 /** The text arguments each layout has a box for. */
 const LAYOUT_FIELDS: Record<string, string> = {
   title: "title and subtitle",
   "title-body": "title and body",
-  "two-column": "title, body (left column) and column2 (right column)",
+  "two-column": "title, column1 (left column) and column2 (right column)",
   section: "only a title",
   blank: "no text boxes",
 };
@@ -147,11 +147,13 @@ interface SlideText {
   title?: string;
   body?: string;
   subtitle?: string;
+  column1?: string;
   column2?: string;
 }
 
 /** Put text into a slide's boxes, and say what had no box and which boxes are still empty. */
-function fillSlide(slide: Slide, { title, body, subtitle, column2 }: SlideText) {
+function fillSlide(slide: Slide, { title, body: text, subtitle, column1, column2 }: SlideText) {
+  const body = text ?? column1;
   const title1 = slide.layout === "title";
   const next = fillText(slide, [title, title1 ? (subtitle ?? body) : body, column2]);
   const count = next.elements.filter((e) => e.type === "text").length;
@@ -189,7 +191,7 @@ function pickColor(value: string, palette: { label: string; val: string }[], men
     palette.find((c) => words.length > 0 && words.every((w) => label(c).includes(w)));
   if (!hit)
     throw new ToolError(`"${value}" is not a color here. Use a #rrggbb code or a ${menu} menu color: ${palette.map((c) => c.label).join(", ")}.`);
-  return { color: hit.val, name: `${hit.label.toLowerCase()} (${hit.val})` };
+  return { color: hit.val, name: hit.val.startsWith("#") ? `${hit.label.toLowerCase()} (${hit.val})` : hit.label.toLowerCase() };
 }
 
 export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
@@ -225,21 +227,21 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
       name: "add_slide",
       label: "New slide",
       description:
-        "Add a slide after slide `after` (default: the current slide) with a layout: title (title + subtitle), title-body (title + bulleted body), two-column (title + two lists side by side), section (section header: a dark slide with only a title), blank. Fill its text: title; subtitle on a title slide; body (one bullet per line); on a two-column slide, body is the left column and column2 the right column.",
+        "Add a slide after slide `after` (default: the current slide) with a layout: title (title + subtitle), title-body (title + bulleted body), two-column (title + two lists side by side), section (section header: a dark slide with only a title), blank. Fill its text: title; subtitle on a title slide; body (one bullet per line); on a two-column slide, column1 is the left column and column2 the right column.",
       parameters: Type.Object({
         layout: layoutParam,
         title: Type.Optional(Type.String()),
         body: Type.Optional(Type.String()),
         subtitle: Type.Optional(Type.String()),
-        column2: Type.Optional(Type.String()),
+        column1: Type.Optional(Type.String({ description: "Left column of a two-column slide." })),
+        column2: Type.Optional(Type.String({ description: "Right column of a two-column slide." })),
         after: Type.Optional(Type.Number({ description: "Slide number to add after." })),
       }),
-      prepare: (args) => (args.column1 !== undefined && args.body === undefined ? { ...args, body: args.column1 } : args),
       target: () => [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("New slide")),
-      async execute({ layout, title, body, subtitle, column2, after }) {
+      async execute({ layout, title, body, subtitle, column1, column2, after }) {
         const deck = ctx.deck();
         const l = LAYOUTS[layout] ?? "title-body";
-        const { slide, notes } = fillSlide(newSlide(l), { title, body, subtitle, column2 });
+        const { slide, notes } = fillSlide(newSlide(l), { title, body, subtitle, column1, column2 });
         const at = after !== undefined ? Math.max(0, Math.min(deck.slideOrder.length, after)) : deck.slideOrder.indexOf(ctx.activeSlideId) + 1;
         const order = [...deck.slideOrder];
         order.splice(at, 0, slide.id);
@@ -253,17 +255,17 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
       name: "set_slide_text",
       label: "Edit slide text",
       description:
-        "Replace the text on a slide: title, subtitle (title slides), body (one bullet per line), and on a two-column slide body for the left column and column2 for the right column. Leave out what should not change.",
+        "Replace the text on a slide: title, subtitle (title slides), body (one bullet per line), and on a two-column slide column1 for the left column and column2 for the right column. Leave out what should not change.",
       parameters: Type.Object({
         slide: Type.Optional(Type.Number({ description: "Slide number; default the current slide." })),
         title: Type.Optional(Type.String()),
         body: Type.Optional(Type.String()),
         subtitle: Type.Optional(Type.String()),
-        column2: Type.Optional(Type.String()),
+        column1: Type.Optional(Type.String({ description: "Left column of a two-column slide." })),
+        column2: Type.Optional(Type.String({ description: "Right column of a two-column slide." })),
       }),
-      prepare: (args) => (args.column1 !== undefined && args.body === undefined ? { ...args, body: args.column1 } : args),
       target: () => canvas()?.querySelector(".slide-element textarea") ?? canvas(),
-      async execute({ slide, title, body, subtitle, column2 }) {
+      async execute({ slide, title, body, subtitle, column1, column2 }) {
         const { id, index } = findSlide(ctx.deck(), slide, ctx.activeSlideId);
         ctx.select(id, null);
         await wait(250);
@@ -274,6 +276,7 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
             title,
             body,
             subtitle,
+            column1,
             column2,
           });
           notes = filled.notes;
@@ -300,7 +303,7 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
       name: "add_shape",
       label: "Add shape",
       description:
-        `Add a shape (rectangle, rounded rectangle, circle/ellipse) to a slide. position: top-left, top, top-right, left, center, right, bottom-left, bottom, bottom-right. Optional fill color (#rrggbb or a Fill menu color: ${fillColors.map((c) => c.label).join(", ")}) and size in pixels (slide is 960×540).`,
+        `Add a shape (rectangle, rounded rectangle, circle/ellipse) to a slide. position: top-left, top, top-right, left, center, right, bottom-left, bottom, bottom-right. Optional fill: a color name such as yellow, blue, red or light green, or #rrggbb. Optional size in pixels (the slide is 960×540); a circle is always round.`,
       parameters: Type.Object({
         slide: Type.Optional(Type.Number()),
         shape: Type.String({ enum: ["rectangle", "rounded rectangle", "circle", "ellipse"] }),
@@ -316,8 +319,8 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
         const paint = pickColor(fill ?? "#e2e8f0", fillColors, "Fill");
         ctx.select(id, null);
         const round = shape === "circle" || shape === "ellipse";
-        const w = Math.round(width ?? (round ? 160 : 220)),
-          h = Math.round(height ?? (shape === "circle" ? w : round ? 160 : 140));
+        const w = Math.round(width ?? (shape === "circle" ? height : undefined) ?? (round ? 160 : 220)),
+          h = shape === "circle" ? w : Math.round(height ?? (round ? 160 : 140));
         const { x, y } = place(position, w, h, ctx.deck());
         const el: SlideElement = {
           id: crypto.randomUUID(),
@@ -333,7 +336,7 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
         };
         const deck = update(id, (s) => ({ ...s, elements: [...s.elements, el] }));
         ctx.select(id, el.id);
-        return `Added a ${paint.name} ${shape}, ${w}×${h}, at the ${whereOn(el)} of slide ${index + 1} "${titleOf(deck.slides[id])}".`;
+        return `Added a ${paint.name} ${shape}, ${w}×${h}, at the ${whereOn(el)} of slide ${index + 1} "${titleOf(deck.slides[id])}".${paint.color === "transparent" ? " It has no fill, so only its outline shows." : ""}`;
       },
     }),
     tool({
@@ -407,7 +410,7 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
     tool({
       name: "set_background",
       label: "Background",
-      description: `Set the background color of one slide (the current one, or \`slide\`), or of every slide with all_slides=true (section headers keep theirs). color: #rrggbb or a Background menu color: ${backgroundColors.map((c) => c.label).join(", ")}.`,
+      description: `Set the background color of one slide (the current one, or \`slide\`), or of every slide with all_slides=true (section headers keep theirs). color: a name such as sage green, warm sand or deep navy, or #rrggbb.`,
       parameters: Type.Object({ color: Type.String(), slide: Type.Optional(Type.Number()), all_slides: Type.Optional(Type.Boolean()) }),
       target: ({ slide, all_slides }) => slideButton(all_slides ? undefined : slide, "Background"),
       execute({ color, slide, all_slides }) {
