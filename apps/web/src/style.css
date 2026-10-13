@@ -815,6 +815,21 @@ a {
   font-size: 12px;
   margin-left: 4px;
 }
+.last-edited {
+  margin: 0;
+  padding: 0 6px 1px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+.last-edited strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
 .header-right-tools {
   margin-left: auto;
   display: flex;
@@ -2588,6 +2603,15 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
     font-size: 11px;
     white-space: nowrap;
   }
+  .last-edited {
+    font-size: 11px;
+  }
+  .drive-item time {
+    max-width: 48%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 11px;
+  }
   .save-copy {
     font-size: 0;
     gap: 0;
@@ -3922,6 +3946,9 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 .drive-row:hover {
   background: var(--surface-hover);
 }
+.drive-row.just-edited {
+  background: #e8f0fe;
+}
 .drive-item {
   flex: 1;
   min-width: 0;
@@ -3959,8 +3986,16 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
   padding: 4px;
 }
 .drive-item time {
+  margin-left: auto;
+  flex-shrink: 0;
   font-size: 12px;
+  font-weight: 400;
   color: var(--text-secondary);
+  white-space: nowrap;
+}
+.drive-editor {
+  color: var(--text-primary);
+  font-weight: 600;
 }
 .drive-row-actions {
   display: flex;
