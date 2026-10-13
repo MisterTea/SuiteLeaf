@@ -117,6 +117,8 @@ import { LineSpacingControl } from "./doc-line-spacing-ui";
 import { DocWatermarkField, pageSetupToSave } from "./doc-watermark";
 import { columnLayout } from "./doc-columns";
 import { PageSetupFit } from "./page-setup-fit";
+import { liveEdgeDistances, publishLiveEdges } from "./letterhead-live";
+import "./letterhead-live.css";
 
 export const extensions: Extensions = [
   DocumentPagination,
@@ -838,6 +840,17 @@ export default function Docs({
     return () => editor.view.dom.removeEventListener("suiteleaf-pages", pages);
   }, [editor]);
 
+  useEffect(() => {
+    if (!editor) return;
+    const root = editor.view.dom as HTMLElement;
+    if (!pageSetupOpen) {
+      publishLiveEdges(root, null);
+      return;
+    }
+    const saved = documentPageSettings(editor.getJSON() as JsonNode);
+    publishLiveEdges(root, liveEdgeDistances(saved, pageDraft));
+  }, [editor, pageSetupOpen, pageDraft]);
+
   // The outline highlights the section being read: the last heading above a
   // line near the top of the window (or the first heading), as Word does.
   useEffect(() => {
@@ -965,6 +978,9 @@ export default function Docs({
     return <div className="loading">Opening document…</div>;
 
   const pageSettings = documentPageSettings(editor.getJSON() as JsonNode);
+  const shownSettings = pageSetupOpen
+    ? liveEdgeDistances(pageSettings, pageDraft)
+    : pageSettings;
   const pageDraftValid =
     pageMarginsValid(pageDraft) &&
     edgeDistancesValid(pageDraft) &&
@@ -972,7 +988,7 @@ export default function Docs({
     pageDraft.pageNumberStart >= 1 &&
     pageDraft.pageNumberStart <= 9999;
   const dimensions = pageDimensions(pageSettings);
-  const edgeInsets = bodyEdgeInsets(pageSettings, dimensions.width);
+  const edgeInsets = bodyEdgeInsets(shownSettings, dimensions.width);
   const requestedZoom =
     zoomLevel === "Fit" ? 1 : Number.parseInt(zoomLevel, 10) / 100;
   const pageZoom = commentGutter || citationsOpen
@@ -1059,7 +1075,7 @@ export default function Docs({
   return (
     <SuggestionProvider editor={editor}>
     <SuggestionBridge api={suggestionApi} />
-    <div className="docs-editor">
+    <div className={`docs-editor${pageSetupOpen ? " seeing-letterhead" : ""}`}>
       <div className="toolbar docs-toolbar" role="toolbar" aria-label="Document formatting">
         <MenuSearchPill />
         <fieldset className="toolbar-edits" disabled={readOnly}>
@@ -1966,8 +1982,8 @@ export default function Docs({
                 "--page-margin-right": `${pageSettings.marginRight}px`,
                 "--page-margin-bottom": `${pageSettings.marginBottom}px`,
                 "--page-margin-left": `${pageSettings.marginLeft}px`,
-                "--header-from-edge": `${pageSettings.headerFromEdge}px`,
-                "--footer-from-edge": `${pageSettings.footerFromEdge}px`,
+                "--header-from-edge": `${shownSettings.headerFromEdge}px`,
+                "--footer-from-edge": `${shownSettings.footerFromEdge}px`,
                 "--body-inset-top": `${edgeInsets.top}px`,
                 "--body-inset-bottom": `${edgeInsets.bottom}px`,
                 "--page-stride": `${dimensions.height + 24}px`,
@@ -1977,7 +1993,7 @@ export default function Docs({
             }
           >
             <PageFurniture
-              settings={pageSettings}
+              settings={shownSettings}
               pageCount={pageCount}
               arabicStart={arabicPage}
             />

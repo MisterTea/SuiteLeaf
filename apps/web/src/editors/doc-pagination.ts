@@ -7,6 +7,7 @@ import {
   pageDimensions,
 } from "@suiteleaf/core/document-layout";
 import type { JsonNode } from "@suiteleaf/core";
+import { letterheadLiveEvent, readLiveEdges } from "./letterhead-live";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -135,9 +136,18 @@ export const DocumentPagination = Extension.create({
                   .setMeta(paginationKey, DecorationSet.empty)
                   .setMeta("addToHistory", false),
               );
-              const settings = documentPageSettings(
+              const saved = documentPageSettings(
                 view.state.doc.toJSON() as JsonNode,
               );
+              // Distances from the open Page setup dialog. Margins stay saved.
+              const live = readLiveEdges(view.dom as HTMLElement);
+              const settings = live
+                ? {
+                    ...saved,
+                    headerFromEdge: live.headerFromEdge,
+                    footerFromEdge: live.footerFromEdge,
+                  }
+                : saved;
               const { width, height } = pageDimensions(settings);
               const insets = bodyEdgeInsets(settings, width);
               const topMargin = insets.top,
@@ -348,6 +358,7 @@ export const DocumentPagination = Extension.create({
           });
           observer.observe(view.dom);
           view.dom.addEventListener("load", schedule, true);
+          view.dom.addEventListener(letterheadLiveEvent, schedule);
           document.fonts?.ready.then(schedule);
           schedule();
           return {
@@ -363,6 +374,7 @@ export const DocumentPagination = Extension.create({
               cancelAnimationFrame(frame);
               observer.disconnect();
               view.dom.removeEventListener("load", schedule, true);
+              view.dom.removeEventListener(letterheadLiveEvent, schedule);
             },
           };
         },
