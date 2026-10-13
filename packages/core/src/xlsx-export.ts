@@ -3,6 +3,7 @@ import JSZip from "jszip";
 import { addXlsxDrawings } from "./xlsx-drawings";
 import { excelErrorStyle } from "./excel-validation";
 import { columnName, type SheetFile } from "./index";
+import { cellHyperlink } from "./sheet-links";
 
 type Data = Record<string, any>;
 const esc = (v: unknown) =>
@@ -215,8 +216,9 @@ export async function exportXlsx(
           r = Number(row),
           c = Number(col),
           ref = XLSX.utils.encode_cell({ r, c });
+        const href = cellHyperlink(cell);
         const stored =
-          cell.v ?? cell.p?.body?.dataStream?.replace(/\r?\n$/, "") ?? "";
+          cell.v ?? cell.p?.body?.dataStream?.replace(/[\r\n]+$/g, "") ?? "";
         const value =
           cell.t === 3
             ? stored === true ||
@@ -250,6 +252,7 @@ export async function exportXlsx(
               ? String(value)
               : value,
           ...(cell.f ? { f: String(cell.f).replace(/^=/, "") } : {}),
+          ...(href ? { l: { Target: href } } : {}),
         };
         const style = {
           ...resolve(s.defaultStyle),

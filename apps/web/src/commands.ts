@@ -407,7 +407,7 @@ export function appHandlesShortcut(
     .join("+");
   if (kind === "doc" && ["mod+shift+h", "mod+k", "mod+\\", "mod+enter"].includes(id))
     return true;
-  if (kind === "sheet" && id === "mod+\\") return true;
+  if (kind === "sheet" && ["mod+\\", "mod+k"].includes(id)) return true;
   if (kind === "slide" && ["mod+z", "mod+y", "mod+d", "mod+m"].includes(id)) return true;
   return false;
 }
