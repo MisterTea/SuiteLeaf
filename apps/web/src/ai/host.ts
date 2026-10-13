@@ -115,14 +115,23 @@ export function waitForHost(kind: AppKind, timeoutMs = 20000): Promise<AgentHost
 
 const mounted = () => [...hosts.values(), ...(globalHost ? [globalHost] : [])];
 
+/** The screen that last offered each tool, to explain tools called from the wrong screen. */
+const toolScreens = new Map<string, string>();
+
+/** Where a tool that isn't available here was offered: "home", "doc", "sheet", "slide", "workspace" (any open file) or another screen's id. */
+export const toolScreen = (name: string) => toolScreens.get(name);
+
 /** Every tool available right now, from every mounted screen. */
 export function currentSuiteTools(): SuiteTool[] {
   const seen = new Set<string>();
   const list: SuiteTool[] = [];
-  for (const t of mounted().flatMap((h) => h.tools)) {
-    if (seen.has(t.name)) continue;
-    seen.add(t.name);
-    list.push(t);
+  for (const [id, h] of [...hosts.entries(), ...(globalHost ? [["global", globalHost] as const] : [])]) {
+    for (const t of h.tools) {
+      if (id !== "global") toolScreens.set(t.name, id === "editor" ? h.kind : id);
+      if (seen.has(t.name)) continue;
+      seen.add(t.name);
+      list.push(t);
+    }
   }
   return list;
 }
