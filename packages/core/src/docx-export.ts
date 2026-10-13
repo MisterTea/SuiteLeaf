@@ -470,19 +470,24 @@ function docxSection(
             ? [PageNumber.CURRENT, " / ", PageNumber.TOTAL_PAGES]
             : [PageNumber.CURRENT],
     });
-  const topRight =
-    settings.pageNumbers &&
-    settings.pageNumberPositionSet &&
-    settings.pageNumberPosition === "top-right";
+  const headerNumberAlign =
+    !settings.pageNumbers || !settings.pageNumberPositionSet
+      ? null
+      : settings.pageNumberPosition === "top-center"
+        ? AlignmentType.CENTER
+        : settings.pageNumberPosition === "top-right"
+          ? AlignmentType.RIGHT
+          : null;
+  const numberInHeader = headerNumberAlign != null;
   const headerPart = (text: string, withNumber = false) =>
     new Header({
       children: [
         ...(watermark ? [watermark] : []),
         new Paragraph(text),
-        ...(withNumber
+        ...(withNumber && headerNumberAlign
           ? [
               new Paragraph({
-                alignment: AlignmentType.RIGHT,
+                alignment: headerNumberAlign,
                 children: [numberRun()],
               }),
             ]
@@ -526,7 +531,11 @@ function docxSection(
   };
   const placedFooterSide = (): "right" | "center" | "none" => {
     if (!settings.pageNumberPositionSet || !settings.pageNumbers) return "right";
-    if (settings.pageNumberPosition === "top-right") return "none";
+    if (
+      settings.pageNumberPosition === "top-right" ||
+      settings.pageNumberPosition === "top-center"
+    )
+      return "none";
     if (settings.pageNumberPosition === "bottom-center") return "center";
     return "right";
   };
@@ -582,10 +591,10 @@ function docxSection(
       ? {
           default: headerPart(
             settings.differentOddEven ? settings.oddHeader : settings.header,
-            topRight,
+            numberInHeader,
           ),
           ...(settings.differentOddEven
-            ? { even: headerPart(settings.evenHeader, topRight) }
+            ? { even: headerPart(settings.evenHeader, numberInHeader) }
             : {}),
           ...(firstPage
             ? { first: headerPart(settings.firstHeader) }
@@ -594,21 +603,21 @@ function docxSection(
               : {}),
         }
       : {
-          default: headerPart(settings.header, topRight),
+          default: headerPart(settings.header, numberInHeader),
         },
     footers: splitFurniture
       ? {
           default: footerPart(
             settings.differentOddEven ? settings.oddFooter : settings.footer,
             settings.pageNumberPositionSet ? placedFooterSide() : "right",
-            settings.pageNumbers && !topRight,
+            settings.pageNumbers && !numberInHeader,
           ),
           ...(settings.differentOddEven
             ? {
                 even: footerPart(
                   settings.evenFooter,
                   settings.pageNumberPositionSet ? placedFooterSide() : "left",
-                  settings.pageNumbers && !topRight,
+                  settings.pageNumbers && !numberInHeader,
                 ),
               }
             : {}),
@@ -618,7 +627,7 @@ function docxSection(
               ? { first: footerPart(coverFooter, "none", false) }
               : {}),
         }
-      : topRight
+      : numberInHeader
         ? { default: footerPart(settings.footer, "none", false) }
         : settings.pageNumberPositionSet &&
             settings.pageNumberPosition === "bottom-center"

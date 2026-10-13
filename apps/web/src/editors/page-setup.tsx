@@ -67,7 +67,9 @@ function Preview({
                 ? `${face.pageNumber} in the center`
                 : face.numberSide === "top-right"
                   ? `${face.pageNumber} at the top right`
-                  : `${face.pageNumber} on the right`;
+                  : face.numberSide === "top-center"
+                    ? `${face.pageNumber} at the top center`
+                    : `${face.pageNumber} on the right`;
         return (
           <div key={index} className="page-setup-preview-page">
             <span className="page-setup-preview-label">
@@ -178,6 +180,7 @@ export function PageSetupFields({
               ["bottom-right", "Bottom right"],
               ["bottom-center", "Bottom center"],
               ["top-right", "Top right"],
+              ["top-center", "Top center"],
             ] as const
           ).map(([id, label]) => (
             <label key={id}>
@@ -371,13 +374,13 @@ export function PageFurniture({
             data-header-align={face.headerAlign}
             style={{ "--page-index": i } as CSSProperties}
           >
-            {face.numberSide === "top-right" ? (
+            {face.numberSide === "top-right" || face.numberSide === "top-center" ? (
               <span className="page-number page-number-top">{face.pageNumber}</span>
             ) : null}
             <div className={`page-header align-${face.headerAlign}`}>{face.header}</div>
             <DocWatermark text={settings.watermark} />
             <div
-              className={`page-footer number-${face.numberSide === "top-right" ? "none" : face.numberSide}`}
+              className={`page-footer number-${face.numberSide === "top-right" || face.numberSide === "top-center" ? "none" : face.numberSide}`}
             >
               {face.numberSide === "left" ? (
                 <span className="page-number">{face.pageNumber}</span>

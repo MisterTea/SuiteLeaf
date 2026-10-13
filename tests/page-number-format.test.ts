@@ -2,6 +2,18 @@ import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
 import { createFile } from "../packages/core/src";
 import { exportDocx } from "../packages/core/src/docx-export";
+import {
+  documentPageSettings,
+  pageFace,
+} from "../packages/core/src/document-layout";
+
+/** The paragraph that carries a PAGE field, without matching NUMPAGES. */
+function pageFieldParagraph(xml: string): string | undefined {
+  return xml
+    .split(/<w:p[\s>]/)
+    .slice(1)
+    .find((paragraph) => /PAGE(?!S)/.test(paragraph));
+}
 
 describe("page number Word export", () => {
   it("writes Page N at the top right and leaves the footer text alone", async () => {
@@ -146,5 +158,92 @@ describe("page number Word export", () => {
       expect(footer).not.toContain("Page ");
       expect(footer).not.toContain("NUMPAGES");
     }
+  });
+
+  it("puts a centered top-center number in the header and keeps bottom-right in the footer", async () => {
+    const saved = documentPageSettings({
+      type: "doc",
+      attrs: {
+        pageSettings: {
+          header: "Field report",
+          footer: "Draft",
+          pageNumbers: true,
+          pageNumberFormat: "page",
+          pageNumberPosition: "top-center",
+          pageNumberPositionSet: true,
+          marginTop: 96,
+          marginBottom: 96,
+          marginLeft: 96,
+          marginRight: 96,
+          headerFromEdge: 48,
+        },
+      },
+    });
+    expect(saved.pageNumberPosition).toBe("top-center");
+    expect(saved.marginTop).toBe(96);
+    expect(saved.marginBottom).toBe(96);
+    expect(saved.marginLeft).toBe(96);
+    expect(saved.marginRight).toBe(96);
+    expect(saved.headerFromEdge).toBe(48);
+    expect(pageFace(saved, 0, 1)).toMatchObject({
+      header: "Field report",
+      footer: "Draft",
+      numberSide: "top-center",
+      pageNumber: "Page 1",
+    });
+    expect(pageFace(saved, 0, 1).numberSide).not.toMatch(/^(left|right|center)$/);
+
+    const file = createFile("doc", "Short report");
+    if (file.kind !== "doc") throw new Error();
+    file.content = {
+      type: "doc",
+      attrs: {
+        pageSettings: {
+          header: "Field report",
+          footer: "Draft",
+          pageNumbers: true,
+          pageNumberFormat: "page",
+          pageNumberPosition: "top-center",
+          pageNumberPositionSet: true,
+          marginTop: 96,
+          headerFromEdge: 48,
+        },
+      },
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "One page." }] },
+      ],
+    };
+    const zip = await JSZip.loadAsync(await exportDocx(file));
+    const header = await zip.file("word/header1.xml")!.async("string");
+    const footer = await zip.file("word/footer1.xml")!.async("string");
+    const numbered = pageFieldParagraph(header);
+    expect(numbered).toBeTruthy();
+    expect(numbered).toMatch(/w:val="center"/);
+    expect(footer).toContain("Draft");
+    expect(footer).not.toMatch(/PAGE(?!S)/);
+    expect(header).not.toMatch(/NUMPAGES/);
+    const section = await zip.file("word/document.xml")!.async("string");
+    expect(section).toContain('w:header="720"');
+    expect(section).toContain('w:top="1440"');
+
+    file.content = {
+      ...file.content,
+      attrs: {
+        pageSettings: {
+          header: "Field report",
+          footer: "Draft",
+          pageNumbers: true,
+          pageNumberFormat: "page",
+          pageNumberPosition: "bottom-right",
+          pageNumberPositionSet: true,
+        },
+      },
+    };
+    const bottom = await JSZip.loadAsync(await exportDocx(file));
+    const bottomHeader = await bottom.file("word/header1.xml")!.async("string");
+    const bottomFooter = await bottom.file("word/footer1.xml")!.async("string");
+    expect(bottomHeader).not.toMatch(/PAGE(?!S)/);
+    expect(pageFieldParagraph(bottomFooter)).toBeTruthy();
+    expect(bottomFooter).not.toMatch(/w:val="center"/);
   });
 });

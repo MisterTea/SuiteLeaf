@@ -10,11 +10,16 @@ export {
   type EdgeKind,
 } from "./header-edge";
 export type PageNumberFormat = "fraction" | "page" | "roman";
-export type PageNumberPosition = "bottom-right" | "bottom-center" | "top-right";
+export type PageNumberPosition =
+  | "bottom-right"
+  | "bottom-center"
+  | "top-right"
+  | "top-center";
 const pageNumberPositions: PageNumberPosition[] = [
   "bottom-right",
   "bottom-center",
   "top-right",
+  "top-center",
 ];
 /** Page setup accepts 0.25–3 inches. CSS pixels at 96 per inch. */
 export const PX_PER_INCH = 96;
@@ -204,7 +209,13 @@ export function documentPageSettings(content: JsonNode): PageSettings {
     watermark: watermarkText(a?.watermark),
   };
 }
-export type PageNumberSide = "left" | "right" | "center" | "top-right" | "none";
+export type PageNumberSide =
+  | "left"
+  | "right"
+  | "center"
+  | "top-right"
+  | "top-center"
+  | "none";
 export type PageFace = {
   header: string;
   footer: string;
@@ -291,6 +302,7 @@ export function wordPageNumberStart(settings: PageSettings): number | null {
 function chosenNumberSide(settings: PageSettings): PageNumberSide {
   if (settings.pageNumberPosition === "bottom-center") return "center";
   if (settings.pageNumberPosition === "top-right") return "top-right";
+  if (settings.pageNumberPosition === "top-center") return "top-center";
   return "right";
 }
 /**
@@ -379,11 +391,11 @@ export function setDifferentFirstPage(
   return { ...settings, differentFirstPage: on };
 }
 function numberPlace(settings: PageSettings): string {
-  return settings.pageNumberPositionSet && settings.pageNumberPosition === "bottom-center"
-    ? "Bottom center"
-    : settings.pageNumberPositionSet && settings.pageNumberPosition === "top-right"
-      ? "Top right"
-      : "Bottom right";
+  if (!settings.pageNumberPositionSet) return "Bottom right";
+  if (settings.pageNumberPosition === "bottom-center") return "Bottom center";
+  if (settings.pageNumberPosition === "top-right") return "Top right";
+  if (settings.pageNumberPosition === "top-center") return "Top center";
+  return "Bottom right";
 }
 export function pageNumberHint(settings: PageSettings, pageCount = 2): string {
   if (!settings.pageNumbers)
@@ -487,12 +499,15 @@ export function pageDimensions(settings: PageSettings) {
 }
 function pageNumberMarginBox(settings: PageSettings): string {
   if (!settings.pageNumbers) return "";
-  const slot =
-    settings.pageNumberPositionSet && settings.pageNumberPosition === "bottom-center"
+  const slot = !settings.pageNumberPositionSet
+    ? "bottom-right"
+    : settings.pageNumberPosition === "bottom-center"
       ? "bottom-center"
-      : settings.pageNumberPositionSet && settings.pageNumberPosition === "top-right"
+      : settings.pageNumberPosition === "top-right"
         ? "top-right"
-        : "bottom-right";
+        : settings.pageNumberPosition === "top-center"
+          ? "top-center"
+          : "bottom-right";
   const content =
     settings.pageNumberFormat === "page"
       ? '"Page " counter(page)'

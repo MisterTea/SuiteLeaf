@@ -271,7 +271,7 @@ function FurniturePage({
       }
     >
       <DocWatermark text={settings.watermark} />
-      {face.numberSide === "top-right" ? (
+      {face.numberSide === "top-right" || face.numberSide === "top-center" ? (
         <span className="page-number page-number-top">{face.pageNumber}</span>
       ) : null}
       <div
@@ -313,7 +313,7 @@ function FurniturePage({
         )}
       </div>
       <div
-        className={`page-footer number-${face.numberSide === "top-right" ? "none" : face.numberSide}${footerHere ? " is-active" : ""}`}
+        className={`page-footer number-${face.numberSide === "top-right" || face.numberSide === "top-center" ? "none" : face.numberSide}${footerHere ? " is-active" : ""}`}
         onMouseDown={(event) => {
           if (readOnly || editingTargetIsField(event.target)) return;
           event.preventDefault();
