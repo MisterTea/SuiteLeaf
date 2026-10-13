@@ -236,7 +236,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       name: "set_cells",
       label: "Type into cells",
       description:
-        "Type values or formulas into cells, starting at the top-left cell `start`. `values` is a list of rows, each a list of cell texts. Text starting with '=' is a formula (e.g. =SUM(B2:B5)); formulas recalculate by themselves when the cells they use change, so never type their results over them. Numbers are typed without currency symbols or commas; codes with leading zeros stay as text.",
+        "Type values or formulas into cells, starting at the top-left cell `start`. `values` is a list of rows, each a list of cell texts, so a row across columns is [[\"Total\", \"=SUM(B2:B5)\", \"=SUM(C2:C5)\"]] and two rows are [[\"Name\", \"Hours\"], [\"Ana\", \"3\"]]. Text starting with '=' is a formula (e.g. =SUM(B2:B5)); formulas recalculate by themselves when the cells they use change, so never type their results over them. Numbers are typed without currency symbols or commas; codes with leading zeros stay as text.",
       parameters: Type.Object({
         start: Type.String({ description: "Top-left cell, e.g. A1" }),
         values: Type.Array(Type.Array(Type.String())),
