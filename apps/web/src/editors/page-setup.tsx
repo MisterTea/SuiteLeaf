@@ -161,6 +161,15 @@ export function PageSetupFields({
             />
             Page 1
           </label>
+          <label>
+            <input
+              type="radio"
+              name="page-number-format"
+              checked={draft.pageNumberFormat === "roman"}
+              onChange={() => onChange({ ...draft, pageNumberFormat: "roman" })}
+            />
+            i, ii, iii
+          </label>
         </fieldset>
         <fieldset className="page-number-choice" disabled={!draft.pageNumbers}>
           <legend>Position</legend>
@@ -343,14 +352,17 @@ export function PageSetupFields({
 export function PageFurniture({
   settings,
   pageCount,
+  arabicStart = null,
 }: {
   settings: PageSettings;
   pageCount: number;
+  /** 0-based page where arabic numbering restarts at 1. */
+  arabicStart?: number | null;
 }) {
   return (
     <div className="page-furniture" aria-hidden="true">
       {Array.from({ length: pageCount }, (_, i) => {
-        const face = pageFace(settings, i, pageCount);
+        const face = pageFace(settings, i, pageCount, arabicStart);
         return (
           <div
             key={i}

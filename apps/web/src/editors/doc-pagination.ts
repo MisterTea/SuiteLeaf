@@ -78,6 +78,10 @@ type Boundary = {
   columns?: number;
   manual?: boolean;
   heading?: boolean;
+  /** This heading is where arabic page numbers restart at 1. */
+  arabic?: boolean;
+  /** 0-based page this block lands on, after breaks. */
+  page?: number;
 };
 
 /** Layout decorations never alter document content or enter undo history. */
@@ -194,6 +198,9 @@ export const DocumentPagination = Extension.create({
                     top,
                     bottom,
                     heading: node.type.name === "heading",
+                    arabic:
+                      node.type.name === "heading" &&
+                      node.attrs.startArabic === true,
                   });
                   return false;
                 }
@@ -224,6 +231,7 @@ export const DocumentPagination = Extension.create({
                   )
                     first--;
                   const b = boundaries[first];
+                  for (let k = first; k <= i; k++) boundaries[k].page = page + 1;
                   const gap =
                     Math.max(0, end - (b.top + added)) + 2 * margin + 24;
                   decorations.push(
@@ -253,8 +261,18 @@ export const DocumentPagination = Extension.create({
                   );
                   added += gap;
                   page++;
-                }
+                } else if (next.page == null) next.page = page;
               }
+              let arabicPage: number | null = null;
+              for (const boundary of boundaries) {
+                if (!boundary.arabic || boundary.page == null) continue;
+                arabicPage =
+                  arabicPage == null
+                    ? boundary.page
+                    : Math.min(arabicPage, boundary.page);
+              }
+              (view.dom as HTMLElement).dataset.arabicPage =
+                arabicPage == null ? "" : String(arabicPage);
               const naturalBottom = Math.max(
                 0,
                 ...boundaries.map((b) => b.bottom),

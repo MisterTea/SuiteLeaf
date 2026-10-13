@@ -108,6 +108,7 @@ import {
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
 import { PageFurniture, PageSetupFields } from "./page-setup";
+import { ArabicNumberStart, ArabicStartControl } from "./doc-arabic-start";
 import { paragraphLineSpacing } from "./doc-line-spacing";
 import { LineSpacingControl } from "./doc-line-spacing-ui";
 import { DocWatermarkField, pageSetupToSave } from "./doc-watermark";
@@ -117,6 +118,7 @@ export const extensions: Extensions = [
   DocumentPagination,
   PageBreak,
   columnLayout,
+  ArabicNumberStart,
   ...documentNotes,
   ...documentCitations,
   StarterKit.configure({
@@ -254,6 +256,7 @@ export default function Docs({
   const grammarContext = useRef<ProofingContext>(() => false);
   const [activeHeading, setActiveHeading] = useState<number | null>(null);
   const [pageCount, setPageCount] = useState(1);
+  const [arabicPage, setArabicPage] = useState<number | null>(null);
   const [pageSetupOpen, setPageSetupOpen] = useState(false);
   const [equationOpen, setEquationOpen] = useState(false);
   const [pageDraft, setPageDraft] = useState<PageSettings>(() =>
@@ -821,8 +824,12 @@ export default function Docs({
 
   useEffect(() => {
     if (!editor) return;
-    const pages = (event: Event) =>
+    const pages = (event: Event) => {
       setPageCount((event as CustomEvent<number>).detail);
+      const raw = editor.view.dom.dataset.arabicPage ?? "";
+      const start = raw === "" ? Number.NaN : Number(raw);
+      setArabicPage(Number.isInteger(start) && start >= 0 ? start : null);
+    };
     editor.view.dom.addEventListener("suiteleaf-pages", pages);
     return () => editor.view.dom.removeEventListener("suiteleaf-pages", pages);
   }, [editor]);
@@ -1944,7 +1951,9 @@ export default function Docs({
               <span>Headings you add to the document will appear here.</span>
             </div>
           )}
+          <ArabicStartControl editor={editor} readOnly={readOnly} />
         </aside>
+        <ArabicStartControl editor={editor} readOnly={readOnly} phone />
         <div
           className="paper-container"
           ref={paperContainer}
@@ -1969,7 +1978,11 @@ export default function Docs({
               } as CSSProperties
             }
           >
-            <PageFurniture settings={pageSettings} pageCount={pageCount} />
+            <PageFurniture
+              settings={pageSettings}
+              pageCount={pageCount}
+              arabicStart={arabicPage}
+            />
             <EditorContent editor={editor} />
           </div>
         </div>

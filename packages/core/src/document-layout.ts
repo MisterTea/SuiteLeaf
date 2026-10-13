@@ -1,5 +1,5 @@
 import type { JsonNode } from "./index";
-export type PageNumberFormat = "fraction" | "page";
+export type PageNumberFormat = "fraction" | "page" | "roman";
 export type PageNumberPosition = "bottom-right" | "bottom-center" | "top-right";
 const pageNumberPositions: PageNumberPosition[] = [
   "bottom-right",
@@ -13,7 +13,7 @@ export type PageSettings = {
   header: string;
   footer: string;
   pageNumbers: boolean;
-  /** "1 / 2", or "Page 1" when the total should stay hidden. */
+  /** "1 / 2", "Page 1", or lowercase roman "i". */
   pageNumberFormat: PageNumberFormat;
   /** Where the number sits. Ignored until pageNumberPositionSet is true. */
   pageNumberPosition: PageNumberPosition;
@@ -95,7 +95,10 @@ export function documentPageSettings(content: JsonNode): PageSettings {
     // Like Docs and Word, page numbers are off until chosen; settings saved
     // before that default changed keep numbering unless it was turned off.
     pageNumbers: a ? a.pageNumbers !== false : false,
-    pageNumberFormat: a?.pageNumberFormat === "page" ? "page" : "fraction",
+    pageNumberFormat:
+      a?.pageNumberFormat === "page" || a?.pageNumberFormat === "roman"
+        ? a.pageNumberFormat
+        : "fraction",
     pageNumberPosition: pageNumberPositions.includes(
       a?.pageNumberPosition as PageNumberPosition,
     )
@@ -125,13 +128,43 @@ export type PageFace = {
   /** Empty when this page has no number. Otherwise "2 / 3" or "Page 2". */
   pageNumber: string;
 };
+const ROMAN: [number, string][] = [
+  [1000, "m"],
+  [900, "cm"],
+  [500, "d"],
+  [400, "cd"],
+  [100, "c"],
+  [90, "xc"],
+  [50, "l"],
+  [40, "xl"],
+  [10, "x"],
+  [9, "ix"],
+  [5, "v"],
+  [4, "iv"],
+  [1, "i"],
+];
+/** Lowercase roman, as in a contents page. Zero and negatives stay "0". */
+export function lowerRoman(value: number): string {
+  let n = Math.floor(value);
+  if (n <= 0) return "0";
+  let out = "";
+  for (const [amount, glyph] of ROMAN) {
+    while (n >= amount) {
+      out += glyph;
+      n -= amount;
+    }
+  }
+  return out;
+}
 export function pageNumberText(
   format: PageNumberFormat,
   page: number,
   pageCount: number,
 ): string {
   const total = Math.max(pageCount, 1);
-  return format === "page" ? `Page ${page}` : `${page} / ${total}`;
+  if (format === "page") return `Page ${page}`;
+  if (format === "roman") return lowerRoman(page);
+  return `${page} / ${total}`;
 }
 /** A start number is a whole page from 1 through 9999. Anything else starts at 1. */
 export const PAGE_NUMBER_START_MAX = 9999;
@@ -184,6 +217,8 @@ export function pageFace(
   settings: PageSettings,
   pageIndex: number,
   pageCount: number,
+  /** 0-based page where a heading restarts numbering at arabic 1. */
+  arabicStart?: number | null,
 ): PageFace {
   const page = pageIndex + 1;
   const first = page === 1 && settings.differentFirstPage;
@@ -212,6 +247,11 @@ export function pageFace(
   // A cover keeps its footer and drops only the number. It is not page 1.
   if (page === 1 && settings.coverHasNoNumber) numberSide = "none";
   const shown = pageNumberAt(settings, pageIndex, pageCount);
+  const restarted =
+    typeof arabicStart === "number" &&
+    Number.isInteger(arabicStart) &&
+    arabicStart >= 0 &&
+    pageIndex >= arabicStart;
   return {
     header,
     footer,
@@ -220,7 +260,9 @@ export function pageFace(
     pageNumber:
       numberSide === "none"
         ? ""
-        : pageNumberText(settings.pageNumberFormat, shown.page, shown.total),
+        : restarted
+          ? String(pageIndex - arabicStart + 1)
+          : pageNumberText(settings.pageNumberFormat, shown.page, shown.total),
   };
 }
 /** Copy the shared header into the even and odd fields the first time they are used. */
@@ -298,13 +340,17 @@ export function pageNumberHint(settings: PageSettings, pageCount = 2): string {
   if (
     settings.differentFirstPage &&
     !settings.pageNumberPositionSet &&
-    settings.pageNumberFormat !== "page"
+    settings.pageNumberFormat === "fraction"
   )
     return "Page 1 has no number. Page 2 shows 2.";
   const sample =
     settings.pageNumberFormat === "page"
       ? "Page 1"
-      : pageNumberText("fraction", 1, pageCount);
+      : settings.pageNumberFormat === "roman"
+        ? settings.differentFirstPage
+          ? "ii"
+          : "i"
+        : pageNumberText("fraction", 1, pageCount);
   const place = numberPlace(settings);
   if (settings.differentFirstPage)
     return `No number on page 1. ${place} on later pages, as “${sample}”. ${kept}`;
@@ -328,7 +374,9 @@ function pageNumberMarginBox(settings: PageSettings): string {
   const content =
     settings.pageNumberFormat === "page"
       ? '"Page " counter(page)'
-      : 'counter(page) " / " counter(pages)';
+      : settings.pageNumberFormat === "roman"
+        ? "counter(page, lower-roman)"
+        : 'counter(page) " / " counter(pages)';
   return `@${slot} { content: ${content}; font: 10pt Arial, sans-serif; color: #555; }`;
 }
 /** Print the same start the screen uses. A cover's hidden first page is 0. */

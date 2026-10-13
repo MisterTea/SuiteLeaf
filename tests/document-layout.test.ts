@@ -3,6 +3,7 @@ import {
   defaultPageSettings,
   documentHtml,
   documentPageSettings,
+  lowerRoman,
   pageFace,
   pageNumberHint,
 } from "../packages/core/src/document-layout";
@@ -109,7 +110,7 @@ describe("document page settings", () => {
     });
     const unknown = saved({
       pageNumbers: true,
-      pageNumberFormat: "roman",
+      pageNumberFormat: "letters",
       pageNumberPosition: "top-left",
     });
     expect(unknown.pageNumberFormat).toBe("fraction");
@@ -203,6 +204,54 @@ describe("document page settings", () => {
     expect(coverHtml).toContain(
       '<footer class="page-footer">Committee draft</footer>',
     );
+  });
+  it("numbers the front in lowercase roman and restarts arabic at a heading", () => {
+    expect(lowerRoman(1)).toBe("i");
+    expect(lowerRoman(2)).toBe("ii");
+    expect(lowerRoman(4)).toBe("iv");
+    expect(lowerRoman(9)).toBe("ix");
+    expect(lowerRoman(40)).toBe("xl");
+    const saved = (pageSettings: object) =>
+      documentPageSettings({ type: "doc", attrs: { pageSettings } });
+    const roman = saved({
+      pageNumbers: true,
+      pageNumberFormat: "roman",
+      pageNumberPosition: "bottom-center",
+      pageNumberPositionSet: true,
+      footer: "Draft",
+      pageNumberStart: 1,
+    });
+    expect(roman.pageNumberFormat).toBe("roman");
+    expect(pageFace(roman, 0, 4)).toMatchObject({
+      footer: "Draft",
+      numberSide: "center",
+      pageNumber: "i",
+    });
+    expect(pageFace(roman, 1, 4).pageNumber).toBe("ii");
+    expect(pageFace(roman, 2, 4).pageNumber).toBe("iii");
+    expect(pageNumberHint(roman, 4)).toContain("“i”");
+    expect(pageNumberHint(roman, 4)).not.toContain("Page i");
+    const restarted = pageFace(roman, 2, 4, 2);
+    expect(restarted).toMatchObject({ footer: "Draft", pageNumber: "1" });
+    expect(pageFace(roman, 3, 4, 2)).toMatchObject({
+      footer: "Draft",
+      pageNumber: "2",
+    });
+    expect(pageFace(roman, 0, 4, 2).pageNumber).toBe("i");
+    expect(pageFace(roman, 1, 4, 2).pageNumber).toBe("ii");
+    const started = { ...roman, pageNumberStart: 4 };
+    expect(pageFace(started, 0, 4).pageNumber).toBe("iv");
+    expect(pageFace(started, 1, 4, 2).pageNumber).toBe("v");
+    expect(pageFace(started, 2, 4, 2).pageNumber).toBe("1");
+    const covered = { ...roman, coverHasNoNumber: true };
+    expect(pageFace(covered, 0, 4, 2).pageNumber).toBe("");
+    expect(pageFace(covered, 0, 4, 2).footer).toBe("Draft");
+    expect(pageFace(covered, 1, 4, 2).pageNumber).toBe("i");
+    expect(pageFace(covered, 2, 4, 2).pageNumber).toBe("1");
+    const html = documentHtml("Report", "<p>Text</p>", roman);
+    expect(html).toContain("counter(page, lower-roman)");
+    expect(html).not.toContain('"Page " counter(page)');
+    expect(html).toContain('<footer class="page-footer">Draft</footer>');
   });
 });
 
