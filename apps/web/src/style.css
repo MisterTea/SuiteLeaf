@@ -4420,8 +4420,8 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 .share-arrivals.floating {
   position: fixed;
   z-index: 50;
-  top: 64px;
   right: 16px;
+  bottom: 16px;
   width: min(420px, calc(100vw - 32px));
 }
 .share-arrival {
@@ -4453,8 +4453,8 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
     margin: 0 8px 8px auto;
   }
   .share-arrivals.floating {
-    top: 8px;
     right: 8px;
+    bottom: 8px;
     left: 8px;
     width: auto;
   }
