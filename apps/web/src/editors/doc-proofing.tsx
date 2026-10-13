@@ -76,6 +76,7 @@ export function useDocProofing(
   editor: Editor | null,
   pageCount: number,
   onContext: MutableRefObject<ProofingContext>,
+  grammarContext?: MutableRefObject<ProofingContext>,
 ) {
   const [dialog, setDialog] = useState<"count" | "spelling" | "dictionary" | null>(null);
   const [menu, setMenu] = useState<SpellingMenuHit | null>(null);
@@ -125,6 +126,7 @@ export function useDocProofing(
 
   useEffect(() => {
     onContext.current = (view, event) => {
+      if (grammarContext?.current(view, event)) return true;
       const hit = spellingHit(view, event, personalRef.current);
       if (!hit) return false;
       event.preventDefault();

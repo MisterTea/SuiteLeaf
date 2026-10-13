@@ -25,6 +25,7 @@ const settings = (patch: Partial<ProofingSettings> = {}): ProofingSettings => ({
   stopAtHeading: null,
   countFootnotes: false,
   ignored: [],
+  ignoredGrammar: [],
   ...patch,
 });
 const none: PersonalDictionary = { added: [], flagged: [] };
