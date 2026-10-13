@@ -4,18 +4,28 @@ import { excelErrorStyle, univerErrorStyle } from "../packages/core/src/excel-va
 import { importOffice } from "../packages/core/src/office";
 import { exportXlsx } from "../packages/core/src/xlsx-export";
 import {
+  displayRangeRef,
+  extendRef,
+  formatRangeFormula,
+  parseA1Ref,
+  reconcileSource,
+} from "../apps/web/src/editors/sheet-dropdown-source";
+import {
   DROPDOWN_COLORS,
   allowedOptionsMessage,
   canonicalOption,
   chipTextColor,
   contrastRatio,
+  dropdownTokens,
   filteredOptions,
   findMismatches,
+  isRangeFormula,
   listRuleFields,
   mismatchNotice,
   mostCommonLabel,
   optionsFromRule,
   optionsFromValues,
+  rejectionMessage,
   renamedOptions,
   rewriteListValues,
   storedLabel,
@@ -195,4 +205,166 @@ test("list rules round-trip through Excel with the same options and reject setti
   expect(restored.showErrorMessage).toBe(true);
   expect(univerErrorStyle("warning")).toBe(2);
   expect(excelErrorStyle(2)).toBe("warning");
+});
+
+test("a range reference is not read as a list of labels", () => {
+  const formula = formatRangeFormula(parseA1Ref("Statuses!A2:A5")!);
+  expect(formula).toBe("=Statuses!$A$2:$A$5");
+  expect(displayRangeRef(formula)).toBe("Statuses!A2:A5");
+  expect(isRangeFormula(formula)).toBe(true);
+  expect(optionsFromRule(formula, "#b7e1cd")).toEqual([]);
+  expect(parseA1Ref("'Food bank'!$B$2:$B$4")?.sheet).toBe("Food bank");
+  expect(
+    displayRangeRef("=[e129dafd-1a9f-43ea-bca8-69153e5cace1]Statuses!$A$2:$A$6"),
+  ).toBe("Statuses!A2:A6");
+});
+
+test("renaming a source cell keeps its colour and a blank is not an option", () => {
+  const previous = reconcileSource(
+    [],
+    [
+      { row: 1, column: 0, value: "Confirmed" },
+      { row: 2, column: 0, value: "Maybe" },
+      { row: 3, column: 0, value: "Can't make it" },
+      { row: 4, column: 0, value: "Waitlist" },
+    ],
+  ).sources;
+  const renamed = reconcileSource(previous, [
+    { row: 1, column: 0, value: "Confirmed" },
+    { row: 2, column: 0, value: "Perhaps" },
+    { row: 3, column: 0, value: "" },
+    { row: 4, column: 0, value: "Can't make it" },
+    { row: 5, column: 0, value: "Waitlist" },
+    { row: 6, column: 0, value: "Training" },
+  ]);
+  expect(renamed.options.map((option) => option.label)).toEqual([
+    "Confirmed",
+    "Perhaps",
+    "Can't make it",
+    "Waitlist",
+    "Training",
+  ]);
+  expect(renamed.renames).toEqual([{ from: "Maybe", to: "Perhaps" }]);
+  const maybe = previous.find((cell) => cell.label === "Maybe")!;
+  const perhaps = renamed.options.find((option) => option.label === "Perhaps")!;
+  expect(perhaps.color).toBe(maybe.color);
+  expect(renamed.options.find((option) => option.label === "Confirmed")?.color).toBe(
+    previous.find((cell) => cell.label === "Confirmed")?.color,
+  );
+  expect(extendRef(parseA1Ref("Statuses!A2:A5")!, "Training")?.endRow).toBe(5);
+  expect(extendRef(parseA1Ref("Statuses!A2:A5")!, "  ")).toBeNull();
+});
+
+test("a bad token is refused and a trailing space still matches", () => {
+  const options: DropdownOption[] = [
+    { id: "h", label: "Helper", color: "#b7e1cd" },
+    { id: "d", label: "Driver", color: "#ffe599" },
+    { id: "c", label: "Cook", color: "#d9d9d9" },
+  ];
+  const params = {
+    range: { startRow: 5, endRow: 5, startColumn: 3, endColumn: 3 },
+    value: { v: "Driver, Cook, Boss" },
+  };
+  const rejected: string[] = [];
+  expect(
+    rewriteListValues(
+      params,
+      () => ({ options, multiple: true, reject: true }),
+      (rejection) => rejected.push(...rejection.rejected),
+    ),
+  ).toBe(true);
+  expect(params.value.v).toBe("Driver, Cook");
+  expect(rejected).toEqual(["Boss"]);
+  expect(rejectionMessage(rejected, options.map((option) => option.label))).toBe(
+    "Boss isn't an option. Choose Helper, Driver, or Cook.",
+  );
+  const spaced = {
+    range: { startRow: 6, endRow: 6, startColumn: 3, endColumn: 3 },
+    value: { v: "Driver " },
+  };
+  expect(rewriteListValues(spaced, () => ({ options, multiple: true, reject: true }))).toBe(
+    true,
+  );
+  expect(spaced.value.v).toBe("Driver");
+  expect(dropdownTokens('["Driver","Cook"]')).toEqual(["Driver", "Cook"]);
+  expect(storedLabel("Driver, Cook", options, [{ from: "Cook", to: "Chef" }], true)).toBe(
+    "Driver, Chef",
+  );
+  expect(findMismatches([{ row: 5, column: 3, value: "Driver, Boss" }], options, undefined, true)).toHaveLength(1);
+});
+
+test("a from-a-range rule round-trips through Excel as that range", async () => {
+  const file = createFile("sheet", "Volunteer roster");
+  if (file.kind !== "sheet") throw new Error();
+  const rosterId = file.content.workbook.sheetOrder[0];
+  const statusesId = crypto.randomUUID();
+  const roster = file.content.workbook.sheets[rosterId];
+  roster.name = "Volunteer roster";
+  file.content.workbook.sheetOrder.push(statusesId);
+  file.content.workbook.sheets[statusesId] = {
+    ...structuredClone(roster),
+    id: statusesId,
+    name: "Statuses",
+    cellData: {
+      1: { 0: { v: "Confirmed", t: 1 } },
+      2: { 0: { v: "Perhaps", t: 1 } },
+      3: { 0: { v: "Can't make it", t: 1 } },
+      4: { 0: { v: "Waitlist", t: 1 } },
+      5: { 0: { v: "Training", t: 1 } },
+    },
+  };
+  file.content.workbook.resources = [
+    {
+      name: "SHEET_DATA_VALIDATION_PLUGIN",
+      data: JSON.stringify({
+        [rosterId]: [
+          {
+            uid: "status",
+            ...listRuleFields(
+              optionsFromRule(
+                JSON.stringify(["Confirmed", "Perhaps"]),
+                "#b7e1cd,#ffe599",
+              ),
+              true,
+            ),
+            formula1: "=Statuses!$A$2:$A$6",
+            formula2: JSON.stringify({
+              colors: { Confirmed: "#b7e1cd", Perhaps: "#ffe599" },
+              sources: [],
+            }),
+            ranges: [{ startRow: 1, endRow: 40, startColumn: 2, endColumn: 2 }],
+          },
+          {
+            uid: "roles",
+            type: "listMultiple",
+            formula1: JSON.stringify(["Helper", "Driver", "Cook"]),
+            formula2: "#b7e1cd,#ffe599,#d9d9d9",
+            allowBlank: true,
+            showErrorMessage: true,
+            showDropDown: true,
+            errorStyle: 1,
+            renderMode: 2,
+            error: "Choose Helper, Driver, or Cook.",
+            ranges: [{ startRow: 1, endRow: 40, startColumn: 3, endColumn: 3 }],
+          },
+        ],
+      }),
+    },
+  ];
+  const bytes = await exportXlsx(file);
+  const zip = await import("jszip").then((m) => m.default.loadAsync(bytes));
+  const xml = await zip.file("xl/worksheets/sheet1.xml")!.async("string");
+  expect(xml).toContain("Statuses!$A$2:$A$6");
+  expect(xml).not.toContain("&quot;Statuses!");
+  const imported = await importOffice(bytes, "xlsx", "roster.xlsx");
+  if (imported.file.kind !== "sheet") throw new Error();
+  const saved = imported.file.content.workbook.resources?.find(
+    (resource) => resource.name === "SHEET_DATA_VALIDATION_PLUGIN",
+  );
+  const rules = JSON.parse(saved?.data ?? "{}")[
+    imported.file.content.workbook.sheetOrder[0]
+  ] as { formula1: string; type: string }[];
+  const status = rules.find((rule) => String(rule.formula1).includes("Statuses"));
+  expect(status?.formula1).toBe("=Statuses!$A$2:$A$6");
+  expect(status?.type).toBe("list");
 });
