@@ -23,7 +23,8 @@ export interface DocsAgentContext {
   showSpelling: () => void;
   jumpToHeading: (pos: number) => void;
   insertImage: (file: File) => Promise<void>;
-  exportAs: (format: "docx" | "html" | "txt") => Promise<void>;
+  /** Undefined once the browser downloads it; on the desktop, the saved path or null if cancelled. */
+  exportAs: (format: "docx" | "html" | "txt") => Promise<string | null | undefined>;
   pageCount: number;
 }
 
@@ -525,11 +526,11 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       name: "page_setup",
       label: "Page setup",
       description:
-        "Change page setup: paper (letter or a4), orientation (portrait or landscape), margins in inches, header and footer text, page numbers on or off.",
+        "Change page setup: paper (letter or a4), orientation (portrait or landscape), margins in inches, header and footer text, page numbers on or off. Give only the settings the user asked to change; the others stay as they are.",
       parameters: Type.Object({
         paper: Type.Optional(Type.String({ enum: ["letter", "a4"] })),
         orientation: Type.Optional(Type.String({ enum: ["portrait", "landscape"] })),
-        margin_inches: Type.Optional(Type.Number()),
+        margin_inches: Type.Optional(Type.Number({ description: "One margin for all four sides, from 0.25 to 1.5 inches." })),
         header: Type.Optional(Type.String()),
         footer: Type.Optional(Type.String()),
         page_numbers: Type.Optional(Type.Boolean()),
@@ -541,7 +542,8 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
           ...current,
           ...(args.paper ? { size: args.paper as PageSettings["size"] } : {}),
           ...(args.orientation ? { landscape: args.orientation === "landscape" } : {}),
-          ...(args.margin_inches !== undefined ? { margin: Math.round(Math.min(2, Math.max(1 / 3, args.margin_inches)) * 72) } : {}),
+          // Margins are stored in CSS pixels (96 per inch).
+          ...(args.margin_inches !== undefined ? { margin: Math.round(Math.min(1.5, Math.max(0.25, args.margin_inches)) * 96) } : {}),
           ...(args.header !== undefined ? { header: args.header } : {}),
           ...(args.footer !== undefined ? { footer: args.footer } : {}),
           ...(args.page_numbers !== undefined ? { pageNumbers: args.page_numbers } : {}),
@@ -550,7 +552,11 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         await wait(1100);
         editor.view.dispatch(editor.state.tr.setDocAttribute("pageSettings", next));
         ctx.closePageSetup();
-        return `Page setup: ${next.size.toUpperCase()} ${next.landscape ? "landscape" : "portrait"}, ${(next.margin / 72).toFixed(2)}" margins${next.header ? `, header "${next.header}"` : ""}${next.footer ? `, footer "${next.footer}"` : ""}${next.pageNumbers ? ", page numbers" : ""}.`;
+        const clamped =
+          args.margin_inches !== undefined && (args.margin_inches < 0.25 || args.margin_inches > 1.5)
+            ? ` (${args.margin_inches}" is outside 0.25" to 1.5", so the nearest was used)`
+            : "";
+        return `Page setup: ${next.size.toUpperCase()} ${next.landscape ? "landscape" : "portrait"}, ${(next.margin / 96).toFixed(2)}" margins${clamped}${next.header ? `, header "${next.header}"` : ""}${next.footer ? `, footer "${next.footer}"` : ""}${next.pageNumbers ? ", page numbers" : ""}.`;
       },
     }),
     tool({
@@ -588,8 +594,10 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       parameters: Type.Object({ format: Type.String({ enum: ["docx", "html", "txt"] }) }),
       target: () => document.querySelector(".workspace-header .menu-trigger, .workspace-header [aria-haspopup]"),
       async execute({ format }) {
-        await ctx.exportAs(format as "docx");
-        return `Exported "${ctx.title}.${format}".`;
+        const saved = await ctx.exportAs(format as "docx");
+        const name = `"${ctx.title}.${format}"`;
+        if (saved === null) return `The user closed the save dialog, so ${name} was not exported. Tell them; export again only if they ask.`;
+        return saved ? `Exported ${name}; the user saved it as ${saved}.` : `Exported ${name}; it downloaded to the browser's downloads.`;
       },
     }),
     tool({
@@ -614,5 +622,7 @@ export function docSnapshot(ctx: DocsAgentContext) {
     .slice(0, 12)
     .map((b) => `[${b.label}] ${b.text.slice(0, 80)}`)
     .join("\n");
-  return `Open document: "${ctx.title}" (${words} words, ${ctx.pageCount} page(s)).${headings.length ? `\nHeadings: ${headings.join(" | ")}` : ""}\n${words ? `Start of the document:\n${preview}` : "The document is empty."}`;
+  const page = ctx.pageSettings();
+  const setup = `Page setup: ${page.size.toUpperCase()} ${page.landscape ? "landscape" : "portrait"}, ${(page.margin / 96).toFixed(2)}" margins, ${page.header ? `header "${page.header}"` : "no header"}, ${page.footer ? `footer "${page.footer}"` : "no footer"}, page numbers ${page.pageNumbers ? "on" : "off"}.`;
+  return `Open document: "${ctx.title}" (${words} words, ${ctx.pageCount} page(s)). ${setup}${headings.length ? `\nHeadings: ${headings.join(" | ")}` : ""}\n${words ? `Start of the document:\n${preview}` : "The document is empty."}`;
 }

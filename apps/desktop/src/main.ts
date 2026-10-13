@@ -411,8 +411,9 @@ else {
           extname(name).slice(1) || "txt",
         ),
       });
-      if (!result.canceled && result.filePath)
-        await atomicWrite(result.filePath, text);
+      if (result.canceled || !result.filePath) return null;
+      await atomicWrite(result.filePath, text);
+      return result.filePath;
     });
     register("print", async (title?: string) => {
       if (title !== undefined && typeof title !== "string")

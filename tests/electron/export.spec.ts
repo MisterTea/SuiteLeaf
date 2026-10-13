@@ -55,3 +55,32 @@ for (const format of ["DOCX", "XLSX"] as const)
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+test("assistant export reports a cancelled save dialog", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "suiteleaf-export-"));
+  const app = await electron.launch({
+    args: [resolve("apps/desktop/out/main/index.js")],
+    env: { ...process.env, SUITELEAF_TEST_DATA: join(dir, "library") },
+  });
+  try {
+    await app.evaluate(({ dialog }) => {
+      dialog.showSaveDialog = async () => ({ canceled: true, filePath: "" });
+    });
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "New document" }).click();
+    await page.getByRole("textbox", { name: "Document content" }).fill("Minutes");
+    const call = (format: string) =>
+      page.evaluate((f) => window.__suiteleafAgent!.callTool("export_document", { format: f }), format);
+    await expect.poll(() => page.evaluate(() => window.__suiteleafAgent?.tools() ?? [])).toContain("export_document");
+    expect(await call("docx")).toContain("closed the save dialog");
+    const output = join(dir, "minutes.html");
+    await app.evaluate(({ dialog }, output) => {
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: output });
+    }, output);
+    expect(await call("html")).toContain(`saved it as ${output}`);
+    expect(await readFile(output, "utf8")).toContain("Minutes");
+  } finally {
+    await app.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
