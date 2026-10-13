@@ -74,7 +74,8 @@ test("08-carry-a-file-to-another-computer-ai", async ({ page }) => {
   await expect(editor.locator("h1"), why).toHaveText("Lisbon, 3 to 7 November");
   await expect(editor.locator("li"), why).toHaveText([...items, "Sunglasses"]);
   await expect(editor, why).not.toContainText(/Sunglasses[\s\S]*Sunglasses/);
-  await expect(page.getByRole("status"), why).toContainText(electronMode ? "Draft saved" : "Saved on this device");
+  // Saving the edit back over the file she carried is fine too.
+  await expect(page.getByRole("status"), why).toContainText(electronMode ? /Draft saved|Saved to file/ : "Saved on this device");
   await caption(page, "She picked the file, and it opened whole: the title, the heading and all four items. Sunglasses is fifth.", 2400);
 
   await page.getByRole("button", { name: "Close assistant" }).click();
