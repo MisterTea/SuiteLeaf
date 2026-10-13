@@ -17,9 +17,11 @@ import {
   MathRun,
   MathSubScript,
   MathSuperScript,
+  NumberFormat,
   Packer,
   PageNumber,
   Paragraph,
+  SectionType,
   SimpleField,
   Table,
   TableCell,
@@ -35,7 +37,12 @@ import {
 } from "docx";
 import type { DocFile, JsonNode } from "./index";
 import { asEquation, type EqNode } from "./equations";
-import { documentPageSettings, wordPageNumberStart } from "./document-layout";
+import {
+  documentPageSettings,
+  wordPageNumberStart,
+  type PageNumberFormat,
+  type PageSettings,
+} from "./document-layout";
 import { docxWatermarkParagraph } from "./doc-watermark";
 import {
   planDocxComments,
@@ -393,56 +400,34 @@ function blocks(
     ];
   });
 }
-export async function exportDocx(
-  file: Pick<DocFile, "title" | "content">,
-): Promise<Uint8Array> {
-  const content = embedSuggestionMarkers(structuredClone(file.content));
-  const prepareImages = async (node: JsonNode): Promise<void> => {
-    if (
-      node.type === "image" &&
-      String(node.attrs?.src).startsWith("data:image/webp")
-    ) {
-      if (typeof document === "undefined")
-        throw new Error(
-          "WebP images need the browser image converter for DOCX export.",
-        );
-      const img = document.createElement("img");
-      img.src = String(node.attrs?.src);
-      await img.decode();
-      const canvas = document.createElement("canvas");
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) throw new Error("Could not convert the image for DOCX export.");
-      ctx.drawImage(img, 0, 0);
-      node.attrs = { ...node.attrs, src: canvas.toDataURL("image/png") };
-    }
-    await Promise.all((node.content ?? []).map(prepareImages));
-  };
-  await prepareImages(content);
-  const notes = noteIndex(content);
-  const library = citationLibrary(content);
-  const noteBody = (id: string): Paragraph[] => {
-    const note = findNote(content, id);
-    const paragraphs = blocks(note?.content ?? [], blankCommentPlan(), notes, library).filter(
-      (block): block is Paragraph => block instanceof Paragraph,
-    );
-    return paragraphs.length ? paragraphs : [new Paragraph("")];
-  };
-  const footnotes: Record<string, { children: Paragraph[] }> = {};
-  const endnotes: Record<string, { children: Paragraph[] }> = {};
-  for (const [id, slot] of notes) {
-    const target = slot.kind === "endnote" ? endnotes : footnotes;
-    target[String(slot.num)] = { children: noteBody(id) };
-  }
-  const settings = documentPageSettings(content);
-  const watermark = docxWatermarkParagraph(settings.watermark);
+type ExportNumberFormat = PageNumberFormat | "arabic";
+/** The first heading marked startArabic begins a new page numbered 1. */
+function splitAtArabicRestart(nodes: JsonNode[]): {
+  front: JsonNode[];
+  body: JsonNode[] | null;
+} {
+  const at = nodes.findIndex(
+    (node) => node.type === "heading" && node.attrs?.startArabic === true,
+  );
+  if (at < 0) return { front: nodes, body: null };
+  const cut = at > 0 && nodes[at - 1]?.type === "pageBreak" ? at - 1 : at;
+  return { front: nodes.slice(0, cut), body: nodes.slice(at) };
+}
+function docxSection(
+  settings: PageSettings,
+  watermark: Paragraph | null,
+  format: ExportNumberFormat,
+  lead: boolean,
+  nextPage: boolean,
+) {
   const numberRun = () =>
     new TextRun({
       children:
-        settings.pageNumberFormat === "page"
+        format === "page"
           ? ["Page ", PageNumber.CURRENT]
-          : [PageNumber.CURRENT, " / ", PageNumber.TOTAL_PAGES],
+          : format === "fraction"
+            ? [PageNumber.CURRENT, " / ", PageNumber.TOTAL_PAGES]
+            : [PageNumber.CURRENT],
     });
   const topRight =
     settings.pageNumbers &&
@@ -504,10 +489,9 @@ export async function exportDocx(
     if (settings.pageNumberPosition === "bottom-center") return "center";
     return "right";
   };
-  const wordStart = wordPageNumberStart(settings);
-  // A cover needs its own first footer so the number can be omitted while the
-  // footer text stays. Different first page already supplies that footer.
+  const firstPage = lead && settings.differentFirstPage;
   const coverPage =
+    lead &&
     settings.pageNumbers &&
     settings.coverHasNoNumber &&
     !settings.differentFirstPage;
@@ -517,12 +501,179 @@ export async function exportDocx(
   const coverFooter = settings.differentOddEven
     ? settings.oddFooter
     : settings.footer;
-  const splitFurniture =
-    settings.differentFirstPage || settings.differentOddEven || coverPage;
+  const splitFurniture = firstPage || settings.differentOddEven || coverPage;
+  const start = lead ? wordPageNumberStart(settings) : null;
+  const pageNumbers = !settings.pageNumbers
+    ? undefined
+    : !lead || format === "arabic"
+      ? { start: 1, formatType: NumberFormat.DECIMAL }
+      : format === "roman"
+        ? {
+            ...(start == null ? {} : { start }),
+            formatType: NumberFormat.LOWER_ROMAN,
+          }
+        : start == null
+          ? undefined
+          : { start };
+  const [width, height] =
+    settings.size === "a4" ? [11906, 16838] : [12240, 15840];
+  return {
+    properties: {
+      ...(nextPage ? { type: SectionType.NEXT_PAGE } : {}),
+      ...(firstPage || coverPage ? { titlePage: true } : {}),
+      page: {
+        size: {
+          width: settings.landscape ? height : width,
+          height: settings.landscape ? width : height,
+        },
+        margin: {
+          top: settings.margin * 15,
+          bottom: settings.margin * 15,
+          left: settings.margin * 15,
+          right: settings.margin * 15,
+          header: 360,
+          footer: 360,
+        },
+        ...(pageNumbers ? { pageNumbers } : {}),
+      },
+    },
+    headers: splitFurniture
+      ? {
+          default: headerPart(
+            settings.differentOddEven ? settings.oddHeader : settings.header,
+            topRight,
+          ),
+          ...(settings.differentOddEven
+            ? { even: headerPart(settings.evenHeader, topRight) }
+            : {}),
+          ...(firstPage
+            ? { first: headerPart(settings.firstHeader) }
+            : coverPage
+              ? { first: headerPart(coverHeader) }
+              : {}),
+        }
+      : {
+          default: headerPart(settings.header, topRight),
+        },
+    footers: splitFurniture
+      ? {
+          default: footerPart(
+            settings.differentOddEven ? settings.oddFooter : settings.footer,
+            settings.pageNumberPositionSet ? placedFooterSide() : "right",
+            settings.pageNumbers && !topRight,
+          ),
+          ...(settings.differentOddEven
+            ? {
+                even: footerPart(
+                  settings.evenFooter,
+                  settings.pageNumberPositionSet ? placedFooterSide() : "left",
+                  settings.pageNumbers && !topRight,
+                ),
+              }
+            : {}),
+          ...(firstPage
+            ? { first: footerPart(settings.firstFooter, "none", false) }
+            : coverPage
+              ? { first: footerPart(coverFooter, "none", false) }
+              : {}),
+        }
+      : topRight
+        ? { default: footerPart(settings.footer, "none", false) }
+        : settings.pageNumberPositionSet &&
+            settings.pageNumberPosition === "bottom-center"
+          ? {
+              default: footerPart(
+                settings.footer,
+                "center",
+                settings.pageNumbers,
+              ),
+            }
+          : format === "fraction"
+            ? {
+                default: new Footer({
+                  children: [
+                    new Paragraph({
+                      children: [
+                        new TextRun(settings.footer),
+                        ...(settings.pageNumbers
+                          ? [
+                              new TextRun({
+                                children: [
+                                  "  ",
+                                  PageNumber.CURRENT,
+                                  " / ",
+                                  PageNumber.TOTAL_PAGES,
+                                ],
+                              }),
+                            ]
+                          : []),
+                      ],
+                    }),
+                  ],
+                }),
+              }
+            : {
+                default: footerPart(
+                  settings.footer,
+                  "right",
+                  settings.pageNumbers,
+                ),
+              },
+  };
+}
+export async function exportDocx(
+  file: Pick<DocFile, "title" | "content">,
+): Promise<Uint8Array> {
+  const content = embedSuggestionMarkers(structuredClone(file.content));
+  const prepareImages = async (node: JsonNode): Promise<void> => {
+    if (
+      node.type === "image" &&
+      String(node.attrs?.src).startsWith("data:image/webp")
+    ) {
+      if (typeof document === "undefined")
+        throw new Error(
+          "WebP images need the browser image converter for DOCX export.",
+        );
+      const img = document.createElement("img");
+      img.src = String(node.attrs?.src);
+      await img.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Could not convert the image for DOCX export.");
+      ctx.drawImage(img, 0, 0);
+      node.attrs = { ...node.attrs, src: canvas.toDataURL("image/png") };
+    }
+    await Promise.all((node.content ?? []).map(prepareImages));
+  };
+  await prepareImages(content);
+  const notes = noteIndex(content);
+  const library = citationLibrary(content);
+  const noteBody = (id: string): Paragraph[] => {
+    const note = findNote(content, id);
+    const paragraphs = blocks(note?.content ?? [], blankCommentPlan(), notes, library).filter(
+      (block): block is Paragraph => block instanceof Paragraph,
+    );
+    return paragraphs.length ? paragraphs : [new Paragraph("")];
+  };
+  const footnotes: Record<string, { children: Paragraph[] }> = {};
+  const endnotes: Record<string, { children: Paragraph[] }> = {};
+  for (const [id, slot] of notes) {
+    const target = slot.kind === "endnote" ? endnotes : footnotes;
+    target[String(slot.num)] = { children: noteBody(id) };
+  }
+  const settings = documentPageSettings(content);
+  const watermark = docxWatermarkParagraph(settings.watermark);
   const comments = planDocxComments(content);
-  const children = blocks(content.content ?? [], comments, notes, library);
+  const split = splitAtArabicRestart(content.content ?? []);
+  const frontChildren = blocks(split.front, comments, notes, library);
+  const bodyChildren = split.body
+    ? blocks(split.body, comments, notes, library)
+    : null;
+  const lastChildren = bodyChildren ?? frontChildren;
   if (comments.trailing.length)
-    children.push(
+    lastChildren.push(
       new Paragraph({
         children: comments.trailing.flatMap((id) => [
           new CommentRangeStart(id),
@@ -531,8 +682,30 @@ export async function exportDocx(
         ]),
       }),
     );
-  const [width, height] =
-    settings.size === "a4" ? [11906, 16838] : [12240, 15840];
+  const restarted = bodyChildren != null && split.front.length > 0;
+  const sections = restarted
+    ? [
+        {
+          ...docxSection(settings, watermark, settings.pageNumberFormat, true, false),
+          children: frontChildren,
+        },
+        {
+          ...docxSection(settings, watermark, "arabic", false, true),
+          children: bodyChildren,
+        },
+      ]
+    : [
+        {
+          ...docxSection(
+            settings,
+            watermark,
+            bodyChildren ? "arabic" : settings.pageNumberFormat,
+            bodyChildren == null,
+            false,
+          ),
+          children: bodyChildren ?? frontChildren,
+        },
+      ];
   const doc = new Document({
     title: file.title,
     creator: "SuiteLeaf",
@@ -571,111 +744,7 @@ export async function exportDocx(
           })),
         }
       : undefined,
-    sections: [
-      {
-        properties: {
-          ...(settings.differentFirstPage || coverPage ? { titlePage: true } : {}),
-          page: {
-            size: {
-              width: settings.landscape ? height : width,
-              height: settings.landscape ? width : height,
-            },
-            margin: {
-              top: settings.margin * 15,
-              bottom: settings.margin * 15,
-              left: settings.margin * 15,
-              right: settings.margin * 15,
-              header: 360,
-              footer: 360,
-            },
-            ...(wordStart == null ? {} : { pageNumbers: { start: wordStart } }),
-          },
-        },
-        headers: splitFurniture
-          ? {
-              default: headerPart(
-                settings.differentOddEven ? settings.oddHeader : settings.header,
-                topRight,
-              ),
-              ...(settings.differentOddEven
-                ? { even: headerPart(settings.evenHeader, topRight) }
-                : {}),
-              ...(settings.differentFirstPage
-                ? { first: headerPart(settings.firstHeader) }
-                : coverPage
-                  ? { first: headerPart(coverHeader) }
-                  : {}),
-            }
-          : {
-              default: headerPart(settings.header, topRight),
-            },
-        footers: splitFurniture
-          ? {
-              default: footerPart(
-                settings.differentOddEven ? settings.oddFooter : settings.footer,
-                settings.pageNumberPositionSet ? placedFooterSide() : "right",
-                settings.pageNumbers && !topRight,
-              ),
-              ...(settings.differentOddEven
-                ? {
-                    even: footerPart(
-                      settings.evenFooter,
-                      settings.pageNumberPositionSet ? placedFooterSide() : "left",
-                      settings.pageNumbers && !topRight,
-                    ),
-                  }
-                : {}),
-              ...(settings.differentFirstPage
-                ? { first: footerPart(settings.firstFooter, "none", false) }
-                : coverPage
-                  ? { first: footerPart(coverFooter, "none", false) }
-                  : {}),
-            }
-          : topRight
-            ? { default: footerPart(settings.footer, "none", false) }
-            : settings.pageNumberPositionSet &&
-                settings.pageNumberPosition === "bottom-center"
-              ? {
-                  default: footerPart(
-                    settings.footer,
-                    "center",
-                    settings.pageNumbers,
-                  ),
-                }
-              : settings.pageNumberFormat === "page"
-                ? {
-                    default: footerPart(
-                      settings.footer,
-                      "right",
-                      settings.pageNumbers,
-                    ),
-                  }
-                : {
-                    default: new Footer({
-                      children: [
-                        new Paragraph({
-                          children: [
-                            new TextRun(settings.footer),
-                            ...(settings.pageNumbers
-                              ? [
-                                  new TextRun({
-                                    children: [
-                                      "  ",
-                                      PageNumber.CURRENT,
-                                      " / ",
-                                      PageNumber.TOTAL_PAGES,
-                                    ],
-                                  }),
-                                ]
-                              : []),
-                          ],
-                        }),
-                      ],
-                    }),
-                  },
-        children,
-      },
-    ],
+    sections,
   });
   const packed = await revisionizeDocx(
     new Uint8Array(await Packer.toArrayBuffer(doc)),

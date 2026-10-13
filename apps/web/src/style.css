@@ -1505,6 +1505,61 @@ a {
   line-height: 1.5;
   padding: 8px 4px;
 }
+.arabic-start {
+  margin-top: 14px;
+}
+.arabic-start-btn {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid #c4c7c5;
+  border-radius: 8px;
+  background: #fff;
+  color: #1f1f1f;
+  font: 600 13px/1.35 inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.arabic-start-btn:hover:not(:disabled) {
+  background: #f8f9fa;
+}
+.arabic-start-btn[aria-pressed="true"] {
+  border-color: #1a73e8;
+  background: #e8f0fe;
+  color: #174ea6;
+}
+.arabic-start-btn:focus-visible {
+  outline: 2px solid #1a73e8;
+  outline-offset: 2px;
+}
+.arabic-start-btn:disabled {
+  color: #80868b;
+  background: #f8f9fa;
+  cursor: default;
+}
+.arabic-start-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #5f6368;
+}
+.arabic-start-phone {
+  display: none;
+}
+@media (max-width: 1000px) {
+  .document-stage { flex-wrap: wrap; }
+  .arabic-start-phone {
+    display: block;
+    flex: 1 0 100%;
+    order: -1;
+    margin: 0 0 8px;
+  }
+  .arabic-start-phone .arabic-start-btn {
+    width: auto;
+    max-width: 100%;
+  }
+}
 .paper-container {
   flex: 1;
   display: flex;

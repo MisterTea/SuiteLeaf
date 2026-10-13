@@ -40,6 +40,17 @@ The contents pages say i and ii. Chapter 1 says 1. "Draft" is still in the foote
 
 ## Gaps and notes
 
-- Number format is only "1 / 2" and "Page N". Roman is not a format.
-- A restart at a heading does not exist. Do not require a Word section-break UI. Marking one heading is enough.
-- Do not rebuild Start at or the cover checkbox from storyboard 75.
+- Lowercase roman is the only new numeral. Uppercase roman and letters are not choices.
+- One heading restarts the body. A second restart, or a restart that is not at the top of its page, is not a separate control.
+- Print from the browser still uses one numeral style. The on-screen pages and the .docx export carry both.
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| 1. Lowercase roman is in the same Page setup dialog as Page N and Start at | Met | Video ~6–8s: “i, ii, iii” sits beside “Page 1”, with Start at still in the dialog. No second dialog. Vitest `document page settings` and browser `lowercase roman and an arabic restart survive save and Word export`. |
+| 2. Roman front pages read i, ii, without “Page” stuck on the numeral | Met | Video ~9–11s and ~18s: the first pages show “i” and “ii”. Browser test expects `["i", "ii", "1", "2"]`. |
+| 3. A heading marked “Start Arabic numbers here” makes that page 1 and the next pages 2, 3, and leaves the front alone | Met | Video ~14–18s: Chapter 1’s page shows “1”, the next shows “2”, and the front is still “i”. |
+| 4. Footer text is unchanged | Met | Video throughout: “Draft” stays in the footer, separate from the numeral. |
+| 5. Roman front and the Arabic restart survive save and reopen | Met | Video ~21–24s. The saved file keeps `pageNumberFormat: "roman"` and `startArabic` on Chapter 1. |
+| 6. The .docx export writes both formats, and the body starts at 1 | Met | Video ~25–28s opens Export DOCX. Vitest `writes lowercase roman before a heading and arabic 1 from that heading` checks `w:fmt="lowerRoman"`, then `w:start="1"` and `w:fmt="decimal"`. |
