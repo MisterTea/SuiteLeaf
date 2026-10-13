@@ -130,6 +130,9 @@ test("find and replace still replaces every match in one undo", async ({ page })
   const editor = editorOf(page);
   await editor.click();
   await page.keyboard.type("alpha recieve recieve");
+  await expect(editor).toContainText("alpha recieve recieve");
+  // Let the typing close as its own undo step before Replace all.
+  await page.waitForTimeout(600);
   await page.getByRole("button", { name: "Edit", exact: true }).click();
   await page.getByRole("menuitem", { name: /Find and replace/ }).click();
   const find = page.getByRole("search", { name: "Find and replace" });
