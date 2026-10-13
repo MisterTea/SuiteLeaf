@@ -159,11 +159,11 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       name: "write_text",
       label: "Type text",
       description:
-        "Type text into the document. Each line becomes a paragraph. Start a line with '# ', '## ' or '### ' for a heading, '- ' for a bullet, '1. ' for a numbered item; wrap words in **double asterisks** for bold. By default the text goes at the end of the document; give `after` to put it after a paragraph containing that text (a heading's text puts it right under that heading), or set `replace_document` to start over.",
+        "Type text into the document. Each line becomes a paragraph. Start a line with '# ', '## ' or '### ' for a heading, '- ' for a bullet, '1. ' for a numbered item; wrap words in **double asterisks** for bold. By default the text goes at the end of the document (leave out `after` to keep adding to the end); give `after` to insert it right after the one paragraph or heading containing that text, or set `replace_document` to start over.",
       parameters: Type.Object({
         text: Type.String({ description: "The text to type." }),
         after: Type.Optional(
-          Type.String({ description: "Put the text in a new paragraph after the paragraph or heading containing this text." }),
+          Type.String({ description: "Insert the text right after the paragraph or heading containing this text, before whatever follows it." }),
         ),
         replace_document: Type.Optional(Type.Boolean({ description: "Replace everything in the document." })),
       }),
@@ -178,12 +178,16 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         if (replace_document) editor.chain().clearContent().run();
         const list = blocks(editor);
         const empty = list.length === 1 && !list[0].text;
+        const quote = (b: { text: string; label: string }) => `"${b.text.length > 60 ? `${b.text.slice(0, 60)}…` : b.text}" (${b.label})`;
+        let where = "at the end of the document";
         if (after) {
           const block =
             list.find((b) => b.text.trim() === after.trim()) ??
             list.find((b) => b.text.includes(after)) ??
             list.find((b) => b.text.toLowerCase().includes(after.toLowerCase()));
           if (!block) throw new ToolError(`No paragraph contains "${after}".`);
+          const next = list[list.indexOf(block) + 1];
+          where = `right after ${quote(block)}${next ? `, before ${quote(next)}` : ", at the end of the document"}`;
           editor.chain().setTextSelection(block.end - 1).splitBlock().run();
           editor.chain().setParagraph().run();
         } else {
@@ -202,7 +206,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
           editor.view.dispatch(editor.state.tr.delete(last.pos, last.end));
         const typed = text.split("\n").filter((l) => l.trim()).length;
         const headings = blocks(editor).filter((b) => b.type === "heading").map((b) => `${b.label}: ${b.text}`);
-        return `Typed ${typed} paragraph(s). The document now has ${blocks(editor).length} paragraph(s).${headings.length ? `\nHeadings in the document now: ${headings.join(" | ")}` : ""}`;
+        return `Typed ${typed} paragraph(s) ${where}. The document now has ${blocks(editor).length} paragraph(s).${headings.length ? `\nHeadings in the document now: ${headings.join(" | ")}` : ""}`;
       },
     }),
     tool({
