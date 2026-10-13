@@ -44,6 +44,8 @@ import NoteEnUS from "@univerjs/preset-sheets-note/locales/en-US";
 import "@univerjs/preset-sheets-note/lib/index.css";
 import SheetCleanup from "./sheet-cleanup-ui";
 import SheetFeatures from "./sheet-features";
+import SheetPrint, { type SheetPrintHandle } from "./sheet-print-ui";
+import { printMarkup, printedPages, readSheetPrint } from "./sheet-print";
 import SheetDropdowns, { type SheetDropdownHandle } from "./sheet-dropdown-panel";
 import {
   guardFormulaSuggestions,
@@ -801,6 +803,8 @@ export default function Sheets({
   const dropdowns = useRef<SheetDropdownHandle>(null);
   const dropdownEngine = useRef<{ api: any; injector: any } | null>(null);
   const cleanup = useRef<{ trim: () => void; duplicates: () => void; split: () => void }>(null);
+  const printing = useRef<SheetPrintHandle>(null);
+  const printSheet = useRef<() => Promise<void>>(async () => {});
   const engine = useRef<any>(null);
   const toolbar = useRef<HTMLDivElement>(null);
   const moreTools = useToolbarOverflow(
@@ -1780,6 +1784,33 @@ export default function Sheets({
   };
   useEffect(() => {
     if (!ready) return;
+    printSheet.current = async () => {
+      await api.current.getFormula().onCalculationResultApplied(10000);
+      const s = book.current.getActiveSheet();
+      const values = s.getDataRange().getValues() as CellValue[][];
+      if (values.length * (values[0]?.length ?? 0) > 10000)
+        throw new Error("Print a sheet with at most 10,000 cells.");
+      const settings = readSheetPrint(content.current, s.getSheetId());
+      const el = document.createElement("section");
+      el.className = "sheet-print";
+      el.innerHTML = printMarkup(
+        file.title,
+        s.getSheetName(),
+        printedPages(values, settings),
+        settings.repeatFirstRow,
+      );
+      document
+        .querySelectorAll(".suiteleaf-chart")
+        .forEach((c) => el.append(c.cloneNode(true)));
+      document.body.append(el);
+      document.body.classList.add("printing-sheet");
+      try {
+        await printDocument();
+      } finally {
+        document.body.classList.remove("printing-sheet");
+        el.remove();
+      }
+    };
     onActions({
       flush: async () => {
         await api.current?.getFormula().onCalculationResultApplied(10000);
@@ -1809,37 +1840,7 @@ export default function Sheets({
         );
       },
       async print() {
-        await api.current.getFormula().onCalculationResultApplied(10000);
-        const s = book.current.getActiveSheet();
-        const values = s.getDataRange().getValues() as CellValue[][];
-        if (values.length * (values[0]?.length ?? 0) > 10000)
-          throw new Error("Print a sheet with at most 10,000 cells.");
-        const escape = (v: unknown) =>
-          String(v ?? "").replace(
-            /[&<>"']/g,
-            (c) =>
-              ({
-                "&": "&amp;",
-                "<": "&lt;",
-                ">": "&gt;",
-                '"': "&quot;",
-                "'": "&#39;",
-              })[c]!,
-          );
-        const el = document.createElement("section");
-        el.className = "sheet-print";
-        el.innerHTML = `<h1>${escape(file.title)} — ${escape(s.getSheetName())}</h1><table>${values.map((r) => `<tr>${r.map((v) => `<td>${escape(v)}</td>`).join("")}</tr>`).join("")}</table>`;
-        document
-          .querySelectorAll(".suiteleaf-chart")
-          .forEach((c) => el.append(c.cloneNode(true)));
-        document.body.append(el);
-        document.body.classList.add("printing-sheet");
-        try {
-          await printDocument();
-        } finally {
-          document.body.classList.remove("printing-sheet");
-          el.remove();
-        }
+        await printSheet.current();
       },
       sheetActions: {
         insertImage: () => {
@@ -1946,6 +1947,8 @@ export default function Sheets({
         freezeColumns: (count) => setFrozen("columns", count),
         showGridlines: (visible) =>
           void book.current?.getActiveSheet()?.setHiddenGridlines(!visible),
+        insertPageBreak: () => printing.current?.insertPageBreak(),
+        openPrintSettings: () => printing.current?.openPrintSettings(),
         showFormulaBar: (visible) => {
           setFormulaBarVisible(visible);
           api.current?.setUIVisible(
@@ -2263,6 +2266,16 @@ export default function Sheets({
         </div>
       ) : null}
       {ready && api.current && engine.current ? (
+        <SheetPrint
+          ref={printing}
+          api={api.current}
+          engine={engine.current}
+          content={content}
+          persist={() => persist.current()}
+          onPrint={() => printSheet.current()}
+        />
+      ) : null}
+      {ready && api.current && engine.current ? (
         <SheetCleanup
           ref={cleanup}
           api={api.current}
@@ -2298,7 +2311,9 @@ export default function Sheets({
         <Tool
           label="Print (Cmd+P)"
           onClick={() => {
-            void printDocument(file.title);
+            void printSheet.current().catch((e: unknown) =>
+              onError(e instanceof Error ? e.message : String(e)),
+            );
           }}
         >
           <Printer size={16} />

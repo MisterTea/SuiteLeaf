@@ -370,6 +370,8 @@ export type EditorActions = {
     freezeColumns: (count: number) => void;
     showGridlines: (visible: boolean) => void;
     showFormulaBar: (visible: boolean) => void;
+    insertPageBreak?: () => void;
+    openPrintSettings?: () => void;
   };
   slideActions?: {
     undo: () => void;
