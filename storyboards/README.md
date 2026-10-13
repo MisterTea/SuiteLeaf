@@ -167,3 +167,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 140 | [Space the boxes evenly](140-space-the-boxes-evenly.md) | single-node | Slides |
 | 142 | [Move the pair together](142-move-the-pair-together.md) | single-node | Slides |
 | 143 | [Skip the draft slide](143-skip-the-draft-slide.md) | single-node | Slides |
+| 145 | [Sort the table](145-sort-the-table.md) | single-node | Docs |
