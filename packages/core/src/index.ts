@@ -133,6 +133,22 @@ export const slideElementSchema = z.object({
   rows: z.array(z.array(z.string())).optional(),
 });
 export type SlideElement = z.infer<typeof slideElementSchema>;
+export const slideCommentMessageSchema = z.object({
+  id: z.string().min(1),
+  authorName: z.string().min(1).max(80),
+  text: z.string().min(1).max(4000),
+  createdAt: z.string().datetime(),
+});
+export type SlideCommentMessage = z.infer<typeof slideCommentMessageSchema>;
+/** A review thread on one object. Speaker notes stay on the slide, not here. */
+export const slideCommentThreadSchema = z.object({
+  id: z.string().min(1),
+  elementId: z.string().min(1),
+  resolved: z.boolean().optional(),
+  resolvedBy: z.string().max(80).optional(),
+  messages: z.array(slideCommentMessageSchema).min(1).max(50),
+});
+export type SlideCommentThread = z.infer<typeof slideCommentThreadSchema>;
 export const slideTransitionSchema = z.object({
   type: z.enum(["none", "fade", "slide", "push"]),
   duration: z.number().min(0).max(10),
@@ -152,6 +168,7 @@ export const slideSchema = z.object({
     .optional(),
   elements: z.array(slideElementSchema),
   notes: z.string().optional(),
+  comments: z.array(slideCommentThreadSchema).max(40).optional(),
   transition: slideTransitionSchema.optional(),
 });
 export type Slide = z.infer<typeof slideSchema>;

@@ -2654,6 +2654,31 @@ function Workspace() {
                     Transition
                   </MenuItem>
                 </Menu>
+                <Menu label="Comments">
+                  <MenuItem
+                    shortcut="Cmd+Alt+M"
+                    synonyms={["comment", "comments", "add comment"]}
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.slideActions?.insertComment?.()
+                    }
+                  >
+                    Comment
+                  </MenuItem>
+                  <MenuItem
+                    synonyms={[
+                      "resolved",
+                      "resolved comments",
+                      "reopen",
+                      "comment history",
+                    ]}
+                    onSelect={() =>
+                      actions.current?.slideActions?.openResolved?.()
+                    }
+                  >
+                    Resolved
+                  </MenuItem>
+                </Menu>
                 <Menu label="Tools">
                   <MenuItem onSelect={() => {}}>Spelling</MenuItem>
                 </Menu>
@@ -2685,6 +2710,7 @@ function Workspace() {
             onClick={() => {
               actions.current?.docActions?.openComments?.();
               actions.current?.sheetActions?.openComments?.();
+              actions.current?.slideActions?.openComments?.();
             }}
           >
             <MessageSquare size={18} />

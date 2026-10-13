@@ -93,6 +93,7 @@ import {
   type TransitionType,
 } from "./slide-theme";
 import { SlideDesignPanel, useReducedMotion } from "./slide-design-panel";
+import { useSlideComments } from "./slide-comments-ui";
 
 type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
@@ -292,6 +293,22 @@ export default function Slides({
     deck.slides[activeSlideId] || deck.slides[deck.slideOrder[0]];
   const selectedElement =
     activeSlide?.elements.find((el) => el.id === selectedElementId) || null;
+  const slideComments = useSlideComments({
+    deck,
+    activeSlideId: activeSlide?.id ?? activeSlideId,
+    selectedElementId,
+    presenting,
+    commit,
+    onActivate: (slideId, elementId) => {
+      anchorRef.current = slideId;
+      applySelection(slideId, [slideId], elementId);
+    },
+  });
+  const {
+    openComposer: openSlideComment,
+    openPanel: openSlideCommentPanel,
+    openResolved: openSlideResolved,
+  } = slideComments;
 
   const chosenSlides = () => {
     const order = deckRef.current.slideOrder;
@@ -1039,12 +1056,23 @@ ${slidesHtml}
         applyLayout: (layout) => apiRef.current.applyLayout(layout),
         openTheme: () => apiRef.current.openTheme(),
         openTransition: () => apiRef.current.openTransition(),
+        insertComment: () => openSlideComment(),
+        openComments: () => openSlideCommentPanel(),
+        openResolved: () => openSlideResolved(),
         undoReason: () => slideApi.current.undoReason(),
         redoReason: () => slideApi.current.redoReason(),
         deleteReason: () => slideApi.current.deleteReason(),
       },
     });
-  }, [onActions, onChange, activeSlideId, beginShow]);
+  }, [
+    onActions,
+    onChange,
+    activeSlideId,
+    beginShow,
+    openSlideComment,
+    openSlideCommentPanel,
+    openSlideResolved,
+  ]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1090,6 +1118,11 @@ ${slidesHtml}
     const onKeyDown = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key === "Enter") {
+        if (
+          e.target instanceof Element &&
+          e.target.closest(".slide-comment-dock")
+        )
+          return;
         e.preventDefault();
         beginShow(
           e.shiftKey
@@ -2121,6 +2154,8 @@ ${slidesHtml}
 
         {/* Center Slide Canvas */}
         <div className="slides-canvas-stage">
+          {slideComments.notice}
+          <div className="slide-stage-row">
           <div
             className="slide-stage-viewport"
             ref={stageRef}
@@ -2264,7 +2299,10 @@ ${slidesHtml}
 
                 return null;
               })}
+              {slideComments.marks}
             </div>
+          </div>
+          {slideComments.dock}
           </div>
 
           {/* Speaker Notes Pane */}

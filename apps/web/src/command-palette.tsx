@@ -301,9 +301,17 @@ export function CommandPalette({
         setMode((current) => (current === "search" ? null : "search"));
         return;
       }
+      const slideComment =
+        event.code === "KeyM" &&
+        event.altKey &&
+        !event.shiftKey &&
+        !!document.querySelector(".slides-editor") &&
+        (mac
+          ? event.metaKey && !event.ctrlKey
+          : event.ctrlKey && !event.metaKey);
       if (
-        eventMatchesShortcut("Ctrl+Alt+M", keyEvent, mac) ||
-        eventMatchesShortcut("F10", keyEvent, mac)
+        eventMatchesShortcut("F10", keyEvent, mac) ||
+        (eventMatchesShortcut("Ctrl+Alt+M", keyEvent, mac) && !slideComment)
       ) {
         event.preventDefault();
         event.stopPropagation();
@@ -517,8 +525,14 @@ export function CommandPalette({
               )}
             </div>
             <p className="command-hint">
-              {mac ? "⌃⌥M" : "Ctrl+Alt+M"} or F10 focuses the menu bar. Arrow
-              keys move, Enter runs a command.
+              {kind === "slide"
+                ? mac
+                  ? "⌘⌥M comments on the selected object. F10 focuses the menu bar."
+                  : "Ctrl+Alt+M comments on the selected object. F10 focuses the menu bar."
+                : mac
+                  ? "⌃⌥M or F10 focuses the menu bar."
+                  : "Ctrl+Alt+M or F10 focuses the menu bar."}{" "}
+              Arrow keys move, Enter runs a command.
             </p>
           </div>
         ) : null}
