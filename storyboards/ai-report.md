@@ -269,3 +269,36 @@ What this rules out, and what it finds:
 4. **Small platform differences in the tools.** The download tool says "Download the open file" in the browser but "Save … (Save As)" on the desktop, next to `export_spreadsheet` ("The file downloads"). In the browser, FrogNano chose the export every time it was asked to "download the file" (17). On the desktop it chose the download tool.
 
 The fix for (2) is measured below. (3) needs a better browser export, for example q4 with 8-bit embeddings or an imatrix-calibrated quantization, which nobody publishes yet.
+
+## Guardrails
+
+Both models claimed success when they had failed, so the app now checks the assistant's work instead of trusting its summary.
+
+- **It asks before destroying work.** Removing a file, deleting a slide, ticking boxes, or replacing a document that has text in it asks the user first ("Remove “Invoice” from SuiteLeaf? This can't be undone."). It doesn't ask when the request's own words call for it ("delete the sample"). A "no" goes back to the model as an error that tells it not to try another way.
+- **`undo` only reverts the assistant's own changes.** It stops at the editor's state when the request began, so earlier changes, which are the user's, stay. It also says what it reverted ("B2 number format "$"#,##0.00 → none").
+- **It reviews its work when the app finds a problem.** After the model's summary, the app checks the cells and paragraphs the request changed. It looks for formulas that read only empty cells, error values, a number left unformatted in a column the model just formatted (often the total), and Markdown typed as text. If it finds anything, the model gets one more turn: "Fix only these problems, each with the smallest change … do not redo it, retype it or add it again." Reviewing every request, even with no problem found, made Gemma redo finished work: a second table and photo, or every row retyped one row lower. So the review only runs when there's a problem (`localStorage["suiteleaf.ai.review"]`: `issues`, `always` or `off`).
+- **Every request can be undone in one click.** The panel lists the files the request created, changed or removed, with "Undo all of this", which puts them back as they were. SuiteDrive files are listed but left alone.
+
+Three runs of each storyboard, guardrails off and on:
+
+| Backend | Before | With guardrails |
+| --- | --- | --- |
+| Desktop Q4_0 | 45/63 (71%) | 47/63 (75%) |
+| Desktop Q8_0 | 54/63 (86%) | 57/63 (90%) |
+| Browser q4f16 (all 26) | 66/78 (85%) | 66/78 (85%) |
+
+The review ran in 8–10 of each set of runs (those where the app found a problem). It turned 13, the invoice whose total was never formatted, from 0/9 into 8/9. Sheets went from 64% to 79% on Q4_0 and from 79% to 85% in the browser. No confirmation was needed in these runs: Gemma never tried a destructive action nobody asked for. The median time per request didn't change (9 s on the desktop, 18–19 s in the browser). Other storyboards moved by one run either way, which is within run-to-run noise at three runs each. In the browser, 26 lost two runs where Gemma typed "3 spades, 2 rakes, 1 wheelbarrow." as three paragraphs; no guardrail was involved.
+
+The browser's top-p fix on its own (47 matching runs, review off) passed 37, against 38 before. So it made no measurable difference to Gemma.
+
+## A checklist (pi's todo tool)
+
+pi's coding agent ships its todo list as an example extension (`examples/extensions/todo.ts`): a `todo` tool with `add`, `toggle`, `list` and `clear`. SuiteLeaf's version (`apps/web/src/ai/todo.ts`) adds a whole plan in one call and shows the list in the panel. The agent also doesn't accept a reply while items are open: it sends the model back to them with the app's state, at most twice. On ten multi-part storyboards in the browser, three runs each, with the guardrails on:
+
+| | Passed | Runs with a checklist |
+| --- | --- | --- |
+| Guardrails only | 16/24 | – |
+| Checklist, when the model chooses | 21/30 | 2/30 |
+| Checklist required before the first step | 3/24 | 19/24 |
+
+Gemma almost never wrote a checklist on its own. When it had to write one first, it did much worse. Writing the plan made it lose the step it had been about to take: it opened a file that didn't exist instead of creating it, called tools that don't exist, and then ticked every item as done anyway. The checklist became one more way to claim success, and since every item was ticked, holding back the reply never triggered. So the checklist is off by default (`localStorage["suiteleaf.ai.checklist"]`: `off`, `on` or `required`). A checklist that held Gemma to account would need ticks the app can verify, for example only accepting a tick right after a successful change. It would also need the plan written in a turn of its own, rather than in place of the first step.
