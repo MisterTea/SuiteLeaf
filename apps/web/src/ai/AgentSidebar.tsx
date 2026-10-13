@@ -260,7 +260,9 @@ export function AgentCursor() {
         <path d="M2 2 L2 21 L7.5 16 L11 24 L14.5 22.5 L11 14.8 L18.5 14.8 Z" />
       </svg>
       <span className="agent-cursor-ring" />
-      {c.label ? <span className="agent-cursor-label">Gemma · {c.label}</span> : null}
+      {c.label ? (
+        <span className={`agent-cursor-label${c.y > innerHeight - 48 ? " above" : ""}`}>Gemma · {c.label}</span>
+      ) : null}
     </div>
   );
 }
