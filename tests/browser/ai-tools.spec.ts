@@ -46,6 +46,11 @@ test("document tools write, style, find, replace and check spelling", async ({ p
   await expect(doc.locator('a[href="https://example.org/garden"]')).toHaveText("Next season");
   expect(await call(page, "page_setup", { orientation: "landscape", footer: "Garden club" })).toContain("landscape");
   await expect(page.locator(".page-footer").first()).toContainText("Garden club");
+  expect(await call(page, "write_text", { after: "# Thank you", text: "Dear friends," })).toContain('right after "Thank you"');
+  await expect(doc.locator("h1 + p")).toHaveText("Dear friends,");
+  await call(page, "write_text", { after: "Thank you", text: "## Helpers\nAll of you." });
+  await expect(doc.locator("h1 + p + p")).toHaveText("We receive so much help.");
+  await expect(doc.locator("h1 + p + p + h2")).toHaveText("Helpers");
   await expect(call(page, "set_style", { text: "not in the letter", style: "Heading 1" })).rejects.toThrow(/not in the document/);
 });
 

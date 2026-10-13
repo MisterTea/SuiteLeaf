@@ -162,7 +162,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       name: "write_text",
       label: "Type text",
       description:
-        "Type text into the document. Each line becomes a paragraph. Start a line with '# ' for a Heading 1 (a main section), '## ' for a Heading 2 (a sub-section) or '### ' for a Heading 3, '- ' for a bullet, '1. ' for a numbered item; wrap words in **double asterisks** for bold. By default the text goes at the end of the document (leave out `after` to keep adding to the end); give `after` to insert it right after the one paragraph or heading containing that text, or set `replace_document` to start over.",
+        "Type text into the document. Each line becomes a paragraph. Start a line with '# ' for a Heading 1 (a main section), '## ' for a Heading 2 (a sub-section) or '### ' for a Heading 3, '- ' for a bullet, '1. ' for a numbered item; wrap words in **double asterisks** for bold. By default the text goes at the end of the document (leave out `after` to keep adding to the end); give `after` to insert it right after the one paragraph or heading containing that text (text that starts with a heading goes after that heading's paragraphs), or set `replace_document` to start over.",
       parameters: Type.Object({
         text: Type.String({ description: "The text to type." }),
         after: Type.Optional(
@@ -185,12 +185,16 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         const quote = (b: { text: string; label: string }) => `"${b.text.length > 60 ? `${b.text.slice(0, 60)}…` : b.text}" (${b.label})`;
         let where = "at the end of the document";
         if (after) {
-          const block =
+          const found =
             list.find((b) => b.text.trim() === after.trim()) ??
             list.find((b) => b.text.includes(after)) ??
             list.find((b) => b.text.toLowerCase().includes(after.toLowerCase()));
-          if (!block) throw new ToolError(`No paragraph contains "${after}". Use read_document to see the exact text.`);
-          const next = list[list.indexOf(block) + 1];
+          if (!found) throw new ToolError(`No paragraph contains "${after}". Use read_document to see the exact text.`);
+          // A new section never goes between a heading and its own text.
+          let i = list.indexOf(found) + 1;
+          if (found.type === "heading" && /^\s*#{1,3}\s/.test(text)) while (list[i]?.label === "Paragraph") i++;
+          const block = list[i - 1],
+            next = list[i];
           where = `right after ${quote(block)}${next ? `, before ${quote(next)}` : ", at the end of the document"}`;
           editor.chain().setTextSelection(block.end - 1).splitBlock().run();
           editor.chain().setParagraph().run();
