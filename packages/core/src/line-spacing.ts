@@ -38,6 +38,31 @@ export function lineSpacingOf(value: unknown): LineSpacing {
   return isLineSpacing(value) ? value : "single";
 }
 
+const WORD_LINE_TO_SPACING = new Map<number, LineSpacing>(
+  LINE_SPACINGS.map((spacing) => [LINE_SPACING_METRICS[spacing].line, spacing]),
+);
+
+/**
+ * A Word auto multiple on `w:spacing`.
+ * 240, 276, 360, and 480 are single, 1.15, 1.5, and double.
+ * A missing line, any other multiple, or a `w:lineRule` other than `auto`
+ * returns null so the paragraph stays single.
+ */
+export function lineSpacingFromWord(
+  spacing: { line?: unknown; lineRule?: unknown } | null | undefined,
+): LineSpacing | null {
+  if (spacing?.lineRule !== "auto") return null;
+  const raw = spacing.line;
+  const line =
+    typeof raw === "number"
+      ? raw
+      : typeof raw === "string" && raw.trim() !== ""
+        ? Number(raw)
+        : NaN;
+  if (!Number.isInteger(line)) return null;
+  return WORD_LINE_TO_SPACING.get(line) ?? null;
+}
+
 /** Every paragraph exports its own spacing, including single. */
 export function docxLineSpacing(value: unknown): { line: number; lineRule: "auto" } {
   return {
