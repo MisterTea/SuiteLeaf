@@ -3,7 +3,7 @@ import type { AiStatus } from "@suiteleaf/core/ai";
 import { localModel } from "./backend";
 import { hideCursor, showCursor } from "./cursor";
 import { PARSE_ERROR, createGemmaStreamFn, gemmaModel, type GenerationStats } from "./gemma-stream";
-import { currentSnapshot, currentSuiteTools, toAgentTool } from "./host";
+import { activeHost, currentSnapshot, currentSuiteTools, toAgentTool, toolScreen } from "./host";
 
 export const SYSTEM_PROMPT = `You are the assistant built into SuiteLeaf, an office suite with documents, spreadsheets and presentations. You do the user's task yourself by calling tools; each tool acts in the app the user is looking at, and they watch you work.
 
@@ -88,6 +88,34 @@ const textOf = (result: unknown) =>
     .map((c) => c.text ?? "")
     .join("");
 
+const SCREENS: Record<string, string> = {
+  home: "the file list",
+  doc: "an open document",
+  sheet: "an open spreadsheet",
+  slide: "an open presentation",
+  workspace: "an open file",
+};
+
+/** For a tool that belongs to another screen: where it works and how to get there. */
+function explainMissingTool(name: string) {
+  const where = toolScreen(name);
+  const here = SCREENS[activeHost()?.kind ?? ""] ?? "this screen";
+  const how =
+    where === "home"
+      ? ` Call back_to_files to go back to the file list, then call ${name} again.`
+      : where && SCREENS[where]
+        ? ` First ${activeHost()?.kind === "home" ? "" : "call back_to_files, then "}open or create the file (open_file or create_file), then call ${name} again.`
+        : "";
+  const place = where && SCREENS[where] ? `: it works on ${SCREENS[where]}, and you are on ${here}` : "";
+  return `${name} is not available here${place}.${how} Tools available now: ${currentSuiteTools().map((t) => t.name).join(", ")}.`;
+}
+
+/** A reply with no words and no tool call (including one that ran out of room while thinking). */
+const isEmptyReply = (m: AgentMessage) =>
+  m.role === "assistant" &&
+  (m.stopReason === "stop" || m.stopReason === "length") &&
+  !m.content.some((c) => (c.type === "text" && c.text.trim()) || c.type === "toolCall");
+
 class AgentSession {
   state: AgentUiState = "idle";
   items: TranscriptItem[] = [];
@@ -100,6 +128,8 @@ class AgentSession {
   private emptyRetries = 0;
   private lastCalls: string[] = [];
   private runningTool?: { id: string; name: string };
+  /** Tool results rewritten for the model (tools called from the wrong screen), by call id. */
+  private explained = new Map<string, string>();
 
   constructor() {
     localModel().onStatus((status) => {
@@ -148,14 +178,13 @@ class AgentSession {
       // Retried empty replies leave the transcript, so the retry samples the
       // same (cached) prompt again.
       transformContext: async (messages) =>
-        messages.filter(
-          (m) =>
-            !(
-              m.role === "assistant" &&
-              m.stopReason === "stop" &&
-              !m.content.some((c) => (c.type === "text" && c.text.trim()) || c.type === "toolCall")
-            ),
-        ),
+        messages
+          .filter((m) => !isEmptyReply(m))
+          .map((m) =>
+            m.role === "toolResult" && this.explained.has(m.toolCallId)
+              ? { ...m, content: [{ type: "text" as const, text: this.explained.get(m.toolCallId)! }] }
+              : m,
+          ),
       // Each turn sees the tools of the screen the agent is on now.
       prepareNextTurnWithContext: ({ context }) => ({
         context: { ...context, tools: currentSuiteTools().map(toAgentTool) },
@@ -190,10 +219,7 @@ class AgentSession {
         if (this.turns >= MAX_TURNS) return { action: "end" };
         // An empty reply (no words, no tool call) is a sampling failure, not
         // an answer: ask again, at most twice in a run.
-        const empty =
-          message.stopReason === "stop" &&
-          !message.content.some((c) => (c.type === "text" && c.text.trim()) || c.type === "toolCall");
-        if (empty && this.emptyRetries < 2) {
+        if (isEmptyReply(message) && this.emptyRetries < 2) {
           this.emptyRetries++;
           this.metrics.emptyTurns++;
           return { action: "continue" };
@@ -239,9 +265,15 @@ class AgentSession {
         | Extract<TranscriptItem, { kind: "tool" }>
         | undefined;
       if (event.isError) this.metrics.toolErrors++;
+      let result = textOf(event.result);
+      if (event.isError && result === `Tool ${event.toolName} not found`) {
+        this.metrics.unknownTools++;
+        result = explainMissingTool(event.toolName);
+        this.explained.set(event.toolCallId, result);
+      }
       if (item) {
         item.status = event.isError ? "error" : "ok";
-        item.result = textOf(event.result);
+        item.result = result;
       }
     }
     this.emit();
@@ -359,6 +391,7 @@ class AgentSession {
   reset() {
     this.agent?.abort();
     this.agent = undefined;
+    this.explained.clear();
     this.items = [];
     this.metrics = { ...emptyMetrics(), backend: this.metrics.backend, model: this.metrics.model, loadMs: this.metrics.loadMs };
     this.state = "idle";

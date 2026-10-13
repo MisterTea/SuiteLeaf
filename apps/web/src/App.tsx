@@ -577,8 +577,11 @@ function LocalHome() {
           file: (kind === "doc" ? sampleDoc : kind === "sheet" ? sampleSheet : sampleSlide)(),
         }),
       rename,
-      duplicate: (r) =>
-        storage.save({ file: duplicateFile(r.file) }).then(refresh),
+      duplicate: async (r) => {
+        const copy = await storage.save({ file: duplicateFile(r.file) });
+        await refresh();
+        return copy;
+      },
       showRemove: (record) => setAsking({ action: "remove", record }),
       remove: async (r) => {
         setAsking(null);
@@ -772,7 +775,7 @@ function LocalHome() {
                       {r.file.title}
                       {snippet ? (
                         <small className="file-snippet">{snippet}</small>
-                      ) : r.recovery ? (
+                      ) : r.recovery && r.path ? (
                         <small>Recovery draft available</small>
                       ) : r.path ? (
                         <small>{r.path}</small>
@@ -851,7 +854,9 @@ function LocalHome() {
             >
               <p className="dialog-note">
                 {window.suiteleaf
-                  ? `“${asking.record.file.title}” and its recovery draft leave the library. Your saved file remains on disk.`
+                  ? asking.record.path
+                    ? `“${asking.record.file.title}” and its recovery draft leave the library. Your saved file remains on disk.`
+                    : `“${asking.record.file.title}” was never saved to a file, so it will be deleted. This can't be undone.`
                   : `“${asking.record.file.title}” will be deleted from this browser. This can't be undone.`}
               </p>
               {window.suiteleaf ? null : (
@@ -1215,7 +1220,7 @@ function Workspace() {
         }
         const saved = r.drive
           ? "Saved to SuiteDrive"
-          : r.recovery
+          : r.recovery && r.path
             ? "Recovered draft · review and save"
             : r.path
               ? "Saved to file"
@@ -1451,6 +1456,12 @@ function Workspace() {
           rename: changeTitle,
           download,
           back: () => save().then(() => navigate("/")),
+          create: async (kind, title) => {
+            await save();
+            const file = createFile(kind, title);
+            if (cluster) await createInDrive(file, null, navigate);
+            else navigate(`/file/${(await storage.save({ file })).file.id}`);
+          },
         }
       : null;
     return {
