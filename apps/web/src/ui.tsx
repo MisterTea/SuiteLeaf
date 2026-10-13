@@ -191,7 +191,8 @@ export function Tool({
 }
 export type EditorActions = {
   flush: () => Promise<void>;
-  export: (format: string) => Promise<void>;
+  /** Undefined once the browser downloads it; on the desktop, the saved path or null if cancelled. */
+  export: (format: string) => Promise<string | null | void>;
   print: () => Promise<void>;
   present?: () => void;
   docActions?: {
