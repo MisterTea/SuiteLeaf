@@ -101,6 +101,13 @@ function findSlide(deck: Deck, which: string | number | undefined, fallback: str
   return { id: deck.slideOrder[index], index };
 }
 
+/** A slide show button, after bringing the hidden controls back the way moving the mouse does. */
+async function showButton(label: string) {
+  window.dispatchEvent(new Event("mousemove"));
+  await wait(150);
+  return [...document.querySelectorAll(".presenter-overlay button")].find((b) => b.textContent?.includes(label));
+}
+
 const thumbnail = (index: number) => document.querySelectorAll(".thumbnail-row")[index];
 const canvas = () => document.querySelector(".slide-canvas");
 
@@ -522,9 +529,13 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
       target: () => [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Slideshow"),
       async execute({ from_slide, with_notes }) {
         const index = from_slide ? findSlide(ctx.deck(), from_slide, ctx.activeSlideId).index : 0;
+        const deck = ctx.deck();
         ctx.present(index, !!with_notes);
         await wait(600);
-        return `Presenting from slide ${index + 1}${with_notes ? " with speaker notes" : ""}. Use next_slide to advance and end_presentation to stop.`;
+        const screen = document.fullscreenElement
+          ? "in full screen"
+          : "in the window (the browser allows full screen only right after the user clicks or presses a key)";
+        return `Presenting ${screen} from slide ${index + 1} of ${deck.slideOrder.length}, "${titleOf(deck.slides[deck.slideOrder[index]])}"${with_notes ? ", with the speaker notes beside it" : ""}. Use next_slide to advance and end_presentation to stop.`;
       },
     }),
     tool({
@@ -532,13 +543,20 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
       label: "Next slide",
       description: "During the slideshow, go forward (or back with back=true) one slide.",
       parameters: Type.Object({ back: Type.Optional(Type.Boolean()) }),
-      target: ({ back }) => [...document.querySelectorAll(".presenter-overlay button")].find((b) => b.textContent?.includes(back ? "Previous" : "Next")),
+      repeatable: true,
+      target: ({ back }) => showButton(back ? "Previous" : "Next"),
       execute({ back }) {
         if (!ctx.presenting) throw new ToolError("The slideshow is not running. Use start_presentation first.");
-        const last = ctx.deck().slideOrder.length - 1;
+        const deck = ctx.deck();
+        const last = deck.slideOrder.length - 1;
         const next = Math.max(0, Math.min(last, ctx.showIndex + (back ? -1 : 1)));
+        const name = (i: number) => `slide ${i + 1} of ${last + 1}, "${titleOf(deck.slides[deck.slideOrder[i]])}"`;
+        if (next === ctx.showIndex)
+          throw new ToolError(
+            `The show is already on the ${back ? "first" : "last"} slide (${name(next)}); there is no ${back ? "previous" : "next"} one. end_presentation stops the show.`,
+          );
         ctx.goToShowSlide(next);
-        return `Showing slide ${next + 1} of ${last + 1}.${next === last && !back ? " This is the last slide." : ""}`;
+        return `Showing ${name(next)}.${next === last ? " This is the last slide." : ""}`;
       },
     }),
     tool({
@@ -546,10 +564,11 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
       label: "End show",
       description: "Stop the slideshow and go back to editing.",
       parameters: Type.Object({}),
-      target: () => [...document.querySelectorAll(".presenter-overlay button")].find((b) => b.textContent?.includes("Exit")),
+      target: () => showButton("Exit"),
       execute() {
+        if (!ctx.presenting) return "The slideshow was not running; the editor is showing.";
         ctx.endShow();
-        return "Stopped the slideshow.";
+        return "Stopped the slideshow; the editor is showing again.";
       },
     }),
     tool({

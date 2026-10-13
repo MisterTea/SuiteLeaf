@@ -281,8 +281,11 @@ test("presentation tools build slides and present", async ({ page }) => {
   await expect(call(page, "add_shape", { slide: 1, shape: "circle", fill: "gold" })).rejects.toThrow(/Fill menu color: .*Yellow/);
   expect(await call(page, "move_slide", { slide: 3, before: "Planted" })).toContain('Moved "Help" from slide 3 to slide 1: it now comes first, before "Planted"');
   expect(await call(page, "move_slide", { slide: 1, after: "Club update" })).toMatch(/Order: 1\. Planted; 2\. Club update; 3\. Help; 4\. Questions\?/);
-  await call(page, "start_presentation", { with_notes: true });
+  expect(await call(page, "start_presentation", { with_notes: true })).toContain('from slide 1 of 4, "Planted", with the speaker notes beside it');
   expect(await call(page, "next_slide")).toContain("slide 2 of 4");
+  expect(await call(page, "next_slide")).toContain('slide 3 of 4, "Help"');
+  expect(await call(page, "next_slide")).toContain('slide 4 of 4, "Questions?". This is the last slide.');
+  await expect(call(page, "next_slide")).rejects.toThrow(/already on the last slide/);
   await call(page, "end_presentation");
 });
 
@@ -448,6 +451,19 @@ test("a CSV opens through its import preview, with codes kept as text, and expor
   );
   const csv = readFileSync((await (await download).path())!, "utf8");
   expect(csv.trim().split(/\r?\n/)).toEqual(["ID,Name,ZIP,Paid", "00412,Rosa,02139,45", "01205,Mei,10001,0"]);
+});
+
+test("open_file asks the user to pick a file that isn't in the library", async ({ page }) => {
+  await page.addInitScript(() => sessionStorage.setItem("suiteleaf.ai.open", "1"));
+  await page.goto("/");
+  await waitForTools(page, "open_file");
+  const choose = async () => {
+    const chooser = page.waitForEvent("filechooser");
+    await page.getByRole("button", { name: "Choose file…" }).click();
+    await (await chooser).setFiles({ name: "Members.csv", mimeType: "text/csv", buffer: Buffer.from("Name,Paid\nRosa,45\n") });
+  };
+  const [opened] = await Promise.all([call(page, "open_file", { name: "Members list" }), choose()]);
+  expect(opened).toContain('"Members list" is not in the library (Files: none), so the user was asked to pick it from their computer. Imported "Members.csv"');
 });
 
 test("an Excel workbook opens with its import notes and frozen panes", async ({ page }) => {

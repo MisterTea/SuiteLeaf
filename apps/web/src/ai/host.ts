@@ -17,6 +17,8 @@ export interface SuiteTool<P extends TSchema = TSchema> {
   target?: (args: Static<P>) => Target | Promise<Target>;
   /** Reshapes the model's raw arguments before schema checks (which would otherwise coerce them in unhelpful ways). */
   prepare?: (args: Record<string, unknown>) => Record<string, unknown>;
+  /** The same call does something new each time (e.g. the next slide), so repeating it is not a loop. */
+  repeatable?: boolean;
   execute: (args: Static<P>, signal?: AbortSignal) => Promise<ToolOutput> | ToolOutput;
 }
 

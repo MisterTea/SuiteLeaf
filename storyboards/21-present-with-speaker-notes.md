@@ -32,6 +32,27 @@ It's Saturday morning. Priya opens the garden kickoff slides she saved last nigh
 - Slide text keeps the same proportions as in the editor at any screen size.
 - Keyboard: arrows, Space, Page Up/Down, Home/End to move; B or W for a black or white screen; S for notes; Escape to exit. Clicking the slide also advances.
 
+## AI version
+
+**Videos:** [web](videos/21-present-with-speaker-notes-ai.mp4) · [desktop](videos/electron/21-present-with-speaker-notes-ai.mp4) · **Script:** [scenes/ai/21-present-with-speaker-notes-ai.spec.ts](scenes/ai/21-present-with-speaker-notes-ai.spec.ts)
+
+From the home screen Priya asks the on-device assistant (Gemma 4 E4B) twice:
+
+1. "Open the Spring Garden Kickoff slides I saved last night and add speaker notes to the first three slides. Slide 1: Welcome everyone. Thank the library for the room. Slide 2: Mention the compost delivery on Friday. Slide 3: Pass the sign-up sheet around now."
+2. "Let's rehearse. Start the slideshow from the beginning with my notes showing, go through the slides until Questions?, then end the show."
+
+Gemma uses `open_file`, `set_speaker_notes` (three times), `start_presentation` with notes, `next_slide` (three times) and `end_presentation`. In the recording the pointer goes to Open / import and the panel asks Priya to choose the file; she picks "Spring Garden Kickoff.slslides" and the four-slide deck opens. The pointer then goes to the notes box under each slide, and each note is typed in as the slide is shown. For the second request the pointer goes to Slideshow. The show opens in full screen on slide 1 with "Welcome everyone…" beside it, a timer and "Next: This season's plan". The pointer then clicks Next three times, with the show's controls visible each time. The notes change with each slide, and "Questions?" shows "No speaker notes for this slide". Finally it clicks Exit. Back in the editor Priya clicks through the thumbnails to check the notes. The test watches the show as it runs. It checks that the show started on slide 1 in full screen with slide 1's note, that each of slides 1–3 appeared with its own note, that it reached slide 4, and that it ended and left full screen. Afterwards slides 1–3 each have their own note and slide 4 has none. As in the original, the recording replaces the Fullscreen API with a stand-in.
+
+Fixes made along the way:
+
+- Gemma's third identical `next_slide` call was blocked as a loop ("You already made this exact call twice"), so the show stopped on slide 3. Tools can now be marked repeatable, and `next_slide` is.
+- `next_slide` and `start_presentation` now name the slide on screen ("slide 3 of 4, "How you can help""). `next_slide` fails on the last slide and points to `end_presentation`, and `start_presentation` says whether the show is in full screen.
+- Before pointing at Next or Exit, the agent brings back the show's controls the way moving the mouse does. The controls hide after 2.5 seconds, so the pointer used to click empty black space.
+- When the deck wasn't in the file list, Gemma gave up or asked Priya to confirm (three runs in a row). The tools pointed it elsewhere: `open_file` said only "Files: none", and `search_files` said "No files match". Now `open_file` asks the user to pick a file that isn't in the library, as Open / import does. `search_files` with no match, and the system prompt, say such a file is on the user's computer and to open it without asking.
+- One reply wrote `call:open_from_computer{}` without its opening token and was shown as text. The parser now reads it; this fix is the same commit as storyboard 22's.
+
+**How Gemma did:** with the final tools, web passed 3 of 5 runs and desktop 1 of 1. Both web failures came from the same model habit: after adding the notes, Gemma called `back_to_files` and closed the deck, though the system prompt and the tool description say to leave it open. Across all ten web runs, the notes were always right: the exact text on the right slide. Whenever the second request ran, the show was right too: `start_presentation` from slide 1 with notes, three `next_slide` calls, then `end_presentation`. Mistakes seen before the fixes: it searched the empty library and stopped to ask "Can you confirm the exact name of the file?". After a clear error saying to call `open_from_computer`, it told Priya to "select it from your computer's files when prompted" and stopped without calling it. It also passed an unrelated CSV option (`first_row_is_header: false`) to `open_from_computer`.
+
 ## Gaps and notes
 
 - Notes appear in the same window as the slide, like PowerPoint's presenter view on a single screen. If the laptop is mirrored to a projector, the audience sees them too. A separate presenter window for a second screen (Google Slides' "Presenter view", PowerPoint's dual-monitor mode) is a follow-up.
@@ -39,3 +60,4 @@ It's Saturday morning. Priya opens the garden kickoff slides she saved last nigh
 - In the editor on narrow (phone-sized) screens, slide text is drawn at a fixed pixel size, so it looks larger relative to the slide than it does in the show. The show itself scales correctly.
 - The HTML export still draws text at 1.5× the deck size, so exported slides don't match the editor or the show.
 - No end-of-show screen, slide-number jump, or laser pointer during the show.
+- When the assistant starts the show, the call comes seconds after Priya's last key press. Browsers allow full screen only right after a click or key press, so in a normal browser window the show may stay in the window. `start_presentation` tells the assistant when that happens. The recordings use the full-screen stand-in, so they don't show this.
