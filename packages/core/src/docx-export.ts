@@ -15,6 +15,7 @@ import {
   Packer,
   PageNumber,
   Paragraph,
+  SimpleField,
   Table,
   TableCell,
   TableOfContents,
@@ -34,6 +35,12 @@ import {
   type DocxCommentPlan,
 } from "./doc-comments";
 import { embedSuggestionMarkers, revisionizeDocx } from "./suggestions";
+import {
+  citationLibrary,
+  inText,
+  stampDocxCitations,
+  type CitationLibrary,
+} from "./citations";
 
 const color = (v: unknown) =>
   typeof v === "string" && /^#[\da-f]{6}$/i.test(v) ? v.slice(1) : undefined;
@@ -126,8 +133,21 @@ function runs(
   node: JsonNode,
   plan: DocxCommentPlan,
   notes: Map<string, NoteSlot>,
+  library: CitationLibrary,
 ): ParagraphChild[] {
   return (node.content ?? []).flatMap((n): ParagraphChild[] => {
+    if (n.type === "citation") {
+      const source = library.sources.find(
+        (item) => item.id === String(n.attrs?.sourceId ?? ""),
+      );
+      if (!source) return [];
+      return [
+        new SimpleField(
+          ` CITATION ${source.tag} \\l 1033 `,
+          inText(source, library.style),
+        ),
+      ];
+    }
     if (n.type === "noteReference") {
       const slot = notes.get(String(n.attrs?.id ?? ""));
       if (!slot) return [];
@@ -167,7 +187,7 @@ function runs(
       ];
     }
     if (n.type === "note") return [];
-    if (n.type !== "text") return runs(n, plan, notes);
+    if (n.type !== "text") return runs(n, plan, notes, library);
     const index = plan.index;
     plan.index += 1;
     const opts: { -readonly [K in keyof IRunOptions]: IRunOptions[K] } = {
@@ -212,10 +232,13 @@ function blocks(
   nodes: JsonNode[],
   plan: DocxCommentPlan,
   notes: Map<string, NoteSlot>,
+  library: CitationLibrary,
   list?: { ordered: boolean; level: number },
 ): (Paragraph | Table | TableOfContents)[] {
   return nodes.flatMap((n): (Paragraph | Table | TableOfContents)[] => {
     if (n.type === "note") return [];
+    if (n.type === "bibliography")
+      return [new Paragraph({ children: [new TextRun("SLBIBFIELD")] })];
     if (n.type === "tableOfContents") {
       const max = Number(n.attrs?.maxLevel) === 1 ? "1-1" : "1-3";
       const pageNumbers = n.attrs?.pageNumbers !== false;
@@ -228,12 +251,12 @@ function blocks(
       ];
     }
     if (n.type === "bulletList" || n.type === "orderedList")
-      return blocks(n.content ?? [], plan, notes, {
+      return blocks(n.content ?? [], plan, notes, library, {
         ordered: n.type === "orderedList",
         level: list ? Math.min(8, list.level + 1) : 0,
       });
     if (n.type === "listItem" || n.type === "blockquote")
-      return blocks(n.content ?? [], plan, notes, list);
+      return blocks(n.content ?? [], plan, notes, library, list);
     if (n.type === "table")
       return [
         new Table({
@@ -251,7 +274,7 @@ function blocks(
                       columnSpan: Number(cell.attrs?.colspan) || 1,
                       rowSpan: Number(cell.attrs?.rowspan) || 1,
                       verticalAlign: VerticalAlign.TOP,
-                      children: blocks(cell.content ?? [], plan, notes).filter(
+                      children: blocks(cell.content ?? [], plan, notes, library).filter(
                         (block): block is Paragraph | Table =>
                           block instanceof Paragraph || block instanceof Table,
                       ),
@@ -273,8 +296,8 @@ function blocks(
       ];
     const children =
       n.type === "image"
-        ? runs({ type: "paragraph", content: [n] }, plan, notes)
-        : runs(n, plan, notes);
+        ? runs({ type: "paragraph", content: [n] }, plan, notes, library)
+        : runs(n, plan, notes, library);
     return [
       new Paragraph({
         children,
@@ -327,9 +350,10 @@ export async function exportDocx(
   };
   await prepareImages(content);
   const notes = noteIndex(content);
+  const library = citationLibrary(content);
   const noteBody = (id: string): Paragraph[] => {
     const note = findNote(content, id);
-    const paragraphs = blocks(note?.content ?? [], blankCommentPlan(), notes).filter(
+    const paragraphs = blocks(note?.content ?? [], blankCommentPlan(), notes, library).filter(
       (block): block is Paragraph => block instanceof Paragraph,
     );
     return paragraphs.length ? paragraphs : [new Paragraph("")];
@@ -342,7 +366,7 @@ export async function exportDocx(
   }
   const settings = documentPageSettings(content);
   const comments = planDocxComments(content);
-  const children = blocks(content.content ?? [], comments, notes);
+  const children = blocks(content.content ?? [], comments, notes, library);
   if (comments.trailing.length)
     children.push(
       new Paragraph({
@@ -441,7 +465,8 @@ export async function exportDocx(
   const packed = await revisionizeDocx(
     new Uint8Array(await Packer.toArrayBuffer(doc)),
   );
-  return comments.comments.length
-    ? stampDocxComments(packed, comments.resolvedWordIds)
+  const withComments = comments.comments.length
+    ? await stampDocxComments(packed, comments.resolvedWordIds)
     : packed;
+  return stampDocxCitations(withComments, library, content);
 }
