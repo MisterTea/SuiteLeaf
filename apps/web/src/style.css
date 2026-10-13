@@ -4158,6 +4158,41 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
   font-weight: 600;
   color: #174ea6;
 }
+.sheet-spell-preview {
+  position: fixed;
+  z-index: 38;
+  pointer-events: none;
+  box-sizing: border-box;
+  background: rgba(254, 247, 224, 0.72);
+  outline: 2px solid #e37400;
+  border-radius: 2px;
+}
+.change-all-cell {
+  display: grid;
+  grid-template-columns: 4.5em minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  width: 100%;
+  text-align: start;
+  border: 1px solid #e1e3e1;
+  background: #fff;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.change-all-cell:hover,
+.change-all-cell:focus-visible {
+  border-color: #e37400;
+  background: #fef7e0;
+  outline: none;
+}
+.change-all-ref { font-weight: 600; color: #174ea6; }
+.change-all-cell .spelling-quote { margin: 0; font-size: 13px; }
+@media (max-width: 700px) {
+  .change-all-cell { grid-template-columns: 3.2em minmax(0, 1fr); }
+}
 .dictionary-section h3 { margin: 0 0 6px; font-size: 13px; font-weight: 500; color: #1f1f1f; }
 .dictionary-section { display: grid; gap: 8px; }
 .dictionary-section ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  applySuggestionCase,
   boxesOverlap,
+  changeAllCells,
+  changeAllValues,
   collectSheetIssues,
   collectSlideIssues,
   misspellingsInText,
@@ -9,8 +12,12 @@ import {
   replaceWordAt,
   spellingMenuPosition,
   suggestionsFor,
+  textAfterChangeAll,
+  withIgnoredCell,
+  withoutIgnoredCells,
   wordBand,
   type Box,
+  type SheetIssue,
 } from "../apps/web/src/editors/grid-spelling";
 import { addToPersonalDictionary, type PersonalDictionary } from "../apps/web/src/editors/doc-spelling";
 
@@ -128,5 +135,75 @@ describe("grid spelling", () => {
     expect(phone.left + menu.width).toBeLessThanOrEqual(382);
     expect(covers(phone, phoneWord)).toBe(false);
     expect(suggestionsFor("recieve")[0]).toBe("receive");
+  });
+
+  it("change all lists the same misspelling and skips a different typo or an ignored cell", () => {
+    const recieve = (label: string, row: number, text: string, from: number): SheetIssue => ({
+      key: `${label}:${from}`,
+      label,
+      text,
+      word: "recieve",
+      from,
+      to: from + 7,
+      sheetId: "s1",
+      row,
+      column: 1,
+    });
+    const issues = [
+      recieve("B2", 1, "We will recieve the grant", 8),
+      recieve("B4", 3, "Please recieve the keys", 7),
+      {
+        key: "B6",
+        label: "B6",
+        text: "seperate the copies",
+        word: "seperate",
+        from: 0,
+        to: 8,
+        sheetId: "s1",
+        row: 5,
+        column: 1,
+      },
+    ];
+    expect(changeAllCells(issues, "recieve").map((cell) => cell.label)).toEqual(["B2", "B4"]);
+    const ignored = withIgnoredCell([], { sheetId: "s1", row: 3, column: 1, word: "Recieve" });
+    expect(withIgnoredCell(ignored, ignored[0]!).map((cell) => cell.row)).toEqual([3]);
+    const visible = withoutIgnoredCells(issues, ignored);
+    expect(changeAllCells(visible, "recieve").map((cell) => cell.label)).toEqual(["B2"]);
+    expect(visible.map((issue) => issue.label)).toEqual(["B2", "B6"]);
+  });
+
+  it("rewrites every copy in a cell and keeps the surrounding words", () => {
+    expect(applySuggestionCase("Recieve", "receive")).toBe("Receive");
+    expect(applySuggestionCase("RECIEVE", "receive")).toBe("RECEIVE");
+    expect(
+      textAfterChangeAll(
+        "recieve the recieve keys",
+        [
+          { from: 0, to: 7, word: "recieve" },
+          { from: 12, to: 19, word: "recieve" },
+        ],
+        "receive",
+      ),
+    ).toBe("receive the receive keys");
+    expect(textAfterChangeAll("recieve", [{ from: 0, to: 7, word: "receive" }], "receive")).toBeNull();
+    const cells = changeAllCells(
+      [
+        {
+          key: "a",
+          label: "B2",
+          text: "We will recieve the grant",
+          word: "recieve",
+          from: 8,
+          to: 15,
+          sheetId: "s1",
+          row: 1,
+          column: 1,
+        },
+      ],
+      "recieve",
+    );
+    const values = changeAllValues(cells, () => "We will recieve the grant", "receive");
+    expect(values.get("s1")?.[1]?.[1]).toBe("We will receive the grant");
+    expect(changeAllValues(cells, () => "already receive", "receive").size).toBe(0);
   });
 });

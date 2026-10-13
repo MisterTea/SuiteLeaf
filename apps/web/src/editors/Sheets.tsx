@@ -2443,6 +2443,7 @@ export default function Sheets({
           ref={spelling}
           bookRef={book}
           hostRef={host}
+          engineRef={engine}
           fileId={file.id}
           ready={ready}
           persist={() => persist.current()}
