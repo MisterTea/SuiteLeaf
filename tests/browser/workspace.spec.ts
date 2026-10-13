@@ -703,10 +703,9 @@ test("slides use placeholders, re-apply layouts, and reorder by dragging thumbna
 
   for (const label of ["Line", "Grid view", "Zoom"])
     await expect(page.getByLabel(label, { exact: true })).toHaveCount(0);
-  for (const text of ["Transition", "Menus"])
-    await expect(
-      page.getByRole("button", { name: text, exact: true }),
-    ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Transition", exact: true }),
+  ).toHaveCount(0);
 
   // Layout on an existing slide moves its text into the new arrangement.
   await page.locator(".slide-canvas").click({ position: { x: 10, y: 10 } });

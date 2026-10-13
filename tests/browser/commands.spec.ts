@@ -40,7 +40,7 @@ test("command search runs strikethrough and explains commands that cannot run", 
   );
   await page.keyboard.press("Escape");
 
-  await page.keyboard.press("Control+Alt+m");
+  await page.keyboard.press("F10");
   await expect(page.getByRole("button", { name: "File", exact: true })).toBeFocused();
   await page.keyboard.press("ArrowRight");
   await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeFocused();

@@ -26,6 +26,15 @@ export function useToolbarOverflow(
         el !== more &&
         !el.classList.contains("toolbar-break"),
     );
+    // A phone already scrolls the toolbar sideways. Folding would hide
+    // controls the tests and a thumb both need to reach.
+    if (window.innerWidth <= 700) {
+      tools.forEach((t) => delete t.dataset.overflow);
+      delete bar.dataset.measuring;
+      setOverflowing(false);
+      if (open) setOpen(false);
+      return;
+    }
     bar.dataset.measuring = "";
     tools.forEach((t) => delete t.dataset.overflow);
     const box = bar.getBoundingClientRect(),
