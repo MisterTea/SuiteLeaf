@@ -170,6 +170,8 @@ test("file tools download a file, remove it, and open it again without replacing
   const [opened] = await Promise.all([call(page, "open_from_computer"), choose()]);
   expect(opened).toContain('Opened "Trip list.sldoc"');
   await expect(page.getByRole("textbox", { name: "Document content" }).locator("li")).toHaveText(["Passport", "Plug adapter"]);
+  await waitForTools(page, "set_list");
+  expect(await call(page, "set_list", { from_text: "Trip", list: "bullet" })).toBe('Made 1 paragraph(s) a bullet list: "Trip" (was Heading 1).');
 });
 
 test("file list tools search, filter, copy, rename and remove", async ({ page }) => {

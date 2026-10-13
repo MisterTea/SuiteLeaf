@@ -370,6 +370,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         const which = to_text ? `The paragraphs from "${from_text}" to "${to_text}" are` : `Only the paragraph containing "${from_text}" was covered, and it is`;
         if ((list === "bullet" && bullet) || (list === "numbered" && numbered) || (list === "none" && !bullet && !numbered))
           return `${which} already ${list === "none" ? "plain paragraphs" : `in a ${list} list`}; nothing changed.${to_text ? "" : " To cover the paragraphs after it too, give to_text (text in the last one)."}`;
+        const covered = blocks(editor).filter((b) => b.end > start.from && b.pos < Math.max(start.to, end.to));
         const chain = editor.chain();
         if (list === "bullet" && !bullet) chain.toggleBulletList().run();
         else if (list === "numbered" && !numbered) chain.toggleOrderedList().run();
@@ -377,7 +378,8 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
           if (bullet) chain.toggleBulletList().run();
           else if (numbered) chain.toggleOrderedList().run();
         }
-        return `Set the paragraphs to ${list === "none" ? "plain paragraphs" : `a ${list} list`}.`;
+        const named = covered.slice(0, 12).map((b) => `"${b.text.slice(0, 50)}" (was ${b.label})`);
+        return `Made ${covered.length} paragraph(s) ${list === "none" ? "plain paragraphs" : `a ${list} list`}: ${named.join(", ")}${covered.length > 12 ? ", …" : ""}.`;
       },
     }),
     tool({
