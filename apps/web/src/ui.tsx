@@ -375,6 +375,7 @@ export type EditorActions = {
     freezeColumns: (count: number) => void;
     showGridlines: (visible: boolean) => void;
     showFormulaBar: (visible: boolean) => void;
+    openSpelling?: () => void;
   };
   slideActions?: {
     undo: () => void;
@@ -400,6 +401,7 @@ export type EditorActions = {
     undoReason?: () => string | undefined;
     redoReason?: () => string | undefined;
     deleteReason?: () => string | undefined;
+    openSpelling?: () => void;
   };
 };
 export type SheetView = {
