@@ -27,6 +27,13 @@ const cursorScript = `
   else install();
 })();`;
 
+/**
+ * Stress runs (e.g. STORYBOARD_RUN_TAG=web-q4 with --repeat-each=3) keep every
+ * repeat's metrics and video under test-results/…/runs/<tag>/ and leave the
+ * committed storyboard videos alone.
+ */
+const runTag = process.env.STORYBOARD_RUN_TAG;
+
 /** Record the Electron desktop app instead of the web build (AI storyboards). */
 export const electronMode = process.env.STORYBOARD_ELECTRON === "1";
 
@@ -111,7 +118,9 @@ export const test = base.extend<{ page: Page }>({
     const video = page.video();
     await close();
     const passed = info.status === info.expectedStatus;
-    if (video && (passed || ai)) {
+    if (video && runTag)
+      encode(await video.path(), join(root, "test-results/ai-videos/runs", runTag, `${info.title}.r${info.repeatEachIndex}.mp4`));
+    else if (video && (passed || ai)) {
       const name = `${info.title}.mp4`;
       encode(
         await video.path(),
@@ -189,7 +198,9 @@ export async function askAgent(
   })) as Omit<AgentRun, "seconds">;
   const result = { ...run, seconds: Math.round((Date.now() - started) / 1000) };
   const info = base.info();
-  const out = join(root, "test-results/ai-metrics", electronMode ? "electron" : "", `${info.title}.json`);
+  const out = runTag
+    ? join(root, "test-results/ai-metrics/runs", runTag, `${info.title}.r${info.repeatEachIndex}.json`)
+    : join(root, "test-results/ai-metrics", electronMode ? "electron" : "", `${info.title}.json`);
   const runs = (agentRuns.get(info.testId) ?? []).concat({ prompt, ...result });
   agentRuns.set(info.testId, runs);
   mkdirSync(dirname(out), { recursive: true });

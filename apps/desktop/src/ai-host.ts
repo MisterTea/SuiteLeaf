@@ -26,7 +26,8 @@ type Inbound =
 const port = process.parentPort;
 const modelPath = process.env.SUITELEAF_MODEL_PATH!;
 const contextSize = Number(process.env.SUITELEAF_MODEL_CONTEXT ?? 16384);
-let status: AiStatus = { state: "idle", backend: "llama.cpp", model: "Gemma 4 E4B (Q4_0)" };
+const quant = /-(Q\d[\w]*)\.gguf$/i.exec(modelPath ?? "")?.[1] ?? "GGUF";
+let status: AiStatus = { state: "idle", backend: "llama.cpp", model: `Gemma 4 E4B (${quant})` };
 let llama: Llama | undefined;
 let model: LlamaModel | undefined;
 let context: LlamaContext | undefined;
