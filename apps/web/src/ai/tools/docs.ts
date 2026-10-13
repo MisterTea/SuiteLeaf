@@ -77,6 +77,9 @@ const endOfDocument = (editor: Editor) => {
   return last ? last.end - 1 : 1;
 };
 
+/** Text the model quoted with Markdown marks ("# Volunteers"), as it reads in the document. */
+const withoutMarks = (text: string) => text.replace(/^\s*(#{1,6}|[-*•]|\d+[.)])\s+/, "").replace(/\*\*/g, "");
+
 /** Insert lightweight Markdown: "# " headings, "- " bullets, "1. " numbers, **bold**. */
 async function writeLines(editor: Editor, text: string, animate: boolean) {
   // Blank lines separate paragraphs; they don't become empty paragraphs.
@@ -169,12 +172,13 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       }),
       target: ({ after }) => {
         try {
-          return rectAt(editor, after ? blocks(editor).find((b) => b.text.includes(after))?.end ?? 0 : endOfDocument(editor));
+          return rectAt(editor, after ? blocks(editor).find((b) => b.text.includes(withoutMarks(after)))?.end ?? 0 : endOfDocument(editor));
         } catch {
           return editor.view.dom;
         }
       },
-      async execute({ text, after, replace_document }) {
+      async execute({ text, after: anchor, replace_document }) {
+        const after = anchor && withoutMarks(anchor);
         if (replace_document) editor.chain().clearContent().run();
         const list = blocks(editor);
         const empty = list.length === 1 && !list[0].text;
@@ -185,7 +189,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
             list.find((b) => b.text.trim() === after.trim()) ??
             list.find((b) => b.text.includes(after)) ??
             list.find((b) => b.text.toLowerCase().includes(after.toLowerCase()));
-          if (!block) throw new ToolError(`No paragraph contains "${after}".`);
+          if (!block) throw new ToolError(`No paragraph contains "${after}". Use read_document to see the exact text.`);
           const next = list[list.indexOf(block) + 1];
           where = `right after ${quote(block)}${next ? `, before ${quote(next)}` : ", at the end of the document"}`;
           editor.chain().setTextSelection(block.end - 1).splitBlock().run();
