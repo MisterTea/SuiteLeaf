@@ -61,6 +61,7 @@ import {
   pastedScalar,
   type CopiedCell,
 } from "./paste-values";
+import { cellForFillDown, cellsFilledDown } from "./fill-down";
 import SheetColumnGroups, { type SheetColumnGroupsHandle } from "./sheet-column-groups-ui";
 import {
   contiguousColumnRanges,
@@ -1950,6 +1951,56 @@ export default function Sheets({
     }
     persist.current();
   };
+  // One click copies the top cell of the selection down the rest of it.
+  // Relative row references move. Absolute references and plain numbers stay as they are.
+  const fillDown = () => {
+    if (readOnlyRef.current) return;
+    const sheet = book.current?.getActiveSheet();
+    const range = book.current?.getActiveRange()?.getRange();
+    if (!sheet || !range) return;
+    const { startRow, endRow, startColumn, endColumn } = range;
+    if (
+      ![startRow, endRow, startColumn, endColumn].every((n) =>
+        Number.isInteger(n),
+      )
+    )
+      return;
+    if (endRow <= startRow || endColumn < startColumn) return;
+    const rowCount = endRow - startRow + 1;
+    const columnCount = endColumn - startColumn + 1;
+    try {
+      const top = sheet.getRange(startRow, startColumn, 1, columnCount);
+      const formulas = top.getFormulas() as string[][];
+      const values = top.getValues() as unknown[][];
+      const sources = Array.from({ length: columnCount }, (_, column) => {
+        const formula = formulas[0]?.[column]
+          ? String(formulas[0][column])
+          : "";
+        return {
+          formula: formula
+            ? formula.startsWith("=")
+              ? formula
+              : `=${formula}`
+            : null,
+          value: pastedScalar(values[0]?.[column]),
+        };
+      });
+      const writes = cellsFilledDown(sources, rowCount).map((row) =>
+        row.map((cell) => cellForFillDown(cell)),
+      );
+      if (!writes.length || writes.length !== rowCount - 1) return;
+      sheet
+        .getRange(startRow + 1, startColumn, writes.length, columnCount)
+        .setValues(writes);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+      return;
+    }
+    try {
+      api.current?.getFormula()?.executeCalculation();
+    } catch {}
+    persist.current();
+  };
   const deleteValues = () => {
     const ranges =
       book.current?.getActiveSheet()?.getSelection()?.getActiveRangeList() ??
@@ -2329,6 +2380,7 @@ export default function Sheets({
         copy: () => void clipboard("copy"),
         paste: () => void clipboard("paste"),
         pasteValues,
+        fillDown,
         deleteValues,
         insertChart: () => startPanel("chart"),
         insertPivot: () => startPanel("pivot"),

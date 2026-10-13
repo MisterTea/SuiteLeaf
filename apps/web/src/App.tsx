@@ -2306,6 +2306,11 @@ function Workspace() {
                     Paste values
                   </MenuItem>
                   <MenuItem
+                    onSelect={() => actions.current?.sheetActions?.fillDown?.()}
+                  >
+                    Fill down
+                  </MenuItem>
+                  <MenuItem
                     shortcut="Delete"
                     onSelect={() =>
                       actions.current?.sheetActions?.deleteValues()

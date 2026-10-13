@@ -400,6 +400,8 @@ export type EditorActions = {
     paste: () => void;
     /** Write the copied cells' calculated values, without their formulas. */
     pasteValues?: () => void;
+    /** Copy the top cell of the selection down, shifting relative row references. */
+    fillDown?: () => void;
     deleteValues: () => void;
     insertChart: () => void;
     insertImage?: () => void;
