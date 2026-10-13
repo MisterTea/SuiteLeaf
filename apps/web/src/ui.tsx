@@ -378,6 +378,8 @@ export type EditorActions = {
     showGridlines: (visible: boolean) => void;
     showFormulaBar: (visible: boolean) => void;
     openSpelling?: () => void;
+    insertPageBreak?: () => void;
+    openPrintSettings?: () => void;
   };
   slideActions?: {
     undo: () => void;
