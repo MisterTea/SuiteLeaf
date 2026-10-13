@@ -99,6 +99,7 @@ import {
   hasTextRuns,
   rangeColor,
   rangeHas,
+  replaceRunRange,
   runsOf,
   styleSelection,
   styleWholeBox,
@@ -2748,6 +2749,16 @@ ${slidesHtml}
               issue.to,
               replacement,
             );
+            const slide = next.slides[issue.slideId];
+            const element = slide?.elements.find((item) => item.id === issue.elementId);
+            if (element?.runs?.length) {
+              element.runs = replaceRunRange(
+                element.runs,
+                issue.from,
+                issue.to,
+                replacement,
+              );
+            }
             commitRef.current(next);
             applySelection(issue.slideId, [issue.slideId], issue.elementId);
           }}

@@ -30,6 +30,36 @@ function sameStyle(a: TextRun, b: TextRun): boolean {
   );
 }
 
+/** Keep each run's style when a spelling change replaces a slice of the text. */
+export function replaceRunRange(
+  runs: readonly TextRun[],
+  from: number,
+  to: number,
+  replacement: string,
+): TextRun[] {
+  const next: TextRun[] = [];
+  let cursor = 0;
+  let inserted = false;
+  for (const run of runs) {
+    const start = cursor;
+    const end = cursor + run.text.length;
+    cursor = end;
+    if (end <= from || start >= to) {
+      next.push(run);
+      continue;
+    }
+    const before = run.text.slice(0, Math.max(0, from - start));
+    const after = run.text.slice(Math.max(0, to - start));
+    if (before) next.push({ ...run, text: before });
+    if (!inserted) {
+      next.push({ ...run, text: replacement });
+      inserted = true;
+    }
+    if (after) next.push({ ...run, text: after });
+  }
+  return mergeRuns(next);
+}
+
 export function mergeRuns(runs: readonly TextRun[]): TextRun[] {
   const out: TextRun[] = [];
   for (const run of runs) {

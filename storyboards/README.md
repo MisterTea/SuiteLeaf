@@ -119,3 +119,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 61 | [Fade in on click](61-fade-in-on-click.md) | single-node | Slides |
 | 61 | [A different first page](61-different-first-page.md) | single-node | Docs |
 | 62 | [Odd and even pages](62-odd-and-even-pages.md) | single-node | Docs |
+| 63 | [Right-click a misspelling](63-right-click-a-misspelling.md) | single-node | Sheets |

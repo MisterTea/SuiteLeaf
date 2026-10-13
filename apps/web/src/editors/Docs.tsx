@@ -262,13 +262,13 @@ export default function Docs({
       // Keep a few lines of context around the caret when typing scrolls the page.
       scrollMargin: { top: 64, bottom: 64, left: 5, right: 5 },
       handleKeyDown: (view, event): boolean => {
-        // macOS browsers scroll the page on Home/End; Word and Docs move to the line start/end.
+        // Home and End move to the start or end of the line, as in Word.
+        // macOS scrolls the page instead, and Linux does too inside this editor.
         if (
           (event.key === "Home" || event.key === "End") &&
           !event.metaKey &&
           !event.ctrlKey &&
-          !event.altKey &&
-          navigator.platform.includes("Mac")
+          !event.altKey
         ) {
           event.preventDefault();
           const selection = view.dom.ownerDocument.getSelection();
