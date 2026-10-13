@@ -15,13 +15,14 @@ Rosa owns the "Watering rota", and Sam edits it during the week. Before she open
 
 ## Scenes
 
-1. **The list.** Rosa signs in and opens Garden club. The row "Watering rota.sldoc" shows "Sam Okafor" and a local time, "Today 09:14", in the same row as the name. She has not opened the file.
-2. **Not the owner.** The owner of the file is Rosa. The row still says Sam, because his upload is the current version. "Spring fair.slslides", which only Rosa has saved, says "Rosa Diaz".
-3. **On the file.** She opens the rota. Beside the title, the line reads "Last edited by Sam Okafor · Today 09:14". The version-history panel is closed.
-4. **She saves.** She adds "Thursday: ask Alex to cover." The status goes to "Saved to SuiteDrive", and the line changes to "Last edited by Rosa Diaz" with the new time. The Garden club list shows Rosa on that row without a manual reload.
-5. **Sam's screen.** Sam already has the file list open. After Rosa's save, his row updates to "Rosa Diaz" and the new time. He opens the rota and sees the same line in the header.
-6. **A viewer can see it.** Alex, who can only view, sees "Rosa Diaz" on the row and the same "Last edited by" line in the header. He does not need version history.
-7. **The history agrees.** Rosa opens the clock. The top version is hers, with the same time the header showed.
+1. **The list.** Rosa signs in and opens Garden club. The row "Watering rota.sldoc" shows "Sam Okafor · Today 09:14" beside the name. She has not opened the file.
+2. **Not the owner.** Rosa owns both files. "Spring fair.slslides", which only she has saved, says "Rosa Diaz · Yesterday 16:40". The rota still says Sam, because his upload is the current version.
+3. **On the file.** She opens the rota. Under the title, the line reads "Last edited by Sam Okafor · Today 09:14". The version-history panel is closed.
+4. **Sam is already looking.** Sam's Garden club list is open and still says "Sam Okafor · Today 09:14".
+5. **She saves.** On her computer she adds "Thursday: ask Alex to cover." Her header changes to "Last edited by Rosa Diaz" with the new time, and the status is "Saved to SuiteDrive". Sam does not reload.
+6. **His row updates.** Within a few seconds the rota row turns blue and reads "Rosa Diaz" with the new time, "Today 23:18" in this recording. He opens the file. The header matches, the new sentence is there, and version history is still closed.
+7. **A viewer can see it.** Alex, who can only view, sees "Rosa Diaz" and the same time on the row, then "Last edited by Rosa Diaz · Today 23:18" under the title, with a View only badge. He does not open version history.
+8. **The history agrees.** Rosa opens the clock. The current version is "Today 23:18 · Rosa Diaz", the same time as the header. Sam's "Today 09:14" is the version under it.
 
 ## Google Workspace benchmark
 
@@ -44,12 +45,25 @@ Known pain points:
 
 ## Success looks like
 
-- Before Rosa's correction, the rota says Sam Okafor in the list and on the file.
-- After she saves, both say Rosa Diaz, including on Sam's already-open list, and the top history entry is hers.
+- Before Rosa's correction, the rota says Sam Okafor in the list and on the file, and the slides say Rosa Diaz.
+- After she saves, Sam's already-open list and an already-open copy of the file say Rosa Diaz, with the same time the current history entry uses.
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| 1. Every SuiteDrive file row shows the last editor and a local date and time, without opening the file | Met | Video 0:07, rota "Sam Okafor · Today 09:14" and slides "Rosa Diaz · Yesterday 16:40". Test `43-who-last-edited` |
+| 2. An open SuiteDrive file shows "Last edited by {name}" with that time, while version history is closed | Met | Video 0:11, "Last edited by Sam Okafor · Today 09:14", history panel absent |
+| 3. The name is the head version's author, even when that person is not the owner | Met | Video 0:07, Rosa is signed in and owns the rota; the row says Sam. Slides, which only she saved, say Rosa |
+| 4. After someone else saves, an already-open list and an already-open file show the new name and time within 5 seconds, without a reload | Met | Video 0:28, Sam's open list turns blue and reads "Rosa Diaz · Today 23:18". The same test asserts his already-open file header changed within 5 seconds of her save (`rowAt - savedAt` and `fileAt - savedAt`) |
+| 5. A save you make yourself shows your display name, the same name version history uses | Met | Rosa's save in the test sets her header to "Last edited by Rosa Diaz". Video 0:43, history's current version is "Today 23:18 · Rosa Diaz", matching the header |
+| 6. A viewer who can open the file sees the last editor in the list and in the header | Met | Video 0:37–0:40, Alex (View only, no rename) sees Rosa on the row and "Last edited by Rosa Diaz · Today 23:18" |
 
 ## Gaps and notes
 
-- `drive_item` stores `updatedAt` and `ownerId`. It does not store a last author. The author is `drive_version.authorId`, and `authorName` is filled when versions are listed.
-- Drive rows show `formatModified(updatedAt)`. Shared rows add the owner's name and the recipient's role, which is not the last editor. The open file's status line says "Saved to SuiteDrive" and does not name anyone.
-- The home screen on a single computer is a different list and is out of this story. SuiteDrive is the list that should gain the name.
+- The last editor is the head version's author (`drive_version.authorId`) and `createdAt`. The list and the header use the same display name and the same "Today 09:14" clock as version history. `drive_item` still does not store a copy of the author.
+- Shared with me still shows the owner's name and the role under a folder. Inside the folder, each file row names the last editor.
+- An already-open document updates the last-edited line when someone else saves. It does not replace the paragraphs on screen; opening the file again does. That conflict is storyboard 25.
+- Rosa's typing happens on her own screen so Sam's list can stay in view. The recording shows his row change, then the sentence when he opens the rota.
+- The home screen on a single computer is a different list and is out of this story.
 - Version history itself is storyboard 28. This story only surfaces the head version's author.

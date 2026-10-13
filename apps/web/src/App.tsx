@@ -90,6 +90,8 @@ import {
   type DriveRole,
 } from "./node-client";
 import { DriveBrowser, DriveDialog, NameDialog } from "./drive/DriveBrowser";
+import { LastEdited } from "./drive/LastEdited";
+import { requestLastEditRefresh } from "./drive/last-edit";
 import { ShareDialog } from "./drive/ShareDialog";
 import { searchFile } from "./library-search";
 import { FileLibraryRow, TrashToast } from "./library-trash-ui";
@@ -1255,8 +1257,10 @@ function Workspace() {
         current.current = { ...current.current!, drive: link };
         await storage.save(current.current);
       });
-      if (alive.current && version.current === at)
+      if (alive.current && version.current === at) {
         setStatus("Saved to SuiteDrive");
+        requestLastEditRefresh();
+      }
     } catch (e) {
       if (e instanceof DriveConflict) {
         if (e.item.id !== current.current?.drive?.itemId) return;
@@ -1543,6 +1547,7 @@ function Workspace() {
     setRecord(current.current);
     setDriveDialog(null);
     setStatus("Saved to SuiteDrive");
+    requestLastEditRefresh();
   };
   const reloadFromDrive = async () => {
     const conflict = driveConflictRef.current;
@@ -1763,6 +1768,7 @@ function Workspace() {
               {status}
             </span>
           </div>
+          {record.drive ? <LastEdited itemId={record.drive.itemId} /> : null}
           <div className="file-menu" role="menubar">
             <Menu label="File">
               <SubMenu label="New">
