@@ -15,7 +15,7 @@ use serde::Deserialize;
 use serde_json::{Value as JsonValue, json};
 use std::collections::BTreeMap;
 use suitedb::{Db, Value};
-use suitedrive::{BlobTransport, Drive, DriveError, Principal, Role, Version};
+use suitedrive::{BlobTransport, Drive, DriveError, Item, Principal, Role, Version};
 use suiteleaf_net::{NetHandle, PeerId, Protocol};
 
 use crate::{
@@ -130,6 +130,7 @@ async fn list(
     .await?;
     let mut payload =
         serde_json::to_value(&items).map_err(|e| ApiError(DriveError::Other(e.into())))?;
+    payload = with_editor_names(&s, payload).await?;
     if shared && let Some(rows) = payload.as_array_mut() {
         let ids: Vec<String> = rows
             .iter()
@@ -190,7 +191,7 @@ async fn create(
         )
     })
     .await?;
-    Ok((StatusCode::CREATED, Json(item)).into_response())
+    Ok((StatusCode::CREATED, Json(item_body(&s, &item).await?)).into_response())
 }
 
 async fn get_item(
@@ -199,7 +200,8 @@ async fn get_item(
     Path(id): Path<String>,
 ) -> ApiResult<Response> {
     let who = principal(&user);
-    Ok(Json(blocking(&s.drive, move |d| d.get(&who, &id)).await?).into_response())
+    let item = blocking(&s.drive, move |d| d.get(&who, &id)).await?;
+    Ok(Json(item_body(&s, &item).await?).into_response())
 }
 
 /// `parentId: null` moves an item to the top level; an absent key leaves it.
@@ -223,7 +225,7 @@ async fn update(
         )
     })
     .await?;
-    Ok(Json(item).into_response())
+    Ok(Json(item_body(&s, &item).await?).into_response())
 }
 
 async fn trash(
@@ -319,7 +321,7 @@ async fn write_content(
         d.write(&who, &id, if_match.as_deref(), mime.as_deref(), &body)
     })
     .await?;
-    let mut response = Json(&item).into_response();
+    let mut response = Json(item_body(&s, &item).await?).into_response();
     if let Some(tag) = etag(item.head_version_id.as_deref()) {
         response.headers_mut().insert(header::ETAG, tag);
     }
@@ -336,21 +338,88 @@ fn display_name(row: &BTreeMap<String, Value>) -> Option<String> {
     }
 }
 
-fn author_names(db: &Db, versions: &[Version]) -> BTreeMap<String, String> {
+fn names_for(db: &Db, ids: &[String]) -> BTreeMap<String, String> {
     let mut names = BTreeMap::new();
-    for version in versions {
-        if names.contains_key(&version.author_id) {
+    for id in ids {
+        if id.is_empty() || names.contains_key(id) {
             continue;
         }
         let name = db
-            .get("user", &version.author_id)
+            .get("user", id)
             .ok()
             .flatten()
             .and_then(|row| display_name(&row))
             .unwrap_or_else(|| "Former member".into());
-        names.insert(version.author_id.clone(), name);
+        names.insert(id.clone(), name);
     }
     names
+}
+
+fn author_names(db: &Db, versions: &[Version]) -> BTreeMap<String, String> {
+    let ids: Vec<String> = versions.iter().map(|v| v.author_id.clone()).collect();
+    names_for(db, &ids)
+}
+
+fn author_ids(value: &JsonValue) -> Vec<String> {
+    let mut ids = Vec::new();
+    let rows = value
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or(std::slice::from_ref(value));
+    for row in rows {
+        if let Some(id) = row
+            .get("lastAuthorId")
+            .and_then(|v| v.as_str())
+            .filter(|id| !id.is_empty())
+            && !ids.iter().any(|existing| existing == id)
+        {
+            ids.push(id.to_owned());
+        }
+    }
+    ids
+}
+
+fn insert_editor_name(row: &mut JsonValue, names: &BTreeMap<String, String>) {
+    let Some(object) = row.as_object_mut() else {
+        return;
+    };
+    let Some(id) = object
+        .get("lastAuthorId")
+        .and_then(|v| v.as_str())
+        .filter(|id| !id.is_empty())
+    else {
+        return;
+    };
+    let name = names
+        .get(id)
+        .cloned()
+        .unwrap_or_else(|| "Former member".into());
+    object.insert("lastAuthorName".into(), JsonValue::String(name));
+}
+
+/// The display name version history uses for the head version's author.
+async fn with_editor_names(state: &AppState, mut payload: JsonValue) -> ApiResult<JsonValue> {
+    let ids = author_ids(&payload);
+    if ids.is_empty() {
+        return Ok(payload);
+    }
+    let db = state.db.clone();
+    let names = tokio::task::spawn_blocking(move || names_for(&db, &ids))
+        .await
+        .map_err(|e| ApiError(DriveError::Other(e.into())))?;
+    if let Some(rows) = payload.as_array_mut() {
+        for row in rows {
+            insert_editor_name(row, &names);
+        }
+    } else {
+        insert_editor_name(&mut payload, &names);
+    }
+    Ok(payload)
+}
+
+async fn item_body(state: &AppState, item: &Item) -> ApiResult<JsonValue> {
+    let payload = serde_json::to_value(item).map_err(|e| ApiError(DriveError::Other(e.into())))?;
+    with_editor_names(state, payload).await
 }
 
 fn version_json(version: &Version, names: &BTreeMap<String, String>) -> JsonValue {
@@ -425,7 +494,7 @@ async fn restore_version(
         d.restore(&who, &id, &version_id, if_match.as_deref())
     })
     .await?;
-    let mut response = Json(&item).into_response();
+    let mut response = Json(item_body(&s, &item).await?).into_response();
     if let Some(tag) = etag(item.head_version_id.as_deref()) {
         response.headers_mut().insert(header::ETAG, tag);
     }
@@ -448,7 +517,7 @@ async fn copy_version(
         d.copy_version(&who, &id, &version_id, &body.name)
     })
     .await?;
-    Ok((StatusCode::CREATED, Json(item)).into_response())
+    Ok((StatusCode::CREATED, Json(item_body(&s, &item).await?)).into_response())
 }
 
 async fn get_acl(

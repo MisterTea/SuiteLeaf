@@ -136,6 +136,12 @@ pub struct Item {
     pub content_hash: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    /// Who wrote the head version, and when. Absent for folders and for files
+    /// that have never been saved. This is the last editor, not the owner.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_author_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_edited_at: Option<String>,
     pub trashed: bool,
     pub role: Option<Role>,
     /// Whether this node holds every blob of the head version.
@@ -435,13 +441,19 @@ impl Drive {
 
     fn to_item(&self, row: &Row, role: Option<Role>) -> DriveResult<Item> {
         let head = text(row, "headVersionId");
-        let content_hash = match &head {
-            Some(v) => self
-                .db
-                .get("drive_version", v)?
-                .and_then(|r| text(&r, "contentHash")),
+        let head_row = match &head {
+            Some(v) => self.db.get("drive_version", v)?,
             None => None,
         };
+        let content_hash = head_row.as_ref().and_then(|r| text(r, "contentHash"));
+        let last_author_id = head_row
+            .as_ref()
+            .and_then(|r| text(r, "authorId"))
+            .filter(|id| !id.is_empty());
+        let last_edited_at = last_author_id
+            .as_ref()
+            .and_then(|_| head_row.as_ref().and_then(|r| text(r, "createdAt")))
+            .filter(|at| !at.is_empty());
         let available = match content_hash.as_deref().map(str::parse::<Hash>) {
             Some(Ok(hash)) => self
                 .blobs
@@ -463,6 +475,8 @@ impl Drive {
             content_hash,
             created_at: text(row, "createdAt").unwrap_or_default(),
             updated_at: text(row, "updatedAt").unwrap_or_default(),
+            last_author_id,
+            last_edited_at,
             trashed: int(row, "trashed") != 0,
             role,
             available,
