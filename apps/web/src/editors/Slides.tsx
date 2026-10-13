@@ -42,6 +42,7 @@ import {
 } from "@suiteleaf/core";
 import { exportText, printDocument } from "../storage";
 import { Menu, MenuItem, Tool, type EditorActions } from "../ui";
+import { MenuSearchPill } from "../command-palette";
 import {
   applyBackground,
   applyLayout,
@@ -608,6 +609,38 @@ ${slidesHtml}
   }, []);
 
   const currentSlideIndex = Math.max(0, deck.slideOrder.indexOf(activeSlideId));
+  const slideApi = useRef({
+    undo,
+    redo,
+    duplicate: duplicateCurrentSlide,
+    delete: deleteCurrentSlide,
+    undoReason: (): string | undefined =>
+      historyIndex.current <= 0 ? "Nothing to undo" : undefined,
+    redoReason: (): string | undefined =>
+      historyIndex.current >= history.current.length - 1
+        ? "Nothing to redo"
+        : undefined,
+    deleteReason: (): string | undefined =>
+      deckRef.current.slideOrder.length <= 1
+        ? "Presentations must have at least one slide."
+        : undefined,
+  });
+  slideApi.current = {
+    undo,
+    redo,
+    duplicate: duplicateCurrentSlide,
+    delete: deleteCurrentSlide,
+    undoReason: () =>
+      historyIndex.current <= 0 ? "Nothing to undo" : undefined,
+    redoReason: () =>
+      historyIndex.current >= history.current.length - 1
+        ? "Nothing to redo"
+        : undefined,
+    deleteReason: () =>
+      deckRef.current.slideOrder.length <= 1
+        ? "Presentations must have at least one slide."
+        : undefined,
+  };
 
   // Wire editor actions for workspace header
   useEffect(() => {
@@ -622,6 +655,15 @@ ${slidesHtml}
         beginShow(
           Math.max(0, deckRef.current.slideOrder.indexOf(activeSlideId)),
         ),
+      slideActions: {
+        undo: () => slideApi.current.undo(),
+        redo: () => slideApi.current.redo(),
+        duplicate: () => slideApi.current.duplicate(),
+        deleteSlide: () => slideApi.current.delete(),
+        undoReason: () => slideApi.current.undoReason(),
+        redoReason: () => slideApi.current.redoReason(),
+        deleteReason: () => slideApi.current.deleteReason(),
+      },
     });
   }, [onActions, onChange, activeSlideId, beginShow]);
 
@@ -905,6 +947,7 @@ ${slidesHtml}
         aria-label="Slides toolbar"
       >
         <div className="tool-group">
+          <MenuSearchPill />
           <Menu label="+ New slide">
             <MenuItem onSelect={() => addSlide("title-body")}>
               Title & body

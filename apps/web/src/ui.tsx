@@ -4,10 +4,16 @@ import {
   createContext,
   Fragment,
   useContext,
+  useMemo,
   useRef,
   type ReactNode,
 } from "react";
+import { isUnimplemented, pendingReason } from "./commands";
+import { useRegisterCommand } from "./command-palette";
 const AfterClose = createContext<{ current: (() => void) | null } | null>(null);
+const MenuPath = createContext<string[]>([]);
+/** Renders menu children only to register commands, with no popup. */
+const MenuRegistrar = createContext(false);
 export function Menu({
   label,
   children,
@@ -16,27 +22,31 @@ export function Menu({
   children: ReactNode;
 }) {
   const afterClose = useRef<(() => void) | null>(null);
+  const path = useMemo(() => [label], [label]);
   return (
-    <Dropdown.Root>
-      <Dropdown.Trigger className="menu-trigger">{label}</Dropdown.Trigger>
-      <Dropdown.Portal>
-        <Dropdown.Content
-          className="menu-content"
-          sideOffset={4}
-          onCloseAutoFocus={(e) => {
-            const run = afterClose.current;
-            afterClose.current = null;
-            if (!run) return;
-            e.preventDefault();
-            run();
-          }}
-        >
-          <AfterClose.Provider value={afterClose}>
-            {children}
-          </AfterClose.Provider>
-        </Dropdown.Content>
-      </Dropdown.Portal>
-    </Dropdown.Root>
+    <MenuPath.Provider value={path}>
+      <MenuRegistrar.Provider value={true}>{children}</MenuRegistrar.Provider>
+      <Dropdown.Root>
+        <Dropdown.Trigger className="menu-trigger">{label}</Dropdown.Trigger>
+        <Dropdown.Portal>
+          <Dropdown.Content
+            className="menu-content"
+            sideOffset={4}
+            onCloseAutoFocus={(e) => {
+              const run = afterClose.current;
+              afterClose.current = null;
+              if (!run) return;
+              e.preventDefault();
+              run();
+            }}
+          >
+            <AfterClose.Provider value={afterClose}>
+              {children}
+            </AfterClose.Provider>
+          </Dropdown.Content>
+        </Dropdown.Portal>
+      </Dropdown.Root>
+    </MenuPath.Provider>
   );
 }
 export function MenuItem({
@@ -45,6 +55,10 @@ export function MenuItem({
   disabled = false,
   shortcut,
   focusesTarget = false,
+  searchLabel,
+  synonyms,
+  group,
+  availability,
 }: {
   children: ReactNode;
   onSelect: () => void;
@@ -52,12 +66,50 @@ export function MenuItem({
   shortcut?: string;
   /** Run after the menu closes, so focus can go to the editor or a dialog. */
   focusesTarget?: boolean;
+  /** Label for command search when the visible children are not plain text. */
+  searchLabel?: string;
+  synonyms?: string[];
+  group?: string;
+  /** Return a reason when the command cannot run, or true when it can. */
+  availability?: () => true | string;
 }) {
   const afterClose = useContext(AfterClose);
+  const path = useContext(MenuPath);
+  const label = searchLabel ?? (typeof children === "string" ? children : "");
+  const pending = isUnimplemented(onSelect);
+  const reason = availability?.();
+  const unavailable =
+    disabled || pending || (typeof reason === "string" && reason.length > 0);
+  const title =
+    typeof reason === "string"
+      ? reason
+      : pending
+        ? pendingReason(label)
+        : undefined;
+  useRegisterCommand(
+    label
+      ? {
+          id: [...path, label].join("/"),
+          label,
+          path,
+          shortcut,
+          synonyms,
+          group,
+          pending,
+          availability: () => {
+            const live = availability?.();
+            return typeof live === "string" ? live : true;
+          },
+          run: onSelect,
+        }
+      : null,
+  );
+  if (useContext(MenuRegistrar)) return null;
   return (
     <Dropdown.Item
       className="menu-item"
-      disabled={disabled}
+      disabled={unavailable}
+      title={title}
       onSelect={
         focusesTarget && afterClose
           ? () => (afterClose.current = onSelect)
@@ -65,7 +117,9 @@ export function MenuItem({
       }
     >
       <span className="menu-item-label">{children}</span>
-      {shortcut ? <span className="menu-item-shortcut">{shortcut}</span> : null}
+      {shortcut ? (
+        <span className="menu-item-shortcut">{shortcut}</span>
+      ) : null}
     </Dropdown.Item>
   );
 }
@@ -76,23 +130,36 @@ export function SubMenu({
   label: string;
   children: ReactNode;
 }) {
+  const parent = useContext(MenuPath);
+  const path = useMemo(() => [...parent, label], [parent, label]);
+  const registerOnly = useContext(MenuRegistrar);
+  if (registerOnly) {
+    return (
+      <MenuPath.Provider value={path}>
+        <MenuRegistrar.Provider value={true}>{children}</MenuRegistrar.Provider>
+      </MenuPath.Provider>
+    );
+  }
   return (
-    <Dropdown.Sub>
-      <Dropdown.SubTrigger className="menu-item">
-        <span className="menu-item-label">{label}</span>
-        <span className="menu-item-shortcut" aria-hidden="true">
-          ›
-        </span>
-      </Dropdown.SubTrigger>
-      <Dropdown.Portal>
-        <Dropdown.SubContent className="menu-content" sideOffset={6}>
-          {children}
-        </Dropdown.SubContent>
-      </Dropdown.Portal>
-    </Dropdown.Sub>
+    <MenuPath.Provider value={path}>
+      <Dropdown.Sub>
+        <Dropdown.SubTrigger className="menu-item">
+          <span className="menu-item-label">{label}</span>
+          <span className="menu-item-shortcut" aria-hidden="true">
+            ›
+          </span>
+        </Dropdown.SubTrigger>
+        <Dropdown.Portal>
+          <Dropdown.SubContent className="menu-content" sideOffset={6}>
+            {children}
+          </Dropdown.SubContent>
+        </Dropdown.Portal>
+      </Dropdown.Sub>
+    </MenuPath.Provider>
   );
 }
 export function MenuSeparator() {
+  if (useContext(MenuRegistrar)) return null;
   return <Dropdown.Separator className="menu-separator" />;
 }
 export function MenuCheckItem({
@@ -100,17 +167,45 @@ export function MenuCheckItem({
   checked,
   onSelect,
   disabled = false,
+  synonyms,
+  group,
+  availability,
 }: {
   children: ReactNode;
   checked: boolean;
   onSelect: () => void;
   disabled?: boolean;
+  synonyms?: string[];
+  group?: string;
+  availability?: () => true | string;
 }) {
+  const path = useContext(MenuPath);
+  const label = typeof children === "string" ? children : "";
+  const reason = availability?.();
+  const unavailable = disabled || (typeof reason === "string" && !!reason);
+  useRegisterCommand(
+    label
+      ? {
+          id: [...path, label].join("/"),
+          label,
+          path,
+          synonyms,
+          group,
+          availability: () => {
+            const live = availability?.();
+            return typeof live === "string" ? live : true;
+          },
+          run: onSelect,
+        }
+      : null,
+  );
+  if (useContext(MenuRegistrar)) return null;
   return (
     <Dropdown.CheckboxItem
       className="menu-item menu-check-item"
       checked={checked}
-      disabled={disabled}
+      disabled={unavailable}
+      title={typeof reason === "string" ? reason : undefined}
       onSelect={onSelect}
     >
       <span className="menu-item-check" aria-hidden="true">
@@ -130,6 +225,7 @@ export type TableAction = {
 };
 /** Rendered when the submenu opens, so `actions()` reads the current selection. */
 export function TableMenuItems({ actions }: { actions: () => TableAction[] }) {
+  if (useContext(MenuRegistrar)) return null;
   return (
     <>
       {actions().map((action) => (
@@ -200,6 +296,8 @@ export type EditorActions = {
     openFind: () => void;
     selectAll: () => void;
     insertLink: () => void;
+    /** Why Insert › Link cannot run, if the caret has no selection. */
+    linkState?: () => { ok: true } | { ok: false; reason: string };
     insertImage: () => void;
     insertTable: () => void;
     insertHorizontalRule: () => void;
@@ -247,6 +345,15 @@ export type EditorActions = {
     freezeColumns: (count: number) => void;
     showGridlines: (visible: boolean) => void;
     showFormulaBar: (visible: boolean) => void;
+  };
+  slideActions?: {
+    undo: () => void;
+    redo: () => void;
+    duplicate: () => void;
+    deleteSlide: () => void;
+    undoReason?: () => string | undefined;
+    redoReason?: () => string | undefined;
+    deleteReason?: () => string | undefined;
   };
 };
 export type SheetView = {

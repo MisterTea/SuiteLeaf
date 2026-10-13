@@ -52,11 +52,19 @@ Known pain points:
 
 ## Gaps and notes
 
-- **Help › Keyboard shortcuts is broken in every app.** In Docs it opens Find and replace (`docActions.openFind`). In Sheets and Slides it's a no-op. Nothing handles Cmd/Ctrl+/.
-- **The Sheets "Menus" pill does nothing.** The toolbar button titled "Search the menus (Option+/)" has `onClick={() => {}}`, and nothing listens for Option/Alt+/. Docs and Slides have no command search at all.
-- **Many menu items are inert or mislabelled.** In `App.tsx` (integration at `44d7415`), these have `onSelect={() => {}}`:
-  - Sheets: Insert › Function: SUM, Function: AVERAGE, and Link; Tools › Spelling, Autocomplete, and Notification settings; every Extensions item (Add-ons, Apps Script, AppSheet); Help › Sheets Help and Keyboard shortcuts.
-  - Slides: every Edit item; Insert › Text box, Image, and Shape; Format › Text: Bold, Text: Italic, and Align & indent; Slide › Duplicate slide and Delete slide; Tools › Spelling and Preferences; Help › Keyboard shortcuts.
-  - Docs: Tools › Spelling and grammar runs Clear formatting.
-- **Shortcut labels are always Mac-style.** `MenuItem` shows the literal `shortcut` string ("Cmd+Z") on every platform. Several advertised shortcuts don't work in Slides (Cmd+Z, Y, X, C, V, B, I; see storyboard [31](31-rearrange-a-deck.md)).
-- There's no list of commands to search. Menus are written inline as JSX in `App.tsx`, so a command palette and a shortcuts dialog need a shared command list (id, label, menu path, shortcut, enabled check, run) that the menus are built from.
+- **Word count, spelling, and remove duplicates are named in search and explained, not built.** Tools › Word count, spelling, and Data › Remove duplicates belong to storyboards [34](34-count-words-and-check-spelling.md) and [38](38-clean-up-messy-data.md). Search says SuiteLeaf doesn't have them yet.
+- **Some Slides and Sheets menu items are still owned elsewhere.** Storyboard [31](31-rearrange-a-deck.md) still owns Insert › Text box, Image, and Shape, Format › Text, and Edit › Cut, Copy, and Paste. Storyboard [39](39-insert-a-function-with-help.md) still owns Insert › Function and the Σ button. Those items stay in the menus and search lists them as not available yet. Slide › Duplicate, Delete, Undo, and Redo are wired to the editor functions that already existed.
+- **Docs comments are not in this app yet.** Search for "comment" in Docs says so. Sheets › Cell comment is a real command.
+- **Ctrl+Alt+M (and F10) focuses the menu bar** instead of Alt+letter, which collides with the browser. Arrow keys move between menus and items.
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| 1. Cmd/Ctrl+/ and Help › Keyboard shortcuts open a searchable dialog in Docs, Sheets, and Slides, listing menu shortcuts with platform key names | Met | Video ~0:19 (Docs, ⌘⇧X), ~0:36 (Sheets formulas), ~0:42 (Slides slideshow and filmstrip). Test `36-find-any-command`. |
+| 2. Option/Alt+/, Help › Search the menus, and the Sheets Menus pill run a command by name | Met | Video ~0:08 strike, ~0:32 freeze, ~0:39 dup. Browser test `command search runs strikethrough and explains commands that cannot run`. |
+| 3. Synonyms and Google names find the command, or say it isn't in SuiteLeaf yet | Met | Video ~0:12 “count” → Word count (not yet), “page numbers” → Page setup; ~0:32 “freeze”; ~0:39 “dup”. Vitest `command search`. |
+| 4. Commands that can't run are listed greyed, with the reason | Met | Video ~0:18 Insert › Link, “Select text to add a link”. |
+| 5. Listed shortcuts work; inert Help and Extensions items are gone | Met for the shortcuts this storyboard owns | Video ~0:48 ⌘D duplicates a slide; ~0:51 ⌘⇧X strikes “The”. Cut, copy, paste, text formatting in Slides, spelling, and Insert Function remain for storyboards 31, 34, and 39. |
+| 6. An empty search lists the last commands first | Met | Video ~0:45 Recent, Slide › Duplicate slide first. |
+| 7. One shortcut focuses the menu bar; arrows move; Enter runs an item | Met | Video ~0:24 Ctrl+Alt+M, then ArrowRight and ArrowDown open Edit. |

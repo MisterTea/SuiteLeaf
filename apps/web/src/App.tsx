@@ -73,6 +73,7 @@ import {
   type EditorActions,
 } from "./ui";
 import { SheetViewMenu } from "./editors/SheetViewMenu";
+import { CommandPalette, useCommandPalette } from "./command-palette";
 import {
   DriveConflict,
   finishSignOut,
@@ -210,6 +211,17 @@ class ErrorBoundary extends Component<
 /** Menu content mounts each time the menu opens, so this label reads current state. */
 function LiveLabel({ text }: { text: () => string }) {
   return <>{text()}</>;
+}
+function EditorHelp() {
+  const { openSearch, openShortcuts } = useCommandPalette();
+  return (
+    <Menu label="Help">
+      <MenuItem onSelect={openSearch}>Search the menus</MenuItem>
+      <MenuItem shortcut="Mod+/" onSelect={openShortcuts}>
+        Keyboard shortcuts
+      </MenuItem>
+    </Menu>
+  );
 }
 function Logo() {
   return (
@@ -1401,6 +1413,7 @@ function Workspace() {
     );
   const f = record.file;
   return (
+    <CommandPalette kind={f.kind}>
     <div className="workspace">
       <header className="workspace-header">
         <button
@@ -1503,7 +1516,7 @@ function Workspace() {
               {status}
             </span>
           </div>
-          <div className="file-menu">
+          <div className="file-menu" role="menubar">
             <Menu label="File">
               <MenuItem onSelect={() => void doAction("new-doc")}>
                 New document
@@ -1646,6 +1659,10 @@ function Workspace() {
                   </MenuItem>
                   <MenuItem
                     shortcut="Cmd+K"
+                    availability={() => {
+                      const state = actions.current?.docActions?.linkState?.();
+                      return !state || state.ok ? true : state.reason;
+                    }}
                     onSelect={() => actions.current?.docActions?.insertLink()}
                   >
                     Link
@@ -1673,6 +1690,7 @@ function Workspace() {
                     Underline
                   </MenuItem>
                   <MenuItem
+                    shortcut="Cmd+Shift+X"
                     onSelect={() => actions.current?.docActions?.toggleStrike()}
                   >
                     Strikethrough
@@ -1753,21 +1771,9 @@ function Workspace() {
                   >
                     Find and replace
                   </MenuItem>
-                  <MenuItem
-                    onSelect={() =>
-                      actions.current?.docActions?.clearFormatting()
-                    }
-                  >
-                    Spelling and grammar
-                  </MenuItem>
+                  <MenuItem onSelect={() => {}}>Spelling and grammar</MenuItem>
                 </Menu>
-                <Menu label="Help">
-                  <MenuItem
-                    onSelect={() => actions.current?.docActions?.openFind()}
-                  >
-                    Keyboard shortcuts
-                  </MenuItem>
-                </Menu>
+                <EditorHelp />
               </>
             ) : null}
             {f.kind === "sheet" ? (
@@ -1835,9 +1841,6 @@ function Workspace() {
                   </MenuItem>
                   <MenuItem onSelect={() => {}}>Function: SUM</MenuItem>
                   <MenuItem onSelect={() => {}}>Function: AVERAGE</MenuItem>
-                  <MenuItem shortcut="Cmd+K" onSelect={() => {}}>
-                    Link
-                  </MenuItem>
                   <MenuItem
                     onSelect={() =>
                       actions.current?.sheetActions?.insertCheckbox?.()
@@ -1883,6 +1886,7 @@ function Workspace() {
                     Italic
                   </MenuItem>
                   <MenuItem
+                    shortcut="Cmd+Shift+X"
                     onSelect={() =>
                       actions.current?.sheetActions?.toggleStrike()
                     }
@@ -1928,6 +1932,7 @@ function Workspace() {
                 </Menu>
                 <Menu label="Data">
                   <MenuItem
+                    searchLabel="Create a filter"
                     onSelect={() =>
                       actions.current?.sheetActions?.toggleFilter()
                     }
@@ -1971,38 +1976,34 @@ function Workspace() {
                 </Menu>
                 <Menu label="Tools">
                   <MenuItem onSelect={() => {}}>Spelling</MenuItem>
-                  <MenuItem onSelect={() => {}}>Autocomplete</MenuItem>
-                  <MenuItem onSelect={() => {}}>Notification settings</MenuItem>
                 </Menu>
-                <Menu label="Extensions">
-                  <MenuItem onSelect={() => {}}>Add-ons</MenuItem>
-                  <MenuItem onSelect={() => {}}>Apps Script</MenuItem>
-                  <MenuItem onSelect={() => {}}>AppSheet</MenuItem>
-                </Menu>
-                <Menu label="Help">
-                  <MenuItem onSelect={() => {}}>Sheets Help</MenuItem>
-                  <MenuItem onSelect={() => {}}>Keyboard shortcuts</MenuItem>
-                </Menu>
+                <EditorHelp />
               </>
             ) : null}
             {f.kind === "slide" ? (
               <>
                 <Menu label="Edit">
-                  <MenuItem shortcut="Cmd+Z" onSelect={() => {}}>
+                  <MenuItem
+                    shortcut="Cmd+Z"
+                    availability={() =>
+                      actions.current?.slideActions?.undoReason?.() ?? true
+                    }
+                    onSelect={() => actions.current?.slideActions?.undo()}
+                  >
                     Undo
                   </MenuItem>
-                  <MenuItem shortcut="Cmd+Y" onSelect={() => {}}>
+                  <MenuItem
+                    shortcut="Cmd+Y"
+                    availability={() =>
+                      actions.current?.slideActions?.redoReason?.() ?? true
+                    }
+                    onSelect={() => actions.current?.slideActions?.redo()}
+                  >
                     Redo
                   </MenuItem>
-                  <MenuItem shortcut="Cmd+X" onSelect={() => {}}>
-                    Cut
-                  </MenuItem>
-                  <MenuItem shortcut="Cmd+C" onSelect={() => {}}>
-                    Copy
-                  </MenuItem>
-                  <MenuItem shortcut="Cmd+V" onSelect={() => {}}>
-                    Paste
-                  </MenuItem>
+                  <MenuItem onSelect={() => {}}>Cut</MenuItem>
+                  <MenuItem onSelect={() => {}}>Copy</MenuItem>
+                  <MenuItem onSelect={() => {}}>Paste</MenuItem>
                 </Menu>
                 <Menu label="View">
                   <MenuItem
@@ -2024,12 +2025,8 @@ function Workspace() {
                   </MenuItem>
                 </Menu>
                 <Menu label="Format">
-                  <MenuItem shortcut="Cmd+B" onSelect={() => {}}>
-                    Text: Bold
-                  </MenuItem>
-                  <MenuItem shortcut="Cmd+I" onSelect={() => {}}>
-                    Text: Italic
-                  </MenuItem>
+                  <MenuItem onSelect={() => {}}>Text: Bold</MenuItem>
+                  <MenuItem onSelect={() => {}}>Text: Italic</MenuItem>
                   <MenuItem onSelect={() => {}}>Align & indent</MenuItem>
                 </Menu>
                 <Menu label="Slide">
@@ -2039,16 +2036,27 @@ function Workspace() {
                   >
                     New slide
                   </MenuItem>
-                  <MenuItem onSelect={() => {}}>Duplicate slide</MenuItem>
-                  <MenuItem onSelect={() => {}}>Delete slide</MenuItem>
+                  <MenuItem
+                    shortcut="Cmd+D"
+                    onSelect={() => actions.current?.slideActions?.duplicate()}
+                  >
+                    Duplicate slide
+                  </MenuItem>
+                  <MenuItem
+                    availability={() =>
+                      actions.current?.slideActions?.deleteReason?.() ?? true
+                    }
+                    onSelect={() =>
+                      actions.current?.slideActions?.deleteSlide()
+                    }
+                  >
+                    Delete slide
+                  </MenuItem>
                 </Menu>
                 <Menu label="Tools">
                   <MenuItem onSelect={() => {}}>Spelling</MenuItem>
-                  <MenuItem onSelect={() => {}}>Preferences</MenuItem>
                 </Menu>
-                <Menu label="Help">
-                  <MenuItem onSelect={() => {}}>Keyboard shortcuts</MenuItem>
-                </Menu>
+                <EditorHelp />
               </>
             ) : null}
           </div>
@@ -2254,6 +2262,7 @@ function Workspace() {
         </Suspense>
       </ErrorBoundary>
     </div>
+    </CommandPalette>
   );
 }
 const handledTokens = new Set<string>();
