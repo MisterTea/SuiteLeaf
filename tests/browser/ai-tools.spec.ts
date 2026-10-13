@@ -102,6 +102,34 @@ test("spreadsheet tools write, format, sort, chart and pivot", async ({ page }) 
   ).toContain("Pivot table");
 });
 
+test("spreadsheet filter tools say which rows are showing and what they add up to", async ({ page }) => {
+  await page.goto("/");
+  await waitForTools(page, "create_file");
+  await call(page, "create_file", { kind: "spreadsheet", title: "Shop orders" });
+  await waitForTools(page, "filter_rows");
+  await call(page, "set_cells", {
+    start: "A1",
+    values: [
+      ["Order", "Status", "Total"],
+      ["#1", "Shipped", "48"],
+      ["#2", "Pending", "112.5"],
+      ["#3", "Cancelled", "64"],
+      ["#4", "Pending", "39.99"],
+    ],
+  });
+  const filtered = await call(page, "filter_rows", { column: "Status", show_values: ["pending"] });
+  expect(filtered).toContain("2 of 4 row(s) shown, 2 hidden");
+  expect(filtered).toMatch(/3\t#2\tPending\t112\.5\n5\t#4\tPending\t39\.99/);
+  expect(filtered).not.toContain("Shipped");
+  expect(filtered).toContain("Rows 2, 4 are hidden");
+  expect(filtered).toContain("Sum of the shown rows: C (Total) 152.49.");
+  const read = await call(page, "read_sheet", { range: "C2:C5" });
+  expect(read).not.toContain("48");
+  expect(read).toContain("Sum of the shown rows: C 152.49.");
+  expect(await call(page, "clear_filter", { remove: true })).toContain("all 4 rows are shown");
+  expect(await call(page, "read_sheet")).toContain("Shipped");
+});
+
 test("presentation tools build slides and present", async ({ page }) => {
   await page.goto("/");
   await waitForTools(page, "create_file");
