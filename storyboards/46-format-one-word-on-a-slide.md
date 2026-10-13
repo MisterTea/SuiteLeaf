@@ -16,13 +16,13 @@ Dev is polishing "Fundraiser pitch" (storyboard 32). The Meadow theme already se
 
 ## Scenes
 
-1. **Open the title.** Dev opens "Fundraiser pitch" on the Meadow theme. The title box is one style: Source Sans, the theme's body color, no bold words.
-2. **Bold one word.** Dev double-clicks the box so a caret appears, selects "fair", and presses Cmd/Ctrl+B (the Bold button does the same). "fair" is bold. "Spring", "for", and the rest are not.
-3. **Color one word.** Dev selects "community" and sets the accent green. Only that word changes color. "fair" stays bold and the original color.
+1. **Open the title.** Dev opens "Fundraiser pitch" on the Meadow theme. The title box is one style: Source Sans, the theme's body colour, no bold words. A second line reads "Saturday at the hall".
+2. **Bold one word.** Dev double-clicks the title so a caret appears, selects "fair", and presses Cmd/Ctrl+B. "fair" is bold. "Spring", "for", and the rest are not. The box does not say "Overrides theme". The Bold button does the same thing as the shortcut.
+3. **Colour one word.** Dev selects "community" and clicks the A with the theme's accent bar. Only that word turns the accent green (#3ddc84, bright enough to read on Meadow). "fair" stays bold and the body colour.
 4. **Italic and underline.** Dev selects "centre" and turns on italic, then underline. The other words are unchanged. Undo removes the underline and leaves the italic.
-5. **A new theme.** Dev applies Ink. The unformatted words switch to Ink's body font and color. "fair" stays bold, "community" stays green, and "centre" stays italic. The box is not marked as overriding the theme for every word.
-6. **The whole box, on purpose.** On another box, with the box selected and no caret inside it, Bold still bolds every word and shows "Overrides theme", as in storyboard 32. Reset to theme clears that.
-7. **Save.** Dev downloads the SuiteLeaf file and opens the copy. "fair" is bold, "community" is green, and "centre" is italic.
+5. **A new theme.** Dev applies Ink. The unformatted words switch to Arial and Ink's body colour. "fair" stays bold, "community" stays green, and "centre" stays italic. The box is not marked as overriding the theme.
+6. **The whole box, on purpose.** On "Saturday at the hall", with the box selected and no caret inside it, Bold still bolds every word and shows "Overrides theme". Reset to theme clears the mark and the bold.
+7. **Save.** Dev downloads the SuiteLeaf file and opens the copy with Keep both. "fair" is bold, "community" is green, and "centre" is italic.
 
 ## Google Workspace benchmark
 
@@ -44,12 +44,25 @@ Known pain points:
 
 ## Success looks like
 
-- The title reads with "fair" bold, "community" in green, and "centre" italic and, after Undo, not underlined.
-- Ink restyled the other words. The downloaded copy matches.
+- The title reads with "fair" bold, "community" in the accent green, and "centre" italic and, after Undo, not underlined.
+- Ink restyled the other words to Arial. The downloaded copy matches.
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| 1. With a caret, Cmd/Ctrl+B or Bold bolds only the selected word | Met | Video ~0:08 selects "fair" and bolds it. "Spring" stays regular. The Bold button is the same control; `tests/browser/slide-runs.spec.ts` clicks it. |
+| 2. Italic, underline, and text colour follow the selection, and Undo undoes one step | Met | Video ~0:13 the accent button colours "community". ~0:15 italic and underline on "centre". ~0:17 Undo leaves the italic and drops the underline. |
+| 3. Words outside the selection keep their weight, style, and colour | Met | Video ~0:17 "fair" is still bold, "community" is still green, and "for" is neither. `tests/slide-runs.test.ts` |
+| 4. A new theme restyles only the words that were not formatted by hand | Met | Video ~0:21 Ink turns the other words light gray in Arial. "fair" stays bold, "community" stays green, "centre" stays italic. No "Overrides theme" on that box. |
+| 5. A box with no caret still bolds every word and marks "Overrides theme", with Reset to theme | Met | Video ~0:24 "Saturday at the hall" goes bold and the bar appears. Reset clears the bar and the bold. |
+| 6. The per-word formatting survives save, reopen, and the downloaded `.slslides` file | Met | The scene reads the download, then Keep both opens the copy. Video ~0:29. `tests/slide-runs.test.ts` round-trips the runs. |
 
 ## Gaps and notes
 
-- A text box is one `content` string. `bold`, `italic`, `underline`, and `color` are single values on the element. The Bold control sets `bold: !selectedElement.bold` for the whole box.
-- `themeOverride` is also on the element. A per-word style has to be stored on a run inside `content`, so the rest of the box can still follow `applyDeckTheme`.
+- Per-word bold, italic, underline, and colour are stored as runs next to the plain `content` string. The box does not get `themeOverride`, so `applyDeckTheme` still changes its font and colour. A run colour is the exception.
+- Bold on the box, with no caret, still sets `themeOverride`. Reset to theme clears that mark, the box-level bold, italic, and underline, and any runs.
+- The accent control paints the theme's accent in one click. This recording uses #3ddc84 so the green is obvious on Meadow's dark background.
 - PowerPoint export is still out of scope (storyboard 32). This story is the native file and the editor.
 - Tables on a slide store each cell as a string (`rows`). Per-word formatting inside a table cell is not part of this story.
+- A font or a size chosen in the toolbar still applies to the whole box.

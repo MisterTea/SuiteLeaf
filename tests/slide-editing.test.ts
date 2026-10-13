@@ -183,6 +183,7 @@ describe("slide rearranging", () => {
     expect(commandFromKey(key("Delete"), "none")).toEqual({ type: "delete" });
     expect(commandFromKey(key("Backspace"), "none")).toEqual({ type: "delete" });
     expect(commandFromKey(key("b", { meta: true }), "slide-text")).toEqual({ type: "bold" });
+    expect(commandFromKey(key("u", { ctrl: true }), "slide-text")).toEqual({ type: "underline" });
     expect(commandFromKey(key("d", { meta: true }), "slide-text")).toBeNull();
     expect(commandFromKey(key("z", { meta: true }), "other")).toBeNull();
     expect(commandFromKey(key("z", { meta: true }), "notes")).toEqual({ type: "undo" });
