@@ -151,3 +151,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 111 | [Keep the inner column group](111-keep-the-inner-column-group.md) | single-node | Sheets |
 | 112 | [Shift the group when a row is inserted](112-shift-the-group.md) | single-node | Sheets |
 | 115 | [Shrink the group when a row is deleted](115-shrink-the-group.md) | single-node | Sheets |
+| 118 | [Shift the column group when a column is inserted](118-shift-the-column-group.md) | single-node | Sheets |
