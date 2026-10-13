@@ -5180,6 +5180,32 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
   font-size: 12px;
   font-weight: 600;
 }
+.dropdown-source {
+  display: flex;
+  gap: 14px;
+  margin: 12px 0 4px;
+  font-size: 13px;
+}
+.dropdown-source label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dropdown-range-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.dropdown-range-field input {
+  font-weight: 400;
+  border: 1px solid #dadce0;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+}
 .dropdown-lead,
 .dropdown-help {
   margin: 8px 0 12px;
