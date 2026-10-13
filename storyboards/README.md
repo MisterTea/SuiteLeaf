@@ -120,3 +120,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 69 | [Open a picture at its page size](69-open-a-picture-at-its-page-size.md) | single-node | Docs |
 | 70 | [Put a picture beside the text](70-put-a-picture-beside-the-text.md) | single-node | Docs |
 | 73 | [Put a picture in the sentence](73-put-a-picture-in-the-sentence.md) | single-node | Docs |
+| 76 | [Insert a picture at the caret](76-insert-a-picture-at-the-caret.md) | single-node | Docs |
