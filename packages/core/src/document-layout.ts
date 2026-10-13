@@ -389,6 +389,8 @@ body { max-width: ${width / 96}in; margin: 0 auto; padding: ${settings.margin / 
 .page-footer { margin-top: 2em; }
 ${watermarkCss}
 [data-page-break] { break-before: page; }
+[data-columns="2"] { column-count: 2; column-gap: 0.5in; }
+.doc-columns { column-count: 2; column-gap: 0.5in; }
 @page { ${pageRule} }
 ${coverRule}
 @media print { body { max-width: none; padding: 0; } }

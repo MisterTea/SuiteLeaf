@@ -2138,6 +2138,24 @@ function Workspace() {
                   >
                     Numbered list
                   </MenuItem>
+                  <MenuItem
+                    synonyms={["columns", "one column", "single column"]}
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.docActions?.setColumns(1)
+                    }
+                  >
+                    One column
+                  </MenuItem>
+                  <MenuItem
+                    synonyms={["columns", "two columns", "newspaper columns"]}
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.docActions?.setColumns(2)
+                    }
+                  >
+                    Two columns
+                  </MenuItem>
                   <SubMenu label="Table">
                     <TableMenuItems
                       actions={() =>

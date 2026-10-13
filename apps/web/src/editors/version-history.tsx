@@ -9,6 +9,7 @@ import { croppableImage } from "./doc-image-crop";
 import { TableKit } from "@tiptap/extension-table";
 import Superscript from "@tiptap/extension-superscript";
 import Subscript from "@tiptap/extension-subscript";
+import { columnLayout } from "./doc-columns";
 import { Equation } from "./doc-equations";
 import { MoreHorizontal, X } from "lucide-react";
 import {
@@ -65,6 +66,7 @@ const previewExtensions: Extensions = [
   Superscript,
   Subscript,
   Equation,
+  columnLayout,
 ];
 
 function message(error: unknown) {

@@ -28,6 +28,7 @@ function text(node: JsonNode): string {
     "orderedList",
     "listItem",
     "blockquote",
+    "columnLayout",
     "tableCell",
     "tableHeader",
   ].includes(node.type);
