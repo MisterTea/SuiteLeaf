@@ -138,15 +138,41 @@ function grid(sheet: any, r: ReturnType<typeof parseA1>, maxRows = 60, maxColumn
   const formulas = (range.getFormulas?.() ?? []) as string[][];
   const header = ["", ...Array.from({ length: endColumn - r.startColumn + 1 }, (_, i) => columnLetter(r.startColumn + i))];
   const lines = [header.join("\t")];
-  values.forEach((row, i) =>
+  const hidden = hiddenRows(sheet, r.startRow, endRow);
+  values.forEach((row, i) => {
+    if (hidden.includes(r.startRow + i)) return;
     lines.push(
       [String(r.startRow + i + 1), ...row.map((v, j) => (formulas[i]?.[j] ? `${formulas[i][j]} → ${display(v)}` : display(v)))].join(
         "\t",
       ),
-    ),
-  );
+    );
+  });
   const more = r.endRow > endRow || r.endColumn > endColumn ? `\n(Showing ${a1({ ...r, endRow, endColumn })} of ${a1(r)}.)` : "";
-  return lines.join("\n") + more;
+  const skipped = hidden.length ? `\n(Rows ${hidden.map((x) => x + 1).join(", ")} are hidden, e.g. by a filter, and not listed.)` : "";
+  return lines.join("\n") + more + skipped;
+}
+
+/** Rows between `start` and `end` (0-based) that are hidden on screen, by a filter or by hiding them. */
+function hiddenRows(sheet: any, start: number, end: number): number[] {
+  const ws = sheet.getSheet?.();
+  if (!ws?.getRowVisible) return [];
+  const out: number[] = [];
+  for (let row = start; row <= end; row++) if (!ws.getRowVisible(row)) out.push(row);
+  return out;
+}
+
+/** Sums of each numeric column over the visible rows of `r`, as the status bar shows for a selection. */
+function visibleSums(sheet: any, r: ReturnType<typeof parseA1>, headerRow?: number) {
+  const hidden = hiddenRows(sheet, r.startRow, r.endRow);
+  const values = sheet.getRange(r.startRow, r.startColumn, r.endRow - r.startRow + 1, r.endColumn - r.startColumn + 1).getValues() as unknown[][];
+  const sums: string[] = [];
+  for (let j = 0; j <= r.endColumn - r.startColumn; j++) {
+    const numbers = values.filter((_, i) => !hidden.includes(r.startRow + i)).map((row) => row[j]).filter((v) => typeof v === "number") as number[];
+    if (numbers.length < 2) continue;
+    const name = headerRow === undefined ? "" : display(sheet.getRange(headerRow, r.startColumn + j, 1, 1).getValue()).trim();
+    sums.push(`${columnLetter(r.startColumn + j)}${name ? ` (${name})` : ""} ${display(numbers.reduce((a, b) => a + b, 0))}`);
+  }
+  return sums.length ? `Sum of the shown rows: ${sums.join("; ")}.` : "";
 }
 
 /** A cell's typed value: numbers stay numbers, '=' starts a formula, codes with leading zeros stay text. */
@@ -190,7 +216,8 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       async execute({ range }) {
         await ctx.settle();
         const r = range ? parseA1(range) : usedRange(sheet());
-        return `Sheet "${sheet().getSheetName()}", ${a1(r)}:\n${grid(sheet(), r)}`;
+        const sums = hiddenRows(sheet(), r.startRow, Math.min(r.endRow, usedRange(sheet()).endRow)).length ? visibleSums(sheet(), r) : "";
+        return `Sheet "${sheet().getSheetName()}", ${a1(r)}:\n${grid(sheet(), r)}${sums ? `\n${sums}` : ""}`;
       },
     }),
     tool({
@@ -375,8 +402,11 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
           throw new ToolError(`None of ${show_values.join(", ")} appear in that column. Values: ${[...new Set(values)].slice(0, 20).join(", ")}.`);
         filter.setColumnFilterCriteria(col, { colId: col - r.startColumn, filters: { filters: kept } });
         ctx.persist();
-        const hidden = values.filter((v: string) => !wanted.has(v.trim().toLowerCase())).length;
-        return `Filtered column ${columnLetter(col)} to ${kept.join(", ")}: ${values.length - hidden} row(s) shown, ${hidden} hidden.`;
+        await ctx.settle();
+        const hidden = hiddenRows(s, r.startRow + 1, r.endRow).length;
+        const body = { ...r, startRow: r.startRow + 1 };
+        const sums = visibleSums(s, body, r.startRow);
+        return `Filtered column ${columnLetter(col)} to ${kept.join(", ")}: ${values.length - hidden} of ${values.length} row(s) shown, ${hidden} hidden. On screen now:\n${grid(s, r, 30, 12)}${sums ? `\n${sums}` : ""}`;
       },
     }),
     tool({
@@ -391,7 +421,10 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         if (remove) filter.remove();
         else filter.removeFilterCriteria();
         ctx.persist();
-        return remove ? "Removed the filter." : "Cleared the filter; all rows are shown.";
+        const rows = usedRange(sheet()).endRow - usedRange(sheet()).startRow;
+        return remove
+          ? `Removed the filter and its buttons; all ${rows} rows are shown.`
+          : `Cleared the filter; all ${rows} rows are shown. The filter buttons stay (remove=true takes them off).`;
       },
     }),
     tool({
@@ -726,6 +759,22 @@ function findChart(ctx: SheetsAgentContext, title?: string) {
   return charts.at(-1);
 }
 
+/** "The sheet has a filter on A1:D11: column C (Status) shows only Pending; 6 rows hidden." */
+function filterSummary(sheet: any) {
+  const filter = sheet.getFilter();
+  if (!filter) return "";
+  const r = filter.getRange().getRange();
+  const shown: string[] = [];
+  for (let col = r.startColumn; col <= r.endColumn; col++) {
+    const values = filter.getColumnFilterCriteria?.(col)?.filters?.filters;
+    if (!values) continue;
+    const name = display(sheet.getRange(r.startRow, col, 1, 1).getValue()).trim();
+    shown.push(`column ${columnLetter(col)}${name ? ` (${name})` : ""} shows only ${values.join(", ")}`);
+  }
+  const hidden = hiddenRows(sheet, r.startRow + 1, r.endRow).length;
+  return `The sheet has a filter on ${a1(r)}${shown.length ? `: ${shown.join("; ")}` : " (no values filtered)"}; ${hidden} row(s) hidden.`;
+}
+
 export function sheetSnapshot(ctx: SheetsAgentContext) {
   try {
     const s = ctx.book.getActiveSheet();
@@ -737,7 +786,7 @@ export function sheetSnapshot(ctx: SheetsAgentContext) {
     return [
       `Open spreadsheet: "${ctx.title}". Sheets: ${sheets.join(", ")}. Active sheet: "${s.getSheetName()}", used range ${a1(used)}${selection ? `, selected ${selection}` : ""}.`,
       freeze?.ySplit || freeze?.xSplit ? `Frozen: ${freeze.startRow} row(s), ${freeze.startColumn} column(s).` : "",
-      s.getFilter() ? "The sheet has a filter." : "",
+      filterSummary(s),
       charts.length ? `Charts: ${charts.map((c) => `"${c.title}" (${c.type === "bar" ? "column" : c.type}, ${a1(c.source)})`).join("; ")}.` : "",
       `Cells:\n${grid(s, used, 25, 12)}`,
     ]
