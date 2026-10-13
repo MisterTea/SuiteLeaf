@@ -152,3 +152,98 @@ With today's ONNX exports, WebNN only adds that delay. So once WebNN has failed 
 ### GPUs without 16-bit floats
 
 The q4f16 weights need WebGPU's `shader-f16` feature. Where the adapter lacks it, the worker loads the q4 export instead: 4-bit weights with 32-bit activations, 5.6 GB, with every tensor under 2.1 GB. Forced with `localStorage["suiteleaf.ai.dtype"] = "q4"` on the M5 Max, it loaded in 15 s and ran. It has not been tried on a GPU that actually lacks `shader-f16`. Playwright's default headless shell only offers SwiftShader, a software adapter with 1 GB buffers. The worker now rejects that adapter immediately ("only a software (CPU) adapter is available"), because the model cannot run there. That's why the storyboards use full Chromium (`channel: "chromium"`), which gets the Metal GPU.
+
+## FrogNano 4B compared
+
+[microsoft/FrogNano-4B-2609](https://huggingface.co/microsoft/FrogNano-4B-2609) is Qwen3.5-4B, post-trained with reinforcement learning as a Python coding agent for Microsoft's 5-tool Leaf harness. Its model card says it was "not designed or evaluated as a general-purpose assistant". It runs in the same agent loop as Gemma, with the same tools, system prompt and storyboards. Only the chat format differs (`apps/web/src/ai/qwen.ts`). Choose it with `localStorage["suiteleaf.ai.model"] = "frognano-4b"` in the browser, or a FrogNano GGUF as `SUITELEAF_MODEL_PATH` on the desktop.
+
+### Running it
+
+| | Gemma 4 E4B | FrogNano 4B |
+| --- | --- | --- |
+| Architecture | Dense transformer | Hybrid: 24 Gated DeltaNet (linear attention) and 8 attention layers |
+| Browser weights | `onnx-community/gemma-4-E4B-it-ONNX` q4f16, 4.9 GB | `RASMUS/FrogNano-4B-2609-ONNX` q4f16 (community export), 2.4 GB |
+| WebGPU load, generation | 6–8 s, 25–40 tok/s | 4.4 s, 70–74 tok/s |
+| WebNN | Fails (`GatherBlockQuantized`) | Fails (`GatherBlockQuantized`) |
+| Desktop 4-bit, generation | Q4_0 (4.6 GB), 96–98 tok/s | Q4_K_M (2.8 GB), about 120 tok/s |
+| Desktop 8-bit, generation | Q8_0 (8.0 GB), 68–71 tok/s | Q8_0 (4.6 GB), 70–80 tok/s |
+| Output per reply in the agent | 35 tokens | 170 tokens (it thinks first) |
+
+The cache reuse between steps works through FrogNano's recurrent layers on both backends. WebNN fails on FrogNano's embedding table, which uses the same `GatherBlockQuantized` operator as Gemma's. An unquantized embedding would fit in 1.27 GB, but that alone would not help much: the linear-attention layers use 48 ONNX Runtime operators (`LinearAttention`, `CausalConvWithState`) that WebNN has no equivalent for, so most of the graph would fall back to the CPU.
+
+### Pass rates, three runs per storyboard
+
+| | Gemma 4 E4B | FrogNano 4B |
+| --- | --- | --- |
+| Browser, WebGPU 4-bit (26 storyboards) | 66/78 (85%) | 62/78 (79%) |
+| Desktop 4-bit (21 storyboards) | 45/63 (71%) | 57/63 (90%) |
+| Desktop 8-bit (21 storyboards) | 54/63 (86%) | 57/63 (90%) |
+| Median time per user prompt, browser | 18 s | 34 s |
+| Median time per user prompt, desktop 4-bit / 8-bit | 9 s / 8 s | 18 s / 21 s |
+| Tool errors per tool call (all runs) | 14 / 1,420 | 7 / 1,545 |
+| Unreadable calls, empty replies retried | 2, 26 | 0, 3 |
+
+The desktop and browser runs ran at the same time, so their tokens-per-second figures in the per-run table below are lower than the isolated numbers above. Both models ran the same way.
+
+FrogNano is far better at the tasks Gemma could not do:
+
+- **13, invoice formatting:** Gemma 0/9. FrogNano 9/9.
+- **04, long report with headings:** Gemma 1/9. FrogNano 7/9.
+- **09, budget formulas:** Gemma 5/9. FrogNano 8/9.
+- **05, table, photo and link:** Gemma 5/9. FrogNano 8/9.
+
+It also makes fewer mechanical errors, and it reads tool results closely. In the benchmark it noticed that a tool reported a different range from the one it asked for.
+
+Its weaknesses:
+
+- **It does things nobody asked for.** It ticked a box to try out the rule it had just set up (18), made an editable copy of a new pivot table (15), removed a file after reopening it (08), and exported to Excel when asked to download the file (17, every browser run). Gemma's failures were mostly the opposite: leaving part of the task undone.
+- **It is slower per request.** It thinks before every step, so a request takes about twice as long as Gemma's on every backend, even though it generates tokens faster.
+- **It is weaker in the browser.** The browser export passed 79% against 90% for both desktop builds. Every browser run failed 17 and 23; in 23 it made the folder, then created the document in My Drive. The browser's community q4f16 export (block size 32, symmetric) may lose more accuracy than the Q4_K_M GGUF does, but three runs per storyboard are too few to be sure.
+- **Like Gemma, it claims success when it has failed.** Every failed run ended with a confident summary.
+
+### Thinking budget
+
+FrogNano's template can only turn thinking on or off, so the stream function can instead cap it. Once a reply has thought for the budget, it is told to act, using Qwen's documented early-stop phrase, and the reply continues on the cached prompt. With a 128-token budget, desktop Q4_K_M took 10 s per prompt instead of 18 s, but passed 51/63 (81%) instead of 57/63. It lost the long report (04: 0/3) and the chart (14: 0/3), where the plan matters. So FrogNano thinks without a budget by default. `localStorage["suiteleaf.ai.thinkingBudget"]` (or `STORYBOARD_AI_THINKING` for storyboards) sets one. One capped run also lost storyboard 06 to a desktop app crash, which the test runner then waited on for 30 minutes.
+
+### Per-storyboard results
+
+| Storyboard | web-q4 | web-frog-q4 | electron-q4 | electron-frog-q4 | electron-q8 | electron-frog-q8 | electron-frog-q4-t128 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 01-first-document | 2/3 | 2/3 | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 |
+| 02-find-and-organize-files | 3/3 | 1/3 | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 |
+| 03-import-word-document | 3/3 | 3/3 | 3/3 | 3/3 | 2/3 | 3/3 | 3/3 |
+| 04-long-report-with-outline | 1/3 | 3/3 | 0/3 | 2/3 | 0/3 | 2/3 | 0/3 |
+| 05-tables-images-and-links | 2/3 | 2/3 | 2/3 | 3/3 | 1/3 | 3/3 | 3/3 |
+| 06-find-and-replace | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | 2/3 |
+| 07-page-setup-and-export | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 |
+| 08-carry-a-file-to-another-computer | 3/3 | 3/3 | 2/3 | 2/3 | 3/3 | 2/3 | 3/3 |
+| 09-household-budget-with-formulas | 2/3 | 3/3 | 0/3 | 3/3 | 3/3 | 2/3 | 1/3 |
+| 10-sort-without-the-header | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 |
+| 11-filter-to-what-matters | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 |
+| 12-freeze-the-header-row | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 |
+| 13-format-money-and-percentages | 0/3 | 3/3 | 0/3 | 3/3 | 0/3 | 3/3 | 2/3 |
+| 14-chart-from-a-table | 1/3 | 2/3 | 1/3 | 1/3 | 3/3 | 1/3 | 0/3 |
+| 15-summarize-with-a-pivot | 3/3 | 2/3 | 1/3 | 1/3 | 3/3 | 3/3 | 3/3 |
+| 16-import-and-export-csv | 3/3 | 2/3 | 2/3 | 3/3 | 3/3 | 3/3 | 3/3 |
+| 17-review-a-budget-with-notes-and-comments | 3/3 | 0/3 | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 |
+| 18-highlight-and-check-off | 3/3 | 1/3 | 2/3 | 3/3 | 3/3 | 2/3 | 2/3 |
+| 19-open-an-excel-workbook | 2/3 | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 |
+| 20-build-a-presentation | 3/3 | 3/3 | 2/3 | 3/3 | 3/3 | 3/3 | 3/3 |
+| 21-present-with-speaker-notes | 3/3 | 2/3 | 3/3 | 3/3 | 3/3 | 3/3 | 2/3 |
+| 22-connect-to-your-team-server | 3/3 | 3/3 | – | – | – | – | – |
+| 23-start-a-document-in-suitedrive | 3/3 | 0/3 | – | – | – | – | – |
+| 24-pick-up-on-another-server | 2/3 | 3/3 | – | – | – | – | – |
+| 25-when-someone-else-saved-first | 3/3 | 3/3 | – | – | – | – | – |
+| 26-sign-out-and-disconnect | 3/3 | 3/3 | – | – | – | – | – |
+
+
+| Run | Storyboard runs | Passed | Requests | Tool calls | Tool errors | Unreadable calls | Unknown tools | Repeated calls blocked | Empty replies retried | Output tok/s | Prompt tok/s | Median time per user prompt |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| web-q4 | 78 | 66 (85%) | 712 | 527 | 5 | 0 | 0 | 0 | 14 | 20 | 556 | 18s |
+| web-frog-q4 | 78 | 62 (79%) | 772 | 664 | 6 | 0 | 2 | 0 | 3 | 37 | 222 | 34s |
+| electron-q4 | 63 | 45 (71%) | 573 | 438 | 7 | 2 | 0 | 0 | 8 | 54 | 1667 | 9s |
+| electron-frog-q4 | 63 | 57 (90%) | 519 | 434 | 1 | 0 | 0 | 0 | 0 | 49 | 1520 | 18s |
+| electron-q8 | 63 | 54 (86%) | 592 | 455 | 2 | 0 | 0 | 0 | 4 | 69 | 2303 | 8s |
+| electron-frog-q8 | 63 | 57 (90%) | 543 | 447 | 0 | 0 | 0 | 0 | 0 | 35 | 1385 | 21s |
+| electron-frog-q4-t128 | 63 | 51 (81%) | 509 | 414 | 3 | 0 | 0 | 0 | 0 | 81 | 2218 | 10s |
+
