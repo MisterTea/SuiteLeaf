@@ -215,8 +215,10 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       }),
       target: () => document.querySelector('[aria-label="Paragraph style"]'),
       execute({ text, style }) {
-        blockOf(text);
+        const node = blockOf(text);
         const level = /Heading (\d)/.exec(style)?.[1];
+        const current = node.type.name === "heading" ? `Heading ${node.attrs.level}` : node.type.name === "paragraph" ? "Normal text" : "";
+        if (current === style) return `The paragraph containing "${text}" is already ${style}; nothing changed.`;
         if (level) editor.chain().setHeading({ level: Number(level) as 1 | 2 | 3 }).run();
         else editor.chain().setParagraph().run();
         return `The paragraph containing "${text}" is now ${style}.`;
