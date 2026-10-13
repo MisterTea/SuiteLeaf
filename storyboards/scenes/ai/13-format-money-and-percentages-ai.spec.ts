@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { ready } from "../fixtures";
 import {
   askAgent,
-  beat,
   caption,
   describeRun,
   electronApps,
