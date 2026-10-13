@@ -99,7 +99,7 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 41 | [A viewer cannot edit a spreadsheet or a presentation](41-view-only-sheets-and-slides.md) | cluster | Sheets, Slides |
 | 42 | [Hear that a file was shared, and keep a copy](42-you-were-shared-a-file.md) | cluster | Files |
 | 43 | [See who last edited a file](43-who-last-edited.md) | cluster | Files, Docs |
-| 44 | [Compare a spreadsheet or a slide version in color](44-compare-sheet-and-slide-versions.md) | single-node | Sheets, Slides |
+| 44 | [Compare a spreadsheet or a slide version in color](44-compare-a-sheet-or-slide-version.md) | cluster | Sheets, Slides |
 | 45 | [Check grammar while you write](45-check-grammar.md) | single-node | Docs |
 | 46 | [Bold one word in a slide](46-format-one-word-on-a-slide.md) | single-node | Slides |
 | 47 | [Save a slide theme and use it again](47-save-a-slide-theme.md) | single-node | Slides |

@@ -8,6 +8,21 @@ export {
   type ParagraphCompare,
   type ParagraphOffer,
 } from "./doc-paragraph-restore";
+export {
+  diffSheets,
+  type CellLook,
+  type SheetCellChange,
+  type SheetDiff,
+  type SheetDiffSheet,
+  type SheetPlainCell,
+} from "./sheet-diff";
+export {
+  diffSlides,
+  type SlideDiff,
+  type SlideDiffElement,
+  type SlideDiffFrame,
+  type SlideTextRun,
+} from "./slide-diff";
 export type Kind = "doc" | "sheet" | "slide";
 export type JsonNode = {
   type: string;

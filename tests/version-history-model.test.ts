@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  changeSentence,
   copyFilename,
   groupVersions,
   partialRestoreTitle,
@@ -76,6 +77,12 @@ describe("version history list", () => {
       'Restore "Agreed rota"? 4 paragraphs change. The current version stays in history.',
     );
     expect(partialRestoreTitle("north-bed")).toBe("Restored the north-bed paragraph");
+    expect(changeSentence(8, "cell")).toBe("8 cells change");
+    expect(changeSentence(1, "slide")).toBe("1 slide changes");
+    expect(changeSentence(2, "slide")).toBe("2 slides change");
+    expect(restorePrompt(named, 8, now, "cell")).toBe(
+      'Restore "Agreed rota"? 8 cells change. The current version stays in history.',
+    );
   });
 
   it("snapshots an explicit save and otherwise waits a few minutes", () => {
