@@ -48,6 +48,7 @@ import {
   stampDocxCitations,
   type CitationLibrary,
 } from "./citations";
+import { croppedFrame, docxImageCrop, imageCrop } from "./image-crop";
 
 const color = (v: unknown) =>
   typeof v === "string" && /^#[\da-f]{6}$/i.test(v) ? v.slice(1) : undefined;
@@ -214,14 +215,23 @@ function runs(
         Number(n.attrs?.height) ||
         (naturalHeight * requestedWidth) / naturalWidth;
       const scale = Math.min(1, 600 / requestedWidth, 800 / requestedHeight);
+      const crop = imageCrop(n.attrs);
+      // The frame is the cropped region at the same scale as the full picture.
+      // `data` stays the whole image so Word's crop reset can reveal it.
+      const frame = croppedFrame(
+        { width: requestedWidth * scale, height: requestedHeight * scale },
+        crop,
+      );
+      const docxCrop = docxImageCrop(crop);
       return [
         new ImageRun({
           type: match[1] === "jpeg" ? "jpg" : (match[1] as "png" | "gif"),
           data,
           transformation: {
-            width: requestedWidth * scale,
-            height: requestedHeight * scale,
+            width: Math.max(1, frame.width),
+            height: Math.max(1, frame.height),
           },
+          ...(docxCrop ? { crop: docxCrop } : {}),
           altText: {
             title: String(n.attrs?.alt ?? ""),
             description: String(n.attrs?.alt ?? ""),
