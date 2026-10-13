@@ -55,6 +55,11 @@ export interface DriveItem {
   role: DriveRole | null;
   /** Display name of the owner, when the server includes it (shared lists). */
   ownerName?: string | null;
+  /** Head version author. Not the owner, and absent for folders. */
+  lastAuthorId?: string | null;
+  lastAuthorName?: string | null;
+  /** When that head version was written. Same instant version history shows. */
+  lastEditedAt?: string | null;
   available: boolean;
 }
 export type DriveRole = "viewer" | "commenter" | "editor" | "owner";
@@ -71,11 +76,31 @@ export interface AccessGrant {
   name: string | null;
   email: string | null;
   inheritedFrom: { id: string; name: string } | null;
+  /** When this grant stops opening the file. Null means it does not expire. */
+  expiresAt?: string | null;
+  /** The end time has passed. The owner can still see the row and remove it. */
+  expired?: boolean;
+}
+export interface DriveComment {
+  id: string;
+  itemId: string;
+  authorId: string;
+  body: string;
+  createdAt: string;
 }
 export interface ItemAccess {
   grants: AccessGrant[];
   parent: { id: string; name: string } | null;
   yourRole: DriveRole;
+}
+export interface ShareNotice {
+  id: string;
+  itemId: string;
+  itemName: string;
+  sharerId: string;
+  sharerName: string | null;
+  role: DriveRole;
+  createdAt: string;
 }
 export interface AuthProviders {
   emailAndPassword: boolean;
@@ -342,6 +367,46 @@ export const drive = {
         role,
       }),
     });
+  },
+  async notices(): Promise<ShareNotice[]> {
+    return (await (await api("/api/drive/notices")).json()).notices;
+  },
+  async dismissNotice(id: string): Promise<void> {
+    await api(`/api/drive/notices/${encodeURIComponent(id)}/dismiss`, {
+      method: "POST",
+    });
+  },
+  /** A new file the caller owns in My Drive, with the same name and bytes. */
+  async keepCopy(id: string): Promise<DriveItem> {
+    return (
+      await api(`/api/drive/items/${encodeURIComponent(id)}/copy`, {
+        method: "POST",
+      })
+    ).json();
+  },
+  /** End this person's access at `expiresAt`, or clear the end date with null. */
+  async expire(
+    id: string,
+    principalId: string,
+    expiresAt: string | null,
+  ): Promise<void> {
+    await api(`/api/drive/items/${encodeURIComponent(id)}/expiry`, {
+      method: "PUT",
+      ...json({ principalId, expiresAt }),
+    });
+  },
+  /** Make this person the owner now. The caller becomes an editor. */
+  async transfer(id: string, userId: string): Promise<void> {
+    await api(`/api/drive/items/${encodeURIComponent(id)}/owner`, {
+      method: "POST",
+      ...json({ userId }),
+    });
+  },
+  async comments(id: string): Promise<DriveComment[]> {
+    const response = await api(
+      `/api/drive/items/${encodeURIComponent(id)}/comments`,
+    );
+    return (await response.json()).comments;
   },
   async comment(id: string, body: string): Promise<void> {
     await api(`/api/drive/items/${encodeURIComponent(id)}/comments`, {

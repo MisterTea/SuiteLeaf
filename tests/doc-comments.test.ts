@@ -4,10 +4,15 @@ import { createFile, parseFile, serializeFile } from "../packages/core/src";
 import { exportDocx } from "../packages/core/src/docx-export";
 import { importOffice } from "../packages/core/src/office";
 import {
+  choicesFromAccounts,
+  choicesFromNames,
   commentAnchorText,
   commentImportSummary,
   commentThreads,
   importWordComments,
+  mentionsFromWordText,
+  threadForReader,
+  wordCommentText,
 } from "../packages/core/src/doc-comments";
 import { documentText } from "../packages/core/src/word";
 
@@ -173,5 +178,128 @@ describe("document comment threads", () => {
     expect(thread.quote).toBe("missing phrase");
     expect(thread.messages[0].authorName).toBe("Jordan");
     expect(thread.messages[0].text).toBe("Where did it go?");
+  });
+
+  it("keeps a mention out of the sentence and round-trips the name through Word", async () => {
+    const file = report();
+    if (file.kind !== "doc") throw new Error();
+    const threads = commentThreads(file.content);
+    threads[0].messages[0].text = " please check this";
+    threads[0].messages[0].mentions = [{ name: "Alex", at: 0 }];
+    file.content.attrs = { ...file.content.attrs, commentThreads: threads };
+    expect(threads[0].messages[0].text).not.toContain("Alex");
+    expect(wordCommentText(threads[0].messages[0])).toBe("@Alex please check this");
+    const zip = await JSZip.loadAsync(await exportDocx(file));
+    const comments = await zip.file("word/comments.xml")!.async("string");
+    expect(comments).toContain("@Alex please check this");
+    const imported = await importOffice(
+      await exportDocx(file),
+      "docx",
+      "Quarterly Report.docx",
+    );
+    if (imported.file.kind !== "doc") throw new Error();
+    const growth = commentThreads(imported.file.content).find((thread) =>
+      thread.quote.includes("12%"),
+    );
+    expect(growth?.messages[0].text).toBe(" please check this");
+    expect(growth?.messages[0].text).not.toContain("Alex");
+    expect(growth?.messages[0].mentions).toEqual([{ name: "Alex", at: 0 }]);
+    expect(mentionsFromWordText("@Sam Okafor please review").text).not.toContain("Sam");
+    expect(mentionsFromWordText("@Sam Okafor please review").mentions[0].name).toBe(
+      "Sam Okafor",
+    );
+  });
+});
+
+describe("comment mention matching", () => {
+  const threads = [
+    {
+      id: "growth",
+      quote: "grew 12%",
+      resolved: false,
+      messages: [
+        {
+          id: "m1",
+          authorId: "local-jordan",
+          authorName: "Jordan",
+          createdAt: "2026-10-12T18:00:00.000Z",
+          text: " please check this",
+          mentions: [{ name: "Alex", at: 0 }],
+        },
+      ],
+    },
+    {
+      id: "outlook",
+      quote: "Outlook",
+      resolved: false,
+      messages: [
+        {
+          id: "m2",
+          authorId: "local-jordan",
+          authorName: "Jordan",
+          createdAt: "2026-10-12T18:05:00.000Z",
+          text: "Can we shorten this?",
+        },
+      ],
+    },
+  ];
+
+  it("lands the named person on their comment and leaves everyone else at the top", () => {
+    expect(threadForReader(threads, { name: "Alex" })?.id).toBe("growth");
+    expect(threadForReader(threads, { name: "alex" })?.id).toBe("growth");
+    expect(threadForReader(threads, { name: "Jordan" })).toBeNull();
+    expect(
+      threadForReader(threads, {
+        name: "Sam Okafor",
+        email: "sam@gardenclub.org",
+        accountId: "sam",
+      }),
+    ).toBeNull();
+    const withSam = structuredClone(threads);
+    withSam[0].messages[0].mentions = [
+      {
+        name: "Sam Okafor",
+        at: 0,
+        email: "sam@gardenclub.org",
+        accountId: "sam",
+      },
+    ];
+    expect(threadForReader(withSam, { name: "Sam Okafor" })?.id).toBe("growth");
+    expect(threadForReader(withSam, { email: "sam@gardenclub.org" })?.id).toBe("growth");
+    expect(threadForReader(withSam, { accountId: "user-sam" })?.id).toBe("growth");
+    expect(threadForReader(withSam, { name: "Lee" })).toBeNull();
+  });
+
+  it("suggests stored names after two characters, and a name with no account", () => {
+    expect(choicesFromNames("A", ["Alex", "Jordan"])).toEqual([]);
+    expect(choicesFromNames("Al", ["Jordan", "Alex"])).toEqual([
+      { name: "Alex" },
+      { name: "Al", unmatched: true },
+    ]);
+    expect(choicesFromNames("Lee", ["Jordan", "Alex"])).toEqual([
+      { name: "Lee", unmatched: true },
+    ]);
+    expect(choicesFromNames("oka", ["Sam Okafor", "Jordan"])[0]).toEqual({
+      name: "Sam Okafor",
+    });
+  });
+
+  it("suggests server accounts with name and email, and still offers a name with no account", () => {
+    const choices = choicesFromAccounts("sa", [
+      {
+        id: "sam",
+        name: "Sam Okafor",
+        email: "sam@gardenclub.org",
+        username: "sam",
+      },
+    ]);
+    expect(choices[0]).toEqual({
+      name: "Sam Okafor",
+      email: "sam@gardenclub.org",
+      accountId: "sam",
+    });
+    expect(choices.some((choice) => choice.unmatched && choice.name === "sa")).toBe(true);
+    expect(choicesFromAccounts("Lee", [])).toEqual([{ name: "Lee", unmatched: true }]);
+    expect(choicesFromAccounts("s", [])).toEqual([]);
   });
 });

@@ -93,6 +93,20 @@ import {
   type TransitionType,
 } from "./slide-theme";
 import { SlideDesignPanel, useReducedMotion } from "./slide-design-panel";
+import { replaceSlideWord } from "./grid-spelling";
+import { SlideSpellMirror, SlideSpelling } from "./grid-spelling-ui";
+import {
+  hasTextRuns,
+  rangeColor,
+  rangeHas,
+  replaceRunRange,
+  runsOf,
+  styleSelection,
+  styleWholeBox,
+  textInnerHtml,
+} from "./slide-runs";
+import { boxFont, RunSpans, SlideTextBody } from "./slide-text";
+import { useSlideThemeLibrary } from "./slide-theme-library";
 
 type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
@@ -101,11 +115,14 @@ export default function Slides({
   onChange,
   onActions,
   onError,
+  readOnly = false,
 }: {
   file: SlideFile;
   onChange: (content: SlideFile["content"]) => void;
   onActions: (actions: EditorActions) => void;
   onError: (s: string) => void;
+  /** Viewers can present, but not change slides or text. */
+  readOnly?: boolean;
 }) {
   const [deck, setDeck] = useState<SlideFile["content"]>(() =>
     structuredClone(file.content),
@@ -116,6 +133,14 @@ export default function Slides({
   const [selectedElementId, setSelectedElementId] = useState<string | null>(
     null,
   );
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [caretMarks, setCaretMarks] = useState<{
+    id: string;
+    bold: boolean;
+    italic: boolean;
+    underline: boolean;
+    color?: string;
+  } | null>(null);
   const [selectedSlideIds, setSelectedSlideIds] = useState<string[]>([
     file.content.slideOrder[0] || "",
   ]);
@@ -166,6 +191,7 @@ export default function Slides({
     openTransition: () => {},
   });
   const reducedMotion = useReducedMotion();
+  const { themes: libraryThemes, save: saveLibraryTheme } = useSlideThemeLibrary();
 
   // Undo/Redo history. Typing in one box collapses into a single step.
   const historyRef = useRef<DeckHistory | null>(null);
@@ -179,6 +205,11 @@ export default function Slides({
   selectedRef.current = selectedSlideIds;
   const selectedElementRef = useRef(selectedElementId);
   selectedElementRef.current = selectedElementId;
+  const editingRef = useRef(editingId);
+  editingRef.current = editingId;
+  const textRange = useRef<{ id: string; start: number; end: number } | null>(
+    null,
+  );
   const anchorRef = useRef(activeSlideId);
   const presentingRef = useRef(false);
   presentingRef.current = presenting;
@@ -192,8 +223,11 @@ export default function Slides({
   const commitRef = useRef<
     (next: SlideFile["content"], key?: string) => void
   >(() => {});
+  const readOnlyRef = useRef(readOnly);
+  readOnlyRef.current = readOnly;
 
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const spellingRef = useRef<{ open: () => void }>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef<{
     elementId: string;
@@ -213,6 +247,7 @@ export default function Slides({
     });
 
   const applyDeck = (next: SlideFile["content"]) => {
+    if (readOnlyRef.current) return;
     deckRef.current = next;
     setDeck(next);
     onChange(next);
@@ -230,11 +265,17 @@ export default function Slides({
     if (elementId !== undefined) {
       selectedElementRef.current = elementId;
       setSelectedElementId(elementId);
+      if (elementId !== editingRef.current) {
+        editingRef.current = null;
+        setEditingId(null);
+        textRange.current = null;
+      }
     }
   };
 
   // Commit changes and push to undo history
   const commit = (next: SlideFile["content"], key?: string) => {
+    if (readOnlyRef.current) return;
     historyRef.current!.commit(next, key);
     applyDeck(next);
     setNotice(null);
@@ -437,9 +478,11 @@ export default function Slides({
     previewTheme && activeSlide ? paintSlide(activeSlide, previewTheme) : activeSlide;
 
   const useTheme = (theme: SlideTheme) => {
-    themeEdits.current.set(theme.id, theme);
+    // Copy so a library snapshot and this deck do not share one object.
+    const copy = { ...theme };
+    themeEdits.current.set(copy.id, copy);
     setPreviewTheme(null);
-    commit(applyDeckTheme(deck, theme));
+    commit(applyDeckTheme(deck, copy));
   };
   const transitionTargets = () =>
     transitionScope === "all" ? deck.slideOrder : selectedSlideIds;
@@ -503,6 +546,7 @@ export default function Slides({
       partial: Partial<SlideElement>,
       mode?: { live?: boolean; coalesce?: string },
     ) => {
+      if (readOnlyRef.current) return;
       const prev = deckRef.current;
       const active =
         prev.slides[activeRef.current] || prev.slides[prev.slideOrder[0]];
@@ -534,6 +578,40 @@ export default function Slides({
   const selectElement = (id: string | null) => {
     selectedElementRef.current = id;
     setSelectedElementId(id);
+    if (id !== editingRef.current) {
+      editingRef.current = null;
+      setEditingId(null);
+      textRange.current = null;
+    }
+  };
+
+  const rememberCaret = (
+    id: string,
+    sel: { start: number; end: number } | null,
+  ) => {
+    if (!sel) return;
+    textRange.current = { id, ...sel };
+    const slide = activeDeckSlide(deckRef.current);
+    const el = slide?.elements.find((item) => item.id === id);
+    if (!el) return;
+    const runs = runsOf(el);
+    const next = {
+      id,
+      bold: rangeHas(runs, sel.start, sel.end, "bold"),
+      italic: rangeHas(runs, sel.start, sel.end, "italic"),
+      underline: rangeHas(runs, sel.start, sel.end, "underline"),
+      color: rangeColor(runs, sel.start, sel.end),
+    };
+    setCaretMarks((prev) =>
+      prev &&
+      prev.id === next.id &&
+      prev.bold === next.bold &&
+      prev.italic === next.italic &&
+      prev.underline === next.underline &&
+      prev.color === next.color
+        ? prev
+        : next,
+    );
   };
 
   const insertOnActive = (elements: SlideElement[], focusId?: string) => {
@@ -609,13 +687,77 @@ export default function Slides({
     return el?.type === "text" ? el : null;
   };
 
-  const toggleBold = () => {
-    const el = selectedText();
-    if (el) updateElement(el.id, { bold: !el.bold });
+  const selectionIn = (id: string) => {
+    const stored = textRange.current;
+    if (editingRef.current === id && stored?.id === id && stored.end > stored.start)
+      return stored;
+    const area = stageRef.current?.querySelector<HTMLTextAreaElement>(
+      `[data-element-id="${CSS.escape(id)}"] textarea`,
+    );
+    if (
+      area &&
+      document.activeElement === area &&
+      area.selectionEnd > area.selectionStart
+    )
+      return { id, start: area.selectionStart, end: area.selectionEnd };
+    return null;
   };
-  const toggleItalic = () => {
+  const formatText = (kind: "bold" | "italic" | "underline") => {
     const el = selectedText();
-    if (el) updateElement(el.id, { italic: !el.italic });
+    if (!el) return;
+    const range = selectionIn(el.id);
+    if (range) {
+      const next = styleSelection(el, range.start, range.end, { type: kind });
+      updateElement(el.id, next);
+      textRange.current = range;
+      if (editingRef.current !== el.id) {
+        editingRef.current = el.id;
+        setEditingId(el.id);
+      }
+      const runs = runsOf(next);
+      setCaretMarks({
+        id: el.id,
+        bold: rangeHas(runs, range.start, range.end, "bold"),
+        italic: rangeHas(runs, range.start, range.end, "italic"),
+        underline: rangeHas(runs, range.start, range.end, "underline"),
+        color: rangeColor(runs, range.start, range.end),
+      });
+      return;
+    }
+    if (editingRef.current === el.id) return;
+    updateElement(el.id, styleWholeBox(el, kind));
+  };
+  const toggleBold = () => formatText("bold");
+  const toggleItalic = () => formatText("italic");
+  const toggleUnderline = () => formatText("underline");
+  const applyAccent = () => {
+    const el = selectedText();
+    if (!el) return;
+    const color = (deckRef.current.theme?.accent ?? "#188038").toLowerCase();
+    const range = selectionIn(el.id);
+    if (range) {
+      const next = styleSelection(el, range.start, range.end, {
+        type: "color",
+        color,
+      });
+      updateElement(el.id, next);
+      textRange.current = range;
+      if (editingRef.current !== el.id) {
+        editingRef.current = el.id;
+        setEditingId(el.id);
+      }
+      const runs = runsOf(next);
+      setCaretMarks({
+        id: el.id,
+        bold: rangeHas(runs, range.start, range.end, "bold"),
+        italic: rangeHas(runs, range.start, range.end, "italic"),
+        underline: rangeHas(runs, range.start, range.end, "underline"),
+        color: rangeColor(runs, range.start, range.end),
+      });
+      return;
+    }
+    if (editingRef.current === el.id) return;
+    updateElement(el.id, handStyle({ color }));
   };
   const alignText = (alignment: "left" | "center" | "right") => {
     const el = selectedText();
@@ -709,6 +851,9 @@ export default function Slides({
       case "italic":
         toggleItalic();
         break;
+      case "underline":
+        toggleUnderline();
+        break;
       case "move":
         moveSlides(command.where);
         break;
@@ -730,6 +875,7 @@ export default function Slides({
     move: moveSlides,
     toggleBold,
     toggleItalic,
+    toggleUnderline,
     align: alignText,
     run: runCommand,
   });
@@ -748,6 +894,7 @@ export default function Slides({
     move: moveSlides,
     toggleBold,
     toggleItalic,
+    toggleUnderline,
     align: alignText,
     run: runCommand,
   };
@@ -761,8 +908,13 @@ export default function Slides({
     e.stopPropagation();
     selectedElementRef.current = elementId;
     setSelectedElementId(elementId);
+    if (!handle && editingRef.current && editingRef.current !== elementId) {
+      editingRef.current = null;
+      setEditingId(null);
+      textRange.current = null;
+    }
     const el = activeSlide.elements.find((item) => item.id === elementId);
-    if (!el) return;
+    if (!el || readOnlyRef.current) return;
 
     draggingRef.current = {
       elementId,
@@ -888,8 +1040,10 @@ export default function Slides({
           .map((el) => {
             const pos = `position: absolute; left: ${(el.x / (deck.width || 960)) * 100}%; top: ${(el.y / (deck.height || 540)) * 100}%; width: ${(el.width / (deck.width || 960)) * 100}%; height: ${(el.height / (deck.height || 540)) * 100}%;`;
             if (el.type === "text") {
-              const style = `${pos} font-size: ${(el.fontSize || 20) * 1.5}px; font-weight: ${el.bold ? "bold" : "normal"}; font-style: ${el.italic ? "italic" : "normal"}; color: ${el.color || "#1e293b"}; text-align: ${el.align || "left"}; white-space: pre-wrap; word-break: break-word;`;
-              return `<div style="${style}">${el.content || ""}</div>`;
+              const weight = hasTextRuns(el) ? "normal" : el.bold ? "bold" : "normal";
+              const family = JSON.stringify(el.fontFamily || "Arial");
+              const style = `${pos} font-size: ${(el.fontSize || 20) * 1.5}px; font-weight: ${weight}; font-style: ${hasTextRuns(el) ? "normal" : el.italic ? "italic" : "normal"}; color: ${el.color || "#1e293b"}; text-align: ${el.align || "left"}; white-space: pre-wrap; word-break: break-word; font-family: ${family};`;
+              return `<div style="${style}">${textInnerHtml(el)}</div>`;
             }
             if (el.type === "image" && el.src) {
               return `<img src="${el.src}" alt="${el.alt || "image"}" style="${pos} object-fit: contain;" />`;
@@ -1049,6 +1203,7 @@ ${slidesHtml}
         undoReason: () => slideApi.current.undoReason(),
         redoReason: () => slideApi.current.redoReason(),
         deleteReason: () => slideApi.current.deleteReason(),
+        openSpelling: () => spellingRef.current?.open(),
       },
     });
   }, [onActions, onChange, activeSlideId, beginShow]);
@@ -1058,10 +1213,25 @@ ${slidesHtml}
       if (presentingRef.current) return;
       if (e.key === "Escape") {
         setContextMenu(null);
+        const editing = editingRef.current;
+        const area =
+          document.activeElement instanceof HTMLTextAreaElement &&
+          document.activeElement.classList.contains("element-textarea");
+        if (editing || area) {
+          editingRef.current = null;
+          setEditingId(null);
+          textRange.current = null;
+          if (document.activeElement instanceof HTMLElement)
+            document.activeElement.blur();
+        }
         return;
       }
       const command = commandFromKey(e, typingContext(e.target));
       if (!command) return;
+      if (readOnlyRef.current && command.type !== "copy") {
+        e.preventDefault();
+        return;
+      }
       e.preventDefault();
       api.current.run(command);
     };
@@ -1107,6 +1277,7 @@ ${slidesHtml}
       }
       if (e.key.toLowerCase() !== "m" || e.shiftKey || e.altKey) return;
       e.preventDefault();
+      if (readOnlyRef.current) return;
       apiRef.current.addSlide("title-body");
     };
     window.addEventListener("keydown", onKeyDown);
@@ -1272,9 +1443,7 @@ ${slidesHtml}
               ...posStyle,
               fontSize: units((el.fontSize || 20) * 0.95),
               padding: units(4),
-              fontWeight: el.bold ? "bold" : "normal",
-              fontStyle: el.italic ? "italic" : "normal",
-              textDecoration: el.underline ? "underline" : "none",
+              ...boxFont(el),
               fontFamily: el.fontFamily || "Arial",
               color: el.color || "#1e293b",
               textAlign: el.align || "left",
@@ -1283,7 +1452,13 @@ ${slidesHtml}
               backgroundColor: el.fill || "transparent",
             }}
           >
-            {el.content}
+            <RunSpans
+              content={el.content}
+              runs={el.runs}
+              bold={el.bold}
+              italic={el.italic}
+              underline={el.underline}
+            />
           </div>
         );
       }
@@ -1466,6 +1641,7 @@ ${slidesHtml}
         role="toolbar"
         aria-label="Slides toolbar"
       >
+        <fieldset className="toolbar-edits" disabled={readOnly}>
         <div className="tool-group">
           <MenuSearchPill />
           <button
@@ -1495,19 +1671,16 @@ ${slidesHtml}
           <Tool
             label="Undo (Cmd+Z)"
             onClick={undo}
-            disabled={!historyMarks.undo}
+            disabled={!historyMarks.undo || readOnly}
           >
             <Undo2 size={16} />
           </Tool>
           <Tool
             label="Redo (Cmd+Y)"
             onClick={redo}
-            disabled={!historyMarks.redo}
+            disabled={!historyMarks.redo || readOnly}
           >
             <Redo2 size={16} />
-          </Tool>
-          <Tool label="Print (Cmd+P)" onClick={() => printDocument()}>
-            <Printer size={16} />
           </Tool>
         </div>
 
@@ -1686,36 +1859,59 @@ ${slidesHtml}
 
                 <Tool
                   label="Bold"
-                  active={!!selectedElement.bold}
-                  onClick={() =>
-                    updateElement(selectedElement.id, {
-                      bold: !selectedElement.bold,
-                    })
+                  active={
+                    editingId === selectedElement.id && caretMarks?.id === selectedElement.id
+                      ? caretMarks.bold
+                      : hasTextRuns(selectedElement)
+                        ? !!selectedElement.runs?.every((run) => run.bold)
+                        : !!selectedElement.bold
                   }
+                  onClick={toggleBold}
                 >
                   <Bold size={16} />
                 </Tool>
                 <Tool
                   label="Italic"
-                  active={!!selectedElement.italic}
-                  onClick={() =>
-                    updateElement(selectedElement.id, {
-                      italic: !selectedElement.italic,
-                    })
+                  active={
+                    editingId === selectedElement.id && caretMarks?.id === selectedElement.id
+                      ? caretMarks.italic
+                      : hasTextRuns(selectedElement)
+                        ? !!selectedElement.runs?.every((run) => run.italic)
+                        : !!selectedElement.italic
                   }
+                  onClick={toggleItalic}
                 >
                   <Italic size={16} />
                 </Tool>
                 <Tool
                   label="Underline"
-                  active={!!selectedElement.underline}
-                  onClick={() =>
-                    updateElement(selectedElement.id, {
-                      underline: !selectedElement.underline,
-                    })
+                  active={
+                    editingId === selectedElement.id && caretMarks?.id === selectedElement.id
+                      ? caretMarks.underline
+                      : hasTextRuns(selectedElement)
+                        ? !!selectedElement.runs?.every((run) => run.underline)
+                        : !!selectedElement.underline
                   }
+                  onClick={toggleUnderline}
                 >
                   <Underline size={16} />
+                </Tool>
+                <Tool
+                  label="Accent colour for the selection"
+                  active={
+                    editingId === selectedElement.id &&
+                    caretMarks?.id === selectedElement.id &&
+                    caretMarks.color === (deck.theme?.accent ?? "").toLowerCase()
+                  }
+                  onClick={applyAccent}
+                >
+                  <span className="text-color-tool">
+                    <span className="text-color-a">A</span>
+                    <span
+                      className="text-color-bar"
+                      style={{ background: deck.theme?.accent ?? "#188038" }}
+                    />
+                  </span>
                 </Tool>
                 <Tool
                   label="Align left"
@@ -1828,6 +2024,11 @@ ${slidesHtml}
 
           </div>
         )}
+        </fieldset>
+
+        <Tool label="Print (Cmd+P)" onClick={() => printDocument()}>
+          <Printer size={16} />
+        </Tool>
 
         {/* Google Slides styled Slideshow button */}
         <div className="tool-group right-tools" style={{ marginLeft: "auto" }}>
@@ -1892,6 +2093,10 @@ ${slidesHtml}
             Reset to theme
           </button>
         </div>
+      ) : selectedElement?.type === "text" && editingId !== selectedElement.id ? (
+        <div className="format-hint-bar">
+          Double-click a word to format just that word.
+        </div>
       ) : null}
 
       {/* Main Slides Editor Body */}
@@ -1905,7 +2110,7 @@ ${slidesHtml}
                 type="button"
                 title="Move slide up"
                 onClick={() => moveSlides("up")}
-                disabled={!canMove(deck.slideOrder, selectedSlideIds, "up")}
+                disabled={readOnly || !canMove(deck.slideOrder, selectedSlideIds, "up")}
               >
                 <ChevronUp size={14} />
               </button>
@@ -1913,13 +2118,16 @@ ${slidesHtml}
                 type="button"
                 title="Move slide down"
                 onClick={() => moveSlides("down")}
-                disabled={!canMove(deck.slideOrder, selectedSlideIds, "down")}
+                disabled={
+                  readOnly || !canMove(deck.slideOrder, selectedSlideIds, "down")
+                }
               >
                 <ChevronDown size={14} />
               </button>
               <button
                 type="button"
                 title="Duplicate slide"
+                disabled={readOnly}
                 onClick={duplicateCurrentSlide}
               >
                 <Copy size={14} />
@@ -1928,7 +2136,9 @@ ${slidesHtml}
                 type="button"
                 title="Delete slide"
                 onClick={deleteCurrentSlide}
-                disabled={!canDeleteSlides(deck.slideOrder, selectedSlideIds)}
+                disabled={
+                  readOnly || !canDeleteSlides(deck.slideOrder, selectedSlideIds)
+                }
               >
                 <Trash2 size={14} />
               </button>
@@ -2031,6 +2241,7 @@ ${slidesHtml}
                   }}
                   onContextMenu={(e) => {
                     e.preventDefault();
+                    if (readOnlyRef.current) return;
                     if (!selectedRef.current.includes(id)) {
                       anchorRef.current = id;
                       applySelection(id, [id], null);
@@ -2064,10 +2275,16 @@ ${slidesHtml}
                                 ...miniStyle,
                                 color: el.color || "#1e293b",
                                 textAlign: el.align || "left",
-                                fontWeight: el.bold ? "bold" : "normal",
+                                ...boxFont(el),
                               }}
                             >
-                              {el.content}
+                              <RunSpans
+                                content={el.content}
+                                runs={el.runs}
+                                bold={el.bold}
+                                italic={el.italic}
+                                underline={el.underline}
+                              />
                             </div>
                           );
                         }
@@ -2121,6 +2338,7 @@ ${slidesHtml}
             <button
               type="button"
               className="add-slide-sidebar-btn"
+              disabled={readOnly}
               onClick={() => addSlide("title-body")}
               title="New slide (Cmd+M)"
             >
@@ -2165,31 +2383,75 @@ ${slidesHtml}
                       style={{
                         ...posStyle,
                         fontSize: `${(el.fontSize || 20) * 0.95}px`,
-                        fontWeight: el.bold ? "bold" : "normal",
-                        fontStyle: el.italic ? "italic" : "normal",
-                        textDecoration: el.underline ? "underline" : "none",
+                        ...boxFont(el),
                         fontFamily: el.fontFamily || "Arial",
                         color: el.color || "#1e293b",
                         textAlign: el.align || "left",
                         backgroundColor: el.fill || "transparent",
+                        ["--spell-caret" as string]: el.color || "#1e293b",
                       }}
-                      onMouseDown={(e) => onElementMouseDown(e, el.id)}
+                      onMouseDown={(e) => {
+                        const inEditor = (e.target as HTMLElement).closest?.(
+                          ".element-editor",
+                        );
+                        if (editingRef.current === el.id && inEditor) return;
+                        onElementMouseDown(e, el.id);
+                      }}
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        if (readOnlyRef.current) return;
+                        editingRef.current = el.id;
+                        textRange.current = null;
+                        setEditingId(el.id);
+                        selectedElementRef.current = el.id;
+                        setSelectedElementId(el.id);
+                      }}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <textarea
-                        className="element-textarea"
-                        value={el.content || ""}
-                        placeholder={el.placeholder ?? "Click to add text"}
-                        onChange={(e) =>
-                          updateElement(
-                            el.id,
-                            { content: e.target.value },
-                            { coalesce: `type:${el.id}` },
-                          )
-                        }
-                        onFocus={() => selectElement(el.id)}
-                      />
-                      {isSelected ? renderHandles(el.id) : null}
+                      {editingId === el.id || hasTextRuns(el) ? (
+                        <SlideTextBody
+                          content={el.content}
+                          runs={el.runs}
+                          bold={el.bold}
+                          italic={el.italic}
+                          underline={el.underline}
+                          placeholder={el.placeholder}
+                          editing={editingId === el.id && !readOnly}
+                          onText={(runs) =>
+                            updateElement(
+                              el.id,
+                              {
+                                content: runs.map((run) => run.text).join(""),
+                                runs: hasTextRuns({ runs }) ? runs : undefined,
+                                bold: false,
+                                italic: false,
+                                underline: false,
+                              },
+                              { coalesce: `type:${el.id}` },
+                            )
+                          }
+                          onCaret={(sel) => rememberCaret(el.id, sel)}
+                        />
+                      ) : (
+                        <>
+                          <SlideSpellMirror text={el.content || ""} fileId={file.id} />
+                          <textarea
+                            className="element-textarea"
+                            readOnly={readOnly}
+                            value={el.content || ""}
+                            placeholder={el.placeholder ?? "Click to add text"}
+                            onChange={(e) =>
+                              updateElement(
+                                el.id,
+                                { content: e.target.value },
+                                { coalesce: `type:${el.id}` },
+                              )
+                            }
+                            onFocus={() => selectElement(el.id)}
+                          />
+                        </>
+                      )}
+                      {isSelected && !readOnly ? renderHandles(el.id) : null}
                     </div>
                   );
                 }
@@ -2207,7 +2469,7 @@ ${slidesHtml}
                       onClick={(e) => e.stopPropagation()}
                     >
                       <img src={el.src} alt={el.alt || "Slide asset"} />
-                      {isSelected ? renderHandles(el.id) : null}
+                      {isSelected && !readOnly ? renderHandles(el.id) : null}
                     </div>
                   );
                 }
@@ -2239,7 +2501,7 @@ ${slidesHtml}
                       onMouseDown={(e) => onElementMouseDown(e, el.id)}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      {isSelected ? renderHandles(el.id) : null}
+                      {isSelected && !readOnly ? renderHandles(el.id) : null}
                     </div>
                   );
                 }
@@ -2267,7 +2529,7 @@ ${slidesHtml}
                           ))}
                         </tbody>
                       </table>
-                      {isSelected ? renderHandles(el.id) : null}
+                      {isSelected && !readOnly ? renderHandles(el.id) : null}
                     </div>
                   );
                 }
@@ -2291,6 +2553,7 @@ ${slidesHtml}
             {showNotes ? (
               <textarea
                 className="notes-textarea"
+                readOnly={readOnly}
                 placeholder="Click to add speaker notes"
                 value={activeSlide?.notes || ""}
                 onChange={(e) =>
@@ -2322,6 +2585,12 @@ ${slidesHtml}
               setPreviewTheme(null);
               commit(customizeTheme(deck, patch));
             }}
+            library={libraryThemes}
+            onSaveToLibrary={(name) => {
+              if (!deck.theme)
+                return { ok: false, error: "Pick a theme, then save it." };
+              return saveLibraryTheme(deck.theme, name);
+            }}
             duration={transitionDuration}
             onDuration={(seconds) => {
               setDuration(seconds);
@@ -2343,6 +2612,34 @@ ${slidesHtml}
             status={transitionStatus}
           />
         ) : null}
+        <SlideSpelling
+          ref={spellingRef}
+          deck={deck}
+          fileId={file.id}
+          onFocus={(issue) => applySelection(issue.slideId, [issue.slideId], issue.elementId)}
+          onReplace={(issue, replacement) => {
+            const next = replaceSlideWord(
+              deckRef.current,
+              issue.slideId,
+              issue.elementId,
+              issue.from,
+              issue.to,
+              replacement,
+            );
+            const slide = next.slides[issue.slideId];
+            const element = slide?.elements.find((item) => item.id === issue.elementId);
+            if (element?.runs?.length) {
+              element.runs = replaceRunRange(
+                element.runs,
+                issue.from,
+                issue.to,
+                replacement,
+              );
+            }
+            commitRef.current(next);
+            applySelection(issue.slideId, [issue.slideId], issue.elementId);
+          }}
+        />
       </div>
 
       {/* Presentation Fullscreen Mode Modal */}

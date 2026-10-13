@@ -1,6 +1,28 @@
 import { z } from "zod";
 
 export { diffDocuments, type DocDiff } from "./doc-diff";
+export {
+  applyParagraphRestore,
+  compareParagraphs,
+  paragraphRestorePrompt,
+  type ParagraphCompare,
+  type ParagraphOffer,
+} from "./doc-paragraph-restore";
+export {
+  diffSheets,
+  type CellLook,
+  type SheetCellChange,
+  type SheetDiff,
+  type SheetDiffSheet,
+  type SheetPlainCell,
+} from "./sheet-diff";
+export {
+  diffSlides,
+  type SlideDiff,
+  type SlideDiffElement,
+  type SlideDiffFrame,
+  type SlideTextRun,
+} from "./slide-diff";
 export type Kind = "doc" | "sheet" | "slide";
 export type JsonNode = {
   type: string;
@@ -102,6 +124,15 @@ export const pivotSchema = z.object({
   invalid: z.boolean().optional(),
 });
 export type PivotDefinition = z.infer<typeof pivotSchema>;
+/** One slice of a text box. Unset bold, italic, underline, and colour follow the box. */
+export const textRunSchema = z.object({
+  text: z.string(),
+  bold: z.boolean().optional(),
+  italic: z.boolean().optional(),
+  underline: z.boolean().optional(),
+  color: z.string().max(40).optional(),
+});
+export type TextRun = z.infer<typeof textRunSchema>;
 export const slideElementSchema = z.object({
   id: z.string(),
   type: z.enum(["text", "shape", "image", "table"]),
@@ -111,6 +142,8 @@ export const slideElementSchema = z.object({
   height: z.number().nonnegative(),
   rotation: z.number().optional(),
   content: z.string().optional(),
+  /** Per-word styles. The plain `content` string stays in sync with these runs. */
+  runs: z.array(textRunSchema).optional(),
   placeholder: z.string().optional(),
   fontSize: z.number().optional(),
   fontFamily: z.string().optional(),
@@ -310,6 +343,27 @@ export type SlideFile = Extract<SuiteFile, { kind: "slide" }>;
 export function safeLink(url: string): boolean {
   return /^(https?:|mailto:|tel:|#)/i.test(url);
 }
+/**
+ * Turns what someone typed into a link into a safe href, or null.
+ * A bare web address gets https:// and a bare email address gets mailto:;
+ * anything else must already pass `safeLink`. Docs and Sheets share this.
+ */
+export function linkTarget(input: string): string | null {
+  const url = input.trim();
+  if (!url || /\s/.test(url)) return null;
+  if (safeLink(url)) return url;
+  if (/^[\w.+-]+@[\w-]+(\.[\w-]+)+$/.test(url)) return `mailto:${url}`;
+  if (/^[\w-]+(\.[\w-]+)+(:\d+)?([/?#]\S*)?$/.test(url)) return `https://${url}`;
+  return null;
+}
+export {
+  cellHyperlink,
+  cellLabel,
+  linkDocument,
+  linkedCell,
+  removedLinkWarning,
+  takeExcelHyperlink,
+} from "./sheet-links";
 function validateTree(n: JsonNode, depth = 0) {
   if (depth > 100) throw new Error("Document is nested too deeply.");
   if (

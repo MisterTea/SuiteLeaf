@@ -84,10 +84,20 @@ export function optionsFromValues(values: unknown[]): DropdownOption[] {
   });
 }
 
+/** A formula that points at cells, such as =Statuses!$A$2:$A$5. */
+export function isRangeFormula(formula1: string | undefined): boolean {
+  const raw = String(formula1 ?? "").trim();
+  if (!raw.startsWith("=")) return false;
+  const body = raw.slice(1).trim();
+  if (!body || body.startsWith("[") || body.startsWith('"') || body.includes("("))
+    return false;
+  return /[A-Za-z]/.test(body);
+}
+
 /** JSON list (Univer) or a comma-separated list (Excel). */
 export function parseList(formula1: string | undefined): string[] {
   const raw = String(formula1 ?? "").trim();
-  if (!raw) return [];
+  if (!raw || isRangeFormula(raw)) return [];
   if (raw.startsWith("[")) {
     try {
       const parsed = JSON.parse(raw);
@@ -251,37 +261,94 @@ export function findMismatches(
   cells: CellAddress[],
   options: DropdownOption[],
   popular?: string,
+  multiple = false,
 ): Mismatch[] {
   const labels = options.map((option) => option.label);
   return cells.flatMap((cell) => {
     if (!trimmedText(cell.value)) return [];
-    if (canonicalOption(cell.value, options)) return [];
+    if (!multiple) {
+      if (canonicalOption(cell.value, options)) return [];
+      return [
+        {
+          ...cell,
+          suggestion: suggestOption(cellText(cell.value), labels, popular),
+        },
+      ];
+    }
+    const tokens = dropdownTokens(cell.value);
+    const bad = tokens.find((token) => !canonicalOption(token, options));
+    if (!bad) return [];
     return [
       {
         ...cell,
-        suggestion: suggestOption(cellText(cell.value), labels, popular),
+        suggestion: suggestOption(bad, labels, popular),
       },
     ];
   });
 }
 
+/** Tokens in a multi-select cell: a JSON list or comma-separated labels. */
+export function dropdownTokens(value: unknown): string[] {
+  const text = cellText(value).trim();
+  if (!text) return [];
+  if (text.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed) && parsed.every((item) => typeof item === "string"))
+        return parsed.map((item) => item.trim()).filter(Boolean);
+    } catch {
+      /* A comma-separated list is the Excel-visible form. */
+    }
+  }
+  return text
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+export function rejectionMessage(rejected: string[], labels: string[]): string {
+  const unique = [...new Set(rejected.map((item) => item.trim()).filter(Boolean))];
+  const lead =
+    unique.length === 0
+      ? ""
+      : unique.length === 1
+        ? `${unique[0]} isn't an option. `
+        : `${unique.join(", ")} aren't options. `;
+  return `${lead}${allowedOptionsMessage(labels)}`;
+}
+
 /**
  * Value to store after a rename and a space/case tidy.
  * Undefined means the cell already holds the right text.
+ * A multi-select cell is several labels joined with a comma.
  */
 export function storedLabel(
   value: unknown,
   options: DropdownOption[],
   renames: { from: string; to: string }[],
+  multiple = false,
 ): string | undefined {
+  if (multiple) {
+    const tokens = dropdownTokens(value);
+    if (!tokens.length) return undefined;
+    const next: string[] = [];
+    for (const token of tokens) {
+      const renamed = renames.find(
+        (rename) => rename.from.trim().toLowerCase() === token.trim().toLowerCase(),
+      );
+      const label = renamed ? renamed.to : canonicalOption(token, options);
+      if (!label) return undefined;
+      if (!next.includes(label)) next.push(label);
+    }
+    const joined = next.join(", ");
+    return joined === cellText(value) ? undefined : joined;
+  }
   const text = cellText(value);
   if (!trimmedText(text)) return undefined;
   const renamed = renames.find(
     (rename) => rename.from.trim().toLowerCase() === text.trim().toLowerCase(),
   );
-  const next = renamed
-    ? renamed.to
-    : canonicalOption(text, options);
+  const next = renamed ? renamed.to : canonicalOption(text, options);
   if (!next || next === text) return undefined;
   return next;
 }
@@ -334,12 +401,52 @@ function isCellRecord(value: unknown): value is { v?: unknown; f?: string; s?: u
   return "v" in value || "f" in value || "p" in value || "s" in value || "t" in value;
 }
 
+export type DropdownRuleHit = {
+  options: DropdownOption[];
+  multiple?: boolean;
+  /** When false, an unknown token is left in the cell. */
+  reject?: boolean;
+};
+
+export type DropdownRejection = {
+  row: number;
+  column: number;
+  rejected: string[];
+  labels: string[];
+};
+
+function asHit(hit: DropdownOption[] | DropdownRuleHit): DropdownRuleHit {
+  return Array.isArray(hit) ? { options: hit, reject: true } : hit;
+}
+
 function paintCell(
   cell: { v?: unknown; f?: string; s?: unknown; t?: number },
-  options: DropdownOption[],
+  hit: DropdownOption[] | DropdownRuleHit,
+  report?: (rejected: string[]) => void,
 ): boolean {
   if (cell.f) return false;
-  const next = canonicalOption(cell.v, options);
+  const rule = asHit(hit);
+  if (rule.multiple) {
+    const tokens = dropdownTokens(cell.v);
+    if (!tokens.length) return false;
+    const kept: string[] = [];
+    const rejected: string[] = [];
+    for (const token of tokens) {
+      const canon = canonicalOption(token, rule.options);
+      if (canon) {
+        if (!kept.includes(canon)) kept.push(canon);
+      } else rejected.push(token);
+    }
+    if (rejected.length) report?.(rejected);
+    if (rejected.length && kept.length === 0) return false;
+    if (rejected.length && rule.reject === false) return false;
+    const next = kept.join(", ");
+    if (!next || next === cell.v) return false;
+    cell.v = next;
+    cell.t = 1;
+    return true;
+  }
+  const next = canonicalOption(cell.v, rule.options);
   if (!next || next === cell.v) return false;
   cell.v = next;
   cell.t = 1;
@@ -352,22 +459,43 @@ function paintCell(
  */
 export function rewriteListValues(
   params: { range?: Range; value?: unknown },
-  optionsAt: (row: number, column: number) => DropdownOption[] | null,
+  optionsAt: (
+    row: number,
+    column: number,
+  ) => DropdownOption[] | DropdownRuleHit | null,
+  onReject?: (rejection: DropdownRejection) => void,
 ): boolean {
   const { range, value } = params;
   if (value == null) return false;
   let changed = false;
+  const paint = (
+    cell: { v?: unknown; f?: string; s?: unknown; t?: number },
+    hit: DropdownOption[] | DropdownRuleHit,
+    row: number,
+    column: number,
+  ) => {
+    const rule = asHit(hit);
+    return paintCell(cell, rule, (rejected) =>
+      onReject?.({
+        row,
+        column,
+        rejected,
+        labels: rule.options.map((option) => option.label),
+      }),
+    );
+  };
   if (Array.isArray(value)) {
     if (!range) return false;
     value.forEach((row, rowIndex) => {
       if (!Array.isArray(row)) return;
       row.forEach((cell, columnIndex) => {
         if (!isCellRecord(cell)) return;
-        const options = optionsAt(
+        const hit = optionsAt(
           range.startRow + rowIndex,
           range.startColumn + columnIndex,
         );
-        if (options && paintCell(cell, options)) changed = true;
+        if (hit && paint(cell, hit, range.startRow + rowIndex, range.startColumn + columnIndex))
+          changed = true;
       });
     });
     return changed;
@@ -375,16 +503,18 @@ export function rewriteListValues(
   if (isCellRecord(value)) {
     if (!range || range.startRow !== range.endRow || range.startColumn !== range.endColumn)
       return false;
-    const options = optionsAt(range.startRow, range.startColumn);
-    return Boolean(options && paintCell(value, options));
+    const hit = optionsAt(range.startRow, range.startColumn);
+    return Boolean(hit && paint(value, hit, range.startRow, range.startColumn));
   }
   if (typeof value === "object") {
     for (const [rowKey, row] of Object.entries(value as Record<string, unknown>)) {
       if (!row || typeof row !== "object") continue;
       for (const [columnKey, cell] of Object.entries(row as Record<string, unknown>)) {
         if (!isCellRecord(cell)) continue;
-        const options = optionsAt(Number(rowKey), Number(columnKey));
-        if (options && paintCell(cell, options)) changed = true;
+        const rowIndex = Number(rowKey);
+        const columnIndex = Number(columnKey);
+        const hit = optionsAt(rowIndex, columnIndex);
+        if (hit && paint(cell, hit, rowIndex, columnIndex)) changed = true;
       }
     }
   }
