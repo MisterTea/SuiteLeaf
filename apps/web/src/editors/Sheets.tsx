@@ -60,6 +60,7 @@ import {
   contiguousColumnRanges,
   readColumnGroups,
   shiftColumnGroups,
+  shrinkColumnGroups,
 } from "./sheet-column-groups";
 import SheetFeatures from "./sheet-features";
 import SheetPrint, { type SheetPrintHandle } from "./sheet-print-ui";
@@ -1504,6 +1505,33 @@ export default function Sheets({
           Object.keys(custom).length ? custom : undefined,
         );
       };
+      const shrinkGroupsForDeletedColumns = (
+        at: number,
+        count: number,
+        params: { unitId?: unknown; subUnitId?: unknown },
+      ) => {
+        if (!Number.isInteger(at) || !Number.isInteger(count) || count < 1)
+          return;
+        const subUnitId =
+          typeof params.subUnitId === "string" ? params.subUnitId : "";
+        if (!subUnitId) return;
+        const unitId =
+          typeof params.unitId === "string" ? params.unitId : workbook.getId();
+        const worksheet = injector
+          .get(IUniverInstanceService)
+          .getUnit(unitId, UniverInstanceType.UNIVER_SHEET)
+          ?.getSheetBySheetId(subUnitId);
+        if (!worksheet) return;
+        const before = readColumnGroups(worksheet.getCustomMetadata());
+        if (!before.length) return;
+        const after = shrinkColumnGroups(before, at, count);
+        const custom = { ...(worksheet.getCustomMetadata() ?? {}) };
+        if (after.length) custom.suiteleafColumnGroups = after;
+        else delete custom.suiteleafColumnGroups;
+        worksheet.setCustomMetadata(
+          Object.keys(custom).length ? custom : undefined,
+        );
+      };
       const listener = workbook.onCommandExecuted((command: any) => {
         if (
           !disposed &&
@@ -1533,6 +1561,8 @@ export default function Sheets({
             shiftGroupsForInsertedRows(start, end - start + 1, p);
           if (structural[1] === "insert" && axis === "column")
             shiftGroupsForInsertedColumns(start, end - start + 1, p);
+          if (structural[1] === "remove" && axis === "column")
+            shrinkGroupsForDeletedColumns(start, end - start + 1, p);
           for (const chart of content.current.charts) {
             for (const series of chart.excel?.series ?? []) {
               if (series.values.sheetId !== p.subUnitId) continue;

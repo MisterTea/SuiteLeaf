@@ -167,6 +167,64 @@ function shiftColumnGroupForInsert(
   return { ...group, endColumn: group.endColumn + count, collapsed };
 }
 
+/**
+ * Shrink column groups when `count` columns are deleted at the 0-based index `at`.
+ * A delete inside a group shortens its end. Deleting the group's first column
+ * shrinks it from the left: the next column slides into that index and stays in
+ * the group. A delete to the left of a group shifts the span and its hidden
+ * indexes left without expanding it. A delete to the right of a group leaves it.
+ * Hidden indexes drop the deleted columns and move left for every hidden column
+ * to their right. A group that loses every column is removed, so `endColumn`
+ * never falls below `startColumn`.
+ */
+export function shrinkColumnGroups(
+  groups: ColumnGroup[],
+  at: number,
+  count = 1,
+): ColumnGroup[] {
+  if (!Number.isInteger(at) || at < 0 || !Number.isInteger(count) || count < 1)
+    return groups;
+  const next: ColumnGroup[] = [];
+  for (const group of groups) {
+    const shrunk = shrinkColumnGroupForDelete(group, at, count);
+    if (shrunk) next.push(shrunk);
+  }
+  return next;
+}
+
+/** Where a column lands after a delete, or null when that column is deleted. */
+function survivingColumn(column: number, at: number, count: number): number | null {
+  if (column >= at && column < at + count) return null;
+  return column >= at + count ? column - count : column;
+}
+
+function shrinkColumnGroupForDelete(
+  group: ColumnGroup,
+  at: number,
+  count: number,
+): ColumnGroup | null {
+  if (at > group.endColumn) return group;
+  let startColumn: number | null = null;
+  let endColumn: number | null = null;
+  for (let column = group.startColumn; column <= group.endColumn; column++) {
+    const mapped = survivingColumn(column, at, count);
+    if (mapped == null) continue;
+    if (startColumn == null) startColumn = mapped;
+    endColumn = mapped;
+  }
+  if (startColumn == null || endColumn == null || endColumn < startColumn) return null;
+  const start = startColumn;
+  const end = endColumn;
+  const collapsed = [
+    ...new Set(
+      group.collapsed
+        .map((column) => survivingColumn(column, at, count))
+        .filter((column): column is number => column != null && column >= start && column <= end),
+    ),
+  ].sort((a, b) => a - b);
+  return { ...group, startColumn: start, endColumn: end, collapsed };
+}
+
 export function replaceColumnGroups(
   existing: ColumnGroup[],
   next: ColumnGroup,

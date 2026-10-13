@@ -14,6 +14,7 @@ import {
   readColumnGroups,
   replaceColumnGroups,
   shiftColumnGroups,
+  shrinkColumnGroups,
   showOnlyColumn,
   showOnlyColumnLabel,
   withColumnGroups,
@@ -128,6 +129,64 @@ test("inserting a column shifts a nested group and a collapsed week", () => {
   );
   expect(stillCollapsed.some((group) => group.startColumn <= 1 && group.endColumn >= 1)).toBe(false);
   expect(stillCollapsed.every((group) => group.startColumn > 0)).toBe(true);
+});
+
+test("deleting a column shrinks a nested group and a collapsed week", () => {
+  const quarter = makeColumnGroup(1, 7);
+  const week = makeColumnGroup(3, 5);
+  const spans = (groups: { startColumn: number; endColumn: number; collapsed: number[] }[]) =>
+    groups.map((group) => [group.startColumn, group.endColumn, group.collapsed]);
+
+  const inside = shrinkColumnGroups([quarter, week], 4);
+  expect(spans(inside)).toEqual([
+    [1, 6, []],
+    [3, 4, []],
+  ]);
+  expect(columnSpanLabel(inside[0]!)).toBe("Columns B–G");
+  expect(columnSpanLabel(inside[1]!)).toBe("Columns D–E");
+  expect(inside.every((group) => group.startColumn > 0)).toBe(true);
+  expect(inside.some((group) => group.startColumn <= 0 && group.endColumn >= 0)).toBe(false);
+
+  const fromLeft = shrinkColumnGroups(inside, 1);
+  expect(spans(fromLeft)).toEqual([
+    [1, 5, []],
+    [2, 3, []],
+  ]);
+  expect(columnSpanLabel(fromLeft[0]!)).toBe("Columns B–F");
+  expect(columnSpanLabel(fromLeft[1]!)).toBe("Columns C–D");
+  expect(fromLeft.some((group) => group.startColumn <= 1 && group.endColumn >= 1)).toBe(true);
+  expect(fromLeft.every((group) => group.startColumn > 0)).toBe(true);
+
+  expect(spans(shrinkColumnGroups([quarter, week], 8))).toEqual([
+    [1, 7, []],
+    [3, 5, []],
+  ]);
+
+  const collapsedInside = shrinkColumnGroups([quarter, collapseAllColumns(week)], 4);
+  expect(spans(collapsedInside)).toEqual([
+    [1, 6, []],
+    [3, 4, [3, 4]],
+  ]);
+  const hiddenWeek = collapsedInside[1]!;
+  expect(hiddenWeek.collapsed.length).toBe(hiddenWeek.endColumn - hiddenWeek.startColumn + 1);
+
+  const collapsedLeft = shrinkColumnGroups([quarter, collapseAllColumns(week)], 1);
+  expect(spans(collapsedLeft)).toEqual([
+    [1, 6, []],
+    [2, 4, [2, 3, 4]],
+  ]);
+  const shiftedWeek = collapsedLeft[1]!;
+  expect(shiftedWeek.collapsed.length).toBe(shiftedWeek.endColumn - shiftedWeek.startColumn + 1);
+  expect(collapsedLeft.every((group) => group.startColumn > 0)).toBe(true);
+
+  const lastColumn = shrinkColumnGroups([quarter, week], 5);
+  expect(spans(lastColumn)).toEqual([
+    [1, 6, []],
+    [3, 4, []],
+  ]);
+  expect(lastColumn.every((group) => group.endColumn >= group.startColumn)).toBe(true);
+
+  expect(shrinkColumnGroups([makeColumnGroup(4, 4)], 4)).toEqual([]);
 });
 
 test("stored column groups keep row groups and survive a round trip", () => {
