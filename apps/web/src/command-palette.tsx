@@ -149,7 +149,10 @@ function isTextField(target: EventTarget | null) {
   return (
     target instanceof HTMLInputElement ||
     target instanceof HTMLTextAreaElement ||
-    target instanceof HTMLSelectElement
+    target instanceof HTMLSelectElement ||
+    // The comment box is contenteditable so a mention can be a chip. It is not
+    // the document, so menu shortcuts (such as Cmd+Enter for a page break) stay out of it.
+    (target instanceof HTMLElement && target.classList.contains("doc-mention-field"))
   );
 }
 
