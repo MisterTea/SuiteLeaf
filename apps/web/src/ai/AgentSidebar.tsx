@@ -3,6 +3,7 @@ import { ArrowUp, Check, CircleAlert, FileUp, Loader2, RotateCcw, Sparkles, Squa
 import { agentSession, type TranscriptItem } from "./agent";
 import { cursorStore } from "./cursor";
 import { fileRequestStore } from "./file-request";
+import { PARSE_ERROR } from "./gemma-stream";
 
 let open = sessionStorage.getItem("suiteleaf.ai.open") === "1";
 const openListeners = new Set<() => void>();
@@ -58,6 +59,9 @@ function summarize(args: unknown) {
     .slice(0, 160);
 }
 
+/** A call the parser could not read; its raw text means nothing to the person watching. */
+const garbled = (args: unknown) => !!args && typeof args === "object" && PARSE_ERROR in args;
+
 function Item({ item }: { item: TranscriptItem }) {
   if (item.kind === "user") return <div className="agent-msg user">{item.text}</div>;
   if (item.kind === "assistant" && !item.text.trim() && !item.thinking) return null;
@@ -87,8 +91,14 @@ function Item({ item }: { item: TranscriptItem }) {
       </span>
       <span className="agent-tool-body">
         <strong>{item.label}</strong>
-        <small>{summarize(item.args)}</small>
-        {item.result ? <span className="agent-tool-result">{item.result.split("\n")[0].slice(0, 200)}</span> : null}
+        {garbled(item.args) ? (
+          <span className="agent-tool-result">Gemma wrote this step in a form it couldn't read, so it writes it again.</span>
+        ) : (
+          <>
+            <small>{summarize(item.args)}</small>
+            {item.result ? <span className="agent-tool-result">{item.result.split("\n")[0].slice(0, 200)}</span> : null}
+          </>
+        )}
       </span>
     </div>
   );

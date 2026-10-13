@@ -146,6 +146,14 @@ describe("Gemma 4 tool-call parsing", () => {
     });
   });
 
+  it("reads Python-style 'quoted' words as strings", () => {
+    expect(parseValue("[[<|\"|>Rent<|\"|>, 1400], ['Fun, money', 150], [Maya's, 'x']]", 0)[0]).toEqual([
+      ["Rent", 1400],
+      ["Fun, money", 150],
+      ["Maya's", "x"],
+    ]);
+  });
+
   it("keeps commas and braces inside strings", () => {
     const parsed = parseToolCall('call:type_text{text:<|"|>Hello, {world}<|"|>}');
     expect(parsed.arguments).toEqual({ text: "Hello, {world}" });
@@ -162,6 +170,10 @@ describe("Gemma 4 tool-call parsing", () => {
     );
     expect(parsed.error).toBeUndefined();
     expect(parsed.arguments).toEqual({ cells: [["Name", "Bringing"], ["Asha [A]", "Beans"]], header_row: true });
+    expect(parseToolCall('call:set_cells{start:<|"|>A8<|"|>,values:[[<|"|>Left<|"|>,<|"|>=B7-C7<|"|>]}').arguments).toEqual({
+      start: "A8",
+      values: [["Left", "=B7-C7"]],
+    });
     expect(parseToolCall('call:insert_table{cells:[[<|"|>a<|"|>],[<|"|>b<|"|>],header_row:true}').error).toMatch(
       /brackets do not match: there are 1 more "\[" than "\]"/,
     );

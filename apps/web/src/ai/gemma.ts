@@ -183,6 +183,9 @@ export function parseValue(src: string, i: number): [unknown, number] {
     while (j < src.length && src[j] !== '"') j += src[j] === "\\" ? 2 : 1;
     return [JSON.parse(src.slice(i, j + 1)), j + 1];
   }
+  // Python-style 'text', which Gemma sometimes writes instead of <|"|>text<|"|>.
+  const single = c === "'" ? /^'([^']*)'(?=\s*(?:[,}\]]|$))/.exec(src.slice(i)) : null;
+  if (single) return [single[1], i + single[0].length];
   if (c === "{") {
     const obj: Record<string, unknown> = {};
     i++;
@@ -267,6 +270,13 @@ export function parseToolCall(body: string): ParsedCall {
     if (surplus > 0) {
       try {
         const repaired = rest.replace(new RegExp(`\\[{${surplus + 2},}`), (run) => run.slice(surplus));
+        if (repaired !== rest) return { name, arguments: parse(repaired), raw };
+      } catch {
+        // Fall through to the original error.
+      }
+      // ...or close a list of rows one "]" short when it is the last argument ("values:[[a, b]}").
+      try {
+        const repaired = rest.replace(/\]\s*\}\s*$/, `${"]".repeat(surplus + 1)}}`);
         if (repaired !== rest) return { name, arguments: parse(repaired), raw };
       } catch {
         // Fall through to the original error.

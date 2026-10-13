@@ -64,6 +64,16 @@ export function parseCell(a1: string) {
 /** "A1:C5", "B2", "A:A" or "Sheet1!A1:B3". */
 export function parseA1(input: string) {
   const text = input.replace(/^.*!/, "").replace(/\$/g, "").trim();
+  if (text.includes(",")) {
+    const parts = text.split(",").filter((p) => p.trim()).map(parseA1);
+    const cover = parts.reduce((x, y) => ({
+      startRow: Math.min(x.startRow, y.startRow),
+      endRow: Math.max(x.endRow, y.endRow),
+      startColumn: Math.min(x.startColumn, y.startColumn),
+      endColumn: Math.max(x.endColumn, y.endColumn),
+    }));
+    throw new ToolError(`"${input}" is ${parts.length} ranges; give one range, e.g. ${a1(cover)} to cover them all, or make one call per range.`);
+  }
   const whole = /^([A-Za-z]{1,3}):([A-Za-z]{1,3})$/.exec(text);
   if (whole) return { startRow: 0, endRow: 999, startColumn: columnIndex(whole[1]), endColumn: columnIndex(whole[2]) };
   const [a, b = a] = text.split(":");
@@ -209,10 +219,30 @@ function visibleSums(sheet: any, r: ReturnType<typeof parseA1>, headerRow?: numb
   return sums.length ? `Sum of the shown rows: ${sums.join("; ")}.` : "";
 }
 
+/** The used area's formula cells ("C8" → its formula and shown value), to report what recalculated. */
+function formulaCells(sheet: any, maxRows = 200, maxColumns = 26) {
+  const r = usedRange(sheet);
+  const endRow = Math.min(r.endRow, r.startRow + maxRows - 1),
+    endColumn = Math.min(r.endColumn, r.startColumn + maxColumns - 1);
+  const range = sheet.getRange(r.startRow, r.startColumn, endRow - r.startRow + 1, endColumn - r.startColumn + 1);
+  const values = range.getValues() as unknown[][];
+  const formulas = (range.getFormulas?.() ?? []) as string[][];
+  const cells = new Map<string, { formula: string; value: string }>();
+  formulas.forEach((row, i) =>
+    row.forEach((formula, j) => {
+      const at = { startRow: r.startRow + i, endRow: r.startRow + i, startColumn: r.startColumn + j, endColumn: r.startColumn + j };
+      if (formula) cells.set(a1(at), { formula, value: display(values[i]?.[j]) });
+    }),
+  );
+  return cells;
+}
+
 /** A cell's typed value: numbers stay numbers, '=' starts a formula, codes with leading zeros stay text. */
 export function cellInput(value: unknown): unknown {
   if (typeof value === "number" || typeof value === "boolean") return value;
   const s = String(value ?? "");
+  // Gemma sometimes wraps text in single quotes, Python-style; nobody types 'Rent' meaning the quotes.
+  if (/^'[^']+'$/.test(s)) return cellInput(s.slice(1, -1));
   if (s.startsWith("=")) return s;
   // Univer would read "007" as the number 7; store it as text (t: 1).
   if (/^-?0\d+$/.test(s)) return { v: s, t: 1 };
@@ -273,10 +303,16 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       name: "set_cells",
       label: "Type into cells",
       description:
-        "Type values or formulas into cells, starting at the top-left cell `start`. `values` is a list of rows, each a list of cell texts. Text starting with '=' is a formula (e.g. =SUM(B2:B5)). Numbers are typed without currency symbols or commas; codes with leading zeros stay as text.",
+        "Type values or formulas into cells, starting at the top-left cell `start`. `values` is a list of rows, each a list of cell texts, so a row across columns is [[\"Total\", \"=SUM(B2:B5)\", \"=SUM(C2:C5)\"]] and two rows are [[\"Name\", \"Hours\"], [\"Ana\", \"3\"]]. Text starting with '=' is a formula (e.g. =SUM(B2:B5)); formulas recalculate by themselves when the cells they use change, so never type their results over them. Numbers are typed without currency symbols or commas; codes with leading zeros stay as text.",
       parameters: Type.Object({
         start: Type.String({ description: "Top-left cell, e.g. A1" }),
         values: Type.Array(Type.Array(Type.String())),
+      }),
+      // A flat list is one row (the schema check would make it a column), and a range names its top-left cell.
+      prepare: ({ values, ...args }) => ({
+        ...args,
+        ...(args.start === undefined && typeof args.range === "string" ? { start: args.range.split(":")[0] } : {}),
+        values: Array.isArray(values) && values.length && values.every((v) => !Array.isArray(v)) ? [values] : values,
       }),
       target: ({ start, values }) => {
         const s = parseCell(start);
@@ -292,6 +328,8 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       async execute({ start, values }) {
         const s = parseCell(start);
         if (!values.length) throw new ToolError("Give at least one row of values.");
+        await ctx.settle();
+        const before = formulaCells(sheet());
         for (let i = 0; i < values.length; i++) {
           const row = values[i];
           if (!row.length) continue;
@@ -309,7 +347,18 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         sheet().getRange(a1(end)).activate();
         ctx.persist();
         await ctx.settle();
-        return `Wrote ${a1(end)}. Now:\n${grid(sheet(), end, 20, 12)}`;
+        const inside = (row: number, column: number) =>
+          row >= end.startRow && row <= end.endRow && column >= end.startColumn && column <= end.endColumn;
+        const recalculated = [...formulaCells(sheet())]
+          .filter(([cell, now]) => before.get(cell)?.formula === now.formula && before.get(cell)?.value !== now.value)
+          .filter(([cell]) => !inside(parseCell(cell).row, parseCell(cell).column))
+          .slice(0, 12)
+          .map(([cell, now]) => `${cell} ${now.formula}: ${before.get(cell)!.value} → ${now.value}`);
+        const after = formulaCells(sheet());
+        const lost = [...before]
+          .filter(([cell]) => !after.has(cell) && inside(parseCell(cell).row, parseCell(cell).column))
+          .map(([cell, was]) => `${cell} was ${was.formula}`);
+        return `Wrote ${a1(end)}. Now:\n${grid(sheet(), end, 20, 12)}${recalculated.length ? `\nFormulas that recalculated by themselves: ${recalculated.join("; ")}.` : ""}${lost.length ? `\nThese formulas were replaced by fixed values, which will not update any more: ${lost.join("; ")}. If they should stay live, write the formulas back.` : ""}`;
       },
     }),
     tool({
@@ -364,7 +413,8 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
           done.push(`fill ${args.fill_color}`);
         }
         if (args.align) {
-          range.setHorizontalAlignment(args.align);
+          // Univer's facade calls right alignment "normal".
+          range.setHorizontalAlignment(args.align === "right" ? "normal" : args.align);
           done.push(`aligned ${args.align}`);
         }
         if (args.borders) {
@@ -378,7 +428,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         ctx.persist();
         await ctx.settle();
         const sample = range.getRange();
-        return `Formatted ${args.range}: ${done.join(", ") || "nothing changed"}. Shown as:\n${grid(sheet(), { ...sample, endRow: Math.min(sample.endRow, sample.startRow + 5) }, 6, 8)}`;
+        return `Formatted ${args.range}: ${done.join(", ") || "nothing changed"}. Shown as:\n${grid(sheet(), { ...sample, endRow: Math.min(sample.endRow, sample.startRow + 11) }, 12, 8)}`;
       },
     }),
     tool({
