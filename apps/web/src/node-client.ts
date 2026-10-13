@@ -76,6 +76,17 @@ export interface AccessGrant {
   name: string | null;
   email: string | null;
   inheritedFrom: { id: string; name: string } | null;
+  /** When this grant stops opening the file. Null means it does not expire. */
+  expiresAt?: string | null;
+  /** The end time has passed. The owner can still see the row and remove it. */
+  expired?: boolean;
+}
+export interface DriveComment {
+  id: string;
+  itemId: string;
+  authorId: string;
+  body: string;
+  createdAt: string;
 }
 export interface ItemAccess {
   grants: AccessGrant[];
@@ -372,6 +383,30 @@ export const drive = {
         method: "POST",
       })
     ).json();
+  },
+  /** End this person's access at `expiresAt`, or clear the end date with null. */
+  async expire(
+    id: string,
+    principalId: string,
+    expiresAt: string | null,
+  ): Promise<void> {
+    await api(`/api/drive/items/${encodeURIComponent(id)}/expiry`, {
+      method: "PUT",
+      ...json({ principalId, expiresAt }),
+    });
+  },
+  /** Make this person the owner now. The caller becomes an editor. */
+  async transfer(id: string, userId: string): Promise<void> {
+    await api(`/api/drive/items/${encodeURIComponent(id)}/owner`, {
+      method: "POST",
+      ...json({ userId }),
+    });
+  },
+  async comments(id: string): Promise<DriveComment[]> {
+    const response = await api(
+      `/api/drive/items/${encodeURIComponent(id)}/comments`,
+    );
+    return (await response.json()).comments;
   },
   async comment(id: string, body: string): Promise<void> {
     await api(`/api/drive/items/${encodeURIComponent(id)}/comments`, {
