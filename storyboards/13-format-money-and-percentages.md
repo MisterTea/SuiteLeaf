@@ -28,6 +28,34 @@ Jess is a freelance designer turning last month's hours into an invoice summary.
 - The underlying values and formulas are unchanged (D2 is still `=B2*C2` = 1020).
 - No errors appear in the page.
 
+## AI version
+
+**Script:** [scenes/ai/13-format-money-and-percentages-ai.spec.ts](scenes/ai/13-format-money-and-percentages-ai.spec.ts) · **Video:** none yet. No run has passed, so there is no `videos/13-format-money-and-percentages-ai.mp4` or `videos/electron/13-format-money-and-percentages-ai.mp4`. Failed runs are saved to `test-results/ai-videos/` (and `test-results/ai-videos/electron/`) each time the spec runs.
+
+Jess starts the same way as in the original. She makes a new spreadsheet called "September invoice" and types Service, Hours, Rate, Amount and Share for the three services, with the same `=B2*C2` and `=D2/D$5` formulas and a Total row of SUMs. Then she opens the assistant and types one request:
+
+> Can you make this look like a proper invoice? Show the rates and amounts as dollars, the shares as percentages with one decimal, and make the header and total rows bold with the headings centered.
+
+The script then downloads the workbook (Save As on the desktop) and checks the original's end state. C2:C4 and D2:D5 must use `"$"#,##0.00`, and E2:E5 must use `0.0%`. A1:E1 must be bold and centered, and A5, D5 and E5 must be bold. The formulas and values must be unchanged (D2 is still `=B2*C2` = 1020), D2 must not be bold, and the page must show no errors. The closing captions run only after these checks, so a failed run never claims "$1,880.00 total".
+
+**Tools Gemma used:** almost only `format_cells`, one range and one or two options per call: the header, the total row, then Rate, Amount and Share in turn. A run takes 4–11 calls and about 30–80 seconds, including loading the model. In the recordings, the purple pointer lands on each range before it changes, and each card in the panel says what was applied, for example "percent with 1 decimal place(s) (0.0%)".
+
+**How Gemma did:** 0 of 10 web runs and 0 of 2 desktop (llama.cpp) runs passed, so the story is not reliable yet. Leaving out the one run whose arguments were wrapped (below): the header was always bold and centered, and the total row was bold in all but one run. Once `decimals` meant a count, the shares E2:E4 always came out as `0.0%`. The Amounts D2:D4 were currency in all but one run. What it kept getting wrong:
+
+- **The Amount total (D5) was left as 1880.** This happened in 8 of 12 runs, including every run from the fifth on: seven in a row on web and desktop. Gemma formats D2:D4, then moves on to Share. `format_cells` now says "Right next to D2:D4, D5 =SUM(D2:D4) → 1880 shows a different number format…". Gemma followed that note for the Share total (E5), which it was about to format anyway, but never went back for D5.
+- **The Rate column was skipped or not made dollars** in 4 of 12 runs: left out, set to `plain`, or set to `number` with 0 decimals. Gemma's reply still said "the rates and amounts are now in dollars".
+- **Formatting nobody asked for:** grey, green or yellow fills on the header or total row, borders on the whole table, wrap, centered or left-aligned totals, and bold on the empty cells F1:F3. Most of this is harmless, but once (desktop) it bolded the amounts and shares. It then redid the whole job without `bold`, expecting that to undo it, and D2 stayed bold.
+- **The Share total as a whole percent** (100% rather than 100.0%) in 4 runs, and left as 1 in another.
+- **A wrong argument shape once:** all options wrapped in `style_properties: {…}` with `text_align`. All eleven calls "changed nothing", and Gemma reported success anyway. The tool now accepts this shape (see below).
+
+Changes made while recording it (all in `apps/web/src/ai/tools/sheets.ts`, with tool tests in `tests/browser/ai-tools.spec.ts`):
+
+- `format_cells` `decimals` used to mean "add N decimal places". Gemma, like a person, reads it as "show N places", so "two decimals" gave `$85.0000` and percent with one decimal gave `54.26%`. It now sets the number of places, either on the named format or on each cell's current format. The result reports the format code it actually applied.
+- The description says that options left out stay as they are (`bold=false` removes bold), and it uses neutral example numbers. Each result lists which cells in the range are bold.
+- Options wrapped in an object, and `text_align`/`alignment`, are unwrapped. A call that would change nothing is now an error that lists the real options, and unknown options are reported as ignored.
+- After a number format, the result names numbers just above or below the range that kept a different format, such as a column's total.
+- `set_cells` treats `null` cells as blank. The schema check used to turn them into the text "null", which Gemma once typed into the Total row.
+
 ## Gaps and notes
 
 - Fixed: the Bold, Italic and Strikethrough toolbar buttons and Format menu items threw `getFontWeight` / `getFontStyle` / `getFontLine` "is not a function". They now use the same commands as the keyboard shortcuts (and format selected text while you're typing in a cell). The buttons show as pressed when the active cell has that style.
