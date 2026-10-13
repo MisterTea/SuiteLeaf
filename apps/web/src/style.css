@@ -1710,6 +1710,44 @@ a {
   display: flex;
   flex-direction: column;
 }
+.sheet-link-card {
+  position: absolute;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(420px, calc(100vw - 16px));
+  padding: 3px 6px 3px 10px;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  background: #fff;
+  color: #1f1f1f;
+  font-size: 13px;
+  box-shadow: 0 4px 16px rgba(32, 33, 36, 0.18);
+}
+.sheet-link-card a,
+.sheet-link-card span {
+  overflow-wrap: anywhere;
+  color: #1a73e8;
+}
+.sheet-link-card a {
+  text-decoration: underline;
+}
+.sheet-link-card button {
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: #1a73e8;
+  font: inherit;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.sheet-link-card button:hover,
+.sheet-link-card button:focus-visible {
+  background: #e8f0fe;
+}
 .sheet-notice {
   position: absolute;
   left: 24px;
