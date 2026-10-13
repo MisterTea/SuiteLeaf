@@ -469,7 +469,22 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
             });
         const bolded = cells.filter((c) => c.bold);
         const boldText = !bolded.length ? "none of it" : bolded.length === cells.length ? "all of it" : bolded.map((c) => c.ref).join(", ");
-        return `Formatted ${args.range}: ${done.join(", ") || "nothing changed"}. Bold: ${boldText}. Shown as:\n${grid(sheet(), { ...sample, endRow: Math.min(sample.endRow, sample.startRow + 11) }, 12, 8)}`;
+        // A number format on part of a column often misses its total just below (or a first value just above).
+        const nextTo: string[] = [];
+        if (args.number_format)
+          for (const row of [sample.startRow - 1, sample.endRow + 1].filter((r) => r >= 0 && r <= usedRange(sheet()).endRow))
+            for (let column = sample.startColumn; column <= Math.min(sample.endColumn, sample.startColumn + 7); column++) {
+              const cell = sheet().getRange(row, column, 1, 1);
+              if (typeof cell.getRawValue() !== "number" || cell.getNumberFormat() === range.getNumberFormat()) continue;
+              const formula = cell.getFormula();
+              nextTo.push(
+                `${a1({ startRow: row, endRow: row, startColumn: column, endColumn: column })}${formula ? ` ${formula}` : ""} → ${cell.getDisplayValue()}`,
+              );
+            }
+        const near = nextTo.length
+          ? `\nRight next to ${args.range}, ${nextTo.join("; ")} ${nextTo.length > 1 ? "show" : "shows"} a different number format; if ${nextTo.length > 1 ? "they hold" : "it holds"} the same kind of number (such as a total), format ${nextTo.length > 1 ? "them" : "it"} too.`
+          : "";
+        return `Formatted ${args.range}: ${done.join(", ") || "nothing changed"}. Bold: ${boldText}. Shown as:\n${grid(sheet(), { ...sample, endRow: Math.min(sample.endRow, sample.startRow + 11) }, 12, 8)}${near}`;
       },
     }),
     tool({

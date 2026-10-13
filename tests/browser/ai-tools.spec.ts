@@ -106,6 +106,10 @@ test("spreadsheet tools write, format, sort, chart and pivot", async ({ page }) 
   expect(await call(page, "format_cells", { range: "B2:D6", decimals: 0 })).toContain('0 decimal place(s) ("$"#,##0)');
   expect(await call(page, "format_cells", { range: "E2", number_format: "percent", decimals: 1 })).toContain("percent with 1 decimal place(s) (0.0%)");
   expect(await call(page, "format_cells", { range: "B2:D6", number_format: "currency" })).toContain("$6,000.00");
+  expect(await call(page, "format_cells", { range: "B3:B4", number_format: "number" })).toMatch(
+    /Right next to B3:B4, B2 → \$[\d,.]+; B5 → \$[\d,.]+ show a different number format/,
+  );
+  expect(await call(page, "format_cells", { range: "B2:D6", number_format: "currency" })).not.toContain("Right next to");
   expect(await call(page, "format_cells", { range: "B2:D6", align: "right" })).toContain("aligned right");
   expect(await call(page, "format_cells", { range: "A1:B1", bold: true })).toContain("bold. Bold: all of it.");
   expect(await call(page, "format_cells", { range: "A1:B2", italic: false })).toContain("Bold: A1, B1.");
