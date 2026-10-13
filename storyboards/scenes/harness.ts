@@ -1,6 +1,6 @@
-import { test as base, expect, _electron as electron, type ElectronApplication, type Page } from "@playwright/test";
+import { test as base, expect, _electron as electron, type ElectronApplication, type Page, type TestInfo } from "@playwright/test";
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -115,6 +115,14 @@ export const test = base.extend<{ page: Page }>({
       close = () => context.close();
     }
     await provide(page);
+    // Stress runs record each test's outcome next to its transcript.
+    if (ai && runTag && existsSync(metricsPath(info))) {
+      const saved = JSON.parse(readFileSync(metricsPath(info), "utf8"));
+      writeFileSync(
+        metricsPath(info),
+        JSON.stringify({ ...saved, status: info.status, error: info.error?.message?.split("\n")[0] }, null, 2),
+      );
+    }
     const video = page.video();
     await close();
     const passed = info.status === info.expectedStatus;
@@ -140,6 +148,12 @@ export async function openApp(page: Page) {
 }
 
 const agentRuns = new Map<string, unknown[]>();
+
+function metricsPath(info: TestInfo) {
+  return runTag
+    ? join(root, "test-results/ai-metrics/runs", runTag, `${info.title}.r${info.repeatEachIndex}.json`)
+    : join(root, "test-results/ai-metrics", electronMode ? "electron" : "", `${info.title}.json`);
+}
 
 export interface AgentRun {
   state: string;
@@ -198,9 +212,7 @@ export async function askAgent(
   })) as Omit<AgentRun, "seconds">;
   const result = { ...run, seconds: Math.round((Date.now() - started) / 1000) };
   const info = base.info();
-  const out = runTag
-    ? join(root, "test-results/ai-metrics/runs", runTag, `${info.title}.r${info.repeatEachIndex}.json`)
-    : join(root, "test-results/ai-metrics", electronMode ? "electron" : "", `${info.title}.json`);
+  const out = metricsPath(info);
   const runs = (agentRuns.get(info.testId) ?? []).concat({ prompt, ...result });
   agentRuns.set(info.testId, runs);
   mkdirSync(dirname(out), { recursive: true });
