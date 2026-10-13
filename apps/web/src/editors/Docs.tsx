@@ -148,11 +148,14 @@ export default function Docs({
   onChange,
   onActions,
   onError,
+  readOnly = false,
 }: {
   file: DocFile;
   onChange: (content: DocFile["content"]) => void;
   onActions: (actions: EditorActions) => void;
   onError: (s: string) => void;
+  /** Viewers and commenters can read, but not change the document. */
+  readOnly?: boolean;
 }) {
   const changes = useRef(onChange);
   changes.current = onChange;
@@ -203,8 +206,11 @@ export default function Docs({
     documentPageSettings(file.content),
   );
 
+  const readOnlyRef = useRef(readOnly);
+  readOnlyRef.current = readOnly;
   const editor = useEditor({
     immediatelyRender: false,
+    editable: !readOnly,
     extensions,
     content: file.content,
     editorProps: {
@@ -250,6 +256,7 @@ export default function Docs({
           (event.key.toLowerCase() === "f" ||
             (event.shiftKey && event.key.toLowerCase() === "h"))
         ) {
+          if (readOnlyRef.current) return true;
           event.preventDefault();
           setFindOpen(true);
           findInput.current?.focus();
@@ -261,6 +268,7 @@ export default function Docs({
           !event.shiftKey &&
           event.key.toLowerCase() === "k"
         ) {
+          if (readOnlyRef.current) return true;
           event.preventDefault();
           openLink.current();
           return true;
@@ -270,11 +278,14 @@ export default function Docs({
           !event.shiftKey &&
           !event.altKey &&
           event.key === "Enter"
-        )
+        ) {
+          if (readOnlyRef.current) return true;
           return editor?.commands.setPageBreak() ?? false;
+        }
         return false;
       },
       handlePaste: (_view, event) => {
+        if (readOnlyRef.current) return true;
         if (event.clipboardData?.getData("text/html")) {
           editor?.commands.insertContent(
             importHTML(event.clipboardData.getData("text/html")),
@@ -337,8 +348,14 @@ export default function Docs({
         },
       },
     },
-    onUpdate: ({ editor }) => changes.current(editor.getJSON() as JsonNode),
+    onUpdate: ({ editor }) => {
+      if (!readOnlyRef.current) changes.current(editor.getJSON() as JsonNode);
+    },
   });
+
+  useEffect(() => {
+    if (editor && editor.isEditable === readOnly) editor.setEditable(!readOnly);
+  }, [editor, readOnly]);
 
   const state = useEditorState({
     editor,
@@ -854,12 +871,14 @@ export default function Docs({
   return (
     <div className="docs-editor">
       <div className="toolbar" role="toolbar" aria-label="Document formatting">
-        <Tool label="Undo" onClick={() => editor.commands.undo()}>
-          <Undo2 size={16} />
-        </Tool>
-        <Tool label="Redo" onClick={() => editor.commands.redo()}>
-          <Redo2 size={16} />
-        </Tool>
+        <fieldset className="toolbar-edits" disabled={readOnly}>
+          <Tool label="Undo" onClick={() => editor.commands.undo()}>
+            <Undo2 size={16} />
+          </Tool>
+          <Tool label="Redo" onClick={() => editor.commands.redo()}>
+            <Redo2 size={16} />
+          </Tool>
+        </fieldset>
         <Tool label="Print" onClick={() => printDocument(file.title)}>
           <Printer size={16} />
         </Tool>
@@ -880,6 +899,7 @@ export default function Docs({
           <option value="200%">200%</option>
         </select>
 
+        <fieldset className="toolbar-edits toolbar-edits-rest" disabled={readOnly}>
         <Tool label="Page setup" onClick={openPageSetup}>
           <FileCog size={16} />
         </Tool>
@@ -1141,6 +1161,7 @@ export default function Docs({
         <Tool label="Find and replace" onClick={() => setFindOpen((v) => !v)}>
           <Search size={16} />
         </Tool>
+        </fieldset>
       </div>
 
       {pageSetupOpen ? (

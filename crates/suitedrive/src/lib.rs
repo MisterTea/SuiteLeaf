@@ -27,7 +27,7 @@ use tokio::sync::Notify;
 pub use blobs::{BlobStore, CHUNK_SIZE, Hash, Manifest};
 
 /// Bump when the drive tables change.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 const MAX_BLOB_RESPONSE: usize = 24 * 1024 * 1024;
 const MAX_DEPTH: usize = 64;
 
@@ -62,6 +62,12 @@ pub fn tables() -> Vec<TableDef> {
             .column("role", Text)
             .index("itemId")
             .index("principalId"),
+        TableDef::new("drive_comment", "id")
+            .column("itemId", Text)
+            .column("authorId", Text)
+            .column("body", Text)
+            .column("createdAt", Text)
+            .index("itemId"),
     ]
 }
 
@@ -69,6 +75,8 @@ pub fn tables() -> Vec<TableDef> {
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     Viewer,
+    /// Can read and add comments, but cannot change the file.
+    Commenter,
     Editor,
     Owner,
 }
@@ -77,6 +85,7 @@ impl Role {
     fn parse(s: &str) -> Option<Role> {
         match s {
             "viewer" => Some(Role::Viewer),
+            "commenter" => Some(Role::Commenter),
             "editor" => Some(Role::Editor),
             "owner" => Some(Role::Owner),
             _ => None,
@@ -86,6 +95,7 @@ impl Role {
     fn as_str(self) -> &'static str {
         match self {
             Role::Viewer => "viewer",
+            Role::Commenter => "commenter",
             Role::Editor => "editor",
             Role::Owner => "owner",
         }
@@ -136,6 +146,45 @@ pub struct AclEntry {
     pub principal_type: String,
     pub principal_id: String,
     pub role: Role,
+}
+
+/// A folder whose sharing also applies to a file inside it.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct InheritedFrom {
+    pub id: String,
+    pub name: String,
+}
+
+/// One person or organization who can open an item, including access inherited
+/// from a folder. The file's owner uses `principal_type` `"owner"`.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AccessGrant {
+    pub principal_type: String,
+    pub principal_id: String,
+    pub role: Role,
+    pub inherited_from: Option<InheritedFrom>,
+}
+
+/// Who can open an item, and the folder it lives in.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemAccess {
+    pub grants: Vec<AccessGrant>,
+    pub parent: Option<InheritedFrom>,
+    pub your_role: Role,
+}
+
+/// A comment stored beside a file, separate from the file's content.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DriveComment {
+    pub id: String,
+    pub item_id: String,
+    pub author_id: String,
+    pub body: String,
+    pub created_at: String,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -661,6 +710,147 @@ impl Drive {
                 })
             })
             .collect())
+    }
+
+    /// Everyone who can open `id`: the owner, direct grants, and grants
+    /// inherited from ancestor folders. When someone has more than one grant,
+    /// only the highest role is returned, labelled with the folder it comes
+    /// from when that role is not on the item itself.
+    pub fn access(&self, who: &Principal, id: &str) -> DriveResult<ItemAccess> {
+        let your_role = self.require(who, id, Role::Viewer)?;
+        let mut best: BTreeMap<String, AccessGrant> = BTreeMap::new();
+        let mut parent = None;
+        let mut current = Some(id.to_owned());
+        for depth in 0..MAX_DEPTH {
+            let Some(item_id) = current.take() else { break };
+            let row = self.item_row(&item_id)?;
+            let name = text(&row, "name").unwrap_or_default();
+            let on_item = item_id == id;
+            if depth == 1 {
+                parent = Some(InheritedFrom {
+                    id: item_id.clone(),
+                    name: name.clone(),
+                });
+            }
+            if let Some(owner) = text(&row, "ownerId") {
+                let key = format!("user:{owner}");
+                let higher = best
+                    .get(&key)
+                    .is_none_or(|existing| Role::Owner > existing.role);
+                if higher {
+                    best.insert(
+                        key,
+                        AccessGrant {
+                            principal_type: if on_item { "owner" } else { "user" }.into(),
+                            principal_id: owner,
+                            role: Role::Owner,
+                            inherited_from: (!on_item).then(|| InheritedFrom {
+                                id: item_id.clone(),
+                                name: name.clone(),
+                            }),
+                        },
+                    );
+                }
+            }
+            let via = (!on_item).then(|| InheritedFrom {
+                id: item_id.clone(),
+                name: name.clone(),
+            });
+            for grant in self.db.query(
+                "SELECT principalType, principalId, role FROM drive_acl WHERE itemId = ?1",
+                &[Value::Text(item_id.clone())],
+            )? {
+                let Some(ptype) = text(&grant, "principalType") else {
+                    continue;
+                };
+                let Some(pid) = text(&grant, "principalId") else {
+                    continue;
+                };
+                let Some(role) = text(&grant, "role").and_then(|r| Role::parse(&r)) else {
+                    continue;
+                };
+                let key = format!("{ptype}:{pid}");
+                let higher = best.get(&key).is_none_or(|existing| role > existing.role);
+                if higher {
+                    best.insert(
+                        key,
+                        AccessGrant {
+                            principal_type: ptype,
+                            principal_id: pid,
+                            role,
+                            inherited_from: via.clone(),
+                        },
+                    );
+                }
+            }
+            current = text(&row, "parentId");
+        }
+        let mut grants: Vec<_> = best.into_values().collect();
+        grants.sort_by(|a, b| {
+            let rank = |g: &AccessGrant| if g.principal_type == "owner" { 0 } else { 1 };
+            rank(a)
+                .cmp(&rank(b))
+                .then(b.role.cmp(&a.role))
+                .then(a.principal_id.cmp(&b.principal_id))
+        });
+        Ok(ItemAccess {
+            grants,
+            parent,
+            your_role,
+        })
+    }
+
+    /// Comments on an item. Viewers can read them; writing is [`add_comment`].
+    pub fn comments(&self, who: &Principal, id: &str) -> DriveResult<Vec<DriveComment>> {
+        self.require(who, id, Role::Viewer)?;
+        Ok(self
+            .db
+            .query(
+                "SELECT * FROM drive_comment WHERE itemId = ?1 ORDER BY createdAt, id",
+                &[Value::Text(id.into())],
+            )?
+            .into_iter()
+            .map(|r| DriveComment {
+                id: text(&r, "id").unwrap_or_default(),
+                item_id: text(&r, "itemId").unwrap_or_default(),
+                author_id: text(&r, "authorId").unwrap_or_default(),
+                body: text(&r, "body").unwrap_or_default(),
+                created_at: text(&r, "createdAt").unwrap_or_default(),
+            })
+            .collect())
+    }
+
+    /// Add a comment. Commenters, editors, and owners may do this. Changing
+    /// the file itself still requires an editor (`write` returns forbidden).
+    pub fn add_comment(&self, who: &Principal, id: &str, body: &str) -> DriveResult<DriveComment> {
+        self.require(who, id, Role::Commenter)?;
+        let body = body.trim();
+        if body.is_empty() || body.len() > 8_000 {
+            return Err(DriveError::BadRequest(
+                "Write a comment of 1–8000 characters.".into(),
+            ));
+        }
+        let comment_id = uuid::Uuid::now_v7().to_string();
+        let now = iso_now();
+        self.db.transact(|tx| {
+            tx.upsert(
+                "drive_comment",
+                &comment_id,
+                [
+                    ("itemId", Value::from(id)),
+                    ("authorId", who.id.clone().into()),
+                    ("body", body.into()),
+                    ("createdAt", now.clone().into()),
+                ],
+            )
+        })?;
+        Ok(DriveComment {
+            id: comment_id,
+            item_id: id.to_owned(),
+            author_id: who.id.clone(),
+            body: body.to_owned(),
+            created_at: now,
+        })
     }
 
     /// Grant a user or organization a role, or remove it with `None`.

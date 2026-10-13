@@ -41,8 +41,30 @@ export interface DriveItem {
   createdAt: string;
   updatedAt: string;
   trashed: boolean;
-  role: "viewer" | "editor" | "owner" | null;
+  role: DriveRole | null;
+  /** Display name of the owner, when the server includes it (shared lists). */
+  ownerName?: string | null;
   available: boolean;
+}
+export type DriveRole = "viewer" | "commenter" | "editor" | "owner";
+export interface AccountProfile {
+  id: string;
+  name: string | null;
+  email: string | null;
+  username: string | null;
+}
+export interface AccessGrant {
+  principalType: "user" | "org" | "owner";
+  principalId: string;
+  role: DriveRole;
+  name: string | null;
+  email: string | null;
+  inheritedFrom: { id: string; name: string } | null;
+}
+export interface ItemAccess {
+  grants: AccessGrant[];
+  parent: { id: string; name: string } | null;
+  yourRole: DriveRole;
 }
 export interface AuthProviders {
   emailAndPassword: boolean;
@@ -284,6 +306,37 @@ export const drive = {
       text: await response.text(),
       versionId: response.headers.get("etag")?.replace(/"/g, "") || undefined,
     };
+  },
+  async accounts(query: string): Promise<AccountProfile[]> {
+    const response = await api(
+      `/api/accounts?q=${encodeURIComponent(query)}`,
+    );
+    return (await response.json()).accounts;
+  },
+  async access(id: string): Promise<ItemAccess> {
+    return (
+      await api(`/api/drive/items/${encodeURIComponent(id)}/access`)
+    ).json();
+  },
+  async share(
+    id: string,
+    principalId: string,
+    role: Exclude<DriveRole, "owner"> | null,
+  ): Promise<void> {
+    await api(`/api/drive/items/${encodeURIComponent(id)}/acl`, {
+      method: "PUT",
+      ...json({
+        principalType: "user",
+        principalId,
+        role,
+      }),
+    });
+  },
+  async comment(id: string, body: string): Promise<void> {
+    await api(`/api/drive/items/${encodeURIComponent(id)}/comments`, {
+      method: "POST",
+      ...json({ body }),
+    });
   },
   async write(
     id: string,

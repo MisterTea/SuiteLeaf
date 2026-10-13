@@ -17,16 +17,16 @@ Rosa wrote the garden club's "Watering rota" in SuiteDrive (storyboard 23). Sam 
 
 ## Scenes
 
-1. **Open the rota.** Rosa is signed in to the club's server and opens "Watering rota". A **Share** button sits in the header next to the server name.
-2. **Open Share.** She clicks Share. A dialog titled "Share "Watering rota"" shows an "Add people" box and the list of people with access: "Rosa Diaz (you) · Owner". A line under the list says "Only the people listed here can open this file."
-3. **Find Sam.** She types "sa". Suggestions from the server's accounts appear with name and email: "Sam Okafor · sam@gardenclub.org". She picks him.
-4. **Choose a role.** A role menu next to his name defaults to Editor and lists Viewer ("Can read"), Commenter ("Can read and comment"), and Editor ("Can change anything"). She leaves Editor and clicks **Share**. Sam appears in the list as Editor.
-5. **Add Priya as a commenter.** She types "priya", picks "Priya Shah", chooses Commenter, and clicks Share.
-6. **Someone without an account.** She types "lee@example.com". The dialog says "No account on this server uses lee@example.com. Ask them to sign up first," and the Share button stays disabled.
-7. **Change and remove access.** Sam's menu changes to Viewer and saves straight away ("Sam can now view"). From Priya's menu she chooses **Remove access**; Priya disappears from the list and an "Undo" link appears for a few seconds.
-8. **Folder access.** Rosa shares the "Garden club" folder with Sam as Editor. Reopening Share on the rota shows "Sam Okafor · Editor · from Garden club".
-9. **Sam's side.** Sam signs in. SuiteDrive's "Shared with me" lists "Watering rota" with owner "Rosa Diaz" and "Can edit". He opens it and edits.
-10. **A viewer's side.** Signed in as a viewer, the rota opens with a "View only" label beside the title. Typing does nothing, and the editing toolbar is disabled.
+1. **Open the rota.** Rosa is signed in to the club's server and opens "Watering rota". A blue **Share** button sits in the header next to the server name.
+2. **Open Share.** She clicks Share. A dialog titled Share “Watering rota” shows an "Add people" box and the list of people with access: "Rosa Diaz (you)" with her email, and Owner. A line under the list says "Only the people listed here can open this file." It also says the file is in Garden club.
+3. **Find Sam.** She types "sa". A suggestion shows "Sam Okafor" and sam@gardenclub.org. She picks him.
+4. **Choose a role.** A role control next to his name already reads Editor, "Can change anything", before she does anything else. She clicks **Share**. The dialog says "Sam can now edit" and lists him as Editor.
+5. **Add Priya as a commenter.** She types "priya", picks "Priya Shah", opens the role menu (Viewer "Can read", Commenter "Can read and comment", Editor "Can change anything"), chooses Commenter, and clicks Share. "Priya can now comment."
+6. **Someone without an account.** She types "lee@example.com". The dialog says "No account on this server uses lee@example.com. Ask them to sign up first." and the Share button stays disabled.
+7. **Change and remove access.** She opens Sam's role menu and chooses Viewer. "Sam can now view" appears with no Save button. From Priya's menu she chooses **Remove access**. Priya leaves the list, and Undo stays up for several seconds.
+8. **Folder access.** She clicks Share “Garden club”, adds Sam as Editor, then reopens Share on the rota. The list is Rosa and "Sam Okafor · Editor · from Garden club". Priya is gone.
+9. **Sam's side.** Sam signs in. SuiteDrive's "Shared with me" lists "Watering rota.sldoc" with "Rosa Diaz · Can edit", without a reload. He opens it, adds "Thursday: ask Alex to cover.", and it saves to SuiteDrive.
+10. **A viewer's side.** Alex Rivera, who can only view, signs in. Shared with me says "Rosa Diaz · Can view". The rota opens with a "View only" label beside the title. The editing toolbar is greyed out, typing does nothing, and nothing tries to save.
 
 ## Google Workspace benchmark
 
@@ -54,13 +54,25 @@ Known pain points:
 ## Success looks like
 
 - Sam is an editor through the "Garden club" folder, Priya no longer has access, and the Share dialog lists exactly that.
-- Sam finds the rota in "Shared with me" and edits it. A viewer can read it but can't change it.
+- Sam finds the rota in "Shared with me" and edits it. Alex can read it but can't change it.
+
+## Result
+
+| Criterion | Met | Evidence |
+| --- | --- | --- |
+| 1. Share one person in at most 3 clicks, role visible before the last click | Met | Video ~10–12s: Share, pick Sam, role already says Editor “Can change anything”, then Share |
+| 2. Two or more characters suggest accounts, each with name and email | Met | Video ~9s: “sa” shows Sam Okafor and sam@gardenclub.org |
+| 3. Roles have a one-line description, Commenter exists, and the server enforces it | Met | Video ~15s: menu shows “Can read”, “Can read and comment”, “Can change anything”. `a_commenter_can_comment_but_cannot_change_the_file` and `tests/browser/share.spec.ts` |
+| 4. Change or remove in at most 2 clicks, no Save, Undo for at least 5 seconds | Met | Video ~22s: role menu then Viewer (“Sam can now view”, no Save). ~24–30s: Remove access, Undo still visible after 5 seconds |
+| 5. Dialog lists everyone, including access inherited from a folder | Met | Video ~34s: Sam Okafor, Editor, “from Garden club”; Priya is absent |
+| 6. An unknown address shows an explicit message | Met | Video ~18s: “No account on this server uses lee@example.com. Ask them to sign up first.” Share stays disabled |
+| 7. “Shared with me” shows the owner and the recipient’s role, with no reload | Met | Video ~40s: “Rosa Diaz · Can edit” as soon as Sam opens the tab. `tests/browser/share.spec.ts` also checks an already-open list |
+| 8. A viewer sees “View only” and cannot change the document | Met | Video ~50–56s: View only label, greyed toolbar, typed text does not appear, no save |
 
 ## Gaps and notes
 
-- **No Share button or dialog exists.** Nothing in `App.tsx` or `DriveBrowser.tsx` opens a share UI, and `node-client.ts` has no ACL calls.
-- The server has `GET`/`PUT /api/drive/items/{id}/acl`, but `PUT` takes `principalType` (`user` or `org`) and a raw `principalId`. There is no endpoint for finding accounts by name or email (only `/api/me`), so a people picker needs a new user-search endpoint, and the list needs names for user IDs.
-- **Roles are Viewer, Editor and Owner** (`suitedrive::Role`). There is no Commenter, and only an Owner can change sharing.
-- "Shared with me" exists and lists direct user and org grants (`drive.shared()`), but rows don't show the owner or your role. `DriveBrowser` uses `item.role` only to hide Rename and Move to trash for viewers.
-- **No view-only mode in the editors.** A viewer can open a file and type; the edits are kept on that device and the upload fails with SuiteDrive's "you do not have access to this item" error.
-- SuiteDrive has no link sharing ("anyone with the link"). That's fine for a private team server, but the dialog should say so ("Only the people listed here can open this file").
+- The comment composer in the document is storyboard 29. A commenter can `POST /api/drive/items/{id}/comments` and gets 403 from a content upload, but there is no comment card in the editor yet.
+- Sheets and slides block the upload when the person cannot edit, and the header shows “View only” or “Can comment”. Only the Docs toolbar is disabled.
+- Alex’s view access is granted before he signs in; the recording does not show that extra Share click, so the “exactly these people” frame stays Rosa and Sam.
+- There is still no “anyone with the link”. The dialog says only the people listed can open the file.
+- Opening Share and then changing a role is 3 clicks. With the dialog already open, which is how Rosa does it, it is 2.
