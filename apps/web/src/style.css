@@ -942,6 +942,9 @@ a {
 .docs-toolbar-tools.show-more {
   flex-wrap: wrap;
 }
+.docs-toolbar-tools.show-more[data-measuring] {
+  flex-wrap: nowrap;
+}
 .docs-toolbar-tools.show-more > .toolbar-break {
   order: 1;
   flex-basis: 100%;
@@ -2474,6 +2477,9 @@ a {
   justify-content: flex-end;
   align-content: flex-start;
   row-gap: 12px;
+}
+.sheets-toolbar.show-more[data-measuring] {
+  flex-wrap: nowrap;
 }
 .sheets-toolbar.show-more > .toolbar-break {
   order: 1;

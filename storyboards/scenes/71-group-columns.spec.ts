@@ -86,7 +86,7 @@ test("71-group-columns", async ({ page }) => {
   await selectCells(page, "A1");
   await caption(page, "The months hide. The year total slides in beside the category.", 1400);
   await selectCells(page, "N2");
-  await expect(page.locator(".sheet-host")).toHaveAttribute("data-active-value", "14400");
+  await expect(page.locator(".sheet-host")).toHaveAttribute("data-active-value", "$14,400");
   await caption(page, "The total is still $14,400, and the formula has not changed.", 2200);
 
   await expand.click();

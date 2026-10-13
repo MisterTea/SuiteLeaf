@@ -121,7 +121,7 @@
   grid-template-columns: minmax(0, 1fr) minmax(168px, 220px);
   align-items: start;
 }
-.page-setup-check.page-setup-numbers > label {
+.page-setup-check.page-setup-numbers > label:not(.page-number-cover) {
   grid-column: 1;
   grid-row: 1;
   align-self: center;
@@ -201,6 +201,7 @@
 }
 .page-setup-check.page-setup-numbers > .page-number-cover {
   grid-column: 1 / -1;
+  grid-row: auto;
   display: flex;
   gap: 8px;
   align-items: flex-start;

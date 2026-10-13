@@ -81,7 +81,10 @@ test("67-set-each-margin", async ({ page }) => {
       `Item ${i + 1}. The council approved the hall budget and set the next hearing.`,
   ).join(" ");
   await page.keyboard.insertText(body);
-  await page.getByRole("button", { name: "Justify", exact: true }).click();
+  const justify = page.getByRole("button", { name: "Justify", exact: true });
+  if (await justify.isHidden())
+    await page.getByRole("button", { name: "More tools" }).click();
+  await justify.click();
   await beat(page, 600);
 
   const before = await insets(page);
