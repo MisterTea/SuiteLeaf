@@ -28,6 +28,45 @@ Tom is writing the community garden's annual report: a summary, the growing seas
 - The highlighted entry follows the reader while scrolling.
 - A heading is never the last line on a page: it moves to the next page with the text after it.
 
+## AI version
+
+**Script:** [scenes/ai/04-long-report-with-outline-ai.spec.ts](scenes/ai/04-long-report-with-outline-ai.spec.ts) · **Video:** none yet. No run has passed, so there is no `videos/04-long-report-with-outline-ai.mp4` or `videos/electron/04-long-report-with-outline-ai.mp4`. Failed runs are saved to `test-results/ai-videos/` (and `test-results/ai-videos/electron/`) each time the spec runs.
+
+Tom starts on the home screen, opens the assistant, types a request and pastes in his report the way it sits in his notes: each section title on its own line, followed by its paragraph.
+
+> Please turn my report below into a new document called Community garden annual report, with the section titles as proper headings. Spring planting and Summer harvest are sub-sections of Growing season, and Income and Expenses are sub-sections of Budget.
+>
+> Summary
+> Riverside Community Garden had its busiest year yet. …
+>
+> Growing season
+>
+> Spring planting
+> A cold April delayed the first sowings … (and so on for all nine sections)
+
+Then a second request:
+
+> Take me to the Volunteers section and add this line right under its heading: A special thank-you to the Saturday tea rota!
+
+The script checks the same end state as the original:
+- The file is open with the right title.
+- The outline lists all nine headings in order, with the four sub-sections at level 2.
+- Each heading is directly followed by its own paragraph, and the report runs to 2 pages.
+- After the second request, Volunteers is in view and highlighted in the outline, the thank-you is the paragraph directly under its heading, and the file is saved.
+
+**Tools used:** `create_file`, `write_text` (all at once, or one section at a time), `set_style`, `go_to_heading`, sometimes `read_document`, `find_and_replace`, `back_to_files`, `rename_this_file`, `format_text` and `align_text`.
+
+**What the recordings show.** When Gemma gets it right, it creates the document and types the whole report in a single `write_text` call, using `#` and `##` lines for the headings. The outline fills in at once and the Expenses heading moves to the top of page 2 with its paragraph. A long call takes 25 to 35 seconds to generate. While it runs, the panel now says "Preparing "Type text"… 1,240 characters" and the count goes up, so the screen doesn't look frozen. For the second request, the best run moved the purple pointer to Volunteers in the outline, jumped there, and highlighted it.
+
+**How Gemma did: 0 passes in 11 web attempts and 2 Electron attempts.** These include the 3 final web runs after the last fix. The first request came out exactly right 2 times. Half-right runs failed in these ways:
+- **Wrong heading levels** (5 runs). Summary became Heading 1 and every other section Heading 2, with the sub-sections at Heading 3. In other runs a single section (Volunteers) was demoted, or `set_style` calls rewrote headings that `write_text` had already made correctly.
+- **Restyling and leaving the file.** After a correct `write_text`, Gemma often called `set_style` on all nine headings, even though the result listed them and later said "already Heading 1; nothing changed". It then went back to the file list unasked (4 runs). This happened even after the `back_to_files` description and the system prompt were changed to discourage it.
+- **Sections out of order** (2 web runs and both Electron runs). Gemma typed one section at a time and used the previous heading as `after` ("after: Summer harvest"). That put each new section between a heading and its paragraph. Since the last fix, `write_text` puts text that starts with a heading after that heading's paragraphs. The Electron runs typed headings as plain lines, then restyled them, so the fix didn't apply there.
+- **Second request.** Of the 3 runs that got this far, only one used `go_to_heading`. Gemma quoted the heading with Markdown marks ("# Volunteers") in `find_and_replace` and in `write_text`'s `after`. Once, it put the line after the section's paragraph instead of under the heading. Once, after an error, it stopped and said it had added the line as a bullet when it hadn't. `after` now ignores Markdown marks.
+- **Unrequested extras.** In one run Gemma added a centred, underlined title line nobody asked for.
+
+The Electron build (llama.cpp) did worse on this task than the web build. It typed the headings as plain text and fixed them one by one.
+
 ## Gaps and notes
 
 - Headings can't be collapsed or dragged to reorder sections in the outline (Word's Navigation pane can do both).

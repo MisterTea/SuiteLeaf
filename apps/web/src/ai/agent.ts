@@ -13,7 +13,7 @@ How to work:
 - Use exact names, cell addresses and text from the app state. Keep the user's wording for titles and text they give you.
 - If a tool returns an error, read it, fix the call and continue. Never repeat a call that failed in the same way.
 - When the task is done, reply in one or two short sentences saying what you changed. Do not call more tools after that.
-- Leave your work open on screen when you finish, so the user can see it. Only close a file or go back to the file list when the task needs it.
+- Leave the file you worked on open when you finish, so the user sees the result; files save by themselves. Only go back to the file list when the user asked or the task needs another file.
 - Never ask for or type passwords. If the user must sign in, tell them to sign in themselves.`;
 
 export type AgentUiState = "idle" | "loading" | "working" | "done" | "error";
@@ -122,6 +122,8 @@ class AgentSession {
   items: TranscriptItem[] = [];
   metrics = emptyMetrics();
   model: AiStatus = localModel().status();
+  /** The tool call Gemma is still writing (long text takes a while). */
+  draft?: { label: string; chars: number };
   private agent?: Agent;
   private listeners = new Set<() => void>();
   private version = 0;
@@ -174,6 +176,12 @@ class AgentSession {
         onRaw: localStorage.getItem("suiteleaf.ai.debug")
           ? (prompt, output) => console.debug("[suiteleaf-ai] prompt\n" + prompt + "\n[suiteleaf-ai] output\n" + output)
           : undefined,
+        onDraft: (body) => {
+          const name = body && /^\s*call:([\w.-]+)/.exec(body)?.[1];
+          if (!name && !this.draft) return;
+          this.draft = name ? { label: currentSuiteTools().find((t) => t.name === name)?.label ?? name, chars: body.length } : undefined;
+          this.emit();
+        },
       }),
       toolExecution: "sequential",
       // Retried empty replies leave the transcript, so the retry samples the

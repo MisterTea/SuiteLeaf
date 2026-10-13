@@ -89,7 +89,7 @@ function noBlock(list: ReturnType<typeof blocks>, text: string) {
   const texts = list.filter((b) => b.text).slice(0, 20).map((b) => `"${b.text.slice(0, 60)}"`);
   return new ToolError(
     texts.length
-      ? `No paragraph contains "${text}". The paragraphs are: ${texts.join(", ")}. Use a few words copied exactly from one of them.`
+      ? `No paragraph contains "${text}". Use a few words copied exactly from one of them; the paragraphs are: ${texts.join(", ")}.`
       : `No paragraph contains "${text}". The document is empty.`,
   );
 }
@@ -123,6 +123,9 @@ const endOfDocument = (editor: Editor) => {
   const last = blocks(editor).at(-1);
   return last ? last.end - 1 : 1;
 };
+
+/** Text the model quoted with Markdown marks ("# Volunteers"), as it reads in the document. */
+const withoutMarks = (text: string) => text.replace(/^\s*(#{1,6}|[-*•]|\d+[.)])\s+/, "").replace(/\*\*/g, "");
 
 /** Insert lightweight Markdown: "# " headings, "- " bullets, "1. " numbers, **bold**. */
 async function writeLines(editor: Editor, text: string, animate: boolean) {
@@ -206,10 +209,12 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       name: "write_text",
       label: "Type text",
       description:
-        "Type text into the document. Each line becomes a paragraph. Start a line with '# ', '## ' or '### ' for a heading, '- ' for a bullet, '1. ' for a numbered item; wrap words in **double asterisks** for bold. By default the text goes at the end of the document; give `after` to put it after a paragraph containing that text, or set `replace_document` to start over.",
+        "Type text into the document. Each line becomes a paragraph. Start a line with '# ' for a Heading 1 (a main section), '## ' for a Heading 2 (a sub-section) or '### ' for a Heading 3, '- ' for a bullet, '1. ' for a numbered item; wrap words in **double asterisks** for bold. By default the text goes at the end of the document (leave out `after` to keep adding to the end); give `after` to insert it right after the one paragraph or heading containing that text (text that starts with a heading goes after that heading's paragraphs), or set `replace_document` to start over.",
       parameters: Type.Object({
         text: Type.String({ description: "The text to type." }),
-        after: Type.Optional(Type.String({ description: "Put the text in a new paragraph after the paragraph containing this text." })),
+        after: Type.Optional(
+          Type.String({ description: "Insert the text right after the paragraph or heading containing this text, before whatever follows it." }),
+        ),
         replace_document: Type.Optional(Type.Boolean({ description: "Replace everything in the document." })),
       }),
       target: ({ after }) => {
@@ -219,13 +224,23 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
           return editor.view.dom;
         }
       },
-      async execute({ text, after, replace_document }) {
+      async execute({ text, after: anchor, replace_document }) {
+        const after = anchor && withoutMarks(anchor);
         if (replace_document) editor.chain().clearContent().run();
         const list = blocks(editor);
         const empty = list.length === 1 && !list[0].text;
+        const quote = (b: { text: string; label: string }) => `"${b.text.length > 60 ? `${b.text.slice(0, 60)}…` : b.text}" (${b.label})`;
+        let where = "at the end of the document";
         if (after) {
-          const block = findBlock(list, after);
-          if (!block) throw noBlock(list, after);
+          const want = unmark(unlabel(after)).trim();
+          const found = list.find((b) => b.text.trim() === want) ?? findBlock(list, after);
+          if (!found) throw noBlock(list, after);
+          // A new section never goes between a heading and its own text.
+          let i = list.indexOf(found) + 1;
+          if (found.type === "heading" && /^\s*#{1,3}\s/.test(text)) while (list[i]?.label === "Paragraph") i++;
+          const block = list[i - 1],
+            next = list[i];
+          where = `right after ${quote(block)}${next ? `, before ${quote(next)}` : ", at the end of the document"}`;
           editor.chain().setTextSelection(block.end - 1).splitBlock().run();
           editor.chain().setParagraph().run();
         } else {
@@ -243,9 +258,10 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         if (last && prev && !last.text && last.type === "paragraph" && prev.label === "Paragraph" && last.pos > editor.state.selection.to)
           editor.view.dispatch(editor.state.tr.delete(last.pos, last.end));
         const typed = text.split("\n").filter((l) => l.trim()).length;
-        const headings = [...text.matchAll(/^#{1,3}\s+(.*)$/gm)].map((m) => `"${m[1].replace(/\*\*/g, "").trim()}"`);
+        const typedHeadings = [...text.matchAll(/^#{1,3}\s+(.*)$/gm)].map((m) => `"${m[1].replace(/\*\*/g, "").trim()}"`);
         const bold = [...text.matchAll(/\*\*(.+?)\*\*/g)].map((m) => `"${m[1]}"`);
-        return `Typed ${typed} paragraph(s)${headings.length ? `; heading(s): ${headings.join(", ")}` : ""}${bold.length ? `; in bold: ${bold.join(", ")}` : ""}. The document now has ${blocks(editor).filter((b) => b.text).length} paragraph(s) with text.`;
+        const headings = blocks(editor).filter((b) => b.type === "heading").map((b) => `${b.label}: ${b.text}`);
+        return `Typed ${typed} paragraph(s) ${where}${typedHeadings.length ? `; heading(s): ${typedHeadings.join(", ")}` : ""}${bold.length ? `; in bold: ${bold.join(", ")}` : ""}. The document now has ${blocks(editor).filter((b) => b.text).length} paragraph(s) with text.${headings.length ? `\nHeadings in the document now: ${headings.join(" | ")}` : ""}`;
       },
     }),
     tool({
@@ -258,8 +274,10 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       }),
       target: () => document.querySelector('[aria-label="Paragraph style"]'),
       execute({ text, style }) {
-        blockOf(text);
+        const node = blockOf(text);
         const level = /Heading (\d)/.exec(style)?.[1];
+        const current = node.type.name === "heading" ? `Heading ${node.attrs.level}` : node.type.name === "paragraph" ? "Normal text" : "";
+        if (current === style) return `The paragraph containing "${text}" is already ${style}; nothing changed.`;
         if (level) editor.chain().setHeading({ level: Number(level) as 1 | 2 | 3 }).run();
         else editor.chain().setParagraph().run();
         return `The paragraph containing "${text}" is now ${style}.`;
@@ -442,6 +460,8 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       }),
       target: () => document.querySelector('[aria-label="Find and replace"]') ?? editor.view.dom,
       async execute({ find, replace, all = true, match_case = false }) {
+        if (/\n/.test(replace))
+          throw new ToolError("find_and_replace changes text within a paragraph. To add a new paragraph, use write_text with `after`.");
         // **double asterisks** mean bold here too, as in write_text.
         const parts = replace.split("**");
         const boldMark = parts.length > 2 ? editor.schema.marks.bold : undefined;
@@ -452,7 +472,9 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         const matches = documentMatches(editor.state.doc, find, options).matches;
         if (!matches.length) {
           ctx.closeFind();
-          throw new ToolError(`"${find}" was not found.`);
+          throw new ToolError(
+            `"${find}" was not found.${/[#*]/.test(find) ? " The document's text has no Markdown marks such as # or **; use read_document to see the exact text." : ""}`,
+          );
         }
         let tr = editor.state.tr;
         const chosen = all ? [...matches].reverse() : [matches[0]];
@@ -547,7 +569,8 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
     tool({
       name: "go_to_heading",
       label: "Go to heading",
-      description: "Scroll to a heading using the outline.",
+      description:
+        "Go to a section: shows the heading at the top of the window, as clicking it in the outline does, and puts the cursor there. Use when the user asks to go to, jump to or show a section.",
       parameters: Type.Object({ heading: Type.String() }),
       target: ({ heading }) =>
         [...document.querySelectorAll(".outline-item")].find((el) => el.textContent?.includes(heading)),

@@ -326,7 +326,7 @@ export function workspaceTools(ctx: WorkspaceAgentContext): SuiteTool[] {
       name: "back_to_files",
       label: "Back to files",
       description:
-        "Close the open file and go back to the file list. Only when the user asks to go back, or to work on another file. Files save automatically, so never close a file just to save it.",
+        "Close the open file and go back to the file list. Files save automatically, so never close a file just to save it: only do this when the user asks to go back or the task needs another file.",
       parameters: Type.Object({}),
       target: () => document.querySelector('[aria-label="Back to files"]'),
       async execute() {
