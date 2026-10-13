@@ -35,6 +35,7 @@ import {
 } from "./equations";
 import { lineSpacingFromWord, type LineSpacing } from "./line-spacing";
 import { paragraphIndentFromWord } from "./paragraph-indent";
+import { applyImportedParagraphSpacing } from "./paragraph-spacing-import";
 import { firstSectionPageMargins } from "./word-page-margins";
 
 type Mark = NonNullable<JsonNode["marks"]>[number];
@@ -581,7 +582,7 @@ export function wordParagraphs(xml: string): string[] {
  * First line becomes `firstLineIndent`. Hanging becomes `hangingIndent`.
  * 240, 276, 360, and 480 with `w:lineRule="auto"` become `lineSpacing`.
  * Any other line, or a rule other than auto, stays single and does not
- * clear an indent. Space before and after are not read.
+ * clear an indent. Space before and after are applied separately.
  * A paragraph with neither is left alone.
  */
 function applyWordParagraphIndents(content: JsonNode, xml: string): JsonNode {
@@ -1404,6 +1405,9 @@ export async function importDocx(
     );
     output = normalize(documentText(content));
   }
+  // Mammoth's HTML drops w:spacing. The gaps live on the Word paragraphs.
+  const spacingXml = (await zip.file("word/document.xml")?.async("string")) ?? xml;
+  content = applyImportedParagraphSpacing(content, spacingXml);
   let supplementary = 0;
   const hasTitlePg =
     /<w:titlePg\b(?:\s+[^>]*w:val="(?:true|1|on)")?(?:\/|\s*>)/.test(xml);

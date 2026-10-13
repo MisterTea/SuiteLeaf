@@ -143,5 +143,6 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 92 | [Keep the note on one page](92-keep-the-note-on-one-page.md) | single-node | Docs |
 | 95 | [Space before and after](95-space-before-and-after.md) | single-node | Docs |
 | 98 | [Indent the first line](98-indent-the-first-line.md) | single-node | Docs |
+| 101 | [Bring the space from Word](101-bring-the-space-from-word.md) | single-node | Docs |
 | 102 | [Keep the indent from Word](102-keep-the-indent-from-word.md) | single-node | Docs |
 | 104 | [Bring the line spacing from Word](104-bring-the-line-spacing-from-word.md) | single-node | Docs |

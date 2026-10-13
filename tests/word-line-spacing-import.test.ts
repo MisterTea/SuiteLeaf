@@ -52,14 +52,15 @@ describe("Word line spacing import", () => {
     expect(story?.attrs?.lineSpacing).toBe("1.5");
     expect(story?.attrs?.firstLineIndent).toBe(0.5);
     expect(story?.attrs?.hangingIndent).toBeUndefined();
-    expect(story?.attrs?.spaceAfter).toBeUndefined();
-    expect(story?.attrs?.spaceBefore).toBeUndefined();
+    expect(story?.attrs?.spaceAfter).toBe(12);
+    expect(story?.attrs?.spaceBefore).toBe(0);
 
     expect(plain?.attrs?.lineSpacing).toBeUndefined();
     expect(plain?.attrs?.firstLineIndent).toBeUndefined();
 
     expect(verse?.attrs?.lineSpacing).toBe("double");
-    expect(verse?.attrs?.spaceBefore).toBeUndefined();
+    expect(verse?.attrs?.spaceBefore).toBe(10);
+    expect(verse?.attrs?.spaceAfter).toBe(0);
     expect(verse?.attrs?.firstLineIndent).toBeUndefined();
     expect(verse?.attrs?.hangingIndent).toBeUndefined();
 
@@ -79,10 +80,12 @@ describe("Word line spacing import", () => {
     expect(storyXml).toContain('w:line="360"');
     expect(storyXml).toContain('w:lineRule="auto"');
     expect(storyXml).toContain('w:firstLine="720"');
-    expect(storyXml).not.toContain("w:after");
+    expect(storyXml).toContain('w:after="240"');
+    expect(storyXml).not.toContain("w:before");
     expect(verseXml).toContain('w:line="480"');
     expect(verseXml).toContain('w:lineRule="auto"');
-    expect(verseXml).not.toContain("w:before");
+    expect(verseXml).toContain('w:before="200"');
+    expect(verseXml).not.toContain("w:after");
     expect(plainXml).toContain('w:line="240"');
     expect(plainXml).toContain('w:lineRule="auto"');
     expect(exactXml).toContain('w:line="240"');

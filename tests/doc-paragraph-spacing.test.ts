@@ -2,8 +2,13 @@ import { Schema } from "@tiptap/pm/model";
 import { EditorState, TextSelection } from "@tiptap/pm/state";
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
-import { createFile } from "../packages/core/src";
+import { createFile, type JsonNode } from "../packages/core/src";
 import { exportDocx } from "../packages/core/src/docx-export";
+import { importOffice } from "../packages/core/src/office";
+import { documentText } from "../packages/core/src/word";
+import {
+  paragraphSpaceFromTwips,
+} from "../packages/core/src/paragraph-spacing-import";
 import {
   docxParagraphGap,
   paragraphSpaceAttribute,
@@ -195,5 +200,123 @@ describe("docx space before and after", () => {
     expect(motion).toContain('w:line="480"');
     expect(motion).not.toContain("w:before");
     expect(motion).not.toContain("w:after");
+  });
+});
+
+const xmlHeader = '<?xml version="1.0" encoding="UTF-8"?>';
+
+function wordParagraph(
+  text: string,
+  spacing?: { before?: string; after?: string },
+  style?: string,
+) {
+  const attrs = [
+    spacing?.before != null ? `w:before="${spacing.before}"` : "",
+    spacing?.after != null ? `w:after="${spacing.after}"` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const properties = [
+    style ? `<w:pStyle w:val="${style}"/>` : "",
+    attrs ? `<w:spacing ${attrs}/>` : "",
+  ]
+    .filter(Boolean)
+    .join("");
+  return `<w:p>${properties ? `<w:pPr>${properties}</w:pPr>` : ""}<w:r><w:t>${text}</w:t></w:r></w:p>`;
+}
+
+/** Minutes whose welcome, Motion heading, and one rejected gap come from Word. */
+async function minutesDocx() {
+  const welcome =
+    "Welcome to the October meeting of the Riverside Garden Club. We are glad you came.";
+  const body = [
+    wordParagraph(welcome, { after: "240" }),
+    wordParagraph("Motion", { before: "240" }, "Heading2"),
+    wordParagraph("Plant the south bed with beans."),
+    wordParagraph("The greenhouse roof was quoted at 150 points.", { before: "3000" }),
+  ].join("");
+  const zip = new JSZip();
+  zip.file(
+    "[Content_Types].xml",
+    `${xmlHeader}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`,
+  );
+  zip.file(
+    "_rels/.rels",
+    `${xmlHeader}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`,
+  );
+  zip.file(
+    "word/styles.xml",
+    `${xmlHeader}<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/></w:style></w:styles>`,
+  );
+  zip.file(
+    "word/document.xml",
+    `${xmlHeader}<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}</w:body></w:document>`,
+  );
+  return zip.generateAsync({ type: "uint8array" });
+}
+
+function blockNamed(content: JsonNode, text: string) {
+  const found = (content.content ?? []).find((node) => documentText(node).includes(text));
+  if (!found) throw new Error(`missing ${text}`);
+  return found;
+}
+
+describe("import Word space before and after", () => {
+  it("treats 0 and anything above 120 pt as no gap", () => {
+    expect(paragraphSpaceFromTwips(undefined)).toBe(0);
+    expect(paragraphSpaceFromTwips("")).toBe(0);
+    expect(paragraphSpaceFromTwips("0")).toBe(0);
+    expect(paragraphSpaceFromTwips("-20")).toBe(0);
+    expect(paragraphSpaceFromTwips("240")).toBe(12);
+    expect(paragraphSpaceFromTwips("2400")).toBe(120);
+    expect(paragraphSpaceFromTwips("2401")).toBe(0);
+    expect(paragraphSpaceFromTwips("3000")).toBe(0);
+  });
+
+  it("reads w:before and w:after onto the matching paragraphs", async () => {
+    const { file } = await importOffice(await minutesDocx(), "docx", "Garden club minutes.docx");
+    if (file.kind !== "doc") throw new Error("expected a document");
+    const welcome = blockNamed(file.content, "October");
+    const motion = blockNamed(file.content, "Motion");
+    const line = blockNamed(file.content, "beans");
+    const rejected = blockNamed(file.content, "150 points");
+    expect(welcome.type).toBe("paragraph");
+    expect(welcome.attrs).toMatchObject({ spaceBefore: 0, spaceAfter: 12 });
+    expect(welcome.attrs?.lineSpacing).toBeUndefined();
+    expect(motion.type).toBe("heading");
+    expect(motion.attrs).toMatchObject({ spaceBefore: 12, spaceAfter: 0 });
+    expect(line.attrs).toMatchObject({ spaceBefore: 0, spaceAfter: 0 });
+    expect(documentText(rejected)).toContain("150 points");
+    expect(rejected.attrs).toMatchObject({ spaceBefore: 0, spaceAfter: 0 });
+
+    const zip = await JSZip.loadAsync(await exportDocx(file));
+    const xml = await zip.file("word/document.xml")!.async("string");
+    const paragraphs = [...xml.matchAll(/<w:p[ >][\s\S]*?<\/w:p>/g)].map((match) => match[0]);
+    const welcomeXml = paragraphs.find((paragraph) => paragraph.includes("October"));
+    const motionXml = paragraphs.find((paragraph) => paragraph.includes(">Motion<"));
+    const lineXml = paragraphs.find((paragraph) => paragraph.includes("beans"));
+    const rejectedXml = paragraphs.find((paragraph) => paragraph.includes("150 points"));
+    expect(welcomeXml).toContain('w:after="240"');
+    expect(welcomeXml).not.toContain("w:before");
+    expect(motionXml).toContain('w:before="240"');
+    expect(motionXml).not.toContain("w:after");
+    expect(lineXml).not.toContain("w:before");
+    expect(lineXml).not.toContain("w:after");
+    expect(rejectedXml).not.toContain("w:before");
+    expect(documentText(rejected)).toContain("greenhouse roof");
+
+    welcome.attrs = { ...welcome.attrs, spaceAfter: 0 };
+    const cleared = await JSZip.loadAsync(await exportDocx(file)).then((zip) =>
+      zip.file("word/document.xml")!.async("string"),
+    );
+    const clearedParagraphs = [...cleared.matchAll(/<w:p[ >][\s\S]*?<\/w:p>/g)].map(
+      (match) => match[0],
+    );
+    expect(clearedParagraphs.find((paragraph) => paragraph.includes("October"))).not.toContain(
+      "w:after",
+    );
+    expect(clearedParagraphs.find((paragraph) => paragraph.includes(">Motion<"))).toContain(
+      'w:before="240"',
+    );
   });
 });
