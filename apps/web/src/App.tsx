@@ -2299,7 +2299,13 @@ function Workspace() {
                       }
                     />
                   </SubMenu>
-                  <MenuItem shortcut="Cmd+K" onSelect={() => {}}>
+                  <MenuItem
+                    shortcut="Cmd+K"
+                    focusesTarget
+                    onSelect={() =>
+                      actions.current?.sheetActions?.insertLink?.()
+                    }
+                  >
                     Link
                   </MenuItem>
                   <MenuItem
