@@ -77,6 +77,15 @@ export interface ItemAccess {
   parent: { id: string; name: string } | null;
   yourRole: DriveRole;
 }
+export interface ShareNotice {
+  id: string;
+  itemId: string;
+  itemName: string;
+  sharerId: string;
+  sharerName: string | null;
+  role: DriveRole;
+  createdAt: string;
+}
 export interface AuthProviders {
   emailAndPassword: boolean;
   username: boolean;
@@ -342,6 +351,22 @@ export const drive = {
         role,
       }),
     });
+  },
+  async notices(): Promise<ShareNotice[]> {
+    return (await (await api("/api/drive/notices")).json()).notices;
+  },
+  async dismissNotice(id: string): Promise<void> {
+    await api(`/api/drive/notices/${encodeURIComponent(id)}/dismiss`, {
+      method: "POST",
+    });
+  },
+  /** A new file the caller owns in My Drive, with the same name and bytes. */
+  async keepCopy(id: string): Promise<DriveItem> {
+    return (
+      await api(`/api/drive/items/${encodeURIComponent(id)}/copy`, {
+        method: "POST",
+      })
+    ).json();
   },
   async comment(id: string, body: string): Promise<void> {
     await api(`/api/drive/items/${encodeURIComponent(id)}/comments`, {

@@ -410,3 +410,109 @@ fn naming_restore_and_copy_keep_every_version_byte_for_byte() {
         Err(DriveError::Conflict(_))
     ));
 }
+
+#[test]
+fn sharing_notifies_in_the_app_and_keep_copy_is_owned() {
+    let n = node();
+    let (rosa, sam) = (user("rosa"), user("sam"));
+    let folder = n.drive.create(&rosa, None, "Club", "folder", None).unwrap();
+    let file = n
+        .drive
+        .create(
+            &rosa,
+            Some(&folder.id),
+            "Plot assignments.slsheet",
+            "file",
+            None,
+        )
+        .unwrap();
+    let bytes = b"plot-bytes-v1";
+    n.drive.write(&rosa, &file.id, None, None, bytes).unwrap();
+    assert!(n.drive.notices(&sam).unwrap().is_empty());
+
+    n.drive
+        .share(&rosa, &file.id, "user", "sam", Some(Role::Viewer))
+        .unwrap();
+    let notes = n.drive.notices(&sam).unwrap();
+    assert_eq!(notes.len(), 1);
+    assert_eq!(notes[0].item_name, "Plot assignments.slsheet");
+    assert_eq!(notes[0].sharer_id, "rosa");
+    assert_eq!(notes[0].role, Role::Viewer);
+    assert!(n.drive.notices(&rosa).unwrap().is_empty());
+    assert!(matches!(
+        n.drive.dismiss_notice(&rosa, &notes[0].id),
+        Err(DriveError::Forbidden)
+    ));
+    n.drive.dismiss_notice(&sam, &notes[0].id).unwrap();
+    assert!(n.drive.notices(&sam).unwrap().is_empty());
+    assert_eq!(n.drive.shared(&sam).unwrap().len(), 1);
+    n.drive.dismiss_notice(&sam, &notes[0].id).unwrap();
+
+    n.drive
+        .share(&rosa, &file.id, "user", "sam", Some(Role::Editor))
+        .unwrap();
+    let again = n.drive.notices(&sam).unwrap();
+    assert_eq!(again.len(), 1);
+    assert_eq!(again[0].role, Role::Editor);
+    assert_ne!(again[0].id, notes[0].id);
+
+    n.drive
+        .share(&rosa, &file.id, "user", "sam", Some(Role::Viewer))
+        .unwrap();
+    assert!(matches!(
+        n.drive
+            .create(&sam, Some(&folder.id), "nope.slsheet", "file", None),
+        Err(DriveError::Forbidden)
+    ));
+    n.drive
+        .share(&rosa, &folder.id, "user", "sam", Some(Role::Viewer))
+        .unwrap();
+    assert!(matches!(
+        n.drive.keep_copy(&sam, &folder.id),
+        Err(DriveError::BadRequest(_))
+    ));
+    n.drive
+        .share(&rosa, &folder.id, "user", "sam", None)
+        .unwrap();
+    let copy = n.drive.keep_copy(&sam, &file.id).unwrap();
+    assert_eq!(copy.owner_id, "sam");
+    assert_eq!(copy.role, Some(Role::Owner));
+    assert_eq!(copy.parent_id, None);
+    assert_eq!(copy.name, file.name);
+    assert_eq!(n.drive.read(&sam, &copy.id, None).unwrap().1, bytes);
+    assert_eq!(n.drive.read(&rosa, &file.id, None).unwrap().1, bytes);
+    assert!(matches!(
+        n.drive.get(&rosa, &copy.id),
+        Err(DriveError::Forbidden)
+    ));
+    assert_eq!(n.drive.shared(&sam).unwrap().len(), 1);
+    n.drive
+        .write(
+            &sam,
+            &copy.id,
+            copy.head_version_id.as_deref(),
+            None,
+            b"sam-notes",
+        )
+        .unwrap();
+    assert_eq!(n.drive.read(&rosa, &file.id, None).unwrap().1, bytes);
+
+    n.drive.share(&rosa, &file.id, "user", "sam", None).unwrap();
+    assert!(n.drive.notices(&sam).unwrap().is_empty());
+    assert!(n.drive.shared(&sam).unwrap().is_empty());
+    assert!(matches!(
+        n.drive.get(&sam, &file.id),
+        Err(DriveError::Forbidden)
+    ));
+    assert_eq!(n.drive.read(&sam, &copy.id, None).unwrap().1, b"sam-notes");
+    assert_eq!(n.drive.list(&sam, None).unwrap().len(), 1);
+
+    n.drive
+        .share(&rosa, &file.id, "org", "club", Some(Role::Viewer))
+        .unwrap();
+    assert!(n.drive.notices(&sam).unwrap().is_empty());
+    n.drive
+        .share(&rosa, &file.id, "user", "rosa", Some(Role::Editor))
+        .unwrap();
+    assert!(n.drive.notices(&rosa).unwrap().is_empty());
+}
