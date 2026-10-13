@@ -93,6 +93,21 @@ import {
   type TransitionType,
 } from "./slide-theme";
 import { SlideDesignPanel, useReducedMotion } from "./slide-design-panel";
+import {
+  applyFadeOnClick,
+  audienceClass,
+  audiencePhase,
+  editorFadeAttrs,
+  editorFadeClass,
+  fadeOnClickIds,
+  fadeOnClickReason,
+  moveShowCursor,
+  samePlace,
+  startOfShow,
+  type ShowCursor,
+  type ShowMove,
+} from "./slide-fade-in";
+import { FadeOnClickMark } from "./slide-fade-mark";
 
 type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
@@ -130,7 +145,8 @@ export default function Slides({
   });
   const [showNotes, setShowNotes] = useState(true);
   const [presenting, setPresenting] = useState(false);
-  const [presentSlideIndex, setPresentSlideIndex] = useState(0);
+  const [showCursor, setShowCursor] = useState<ShowCursor>(() => startOfShow());
+  const presentSlideIndex = showCursor.slideIndex;
   const [showSpeakerNotes, setShowSpeakerNotes] = useState(false);
   const [blankScreen, setBlankScreen] = useState<string | null>(null);
   const [showStartedAt, setShowStartedAt] = useState(0);
@@ -182,6 +198,9 @@ export default function Slides({
   const anchorRef = useRef(activeSlideId);
   const presentingRef = useRef(false);
   presentingRef.current = presenting;
+  const showCursorRef = useRef(showCursor);
+  showCursorRef.current = showCursor;
+  const moveShowRef = useRef<(where: ShowMove) => void>(() => {});
   const pendingFocus = useRef<string | null>(null);
   const liveDirty = useRef(false);
   const clipboard = useRef<
@@ -708,6 +727,21 @@ export default function Slides({
     }
   };
 
+  const applyFadeToSelection = () => {
+    const elementId = selectedElementRef.current;
+    const slideId = activeRef.current;
+    if (!elementId || !slideId) return;
+    const next = applyFadeOnClick(deckRef.current, slideId, elementId);
+    if (next) commit(next);
+  };
+  const fadeReason = () => {
+    const slide = deckRef.current.slides[activeRef.current];
+    const el = slide?.elements.find(
+      (item) => item.id === selectedElementRef.current,
+    );
+    return fadeOnClickReason(el);
+  };
+
   const api = useRef({
     undo,
     redo,
@@ -724,6 +758,8 @@ export default function Slides({
     toggleBold,
     toggleItalic,
     align: alignText,
+    fadeOnClick: applyFadeToSelection,
+    fadeOnClickReason: fadeReason,
     run: runCommand,
   });
   api.current = {
@@ -742,6 +778,8 @@ export default function Slides({
     toggleBold,
     toggleItalic,
     align: alignText,
+    fadeOnClick: applyFadeToSelection,
+    fadeOnClickReason: fadeReason,
     run: runCommand,
   };
 
@@ -941,7 +979,9 @@ ${slidesHtml}
   const overlayRef = useRef<HTMLDivElement>(null);
 
   const beginShow = useCallback((fromIndex: number, withNotes?: boolean) => {
-    setPresentSlideIndex(fromIndex);
+    const next = startOfShow(fromIndex);
+    showCursorRef.current = next;
+    setShowCursor(next);
     if (withNotes !== undefined) setShowSpeakerNotes(withNotes);
     setBlankScreen(null);
     setControlsVisible(true);
@@ -964,6 +1004,23 @@ ${slidesHtml}
       );
     }
   }, []);
+
+  moveShowRef.current = (where) => {
+    setBlankScreen(null);
+    const order = deckRef.current.slideOrder;
+    const current = showCursorRef.current;
+    const next = moveShowCursor(
+      current,
+      where,
+      (index) =>
+        fadeOnClickIds(deckRef.current.slides[order[index]]?.elements ?? []),
+      order.length,
+    );
+    if (samePlace(current, next) && current.enteringId === next.enteringId)
+      return;
+    showCursorRef.current = next;
+    setShowCursor(next);
+  };
 
   const endShow = useCallback(() => {
     setPresenting(false);
@@ -1039,6 +1096,8 @@ ${slidesHtml}
         applyLayout: (layout) => apiRef.current.applyLayout(layout),
         openTheme: () => apiRef.current.openTheme(),
         openTransition: () => apiRef.current.openTransition(),
+        fadeOnClick: () => api.current.fadeOnClick(),
+        fadeOnClickReason: () => api.current.fadeOnClickReason(),
         undoReason: () => slideApi.current.undoReason(),
         redoReason: () => slideApi.current.redoReason(),
         deleteReason: () => slideApi.current.deleteReason(),
@@ -1109,11 +1168,6 @@ ${slidesHtml}
   // Keyboard navigation and auto-hiding controls for presentation mode
   useEffect(() => {
     if (!presenting) return;
-    const last = deck.slideOrder.length - 1;
-    const goTo = (index: (prev: number) => number) => {
-      setBlankScreen(null);
-      setPresentSlideIndex((prev) => Math.max(0, Math.min(last, index(prev))));
-    };
     const toggleBlank = (color: string) =>
       setBlankScreen((prev) => (prev === color ? null : color));
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1124,20 +1178,20 @@ ${slidesHtml}
         case "PageDown":
         case " ":
         case "n":
-          goTo((prev) => prev + 1);
+          moveShowRef.current("next");
           break;
         case "ArrowLeft":
         case "ArrowUp":
         case "PageUp":
         case "Backspace":
         case "p":
-          goTo((prev) => prev - 1);
+          moveShowRef.current("prev");
           break;
         case "Home":
-          goTo(() => 0);
+          moveShowRef.current("home");
           break;
         case "End":
-          goTo(() => last);
+          moveShowRef.current("end");
           break;
         case "b":
         case "B":
@@ -1181,7 +1235,7 @@ ${slidesHtml}
       window.removeEventListener("mousemove", onMouseMove);
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     };
-  }, [presenting, deck.slideOrder.length, endShow]);
+  }, [presenting, endShow]);
 
   // Leaving fullscreen (the browser's own Esc or exit button) ends the show
   useEffect(() => {
@@ -1233,6 +1287,17 @@ ${slidesHtml}
   const presentSlide =
     deck.slides[deck.slideOrder[presentSlideIndex]] || activeSlide;
   const nextPresentSlide = deck.slides[deck.slideOrder[presentSlideIndex + 1]];
+  const fadeIdsAt = (index: number) =>
+    fadeOnClickIds(deck.slides[deck.slideOrder[index]]?.elements ?? []);
+  const cannotAdvance = samePlace(
+    showCursor,
+    moveShowCursor(showCursor, "next", fadeIdsAt, deck.slideOrder.length),
+  );
+  const cannotRetreat = samePlace(
+    showCursor,
+    moveShowCursor(showCursor, "prev", fadeIdsAt, deck.slideOrder.length),
+  );
+  const fadeWaiting = showCursor.revealed < fadeIdsAt(presentSlideIndex).length;
   const elapsedSeconds = Math.max(
     0,
     Math.floor((clock - showStartedAt) / 1000),
@@ -1242,12 +1307,26 @@ ${slidesHtml}
   ).padStart(2, "0")}`;
 
   /** Slide content for the show, sized in container units so it scales with
-   * whatever box it is drawn in (the full screen or the next-slide preview). */
-  const renderShowElements = (slide: Slide | undefined) => {
+   * whatever box it is drawn in (the full screen or the next-slide preview).
+   * The audience view hides fade-on-click objects until they are revealed.
+   * The speaker's next-slide preview shows them. */
+  const renderShowElements = (slide: Slide | undefined, audience: boolean) => {
     const w = deck.width || 960;
     const h = deck.height || 540;
     const units = (n: number) => `calc(${n} / ${w} * 100cqw)`;
+    const order = fadeOnClickIds(slide?.elements ?? []);
+    const revealed = audience ? showCursor.revealed : order.length;
+    const enteringId = audience ? showCursor.enteringId : null;
     return slide?.elements.map((el) => {
+      const phase = audiencePhase(el, revealed, order, enteringId);
+      const fadeProps = {
+        "data-element-id": el.id,
+        className: audienceClass(phase),
+        ...(phase === "plain"
+          ? {}
+          : { "data-fade": phase === "hidden" ? ("hidden" as const) : ("visible" as const) }),
+        ...(phase === "hidden" ? { "aria-hidden": true as const } : {}),
+      };
       const posStyle: React.CSSProperties = {
         position: "absolute",
         left: `${(el.x / w) * 100}%`,
@@ -1260,7 +1339,8 @@ ${slidesHtml}
         return (
           <div
             key={el.id}
-            className="show-text"
+            {...fadeProps}
+            className={`${fadeProps.className} show-text`}
             style={{
               ...posStyle,
               fontSize: units((el.fontSize || 20) * 0.95),
@@ -1284,6 +1364,7 @@ ${slidesHtml}
         return (
           <img
             key={el.id}
+            {...fadeProps}
             src={el.src}
             alt={el.alt || "Slide asset"}
             style={{ ...posStyle, objectFit: "contain" }}
@@ -1303,6 +1384,7 @@ ${slidesHtml}
         return (
           <div
             key={el.id}
+            {...fadeProps}
             style={{
               ...posStyle,
               backgroundColor: el.fill || "#e2e8f0",
@@ -1314,7 +1396,12 @@ ${slidesHtml}
       }
       if (el.type === "table" && el.rows) {
         return (
-          <table key={el.id} className="show-table" style={posStyle}>
+          <table
+            key={el.id}
+            {...fadeProps}
+            className={`${fadeProps.className} show-table`}
+            style={posStyle}
+          >
             <tbody>
               {el.rows.map((row, rIdx) => (
                 <tr key={rIdx}>
@@ -2151,7 +2238,8 @@ ${slidesHtml}
                       data-element-id={el.id}
                       data-x={el.x}
                       data-y={el.y}
-                      className={`slide-element slide-text ${isSelected ? "selected" : ""}`}
+                      className={`slide-element slide-text ${isSelected ? "selected" : ""}${editorFadeClass(el)}`}
+                      {...editorFadeAttrs(el)}
                       style={{
                         ...posStyle,
                         fontSize: `${(el.fontSize || 20) * 0.95}px`,
@@ -2166,6 +2254,7 @@ ${slidesHtml}
                       onMouseDown={(e) => onElementMouseDown(e, el.id)}
                       onClick={(e) => e.stopPropagation()}
                     >
+                      <FadeOnClickMark element={el} />
                       <textarea
                         className="element-textarea"
                         value={el.content || ""}
@@ -2191,11 +2280,13 @@ ${slidesHtml}
                       data-element-id={el.id}
                       data-x={el.x}
                       data-y={el.y}
-                      className={`slide-element slide-image ${isSelected ? "selected" : ""}`}
+                      className={`slide-element slide-image ${isSelected ? "selected" : ""}${editorFadeClass(el)}`}
+                      {...editorFadeAttrs(el)}
                       style={posStyle}
                       onMouseDown={(e) => onElementMouseDown(e, el.id)}
                       onClick={(e) => e.stopPropagation()}
                     >
+                      <FadeOnClickMark element={el} />
                       <img src={el.src} alt={el.alt || "Slide asset"} />
                       {isSelected ? renderHandles(el.id) : null}
                     </div>
@@ -2219,7 +2310,8 @@ ${slidesHtml}
                       data-element-id={el.id}
                       data-x={el.x}
                       data-y={el.y}
-                      className={`slide-element slide-shape ${isSelected ? "selected" : ""}`}
+                      className={`slide-element slide-shape ${isSelected ? "selected" : ""}${editorFadeClass(el)}`}
+                      {...editorFadeAttrs(el)}
                       style={{
                         ...posStyle,
                         backgroundColor: el.fill || "#e2e8f0",
@@ -2229,6 +2321,7 @@ ${slidesHtml}
                       onMouseDown={(e) => onElementMouseDown(e, el.id)}
                       onClick={(e) => e.stopPropagation()}
                     >
+                      <FadeOnClickMark element={el} />
                       {isSelected ? renderHandles(el.id) : null}
                     </div>
                   );
@@ -2241,11 +2334,13 @@ ${slidesHtml}
                       data-element-id={el.id}
                       data-x={el.x}
                       data-y={el.y}
-                      className={`slide-element slide-table ${isSelected ? "selected" : ""}`}
+                      className={`slide-element slide-table ${isSelected ? "selected" : ""}${editorFadeClass(el)}`}
+                      {...editorFadeAttrs(el)}
                       style={posStyle}
                       onMouseDown={(e) => onElementMouseDown(e, el.id)}
                       onClick={(e) => e.stopPropagation()}
                     >
+                      <FadeOnClickMark element={el} />
                       <table>
                         <tbody>
                           {el.rows.map((row, rIdx) => (
@@ -2356,14 +2451,9 @@ ${slidesHtml}
                 ? `min(62vw, calc((100vh - 112px) * ${deck.width || 960} / ${deck.height || 540}))`
                 : `min(100vw, calc(100vh * ${deck.width || 960} / ${deck.height || 540}))`,
             }}
-            onClick={() => {
-              setBlankScreen(null);
-              setPresentSlideIndex((prev) =>
-                Math.min(deck.slideOrder.length - 1, prev + 1),
-              );
-            }}
+            onClick={() => moveShowRef.current("next")}
           >
-            {renderShowElements(presentSlide)}
+            {renderShowElements(presentSlide, true)}
             {blankScreen ? (
               <div
                 className="presenter-blank"
@@ -2406,7 +2496,7 @@ ${slidesHtml}
                         aspectRatio: `${deck.width || 960} / ${deck.height || 540}`,
                       }}
                     >
-                      {renderShowElements(nextPresentSlide)}
+                      {renderShowElements(nextPresentSlide, false)}
                     </div>
                   </>
                 ) : (
@@ -2428,11 +2518,13 @@ ${slidesHtml}
           >
             <button
               type="button"
-              onClick={() =>
-                setPresentSlideIndex((prev) => Math.max(0, prev - 1))
+              onClick={() => moveShowRef.current("prev")}
+              disabled={cannotRetreat}
+              title={
+                showCursor.revealed > 0
+                  ? "Hide fade-in (Left arrow)"
+                  : "Previous slide (Left arrow)"
               }
-              disabled={presentSlideIndex <= 0}
-              title="Previous slide (Left arrow)"
             >
               <ChevronLeft size={16} />
               Previous
@@ -2442,13 +2534,11 @@ ${slidesHtml}
             </span>
             <button
               type="button"
-              onClick={() =>
-                setPresentSlideIndex((prev) =>
-                  Math.min(deck.slideOrder.length - 1, prev + 1),
-                )
+              onClick={() => moveShowRef.current("next")}
+              disabled={cannotAdvance}
+              title={
+                fadeWaiting ? "Fade in (Right arrow)" : "Next slide (Right arrow)"
               }
-              disabled={presentSlideIndex >= deck.slideOrder.length - 1}
-              title="Next slide (Right arrow)"
             >
               Next
               <ChevronRight size={16} />

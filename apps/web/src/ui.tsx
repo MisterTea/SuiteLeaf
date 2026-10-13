@@ -392,6 +392,10 @@ export type EditorActions = {
     ) => void;
     openTheme: () => void;
     openTransition: () => void;
+    /** Insert › Animation › Fade in on click, for the selected object. */
+    fadeOnClick?: () => void;
+    /** Why that command cannot run, if it cannot. */
+    fadeOnClickReason?: () => string | undefined;
     undoReason?: () => string | undefined;
     redoReason?: () => string | undefined;
     deleteReason?: () => string | undefined;

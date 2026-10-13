@@ -128,6 +128,8 @@ export const slideElementSchema = z.object({
   strokeWidth: z.number().optional(),
   /** Set when someone chose this element's font or colour by hand. */
   themeOverride: z.boolean().optional(),
+  /** Hidden in the slideshow until the next click, then faded in. */
+  animation: z.literal("fade-on-click").optional(),
   src: z.string().optional(),
   alt: z.string().optional(),
   rows: z.array(z.array(z.string())).optional(),
