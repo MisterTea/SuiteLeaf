@@ -3742,7 +3742,7 @@ body.agent-open .gdocs-modal-overlay {
   font-size: 13px;
 }
 /* Beside the AI panel there is no room for the outline as well; the page would shrink to unreadable. */
-body.agent-open :has(> .spelling-panel) > .document-stage > .outline {
+body.agent-open .document-stage:has(> .spelling-panel) > .outline {
   display: none;
 }
 body.agent-open .spelling-panel {

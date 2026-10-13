@@ -820,11 +820,11 @@ export default function Docs({
     pageDraft.margin <= 144;
   const dimensions = pageDimensions(pageSettings);
   const fit = Math.min(1, pageViewportWidth / dimensions.width);
-  // Beside the AI panel the page shrinks to fit rather than running under it.
+  // Beside the AI or spelling panel the page shrinks to fit rather than running under it.
   const pageZoom =
     zoomLevel === "Fit"
       ? fit
-      : agentPanelOpen
+      : agentPanelOpen || spellingOpen
         ? Math.min(parseInt(zoomLevel) / 100, fit)
         : parseInt(zoomLevel) / 100;
   const search = documentMatches(editor.state.doc, findOpen ? query : "", {
