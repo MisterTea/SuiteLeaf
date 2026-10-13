@@ -410,6 +410,10 @@ export type EditorActions = {
     insertComment?: () => void;
     openComments?: () => void;
     openResolved?: () => void;
+    /** Insert › Animation › Fade in on click, for the selected object. */
+    fadeOnClick?: () => void;
+    /** Why that command cannot run, if it cannot. */
+    fadeOnClickReason?: () => string | undefined;
     undoReason?: () => string | undefined;
     redoReason?: () => string | undefined;
     deleteReason?: () => string | undefined;

@@ -2660,6 +2660,25 @@ function Workspace() {
                       Ellipse
                     </MenuItem>
                   </SubMenu>
+                  <SubMenu label="Animation">
+                    <MenuItem
+                      synonyms={[
+                        "fade in",
+                        "fade in on click",
+                        "appear on click",
+                        "animation",
+                      ]}
+                      availability={() =>
+                        actions.current?.slideActions?.fadeOnClickReason?.() ??
+                        true
+                      }
+                      onSelect={() =>
+                        actions.current?.slideActions?.fadeOnClick?.()
+                      }
+                    >
+                      Fade in on click
+                    </MenuItem>
+                  </SubMenu>
                   <MenuItem
                     shortcut="Cmd+M"
                     onSelect={() => actions.current?.slideActions?.newSlide()}
