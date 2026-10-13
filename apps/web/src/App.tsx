@@ -2430,6 +2430,20 @@ function Workspace() {
                   >
                     Sort range
                   </MenuItem>
+                  <MenuItem
+                    focusesTarget
+                    synonyms={[
+                      "named range",
+                      "define name",
+                      "name a range",
+                      "defined name",
+                    ]}
+                    onSelect={() =>
+                      actions.current?.sheetActions?.namedRanges?.()
+                    }
+                  >
+                    Named ranges
+                  </MenuItem>
                   <SubMenu label="Data cleanup">
                     <MenuItem
                       onSelect={() =>
