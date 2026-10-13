@@ -1080,6 +1080,9 @@ a {
 .document-content img {
   max-width: 100%;
   height: auto;
+  /* A 1px image otherwise collapses to 0 height in Firefox and never shows. */
+  min-width: 1px;
+  min-height: 1px;
 }
 .document-content a {
   color: #1155cc;
