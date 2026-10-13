@@ -214,6 +214,16 @@ function activeHighlight(color: unknown): string {
   return match ? `#${match[1].toLowerCase()}` : "#ffff00";
 }
 
+/** The swatch color when the caret is not inside a colored word. */
+const NORMAL_TEXT_COLOR = "#202124";
+
+/** Hex font color under the caret. Null means that word has no font color. */
+function activeTextColor(color: unknown): string | null {
+  if (typeof color !== "string") return null;
+  const match = /^#([\da-f]{6})$/i.exec(color.trim());
+  return match ? `#${match[1].toLowerCase()}` : null;
+}
+
 export default function Docs({
   file,
   onChange,
@@ -270,7 +280,7 @@ export default function Docs({
   const docTools = useRef<HTMLFieldSetElement>(null);
   const moreDocTools = useToolbarOverflow(
     docTools,
-    '[aria-label="Page setup"], [aria-label="Page break"], [aria-label="Bold"], .paint-format, .highlight-color-picker, [aria-label="Superscript"], [aria-label="Subscript"], [aria-label="Bulleted list"], [aria-label="Decrease indent"], [aria-label="Increase indent"], [aria-label="Find and replace"], [aria-label="Insert table"], [aria-label="Insert link"], .mode-switch',
+    '[aria-label="Page setup"], [aria-label="Page break"], [aria-label="Bold"], .paint-format, .text-color-picker, .highlight-color-picker, [aria-label="Superscript"], [aria-label="Subscript"], [aria-label="Bulleted list"], [aria-label="Decrease indent"], [aria-label="Increase indent"], [aria-label="Find and replace"], [aria-label="Insert table"], [aria-label="Insert link"], .mode-switch',
   );
   const [copiedFormat, setCopiedFormat] = useState<CopiedTextFormat | null>(
     null,
@@ -278,7 +288,6 @@ export default function Docs({
   const [pageViewportWidth, setPageViewportWidth] = useState(
     window.innerWidth - 32,
   );
-  const [textColor, setTextColor] = useState("#202124");
   const [highlightColor, setHighlightColor] = useState("#ffff00");
   const imageInput = useRef<HTMLInputElement>(null);
   const documentStage = useRef<HTMLDivElement>(null);
@@ -610,6 +619,9 @@ export default function Docs({
         highlight: e?.isActive("highlight")
           ? activeHighlight(e.getAttributes("highlight").color)
           : null,
+        textColor:
+          activeTextColor(e?.getAttributes("textStyle").color) ??
+          NORMAL_TEXT_COLOR,
         fontFamily: e?.getAttributes("textStyle").fontFamily ?? "Arial",
         fontSize: (() => {
           const raw = e?.getAttributes("textStyle").fontSize as
@@ -1354,20 +1366,30 @@ export default function Docs({
           <SubscriptIcon size={16} />
         </Tool>
 
-        <label className="color-tool text-color-picker" title="Text color">
+        <label
+          className="color-tool text-color-picker"
+          title="Text color"
+          data-text-color={state?.textColor ?? NORMAL_TEXT_COLOR}
+        >
           <span className="color-icon-wrapper">
-            <span className="text-color-letter">A</span>
+            <span
+              className="text-color-letter"
+              style={{ color: state?.textColor ?? NORMAL_TEXT_COLOR }}
+            >
+              A
+            </span>
             <span
               className="color-bar"
-              style={{ backgroundColor: textColor }}
+              style={{
+                backgroundColor: state?.textColor ?? NORMAL_TEXT_COLOR,
+              }}
             />
           </span>
           <input
             aria-label="Text color"
             type="color"
-            value={textColor}
+            value={state?.textColor ?? NORMAL_TEXT_COLOR}
             onChange={(e) => {
-              setTextColor(e.target.value);
               editor.chain().focus().setColor(e.target.value).run();
             }}
           />
