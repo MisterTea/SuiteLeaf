@@ -273,6 +273,16 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
   const select = (range: string) => {
     sheet().getRange(a1(parseA1(range))).activate();
   };
+  /** Pivot sheets are read-only; say where their numbers come from instead. */
+  const writable = () => {
+    const p = ctx.content().pivots.find((x) => x.targetSheetId === sheet().getSheetId());
+    if (!p) return;
+    const source = book.getSheetBySheetId(p.source.sheetId)?.getSheetName() ?? "the source sheet";
+    const values = a1({ ...p.source, startRow: p.source.startRow + 1, startColumn: p.source.startColumn + p.value, endColumn: p.source.startColumn + p.value });
+    throw new ToolError(
+      `Sheet "${sheet().getSheetName()}" is the pivot table "${p.title}", which is read-only: it follows ${a1(p.source)} on sheet "${source}" by itself. To change its numbers or their format (e.g. currency), switch_sheet to "${source}" and change or format the source cells (its values are ${values}); the pivot updates. For an editable version, use copy_pivot.`,
+    );
+  };
   return [
     tool({
       name: "read_sheet",
@@ -328,6 +338,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       async execute({ start, values }) {
         const s = parseCell(start);
         if (!values.length) throw new ToolError("Give at least one row of values.");
+        writable();
         await ctx.settle();
         const before = formulaCells(sheet());
         for (let i = 0; i < values.length; i++) {
@@ -382,6 +393,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       }),
       target: ({ range }) => target(range),
       async execute(args) {
+        writable();
         select(args.range);
         const range = sheet().getRange(a1(parseA1(args.range)));
         const done: string[] = [];
@@ -658,11 +670,11 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       name: "create_pivot",
       label: "Pivot table",
       description:
-        "Summarize a table with a pivot table on a new sheet. rows: header names to group by; value: the header to summarize; summarize: SUM, COUNT, AVERAGE, MIN or MAX. Optional columns and a filter (only rows where filter_column equals filter_value).",
+        "Summarize a table with a pivot table on a new, read-only sheet that updates by itself when the source changes. rows: headers whose values go down the side; columns: headers whose values go across the top (\"split by who paid\" is columns [\"Paid by\"]); value: the header to summarize; summarize: SUM, COUNT, AVERAGE, MIN or MAX. Grand totals are added. Numbers keep the source column's number format. Only use filter_column/filter_value when the user asks to leave some rows out (keeps rows whose filter_column equals filter_value).",
       parameters: Type.Object({
         range: Type.Optional(Type.String()),
-        rows: Type.Array(Type.String()),
-        columns: Type.Optional(Type.Array(Type.String())),
+        rows: Type.Array(Type.String({ description: "Header names; their values go down the side" })),
+        columns: Type.Optional(Type.Array(Type.String({ description: "Header names; their values go across the top" }))),
         value: Type.String(),
         summarize: Type.String({ enum: ["SUM", "COUNT", "AVERAGE", "MIN", "MAX"] }),
         filter_column: Type.Optional(Type.String()),
@@ -674,6 +686,24 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         const s = sheet();
         const r = args.range ? parseA1(args.range) : usedRange(s);
         const field = (name: string) => resolveColumn(s, r, name) - r.startColumn;
+        let filterValue = args.filter_value ?? "";
+        if (args.filter_column) {
+          const col = resolveColumn(s, r, args.filter_column);
+          const values = [
+            ...new Set<string>(
+              s
+                .getRange(r.startRow + 1, col, r.endRow - r.startRow, 1)
+                .getValues()
+                .map((x: unknown[]) => display(x[0])),
+            ),
+          ];
+          const match = values.find((v) => v.trim().toLowerCase() === filterValue.trim().toLowerCase());
+          if (match === undefined)
+            throw new ToolError(
+              `No row has ${args.filter_column} equal to "${filterValue}"; its values are ${values.slice(0, 20).join(", ")}. Leave filter_column and filter_value out to summarize every row.`,
+            );
+          filterValue = match;
+        }
         const before = new Set(ctx.content().pivots.map((p) => p.id));
         select(a1(r));
         ctx.openPanel("pivot", {
@@ -685,7 +715,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
           value: field(args.value),
           aggregate: args.summarize as PivotDefinition["aggregate"],
           filterColumn: args.filter_column ? field(args.filter_column) : -1,
-          filterValue: args.filter_value ?? "",
+          filterValue,
         });
         await wait(1300);
         await ctx.submitPanel();
@@ -693,20 +723,31 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         const p = ctx.content().pivots.find((x) => !before.has(x.id));
         if (!p) throw new ToolError("The pivot table was not created.");
         const target = book.getSheetBySheetId(p.targetSheetId);
-        return `Created pivot table "${p.title}" on sheet "${target?.getSheetName()}":\n${grid(target, usedRange(target), 30, 10)}`;
+        const valueCells = a1({ startRow: r.startRow + 1, endRow: r.endRow, startColumn: r.startColumn + p.value, endColumn: r.startColumn + p.value });
+        const code = s.getRange(r.startRow + 1, r.startColumn + p.value, 1, 1).getNumberFormat?.() || "";
+        const format = code && code !== "General" ? `in the source's number format (${code})` : "as plain numbers, like the source";
+        return `Created pivot table "${p.title}" on sheet "${target?.getSheetName()}" (read-only; it follows the source):\n${grid(target, usedRange(target), 30, 10)}\nNumbers are shown ${format}. To change how they look, format the source cells ${valueCells} on sheet "${s.getSheetName()}"; the pivot follows.`;
       },
     }),
     tool({
       name: "copy_pivot",
       label: "Editable copy",
-      description: "Make an editable copy of the pivot table on the active sheet (pivot sheets are read-only).",
-      parameters: Type.Object({}),
+      description:
+        "Make an editable copy of a pivot table (pivot sheets are read-only) on a new sheet with the same numbers and formatting. Defaults to the pivot on the active sheet, or the only one.",
+      parameters: Type.Object({ pivot: Type.Optional(Type.String({ description: "The pivot table's title" })) }),
       target: () => [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Make editable copy")),
-      execute() {
-        const p = ctx.content().pivots.find((x) => x.targetSheetId === sheet().getSheetId());
-        if (!p) throw new ToolError("The active sheet is not a pivot table.");
+      execute({ pivot }) {
+        const all = ctx.content().pivots;
+        const p =
+          (pivot && all.find((x) => x.title.toLowerCase() === pivot.trim().toLowerCase())) ||
+          all.find((x) => x.targetSheetId === sheet().getSheetId()) ||
+          (all.length === 1 ? all[0] : undefined);
+        if (!p)
+          throw new ToolError(
+            all.length ? `Say which pivot table to copy: ${all.map((x) => `"${x.title}"`).join(", ")}.` : "There is no pivot table in this workbook.",
+          );
         ctx.copyPivot(p);
-        return `Made an editable copy of "${p.title}" on sheet "${sheet().getSheetName()}".`;
+        return `Made an editable copy of "${p.title}" on the new sheet "${sheet().getSheetName()}", now the active sheet:\n${grid(sheet(), usedRange(sheet()), 30, 10)}`;
       },
     }),
     tool({
@@ -911,11 +952,17 @@ export function sheetSnapshot(ctx: SheetsAgentContext) {
     const selection = ctx.book.getActiveRange()?.getA1Notation?.() ?? "";
     const charts = ctx.content().charts.filter((c) => c.sheetId === s.getSheetId());
     const freeze = s.getFreeze?.();
+    const name = (id: string) => ctx.book.getSheetBySheetId(id)?.getSheetName() ?? "?";
+    const pivots = ctx.content().pivots.map(
+      (p) =>
+        `"${p.title}" on sheet "${name(p.targetSheetId)}" (read-only, follows ${name(p.source.sheetId)} ${a1(p.source)})${p.targetSheetId === s.getSheetId() ? ", the active sheet" : ""}`,
+    );
     return [
       `Open spreadsheet: "${ctx.title}". Sheets: ${sheets.join(", ")}. Active sheet: "${s.getSheetName()}", used range ${a1(used)}${selection ? `, selected ${selection}` : ""}.`,
       freeze?.ySplit || freeze?.xSplit ? `Frozen: ${freeze.startRow} row(s), ${freeze.startColumn} column(s).` : "",
       filterSummary(s),
       charts.length ? `Charts: ${charts.map((c) => `"${c.title}" (${c.type === "bar" ? "column" : c.type}, ${a1(c.source)})`).join("; ")}.` : "",
+      pivots.length ? `Pivot tables: ${pivots.join("; ")}.` : "",
       `Cells:\n${grid(s, used, 25, 12)}`,
     ]
       .filter(Boolean)
