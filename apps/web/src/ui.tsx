@@ -365,6 +365,7 @@ export type EditorActions = {
     filterViewChoices?: () => { label: string; value: string }[];
     sortRange?: () => void;
     namedRanges?: () => void;
+    groupRows?: () => void;
     trimWhitespace?: () => void;
     removeDuplicates?: () => void;
     splitTextToColumns?: () => void;

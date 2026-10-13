@@ -7087,3 +7087,51 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 .equation-status[data-invalid="true"] {
   color: #b3261e;
 }
+.row-group-controls {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+}
+.row-group-line {
+  position: fixed;
+  width: 2px;
+  background: #1a73e8;
+  border-radius: 1px;
+  pointer-events: none;
+}
+.row-group-toggle,
+.row-group-only {
+  position: fixed;
+  pointer-events: auto;
+  cursor: pointer;
+}
+.row-group-toggle {
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 1.5px solid #1a73e8;
+  border-radius: 50%;
+  background: #fff;
+  color: #1a73e8;
+  font: 700 14px/16px var(--font-google), sans-serif;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+.row-group-only {
+  box-sizing: border-box;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid #1a73e8;
+  border-radius: 13px;
+  background: #fff;
+  color: #174ea6;
+  font: 600 13px/24px var(--font-google), sans-serif;
+  box-shadow: 0 1px 3px rgba(60, 64, 67, 0.3);
+  white-space: nowrap;
+}
+.row-group-toggle:hover,
+.row-group-only:hover {
+  background: #e8f0fe;
+}
