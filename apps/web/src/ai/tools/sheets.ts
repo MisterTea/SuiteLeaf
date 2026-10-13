@@ -975,14 +975,14 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       name: "highlight_rule",
       label: "Conditional formatting",
       description:
-        "Add a conditional formatting rule: cells in `range` get the style when the custom formula is true for that row, e.g. range A2:C10 with formula =$A2=TRUE, or =$C2>100. Write the formula for the range's first row with $ before the column. Style: fill_color (#rrggbb; light shades such as #d9ead3 green or #fff2cc yellow keep the text readable), text_color, bold, strikethrough. Set only the styles the user asked for.",
+        "Add a conditional formatting rule: cells in `range` get the style when the custom formula is true for that row, e.g. range A2:C10 with formula =$A2=TRUE, or =$C2>100. Write the formula for the range's first row with $ before the column. Style: fill_color (#rrggbb; light shades such as #d9ead3 green or #fff2cc yellow keep the text readable), text_color, bold, strikethrough. Set only the styles the user asked for; the cells keep their own text colour and weight otherwise.",
       parameters: Type.Object({
         range: Type.String(),
         formula: Type.String(),
         fill_color: Type.Optional(Type.String()),
-        text_color: Type.Optional(Type.String()),
-        bold: Type.Optional(Type.Boolean()),
-        strikethrough: Type.Optional(Type.Boolean()),
+        text_color: Type.Optional(Type.String({ description: "Only when the user asked for a text colour" })),
+        bold: Type.Optional(Type.Boolean({ description: "Only when the user asked for bold" })),
+        strikethrough: Type.Optional(Type.Boolean({ description: "Crossed-out text" })),
       }),
       // "$ before the column" sometimes comes back as $=A2 instead of =$A2.
       prepare: (args) =>
