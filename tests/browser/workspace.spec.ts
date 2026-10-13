@@ -99,7 +99,10 @@ test("spreadsheet formulas → embedded chart → pivot worksheet → save and r
     ].cellData[row][1].v;
   await expect.poll(() => pivotCell(1)).toBe(7000);
   expect(await pivotCell(5)).toBe(24000);
-  await page.getByRole("button", { name: /^Undo/ }).first().click();
+  const undo = page.getByRole("button", { name: /^Undo/ }).first();
+  if (!(await undo.isVisible()))
+    await page.getByRole("button", { name: "More tools" }).click();
+  await undo.click();
   await expect.poll(() => pivotCell(1)).toBe(6000);
   expect(await pivotCell(5)).toBe(23000);
   await page.getByText("Charts & pivots (2)", { exact: true }).click();

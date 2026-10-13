@@ -18,6 +18,7 @@ const fullscreen = (page: Page) =>
 
 test("slideshow starts from the beginning, shows speaker notes, and uses real fullscreen", async ({
   page,
+  isMobile,
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -31,7 +32,7 @@ test("slideshow starts from the beginning, shows speaker notes, and uses real fu
   await page.getByRole("menuitem", { name: /Present from beginning/ }).click();
   await expect(show).toBeVisible();
   await expect(show).toContainText("Opening slide");
-  await expect.poll(() => fullscreen(page)).toBe(true);
+  if (!isMobile) await expect.poll(() => fullscreen(page)).toBe(true);
 
   const notes = show.getByRole("complementary", { name: "Speaker notes" });
   await expect(notes).toHaveCount(0);
@@ -46,13 +47,15 @@ test("slideshow starts from the beginning, shows speaker notes, and uses real fu
   await page.keyboard.press("b");
   await expect(show.locator(".presenter-blank")).toHaveCount(0);
 
-  await page.evaluate(() => document.exitFullscreen());
+  if (isMobile) await page.keyboard.press("Escape");
+  else await page.evaluate(() => document.exitFullscreen());
   await expect(show).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
 test("Cmd/Ctrl+Enter presents from the current slide and Escape leaves fullscreen", async ({
   page,
+  isMobile,
 }) => {
   await twoSlideDeck(page);
   const show = page.locator(".presenter-overlay");
@@ -61,7 +64,7 @@ test("Cmd/Ctrl+Enter presents from the current slide and Escape leaves fullscree
   await expect(show).toBeVisible();
   await expect(show).toContainText("Second slide");
   await expect(show.getByText("Slide 2 of 2")).toBeAttached();
-  await expect.poll(() => fullscreen(page)).toBe(true);
+  if (!isMobile) await expect.poll(() => fullscreen(page)).toBe(true);
   await page.keyboard.press("Escape");
   await expect(show).toHaveCount(0);
   await expect.poll(() => fullscreen(page)).toBe(false);

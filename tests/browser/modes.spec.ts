@@ -67,7 +67,11 @@ test("connecting accepts a server address without http:// or https://", async ({
   page,
 }) => {
   await fakeServer(page, "https://team.example.org");
-  await page.route("https://lan-box.test/**", (route) => route.abort());
+  await fakeServer(page, "http://team.example.org");
+  // The https attempt must fail immediately so the probe can try http.
+  await page.route("https://lan-box.test/**", (route) =>
+    route.fulfill({ status: 502, body: "" }),
+  );
   await fakeServer(page, "http://lan-box.test");
   await page.goto("/");
 
