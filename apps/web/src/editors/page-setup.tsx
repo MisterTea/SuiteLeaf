@@ -244,6 +244,7 @@ export function PageSetupFields({
         </p>
       </div>
       <Preview draft={draft} pageCount={pageCount} />
+      <div className="page-setup-text">
       {draft.differentFirstPage ? (
         <>
           <p className="page-setup-group">
@@ -345,6 +346,7 @@ export function PageSetupFields({
           />
         </>
       )}
+      </div>
     </>
   );
 }

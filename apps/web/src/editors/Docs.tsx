@@ -116,8 +116,7 @@ import { paragraphLineSpacing } from "./doc-line-spacing";
 import { LineSpacingControl } from "./doc-line-spacing-ui";
 import { DocWatermarkField, pageSetupToSave } from "./doc-watermark";
 import { columnLayout } from "./doc-columns";
-import { PageMarginFields } from "./page-setup-margins";
-import { HeaderEdgeFields } from "./header-edge";
+import { PageSetupFit } from "./page-setup-fit";
 
 export const extensions: Extensions = [
   DocumentPagination,
@@ -1413,44 +1412,45 @@ export default function Docs({
               </button>
             </div>
             <div className="dialog-body page-setup-fields">
-              <label>
-                <span>Paper size</span>
-                <select
-                  autoFocus
-                  aria-label="Paper size"
-                  value={pageDraft.size}
-                  onChange={(e) =>
-                    setPageDraft({
-                      ...pageDraft,
-                      size: e.target.value as PageSettings["size"],
-                    })
-                  }
-                >
-                  <option value="letter">Letter (8.5 × 11 in)</option>
-                  <option value="a4">A4 (21 × 29.7 cm)</option>
-                </select>
-              </label>
-              <fieldset className="page-setup-orientation">
-                <legend>Orientation</legend>
-                {(["Portrait", "Landscape"] as const).map((name) => (
-                  <label key={name}>
-                    <input
-                      type="radio"
-                      name="page-orientation"
-                      checked={pageDraft.landscape === (name === "Landscape")}
-                      onChange={() =>
-                        setPageDraft({
-                          ...pageDraft,
-                          landscape: name === "Landscape",
-                        })
-                      }
-                    />
-                    {name}
-                  </label>
-                ))}
-              </fieldset>
-              <PageMarginFields draft={pageDraft} onChange={setPageDraft} />
-              <HeaderEdgeFields draft={pageDraft} onChange={setPageDraft} />
+              <div className="page-setup-basics">
+                <label>
+                  <span>Paper size</span>
+                  <select
+                    autoFocus
+                    aria-label="Paper size"
+                    value={pageDraft.size}
+                    onChange={(e) =>
+                      setPageDraft({
+                        ...pageDraft,
+                        size: e.target.value as PageSettings["size"],
+                      })
+                    }
+                  >
+                    <option value="letter">Letter (8.5 × 11 in)</option>
+                    <option value="a4">A4 (21 × 29.7 cm)</option>
+                  </select>
+                </label>
+                <fieldset className="page-setup-orientation">
+                  <legend>Orientation</legend>
+                  {(["Portrait", "Landscape"] as const).map((name) => (
+                    <label key={name}>
+                      <input
+                        type="radio"
+                        name="page-orientation"
+                        checked={pageDraft.landscape === (name === "Landscape")}
+                        onChange={() =>
+                          setPageDraft({
+                            ...pageDraft,
+                            landscape: name === "Landscape",
+                          })
+                        }
+                      />
+                      {name}
+                    </label>
+                  ))}
+                </fieldset>
+              </div>
+              <PageSetupFit draft={pageDraft} onChange={setPageDraft} />
               <PageSetupFields
                 draft={pageDraft}
                 pageCount={pageCount}

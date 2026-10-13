@@ -8,7 +8,7 @@ import {
 } from "@suiteleaf/core/document-layout";
 import "./header-edge.css";
 
-function EdgeField({
+export function EdgeField({
   kind,
   draft,
   onChange,
