@@ -29,12 +29,18 @@ test("36-find-any-command", async ({ page }) => {
   await expect(editor.locator("s")).toContainText("beat its target.");
   await caption(page, "Enter runs it. The phrase is struck through.", 1600);
 
-  await caption(page, "Plain words work: “count” finds Word count, without typing “word”.");
+  await caption(page, "Plain words work: “count” finds Word count, and Enter opens it.");
   await page.keyboard.press("Alt+/");
   await typeSlowly(page, "count", 90);
   await expect(top).toContainText("Tools › Word count");
-  await expect(top).toContainText("doesn't have word count yet");
+  await expect(top).not.toContainText("doesn't have");
+  await expect(top).not.toHaveAttribute("aria-disabled", "true");
   await beat(page, 900);
+  await page.keyboard.press("Enter");
+  const wordCount = page.getByRole("dialog", { name: "Word count" });
+  await expect(wordCount).toBeVisible();
+  await wordCount.getByRole("button", { name: "Close word count" }).click();
+  await page.keyboard.press("Alt+/");
   await page.keyboard.press("ControlOrMeta+A");
   await typeSlowly(page, "page numbers", 70);
   await expect(top).toContainText("Page setup");

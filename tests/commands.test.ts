@@ -70,6 +70,19 @@ describe("command search", () => {
     expect(top.disabledReason).toMatch(/doesn't have word count yet/);
   });
 
+  it("runs a real word count command instead of the missing-feature note", () => {
+    const wordCount: CommandView = {
+      id: "Tools/Word count",
+      label: "Word count",
+      path: ["Tools"],
+      synonyms: ["count", "word count", "words"],
+    };
+    const [top] = searchCommands([...commands, wordCount], "count");
+    expect(top.label).toBe("Word count");
+    expect(top.id).toBe("Tools/Word count");
+    expect(top.disabledReason).toBeUndefined();
+  });
+
   it("finds page setup from page numbers", () => {
     expect(searchCommands(commands, "page numbers")[0].label).toBe("Page setup…");
   });

@@ -321,7 +321,9 @@ export default function Docs({
           return true;
         }
         if (
-          (event.metaKey || event.ctrlKey) &&
+          (navigator.platform.includes("Mac")
+            ? event.metaKey && !event.ctrlKey
+            : event.ctrlKey) &&
           event.altKey &&
           !event.shiftKey &&
           event.code === "KeyM"

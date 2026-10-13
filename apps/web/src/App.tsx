@@ -1934,6 +1934,12 @@ function Workspace() {
                   </MenuItem>
                   <SubMenu label="Table of contents">
                     <MenuItem
+                      synonyms={[
+                        "table of contents",
+                        "toc",
+                        "contents",
+                        "insert table of contents",
+                      ]}
                       focusesTarget
                       onSelect={() =>
                         actions.current?.docActions?.insertTableOfContents(true)
@@ -1954,6 +1960,7 @@ function Workspace() {
                   </SubMenu>
                   <MenuItem
                     shortcut="Cmd+Alt+F"
+                    synonyms={["footnote", "footnotes", "insert footnote"]}
                     focusesTarget
                     onSelect={() =>
                       actions.current?.docActions?.insertFootnote()
@@ -1981,6 +1988,7 @@ function Workspace() {
                   </MenuItem>
                   <MenuItem
                     shortcut="Cmd+Alt+M"
+                    synonyms={["comment", "comments", "document comments"]}
                     focusesTarget
                     onSelect={() => actions.current?.docActions?.insertComment?.()}
                   >
@@ -2087,6 +2095,13 @@ function Workspace() {
                 <Menu label="Tools">
                   <MenuItem
                     shortcut="Cmd+Shift+C"
+                    synonyms={[
+                      "count",
+                      "word count",
+                      "wordcount",
+                      "count words",
+                      "words",
+                    ]}
                     focusesTarget
                     onSelect={() =>
                       actions.current?.docActions?.openWordCount()
@@ -2095,6 +2110,7 @@ function Workspace() {
                     Word count
                   </MenuItem>
                   <MenuItem
+                    synonyms={["spelling", "spell check", "spellcheck"]}
                     focusesTarget
                     onSelect={() => actions.current?.docActions?.openSpelling()}
                   >
@@ -2195,6 +2211,14 @@ function Workspace() {
                     Pivot table
                   </MenuItem>
                   <SubMenu label="Function">
+                    <MenuItem
+                      synonyms={["function", "formula", "insert function", "sum"]}
+                      onSelect={() =>
+                        actions.current?.sheetActions?.insertFunction?.("SUM")
+                      }
+                    >
+                      Insert function
+                    </MenuItem>
                     <FunctionMenu
                       onInsert={(name) =>
                         actions.current?.sheetActions?.insertFunction?.(name)
@@ -2338,6 +2362,12 @@ function Workspace() {
                       Trim whitespace
                     </MenuItem>
                     <MenuItem
+                      synonyms={[
+                        "remove duplicates",
+                        "dedupe",
+                        "duplicates",
+                        "unique",
+                      ]}
                       focusesTarget
                       onSelect={() =>
                         actions.current?.sheetActions?.removeDuplicates?.()
@@ -2428,6 +2458,7 @@ function Workspace() {
                 </Menu>
                 <Menu label="Insert">
                   <MenuItem
+                    synonyms={["text box", "insert text box", "textbox"]}
                     focusesTarget
                     onSelect={() =>
                       actions.current?.slideActions?.insertTextBox()
@@ -2436,6 +2467,7 @@ function Workspace() {
                     Text box
                   </MenuItem>
                   <MenuItem
+                    synonyms={["image", "insert image", "picture", "photo"]}
                     onSelect={() =>
                       actions.current?.slideActions?.insertImage()
                     }
@@ -2444,6 +2476,7 @@ function Workspace() {
                   </MenuItem>
                   <SubMenu label="Shape">
                     <MenuItem
+                      synonyms={["shape", "insert shape", "rectangle"]}
                       onSelect={() =>
                         actions.current?.slideActions?.insertShape("rect")
                       }

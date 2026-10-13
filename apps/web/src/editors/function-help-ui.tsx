@@ -12,7 +12,8 @@ import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { useMenuClose } from "../ui";
+import { useRegisterCommand } from "../command-palette";
+import { useMenuClose, useMenuPath, useRegisteringMenus } from "../ui";
 import {
   COMMON_FUNCTIONS,
   FUNCTION_CATEGORIES,
@@ -24,6 +25,7 @@ import {
   formatStat,
   formulaHelpAt,
   functionByName,
+  functionCatalog,
   functionsIn,
   helpFor,
   helpIsCollapsed,
@@ -65,6 +67,28 @@ function focusedFormula(editors: {
   return snap.text.startsWith("=") ? snap : null;
 }
 
+function FunctionCommand({
+  entry,
+  onInsert,
+}: {
+  entry: FunctionEntry;
+  onInsert: (name: string) => void;
+}) {
+  const path = useMenuPath();
+  useRegisterCommand({
+    id: [...path, entry.name].join("/"),
+    label: entry.name,
+    path,
+    synonyms: [
+      entry.name.toLowerCase(),
+      `insert ${entry.name.toLowerCase()}`,
+      entry.description,
+    ],
+    run: () => onInsert(entry.name),
+  });
+  return null;
+}
+
 function Pick({
   entry,
   detail,
@@ -94,9 +118,16 @@ function Pick({
 }
 
 export function FunctionMenu({ onInsert }: { onInsert: (name: string) => void }) {
+  const registerOnly = useRegisteringMenus();
   const [query, setQuery] = useState("");
   const results = query.trim() ? searchFunctions(query) : null;
+  const commands = functionCatalog().map((entry) => (
+    <FunctionCommand key={entry.name} entry={entry} onInsert={onInsert} />
+  ));
+  if (registerOnly) return <>{commands}</>;
   return (
+    <>
+      {commands}
     <div
       className="function-menu"
       onKeyDown={(event) => event.stopPropagation()}
@@ -153,6 +184,7 @@ export function FunctionMenu({ onInsert }: { onInsert: (name: string) => void })
         </>
       )}
     </div>
+    </>
   );
 }
 

@@ -14,6 +14,12 @@ const AfterClose = createContext<{ current: (() => void) | null } | null>(null);
 const MenuPath = createContext<string[]>([]);
 /** Renders menu children only to register commands, with no popup. */
 const MenuRegistrar = createContext(false);
+export function useMenuPath() {
+  return useContext(MenuPath);
+}
+export function useRegisteringMenus() {
+  return useContext(MenuRegistrar);
+}
 export function Menu({
   label,
   children,
