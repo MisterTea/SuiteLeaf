@@ -43,6 +43,10 @@ export interface HomeAgentContext {
   where?: string;
 }
 
+/** Where a file that isn't in the library is, and how to get it. */
+const ON_COMPUTER =
+  "A file that is not listed here is on the user's computer (saved, downloaded or attached to an email): call open_from_computer, which asks them to pick it. Don't ask them first.";
+
 const describe = (r: FileRecord) =>
   `"${r.file.title}" (${NAMES[r.file.kind]}, edited ${new Date(r.file.updatedAt).toLocaleString()})`;
 
@@ -144,7 +148,7 @@ export function homeTools(ctx: HomeAgentContext): SuiteTool[] {
         if (!query) return "Cleared the search.";
         return hits.length
           ? `${hits.length} file(s) match "${query}" (in the name or the text):\n${hits.join("\n")}`
-          : `No files match "${query}".`;
+          : `No files match "${query}". ${ON_COMPUTER}`;
       },
     }),
     tool({
@@ -196,9 +200,7 @@ export function homeTools(ctx: HomeAgentContext): SuiteTool[] {
           r = findRecord(ctx.records, name);
         } catch (e) {
           if (!(e instanceof ToolError)) throw e;
-          throw new ToolError(
-            `${e.message} So it is on the user's computer (saved, downloaded or attached to an email): call open_from_computer now, which asks them to pick it. Don't ask them first.`,
-          );
+          throw new ToolError(`${e.message} ${ON_COMPUTER}`);
         }
         ctx.open(r);
         return opened(r.file.kind, `Opened "${r.file.title}".`);
