@@ -35,7 +35,7 @@ import {
 } from "docx";
 import type { DocFile, JsonNode } from "./index";
 import { asEquation, type EqNode } from "./equations";
-import { documentPageSettings } from "./document-layout";
+import { documentPageSettings, wordPageNumberStart } from "./document-layout";
 import { docxWatermarkParagraph } from "./doc-watermark";
 import {
   planDocxComments,
@@ -504,8 +504,21 @@ export async function exportDocx(
     if (settings.pageNumberPosition === "bottom-center") return "center";
     return "right";
   };
+  const wordStart = wordPageNumberStart(settings);
+  // A cover needs its own first footer so the number can be omitted while the
+  // footer text stays. Different first page already supplies that footer.
+  const coverPage =
+    settings.pageNumbers &&
+    settings.coverHasNoNumber &&
+    !settings.differentFirstPage;
+  const coverHeader = settings.differentOddEven
+    ? settings.oddHeader
+    : settings.header;
+  const coverFooter = settings.differentOddEven
+    ? settings.oddFooter
+    : settings.footer;
   const splitFurniture =
-    settings.differentFirstPage || settings.differentOddEven;
+    settings.differentFirstPage || settings.differentOddEven || coverPage;
   const comments = planDocxComments(content);
   const children = blocks(content.content ?? [], comments, notes, library);
   if (comments.trailing.length)
@@ -561,7 +574,7 @@ export async function exportDocx(
     sections: [
       {
         properties: {
-          ...(settings.differentFirstPage ? { titlePage: true } : {}),
+          ...(settings.differentFirstPage || coverPage ? { titlePage: true } : {}),
           page: {
             size: {
               width: settings.landscape ? height : width,
@@ -575,8 +588,8 @@ export async function exportDocx(
               header: 360,
               footer: 360,
             },
+            ...(wordStart == null ? {} : { pageNumbers: { start: wordStart } }),
           },
-          ...(settings.differentFirstPage ? { titlePage: true } : {}),
         },
         headers: splitFurniture
           ? {
@@ -589,7 +602,9 @@ export async function exportDocx(
                 : {}),
               ...(settings.differentFirstPage
                 ? { first: headerPart(settings.firstHeader) }
-                : {}),
+                : coverPage
+                  ? { first: headerPart(coverHeader) }
+                  : {}),
             }
           : {
               default: headerPart(settings.header, topRight),
@@ -612,7 +627,9 @@ export async function exportDocx(
                 : {}),
               ...(settings.differentFirstPage
                 ? { first: footerPart(settings.firstFooter, "none", false) }
-                : {}),
+                : coverPage
+                  ? { first: footerPart(coverFooter, "none", false) }
+                  : {}),
             }
           : topRight
             ? { default: footerPart(settings.footer, "none", false) }

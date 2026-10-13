@@ -164,8 +164,47 @@
   outline: 2px solid #1a73e8;
   outline-offset: 2px;
 }
-.page-number-choice:disabled { opacity: 0.55; }
-.page-number-choice:disabled label { cursor: default; }
+.page-number-choice:disabled { opacity: 1; }
+.page-number-choice:disabled legend { color: #80868b; }
+.page-number-choice:disabled label { cursor: default; color: #80868b; }
+.page-setup-check.page-setup-numbers .page-number-start:disabled input[type="number"] {
+  color: #202124;
+  -webkit-text-fill-color: #202124;
+  background: #f1f3f4;
+  opacity: 1;
+}
+.page-setup-check.page-setup-numbers .page-number-start legend {
+  flex: 0 0 auto;
+}
+.page-setup-check.page-setup-numbers .page-number-start input[type="number"] {
+  width: 5.5em;
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border: 1px solid #c4c7c5;
+  border-radius: 4px;
+  font: inherit;
+  background: #fff;
+}
+.page-setup-check.page-setup-numbers .page-number-start input:focus-visible {
+  outline: 2px solid #1a73e8;
+  outline-offset: 2px;
+}
+.page-setup-check.page-setup-numbers > .page-number-cover {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 0;
+  font-weight: 500;
+  line-height: 1.35;
+}
+.page-setup-check.page-setup-numbers > .page-number-cover:has(input:disabled) {
+  color: #3c4043;
+}
+.page-setup-check.page-setup-numbers > .page-number-cover input:disabled {
+  opacity: 1;
+  accent-color: #1a73e8;
+}
 .page-footer.number-left,
 .page-footer.number-right,
 .page-footer.number-center,

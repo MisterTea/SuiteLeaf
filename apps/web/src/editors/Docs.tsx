@@ -893,7 +893,10 @@ export default function Docs({
   const pageDraftValid =
     Number.isFinite(pageDraft.margin) &&
     pageDraft.margin >= 24 &&
-    pageDraft.margin <= 144;
+    pageDraft.margin <= 144 &&
+    Number.isInteger(pageDraft.pageNumberStart) &&
+    pageDraft.pageNumberStart >= 1 &&
+    pageDraft.pageNumberStart <= 9999;
   const dimensions = pageDimensions(pageSettings);
   const requestedZoom =
     zoomLevel === "Fit" ? 1 : Number.parseInt(zoomLevel, 10) / 100;
