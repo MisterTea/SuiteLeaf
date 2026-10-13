@@ -8,6 +8,7 @@ import {
   Component,
   type ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
 import {
   HashRouter,
   Link,
@@ -85,7 +86,8 @@ import {
   pendingHandoffUrl,
   saveNewDriveFile,
   signOut,
-  uploadDriveFile,
+  uploadDriveFileUnlocked,
+  withDriveLock,
   type DriveItem,
   type DriveRole,
 } from "./node-client";
@@ -1257,14 +1259,22 @@ function Workspace() {
     const at = version.current;
     const snapshot = structuredClone(current.current.file);
     try {
-      await driveQueue.current.enqueue(async () => {
+      await driveQueue.current.enqueue(() =>
+        withDriveLock(async () => {
         const base = current.current!.drive!;
-        const link = await uploadDriveFile(snapshot, base);
+        // A restore can replace the document while this snapshot is still queued.
+        if (
+          JSON.stringify(current.current!.file.content) !==
+          JSON.stringify(snapshot.content)
+        )
+          return;
+        const link = await uploadDriveFileUnlocked(snapshot, base);
         // Saving to a new SuiteDrive item may have relinked the file meanwhile.
         if (current.current!.drive?.itemId !== base.itemId) return;
         current.current = { ...current.current!, drive: link };
         await storage.save(current.current);
-      });
+        }),
+      );
       if (alive.current && version.current === at) {
         setStatus("Saved to SuiteDrive");
         requestLastEditRefresh();
@@ -1443,8 +1453,11 @@ function Workspace() {
     openEditors.add(flush);
     return () => void openEditors.delete(flush);
   }, [save, syncDrive]);
+  // The editor that was just replaced can flush its old document while unmounting.
+  const ignoreEditorUpdates = useRef(false);
   const update = useCallback(
     (content: SuiteFile["content"]) => {
+      if (ignoreEditorUpdates.current) return;
       if (!canEditRef.current || !current.current) return;
       current.current = {
         ...current.current,
@@ -3158,16 +3171,21 @@ function Workspace() {
             onRestored={(next) => {
               clearTimeout(timer.current);
               clearTimeout(driveTimer.current);
+              ignoreEditorUpdates.current = true;
               current.current = next;
               version.current = 0;
               savedVersion.current = 0;
-              setRecord(next);
-              setEditorEpoch((epoch) => epoch + 1);
-              setHistoryPreview(null);
-              setHistoryOpen(false);
-              setStatus(
-                next.drive ? "Saved to SuiteDrive" : "Saved on this device",
-              );
+              // Commit the replacement before the old editor can flush its text.
+              flushSync(() => {
+                setRecord(next);
+                setEditorEpoch((epoch) => epoch + 1);
+                setHistoryPreview(null);
+                setHistoryOpen(false);
+                setStatus(
+                  next.drive ? "Saved to SuiteDrive" : "Saved on this device",
+                );
+              });
+              ignoreEditorUpdates.current = false;
               void storage.save(next).catch((e) => setError(message(e)));
             }}
           />

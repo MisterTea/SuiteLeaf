@@ -124,4 +124,5 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 64 | [Change every copy of a typo](64-change-every-copy-of-a-typo.md) | single-node | Docs |
 | 64 | [Edit the header on the page](64-edit-the-header-on-the-page.md) | single-node | Docs |
 | 66 | [Describe a photo](66-describe-a-photo.md) | single-node | Docs |
+| 67 | [Open a cropped Word picture](67-open-a-cropped-word-picture.md) | single-node | Docs |
 | 68 | [Change every copy in a sheet](68-change-every-copy-in-a-sheet.md) | single-node | Sheets |

@@ -38,6 +38,11 @@ import {
   extractOfficeMath,
   spliceEquationTokens,
 } from "./equations";
+import {
+  imageCropActive,
+  imageCropFromSrcRect,
+  type ImageCrop,
+} from "./image-crop";
 
 type Mark = NonNullable<JsonNode["marks"]>[number];
 const normalize = (s: string) => s.replace(/[\s\u200b\ufeff]+/gu, "");
@@ -310,6 +315,162 @@ export function htmlToDocument(
     type: "doc",
     content: content.length ? content : [{ type: "paragraph" }],
   };
+}
+
+function detectImageMime(buf: Uint8Array): string | null {
+  if (
+    buf.length >= 8 &&
+    buf[0] === 0x89 &&
+    buf[1] === 0x50 &&
+    buf[2] === 0x4e &&
+    buf[3] === 0x47
+  ) {
+    return "image/png";
+  }
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
+    return "image/jpeg";
+  }
+  if (
+    buf.length >= 6 &&
+    buf[0] === 0x47 &&
+    buf[1] === 0x49 &&
+    buf[2] === 0x46 &&
+    buf[3] === 0x38
+  ) {
+    return "image/gif";
+  }
+  if (
+    buf.length >= 12 &&
+    buf[0] === 0x52 &&
+    buf[1] === 0x49 &&
+    buf[2] === 0x46 &&
+    buf[3] === 0x46 &&
+    buf[8] === 0x57 &&
+    buf[9] === 0x45 &&
+    buf[10] === 0x42 &&
+    buf[11] === 0x50
+  ) {
+    return "image/webp";
+  }
+  return null;
+}
+
+const WORD_PICTURE_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+]);
+
+function xmlAttributeMap(source: string): Record<string, string> {
+  const attrs: Record<string, string> = {};
+  for (const match of source.matchAll(/([\w:.-]+)\s*=\s*"([^"]*)"/g))
+    attrs[match[1]] = match[2];
+  return attrs;
+}
+
+/** A relationship target in `word/_rels` is relative to the `word/` part. */
+function wordRelationshipPath(target: string): string {
+  let decoded = target.replace(/&amp;/g, "&");
+  try {
+    decoded = decodeURIComponent(decoded);
+  } catch {
+    // Keep a target that is not percent-encoded.
+  }
+  const relative = decoded.startsWith("/") ? decoded.slice(1) : `word/${decoded}`;
+  const parts: string[] = [];
+  for (const part of relative.split("/")) {
+    if (part === "..") parts.pop();
+    else if (part !== "." && part !== "") parts.push(part);
+  }
+  return parts.join("/");
+}
+
+type PictureCrop = { payload: string; crop: ImageCrop };
+
+/**
+ * Crops for the pictures Mammoth will turn into image nodes, in document order.
+ * `a:srcRect` is the hidden edge of the full image. The drawing extent is the
+ * cropped frame, so it is not stored as the picture's width.
+ */
+async function wordPictureCrops(zip: JSZip, xml: string): Promise<PictureCrop[]> {
+  const relsXml = await zip.file("word/_rels/document.xml.rels")?.async("string");
+  const rels = new Map<string, string>();
+  if (relsXml) {
+    for (const match of relsXml.matchAll(/<Relationship\b([^>]*)\/?>/g)) {
+      const attrs = xmlAttributeMap(match[1]);
+      if (attrs.TargetMode === "External" || !attrs.Id || !attrs.Target) continue;
+      rels.set(attrs.Id, attrs.Target);
+    }
+  }
+  const crops: PictureCrop[] = [];
+  for (const fill of xml.matchAll(
+    /<(?:[\w.-]+:)?blipFill\b[^>]*>([\s\S]*?)<\/(?:[\w.-]+:)?blipFill>/g,
+  )) {
+    const blip = /<(?:[\w.-]+:)?blip\b([^>]*?)\/?>/.exec(fill[1]);
+    if (!blip) continue;
+    const blipAttrs = xmlAttributeMap(blip[1]);
+    const embed = blipAttrs["r:embed"] || blipAttrs["r:id"];
+    const target = embed ? rels.get(embed) : undefined;
+    if (!target) continue;
+    const media = zip.file(wordRelationshipPath(target));
+    if (!media) continue;
+    const bytes = await media.async("uint8array");
+    const mime = detectImageMime(bytes);
+    if (!mime || !WORD_PICTURE_TYPES.has(mime)) continue;
+    const rect = /<(?:[\w.-]+:)?srcRect\b([^>]*?)\/?>/.exec(fill[1]);
+    crops.push({
+      payload: uint8ToBase64(bytes),
+      crop: imageCropFromSrcRect(rect ? xmlAttributeMap(rect[1]) : null),
+    });
+  }
+  return crops;
+}
+
+/** Copy each picture crop onto the matching image. The source bytes stay whole. */
+function applyWordPictureCrops(node: JsonNode, crops: PictureCrop[]): JsonNode {
+  let index = 0;
+  const visit = (current: JsonNode) => {
+    if (current.type === "image") {
+      const src = String(current.attrs?.src ?? "");
+      const comma = src.indexOf(",");
+      const payload =
+        src.startsWith("data:") && comma >= 0
+          ? src.slice(comma + 1).replace(/\s/g, "")
+          : "";
+      let at = index;
+      while (at < crops.length && crops[at].payload !== payload) at += 1;
+      if (at < crops.length) {
+        const crop = crops[at].crop;
+        if (imageCropActive(crop)) {
+          const round = (value: number) => Math.round(value * 1000) / 1000;
+          current.attrs = {
+            ...current.attrs,
+            cropLeft: round(crop.left),
+            cropTop: round(crop.top),
+            cropRight: round(crop.right),
+            cropBottom: round(crop.bottom),
+          };
+        }
+        index = at + 1;
+      }
+    }
+    current.content?.forEach(visit);
+  };
+  visit(node);
+  return node;
+}
+
+function uint8ToBase64(u8: Uint8Array): string {
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(u8).toString("base64");
+  }
+  let binary = "";
+  const len = u8.byteLength;
+  for (let i = 0; i < len; i += 8192) {
+    binary += String.fromCharCode(...u8.subarray(i, i + 8192));
+  }
+  return btoa(binary);
 }
 
 function toLowerRoman(n: number): string {
@@ -1177,6 +1338,8 @@ export async function importDocx(
     );
     output = normalize(documentText(content));
   }
+  const pictureXml = (await zip.file("word/document.xml")?.async("string")) ?? xml;
+  content = applyWordPictureCrops(content, await wordPictureCrops(zip, pictureXml));
   let supplementary = 0;
   const hasTitlePg =
     /<w:titlePg\b(?:\s+[^>]*w:val="(?:true|1|on)")?(?:\/|\s*>)/.test(xml);
