@@ -10,7 +10,7 @@ const meadow = {
   background: "#0d2818",
   headingColor: "#ffffff",
   bodyColor: "#d8f3dc",
-  accent: "#95d5b2",
+  accent: "#3ddc84",
   headingFont: "Montserrat",
   bodyFont: "Source Sans",
 };
@@ -26,10 +26,10 @@ function deck() {
   ) => ({
     id: elementId,
     type: "text",
-    x: 70,
+    x: 120,
     y,
-    width: 820,
-    height: 80,
+    width: 720,
+    height: 78,
     content,
     fontSize,
     fontFamily: meadow.bodyFont,
@@ -56,8 +56,8 @@ function deck() {
           layout: "title",
           background: { color: meadow.background },
           elements: [
-            text("title-line", title, 170, 26),
-            text("when-line", when, 280, 22),
+    text("title-line", title, 190, 28),
+    text("when-line", when, 300, 24),
           ],
         },
       },
@@ -191,9 +191,11 @@ test("46-format-one-word-on-a-slide", async ({ page }) => {
   await page.getByRole("button", { name: "Accent colour for the selection" }).click();
   await beat(page, 800);
   await expect.poll(() => wordCss(page, title, "community")).toMatchObject({
-    color: "rgb(149, 213, 178)",
+    color: "rgb(61, 220, 132)",
     weight: "400",
   });
+  await page.keyboard.press("Escape");
+  await beat(page, 800);
   await expect.poll(() => wordCss(page, title, "fair")).toMatchObject({
     weight: "700",
     color: "rgb(216, 243, 220)",
@@ -205,6 +207,7 @@ test("46-format-one-word-on-a-slide", async ({ page }) => {
     "Centre gets italic, then underline. The rest of the line does not.",
     1300,
   );
+  await editBox(page, title);
   await selectWord(page, title, "centre");
   await page.getByRole("button", { name: "Italic", exact: true }).click();
   await beat(page, 400);
@@ -220,6 +223,8 @@ test("46-format-one-word-on-a-slide", async ({ page }) => {
     style: "normal",
     decoration: "none",
   });
+  await page.keyboard.press("Escape");
+  await beat(page, 600);
   await caption(page, "Undo takes the underline off and leaves the italic.", 1100);
   await page.getByRole("button", { name: "Undo (Cmd+Z)" }).click();
   await beat(page, 700);
@@ -259,7 +264,7 @@ test("46-format-one-word-on-a-slide", async ({ page }) => {
     color: "rgb(229, 231, 235)",
   });
   await expect.poll(() => wordCss(page, title, "community")).toMatchObject({
-    color: "rgb(149, 213, 178)",
+    color: "rgb(61, 220, 132)",
     weight: "400",
   });
   await expect.poll(() => wordCss(page, title, "centre")).toMatchObject({
@@ -281,7 +286,7 @@ test("46-format-one-word-on-a-slide", async ({ page }) => {
   await page.getByRole("button", { name: "Bold", exact: true }).click();
   await expect(page.locator(".theme-override-bar")).toContainText("Overrides theme");
   await expect(box(page, when)).toHaveCSS("font-weight", "700");
-  await beat(page, 700);
+  await beat(page, 1400);
   await caption(page, "Reset to theme clears that exception.", 1100);
   await page.getByRole("button", { name: "Reset to theme" }).click();
   await expect(page.locator(".theme-override-bar")).toHaveCount(0);
@@ -330,7 +335,7 @@ test("46-format-one-word-on-a-slide", async ({ page }) => {
   await expect(page.getByLabel("File title")).toHaveValue(/Fundraiser pitch/);
   await expect.poll(() => wordCss(page, title, "fair")).toMatchObject({ weight: "700" });
   await expect.poll(() => wordCss(page, title, "community")).toMatchObject({
-    color: "rgb(149, 213, 178)",
+    color: "rgb(61, 220, 132)",
   });
   await expect.poll(() => wordCss(page, title, "centre")).toMatchObject({
     style: "italic",
