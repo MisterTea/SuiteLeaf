@@ -43,10 +43,10 @@ Sam fixes three "recieve" cells in one step and keeps the one he ignored. He can
 | --- | --- | --- |
 | 1. Change all is on the right-click menu and in Tools › Spelling | Met | Video 0:09, the menu shows "receive" and "Change all to receive". Video 0:20, Tools › Spelling shows Change all beside Change. |
 | 2. Before anything changes, the user sees how many cells will change and can cancel | Met | Video 0:14, "4 cells will change", with the cells highlighted. He cancels and B2 still says "recieve". Browser test `change all previews the same misspelling, undoes in one step, and skips an ignored cell`. |
-| 3. Only the same misspelling is changed. A different typo, and a cell the user ignored, stay as they are | Met | Video 0:20, B6 still says "seperate" and the spelling check moves to it. Video 0:36, the second preview lists B2, B4, and B7 only. |
+| 3. Only the same misspelling is changed. A different typo, and a cell the user ignored, stay as they are | Met | Video 0:20, B6 still says "seperate" and the spelling check moves to it. Video 0:34, the second preview lists B2, B4, and B7 only. |
 | 4. Confirming is one undo step that restores every cell Change all edited | Met | Video 0:26, one Undo brings "recieve" back in B2, B4, B7, and B9 together. The browser test checks all four cells after a single Undo. |
 | 5. The corrections survive save and reopen | Met | Video 0:45, the reopened sheet still has "receive" in B2, B4, and B7. |
-| 6. A cell ignored for this word is not included in a later Change all of that word | Met | Video 0:32, B9 is no longer underlined while the other copies are. Video 0:36, B9 is absent from the list. Video 0:45, B9 is still "recieve" and not underlined. |
+| 6. A cell ignored for this word is not included in a later Change all of that word | Met | Video 0:32, B9 is no longer underlined while the other copies are. Video 0:34, B9 is absent from the list. Video 0:45, B9 is still "recieve" and not underlined. |
 
 ## Gaps and notes
 
