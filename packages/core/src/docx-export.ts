@@ -342,6 +342,42 @@ export async function exportDocx(
   }
   const settings = documentPageSettings(content);
   const comments = planDocxComments(content);
+  const numberRuns = (on: boolean, lead: string) =>
+    on
+      ? [
+          new TextRun({
+            children: [lead, PageNumber.CURRENT, " / ", PageNumber.TOTAL_PAGES],
+          }),
+        ]
+      : [];
+  const furnitureParagraph = (
+    value: string,
+    alignment: (typeof AlignmentType)[keyof typeof AlignmentType],
+    numbers: boolean,
+  ) =>
+    new Paragraph({
+      alignment,
+      children: [
+        ...(value ? [new TextRun(value)] : []),
+        ...numberRuns(numbers, value ? "  " : ""),
+      ],
+    });
+  // Odd and even pages carry the number beside the running head. A different
+  // first page has no number. Otherwise the number stays in the footer.
+  const numberInHeader = settings.differentOddEven && settings.pageNumbers;
+  const numberInFooter = settings.pageNumbers && !numberInHeader;
+  const headerPart = (
+    value: string,
+    alignment: (typeof AlignmentType)[keyof typeof AlignmentType],
+    numbers: boolean,
+  ) =>
+    new Header({
+      children: [furnitureParagraph(value, alignment, numbers)],
+    });
+  const footerPart = (value: string, numbers: boolean) =>
+    new Footer({
+      children: [furnitureParagraph(value, AlignmentType.LEFT, numbers)],
+    });
   const children = blocks(content.content ?? [], comments, notes);
   if (comments.trailing.length)
     children.push(
@@ -358,6 +394,7 @@ export async function exportDocx(
   const doc = new Document({
     title: file.title,
     creator: "SuiteLeaf",
+    evenAndOddHeaderAndFooters: settings.differentOddEven ? true : undefined,
     ...(Object.keys(footnotes).length ? { footnotes } : {}),
     ...(Object.keys(endnotes).length ? { endnotes } : {}),
     styles: { default: { document: { run: { font: "Arial", size: 22 } } } },
@@ -393,6 +430,7 @@ export async function exportDocx(
     sections: [
       {
         properties: {
+          titlePage: settings.differentFirstPage ? true : undefined,
           page: {
             size: {
               width: settings.landscape ? height : width,
@@ -409,30 +447,35 @@ export async function exportDocx(
           },
         },
         headers: {
-          default: new Header({ children: [new Paragraph(settings.header)] }),
+          default: headerPart(
+            settings.differentOddEven ? settings.oddHeader : settings.header,
+            settings.differentOddEven ? AlignmentType.RIGHT : AlignmentType.LEFT,
+            numberInHeader,
+          ),
+          ...(settings.differentFirstPage
+            ? { first: headerPart(settings.firstHeader, AlignmentType.LEFT, false) }
+            : {}),
+          ...(settings.differentOddEven
+            ? {
+                even: headerPart(
+                  settings.evenHeader,
+                  AlignmentType.LEFT,
+                  numberInHeader,
+                ),
+              }
+            : {}),
         },
         footers: {
-          default: new Footer({
-            children: [
-              new Paragraph({
-                children: [
-                  new TextRun(settings.footer),
-                  ...(settings.pageNumbers
-                    ? [
-                        new TextRun({
-                          children: [
-                            "  ",
-                            PageNumber.CURRENT,
-                            " / ",
-                            PageNumber.TOTAL_PAGES,
-                          ],
-                        }),
-                      ]
-                    : []),
-                ],
-              }),
-            ],
-          }),
+          default: footerPart(
+            settings.differentOddEven ? settings.oddFooter : settings.footer,
+            numberInFooter,
+          ),
+          ...(settings.differentFirstPage
+            ? { first: footerPart(settings.firstFooter, false) }
+            : {}),
+          ...(settings.differentOddEven
+            ? { even: footerPart(settings.evenFooter, false) }
+            : {}),
         },
         children,
       },

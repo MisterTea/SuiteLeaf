@@ -1,0 +1,70 @@
+.gdocs-dialog.page-setup-dialog {
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+}
+.page-setup-dialog .dialog-body {
+  overflow: auto;
+  max-height: calc(100vh - 150px);
+  min-height: 0;
+}
+.page-setup-variants {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 16px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  background: #f8f9fa;
+}
+.page-setup-variants legend {
+  padding: 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1f1f1f;
+}
+.page-setup-variants label {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-weight: 500;
+  line-height: 1.35;
+}
+.page-header.align-left,
+.page-header.align-right {
+  left: 0;
+  right: 0;
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+}
+.page-header.align-left { justify-content: flex-start; }
+.page-header.align-right { justify-content: flex-end; }
+.page-number {
+  color: #202124;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+@media (max-width: 700px) {
+  .page-setup-variants { grid-template-columns: 1fr; }
+  .page-setup-fields > label,
+  .page-setup-check,
+  .page-setup-orientation {
+    grid-template-columns: 1fr;
+  }
+  .page-setup-check label,
+  .page-setup-hint { grid-column: 1; }
+  .page-setup-orientation legend { float: none; }
+}
+
+.page-furniture-page[data-letterhead="true"] .page-header {
+  border-bottom: 1px solid #bdc1c6;
+  padding-bottom: 4px;
+}
+.page-furniture-page[data-letterhead="true"] .page-header-text {
+  color: #202124;
+  font-size: 13pt;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}

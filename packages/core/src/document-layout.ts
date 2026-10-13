@@ -6,6 +6,21 @@ export type PageSettings = {
   header: string;
   footer: string;
   pageNumbers: boolean;
+  /** Page 1 uses firstHeader/firstFooter and has no page number. */
+  differentFirstPage: boolean;
+  firstHeader: string;
+  firstFooter: string;
+  /**
+   * Pages after the first split by parity. Even pages use evenHeader/evenFooter
+   * and put the header and page number on the left; odd pages use
+   * oddHeader/oddFooter and put them on the right. The shared header/footer
+   * stay stored so turning this off puts one header back on every later page.
+   */
+  differentOddEven: boolean;
+  evenHeader: string;
+  evenFooter: string;
+  oddHeader: string;
+  oddFooter: string;
 };
 export const defaultPageSettings: PageSettings = {
   size: "letter",
@@ -14,7 +29,17 @@ export const defaultPageSettings: PageSettings = {
   header: "",
   footer: "",
   pageNumbers: false,
+  differentFirstPage: false,
+  firstHeader: "",
+  firstFooter: "",
+  differentOddEven: false,
+  evenHeader: "",
+  evenFooter: "",
+  oddHeader: "",
+  oddFooter: "",
 };
+const pageText = (value: unknown) =>
+  typeof value === "string" ? value.slice(0, 500) : "";
 export function documentPageSettings(content: JsonNode): PageSettings {
   const a = content.attrs?.pageSettings as Partial<PageSettings> | undefined;
   return {
@@ -24,12 +49,97 @@ export function documentPageSettings(content: JsonNode): PageSettings {
       typeof a?.margin === "number" && Number.isFinite(a.margin)
         ? Math.min(144, Math.max(24, a.margin))
         : 72,
-    header: typeof a?.header === "string" ? a.header : "",
-    footer: typeof a?.footer === "string" ? a.footer : "",
+    header: pageText(a?.header),
+    footer: pageText(a?.footer),
     // Like Docs and Word, page numbers are off until chosen; settings saved
     // before that default changed keep numbering unless it was turned off.
     pageNumbers: a ? a.pageNumbers !== false : false,
+    differentFirstPage: a?.differentFirstPage === true,
+    firstHeader: pageText(a?.firstHeader),
+    firstFooter: pageText(a?.firstFooter),
+    differentOddEven: a?.differentOddEven === true,
+    evenHeader: pageText(a?.evenHeader),
+    evenFooter: pageText(a?.evenFooter),
+    oddHeader: pageText(a?.oddHeader),
+    oddFooter: pageText(a?.oddFooter),
   };
+}
+export type PageNumberSide = "left" | "right" | "none";
+export type PageFace = {
+  header: string;
+  footer: string;
+  /** Outside edge when odd and even pages differ; otherwise the left. */
+  headerAlign: "left" | "right";
+  numberSide: PageNumberSide;
+  /** Empty when this page has no number. Otherwise "2 / 3". */
+  pageNumber: string;
+};
+/**
+ * Which header, footer, and page-number edge a page uses.
+ * Page 1 keeps its letterhead and shows no number when different first page is on.
+ * With odd and even pages, the header and number sit on the left on even pages
+ * and on the right on odd pages. Otherwise every numbered page numbers on the right.
+ */
+export function pageFace(
+  settings: PageSettings,
+  pageIndex: number,
+  pageCount: number,
+): PageFace {
+  const page = pageIndex + 1;
+  const first = page === 1 && settings.differentFirstPage;
+  const even = page % 2 === 0;
+  let header = settings.header;
+  let footer = settings.footer;
+  let headerAlign: "left" | "right" = "left";
+  let numberSide: PageNumberSide = settings.pageNumbers ? "right" : "none";
+  if (first) {
+    header = settings.firstHeader;
+    footer = settings.firstFooter;
+    numberSide = "none";
+  } else if (settings.differentOddEven) {
+    header = even ? settings.evenHeader : settings.oddHeader;
+    footer = even ? settings.evenFooter : settings.oddFooter;
+    headerAlign = even ? "left" : "right";
+    numberSide = settings.pageNumbers ? (even ? "left" : "right") : "none";
+  }
+  return {
+    header,
+    footer,
+    headerAlign,
+    numberSide,
+    pageNumber:
+      numberSide === "none" ? "" : `${page} / ${Math.max(pageCount, 1)}`,
+  };
+}
+/** Copy the shared header into the even and odd fields the first time they are used. */
+export function setDifferentOddEven(
+  settings: PageSettings,
+  on: boolean,
+): PageSettings {
+  if (!on) return { ...settings, differentOddEven: false };
+  const blank =
+    !settings.evenHeader &&
+    !settings.evenFooter &&
+    !settings.oddHeader &&
+    !settings.oddFooter;
+  if (!blank) return { ...settings, differentOddEven: true };
+  return {
+    ...settings,
+    differentOddEven: true,
+    evenHeader: settings.header,
+    evenFooter: settings.footer,
+    oddHeader: settings.header,
+    oddFooter: settings.footer,
+  };
+}
+export function pageNumberHint(settings: PageSettings): string {
+  if (settings.differentFirstPage && settings.differentOddEven)
+    return "No number on page 1. With the header, on the left on even pages and on the right on odd pages.";
+  if (settings.differentOddEven)
+    return "With the header: left on even pages, right on odd pages.";
+  if (settings.differentFirstPage)
+    return "No number on page 1. Bottom right on later pages.";
+  return "Bottom right of every page, as “1 / 3”.";
 }
 export function pageDimensions(settings: PageSettings) {
   const [width, height] = settings.size === "a4" ? [794, 1123] : [816, 1056];
@@ -61,6 +171,18 @@ export function documentHtml(
       ? `@bottom-right { content: counter(page) " / " counter(pages); font: 10pt Arial, sans-serif; color: #555; }`
       : "",
   ].join(" ");
+  // The web page starts on page 1, so a different first page shows its letterhead
+  // and prints no number there. Later running heads still appear once.
+  const bannerHeader = settings.differentFirstPage
+    ? settings.firstHeader
+    : settings.header;
+  const bannerFooter = settings.differentFirstPage
+    ? settings.firstFooter
+    : settings.footer;
+  const firstPageRule =
+    settings.pageNumbers && settings.differentFirstPage
+      ? "@page :first { @bottom-right { content: none; } }"
+      : "";
   const furniture = (tag: "header" | "footer", text: string) =>
     text ? `<${tag} class="page-${tag}">${escapeHtml(text)}</${tag}>` : "";
   return `<!doctype html>
@@ -76,13 +198,14 @@ body { max-width: ${width / 96}in; margin: 0 auto; padding: ${settings.margin / 
 .page-footer { margin-top: 2em; }
 [data-page-break] { break-before: page; }
 @page { ${pageRule} }
+${firstPageRule}
 @media print { body { max-width: none; padding: 0; } }
 </style>
 </head>
 <body>
-${furniture("header", settings.header)}
+${furniture("header", bannerHeader)}
 <main>${bodyHtml}</main>
-${furniture("footer", settings.footer)}
+${furniture("footer", bannerFooter)}
 </body>
 </html>
 `;
