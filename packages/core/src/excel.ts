@@ -3,6 +3,7 @@ import { officeZlib } from "./zip-inflater";
 XLSX.CFB.utils.use_zlib(officeZlib);
 import JSZip from "jszip";
 import { importExcelFeatures } from "./excel-features";
+import { readWorksheetOutline } from "./excel-outline";
 import { readExcelImages } from "./excel-images";
 import { readBinaryExcelLayout } from "./excel-binary-metadata";
 import { readBinaryLineCharts } from "./excel-binary-charts";
@@ -862,6 +863,20 @@ export async function importXlsx(
         if (Object.keys(d).length) columnData[c] = d;
       }
     }
+    const outline = readWorksheetOutline(raw);
+    for (const column of outline.columnGroups.flatMap((group) => group.collapsed))
+      (columnData[column] ??= {}).hd = 1;
+    for (const row of outline.rowGroups.flatMap((group) => group.collapsed))
+      (rowData[row] ??= {}).hd = 1;
+    for (const group of outline.columnGroups)
+      maxCol = Math.max(maxCol, group.endColumn);
+    for (const group of outline.rowGroups) maxRow = Math.max(maxRow, group.endRow);
+    if (outline.columnGroups.length || outline.rowGroups.length)
+      features.push("outline");
+    if (outline.nested)
+      warnings.push(
+        "Nested Excel outlines were opened as one group. Inner outline levels were not kept separate.",
+      );
     const merges = (source["!merges"] ?? [])
       .filter(
         (r) => r.s.r >= 0 && r.s.c >= 0 && r.e.r <= 1048575 && r.e.c <= 16383,
@@ -931,6 +946,12 @@ export async function importXlsx(
           characterPixels: 7,
           defaultColumnPixels: defaultColumnWidth,
         },
+        ...(outline.columnGroups.length
+          ? { suiteleafColumnGroups: outline.columnGroups }
+          : {}),
+        ...(outline.rowGroups.length
+          ? { suiteleafRowGroups: outline.rowGroups }
+          : {}),
       },
       defaultStyle: styles["excel-0"] ? "excel-0" : undefined,
       defaultColumnWidth,
