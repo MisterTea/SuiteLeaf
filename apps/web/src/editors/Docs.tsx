@@ -92,6 +92,7 @@ import {
 import { DocumentPagination, PageBreak } from "./doc-pagination";
 import { Proofing } from "./doc-spelling";
 import { useDocProofing, type ProofingContext } from "./doc-proofing";
+import { DocImageAlt } from "./doc-image-alt-ui";
 import { documentNotes } from "./doc-notes";
 import {
   documentHtml,
@@ -623,7 +624,7 @@ export default function Docs({
       editor
         ?.chain()
         .focus()
-        .setImage({ src, alt: f.name })
+        .setImage({ src, alt: "" })
         .command(({ tr, state }) => {
           // Typing must continue after the photo, not replace it.
           if (!(tr.selection instanceof NodeSelection)) return true;
@@ -1932,6 +1933,7 @@ export default function Docs({
           {pageCount} {pageCount === 1 ? "page" : "pages"} · English
         </span>
       </footer>
+      <DocImageAlt editor={editor} />
       <input
         ref={imageInput}
         type="file"
