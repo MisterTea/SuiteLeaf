@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openWorkbook } from "../fixtures";
-import { askAgent, beat, caption, describeRun, electronApps, electronMode, expect, openApp, selectCells, test } from "../harness";
+import { askAgent, beat, caption, describeRun, electronApps, expect, openApp, selectCells, test } from "../harness";
 
 type Native = any;
 
