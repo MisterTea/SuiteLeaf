@@ -101,6 +101,11 @@ test("spreadsheet tools write, format, sort, chart and pivot", async ({ page }) 
   expect(await call(page, "edit_chart", { range: "A1:D6" })).toContain(
     "for Design, Engineering, Research, Operations, Total (from column A). Row 6 (Total) adds up the rows above",
   );
+  const own = await call(page, "edit_chart", { range: "A2:D6", width: 380 });
+  expect(own).toContain("resized to 380×340");
+  expect(own).not.toContain("updated its settings");
+  await expect(call(page, "edit_chart", { range: "B3:C5", move_to: "H1" })).rejects.toThrow(/no series names/);
+  expect((await page.locator('[aria-label="Chart: Studio costs"]').boundingBox())!.x).toBeCloseTo(placed.x, 0);
 
   expect(await call(page, "set_cells", { start: "A8", values: [["'Code'", "Amount"], ["007", "12.5"]] })).toMatch(/8\tCode\tAmount\n9\t007/);
   expect(await call(page, "set_cells", { range: "A10:B10", values: ["Double", "=B9*2"] })).toContain("Wrote A10:B10.");

@@ -618,6 +618,16 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       async execute(args) {
         const c = findChart(ctx, args.chart);
         if (!c) throw new ToolError("There is no chart on this sheet yet. Make one with insert_chart first, then edit it.");
+        // Check everything before changing anything, so an error means nothing moved.
+        let range = args.range;
+        if (range) {
+          const r = parseA1(range);
+          // The chart's own data rows without their header row mean the chart's current range.
+          const own = { ...c.source, startRow: c.source.startRow + 1 };
+          if (a1(r) === a1(own)) range = undefined;
+          else checkHeaderRow(sheet(), range);
+        }
+        if (args.move_to) parseCell(args.move_to);
         const changed: string[] = [];
         if (args.move_to || args.width || args.height) {
           if (args.move_to) {
@@ -640,15 +650,14 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         }
         const typeName = (t: string) => (t === "column" ? "bar" : t);
         if (
-          (args.range && a1(parseA1(args.range)) !== a1(c.source)) ||
+          (range && a1(parseA1(range)) !== a1(c.source)) ||
           (args.type && typeName(args.type) !== c.type) ||
           (args.title && args.title.trim() !== c.title)
         ) {
-          if (args.range) checkHeaderRow(sheet(), args.range);
           ctx.openPanel(
             "chart",
             {
-              range: args.range ? a1(parseA1(args.range)) : a1(c.source),
+              range: range ? a1(parseA1(range)) : a1(c.source),
               sheetId: c.source.sheetId,
               title: args.title ?? c.title,
               chartType: args.type ? (args.type === "column" ? "bar" : (args.type as ChartDefinition["type"])) : c.type,
