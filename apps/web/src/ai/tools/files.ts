@@ -78,7 +78,17 @@ async function revealRow(ctx: HomeAgentContext, name: string) {
     ctx.setFilter("all");
     await wait(400);
   }
-  return row(title);
+  return scrolledTo(row(title));
+}
+
+/** Bring part of the file list into view, so the user sees what the agent acts on. */
+async function scrolledTo<T extends Element>(el: T | undefined, block: ScrollLogicalPosition = "center") {
+  const r = el?.getBoundingClientRect();
+  if (el && r && (r.top < 0 || r.bottom > innerHeight)) {
+    el.scrollIntoView({ behavior: "smooth", block });
+    await wait(500);
+  }
+  return el;
 }
 
 const listing = () => listed().map((r) => `- "${r.title}"${r.snippet ? `: …${r.snippet}…` : ""}`);
@@ -147,6 +157,7 @@ export function homeTools(ctx: HomeAgentContext): SuiteTool[] {
         ctx.setFilter({ all: "all", documents: "doc", spreadsheets: "sheet", presentations: "slide" }[show] ?? "all");
         if (sort_by) ctx.setSort({ by: sort_by as "name", desc: sort_by === "edited" });
         await wait(300);
+        await scrolledTo(document.querySelector(".file-section") ?? undefined, "start");
         const search = ctx.query.trim()
           ? ` Only files matching the search "${ctx.query.trim()}" are listed; call search_files with an empty query to list them all.`
           : "";
@@ -271,6 +282,8 @@ export interface WorkspaceAgentContext {
   rename: (title: string) => void;
   download: () => void;
   back: () => Promise<void>;
+  /** File > New: save this file, then create and open a new one. */
+  create?: (kind: Kind, title?: string) => Promise<void>;
 }
 
 export function workspaceTools(ctx: WorkspaceAgentContext): SuiteTool[] {
@@ -315,6 +328,27 @@ export function workspaceTools(ctx: WorkspaceAgentContext): SuiteTool[] {
         return `Back on the file list.\n${currentSnapshot()}`;
       },
     }),
+    ...(ctx.create
+      ? [
+          tool({
+            name: "create_file",
+            label: "New file",
+            description: "Create a new document, spreadsheet or presentation (File > New) and open it. This file is saved first. Give a title if the user named it.",
+            parameters: Type.Object({ kind: kindParam, title: Type.Optional(Type.String()) }),
+            target: () => [...document.querySelectorAll(".file-menu button")].find((b) => b.textContent?.trim() === "File"),
+            async execute({ kind, title }) {
+              const k = KINDS[kind];
+              if (!k) throw new ToolError(`Unknown kind "${kind}".`);
+              const from = location.hash;
+              await ctx.create!(k, title);
+              for (let i = 0; i < 200 && location.hash === from; i++) await wait(100);
+              // The old file's editor leaves once the new one's route renders.
+              await wait(300);
+              return opened(k, `Created a new ${kind}${title ? ` called "${title}"` : ""} and opened it.`);
+            },
+          }),
+        ]
+      : []),
   ];
 }
 

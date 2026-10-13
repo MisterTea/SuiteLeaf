@@ -100,10 +100,8 @@ test("file list tools search, filter, copy, rename and remove", async ({ page })
   await call(page, "create_file", { kind: "document", title: "Club newsletter" });
   await waitForTools(page, "write_text");
   await call(page, "write_text", { text: "Harvest supper on Saturday." });
-  await call(page, "back_to_files");
-  await waitForTools(page, "create_file");
-  await call(page, "create_file", { kind: "spreadsheet", title: "Club budget" });
-  await waitForTools(page, "back_to_files");
+  expect(await call(page, "create_file", { kind: "spreadsheet", title: "Club budget" })).toContain('Open spreadsheet: "Club budget"');
+  await expect(page.getByLabel("File title")).toHaveValue("Club budget");
   await call(page, "back_to_files");
   await waitForTools(page, "search_files");
   const rows = page.locator(".file-row");

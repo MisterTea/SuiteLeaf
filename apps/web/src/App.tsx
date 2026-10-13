@@ -1454,6 +1454,12 @@ function Workspace() {
           rename: changeTitle,
           download,
           back: () => save().then(() => navigate("/")),
+          create: async (kind, title) => {
+            await save();
+            const file = createFile(kind, title);
+            if (cluster) await createInDrive(file, null, navigate);
+            else navigate(`/file/${(await storage.save({ file })).file.id}`);
+          },
         }
       : null;
     return {
