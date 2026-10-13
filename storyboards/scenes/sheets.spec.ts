@@ -787,6 +787,9 @@ test("17-review-a-budget-with-notes-and-comments", async ({ page, browser, baseU
     mimeType: "application/json",
     buffer: Buffer.from(JSON.stringify(reply)),
   });
+  await caption(page, "SuiteLeaf notices the budget is already here. Alex keeps both, to compare.", 300);
+  await beat(page, 1200);
+  await page.getByRole("dialog").getByRole("button", { name: "Keep both" }).click();
   await ready(page);
   await caption(page, "Alex opens Jordan's copy. The reply sits under the question, signed by Jordan.", 300);
   await page.getByRole("button", { name: "Comments", exact: true }).click();
