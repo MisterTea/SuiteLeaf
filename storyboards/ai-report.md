@@ -247,3 +247,25 @@ FrogNano's template can only turn thinking on or off, so the stream function can
 | electron-frog-q8 | 63 | 57 (90%) | 543 | 447 | 0 | 0 | 0 | 0 | 0 | 35 | 1385 | 21s |
 | electron-frog-q4-t128 | 63 | 51 (81%) | 509 | 414 | 3 | 0 | 0 | 0 | 0 | 81 | 2218 | 10s |
 
+
+## Why the browser and the desktop differ for the same model
+
+The browser and desktop builds run the same prompts through different runtimes and different 4-bit exports: transformers.js with ONNX q4f16 in the browser, llama.cpp with a GGUF on the desktop. To separate the possible causes, every request's prompt was captured from real storyboard runs (`STORYBOARD_AI_CAPTURE=1`). `scripts/ai-fidelity.mjs` then replays each prompt with greedy decoding, so sampling luck plays no part, on llama.cpp Q8_0 (the reference), llama.cpp 4-bit, and the browser. The browser ran each prompt twice: in order, reusing its cache, and from a clean start.
+
+| | Gemma 4 E4B (48 prompts) | FrogNano 4B (35 prompts) |
+| --- | --- | --- |
+| Same tokens for the prompt, browser and llama.cpp | 48/48 | 35/35 |
+| Browser output with cache reuse equals the clean start | 46/48 | 35/35 |
+| Same tool as Q8_0 (prompts where Q8_0 calls one): llama.cpp 4-bit | 36/39 (Q4_0) | 20/23 (Q4_K_M) |
+| Same tool as Q8_0: browser q4f16 | 33/39 | 18/23 |
+| Same tool and arguments as Q8_0: llama.cpp 4-bit / browser | 20/39 / 16/39 | 17/23 / 15/23 |
+| Median characters before the output leaves Q8_0's: llama.cpp 4-bit / browser | – | 91 / 34 |
+
+What this rules out, and what it finds:
+
+1. **Tokenization, prompts and the cache are not the cause.** Both runtimes turn every prompt into the same tokens, and reusing the browser's cache between steps gives the same output as starting fresh (the two Gemma differences are floating-point noise).
+2. **The browser ignored top-p.** transformers.js 4.3 applies temperature and top-k, but its `TopPLogitsWarper` has no implementation and `generate()` never adds it. So the browser sampled Gemma at temperature 1.0 from the top 64 tokens, where llama.cpp also cuts the tail at 95% of the probability. That picks unlikely tokens more often, on every token of every reply. `apps/web/src/ai/nucleus.ts` now applies top-k then top-p in the worker, as llama.cpp does, in one pass over the 262K-token vocabulary.
+3. **The browser's 4-bit export drifts further from the 8-bit reference.** For FrogNano, the desktop Q4_K_M keeps some tensors at 6 bits, while the browser's community q4f16 export is plain 4-bit (block 32, symmetric) with 16-bit activations. So it agrees with Q8_0 for a third as long: a median of 34 characters against 91. That fits FrogNano's lower browser pass rate (79% against 90%). For Gemma, the desktop Q4_0 is also plain 4-bit, and the two are about equally faithful. Gemma's browser build passed more storyboards than its desktop Q4_0 (85% against 71%), so the gap is FrogNano's.
+4. **Small platform differences in the tools.** The download tool says "Download the open file" in the browser but "Save … (Save As)" on the desktop, next to `export_spreadsheet` ("The file downloads"). In the browser, FrogNano chose the export every time it was asked to "download the file" (17). On the desktop it chose the download tool.
+
+The fix for (2) is measured below. (3) needs a better browser export, for example q4 with 8-bit embeddings or an imatrix-calibrated quantization, which nobody publishes yet.
