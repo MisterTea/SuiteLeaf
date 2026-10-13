@@ -1,11 +1,15 @@
 import type { Editor } from "@tiptap/core";
 import { NodeSelection } from "@tiptap/pm/state";
 import { imageWrap, type ImageWrap } from "@suiteleaf/core/image-wrap";
+import { liftInlineImage, placeImageInline } from "./doc-image-place";
 
-const CHOICES: { wrap: ImageWrap; label: string }[] = [
-  { wrap: "left", label: "Left" },
-  { wrap: "right", label: "Right" },
-  { wrap: "break", label: "Break text" },
+type Placement = ImageWrap | "inline";
+
+const CHOICES: { placement: Placement; label: string }[] = [
+  { placement: "inline", label: "In line" },
+  { placement: "left", label: "Left" },
+  { placement: "right", label: "Right" },
+  { placement: "break", label: "Break text" },
 ];
 
 let menuSerial = 0;
@@ -119,12 +123,12 @@ export function mountImageWrapMenu(
   menu.setAttribute("role", "menu");
   menu.setAttribute("aria-label", "Wrap text");
 
-  const items = new Map<ImageWrap, HTMLButtonElement>();
+  const items = new Map<Placement, HTMLButtonElement>();
   for (const choice of CHOICES) {
     const item = document.createElement("button");
     item.type = "button";
     item.className = "doc-image-wrap-item";
-    item.dataset.wrapChoice = choice.wrap;
+    item.dataset.wrapChoice = choice.placement;
     item.setAttribute("role", "menuitemradio");
     item.setAttribute("aria-checked", "false");
     const mark = document.createElement("span");
@@ -134,7 +138,7 @@ export function mountImageWrapMenu(
     const label = document.createElement("span");
     label.textContent = choice.label;
     item.append(mark, label);
-    items.set(choice.wrap, item);
+    items.set(choice.placement, item);
     menu.append(item);
   }
   root.append(button, menu);
@@ -143,15 +147,18 @@ export function mountImageWrapMenu(
   if (crop?.nextSibling) actions.insertBefore(root, crop.nextSibling);
   else actions.append(root);
 
-  const currentWrap = () => {
+  const currentPlacement = (): Placement => {
     const pos = imagePos(getPos);
-    if (pos == null) return null;
-    return imageWrap(editor.state.doc.nodeAt(pos)?.attrs);
+    if (pos == null) return "break";
+    const node = editor.state.doc.nodeAt(pos);
+    if (!node) return "break";
+    if (node.type.name === "inlineImage" || node.isInline) return "inline";
+    return imageWrap(node.attrs) ?? "break";
   };
   const syncChecks = () => {
-    const wrap = currentWrap();
+    const placement = currentPlacement();
     for (const [choice, item] of items)
-      item.setAttribute("aria-checked", (wrap ?? "break") === choice ? "true" : "false");
+      item.setAttribute("aria-checked", placement === choice ? "true" : "false");
   };
   const itemList = () => [...items.values()];
 
@@ -205,9 +212,14 @@ export function mountImageWrapMenu(
     unlisten();
     if (restoreFocus) button.focus();
   };
-  const choose = (wrap: ImageWrap) => {
+  const choose = (placement: Placement) => {
     const pos = imagePos(getPos);
-    if (pos != null) applyImageWrap(editor, pos, wrap);
+    if (pos != null) {
+      if (placement === "inline") placeImageInline(editor, pos);
+      else if (editor.state.doc.nodeAt(pos)?.type.name === "inlineImage")
+        liftInlineImage(editor, pos, placement);
+      else applyImageWrap(editor, pos, placement);
+    }
     close(true);
   };
   const keepPress = (target: HTMLElement, run: () => void) => {
@@ -232,7 +244,7 @@ export function mountImageWrapMenu(
     event.stopPropagation();
     open(event.key === "ArrowUp" ? "last" : "first");
   });
-  for (const [wrap, item] of items) keepPress(item, () => choose(wrap));
+  for (const [placement, item] of items) keepPress(item, () => choose(placement));
   menu.addEventListener("keydown", (event) => {
     const list = itemList();
     const index = list.indexOf(document.activeElement as HTMLButtonElement);
@@ -259,7 +271,8 @@ export function mountImageWrapMenu(
       event.preventDefault();
       event.stopPropagation();
       const choice = (document.activeElement as HTMLElement | null)?.dataset.wrapChoice;
-      if (choice === "left" || choice === "right" || choice === "break") choose(choice);
+      if (choice === "inline" || choice === "left" || choice === "right" || choice === "break")
+        choose(choice);
       return;
     }
     if (event.key === "Tab") close(false);

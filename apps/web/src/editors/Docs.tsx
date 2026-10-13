@@ -13,6 +13,7 @@ import { TextStyleKit } from "@tiptap/extension-text-style";
 import Highlight from "@tiptap/extension-highlight";
 import TextAlign from "@tiptap/extension-text-align";
 import { wrappedImage } from "./doc-image-crop";
+import { inlineImage } from "./doc-image-inline";
 import { TableKit } from "@tiptap/extension-table";
 import Superscript from "@tiptap/extension-superscript";
 import Subscript from "@tiptap/extension-subscript";
@@ -133,6 +134,7 @@ export const extensions: Extensions = [
   TextAlign.configure({ types: ["heading", "paragraph"] }),
   paragraphLineSpacing,
   wrappedImage,
+  inlineImage,
   TableKit.configure({ table: { resizable: true } }),
   CharacterCount,
   DocumentSearchHighlight,
@@ -419,13 +421,23 @@ export default function Docs({
       },
       handlePaste: (_view, event) => {
         if (readOnlyRef.current) return true;
-        if (event.clipboardData?.getData("text/html")) {
-          editor?.commands.insertContent(
-            importHTML(event.clipboardData.getData("text/html")),
-          );
-          return true;
-        }
-        return false;
+        const html = event.clipboardData?.getData("text/html");
+        if (!html) return false;
+        const content = importHTML(html);
+        const blocks = content.content ?? [];
+        const only = blocks.length === 1 ? blocks[0] : null;
+        const picture =
+          only?.type === "inlineImage"
+            ? only
+            : only?.type === "paragraph" &&
+                only.content?.length === 1 &&
+                only.content[0].type === "inlineImage"
+              ? only.content[0]
+              : null;
+        // A copied in-line picture is one node. Inserting the wrapped paragraph
+        // would split the sentence and leave the picture on its own line.
+        editor?.commands.insertContent(picture ?? content);
+        return true;
       },
       // Internal "#anchor" links scroll to the heading that owns that slug.
       handleDOMEvents: {

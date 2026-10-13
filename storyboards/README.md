@@ -125,10 +125,14 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 64 | [Edit the header on the page](64-edit-the-header-on-the-page.md) | single-node | Docs |
 | 65 | [Choose a page number](65-choose-a-page-number.md) | single-node | Docs |
 | 66 | [Describe a photo](66-describe-a-photo.md) | single-node | Docs |
+| 66 | [Leave room for the binding](66-leave-room-for-the-binding.md) | single-node | Docs |
 | 67 | [Open a cropped Word picture](67-open-a-cropped-word-picture.md) | single-node | Docs |
+| 67 | [Set each margin](67-set-each-margin.md) | single-node | Docs |
 | 68 | [Change every copy in a sheet](68-change-every-copy-in-a-sheet.md) | single-node | Sheets |
 | 68 | [Space the lines](68-space-the-lines.md) | single-node | Docs |
 | 69 | [Open a picture at its page size](69-open-a-picture-at-its-page-size.md) | single-node | Docs |
 | 70 | [Put a picture beside the text](70-put-a-picture-beside-the-text.md) | single-node | Docs |
+| 71 | [Group columns](71-group-columns.md) | single-node | Sheets |
 | 72 | [Mark a draft](72-mark-a-draft.md) | single-node | Docs |
+| 73 | [Put a picture in the sentence](73-put-a-picture-in-the-sentence.md) | single-node | Docs |
 | 74 | [Two columns for the news](74-two-columns-for-the-news.md) | single-node | Docs |

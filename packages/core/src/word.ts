@@ -43,6 +43,7 @@ import {
   imageCropFromSrcRect,
   type ImageCrop,
 } from "./image-crop";
+import { settleWordPictures } from "./image-inline";
 import {
   applyImagePageSizes,
   imagePageSizes,
@@ -189,23 +190,9 @@ export function htmlToDocument(
     content: JsonNode[],
     attributes: Record<string, unknown> = {},
   ): JsonNode[] {
-    const result: JsonNode[] = [];
-    let current: JsonNode[] = [];
-    for (const n of content) {
-      if (n.type === "image") {
-        if (current.length)
-          result.push({
-            type: "paragraph",
-            attrs: attributes,
-            content: current,
-          });
-        current = [];
-        result.push(n);
-      } else current.push(n);
-    }
-    if (current.length || !result.length)
-      result.push({ type: "paragraph", attrs: attributes, content: current });
-    return result;
+    // Pictures stay in the paragraph until wrap is known. settleWordPictures
+    // then keeps a Word inline picture in the sentence and lifts the rest.
+    return [{ type: "paragraph", attrs: attributes, content }];
   }
   const BLOCK_TAGS = new Set([
     "p", "h1", "h2", "h3", "h4", "h5", "h6",
@@ -1391,7 +1378,7 @@ export async function importDocx(
   }
   const pictureXml = (await zip.file("word/document.xml")?.async("string")) ?? xml;
   const pictures = await wordPictureLayouts(zip, pictureXml);
-  content = applyWordPictureLayouts(content, pictures.pictures);
+  content = settleWordPictures(applyWordPictureLayouts(content, pictures.pictures));
   let supplementary = 0;
   const hasTitlePg =
     /<w:titlePg\b(?:\s+[^>]*w:val="(?:true|1|on)")?(?:\/|\s*>)/.test(xml);
@@ -1494,7 +1481,7 @@ export async function importDocx(
   let images = 0,
     tables = 0;
   function count(n: JsonNode) {
-    if (n.type === "image") images++;
+    if (n.type === "image" || n.type === "inlineImage") images++;
     if (n.type === "table") tables++;
     n.content?.forEach(count);
   }

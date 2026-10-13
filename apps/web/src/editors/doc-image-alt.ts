@@ -9,21 +9,23 @@ export function imageAlt(value: unknown): string {
 
 export function selectedImage(
   state: EditorState,
-): { pos: number; alt: string; wrap: ImageWrap | null } | null {
+): { pos: number; alt: string; wrap: ImageWrap | null; inline: boolean } | null {
   const { selection } = state;
-  if (!(selection instanceof NodeSelection) || selection.node.type.name !== "image")
-    return null;
+  if (!(selection instanceof NodeSelection)) return null;
+  const name = selection.node.type.name;
+  if (name !== "image" && name !== "inlineImage") return null;
   return {
     pos: selection.from,
     alt: imageAlt(selection.node.attrs.alt),
     wrap: imageWrap(selection.node.attrs),
+    inline: name === "inlineImage",
   };
 }
 
 /** Writes the description onto the image and leaves the image selected. */
 export function applyImageAlt(editor: Editor, pos: number, description: string): boolean {
   const node = editor.state.doc.nodeAt(pos);
-  if (!node || node.type.name !== "image") return false;
+  if (!node || (node.type.name !== "image" && node.type.name !== "inlineImage")) return false;
   const tr = editor.state.tr.setNodeMarkup(pos, undefined, {
     ...node.attrs,
     alt: description,
@@ -49,9 +51,16 @@ export function placeImageAltCard(
   card: { width: number; height: number },
   viewport: { width: number; height: number },
   wrap: ImageWrap | null = null,
+  inline = false,
 ): { top: number; left: number } {
   const margin = 8;
   const gap = 16;
+  if (inline) {
+    return {
+      top: margin,
+      left: Math.max(margin, viewport.width - card.width - margin),
+    };
+  }
   if (wrap === "left" || wrap === "right") {
     const left = Math.max(
       margin,

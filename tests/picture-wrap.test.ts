@@ -59,14 +59,17 @@ describe("picture wrap", () => {
     expect(report.warnings.join("\n")).not.toContain("floating placement");
   });
 
-  it("leaves a picture with no wrap on its own line and still mentions floating placement", async () => {
+  it("opens a Word inline picture in the sentence and still mentions floating placement", async () => {
     const { file, report } = await importOffice(
       await letterDocx("inline"),
       "docx",
       "A letter.docx",
     );
     if (file.kind !== "doc") throw new Error("expected a document");
-    expect(imagesOf(file.content)[0].attrs?.wrap).toBeUndefined();
+    const paragraph = file.content.content?.find((node) => node.type === "paragraph");
+    expect(paragraph?.content?.some((node) => node.type === "inlineImage")).toBe(true);
+    expect(paragraph?.content?.map((node) => node.text ?? "").join("")).toContain("Dear friend");
+    expect(imagesOf(file.content)).toEqual([]);
     expect(report.warnings).toContain(PAGE_LAYOUT_NOTE);
   });
 
@@ -74,8 +77,18 @@ describe("picture wrap", () => {
     const logo = await letterDocx("inline");
     const imported = await importOffice(logo, "docx", "A letter.docx");
     if (imported.file.kind !== "doc") throw new Error("expected a document");
-    const image = imagesOf(imported.file.content)[0];
-    image.attrs = { ...image.attrs, wrap: "left" };
+    const paragraph = imported.file.content.content?.find((node) =>
+      node.content?.some((child) => child.type === "inlineImage"),
+    );
+    const inline = paragraph?.content?.find((node) => node.type === "inlineImage");
+    if (!paragraph || !inline) throw new Error("expected an inline picture");
+    imported.file.content.content = [
+      { type: "image", attrs: { ...inline.attrs, wrap: "left" } },
+      {
+        type: "paragraph",
+        content: paragraph.content?.filter((node) => node.type !== "inlineImage"),
+      },
+    ];
     const again = await importOffice(
       await exportDocx(imported.file),
       "docx",

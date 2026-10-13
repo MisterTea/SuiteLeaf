@@ -187,7 +187,31 @@ test("a square-wrapped Word picture opens beside the text", async ({ page }) => 
     mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     buffer: Buffer.from(await letterDocx("inline")),
   });
-  await expect(editor.locator("img")).toBeVisible();
-  const plain = await placement(page);
-  expect(onItsOwnLine(plain.picture, plain.line)).toBe(true);
+  await expect(editor.locator("p").filter({ has: page.locator("img") })).toContainText(
+    "Dear friend",
+  );
+  await expect.poll(async () =>
+    editor.evaluate(() => {
+      const paragraph = [...document.querySelectorAll(".document-content p")].find(
+        (item) => item.textContent?.includes("Dear friend") && item.querySelector("img"),
+      );
+      const img = paragraph?.querySelector("img:not(.ProseMirror-separator)")?.getBoundingClientRect();
+      if (!paragraph || !img) return 0;
+      const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+      let node: Node | null = null;
+      for (let current = walker.nextNode(); current; current = walker.nextNode()) {
+        if (current.textContent?.includes("Dear")) {
+          node = current;
+          break;
+        }
+      }
+      if (!node?.textContent) return 0;
+      const range = document.createRange();
+      const start = node.textContent.indexOf("Dear");
+      range.setStart(node, start);
+      range.setEnd(node, start + 4);
+      const line = range.getBoundingClientRect();
+      return Math.min(img.bottom, line.bottom) - Math.max(img.top, line.top);
+    }),
+  ).toBeGreaterThanOrEqual(8);
 });

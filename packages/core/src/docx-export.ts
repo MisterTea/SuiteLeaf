@@ -226,7 +226,7 @@ function runs(
       ];
     }
     if (n.type === "hardBreak") return [new TextRun({ break: 1 })];
-    if (n.type === "image") {
+    if (n.type === "image" || n.type === "inlineImage") {
       const match = /^data:image\/(png|jpeg|gif);base64,(.*)$/i.exec(
         String(n.attrs?.src),
       );
@@ -255,7 +255,7 @@ function runs(
         crop,
       );
       const docxCrop = docxImageCrop(crop);
-      const wrap = imageWrap(n.attrs);
+      const wrap = n.type === "inlineImage" ? null : imageWrap(n.attrs);
       const floating = wrap
         ? {
             horizontalPosition: {
@@ -424,7 +424,7 @@ function blocks(
         }),
       ];
     const children =
-      n.type === "image"
+      n.type === "image" || n.type === "inlineImage"
         ? runs({ type: "paragraph", content: [n] }, plan, notes, library)
         : runs(n, plan, notes, library);
     const spacing =
@@ -462,7 +462,7 @@ export async function exportDocx(
   const content = embedSuggestionMarkers(structuredClone(file.content));
   const prepareImages = async (node: JsonNode): Promise<void> => {
     if (
-      node.type === "image" &&
+      (node.type === "image" || node.type === "inlineImage") &&
       String(node.attrs?.src).startsWith("data:image/webp")
     ) {
       if (typeof document === "undefined")

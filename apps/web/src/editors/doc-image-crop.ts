@@ -355,7 +355,7 @@ export const croppableImage = Image.extend({
           editor
             .chain()
             .setNodeSelection(pos)
-            .updateAttributes("image", { width, height })
+            .updateAttributes(start.type.name, { width, height })
             .run();
         },
         onUpdate,
@@ -373,6 +373,10 @@ export const croppableImage = Image.extend({
       host.classList.add("doc-image-host");
       host.style.flexDirection = "column";
       host.style.alignItems = "flex-start";
+      if (start.isInline) {
+        host.dataset.inline = "true";
+        img.setAttribute("data-inline", "true");
+      }
       host.appendChild(actions);
       host.addEventListener("mousedown", (event) => {
         if (event.button !== 0) return;

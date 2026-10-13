@@ -14,6 +14,7 @@
     "./equations": "./src/equations.ts",
     "./image-crop": "./src/image-crop.ts",
     "./image-wrap": "./src/image-wrap.ts",
+    "./image-inline": "./src/image-inline.ts",
     "./line-spacing": "./src/line-spacing.ts"
   },
   "dependencies": {

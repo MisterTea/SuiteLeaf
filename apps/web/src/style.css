@@ -1681,6 +1681,29 @@ a {
   float: none;
   clear: both;
 }
+/* In line sits in the sentence. The buttons float above so they do not stretch the line. */
+.document-content .doc-image-host[data-inline="true"]:not([data-wrap="left"]):not([data-wrap="right"]):not(:has(img[data-wrap="left"])):not(:has(img[data-wrap="right"])) {
+  position: relative;
+  float: none;
+  clear: none;
+  display: inline-flex;
+  vertical-align: middle;
+  width: max-content;
+  max-width: none;
+  margin: 0 0.15em;
+}
+.document-content .doc-image-host[data-inline="true"] [data-resize-wrapper] {
+  width: max-content;
+  max-width: none;
+}
+.document-content .doc-image-host[data-inline="true"] > .doc-image-actions {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  z-index: 6;
+  width: max-content;
+  margin-top: 0;
+}
 .document-content::after {
   content: "";
   display: block;
