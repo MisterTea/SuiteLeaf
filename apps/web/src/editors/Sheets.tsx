@@ -43,6 +43,7 @@ import {
 import NoteEnUS from "@univerjs/preset-sheets-note/locales/en-US";
 import "@univerjs/preset-sheets-note/lib/index.css";
 import SheetCleanup from "./sheet-cleanup-ui";
+import SheetRowGroups, { type SheetRowGroupsHandle } from "./sheet-row-groups-ui";
 import SheetFeatures from "./sheet-features";
 import SheetDropdowns, { type SheetDropdownHandle } from "./sheet-dropdown-panel";
 import {
@@ -801,6 +802,7 @@ export default function Sheets({
   const dropdowns = useRef<SheetDropdownHandle>(null);
   const dropdownEngine = useRef<{ api: any; injector: any } | null>(null);
   const cleanup = useRef<{ trim: () => void; duplicates: () => void; split: () => void }>(null);
+  const rowGroups = useRef<SheetRowGroupsHandle>(null);
   const engine = useRef<any>(null);
   const toolbar = useRef<HTMLDivElement>(null);
   const moreTools = useToolbarOverflow(
@@ -1922,6 +1924,7 @@ export default function Sheets({
         insertFunction: (name: string) => functionActions.current.insertFunction(name),
         toggleFilter,
         sortRange: openSortRange,
+        groupRows: () => rowGroups.current?.groupRows(),
         trimWhitespace: () => cleanup.current?.trim(),
         removeDuplicates: () => cleanup.current?.duplicates(),
         splitTextToColumns: () => cleanup.current?.split(),
@@ -2269,6 +2272,14 @@ export default function Sheets({
           engine={engine.current}
           persist={() => persist.current()}
           onError={onError}
+        />
+      ) : null}
+      {ready && api.current && engine.current ? (
+        <SheetRowGroups
+          ref={rowGroups}
+          api={api.current}
+          engine={engine.current}
+          persist={() => persist.current()}
         />
       ) : null}
       {ready && api.current ? (

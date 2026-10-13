@@ -2353,6 +2353,14 @@ function Workspace() {
                   >
                     Sort range
                   </MenuItem>
+                  <MenuItem
+                    synonyms={["group", "outline", "collapse rows"]}
+                    onSelect={() =>
+                      actions.current?.sheetActions?.groupRows?.()
+                    }
+                  >
+                    Group rows
+                  </MenuItem>
                   <SubMenu label="Data cleanup">
                     <MenuItem
                       onSelect={() =>

@@ -354,6 +354,7 @@ export type EditorActions = {
     insertFunction?: (name: string) => void;
     toggleFilter: () => void;
     sortRange?: () => void;
+    groupRows?: () => void;
     trimWhitespace?: () => void;
     removeDuplicates?: () => void;
     splitTextToColumns?: () => void;
