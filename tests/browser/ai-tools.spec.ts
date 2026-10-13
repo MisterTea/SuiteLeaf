@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
 import { wordFixture } from "../office-fixtures";
 
 // The assistant's tools, run directly against the real editors. These test
@@ -302,4 +303,30 @@ test("file list tools search, filter, copy, rename and remove", async ({ page })
   expect(await call(page, "show_files", { show: "all" })).toBe(
     'Showing all.\n- "Club newsletter"\n- "Club newsletter - November"',
   );
+});
+
+test("a CSV opens through its import preview, with codes kept as text, and exports back", async ({ page }) => {
+  await page.addInitScript(() => sessionStorage.setItem("suiteleaf.ai.open", "1"));
+  await page.goto("/");
+  await waitForTools(page, "open_from_computer");
+  const choose = async () => {
+    const chooser = page.waitForEvent("filechooser");
+    await page.getByRole("button", { name: "Choose file…" }).click();
+    await (await chooser).setFiles({
+      name: "members.csv",
+      mimeType: "text/csv",
+      buffer: Buffer.from("ID,Name,ZIP,Paid\n00412,Rosa,02139,45\n01205,Mei,10001,0\n"),
+    });
+  };
+  const [opened] = await Promise.all([call(page, "open_from_computer", { keep_codes_as_text: true }), choose()]);
+  expect(opened).toContain('Imported "members.csv" from its preview: 2 data rows · 4 columns · comma-separated, plus a header row.');
+  expect(opened).toContain("Columns: ID (Text), Name (Text), ZIP (Text), Paid (Number). ID and ZIP have codes with leading zeros");
+  expect(opened).toContain("01205\tMei\t10001\t0");
+  await waitForTools(page, "export_spreadsheet");
+  const download = page.waitForEvent("download");
+  expect(await call(page, "export_spreadsheet", { format: "csv" })).toBe(
+    `Exported the sheet "Sheet1" as "members.csv"; it downloaded to the browser's downloads.`,
+  );
+  const csv = readFileSync((await (await download).path())!, "utf8");
+  expect(csv.trim().split(/\r?\n/)).toEqual(["ID,Name,ZIP,Paid", "00412,Rosa,02139,45", "01205,Mei,10001,0"]);
 });

@@ -255,16 +255,33 @@ export function homeTools(ctx: HomeAgentContext): SuiteTool[] {
       name: "open_from_computer",
       label: "Open / import",
       description:
-        "Open or import a file that is not in the library: an email attachment, a download or any Word, Excel, PowerPoint, CSV, HTML or SuiteLeaf file on the user's computer. The user picks it in a file picker, so you don't need its name. The chosen file opens in an editor.",
-      parameters: Type.Object({}),
+        "Open or import a file that is not in the library: an email attachment, a download or any Word, Excel, PowerPoint, CSV, HTML or SuiteLeaf file on the user's computer. The user picks it in a file picker, so you don't need its name. The chosen file opens in an editor. A CSV or TSV file is imported through its preview, with the choices below (leave them out to keep what SuiteLeaf detects).",
+      parameters: Type.Object({
+        keep_codes_as_text: Type.Optional(
+          Type.Boolean({ description: "CSV/TSV: keep columns of codes with leading zeros (IDs, ZIP codes) as text, e.g. 00412 stays 00412. Default true." }),
+        ),
+        first_row_is_header: Type.Optional(Type.Boolean({ description: "CSV/TSV: the first row holds column names. Default: detected." })),
+        separator: Type.Optional(Type.String({ enum: ["comma", "semicolon", "tab", "pipe"], description: "CSV/TSV: default detected." })),
+      }),
       target: () => [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Open / import")),
-      async execute() {
+      async execute(choices) {
         const file = await requestFile("Choose the file to open", IMPORT_ACCEPT);
         if (!file) return "The user did not choose a file.";
         const banner = () => document.querySelector('.error[role="alert"]')?.textContent?.replace(/×$/, "").trim();
         const earlier = banner();
-        await ctx.importFile(file);
-        for (let i = 0; i < 1200 && !location.hash.startsWith("#/file/"); i++) {
+        let settled = false;
+        const importing = ctx.importFile(file).finally(() => (settled = true));
+        let preview = "";
+        for (let i = 0; i < 100 && !settled; i++) {
+          const dialog = document.querySelector<HTMLElement>(".csv-import-dialog");
+          if (dialog) {
+            preview = await answerImportPreview(dialog, file.name, choices);
+            break;
+          }
+          await wait(100);
+        }
+        await importing;
+        for (let i = 0; i < 100 && !location.hash.startsWith("#/file/"); i++) {
           const same = document.querySelector(".same-file-dialog");
           if (same)
             return `${same.querySelector("h2")?.textContent?.trim()}, so SuiteLeaf is asking the user what to do with "${file.name}": Cancel, Replace (the one here is replaced by the file) or Keep both (the file opens as a copy).${same.querySelector(".same-file-warning") ? " The one here has newer changes; replacing it discards them." : ""} Only the user can make this choice: tell them, and do not open or change the file yourself.`;
@@ -273,14 +290,69 @@ export function homeTools(ctx: HomeAgentContext): SuiteTool[] {
           await wait(100);
         }
         if (!location.hash.startsWith("#/file/"))
-          return `"${file.name}" was not opened (the import may be waiting for the user's choices).`;
+          return `"${file.name}" was not opened (the user cancelled the import).`;
         const kind = await Promise.race(
           (["doc", "sheet", "slide"] as const).map((k) => waitForHost(k, 120000).then(() => k)),
         );
-        return opened(kind, `Opened "${file.name}".`);
+        return opened(kind, preview || `Opened "${file.name}".`);
       },
     }),
   ];
+}
+
+const SEPARATORS: Record<string, string> = { comma: ",", semicolon: ";", tab: "\t", pipe: "|" };
+
+/** Answers a CSV/TSV import preview with the agent's choices, as a person would, and says what it showed. */
+async function answerImportPreview(
+  dialog: HTMLElement,
+  name: string,
+  choices: { keep_codes_as_text?: boolean; first_row_is_header?: boolean; separator?: string },
+) {
+  const box = (text: string) =>
+    [...dialog.querySelectorAll("label.checkbox-row")]
+      .find((l) => l.textContent?.includes(text))
+      ?.querySelector<HTMLInputElement>("input");
+  const setBox = async (text: string, want: boolean | undefined) => {
+    const input = box(text);
+    if (!input || want === undefined) return;
+    await moveCursor(input, text);
+    if (input.checked !== want) input.click();
+    await wait(500);
+  };
+  await wait(300);
+  await moveCursor(dialog.querySelector('[role="status"]'), "Import preview");
+  await wait(500);
+  const separator = SEPARATORS[choices.separator ?? ""];
+  const select = dialog.querySelector("select");
+  if (separator && select && select.value !== separator) {
+    await moveCursor(select, "Separator");
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(select, separator);
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    await wait(500);
+  }
+  await setBox("First row is a header", choices.first_row_is_header);
+  await setBox("Keep code columns as text", choices.keep_codes_as_text ?? true);
+  const summary = dialog.querySelector('[role="status"]')?.textContent?.trim() ?? "";
+  const columns = [...dialog.querySelectorAll("thead th")].map(
+    (th) => `${th.querySelector("span")?.textContent ?? ""} (${th.querySelector("small")?.textContent ?? ""})`,
+  );
+  const codes = box("Keep code columns as text");
+  const codeNote = codes
+    ? codes.checked
+      ? ` ${codes.parentElement?.querySelector("small")?.textContent?.trim()}`
+      : " Code columns with leading zeros were not kept as text."
+    : "";
+  const notes = [...dialog.querySelectorAll(".csv-import-note")].map((n) => ` ${n.textContent?.trim()}`).join("");
+  const error = dialog.querySelector('[role="alert"]')?.textContent?.trim();
+  const buttons = [...dialog.querySelectorAll("button")];
+  if (error) {
+    buttons.find((b) => b.textContent?.trim() === "Cancel")?.click();
+    throw new ToolError(`The import preview of "${name}" says: ${error} (${summary}). It was not imported.`);
+  }
+  const ok = buttons.find((b) => b.textContent?.trim() === "Import");
+  await moveCursor(ok, "Import");
+  ok?.click();
+  return `Imported "${name}" from its preview: ${summary}. Columns: ${columns.join(", ")}.${codeNote}${notes}`;
 }
 
 export function homeSnapshot(ctx: HomeAgentContext) {
