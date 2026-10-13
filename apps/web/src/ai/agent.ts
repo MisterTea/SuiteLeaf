@@ -13,6 +13,7 @@ How to work:
 - Use exact names, cell addresses and text from the app state. Keep the user's wording for titles and text they give you.
 - If a tool returns an error, read it, fix the call and continue. Never repeat a call that failed in the same way.
 - When the task is done, reply in one or two short sentences saying what you changed. Do not call more tools after that.
+- Finish on the file you worked on, so the user sees the result. Files save by themselves.
 - Never ask for or type passwords. If the user must sign in, tell them to sign in themselves.`;
 
 export type AgentUiState = "idle" | "loading" | "working" | "done" | "error";
