@@ -45,6 +45,7 @@ import "@univerjs/preset-sheets-note/lib/index.css";
 import SheetCleanup from "./sheet-cleanup-ui";
 import SheetFeatures from "./sheet-features";
 import SheetDropdowns, { type SheetDropdownHandle } from "./sheet-dropdown-panel";
+import SheetLinks, { type SheetLinkHandle } from "./sheet-links";
 import {
   guardFormulaSuggestions,
   rankFormulaSuggestions,
@@ -799,6 +800,7 @@ export default function Sheets({
   const pending = useRef(false);
   const tabSettings = useRef<{ openTabs: () => void }>(null);
   const dropdowns = useRef<SheetDropdownHandle>(null);
+  const links = useRef<SheetLinkHandle>(null);
   const dropdownEngine = useRef<{ api: any; injector: any } | null>(null);
   const cleanup = useRef<{ trim: () => void; duplicates: () => void; split: () => void }>(null);
   const engine = useRef<any>(null);
@@ -1911,6 +1913,7 @@ export default function Sheets({
           }
         },
         insertDropdown: () => dropdowns.current?.openNew(),
+        insertLink: () => links.current?.open(),
         undo: () => void api.current?.undo(),
         redo: () => void api.current?.redo(),
         cut: () => void clipboard("cut"),
@@ -2515,7 +2518,7 @@ export default function Sheets({
 
         <span className="toolbar-divider" />
 
-        <Tool label="Insert link (Cmd+K)" onClick={() => {}}>
+        <Tool label="Insert link (Cmd+K)" onClick={() => links.current?.open()}>
           <Link size={16} />
         </Tool>
         <Tool
@@ -2913,6 +2916,14 @@ export default function Sheets({
           ref={dropdowns}
           api={dropdownEngine.current.api}
           injector={dropdownEngine.current.injector}
+          persist={() => persist.current()}
+          host={host}
+        />
+      ) : null}
+      {ready && api.current ? (
+        <SheetLinks
+          ref={links}
+          api={api.current}
           persist={() => persist.current()}
           host={host}
         />

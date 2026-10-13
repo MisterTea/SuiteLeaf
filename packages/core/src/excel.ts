@@ -13,6 +13,7 @@ import {
   type SheetFile,
   type ChartDefinition,
 } from "./index";
+import { removedLinkWarning, takeExcelHyperlink } from "./sheet-links";
 import {
   array,
   parseXml,
@@ -546,6 +547,7 @@ export async function importXlsx(
     compression: "DEFLATE",
   });
   let textUnits = 0;
+  const droppedLinks: string[] = [];
   let book: XLSX.WorkBook;
   try {
     book = XLSX.read(readBytes, {
@@ -697,6 +699,7 @@ export async function importXlsx(
         }
       }
       if (cell.z && cell.z !== "General") target.s = { n: { pattern: cell.z } };
+      takeExcelHyperlink(cell, target, droppedLinks);
       if (Object.keys(target).length) {
         (cellData[coords.r] ??= {})[coords.c] = target;
         maxRow = Math.max(maxRow, coords.r);
@@ -1040,8 +1043,6 @@ export async function importXlsx(
       "Autofilter definitions are not recreated; the data can be filtered with the Sheets toolbar.",
     sheet_protection:
       "Protected Excel sheets open read-only; local protection can be removed in Sheet tools.",
-    hyperlinks:
-      "Hyperlink cell labels are preserved; hyperlink targets are not recreated.",
     pivot_tables:
       "Excel pivot results are retained as cells, but Excel pivot definitions are not recreated.",
 
@@ -1049,6 +1050,7 @@ export async function importXlsx(
       "External workbook links are retained as formula text and cached values; no external files are fetched.",
   }))
     if (features.includes(feature)) warnings.push(warning);
+  if (droppedLinks.length) warnings.push(removedLinkWarning(droppedLinks));
   if (stats.formulas) {
     features.push("formulas");
     warnings.push(
