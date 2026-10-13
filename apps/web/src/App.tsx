@@ -854,7 +854,9 @@ function LocalHome() {
             >
               <p className="dialog-note">
                 {window.suiteleaf
-                  ? `“${asking.record.file.title}” and its recovery draft leave the library. Your saved file remains on disk.`
+                  ? asking.record.path
+                    ? `“${asking.record.file.title}” and its recovery draft leave the library. Your saved file remains on disk.`
+                    : `“${asking.record.file.title}” was never saved to a file, so it will be deleted. This can't be undone.`
                   : `“${asking.record.file.title}” will be deleted from this browser. This can't be undone.`}
               </p>
               {window.suiteleaf ? null : (

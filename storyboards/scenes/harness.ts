@@ -80,6 +80,8 @@ export const test = base.extend<{ page: Page }>({
         recordVideo: { dir, size },
       });
       page = await app.firstWindow();
+      // The recording is of the whole window, so it must be the video's size.
+      await app.evaluate(({ BrowserWindow }, s) => BrowserWindow.getAllWindows()[0]?.setContentSize(s.width, s.height), size);
       await page.setViewportSize(size);
       await page.context().addInitScript(cursorScript);
       await page.reload();
