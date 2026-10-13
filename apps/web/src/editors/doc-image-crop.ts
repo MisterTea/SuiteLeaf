@@ -407,6 +407,8 @@ export const croppableImage = Image.extend({
           return;
         const pos = getPos();
         if (typeof pos !== "number") return;
+        // A following caption or sentence would otherwise take the cursor.
+        event.preventDefault();
         editor.commands.setNodeSelection(pos);
       });
       syncImageWrap(host, start.attrs);

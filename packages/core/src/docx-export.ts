@@ -494,10 +494,12 @@ function blocks(
             : { bullet: { level: list.level } }
           : {}),
       }),
-      // The caption is the next paragraph. The description stays on the drawing.
+      // The caption is the next paragraph, in Word's Caption style.
+      // The description stays on the drawing. The sentence after is not a caption.
       ...(caption
         ? [
             new Paragraph({
+              style: "Caption",
               children: [new TextRun({ text: caption, size: 18 })],
             }),
           ]
@@ -735,6 +737,15 @@ function docxSection(
               },
   };
 }
+function docHasImageCaption(node: JsonNode): boolean {
+  if (
+    (node.type === "image" || node.type === "inlineImage") &&
+    typeof node.attrs?.caption === "string" &&
+    node.attrs.caption.trim()
+  )
+    return true;
+  return (node.content ?? []).some(docHasImageCaption);
+}
 export async function exportDocx(
   file: Pick<DocFile, "title" | "content">,
 ): Promise<Uint8Array> {
@@ -856,7 +867,20 @@ export async function exportDocx(
       : {}),
     ...(Object.keys(footnotes).length ? { footnotes } : {}),
     ...(Object.keys(endnotes).length ? { endnotes } : {}),
-    styles: { default: { document: { run: { font: "Arial", size: 22 } } } },
+    styles: {
+      default: { document: { run: { font: "Arial", size: 22 } } },
+      ...(docHasImageCaption(content)
+        ? {
+            paragraphStyles: [
+              {
+                id: "Caption",
+                name: "Caption",
+                basedOn: "Normal",
+              },
+            ],
+          }
+        : {}),
+    },
     numbering: {
       config: [
         {

@@ -41,6 +41,7 @@ import { applyWordFontSizes } from "./word-size";
 import { applyWordFonts } from "./word-font";
 import { applyWordHighlights } from "./word-highlight";
 import { firstSectionPageMargins } from "./word-page-margins";
+import { applyImportedImageCaptions } from "./word-image-caption";
 
 type Mark = NonNullable<JsonNode["marks"]>[number];
 const normalize = (s: string) => s.replace(/[\s\u200b\ufeff]+/gu, "");
@@ -57,6 +58,11 @@ function textOf(n: JsonNode, library: CitationLibrary | undefined): string {
       (item) => item.id === String(n.attrs?.sourceId ?? ""),
     );
     return source && next ? inText(source, next.style) : "";
+  }
+  // The caption lives on the photo, so it still counts as document text.
+  if (n.type === "image" || n.type === "inlineImage") {
+    const caption = n.attrs?.caption;
+    return typeof caption === "string" ? caption : "";
   }
   return (
     (n.text ?? "") +
@@ -1382,6 +1388,10 @@ export async function importDocx(
     };
   if (extracted.equations.length)
     content = spliceEquationTokens(content, extracted.equations);
+  const captionXml =
+    (await zip.file("word/document.xml")?.async("string")) ?? officeXml;
+  const stylesXml = (await zip.file("word/styles.xml")?.async("string")) ?? "";
+  content = applyImportedImageCaptions(content, captionXml, stylesXml);
   let output = normalize(
     documentText(
       suggestionCount ? resolveSuggestions(content, "accepted") : content,
