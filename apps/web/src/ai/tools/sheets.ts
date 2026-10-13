@@ -904,7 +904,16 @@ function chartContents(sheet: any, source: { startRow: number; endRow: number; s
       .getValues() as unknown[][];
     const series = values[0].slice(1).map(display);
     const labels = values.slice(1).map((row) => display(row[0]));
-    return `It shows ${series.join(", ")} (from the header row) for ${labels.join(", ")} (from column ${columnLetter(source.startColumn)}).`;
+    const formulas = (sheet
+      .getRange(source.startRow, source.startColumn, source.endRow - source.startRow + 1, source.endColumn - source.startColumn + 1)
+      .getFormulas?.() ?? []) as string[][];
+    const totals = labels
+      .map((label, i) => ({ label, row: source.startRow + i + 2, formulas: formulas[i + 1]?.slice(1) ?? [] }))
+      .filter((r) => /^(grand\s+)?totals?\b/i.test(r.label) || (r.formulas.length && r.formulas.every((f) => /^=SUM\(/i.test(f ?? ""))));
+    const total = totals.length
+      ? ` Row ${totals.map((r) => r.row).join(", ")} (${totals.map((r) => r.label).join(", ")}) adds up the rows above, so it dwarfs the others; charts usually leave totals out.`
+      : "";
+    return `It shows ${series.join(", ")} (from the header row) for ${labels.join(", ")} (from column ${columnLetter(source.startColumn)}).${total} If that is more than the user asked for, narrow the range with edit_chart.`;
   } catch {
     return "";
   }
