@@ -86,18 +86,31 @@ async function say(page: Page, text: string, hold = 1500) {
   await beat(page, hold);
 }
 
-/** Scroll a page number into the upper part of the stage, then hold. */
-async function showNumber(page: Page, index: number) {
+/** Scroll a footer number into the middle of the stage. */
+async function showFooter(page: Page, index: number) {
   const number = page.locator(".page-number").nth(index);
   await number.evaluate((el) => {
     const stage = el.closest(".document-stage") as HTMLElement;
     const stageBox = stage.getBoundingClientRect();
     const box = el.getBoundingClientRect();
-    const top = stage.scrollTop + (box.top - stageBox.top) - stageBox.height * 0.28;
+    const top = stage.scrollTop + (box.top - stageBox.top) - stageBox.height * 0.4;
     stage.scrollTo({ top: Math.max(0, top), behavior: "auto" });
   });
-  await beat(page, 350);
+  await beat(page, 400);
   await expect(number).toBeInViewport();
+}
+
+/** Show the top of a page, where a top-right number sits. */
+async function showPage(page: Page, index: number) {
+  await page.locator(".page-furniture-page").nth(index).evaluate((el) => {
+    const stage = el.closest(".document-stage") as HTMLElement;
+    const stageBox = stage.getBoundingClientRect();
+    const box = el.getBoundingClientRect();
+    const top = stage.scrollTop + (box.top - stageBox.top) - 8;
+    stage.scrollTo({ top: Math.max(0, top), behavior: "auto" });
+  });
+  await beat(page, 450);
+  await expect(page.locator(".page-number").nth(index)).toBeInViewport();
 }
 
 test("65-choose-a-page-number", async ({ page }) => {
@@ -108,15 +121,18 @@ test("65-choose-a-page-number", async ({ page }) => {
     buffer: Buffer.from(serializeFile(minutes())),
   });
   await expect(page.locator(".editor-status")).toContainText("2 pages");
+  await page.locator(".paper-container").evaluate((el) => {
+    el.style.paddingBottom = "48vh";
+  });
   const numbers = page.locator(".page-number");
   await expect(numbers).toHaveText(["1 / 2", "2 / 2"]);
-  await showNumber(page, 0);
+  await showFooter(page, 0);
   await expect(page.locator(".page-furniture-page").first()).toHaveAttribute(
     "data-number-side",
     "right",
   );
   await say(page, "Page 1 ends with “1 / 2”, at the bottom right.", 1800);
-  await showNumber(page, 1);
+  await showFooter(page, 1);
   await say(page, "Page 2 ends with “2 / 2”. The total is still there.", 1700);
 
   await say(
@@ -147,9 +163,9 @@ test("65-choose-a-page-number", async ({ page }) => {
     "data-number-side",
     "center",
   );
-  await showNumber(page, 0);
+  await showFooter(page, 0);
   await say(page, "Page 1 shows “Page 1” in the center of the footer. No total.", 1800);
-  await showNumber(page, 1);
+  await showFooter(page, 1);
   await say(page, "Page 2 shows “Page 2” in the center. Neither page shows a total.", 1800);
 
   await say(page, "The number is not footer text. He types a footer, and it stays.", 700);
@@ -161,7 +177,7 @@ test("65-choose-a-page-number", async ({ page }) => {
   await setup.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(page.locator(".page-footer-text").first()).toHaveText("Committee draft");
   await expect(numbers).toHaveText(["Page 1", "Page 2"]);
-  await showNumber(page, 0);
+  await showFooter(page, 0);
   await say(page, "“Committee draft” is the footer. “Page 1” is still in the center.", 2000);
 
   await say(page, "Top right moves the number into the header. The footer number is gone.", 700);
@@ -180,7 +196,7 @@ test("65-choose-a-page-number", async ({ page }) => {
   });
   await beat(page, 500);
   await say(page, "“Page 1” sits at the top right, beside the header.", 1800);
-  await showNumber(page, 1);
+  await showPage(page, 1);
   await expect(numbers).toHaveText(["Page 1", "Page 2"]);
   await say(page, "Page 2 matches. He saves and comes back.", 1400);
 
