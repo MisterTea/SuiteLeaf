@@ -1847,6 +1847,13 @@ function Workspace() {
                   </MenuItem>
                   <MenuItem
                     onSelect={() =>
+                      actions.current?.sheetActions?.insertDropdown?.()
+                    }
+                  >
+                    Dropdown
+                  </MenuItem>
+                  <MenuItem
+                    onSelect={() =>
                       actions.current?.sheetActions?.insertComment?.()
                     }
                   >

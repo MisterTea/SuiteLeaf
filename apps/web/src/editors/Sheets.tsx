@@ -43,6 +43,7 @@ import {
 import NoteEnUS from "@univerjs/preset-sheets-note/locales/en-US";
 import "@univerjs/preset-sheets-note/lib/index.css";
 import SheetFeatures from "./sheet-features";
+import SheetDropdowns, { type SheetDropdownHandle } from "./sheet-dropdown-panel";
 import {
   guardFormulaSuggestions,
   rankFormulaSuggestions,
@@ -793,6 +794,8 @@ export default function Sheets({
     [notice, setNotice] = useState("");
   const pending = useRef(false);
   const tabSettings = useRef<{ openTabs: () => void }>(null);
+  const dropdowns = useRef<SheetDropdownHandle>(null);
+  const dropdownEngine = useRef<{ api: any; injector: any } | null>(null);
   const toolbar = useRef<HTMLDivElement>(null);
   const moreTools = useToolbarOverflow(
     toolbar,
@@ -934,6 +937,7 @@ export default function Sheets({
         univer.dispose();
       };
       api.current = univerAPI;
+      dropdownEngine.current = { api: univerAPI, injector };
       if (!formulaBarVisible())
         univerAPI.setUIVisible(univerAPI.Enum.BuiltInUIPart.HEADER, false);
       univerAPI.registerComponent("suiteleaf-chart", EmbeddedChart);
@@ -1810,11 +1814,13 @@ export default function Sheets({
         }
       },
       sheetActions: {
-        dataValidation: () =>
+        dataValidation: () => {
+          if (dropdowns.current?.openExisting()) return;
           void api.current?.executeCommand(
             "data-validation.operation.open-validation-panel",
             {},
-          ),
+          );
+        },
         conditionalFormatting: () =>
           void api.current?.executeCommand(
             "sheet.operation.open.conditional.formatting.panel",
@@ -1860,6 +1866,7 @@ export default function Sheets({
             ).then(() => persist.current());
           }
         },
+        insertDropdown: () => dropdowns.current?.openNew(),
         undo: () => void api.current?.undo(),
         redo: () => void api.current?.redo(),
         cut: () => void clipboard("cut"),
@@ -2842,6 +2849,15 @@ export default function Sheets({
             {editing ? "Update" : "Create"} {panel}
           </button>
         </aside>
+      ) : null}
+      {ready && dropdownEngine.current ? (
+        <SheetDropdowns
+          ref={dropdowns}
+          api={dropdownEngine.current.api}
+          injector={dropdownEngine.current.injector}
+          persist={() => persist.current()}
+          host={host}
+        />
       ) : null}
     </div>
   );

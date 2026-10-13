@@ -1,5 +1,6 @@
 import type JSZip from "jszip";
 import * as XLSX from "xlsx";
+import { univerErrorStyle } from "./excel-validation";
 import { parseRange, type SheetFile } from "./index";
 import { array, parseXml } from "./office";
 type Data = Record<string, any>;
@@ -198,10 +199,25 @@ export async function importExcelFeatures(
           "promptTitle",
         ])
           if (rule[`@_${key}`] !== undefined) dv[key] = rule[`@_${key}`];
-        if (dv.type === "list")
-          dv.formula1 = dv.formula1.startsWith('"')
-            ? dv.formula1.slice(1, -1).replace(/""/g, '"')
-            : `=${dv.formula1.replace(/^=/, "")}`;
+        const errorStyle = univerErrorStyle(dv.errorStyle);
+        if (errorStyle !== undefined) dv.errorStyle = errorStyle;
+        if (dv.type === "list") {
+          const literal = String(dv.formula1).startsWith('"')
+            ? String(dv.formula1).slice(1, -1).replace(/""/g, '"')
+            : String(dv.formula1).replace(/^=/, "");
+          const options = literal
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean);
+          // Univer matches a JSON list. A comma string still displays, but every
+          // cell is marked invalid until the options are stored the way the
+          // editor writes them.
+          dv.formula1 = literal.startsWith("=")
+            ? `=${literal.replace(/^=/, "")}`
+            : JSON.stringify(options);
+          if (!String(dv.formula1).startsWith("=") && dv.renderMode === undefined)
+            dv.renderMode = 2;
+        }
         (validations[id] ??= []).push(dv);
       }
     for (const match of text.matchAll(
