@@ -78,6 +78,7 @@ import { slugify, uniqueSlug, anchorHref, isInternalAnchor } from "../anchors";
 import { DocumentPagination, PageBreak } from "./doc-pagination";
 import SpellingPanel from "./SpellingPanel";
 import { useAgentHost } from "../ai/host";
+import { useAgentPanelOpen } from "../ai/AgentSidebar";
 import { docSnapshot, docTools, type DocsAgentContext } from "../ai/tools/docs";
 import {
   documentHtml,
@@ -203,6 +204,7 @@ export default function Docs({
   const [pageCount, setPageCount] = useState(1);
   const [pageSetupOpen, setPageSetupOpen] = useState(false);
   const [spellingOpen, setSpellingOpen] = useState(false);
+  const agentPanelOpen = useAgentPanelOpen();
   const [pageDraft, setPageDraft] = useState<PageSettings>(() =>
     documentPageSettings(file.content),
   );
@@ -817,10 +819,14 @@ export default function Docs({
     pageDraft.margin >= 24 &&
     pageDraft.margin <= 144;
   const dimensions = pageDimensions(pageSettings);
+  const fit = Math.min(1, pageViewportWidth / dimensions.width);
+  // Beside the AI panel the page shrinks to fit rather than running under it.
   const pageZoom =
     zoomLevel === "Fit"
-      ? Math.min(1, pageViewportWidth / dimensions.width)
-      : parseInt(zoomLevel) / 100;
+      ? fit
+      : agentPanelOpen
+        ? Math.min(parseInt(zoomLevel) / 100, fit)
+        : parseInt(zoomLevel) / 100;
   const search = documentMatches(editor.state.doc, findOpen ? query : "", {
     matchCase,
     regex: useRegex,

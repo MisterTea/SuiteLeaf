@@ -3791,3 +3791,9 @@ body.agent-open .workspace {
 .spelling-suggestions .spelling-ignore {
   color: var(--text-secondary);
 }
+body.agent-open .home-main {
+  min-width: 0;
+}
+body.agent-open .new-cards {
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}

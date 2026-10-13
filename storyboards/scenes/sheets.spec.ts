@@ -2,8 +2,8 @@ import { readFile } from "node:fs/promises";
 import type { Locator, Page } from "@playwright/test";
 import JSZip from "jszip";
 import Papa from "papaparse";
-import { createFile, serializeFile } from "../../packages/core/src";
 import { beat, caption, expect, selectCells, test, typeSlowly } from "./harness";
+import { bakeryWorkbook, openWorkbook, ready } from "./fixtures";
 
 type Value = string | number;
 type Native = any;
@@ -13,36 +13,6 @@ const rowHeader = 46,
   columnWidth = 100,
   firstRowCenter = 58,
   rowHeight = 24;
-
-async function ready(page: Page) {
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).waitFor();
-  await beat(page, 700);
-}
-
-/** Opens a workbook the person already keeps, through Open / import. */
-async function openWorkbook(page: Page, title: string, rows: Value[][], widths: number[] = []) {
-  const file = createFile("sheet", title);
-  if (file.kind !== "sheet") throw new Error("Expected a workbook");
-  const sheet = file.content.workbook.sheets[file.content.workbook.sheetOrder[0]];
-  sheet.cellData = Object.fromEntries(
-    rows.map((row, r) => [
-      r,
-      Object.fromEntries(
-        row.flatMap((v, c) =>
-          v === "" ? [] : [[c, typeof v === "number" ? { v, t: 2 } : { v, t: 1 }]],
-        ),
-      ),
-    ]),
-  );
-  if (widths.length)
-    (sheet as Native).columnData = Object.fromEntries(widths.map((w, i) => [i, { w }]));
-  await page.locator("input[type=file]").setInputFiles({
-    name: `${title}.slsheet`,
-    mimeType: "application/json",
-    buffer: Buffer.from(serializeFile(file)),
-  });
-  await ready(page);
-}
 
 /** Downloads the native file, as a person keeping a copy would, and parses it. */
 async function native(page: Page): Promise<Native> {
@@ -910,65 +880,6 @@ test("18-highlight-and-check-off", async ({ page }) => {
   expect(rules).not.toContain('"cl"');
   await caption(page, "A task list that shows progress at a glance.", 1600);
 });
-
-const xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-const sheetNs =
-  'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
-
-/** A small Excel workbook like an accountant might send: styled header, currency, formulas, a frozen row, and a summary tab. */
-async function bakeryWorkbook() {
-  const z = new JSZip();
-  const rel = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-  const type = "application/vnd.openxmlformats-officedocument.spreadsheetml";
-  z.file(
-    "[Content_Types].xml",
-    `${xml}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="${type}.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="${type}.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="${type}.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="${type}.styles+xml"/></Types>`,
-  );
-  z.file(
-    "_rels/.rels",
-    `${xml}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${rel}/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
-  );
-  z.file(
-    "xl/workbook.xml",
-    `${xml}<workbook ${sheetNs}><sheets><sheet name="Q3 sales" sheetId="1" r:id="rId1"/><sheet name="Summary" sheetId="2" r:id="rId2"/></sheets></workbook>`,
-  );
-  z.file(
-    "xl/_rels/workbook.xml.rels",
-    `${xml}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${rel}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="${rel}/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="${rel}/styles" Target="styles.xml"/></Relationships>`,
-  );
-  z.file(
-    "xl/styles.xml",
-    `${xml}<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="&quot;$&quot;#,##0.00"/></numFmts><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFCE4D6"/></patternFill></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="164" fontId="1" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/></cellXfs></styleSheet>`,
-  );
-  const items: [string, number, number][] = [
-    ["Sourdough loaf", 412, 7.5],
-    ["Croissant", 958, 3.25],
-    ["Cinnamon roll", 377, 4],
-    ["Baguette", 645, 3.75],
-  ];
-  const text = (ref: string, value: string, style = 0) =>
-    `<c r="${ref}" t="inlineStr"${style ? ` s="${style}"` : ""}><is><t>${value}</t></is></c>`;
-  const units = items.reduce((t, [, u]) => t + u, 0);
-  const revenue = items.reduce((t, [, u, p]) => t + u * p, 0);
-  const rows =
-    `<row r="1">${["Product", "Units sold", "Unit price", "Revenue"].map((h, i) => text(`${"ABCD"[i]}1`, h, 1)).join("")}</row>` +
-    items
-      .map(
-        ([name, u, p], i) =>
-          `<row r="${i + 2}">${text(`A${i + 2}`, name)}<c r="B${i + 2}"><v>${u}</v></c><c r="C${i + 2}" s="2"><v>${p}</v></c><c r="D${i + 2}" s="2"><f>B${i + 2}*C${i + 2}</f><v>${u * p}</v></c></row>`,
-      )
-      .join("") +
-    `<row r="6">${text("A6", "Total", 1)}<c r="B6" s="1"><f>SUM(B2:B5)</f><v>${units}</v></c><c r="C6" s="1"/><c r="D6" s="3"><f>SUM(D2:D5)</f><v>${revenue}</v></c></row>`;
-  z.file(
-    "xl/worksheets/sheet1.xml",
-    `${xml}<worksheet ${sheetNs}><dimension ref="A1:D6"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols><col min="1" max="1" width="22" customWidth="1"/><col min="2" max="4" width="14" customWidth="1"/></cols><sheetData>${rows}</sheetData></worksheet>`,
-  );
-  z.file(
-    "xl/worksheets/sheet2.xml",
-    `${xml}<worksheet ${sheetNs}><dimension ref="A1:B2"/><cols><col min="1" max="1" width="24" customWidth="1"/><col min="2" max="2" width="14" customWidth="1"/></cols><sheetData><row r="1">${text("A1", "Q3 revenue", 1)}<c r="B1" s="3"><f>'Q3 sales'!D6</f><v>${revenue}</v></c></row><row r="2">${text("A2", "Average per product")}<c r="B2" s="2"><f>AVERAGE('Q3 sales'!D2:D5)</f><v>${revenue / 4}</v></c></row></sheetData></worksheet>`,
-  );
-  return z.generateAsync({ type: "uint8array" });
-}
 
 test("19-open-an-excel-workbook", async ({ page }) => {
   await page.goto("/");

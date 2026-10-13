@@ -8,6 +8,7 @@ import {
   test,
   typeSlowly,
 } from "./harness";
+import { gardenDeck } from "./fixtures";
 
 const password = "garden-party-2026";
 
@@ -78,93 +79,6 @@ async function signIn(page: Page, email: string) {
 
 const driveItem = (page: Page, name: string) =>
   page.getByRole("button", { name, exact: true });
-
-/** A small finished deck, as a downloaded SuiteLeaf presentation file. */
-function gardenDeck() {
-  const now = new Date().toISOString();
-  const text = (content: string, y: number, extra: object = {}) => ({
-    id: crypto.randomUUID(),
-    type: "text",
-    x: 80,
-    y,
-    width: 800,
-    height: 70,
-    content,
-    fontSize: 34,
-    bold: true,
-    color: "#0f172a",
-    ...extra,
-  });
-  const body = (content: string) =>
-    text(content, 150, {
-      height: 320,
-      fontSize: 22,
-      bold: false,
-      color: "#334155",
-    });
-  const slides = [
-    {
-      title: "Spring Garden Kickoff",
-      layout: "title",
-      background: { color: "#e2ece9" },
-      elements: [
-        text("Spring Garden Kickoff", 170, { fontSize: 44, align: "center" }),
-        text("Community Garden · Saturday 10 am", 280, {
-          fontSize: 22,
-          bold: false,
-          align: "center",
-          color: "#475569",
-        }),
-      ],
-    },
-    {
-      title: "This season's plan",
-      layout: "title-body",
-      elements: [
-        text("This season's plan", 50),
-        body("• Tomatoes and basil in the sunny beds\n• New compost bins by the shed\n• Watering rota on the noticeboard"),
-      ],
-    },
-    {
-      title: "How you can help",
-      layout: "title-body",
-      elements: [
-        text("How you can help", 50),
-        body("• Saturday work parties, 9–11 am\n• Seedling swap in May\n• Sign up at the shed door"),
-      ],
-    },
-    {
-      title: "Questions?",
-      layout: "section",
-      background: { color: "#1e293b" },
-      elements: [
-        text("Questions?", 200, {
-          height: 120,
-          fontSize: 46,
-          align: "center",
-          color: "#f8fafc",
-        }),
-      ],
-    },
-  ].map((s) => ({ id: crypto.randomUUID(), notes: "", ...s }));
-  const id = crypto.randomUUID();
-  return JSON.stringify({
-    format: "suiteleaf",
-    version: 1,
-    id,
-    title: "Spring Garden Kickoff",
-    createdAt: now,
-    updatedAt: now,
-    kind: "slide",
-    content: {
-      id,
-      width: 960,
-      height: 540,
-      slideOrder: slides.map((s) => s.id),
-      slides: Object.fromEntries(slides.map((s) => [s.id, s])),
-    },
-  });
-}
 
 test("20-build-a-presentation", async ({ page }) => {
   await page.goto("/");

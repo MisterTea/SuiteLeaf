@@ -24,7 +24,9 @@ const panel = {
 };
 document.body.classList.toggle("agent-open", open);
 
-const usePanelOpen = () => useSyncExternalStore(panel.subscribe, panel.get);
+/** Whether the AI panel is open (it narrows the editors beside it). */
+export const useAgentPanelOpen = () => useSyncExternalStore(panel.subscribe, panel.get);
+const usePanelOpen = useAgentPanelOpen;
 const useSession = () => {
   useSyncExternalStore(agentSession.subscribe, agentSession.getVersion);
   return agentSession;
