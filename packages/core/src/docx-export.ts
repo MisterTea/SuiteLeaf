@@ -59,6 +59,19 @@ const alignment = (v: unknown) =>
     center: AlignmentType.CENTER,
     justify: AlignmentType.JUSTIFIED,
   })[String(v) as "left"];
+/**
+ * Word announces `descr` and can fall back to the required drawing `name`.
+ * Both are the description someone wrote, never the file name or "Image".
+ */
+export function docxImageAlt(alt: unknown): {
+  title: string;
+  description: string;
+  name: string;
+} {
+  const description = typeof alt === "string" ? alt : "";
+  return { title: description, description, name: description || "photo" };
+}
+
 function imageSize(data: Uint8Array, type: string): [number, number] {
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   if (type === "png" && data.length >= 24)
@@ -232,11 +245,7 @@ function runs(
             height: Math.max(1, frame.height),
           },
           ...(docxCrop ? { crop: docxCrop } : {}),
-          altText: {
-            title: String(n.attrs?.alt ?? ""),
-            description: String(n.attrs?.alt ?? ""),
-            name: "Image",
-          },
+          altText: docxImageAlt(n.attrs?.alt),
         }),
       ];
     }
