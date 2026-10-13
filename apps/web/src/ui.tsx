@@ -157,9 +157,10 @@ export function SubMenu({
       <MenuPath.Provider value={path}>
         <Dropdown.Item
           className="menu-item"
+          onPointerEnter={() => setOpenNested(true)}
           onSelect={(event) => {
             event.preventDefault();
-            setOpenNested((value) => !value);
+            setOpenNested(true);
           }}
         >
           <span className="menu-item-label">{label}</span>

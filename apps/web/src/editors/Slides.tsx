@@ -392,11 +392,18 @@ export default function Slides({
       if (slideOrder === prev.slideOrder) return;
       commitRef.current({ ...prev, slideOrder });
     };
+    const onDragStart = (event: DragEvent) => event.preventDefault();
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("dragend", onUp);
+    window.addEventListener("dragstart", onDragStart);
     return () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("dragend", onUp);
+      window.removeEventListener("dragstart", onDragStart);
     };
   }, []);
 

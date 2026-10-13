@@ -8,13 +8,19 @@ import { useEffect, useLayoutEffect, useState, type RefObject } from "react";
  *
  * Controls matching `pinned` fold last; the rest fold from the right.
  * The toolbar needs a `.more-tools` button and, while open, a `.toolbar-break`.
+ *
+ * Docs keeps a sideways scroll on a phone (`foldNarrow: false`): formatting
+ * buttons are reached by scrolling that row. Sheets folds there too, so
+ * pinned tools stay on screen and More tools reaches the rest.
  */
 export function useToolbarOverflow(
   ref: RefObject<HTMLElement | null>,
   pinned: string,
+  options?: { foldNarrow?: boolean },
 ) {
   const [overflowing, setOverflowing] = useState(false),
     [open, setOpen] = useState(false);
+  const foldNarrow = options?.foldNarrow ?? false;
 
   const fit = () => {
     const bar = ref.current;
@@ -26,9 +32,7 @@ export function useToolbarOverflow(
         el !== more &&
         !el.classList.contains("toolbar-break"),
     );
-    // A phone already scrolls the toolbar sideways. Folding would hide
-    // controls the tests and a thumb both need to reach.
-    if (window.innerWidth <= 700) {
+    if (!foldNarrow && window.innerWidth <= 700) {
       tools.forEach((t) => delete t.dataset.overflow);
       delete bar.dataset.measuring;
       setOverflowing(false);

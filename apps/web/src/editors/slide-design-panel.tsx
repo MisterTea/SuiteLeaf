@@ -123,8 +123,19 @@ export function SlideDesignPanel({
                     className="theme-card"
                     aria-label={shown.name}
                     aria-pressed={current?.id === theme.id}
-                    onMouseEnter={() => onHoverTheme(shown)}
-                    onFocus={() => onHoverTheme(shown)}
+                    onMouseEnter={() => {
+                      // A custom accent is typed in the fields below. Hovering a
+                      // card while that field is focused would preview another
+                      // theme over the colour just chosen.
+                      if (document.activeElement?.closest(".theme-customize"))
+                        return;
+                      onHoverTheme(shown);
+                    }}
+                    onFocus={() => {
+                      if (document.activeElement?.closest(".theme-customize"))
+                        return;
+                      onHoverTheme(shown);
+                    }}
                     onClick={() => onApplyTheme(shown)}
                   >
                     <span

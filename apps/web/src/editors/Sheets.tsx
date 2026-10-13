@@ -805,7 +805,8 @@ export default function Sheets({
   const toolbar = useRef<HTMLDivElement>(null);
   const moreTools = useToolbarOverflow(
     toolbar,
-    '[aria-label^="Insert comment"], .chart-btn, .filter-btn, .functions-btn, .pivot-btn, .sheet-analyses-dropdown',
+    '[aria-label^="Insert comment"], [aria-label="Undo (Cmd+Z)"], [aria-label="Redo (Cmd+Y)"], .menu-search-pill, .chart-btn, .filter-btn, .functions-btn, .pivot-btn, .sheet-analyses-dropdown',
+    { foldNarrow: true },
   );
   const functionActions = useRef<{
     insertFunction: (name: string) => void;
