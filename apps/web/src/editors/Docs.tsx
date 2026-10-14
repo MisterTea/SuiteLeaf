@@ -94,6 +94,12 @@ import {
 
 import { DocumentPagination, PageBreak } from "./doc-pagination";
 import { formatCaretPage } from "./doc-caret-page";
+import {
+  attachDocumentZoom,
+  documentZoom,
+  isDocumentZoom,
+  rememberDocumentZoom,
+} from "./doc-zoom";
 import { Grammar } from "./doc-grammar";
 import { useDocGrammar } from "./doc-grammar-ui";
 import { focusTabStop, TabCharacter, TabStops } from "./doc-tab-stops";
@@ -356,8 +362,15 @@ export default function Docs({
   const [commentGutter, setCommentGutter] = useState(false);
   const [citationsOpen, setCitationsOpen] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(() =>
-    window.innerWidth < 700 ? "Fit" : "100%",
+    documentZoom(file.id, window.innerWidth),
   );
+  const zoomStartedWithoutId = useRef(!file.id);
+  useEffect(() => {
+    if (!zoomStartedWithoutId.current || !file.id) return;
+    zoomStartedWithoutId.current = false;
+    attachDocumentZoom(file.id);
+    setZoomLevel(documentZoom(file.id, window.innerWidth));
+  }, [file.id]);
   const paperContainer = useRef<HTMLDivElement>(null);
   const docTools = useRef<HTMLFieldSetElement>(null);
   const moreDocTools = useToolbarOverflow(
@@ -1464,7 +1477,12 @@ export default function Docs({
           className="toolbar-select zoom-select"
           aria-label="Zoom"
           value={zoomLevel}
-          onChange={(e) => setZoomLevel(e.target.value)}
+          onChange={(e) => {
+            const next = e.target.value;
+            if (!isDocumentZoom(next)) return;
+            setZoomLevel(next);
+            rememberDocumentZoom(file.id, next);
+          }}
         >
           <option value="Fit">Fit page</option>
           <option value="50%">50%</option>
