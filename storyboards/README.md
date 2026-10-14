@@ -180,3 +180,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 161 | [See the character count](161-see-the-character-count.md) | single-node | Docs |
 | 162 | [See which page](162-see-which-page.md) | single-node | Docs |
 | 163 | [Keep the zoom](163-keep-the-zoom.md) | single-node | Docs |
+| 165 | [Paint the cell](165-paint-the-cell.md) | single-node | Sheets |
