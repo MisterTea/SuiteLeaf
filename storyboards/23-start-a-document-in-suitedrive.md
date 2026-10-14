@@ -52,4 +52,4 @@ Fixes made along the way:
 - SuiteDrive shows file extensions (`.sldoc`, `.slslides`). Google Drive shows document titles only. Hiding them changes the names tests and other storyboards look for, so it's left for a separate change.
 - The editor shows the file's folder next to the title, and Move puts it in another folder. See storyboard [140](140-put-the-rota-in-the-club-folder.md).
 - Move to trash on SuiteDrive has a Trash view, Undo, and Delete forever. See storyboard [139](139-get-a-shared-file-back.md).
-- In the editor's File menu, New and Make a copy put the new file in the open file's folder. See storyboard [141](141-start-the-next-rota-in-the-same-folder.md). Open and Save as still start browsing at the top of My Drive.
+- In the editor's File menu, New and Make a copy put the new file in the open file's folder. See storyboard [141](141-start-the-next-rota-in-the-same-folder.md). Open and Save as start in that same folder when the file is already in one.

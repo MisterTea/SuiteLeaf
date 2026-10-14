@@ -214,7 +214,7 @@ test("41-viewer-of-a-sheet-or-deck", async ({ page, context }) => {
     await caption(page, "Shared with me lists the sheet as view only, before he opens it.", 1600);
     await sheetRow.click();
     await expect(page.getByText("View only", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Sheet tools", exact: true })).toBeVisible();
+    await expect(page.getByRole("toolbar", { name: "Spreadsheet formatting" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Bold (Cmd+B)" })).toBeDisabled();
     await expect(page.getByRole("button", { name: "Undo (Cmd+Z)" })).toBeDisabled();
     await expect(page.getByLabel("Font family")).toBeDisabled();

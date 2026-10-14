@@ -45,7 +45,7 @@ async function groupedBudget() {
 async function open(page: Page, name: string, mimeType: string, buffer: Buffer) {
   await page.goto("/");
   await page.locator("input[type=file]").setInputFiles({ name, mimeType, buffer });
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).waitFor();
+  await page.getByRole("toolbar", { name: "Spreadsheet formatting" }).waitFor();
 }
 
 test("a sheet outline survives Excel export and import", async ({ page }) => {
@@ -70,7 +70,7 @@ test("a sheet outline survives Excel export and import", async ({ page }) => {
     mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     buffer: xlsx,
   });
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).waitFor();
+  await page.getByRole("toolbar", { name: "Spreadsheet formatting" }).waitFor();
   await expect(page.locator(".column-group-controls")).toHaveAttribute("data-span", "1-2");
   await expect(page.locator(".column-group-controls")).toHaveAttribute("data-collapsed", "2");
   await expect(page.locator(".row-group-controls")).toHaveAttribute("data-collapsed", "2");

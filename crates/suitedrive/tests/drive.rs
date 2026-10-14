@@ -1,9 +1,14 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    sync::Arc,
+    time::{Duration, SystemTime},
+};
 
 use libp2p_identity::ed25519;
 use suitedb::{Db, Schema, Value};
 use suitedrive::{
-    BlobTransport, CHUNK_SIZE, Drive, DriveError, Hash, Manifest, Principal, Role, tables,
+    tables, BlobTransport, Drive, DriveError, Hash, Manifest, Presence, Principal, Role,
+    CHUNK_SIZE, PRESENCE_TTL,
 };
 use tempfile::TempDir;
 
@@ -298,21 +303,18 @@ fn moves_rename_and_trash_respect_the_folder_tree() {
         .create(&ann, Some(&outer.id), "Inner", "folder", None)
         .unwrap();
     let file = n.drive.create(&ann, None, "a.sldoc", "file", None).unwrap();
-    assert!(
-        n.drive
-            .update(&ann, &outer.id, None, Some(Some(&inner.id)), None)
-            .is_err()
-    );
-    assert!(
-        n.drive
-            .update(&ann, &outer.id, None, Some(Some(&file.id)), None)
-            .is_err()
-    );
-    assert!(
-        n.drive
-            .create(&ann, None, "bad/name", "file", None)
-            .is_err()
-    );
+    assert!(n
+        .drive
+        .update(&ann, &outer.id, None, Some(Some(&inner.id)), None)
+        .is_err());
+    assert!(n
+        .drive
+        .update(&ann, &outer.id, None, Some(Some(&file.id)), None)
+        .is_err());
+    assert!(n
+        .drive
+        .create(&ann, None, "bad/name", "file", None)
+        .is_err());
     let moved = n
         .drive
         .update(&ann, &file.id, Some("b.sldoc"), Some(Some(&inner.id)), None)
@@ -592,16 +594,14 @@ fn ownership_moves_immediately_and_a_share_can_expire() {
             .set_expiry(&rosa, &file.id, "user", person, Some(saturday))
             .unwrap();
     }
-    assert!(
-        a.drive
-            .set_expiry(&rosa, &file.id, "user", "rosa", Some(saturday))
-            .is_err()
-    );
-    assert!(
-        a.drive
-            .set_expiry(&rosa, &file.id, "user", "priya", Some("next saturday"))
-            .is_err()
-    );
+    assert!(a
+        .drive
+        .set_expiry(&rosa, &file.id, "user", "rosa", Some(saturday))
+        .is_err());
+    assert!(a
+        .drive
+        .set_expiry(&rosa, &file.id, "user", "priya", Some("next saturday"))
+        .is_err());
     // A role change keeps the end date.
     a.drive
         .share(&rosa, &file.id, "user", "sam", Some(Role::Editor))
@@ -672,12 +672,10 @@ fn ownership_moves_immediately_and_a_share_can_expire() {
         .unwrap();
     assert_eq!(rosa_grant.role, Role::Editor);
     assert!(rosa_grant.expires_at.is_none());
-    assert!(
-        after
-            .grants
-            .iter()
-            .any(|g| g.principal_type == "owner" && g.principal_id == "sam")
-    );
+    assert!(after
+        .grants
+        .iter()
+        .any(|g| g.principal_type == "owner" && g.principal_id == "sam"));
     assert_eq!(
         after
             .grants
@@ -692,16 +690,14 @@ fn ownership_moves_immediately_and_a_share_can_expire() {
         a.drive.transfer(&rosa, &file.id, "priya"),
         Err(DriveError::Forbidden)
     ));
-    assert!(
-        a.drive
-            .share(&sam, &file.id, "user", "eve", Some(Role::Owner))
-            .is_err()
-    );
-    assert!(
-        a.drive
-            .set_expiry(&sam, &file.id, "user", "sam", Some(saturday))
-            .is_err()
-    );
+    assert!(a
+        .drive
+        .share(&sam, &file.id, "user", "eve", Some(Role::Owner))
+        .is_err());
+    assert!(a
+        .drive
+        .set_expiry(&sam, &file.id, "user", "sam", Some(saturday))
+        .is_err());
 
     let ended = "2000-01-01T00:00:00.000Z";
     a.drive
@@ -1089,13 +1085,12 @@ fn trash_hides_the_file_and_restore_puts_it_back_in_its_folder() {
         .update(&ann, &top.id, None, None, Some(true))
         .unwrap();
     assert!(n.drive.list(&ann, Some(&folder.id)).unwrap().is_empty());
-    assert!(
-        n.drive
-            .list(&ann, None)
-            .unwrap()
-            .iter()
-            .all(|item| item.id != file.id && item.id != top.id)
-    );
+    assert!(n
+        .drive
+        .list(&ann, None)
+        .unwrap()
+        .iter()
+        .all(|item| item.id != file.id && item.id != top.id));
 
     let trashed = n.drive.list_trashed(&ann).unwrap();
     let rota = trashed.iter().find(|item| item.id == file.id).unwrap();
@@ -1115,20 +1110,18 @@ fn trash_hides_the_file_and_restore_puts_it_back_in_its_folder() {
     let back = n.drive.list(&ann, Some(&folder.id)).unwrap();
     assert_eq!(back.len(), 1);
     assert_eq!(back[0].id, file.id);
-    assert!(
-        n.drive
-            .list(&ann, None)
-            .unwrap()
-            .iter()
-            .all(|item| item.id != file.id)
-    );
-    assert!(
-        n.drive
-            .list_trashed(&ann)
-            .unwrap()
-            .iter()
-            .all(|item| item.id != file.id)
-    );
+    assert!(n
+        .drive
+        .list(&ann, None)
+        .unwrap()
+        .iter()
+        .all(|item| item.id != file.id));
+    assert!(n
+        .drive
+        .list_trashed(&ann)
+        .unwrap()
+        .iter()
+        .all(|item| item.id != file.id));
 }
 
 #[test]
@@ -1177,22 +1170,22 @@ fn delete_forever_removes_a_trashed_file_and_its_bytes() {
         n.drive.get(&ann, &file.id),
         Err(DriveError::NotFound)
     ));
-    assert!(
-        n.db.query(
+    assert!(n
+        .db
+        .query(
             "SELECT id FROM drive_version WHERE itemId = ?1",
             &[Value::Text(file.id.clone())],
         )
         .unwrap()
-        .is_empty()
-    );
-    assert!(
-        n.db.query(
+        .is_empty());
+    assert!(n
+        .db
+        .query(
             "SELECT id FROM drive_acl WHERE itemId = ?1",
             &[Value::Text(file.id.clone())],
         )
         .unwrap()
-        .is_empty()
-    );
+        .is_empty());
     let (_, bytes) = n.drive.read(&ann, &copy.id, None).unwrap();
     assert_eq!(bytes, b"Thursday: Rosa");
     assert!(n.drive.blobs().has(&hash));
@@ -1223,13 +1216,12 @@ fn delete_forever_removes_a_trashed_file_and_its_bytes() {
         );
     }
     assert!(n.drive.list(&ann, Some(&folder.id)).unwrap().is_empty());
-    assert!(
-        n.drive
-            .list_trashed(&ann)
-            .unwrap()
-            .iter()
-            .all(|item| item.id != only.id)
-    );
+    assert!(n
+        .drive
+        .list_trashed(&ann)
+        .unwrap()
+        .iter()
+        .all(|item| item.id != only.id));
 
     n.drive
         .update(&ann, &folder.id, None, None, Some(true))
@@ -1326,4 +1318,535 @@ fn list_folders_returns_nested_folders_and_skips_ones_you_cannot_edit() {
         n.drive.get(&ann, &rota.id).unwrap().parent_name.as_deref(),
         Some("Meetings")
     );
+}
+
+#[test]
+fn search_finds_a_document_by_the_words_inside_it() {
+    let n = node();
+    let rosa = user("rosa");
+    let sam = user("sam");
+    let club = n
+        .drive
+        .create(&rosa, None, "Garden club", "folder", None)
+        .unwrap();
+    n.drive
+        .create(&rosa, None, "Thursday plans", "folder", None)
+        .unwrap();
+    let file = n
+        .drive
+        .create(&rosa, Some(&club.id), "Watering rota.sldoc", "file", None)
+        .unwrap();
+    let body = serde_json::json!({
+        "kind": "doc",
+        "content": {
+            "type": "doc",
+            "content": [{
+                "type": "paragraph",
+                "content": [{
+                    "type": "text",
+                    "text": "Thursday: ask Alex to cover. The beds along the south fence need an extra bucket when the week stays hot."
+                }]
+            }]
+        }
+    });
+    n.drive
+        .write(
+            &rosa,
+            &file.id,
+            None,
+            Some("application/vnd.suiteleaf.doc+json"),
+            &serde_json::to_vec(&body).unwrap(),
+        )
+        .unwrap();
+
+    assert!(n.drive.search(&rosa, "  ").unwrap().is_empty());
+    let hits = n.drive.search(&rosa, "Thursday").unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].id, file.id);
+    assert_eq!(hits[0].name, "Watering rota.sldoc");
+    assert_eq!(hits[0].parent_name, "Garden club");
+    assert!(hits[0].snippet.contains("Thursday"));
+    assert!(hits[0].snippet.contains("ask Alex"));
+    assert!(hits[0].snippet.chars().count() <= 80);
+    let listed = serde_json::to_value(&hits[0]).unwrap();
+    assert!(listed.get("snippet").is_some());
+    assert!(listed.get("bytes").is_none());
+    assert!(listed.get("content").is_none());
+
+    let lower = n.drive.search(&rosa, "thursday").unwrap();
+    assert_eq!(lower.len(), 1);
+    assert_eq!(lower[0].id, file.id);
+    assert!(lower[0].snippet.contains("Thursday"));
+
+    assert!(n.drive.search(&rosa, "zucchini").unwrap().is_empty());
+    assert!(n.drive.search(&sam, "Thursday").unwrap().is_empty());
+    n.drive
+        .share(&rosa, &file.id, "user", "sam", Some(Role::Viewer))
+        .unwrap();
+    let shared = n.drive.search(&sam, "Thursday").unwrap();
+    assert_eq!(shared.len(), 1);
+    assert_eq!(shared[0].id, file.id);
+    assert_eq!(shared[0].parent_name, "Garden club");
+
+    n.drive
+        .update(&rosa, &file.id, None, None, Some(true))
+        .unwrap();
+    assert!(n.drive.search(&rosa, "Thursday").unwrap().is_empty());
+    assert!(n.drive.search(&sam, "Thursday").unwrap().is_empty());
+}
+
+#[test]
+fn search_reads_sheet_slide_and_form_text_and_a_file_name() {
+    let n = node();
+    let rosa = user("rosa");
+    let sheet = n
+        .drive
+        .create(&rosa, None, "Beds.slsheet", "file", None)
+        .unwrap();
+    n.drive
+        .write(
+            &rosa,
+            &sheet.id,
+            None,
+            None,
+            &serde_json::to_vec(&serde_json::json!({
+                "kind": "sheet",
+                "content": {
+                    "workbook": {
+                        "sheets": {
+                            "s1": {
+                                "cellData": {
+                                    "0": {
+                                        "0": { "v": "Hose bib" },
+                                        "1": { "v": 3, "f": "=SUM(A1)" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+    let deck = n
+        .drive
+        .create(&rosa, None, "Club night.slslides", "file", None)
+        .unwrap();
+    n.drive
+        .write(
+            &rosa,
+            &deck.id,
+            None,
+            None,
+            &serde_json::to_vec(&serde_json::json!({
+                "kind": "slide",
+                "content": {
+                    "slides": {
+                        "a": {
+                            "elements": [{
+                                "content": "Welcome plot holders",
+                                "rows": [["North bed"]]
+                            }],
+                            "notes": "Bring the shed key"
+                        }
+                    }
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+    let form = n
+        .drive
+        .create(&rosa, None, "Sign up.slform", "file", None)
+        .unwrap();
+    n.drive
+        .write(
+            &rosa,
+            &form.id,
+            None,
+            None,
+            &serde_json::to_vec(&serde_json::json!({
+                "kind": "form",
+                "content": {
+                    "questions": [{
+                        "prompt": "Which plot",
+                        "choices": ["Large bed", "Small bed"]
+                    }],
+                    "responses": [{
+                        "answers": { "q1": "Alex covers the gate" }
+                    }]
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+    let named = n
+        .drive
+        .create(&rosa, None, "Pump schedule.sldoc", "file", None)
+        .unwrap();
+
+    let hose = n.drive.search(&rosa, "Hose").unwrap();
+    assert_eq!(hose.len(), 1);
+    assert_eq!(hose[0].id, sheet.id);
+    assert_eq!(hose[0].parent_name, "My Drive");
+    assert!(hose[0].snippet.contains("Hose"));
+    assert!(n.drive.search(&rosa, "SUM").unwrap().is_empty());
+
+    let notes = n.drive.search(&rosa, "shed").unwrap();
+    assert_eq!(notes.len(), 1);
+    assert_eq!(notes[0].id, deck.id);
+    assert!(notes[0].snippet.contains("shed"));
+    let table = n.drive.search(&rosa, "North").unwrap();
+    assert_eq!(table.len(), 1);
+    assert_eq!(table[0].id, deck.id);
+
+    let prompt = n.drive.search(&rosa, "Which plot").unwrap();
+    assert_eq!(prompt.len(), 1);
+    assert_eq!(prompt[0].id, form.id);
+    let choice = n.drive.search(&rosa, "Large").unwrap();
+    assert_eq!(choice.len(), 1);
+    assert_eq!(choice[0].id, form.id);
+    let answer = n.drive.search(&rosa, "gate").unwrap();
+    assert_eq!(answer.len(), 1);
+    assert_eq!(answer[0].id, form.id);
+
+    let by_name = n.drive.search(&rosa, "Pump").unwrap();
+    assert_eq!(by_name.len(), 1);
+    assert_eq!(by_name[0].id, named.id);
+    assert_eq!(by_name[0].parent_name, "My Drive");
+    assert!(by_name[0].snippet.contains("Pump"));
+    assert!(by_name[0].snippet.chars().count() <= 80);
+}
+
+#[test]
+fn search_reads_every_document_tab_and_names_it() {
+    let n = node();
+    let rosa = user("rosa");
+    let meeting = n
+        .drive
+        .create(&rosa, None, "October meeting.sldoc", "file", None)
+        .unwrap();
+    n.drive
+        .write(
+            &rosa,
+            &meeting.id,
+            None,
+            Some("application/vnd.suiteleaf.doc+json"),
+            &serde_json::to_vec(&serde_json::json!({
+                "kind": "doc",
+                "tabTitle": "Agenda",
+                "content": {
+                    "type": "doc",
+                    "content": [{
+                        "type": "paragraph",
+                        "content": [{
+                            "type": "text",
+                            "text": "Call to order. Treasurer's report."
+                        }]
+                    }]
+                },
+                "tabs": [{
+                    "id": "minutes",
+                    "title": "Minutes",
+                    "content": {
+                        "type": "doc",
+                        "content": [{
+                            "type": "paragraph",
+                            "content": [{
+                                "type": "text",
+                                "text": "Voted to buy compost."
+                            }]
+                        }]
+                    }
+                }]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+    let compost = n.drive.search(&rosa, "compost").unwrap();
+    assert_eq!(compost.len(), 1);
+    assert_eq!(compost[0].id, meeting.id);
+    assert!(compost[0].snippet.starts_with("Minutes:"));
+    assert!(compost[0].snippet.contains("Voted to buy compost."));
+    assert!(compost[0].snippet.chars().count() <= 80);
+
+    let order = n.drive.search(&rosa, "order").unwrap();
+    assert_eq!(order.len(), 1);
+    assert!(order[0].snippet.starts_with("Agenda:"));
+    assert!(order[0].snippet.contains("Call to order."));
+
+    let old = n
+        .drive
+        .create(&rosa, None, "Old notes.sldoc", "file", None)
+        .unwrap();
+    n.drive
+        .write(
+            &rosa,
+            &old.id,
+            None,
+            Some("application/vnd.suiteleaf.doc+json"),
+            &serde_json::to_vec(&serde_json::json!({
+                "kind": "doc",
+                "content": {
+                    "type": "doc",
+                    "content": [{
+                        "type": "paragraph",
+                        "content": [{
+                            "type": "text",
+                            "text": "Bring the hose."
+                        }]
+                    }]
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+    let hose = n.drive.search(&rosa, "hose").unwrap();
+    assert_eq!(hose.len(), 1);
+    assert_eq!(hose[0].id, old.id);
+    assert!(hose[0].snippet.contains("Bring the hose."));
+    assert!(!hose[0].snippet.starts_with("Document:"));
+}
+
+#[test]
+fn presence_names_other_people_and_drops_stale_beats() {
+    let n = node();
+    let sam = user("sam");
+    let jordan = user("jordan");
+    let casey = user("casey");
+    let file = n
+        .drive
+        .create(&sam, None, "Bake sale flyer.sldoc", "file", None)
+        .unwrap();
+    n.drive
+        .share(&sam, &file.id, "user", "jordan", Some(Role::Viewer))
+        .unwrap();
+    n.drive
+        .share(&sam, &file.id, "user", "casey", Some(Role::Commenter))
+        .unwrap();
+    let now = SystemTime::now();
+
+    n.drive
+        .report_presence(&jordan, &file.id, "Jordan", false, now)
+        .unwrap();
+    assert_eq!(
+        n.drive.presence(&sam, &file.id, now).unwrap(),
+        vec![Presence {
+            name: "Jordan".into(),
+            editing: false,
+        }]
+    );
+
+    n.drive
+        .report_presence(&sam, &file.id, "Sam Okafor", true, now)
+        .unwrap();
+    assert_eq!(
+        n.drive.presence(&sam, &file.id, now).unwrap(),
+        vec![Presence {
+            name: "Jordan".into(),
+            editing: false,
+        }],
+        "Sam does not see himself"
+    );
+    assert_eq!(
+        n.drive.presence(&jordan, &file.id, now).unwrap(),
+        vec![Presence {
+            name: "Sam Okafor".into(),
+            editing: true,
+        }]
+    );
+
+    n.drive
+        .report_presence(&jordan, &file.id, "Jordan", true, now)
+        .unwrap();
+    assert_eq!(
+        n.drive.presence(&sam, &file.id, now).unwrap(),
+        vec![Presence {
+            name: "Jordan".into(),
+            editing: true,
+        }]
+    );
+    assert!(
+        matches!(
+            n.drive.write(&jordan, &file.id, None, None, b"changed"),
+            Err(DriveError::Forbidden)
+        ),
+        "an editing beat does not let a viewer write"
+    );
+
+    n.drive
+        .report_presence(&casey, &file.id, "Casey", false, now)
+        .unwrap();
+    assert_eq!(
+        n.drive.presence(&sam, &file.id, now).unwrap(),
+        vec![
+            Presence {
+                name: "Casey".into(),
+                editing: false,
+            },
+            Presence {
+                name: "Jordan".into(),
+                editing: true,
+            },
+        ]
+    );
+    assert!(matches!(
+        n.drive.write(&casey, &file.id, None, None, b"changed"),
+        Err(DriveError::Forbidden)
+    ));
+
+    let stale = now - (PRESENCE_TTL + Duration::from_secs(1));
+    n.drive
+        .report_presence(&jordan, &file.id, "Jordan", true, stale)
+        .unwrap();
+    assert_eq!(
+        n.drive.presence(&sam, &file.id, now).unwrap(),
+        vec![Presence {
+            name: "Casey".into(),
+            editing: false,
+        }],
+        "a beat older than 15 seconds is absent"
+    );
+
+    let stranger = user("stranger");
+    assert!(matches!(
+        n.drive
+            .report_presence(&stranger, &file.id, "Pat", false, now),
+        Err(DriveError::Forbidden)
+    ));
+}
+
+#[test]
+fn list_spreadsheets_offers_a_sheet_the_caller_has_not_opened() {
+    let n = node();
+    let rosa = user("rosa");
+    let sam = user("sam");
+    let club = n
+        .drive
+        .create(&rosa, None, "Garden club", "folder", None)
+        .unwrap();
+    let plans = n
+        .drive
+        .create(&rosa, None, "Thursday plans", "folder", None)
+        .unwrap();
+    let roster = n
+        .drive
+        .create(
+            &rosa,
+            Some(&club.id),
+            "Garden members.slsheet",
+            "file",
+            None,
+        )
+        .unwrap();
+    n.drive
+        .write(
+            &rosa,
+            &roster.id,
+            None,
+            Some("application/vnd.suiteleaf.sheet+json"),
+            br#"{"kind":"sheet"}"#,
+        )
+        .unwrap();
+    let twin = n
+        .drive
+        .create(
+            &rosa,
+            Some(&plans.id),
+            "Garden members.slsheet",
+            "file",
+            None,
+        )
+        .unwrap();
+    let top = n
+        .drive
+        .create(&rosa, None, "Beds.slsheet", "file", None)
+        .unwrap();
+    let letter = n
+        .drive
+        .create(&rosa, Some(&club.id), "Plot letter.sldoc", "file", None)
+        .unwrap();
+    let secret = n
+        .drive
+        .create(&sam, None, "Secret.slsheet", "file", None)
+        .unwrap();
+    let shared_folder = n
+        .drive
+        .create(&sam, None, "Shared plots", "folder", None)
+        .unwrap();
+    let shared = n
+        .drive
+        .create(
+            &sam,
+            Some(&shared_folder.id),
+            "Shared.slsheet",
+            "file",
+            None,
+        )
+        .unwrap();
+    n.drive
+        .share(&sam, &shared_folder.id, "user", "rosa", Some(Role::Viewer))
+        .unwrap();
+    let old = n
+        .drive
+        .create(&rosa, Some(&club.id), "Old.slsheet", "file", None)
+        .unwrap();
+    n.drive
+        .update(&rosa, &old.id, None, None, Some(true))
+        .unwrap();
+    let archive = n
+        .drive
+        .create(&rosa, None, "Archive", "folder", None)
+        .unwrap();
+    let buried = n
+        .drive
+        .create(&rosa, Some(&archive.id), "Buried.slsheet", "file", None)
+        .unwrap();
+    n.drive
+        .update(&rosa, &archive.id, None, None, Some(true))
+        .unwrap();
+
+    // Listing does not read the file. The dialog can offer it before anyone
+    // opens it on this computer.
+    let hits = n.drive.list_spreadsheets(&rosa).unwrap();
+    let garden = hits.iter().find(|hit| hit.id == roster.id).unwrap();
+    assert_eq!(garden.name, "Garden members.slsheet");
+    assert_eq!(garden.parent_name, "Garden club");
+    let other = hits.iter().find(|hit| hit.id == twin.id).unwrap();
+    assert_eq!(other.name, garden.name);
+    assert_eq!(other.parent_name, "Thursday plans");
+    assert_ne!(garden.parent_name, other.parent_name);
+    assert_eq!(
+        hits.iter()
+            .find(|hit| hit.id == top.id)
+            .unwrap()
+            .parent_name,
+        "My Drive"
+    );
+    assert!(hits
+        .iter()
+        .any(|hit| { hit.id == shared.id && hit.parent_name == "Shared plots" }));
+    assert!(hits.iter().all(|hit| hit.id != letter.id));
+    assert!(hits.iter().all(|hit| hit.id != secret.id));
+    assert!(hits.iter().all(|hit| hit.id != old.id));
+    assert!(hits.iter().all(|hit| hit.id != buried.id));
+    assert!(n
+        .drive
+        .list_folders(&rosa)
+        .unwrap()
+        .iter()
+        .all(|folder| folder.id != shared_folder.id));
+
+    let listed = serde_json::to_value(garden).unwrap();
+    assert_eq!(listed["parentName"], "Garden club");
+    assert!(listed.get("bytes").is_none());
+    assert!(listed.get("content").is_none());
+    assert!(n
+        .drive
+        .list_spreadsheets(&sam)
+        .unwrap()
+        .iter()
+        .all(|hit| hit.id != roster.id));
 }

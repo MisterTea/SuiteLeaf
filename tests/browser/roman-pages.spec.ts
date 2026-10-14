@@ -3,15 +3,15 @@ import { readFile } from "node:fs/promises";
 import JSZip from "jszip";
 import { createFile, serializeFile, type DocFile } from "../../packages/core/src";
 
-function report(): DocFile {
-  const file = createFile("doc", "Field report") as DocFile;
+function report(restart = false): DocFile {
+  const file = createFile("doc", restart ? "Field report restart" : "Field report") as DocFile;
   const paragraph = (text: string) => ({
     type: "paragraph",
     content: [{ type: "text", text }],
   });
-  const heading = (text: string) => ({
+  const heading = (text: string, startArabic = false) => ({
     type: "heading",
-    attrs: { level: 1 },
+    attrs: startArabic ? { level: 1, startArabic: true } : { level: 1 },
     content: [{ type: "text", text }],
   });
   file.content = {
@@ -24,7 +24,7 @@ function report(): DocFile {
         header: "",
         footer: "Draft",
         pageNumbers: true,
-        pageNumberFormat: "page",
+        pageNumberFormat: restart ? "roman" : "page",
         pageNumberPosition: "bottom-center",
         pageNumberPositionSet: true,
       },
@@ -36,7 +36,7 @@ function report(): DocFile {
       heading("Figures"),
       paragraph("The site plan and the chart."),
       { type: "pageBreak" },
-      heading("Chapter 1"),
+      heading("Chapter 1", restart),
       paragraph("The survey began in March along the north ridge."),
       { type: "pageBreak" },
       paragraph("The first chapter continues with the soil samples."),
@@ -45,12 +45,12 @@ function report(): DocFile {
   return file;
 }
 
-async function openReport(page: Page) {
+async function openReport(page: Page, restart = false) {
   await page.goto("/");
   await page.locator("input[type=file]").setInputFiles({
     name: "Field report.sldoc",
     mimeType: "application/json",
-    buffer: Buffer.from(serializeFile(report())),
+    buffer: Buffer.from(serializeFile(report(restart))),
   });
   await expect(page.locator(".editor-status")).toContainText("4 pages");
 }
@@ -89,15 +89,10 @@ test("lowercase roman and an arabic restart survive save and Word export", async
   await expect(face(page, 0).locator(".page-footer-text")).toHaveText("Draft");
   await expect(face(page, 1).locator(".page-footer-text")).toHaveText("Draft");
 
-  await page.getByRole("heading", { name: "Chapter 1" }).click();
-  const start = page.getByRole("button", { name: "Start Arabic numbers here" });
-  await expect(start).toBeEnabled();
-  await expect(page.locator(".outline .arabic-start-hint")).toContainText("Chapter 1");
-  await start.click();
-  await expect(
-    page.getByRole("button", { name: "Arabic numbers start here" }),
-  ).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Start Arabic numbers here" })).toHaveCount(0);
+  await expect(page.locator(".arabic-start")).toHaveCount(0);
+
+  await openReport(page, true);
   await expect(page.locator(".page-number")).toHaveText(["i", "ii", "1", "2"]);
   await expect(face(page, 2).locator(".page-footer-text")).toHaveText("Draft");
   await expect(face(page, 3).locator(".page-footer-text")).toHaveText("Draft");
@@ -121,7 +116,7 @@ test("lowercase roman and an arabic restart survive save and Word export", async
   expect(chapter.content[0].text).toBe("Chapter 1");
 
   await page.getByRole("button", { name: "Back to files" }).click();
-  await page.getByRole("link", { name: "Field report" }).click();
+  await page.getByRole("link", { name: "Field report restart" }).click();
   await expect(page.locator(".editor-status")).toContainText("4 pages");
   await expect(page.locator(".page-number")).toHaveText(["i", "ii", "1", "2"]);
   await expect(face(page, 0).locator(".page-footer-text")).toHaveText("Draft");

@@ -9,25 +9,43 @@ import {
   reminderLines,
 } from "../keep-lines-doc";
 
-async function seed(page: Page) {
+function withKeepLines(record: ReturnType<typeof keepLinesRecord>) {
+  const file = JSON.parse(record.native) as {
+    content: { content: Array<{ type: string; attrs?: Record<string, unknown> }> };
+  };
+  const reminder = file.content.content.find(
+    (node) => node.type === "paragraph" && JSON.stringify(node).includes("Bring gloves"),
+  );
+  if (!reminder) throw new Error("missing reminder");
+  reminder.attrs = { ...reminder.attrs, keepLines: true };
+  return { ...record, native: JSON.stringify(file) };
+}
+
+async function seed(page: Page, record = keepLinesRecord()) {
   await page.goto("/");
   await page.getByRole("button", { name: "New document" }).waitFor();
-  await page.evaluate(async (record) => {
+  await page.evaluate(async (stored) => {
     await new Promise<void>((resolve, reject) => {
       const open = indexedDB.open("SuiteLeaf");
       open.onerror = () => reject(open.error);
       open.onsuccess = () => {
         const db = open.result;
         const tx = db.transaction("encoded", "readwrite");
-        tx.objectStore("encoded").put(record);
+        tx.objectStore("encoded").put(stored);
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error);
       };
     });
-  }, keepLinesRecord());
+  }, record);
   await page.reload();
   await page.getByRole("link", { name: "Garden club news" }).click();
   await expect(page.getByRole("heading", { name: keepLinesHeading })).toBeVisible();
+}
+
+async function expectNoPaginationSwitches(page: Page) {
+  await expect(page.getByRole("button", { name: /Keep with next/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Don't leave one line/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Keep lines together/ })).toHaveCount(0);
 }
 
 /** Page index of a phrase, using the paragraph's text even when marks split it. */
@@ -109,7 +127,7 @@ function paragraphsOf(xml: string) {
   return [...xml.matchAll(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g)].map((match) => match[0]);
 }
 
-test("keep lines together moves a split paragraph onto one page", async ({ page }) => {
+test("typing in a reminder does not show pagination switches", async ({ page }) => {
   await seed(page);
   const [first] = reminderLines;
   await expect.poll(() => lines(page)).toEqual({
@@ -119,58 +137,15 @@ test("keep lines together moves a split paragraph onto one page", async ({ page 
     middle: 1,
     last: 1,
   });
-
   await clickTextLine(page, first);
-  const off = page.getByRole("button", { name: "Keep lines together, off" });
-  await expect(off).toBeVisible();
-  await expect(off).toHaveAttribute("aria-pressed", "false");
-  await expect(page.getByRole("button", { name: "Keep with next, off" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Don't leave one line, off" })).toBeVisible();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  const piled = await page.evaluate(() => {
-    const mine = document.querySelector(".keep-lines-control");
-    const others = [".keep-next-control", ".widow-control"]
-      .map((selector) => document.querySelector(selector))
-      .filter((el): el is HTMLElement => el instanceof HTMLElement);
-    const reminder = [...document.querySelectorAll("p")].find((el) =>
-      el.textContent?.includes("Bring gloves"),
-    );
-    if (!(mine instanceof HTMLElement) || !reminder || others.length !== 2) return "missing";
-    const range = document.createRange();
-    range.selectNodeContents(reminder);
-    const textRects = [...range.getClientRects()].filter(
-      (text) => text.height > 8 && text.height < 36 && text.width > 8,
-    );
-    const box = mine.getBoundingClientRect();
-    const coversText = textRects.some(
-      (text) =>
-        box.right > text.left + 4 &&
-        box.left < text.right - 4 &&
-        box.bottom > text.top + 4 &&
-        box.top < text.bottom - 4,
-    );
-    const hitsOther = others.some((other) => {
-      const them = other.getBoundingClientRect();
-      return (
-        box.right > them.left + 2 &&
-        box.left < them.right - 2 &&
-        box.bottom > them.top + 2 &&
-        box.top < them.bottom - 2
-      );
-    });
-    return coversText ? "text" : hitsOther ? "control" : "clear";
-  });
-  expect(piled).toBe("clear");
+  await page.keyboard.type("x");
+  await expectNoPaginationSwitches(page);
+});
 
-  await off.click();
-  await expect(page.getByRole("button", { name: "Keep lines together, on" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+test("a saved keep-lines paragraph stays on one page", async ({ page }) => {
+  await seed(page, withKeepLines(keepLinesRecord()));
+  const [first] = reminderLines;
   await expect(page.locator("p", { hasText: first })).toHaveAttribute("data-keep-lines", "true");
-  await expect(page.getByRole("button", { name: "Keep with next, off" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Don't leave one line, off" })).toBeVisible();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect.poll(() => lines(page)).toEqual({
     heading: 0,
     spacer: 0,
@@ -178,41 +153,8 @@ test("keep lines together moves a split paragraph onto one page", async ({ page 
     middle: 1,
     last: 1,
   });
-
-  await page.getByRole("button", { name: "Keep lines together, on" }).click();
-  await expect(page.getByRole("button", { name: "Keep lines together, off" })).toBeVisible();
-  await expect.poll(() => lines(page)).toEqual({
-    heading: 0,
-    spacer: 0,
-    first: 0,
-    middle: 1,
-    last: 1,
-  });
-
-  await page.getByRole("button", { name: "Keep lines together, off" }).click();
-  await expect.poll(() => lines(page)).toEqual({
-    heading: 0,
-    spacer: 0,
-    first: 1,
-    middle: 1,
-    last: 1,
-  });
-  await expect(page.locator(".save-status")).toContainText("Saved", { timeout: 5000 });
-  await page.getByRole("button", { name: "Back to files" }).click();
-  await page.getByRole("link", { name: "Garden club news" }).click();
-  await expect(page.getByRole("heading", { name: keepLinesHeading })).toBeVisible();
-  await expect.poll(() => lines(page)).toEqual({
-    heading: 0,
-    spacer: 0,
-    first: 1,
-    middle: 1,
-    last: 1,
-  });
-  await clickTextLine(page, reminderLines[2]);
-  await expect(page.getByRole("button", { name: "Keep lines together, on" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await clickTextLine(page, first);
+  await expectNoPaginationSwitches(page);
 
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "File", exact: true }).click();

@@ -76,24 +76,29 @@ test("sheet feature panels, tab grouping and colors persist, XLSX downloads", as
   page.on("pageerror", (e) => errors.push(e.stack || e.message));
   await page.goto("/");
   await page.getByRole("button", { name: "Sample budget" }).click();
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).click();
+  await page.getByRole("button", { name: "Data", exact: true }).click();
   await page
     .getByRole("menuitem", { name: "Data validation", exact: true })
     .click();
   await expect(page.locator("body")).toContainText("Data validation");
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).click();
+  await page.getByRole("button", { name: "Format", exact: true }).click();
   await page
     .getByRole("menuitem", { name: "Conditional formatting", exact: true })
     .click();
   await expect(page.locator("body")).toContainText("Conditional Formatting");
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).click();
+  await page.getByRole("button", { name: "Data", exact: true }).click();
   await page
-    .getByRole("menuitem", { name: "Tabs and protection…", exact: true })
+    .getByRole("menuitem", { name: "Protect sheets and ranges", exact: true })
     .click();
   const dialog = page.getByRole("dialog", { name: "Tabs and protection" });
   await dialog.getByPlaceholder("e.g. Quarterly reports").fill("Finance");
   await dialog.getByRole("button", { name: "Assign group" }).click();
-  await dialog.getByLabel("Tab color for Sheet1").fill("#ff0000");
+  await dialog.getByRole("button", { name: "Tab color for Sheet1" }).click();
+  const picker = page.getByRole("dialog", { name: "Tab color for Sheet1" });
+  await picker.getByRole("spinbutton", { name: "Red" }).fill("255");
+  await picker.getByRole("spinbutton", { name: "Green" }).fill("0");
+  await picker.getByRole("spinbutton", { name: "Blue" }).fill("0");
+  await picker.getByRole("spinbutton", { name: "Blue" }).press("Enter");
   await dialog
     .getByRole("button", { name: "Close tabs and protection" })
     .click();
@@ -114,21 +119,21 @@ test("cell notes and range protection survive reopen and can be removed", async 
   await page.getByRole("button", { name: "Sample budget" }).click();
   const box = page.locator(".sheet-host input.univer-size-full");
   await page
-    .getByRole("button", { name: "Sheet tools", exact: true })
+    .getByRole("toolbar", { name: "Spreadsheet formatting" })
     .waitFor();
   const initialBounds = await page.locator(".sheet-host").boundingBox();
   if (!initialBounds) throw new Error();
   await page.mouse.click(initialBounds.x + 195, initialBounds.y + 82);
   await expect(box).toHaveValue("B2");
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Add or edit cell note" }).click();
+  await page.getByRole("button", { name: "Insert", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Note", exact: true }).click();
   // Univer focuses the note box once it has loaded the cell's note; text
   // typed before then is discarded.
   const note = page.locator('[data-u-comp="note-textarea"]');
   await expect(note).toBeFocused();
   await note.fill("Review this budget amount");
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Tabs and protection…" }).click();
+  await page.getByRole("button", { name: "Data", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Protect sheets and ranges", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Tabs and protection" });
   await dialog.getByRole("button", { name: "Protect selected range" }).click();
   await expect(
@@ -147,7 +152,7 @@ test("cell notes and range protection survive reopen and can be removed", async 
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Quarterly studio budget" }).click();
   await page
-    .getByRole("button", { name: "Sheet tools", exact: true })
+    .getByRole("toolbar", { name: "Spreadsheet formatting" })
     .waitFor();
   const bounds = await page.locator(".sheet-host").boundingBox();
   if (!bounds) throw new Error();
@@ -158,8 +163,8 @@ test("cell notes and range protection survive reopen and can be removed", async 
   expect(
     (await native(page)).content.workbook.sheets[id].cellData[1][1].v,
   ).toBe(before);
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Tabs and protection…" }).click();
+  await page.getByRole("button", { name: "Data", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Protect sheets and ranges", exact: true }).click();
   await dialog.getByRole("button", { name: "Remove protection" }).click();
   await expect(
     dialog.getByRole("button", { name: "Remove protection" }),
@@ -184,7 +189,7 @@ test("cell comment threads can be authored and reopened locally", async ({
   await page.goto("/");
   await page.getByRole("button", { name: "Sample budget" }).click();
   await page
-    .getByRole("button", { name: "Sheet tools", exact: true })
+    .getByRole("toolbar", { name: "Spreadsheet formatting" })
     .waitFor();
   await page
     .getByRole("button", { name: "Insert comment (Cmd+Option+M)" })
@@ -200,7 +205,7 @@ test("cell comment threads can be authored and reopened locally", async ({
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Quarterly studio budget" }).click();
   await page
-    .getByRole("button", { name: "Sheet tools", exact: true })
+    .getByRole("toolbar", { name: "Spreadsheet formatting" })
     .waitFor();
   await page.getByRole("button", { name: "Comments", exact: true }).click();
   await expect(page.locator("body")).toContainText("Please review this budget");
@@ -212,13 +217,13 @@ test("an open cell note closes when the name box moves the selection", async ({
   await page.goto("/");
   await page.getByRole("button", { name: "Sample budget" }).click();
   await page
-    .getByRole("button", { name: "Sheet tools", exact: true })
+    .getByRole("toolbar", { name: "Spreadsheet formatting" })
     .waitFor();
   const box = page.locator(".sheet-host input.univer-size-full");
   await box.fill("C3");
   await box.press("Enter");
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Add or edit cell note" }).click();
+  await page.getByRole("button", { name: "Insert", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Note", exact: true }).click();
   const note = page.locator('[data-u-comp="note-textarea"]');
   await expect(note).toBeFocused();
   await note.fill("Includes the September invoice");
@@ -236,9 +241,9 @@ test("comments are signed with the local name and keep it on another computer", 
   await page.goto("/");
   await page.getByRole("button", { name: "Sample budget" }).click();
   await page
-    .getByRole("button", { name: "Sheet tools", exact: true })
+    .getByRole("toolbar", { name: "Spreadsheet formatting" })
     .waitFor();
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).click();
+  await page.getByRole("button", { name: "Tools", exact: true }).click();
   await page
     .getByRole("menuitem", { name: "Your name on comments…" })
     .click();
@@ -269,7 +274,7 @@ test("comments are signed with the local name and keep it on another computer", 
     buffer: Buffer.from(JSON.stringify(saved)),
   });
   await jordan
-    .getByRole("button", { name: "Sheet tools", exact: true })
+    .getByRole("toolbar", { name: "Spreadsheet formatting" })
     .waitFor();
   await jordan.getByRole("button", { name: "Comments", exact: true }).click();
   const jordanPanel = jordan.getByRole("complementary", {
@@ -289,7 +294,7 @@ test("checkbox validation can be created from the Insert menu and reopened", asy
   await page.goto("/");
   await page.getByRole("button", { name: "Sample budget" }).click();
   await page
-    .getByRole("button", { name: "Sheet tools", exact: true })
+    .getByRole("toolbar", { name: "Spreadsheet formatting" })
     .waitFor();
   const box = page.locator(".sheet-host input.univer-size-full");
   await box.fill("A8");
@@ -304,7 +309,7 @@ test("checkbox validation can be created from the Insert menu and reopened", asy
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Quarterly studio budget" }).click();
   await page
-    .getByRole("button", { name: "Sheet tools", exact: true })
+    .getByRole("toolbar", { name: "Spreadsheet formatting" })
     .waitFor();
   const restored = await native(page);
   expect(
@@ -336,7 +341,7 @@ async function openChecklist(page: Page, resources: unknown[] = []) {
     buffer: Buffer.from(serializeFile(file)),
   });
   await page
-    .getByRole("button", { name: "Sheet tools", exact: true })
+    .getByRole("toolbar", { name: "Spreadsheet formatting" })
     .waitFor();
   const box = page.locator(".sheet-host input.univer-size-full");
   await box.fill("A2:A4");

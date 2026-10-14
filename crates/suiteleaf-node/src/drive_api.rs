@@ -1,7 +1,10 @@
 //! `/api/drive`: the SuiteDrive REST API. Every route requires a signed-in
 //! user and checks SuiteDrive ACLs.
 
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::Arc,
+    time::{Duration, SystemTime},
+};
 
 use axum::{
     Json, Router,
@@ -246,6 +249,35 @@ async fn list_folders(
         })
         .collect();
     Ok(Json(json!({ "folders": folders })).into_response())
+}
+
+#[derive(Deserialize)]
+struct SearchQuery {
+    q: Option<String>,
+}
+
+/// Files whose name or text contains `q`. Hits are id, name, folder, and a
+/// snippet. File bytes are not part of this response.
+async fn search_files(
+    State(s): State<AppState>,
+    RequireUser(user): RequireUser,
+    Query(q): Query<SearchQuery>,
+) -> ApiResult<Response> {
+    let who = principal(&user);
+    let query = q.q.unwrap_or_default();
+    let hits = blocking(&s.drive, move |d| d.search(&who, &query)).await?;
+    Ok(Json(json!({ "hits": hits })).into_response())
+}
+
+/// Spreadsheets the caller can read, including files inside folders. Each
+/// row is id, name, and the parent folder name. File bytes are not included.
+async fn list_spreadsheets(
+    State(s): State<AppState>,
+    RequireUser(user): RequireUser,
+) -> ApiResult<Response> {
+    let who = principal(&user);
+    let spreadsheets = blocking(&s.drive, move |d| d.list_spreadsheets(&who)).await?;
+    Ok(Json(json!({ "spreadsheets": spreadsheets })).into_response())
 }
 
 async fn list_trash(
@@ -829,6 +861,44 @@ async fn post_public_response(
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
+#[derive(Deserialize)]
+struct PresenceBody {
+    editing: bool,
+}
+
+fn session_name(user: &AuthUser) -> String {
+    user.name.clone().unwrap_or_default()
+}
+
+/// The caller has this file open. Viewers and commenters may report it.
+/// `editing` does not change their role.
+async fn post_presence(
+    State(s): State<AppState>,
+    RequireUser(user): RequireUser,
+    Path(id): Path<String>,
+    Json(body): Json<PresenceBody>,
+) -> ApiResult<Response> {
+    let who = principal(&user);
+    let name = session_name(&user);
+    let editing = body.editing;
+    blocking(&s.drive, move |d| {
+        d.report_presence(&who, &id, &name, editing, SystemTime::now())
+    })
+    .await?;
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// Other people with a beat from the last 15 seconds. The caller is omitted.
+async fn get_presence(
+    State(s): State<AppState>,
+    RequireUser(user): RequireUser,
+    Path(id): Path<String>,
+) -> ApiResult<Response> {
+    let who = principal(&user);
+    let people = blocking(&s.drive, move |d| d.presence(&who, &id, SystemTime::now())).await?;
+    Ok(Json(json!({ "people": people })).into_response())
+}
+
 /// An owned copy in the caller's My Drive. Not a shortcut, and not mail.
 async fn keep_copy(
     State(s): State<AppState>,
@@ -847,6 +917,8 @@ pub fn router(state: AppState) -> Router {
         .route("/api/drive/items", get(list).post(create))
         .route("/api/drive/folders", get(list_folders))
         .route("/api/drive/trash", get(list_trash))
+        .route("/api/drive/search", get(search_files))
+        .route("/api/drive/spreadsheets", get(list_spreadsheets))
         .route(
             "/api/drive/items/{id}",
             get(get_item).patch(update).delete(delete_forever),
@@ -877,6 +949,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/drive/items/{id}/comments",
             get(list_comments).post(add_comment),
+        )
+        .route(
+            "/api/drive/items/{id}/presence",
+            get(get_presence).post(post_presence),
         )
         .route("/api/drive/items/{id}/copy", post(keep_copy))
         .route(

@@ -171,7 +171,7 @@ test("View menu freezes rows and columns, hides gridlines and the formula bar, a
 
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Freeze regression" }).click();
-  await expect(page.getByRole("button", { name: "Sheet tools", exact: true })).toBeVisible();
+  await expect(page.getByRole("toolbar", { name: "Spreadsheet formatting" })).toBeVisible();
   await view("Freeze");
   await expect(choice("1 row")).toHaveAttribute("aria-checked", "true");
   await expect(choice("No columns")).toHaveAttribute("aria-checked", "true");
@@ -189,7 +189,7 @@ async function newSheet(page: Page, rows: string[][]) {
   await page.goto("/");
   await page.getByRole("button", { name: "New spreadsheet" }).click();
   await page
-    .getByRole("button", { name: "Sheet tools", exact: true })
+    .getByRole("toolbar", { name: "Spreadsheet formatting" })
     .waitFor();
   const box = page.locator(".sheet-host input.univer-size-full");
   const select = async (ref: string) => {

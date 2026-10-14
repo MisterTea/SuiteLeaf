@@ -28,7 +28,7 @@ for (const format of ["DOCX", "XLSX"] as const)
       } else {
         await page.getByRole("button", { name: "Sample budget" }).click();
         await page
-          .getByRole("button", { name: "Sheet tools", exact: true })
+          .getByRole("toolbar", { name: "Spreadsheet formatting" })
           .waitFor();
       }
       await page.getByRole("button", { name: "File", exact: true }).click();

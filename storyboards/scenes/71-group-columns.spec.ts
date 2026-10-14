@@ -60,7 +60,7 @@ test("71-group-columns", async ({ page }) => {
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),
   });
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).waitFor();
+  await page.getByRole("toolbar", { name: "Spreadsheet formatting" }).waitFor();
   await beat(page, 800);
   await caption(page, "Column A is the category. Columns B–M are the months. The year total is still past the right edge.", 2000);
 
@@ -132,7 +132,7 @@ test("71-group-columns", async ({ page }) => {
   await page.getByRole("button", { name: "Back to files" }).click();
   await caption(page, "She leaves Rent budget and opens it again.", 1200);
   await page.getByRole("link", { name: "Rent budget" }).click();
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).waitFor();
+  await page.getByRole("toolbar", { name: "Spreadsheet formatting" }).waitFor();
   await expect(page.locator(".column-group-controls")).toHaveAttribute(
     "data-collapsed",
     "2,3,4,5,6,7,8,9,10,11,12",

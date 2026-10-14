@@ -20,7 +20,7 @@ async function openSuppliers(page: Page) {
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),
   });
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).waitFor();
+  await page.getByRole("toolbar", { name: "Spreadsheet formatting" }).waitFor();
 }
 
 async function select(page: Page, ref: string) {
@@ -60,7 +60,7 @@ test("a cell link keeps its label, refuses unsafe addresses, and survives the fi
   await page.mouse.click(host.x + 46 + 40, host.y + 58 + 24);
   await page.waitForTimeout(300);
   expect(popped).toBe(false);
-  await expect(page.getByRole("button", { name: "Sheet tools", exact: true })).toBeVisible();
+  await expect(page.getByRole("toolbar", { name: "Spreadsheet formatting" })).toBeVisible();
 
   const popupPromise = page.waitForEvent("popup");
   await link.click();

@@ -1,5 +1,4 @@
 import { Extension, findParentNode } from "@tiptap/core";
-import { useEditorState, type Editor } from "@tiptap/react";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -63,48 +62,3 @@ export const ArabicNumberStart = Extension.create({
     };
   },
 });
-
-/** Marks the heading at the caret. Hidden copy is for narrow screens, where the outline is gone. */
-export function ArabicStartControl({
-  editor,
-  readOnly = false,
-  phone = false,
-}: {
-  editor: Editor | null;
-  readOnly?: boolean;
-  phone?: boolean;
-}) {
-  const mark = useEditorState({
-    editor,
-    selector: ({ editor: current }) => {
-      if (!current?.isActive("heading")) return null;
-      const text = current.state.selection.$from.parent.textContent.trim();
-      return {
-        on: current.getAttributes("heading").startArabic === true,
-        text,
-      };
-    },
-  });
-  const name = mark?.text || "this heading";
-  return (
-    <div className={phone ? "arabic-start arabic-start-phone" : "arabic-start"}>
-      <button
-        type="button"
-        className="arabic-start-btn"
-        aria-pressed={mark?.on ?? false}
-        disabled={!mark || readOnly || !editor}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={() => editor?.chain().focus().toggleArabicNumberStart().run()}
-      >
-        {mark?.on ? "Arabic numbers start here" : "Start Arabic numbers here"}
-      </button>
-      <p className="arabic-start-hint">
-        {mark?.on
-          ? `“${name}” is page 1. Pages before it stay i, ii.`
-          : mark
-            ? `“${name}” becomes page 1. Pages before it stay as they are.`
-            : "Click a heading, then start Arabic numbers on its page."}
-      </p>
-    </div>
-  );
-}

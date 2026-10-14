@@ -18,7 +18,7 @@ async function selectCells(page: Page, ref: string) {
 }
 
 async function sheetReady(page: Page) {
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).waitFor();
+  await page.getByRole("toolbar", { name: "Spreadsheet formatting" }).waitFor();
 }
 
 test("home shows two templates of each kind and the gallery is one click away", async ({

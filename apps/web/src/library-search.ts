@@ -4,16 +4,37 @@ import type { JsonNode, SuiteFile } from "@suiteleaf/core";
 const limit = 200_000;
 const texts = new WeakMap<SuiteFile, string>();
 
+function plainDoc(node: JsonNode): string {
+  const parts: string[] = [];
+  const walk = (n: JsonNode) => {
+    if (n.text) parts.push(n.text);
+    else if (n.type === "hardBreak") parts.push(" ");
+    n.content?.forEach(walk);
+    if (n.content && n.type !== "text") parts.push(" ");
+  };
+  walk(node);
+  return parts.join("").replace(/\s+/g, " ").trim();
+}
+
+/** One string per tab. A single tab is just its text. Extra tabs are `Name: text`. */
+function docSections(file: Extract<SuiteFile, { kind: "doc" }>): string[] {
+  const extras = file.tabs ?? [];
+  const first = plainDoc(file.content);
+  if (!extras.length) return [first];
+  const named = (label: string, text: string) =>
+    text ? `${label}: ${text}` : `${label}:`;
+  return [
+    named(file.tabTitle?.trim() || "Document", first),
+    ...extras.map((tab, index) =>
+      named(tab.title.trim() || `Tab ${index + 2}`, plainDoc(tab.content)),
+    ),
+  ];
+}
+
 function collect(file: SuiteFile): string[] {
   const parts: string[] = [];
   if (file.kind === "doc") {
-    const walk = (n: JsonNode) => {
-      if (n.text) parts.push(n.text);
-      else if (n.type === "hardBreak") parts.push(" ");
-      n.content?.forEach(walk);
-      if (n.content && n.type !== "text") parts.push(" ");
-    };
-    walk(file.content);
+    for (const section of docSections(file)) parts.push(section, " ");
   } else if (file.kind === "sheet") {
     const { workbook } = file.content;
     for (const id of workbook.sheetOrder) {
@@ -68,18 +89,25 @@ export function fileText(file: SuiteFile): string {
  * Whether `file` matches a library search. A match inside the file (rather
  * than its name) comes with a short excerpt around the first hit.
  */
+function quote(text: string, q: string, at: number): string {
+  const start = Math.max(0, text.lastIndexOf(" ", Math.max(0, at - 30)) + 1),
+    end = Math.min(text.length, at + q.length + 60);
+  return `${start > 0 ? "…" : ""}${text.slice(start, end).trim()}${end < text.length ? "…" : ""}`;
+}
+
 export function searchFile(
   file: SuiteFile,
   query: string,
 ): { snippet?: string } | null {
   const q = query.trim().toLowerCase();
   if (!q || file.title.toLowerCase().includes(q)) return {};
-  const text = fileText(file),
-    at = text.toLowerCase().indexOf(q);
-  if (at < 0) return null;
-  const start = Math.max(0, text.lastIndexOf(" ", Math.max(0, at - 30)) + 1),
-    end = Math.min(text.length, at + q.length + 60);
-  return {
-    snippet: `${start > 0 ? "…" : ""}${text.slice(start, end).trim()}${end < text.length ? "…" : ""}`,
-  };
+  // A later tab is quoted on its own, so the excerpt starts with that tab's name.
+  const sections =
+    file.kind === "doc" && file.tabs?.length ? docSections(file) : [fileText(file)];
+  for (const text of sections) {
+    const at = text.toLowerCase().indexOf(q);
+    if (at < 0) continue;
+    return { snippet: quote(text, q, at) };
+  }
+  return null;
 }

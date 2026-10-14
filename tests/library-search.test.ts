@@ -70,4 +70,31 @@ describe("library search", () => {
     expect(searchFile(slides, "planting")).not.toBeNull();
     expect(searchFile(slides, "volunteers")?.snippet).toContain("Thank the volunteers");
   });
+
+  it("finds a word that lives only on a later document tab", () => {
+    const file = doc("October meeting", "Call to order. Treasurer's report.");
+    file.tabTitle = "Agenda";
+    file.tabs = [
+      {
+        id: "minutes",
+        title: "Minutes",
+        content: {
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "Voted to buy compost." }],
+            },
+          ],
+        },
+      },
+    ];
+    expect(fileText(file)).toContain("Call to order. Treasurer's report.");
+    expect(fileText(file)).toContain("Minutes: Voted to buy compost.");
+    const hit = searchFile(file, "compost");
+    expect(hit?.snippet?.startsWith("Minutes:")).toBe(true);
+    expect(hit?.snippet).toContain("Voted to buy compost.");
+    expect(searchFile(file, "order")?.snippet?.startsWith("Agenda:")).toBe(true);
+    expect(searchFile(file, "tomatoes")).toBeNull();
+  });
 });

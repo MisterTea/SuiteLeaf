@@ -99,7 +99,7 @@ async function chooseFile(
   const chooserPromise = page.waitForEvent("filechooser");
   await choose.click();
   await (await chooserPromise).setFiles(file);
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).waitFor();
+  await page.getByRole("toolbar", { name: "Spreadsheet formatting" }).waitFor();
   await beat(page, 900);
 }
 

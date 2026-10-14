@@ -53,6 +53,7 @@ import {
   kindFromName,
   nativeFilename,
   mimeFor,
+  parseNamedFile,
   readLibraryMarks,
   serializeFile,
   type SuiteFile,
@@ -90,6 +91,7 @@ import {
   uploadDriveFile,
   type DriveItem,
   type DriveRole,
+  type FilePresence,
 } from "./node-client";
 import {
   DriveBrowser,
@@ -273,6 +275,11 @@ function savedWhen(iso: string) {
       ? ""
       : `on ${at.toLocaleDateString(undefined, { month: "short", day: "numeric" })} `;
   return `A newer version was saved ${day}at ${time}.`;
+}
+/** Status after an idle open file picks up someone else's SuiteDrive save. */
+function remoteAuthorStatus(name: string | null | undefined) {
+  const trimmed = name?.trim();
+  return trimmed ? `${trimmed} updated this.` : "Someone else updated this.";
 }
 class ErrorBoundary extends Component<
   { children: ReactNode },
@@ -1354,6 +1361,8 @@ function Workspace() {
     driveQueue = useRef(driveQueueFor(id!)),
     driveTimer = useRef<ReturnType<typeof setTimeout>>(undefined),
     driveConflictRef = useRef<DriveItem | null>(null),
+    /** Bumped when a remote save replaces the open file, so a queued upload of the old bytes is dropped. */
+    driveGeneration = useRef(0),
     snapshotExplicit = useRef(false),
     /** Folder of the open SuiteDrive file. `null` is the top of My Drive. */
     driveParentId = useRef<string | null>(null);
@@ -1370,6 +1379,7 @@ function Workspace() {
     [shareOpen, setShareOpen] = useState(false),
     [signUpOpen, setSignUpOpen] = useState(false),
     [driveRole, setDriveRole] = useState<DriveRole | "local" | null>(null),
+    [othersHere, setOthersHere] = useState<FilePresence[]>([]),
     { mode } = useMode(),
     cluster = mode.kind === "cluster";
   const canEditRef = useRef(true);
@@ -1422,17 +1432,24 @@ function Workspace() {
       return;
     }
     const at = version.current;
+    const generation = driveGeneration.current;
     const snapshot = structuredClone(current.current.file);
+    let uploaded = false;
     try {
       await driveQueue.current.enqueue(async () => {
+        if (driveGeneration.current !== generation || driveConflictRef.current)
+          return;
         const base = current.current!.drive!;
         const link = await uploadDriveFile(snapshot, base);
+        if (driveGeneration.current !== generation || driveConflictRef.current)
+          return;
         // Saving to a new SuiteDrive item may have relinked the file meanwhile.
         if (current.current!.drive?.itemId !== base.itemId) return;
         current.current = { ...current.current!, drive: link };
         await storage.save(current.current);
+        uploaded = true;
       });
-      if (alive.current && version.current === at) {
+      if (uploaded && alive.current && version.current === at) {
         setStatus("Saved to SuiteDrive");
         requestLastEditRefresh();
       }
@@ -1592,13 +1609,17 @@ function Workspace() {
       const name = `suiteleaf:${id}`;
       for (let attempt = 0; attempt < 6 && !cancel; attempt++) {
         let granted = false;
-        await navigator.locks.request(name, { ifAvailable: true }, async (lock) => {
-          if (cancel || !lock) return;
-          granted = true;
-          setLocked(false);
-          await load();
-          await hold();
-        });
+        await navigator.locks.request(
+          name,
+          { ifAvailable: true },
+          async (lock) => {
+            if (cancel || !lock) return;
+            granted = true;
+            setLocked(false);
+            await load();
+            await hold();
+          },
+        );
         if (granted || cancel) return;
         await new Promise((done) => setTimeout(done, 40 * (attempt + 1)));
       }
@@ -1624,6 +1645,139 @@ function Workspace() {
       release?.();
     };
   }, [id, syncDrive]);
+  // While a SuiteDrive file is on screen, notice someone else's save. An idle
+  // file switches to their version. Unsent typing keeps the conflict banner
+  // and is not overwritten. No faster than once a second.
+  useEffect(() => {
+    const itemId = record?.drive?.itemId;
+    if (!itemId || driveConflict || !getSession()) return;
+    let stop = false;
+    const unsent = () =>
+      version.current !== savedVersion.current ||
+      (!!current.current?.drive && hasUnsyncedEdits(current.current));
+    const showConflict = (item: DriveItem) => {
+      if (item.id !== current.current?.drive?.itemId) return;
+      clearTimeout(driveTimer.current);
+      driveTimer.current = undefined;
+      setDriveConflict(item);
+      setStatus("SuiteDrive has a newer version");
+    };
+    const watch = async () => {
+      if (stop || !alive.current || driveConflictRef.current || !getSession())
+        return;
+      const open = current.current;
+      if (!open?.drive || open.drive.itemId !== itemId) return;
+      try {
+        const item = await drive.get(itemId);
+        if (stop || !alive.current || driveConflictRef.current) return;
+        const linked = current.current;
+        if (!linked?.drive || linked.drive.itemId !== itemId) return;
+        const remote = item.headVersionId;
+        if (!remote || remote === linked.drive.versionId) return;
+        if (unsent()) {
+          showConflict(item);
+          return;
+        }
+        const read = await drive.read(itemId);
+        if (stop || !alive.current || driveConflictRef.current) return;
+        const linkedNow = current.current;
+        if (!linkedNow?.drive || linkedNow.drive.itemId !== itemId) return;
+        const head = read.versionId || remote;
+        if (head === linkedNow.drive.versionId) return;
+        if (unsent()) {
+          showConflict(item);
+          return;
+        }
+        await driveQueue.current.enqueue(async () => {
+          if (stop || !alive.current || driveConflictRef.current) return;
+          const live = current.current;
+          if (!live?.drive || live.drive.itemId !== itemId) return;
+          if (unsent()) {
+            showConflict(item);
+            return;
+          }
+          const latest = await drive.get(itemId);
+          if (stop || !alive.current || driveConflictRef.current) return;
+          const openNow = current.current;
+          if (!openNow?.drive || openNow.drive.itemId !== itemId) return;
+          if (unsent()) {
+            showConflict(latest);
+            return;
+          }
+          if (!latest.headVersionId || latest.headVersionId !== head) return;
+          if (latest.headVersionId === openNow.drive.versionId) return;
+          const parsed = parseNamedFile(
+            latest.name || openNow.drive.name,
+            read.text,
+          );
+          const file = { ...parsed, id: openNow.file.id } as SuiteFile;
+          const next: FileRecord = {
+            ...openNow,
+            file,
+            drive: {
+              ...openNow.drive,
+              versionId: head,
+              syncedAt: file.updatedAt,
+              name: latest.name || openNow.drive.name,
+            },
+          };
+          clearTimeout(timer.current);
+          clearTimeout(driveTimer.current);
+          driveTimer.current = undefined;
+          driveGeneration.current += 1;
+          current.current = next;
+          window.suiteleaf?.setDirty(false);
+          setRecord(next);
+          setEditorEpoch((epoch) => epoch + 1);
+          setStatus(remoteAuthorStatus(latest.lastAuthorName));
+          requestLastEditRefresh();
+          await storage.save(current.current ?? next);
+        });
+      } catch {
+        // The next tick retries a dropped request.
+      }
+    };
+    const interval = setInterval(() => void watch(), 2000);
+    return () => {
+      stop = true;
+      clearInterval(interval);
+    };
+  }, [id, record?.drive?.itemId, driveConflict]);
+  // While a SuiteDrive file is open, say so, and learn who else has it open.
+  // This stays off the save queue and the remote-version poll above.
+  useEffect(() => {
+    const itemId = record?.drive?.itemId;
+    const canRead =
+      !!itemId && !!getSession() && driveRole !== null && driveRole !== "local";
+    if (!itemId || !canRead) {
+      setOthersHere([]);
+      return;
+    }
+    let stop = false;
+    const beat = async () => {
+      if (stop || !getSession()) return;
+      const editing = version.current !== savedVersion.current;
+      try {
+        await drive.reportPresence(itemId, editing);
+      } catch {
+        // The next beat tries again. Reporting does not block a save.
+      }
+      if (stop || !getSession()) return;
+      try {
+        const people = await drive.presence(itemId);
+        if (!stop) setOthersHere(people);
+      } catch {
+        // Keep the names already shown until a later read works.
+      }
+    };
+    void beat();
+    const interval = setInterval(() => void beat(), 5000);
+    return () => {
+      stop = true;
+      clearInterval(interval);
+      setOthersHere([]);
+    };
+  }, [record?.drive?.itemId, driveRole]);
   useEffect(() => {
     const flush = async () => {
       await save();
@@ -1633,20 +1787,33 @@ function Workspace() {
     return () => void openEditors.delete(flush);
   }, [save, syncDrive]);
   const update = useCallback(
-    (content: SuiteFile["content"]) => {
+    (
+      content: SuiteFile["content"],
+      docTabs?: { tabTitle?: string; tabs?: DocFile["tabs"] },
+    ) => {
       if (!canSaveRef.current || !current.current) return;
-      if (
-        JSON.stringify(content) === JSON.stringify(current.current.file.content)
-      )
-        return;
-      current.current = {
-        ...current.current,
-        file: {
-          ...current.current.file,
-          content,
-          updatedAt: new Date().toISOString(),
-        } as SuiteFile,
-      };
+      const file = current.current.file;
+      const sameContent =
+        JSON.stringify(content) === JSON.stringify(file.content);
+      const sameTabs =
+        !docTabs ||
+        file.kind !== "doc" ||
+        (file.tabTitle === docTabs.tabTitle &&
+          JSON.stringify(file.tabs ?? null) ===
+            JSON.stringify(docTabs.tabs ?? null));
+      if (sameContent && sameTabs) return;
+      const next = {
+        ...file,
+        content,
+        updatedAt: new Date().toISOString(),
+      } as SuiteFile;
+      if (next.kind === "doc" && docTabs) {
+        if (docTabs.tabTitle) next.tabTitle = docTabs.tabTitle;
+        else delete next.tabTitle;
+        if (docTabs.tabs?.length) next.tabs = docTabs.tabs;
+        else delete next.tabs;
+      }
+      current.current = { ...current.current, file: next };
       version.current++;
       window.suiteleaf?.setDirty(true);
       setStatus("Unsaved changes");
@@ -1832,8 +1999,7 @@ function Workspace() {
     await actions.current?.flush();
     await save();
     const copy = duplicateFile(current.current!.file);
-    if (cluster)
-      await createInDrive(copy, driveParentId.current, navigate);
+    if (cluster) await createInDrive(copy, driveParentId.current, navigate);
     else navigate(`/file/${(await storage.save({ file: copy })).file.id}`);
   };
   /** In cluster mode files live in SuiteDrive, so downloads are copies. */
@@ -2049,6 +2215,26 @@ function Workspace() {
                 readOnly={!canEdit}
                 onChange={(e) => changeTitle(e.target.value)}
               />
+              {record.drive ? (
+                <div
+                  className="also-here"
+                  role="region"
+                  aria-label="Also in this file"
+                >
+                  {othersHere.map((person, index) => (
+                    <span
+                      className={
+                        person.editing
+                          ? "presence-chip editing"
+                          : "presence-chip"
+                      }
+                      key={`${index}:${person.name}`}
+                    >
+                      {person.name} is {person.editing ? "editing" : "viewing"}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
               {driveRole === "viewer" ? (
                 <span className="view-only-badge">View only</span>
               ) : driveRole === "commenter" ? (
@@ -2285,6 +2471,20 @@ function Workspace() {
                     </MenuItem>
                     <MenuItem
                       synonyms={[
+                        "chart",
+                        "bar chart",
+                        "insert chart",
+                        "spreadsheet chart",
+                      ]}
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.docActions?.insertChart?.()
+                      }
+                    >
+                      Insert chart
+                    </MenuItem>
+                    <MenuItem
+                      synonyms={[
                         "equation",
                         "math",
                         "formula",
@@ -2505,6 +2705,19 @@ function Workspace() {
                     </MenuItem>
                   </Menu>
                   <Menu label="Tools">
+                    <MenuItem
+                      synonyms={[
+                        "mail merge",
+                        "merge letters",
+                        "merge spreadsheet",
+                      ]}
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.docActions?.openMailMerge?.()
+                      }
+                    >
+                      Merge from a spreadsheet
+                    </MenuItem>
                     <MenuItem
                       shortcut="Cmd+Shift+C"
                       synonyms={[
@@ -2728,7 +2941,12 @@ function Workspace() {
                       Cell comment
                     </MenuItem>
                     <MenuItem
-                      synonyms={["note", "cell note", "add note", "insert note"]}
+                      synonyms={[
+                        "note",
+                        "cell note",
+                        "add note",
+                        "insert note",
+                      ]}
                       focusesTarget
                       onSelect={() =>
                         actions.current?.sheetActions?.insertNote?.()
@@ -2957,7 +3175,11 @@ function Workspace() {
                     </MenuItem>
                     {mode.kind === "cluster" && getSession() ? null : (
                       <MenuItem
-                        synonyms={["comment name", "sign comments", "your name"]}
+                        synonyms={[
+                          "comment name",
+                          "sign comments",
+                          "your name",
+                        ]}
                         onSelect={() =>
                           actions.current?.sheetActions?.commentName?.()
                         }
@@ -3494,6 +3716,14 @@ function Workspace() {
           <DriveBrowser
             mode={driveDialog}
             defaultName={driveName(f.title, f.kind)}
+            startIn={
+              driveFolder.place?.parentId
+                ? {
+                    id: driveFolder.place.parentId,
+                    name: driveFolder.place.name,
+                  }
+                : null
+            }
             onClose={() => setDriveDialog(null)}
             onOpen={async (item) => {
               await save();
@@ -3539,10 +3769,11 @@ function Workspace() {
           <div className="editor-and-history-main">
             {historyPreview?.kind === "doc" ? (
               <VersionPreview
-                key={JSON.stringify(historyPreview.content)}
+                key={JSON.stringify(historyPreview.tabs ?? historyPreview.content)}
                 content={historyPreview.content}
                 label={historyPreview.label}
                 offers={historyPreview.offers}
+                tabs={historyPreview.tabs}
                 onRestoreParagraph={(key) => restoreParagraph.current(key)}
               />
             ) : historyPreview?.kind === "sheet" ? (
@@ -3587,6 +3818,19 @@ function Workspace() {
                       onChange={update}
                       onActions={onActions}
                       onError={setError}
+                      onCreateDocument={async (created) => {
+                        await save();
+                        if (cluster)
+                          await createInDrive(
+                            created,
+                            driveParentId.current,
+                            navigate,
+                          );
+                        else
+                          navigate(
+                            `/file/${(await storage.save({ file: created })).file.id}`,
+                          );
+                      }}
                     />
                   ) : f.kind === "sheet" ? (
                     <Sheets

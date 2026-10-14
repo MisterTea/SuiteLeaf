@@ -27,7 +27,7 @@ const onScreen = (locator: Locator) =>
     return !!hit && (el === hit || el.contains(hit));
   });
 
-test("every Sheets toolbar control is reachable, folding extras into More tools", async ({
+test("every Sheets toolbar control stays on screen, with extras on a second row", async ({
   page,
 }) => {
   await openBudget(page);
@@ -35,37 +35,25 @@ test("every Sheets toolbar control is reachable, folding extras into More tools"
   const toolbar = page.getByRole("toolbar", {
     name: "Spreadsheet formatting",
   });
-  expect((await toolbar.boundingBox())!.height).toBeLessThanOrEqual(55);
+  const formatting = page.getByRole("toolbar", { name: "Text formatting" });
+  await expect(page.getByRole("button", { name: "More tools" })).toHaveCount(0);
+  await expect(formatting).toBeVisible();
+  const undo = await toolbar.getByRole("button", { name: "Undo (Cmd+Z)" }).boundingBox();
+  const bold = await formatting.getByRole("button", { name: "Bold (Cmd+B)" }).boundingBox();
+  expect(bold!.y).toBeGreaterThan(undo!.y + undo!.height - 4);
 
-  for (const name of ["Insert chart", "Pivot table"]) {
-    const tool = toolbar.getByRole("button", { name, exact: true });
+  for (const tool of [
+    toolbar.getByRole("button", { name: "Insert chart", exact: true }),
+    toolbar.getByRole("button", { name: "Pivot table", exact: true }),
+    formatting.getByRole("button", { name: "Bold (Cmd+B)", exact: true }),
+    formatting.getByRole("button", { name: "Text color", exact: true }),
+  ]) {
     await expect(tool).toBeVisible();
     const box = (await tool.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
     expect(await onScreen(tool)).toBe(true);
   }
-
-  const tools = toolbar.locator(
-    ":scope > :not(.more-tools, .toolbar-break, .toolbar-divider)",
-  );
-  const hidden: number[] = [];
-  for (let i = 0; i < (await tools.count()); i++)
-    if (!(await tools.nth(i).isVisible())) hidden.push(i);
-  const more = toolbar.getByRole("button", { name: "More tools" });
-  if (hidden.length) {
-    await more.click();
-    await expect(more).toHaveAttribute("aria-expanded", "true");
-    for (const i of hidden) {
-      const control = tools.nth(i);
-      await expect(control).toBeVisible();
-      const box = (await control.boundingBox())!;
-      expect(box.x).toBeGreaterThanOrEqual(0);
-      expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
-      expect(await onScreen(control)).toBe(true);
-    }
-    await page.keyboard.press("Escape");
-    await expect(more).toHaveAttribute("aria-expanded", "false");
-  } else await expect(more).toBeHidden();
 
   // The toolbar must not clip its own menus.
   await page.getByText("Charts & pivots (0)", { exact: true }).click();

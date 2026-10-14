@@ -9,6 +9,7 @@ import {
 } from "./slide-theme";
 import type { SaveThemeResult } from "./slide-theme-library";
 import { ThemeLibrarySection } from "./slide-theme-library-ui";
+import { ColorTool } from "./color-picker";
 
 export function useReducedMotion() {
   const [reduced, setReduced] = useState(
@@ -35,11 +36,11 @@ function AccentField({
   useEffect(() => setText(value), [value]);
   return (
     <div className="theme-accent-row">
-      <input
-        type="color"
-        aria-label="Accent colour"
+      <ColorTool
+        swatch
+        label="Accent colour"
         value={normalizeHex(value) ?? "#000000"}
-        onChange={(e) => onChange(e.target.value.toLowerCase())}
+        onCommit={(hex) => onChange(hex.toLowerCase())}
       />
       <input
         type="text"

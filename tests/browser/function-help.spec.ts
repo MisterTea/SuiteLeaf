@@ -5,7 +5,7 @@ async function sheet(page: Page) {
   await page.goto("/");
   await page.getByRole("button", { name: "New spreadsheet" }).click();
   await page.locator(".sheet-host").waitFor();
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).waitFor();
+  await page.getByRole("toolbar", { name: "Spreadsheet formatting" }).waitFor();
 }
 
 async function goTo(page: Page, ref: string) {

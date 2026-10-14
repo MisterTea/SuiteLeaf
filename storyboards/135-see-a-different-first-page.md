@@ -55,5 +55,5 @@ Sam ticks Different first page and the first page's header and number disappear 
 - Different first page now changes the pages before Apply. Page 2 stays Page 2. Cover has no number, from storyboard 134, is still what restarts the next page at Page 1, and it stays off here.
 - No live watermark, no section break, and no control for the numeral's font or size.
 - Different odd and even pages stays off. Outside-edge numbers from storyboard 132 are unchanged.
-- The outline still offers "Start Arabic numbers here" on this file. That is a different restart, and this story does not use it.
+- The outline no longer offers "Start Arabic numbers here." That restart is separate from a different first page, and this story does not use it. A heading already saved with the restart still begins at 1.
 - A long running header wraps onto a second line on the miniature sheet so it stays clear of Page 2.

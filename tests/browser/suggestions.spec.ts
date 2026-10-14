@@ -32,17 +32,14 @@ async function placeSelection(page: Page, text: string, caret = false) {
 
 test("suggesting mode records, reviews, and restores changes", async ({ page }) => {
   await page.goto("/");
+  await page.evaluate(() => localStorage.setItem("suiteleaf-author", "Jordan"));
   await page.getByRole("button", { name: "New document" }).click();
   await page.getByLabel("File title").fill("Quarterly Report");
   const editor = editorOf(page);
   await editor.click();
   await page.keyboard.type("We now serve very 40 customers and the project is on budget.");
-  await page.getByLabel("Suggesting as").fill("Jordan");
-  await page.getByRole("button", { name: "Suggesting", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Suggesting", exact: true })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect(page.getByRole("group", { name: "Editing mode" })).toHaveCount(0);
+  await page.keyboard.press("Control+Alt+Shift+X");
   await expect(page.locator(".suggesting-flag")).toBeVisible();
 
   await placeSelection(page, "40", true);
@@ -71,17 +68,12 @@ test("suggesting mode records, reviews, and restores changes", async ({ page }) 
   await expect(page.locator(".suggestion-card")).toHaveCount(1);
 
   await page.keyboard.press("Control+Alt+Shift+X");
-  await expect(page.getByRole("button", { name: "Editing", exact: true })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect(page.locator(".suggesting-flag")).toHaveCount(0);
   await expect(page.locator(".save-status")).toContainText("Saved");
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Quarterly Report", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Editing", exact: true })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect(page.getByRole("group", { name: "Editing mode" })).toHaveCount(0);
+  await expect(page.locator(".suggesting-flag")).toHaveCount(0);
   await expect(editorOf(page)).toContainText("approximately");
   await expect(page.locator(".suggestion-card")).toHaveCount(1);
 });

@@ -14,8 +14,7 @@ declare module "@tiptap/core" {
     tabStops: {
       /**
        * Set or clear the left tab stop on every paragraph in the selection.
-       * `range` keeps the paragraphs that were selected when a toolbar field
-       * took focus, after the caret has already moved.
+       * `range` is the selection to change when the caret has already moved.
        */
       setTabStop: (
         inches: number | null,
@@ -40,10 +39,6 @@ export function parseTabStop(value: unknown): number | null {
   return inches;
 }
 
-export function formatTabStop(inches: number): string {
-  return String(inches);
-}
-
 /** Next default stop (every half inch) strictly after `atPx`. */
 export function nextDefaultTabPx(atPx: number): number {
   return (Math.floor((atPx + 0.01) / DEFAULT_STEP) + 1) * DEFAULT_STEP;
@@ -64,43 +59,6 @@ export function tabGapPx(
   const target =
     custom != null && atPx < custom - 0.5 ? custom : nextDefaultTabPx(atPx);
   return Math.max(0, target - atPx);
-}
-
-export type TabStopSelection =
-  | { kind: "none" }
-  | { kind: "unset"; count: number }
-  | { kind: "set"; inches: number; count: number }
-  | { kind: "mixed"; count: number };
-
-export function tabStopSelection(state: EditorState): TabStopSelection {
-  const found: (number | null)[] = [];
-  const { from, to } = state.selection;
-  state.doc.nodesBetween(from, to, (node) => {
-    if (node.type.name !== "paragraph") return;
-    found.push(parseTabStop(node.attrs.tabStop));
-    return false;
-  });
-  if (!found.length) return { kind: "none" };
-  const first = found[0];
-  if (!found.every((value) => value === first))
-    return { kind: "mixed", count: found.length };
-  return first == null
-    ? { kind: "unset", count: found.length }
-    : { kind: "set", inches: first, count: found.length };
-}
-
-export function tabStopHint(selection: TabStopSelection, invalid: boolean) {
-  if (invalid) return "Use a number from 0.25 to 6.5 inches.";
-  if (selection.kind === "none") return "Click a line to set its tab stop.";
-  if (selection.kind === "unset")
-    return selection.count > 1
-      ? "Type inches. Tab jumps there on every selected line."
-      : "Type inches. Tab jumps there on this line.";
-  if (selection.kind === "mixed")
-    return "These lines use different stops. A number sets every selected line.";
-  return selection.count > 1
-    ? `These ${selection.count} lines share a stop at ${formatTabStop(selection.inches)} in.`
-    : `This line stops at ${formatTabStop(selection.inches)} in. Other lines stay put.`;
 }
 
 export const TabCharacter = Node.create({
@@ -308,10 +266,3 @@ export const TabStops = Extension.create({
     ];
   },
 });
-
-export function focusTabStop() {
-  const input = document.querySelector<HTMLInputElement>("#doc-tab-stop");
-  if (!input || input.disabled) return;
-  input.focus();
-  input.select();
-}

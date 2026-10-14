@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useLocation } from "react-router-dom";
 import { ArrowUp, Check, CircleAlert, FileUp, Loader2, RotateCcw, ShieldQuestion, Sparkles, Square, Undo2, X } from "lucide-react";
 import { agentSession, currentFormat, type TranscriptItem } from "./agent";
 import { cursorStore } from "./cursor";
-import { fileRequestStore } from "./file-request";
-import { approvalStore } from "./guard";
-import { todoStore } from "./todo";
+import { cancelFileRequest, fileRequestStore } from "./file-request";
+import { approvalStore, cancelApproval } from "./guard";
+import { agentIsActing, documentContextLabel, onHostsChanged } from "./host";
+import { clearTodos, todoStore } from "./todo";
 import { PARSE_ERROR } from "./model-stream";
 
 /** What the panel calls the assistant: the short name of the model it runs ("Gemma", "FrogNano"). */
@@ -29,6 +31,15 @@ const panel = {
   },
 };
 document.body.classList.toggle("agent-open", open);
+
+/** Close the tray and drop the conversation, so the next request starts on the screen the user is on now. */
+function dismissAgent() {
+  cancelApproval();
+  cancelFileRequest();
+  clearTodos();
+  agentSession.reset();
+  if (panel.get()) panel.set(false);
+}
 
 /** Whether the AI panel is open (it narrows the editors beside it). */
 export const useAgentPanelOpen = () => useSyncExternalStore(panel.subscribe, panel.get);
@@ -228,6 +239,7 @@ function rate(tokens: number, ms: number) {
 }
 
 export function AgentSidebar() {
+  const place = useSyncExternalStore(onHostsChanged, documentContextLabel);
   const session = useSession();
   const [text, setText] = useState("");
   const log = useRef<HTMLDivElement>(null);
@@ -252,6 +264,7 @@ export function AgentSidebar() {
         <Sparkles size={18} />
         <div>
           <h2>Assistant</h2>
+          <small className="agent-context">{place}</small>
           <small>
             {currentFormat().info.name} · on this device{backend ? ` · ${backend}` : ""}
           </small>
@@ -375,6 +388,20 @@ export function AgentCursor() {
 /** Mounted once at the app root: the panel (when open) and the pointer. */
 export function AgentLayer() {
   const isOpen = usePanelOpen();
+  const { pathname } = useLocation();
+  const fileKey = /^\/file\/([^/]+)/.exec(pathname)?.[1] ?? "";
+  const fileKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (fileKeyRef.current === null) {
+      fileKeyRef.current = fileKey;
+      return;
+    }
+    if (fileKeyRef.current === fileKey) return;
+    fileKeyRef.current = fileKey;
+    // A tool opening or closing a file is still this conversation.
+    if (agentIsActing()) return;
+    dismissAgent();
+  }, [fileKey]);
   useEffect(() => void agentSession.resume(), []);
   return (
     <>

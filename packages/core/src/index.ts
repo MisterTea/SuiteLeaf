@@ -318,8 +318,23 @@ const formResponseSchema = z.object({
   at: z.string().datetime(),
   answers: z.record(z.string(), z.string().max(2000)),
 });
+/** A tab after the first. The first tab's body stays in `content`. */
+const docTabSchema = z.object({
+  id: z.string().min(1).max(80),
+  title: z.string().min(1).max(80),
+  content: node,
+});
+export type DocTab = z.infer<typeof docTabSchema>;
 export const fileSchema = z.discriminatedUnion("kind", [
-  z.object({ ...meta, kind: z.literal("doc"), content: node }),
+  z.object({
+    ...meta,
+    kind: z.literal("doc"),
+    content: node,
+    /** Name of the first tab. Missing means Document. */
+    tabTitle: z.string().min(1).max(80).optional(),
+    /** Tabs after the first, in order. Missing or empty means there are no extra tabs. */
+    tabs: z.array(docTabSchema).max(40).optional(),
+  }),
   z.object({
     ...meta,
     kind: z.literal("sheet"),
@@ -483,6 +498,13 @@ export function parseFile(text: string, expectedKind?: Kind | null): SuiteFile {
   if (file.kind === "doc") {
     if (file.content.type !== "doc") throw new Error("Invalid document root.");
     validateTree(file.content);
+    const ids = new Set<string>();
+    for (const tab of file.tabs ?? []) {
+      if (ids.has(tab.id)) throw new Error("Document tabs must have distinct ids.");
+      ids.add(tab.id);
+      if (tab.content.type !== "doc") throw new Error("Invalid document tab.");
+      validateTree(tab.content);
+    }
   } else if (file.kind === "sheet") {
     if (
       new Set(file.content.workbook.sheetOrder).size !==

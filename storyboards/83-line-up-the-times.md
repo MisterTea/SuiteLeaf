@@ -49,6 +49,7 @@ In Google Docs you show the ruler, click it, then press Tab ([Docs Help](https:/
 
 ## Gaps and notes
 
+- The Tab stop bar no longer sits under the toolbar. It took a strip of the page for a field most documents never use. A paragraph that already has a tab stop still uses it.
 - One left stop per paragraph. Decimal, center, and right tabs, and more than one custom stop on a line, are out of scope.
 - The guide is a screen aid. It is not part of the printed page.
 - Opening a Word file does not restore its tab stops. Export does write them.

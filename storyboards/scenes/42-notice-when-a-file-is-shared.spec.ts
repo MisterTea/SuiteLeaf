@@ -245,7 +245,7 @@ test("42-notice-when-a-file-is-shared", async ({ page }) => {
     await expect(copyButton).toBeVisible();
     await beat(page, 800);
     await copyButton.click();
-    await expect(page.getByRole("button", { name: "Sheet tools", exact: true })).toBeVisible();
+    await expect(page.getByRole("toolbar", { name: "Spreadsheet formatting" })).toBeVisible();
     await expect(page.getByText("View only")).toHaveCount(0);
     await caption(page, "The copy is his. He can change it, even though he can only view Rosa's sheet.", 1400);
     await selectCells(page, "B2");

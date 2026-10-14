@@ -902,6 +902,31 @@ a {
   padding: 2px 8px;
   white-space: nowrap;
 }
+.also-here {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+.also-here:empty {
+  display: none;
+}
+.presence-chip {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--toolbar-active-text);
+  background: var(--toolbar-active);
+  border-radius: 12px;
+  padding: 2px 10px;
+  white-space: nowrap;
+}
+.presence-chip.editing {
+  color: var(--sidebar-selected-text);
+  background: var(--sidebar-selected);
+}
 .workspace-brand {
   display: flex;
   align-items: center;
@@ -1975,6 +2000,88 @@ a {
   display: flex;
   justify-content: space-between;
 }
+.doc-tab-bar {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  height: 36px;
+  padding: 0 8px 0 4px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-muted);
+  overflow: hidden;
+}
+.doc-tab-list {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+}
+.doc-tab {
+  appearance: none;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  height: 30px;
+  margin-top: 6px;
+  padding: 0 14px;
+  border-radius: 8px 8px 0 0;
+  font: 500 13px/1 var(--font-google, Roboto, Arial, sans-serif);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.doc-tab[aria-selected="true"] {
+  background: var(--surface);
+  color: var(--text-primary);
+  border-color: var(--border);
+  box-shadow: inset 0 2px 0 var(--doc-color);
+}
+.doc-tab-add {
+  appearance: none;
+  align-self: center;
+  flex-shrink: 0;
+  margin-left: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--doc-color);
+  font: 600 13px/1 var(--font-google, Roboto, Arial, sans-serif);
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.doc-tab-add:hover:not(:disabled) {
+  background: var(--toolbar-tool-hover);
+}
+.doc-tab-add:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.doc-tab-name {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding-left: 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.doc-tab-name input {
+  width: 140px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 8px;
+  font: 13px/1 var(--font-google, Roboto, Arial, sans-serif);
+  background: var(--input-bg);
+  color: var(--text-primary);
+}
+.doc-tab-name input:disabled {
+  opacity: 0.7;
+}
 .gdocs-modal-overlay {
   position: fixed;
   inset: 0;
@@ -2076,6 +2183,12 @@ a {
   right: 10px;
   font-size: 12px;
   color: #5f6368;
+}
+.find-tab-place {
+  margin: 8px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #174ea6;
 }
 .dialog-error {
   margin: -4px 0 0;
@@ -2422,6 +2535,9 @@ a {
   min-width: 0;
   max-width: 100%;
 }
+.sheets-format-toolbar {
+  margin-top: 0;
+}
 .sheets-toolbar > * {
   flex-shrink: 0;
   white-space: nowrap;
@@ -2451,34 +2567,27 @@ a {
   flex-wrap: wrap;
   justify-content: flex-start;
   align-content: flex-start;
-  row-gap: 12px;
+  row-gap: 4px;
   height: auto;
+  padding-bottom: 6px;
 }
 .sheets-toolbar.show-more > .toolbar-break {
   order: 1;
   flex-basis: 100%;
-  height: 0;
+  height: 1px;
+  margin: 2px 4px;
+  background: rgba(68, 71, 70, 0.18);
 }
 .sheets-toolbar.show-more > [data-overflow] {
   order: 2;
 }
-/* show-more wraps, and it is declared after the measuring rule, so a second
-   pass would think every tool fits and close the menu. Nowrap has to win. */
+/* Measuring has to stay on one line, or a second pass thinks every tool fits. */
 .sheets-toolbar.show-more[data-measuring] {
   flex-wrap: nowrap;
   height: 38px;
 }
-.sheets-toolbar.show-more::before {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  left: calc(var(--more-left, 0px) - 8px);
-  top: calc(var(--more-top, 38px) - 5px);
-  width: calc(var(--more-width, 0px) + 16px);
-  height: calc(var(--more-height, 0px) + 10px);
-  background: #edf2fa;
-  border-radius: 12px;
-  box-shadow: 0 4px 14px rgba(60, 64, 67, 0.28);
+.sheets-toolbar.show-more[data-measuring] > .toolbar-break {
+  display: none;
 }
 .sheets-toolbar .tool {
   border: 0;
@@ -4260,6 +4369,7 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   .toolbar,
   .outline,
   .editor-status,
+  .doc-tab-bar,
   .find-bar,
   .error,
   .sheet-extras,
@@ -4863,6 +4973,42 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
   border: 1px solid var(--border);
   border-radius: 9px;
   padding: 16px 20px;
+}
+.drive-search {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.drive-search label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.drive-search input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+.drive-search input:focus {
+  outline: 2px solid var(--google-blue);
+  border-color: transparent;
+}
+.drive-search-hit {
+  align-items: flex-start;
+}
+.drive-search-hit .drive-item-name {
+  font-weight: 600;
+}
+.drive-search-snippet {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-primary);
+  white-space: normal;
 }
 .drive-toolbar {
   display: flex;
@@ -6144,6 +6290,10 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
   border-color: #137333;
   color: #0d652d;
   background: #e6f4ea;
+}
+.version-preview .doc-compare-tabs {
+  max-width: 816px;
+  margin: 0 auto 12px;
 }
 .slide-compare {
   display: flex;

@@ -13,7 +13,7 @@ const rowHeight = 24;
 const widths = [150, 120, 168];
 
 async function ready(page: import("@playwright/test").Page) {
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).waitFor();
+  await page.getByRole("toolbar", { name: "Spreadsheet formatting" }).waitFor();
   await beat(page, 500);
 }
 

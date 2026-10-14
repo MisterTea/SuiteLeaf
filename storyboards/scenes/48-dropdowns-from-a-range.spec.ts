@@ -19,7 +19,7 @@ const names = [
 ];
 
 async function ready(page: Page) {
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).waitFor();
+  await page.getByRole("toolbar", { name: "Spreadsheet formatting" }).waitFor();
   await beat(page, 600);
 }
 
@@ -356,7 +356,7 @@ test("48-dropdowns-from-a-range", async ({ page }) => {
   });
   // An identical copy opens directly. A changed copy asks before replacing.
   const replace = page.getByRole("button", { name: "Replace", exact: true });
-  const opened = page.getByRole("button", { name: "Sheet tools", exact: true });
+  const opened = page.getByRole("toolbar", { name: "Spreadsheet formatting" });
   await expect(replace.or(opened)).toBeVisible();
   if (await replace.isVisible()) await replace.click();
   await ready(page);

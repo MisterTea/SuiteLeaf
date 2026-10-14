@@ -1063,7 +1063,7 @@ export async function importXlsx(
     autofilters:
       "Autofilter definitions are not recreated; the data can be filtered with the Sheets toolbar.",
     sheet_protection:
-      "Protected Excel sheets open read-only; local protection can be removed in Sheet tools.",
+      "Protected Excel sheets open read-only; local protection can be removed in Data, Protect sheets and ranges.",
     pivot_tables:
       "Excel pivot results are retained as cells, but Excel pivot definitions are not recreated.",
 

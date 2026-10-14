@@ -70,6 +70,11 @@ import {
 } from "./citations";
 import { croppedFrame, docxImageCrop, imageCrop } from "./image-crop";
 import { imageWrap } from "./image-wrap";
+import {
+  chartCaption,
+  linkedChartAttrs,
+  missingSpreadsheetText,
+} from "./linked-chart";
 
 const color = (v: unknown) =>
   typeof v === "string" && /^#[\da-f]{6}$/i.test(v) ? v.slice(1) : undefined;
@@ -361,6 +366,39 @@ function columnSegments(
   walk(nodes, 1);
   return out;
 }
+/** Source name, then one row per bar. A missing sheet keeps the last numbers. */
+function linkedChartBlocks(node: JsonNode): (Paragraph | Table)[] {
+  const chart = linkedChartAttrs(node.attrs);
+  const written: (Paragraph | Table)[] = [
+    new Paragraph({
+      children: [new TextRun(chartCaption(chart.sourceTitle))],
+    }),
+  ];
+  if (chart.labels.length)
+    written.push(
+      new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        rows: chart.labels.map(
+          (label, index) =>
+            new TableRow({
+              children: [label, String(chart.values[index])].map(
+                (text) =>
+                  new TableCell({
+                    children: [
+                      new Paragraph({ children: [new TextRun(text)] }),
+                    ],
+                  }),
+              ),
+            }),
+        ),
+      }),
+    );
+  if (chart.missing)
+    written.push(
+      new Paragraph({ children: [new TextRun(missingSpreadsheetText)] }),
+    );
+  return written;
+}
 function blocks(
   nodes: JsonNode[],
   plan: DocxCommentPlan,
@@ -370,6 +408,7 @@ function blocks(
 ): (Paragraph | Table | TableOfContents)[] {
   return nodes.flatMap((n): (Paragraph | Table | TableOfContents)[] => {
     if (n.type === "note") return [];
+    if (n.type === "linkedChart") return linkedChartBlocks(n);
     if (n.type === "columnLayout")
       return blocks(n.content ?? [], plan, notes, library, list);
     if (n.type === "bibliography")
@@ -711,10 +750,41 @@ function docxSection(
               },
   };
 }
+/** One tab's body in a Word export. `title` is the heading written before it. */
+export type DocxExportSection = {
+  title?: string;
+  content: JsonNode;
+};
+
+/** One Word document: a heading for each titled section, then that section's body. */
+function combineExportSections(sections: DocxExportSection[]): JsonNode {
+  const base = structuredClone(sections[0].content);
+  const content: JsonNode[] = [];
+  for (const section of sections) {
+    const title = section.title?.trim();
+    if (title) {
+      content.push({
+        type: "heading",
+        attrs: { level: 1 },
+        content: [{ type: "text", text: title }],
+      });
+    }
+    for (const node of section.content.content ?? [])
+      content.push(structuredClone(node));
+  }
+  return { ...base, type: "doc", content };
+}
+
 export async function exportDocx(
-  file: Pick<DocFile, "title" | "content">,
+  file: Pick<DocFile, "title" | "content"> & {
+    sections?: DocxExportSection[];
+  },
 ): Promise<Uint8Array> {
-  const content = embedSuggestionMarkers(structuredClone(file.content));
+  const content = embedSuggestionMarkers(
+    file.sections?.length
+      ? combineExportSections(file.sections)
+      : structuredClone(file.content),
+  );
   const prepareImages = async (node: JsonNode): Promise<void> => {
     if (
       (node.type === "image" || node.type === "inlineImage") &&

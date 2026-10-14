@@ -256,7 +256,7 @@ con.commit()`,
     await page.getByRole("button", { name: "Spring fair", exact: true }).click();
     await beat(page, 400);
     await page.getByRole("button", { name: "Volunteer roster.slsheet", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Sheet tools", exact: true })).toBeVisible();
+    await expect(page.getByRole("toolbar", { name: "Spreadsheet formatting" })).toBeVisible();
     await beat(page, 900);
 
     await caption(

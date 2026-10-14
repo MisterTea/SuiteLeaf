@@ -25,7 +25,7 @@ async function openRoster(page: Page) {
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),
   });
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).waitFor();
+  await page.getByRole("toolbar", { name: "Spreadsheet formatting" }).waitFor();
 }
 
 test("dropdown lists are prefilled, reject bad values, and survive the file", async ({

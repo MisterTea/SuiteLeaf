@@ -4,6 +4,7 @@ import {
   diffSheets,
   diffSlides,
   type CellLook,
+  type DocFile,
   type JsonNode,
   type SheetCellChange,
   type SheetDiff,
@@ -18,13 +19,29 @@ import {
   type ChangeUnit,
 } from "./version-history-model";
 
+/** Stable id for the first tab, whose body is `content` and whose name is `tabTitle`. */
+export const FIRST_DOC_TAB = "first";
+
+export type DocCompareTab = {
+  id: string;
+  title: string;
+  status: "same" | "changed" | "added" | "removed";
+  content: JsonNode;
+  changedParagraphs: number;
+  /** Set on the first tab while comparing with the current version. */
+  offers?: ({ key: string; prompt: string } | null)[] | null;
+};
+
 export type HistoryPreview =
   | {
       kind: "doc";
+      /** First-tab diff. A one-tab document uses only this. */
       content: JsonNode;
       label: string;
       /** Set while comparing a document with the current version, so one paragraph can be restored. */
       offers?: ({ key: string; prompt: string } | null)[] | null;
+      /** Present when the document has more than one tab, so the preview can switch. */
+      tabs?: DocCompareTab[];
     }
   | { kind: "sheet"; diff: SheetDiff; label: string }
   | { kind: "slide"; diff: SlideDiff; label: string };
@@ -62,6 +79,111 @@ function summaryFor(
   return mode === "previous" ? `${sentence} in this version` : sentence;
 }
 
+const emptyDoc: JsonNode = { type: "doc", content: [] };
+
+function joinNames(names: string[]) {
+  if (names.length <= 1) return names[0] ?? "";
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
+}
+
+/** Names the tabs whose paragraphs changed. One tab: "1 paragraph changes on Minutes". */
+export function documentChangeSummary(tabs: DocCompareTab[]): string {
+  const textual = tabs.filter((tab) => tab.changedParagraphs > 0);
+  const structural = tabs.filter(
+    (tab) =>
+      tab.changedParagraphs === 0 &&
+      (tab.status === "added" || tab.status === "removed"),
+  );
+  const parts: string[] = [];
+  if (textual.length === 1) {
+    parts.push(`${changeSentence(textual[0].changedParagraphs)} on ${textual[0].title}`);
+  } else if (textual.length > 1) {
+    const total = textual.reduce((sum, tab) => sum + tab.changedParagraphs, 0);
+    parts.push(`${changeSentence(total)} on ${joinNames(textual.map((tab) => tab.title))}`);
+  }
+  for (const tab of structural) {
+    parts.push(tab.status === "added" ? `${tab.title} was added` : `${tab.title} was removed`);
+  }
+  if (parts.length <= 1) return parts[0] ?? "";
+  if (parts.length === 2) return `${parts[0]}, and ${parts[1]}`;
+  return `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
+}
+
+function docSides(file: DocFile) {
+  return [
+    {
+      id: FIRST_DOC_TAB,
+      title: file.tabTitle?.trim() || "Document",
+      content: file.content,
+    },
+    ...(file.tabs ?? []).map((tab) => ({
+      id: tab.id,
+      title: tab.title,
+      content: tab.content,
+    })),
+  ];
+}
+
+function markedTab(
+  id: string,
+  title: string,
+  status: DocCompareTab["status"],
+  before: JsonNode,
+  after: JsonNode,
+): DocCompareTab {
+  const diff = diffDocuments(before, after);
+  const changed = status === "same" && diff.changedParagraphs > 0 ? "changed" : status;
+  return {
+    id,
+    title,
+    status: changed,
+    content: diff.content,
+    changedParagraphs: diff.changedParagraphs,
+  };
+}
+
+/**
+ * Pair every tab. The first tab is always `content`. Later tabs match by id:
+ * only in the newer file is added, only in the older file is removed.
+ */
+function alignDocTabs(
+  before: DocFile,
+  after: DocFile,
+  mode: "current" | "previous" | "earliest",
+): DocCompareTab[] {
+  const older = docSides(before);
+  const newer = docSides(after);
+  if (mode === "earliest") {
+    return older.map((tab) => ({
+      id: tab.id,
+      title: tab.title,
+      status: "same" as const,
+      content: tab.content,
+      changedParagraphs: 0,
+    }));
+  }
+  const olderById = new Map(older.slice(1).map((tab) => [tab.id, tab]));
+  const tabs: DocCompareTab[] = [
+    markedTab(FIRST_DOC_TAB, newer[0].title, "same", older[0].content, newer[0].content),
+  ];
+  const seen = new Set<string>();
+  for (const tab of newer.slice(1)) {
+    seen.add(tab.id);
+    const prev = olderById.get(tab.id);
+    tabs.push(
+      prev
+        ? markedTab(tab.id, tab.title, "same", prev.content, tab.content)
+        : markedTab(tab.id, tab.title, "added", emptyDoc, tab.content),
+    );
+  }
+  for (const tab of older.slice(1)) {
+    if (seen.has(tab.id)) continue;
+    tabs.push(markedTab(tab.id, tab.title, "removed", tab.content, emptyDoc));
+  }
+  return tabs;
+}
+
 /** Build the read-only preview for one pair of snapshots. Kinds must match. */
 export function historyPreviewFor(
   before: SuiteFile,
@@ -70,19 +192,18 @@ export function historyPreviewFor(
 ): { preview: HistoryPreview; summary: string; count: number; unit: ChangeUnit } | null {
   if (before.kind !== after.kind) return null;
   if (before.kind === "doc" && after.kind === "doc") {
-    if (mode === "earliest") {
-      return {
-        preview: { kind: "doc", content: before.content, label: EARLIEST },
-        summary: "",
-        count: 0,
-        unit: "paragraph",
-      };
-    }
-    const diff = diffDocuments(before.content, after.content);
+    const tabs = alignDocTabs(before, after, mode);
+    const count = mode === "earliest" ? 0 : tabs.reduce((sum, tab) => sum + tab.changedParagraphs, 0);
+    const multi = tabs.length > 1;
     return {
-      preview: { kind: "doc", content: diff.content, label: labelFor(diff.changedParagraphs, "paragraph", mode) },
-      summary: "",
-      count: diff.changedParagraphs,
+      preview: {
+        kind: "doc",
+        content: tabs[0]?.content ?? before.content,
+        label: labelFor(count, "paragraph", mode),
+        tabs: multi ? tabs : undefined,
+      },
+      summary: multi && mode !== "earliest" ? documentChangeSummary(tabs) : "",
+      count,
       unit: "paragraph",
     };
   }

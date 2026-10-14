@@ -36,7 +36,7 @@ async function open(page: Page) {
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),
   });
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).waitFor();
+  await page.getByRole("toolbar", { name: "Spreadsheet formatting" }).waitFor();
 }
 
 async function native(page: Page) {
@@ -133,7 +133,7 @@ test("Data › Group rows collapses detail rows, keeps the total, and undoes in 
   await expect(page.locator(".save-status")).toContainText("Saved", { timeout: 8000 });
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Donations" }).click();
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).waitFor();
+  await page.getByRole("toolbar", { name: "Spreadsheet formatting" }).waitFor();
   await expect(page.locator(".row-group-controls")).toHaveAttribute("data-collapsed", "2,3");
   await expect(page.getByRole("button", { name: "Expand rows 2 to 4" })).toBeVisible();
   await select(page, "B1");

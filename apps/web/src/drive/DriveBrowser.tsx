@@ -20,7 +20,12 @@ import {
   X,
 } from "lucide-react";
 import { isNativeName, kindFromName } from "@suiteleaf/core";
-import { drive, getSession, type DriveItem } from "../node-client";
+import {
+  drive,
+  getSession,
+  type DriveItem,
+  type DriveSearchHit,
+} from "../node-client";
 import { DriveDialog } from "./drive-dialog";
 import { folderCrumbs } from "./folder-paths";
 import { MoveBanner, type MoveNotice } from "./file-folder";
@@ -141,7 +146,7 @@ export function NameDialog({
   );
 }
 
-function ItemIcon({ item }: { item: DriveItem }) {
+function ItemIcon({ item }: { item: { name: string; kind: string } }) {
   if (item.kind === "folder") return <Folder size={20} />;
   const kind = kindFromName(item.name);
   return (
@@ -169,10 +174,13 @@ export function DriveBrowser({
   onFolderChange,
   refreshKey,
   control,
+  startIn,
 }: {
   mode: "open" | "save";
   defaultName?: string;
   inline?: boolean;
+  /** Open this folder instead of the top of My Drive. Used by the editor's Open and Save as. */
+  startIn?: { id: string; name: string } | null;
   onOpen?: (item: DriveItem) => void | Promise<void>;
   onSave?: (folderId: string | null, name: string) => void | Promise<void>;
   onClose?: () => void;
@@ -184,7 +192,17 @@ export function DriveBrowser({
   /** Receives the browser's current folder and actions, for the assistant. */
   control?: RefObject<DriveControl | null>;
 }) {
-  const [initial] = useState(() => (inline && place.load()) || rootOf("mine"));
+  const [initial] = useState(() =>
+    startIn
+      ? {
+          view: "mine" as const,
+          path: [
+            { id: null, name: "My Drive" },
+            { id: startIn.id, name: startIn.name },
+          ],
+        }
+      : (inline && place.load()) || rootOf("mine"),
+  );
   const [view, setView] = useState<View>(initial.view);
   const [path, setPath] = useState<Crumb[]>(initial.path);
   const [items, setItems] = useState<DriveItem[]>([]);
@@ -209,6 +227,12 @@ export function DriveBrowser({
   const seenEdit = useRef(new Map<string, string>());
   const flash = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [justEdited, setJustEdited] = useState<ReadonlySet<string>>(new Set());
+  const [query, setQuery] = useState("");
+  const [outcome, setOutcome] = useState<
+    | { query: string; hits: DriveSearchHit[] }
+    | { query: string; failed: true }
+    | null
+  >(null);
   const folder = path[path.length - 1];
   const shown = useRef(""),
     request = useRef(0);
@@ -243,6 +267,30 @@ export function DriveBrowser({
     }
   }, [folder.id, view]);
   useEffect(() => void refresh(), [refresh, refreshKey]);
+  // An empty box stays on the folder. A short pause lets a recording type
+  // the whole word before the list switches to results.
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void drive.search(q).then(
+        (hits) => {
+          if (!cancelled) setOutcome({ query: q, hits });
+        },
+        (e) => {
+          if (!cancelled) {
+            setOutcome({ query: q, failed: true });
+            setError(e instanceof Error ? e.message : String(e));
+          }
+        },
+      );
+    }, 200);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query]);
   useEffect(() => {
     const changed: string[] = [];
     const next = new Map<string, string>();
@@ -359,8 +407,24 @@ export function DriveBrowser({
     if (name.trim()) void act(async () => onSave?.(folder.id, name.trim()));
   };
 
+  const typed = query.trim();
+  const found =
+    typed && outcome && outcome.query === typed && !("failed" in outcome)
+      ? outcome.hits
+      : null;
   const body = (
     <div className={`drive-browser ${inline ? "inline" : ""}`}>
+      <div className="drive-search">
+        <label htmlFor="drive-search">Search SuiteDrive</label>
+        <input
+          id="drive-search"
+          type="search"
+          placeholder="Search names and words"
+          value={query}
+          autoComplete="off"
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </div>
       <div className="drive-toolbar">
         <div className="drive-tabs">
           <div className="drive-tablist" role="tablist">
@@ -459,8 +523,46 @@ export function DriveBrowser({
           onDismiss={() => setMoveNotice(null)}
         />
       ) : null}
-      <div className="drive-list" role="list" aria-busy={loading}>
-        {loading ? (
+      <div
+        className="drive-list"
+        role="list"
+        aria-busy={loading || (!!typed && found === null && !error)}
+      >
+        {typed ? (
+          found === null ? (
+            <p className="drive-empty">{error ? "" : "Searching…"}</p>
+          ) : found.length === 0 ? (
+            <p className="drive-empty" role="status">
+              No files match.
+            </p>
+          ) : (
+            found.map((hit) => (
+              <div className="drive-row" role="listitem" key={hit.id}>
+                <button
+                  type="button"
+                  className="drive-item drive-search-hit"
+                  disabled={busy}
+                  onClick={() => {
+                    void (async () => {
+                      try {
+                        choose(await drive.get(hit.id));
+                      } catch (e) {
+                        setError(e instanceof Error ? e.message : String(e));
+                      }
+                    })();
+                  }}
+                >
+                  <ItemIcon item={{ name: hit.name, kind: "file" }} />
+                  <span className="drive-item-label">
+                    <span className="drive-item-name">{hit.name}</span>
+                    <small className="drive-share-meta">{hit.parentName}</small>
+                    <small className="drive-search-snippet">{hit.snippet}</small>
+                  </span>
+                </button>
+              </div>
+            ))
+          )
+        ) : loading ? (
           <p className="drive-empty">Loading…</p>
         ) : visible.length === 0 ? (
           <p className="drive-empty">

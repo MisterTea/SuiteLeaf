@@ -40,7 +40,7 @@ function logoPng() {
 }
 
 async function sheetReady(page: import("@playwright/test").Page) {
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).waitFor();
+  await page.getByRole("toolbar", { name: "Spreadsheet formatting" }).waitFor();
   await beat(page, 400);
 }
 

@@ -69,6 +69,22 @@ export interface DriveItem {
   lastEditedAt?: string | null;
   available: boolean;
 }
+
+/** A SuiteDrive file found by the words in its name or its contents. */
+export interface DriveSearchHit {
+  id: string;
+  name: string;
+  /** Parent folder name, or "My Drive" at the top. */
+  parentName: string;
+  snippet: string;
+}
+/** A `.slsheet` the signed-in person can read. The bytes are not included. */
+export interface DriveSpreadsheet {
+  id: string;
+  name: string;
+  /** Parent folder name, or "My Drive" at the top. */
+  parentName: string;
+}
 export type DriveRole =
   "viewer" | "commenter" | "responder" | "editor" | "owner";
 export interface AccountProfile {
@@ -95,6 +111,11 @@ export interface DriveComment {
   authorId: string;
   body: string;
   createdAt: string;
+}
+/** Someone else with this file open. The caller is never included. */
+export interface FilePresence {
+  name: string;
+  editing: boolean;
 }
 export interface ItemAccess {
   grants: AccessGrant[];
@@ -347,6 +368,17 @@ const json = (body: unknown): RequestInit => ({
 });
 
 export const drive = {
+  async search(query: string): Promise<DriveSearchHit[]> {
+    return (
+      await (
+        await api(`/api/drive/search?q=${encodeURIComponent(query)}`)
+      ).json()
+    ).hits;
+  },
+  /** Spreadsheets the signed-in person can read, including files inside folders. */
+  async spreadsheets(): Promise<DriveSpreadsheet[]> {
+    return (await (await api("/api/drive/spreadsheets")).json()).spreadsheets;
+  },
   async list(parentId?: string | null): Promise<DriveItem[]> {
     const query = parentId ? `?parent=${encodeURIComponent(parentId)}` : "";
     return (await (await api(`/api/drive/items${query}`)).json()).items;
@@ -466,6 +498,24 @@ export const drive = {
     await api(`/api/drive/items/${encodeURIComponent(id)}/comments`, {
       method: "POST",
       ...json({ body }),
+    });
+  },
+  /** Other people whose open-file beat is still fresh. */
+  async presence(id: string): Promise<FilePresence[]> {
+    return (
+      await (
+        await api(`/api/drive/items/${encodeURIComponent(id)}/presence`)
+      ).json()
+    ).people;
+  },
+  /**
+   * This computer has the file open. `editing` is true only while there are
+   * unsaved local edits. It does not change the caller's role.
+   */
+  async reportPresence(id: string, editing: boolean): Promise<void> {
+    await api(`/api/drive/items/${encodeURIComponent(id)}/presence`, {
+      method: "POST",
+      ...json({ editing }),
     });
   },
   async write(
