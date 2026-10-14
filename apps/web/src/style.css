@@ -7628,6 +7628,8 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 }
 .eq-exp {
   vertical-align: super;
+  position: relative;
+  top: -0.35em;
 }
 .eq-subexp {
   vertical-align: sub;

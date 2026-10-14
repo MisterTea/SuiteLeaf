@@ -584,9 +584,16 @@ export default function Docs({
       },
     },
     onUpdate: ({ editor, transaction }) => {
-      if (!transaction.docChanged || transaction.getMeta("addToHistory") === false)
-        return;
-      if (!readOnlyRef.current) changes.current(editor.getJSON() as JsonNode);
+      if (!transaction.docChanged || readOnlyRef.current) return;
+      // Live layout skips the undo stack. Proofing and suggestion mode still
+      // have to be saved, or a reload drops an ignored issue or a word-count stop.
+      if (transaction.getMeta("addToHistory") === false) {
+        const before = transaction.before.attrs;
+        const after = transaction.doc.attrs;
+        if (before.proofing === after.proofing && before.editingMode === after.editingMode)
+          return;
+      }
+      changes.current(editor.getJSON() as JsonNode);
     },
   });
 
