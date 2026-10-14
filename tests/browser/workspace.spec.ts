@@ -86,8 +86,10 @@ test("spreadsheet formulas → embedded chart → pivot worksheet → save and r
   const nameBox = page.locator(".sheet-host input.univer-size-full");
   await nameBox.fill("B2");
   await nameBox.press("Enter");
+  await expect(nameBox).toHaveValue("B2");
   await page.keyboard.type("7000");
   await page.keyboard.press("Enter");
+  await expect(nameBox).toHaveValue("B3");
   const edited = await exported(page);
   expect(
     edited.content.workbook.sheets[edited.content.workbook.sheetOrder[0]]
