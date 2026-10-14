@@ -17,6 +17,12 @@ import {
 } from "./doc-keep-next";
 import { annotateWidowLines, avoidSingleLine } from "./doc-widow-control";
 import { keepParagraphTogether, keepsLines } from "./doc-keep-lines";
+import {
+  pageAtPosition,
+  pageStartsFromMarks,
+  parsePageStarts,
+  type PageMark,
+} from "./doc-caret-page";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -369,6 +375,15 @@ export const DocumentPagination = Extension.create({
                     (height + 24),
                 ),
               );
+              const marks: PageMark[] = [];
+              for (const boundary of boundaries) {
+                if (boundary.page == null) continue;
+                marks.push({ pos: boundary.pos, page: boundary.page });
+              }
+              // The status bar looks the caret up in these starts. They are
+              // the pages this pass already assigned, not the scroll position.
+              (view.dom as HTMLElement).dataset.pageStarts =
+                pageStartsFromMarks(marks).join(",");
               view.dispatch(
                 view.state.tr
                   .setMeta(
@@ -378,6 +393,7 @@ export const DocumentPagination = Extension.create({
                   .setMeta("addToHistory", false),
               );
               for (const [el, top] of scrolled) el.scrollTop = top;
+              writeCaretPage(view);
               view.dom.dispatchEvent(
                 new CustomEvent("suiteleaf-pages", {
                   bubbles: true,
@@ -419,6 +435,8 @@ export const DocumentPagination = Extension.create({
               if (!v.state.doc.eq(previous.doc) || reserve !== seenReserve) {
                 seenReserve = reserve;
                 schedule();
+              } else if (!v.state.selection.eq(previous.selection)) {
+                writeCaretPage(v);
               }
             },
             destroy() {
@@ -433,6 +451,20 @@ export const DocumentPagination = Extension.create({
     ];
   },
 });
+/** Publish the caret's page from the starts the last pagination pass stored. */
+function writeCaretPage(view: EditorView) {
+  const dom = view.dom as HTMLElement;
+  const page = pageAtPosition(
+    view.state.selection.head,
+    parsePageStarts(dom.dataset.pageStarts),
+  );
+  if (dom.dataset.caretPage === String(page)) return;
+  dom.dataset.caretPage = String(page);
+  dom.dispatchEvent(
+    new CustomEvent("suiteleaf-caret-page", { bubbles: true, detail: page }),
+  );
+}
+
 function noteReserves(view: EditorView): number[] {
   const raw = (view.dom as HTMLElement).dataset.noteReserve;
   if (!raw) return [];

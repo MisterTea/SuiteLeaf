@@ -93,6 +93,7 @@ import {
 } from "@suiteleaf/core/suggestions";
 
 import { DocumentPagination, PageBreak } from "./doc-pagination";
+import { formatCaretPage } from "./doc-caret-page";
 import { Grammar } from "./doc-grammar";
 import { useDocGrammar } from "./doc-grammar-ui";
 import { focusTabStop, TabCharacter, TabStops } from "./doc-tab-stops";
@@ -380,6 +381,7 @@ export default function Docs({
   const grammarContext = useRef<ProofingContext>(() => false);
   const [activeHeading, setActiveHeading] = useState<number | null>(null);
   const [pageCount, setPageCount] = useState(1);
+  const [caretPage, setCaretPage] = useState(1);
   const [arabicPage, setArabicPage] = useState<number | null>(null);
   const [pageSetupOpen, setPageSetupOpen] = useState(false);
   const [equationOpen, setEquationOpen] = useState(false);
@@ -1203,14 +1205,23 @@ export default function Docs({
 
   useEffect(() => {
     if (!editor) return;
+    const readCaretPage = () => {
+      const caret = Number(editor.view.dom.dataset.caretPage ?? "1");
+      setCaretPage(Number.isInteger(caret) && caret >= 1 ? caret : 1);
+    };
     const pages = (event: Event) => {
       setPageCount((event as CustomEvent<number>).detail);
       const raw = editor.view.dom.dataset.arabicPage ?? "";
       const start = raw === "" ? Number.NaN : Number(raw);
       setArabicPage(Number.isInteger(start) && start >= 0 ? start : null);
+      readCaretPage();
     };
     editor.view.dom.addEventListener("suiteleaf-pages", pages);
-    return () => editor.view.dom.removeEventListener("suiteleaf-pages", pages);
+    editor.view.dom.addEventListener("suiteleaf-caret-page", readCaretPage);
+    return () => {
+      editor.view.dom.removeEventListener("suiteleaf-pages", pages);
+      editor.view.dom.removeEventListener("suiteleaf-caret-page", readCaretPage);
+    };
   }, [editor]);
 
   // The outline highlights the section being read: the last heading above a
@@ -2409,14 +2420,19 @@ export default function Docs({
       {proofing.ui}
       {grammar.ui}
       <footer className="editor-status">
-        <span
-          id="live-word-count"
-          className="word-count"
-          tabIndex={-1}
-          aria-live="polite"
-          aria-atomic="true"
-        >
-          {proofing.label}
+        <span className="editor-status-main">
+          <span
+            id="live-word-count"
+            className="word-count"
+            tabIndex={-1}
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {proofing.label}
+          </span>
+          <span id="caret-page" className="caret-page">
+            {formatCaretPage(caretPage, pageCount)}
+          </span>
         </span>{" "}
         <SuggestionFlag />{" "}
         <span>
