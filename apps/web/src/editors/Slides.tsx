@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ChangeEvent,
@@ -35,6 +36,7 @@ import {
   Redo2,
   X,
   Printer,
+  Search,
   MousePointer2,
   Minus,
   StickyNote,
@@ -147,6 +149,11 @@ import {
   rememberSlideZoom,
   slideZoom,
 } from "./slide-zoom";
+import {
+  findDeckMatches,
+  findStatus,
+  nextMatchIndex,
+} from "./slide-find";
 
 type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
@@ -203,6 +210,14 @@ export default function Slides({
   const [showNotes, setShowNotes] = useState(true);
   const [presenting, setPresenting] = useState(false);
   const [zoom, setZoom] = useState(() => slideZoom(file.id));
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [findIndex, setFindIndex] = useState(0);
+  const findInputRef = useRef<HTMLInputElement>(null);
+  const matches = useMemo(
+    () => findDeckMatches(deck, findQuery),
+    [deck, findQuery],
+  );
   const zoomStartedWithoutId = useRef(!file.id);
   useEffect(() => {
     if (!zoomStartedWithoutId.current || !file.id) return;
@@ -338,6 +353,37 @@ export default function Slides({
       }
     }
   };
+
+  const showMatch = (index: number) => {
+    const found = findDeckMatches(deckRef.current, findQuery);
+    const match = found[index];
+    if (!match) return;
+    setFindIndex(index);
+    anchorRef.current = match.slideId;
+    applySelection(match.slideId, [match.slideId], null);
+  };
+
+  const updateFind = (value: string) => {
+    setFindQuery(value);
+    const found = findDeckMatches(deckRef.current, value);
+    setFindIndex(0);
+    if (!value.trim() || !found.length) return;
+    const match = found[0];
+    anchorRef.current = match.slideId;
+    applySelection(match.slideId, [match.slideId], null);
+  };
+
+  const findNext = () => {
+    const found = findDeckMatches(deckRef.current, findQuery);
+    if (!found.length) return;
+    showMatch(nextMatchIndex(findIndex, found.length));
+  };
+
+  const closeFind = () => setFindOpen(false);
+
+  useEffect(() => {
+    if (findOpen) findInputRef.current?.focus();
+  }, [findOpen]);
 
   // Commit changes and push to undo history
   const commit = (next: SlideFile["content"], key?: string) => {
@@ -1536,6 +1582,17 @@ ${slidesHtml}
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (presentingRef.current) return;
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        !e.altKey &&
+        !e.shiftKey &&
+        e.key.toLowerCase() === "f"
+      ) {
+        e.preventDefault();
+        setFindOpen(true);
+        findInputRef.current?.focus();
+        return;
+      }
       if (e.key === "Escape") {
         setContextMenu(null);
         const editing = editingRef.current;
@@ -2474,6 +2531,14 @@ ${slidesHtml}
 
         {/* Google Slides styled Slideshow button */}
         <div className="tool-group right-tools" style={{ marginLeft: "auto" }}>
+          <Tool
+            label="Find"
+            active={findOpen}
+            onClick={() => setFindOpen((open) => !open)}
+          >
+            <Search size={16} />
+            <span className="find-label">Find</span>
+          </Tool>
           <select
             className="toolbar-select zoom-select"
             aria-label="Zoom"
@@ -2540,6 +2605,50 @@ ${slidesHtml}
           </div>
         </div>
       </div>
+
+      {findOpen && !presenting ? (
+        <div className="slide-find-bar" role="search">
+          <label htmlFor="slide-find-input">Find</label>
+          <input
+            id="slide-find-input"
+            ref={findInputRef}
+            className="slide-find-input"
+            aria-label="Find text"
+            value={findQuery}
+            onChange={(e) => updateFind(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                findNext();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                closeFind();
+              }
+            }}
+          />
+          <span className="slide-find-status" role="status">
+            {findStatus(findQuery, matches, findIndex)}
+          </span>
+          <button
+            type="button"
+            className="slide-find-next"
+            aria-label="Next match"
+            onClick={findNext}
+            disabled={!matches.length}
+          >
+            Next
+          </button>
+          <button
+            type="button"
+            className="slide-find-close"
+            aria-label="Close find"
+            onClick={closeFind}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      ) : null}
 
       {selectedElement?.themeOverride && deck.theme ? (
         <div className="theme-override-bar" role="status">
@@ -2878,7 +2987,7 @@ ${slidesHtml}
                       data-x={el.x}
                       data-y={el.y}
                       data-selected={isSelected ? "true" : "false"}
-                      className={`slide-element slide-text ${isSelected ? "selected" : ""}${editorFadeClass(el)}`}
+                      className={`slide-element slide-text ${isSelected ? "selected" : ""}${editorFadeClass(el)}${findOpen && matches[findIndex]?.elementId === el.id && matches[findIndex]?.slideId === activeSlideId ? " find-match" : ""}`}
                       {...editorFadeAttrs(el)}
                       style={{
                         ...posStyle,
