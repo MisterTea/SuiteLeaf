@@ -135,6 +135,7 @@ import {
   samePlace,
   showPosition,
   showSizeLabel,
+  slideNumberLabel,
   startOfShow,
   type ShowCursor,
   type ShowMove,
@@ -142,6 +143,12 @@ import {
 import { FadeOnClickMark } from "./slide-fade-mark";
 
 type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
+
+/** Deck place drawn on the slide. It is not one of the slide's text boxes. */
+function SlideNumberCorner({ label }: { label: string | null }) {
+  if (!label) return null;
+  return <div className="slide-number-chrome">{label}</div>;
+}
 
 export default function Slides({
   file,
@@ -600,6 +607,12 @@ export default function Slides({
       ...prev,
       slides: { ...prev.slides, [slide.id]: nextSlide },
     });
+  };
+
+  const toggleSlideNumbers = () => {
+    if (readOnlyRef.current) return;
+    const prev = deckRef.current;
+    commit({ ...prev, showSlideNumbers: prev.showSlideNumbers !== true });
   };
 
   // Update active slide properties. `coalesce` folds repeated edits (typing) into one undo.
@@ -1407,6 +1420,11 @@ ${slidesHtml}
   }, []);
 
   const currentSlideIndex = Math.max(0, deck.slideOrder.indexOf(activeSlideId));
+  const editorCorner = slideNumberLabel(
+    currentSlideIndex,
+    deck.slideOrder.length,
+    deck.showSlideNumbers,
+  );
   const slideApi = useRef({
     undo,
     redo,
@@ -1706,6 +1724,11 @@ ${slidesHtml}
   }
   const nextPresentSlide = deck.slides[deck.slideOrder[nextShownIndex]];
   const audienceLabel = showSizeLabel(deck.slideOrder.length, skippedAt);
+  const showCorner = slideNumberLabel(
+    presentSlideIndex,
+    deck.slideOrder.length,
+    deck.showSlideNumbers,
+  );
   const audiencePlace = showPosition(
     presentSlideIndex,
     deck.slideOrder.length,
@@ -2739,6 +2762,15 @@ ${slidesHtml}
           <div className="slides-sidebar-footer">
             <button
               type="button"
+              className="slide-numbers-btn"
+              aria-pressed={deck.showSlideNumbers === true}
+              disabled={readOnly}
+              onClick={toggleSlideNumbers}
+            >
+              Slide numbers
+            </button>
+            <button
+              type="button"
               className="skip-slide-btn"
               disabled={readOnly || !activeSlide}
               onClick={toggleSkipSlide}
@@ -2967,6 +2999,7 @@ ${slidesHtml}
 
                 return null;
               })}
+              <SlideNumberCorner label={editorCorner} />
               {slideComments.marks}
             </div>
           </div>
@@ -3100,6 +3133,7 @@ ${slidesHtml}
             onClick={() => moveShowRef.current("next")}
           >
             {renderShowElements(presentSlide, true)}
+            <SlideNumberCorner label={showCorner} />
             {blankScreen ? (
               <div
                 className="presenter-blank"

@@ -229,6 +229,12 @@ export const presentationSchema = z.object({
   slideOrder: z.array(z.string()),
   slides: z.record(z.string(), slideSchema),
   theme: slideThemeSchema.optional(),
+  /**
+   * When true, each slide's corner shows its place in slideOrder ("2 of 3").
+   * Older decks omit it and show no numbers. Skipping a slide does not change
+   * this place.
+   */
+  showSlideNumbers: z.boolean().optional(),
 });
 export type Presentation = z.infer<typeof presentationSchema>;
 type NativeCell = {

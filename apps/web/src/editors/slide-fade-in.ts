@@ -74,6 +74,22 @@ export function showPosition(
   return { position, shown };
 }
 
+/**
+ * Corner label for one slide: its 1-based place in slideOrder, and how many
+ * slides that order holds. A skipped slide keeps its place, so the next slide
+ * does not become the previous number. When numbers are off, there is no label.
+ */
+export function slideNumberLabel(
+  slideIndex: number,
+  slideCount: number,
+  showNumbers: boolean | undefined,
+): string | null {
+  if (showNumbers !== true) return null;
+  if (!Number.isInteger(slideIndex) || !Number.isInteger(slideCount)) return null;
+  if (slideCount < 1 || slideIndex < 0 || slideIndex >= slideCount) return null;
+  return `${slideIndex + 1} of ${slideCount}`;
+}
+
 export function samePlace(a: ShowCursor, b: ShowCursor): boolean {
   return a.slideIndex === b.slideIndex && a.revealed === b.revealed;
 }
