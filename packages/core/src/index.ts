@@ -325,9 +325,39 @@ const docTabSchema = z.object({
   content: node,
 });
 export type DocTab = z.infer<typeof docTabSchema>;
+const collaboratorSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1).max(200),
+});
+/** Edit metadata only. The op is not interpreted while the file opens. */
+const editSchema = z.object({
+  id: z.string().min(1),
+  at: z.string().datetime(),
+  by: collaboratorSchema,
+  op: z.unknown(),
+});
+/**
+ * A checkpoint. `content` is the snapshot to copy back; it is not validated
+ * until that version is previewed or restored.
+ */
+const versionSchema = z.object({
+  id: z.string().min(1),
+  at: z.string().datetime(),
+  by: collaboratorSchema,
+  summary: z.string().min(1).max(200),
+  label: z.string().min(1).max(80).optional(),
+  title: z.string().min(1).max(200),
+  throughEdit: z.string().min(1),
+  content: z.unknown(),
+});
+const historyFields = {
+  edits: z.array(editSchema).optional(),
+  versions: z.array(versionSchema).optional(),
+};
 export const fileSchema = z.discriminatedUnion("kind", [
   z.object({
     ...meta,
+    ...historyFields,
     kind: z.literal("doc"),
     content: node,
     /** Name of the first tab. Missing means Document. */
@@ -390,15 +420,18 @@ export const fileSchema = z.discriminatedUnion("kind", [
         })
         .optional(),
     }),
+    ...historyFields,
   }),
   z.object({
     ...meta,
+    ...historyFields,
     kind: z.literal("slide"),
     content: presentationSchema,
   }),
   z.object({
     ...meta,
     kind: z.literal("form"),
+    ...historyFields,
     content: z.object({
       questions: z.array(formQuestionSchema).max(100),
       responses: z.array(formResponseSchema).max(5000),
@@ -410,6 +443,42 @@ export type DocFile = Extract<SuiteFile, { kind: "doc" }>;
 export type SheetFile = Extract<SuiteFile, { kind: "sheet" }>;
 export type SlideFile = Extract<SuiteFile, { kind: "slide" }>;
 export type FormFile = Extract<SuiteFile, { kind: "form" }>;
+export {
+  VERSION_PAUSE_MS,
+  VERSION_PAUSE_KEY,
+  VERSION_SNAPSHOT_CAP,
+  OP_BYTE_CAP,
+  applyParagraphTexts,
+  blockTexts,
+  changeExcerpt,
+  changedRegions,
+  compactSession,
+  nameVersion,
+  recordEdit,
+  restoreToVersion,
+  sealIfIdle,
+  slideOp,
+  summarizeChange,
+  summaryPrompt,
+  trimVersions,
+  versionPauseMs,
+  type Collaborator,
+  type RegionTouch,
+  type StoredEdit,
+  type StoredVersion,
+  type TrackedFile,
+} from "./history";
+export {
+  DocumentRoom,
+  canJoinRoom,
+  connectDocs,
+  editParagraph,
+  paragraphTexts,
+  seedParagraphs,
+  syncParagraphTexts,
+  type CollabJoin,
+  type CollabRole,
+} from "./collab";
 export function safeLink(url: string): boolean {
   return /^(https?:|mailto:|tel:|#)/i.test(url);
 }
@@ -554,7 +623,11 @@ export function parseFile(text: string, expectedKind?: Kind | null): SuiteFile {
   return file;
 }
 export function serializeFile(file: SuiteFile): string {
-  return JSON.stringify(parseFile(JSON.stringify(file)));
+  const parsed = parseFile(JSON.stringify(file));
+  const copy = { ...parsed };
+  if (!copy.edits?.length) delete copy.edits;
+  if (!copy.versions?.length) delete copy.versions;
+  return JSON.stringify(copy);
 }
 export function createFile(
   kind: Kind,

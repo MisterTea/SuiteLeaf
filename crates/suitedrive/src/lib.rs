@@ -88,6 +88,30 @@ pub fn tables() -> Vec<TableDef> {
             .column("itemId", Text)
             .column("createdAt", Text)
             .index("itemId"),
+        // Who currently has a file open with comment or edit access.
+        // Dropped after 15 minutes without activity. Not shown in the editor.
+        TableDef::new("drive_presence", "id")
+            .column("itemId", Text)
+            .column("userId", Text)
+            .column("name", Text)
+            .column("role", Text)
+            .column("lastActiveMs", Integer)
+            .index("itemId"),
+        // One live collaboration room. generation stops two nodes compacting twice.
+        TableDef::new("drive_room", "id")
+            .column("mode", Text)
+            .column("generation", Integer)
+            .column("baseline", Text),
+        // Yjs updates for the open room, so another node can catch up.
+        TableDef::new("drive_room_update", "id")
+            .column("itemId", Text)
+            .column("generation", Integer)
+            .column("bytes", Text)
+            .column("userId", Text)
+            .column("at", Text)
+            .column("unit", Text)
+            .column("key", Text)
+            .index("itemId"),
     ]
 }
 
@@ -1686,6 +1710,49 @@ impl Drive {
             ));
         }
         self.commit_bytes(&id, "", None, &next_bytes)
+    }
+
+    /// Write file bytes without an If-Match check. Used when a collaboration
+    /// room compacts, after the last writer has gone idle.
+    pub fn write_head(&self, author_id: &str, id: &str, bytes: &[u8]) -> DriveResult<Item> {
+        let row = self.item_row(id)?;
+        if text(&row, "kind").as_deref() != Some("file") {
+            return Err(DriveError::BadRequest("Folders have no content.".into()));
+        }
+        let hash = self.blobs.put_content(bytes).context("store content")?;
+        let version = uuid::Uuid::now_v7().to_string();
+        let now = iso_now();
+        let size = bytes.len() as i64;
+        self.db.transact(|tx| {
+            tx.upsert(
+                "drive_version",
+                &version,
+                [
+                    ("itemId", Value::from(id)),
+                    ("contentHash", hash.to_string().into()),
+                    ("size", Value::Integer(size)),
+                    ("authorId", author_id.into()),
+                    ("createdAt", now.clone().into()),
+                ],
+            )?;
+            tx.upsert(
+                "drive_item",
+                id,
+                [
+                    ("headVersionId", Value::Text(version)),
+                    ("size", Value::Integer(size)),
+                    ("updatedAt", now.into()),
+                ],
+            )
+        })?;
+        let role = self.role(
+            &Principal {
+                id: author_id.to_owned(),
+                admin: true,
+            },
+            id,
+        )?;
+        self.to_item(&self.item_row(id)?, role)
     }
 
     /// The item and the bytes of `version` (default: head).

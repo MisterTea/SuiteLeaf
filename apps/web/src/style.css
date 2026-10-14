@@ -2634,6 +2634,11 @@ a {
   font-size: 12px;
   margin-left: 2px;
 }
+/* The list hangs over the format toolbar. That toolbar is a later sibling
+   with the same z-index, so it would swallow clicks on the first rows. */
+.sheets-toolbar:has(.sheet-analyses-dropdown[open]) {
+  z-index: 30;
+}
 .sheet-analyses-dropdown summary {
   cursor: pointer;
   padding: 4px 8px;

@@ -318,6 +318,10 @@ function requireSession(): NodeSession {
 
 /** A short-lived JWT any node can verify; falls back to the session token
  * if this node's auth service is unavailable. */
+export async function accessToken(): Promise<string> {
+  return bearer(requireSession());
+}
+
 async function bearer(current: NodeSession): Promise<string> {
   if (jwtCache && jwtCache.expires - 60_000 > Date.now()) return jwtCache.token;
   try {

@@ -18,6 +18,9 @@ import { TableKit } from "@tiptap/extension-table";
 import Superscript from "@tiptap/extension-superscript";
 import Subscript from "@tiptap/extension-subscript";
 import { Extension, findParentNode } from "@tiptap/core";
+import { ySyncPlugin, prosemirrorJSONToYXmlFragment } from "y-prosemirror";
+import type * as Y from "yjs";
+import { blockTexts, syncParagraphTexts } from "@suiteleaf/core";
 import { CellSelection } from "@tiptap/pm/tables";
 import CharacterCount from "@tiptap/extension-character-count";
 import DOMPurify from "dompurify";
@@ -233,11 +236,13 @@ export default function Docs({
   onError,
   onCreateDocument,
   readOnly = false,
+  collabDoc = null,
+  collabTouch,
 }: {
   file: DocFile;
   onChange: (
     content: DocFile["content"],
-    tabs?: { tabTitle?: string; tabs?: DocFile["tabs"] },
+    extra?: { tabTitle?: string; tabs?: DocFile["tabs"] } | unknown,
   ) => void;
   onActions: (actions: EditorActions) => void;
   onError: (s: string) => void;
@@ -245,6 +250,9 @@ export default function Docs({
   onCreateDocument: (created: DocFile) => Promise<void>;
   /** Viewers and commenters can read, but not change the document. */
   readOnly?: boolean;
+  /** Set while another writer is in the file. Edits go through this Y.Doc. */
+  collabDoc?: Y.Doc | null;
+  collabTouch?: { current: { unit: string; key: string } };
 }) {
   const changes = useRef(onChange);
   changes.current = onChange;
@@ -374,7 +382,20 @@ export default function Docs({
   const editor = useEditor({
     immediatelyRender: false,
     editable: !readOnly,
-    extensions,
+    extensions: collabDoc
+      ? [
+          ...extensions,
+          Extension.create({
+            name: "yCollab",
+            addProseMirrorPlugins() {
+              const fragment = collabDoc.getXmlFragment("prosemirror");
+              if (fragment.length === 0)
+                prosemirrorJSONToYXmlFragment(this.editor.schema, file.content, fragment);
+              return [ySyncPlugin(fragment)];
+            },
+          }),
+        ]
+      : extensions,
     content: file.content,
     editorProps: {
       attributes: {
@@ -677,7 +698,20 @@ export default function Docs({
         if (before.proofing === after.proofing && before.editingMode === after.editingMode)
           return;
       }
-      commitRef.current(editor.getJSON() as JsonNode);
+      const json = editor.getJSON() as JsonNode;
+      if (collabDoc) {
+        const previous = blockTexts(transaction.before.toJSON());
+        const next = blockTexts(json);
+        const index = next.findIndex((text, i) => text !== previous[i]);
+        if (collabTouch)
+          collabTouch.current = {
+            unit: "paragraph",
+            key: String(index < 0 ? 0 : index),
+          };
+        syncParagraphTexts(collabDoc, next);
+        return;
+      }
+      commitRef.current(json);
     },
   });
 

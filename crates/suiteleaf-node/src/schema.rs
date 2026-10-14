@@ -76,5 +76,26 @@ mod tests {
         assert_eq!(link.pk, "token");
         assert!(link.column_type("itemId").is_some());
         assert!(link.column_type("createdAt").is_some());
+        assert!(
+            schema
+                .table("drive_presence")
+                .unwrap()
+                .column_type("lastActiveMs")
+                .is_some()
+        );
+        assert!(
+            schema
+                .table("drive_room")
+                .unwrap()
+                .column_type("generation")
+                .is_some()
+        );
+        assert!(
+            schema
+                .table("drive_room_update")
+                .unwrap()
+                .column_type("bytes")
+                .is_some()
+        );
     }
 }
