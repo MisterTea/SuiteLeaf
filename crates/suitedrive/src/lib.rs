@@ -27,7 +27,7 @@ use tokio::sync::Notify;
 pub use blobs::{BlobStore, CHUNK_SIZE, Hash, Manifest};
 
 /// Bump when the drive tables change.
-pub const SCHEMA_VERSION: u32 = 3;
+pub const SCHEMA_VERSION: u32 = 4;
 const MAX_BLOB_RESPONSE: usize = 24 * 1024 * 1024;
 const MAX_DEPTH: usize = 64;
 
@@ -82,15 +82,26 @@ pub fn tables() -> Vec<TableDef> {
             .column("dismissedAt", Text)
             .index("recipientId")
             .index("itemId"),
+        // A secret that lets someone add one form response without an account.
+        // The token is the primary key so a public request looks up one row.
+        TableDef::new("drive_respond_link", "token")
+            .column("itemId", Text)
+            .column("createdAt", Text)
+            .index("itemId"),
     ]
 }
 
+/// Declaration order is the privilege order. [`Drive::require`] allows this
+/// role or any role listed after it, and the highest grant wins.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     Viewer,
     /// Can read and add comments, but cannot change the file.
     Commenter,
+    /// Can append responses on a `.slform` file, and can comment, but cannot
+    /// change the questions or write any other file.
+    Responder,
     Editor,
     Owner,
 }
@@ -100,6 +111,7 @@ impl Role {
         match s {
             "viewer" => Some(Role::Viewer),
             "commenter" => Some(Role::Commenter),
+            "responder" => Some(Role::Responder),
             "editor" => Some(Role::Editor),
             "owner" => Some(Role::Owner),
             _ => None,
@@ -110,10 +122,157 @@ impl Role {
         match self {
             Role::Viewer => "viewer",
             Role::Commenter => "commenter",
+            Role::Responder => "responder",
             Role::Editor => "editor",
             Role::Owner => "owner",
         }
     }
+}
+
+/// Questions are unchanged, and responses are the previous array plus one or
+/// more new items. Earlier response objects are unchanged.
+fn appends_form_responses(previous: &[u8], next: &[u8]) -> bool {
+    let (Ok(previous), Ok(next)) = (
+        serde_json::from_slice::<serde_json::Value>(previous),
+        serde_json::from_slice::<serde_json::Value>(next),
+    ) else {
+        return false;
+    };
+    let (Some(previous_questions), Some(next_questions)) = (
+        previous.pointer("/content/questions"),
+        next.pointer("/content/questions"),
+    ) else {
+        return false;
+    };
+    if previous_questions.as_array().is_none() || previous_questions != next_questions {
+        return false;
+    }
+    let (Some(previous_rows), Some(next_rows)) = (
+        previous
+            .pointer("/content/responses")
+            .and_then(serde_json::Value::as_array),
+        next.pointer("/content/responses")
+            .and_then(serde_json::Value::as_array),
+    ) else {
+        return false;
+    };
+    next_rows.len() > previous_rows.len()
+        && next_rows
+            .iter()
+            .zip(previous_rows)
+            .all(|(next_row, previous_row)| next_row == previous_row)
+}
+
+fn is_form_name(name: &str) -> bool {
+    name.to_ascii_lowercase().ends_with(".slform")
+}
+
+fn valid_respond_token(token: &str) -> bool {
+    uuid::Uuid::parse_str(token).is_ok()
+}
+
+fn question_prompt(question: &serde_json::Value) -> &str {
+    question
+        .get("prompt")
+        .and_then(|value| value.as_str())
+        .filter(|prompt| !prompt.is_empty())
+        .unwrap_or("This question")
+}
+
+/// Keep answers that satisfy the questions. A required text or choice must be
+/// present, and a choice must be one of that question's choices.
+fn checked_answers(
+    questions: &[serde_json::Value],
+    answers: &BTreeMap<String, String>,
+) -> DriveResult<serde_json::Map<String, serde_json::Value>> {
+    let mut clean = serde_json::Map::new();
+    for question in questions {
+        let Some(id) = question
+            .get("id")
+            .and_then(|value| value.as_str())
+            .filter(|id| !id.is_empty())
+        else {
+            continue;
+        };
+        let prompt = question_prompt(question);
+        let required = question
+            .get("required")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false);
+        let kind = question
+            .get("kind")
+            .and_then(|value| value.as_str())
+            .unwrap_or("text");
+        let value = answers.get(id).map(|answer| answer.trim()).unwrap_or("");
+        if value.chars().count() > 2000 {
+            return Err(DriveError::BadRequest(format!("{prompt} is too long")));
+        }
+        if required && value.is_empty() {
+            return Err(DriveError::BadRequest(format!("{prompt} is required")));
+        }
+        if kind == "choice" && !value.is_empty() {
+            let allowed = question
+                .get("choices")
+                .and_then(|choices| choices.as_array())
+                .is_some_and(|choices| choices.iter().any(|choice| choice.as_str() == Some(value)));
+            if !allowed {
+                return Err(DriveError::BadRequest(format!(
+                    "{prompt} must be one of the choices"
+                )));
+            }
+        }
+        if !value.is_empty() {
+            clean.insert(id.to_owned(), serde_json::Value::String(value.to_owned()));
+        }
+    }
+    Ok(clean)
+}
+
+fn public_question(question: &serde_json::Value) -> Option<serde_json::Value> {
+    let id = question.get("id").and_then(|value| value.as_str())?;
+    if id.is_empty() {
+        return None;
+    }
+    let kind = if question.get("kind").and_then(|value| value.as_str()) == Some("choice") {
+        "choice"
+    } else {
+        "text"
+    };
+    let mut out = serde_json::json!({
+        "id": id,
+        "prompt": question.get("prompt").and_then(|value| value.as_str()).unwrap_or(""),
+        "kind": kind,
+        "required": question.get("required").and_then(|value| value.as_bool()).unwrap_or(false),
+    });
+    if kind == "choice" {
+        let choices: Vec<&str> = question
+            .get("choices")
+            .and_then(|value| value.as_array())
+            .map(|choices| {
+                choices
+                    .iter()
+                    .filter_map(|choice| choice.as_str())
+                    .collect()
+            })
+            .unwrap_or_default();
+        out["choices"] = serde_json::json!(choices);
+    }
+    Some(out)
+}
+
+fn form_title(file: &serde_json::Value, name: &str) -> String {
+    if let Some(title) = file
+        .get("title")
+        .and_then(|value| value.as_str())
+        .filter(|title| !title.is_empty())
+    {
+        return title.to_owned();
+    }
+    let lower = name.to_ascii_lowercase();
+    if lower.ends_with(".slform") && name.len() > 7 {
+        return name[..name.len() - 7].to_owned();
+    }
+    name.to_owned()
 }
 
 /// The caller of a drive operation.
@@ -128,6 +287,9 @@ pub struct Principal {
 pub struct Item {
     pub id: String,
     pub parent_id: Option<String>,
+    /// The parent folder's name, when a trash listing looked it up.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_name: Option<String>,
     pub name: String,
     pub kind: String,
     pub owner_id: String,
@@ -218,6 +380,15 @@ pub struct DriveComment {
     pub author_id: String,
     pub body: String,
     pub created_at: String,
+}
+
+/// What someone with a sign-up link is allowed to see: the title and the
+/// questions. Responses, the file's access list, and the owner's other files
+/// are not part of this.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct PublicForm {
+    pub title: String,
+    pub questions: Vec<serde_json::Value>,
 }
 
 /// An undismissed in-app notice that `sharer_id` shared `item_id`.
@@ -549,6 +720,7 @@ impl Drive {
         Ok(Item {
             id: text(row, "id").unwrap_or_default(),
             parent_id: text(row, "parentId"),
+            parent_name: None,
             name: text(row, "name").unwrap_or_default(),
             kind: text(row, "kind").unwrap_or_else(|| "file".into()),
             owner_id: text(row, "ownerId").unwrap_or_default(),
@@ -568,7 +740,15 @@ impl Drive {
 
     pub fn get(&self, who: &Principal, id: &str) -> DriveResult<Item> {
         let role = self.require(who, id, Role::Viewer)?;
-        self.to_item(&self.item_row(id)?, Some(role))
+        let mut item = self.to_item(&self.item_row(id)?, Some(role))?;
+        if let Some(parent_id) = item.parent_id.clone() {
+            item.parent_name = self
+                .db
+                .get("drive_item", &parent_id)?
+                .as_ref()
+                .and_then(|parent| text(parent, "name"));
+        }
+        Ok(item)
     }
 
     fn items(&self, sql: &str, params: &[Value], who: &Principal) -> DriveResult<Vec<Item>> {
@@ -602,6 +782,26 @@ impl Drive {
         }
     }
 
+    /// Folders the caller can edit, including nested ones, so a move dialog
+    /// can show a path without opening each folder. A folder they can only
+    /// view or comment on is left out. Trashed folders are left out.
+    pub fn list_folders(&self, who: &Principal) -> DriveResult<Vec<Item>> {
+        let rows = self.db.query(
+            "SELECT * FROM drive_item WHERE kind = 'folder' AND trashed = 0 ORDER BY name COLLATE NOCASE",
+            &[],
+        )?;
+        let mut out = Vec::new();
+        for row in rows {
+            let id = text(&row, "id").unwrap_or_default();
+            if let Some(role) = self.role(who, &id)?
+                && role >= Role::Editor
+            {
+                out.push(self.to_item(&row, Some(role))?);
+            }
+        }
+        Ok(out)
+    }
+
     /// Items shared directly with the caller or their organizations.
     pub fn shared(&self, who: &Principal) -> DriveResult<Vec<Item>> {
         let now = iso_now();
@@ -628,6 +828,27 @@ impl Drive {
             &params,
             who,
         )
+    }
+
+    /// Trashed items the caller owns, with the folder name they came from.
+    pub fn list_trashed(&self, who: &Principal) -> DriveResult<Vec<Item>> {
+        let rows = self.db.query(
+            "SELECT * FROM drive_item WHERE ownerId = ?1 AND trashed = 1 ORDER BY name COLLATE NOCASE",
+            &[Value::Text(who.id.clone())],
+        )?;
+        let mut out = Vec::new();
+        for row in rows {
+            let mut item = self.to_item(&row, Some(Role::Owner))?;
+            if let Some(parent_id) = item.parent_id.clone() {
+                item.parent_name = self
+                    .db
+                    .get("drive_item", &parent_id)?
+                    .as_ref()
+                    .and_then(|parent| text(parent, "name"));
+            }
+            out.push(item);
+        }
+        Ok(out)
     }
 
     pub fn create(
@@ -672,8 +893,42 @@ impl Drive {
         self.get(who, &id)
     }
 
+    /// A responder may save a `.slform` file only by appending responses.
+    fn responder_may_append(&self, id: &str, bytes: &[u8]) -> DriveResult<bool> {
+        let row = self.item_row(id)?;
+        let name = text(&row, "name").unwrap_or_default();
+        if !name.to_ascii_lowercase().ends_with(".slform") {
+            return Ok(false);
+        }
+        let Some(previous) = self.head_bytes(&row)? else {
+            return Ok(false);
+        };
+        Ok(appends_form_responses(&previous, bytes))
+    }
+
+    fn head_bytes(&self, row: &Row) -> DriveResult<Option<Vec<u8>>> {
+        let Some(version) = text(row, "headVersionId") else {
+            return Ok(None);
+        };
+        let version_row = self
+            .db
+            .get("drive_version", &version)?
+            .ok_or(DriveError::NotFound)?;
+        let Some(hash) = text(&version_row, "contentHash") else {
+            return Ok(None);
+        };
+        let hash = hash
+            .parse()
+            .map_err(|_| DriveError::Other(anyhow::anyhow!("corrupt content hash")))?;
+        Ok(self.blobs.get_content(&hash)?)
+    }
+
     /// Save new content. `if_match` is the head version the caller last saw;
     /// a different head means someone else saved first.
+    ///
+    /// Editors and owners may write any bytes. A responder may write a
+    /// `.slform` file only to append responses. Viewers and commenters may
+    /// not change file bytes.
     pub fn write(
         &self,
         who: &Principal,
@@ -682,7 +937,14 @@ impl Drive {
         mime: Option<&str>,
         bytes: &[u8],
     ) -> DriveResult<Item> {
-        self.require(who, id, Role::Editor)?;
+        let allowed = match self.role(who, id)? {
+            Some(role) if role >= Role::Editor => true,
+            Some(Role::Responder) => self.responder_may_append(id, bytes)?,
+            _ => false,
+        };
+        if !allowed {
+            return Err(DriveError::Forbidden);
+        }
         let row = self.item_row(id)?;
         if text(&row, "kind").as_deref() != Some("file") {
             return Err(DriveError::BadRequest("Folders have no content.".into()));
@@ -695,6 +957,17 @@ impl Drive {
             let role = self.role(who, id)?;
             return Err(DriveError::Conflict(Box::new(self.to_item(&row, role)?)));
         }
+        self.commit_bytes(id, &who.id, mime, bytes)?;
+        self.get(who, id)
+    }
+
+    fn commit_bytes(
+        &self,
+        id: &str,
+        author_id: &str,
+        mime: Option<&str>,
+        bytes: &[u8],
+    ) -> DriveResult<()> {
         let hash = self.blobs.put_content(bytes).context("store content")?;
         let version = uuid::Uuid::now_v7().to_string();
         let now = iso_now();
@@ -707,7 +980,7 @@ impl Drive {
                     ("itemId", Value::from(id)),
                     ("contentHash", hash.to_string().into()),
                     ("size", Value::Integer(size)),
-                    ("authorId", who.id.clone().into()),
+                    ("authorId", author_id.to_owned().into()),
                     ("createdAt", now.clone().into()),
                 ],
             )?;
@@ -721,7 +994,146 @@ impl Drive {
             }
             tx.upsert("drive_item", id, cols)
         })?;
-        self.get(who, id)
+        Ok(())
+    }
+
+    fn respond_tokens(&self, item_id: &str) -> DriveResult<Vec<String>> {
+        Ok(self
+            .db
+            .query(
+                "SELECT token FROM drive_respond_link WHERE itemId = ?1",
+                &[Value::Text(item_id.to_owned())],
+            )?
+            .into_iter()
+            .filter_map(|row| text(&row, "token"))
+            .collect())
+    }
+
+    /// Create a sign-up link, or return the one already on this form.
+    /// Only an editor or owner of a `.slform` file may do this.
+    pub fn create_respond_link(&self, who: &Principal, id: &str) -> DriveResult<String> {
+        self.require(who, id, Role::Editor)?;
+        let row = self.item_row(id)?;
+        if text(&row, "kind").as_deref() != Some("file")
+            || !is_form_name(&text(&row, "name").unwrap_or_default())
+        {
+            return Err(DriveError::BadRequest(
+                "A sign-up link is only for a form.".into(),
+            ));
+        }
+        if let Some(token) = self.respond_tokens(id)?.into_iter().next() {
+            return Ok(token);
+        }
+        let token = uuid::Uuid::now_v7().to_string();
+        let now = iso_now();
+        self.db.transact(|tx| {
+            tx.upsert(
+                "drive_respond_link",
+                &token,
+                [("itemId", Value::from(id)), ("createdAt", now.into())],
+            )
+        })?;
+        Ok(token)
+    }
+
+    /// Turn the sign-up link off. The form, including responses already
+    /// collected, stays. Only an editor or owner may do this.
+    pub fn clear_respond_link(&self, who: &Principal, id: &str) -> DriveResult<()> {
+        self.require(who, id, Role::Editor)?;
+        let tokens = self.respond_tokens(id)?;
+        if tokens.is_empty() {
+            return Ok(());
+        }
+        self.db.transact(|tx| {
+            for token in &tokens {
+                tx.delete("drive_respond_link", token)?;
+            }
+            Ok(())
+        })?;
+        Ok(())
+    }
+
+    fn linked_form(&self, token: &str) -> DriveResult<(String, String, Vec<u8>)> {
+        if !valid_respond_token(token) {
+            return Err(DriveError::NotFound);
+        }
+        let link = self
+            .db
+            .get("drive_respond_link", token)?
+            .ok_or(DriveError::NotFound)?;
+        let item_id = text(&link, "itemId").ok_or(DriveError::NotFound)?;
+        let row = self.item_row(&item_id)?;
+        if int(&row, "trashed") != 0 {
+            return Err(DriveError::NotFound);
+        }
+        let name = text(&row, "name").unwrap_or_default();
+        if !is_form_name(&name) {
+            return Err(DriveError::NotFound);
+        }
+        let bytes = self.head_bytes(&row)?.ok_or(DriveError::NotFound)?;
+        Ok((item_id, name, bytes))
+    }
+
+    /// The title and questions for a sign-up link. No account is required.
+    /// The response list is not included.
+    pub fn public_form(&self, token: &str) -> DriveResult<PublicForm> {
+        let (_id, name, bytes) = self.linked_form(token)?;
+        let file: serde_json::Value =
+            serde_json::from_slice(&bytes).map_err(|_| DriveError::NotFound)?;
+        if let Some(kind) = file.get("kind").and_then(|value| value.as_str())
+            && kind != "form"
+        {
+            return Err(DriveError::NotFound);
+        }
+        let questions = file
+            .pointer("/content/questions")
+            .and_then(|value| value.as_array())
+            .ok_or(DriveError::NotFound)?;
+        Ok(PublicForm {
+            title: form_title(&file, &name),
+            questions: questions.iter().filter_map(public_question).collect(),
+        })
+    }
+
+    /// Append one response through a sign-up link. Questions stay as they are.
+    pub fn submit_public_response(
+        &self,
+        token: &str,
+        answers: &BTreeMap<String, String>,
+    ) -> DriveResult<()> {
+        let (id, _name, bytes) = self.linked_form(token)?;
+        let file: serde_json::Value = serde_json::from_slice(&bytes)
+            .map_err(|_| DriveError::BadRequest("This form could not be read.".into()))?;
+        let questions = file
+            .pointer("/content/questions")
+            .and_then(|value| value.as_array())
+            .cloned()
+            .ok_or_else(|| DriveError::BadRequest("This form could not be read.".into()))?;
+        let clean = checked_answers(&questions, answers)?;
+        let mut next = file;
+        let responses = next
+            .pointer_mut("/content/responses")
+            .ok_or_else(|| DriveError::BadRequest("This form could not be read.".into()))?;
+        let rows = responses
+            .as_array_mut()
+            .ok_or_else(|| DriveError::BadRequest("This form could not be read.".into()))?;
+        if rows.len() >= 5000 {
+            return Err(DriveError::BadRequest(
+                "This form is not taking more responses.".into(),
+            ));
+        }
+        rows.push(serde_json::json!({
+            "id": uuid::Uuid::now_v7().to_string(),
+            "at": iso_now(),
+            "answers": clean,
+        }));
+        let next_bytes = serde_json::to_vec(&next).map_err(|e| DriveError::Other(e.into()))?;
+        if !appends_form_responses(&bytes, &next_bytes) {
+            return Err(DriveError::BadRequest(
+                "That response could not be added.".into(),
+            ));
+        }
+        self.commit_bytes(&id, "", None, &next_bytes)
     }
 
     /// The item and the bytes of `version` (default: head).
@@ -810,6 +1222,123 @@ impl Drive {
         }
         self.db.transact(|tx| tx.upsert("drive_item", id, cols))?;
         self.get(who, id)
+    }
+
+    fn column_values(&self, sql: &str, column: &str, item_id: &str) -> DriveResult<Vec<String>> {
+        Ok(self
+            .db
+            .query(sql, &[Value::Text(item_id.to_owned())])?
+            .into_iter()
+            .filter_map(|row| text(&row, column))
+            .collect())
+    }
+
+    /// Remove a trashed item the caller owns, plus its versions, grants, and
+    /// any blobs no other version still uses.
+    pub fn delete_forever(&self, who: &Principal, id: &str) -> DriveResult<()> {
+        let row = self.item_row(id)?;
+        if text(&row, "ownerId").as_deref() != Some(who.id.as_str()) {
+            return Err(DriveError::Forbidden);
+        }
+        if int(&row, "trashed") == 0 {
+            return Err(DriveError::BadRequest(
+                "Move it to Trash before deleting it forever.".into(),
+            ));
+        }
+        let children = self.db.query(
+            "SELECT id FROM drive_item WHERE parentId = ?1 LIMIT 1",
+            &[Value::Text(id.to_owned())],
+        )?;
+        if !children.is_empty() {
+            return Err(DriveError::BadRequest(
+                "This folder still has something in it. Move those out, or delete them forever, before deleting the folder.".into(),
+            ));
+        }
+        let versions = self.db.query(
+            "SELECT id, contentHash FROM drive_version WHERE itemId = ?1",
+            &[Value::Text(id.to_owned())],
+        )?;
+        let version_ids: Vec<String> = versions.iter().filter_map(|row| text(row, "id")).collect();
+        let hashes: Vec<String> = versions
+            .iter()
+            .filter_map(|row| text(row, "contentHash"))
+            .collect();
+        let acls = self.column_values("SELECT id FROM drive_acl WHERE itemId = ?1", "id", id)?;
+        let comments =
+            self.column_values("SELECT id FROM drive_comment WHERE itemId = ?1", "id", id)?;
+        let notices =
+            self.column_values("SELECT id FROM drive_notice WHERE itemId = ?1", "id", id)?;
+        let links = self.column_values(
+            "SELECT token FROM drive_respond_link WHERE itemId = ?1",
+            "token",
+            id,
+        )?;
+        self.db.transact(|tx| {
+            for version_id in &version_ids {
+                tx.delete("drive_version", version_id)?;
+            }
+            for acl_id in &acls {
+                tx.delete("drive_acl", acl_id)?;
+            }
+            for comment_id in &comments {
+                tx.delete("drive_comment", comment_id)?;
+            }
+            for notice_id in &notices {
+                tx.delete("drive_notice", notice_id)?;
+            }
+            for token in &links {
+                tx.delete("drive_respond_link", token)?;
+            }
+            tx.delete("drive_item", id)?;
+            Ok(())
+        })?;
+        self.release_unreferenced_blobs(&hashes)?;
+        Ok(())
+    }
+
+    /// Drop manifest and chunk blobs that no remaining version still names.
+    fn release_unreferenced_blobs(&self, hashes: &[String]) -> DriveResult<()> {
+        let live: BTreeSet<String> = self
+            .db
+            .query("SELECT contentHash FROM drive_version", &[])?
+            .into_iter()
+            .filter_map(|row| text(&row, "contentHash"))
+            .collect();
+        let mut live_chunks = BTreeSet::new();
+        for hash in &live {
+            let Ok(parsed) = hash.parse::<Hash>() else {
+                continue;
+            };
+            if let Some(bytes) = self.blobs.get(&parsed)?
+                && let Ok(manifest) = Manifest::decode(&bytes)
+            {
+                live_chunks.extend(manifest.chunks);
+            }
+        }
+        for hash in hashes {
+            if live.contains(hash) {
+                continue;
+            }
+            let Ok(parsed) = hash.parse::<Hash>() else {
+                continue;
+            };
+            let chunks = self
+                .blobs
+                .get(&parsed)?
+                .and_then(|bytes| Manifest::decode(&bytes).ok())
+                .map(|manifest| manifest.chunks)
+                .unwrap_or_default();
+            for chunk in chunks {
+                if live_chunks.contains(&chunk) {
+                    continue;
+                }
+                self.blobs.remove(&chunk).context("remove chunk")?;
+                self.wanted.lock().unwrap().remove(&chunk);
+            }
+            self.blobs.remove(&parsed).context("remove content")?;
+            self.wanted.lock().unwrap().remove(&parsed);
+        }
+        Ok(())
     }
 
     fn version_row(&self, item_id: &str, version_id: &str) -> DriveResult<Row> {
@@ -1109,8 +1638,9 @@ impl Drive {
             .collect())
     }
 
-    /// Add a comment. Commenters, editors, and owners may do this. Changing
-    /// the file itself still requires an editor (`write` returns forbidden).
+    /// Add a comment. Commenters and every higher role may do this. Changing
+    /// the file itself still requires an editor (`write` returns forbidden),
+    /// except a responder appending form responses.
     pub fn add_comment(&self, who: &Principal, id: &str, body: &str) -> DriveResult<DriveComment> {
         self.require(who, id, Role::Commenter)?;
         let body = body.trim();

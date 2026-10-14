@@ -87,6 +87,15 @@ impl BlobStore {
         self.path(hash).exists()
     }
 
+    /// Remove one blob. Missing files are already gone.
+    pub fn remove(&self, hash: &Hash) -> Result<()> {
+        match fs::remove_file(self.path(hash)) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e.into()),
+        }
+    }
+
     pub fn get(&self, hash: &Hash) -> Result<Option<Vec<u8>>> {
         match fs::read(self.path(hash)) {
             Ok(bytes) => Ok(Some(bytes)),

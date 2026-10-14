@@ -27,7 +27,7 @@ function collect(file: SuiteFile): string[] {
             parts.push(String(v), " ");
         }
     }
-  } else {
+  } else if (file.kind === "slide") {
     const { slides, slideOrder } = file.content;
     for (const id of slideOrder) {
       const slide = slides[id];
@@ -38,6 +38,11 @@ function collect(file: SuiteFile): string[] {
       }
       if (slide.notes) parts.push(slide.notes, " ");
     }
+  } else {
+    for (const question of file.content.questions)
+      parts.push(question.prompt, " ", ...(question.choices ?? []), " ");
+    for (const response of file.content.responses)
+      parts.push(...Object.values(response.answers), " ");
   }
   return parts;
 }

@@ -793,9 +793,15 @@ Apps Script → organize/back up.
 - **WF-C1-01 Interface tour: home sections/home nav/form-page nav (top-left,
   top-right); form features/section features/question types/bottom buttons.**
   *Expected:* UI regions behave as labelled; question types differ (text/
-  choice/grid/rating/etc.). *v1:* out-of-v1.
+  choice/grid/rating/etc.). *v1:* a local form file with short text and one
+  choice, required questions, and the answers in that same file. Grids,
+  ratings, and sections remain out of v1.
 - **WF-C1-02 Send/sharing + collecting responses.** *Expected:* share link;
-  responses collected + viewable. *v1:* out-of-v1.
+  responses collected + viewable.   *v1:* responses are entered on this computer
+  and listed in the form file. A teammate with an account can be a responder.
+  A sign-up link lets someone without an account add one response. It does not
+  show other answers or change the questions, and turning it off keeps the rows.
+  Documents still have no "anyone with the link".
 - **WF-C1-03 Forms add-ons / integrations.** *Expected:* actions run.
   *v1:* out-of-v1.
 

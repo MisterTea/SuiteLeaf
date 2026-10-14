@@ -23,7 +23,7 @@ export {
   type SlideDiffFrame,
   type SlideTextRun,
 } from "./slide-diff";
-export type Kind = "doc" | "sheet" | "slide";
+export type Kind = "doc" | "sheet" | "slide" | "form";
 export type JsonNode = {
   type: string;
   text?: string;
@@ -306,6 +306,18 @@ const meta = {
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 };
+const formQuestionSchema = z.object({
+  id: z.string().min(1),
+  prompt: z.string().max(200),
+  kind: z.enum(["text", "choice"]),
+  required: z.boolean(),
+  choices: z.array(z.string().max(80)).max(20).optional(),
+});
+const formResponseSchema = z.object({
+  id: z.string().min(1),
+  at: z.string().datetime(),
+  answers: z.record(z.string(), z.string().max(2000)),
+});
 export const fileSchema = z.discriminatedUnion("kind", [
   z.object({ ...meta, kind: z.literal("doc"), content: node }),
   z.object({
@@ -369,11 +381,20 @@ export const fileSchema = z.discriminatedUnion("kind", [
     kind: z.literal("slide"),
     content: presentationSchema,
   }),
+  z.object({
+    ...meta,
+    kind: z.literal("form"),
+    content: z.object({
+      questions: z.array(formQuestionSchema).max(100),
+      responses: z.array(formResponseSchema).max(5000),
+    }),
+  }),
 ]);
 export type SuiteFile = z.infer<typeof fileSchema>;
 export type DocFile = Extract<SuiteFile, { kind: "doc" }>;
 export type SheetFile = Extract<SuiteFile, { kind: "sheet" }>;
 export type SlideFile = Extract<SuiteFile, { kind: "slide" }>;
+export type FormFile = Extract<SuiteFile, { kind: "form" }>;
 export function safeLink(url: string): boolean {
   return /^(https?:|mailto:|tel:|#)/i.test(url);
 }
@@ -417,11 +438,13 @@ const nativeExtensions = {
   doc: "sldoc",
   sheet: "slsheet",
   slide: "slslides",
+  form: "slform",
 } as const satisfies Record<Kind, string>;
 const nativeMimes = {
   doc: "application/vnd.suiteleaf.doc+json",
   sheet: "application/vnd.suiteleaf.sheet+json",
   slide: "application/vnd.suiteleaf.slides+json",
+  form: "application/vnd.suiteleaf.form+json",
 } as const satisfies Record<Kind, string>;
 export const NATIVE_EXTENSIONS = [
   ...Object.values(nativeExtensions),
@@ -498,6 +521,13 @@ export function parseFile(text: string, expectedKind?: Kind | null): SuiteFile {
           );
       }
     }
+  } else if (file.kind === "form") {
+    const ids = file.content.questions.map((q) => q.id);
+    if (new Set(ids).size !== ids.length)
+      throw new Error("Form questions must have distinct ids.");
+    const responseIds = file.content.responses.map((r) => r.id);
+    if (new Set(responseIds).size !== responseIds.length)
+      throw new Error("Form responses must have distinct ids.");
   }
   return file;
 }
@@ -510,7 +540,9 @@ export function createFile(
     ? "Untitled document"
     : kind === "sheet"
       ? "Untitled spreadsheet"
-      : "Untitled presentation",
+      : kind === "form"
+        ? "Untitled form"
+        : "Untitled presentation",
 ): SuiteFile {
   const id = crypto.randomUUID(),
     now = new Date().toISOString();
@@ -577,6 +609,8 @@ export function createFile(
       },
     };
   }
+  if (kind === "form")
+    return { ...base, kind, content: { questions: [], responses: [] } };
   const sheetId = crypto.randomUUID();
   return {
     ...base,

@@ -228,16 +228,46 @@ async fn update(
     Ok(Json(item_body(&s, &item).await?).into_response())
 }
 
-async fn trash(
+/// Every folder the caller can edit: id, name, and parentId.
+async fn list_folders(
+    State(s): State<AppState>,
+    RequireUser(user): RequireUser,
+) -> ApiResult<Response> {
+    let who = principal(&user);
+    let items = blocking(&s.drive, move |d| d.list_folders(&who)).await?;
+    let folders: Vec<_> = items
+        .into_iter()
+        .map(|item| {
+            json!({
+                "id": item.id,
+                "name": item.name,
+                "parentId": item.parent_id,
+            })
+        })
+        .collect();
+    Ok(Json(json!({ "folders": folders })).into_response())
+}
+
+async fn list_trash(
+    State(s): State<AppState>,
+    RequireUser(user): RequireUser,
+) -> ApiResult<Response> {
+    let who = principal(&user);
+    let items = blocking(&s.drive, move |d| d.list_trashed(&who)).await?;
+    let payload =
+        serde_json::to_value(&items).map_err(|e| ApiError(DriveError::Other(e.into())))?;
+    let payload = with_editor_names(&s, payload).await?;
+    Ok(Json(json!({ "items": payload })).into_response())
+}
+
+/// Permanent delete. The item must already be in Trash, and the caller must own it.
+async fn delete_forever(
     State(s): State<AppState>,
     RequireUser(user): RequireUser,
     Path(id): Path<String>,
 ) -> ApiResult<Response> {
     let who = principal(&user);
-    blocking(&s.drive, move |d| {
-        d.update(&who, &id, None, None, Some(true))
-    })
-    .await?;
+    blocking(&s.drive, move |d| d.delete_forever(&who, &id)).await?;
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -752,6 +782,53 @@ async fn dismiss_notice(
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
+async fn create_respond_link(
+    State(s): State<AppState>,
+    RequireUser(user): RequireUser,
+    Path(id): Path<String>,
+) -> ApiResult<Response> {
+    let who = principal(&user);
+    let token = blocking(&s.drive, move |d| d.create_respond_link(&who, &id)).await?;
+    Ok(Json(json!({ "token": token })).into_response())
+}
+
+async fn clear_respond_link(
+    State(s): State<AppState>,
+    RequireUser(user): RequireUser,
+    Path(id): Path<String>,
+) -> ApiResult<Response> {
+    let who = principal(&user);
+    blocking(&s.drive, move |d| d.clear_respond_link(&who, &id)).await?;
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// Title and questions for a sign-up link. No account, and no responses.
+async fn get_public_form(
+    State(s): State<AppState>,
+    Path(token): Path<String>,
+) -> ApiResult<Response> {
+    let form = blocking(&s.drive, move |d| d.public_form(&token)).await?;
+    Ok(Json(form).into_response())
+}
+
+#[derive(Deserialize)]
+struct RespondBody {
+    answers: BTreeMap<String, String>,
+}
+
+/// Append one response. No account. Questions are unchanged.
+async fn post_public_response(
+    State(s): State<AppState>,
+    Path(token): Path<String>,
+    Json(body): Json<RespondBody>,
+) -> ApiResult<Response> {
+    blocking(&s.drive, move |d| {
+        d.submit_public_response(&token, &body.answers)
+    })
+    .await?;
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
 /// An owned copy in the caller's My Drive. Not a shortcut, and not mail.
 async fn keep_copy(
     State(s): State<AppState>,
@@ -768,9 +845,11 @@ pub fn router(state: AppState) -> Router {
         .route("/api/me", get(me))
         .route("/api/accounts", get(search_accounts))
         .route("/api/drive/items", get(list).post(create))
+        .route("/api/drive/folders", get(list_folders))
+        .route("/api/drive/trash", get(list_trash))
         .route(
             "/api/drive/items/{id}",
-            get(get_item).patch(update).delete(trash),
+            get(get_item).patch(update).delete(delete_forever),
         )
         .route(
             "/api/drive/items/{id}/content",
@@ -800,6 +879,14 @@ pub fn router(state: AppState) -> Router {
             get(list_comments).post(add_comment),
         )
         .route("/api/drive/items/{id}/copy", post(keep_copy))
+        .route(
+            "/api/drive/items/{id}/respond-link",
+            post(create_respond_link).delete(clear_respond_link),
+        )
+        .route(
+            "/api/respond/{token}",
+            get(get_public_form).post(post_public_response),
+        )
         .route("/api/drive/notices", get(list_notices))
         .route("/api/drive/notices/{id}/dismiss", post(dismiss_notice))
         .with_state(state)

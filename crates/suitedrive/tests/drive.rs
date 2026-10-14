@@ -1,8 +1,10 @@
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use libp2p_identity::ed25519;
-use suitedb::{Db, Schema};
-use suitedrive::{BlobTransport, CHUNK_SIZE, Drive, DriveError, Principal, Role, tables};
+use suitedb::{Db, Schema, Value};
+use suitedrive::{
+    BlobTransport, CHUNK_SIZE, Drive, DriveError, Hash, Manifest, Principal, Role, tables,
+};
 use tempfile::TempDir;
 
 struct Node {
@@ -772,5 +774,556 @@ fn ownership_moves_immediately_and_a_share_can_expire() {
     assert_eq!(
         b.drive.get(&rosa, &file.id).unwrap().role,
         Some(Role::Editor)
+    );
+}
+
+fn form_bytes(prompt: &str, responses: serde_json::Value) -> Vec<u8> {
+    serde_json::to_vec(&serde_json::json!({
+        "content": {
+            "questions": [{
+                "id": "name",
+                "prompt": prompt,
+                "kind": "text",
+                "required": true
+            }],
+            "responses": responses
+        }
+    }))
+    .unwrap()
+}
+
+#[test]
+fn a_responder_can_append_a_form_response_but_cannot_change_the_questions() {
+    let n = node();
+    let (rosa, sam, ed, commenter, viewer) = (
+        user("rosa"),
+        user("sam"),
+        user("ed"),
+        user("commenter"),
+        user("viewer"),
+    );
+    let file = n
+        .drive
+        .create(
+            &rosa,
+            None,
+            "Plot sign-ups.slform",
+            "file",
+            Some("application/vnd.suiteleaf.form+json"),
+        )
+        .unwrap();
+    let empty = form_bytes("Your name", serde_json::json!([]));
+    n.drive.write(&rosa, &file.id, None, None, &empty).unwrap();
+    n.drive
+        .share(&rosa, &file.id, "user", "sam", Some(Role::Responder))
+        .unwrap();
+    n.drive
+        .share(&rosa, &file.id, "user", "ed", Some(Role::Editor))
+        .unwrap();
+    n.drive
+        .share(&rosa, &file.id, "user", "commenter", Some(Role::Commenter))
+        .unwrap();
+    n.drive
+        .share(&rosa, &file.id, "user", "viewer", Some(Role::Viewer))
+        .unwrap();
+    assert_eq!(
+        n.drive.get(&sam, &file.id).unwrap().role,
+        Some(Role::Responder)
+    );
+
+    let one = form_bytes(
+        "Your name",
+        serde_json::json!([{ "id": "r1", "answers": { "name": "Sam", "plot": "Medium" } }]),
+    );
+    assert!(matches!(
+        n.drive.write(&commenter, &file.id, None, None, &one),
+        Err(DriveError::Forbidden)
+    ));
+    assert!(matches!(
+        n.drive.write(&viewer, &file.id, None, None, &one),
+        Err(DriveError::Forbidden)
+    ));
+    n.drive.write(&sam, &file.id, None, None, &one).unwrap();
+    let (_, saved) = n.drive.read(&rosa, &file.id, None).unwrap();
+    let saved: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+    assert_eq!(saved["content"]["responses"][0]["answers"]["name"], "Sam");
+    assert_eq!(saved["content"]["questions"][0]["prompt"], "Your name");
+
+    let two = form_bytes(
+        "Your name",
+        serde_json::json!([
+            { "id": "r1", "answers": { "name": "Sam", "plot": "Medium" } },
+            { "id": "r2", "answers": { "name": "Leo", "plot": "Small" } }
+        ]),
+    );
+    n.drive.write(&sam, &file.id, None, None, &two).unwrap();
+
+    let edited = form_bytes(
+        "Your name",
+        serde_json::json!([
+            { "id": "r1", "answers": { "name": "Samuel", "plot": "Medium" } },
+            { "id": "r2", "answers": { "name": "Leo", "plot": "Small" } }
+        ]),
+    );
+    assert!(matches!(
+        n.drive.write(&sam, &file.id, None, None, &edited),
+        Err(DriveError::Forbidden)
+    ));
+    assert!(matches!(
+        n.drive.write(&sam, &file.id, None, None, &one),
+        Err(DriveError::Forbidden)
+    ));
+    assert!(matches!(
+        n.drive.write(&sam, &file.id, None, None, &two),
+        Err(DriveError::Forbidden)
+    ));
+
+    let renamed = form_bytes(
+        "Your full name",
+        serde_json::json!([
+            { "id": "r1", "answers": { "name": "Sam", "plot": "Medium" } },
+            { "id": "r2", "answers": { "name": "Leo", "plot": "Small" } }
+        ]),
+    );
+    assert!(matches!(
+        n.drive.write(&sam, &file.id, None, None, &renamed),
+        Err(DriveError::Forbidden)
+    ));
+
+    let notes = n
+        .drive
+        .create(&rosa, None, "Notes.sldoc", "file", None)
+        .unwrap();
+    n.drive
+        .write(&rosa, &notes.id, None, None, b"hello")
+        .unwrap();
+    n.drive
+        .share(&rosa, &notes.id, "user", "sam", Some(Role::Responder))
+        .unwrap();
+    assert!(matches!(
+        n.drive.write(&sam, &notes.id, None, None, b"changed"),
+        Err(DriveError::Forbidden)
+    ));
+
+    n.drive.write(&ed, &file.id, None, None, &renamed).unwrap();
+    let (_, after) = n.drive.read(&rosa, &file.id, None).unwrap();
+    let after: serde_json::Value = serde_json::from_slice(&after).unwrap();
+    assert_eq!(after["content"]["questions"][0]["prompt"], "Your full name");
+    assert_eq!(after["content"]["responses"][0]["answers"]["name"], "Sam");
+}
+
+fn plot_form(responses: serde_json::Value) -> Vec<u8> {
+    serde_json::to_vec(&serde_json::json!({
+        "format": "suiteleaf",
+        "version": 1,
+        "id": "form-1",
+        "title": "Plot sign-ups",
+        "kind": "form",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "content": {
+            "questions": [
+                { "id": "name", "prompt": "Your name", "kind": "text", "required": true },
+                {
+                    "id": "plot",
+                    "prompt": "Plot size",
+                    "kind": "choice",
+                    "required": true,
+                    "choices": ["Small", "Medium", "Large"]
+                },
+                { "id": "notes", "prompt": "Notes", "kind": "text", "required": false }
+            ],
+            "responses": responses
+        }
+    }))
+    .unwrap()
+}
+
+fn answer_map(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+    pairs
+        .iter()
+        .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
+        .collect()
+}
+
+#[test]
+fn a_sign_up_link_adds_one_response_and_can_be_turned_off() {
+    let n = node();
+    let (rosa, sam, ed, viewer) = (user("rosa"), user("sam"), user("ed"), user("viewer"));
+    let file = n
+        .drive
+        .create(
+            &rosa,
+            None,
+            "Plot sign-ups.slform",
+            "file",
+            Some("application/vnd.suiteleaf.form+json"),
+        )
+        .unwrap();
+    let seeded = plot_form(serde_json::json!([{
+        "id": "r0",
+        "at": "2026-01-02T00:00:00.000Z",
+        "answers": { "name": "Hidden neighbor", "plot": "Small" }
+    }]));
+    n.drive.write(&rosa, &file.id, None, None, &seeded).unwrap();
+    n.drive
+        .share(&rosa, &file.id, "user", "sam", Some(Role::Responder))
+        .unwrap();
+    n.drive
+        .share(&rosa, &file.id, "user", "ed", Some(Role::Editor))
+        .unwrap();
+    n.drive
+        .share(&rosa, &file.id, "user", "viewer", Some(Role::Viewer))
+        .unwrap();
+
+    let notes = n
+        .drive
+        .create(&rosa, None, "Notes.sldoc", "file", None)
+        .unwrap();
+    assert!(matches!(
+        n.drive.create_respond_link(&rosa, &notes.id),
+        Err(DriveError::BadRequest(_))
+    ));
+    assert!(matches!(
+        n.drive.create_respond_link(&sam, &file.id),
+        Err(DriveError::Forbidden)
+    ));
+    assert!(matches!(
+        n.drive.create_respond_link(&viewer, &file.id),
+        Err(DriveError::Forbidden)
+    ));
+
+    let token = n.drive.create_respond_link(&rosa, &file.id).unwrap();
+    assert_eq!(token.len(), 36);
+    assert_eq!(token.matches('-').count(), 4);
+    assert_eq!(
+        n.drive.create_respond_link(&ed, &file.id).unwrap(),
+        token,
+        "creating again returns the same token"
+    );
+
+    let public = n.drive.public_form(&token).unwrap();
+    let json = serde_json::to_value(&public).unwrap();
+    assert!(json.get("responses").is_none());
+    assert!(json.get("acl").is_none());
+    assert_eq!(json["title"], "Plot sign-ups");
+    assert_eq!(json["questions"].as_array().unwrap().len(), 3);
+    let text = serde_json::to_string(&json).unwrap();
+    assert!(!text.contains("Hidden neighbor"));
+    assert!(!text.contains(&file.id));
+    assert!(!text.contains("rosa"));
+
+    n.drive
+        .submit_public_response(&token, &answer_map(&[("name", "Alex"), ("plot", "Large")]))
+        .unwrap();
+    n.drive
+        .submit_public_response(
+            &token,
+            &answer_map(&[("name", "Sam"), ("plot", "Small"), ("notes", "  ")]),
+        )
+        .unwrap();
+    assert!(matches!(
+        n.drive
+            .submit_public_response(&token, &answer_map(&[("name", "Leo"), ("plot", "Huge")])),
+        Err(DriveError::BadRequest(_))
+    ));
+    assert!(matches!(
+        n.drive.submit_public_response(&token, &answer_map(&[("plot", "Medium")])),
+        Err(DriveError::BadRequest(message)) if message == "Your name is required"
+    ));
+
+    let (_, saved) = n.drive.read(&rosa, &file.id, None).unwrap();
+    let saved: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+    assert_eq!(saved["content"]["questions"][0]["prompt"], "Your name");
+    assert_eq!(saved["content"]["questions"][1]["choices"][2], "Large");
+    let rows = saved["content"]["responses"].as_array().unwrap();
+    assert_eq!(rows.len(), 3);
+    assert_eq!(rows[0]["answers"]["name"], "Hidden neighbor");
+    assert_eq!(rows[1]["answers"]["name"], "Alex");
+    assert_eq!(rows[1]["answers"]["plot"], "Large");
+    assert_eq!(rows[2]["answers"]["name"], "Sam");
+    assert!(rows[2]["answers"].get("notes").is_none());
+
+    n.drive.clear_respond_link(&ed, &file.id).unwrap();
+    assert!(matches!(
+        n.drive.public_form(&token),
+        Err(DriveError::NotFound)
+    ));
+    assert!(matches!(
+        n.drive
+            .submit_public_response(&token, &answer_map(&[("name", "Nia"), ("plot", "Medium")])),
+        Err(DriveError::NotFound)
+    ));
+    let (_, after) = n.drive.read(&rosa, &file.id, None).unwrap();
+    let after: serde_json::Value = serde_json::from_slice(&after).unwrap();
+    assert_eq!(after["content"]["responses"].as_array().unwrap().len(), 3);
+    assert_eq!(after["content"]["responses"][1]["answers"]["name"], "Alex");
+    assert_eq!(after["content"]["questions"][0]["prompt"], "Your name");
+
+    let again = n.drive.create_respond_link(&rosa, &file.id).unwrap();
+    assert_ne!(again, token);
+}
+
+#[test]
+fn trash_hides_the_file_and_restore_puts_it_back_in_its_folder() {
+    let n = node();
+    let ann = user("ann");
+    let bob = user("bob");
+    let folder = n
+        .drive
+        .create(&ann, None, "Garden club", "folder", None)
+        .unwrap();
+    let file = n
+        .drive
+        .create(&ann, Some(&folder.id), "Watering rota.sldoc", "file", None)
+        .unwrap();
+    let top = n
+        .drive
+        .create(&ann, None, "Notes.sldoc", "file", None)
+        .unwrap();
+
+    n.drive
+        .update(&ann, &file.id, None, None, Some(true))
+        .unwrap();
+    n.drive
+        .update(&ann, &top.id, None, None, Some(true))
+        .unwrap();
+    assert!(n.drive.list(&ann, Some(&folder.id)).unwrap().is_empty());
+    assert!(
+        n.drive
+            .list(&ann, None)
+            .unwrap()
+            .iter()
+            .all(|item| item.id != file.id && item.id != top.id)
+    );
+
+    let trashed = n.drive.list_trashed(&ann).unwrap();
+    let rota = trashed.iter().find(|item| item.id == file.id).unwrap();
+    assert_eq!(rota.parent_id.as_deref(), Some(folder.id.as_str()));
+    assert_eq!(rota.parent_name.as_deref(), Some("Garden club"));
+    let notes = trashed.iter().find(|item| item.id == top.id).unwrap();
+    assert!(notes.parent_id.is_none());
+    assert!(notes.parent_name.is_none());
+    assert!(n.drive.list_trashed(&bob).unwrap().is_empty());
+
+    let restored = n
+        .drive
+        .update(&ann, &file.id, None, None, Some(false))
+        .unwrap();
+    assert!(!restored.trashed);
+    assert_eq!(restored.parent_id.as_deref(), Some(folder.id.as_str()));
+    let back = n.drive.list(&ann, Some(&folder.id)).unwrap();
+    assert_eq!(back.len(), 1);
+    assert_eq!(back[0].id, file.id);
+    assert!(
+        n.drive
+            .list(&ann, None)
+            .unwrap()
+            .iter()
+            .all(|item| item.id != file.id)
+    );
+    assert!(
+        n.drive
+            .list_trashed(&ann)
+            .unwrap()
+            .iter()
+            .all(|item| item.id != file.id)
+    );
+}
+
+#[test]
+fn delete_forever_removes_a_trashed_file_and_its_bytes() {
+    let n = node();
+    let ann = user("ann");
+    let bob = user("bob");
+    let folder = n
+        .drive
+        .create(&ann, None, "Garden club", "folder", None)
+        .unwrap();
+    let file = n
+        .drive
+        .create(&ann, Some(&folder.id), "Watering rota.sldoc", "file", None)
+        .unwrap();
+    let saved = n
+        .drive
+        .write(&ann, &file.id, None, None, b"Thursday: Rosa")
+        .unwrap();
+    let hash: Hash = saved.content_hash.clone().unwrap().parse().unwrap();
+    let manifest = Manifest::decode(&n.drive.blobs().get(&hash).unwrap().unwrap()).unwrap();
+    n.drive
+        .share(&ann, &file.id, "user", "bob", Some(Role::Viewer))
+        .unwrap();
+    let copy = n.drive.keep_copy(&ann, &file.id).unwrap();
+
+    assert!(matches!(
+        n.drive.delete_forever(&ann, &file.id),
+        Err(DriveError::BadRequest(_))
+    ));
+    assert_eq!(n.drive.get(&ann, &file.id).unwrap().id, file.id);
+
+    n.drive
+        .update(&ann, &file.id, None, None, Some(true))
+        .unwrap();
+    assert!(matches!(
+        n.drive.delete_forever(&bob, &file.id),
+        Err(DriveError::Forbidden)
+    ));
+    n.drive.delete_forever(&ann, &file.id).unwrap();
+    assert!(matches!(
+        n.drive.get(&ann, &file.id),
+        Err(DriveError::NotFound)
+    ));
+    assert!(matches!(
+        n.drive.get(&ann, &file.id),
+        Err(DriveError::NotFound)
+    ));
+    assert!(
+        n.db.query(
+            "SELECT id FROM drive_version WHERE itemId = ?1",
+            &[Value::Text(file.id.clone())],
+        )
+        .unwrap()
+        .is_empty()
+    );
+    assert!(
+        n.db.query(
+            "SELECT id FROM drive_acl WHERE itemId = ?1",
+            &[Value::Text(file.id.clone())],
+        )
+        .unwrap()
+        .is_empty()
+    );
+    let (_, bytes) = n.drive.read(&ann, &copy.id, None).unwrap();
+    assert_eq!(bytes, b"Thursday: Rosa");
+    assert!(n.drive.blobs().has(&hash));
+    for chunk in &manifest.chunks {
+        assert!(n.drive.blobs().has(chunk));
+    }
+
+    let only = n
+        .drive
+        .create(&ann, Some(&folder.id), "Only.sldoc", "file", None)
+        .unwrap();
+    let only_saved = n
+        .drive
+        .write(&ann, &only.id, None, None, b"unique-bytes-xyz")
+        .unwrap();
+    let only_hash: Hash = only_saved.content_hash.unwrap().parse().unwrap();
+    let only_manifest =
+        Manifest::decode(&n.drive.blobs().get(&only_hash).unwrap().unwrap()).unwrap();
+    n.drive
+        .update(&ann, &only.id, None, None, Some(true))
+        .unwrap();
+    n.drive.delete_forever(&ann, &only.id).unwrap();
+    assert!(!n.drive.blobs().has(&only_hash));
+    for chunk in &only_manifest.chunks {
+        assert!(
+            !n.drive.blobs().has(chunk),
+            "delete forever left a chunk behind"
+        );
+    }
+    assert!(n.drive.list(&ann, Some(&folder.id)).unwrap().is_empty());
+    assert!(
+        n.drive
+            .list_trashed(&ann)
+            .unwrap()
+            .iter()
+            .all(|item| item.id != only.id)
+    );
+
+    n.drive
+        .update(&ann, &folder.id, None, None, Some(true))
+        .unwrap();
+    let inside = n
+        .drive
+        .create(&ann, Some(&folder.id), "Still here.sldoc", "file", None)
+        .unwrap();
+    assert!(matches!(
+        n.drive.delete_forever(&ann, &folder.id),
+        Err(DriveError::BadRequest(_))
+    ));
+    assert_eq!(
+        n.drive.get(&ann, &inside.id).unwrap().parent_id.as_deref(),
+        Some(folder.id.as_str())
+    );
+}
+
+#[test]
+fn trashed_files_stay_listed_after_a_long_time() {
+    let n = node();
+    let ann = user("ann");
+    let folder = n
+        .drive
+        .create(&ann, None, "Garden club", "folder", None)
+        .unwrap();
+    let file = n
+        .drive
+        .create(&ann, Some(&folder.id), "Watering rota.sldoc", "file", None)
+        .unwrap();
+    n.drive
+        .update(&ann, &file.id, None, None, Some(true))
+        .unwrap();
+    n.db.transact(|tx| {
+        tx.upsert(
+            "drive_item",
+            &file.id,
+            [("updatedAt", Value::Text("1999-01-01T00:00:00.000Z".into()))],
+        )
+    })
+    .unwrap();
+
+    let trashed = n.drive.list_trashed(&ann).unwrap();
+    assert_eq!(trashed.len(), 1);
+    assert_eq!(trashed[0].id, file.id);
+    assert_eq!(trashed[0].parent_name.as_deref(), Some("Garden club"));
+    assert!(n.drive.list(&ann, Some(&folder.id)).unwrap().is_empty());
+}
+
+#[test]
+fn list_folders_returns_nested_folders_and_skips_ones_you_cannot_edit() {
+    let n = node();
+    let ann = user("ann");
+    let bob = user("bob");
+    let club = n
+        .drive
+        .create(&ann, None, "Garden club", "folder", None)
+        .unwrap();
+    let meetings = n
+        .drive
+        .create(&ann, Some(&club.id), "Meetings", "folder", None)
+        .unwrap();
+    let rota = n
+        .drive
+        .create(
+            &ann,
+            Some(&meetings.id),
+            "Watering rota.sldoc",
+            "file",
+            None,
+        )
+        .unwrap();
+    let secret = n
+        .drive
+        .create(&bob, None, "Bob's notes", "folder", None)
+        .unwrap();
+    n.drive
+        .share(&bob, &secret.id, "user", "ann", Some(Role::Viewer))
+        .unwrap();
+
+    let folders = n.drive.list_folders(&ann).unwrap();
+    let club_row = folders.iter().find(|folder| folder.id == club.id).unwrap();
+    let meetings_row = folders
+        .iter()
+        .find(|folder| folder.id == meetings.id)
+        .unwrap();
+    assert_eq!(club_row.parent_id, None);
+    assert_eq!(meetings_row.parent_id.as_deref(), Some(club.id.as_str()));
+    assert!(folders.iter().all(|folder| folder.kind == "folder"));
+    assert!(folders.iter().all(|folder| folder.id != secret.id));
+    assert!(folders.iter().all(|folder| folder.id != rota.id));
+    assert_eq!(folders.len(), 2);
+    assert_eq!(
+        n.drive.get(&ann, &rota.id).unwrap().parent_name.as_deref(),
+        Some("Meetings")
     );
 }

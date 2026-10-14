@@ -72,5 +72,9 @@ mod tests {
                 .column_type("expiresAt")
                 .is_some()
         );
+        let link = schema.table("drive_respond_link").unwrap();
+        assert_eq!(link.pk, "token");
+        assert!(link.column_type("itemId").is_some());
+        assert!(link.column_type("createdAt").is_some());
     }
 }

@@ -47,9 +47,9 @@ Fixes made along the way:
 
 ## Gaps and notes
 
-- "New folder", the Rename pencil, and Move to trash now use in-app dialogs in SuiteLeaf's dialog style instead of the browser's prompt and confirm pop-ups. Rename selects the title but not the extension, so typing a new name keeps `.sldoc`.
+- "New folder" and the Rename pencil use in-app dialogs in SuiteLeaf's dialog style instead of the browser's prompt and confirm pop-ups. Rename selects the title but not the extension, so typing a new name keeps `.sldoc`.
 - The home screen remembers the open folder for the signed-in account for the rest of the browser session, so "Back to files" (and reloading) returns to it. If that folder is gone, SuiteDrive starts at My Drive.
 - SuiteDrive shows file extensions (`.sldoc`, `.slslides`). Google Drive shows document titles only. Hiding them changes the names tests and other storyboards look for, so it's left for a separate change.
-- Inside the editor, nothing shows which folder the document is in. Google Docs shows the folder next to the title and lets you move the file from there.
-- Move to trash has no Trash view to restore from, and no "Undo" notice like Google Drive's. That's why SuiteLeaf still asks before trashing.
-- In the editor's File menu, New and Make a copy put the new file at the top of My Drive, and Open and Save as start browsing there. Google Docs uses the current file's folder.
+- The editor shows the file's folder next to the title, and Move puts it in another folder. See storyboard [140](140-put-the-rota-in-the-club-folder.md).
+- Move to trash on SuiteDrive has a Trash view, Undo, and Delete forever. See storyboard [139](139-get-a-shared-file-back.md).
+- In the editor's File menu, New and Make a copy put the new file in the open file's folder. See storyboard [141](141-start-the-next-rota-in-the-same-folder.md). Open and Save as still start browsing at the top of My Drive.

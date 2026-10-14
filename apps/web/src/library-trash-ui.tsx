@@ -1,4 +1,5 @@
 import {
+  ClipboardList,
   FileText,
   Pencil,
   Presentation,
@@ -53,6 +54,8 @@ export function FileLibraryRow({
               <FileText size={21} />
             ) : record.file.kind === "sheet" ? (
               <Sheet size={21} />
+            ) : record.file.kind === "form" ? (
+              <ClipboardList size={21} />
             ) : (
               <Presentation size={21} />
             )}

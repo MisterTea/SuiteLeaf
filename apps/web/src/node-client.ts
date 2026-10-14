@@ -39,6 +39,11 @@ export interface DriveVersion {
   name: string | null;
   restoredFrom: string | null;
 }
+export interface DriveFolder {
+  id: string;
+  name: string;
+  parentId: string | null;
+}
 export interface DriveItem {
   id: string;
   parentId: string | null;
@@ -55,6 +60,8 @@ export interface DriveItem {
   role: DriveRole | null;
   /** Display name of the owner, when the server includes it (shared lists). */
   ownerName?: string | null;
+  /** Parent folder name when this item is in a folder. */
+  parentName?: string | null;
   /** Head version author. Not the owner, and absent for folders. */
   lastAuthorId?: string | null;
   lastAuthorName?: string | null;
@@ -62,7 +69,8 @@ export interface DriveItem {
   lastEditedAt?: string | null;
   available: boolean;
 }
-export type DriveRole = "viewer" | "commenter" | "editor" | "owner";
+export type DriveRole =
+  "viewer" | "commenter" | "responder" | "editor" | "owner";
 export interface AccountProfile {
   id: string;
   name: string | null;
@@ -111,6 +119,41 @@ export interface AuthProviders {
 export class DriveConflict extends Error {
   constructor(public item: DriveItem) {
     super("This file was changed in SuiteDrive after you opened it.");
+  }
+}
+
+/** A SuiteDrive response that is not success and not a save conflict. */
+export class DriveRequestError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "DriveRequestError";
+  }
+}
+
+/** The folder refused a new file: no access, or it is gone. */
+export function cannotCreateInFolder(error: unknown): boolean {
+  return (
+    error instanceof DriveRequestError &&
+    (error.status === 403 || error.status === 404)
+  );
+}
+
+/**
+ * Run `create` in `parentId`. When that folder cannot take a new file,
+ * run it again at My Drive (`null`).
+ */
+export async function createInFolderOrRoot<T>(
+  parentId: string | null,
+  create: (parentId: string | null) => Promise<T>,
+): Promise<T> {
+  try {
+    return await create(parentId);
+  } catch (error) {
+    if (parentId && cannotCreateInFolder(error)) return create(null);
+    throw error;
   }
 }
 
@@ -290,7 +333,8 @@ async function api(path: string, init: RequestInit = {}): Promise<Response> {
   }
   if (!response.ok && response.status !== 409) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(
+    throw new DriveRequestError(
+      response.status,
       body.error ?? `SuiteDrive request failed (${response.status}).`,
     );
   }
@@ -309,6 +353,18 @@ export const drive = {
   },
   async shared(): Promise<DriveItem[]> {
     return (await (await api("/api/drive/items?shared=1")).json()).items;
+  },
+  async listTrashed(): Promise<DriveItem[]> {
+    return (await (await api("/api/drive/trash")).json()).items;
+  },
+  /** Folders the signed-in person can edit, with enough to build a path. */
+  async listFolders(): Promise<DriveFolder[]> {
+    return (await (await api("/api/drive/folders")).json()).folders;
+  },
+  async deleteForever(id: string): Promise<void> {
+    await api(`/api/drive/items/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
   },
   async get(id: string): Promise<DriveItem> {
     return (await api(`/api/drive/items/${encodeURIComponent(id)}`)).json();
@@ -344,9 +400,7 @@ export const drive = {
     };
   },
   async accounts(query: string): Promise<AccountProfile[]> {
-    const response = await api(
-      `/api/accounts?q=${encodeURIComponent(query)}`,
-    );
+    const response = await api(`/api/accounts?q=${encodeURIComponent(query)}`);
     return (await response.json()).accounts;
   },
   async access(id: string): Promise<ItemAccess> {
@@ -483,7 +537,60 @@ export const drive = {
       )
     ).json();
   },
+  /** A link that only adds a response. Creating again returns the same token. */
+  async createRespondLink(id: string): Promise<{ token: string }> {
+    return (
+      await api(`/api/drive/items/${encodeURIComponent(id)}/respond-link`, {
+        method: "POST",
+      })
+    ).json();
+  },
+  async clearRespondLink(id: string): Promise<void> {
+    await api(`/api/drive/items/${encodeURIComponent(id)}/respond-link`, {
+      method: "DELETE",
+    });
+  },
 };
+
+export interface PublicQuestion {
+  id: string;
+  prompt: string;
+  kind: "text" | "choice";
+  required: boolean;
+  choices?: string[];
+}
+
+export interface PublicForm {
+  title: string;
+  questions: PublicQuestion[];
+}
+
+/** The sign-up page. These requests do not send a SuiteLeaf session. */
+export async function loadSignUp(token: string): Promise<PublicForm> {
+  const response = await fetch(
+    `${location.origin}/api/respond/${encodeURIComponent(token)}`,
+  );
+  if (!response.ok) throw new Error("closed");
+  return response.json();
+}
+
+export async function submitSignUp(
+  token: string,
+  answers: Record<string, string>,
+): Promise<void> {
+  const response = await fetch(
+    `${location.origin}/api/respond/${encodeURIComponent(token)}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ answers }),
+    },
+  );
+  if (response.ok) return;
+  const body = await response.json().catch(() => ({}));
+  if (response.status === 400 && body.error) throw new Error(body.error);
+  throw new Error("closed");
+}
 
 /** Load a SuiteDrive file into an editable record linked back to the drive. */
 export async function openDriveFile(item: DriveItem): Promise<FileRecord> {
@@ -549,14 +656,20 @@ export async function saveNewDriveFile(
   file: SuiteFile,
   parentId: string | null,
   name: string,
+  options?: { fallbackToRoot?: boolean },
 ): Promise<DriveLink> {
   const { url } = requireSession();
-  const item = await drive.create({
-    name,
-    parentId,
-    kind: "file",
-    mime: mimeFor(file.kind),
-  });
+  const mime = mimeFor(file.kind);
+  const create = (folderId: string | null) =>
+    drive.create({
+      name,
+      parentId: folderId,
+      kind: "file",
+      mime,
+    });
+  const item = options?.fallbackToRoot
+    ? await createInFolderOrRoot(parentId, create)
+    : await create(parentId);
   return uploadDriveFile(file, {
     nodeUrl: url,
     itemId: item.id,

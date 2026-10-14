@@ -936,14 +936,16 @@ test.describe("SuiteDrive across two nodes", () => {
     const trash = page.getByRole("button", {
       name: "Move Watering rota.sldoc to trash",
     });
-    const confirm = page.getByRole("dialog", { name: "Move to trash?" });
     await trash.click();
-    await page.keyboard.press("Escape");
-    await expect(confirm).toHaveCount(0);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(item("Watering rota.sldoc")).toHaveCount(0);
+    const notice = page.getByRole("status").filter({ hasText: "Watering rota.sldoc" });
+    await expect(notice).toContainText("Trash");
+    await page.waitForTimeout(3000);
+    await expect(notice).toBeVisible();
+    await notice.getByRole("button", { name: "Undo" }).click();
     await expect(item("Watering rota.sldoc")).toBeVisible();
-    await trash.click();
-    await confirm.getByRole("button", { name: "Move to trash" }).click();
-    await expect(page.getByText("This folder is empty.")).toBeVisible();
+    await expect(notice).toHaveCount(0);
     expect(native).toEqual([]);
   });
 });

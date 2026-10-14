@@ -190,3 +190,9 @@ The browser runs need the model weights in `~/.cache/suiteleaf-models` (`RASMUS/
 | 132 | [Put odd and even numbers on the outside](132-numbers-on-the-outside.md) | single-node | Docs |
 | 134 | [See the cover before you apply](134-see-the-cover.md) | single-node | Docs |
 | 135 | [See a different first page before you apply](135-see-a-different-first-page.md) | single-node | Docs |
+| 136 | [Collect sign-ups at the table](136-collect-sign-ups.md) | single-node | Forms |
+| 137 | [Let someone else sign up](137-let-someone-else-sign-up.md) | cluster | Forms |
+| 138 | [Hand someone the sign-up link](138-hand-someone-the-sign-up-link.md) | cluster | Forms |
+| 139 | [Get a shared file back](139-get-a-shared-file-back.md) | cluster | Files |
+| 140 | [Put the rota in the club folder](140-put-the-rota-in-the-club-folder.md) | cluster | Files |
+| 141 | [Start the next rota in the same folder](141-start-the-next-rota-in-the-same-folder.md) | cluster | Files |

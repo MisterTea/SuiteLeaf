@@ -25,6 +25,7 @@ import {
   FileText,
   Sheet,
   Presentation,
+  ClipboardList,
   Plus,
   Upload,
   Search,
@@ -90,12 +91,25 @@ import {
   type DriveItem,
   type DriveRole,
 } from "./node-client";
-import { DriveBrowser, DriveDialog, NameDialog } from "./drive/DriveBrowser";
+import {
+  DriveBrowser,
+  DriveDialog,
+  NameDialog,
+  rememberDriveFolder,
+} from "./drive/DriveBrowser";
+import {
+  FolderControls,
+  MoveBanner,
+  useDriveFolder,
+} from "./drive/file-folder";
+import { MoveDialog } from "./drive/MoveDialog";
 import { FileComments } from "./drive/file-comments";
 import { LastEdited } from "./drive/LastEdited";
 import { requestLastEditRefresh } from "./drive/last-edit";
 import { ShareDialog } from "./drive/ShareDialog";
+import { SignUpLinkDialog } from "./drive/SignUpLinkDialog";
 import { ShareNotices } from "./drive/share-notices";
+import SignUpPage from "./sign-up";
 import { searchFile } from "./library-search";
 import { FileLibraryRow, TrashToast } from "./library-trash-ui";
 import {
@@ -158,7 +172,8 @@ import {
 } from "./templates/gallery";
 const Docs = lazy(() => import("./editors/Docs")),
   Sheets = lazy(() => import("./editors/Sheets")),
-  Slides = lazy(() => import("./editors/Slides"));
+  Slides = lazy(() => import("./editors/Slides")),
+  Forms = lazy(() => import("./editors/Form"));
 function message(e: unknown) {
   return e instanceof Error ? e.message : String(e);
 }
@@ -393,7 +408,9 @@ async function createInDrive(
   navigate: NavigateFunction,
 ) {
   if (await storage.get(file.id)) file = duplicateFile(file, file.title);
-  const drive = await saveNewDriveFile(file, folderId, nativeFilename(file));
+  const drive = await saveNewDriveFile(file, folderId, nativeFilename(file), {
+    fallbackToRoot: true,
+  });
   const saved = await storage.save({ file, drive });
   navigate(`/file/${saved.file.id}`);
 }
@@ -435,6 +452,16 @@ function NewCards({
         <span>
           <strong>New presentation</strong>
           {where ?? <small>A clean canvas for your next pitch</small>}
+        </span>
+        <Plus size={22} />
+      </button>
+      <button className="new-card" onClick={() => onCreate("form")}>
+        <span className="app-icon form">
+          <ClipboardList size={30} />
+        </span>
+        <span>
+          <strong>New form</strong>
+          {where ?? <small>Questions and answers in one file</small>}
         </span>
         <Plus size={22} />
       </button>
@@ -576,6 +603,7 @@ function LocalHome() {
       if (action === "new-doc") make("doc");
       if (action === "new-sheet") make("sheet");
       if (action === "new-slide") make("slide");
+      if (action === "new-form") make("form");
       if (action === "connect-server") setConnecting(true);
       if (action === "open")
         void storage
@@ -728,7 +756,14 @@ function LocalHome() {
       open: (r) => navigate(`/file/${r.file.id}`),
       openSample: (kind) =>
         void open({
-          file: (kind === "doc" ? sampleDoc : kind === "sheet" ? sampleSheet : sampleSlide)(),
+          file:
+            kind === "doc"
+              ? sampleDoc()
+              : kind === "sheet"
+                ? sampleSheet()
+                : kind === "slide"
+                  ? sampleSlide()
+                  : createFile("form"),
         }),
       rename,
       duplicate: async (r) => {
@@ -744,12 +779,14 @@ function LocalHome() {
         await refresh();
       },
       importFile: async (f) => {
-        if (!importer.current) throw new Error("Clear the search to import a file.");
+        if (!importer.current)
+          throw new Error("Clear the search to import a file.");
         await importer.current(f);
       },
     };
     return {
       kind: "home",
+      place: () => "No document open",
       snapshot: () => homeSnapshot(ctx),
       tools: [
         ...homeTools(ctx),
@@ -757,7 +794,8 @@ function LocalHome() {
           ? []
           : connectTools({
               probe: probeServer,
-              connect: (serverUrl) => switchMode({ kind: "cluster", serverUrl }),
+              connect: (serverUrl) =>
+                switchMode({ kind: "cluster", serverUrl }),
             })),
       ],
     };
@@ -820,6 +858,13 @@ function LocalHome() {
           >
             <Presentation size={18} />
             Presentations
+          </button>
+          <button
+            className={filter === "form" ? "selected" : ""}
+            onClick={() => setFilter("form")}
+          >
+            <ClipboardList size={18} />
+            Forms
           </button>
           <button
             className={filter === "trash" ? "selected" : ""}
@@ -893,7 +938,11 @@ function LocalHome() {
             {searching ? (
               <button onClick={() => setQuery("")}>Clear search</button>
             ) : (
-              <ImportButton onImport={importRecord} onError={setError} importer={importer} />
+              <ImportButton
+                onImport={importRecord}
+                onError={setError}
+                importer={importer}
+              />
             )}
           </header>
           {filter === "trash" ? (
@@ -932,9 +981,7 @@ function LocalHome() {
               <h3>A workspace waiting for you</h3>
               <p>
                 Create your first file, or explore a sample.
-                {trashed.length > 0
-                  ? " Anything you deleted is in Trash."
-                  : ""}
+                {trashed.length > 0 ? " Anything you deleted is in Trash." : ""}
               </p>
               <div>{samples}</div>
             </div>
@@ -1185,6 +1232,7 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
       if (action === "new-doc") make("doc");
       if (action === "new-sheet") make("sheet");
       if (action === "new-slide") make("slide");
+      if (action === "new-form") make("form");
     },
     [make],
   );
@@ -1194,7 +1242,11 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
   useAgentHost("home", () => {
     const ctx: DriveAgentContext = {
       host: new URL(serverUrl).host,
-      user: session?.user.name || session?.user.username || session?.user.email || "",
+      user:
+        session?.user.name ||
+        session?.user.username ||
+        session?.user.email ||
+        "",
       drive: () => driveControl.current,
       create: (kind, title) =>
         createInDrive(createFile(kind, title), folder.current, navigate),
@@ -1208,7 +1260,12 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
       mayDisconnect: () => forgetDriveFiles(),
       disconnect: () => disconnect(serverUrl),
     };
-    return { kind: "home", snapshot: () => driveSnapshot(ctx), tools: driveTools(ctx) };
+    return {
+      kind: "home",
+      place: () => "No document open",
+      snapshot: () => driveSnapshot(ctx),
+      tools: driveTools(ctx),
+    };
   });
   return (
     <div className="home">
@@ -1297,22 +1354,30 @@ function Workspace() {
     driveQueue = useRef(driveQueueFor(id!)),
     driveTimer = useRef<ReturnType<typeof setTimeout>>(undefined),
     driveConflictRef = useRef<DriveItem | null>(null),
-    snapshotExplicit = useRef(false);
+    snapshotExplicit = useRef(false),
+    /** Folder of the open SuiteDrive file. `null` is the top of My Drive. */
+    driveParentId = useRef<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [editorEpoch, setEditorEpoch] = useState(0);
-  const [historyPreview, setHistoryPreview] = useState<HistoryPreview | null>(null);
+  const [historyPreview, setHistoryPreview] = useState<HistoryPreview | null>(
+    null,
+  );
   const restoreParagraph = useRef<(key: string) => void>(() => {});
   const [driveConflict, setDriveConflictState] = useState<DriveItem | null>(
       null,
     ),
     [driveDialog, setDriveDialog] = useState<"open" | "save" | null>(null),
     [shareOpen, setShareOpen] = useState(false),
+    [signUpOpen, setSignUpOpen] = useState(false),
     [driveRole, setDriveRole] = useState<DriveRole | "local" | null>(null),
     { mode } = useMode(),
     cluster = mode.kind === "cluster";
   const canEditRef = useRef(true);
+  const canSaveRef = useRef(true);
   const canEdit =
     driveRole === "local" || driveRole === "editor" || driveRole === "owner";
+  const canSave =
+    canEdit || (driveRole === "responder" && record?.file.kind === "form");
   const setDriveConflict = (item: DriveItem | null) => {
     driveConflictRef.current = item;
     setDriveConflictState(item);
@@ -1350,7 +1415,7 @@ function Workspace() {
   const syncDrive = useCallback(async () => {
     clearTimeout(driveTimer.current);
     driveTimer.current = undefined;
-    if (!canEditRef.current) return;
+    if (!canSaveRef.current) return;
     if (!current.current?.drive || driveConflictRef.current) return;
     if (!getSession()) {
       setStatus("Saved on this device · sign in to sync with SuiteDrive");
@@ -1380,7 +1445,7 @@ function Workspace() {
     }
   }, []);
   const save = useCallback(async () => {
-    if (!canEditRef.current) return;
+    if (!canSaveRef.current) return;
     clearTimeout(timer.current);
     try {
       await actions.current?.flush();
@@ -1454,7 +1519,9 @@ function Workspace() {
     setActionsReady(false);
     setDriveRole(null);
     setShareOpen(false);
+    setSignUpOpen(false);
     canEditRef.current = false;
+    canSaveRef.current = false;
     actions.current = undefined;
     const saveQueue = queue.current;
     let release: (() => void) | undefined,
@@ -1477,12 +1544,15 @@ function Workspace() {
           }
         }
         if (cancel) return;
-        canEditRef.current =
+        const canChange =
           role === "local" || role === "editor" || role === "owner";
+        canEditRef.current = canChange;
+        canSaveRef.current =
+          canChange || (role === "responder" && r.file.kind === "form");
         setDriveRole(role);
         current.current = r;
         setRecord(r);
-        if (canEditRef.current && hasUnsyncedEdits(r)) {
+        if (canSaveRef.current && hasUnsyncedEdits(r)) {
           setStatus("Saving to SuiteDrive…");
           void syncDrive();
           return;
@@ -1503,23 +1573,40 @@ function Workspace() {
         if (!cancel) setError(message(e));
       }
     };
-    if (navigator.locks) {
-      void navigator.locks.request(
-        `suiteleaf:${id}`,
-        { ifAvailable: true },
-        async (lock) => {
-          if (!lock) {
-            setLocked(true);
-            return;
-          }
+    const hold = () =>
+      new Promise<void>((resolve) => {
+        release = resolve;
+        if (cancel) resolve();
+      });
+    // A reopen in this tab releases the previous lock only after that
+    // callback promise settles. Asking immediately sees our own lock and
+    // reports the file as open in another tab. `signal` cannot be combined
+    // with ifAvailable, so a cancelled attempt just returns the lock.
+    const acquire = async () => {
+      if (!navigator.locks) {
+        await load();
+        return;
+      }
+      await new Promise((done) => setTimeout(done, 0));
+      if (cancel) return;
+      const name = `suiteleaf:${id}`;
+      for (let attempt = 0; attempt < 6 && !cancel; attempt++) {
+        let granted = false;
+        await navigator.locks.request(name, { ifAvailable: true }, async (lock) => {
+          if (cancel || !lock) return;
+          granted = true;
+          setLocked(false);
           await load();
-          await new Promise<void>((resolve) => {
-            release = resolve;
-            if (cancel) resolve();
-          });
-        },
-      );
-    } else void load();
+          await hold();
+        });
+        if (granted || cancel) return;
+        await new Promise((done) => setTimeout(done, 40 * (attempt + 1)));
+      }
+      if (!cancel) setLocked(true);
+    };
+    void acquire().catch((e) => {
+      if (!cancel) setError(message(e));
+    });
     return () => {
       cancel = true;
       alive.current = false;
@@ -1547,8 +1634,10 @@ function Workspace() {
   }, [save, syncDrive]);
   const update = useCallback(
     (content: SuiteFile["content"]) => {
-      if (!canEditRef.current || !current.current) return;
-      if (JSON.stringify(content) === JSON.stringify(current.current.file.content))
+      if (!canSaveRef.current || !current.current) return;
+      if (
+        JSON.stringify(content) === JSON.stringify(current.current.file.content)
+      )
         return;
       current.current = {
         ...current.current,
@@ -1630,7 +1719,8 @@ function Workspace() {
         } else if (
           action === "new-doc" ||
           action === "new-sheet" ||
-          action === "new-slide"
+          action === "new-slide" ||
+          action === "new-form"
         ) {
           await save();
           const file = createFile(
@@ -1638,9 +1728,12 @@ function Workspace() {
               ? "doc"
               : action === "new-sheet"
                 ? "sheet"
-                : "slide",
+                : action === "new-form"
+                  ? "form"
+                  : "slide",
           );
-          if (cluster) await createInDrive(file, null, navigate);
+          if (cluster)
+            await createInDrive(file, driveParentId.current, navigate);
           else navigate(`/file/${(await storage.save({ file })).file.id}`);
         }
       } catch (e) {
@@ -1739,7 +1832,8 @@ function Workspace() {
     await actions.current?.flush();
     await save();
     const copy = duplicateFile(current.current!.file);
-    if (cluster) await createInDrive(copy, null, navigate);
+    if (cluster)
+      await createInDrive(copy, driveParentId.current, navigate);
     else navigate(`/file/${(await storage.save({ file: copy })).file.id}`);
   };
   /** In cluster mode files live in SuiteDrive, so downloads are copies. */
@@ -1781,7 +1875,8 @@ function Workspace() {
               done
                 ? {
                     name:
-                      (!cluster && current.current?.path?.split(/[\\/]/).pop()) ||
+                      (!cluster &&
+                        current.current?.path?.split(/[\\/]/).pop()) ||
                       nativeFilename(current.current!.file),
                     path: cluster ? undefined : current.current?.path,
                   }
@@ -1791,13 +1886,21 @@ function Workspace() {
           create: async (kind, title) => {
             await save();
             const created = createFile(kind, title);
-            if (cluster) await createInDrive(created, null, navigate);
-            else navigate(`/file/${(await storage.save({ file: created })).file.id}`);
+            if (cluster)
+              await createInDrive(created, driveParentId.current, navigate);
+            else
+              navigate(
+                `/file/${(await storage.save({ file: created })).file.id}`,
+              );
           },
         }
       : null;
     return {
       kind: file?.kind ?? "doc",
+      place: () =>
+        file
+          ? `${file.kind === "doc" ? "Document" : file.kind === "sheet" ? "Spreadsheet" : file.kind === "slide" ? "Presentation" : "Form"} “${file.title}”`
+          : "",
       snapshot: () =>
         ctx
           ? workspaceSnapshot(ctx) +
@@ -1821,6 +1924,11 @@ function Workspace() {
         : [],
     };
   });
+  const driveFolder = useDriveFolder(
+    record?.drive?.itemId,
+    Boolean(record?.drive && getSession()),
+  );
+  driveParentId.current = driveFolder.place?.parentId ?? null;
   if (locked)
     return (
       <div className="loading">
@@ -1848,1061 +1956,806 @@ function Workspace() {
   const starred = !!record.starred;
   return (
     <CommandPalette kind={f.kind}>
-    <div className="workspace">
-      {cluster ? (
-        <ShareNotices
-          floating
-          onOpen={(item) => openFromDrive(item, navigate)}
-        />
-      ) : null}
-      <header className="workspace-header">
-        <button
-          className="back"
-          aria-label="Back to files"
-          onClick={() =>
-            void save()
-              .then(() => navigate("/"))
-              .catch(() => {})
-          }
-        >
-          <ArrowLeft size={20} />
-        </button>
-        <span className={`file-icon ${f.kind}`}>
-          {f.kind === "doc" ? (
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              aria-hidden="true"
-            >
-              <path
-                d="M14 2H6C4.9 2 4 2.9 4 4V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V8L14 2Z"
-                fill="#4285F4"
-              />
-              <path d="M14 2V8H20L14 2Z" fill="#A1C2FA" />
-              <path
-                d="M8 12H16V13.6H8V12ZM8 15.2H16V16.8H8V15.2ZM8 18.4H13V20H8V18.4Z"
-                fill="#FFFFFF"
-              />
-            </svg>
-          ) : f.kind === "sheet" ? (
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              aria-hidden="true"
-            >
-              <path
-                d="M14 2H6C4.9 2 4 2.9 4 4V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V8L14 2Z"
-                fill="#0F9D58"
-              />
-              <path d="M14 2V8H20L14 2Z" fill="#87CEAC" />
-              <path d="M8 11.5H16V18.5H8V11.5Z" fill="#0F9D58" />
-              <path
-                d="M8 11.5H16V18.5H8V11.5ZM8 13.8H16M8 16.2H16M12 11.5V18.5"
-                stroke="#FFFFFF"
-                strokeWidth="1.2"
-              />
-            </svg>
-          ) : (
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              aria-hidden="true"
-            >
-              <path
-                d="M14 2H6C4.9 2 4 2.9 4 4V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V8L14 2Z"
-                fill="#F4B400"
-              />
-              <path d="M14 2V8H20L14 2Z" fill="#FCE293" />
-              <rect
-                x="7.5"
-                y="11.5"
-                width="9"
-                height="7"
-                rx="0.5"
-                fill="#FFFFFF"
-              />
-            </svg>
-          )}
-        </span>
-        <div className="title-block">
-          <div className="title-top-row">
-            <input
-              aria-label="File title"
-              value={f.title}
-              maxLength={200}
-              readOnly={!canEdit}
-              onChange={(e) => changeTitle(e.target.value)}
-            />
-            {driveRole === "viewer" ? (
-              <span className="view-only-badge">View only</span>
-            ) : driveRole === "commenter" ? (
-              <span className="view-only-badge">Can comment</span>
-            ) : null}
-            <button
-              type="button"
-              className={`doc-icon-btn star-btn ${starred ? "starred" : ""}`}
-              aria-label={starred ? "Starred" : "Star document"}
-              aria-pressed={starred}
-              onClick={toggleStar}
-              title={starred ? "Unstar" : "Star"}
-            >
-              <Star
-                size={16}
-                fill={starred ? "#fbbc04" : "none"}
-                color={starred ? "#fbbc04" : "#5f6368"}
-              />
-            </button>
-            <span className="save-status" role="status">
-              {status.includes("Saved") ? <Check size={13} /> : null}
-              {status}
-            </span>
-          </div>
-          {record.drive ? <LastEdited itemId={record.drive.itemId} /> : null}
-          <div className="file-menu" role="menubar">
-            <Menu label="File">
-              <SubMenu label="New">
-                <MenuItem onSelect={() => void doAction("new-doc")}>
-                  Document
-                </MenuItem>
-                <MenuItem onSelect={() => void doAction("new-sheet")}>
-                  Spreadsheet
-                </MenuItem>
-                <MenuItem onSelect={() => void doAction("new-slide")}>
-                  Presentation
-                </MenuItem>
-                <MenuItem onSelect={() => void doAction("from-template")}>
-                  From template
-                </MenuItem>
-              </SubMenu>
-              {cluster ? (
-                <>
-                  <MenuItem onSelect={() => void doAction("open")}>
-                    Open…
-                  </MenuItem>
-                  <MenuItem onSelect={() => setDriveDialog("save")}>
-                    Save as…
-                  </MenuItem>
-                  <MenuItem disabled={!actionsReady} onSelect={download}>
-                    Download a copy
-                  </MenuItem>
-                </>
-              ) : (
-                <MenuItem disabled={!actionsReady} onSelect={download}>
-                  {window.suiteleaf
-                    ? "Save As…"
-                    : `Download SuiteLeaf file (.${extensionFor(f.kind)})`}
-                </MenuItem>
-              )}
-              <MenuItem onSelect={() => void doAction("save")}>
-                Save now
-              </MenuItem>
-              <MenuItem
-                shortcut="Cmd+Alt+Shift+H"
-                onSelect={() => {
-                  setHistoryOpen((open) => !open);
-                  setHistoryPreview(null);
-                }}
+      <div className="workspace">
+        {cluster ? (
+          <ShareNotices
+            floating
+            onOpen={(item) => openFromDrive(item, navigate)}
+          />
+        ) : null}
+        <header className="workspace-header">
+          <button
+            className="back"
+            aria-label="Back to files"
+            onClick={() =>
+              void save()
+                .then(() => navigate("/"))
+                .catch(() => {})
+            }
+          >
+            <ArrowLeft size={20} />
+          </button>
+          <span className={`file-icon ${f.kind}`}>
+            {f.kind === "form" ? (
+              <ClipboardList size={22} color="#7b1fa2" aria-hidden="true" />
+            ) : f.kind === "doc" ? (
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden="true"
               >
-                Version history
-              </MenuItem>
-              <MenuItem
-                disabled={!actionsReady}
-                focusesTarget
-                onSelect={() => {
-                  void (async () => {
-                    await actions.current?.flush();
-                    await save();
-                    if (current.current)
-                      setTemplateDraft(structuredClone(current.current.file));
-                  })().catch((e) => setError(message(e)));
-                }}
+                <path
+                  d="M14 2H6C4.9 2 4 2.9 4 4V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V8L14 2Z"
+                  fill="#4285F4"
+                />
+                <path d="M14 2V8H20L14 2Z" fill="#A1C2FA" />
+                <path
+                  d="M8 12H16V13.6H8V12ZM8 15.2H16V16.8H8V15.2ZM8 18.4H13V20H8V18.4Z"
+                  fill="#FFFFFF"
+                />
+              </svg>
+            ) : f.kind === "sheet" ? (
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden="true"
               >
-                Save as template
-              </MenuItem>
-              {window.suiteleaf && !cluster ? (
-                <MenuItem
-                  onSelect={() =>
-                    void exportNative().catch((e) => setError(message(e)))
-                  }
-                  disabled={!actionsReady}
-                >
-                  Export native copy
-                </MenuItem>
+                <path
+                  d="M14 2H6C4.9 2 4 2.9 4 4V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V8L14 2Z"
+                  fill="#0F9D58"
+                />
+                <path d="M14 2V8H20L14 2Z" fill="#87CEAC" />
+                <path d="M8 11.5H16V18.5H8V11.5Z" fill="#0F9D58" />
+                <path
+                  d="M8 11.5H16V18.5H8V11.5ZM8 13.8H16M8 16.2H16M12 11.5V18.5"
+                  stroke="#FFFFFF"
+                  strokeWidth="1.2"
+                />
+              </svg>
+            ) : (
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M14 2H6C4.9 2 4 2.9 4 4V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V8L14 2Z"
+                  fill="#F4B400"
+                />
+                <path d="M14 2V8H20L14 2Z" fill="#FCE293" />
+                <rect
+                  x="7.5"
+                  y="11.5"
+                  width="9"
+                  height="7"
+                  rx="0.5"
+                  fill="#FFFFFF"
+                />
+              </svg>
+            )}
+          </span>
+          <div className="title-block">
+            <div className="title-top-row">
+              <input
+                aria-label="File title"
+                value={f.title}
+                maxLength={200}
+                readOnly={!canEdit}
+                onChange={(e) => changeTitle(e.target.value)}
+              />
+              {driveRole === "viewer" ? (
+                <span className="view-only-badge">View only</span>
+              ) : driveRole === "commenter" ? (
+                <span className="view-only-badge">Can comment</span>
+              ) : driveRole === "responder" ? (
+                <span className="view-only-badge">Can respond</span>
               ) : null}
-              {(f.kind === "doc"
-                ? ["docx", "html", "txt"]
-                : f.kind === "sheet"
-                  ? ["xlsx", "csv", "tsv"]
-                  : ["txt", "html"]
-              ).map((format) => (
-                <MenuItem
-                  key={format}
-                  disabled={!actionsReady}
-                  onSelect={() =>
-                    void actions.current
-                      ?.export(format)
-                      .catch((e) => setError(message(e)))
-                  }
-                >
-                  Export {format.toUpperCase()}
-                </MenuItem>
-              ))}
-              <MenuItem
-                onSelect={() =>
-                  void makeCopy().catch((e) => setError(message(e)))
-                }
+              <button
+                type="button"
+                className={`doc-icon-btn star-btn ${starred ? "starred" : ""}`}
+                aria-label={starred ? "Starred" : "Star document"}
+                aria-pressed={starred}
+                onClick={toggleStar}
+                title={starred ? "Unstar" : "Star"}
               >
-                Make a copy
-              </MenuItem>
-              {f.kind === "doc" ? (
+                <Star
+                  size={16}
+                  fill={starred ? "#fbbc04" : "none"}
+                  color={starred ? "#fbbc04" : "#5f6368"}
+                />
+              </button>
+              <span className="save-status" role="status">
+                {status.includes("Saved") ? <Check size={13} /> : null}
+                {status}
+              </span>
+            </div>
+            {record.drive ? (
+              <FolderControls
+                place={driveFolder.place}
+                canMove={canEdit}
+                onOpen={() => {
+                  const where = driveFolder.place;
+                  if (!where) return;
+                  void save()
+                    .then(async () => {
+                      let folders: {
+                        id: string;
+                        name: string;
+                        parentId: string | null;
+                      }[] = [];
+                      try {
+                        folders = await drive.listFolders();
+                      } catch {
+                        folders = [];
+                      }
+                      rememberDriveFolder(where.parentId, where.name, folders);
+                      navigate("/");
+                    })
+                    .catch(() => {});
+                }}
+                onMove={() => driveFolder.setOpen(true)}
+              />
+            ) : null}
+            {record.drive ? <LastEdited itemId={record.drive.itemId} /> : null}
+            <div className="file-menu" role="menubar">
+              <Menu label="File">
+                <SubMenu label="New">
+                  <MenuItem onSelect={() => void doAction("new-doc")}>
+                    Document
+                  </MenuItem>
+                  <MenuItem onSelect={() => void doAction("new-sheet")}>
+                    Spreadsheet
+                  </MenuItem>
+                  <MenuItem onSelect={() => void doAction("new-slide")}>
+                    Presentation
+                  </MenuItem>
+                  <MenuItem onSelect={() => void doAction("new-form")}>
+                    Form
+                  </MenuItem>
+                  <MenuItem onSelect={() => void doAction("from-template")}>
+                    From template
+                  </MenuItem>
+                </SubMenu>
+                {cluster ? (
+                  <>
+                    <MenuItem onSelect={() => void doAction("open")}>
+                      Open…
+                    </MenuItem>
+                    <MenuItem onSelect={() => setDriveDialog("save")}>
+                      Save as…
+                    </MenuItem>
+                    <MenuItem disabled={!actionsReady} onSelect={download}>
+                      Download a copy
+                    </MenuItem>
+                  </>
+                ) : (
+                  <MenuItem disabled={!actionsReady} onSelect={download}>
+                    {window.suiteleaf
+                      ? "Save As…"
+                      : `Download SuiteLeaf file (.${extensionFor(f.kind)})`}
+                  </MenuItem>
+                )}
+                <MenuItem onSelect={() => void doAction("save")}>
+                  Save now
+                </MenuItem>
+                <MenuItem
+                  shortcut="Cmd+Alt+Shift+H"
+                  onSelect={() => {
+                    setHistoryOpen((open) => !open);
+                    setHistoryPreview(null);
+                  }}
+                >
+                  Version history
+                </MenuItem>
                 <MenuItem
                   disabled={!actionsReady}
                   focusesTarget
-                  onSelect={() => actions.current?.docActions?.openPageSetup()}
+                  onSelect={() => {
+                    void (async () => {
+                      await actions.current?.flush();
+                      await save();
+                      if (current.current)
+                        setTemplateDraft(structuredClone(current.current.file));
+                    })().catch((e) => setError(message(e)));
+                  }}
                 >
-                  Page setup…
+                  Save as template
                 </MenuItem>
-              ) : null}
-              {f.kind === "sheet" ? (
+                {window.suiteleaf && !cluster ? (
+                  <MenuItem
+                    onSelect={() =>
+                      void exportNative().catch((e) => setError(message(e)))
+                    }
+                    disabled={!actionsReady}
+                  >
+                    Export native copy
+                  </MenuItem>
+                ) : null}
+                {(f.kind === "doc"
+                  ? ["docx", "html", "txt"]
+                  : f.kind === "sheet"
+                    ? ["xlsx", "csv", "tsv"]
+                    : f.kind === "form"
+                      ? []
+                      : ["txt", "html"]
+                ).map((format) => (
+                  <MenuItem
+                    key={format}
+                    disabled={!actionsReady}
+                    onSelect={() =>
+                      void actions.current
+                        ?.export(format)
+                        .catch((e) => setError(message(e)))
+                    }
+                  >
+                    Export {format.toUpperCase()}
+                  </MenuItem>
+                ))}
                 <MenuItem
-                  synonyms={[
-                    "print settings",
-                    "repeat row",
-                    "repeat header",
-                    "repeating header",
-                    "print header",
-                  ]}
                   onSelect={() =>
-                    actions.current?.sheetActions?.openPrintSettings?.()
+                    void makeCopy().catch((e) => setError(message(e)))
                   }
                 >
-                  Print settings
+                  Make a copy
                 </MenuItem>
-              ) : null}
-              <MenuItem onSelect={() => void doAction("print")}>
-                Print / Save as PDF
-              </MenuItem>
-            </Menu>
-            {f.kind === "doc" ? (
-              <>
-                <Menu label="Edit">
+                {f.kind === "doc" ? (
                   <MenuItem
-                    shortcut="Cmd+Z"
-                    onSelect={() => actions.current?.docActions?.undo()}
-                  >
-                    Undo
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Cmd+Y"
-                    onSelect={() => actions.current?.docActions?.redo()}
-                  >
-                    Redo
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Cmd+Shift+H"
-                    onSelect={() => actions.current?.docActions?.openFind()}
-                  >
-                    Find and replace
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Cmd+A"
-                    onSelect={() => actions.current?.docActions?.selectAll()}
-                  >
-                    Select all
-                  </MenuItem>
-                </Menu>
-                <Menu label="View">
-                  <MenuItem onSelect={() => void doAction("print")}>
-                    Print layout
-                  </MenuItem>
-                </Menu>
-                <Menu label="Insert">
-                  <MenuItem
-                    onSelect={() => actions.current?.docActions?.insertImage()}
-                  >
-                    Image
-                  </MenuItem>
-                  <MenuItem
-                    onSelect={() => actions.current?.docActions?.insertTable()}
-                  >
-                    Table
-                  </MenuItem>
-                  <MenuItem
-                    synonyms={["equation", "math", "formula", "insert equation"]}
+                    disabled={!actionsReady}
                     focusesTarget
                     onSelect={() =>
-                      actions.current?.docActions?.insertEquation()
+                      actions.current?.docActions?.openPageSetup()
                     }
                   >
-                    Equation
+                    Page setup…
                   </MenuItem>
+                ) : null}
+                {f.kind === "sheet" ? (
                   <MenuItem
+                    synonyms={[
+                      "print settings",
+                      "repeat row",
+                      "repeat header",
+                      "repeating header",
+                      "print header",
+                    ]}
                     onSelect={() =>
-                      actions.current?.docActions?.insertHorizontalRule()
+                      actions.current?.sheetActions?.openPrintSettings?.()
                     }
                   >
-                    Horizontal line
+                    Print settings
                   </MenuItem>
-                  <MenuItem
-                    shortcut="Cmd+Enter"
-                    focusesTarget
-                    onSelect={() =>
-                      actions.current?.docActions?.insertPageBreak()
-                    }
-                  >
-                    Page break
-                  </MenuItem>
-                  <SubMenu label="Table of contents">
+                ) : null}
+                <MenuItem onSelect={() => void doAction("print")}>
+                  Print / Save as PDF
+                </MenuItem>
+              </Menu>
+              {f.kind === "doc" ? (
+                <>
+                  <Menu label="Edit">
+                    <MenuItem
+                      shortcut="Cmd+Z"
+                      onSelect={() => actions.current?.docActions?.undo()}
+                    >
+                      Undo
+                    </MenuItem>
+                    <MenuItem
+                      shortcut="Cmd+Y"
+                      onSelect={() => actions.current?.docActions?.redo()}
+                    >
+                      Redo
+                    </MenuItem>
+                    <MenuItem
+                      shortcut="Cmd+Shift+H"
+                      onSelect={() => actions.current?.docActions?.openFind()}
+                    >
+                      Find and replace
+                    </MenuItem>
+                    <MenuItem
+                      shortcut="Cmd+A"
+                      onSelect={() => actions.current?.docActions?.selectAll()}
+                    >
+                      Select all
+                    </MenuItem>
+                  </Menu>
+                  <Menu label="View">
+                    <MenuItem onSelect={() => void doAction("print")}>
+                      Print layout
+                    </MenuItem>
+                  </Menu>
+                  <Menu label="Insert">
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.docActions?.insertImage()
+                      }
+                    >
+                      Image
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.docActions?.insertTable()
+                      }
+                    >
+                      Table
+                    </MenuItem>
                     <MenuItem
                       synonyms={[
-                        "table of contents",
-                        "toc",
-                        "contents",
-                        "insert table of contents",
+                        "equation",
+                        "math",
+                        "formula",
+                        "insert equation",
                       ]}
                       focusesTarget
                       onSelect={() =>
-                        actions.current?.docActions?.insertTableOfContents(true)
+                        actions.current?.docActions?.insertEquation()
                       }
                     >
-                      With page numbers
+                      Equation
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.docActions?.insertHorizontalRule()
+                      }
+                    >
+                      Horizontal line
+                    </MenuItem>
+                    <MenuItem
+                      shortcut="Cmd+Enter"
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.docActions?.insertPageBreak()
+                      }
+                    >
+                      Page break
+                    </MenuItem>
+                    <SubMenu label="Table of contents">
+                      <MenuItem
+                        synonyms={[
+                          "table of contents",
+                          "toc",
+                          "contents",
+                          "insert table of contents",
+                        ]}
+                        focusesTarget
+                        onSelect={() =>
+                          actions.current?.docActions?.insertTableOfContents(
+                            true,
+                          )
+                        }
+                      >
+                        With page numbers
+                      </MenuItem>
+                      <MenuItem
+                        focusesTarget
+                        onSelect={() =>
+                          actions.current?.docActions?.insertTableOfContents(
+                            false,
+                          )
+                        }
+                      >
+                        With links
+                      </MenuItem>
+                    </SubMenu>
+                    <MenuItem
+                      shortcut="Cmd+Alt+F"
+                      synonyms={["footnote", "footnotes", "insert footnote"]}
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.docActions?.insertFootnote()
+                      }
+                    >
+                      Footnote
                     </MenuItem>
                     <MenuItem
                       focusesTarget
                       onSelect={() =>
-                        actions.current?.docActions?.insertTableOfContents(
-                          false,
-                        )
+                        actions.current?.docActions?.insertEndnote()
                       }
                     >
-                      With links
+                      Endnote
                     </MenuItem>
-                  </SubMenu>
-                  <MenuItem
-                    shortcut="Cmd+Alt+F"
-                    synonyms={["footnote", "footnotes", "insert footnote"]}
-                    focusesTarget
-                    onSelect={() =>
-                      actions.current?.docActions?.insertFootnote()
-                    }
-                  >
-                    Footnote
-                  </MenuItem>
-                  <MenuItem
-                    focusesTarget
-                    onSelect={() =>
-                      actions.current?.docActions?.insertEndnote()
-                    }
-                  >
-                    Endnote
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Cmd+K"
-                    availability={() => {
-                      const state = actions.current?.docActions?.linkState?.();
-                      return !state || state.ok ? true : state.reason;
-                    }}
-                    onSelect={() => actions.current?.docActions?.insertLink()}
-                  >
-                    Link
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Cmd+Alt+M"
-                    synonyms={["comment", "comments", "document comments"]}
-                    focusesTarget
-                    onSelect={() => actions.current?.docActions?.insertComment?.()}
-                  >
-                    Comment
-                  </MenuItem>
-                </Menu>
-                <Menu label="Format">
-                  <MenuItem
-                    shortcut="Cmd+B"
-                    onSelect={() => actions.current?.docActions?.toggleBold()}
-                  >
-                    Bold
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Cmd+I"
-                    onSelect={() => actions.current?.docActions?.toggleItalic()}
-                  >
-                    Italic
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Cmd+U"
-                    onSelect={() =>
-                      actions.current?.docActions?.toggleUnderline()
-                    }
-                  >
-                    Underline
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Cmd+Shift+X"
-                    onSelect={() => actions.current?.docActions?.toggleStrike()}
-                  >
-                    Strikethrough
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Cmd+."
-                    onSelect={() =>
-                      actions.current?.docActions?.toggleSuperscript()
-                    }
-                  >
-                    Superscript
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Cmd+,"
-                    onSelect={() =>
-                      actions.current?.docActions?.toggleSubscript()
-                    }
-                  >
-                    Subscript
-                  </MenuItem>
-                  <MenuItem
-                    onSelect={() => actions.current?.docActions?.align("left")}
-                  >
-                    Align left
-                  </MenuItem>
-                  <MenuItem
-                    onSelect={() =>
-                      actions.current?.docActions?.align("center")
-                    }
-                  >
-                    Align center
-                  </MenuItem>
-                  <MenuItem
-                    onSelect={() => actions.current?.docActions?.align("right")}
-                  >
-                    Align right
-                  </MenuItem>
-                  <MenuItem
-                    onSelect={() =>
-                      actions.current?.docActions?.align("justify")
-                    }
-                  >
-                    Justify
-                  </MenuItem>
-                  <MenuItem
-                    focusesTarget
-                    synonyms={["tab", "tab stop", "tabs", "line up"]}
-                    onSelect={() =>
-                      actions.current?.docActions?.focusTabStop?.()
-                    }
-                  >
-                    Tab stop
-                  </MenuItem>
-                  <MenuItem
-                    onSelect={() =>
-                      actions.current?.docActions?.toggleBulletList()
-                    }
-                  >
-                    Bulleted list
-                  </MenuItem>
-                  <MenuItem
-                    onSelect={() =>
-                      actions.current?.docActions?.toggleOrderedList()
-                    }
-                  >
-                    Numbered list
-                  </MenuItem>
-                  <MenuItem
-                    synonyms={["columns", "one column", "single column"]}
-                    focusesTarget
-                    onSelect={() =>
-                      actions.current?.docActions?.setColumns(1)
-                    }
-                  >
-                    One column
-                  </MenuItem>
-                  <MenuItem
-                    synonyms={["columns", "two columns", "newspaper columns"]}
-                    focusesTarget
-                    onSelect={() =>
-                      actions.current?.docActions?.setColumns(2)
-                    }
-                  >
-                    Two columns
-                  </MenuItem>
-                  <SubMenu label="Table">
-                    <TableMenuItems
-                      actions={() =>
-                        actions.current?.docActions?.tableActions() ?? []
-                      }
-                    />
-                  </SubMenu>
-                  <MenuItem
-                    shortcut="Cmd+\"
-                    onSelect={() =>
-                      actions.current?.docActions?.clearFormatting()
-                    }
-                  >
-                    Clear formatting
-                  </MenuItem>
-                </Menu>
-                <Menu label="Tools">
-                  <MenuItem
-                    shortcut="Cmd+Shift+C"
-                    synonyms={[
-                      "count",
-                      "word count",
-                      "wordcount",
-                      "count words",
-                      "words",
-                    ]}
-                    focusesTarget
-                    onSelect={() =>
-                      actions.current?.docActions?.openWordCount()
-                    }
-                  >
-                    Word count
-                  </MenuItem>
-                  <MenuItem
-                    synonyms={["spelling", "spell check", "spellcheck"]}
-                    focusesTarget
-                    onSelect={() => actions.current?.docActions?.openSpelling()}
-                  >
-                    Spelling
-                  </MenuItem>
-                  <MenuItem
-                    synonyms={[
-                      "grammar",
-                      "grammar check",
-                      "check grammar",
-                      "spelling and grammar",
-                    ]}
-                    focusesTarget
-                    onSelect={() => actions.current?.docActions?.openGrammar()}
-                  >
-                    Grammar
-                  </MenuItem>
-                  <MenuItem
-                    synonyms={["ignored grammar", "restore grammar"]}
-                    focusesTarget
-                    onSelect={() =>
-                      actions.current?.docActions?.openIgnoredGrammar()
-                    }
-                  >
-                    Ignored grammar
-                  </MenuItem>
-                  <MenuItem
-                    focusesTarget
-                    onSelect={() =>
-                      actions.current?.docActions?.openDictionary()
-                    }
-                  >
-                    Personal dictionary
-                  </MenuItem>
-                  <MenuItem
-                    synonyms={[
-                      "citations",
-                      "cite",
-                      "bibliography",
-                      "references",
-                      "sources",
-                    ]}
-                    focusesTarget
-                    onSelect={() =>
-                      actions.current?.docActions?.openCitations()
-                    }
-                  >
-                    Citations
-                  </MenuItem>
-                  <MenuItem
-                    onSelect={() => actions.current?.docActions?.openFind()}
-                  >
-                    Find and replace
-                  </MenuItem>
-                  <MenuItem
-                    onSelect={() =>
-                      actions.current?.docActions?.openSuggestions?.()
-                    }
-                  >
-                    Review suggestions
-                  </MenuItem>
-                </Menu>
-                <EditorHelp />
-              </>
-            ) : null}
-            {f.kind === "sheet" ? (
-              <>
-                <Menu label="Edit">
-                  <MenuItem
-                    shortcut="Cmd+Z"
-                    onSelect={() => actions.current?.sheetActions?.undo()}
-                  >
-                    Undo
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Cmd+Y"
-                    onSelect={() => actions.current?.sheetActions?.redo()}
-                  >
-                    Redo
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Cmd+X"
-                    onSelect={() => actions.current?.sheetActions?.cut()}
-                  >
-                    Cut
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Cmd+C"
-                    onSelect={() => actions.current?.sheetActions?.copy()}
-                  >
-                    Copy
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Cmd+V"
-                    onSelect={() => actions.current?.sheetActions?.paste()}
-                  >
-                    Paste
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Delete"
-                    onSelect={() =>
-                      actions.current?.sheetActions?.deleteValues()
-                    }
-                  >
-                    Delete values
-                  </MenuItem>
-                </Menu>
-                <Menu label="View">
-                  <SheetViewMenu
-                    actions={actions}
-                    onPrint={() => void doAction("print")}
-                  />
-                </Menu>
-                <Menu label="Insert">
-                  <MenuItem
-                    onSelect={() =>
-                      actions.current?.sheetActions?.insertImage?.()
-                    }
-                  >
-                    Image
-                  </MenuItem>
-                  <MenuItem
-                    synonyms={[
-                      "page break",
-                      "page break above",
-                      "row break",
-                      "insert page break",
-                      "insert break",
-                    ]}
-                    focusesTarget
-                    onSelect={() =>
-                      actions.current?.sheetActions?.insertPageBreak?.()
-                    }
-                  >
-                    Page break above
-                  </MenuItem>
-                  <MenuItem
-                    onSelect={() =>
-                      actions.current?.sheetActions?.insertChart()
-                    }
-                  >
-                    Chart
-                  </MenuItem>
-                  <MenuItem
-                    onSelect={() =>
-                      actions.current?.sheetActions?.insertPivot()
-                    }
-                  >
-                    Pivot table
-                  </MenuItem>
-                  <SubMenu label="Function">
                     <MenuItem
-                      synonyms={["function", "formula", "insert function", "sum"]}
+                      shortcut="Cmd+K"
+                      availability={() => {
+                        const state =
+                          actions.current?.docActions?.linkState?.();
+                        return !state || state.ok ? true : state.reason;
+                      }}
+                      onSelect={() => actions.current?.docActions?.insertLink()}
+                    >
+                      Link
+                    </MenuItem>
+                    <MenuItem
+                      shortcut="Cmd+Alt+M"
+                      synonyms={["comment", "comments", "document comments"]}
+                      focusesTarget
                       onSelect={() =>
-                        actions.current?.sheetActions?.insertFunction?.("SUM")
+                        actions.current?.docActions?.insertComment?.()
                       }
                     >
-                      Insert function
+                      Comment
                     </MenuItem>
-                    <FunctionMenu
-                      onInsert={(name) =>
-                        actions.current?.sheetActions?.insertFunction?.(name)
+                  </Menu>
+                  <Menu label="Format">
+                    <MenuItem
+                      shortcut="Cmd+B"
+                      onSelect={() => actions.current?.docActions?.toggleBold()}
+                    >
+                      Bold
+                    </MenuItem>
+                    <MenuItem
+                      shortcut="Cmd+I"
+                      onSelect={() =>
+                        actions.current?.docActions?.toggleItalic()
                       }
-                    />
-                  </SubMenu>
-                  <MenuItem
-                    shortcut="Cmd+K"
-                    focusesTarget
-                    onSelect={() =>
-                      actions.current?.sheetActions?.insertLink?.()
-                    }
-                  >
-                    Link
-                  </MenuItem>
-                  <MenuItem
-                    onSelect={() =>
-                      actions.current?.sheetActions?.insertCheckbox?.()
-                    }
-                  >
-                    Checkbox
-                  </MenuItem>
-                  <MenuItem
-                    onSelect={() =>
-                      actions.current?.sheetActions?.insertDropdown?.()
-                    }
-                  >
-                    Dropdown
-                  </MenuItem>
-                  <MenuItem
-                    onSelect={() =>
-                      actions.current?.sheetActions?.insertComment?.()
-                    }
-                  >
-                    Cell comment
-                  </MenuItem>
-                </Menu>
-                <Menu label="Format">
-                  <MenuItem
-                    onSelect={() =>
-                      actions.current?.sheetActions?.formatCurrency()
-                    }
-                  >
-                    Currency ($)
-                  </MenuItem>
-                  <MenuItem
-                    onSelect={() =>
-                      actions.current?.sheetActions?.formatPercent()
-                    }
-                  >
-                    Percent (%)
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Cmd+B"
-                    onSelect={() => actions.current?.sheetActions?.toggleBold()}
-                  >
-                    Bold
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Cmd+I"
-                    onSelect={() =>
-                      actions.current?.sheetActions?.toggleItalic()
-                    }
-                  >
-                    Italic
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Cmd+Shift+X"
-                    onSelect={() =>
-                      actions.current?.sheetActions?.toggleStrike()
-                    }
-                  >
-                    Strikethrough
-                  </MenuItem>
-                  <MenuItem
-                    onSelect={() =>
-                      actions.current?.sheetActions?.align("left")
-                    }
-                  >
-                    Align left
-                  </MenuItem>
-                  <MenuItem
-                    onSelect={() =>
-                      actions.current?.sheetActions?.align("center")
-                    }
-                  >
-                    Align center
-                  </MenuItem>
-                  <MenuItem
-                    onSelect={() =>
-                      actions.current?.sheetActions?.align("right")
-                    }
-                  >
-                    Align right
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Cmd+\"
-                    onSelect={() =>
-                      actions.current?.sheetActions?.clearFormatting()
-                    }
-                  >
-                    Clear formatting
-                  </MenuItem>
-                  <MenuItem
-                    onSelect={() =>
-                      actions.current?.sheetActions?.conditionalFormatting?.()
-                    }
-                  >
-                    Conditional formatting
-                  </MenuItem>
-                </Menu>
-                <Menu label="Data">
-                  {!canEdit ? (
-                    <SubMenu label="Filter views">
-                      <MenuItem
-                        onSelect={() =>
-                          actions.current?.sheetActions?.createFilterView?.()
-                        }
-                      >
-                        Create a filter view
-                      </MenuItem>
-                      <FilterViewChoices
-                        load={() =>
-                          actions.current?.sheetActions?.filterViewChoices?.() ??
-                          []
-                        }
-                        onPick={(value) =>
-                          actions.current?.sheetActions?.applyFilterView?.(value)
+                    >
+                      Italic
+                    </MenuItem>
+                    <MenuItem
+                      shortcut="Cmd+U"
+                      onSelect={() =>
+                        actions.current?.docActions?.toggleUnderline()
+                      }
+                    >
+                      Underline
+                    </MenuItem>
+                    <MenuItem
+                      shortcut="Cmd+Shift+X"
+                      onSelect={() =>
+                        actions.current?.docActions?.toggleStrike()
+                      }
+                    >
+                      Strikethrough
+                    </MenuItem>
+                    <MenuItem
+                      shortcut="Cmd+."
+                      onSelect={() =>
+                        actions.current?.docActions?.toggleSuperscript()
+                      }
+                    >
+                      Superscript
+                    </MenuItem>
+                    <MenuItem
+                      shortcut="Cmd+,"
+                      onSelect={() =>
+                        actions.current?.docActions?.toggleSubscript()
+                      }
+                    >
+                      Subscript
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.docActions?.align("left")
+                      }
+                    >
+                      Align left
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.docActions?.align("center")
+                      }
+                    >
+                      Align center
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.docActions?.align("right")
+                      }
+                    >
+                      Align right
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.docActions?.align("justify")
+                      }
+                    >
+                      Justify
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.docActions?.toggleBulletList()
+                      }
+                    >
+                      Bulleted list
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.docActions?.toggleOrderedList()
+                      }
+                    >
+                      Numbered list
+                    </MenuItem>
+                    <MenuItem
+                      synonyms={["columns", "one column", "single column"]}
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.docActions?.setColumns(1)
+                      }
+                    >
+                      One column
+                    </MenuItem>
+                    <MenuItem
+                      synonyms={["columns", "two columns", "newspaper columns"]}
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.docActions?.setColumns(2)
+                      }
+                    >
+                      Two columns
+                    </MenuItem>
+                    <SubMenu label="Table">
+                      <TableMenuItems
+                        actions={() =>
+                          actions.current?.docActions?.tableActions() ?? []
                         }
                       />
                     </SubMenu>
-                  ) : null}
-                  <MenuItem
-                    searchLabel="Create a filter"
-                    disabled={!canEdit}
-                    onSelect={() =>
-                      actions.current?.sheetActions?.toggleFilter()
-                    }
-                  >
-                    <LiveLabel
-                      text={() =>
-                        actions.current?.sheetActions?.hasFilter?.()
-                          ? "Remove filter"
-                          : "Create a filter"
-                      }
-                    />
-                  </MenuItem>
-                  <MenuItem
-                    onSelect={() =>
-                      actions.current?.sheetActions?.insertPivot()
-                    }
-                  >
-                    Pivot table
-                  </MenuItem>
-                  <MenuItem
-                    onSelect={() =>
-                      actions.current?.sheetActions?.sortRange?.()
-                    }
-                  >
-                    Sort range
-                  </MenuItem>
-                  <MenuItem
-                    focusesTarget
-                    synonyms={[
-                      "named range",
-                      "define name",
-                      "name a range",
-                      "defined name",
-                    ]}
-                    onSelect={() =>
-                      actions.current?.sheetActions?.namedRanges?.()
-                    }
-                  >
-                    Named ranges
-                  </MenuItem>
-                  <MenuItem
-                    synonyms={["group", "outline", "collapse rows"]}
-                    onSelect={() =>
-                      actions.current?.sheetActions?.groupRows?.()
-                    }
-                  >
-                    Group rows
-                  </MenuItem>
-                  <MenuItem
-                    synonyms={[
-                      "group columns",
-                      "column group",
-                      "outline columns",
-                      "collapse columns",
-                    ]}
-                    onSelect={() =>
-                      actions.current?.sheetActions?.groupColumns?.()
-                    }
-                  >
-                    Group columns
-                  </MenuItem>
-                  <SubMenu label="Data cleanup">
                     <MenuItem
+                      shortcut="Cmd+\"
                       onSelect={() =>
-                        actions.current?.sheetActions?.trimWhitespace?.()
+                        actions.current?.docActions?.clearFormatting()
                       }
                     >
-                      Trim whitespace
+                      Clear formatting
                     </MenuItem>
+                  </Menu>
+                  <Menu label="Tools">
                     <MenuItem
+                      shortcut="Cmd+Shift+C"
                       synonyms={[
-                        "remove duplicates",
-                        "dedupe",
-                        "duplicates",
-                        "unique",
+                        "count",
+                        "word count",
+                        "wordcount",
+                        "count words",
+                        "words",
                       ]}
                       focusesTarget
                       onSelect={() =>
-                        actions.current?.sheetActions?.removeDuplicates?.()
+                        actions.current?.docActions?.openWordCount()
                       }
                     >
-                      Remove duplicates
-                    </MenuItem>
-                  </SubMenu>
-                  <MenuItem
-                    focusesTarget
-                    onSelect={() =>
-                      actions.current?.sheetActions?.splitTextToColumns?.()
-                    }
-                  >
-                    Split text to columns
-                  </MenuItem>
-                  <MenuItem
-                    onSelect={() =>
-                      actions.current?.sheetActions?.dataValidation?.()
-                    }
-                  >
-                    Data validation
-                  </MenuItem>
-                  <MenuItem
-                    onSelect={() =>
-                      actions.current?.sheetActions?.tabsProtection?.()
-                    }
-                  >
-                    Protect sheets and ranges
-                  </MenuItem>
-                </Menu>
-                <Menu label="Tools">
-                  <MenuItem
-                    focusesTarget
-                    onSelect={() =>
-                      actions.current?.sheetActions?.openSpelling?.()
-                    }
-                  >
-                    Spelling
-                  </MenuItem>
-                </Menu>
-                <EditorHelp />
-              </>
-            ) : null}
-            {f.kind === "slide" ? (
-              <>
-                <Menu label="Edit">
-                  <MenuItem
-                    shortcut="Cmd+Z"
-                    availability={() =>
-                      actions.current?.slideActions?.undoReason?.() ?? true
-                    }
-                    onSelect={() => actions.current?.slideActions?.undo()}
-                  >
-                    Undo
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Cmd+Y"
-                    availability={() =>
-                      actions.current?.slideActions?.redoReason?.() ?? true
-                    }
-                    onSelect={() => actions.current?.slideActions?.redo()}
-                  >
-                    Redo
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Cmd+X"
-                    onSelect={() => actions.current?.slideActions?.cut()}
-                  >
-                    Cut
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Cmd+C"
-                    onSelect={() => actions.current?.slideActions?.copy()}
-                  >
-                    Copy
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Cmd+V"
-                    onSelect={() => actions.current?.slideActions?.paste()}
-                  >
-                    Paste
-                  </MenuItem>
-                </Menu>
-                <Menu label="View">
-                  <MenuItem
-                    shortcut="Cmd+Enter"
-                    onSelect={() => void actions.current?.present?.()}
-                  >
-                    Slideshow
-                  </MenuItem>
-                  <MenuItem onSelect={() => void actions.current?.print()}>
-                    Print preview
-                  </MenuItem>
-                </Menu>
-                <Menu label="Insert">
-                  <MenuItem
-                    synonyms={["text box", "insert text box", "textbox"]}
-                    focusesTarget
-                    onSelect={() =>
-                      actions.current?.slideActions?.insertTextBox()
-                    }
-                  >
-                    Text box
-                  </MenuItem>
-                  <MenuItem
-                    synonyms={["image", "insert image", "picture", "photo"]}
-                    onSelect={() =>
-                      actions.current?.slideActions?.insertImage()
-                    }
-                  >
-                    Image
-                  </MenuItem>
-                  <SubMenu label="Shape">
-                    <MenuItem
-                      synonyms={["shape", "insert shape", "rectangle"]}
-                      onSelect={() =>
-                        actions.current?.slideActions?.insertShape("rect")
-                      }
-                    >
-                      Rectangle
+                      Word count
                     </MenuItem>
                     <MenuItem
+                      synonyms={["spelling", "spell check", "spellcheck"]}
+                      focusesTarget
                       onSelect={() =>
-                        actions.current?.slideActions?.insertShape("roundRect")
+                        actions.current?.docActions?.openSpelling()
                       }
                     >
-                      Rounded rectangle
+                      Spelling
                     </MenuItem>
-                    <MenuItem
-                      onSelect={() =>
-                        actions.current?.slideActions?.insertShape("ellipse")
-                      }
-                    >
-                      Ellipse
-                    </MenuItem>
-                  </SubMenu>
-                  <SubMenu label="Animation">
                     <MenuItem
                       synonyms={[
-                        "fade in",
-                        "fade in on click",
-                        "appear on click",
-                        "animation",
+                        "grammar",
+                        "grammar check",
+                        "check grammar",
+                        "spelling and grammar",
                       ]}
-                      availability={() =>
-                        actions.current?.slideActions?.fadeOnClickReason?.() ??
-                        true
-                      }
+                      focusesTarget
                       onSelect={() =>
-                        actions.current?.slideActions?.fadeOnClick?.()
+                        actions.current?.docActions?.openGrammar()
                       }
                     >
-                      Fade in on click
+                      Grammar
                     </MenuItem>
-                  </SubMenu>
-                  <MenuItem
-                    shortcut="Cmd+M"
-                    onSelect={() => actions.current?.slideActions?.newSlide()}
-                  >
-                    New slide
-                  </MenuItem>
-                </Menu>
-                <Menu label="Format">
-                  <SubMenu label="Text">
+                    <MenuItem
+                      synonyms={["ignored grammar", "restore grammar"]}
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.docActions?.openIgnoredGrammar()
+                      }
+                    >
+                      Ignored grammar
+                    </MenuItem>
+                    <MenuItem
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.docActions?.openDictionary()
+                      }
+                    >
+                      Personal dictionary
+                    </MenuItem>
+                    <MenuItem
+                      synonyms={[
+                        "citations",
+                        "cite",
+                        "bibliography",
+                        "references",
+                        "sources",
+                      ]}
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.docActions?.openCitations()
+                      }
+                    >
+                      Citations
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() => actions.current?.docActions?.openFind()}
+                    >
+                      Find and replace
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.docActions?.openSuggestions?.()
+                      }
+                    >
+                      Review suggestions
+                    </MenuItem>
+                  </Menu>
+                  <EditorHelp />
+                </>
+              ) : null}
+              {f.kind === "sheet" ? (
+                <>
+                  <Menu label="Edit">
+                    <MenuItem
+                      shortcut="Cmd+Z"
+                      onSelect={() => actions.current?.sheetActions?.undo()}
+                    >
+                      Undo
+                    </MenuItem>
+                    <MenuItem
+                      shortcut="Cmd+Y"
+                      onSelect={() => actions.current?.sheetActions?.redo()}
+                    >
+                      Redo
+                    </MenuItem>
+                    <MenuItem
+                      shortcut="Cmd+X"
+                      onSelect={() => actions.current?.sheetActions?.cut()}
+                    >
+                      Cut
+                    </MenuItem>
+                    <MenuItem
+                      shortcut="Cmd+C"
+                      onSelect={() => actions.current?.sheetActions?.copy()}
+                    >
+                      Copy
+                    </MenuItem>
+                    <MenuItem
+                      shortcut="Cmd+V"
+                      onSelect={() => actions.current?.sheetActions?.paste()}
+                    >
+                      Paste
+                    </MenuItem>
+                    <MenuItem
+                      shortcut="Delete"
+                      onSelect={() =>
+                        actions.current?.sheetActions?.deleteValues()
+                      }
+                    >
+                      Delete values
+                    </MenuItem>
+                  </Menu>
+                  <Menu label="View">
+                    <SheetViewMenu
+                      actions={actions}
+                      onPrint={() => void doAction("print")}
+                    />
+                  </Menu>
+                  <Menu label="Insert">
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.sheetActions?.insertImage?.()
+                      }
+                    >
+                      Image
+                    </MenuItem>
+                    <MenuItem
+                      synonyms={[
+                        "page break",
+                        "page break above",
+                        "row break",
+                        "insert page break",
+                        "insert break",
+                      ]}
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.sheetActions?.insertPageBreak?.()
+                      }
+                    >
+                      Page break above
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.sheetActions?.insertChart()
+                      }
+                    >
+                      Chart
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.sheetActions?.insertPivot()
+                      }
+                    >
+                      Pivot table
+                    </MenuItem>
+                    <SubMenu label="Function">
+                      <MenuItem
+                        synonyms={[
+                          "function",
+                          "formula",
+                          "insert function",
+                          "sum",
+                        ]}
+                        onSelect={() =>
+                          actions.current?.sheetActions?.insertFunction?.("SUM")
+                        }
+                      >
+                        Insert function
+                      </MenuItem>
+                      <FunctionMenu
+                        onInsert={(name) =>
+                          actions.current?.sheetActions?.insertFunction?.(name)
+                        }
+                      />
+                    </SubMenu>
+                    <MenuItem
+                      shortcut="Cmd+K"
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.sheetActions?.insertLink?.()
+                      }
+                    >
+                      Link
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.sheetActions?.insertCheckbox?.()
+                      }
+                    >
+                      Checkbox
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.sheetActions?.insertDropdown?.()
+                      }
+                    >
+                      Dropdown
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.sheetActions?.insertComment?.()
+                      }
+                    >
+                      Cell comment
+                    </MenuItem>
+                    <MenuItem
+                      synonyms={["note", "cell note", "add note", "insert note"]}
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.sheetActions?.insertNote?.()
+                      }
+                    >
+                      Note
+                    </MenuItem>
+                  </Menu>
+                  <Menu label="Format">
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.sheetActions?.formatCurrency()
+                      }
+                    >
+                      Currency ($)
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.sheetActions?.formatPercent()
+                      }
+                    >
+                      Percent (%)
+                    </MenuItem>
                     <MenuItem
                       shortcut="Cmd+B"
                       onSelect={() =>
-                        actions.current?.slideActions?.toggleBold()
+                        actions.current?.sheetActions?.toggleBold()
                       }
                     >
                       Bold
@@ -2910,486 +2763,896 @@ function Workspace() {
                     <MenuItem
                       shortcut="Cmd+I"
                       onSelect={() =>
-                        actions.current?.slideActions?.toggleItalic()
+                        actions.current?.sheetActions?.toggleItalic()
                       }
                     >
                       Italic
                     </MenuItem>
-                  </SubMenu>
-                  <SubMenu label="Align & indent">
+                    <MenuItem
+                      shortcut="Cmd+Shift+X"
+                      onSelect={() =>
+                        actions.current?.sheetActions?.toggleStrike()
+                      }
+                    >
+                      Strikethrough
+                    </MenuItem>
                     <MenuItem
                       onSelect={() =>
-                        actions.current?.slideActions?.align("left")
+                        actions.current?.sheetActions?.align("left")
                       }
                     >
                       Align left
                     </MenuItem>
                     <MenuItem
                       onSelect={() =>
-                        actions.current?.slideActions?.align("center")
+                        actions.current?.sheetActions?.align("center")
                       }
                     >
-                      Center
+                      Align center
                     </MenuItem>
                     <MenuItem
                       onSelect={() =>
-                        actions.current?.slideActions?.align("right")
+                        actions.current?.sheetActions?.align("right")
                       }
                     >
                       Align right
                     </MenuItem>
-                  </SubMenu>
-                </Menu>
-                <Menu label="Slide">
-                  <MenuItem
-                    shortcut="Cmd+M"
-                    onSelect={() => actions.current?.slideActions?.newSlide()}
-                  >
-                    New slide
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Cmd+D"
-                    onSelect={() => actions.current?.slideActions?.duplicate()}
-                  >
-                    Duplicate slide
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Delete"
-                    availability={() =>
-                      actions.current?.slideActions?.deleteReason?.() ?? true
-                    }
-                    onSelect={() =>
-                      actions.current?.slideActions?.deleteSlides()
-                    }
-                  >
-                    Delete slide
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Cmd+Up"
-                    onSelect={() =>
-                      actions.current?.slideActions?.move("up")
-                    }
-                  >
-                    Move up
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Cmd+Down"
-                    onSelect={() =>
-                      actions.current?.slideActions?.move("down")
-                    }
-                  >
-                    Move down
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Cmd+Shift+Up"
-                    onSelect={() =>
-                      actions.current?.slideActions?.move("start")
-                    }
-                  >
-                    Move to start
-                  </MenuItem>
-                  <MenuItem
-                    shortcut="Cmd+Shift+Down"
-                    onSelect={() =>
-                      actions.current?.slideActions?.move("end")
-                    }
-                  >
-                    Move to end
-                  </MenuItem>
-                  <SubMenu label="Apply layout">
                     <MenuItem
+                      shortcut="Cmd+\"
                       onSelect={() =>
-                        actions.current?.slideActions?.applyLayout("title")
+                        actions.current?.sheetActions?.clearFormatting()
                       }
                     >
-                      Title slide
+                      Clear formatting
                     </MenuItem>
                     <MenuItem
                       onSelect={() =>
-                        actions.current?.slideActions?.applyLayout("title-body")
+                        actions.current?.sheetActions?.conditionalFormatting?.()
                       }
                     >
-                      Title & body
+                      Conditional formatting
+                    </MenuItem>
+                  </Menu>
+                  <Menu label="Data">
+                    {!canEdit ? (
+                      <SubMenu label="Filter views">
+                        <MenuItem
+                          onSelect={() =>
+                            actions.current?.sheetActions?.createFilterView?.()
+                          }
+                        >
+                          Create a filter view
+                        </MenuItem>
+                        <FilterViewChoices
+                          load={() =>
+                            actions.current?.sheetActions?.filterViewChoices?.() ??
+                            []
+                          }
+                          onPick={(value) =>
+                            actions.current?.sheetActions?.applyFilterView?.(
+                              value,
+                            )
+                          }
+                        />
+                      </SubMenu>
+                    ) : null}
+                    <MenuItem
+                      searchLabel="Create a filter"
+                      disabled={!canEdit}
+                      onSelect={() =>
+                        actions.current?.sheetActions?.toggleFilter()
+                      }
+                    >
+                      <LiveLabel
+                        text={() =>
+                          actions.current?.sheetActions?.hasFilter?.()
+                            ? "Remove filter"
+                            : "Create a filter"
+                        }
+                      />
                     </MenuItem>
                     <MenuItem
                       onSelect={() =>
-                        actions.current?.slideActions?.applyLayout("two-column")
+                        actions.current?.sheetActions?.insertPivot()
                       }
                     >
-                      Two columns
+                      Pivot table
                     </MenuItem>
                     <MenuItem
                       onSelect={() =>
-                        actions.current?.slideActions?.applyLayout("section")
+                        actions.current?.sheetActions?.sortRange?.()
                       }
                     >
-                      Section header
+                      Sort range
+                    </MenuItem>
+                    <MenuItem
+                      focusesTarget
+                      synonyms={[
+                        "named range",
+                        "define name",
+                        "name a range",
+                        "defined name",
+                      ]}
+                      onSelect={() =>
+                        actions.current?.sheetActions?.namedRanges?.()
+                      }
+                    >
+                      Named ranges
+                    </MenuItem>
+                    <MenuItem
+                      synonyms={["group", "outline", "collapse rows"]}
+                      onSelect={() =>
+                        actions.current?.sheetActions?.groupRows?.()
+                      }
+                    >
+                      Group rows
+                    </MenuItem>
+                    <MenuItem
+                      synonyms={[
+                        "group columns",
+                        "column group",
+                        "outline columns",
+                        "collapse columns",
+                      ]}
+                      onSelect={() =>
+                        actions.current?.sheetActions?.groupColumns?.()
+                      }
+                    >
+                      Group columns
+                    </MenuItem>
+                    <SubMenu label="Data cleanup">
+                      <MenuItem
+                        onSelect={() =>
+                          actions.current?.sheetActions?.trimWhitespace?.()
+                        }
+                      >
+                        Trim whitespace
+                      </MenuItem>
+                      <MenuItem
+                        synonyms={[
+                          "remove duplicates",
+                          "dedupe",
+                          "duplicates",
+                          "unique",
+                        ]}
+                        focusesTarget
+                        onSelect={() =>
+                          actions.current?.sheetActions?.removeDuplicates?.()
+                        }
+                      >
+                        Remove duplicates
+                      </MenuItem>
+                    </SubMenu>
+                    <MenuItem
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.sheetActions?.splitTextToColumns?.()
+                      }
+                    >
+                      Split text to columns
                     </MenuItem>
                     <MenuItem
                       onSelect={() =>
-                        actions.current?.slideActions?.applyLayout("blank")
+                        actions.current?.sheetActions?.dataValidation?.()
                       }
                     >
-                      Blank slide
+                      Data validation
                     </MenuItem>
-                  </SubMenu>
-                  <MenuItem
-                    onSelect={() => actions.current?.slideActions?.openTheme()}
-                  >
-                    Change theme
-                  </MenuItem>
-                  <MenuItem
-                    onSelect={() =>
-                      actions.current?.slideActions?.openTransition()
-                    }
-                  >
-                    Transition
-                  </MenuItem>
-                </Menu>
-                <Menu label="Comments">
-                  <MenuItem
-                    shortcut="Cmd+Alt+M"
-                    synonyms={["comment", "comments", "add comment"]}
-                    focusesTarget
-                    onSelect={() =>
-                      actions.current?.slideActions?.insertComment?.()
-                    }
-                  >
-                    Comment
-                  </MenuItem>
-                  <MenuItem
-                    synonyms={[
-                      "resolved",
-                      "resolved comments",
-                      "reopen",
-                      "comment history",
-                    ]}
-                    onSelect={() =>
-                      actions.current?.slideActions?.openResolved?.()
-                    }
-                  >
-                    Resolved
-                  </MenuItem>
-                </Menu>
-                <Menu label="Tools">
-                  <MenuItem
-                    focusesTarget
-                    onSelect={() =>
-                      actions.current?.slideActions?.openSpelling?.()
-                    }
-                  >
-                    Spelling
-                  </MenuItem>
-                </Menu>
-                <EditorHelp />
-              </>
-            ) : null}
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.sheetActions?.tabsProtection?.()
+                      }
+                    >
+                      Protect sheets and ranges
+                    </MenuItem>
+                  </Menu>
+                  <Menu label="Tools">
+                    <MenuItem
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.sheetActions?.openSpelling?.()
+                      }
+                    >
+                      Spelling
+                    </MenuItem>
+                    {mode.kind === "cluster" && getSession() ? null : (
+                      <MenuItem
+                        synonyms={["comment name", "sign comments", "your name"]}
+                        onSelect={() =>
+                          actions.current?.sheetActions?.commentName?.()
+                        }
+                      >
+                        Your name on comments…
+                      </MenuItem>
+                    )}
+                  </Menu>
+                  <EditorHelp />
+                </>
+              ) : null}
+              {f.kind === "slide" ? (
+                <>
+                  <Menu label="Edit">
+                    <MenuItem
+                      shortcut="Cmd+Z"
+                      availability={() =>
+                        actions.current?.slideActions?.undoReason?.() ?? true
+                      }
+                      onSelect={() => actions.current?.slideActions?.undo()}
+                    >
+                      Undo
+                    </MenuItem>
+                    <MenuItem
+                      shortcut="Cmd+Y"
+                      availability={() =>
+                        actions.current?.slideActions?.redoReason?.() ?? true
+                      }
+                      onSelect={() => actions.current?.slideActions?.redo()}
+                    >
+                      Redo
+                    </MenuItem>
+                    <MenuItem
+                      shortcut="Cmd+X"
+                      onSelect={() => actions.current?.slideActions?.cut()}
+                    >
+                      Cut
+                    </MenuItem>
+                    <MenuItem
+                      shortcut="Cmd+C"
+                      onSelect={() => actions.current?.slideActions?.copy()}
+                    >
+                      Copy
+                    </MenuItem>
+                    <MenuItem
+                      shortcut="Cmd+V"
+                      onSelect={() => actions.current?.slideActions?.paste()}
+                    >
+                      Paste
+                    </MenuItem>
+                  </Menu>
+                  <Menu label="View">
+                    <MenuItem
+                      shortcut="Cmd+Enter"
+                      onSelect={() => void actions.current?.present?.()}
+                    >
+                      Slideshow
+                    </MenuItem>
+                    <MenuItem onSelect={() => void actions.current?.print()}>
+                      Print preview
+                    </MenuItem>
+                  </Menu>
+                  <Menu label="Insert">
+                    <MenuItem
+                      synonyms={["text box", "insert text box", "textbox"]}
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.slideActions?.insertTextBox()
+                      }
+                    >
+                      Text box
+                    </MenuItem>
+                    <MenuItem
+                      synonyms={["image", "insert image", "picture", "photo"]}
+                      onSelect={() =>
+                        actions.current?.slideActions?.insertImage()
+                      }
+                    >
+                      Image
+                    </MenuItem>
+                    <SubMenu label="Shape">
+                      <MenuItem
+                        synonyms={["shape", "insert shape", "rectangle"]}
+                        onSelect={() =>
+                          actions.current?.slideActions?.insertShape("rect")
+                        }
+                      >
+                        Rectangle
+                      </MenuItem>
+                      <MenuItem
+                        onSelect={() =>
+                          actions.current?.slideActions?.insertShape(
+                            "roundRect",
+                          )
+                        }
+                      >
+                        Rounded rectangle
+                      </MenuItem>
+                      <MenuItem
+                        onSelect={() =>
+                          actions.current?.slideActions?.insertShape("ellipse")
+                        }
+                      >
+                        Ellipse
+                      </MenuItem>
+                    </SubMenu>
+                    <SubMenu label="Animation">
+                      <MenuItem
+                        synonyms={[
+                          "fade in",
+                          "fade in on click",
+                          "appear on click",
+                          "animation",
+                        ]}
+                        availability={() =>
+                          actions.current?.slideActions?.fadeOnClickReason?.() ??
+                          true
+                        }
+                        onSelect={() =>
+                          actions.current?.slideActions?.fadeOnClick?.()
+                        }
+                      >
+                        Fade in on click
+                      </MenuItem>
+                    </SubMenu>
+                    <MenuItem
+                      shortcut="Cmd+M"
+                      onSelect={() => actions.current?.slideActions?.newSlide()}
+                    >
+                      New slide
+                    </MenuItem>
+                  </Menu>
+                  <Menu label="Format">
+                    <SubMenu label="Text">
+                      <MenuItem
+                        shortcut="Cmd+B"
+                        onSelect={() =>
+                          actions.current?.slideActions?.toggleBold()
+                        }
+                      >
+                        Bold
+                      </MenuItem>
+                      <MenuItem
+                        shortcut="Cmd+I"
+                        onSelect={() =>
+                          actions.current?.slideActions?.toggleItalic()
+                        }
+                      >
+                        Italic
+                      </MenuItem>
+                    </SubMenu>
+                    <SubMenu label="Align & indent">
+                      <MenuItem
+                        onSelect={() =>
+                          actions.current?.slideActions?.align("left")
+                        }
+                      >
+                        Align left
+                      </MenuItem>
+                      <MenuItem
+                        onSelect={() =>
+                          actions.current?.slideActions?.align("center")
+                        }
+                      >
+                        Center
+                      </MenuItem>
+                      <MenuItem
+                        onSelect={() =>
+                          actions.current?.slideActions?.align("right")
+                        }
+                      >
+                        Align right
+                      </MenuItem>
+                    </SubMenu>
+                  </Menu>
+                  <Menu label="Slide">
+                    <MenuItem
+                      shortcut="Cmd+M"
+                      onSelect={() => actions.current?.slideActions?.newSlide()}
+                    >
+                      New slide
+                    </MenuItem>
+                    <MenuItem
+                      shortcut="Cmd+D"
+                      onSelect={() =>
+                        actions.current?.slideActions?.duplicate()
+                      }
+                    >
+                      Duplicate slide
+                    </MenuItem>
+                    <MenuItem
+                      shortcut="Delete"
+                      availability={() =>
+                        actions.current?.slideActions?.deleteReason?.() ?? true
+                      }
+                      onSelect={() =>
+                        actions.current?.slideActions?.deleteSlides()
+                      }
+                    >
+                      Delete slide
+                    </MenuItem>
+                    <MenuItem
+                      shortcut="Cmd+Up"
+                      onSelect={() => actions.current?.slideActions?.move("up")}
+                    >
+                      Move up
+                    </MenuItem>
+                    <MenuItem
+                      shortcut="Cmd+Down"
+                      onSelect={() =>
+                        actions.current?.slideActions?.move("down")
+                      }
+                    >
+                      Move down
+                    </MenuItem>
+                    <MenuItem
+                      shortcut="Cmd+Shift+Up"
+                      onSelect={() =>
+                        actions.current?.slideActions?.move("start")
+                      }
+                    >
+                      Move to start
+                    </MenuItem>
+                    <MenuItem
+                      shortcut="Cmd+Shift+Down"
+                      onSelect={() =>
+                        actions.current?.slideActions?.move("end")
+                      }
+                    >
+                      Move to end
+                    </MenuItem>
+                    <SubMenu label="Apply layout">
+                      <MenuItem
+                        onSelect={() =>
+                          actions.current?.slideActions?.applyLayout("title")
+                        }
+                      >
+                        Title slide
+                      </MenuItem>
+                      <MenuItem
+                        onSelect={() =>
+                          actions.current?.slideActions?.applyLayout(
+                            "title-body",
+                          )
+                        }
+                      >
+                        Title & body
+                      </MenuItem>
+                      <MenuItem
+                        onSelect={() =>
+                          actions.current?.slideActions?.applyLayout(
+                            "two-column",
+                          )
+                        }
+                      >
+                        Two columns
+                      </MenuItem>
+                      <MenuItem
+                        onSelect={() =>
+                          actions.current?.slideActions?.applyLayout("section")
+                        }
+                      >
+                        Section header
+                      </MenuItem>
+                      <MenuItem
+                        onSelect={() =>
+                          actions.current?.slideActions?.applyLayout("blank")
+                        }
+                      >
+                        Blank slide
+                      </MenuItem>
+                    </SubMenu>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.slideActions?.openTheme()
+                      }
+                    >
+                      Change theme
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.slideActions?.openTransition()
+                      }
+                    >
+                      Transition
+                    </MenuItem>
+                  </Menu>
+                  <Menu label="Comments">
+                    <MenuItem
+                      shortcut="Cmd+Alt+M"
+                      synonyms={["comment", "comments", "add comment"]}
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.slideActions?.insertComment?.()
+                      }
+                    >
+                      Comment
+                    </MenuItem>
+                    <MenuItem
+                      synonyms={[
+                        "resolved",
+                        "resolved comments",
+                        "reopen",
+                        "comment history",
+                      ]}
+                      onSelect={() =>
+                        actions.current?.slideActions?.openResolved?.()
+                      }
+                    >
+                      Resolved
+                    </MenuItem>
+                  </Menu>
+                  <Menu label="Tools">
+                    <MenuItem
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.slideActions?.openSpelling?.()
+                      }
+                    >
+                      Spelling
+                    </MenuItem>
+                  </Menu>
+                  <EditorHelp />
+                </>
+              ) : null}
+            </div>
           </div>
-        </div>
-        <div className="header-right-tools">
-          <button
-            type="button"
-            className="doc-icon-btn"
-            title="Version history"
-            aria-label="Version history"
-            aria-expanded={historyOpen}
-            aria-keyshortcuts="Control+Alt+Shift+H"
-            onClick={() => {
-              setHistoryOpen((open) => !open);
-              setHistoryPreview(null);
-            }}
-          >
-            <Clock size={18} />
-          </button>
-          <button
-            type="button"
-            className="doc-icon-btn"
-            title="Comments"
-            aria-label="Comments"
-            onClick={() => {
-              actions.current?.docActions?.openComments?.();
-              if (f.kind === "sheet") {
-                // Opening and the header event both toggle the panel, so only one runs.
-                const open = actions.current?.sheetActions?.openComments;
-                if (open) open();
-                else
-                  window.dispatchEvent(new Event("suiteleaf:open-sheet-comments"));
-              }
-              actions.current?.slideActions?.openComments?.();
-            }}
-          >
-            <MessageSquare size={18} />
-          </button>
-          {cluster && record.drive ? (
+          <div className="header-right-tools">
             <button
               type="button"
-              className="share-btn"
-              onClick={() => setShareOpen(true)}
+              className="doc-icon-btn"
+              title="Version history"
+              aria-label="Version history"
+              aria-expanded={historyOpen}
+              aria-keyshortcuts="Control+Alt+Shift+H"
+              onClick={() => {
+                setHistoryOpen((open) => !open);
+                setHistoryPreview(null);
+              }}
             >
-              Share
+              <Clock size={18} />
             </button>
-          ) : null}
-          <AiButton />
-          {mode.kind === "cluster" ? (
-            <span
-              className="workspace-brand workspace-server"
-              title={`Saving to SuiteDrive on ${new URL(mode.serverUrl).host}`}
-            >
-              <Cloud size={16} />
-              {new URL(mode.serverUrl).host}
-            </span>
-          ) : (
-            <span className="workspace-brand">
-              <Leaf size={16} />
-              SuiteLeaf
-            </span>
-          )}
-          <button
-            className="save-copy"
-            disabled={!actionsReady}
-            onClick={download}
-            title={
-              window.suiteleaf && !cluster
-                ? `Save to a .${extensionFor(f.kind)} file`
-                : `Download “${nativeFilename(f)}”, a SuiteLeaf file you can open again with Open / import`
-            }
-          >
-            <Download size={16} />
-            {window.suiteleaf && !cluster ? "Save As" : "Download"}
-          </button>
-        </div>
-      </header>
-      {error ? (
-        <div className="error" role="alert">
-          <CircleAlert size={18} />
-          {error}
-          <button onClick={() => void save().catch(() => {})}>
-            Retry save
-          </button>
-          {cluster ? null : (
-            <button onClick={() => void saveAs()}>Save As</button>
-          )}
-          <button
-            onClick={() => {
-              if (
-                window.confirm(
-                  "Reload the saved file and discard unsaved edits?",
-                )
-              )
-                void storage
-                  .reload(id!)
-                  .then((r) => {
-                    if (r) {
-                      current.current = r;
-                      version.current = savedVersion.current = 0;
-                      window.location.reload();
-                    }
-                  })
-                  .catch((e) => setError(message(e)));
-            }}
-          >
-            Reload saved
-          </button>
-          <button aria-label="Dismiss error" onClick={() => setError("")}>
-            ×
-          </button>
-        </div>
-      ) : null}
-      {driveConflict ? (
-        <div className="error drive-conflict" role="alert">
-          <CircleAlert size={18} />
-          <span className="drive-conflict-text">
-            <strong>
-              This file was changed in SuiteDrive after you opened it.
-            </strong>{" "}
-            {savedWhen(driveConflict.updatedAt)} Your edits weren't uploaded and
-            are safe on this device. Save them as a copy to keep both versions,
-            or reload the SuiteDrive version and discard your edits.
-          </span>
-          <span className="drive-conflict-actions">
             <button
-              title="Upload your edits as a new file and leave the SuiteDrive version as it is"
-              onClick={() =>
-                void saveDriveCopy().catch((e) => setError(message(e)))
+              type="button"
+              className="doc-icon-btn"
+              title="Comments"
+              aria-label="Comments"
+              onClick={() => {
+                actions.current?.docActions?.openComments?.();
+                if (f.kind === "sheet") {
+                  // Opening and the header event both toggle the panel, so only one runs.
+                  const open = actions.current?.sheetActions?.openComments;
+                  if (open) open();
+                  else
+                    window.dispatchEvent(
+                      new Event("suiteleaf:open-sheet-comments"),
+                    );
+                }
+                actions.current?.slideActions?.openComments?.();
+              }}
+            >
+              <MessageSquare size={18} />
+            </button>
+            {cluster && record.drive && f.kind === "form" && canEdit ? (
+              <button
+                type="button"
+                className="share-btn"
+                onClick={() => setSignUpOpen(true)}
+              >
+                Sign-up link
+              </button>
+            ) : null}
+            {cluster && record.drive ? (
+              <button
+                type="button"
+                className="share-btn"
+                onClick={() => setShareOpen(true)}
+              >
+                Share
+              </button>
+            ) : null}
+            <AiButton />
+            {mode.kind === "cluster" ? (
+              <span
+                className="workspace-brand workspace-server"
+                title={`Saving to SuiteDrive on ${new URL(mode.serverUrl).host}`}
+              >
+                <Cloud size={16} />
+                {new URL(mode.serverUrl).host}
+              </span>
+            ) : (
+              <span className="workspace-brand">
+                <Leaf size={16} />
+                SuiteLeaf
+              </span>
+            )}
+            <button
+              className="save-copy"
+              disabled={!actionsReady}
+              onClick={download}
+              title={
+                window.suiteleaf && !cluster
+                  ? `Save to a .${extensionFor(f.kind)} file`
+                  : `Download “${nativeFilename(f)}”, a SuiteLeaf file you can open again with Open / import`
               }
             >
-              Save as copy
+              <Download size={16} />
+              {window.suiteleaf && !cluster ? "Save As" : "Download"}
             </button>
+          </div>
+        </header>
+        {driveFolder.notice ? (
+          <MoveBanner
+            notice={driveFolder.notice}
+            onUndo={() =>
+              void driveFolder.undo().catch((e) => setError(message(e)))
+            }
+            onDismiss={driveFolder.dismiss}
+          />
+        ) : null}
+        {error ? (
+          <div className="error" role="alert">
+            <CircleAlert size={18} />
+            {error}
+            <button onClick={() => void save().catch(() => {})}>
+              Retry save
+            </button>
+            {cluster ? null : (
+              <button onClick={() => void saveAs()}>Save As</button>
+            )}
             <button
-              title="Discard your edits and open the newer SuiteDrive version"
               onClick={() => {
                 if (
                   window.confirm(
-                    "Discard your edits and open the newer version from SuiteDrive? Your edits will be lost.",
+                    "Reload the saved file and discard unsaved edits?",
                   )
                 )
-                  void reloadFromDrive().catch((e) => setError(message(e)));
+                  void storage
+                    .reload(id!)
+                    .then((r) => {
+                      if (r) {
+                        current.current = r;
+                        version.current = savedVersion.current = 0;
+                        window.location.reload();
+                      }
+                    })
+                    .catch((e) => setError(message(e)));
               }}
             >
-              Reload from SuiteDrive
+              Reload saved
             </button>
-          </span>
-        </div>
-      ) : null}
-      {shareOpen && record.drive ? (
-        <ShareDialog
-          itemId={record.drive.itemId}
-          itemName={f.title}
-          onClose={() => setShareOpen(false)}
-        />
-      ) : null}
-      {templateDraft ? (
-        <SaveTemplateDialog
-          file={templateDraft}
-          onClose={() => setTemplateDraft(null)}
-          onSaved={(name) => {
-            setTemplateDraft(null);
-            setStatus(`Saved as template “${name}”`);
-          }}
-        />
-      ) : null}
-      {driveDialog ? (
-        <DriveBrowser
-          mode={driveDialog}
-          defaultName={driveName(f.title, f.kind)}
-          onClose={() => setDriveDialog(null)}
-          onOpen={async (item) => {
-            await save();
-            setDriveDialog(null);
-            await openFromDrive(item, navigate);
-          }}
-          onSave={(folderId, name) =>
-            saveToDrive(folderId, name).catch((e) => {
-              setError(message(e));
-              setDriveDialog(null);
-            })
-          }
-        />
-      ) : null}
-      {f.importInfo ? (
-        <details className="import-notes">
-          <summary>
-            Imported {f.importInfo.sourceFormat.toUpperCase()}:{" "}
-            {f.importInfo.sourceName}
-            {importFeatureLine(f.importInfo.warnings)
-              ? ` · ${importFeatureLine(f.importInfo.warnings)}`
-              : ""}
-            {importCompatibilityNotes(f.importInfo.warnings).length
-              ? ` · ${importCompatibilityNotes(f.importInfo.warnings).length} compatibility ${importCompatibilityNotes(f.importInfo.warnings).length === 1 ? "note" : "notes"}`
-              : ""}
-          </summary>
-          {importCompatibilityNotes(f.importInfo.warnings).length ? (
-            <ul>
-              {importCompatibilityNotes(f.importInfo.warnings).map((w, i) => (
-                <li key={i}>{w}</li>
-              ))}
-            </ul>
-          ) : (
-            <p>
-              Supported content was imported into an editable SuiteLeaf copy.
-            </p>
-          )}
-        </details>
-      ) : null}
-      <div className={`editor-and-history${historyOpen ? " history-open" : ""}`}>
-        <div className="editor-and-history-main">
-          {historyPreview?.kind === "doc" ? (
-            <VersionPreview
-              key={JSON.stringify(historyPreview.content)}
-              content={historyPreview.content}
-              label={historyPreview.label}
-              offers={historyPreview.offers}
-              onRestoreParagraph={(key) => restoreParagraph.current(key)}
-            />
-          ) : historyPreview?.kind === "sheet" ? (
-            <SheetVersionPreview diff={historyPreview.diff} label={historyPreview.label} />
-          ) : historyPreview?.kind === "slide" ? (
-            <SlideVersionPreview diff={historyPreview.diff} label={historyPreview.label} />
-          ) : null}
-          <div
-            className={`live-editor${historyPreview ? " previewing" : ""}`}
-            inert={historyPreview ? true : undefined}
-          >
-            <ErrorBoundary>
-              <Suspense
-                fallback={
-                  <div className="loading">
-                    Opening{" "}
-                    {f.kind === "doc"
-                      ? "document"
-                      : f.kind === "sheet"
-                        ? "spreadsheet"
-                        : "presentation"}{" "}
-                    editor…
-                  </div>
+            <button aria-label="Dismiss error" onClick={() => setError("")}>
+              ×
+            </button>
+          </div>
+        ) : null}
+        {driveConflict ? (
+          <div className="error drive-conflict" role="alert">
+            <CircleAlert size={18} />
+            <span className="drive-conflict-text">
+              <strong>
+                This file was changed in SuiteDrive after you opened it.
+              </strong>{" "}
+              {savedWhen(driveConflict.updatedAt)} Your edits weren't uploaded
+              and are safe on this device. Save them as a copy to keep both
+              versions, or reload the SuiteDrive version and discard your edits.
+            </span>
+            <span className="drive-conflict-actions">
+              <button
+                title="Upload your edits as a new file and leave the SuiteDrive version as it is"
+                onClick={() =>
+                  void saveDriveCopy().catch((e) => setError(message(e)))
                 }
               >
-                {driveRole === "commenter" && record.drive ? (
-                  <FileComments itemId={record.drive.itemId} />
-                ) : null}
-                {f.kind === "doc" ? (
-                  <Docs
-                    key={`${id}:${editorEpoch}`}
-                    file={f as DocFile}
-                    readOnly={!canEdit}
-                    onChange={update}
-                    onActions={onActions}
-                    onError={setError}
-                  />
-                ) : f.kind === "sheet" ? (
-                  <Sheets
-                    key={`${id}:${editorEpoch}`}
-                    file={f as SheetFile}
-                    readOnly={!canEdit}
-                    canComment={driveRole === "commenter"}
-                    onChange={update}
-                    onActions={onActions}
-                    onError={setError}
-                  />
-                ) : (
-                  <Slides
-                    key={`${id}:${editorEpoch}`}
-                    file={f as SlideFile}
-                    readOnly={!canEdit}
-                    onChange={update}
-                    onActions={onActions}
-                    onError={setError}
-                  />
-                )}
-              </Suspense>
-            </ErrorBoundary>
+                Save as copy
+              </button>
+              <button
+                title="Discard your edits and open the newer SuiteDrive version"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      "Discard your edits and open the newer version from SuiteDrive? Your edits will be lost.",
+                    )
+                  )
+                    void reloadFromDrive().catch((e) => setError(message(e)));
+                }}
+              >
+                Reload from SuiteDrive
+              </button>
+            </span>
           </div>
-        </div>
-        {historyOpen ? (
-          <VersionHistory
-            record={record}
-            getFile={() => current.current?.file ?? record.file}
-            onClose={() => {
-              setHistoryOpen(false);
-              setHistoryPreview(null);
+        ) : null}
+        {driveFolder.open && record.drive && driveFolder.place ? (
+          <MoveDialog
+            item={{
+              id: record.drive.itemId,
+              name: record.drive.name,
+              parentId: driveFolder.place.parentId,
+              kind: "file",
             }}
-            onPreview={setHistoryPreview}
-            bindParagraphRestore={restoreParagraph}
-            onStatus={setStatus}
-            onRestored={(next) => {
-              clearTimeout(timer.current);
-              clearTimeout(driveTimer.current);
-              current.current = next;
-              version.current = 0;
-              savedVersion.current = 0;
-              setRecord(next);
-              setEditorEpoch((epoch) => epoch + 1);
-              setHistoryPreview(null);
-              setHistoryOpen(false);
-              setStatus(
-                next.drive ? "Saved to SuiteDrive" : "Saved on this device",
-              );
-              void storage.save(next).catch((e) => setError(message(e)));
+            currentName={driveFolder.place.name}
+            includeMyDrive={
+              driveRole === "owner" && driveFolder.place.parentId != null
+            }
+            onClose={() => driveFolder.setOpen(false)}
+            onMoved={driveFolder.moved}
+          />
+        ) : null}
+        {shareOpen && record.drive ? (
+          <ShareDialog
+            itemId={record.drive.itemId}
+            itemName={f.title}
+            kind={f.kind}
+            onClose={() => setShareOpen(false)}
+          />
+        ) : null}
+        {signUpOpen && record.drive && f.kind === "form" && canEdit ? (
+          <SignUpLinkDialog
+            itemId={record.drive.itemId}
+            onClose={() => setSignUpOpen(false)}
+          />
+        ) : null}
+        {templateDraft ? (
+          <SaveTemplateDialog
+            file={templateDraft}
+            onClose={() => setTemplateDraft(null)}
+            onSaved={(name) => {
+              setTemplateDraft(null);
+              setStatus(`Saved as template “${name}”`);
             }}
           />
         ) : null}
+        {driveDialog ? (
+          <DriveBrowser
+            mode={driveDialog}
+            defaultName={driveName(f.title, f.kind)}
+            onClose={() => setDriveDialog(null)}
+            onOpen={async (item) => {
+              await save();
+              setDriveDialog(null);
+              await openFromDrive(item, navigate);
+            }}
+            onSave={(folderId, name) =>
+              saveToDrive(folderId, name).catch((e) => {
+                setError(message(e));
+                setDriveDialog(null);
+              })
+            }
+          />
+        ) : null}
+        {f.importInfo ? (
+          <details className="import-notes">
+            <summary>
+              Imported {f.importInfo.sourceFormat.toUpperCase()}:{" "}
+              {f.importInfo.sourceName}
+              {importFeatureLine(f.importInfo.warnings)
+                ? ` · ${importFeatureLine(f.importInfo.warnings)}`
+                : ""}
+              {importCompatibilityNotes(f.importInfo.warnings).length
+                ? ` · ${importCompatibilityNotes(f.importInfo.warnings).length} compatibility ${importCompatibilityNotes(f.importInfo.warnings).length === 1 ? "note" : "notes"}`
+                : ""}
+            </summary>
+            {importCompatibilityNotes(f.importInfo.warnings).length ? (
+              <ul>
+                {importCompatibilityNotes(f.importInfo.warnings).map((w, i) => (
+                  <li key={i}>{w}</li>
+                ))}
+              </ul>
+            ) : (
+              <p>
+                Supported content was imported into an editable SuiteLeaf copy.
+              </p>
+            )}
+          </details>
+        ) : null}
+        <div
+          className={`editor-and-history${historyOpen ? " history-open" : ""}`}
+        >
+          <div className="editor-and-history-main">
+            {historyPreview?.kind === "doc" ? (
+              <VersionPreview
+                key={JSON.stringify(historyPreview.content)}
+                content={historyPreview.content}
+                label={historyPreview.label}
+                offers={historyPreview.offers}
+                onRestoreParagraph={(key) => restoreParagraph.current(key)}
+              />
+            ) : historyPreview?.kind === "sheet" ? (
+              <SheetVersionPreview
+                diff={historyPreview.diff}
+                label={historyPreview.label}
+              />
+            ) : historyPreview?.kind === "slide" ? (
+              <SlideVersionPreview
+                diff={historyPreview.diff}
+                label={historyPreview.label}
+              />
+            ) : null}
+            <div
+              className={`live-editor${historyPreview ? " previewing" : ""}`}
+              inert={historyPreview ? true : undefined}
+            >
+              <ErrorBoundary>
+                <Suspense
+                  fallback={
+                    <div className="loading">
+                      Opening{" "}
+                      {f.kind === "doc"
+                        ? "document"
+                        : f.kind === "sheet"
+                          ? "spreadsheet"
+                          : f.kind === "form"
+                            ? "form"
+                            : "presentation"}{" "}
+                      editor…
+                    </div>
+                  }
+                >
+                  {driveRole === "commenter" && record.drive ? (
+                    <FileComments itemId={record.drive.itemId} />
+                  ) : null}
+                  {f.kind === "doc" ? (
+                    <Docs
+                      key={`${id}:${editorEpoch}`}
+                      file={f as DocFile}
+                      readOnly={!canEdit}
+                      onChange={update}
+                      onActions={onActions}
+                      onError={setError}
+                    />
+                  ) : f.kind === "sheet" ? (
+                    <Sheets
+                      key={`${id}:${editorEpoch}`}
+                      file={f as SheetFile}
+                      readOnly={!canEdit}
+                      canComment={driveRole === "commenter"}
+                      onChange={update}
+                      onActions={onActions}
+                      onError={setError}
+                    />
+                  ) : f.kind === "form" ? (
+                    <Forms
+                      key={`${id}:${editorEpoch}`}
+                      file={f}
+                      readOnly={!canEdit}
+                      canSubmit={canSave}
+                      respondOnly={driveRole === "responder"}
+                      onChange={update}
+                      onActions={onActions}
+                      onError={setError}
+                    />
+                  ) : (
+                    <Slides
+                      key={`${id}:${editorEpoch}`}
+                      file={f as SlideFile}
+                      readOnly={!canEdit}
+                      onChange={update}
+                      onActions={onActions}
+                      onError={setError}
+                    />
+                  )}
+                </Suspense>
+              </ErrorBoundary>
+            </div>
+          </div>
+          {historyOpen ? (
+            <VersionHistory
+              record={record}
+              getFile={() => current.current?.file ?? record.file}
+              onClose={() => {
+                setHistoryOpen(false);
+                setHistoryPreview(null);
+              }}
+              onPreview={setHistoryPreview}
+              bindParagraphRestore={restoreParagraph}
+              onStatus={setStatus}
+              onRestored={(next) => {
+                clearTimeout(timer.current);
+                clearTimeout(driveTimer.current);
+                current.current = next;
+                version.current = 0;
+                savedVersion.current = 0;
+                setRecord(next);
+                setEditorEpoch((epoch) => epoch + 1);
+                setHistoryPreview(null);
+                setHistoryOpen(false);
+                setStatus(
+                  next.drive ? "Saved to SuiteDrive" : "Saved on this device",
+                );
+                void storage.save(next).catch((e) => setError(message(e)));
+              }}
+            />
+          ) : null}
+        </div>
       </div>
-    </div>
     </CommandPalette>
   );
 }
@@ -3465,12 +3728,25 @@ function ClusterGate({ children }: { children: ReactNode }) {
     />
   );
 }
+function signUpToken(): string | null {
+  const match = /^\/sign-up\/([^/]+)\/?$/.exec(window.location.pathname);
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
+}
+
 export default function App() {
+  const signUp = signUpToken();
   const [mode, setMode] = useState<ResolvedMode>();
   useEffect(() => {
+    if (signUp) return;
     void finishSignOut();
     void resolveMode().then(setMode);
-  }, []);
+  }, [signUp]);
+  if (signUp) return <SignUpPage token={signUp} />;
   if (!mode) return <div className="loading">Opening SuiteLeaf…</div>;
   return (
     <ModeContext.Provider value={mode}>

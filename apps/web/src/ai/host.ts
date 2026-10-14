@@ -35,13 +35,15 @@ export const tool = <P extends TSchema>(def: SuiteTool<P>): SuiteTool => def as 
 /** Thrown by tools for mistakes the model can fix (bad arguments, wrong place). */
 export class ToolError extends Error {}
 
-export type AppKind = "home" | "doc" | "sheet" | "slide";
+export type AppKind = "home" | "doc" | "sheet" | "slide" | "form";
 
 /** One screen of the app that offers tools: home, or an open editor. */
 export interface AgentHost {
   kind: AppKind;
   /** Short description of the current state, given to the model with each request. */
   snapshot: () => string;
+  /** One line naming the open document, or that none is open. Shown in the assistant panel. */
+  place?: () => string;
   tools: SuiteTool[];
   /** Runs before every tool call, e.g. to note the editor's undo depth before the request's first change. */
   beforeTool?: () => void;
@@ -85,6 +87,7 @@ export function useAgentHost(id: string, build: () => AgentHost) {
           return latest.current().kind;
         },
         snapshot: () => latest.current().snapshot(),
+        place: () => latest.current().place?.() ?? "",
         get tools() {
           return latest.current().tools;
         },
@@ -172,6 +175,32 @@ export function currentSnapshot() {
     .join("\n");
 }
 
+/** Where the user is, for the assistant panel: the open document, or none. */
+export function documentContextLabel() {
+  const places = mounted()
+    .map((h) => h.place?.() ?? "")
+    .filter(Boolean);
+  return places.find((p) => p !== "No document open") ?? places[0] ?? "No document open";
+}
+
+/**
+ * Tool calls can open and close files. Hold the assistant's conversation across
+ * those navigations, then release it once React has applied the route change.
+ */
+let acting = 0;
+export function agentIsActing() {
+  return acting > 0;
+}
+export async function whileAgentActs<T>(fn: () => Promise<T>): Promise<T> {
+  acting++;
+  try {
+    return await fn();
+  } finally {
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    acting--;
+  }
+}
+
 /** A pi tool that moves the agent's pointer to its target, then runs. */
 export function toAgentTool(t: SuiteTool): AgentTool {
   return {
@@ -187,6 +216,7 @@ export function toAgentTool(t: SuiteTool): AgentTool {
       return (t.prepare && args && typeof args === "object" ? t.prepare(args as Record<string, unknown>) : args) as never;
     },
     async execute(_id, params, signal) {
+      return whileAgentActs(async () => {
       // Screens rebuild their tools as their state changes (and calls in one
       // turn can change it): once the last change has rendered, run the tool
       // the screen offers now.
@@ -212,6 +242,7 @@ export function toAgentTool(t: SuiteTool): AgentTool {
         content: [{ type: "text", text }],
         details: typeof out === "string" ? undefined : (out.details as never),
       };
+      });
     },
   };
 }

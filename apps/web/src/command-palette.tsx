@@ -161,7 +161,7 @@ export function CommandPalette({
   kind,
   children,
 }: {
-  kind: "doc" | "sheet" | "slide";
+  kind: "doc" | "sheet" | "slide" | "form";
   children: ReactNode;
 }) {
   const entries = useRef(new Map<symbol, () => CommandSnapshot>());
