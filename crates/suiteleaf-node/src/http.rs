@@ -15,7 +15,7 @@ use tower_http::{
     services::{ServeDir, ServeFile},
 };
 
-use crate::{auth::Auth, config::Config};
+use crate::{auth::Auth, collab::Rooms, config::Config};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -24,6 +24,7 @@ pub struct AppState {
     pub config: Arc<Config>,
     pub auth: Auth,
     pub drive: Arc<Drive>,
+    pub rooms: Rooms,
 }
 
 impl FromRef<AppState> for Auth {

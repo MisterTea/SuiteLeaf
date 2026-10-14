@@ -802,5 +802,9 @@ pub fn router(state: AppState) -> Router {
         .route("/api/drive/items/{id}/copy", post(keep_copy))
         .route("/api/drive/notices", get(list_notices))
         .route("/api/drive/notices/{id}/dismiss", post(dismiss_notice))
+        .route(
+            "/api/drive/items/{id}/session",
+            get(crate::collab::session),
+        )
         .with_state(state)
 }

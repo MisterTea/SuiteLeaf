@@ -771,7 +771,7 @@ export default function Sheets({
   canComment = false,
 }: {
   file: SheetFile;
-  onChange: (content: SheetFile["content"]) => void;
+  onChange: (content: SheetFile["content"], op?: unknown) => void;
   onActions: (actions: EditorActions) => void;
   onError: (s: string) => void;
   /** Viewers and commenters can read the grid, but not change cells. */
@@ -788,6 +788,7 @@ export default function Sheets({
     sheetActionsRef = useRef<EditorActions | null>(null),
     content = useRef(structuredClone(file.content)),
     changes = useRef(onChange),
+    pendingMutations = useRef<{ id: string; params?: unknown }[]>([]),
     error = useRef(onError);
   changes.current = onChange;
   error.current = onError;
@@ -1368,7 +1369,11 @@ export default function Sheets({
         }
         content.current.workbook =
           workbook.save() as unknown as SheetFile["content"]["workbook"];
-        changes.current(structuredClone(content.current));
+        const mutations = pendingMutations.current.splice(0);
+        changes.current(structuredClone(content.current), {
+          kind: "sheet",
+          mutations,
+        });
         setRevision((v) => v + 1);
       };
       syncTextStyle.current = () => {
@@ -1398,6 +1403,10 @@ export default function Sheets({
         }
         if (busy || disposed || !command.id.includes("mutation")) return;
         pending.current = true;
+        pendingMutations.current.push({
+          id: command.id,
+          params: command.params,
+        });
         const p = command.params ?? {};
         // A pivot's own output never triggers further pivot refreshes, so pivots of pivots cannot loop.
         if (!writingPivot.current) {

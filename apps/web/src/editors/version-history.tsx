@@ -18,8 +18,12 @@ import {
   duplicateFile,
   extensionFor,
   paragraphRestorePrompt,
+  nameVersion,
   parseFile,
   parseNamedFile,
+  recordEdit,
+  restoreToVersion,
+  sealIfIdle,
   serializeFile,
   type FileRecord,
   type JsonNode,
@@ -27,19 +31,13 @@ import {
 } from "@suiteleaf/core";
 import { drive, uploadDriveFile } from "../node-client";
 import { storage } from "../storage";
+import { editorCollaborator } from "../collaborator";
 import {
   paragraphRestoreExtension,
   type ParagraphRestoreControl,
 } from "./doc-paragraph-restore-ui";
 
 export type { ParagraphRestoreControl };
-import {
-  localVersions,
-  nameLocalVersion,
-  recordLocalParagraphRestore,
-  restoreLocalVersion,
-  type LocalVersion,
-} from "./local-versions";
 import {
   copyFilename,
   copyTitle,
@@ -97,7 +95,7 @@ function entryLines(
   const when = `${versionWhen(version.createdAt)} · ${version.authorName}`;
   return isHead
     ? { kicker: "Current version", title: when }
-    : { title: when };
+    : { title: when, subtitle: version.summary };
 }
 
 export function VersionPreview({
@@ -150,6 +148,7 @@ export function VersionHistory({
   onClose,
   onPreview,
   onRestored,
+  onCommitFile,
   onStatus,
   bindParagraphRestore,
 }: {
@@ -158,6 +157,7 @@ export function VersionHistory({
   onClose: () => void;
   onPreview: (preview: HistoryPreview | null) => void;
   onRestored: (record: FileRecord) => void;
+  onCommitFile: (file: SuiteFile) => void;
   onStatus: (status: string) => void;
   bindParagraphRestore?: MutableRefObject<(key: string) => void>;
 }) {
@@ -216,22 +216,58 @@ export function VersionHistory({
               : head,
           );
         } else {
-          const snaps = await localVersions(record.file.id);
-          const live = serializeFile(fileNow.current());
-          const synthetic: LocalVersion = {
-            id: "current",
-            fileId: record.file.id,
-            createdAt: fileNow.current().updatedAt,
-            authorId: "local",
-            authorName: "You",
-            name: null,
-            restoredFrom: null,
-            native: live,
+          const live = fileNow.current();
+          const stored = [...(live.versions ?? [])].reverse();
+          const last = live.versions?.at(-1);
+          const liveMatches =
+            !!last &&
+            last.title === live.title &&
+            JSON.stringify(last.content) === JSON.stringify(live.content);
+          const snapshot = (content: unknown, title: string) => {
+            const copy = {
+              ...live,
+              title,
+              content,
+            } as SuiteFile;
+            delete copy.edits;
+            delete copy.versions;
+            return serializeFile(copy);
           };
-          const rows =
-            snaps[0]?.native === live ? snaps : [synthetic, ...snaps];
+          const rows = [
+            ...(liveMatches
+              ? []
+              : [
+                  {
+                    id: "current",
+                    createdAt: live.updatedAt,
+                    authorId: live.edits?.at(-1)?.by.id ?? "local",
+                    authorName: live.edits?.at(-1)?.by.name ?? "You",
+                    name: null,
+                    restoredFrom: null,
+                  },
+                ]),
+            ...stored.map((version) => ({
+              id: version.id,
+              createdAt: version.at,
+              authorId: version.by.id,
+              authorName: version.by.name,
+              name: version.label ?? null,
+              restoredFrom: null,
+              summary: version.summary,
+            })),
+          ];
           if (cancel) return;
-          natives.current = new Map(rows.map((row) => [row.id, row.native]));
+          natives.current = new Map(
+            rows.map((row) => [
+              row.id,
+              row.id === "current"
+                ? serializeFile(live)
+                : snapshot(
+                    stored.find((version) => version.id === row.id)?.content,
+                    stored.find((version) => version.id === row.id)?.title ?? live.title,
+                  ),
+            ]),
+          );
           setVersions(rows);
           setHeadId(rows[0]?.id ?? "");
           setSelectedId((current) =>
@@ -403,7 +439,7 @@ export function VersionHistory({
     try {
       if (record.drive)
         await drive.nameVersion(record.drive.itemId, naming.id, name);
-      else await nameLocalVersion(naming.id, name);
+      else onCommitFile(nameVersion(fileNow.current(), naming.id, name));
       setNaming(null);
       setRefresh((value) => value + 1);
     } catch (e) {
@@ -428,10 +464,7 @@ export function VersionHistory({
       if (record.drive) {
         await drive.copyVersion(record.drive.itemId, version.id, filename);
       } else {
-        const native =
-          natives.current.get(version.id) ??
-          (await localVersions(file.id)).find((item) => item.id === version.id)
-            ?.native;
+        const native = natives.current.get(version.id);
         if (!native) throw new Error("That version is no longer on this computer.");
         await storage.save({
           file: duplicateFile(parseFile(native), copyTitle(filename)),
@@ -472,14 +505,13 @@ export function VersionHistory({
           },
         });
       } else {
-        const native = natives.current.get(selected.id);
-        if (!native) throw new Error("That version is no longer on this computer.");
-        const file = await restoreLocalVersion({
-          ...selected,
-          fileId: record.file.id,
-          native,
-        });
-        onRestored({ ...record, file });
+        const restored = restoreToVersion(
+          fileNow.current(),
+          selected.id,
+          editorCollaborator(),
+          new Date().toISOString(),
+        );
+        onRestored({ ...record, file: restored.file });
       }
     } catch (e) {
       setError(message(e));
@@ -520,8 +552,19 @@ export function VersionHistory({
           await drive.nameVersion(link.itemId, link.versionId, name);
         onRestored({ file: nextFile, drive: link });
       } else {
-        await recordLocalParagraphRestore(live, nextFile, name);
-        onRestored({ ...record, file: nextFile });
+        const at = new Date().toISOString();
+        const edited = recordEdit(live, {
+          content,
+          op: { kind: "doc", steps: [] },
+          by: editorCollaborator(),
+          at,
+          pauseMs: 0,
+        });
+        const sealed = sealIfIdle(edited.file, Date.parse(at) + 1, 0, undefined, true);
+        const named = sealed.sealed
+          ? nameVersion(sealed.file, sealed.sealed.id, name)
+          : edited.file;
+        onRestored({ ...record, file: named });
       }
     } catch (e) {
       setError(message(e));

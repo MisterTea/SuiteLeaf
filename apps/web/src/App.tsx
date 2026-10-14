@@ -54,6 +54,12 @@ import {
   mimeFor,
   readLibraryMarks,
   serializeFile,
+  parseFile,
+  compactSession,
+  recordEdit,
+  restoreToVersion,
+  sealIfIdle,
+  versionPauseMs,
   type SuiteFile,
   type FileRecord,
   type DocFile,
@@ -61,6 +67,11 @@ import {
   type SlideFile,
 } from "@suiteleaf/core";
 import { storage, SaveQueue, exportText } from "./storage";
+import { editorCollaborator } from "./collaborator";
+import { frogSummary } from "./ai/summarize";
+import { useDocumentRoom, mirrorLiveEdit } from "./collab/session";
+import { blockTexts, syncParagraphTexts, type RegionTouch } from "@suiteleaf/core";
+import type * as Y from "yjs";
 import { importFile, type DelimitedDraft } from "./imports";
 import { CsvImportDialog } from "./csv-import";
 import type { DelimitedOptions } from "./csv";
@@ -1291,6 +1302,7 @@ function Workspace() {
     savedVersion = useRef(0),
     queue = useRef(new SaveQueue()),
     timer = useRef<ReturnType<typeof setTimeout>>(undefined),
+    historyTimer = useRef<ReturnType<typeof setTimeout>>(undefined),
     actions = useRef<EditorActions>(undefined),
     alive = useRef(true),
     saveError = useRef(""),
@@ -1313,6 +1325,63 @@ function Workspace() {
   const canEditRef = useRef(true);
   const canEdit =
     driveRole === "local" || driveRole === "editor" || driveRole === "owner";
+  const collabTouch = useRef({ unit: "paragraph", key: "0" });
+  const collabLog = useRef<RegionTouch[]>([]);
+  const collabBaseline = useRef<SuiteFile | null>(null);
+  const describeRef = useRef<(id: string) => void>(() => {});
+  const [collabDoc, setCollabDoc] = useState<Y.Doc | null>(null);
+  const collabDocRef = useRef<Y.Doc | null>(null);
+  collabDocRef.current = collabDoc;
+  useDocumentRoom({
+    itemId: record?.drive?.itemId,
+    role: driveRole,
+    touch: collabTouch,
+    log: collabLog,
+    onDoc: (doc) => {
+      if (doc && current.current?.file.kind === "doc") {
+        syncParagraphTexts(doc, blockTexts(current.current.file.content));
+        collabBaseline.current = structuredClone(current.current.file);
+      }
+      if (!doc) collabBaseline.current = null;
+      setCollabDoc(doc);
+    },
+    onSoloAgain: () => {
+      const link = current.current?.drive;
+      if (!link) return;
+      void drive.read(link.itemId).then(({ text, versionId }) => {
+        if (!current.current) return;
+        const remote = parseFile(text);
+        const localVersions = current.current.file.versions?.length ?? 0;
+        if ((remote.versions?.length ?? 0) > localVersions) {
+          current.current = {
+            ...current.current,
+            file: remote,
+            drive: { ...link, versionId: versionId ?? link.versionId },
+          };
+          setRecord({ ...current.current });
+          setEditorEpoch((epoch) => epoch + 1);
+          collabBaseline.current = null;
+          return;
+        }
+        const start = collabBaseline.current;
+        if (!start) return;
+        const compacted = compactSession(
+          start,
+          current.current.file.content,
+          current.current.file.title,
+          collabLog.current,
+          new Date().toISOString(),
+        );
+        collabLog.current = [];
+        collabBaseline.current = null;
+        current.current = { ...current.current, file: compacted.file };
+        setRecord({ ...current.current });
+        setEditorEpoch((epoch) => epoch + 1);
+        void storage.save(current.current).catch(() => {});
+        if (compacted.version) describeRef.current(compacted.version.id);
+      }).catch(() => {});
+    },
+  });
   const setDriveConflict = (item: DriveItem | null) => {
     driveConflictRef.current = item;
     setDriveConflictState(item);
@@ -1461,9 +1530,10 @@ function Workspace() {
       cancel = false;
     const load = async () => {
       try {
-        const r = await driveQueue.current.enqueue(() => storage.get(id!));
+        const loaded = await driveQueue.current.enqueue(() => storage.get(id!));
         if (cancel) return;
-        if (!r) throw new Error("This file could not be found.");
+        if (!loaded) throw new Error("This file could not be found.");
+        let r = loaded;
         let role: DriveRole | "local" = "local";
         if (r.drive && getSession()) {
           try {
@@ -1480,6 +1550,13 @@ function Workspace() {
         canEditRef.current =
           role === "local" || role === "editor" || role === "owner";
         setDriveRole(role);
+        if (canEditRef.current) {
+          const opened = sealIfIdle(r.file, Date.now(), versionPauseMs(localStorage));
+          if (opened.sealed) {
+            r = { ...r, file: opened.file };
+            void describeVersion(opened.sealed.id);
+          }
+        }
         current.current = r;
         setRecord(r);
         if (canEditRef.current && hasUnsyncedEdits(r)) {
@@ -1524,6 +1601,7 @@ function Workspace() {
       cancel = true;
       alive.current = false;
       clearTimeout(timer.current);
+      clearTimeout(historyTimer.current);
       const unsaved =
         !!current.current && version.current > savedVersion.current;
       if (unsaved) {
@@ -1537,6 +1615,59 @@ function Workspace() {
       release?.();
     };
   }, [id, syncDrive]);
+  const describeVersion = (versionId: string) => {
+    const file = current.current?.file;
+    const found = file?.versions?.find((item) => item.id === versionId);
+    if (!file || !found) return;
+    void frogSummary(file, found).then((sentence) => {
+      if (!sentence || !current.current) return;
+      const versions = current.current.file.versions?.map((item) =>
+        item.id === versionId ? { ...item, summary: sentence } : item,
+      );
+      if (!versions) return;
+      current.current = {
+        ...current.current,
+        file: { ...current.current.file, versions },
+      };
+      version.current++;
+      if (alive.current) setRecord({ ...current.current });
+      void storage.save(current.current).catch(() => {});
+    });
+  };
+  describeRef.current = describeVersion;
+  const scheduleSeal = () => {
+    clearTimeout(historyTimer.current);
+    const pause = versionPauseMs(localStorage);
+    historyTimer.current = setTimeout(() => {
+      if (!current.current || !canEditRef.current) return;
+      const result = sealIfIdle(current.current.file, Date.now(), pause);
+      if (!result.sealed) return;
+      current.current = { ...current.current, file: result.file };
+      version.current++;
+      window.suiteleaf?.setDirty(true);
+      if (alive.current) {
+        setRecord({ ...current.current });
+        setStatus("Unsaved changes");
+      }
+      void save().catch(() => {});
+      describeVersion(result.sealed.id);
+    }, Math.max(pause, 0));
+  };
+  const applyHistory = (
+    file: SuiteFile,
+    sealed: { id: string } | null,
+  ) => {
+    if (!current.current) return;
+    current.current = { ...current.current, file };
+    version.current++;
+    window.suiteleaf?.setDirty(true);
+    setStatus("Unsaved changes");
+    if (alive.current) setRecord({ ...current.current });
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => void save().catch(() => {}), 500);
+    scheduleSeal();
+    if (sealed) describeVersion(sealed.id);
+  };
   useEffect(() => {
     const flush = async () => {
       await save();
@@ -1546,31 +1677,38 @@ function Workspace() {
     return () => void openEditors.delete(flush);
   }, [save, syncDrive]);
   const update = useCallback(
-    (content: SuiteFile["content"]) => {
+    (content: SuiteFile["content"], op?: unknown) => {
       if (!canEditRef.current || !current.current) return;
-      if (JSON.stringify(content) === JSON.stringify(current.current.file.content))
-        return;
-      current.current = {
-        ...current.current,
-        file: {
-          ...current.current.file,
-          content,
-          updatedAt: new Date().toISOString(),
-        } as SuiteFile,
-      };
-      version.current++;
-      window.suiteleaf?.setDirty(true);
-      setStatus("Unsaved changes");
-      clearTimeout(timer.current);
-      timer.current = setTimeout(() => void save().catch(() => {}), 500);
+      const file = current.current.file;
+      if (JSON.stringify(content) === JSON.stringify(file.content)) return;
+      const doc = collabDocRef.current;
+      if (doc && (file.kind === "sheet" || file.kind === "slide"))
+        mirrorLiveEdit(doc, file.kind, content, op);
+      const result = recordEdit(file, {
+        content,
+        op: op ?? { kind: file.kind, truncated: true },
+        by: editorCollaborator(),
+        at: new Date().toISOString(),
+        pauseMs: versionPauseMs(localStorage),
+      });
+      applyHistory(result.file, result.sealed);
     },
     [save],
   );
   const changeTitle = (title: string) => {
     if (!canEditRef.current || !current.current) return;
-    current.current.file.title = title || "Untitled";
-    setRecord({ ...current.current });
-    update(current.current.file.content);
+    const file = current.current.file;
+    const nextTitle = title || "Untitled";
+    if (nextTitle === file.title) return;
+    const result = recordEdit(file, {
+      content: file.content,
+      title: nextTitle,
+      op: { kind: "title", from: file.title, to: nextTitle },
+      by: editorCollaborator(),
+      at: new Date().toISOString(),
+      pauseMs: versionPauseMs(localStorage),
+    });
+    applyHistory(result.file, result.sealed);
   };
   const toggleStar = () => {
     if (!current.current) return;
@@ -3329,9 +3467,11 @@ function Workspace() {
                 ) : null}
                 {f.kind === "doc" ? (
                   <Docs
-                    key={`${id}:${editorEpoch}`}
+                    key={`${id}:${editorEpoch}:${collabDoc ? "room" : "solo"}`}
                     file={f as DocFile}
                     readOnly={!canEdit}
+                    collabDoc={collabDoc}
+                    collabTouch={collabTouch}
                     onChange={update}
                     onActions={onActions}
                     onError={setError}
@@ -3371,6 +3511,13 @@ function Workspace() {
             onPreview={setHistoryPreview}
             bindParagraphRestore={restoreParagraph}
             onStatus={setStatus}
+            onCommitFile={(file) => {
+              if (!current.current) return;
+              current.current = { ...current.current, file };
+              version.current++;
+              setRecord({ ...current.current });
+              void storage.save(current.current).catch((e) => setError(message(e)));
+            }}
             onRestored={(next) => {
               clearTimeout(timer.current);
               clearTimeout(driveTimer.current);

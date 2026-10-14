@@ -3,6 +3,9 @@ import { test, expect } from "@playwright/test";
 test("local version history previews read-only, names a snapshot, and restores it", async ({
   page,
 }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("suiteleaf.versionPauseMs", "1");
+  });
   await page.goto("/");
   await page.getByRole("button", { name: "New document" }).click();
   const editor = page.getByRole("textbox", { name: "Document content" });

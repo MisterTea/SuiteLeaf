@@ -10,6 +10,8 @@ export interface HistoryVersion {
   authorName: string;
   name: string | null;
   restoredFrom: string | null;
+  /** Sentence describing the checkpoint, when the file stored one. */
+  summary?: string;
 }
 
 export interface HistoryGroup {

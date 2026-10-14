@@ -1,4 +1,5 @@
 mod auth;
+mod collab;
 mod config;
 mod drive_api;
 mod http;
@@ -243,9 +244,26 @@ async fn run(config: Config, init: bool, internal_token: Option<String>) -> Resu
         net: net.clone(),
         config: config.clone(),
         auth,
-        drive,
+        drive: drive.clone(),
+        rooms: crate::collab::Rooms::new(db.clone(), drive.clone()),
     };
-    let app = http::router(state);
+    let app = http::router(state.clone());
+    let rooms = state.rooms.clone();
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(Duration::from_secs(30));
+        let pause = std::env::var("SUITELEAF_IDLE_MS")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(crate::collab::IDLE_MS);
+        loop {
+            tick.tick().await;
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as i64)
+                .unwrap_or(0);
+            let _ = rooms.kick(now, pause);
+        }
+    });
     let listener = TcpListener::bind(config.http_addr)
         .await
         .with_context(|| format!("bind {}", config.http_addr))?;
