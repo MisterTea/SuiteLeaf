@@ -1798,6 +1798,21 @@ a {
 .document-content .doc-image-host[data-wrap="break"] {
   clear: both;
 }
+/* An inline picture's box is only as wide as the picture, so max-width: 100%
+   freezes a corner drag. Let the drag set a real width. */
+.document-content .doc-image-host[data-inline="true"],
+.document-content .doc-image-host[data-inline="true"] [data-resize-wrapper],
+.document-content .doc-image-host[data-inline="true"] img {
+  max-width: none;
+}
+/* The corner handle hangs over the next word. Keep it above that word. */
+.document-content .doc-image-host[data-inline="true"] {
+  position: relative;
+  z-index: 2;
+}
+.document-content .doc-image-host[data-inline="true"] [data-resize-handle] {
+  z-index: 3;
+}
 .doc-image-crop-button[hidden],
 .doc-image-crop-hint[hidden],
 .doc-crop-edge[hidden] {

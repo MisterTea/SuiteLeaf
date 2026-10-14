@@ -208,12 +208,19 @@ function placeWidowControl(
   const minLeft = Math.max(8, stageRect.left + 4);
   const maxTop = stageRect.bottom - height - 4;
   const minTop = stageRect.top + 4;
-  // Stay clear of the words. A short line has room beside it; a full line
-  // drops the control under that line instead of covering the sentence.
-  let left = line.right + 16;
+  const pictures = Array.from(block.querySelectorAll("img"))
+    .map((img) => img.getBoundingClientRect())
+    .filter(
+      (box) => box.width > 2 && box.bottom > line.top + 1 && box.top < line.bottom - 1,
+    );
+  const edge = pictures.reduce((max, box) => Math.max(max, box.right), line.right);
+  const floor = pictures.reduce((max, box) => Math.max(max, box.bottom), line.bottom);
+  // Stay clear of the words and of an in-line picture, whose corner handle
+  // sits on the picture's edge. A full line drops the control under that line.
+  let left = edge + 16;
   let top = line.top + (line.height - height) / 2;
-  if (left > maxLeft || left < line.right + 8) {
-    top = line.bottom + 8;
+  if (left > maxLeft || left < edge + 8) {
+    top = floor + 8;
     left = line.left;
   }
   const keepNext = document.querySelector(".keep-next-control");
@@ -229,8 +236,20 @@ function placeWidowControl(
   }
   left = Math.max(minLeft, Math.min(left, maxLeft));
   top = Math.max(minTop, Math.min(top, maxTop));
-  if (left < line.right - 2 && top < line.bottom && top + height > line.top) {
-    top = Math.min(maxTop, line.bottom + 8);
+  const coversPicture = pictures.some(
+    (box) =>
+      !(
+        left + width < box.left ||
+        left > box.right ||
+        top + height < box.top ||
+        top > box.bottom
+      ),
+  );
+  if (
+    coversPicture ||
+    (left < edge - 2 && top < floor && top + height > line.top)
+  ) {
+    top = Math.min(maxTop, floor + 8);
     left = Math.max(minLeft, Math.min(line.left, maxLeft));
   }
   button.style.left = `${left}px`;

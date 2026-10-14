@@ -340,8 +340,16 @@ export const croppableImage = Image.extend({
         onResize: (width, height) => {
           img.style.width = `${width}px`;
           img.style.height = `${height}px`;
-          if (host.dataset.wrap === "left" || host.dataset.wrap === "right")
+          if (host.dataset.wrap === "left" || host.dataset.wrap === "right" || host.dataset.inline === "true")
             host.style.width = `${width}px`;
+          if (host.dataset.inline === "true") {
+            img.style.maxWidth = "none";
+            const wrapper = img.closest("[data-resize-wrapper]");
+            if (wrapper instanceof HTMLElement) {
+              wrapper.style.width = `${width}px`;
+              wrapper.style.maxWidth = "none";
+            }
+          }
           fullWidth = width;
           fullHeight = img.offsetHeight || height;
           if (!imageCropActive(current)) return;

@@ -486,13 +486,27 @@ export default function Docs({
       },
       handlePaste: (_view, event) => {
         if (readOnlyRef.current) return true;
-        if (event.clipboardData?.getData("text/html")) {
+        const html = event.clipboardData?.getData("text/html");
+        if (!html) return false;
+        const content = importHTML(html);
+        const blocks = content.content ?? [];
+        const only = blocks.length === 1 ? blocks[0] : null;
+        const pasted = only?.type === "paragraph" ? only.content ?? [] : blocks;
+        const picture =
+          pasted.length === 1 &&
+          (pasted[0].type === "inlineImage" || pasted[0].type === "image")
+            ? pasted[0]
+            : null;
+        // A copied picture arrives as its own one-line document. Put it back
+        // in the sentence instead of starting a new paragraph.
+        if (picture) {
           editor?.commands.insertContent(
-            importHTML(event.clipboardData.getData("text/html")),
+            picture.type === "image" ? { ...picture, type: "inlineImage" } : picture,
           );
           return true;
         }
-        return false;
+        editor?.commands.insertContent(content);
+        return true;
       },
       // Internal "#anchor" links scroll to the heading that owns that slug.
       handleDOMEvents: {
