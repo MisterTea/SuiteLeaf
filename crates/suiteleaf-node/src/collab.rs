@@ -104,67 +104,72 @@ impl Rooms {
                 ],
             )
         })?;
-        let mut live = self.live.lock().expect("rooms");
-        let room = live.entry(item.to_owned()).or_insert_with(|| {
-            let (relay, _) = broadcast::channel(64);
-            Live {
-                doc: Doc::new(),
-                mode: "solo",
-                generation: 0,
-                baseline: None,
-                touches: Vec::new(),
-                relay,
-            }
-        });
         let count = if already {
             writers.len()
         } else {
             writers.len() + 1
         };
-        if count >= 2 && room.mode == "solo" {
-            room.mode = "multiuser";
-            room.generation += 1;
+        // One guard at a time. `std::sync::Mutex` is not reentrant, and a
+        // second lock on this thread never returns.
+        let promoted = {
+            let mut live = self.live.lock().expect("rooms");
+            let room = live.entry(item.to_owned()).or_insert_with(|| {
+                let (relay, _) = broadcast::channel(64);
+                Live {
+                    doc: Doc::new(),
+                    mode: "solo",
+                    generation: 0,
+                    baseline: None,
+                    touches: Vec::new(),
+                    relay,
+                }
+            });
+            if count >= 2 && room.mode == "solo" {
+                room.mode = "multiuser";
+                room.generation += 1;
+                Some(room.generation)
+            } else {
+                None
+            }
+        };
+        if let Some(generation) = promoted {
             let who = Principal {
                 id: user.id.clone(),
                 admin: false,
             };
-            if let Ok((_item, bytes)) = self.drive.read(&who, item, None) {
-                room.baseline = Some(bytes);
+            let baseline = self
+                .drive
+                .read(&who, item, None)
+                .ok()
+                .map(|(_item, bytes)| bytes);
+            let mut live = self.live.lock().expect("rooms");
+            if let Some(room) = live.get_mut(item) {
+                room.baseline = baseline;
             }
-            let generation = room.generation;
-            let mode = room.mode;
             drop(live);
             self.db.transact(|tx| {
                 tx.upsert(
                     "drive_room",
                     item,
                     [
-                        ("mode", DbValue::from(mode)),
+                        ("mode", DbValue::from("multiuser")),
                         ("generation", DbValue::Integer(generation)),
                         ("baseline", DbValue::from("")),
                     ],
                 )
             })?;
         }
-        let state = {
-            let live = self.live.lock().expect("rooms");
-            live.get(item).and_then(|room| {
-                let txn = room.doc.transact();
-                let update = txn.encode_state_as_update_v1(&yrs::StateVector::default());
-                if update.len() <= 2 {
-                    None
-                } else {
-                    Some(STANDARD.encode(update))
-                }
-            })
-        };
-        let mode = self
-            .live
-            .lock()
-            .expect("rooms")
-            .get(item)
-            .map(|room| room.mode)
-            .unwrap_or("solo");
+        let live = self.live.lock().expect("rooms");
+        let state = live.get(item).and_then(|room| {
+            let txn = room.doc.transact();
+            let update = txn.encode_state_as_update_v1(&yrs::StateVector::default());
+            if update.len() <= 2 {
+                None
+            } else {
+                Some(STANDARD.encode(update))
+            }
+        });
+        let mode = live.get(item).map(|room| room.mode).unwrap_or("solo");
         Ok(Join {
             joined: true,
             mode,
@@ -773,5 +778,49 @@ mod tests {
     fn a_viewer_does_not_count_as_a_writer_role() {
         assert!(Role::Viewer < Role::Commenter);
         assert!(Role::Commenter < Role::Editor);
+    }
+
+    #[test]
+    fn a_solo_join_returns_instead_of_locking_the_room_twice() {
+        use std::{sync::mpsc, time::Duration};
+
+        use crate::{auth::AuthUser, schema::node_schema};
+        use suitedrive::Role;
+
+        let dir = tempfile::tempdir().unwrap();
+        let db = Arc::new(
+            Db::open_in_memory(
+                suiteleaf_net::identity::ed25519::Keypair::generate(),
+                node_schema(None).unwrap(),
+            )
+            .unwrap(),
+        );
+        let drive = Drive::open(db.clone(), &dir.path().join("blobs")).unwrap();
+        let rooms = Rooms::new(db, drive);
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let ann = AuthUser {
+                id: "ann".into(),
+                email: None,
+                name: Some("Ann".into()),
+                role: None,
+            };
+            let first = rooms.join("file", &ann, Role::Editor, 1).unwrap();
+            assert!(first.joined);
+            assert_eq!(first.mode, "solo");
+            let again = rooms.join("file", &ann, Role::Editor, 2).unwrap();
+            assert_eq!(again.mode, "solo");
+            let sam = AuthUser {
+                id: "sam".into(),
+                email: None,
+                name: Some("Sam".into()),
+                role: None,
+            };
+            let shared = rooms.join("file", &sam, Role::Editor, 3).unwrap();
+            assert_eq!(shared.mode, "multiuser");
+            let _ = tx.send(());
+        });
+        rx.recv_timeout(Duration::from_secs(5))
+            .expect("joining a room locked the room map twice");
     }
 }
