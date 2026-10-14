@@ -80,8 +80,9 @@ describe("replace across the deck", () => {
     const deck = townHall();
     const welcome = deck.slideOrder[0];
     const matches = findDeckMatches(deck, "Market");
-    expect(matches).toHaveLength(3);
+    expect(matches).toHaveLength(4);
     expect(matches[0].inNotes).toBe(false);
+    expect(matches[0].inShape).toBe(false);
     const next = replaceDeckMatch(deck, matches[0], "Market", "Bazaar");
     expect(next.slides[welcome].elements[0].content).toBe("Bazaar");
     expect(next.slides[welcome].elements[0].x).toBe(72);
@@ -96,13 +97,14 @@ describe("replace across the deck", () => {
     expect(next.slides.prices.notes).toBe("Remember the market stall.");
     expect(next.slides.prices.elements[1].content).toBe("Market");
     const remaining = findDeckMatches(next, "Market");
-    expect(remaining.map((match) => [match.place, match.inNotes])).toEqual([
-      ["Prices", true],
-      ["Thanks", false],
+    expect(remaining.map((match) => [match.place, match.inNotes, match.inShape])).toEqual([
+      ["Prices", false, true],
+      ["Prices", true, false],
+      ["Thanks", false, false],
     ]);
     expect(indexAfterReplace(matches, 0, remaining, "Market", "Bazaar")).toBe(0);
-    expect(findStatus("Market", remaining, 0)).toBe("1 of 2 in the notes on Prices");
-    const noted = replaceDeckMatch(next, remaining[0], "Market", "Bazaar");
+    expect(findStatus("Market", remaining, 0)).toBe("1 of 3 in the shape on Prices");
+    const noted = replaceDeckMatch(next, remaining[1], "Market", "Bazaar");
     expect(noted.slides.prices.notes).toBe("Remember the Bazaar stall.");
     expect(noted.slides.prices.elements[0].content).toBe("Prices");
     expect(noted.slides.prices.elements[0].x).toBe(72);
@@ -117,8 +119,8 @@ describe("replace across the deck", () => {
     const welcome = deck.slideOrder[0];
     expect(replaceAllLabel(2)).toBe("Replace all 2");
     const { deck: next, count } = replaceAllDeckMatches(deck, "Market", "Bazaar");
-    expect(count).toBe(3);
-    expect(replacedStatus(count)).toBe("3 replaced");
+    expect(count).toBe(4);
+    expect(replacedStatus(count)).toBe("4 replaced");
     expect(next.slides[welcome].elements[0].content).toBe("Bazaar");
     expect(next.slides[welcome].elements[0].x).toBe(72);
     expect(next.slides[welcome].elements[0].y).toBe(180);
@@ -130,7 +132,9 @@ describe("replace across the deck", () => {
     expect(next.slides.thanks.elements[0].x).toBe(96);
     expect(next.slides.thanks.elements[0].y).toBe(200);
     expect(next.slides.prices.elements[0].content).toBe("Prices");
-    expect(next.slides.prices.elements[1].content).toBe("Market");
+    expect(next.slides.prices.elements[1].content).toBe("Bazaar");
+    expect(next.slides.prices.elements[1].x).toBe(40);
+    expect(next.slides.prices.elements[1].y).toBe(40);
     expect(next.slides.prices.notes).toBe("Remember the Bazaar stall.");
     expect(next.slideOrder).toEqual(deck.slideOrder);
     expect(findDeckMatches(next, "Market")).toEqual([]);
@@ -171,10 +175,13 @@ describe("replace across the deck", () => {
     deck.slides.prices.skipped = true;
     deck.slides.prices.elements[0].content = "Market";
     const { deck: next, count } = replaceAllDeckMatches(deck, "Market", "Bazaar");
-    expect(count).toBe(4);
+    expect(count).toBe(5);
     expect(next.slides.prices.skipped).toBe(true);
     expect(next.slides.prices.elements[0].content).toBe("Bazaar");
     expect(next.slides.prices.elements[0].x).toBe(72);
+    expect(next.slides.prices.elements[1].content).toBe("Bazaar");
+    expect(next.slides.prices.elements[1].x).toBe(40);
+    expect(next.slides.prices.elements[1].y).toBe(40);
     expect(next.slides.prices.notes).toBe("Remember the Bazaar stall.");
     expect(deck.slides.prices.elements[0].content).toBe("Market");
     expect(deck.slides.prices.notes).toBe("Remember the market stall.");
@@ -260,7 +267,9 @@ describe("replace a speaker note", () => {
     const deck = withPears();
     const welcome = deck.slideOrder[0];
     const matches = findDeckMatches(deck, "Market");
-    const canvas = matches.find((match) => !match.inNotes && match.slideId === welcome);
+    const canvas = matches.find(
+      (match) => !match.inNotes && !match.inShape && match.slideId === welcome,
+    );
     expect(canvas).toBeTruthy();
     const next = replaceDeckMatch(deck, canvas!, "Market", "Bazaar");
     expect(next.slides[welcome].elements[0].content).toBe("Bazaar");
@@ -268,7 +277,7 @@ describe("replace a speaker note", () => {
     expect(next.slides.thanks.notes).toBe("mention the pears");
     expect(next.slides.thanks.elements[0].content).toBe("Market day");
     const { deck: all, count } = replaceAllDeckMatches(deck, "Market", "Bazaar");
-    expect(count).toBe(3);
+    expect(count).toBe(4);
     expect(all.slides[welcome].elements[0].content).toBe("Bazaar");
     expect(all.slides.thanks.elements[0].content).toBe("Bazaar day");
     expect(all.slides.prices.notes).toBe("Remember the Bazaar stall.");
@@ -310,5 +319,162 @@ describe("replace a speaker note", () => {
     expect(all.slides.prices.skipped).toBe(true);
     expect(all.slides.prices.notes).toBe("mention the apples");
     expect(all.slides.prices.elements[0].content).toBe("Prices");
+  });
+});
+
+describe("replace text in a shape", () => {
+  function withShape() {
+    const deck = townHall();
+    const welcome = deck.slideOrder[0];
+    deck.slides[welcome].notes = "Say hello.";
+    deck.slides[welcome].elements.push({
+      id: "welcome-shape",
+      type: "shape",
+      x: 230,
+      y: 250,
+      width: 500,
+      height: 180,
+      content: "pears",
+    });
+    return { deck, welcome };
+  }
+
+  it("replaces the shape and leaves the text box and the notes", () => {
+    const { deck, welcome } = withShape();
+    const matches = findDeckMatches(deck, "pears");
+    expect(matches.map((match) => [match.place, match.inShape, match.inNotes])).toEqual([
+      ["Welcome", true, false],
+    ]);
+    const next = replaceDeckMatch(deck, matches[0], "pears", "apples");
+    const shape = next.slides[welcome].elements.find((el) => el.id === "welcome-shape");
+    expect(shape?.content).toBe("apples");
+    expect(shape?.x).toBe(230);
+    expect(shape?.y).toBe(250);
+    expect(next.slides[welcome].elements[0].content).toBe("Market");
+    expect(next.slides[welcome].elements[0].x).toBe(72);
+    expect(next.slides[welcome].elements[0].y).toBe(180);
+    expect(next.slides[welcome].notes).toBe("Say hello.");
+    expect(next.slides.prices.notes).toBe("Remember the market stall.");
+    expect(next.slides.prices.elements[0].content).toBe("Prices");
+    expect(deck.slides[welcome].elements.find((el) => el.id === "welcome-shape")?.content).toBe(
+      "pears",
+    );
+    expect(deck.slides[welcome].elements[0].content).toBe("Market");
+    expect(findDeckMatches(next, "pears")).toEqual([]);
+  });
+
+  it("keeps the capitalization she typed inside the shape", () => {
+    const { deck, welcome } = withShape();
+    const shape = deck.slides[welcome].elements.find((el) => el.id === "welcome-shape");
+    expect(shape).toBeTruthy();
+    shape!.content = "Pears";
+    const matches = findDeckMatches(deck, "pears");
+    expect(matches).toHaveLength(1);
+    const next = replaceDeckMatch(deck, matches[0], "pears", "apples");
+    expect(next.slides[welcome].elements.find((el) => el.id === "welcome-shape")?.content).toBe(
+      "apples",
+    );
+    expect(next.slides[welcome].elements[0].content).toBe("Market");
+    expect(next.slides[welcome].notes).toBe("Say hello.");
+    expect(deck.slides[welcome].elements.find((el) => el.id === "welcome-shape")?.content).toBe(
+      "Pears",
+    );
+  });
+
+  it("replaces every shape match and still replaces notes and canvas matches", () => {
+    const { deck, welcome } = withShape();
+    deck.slides.thanks.elements[0].content = "pears day";
+    deck.slides.thanks.elements[0].runs = [
+      { text: "pears", bold: true },
+      { text: " day", italic: true },
+    ];
+    deck.slides.prices.notes = "bring pears";
+    const { deck: next, count } = replaceAllDeckMatches(deck, "pears", "apples");
+    expect(count).toBe(3);
+    expect(replacedStatus(count)).toBe("3 replaced");
+    const shape = next.slides[welcome].elements.find((el) => el.id === "welcome-shape");
+    expect(shape?.content).toBe("apples");
+    expect(shape?.x).toBe(230);
+    expect(shape?.y).toBe(250);
+    expect(next.slides.thanks.elements[0].content).toBe("apples day");
+    expect(next.slides.thanks.elements[0].runs).toEqual([
+      { text: "apples", bold: true },
+      { text: " day", italic: true },
+    ]);
+    expect(next.slides.prices.notes).toBe("bring apples");
+    expect(next.slides[welcome].elements[0].content).toBe("Market");
+    expect(next.slides[welcome].elements[0].x).toBe(72);
+    expect(next.slides[welcome].notes).toBe("Say hello.");
+    expect(findDeckMatches(next, "pears")).toEqual([]);
+    expect(deck.slides[welcome].elements.find((el) => el.id === "welcome-shape")?.content).toBe(
+      "pears",
+    );
+  });
+
+  it("leaves every shape unchanged when nothing matches", () => {
+    const { deck, welcome } = withShape();
+    const missed = replaceAllDeckMatches(deck, "zzzz", "apples");
+    expect(missed.count).toBe(0);
+    expect(missed.deck).toBe(deck);
+    expect(replaceAllDeckMatches(deck, "   ", "apples").deck).toBe(deck);
+    const matches = findDeckMatches(deck, "pears");
+    expect(replaceDeckMatch(deck, matches[0], "zzzz", "apples")).toBe(deck);
+    expect(deck.slides[welcome].elements.find((el) => el.id === "welcome-shape")?.content).toBe(
+      "pears",
+    );
+    expect(deck.slides[welcome].elements[0].content).toBe("Market");
+    expect(deck.slides[welcome].notes).toBe("Say hello.");
+    expect(findStatus("zzzz", [], 0)).toBe("No matches");
+  });
+
+  it("replaces a skipped slide's shape and leaves it skipped", () => {
+    const deck = townHall();
+    deck.slides.prices.skipped = true;
+    deck.slides.prices.elements[1].content = "pears";
+    const matches = findDeckMatches(deck, "pears");
+    expect(matches).toHaveLength(1);
+    expect(matches[0].inShape).toBe(true);
+    const next = replaceDeckMatch(deck, matches[0], "pears", "apples");
+    expect(next.slides.prices.skipped).toBe(true);
+    expect(next.slides.prices.elements[1].content).toBe("apples");
+    expect(next.slides.prices.elements[1].x).toBe(40);
+    expect(next.slides.prices.elements[1].y).toBe(40);
+    expect(next.slides.prices.elements[0].content).toBe("Prices");
+    expect(next.slides.prices.notes).toBe("Remember the market stall.");
+    expect(deck.slides.prices.elements[1].content).toBe("pears");
+    expect(deck.slides.prices.skipped).toBe(true);
+    const { deck: all, count } = replaceAllDeckMatches(deck, "pears", "apples");
+    expect(count).toBe(1);
+    expect(all.slides.prices.skipped).toBe(true);
+    expect(all.slides.prices.elements[1].content).toBe("apples");
+    expect(all.slides.prices.elements[0].content).toBe("Prices");
+    expect(all.slides.prices.notes).toBe("Remember the market stall.");
+  });
+
+  it("replaces a shape stored as runs and leaves the text box", () => {
+    const deck = townHall();
+    const welcome = deck.slideOrder[0];
+    deck.slides[welcome].notes = "Say hello.";
+    deck.slides[welcome].elements.push({
+      id: "welcome-shape",
+      type: "shape",
+      x: 12,
+      y: 24,
+      width: 100,
+      height: 40,
+      content: "pears",
+      runs: [{ text: "pears", italic: true }],
+    });
+    const matches = findDeckMatches(deck, "pears");
+    expect(matches).toHaveLength(1);
+    expect(matches[0].inShape).toBe(true);
+    const next = replaceDeckMatch(deck, matches[0], "pears", "apples");
+    const shape = next.slides[welcome].elements.find((el) => el.id === "welcome-shape");
+    expect(shape?.content).toBe("apples");
+    expect(shape?.runs).toEqual([{ text: "apples", italic: true }]);
+    expect(shape?.x).toBe(12);
+    expect(shape?.y).toBe(24);
+    expect(next.slides[welcome].elements[0].content).toBe("Market");
+    expect(next.slides[welcome].notes).toBe("Say hello.");
   });
 });

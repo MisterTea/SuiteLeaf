@@ -160,6 +160,8 @@ import {
   replaceDeckMatch,
   replacedStatus,
   revealNotesMatch,
+  revealShapeMatch,
+  shapeText,
   type DeckMatch,
 } from "./slide-find";
 
@@ -368,7 +370,11 @@ export default function Slides({
   const landOn = (match: DeckMatch) => {
     if (match.inNotes) setShowNotes(true);
     anchorRef.current = match.slideId;
-    applySelection(match.slideId, [match.slideId], null);
+    applySelection(
+      match.slideId,
+      [match.slideId],
+      match.inShape ? match.elementId : null,
+    );
   };
 
   const showMatch = (index: number) => {
@@ -441,6 +447,19 @@ export default function Slides({
     });
     return () => cancelAnimationFrame(frame);
   }, [findOpen, presenting, matches, findIndex, activeSlideId, showNotes, findQuery]);
+
+  useEffect(() => {
+    if (!findOpen || presenting) return;
+    const match = matches[findIndex];
+    if (!match?.inShape || match.slideId !== activeSlideId) return;
+    const frame = requestAnimationFrame(() => {
+      const shape = document.querySelector(
+        `.slide-canvas [data-element-id="${CSS.escape(match.elementId)}"]`,
+      );
+      if (shape instanceof HTMLElement) revealShapeMatch(shape);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [findOpen, presenting, matches, findIndex, activeSlideId]);
 
   // Commit changes and push to undo history
   const commit = (next: SlideFile["content"], key?: string) => {
@@ -2710,7 +2729,11 @@ ${slidesHtml}
             type="button"
             className="slide-find-replace"
             title={
-              matches[findIndex]?.inNotes ? "Replace this note" : "Replace this match"
+              matches[findIndex]?.inNotes
+                ? "Replace this note"
+                : matches[findIndex]?.inShape
+                  ? "Replace this shape"
+                  : "Replace this match"
             }
             onClick={replaceCurrent}
             disabled={readOnly || !matches.length}
@@ -3203,6 +3226,12 @@ ${slidesHtml}
                       : el.shapeType === "roundRect"
                         ? "12px"
                         : "0px";
+                  const label = shapeText(el);
+                  const shapeMatch =
+                    findOpen &&
+                    matches[findIndex]?.inShape &&
+                    matches[findIndex]?.elementId === el.id &&
+                    matches[findIndex]?.slideId === activeSlideId;
 
                   return (
                     <div
@@ -3210,7 +3239,8 @@ ${slidesHtml}
                       data-element-id={el.id}
                       data-x={el.x}
                       data-y={el.y}
-                      className={`slide-element slide-shape ${isSelected ? "selected" : ""}${editorFadeClass(el)}`}
+                      data-selected={isSelected ? "true" : "false"}
+                      className={`slide-element slide-shape ${isSelected ? "selected" : ""}${editorFadeClass(el)}${shapeMatch ? " find-match" : ""}`}
                       {...editorFadeAttrs(el)}
                       style={{
                         ...posStyle,
@@ -3222,6 +3252,26 @@ ${slidesHtml}
                       onClick={(e) => e.stopPropagation()}
                     >
                       <FadeOnClickMark element={el} />
+                      {label ? (
+                        <div
+                          className="shape-label"
+                          style={{
+                            fontSize: `${(el.fontSize || 20) * 0.95 * zoomRatio}px`,
+                            ...boxFont(el),
+                            fontFamily: el.fontFamily || "Arial",
+                            color: el.color || "#1e293b",
+                            textAlign: el.align || "center",
+                          }}
+                        >
+                          <RunSpans
+                            content={el.content || label}
+                            runs={el.runs}
+                            bold={el.bold}
+                            italic={el.italic}
+                            underline={el.underline}
+                          />
+                        </div>
+                      ) : null}
                       {isSelected && !readOnly ? renderHandles(el.id) : null}
                     </div>
                   );

@@ -4,15 +4,17 @@ import { hasTextRuns, plainText, replaceRunRange } from "./slide-runs";
 /** Element id used for a speaker-notes match. It is not a canvas box. */
 export const SPEAKER_NOTES_ID = "speaker-notes";
 
-/** One occurrence of the query, in slide order. Canvas boxes come before notes. */
+/** One occurrence of the query, in slide order. Text boxes, then shapes, then notes. */
 export type DeckMatch = {
   slideId: string;
   slideIndex: number;
   /** Slide name shown beside the count, such as Welcome. */
   place: string;
   elementId: string;
-  /** True when this match is in the speaker notes, not a text box. */
+  /** True when this match is in the speaker notes, not a text box or shape. */
   inNotes: boolean;
+  /** True when this match is text inside a shape, not a text box or the notes. */
+  inShape: boolean;
   start: number;
 };
 
@@ -20,6 +22,17 @@ export type DeckMatch = {
 export function textBoxText(el: Pick<SlideElement, "type" | "content" | "runs">): string {
   if (el.type !== "text") return "";
   if (hasTextRuns(el)) return plainText(el.runs ?? []);
+  return el.content ?? "";
+}
+
+/** Text a shape shows. Empty shapes, text boxes, notes, and tables are skipped. */
+export function shapeText(el: Pick<SlideElement, "type" | "content" | "runs">): string {
+  if (el.type !== "shape") return "";
+  if (hasTextRuns(el)) return plainText(el.runs ?? []);
+  if (el.runs?.length) {
+    const fromRuns = plainText(el.runs);
+    if (fromRuns) return fromRuns;
+  }
   return el.content ?? "";
 }
 
@@ -52,9 +65,10 @@ function pushMatches(
 }
 
 /**
- * Every match in slide order, including skipped slides and speaker notes.
- * On one slide, text boxes come before that slide's notes. The deck is left
- * unchanged. Matching is case-insensitive.
+ * Every match in slide order, including skipped slides, shapes, and speaker
+ * notes. On one slide, text boxes come first, then shapes, then that slide's
+ * notes. Tables are skipped. The deck is left unchanged. Matching is
+ * case-insensitive.
  */
 export function findDeckMatches(deck: Presentation, query: string): DeckMatch[] {
   const needle = query.trim().toLowerCase();
@@ -65,12 +79,25 @@ export function findDeckMatches(deck: Presentation, query: string): DeckMatch[] 
     if (!slide) return;
     const place = slidePlace(slide, slideIndex);
     for (const el of slide.elements) {
+      if (el.type !== "text") continue;
       pushMatches(matches, textBoxText(el), needle, {
         slideId,
         slideIndex,
         place,
         elementId: el.id,
         inNotes: false,
+        inShape: false,
+      });
+    }
+    for (const el of slide.elements) {
+      if (el.type !== "shape") continue;
+      pushMatches(matches, shapeText(el), needle, {
+        slideId,
+        slideIndex,
+        place,
+        elementId: el.id,
+        inNotes: false,
+        inShape: true,
       });
     }
     pushMatches(matches, slide.notes ?? "", needle, {
@@ -79,6 +106,7 @@ export function findDeckMatches(deck: Presentation, query: string): DeckMatch[] 
       place,
       elementId: SPEAKER_NOTES_ID,
       inNotes: true,
+      inShape: false,
     });
   });
   return matches;
@@ -91,27 +119,32 @@ export function nextMatchIndex(current: number, count: number): number {
   return (current + 1) % count;
 }
 
-/** "1 of 2 on Welcome", "1 of 1 in the notes on Welcome", or "No matches". */
+/** "1 of 2 on Welcome", "1 of 1 in the shape on Welcome", or "No matches". */
 export function findStatus(
   query: string,
-  matches: readonly { place: string; inNotes?: boolean }[],
+  matches: readonly { place: string; inNotes?: boolean; inShape?: boolean }[],
   index: number,
 ): string {
   if (!query.trim()) return "";
   if (!matches.length) return "No matches";
   const at = index >= 0 && index < matches.length ? index : 0;
   const match = matches[at];
-  const place = match.inNotes ? `in the notes on ${match.place}` : `on ${match.place}`;
+  const place = match.inNotes
+    ? `in the notes on ${match.place}`
+    : match.inShape
+      ? `in the shape on ${match.place}`
+      : `on ${match.place}`;
   return `${at + 1} of ${matches.length} ${place}`;
 }
 
 /**
- * Find status for the bar. A notes match says it is in the notes, so Replace
- * can change that note. Canvas matches keep the plain "on the slide" wording.
+ * Find status for the bar. A notes match says it is in the notes. A shape
+ * match says it is in the shape and names the slide. Canvas matches keep the
+ * plain "on the slide" wording.
  */
 export function findBarStatus(
   query: string,
-  matches: readonly { place: string; inNotes?: boolean }[],
+  matches: readonly { place: string; inNotes?: boolean; inShape?: boolean }[],
   index: number,
 ): string {
   return findStatus(query, matches, index);
@@ -133,7 +166,7 @@ export function replacedStatus(count: number): string {
  */
 export function noteReplacedStatus(
   query: string,
-  matches: readonly { place: string; inNotes?: boolean }[],
+  matches: readonly { place: string; inNotes?: boolean; inShape?: boolean }[],
   index: number,
 ): string {
   if (!matches.length) return "Replaced in the notes";
@@ -177,6 +210,11 @@ export function indexAfterReplace(
   return at >= 0 ? at : 0;
 }
 
+function visibleText(el: SlideElement): string {
+  if (el.type === "shape") return shapeText(el);
+  return textBoxText(el);
+}
+
 function replaceInElement(
   el: SlideElement,
   from: number,
@@ -184,9 +222,10 @@ function replaceInElement(
   needle: string,
   replacement: string,
 ): SlideElement {
-  const visible = textBoxText(el);
+  const visible = visibleText(el);
   if (visible.slice(from, to).toLowerCase() !== needle) return el;
-  if (el.runs?.length && (hasTextRuns(el) || plainText(el.runs) === (el.content ?? ""))) {
+  const fromRuns = el.runs?.length ? plainText(el.runs) : "";
+  if (el.runs?.length && (hasTextRuns(el) || fromRuns === visible)) {
     const runs = replaceRunRange(el.runs, from, to, replacement);
     return { ...el, runs, content: plainText(runs) };
   }
@@ -291,8 +330,9 @@ function applyMatchReplacements(
 
 /**
  * Replace one match with the typed text. Capitalization is kept as typed.
- * A notes match changes only that occurrence in the speaker notes. Canvas
- * text, other matches, and box positions stay.
+ * A notes match changes only that occurrence in the speaker notes. A shape
+ * match changes only that occurrence inside the shape. Other text and
+ * positions stay.
  */
 export function replaceDeckMatch(
   deck: Presentation,
@@ -306,8 +346,8 @@ export function replaceDeckMatch(
 }
 
 /**
- * Replace every current match, including speaker notes. A query that hits
- * nothing returns the same deck.
+ * Replace every current match, including shapes and speaker notes. A query
+ * that hits nothing returns the same deck.
  */
 export function replaceAllDeckMatches(
   deck: Presentation,
@@ -376,4 +416,26 @@ export function revealNotesMatch(
   const covered =
     box.top < barBox.bottom && box.bottom > barBox.top && box.left < barBox.right && box.right > barBox.left;
   if (covered) area.scrollIntoView({ block: "end", inline: "nearest" });
+}
+
+/**
+ * Scroll a shape so the matched word is on screen and not under the find bar.
+ * The shape text and its position are not edited.
+ */
+export function revealShapeMatch(shape: HTMLElement): void {
+  const word = shape.querySelector(".shape-label");
+  const target = word instanceof HTMLElement ? word : shape;
+  const box = target.getBoundingClientRect();
+  const bar = shape.ownerDocument.querySelector(".slide-find-bar");
+  const barBox = bar instanceof HTMLElement ? bar.getBoundingClientRect() : null;
+  const covered =
+    !!barBox &&
+    box.top < barBox.bottom &&
+    box.bottom > barBox.top &&
+    box.left < barBox.right &&
+    box.right > barBox.left;
+  const viewBottom = shape.ownerDocument.documentElement.clientHeight;
+  const minTop = (barBox?.bottom ?? 0) + 8;
+  const clipped = box.top < minTop || box.bottom > viewBottom - 8 || box.height <= 0;
+  if (covered || clipped) target.scrollIntoView({ block: "center", inline: "nearest" });
 }
