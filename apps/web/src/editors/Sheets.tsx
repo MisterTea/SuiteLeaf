@@ -75,6 +75,12 @@ import {
   sheetBorderKinds,
   type SheetBorderTypeName,
 } from "./sheet-borders";
+import {
+  attachSpreadsheetZoom,
+  isSpreadsheetZoom,
+  rememberSpreadsheetZoom,
+  spreadsheetZoom,
+} from "./sheet-zoom";
 import SheetColumnGroups, { type SheetColumnGroupsHandle } from "./sheet-column-groups-ui";
 import {
   contiguousColumnRanges,
@@ -837,7 +843,7 @@ export default function Sheets({
     [filterColumn, setFilterColumn] = useState(-1),
     [filterValue, setFilterValue] = useState(""),
     [, setRevision] = useState(0),
-    [zoom, setZoom] = useState("100%"),
+    [zoom, setZoom] = useState(() => spreadsheetZoom(file.id)),
     [fontFamily, setFontFamily] = useState("Arial"),
     [fontSize, setFontSize] = useState(10),
     [isBold, setIsBold] = useState(false),
@@ -863,6 +869,33 @@ export default function Sheets({
       value: string;
       hidden: number;
     } | null>(null);
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const zoomStartedWithoutId = useRef(!file.id);
+  useEffect(() => {
+    if (!zoomStartedWithoutId.current || !file.id) return;
+    zoomStartedWithoutId.current = false;
+    attachSpreadsheetZoom(file.id);
+    setZoom(spreadsheetZoom(file.id));
+  }, [file.id]);
+  useEffect(() => {
+    if (!ready) return;
+    const ratio = Number.parseInt(zoom, 10) / 100;
+    if (!Number.isFinite(ratio)) return;
+    let frames = 0;
+    let raf = 0;
+    const apply = () => {
+      frames += 1;
+      try {
+        book.current?.getActiveSheet()?.zoom(ratio);
+      } catch {
+        /* the grid is still mounting */
+      }
+      if (frames < 8) raf = requestAnimationFrame(apply);
+    };
+    apply();
+    return () => cancelAnimationFrame(raf);
+  }, [ready, zoom]);
   const pending = useRef(false);
   const tabSettings = useRef<{ openTabs: () => void }>(null);
   const dropdowns = useRef<SheetDropdownHandle>(null);
@@ -1101,6 +1134,15 @@ export default function Sheets({
             comment.authorName = me.signature;
         },
       );
+      const ratio = Number.parseInt(zoomRef.current, 10) / 100;
+      if (Number.isFinite(ratio)) {
+        for (const id of content.current.workbook.sheetOrder) {
+          const sheet = content.current.workbook.sheets[id] as
+            | { zoomRatio?: number }
+            | undefined;
+          if (sheet) sheet.zoomRatio = ratio;
+        }
+      }
       const workbook = univerAPI.createWorkbook(
         content.current.workbook as unknown as IWorkbookData,
       );
@@ -2267,11 +2309,12 @@ export default function Sheets({
     }
   };
   const handleZoom = (z: string) => {
+    if (!isSpreadsheetZoom(z)) return;
     setZoom(z);
-    const ratio = parseInt(z, 10) / 100;
+    rememberSpreadsheetZoom(file.id, z);
+    const ratio = Number.parseInt(z, 10) / 100;
     try {
-      const s = book.current?.getActiveSheet();
-      s?.zoom(ratio);
+      book.current?.getActiveSheet()?.zoom(ratio);
     } catch {}
   };
   const toggleFilter = () => {
