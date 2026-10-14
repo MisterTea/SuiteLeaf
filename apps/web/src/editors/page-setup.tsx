@@ -1,16 +1,24 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import {
   PAGE_NUMBER_START_MAX,
   pageFace,
+  pageNumberFormatChips,
   pageNumberHint,
-  pageNumberStartValue,
   pageNumberText,
   setDifferentFirstPage,
   setDifferentOddEven,
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
 import "./page-setup.css";
-import { DocWatermark } from "./doc-watermark";
+import { DocWatermark, DocWatermarkField } from "./doc-watermark";
+import { acceptPageNumberStart } from "./page-number-live";
+import {
+  previewNumberCorner,
+  previewPlan,
+  previewSkipLabel,
+  type PreviewPageRole,
+  type PreviewSlot,
+} from "./page-preview";
 
 function TextField({
   span,
@@ -39,6 +47,121 @@ function TextField({
   );
 }
 
+function sheetLabel(
+  index: number,
+  shifted: boolean,
+  ends: boolean,
+  total: number,
+  role?: PreviewPageRole,
+) {
+  if (role === "cover") return "Cover";
+  if (role === "next") return "Next page";
+  const name = `${shifted ? "File page" : "Page"} ${index + 1}`;
+  if (role === "last-even") return `${name} · last even`;
+  if (role === "last-odd") return `${name} · last odd`;
+  if (ends && index === 0) return `${name} · first`;
+  if (ends && index === total - 1) return `${name} · last`;
+  if (index === 0 || total < 3) return name;
+  return `${name}${index % 2 === 1 ? " · even" : " · odd"}`;
+}
+
+function numberPlacePhrase(face: {
+  numberSide: string;
+  pageNumber: string;
+}): string {
+  if (face.numberSide === "none") return "No number";
+  if (face.numberSide === "left") return `${face.pageNumber} on the left`;
+  if (face.numberSide === "center") return `${face.pageNumber} in the center`;
+  if (face.numberSide === "top-left")
+    return `${face.pageNumber} at the top left`;
+  if (face.numberSide === "top-right")
+    return `${face.pageNumber} at the top right`;
+  return `${face.pageNumber} on the right`;
+}
+
+function oddEvenHint(draft: PageSettings): string {
+  const shared = draft.header.trim() || "one shared header";
+  if (!draft.differentOddEven)
+    return "Even and odd pages after the first can each have a header and a footer.";
+  if (draft.pageNumbers && draft.pageNumberPositionSet) {
+    const back =
+      draft.pageNumberPosition === "top-right"
+        ? "the top right"
+        : draft.pageNumberPosition === "bottom-center"
+          ? "the bottom center"
+          : "the bottom right";
+    return `The number sits on the outside edge. Untick to put it back at ${back}.`;
+  }
+  return `Untick to put “${shared}” back on every later page.`;
+}
+
+function PreviewSheet({
+  draft,
+  index,
+  total,
+  ends,
+  role,
+}: {
+  draft: PageSettings;
+  index: number;
+  total: number;
+  ends: boolean;
+  role?: PreviewPageRole;
+}) {
+  const face = pageFace(draft, index, total);
+  const corner = previewNumberCorner(face.numberSide);
+  const shifted = draft.coverHasNoNumber || draft.pageNumberStart !== 1;
+  const phrase = numberPlacePhrase(face);
+  return (
+    <div
+      className="page-setup-preview-page"
+      data-preview-index={index}
+      data-preview-role={role}
+    >
+      <div className="page-setup-preview-sheet" data-number-corner={corner}>
+        {face.header ? (
+          <span className={`page-setup-preview-header align-${face.headerAlign}`}>
+            {face.header}
+          </span>
+        ) : null}
+        {face.numberSide === "none" ? (
+          <span className="page-setup-preview-number side-none">No number</span>
+        ) : (
+          <span className={`page-setup-preview-number side-${face.numberSide}`}>
+            {face.pageNumber}
+          </span>
+        )}
+      </div>
+      <span className="page-setup-preview-label">
+        {sheetLabel(index, shifted, ends, total, role)}
+      </span>
+      {face.numberSide === "none" ? null : (
+        <span className="page-setup-preview-place">{phrase}</span>
+      )}
+    </div>
+  );
+}
+
+function PreviewSkip({
+  draft,
+  slot,
+  total,
+}: {
+  draft: PageSettings;
+  slot: Extract<PreviewSlot, { kind: "skip" }>;
+  total: number;
+}) {
+  const label = previewSkipLabel(draft, slot.firstIndex, slot.lastIndex, total);
+  return (
+    <div className="page-setup-preview-skip">
+      <span className="page-setup-preview-skip-mark" aria-hidden="true">
+        …
+      </span>
+      <span className="page-setup-preview-skip-label">{label}</span>
+    </div>
+  );
+}
+
 function Preview({
   draft,
   pageCount,
@@ -46,43 +169,40 @@ function Preview({
   draft: PageSettings;
   pageCount: number;
 }) {
-  const count = draft.differentOddEven ? 3 : Math.min(3, Math.max(pageCount, 1));
-  const total = Math.max(pageCount, count);
+  const plan = previewPlan(
+    pageCount,
+    draft.differentOddEven,
+    draft.coverHasNoNumber,
+  );
+  const ends = plan.slots.some((slot) => slot.kind === "skip");
+  const parity = draft.differentOddEven;
   return (
     <div
-      className="page-setup-preview"
+      className={
+        ends
+          ? "page-setup-preview is-ends"
+          : parity
+            ? "page-setup-preview is-parity"
+            : "page-setup-preview"
+      }
       role="group"
       aria-label="Page preview"
-      style={{ "--preview-columns": count } as CSSProperties}
+      style={{ "--preview-columns": plan.slots.length } as CSSProperties}
     >
-      {Array.from({ length: count }, (_, index) => {
-        const face = pageFace(draft, index, total);
-        const shifted = draft.coverHasNoNumber || draft.pageNumberStart !== 1;
-        const where =
-          face.numberSide === "none"
-            ? "No number"
-            : face.numberSide === "left"
-              ? `${face.pageNumber} on the left`
-              : face.numberSide === "center"
-                ? `${face.pageNumber} in the center`
-                : face.numberSide === "top-right"
-                  ? `${face.pageNumber} at the top right`
-                  : `${face.pageNumber} on the right`;
-        return (
-          <div key={index} className="page-setup-preview-page">
-            <span className="page-setup-preview-label">
-              {shifted ? "File page" : "Page"} {index + 1}
-              {index === 0 ? "" : index % 2 === 1 ? " · even" : " · odd"}
-            </span>
-            <span className={`page-setup-preview-header align-${face.headerAlign}`}>
-              {face.header || "No header"}
-            </span>
-            <span className={`page-setup-preview-number side-${face.numberSide}`}>
-              {where}
-            </span>
-          </div>
-        );
-      })}
+      {plan.slots.map((slot) =>
+        slot.kind === "skip" ? (
+          <PreviewSkip key="skip" draft={draft} slot={slot} total={plan.total} />
+        ) : (
+          <PreviewSheet
+            key={slot.index}
+            draft={draft}
+            index={slot.index}
+            total={plan.total}
+            ends={ends}
+            role={slot.role}
+          />
+        ),
+      )}
     </div>
   );
 }
@@ -96,7 +216,14 @@ export function PageSetupFields({
   pageCount: number;
   onChange: (next: PageSettings) => void;
 }) {
-  const shared = draft.header.trim() || "one shared header";
+  const [startText, setStartText] = useState(String(draft.pageNumberStart));
+  const [startRefused, setStartRefused] = useState(false);
+  const stayed = pageNumberText(
+    draft.pageNumberFormat,
+    draft.pageNumberStart,
+    Math.max(pageCount, 1),
+  );
+  const chips = pageNumberFormatChips(draft.pageNumberStart, pageCount);
   return (
     <>
       <fieldset className="page-setup-variants">
@@ -122,9 +249,7 @@ export function PageSetupFields({
           Different odd and even pages
         </label>
         <p className="page-setup-hint">
-          {draft.differentOddEven
-            ? `Untick to put “${shared}” back on every later page.`
-            : "Even and odd pages after the first can each have a header and a footer."}
+          {oddEvenHint(draft)}
         </p>
       </fieldset>
       <div className="page-setup-check page-setup-numbers">
@@ -139,6 +264,10 @@ export function PageSetupFields({
           />
           Page numbers
         </label>
+        <DocWatermarkField
+          value={draft.watermark}
+          onChange={(watermark) => onChange({ ...draft, watermark })}
+        />
         <fieldset className="page-number-choice" disabled={!draft.pageNumbers}>
           <legend>Format</legend>
           <label>
@@ -150,7 +279,7 @@ export function PageSetupFields({
                 onChange({ ...draft, pageNumberFormat: "fraction" })
               }
             />
-            {pageNumberText("fraction", 1, Math.max(pageCount, 1))}
+            {chips.fraction}
           </label>
           <label>
             <input
@@ -159,7 +288,7 @@ export function PageSetupFields({
               checked={draft.pageNumberFormat === "page"}
               onChange={() => onChange({ ...draft, pageNumberFormat: "page" })}
             />
-            Page 1
+            {chips.page}
           </label>
           <label>
             <input
@@ -168,7 +297,7 @@ export function PageSetupFields({
               checked={draft.pageNumberFormat === "roman"}
               onChange={() => onChange({ ...draft, pageNumberFormat: "roman" })}
             />
-            i, ii, iii
+            {chips.roman}
           </label>
         </fieldset>
         <fieldset className="page-number-choice" disabled={!draft.pageNumbers}>
@@ -202,28 +331,29 @@ export function PageSetupFields({
           ))}
         </fieldset>
         <fieldset
-          className="page-number-choice page-number-start"
+          className={`page-number-choice page-number-start${startRefused ? " is-refused" : ""}`}
           disabled={!draft.pageNumbers || draft.coverHasNoNumber}
         >
           <legend>Start at</legend>
           <input
             aria-label="Start at"
             aria-describedby="page-numbers-hint"
+            aria-invalid={startRefused || undefined}
             type="number"
             inputMode="numeric"
             min={1}
             max={PAGE_NUMBER_START_MAX}
             step={1}
-            value={draft.pageNumberStart}
+            value={startText}
             onChange={(e) => {
-              const raw = e.target.value.trim();
-              if (!raw) return;
-              const next = Number(raw);
-              if (!Number.isInteger(next)) return;
-              onChange({
-                ...draft,
-                pageNumberStart: pageNumberStartValue(next),
-              });
+              const next = acceptPageNumberStart(
+                draft.pageNumberStart,
+                e.target.value,
+              );
+              setStartText(next.text);
+              setStartRefused(next.refused);
+              if (!next.refused && next.start !== draft.pageNumberStart)
+                onChange({ ...draft, pageNumberStart: next.start });
             }}
           />
         </fieldset>
@@ -239,11 +369,18 @@ export function PageSetupFields({
           />
           Cover has no number
         </label>
-        <p id="page-numbers-hint" className="page-setup-hint">
-          {pageNumberHint(draft, pageCount)}
+        <p
+          id="page-numbers-hint"
+          className={`page-setup-hint${startRefused ? " is-refused" : ""}`}
+          role={startRefused ? "alert" : undefined}
+        >
+          {startRefused
+            ? `Numbering starts at 1 or later. The page stays on ${stayed}.`
+            : pageNumberHint(draft, pageCount)}
         </p>
       </div>
       <Preview draft={draft} pageCount={pageCount} />
+      <div className="page-setup-text">
       {draft.differentFirstPage ? (
         <>
           <p className="page-setup-group">
@@ -270,7 +407,11 @@ export function PageSetupFields({
         <>
           <p className="page-setup-group">
             Even pages
-            <span>Pages 2, 4, 6… Title and number on the left.</span>
+            <span>
+              {draft.coverHasNoNumber
+                ? "Page 2, then 4, 6… The number stays on the left."
+                : "Pages 2, 4, 6… Title and number on the left."}
+            </span>
           </p>
           <TextField
             span="Even header"
@@ -289,9 +430,11 @@ export function PageSetupFields({
           <p className="page-setup-group">
             Odd pages
             <span>
-              {draft.differentFirstPage
-                ? "Pages 3, 5, 7… Title and number on the right."
-                : "Pages 1, 3, 5… Title and number on the right."}
+              {draft.coverHasNoNumber
+                ? "Page 1 is the page after the cover. The number stays on the right."
+                : draft.differentFirstPage
+                  ? "Pages 3, 5, 7… Title and number on the right."
+                  : "Pages 1, 3, 5… Title and number on the right."}
             </span>
           </p>
           <TextField
@@ -345,6 +488,7 @@ export function PageSetupFields({
           />
         </>
       )}
+      </div>
     </>
   );
 }
@@ -371,13 +515,15 @@ export function PageFurniture({
             data-header-align={face.headerAlign}
             style={{ "--page-index": i } as CSSProperties}
           >
-            {face.numberSide === "top-right" ? (
-              <span className="page-number page-number-top">{face.pageNumber}</span>
+            {face.numberSide === "top-right" || face.numberSide === "top-left" ? (
+              <span className={`page-number page-number-top side-${face.numberSide}`}>
+                {face.pageNumber}
+              </span>
             ) : null}
             <div className={`page-header align-${face.headerAlign}`}>{face.header}</div>
             <DocWatermark text={settings.watermark} />
             <div
-              className={`page-footer number-${face.numberSide === "top-right" ? "none" : face.numberSide}`}
+              className={`page-footer number-${face.numberSide === "top-right" || face.numberSide === "top-left" ? "none" : face.numberSide}`}
             >
               {face.numberSide === "left" ? (
                 <span className="page-number">{face.pageNumber}</span>

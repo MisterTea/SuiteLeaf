@@ -12,7 +12,7 @@ import {
   annotateTrackedChanges,
   resolveSuggestions,
 } from "./suggestions";
-import { type OfficeImport, parseXml } from "./office";
+import { type OfficeImport } from "./office";
 import {
   applyImportedNotes,
   notesImportSummary,
@@ -33,6 +33,19 @@ import {
   extractOfficeMath,
   spliceEquationTokens,
 } from "./equations";
+import { applyImportedDrawings } from "./image-extent";
+import { rejoinSplitPictures, settleWordPictures } from "./image-inline";
+import { layoutNote } from "./image-wrap";
+import {
+  letterheadDistanceNote,
+  letterheadDistancePatch,
+  readDefaultLetterhead,
+  type LetterheadText,
+} from "./letterhead-distance";
+import {
+  importWordPageFurniture,
+  insertWordPageBreaks,
+} from "./word-headers";
 import { paragraphIndentFromWord } from "./paragraph-indent";
 import { firstSectionPageMargins } from "./word-page-margins";
 
@@ -328,61 +341,6 @@ export function htmlToDocument(
     type: "doc",
     content: content.length ? content : [{ type: "paragraph" }],
   };
-}
-
-function detectImageMime(buf: Uint8Array): string | null {
-  if (
-    buf.length >= 8 &&
-    buf[0] === 0x89 &&
-    buf[1] === 0x50 &&
-    buf[2] === 0x4e &&
-    buf[3] === 0x47
-  ) {
-    return "image/png";
-  }
-  if (
-    buf.length >= 3 &&
-    buf[0] === 0xff &&
-    buf[1] === 0xd8 &&
-    buf[2] === 0xff
-  ) {
-    return "image/jpeg";
-  }
-  if (
-    buf.length >= 6 &&
-    buf[0] === 0x47 &&
-    buf[1] === 0x49 &&
-    buf[2] === 0x46 &&
-    buf[3] === 0x38
-  ) {
-    return "image/gif";
-  }
-  if (
-    buf.length >= 12 &&
-    buf[0] === 0x52 &&
-    buf[1] === 0x49 &&
-    buf[2] === 0x46 &&
-    buf[3] === 0x46 &&
-    buf[8] === 0x57 &&
-    buf[9] === 0x45 &&
-    buf[10] === 0x42 &&
-    buf[11] === 0x50
-  ) {
-    return "image/webp";
-  }
-  return null;
-}
-
-function uint8ToBase64(u8: Uint8Array): string {
-  if (typeof Buffer !== "undefined") {
-    return Buffer.from(u8).toString("base64");
-  }
-  let binary = "";
-  const len = u8.byteLength;
-  for (let i = 0; i < len; i += 8192) {
-    binary += String.fromCharCode(...u8.subarray(i, i + 8192));
-  }
-  return btoa(binary);
 }
 
 function toLowerRoman(n: number): string {
@@ -1363,7 +1321,11 @@ export async function importDocx(
     );
     output = normalize(documentText(content));
   }
-  let supplementary = 0;
+  const drawings = applyImportedDrawings(content, xml);
+  content = settleWordPictures(
+    rejoinSplitPictures(drawings.doc, drawings.sharesParagraph),
+  );
+  insertWordPageBreaks(content, xml);
   const hasTitlePg =
     /<w:titlePg\b(?:\s+[^>]*w:val="(?:true|1|on)")?(?:\/|\s*>)/.test(xml);
   const isPureCoverPage = isCoverPage && !/<w:br\b[^>]*w:type="page"/.test(xml);
@@ -1375,95 +1337,16 @@ export async function importDocx(
     /<w:(?:headerReference|footerReference)\b[^>]*w:type="first"/.test(xml);
   const suppressHeadersFooters =
     (hasTitlePg && isSinglePage && !hasFirstHeaderFooter) || isPureCoverPage;
+  const emptyLetterhead: LetterheadText = { absorbed: new Set() };
+  const letterhead = suppressHeadersFooters
+    ? emptyLetterhead
+    : await readDefaultLetterhead(zip, xml);
 
-  const headerFooterPaths = suppressHeadersFooters
-    ? []
-    : Object.keys(zip.files)
-        .filter((p) => /word\/(header\d*|footer\d*)\.xml$/i.test(p))
-        .sort((a, b) => {
-          const aIsH = a.includes("header") ? 0 : 1;
-          const bIsH = b.includes("header") ? 0 : 1;
-          if (aIsH !== bIsH) return aIsH - bIsH;
-          return a.localeCompare(b);
-        });
-  for (const path of headerFooterPaths) {
-    const value = await zip.file(path)!.async("string");
-    if (!value.trim()) continue;
-    try {
-      parseXml(value, path);
-    } catch {
-      warnings.push(`An unreadable header/footer (${path}) was omitted.`);
-      continue;
-    }
-    const imgNodes: JsonNode[] = [];
-    const relsPath = path.replace(/^(.*\/)([^/]+)$/, "$1_rels/$2.rels");
-    const relsFile = zip.file(relsPath);
-    if (relsFile) {
-      const relsXml = await relsFile.async("string");
-      const relsMap = new Map<string, string>();
-      for (const m of relsXml.matchAll(/<Relationship\b([^>]*)\/?>/g)) {
-        const idMatch = m[1].match(/Id="([^"]+)"/);
-        const targetMatch = m[1].match(/Target="([^"]+)"/);
-        if (idMatch && targetMatch) relsMap.set(idMatch[1], targetMatch[1]);
-      }
-      const cleaned = value.replace(
-        /<(?:ve|mc):AlternateContent>[\s\S]*?<(?:ve|mc):Fallback>([\s\S]*?)<\/(?:ve|mc):Fallback>[\s\S]*?<\/(?:ve|mc):AlternateContent>/g,
-        "$1",
-      );
-      for (const m of cleaned.matchAll(
-        /<(?:a:blip|v:imagedata)\b[^>]*(?:r:embed|r:id)="([^"]+)"/g,
-      )) {
-        const target = relsMap.get(m[1]);
-        if (!target) continue;
-        const basePath = path.split("/").slice(0, -1).join("/");
-        const zPath = target.startsWith("/")
-          ? target.slice(1)
-          : `${basePath}/${target}`;
-        const imgFile = zip.file(zPath);
-        if (imgFile) {
-          const imgBytes = await imgFile.async("uint8array");
-          const mime = detectImageMime(imgBytes);
-          if (mime) {
-            const b64 = uint8ToBase64(imgBytes);
-            imgNodes.push({
-              type: "image",
-              attrs: {
-                src: `data:${mime};base64,${b64}`,
-                alt: path.includes("header") ? "Header image" : "Footer image",
-              },
-            });
-          }
-        }
-      }
-    }
-    const ps = wordParagraphs(value);
-    if (ps.length || imgNodes.length) {
-      supplementary += ps.length + imgNodes.length;
-      content.content!.push(
-        {
-          type: "heading",
-          attrs: { level: 2 },
-          content: [
-            {
-              type: "text",
-              text: path.includes("header")
-                ? "Imported header"
-                : "Imported footer",
-            },
-          ],
-        },
-        ...imgNodes,
-        ...ps.map((text) => ({
-          type: "paragraph",
-          content: [{ type: "text", text }],
-        })),
-      );
-    }
-  }
-  if (supplementary)
-    warnings.push(
-      "Header/footer text is retained as document sections rather than repeated page furniture.",
-    );
+  const furniture = suppressHeadersFooters
+    ? null
+    : await importWordPageFurniture(zip, xml);
+  if (furniture?.blocks.length) content.content!.push(...furniture.blocks);
+  for (const warning of furniture?.warnings ?? []) warnings.push(warning);
   const checks: Record<string, RegExp> = {
     tables: /<w:tbl\b/,
     images: /<w:(drawing|pict)\b/,
@@ -1506,9 +1389,7 @@ export async function importDocx(
       `${droppedLinks.length} ${one ? "link" : "links"} with an unsafe or unsupported address${schemes.length ? ` (${schemes.join(", ")})` : ""} ${one ? "was" : "were"} removed; ${one ? "its" : "their"} text was kept.`,
     );
   }
-  warnings.push(
-    "SuiteLeaf lays out its own pages, so Word's exact line and page breaks, floating placement and font styling may differ.",
-  );
+  warnings.push(layoutNote(drawings.placements));
   const commentsXml = await zip.file("word/comments.xml")?.async("string");
   if (commentsXml?.includes("<w:comment")) {
     const imported = importWordComments(content, {
@@ -1524,7 +1405,25 @@ export async function importDocx(
     }
   }
   const pageMargins = firstSectionPageMargins(xml);
-  if (pageMargins) {
+  const distances = letterheadDistancePatch(xml, pageMargins);
+  const distanceNote = letterheadDistanceNote(distances);
+  const letterheadWords = Boolean(
+    letterhead.header ||
+      letterhead.footer ||
+      furniture?.settings.header ||
+      furniture?.settings.footer ||
+      furniture?.settings.firstHeader ||
+      furniture?.settings.evenHeader ||
+      furniture?.settings.oddHeader,
+  );
+  if (distanceNote && letterheadWords) warnings.push(distanceNote);
+  if (
+    pageMargins ||
+    distances ||
+    letterhead.header ||
+    letterhead.footer ||
+    furniture
+  ) {
     const previous = content.attrs?.pageSettings;
     content = {
       ...content,
@@ -1532,10 +1431,14 @@ export async function importDocx(
         ...(content.attrs ?? {}),
         pageSettings: {
           ...(previous && typeof previous === "object" ? previous : {}),
-          ...pageMargins,
+          ...(pageMargins ?? {}),
+          ...(distances ?? {}),
+          ...(!furniture && letterhead.header ? { header: letterhead.header } : {}),
+          ...(!furniture && letterhead.footer ? { footer: letterhead.footer } : {}),
           // A stored page setup otherwise turns page numbers on. This file
-          // did not ask for them.
+          // did not ask for them, unless a header is itself a page number.
           pageNumbers: false,
+          ...(furniture?.settings ?? {}),
         },
       },
     };
@@ -1550,7 +1453,7 @@ export async function importDocx(
     sourceCharacters: source.join("").length,
     importedCharacters: documentText(content).length,
     recoveredParagraphs: missing.length,
-    supplementaryParagraphs: supplementary,
+    supplementaryParagraphs: furniture?.supplementary ?? 0,
     fallback,
   };
   let images = 0,

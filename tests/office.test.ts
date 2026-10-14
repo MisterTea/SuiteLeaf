@@ -443,6 +443,20 @@ describe("editable Office imports", () => {
       );
       expect(file.kind).toBe("doc");
       if (file.kind !== "doc") return;
+      const headings = (file.content.content ?? []).filter(
+        (n) => n.type === "heading",
+      );
+      const headingText = headings.map((h) => documentText(h));
+      expect(headingText).toContain("Imported header");
+      const footerOnThePage =
+        typeof (file.content.attrs?.pageSettings as { footer?: unknown } | undefined)
+          ?.footer === "string" &&
+        String(
+          (file.content.attrs?.pageSettings as { footer?: string }).footer,
+        ).length > 0;
+      expect(headingText.includes("Imported footer") || footerOnThePage).toBe(
+        true,
+      );
       const images = (file.content.content ?? []).filter(
         (n) => n.type === "image",
       );

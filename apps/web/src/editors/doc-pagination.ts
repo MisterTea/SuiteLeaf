@@ -7,6 +7,11 @@ import {
   pageDimensions,
 } from "@suiteleaf/core/document-layout";
 import type { JsonNode } from "@suiteleaf/core";
+import { letterheadLiveEvent, readLiveEdges } from "./letterhead-live";
+import { readLiveMargins } from "./margin-live";
+import { readLiveOrientation } from "./landscape-live";
+import { readLiveLetterhead } from "./letterhead-text-live";
+import { readLivePaper } from "./paper-size-live";
 import {
   breakPosBeforeList,
   keepWithNextBreak,
@@ -17,6 +22,7 @@ import {
 } from "./doc-keep-next";
 import { annotateWidowLines, avoidSingleLine } from "./doc-widow-control";
 import { keepParagraphTogether, keepsLines } from "./doc-keep-lines";
+import { gutterDecorations } from "./doc-gutter";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -151,9 +157,19 @@ export const DocumentPagination = Extension.create({
                   .setMeta(paginationKey, DecorationSet.empty)
                   .setMeta("addToHistory", false),
               );
-              const settings = documentPageSettings(
+              const saved = documentPageSettings(
                 view.state.doc.toJSON() as JsonNode,
               );
+              // Distances, margins, paper size, orientation, and header and
+              // footer wording from the open Page setup dialog.
+              const settings = {
+                ...saved,
+                ...readLiveEdges(view.dom as HTMLElement),
+                ...readLiveMargins(view.dom as HTMLElement),
+                ...readLivePaper(view.dom as HTMLElement),
+                ...readLiveOrientation(view.dom as HTMLElement),
+                ...readLiveLetterhead(view.dom as HTMLElement),
+              };
               const { width, height } = pageDimensions(settings);
               const insets = bodyEdgeInsets(settings, width);
               const topMargin = insets.top,
@@ -161,6 +177,9 @@ export const DocumentPagination = Extension.create({
                 bodyHeight = height - topMargin - bottomMargin;
               const paper = view.dom.closest(".paginated-paper");
               if (paper instanceof HTMLElement) {
+                paper.style.setProperty("--page-width", `${width}px`);
+                paper.style.setProperty("--page-height", `${height}px`);
+                paper.style.setProperty("--page-stride", `${height + 24}px`);
                 paper.style.setProperty(
                   "--header-from-edge",
                   `${settings.headerFromEdge}px`,
@@ -174,6 +193,7 @@ export const DocumentPagination = Extension.create({
                   "--body-inset-bottom",
                   `${insets.bottom}px`,
                 );
+                paper.style.setProperty("--page-gutter", `${settings.gutter}px`);
               }
               const origin = view.dom.getBoundingClientRect().top;
               const scale =
@@ -369,6 +389,17 @@ export const DocumentPagination = Extension.create({
                     (height + 24),
                 ),
               );
+              const breaks = boundaries
+                .filter((boundary) => boundary.manual)
+                .map((boundary) => boundary.pos);
+              decorations.push(
+                ...gutterDecorations(
+                  view.state.doc,
+                  boundaries,
+                  breaks,
+                  settings,
+                ),
+              );
               view.dispatch(
                 view.state.tr
                   .setMeta(
@@ -411,6 +442,7 @@ export const DocumentPagination = Extension.create({
           });
           observer.observe(view.dom);
           view.dom.addEventListener("load", schedule, true);
+          view.dom.addEventListener(letterheadLiveEvent, schedule);
           document.fonts?.ready.then(schedule);
           schedule();
           return {
@@ -426,6 +458,7 @@ export const DocumentPagination = Extension.create({
               cancelAnimationFrame(frame);
               observer.disconnect();
               view.dom.removeEventListener("load", schedule, true);
+              view.dom.removeEventListener(letterheadLiveEvent, schedule);
             },
           };
         },

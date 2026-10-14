@@ -1783,8 +1783,35 @@ a {
 }
 .ProseMirror-selectednode.doc-image-host > .doc-image-actions,
 .doc-image-host[data-cropping="true"] > .doc-image-actions,
-.doc-image-host:focus-within > .doc-image-actions {
+.doc-image-host:focus-within > .doc-image-actions,
+.doc-image-host:hover > .doc-image-actions {
   display: flex;
+}
+.document-content .doc-image-host[data-wrap="left"] {
+  float: left;
+  margin: 0 12px 8px 0;
+}
+.document-content .doc-image-host[data-wrap="right"] {
+  float: right;
+  margin: 0 0 8px 12px;
+}
+.document-content .doc-image-host[data-wrap="break"] {
+  clear: both;
+}
+/* An inline picture's box is only as wide as the picture, so max-width: 100%
+   freezes a corner drag. Let the drag set a real width. */
+.document-content .doc-image-host[data-inline="true"],
+.document-content .doc-image-host[data-inline="true"] [data-resize-wrapper],
+.document-content .doc-image-host[data-inline="true"] img {
+  max-width: none;
+}
+/* The corner handle hangs over the next word. Keep it above that word. */
+.document-content .doc-image-host[data-inline="true"] {
+  position: relative;
+  z-index: 2;
+}
+.document-content .doc-image-host[data-inline="true"] [data-resize-handle] {
+  z-index: 3;
 }
 .doc-image-crop-button[hidden],
 .doc-image-crop-hint[hidden],
@@ -4443,6 +4470,8 @@ tr.doc-page-spacer { display: table-row; }
 tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; background: transparent; }
 .manual-page-break { height: 0; margin: 0; }
 .page-furniture { position: absolute; inset: 0; pointer-events: none; color: #555; font: 10pt Arial, sans-serif; }
+.paginated-paper.is-editing-furniture .document-content { opacity: 0.45; }
+.page-header, .page-footer, .page-header *, .page-footer * { pointer-events: auto; }
 .page-furniture-page { position: absolute; left: var(--page-margin-left, var(--page-margin)); right: var(--page-margin-right, var(--page-margin)); top: calc(var(--page-index) * var(--page-stride)); height: var(--page-height); }
 .page-header { position: absolute; top: var(--header-from-edge, calc(var(--page-margin-top, var(--page-margin)) / 2 - 8px)); line-height: 16px; white-space: pre-wrap; z-index: 2; }
 .page-footer { position: absolute; bottom: var(--footer-from-edge, calc(var(--page-margin-bottom, var(--page-margin)) / 2 - 8px)); display: flex; justify-content: space-between; gap: 16px; width: 100%; line-height: 16px; white-space: pre-wrap; z-index: 2; }
@@ -6661,6 +6690,7 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 }
 .suggestion-rail {
   position: relative;
+  z-index: 5;
   width: 250px;
   flex: 0 0 250px;
   min-height: 100%;
@@ -7613,6 +7643,8 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 }
 .eq-exp {
   vertical-align: super;
+  position: relative;
+  top: -0.35em;
 }
 .eq-subexp {
   vertical-align: sub;
@@ -7826,4 +7858,12 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 .column-group-only:focus-visible {
   outline: 2px solid #1a73e8;
   outline-offset: 2px;
+}
+.page-setup-preview-sheet {
+  width: 112px !important;
+  height: 140px !important;
+  min-width: 112px !important;
+  min-height: 140px !important;
+  max-width: none !important;
+  aspect-ratio: auto !important;
 }

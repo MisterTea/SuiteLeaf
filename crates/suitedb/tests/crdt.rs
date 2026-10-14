@@ -111,6 +111,9 @@ fn duplicate_unique_values_resolve_to_the_first_created_row_everywhere() {
     let (a, b) = (replica(), replica());
     a.transact(|tx| tx.upsert("t", "first", [("email", text("x@example.com"))]))
         .unwrap();
+    // The two replicas tick their own clocks. A later physical time is what
+    // makes "first" the earlier row when the writes land in the same millisecond.
+    std::thread::sleep(std::time::Duration::from_millis(5));
     b.transact(|tx| tx.upsert("t", "second", [("email", text("x@example.com"))]))
         .unwrap();
     a.ingest_many(log(&b).iter().map(Vec::as_slice)).unwrap();

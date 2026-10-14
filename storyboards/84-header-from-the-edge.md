@@ -18,7 +18,7 @@ Priya's thesis needs "Town council" close to the top of the page, and the notes 
 2. **Closer to the edge.** The margin stays 1 inch. She sets Header from edge to 0.5 in. "Town council" moves up. The first line of the notes stays where it was.
 3. **Into the text.** She sets Header from edge to 1.5 in, past the 1 inch margin. A note says the header is inside the text area, so the text moves down, and the top margin does not change. Apply commits it. The notes start below the header. Every margin field still says 1 inch.
 4. **Too close.** She tries 0. The field says the header must be at least 0.25 inches from the edge, and Apply stays off.
-5. **The footer.** Footer from edge works the same way. 0.5 in moves only the footer toward the edge. 1.5 in says the footer is inside the text, so the text moves up, and the bottom margin stays 1 inch.
+5. **The footer.** Footer from edge works the same way. 0.5 in moves only the footer toward the edge. 1.5 in says the footer is inside the text, so the text moves up, and the bottom margin stays 1 inch. Trying 0 is refused the same way, and Apply stays off.
 6. **Save.** She puts both distances back to 0.5 in and reopens the file. The header and the footer are still 0.5 inches from the edge, and the margin is still 1 inch.
 
 ## Google Workspace benchmark
@@ -45,6 +45,7 @@ Google Docs puts Header and Footer next to the margins ([Docs Help](https://supp
 - Different first page and odd/even headers use this one header distance and one footer distance.
 - Word export writes the distances on `w:pgMar`. Opening a Word file does not read `w:header` or `w:footer` yet.
 - A short page does not show the footer push until the notes reach the bottom margin. The inset still grows.
+- Storyboard 91 keeps a one-line header above the title when the distance equals the margin. This video still shows the earlier shared line.
 
 ## Result
 
@@ -54,5 +55,5 @@ Google Docs puts Header and Footer next to the margins ([Docs Help](https://supp
 | 2. Header from edge at 0.5 inches moves only the header | Met | Video 0:20, “Town council” sits above the notes. The test measures the header at 0.5 in and the first line at 1 in. |
 | 3. A distance past the margin pushes the body and says why. The margin does not change | Met | Video 0:24, the blue note and Top still 1. Video 0:27, the notes start below the header. The test checks the top inset grew and `marginTop` stayed 96. |
 | 4. Under 0.25 inches is refused, and Apply does not commit it | Met | Video 0:34, “The header must be at least 0.25 inches from the edge.” and Apply is gray. Enter leaves the dialog open. The test also refuses 0 for the footer. |
-| 5. Footer from edge works the same way | Met | Video 0:44, the footer moves to 0.5 in while the notes stay an inch in. Video 0:48, the footer note names the bottom margin. The test measures the footer at 1.5 in and a larger bottom inset. |
+| 5. Footer from edge works the same way | Met | Video 0:44, the footer moves to 0.5 in while the notes stay an inch in. Video 0:48, the footer note names the bottom margin. Video 0:54, 0 is refused and Apply stays off. The test measures the footer at 1.5 in and a larger bottom inset. |
 | 6. Both distances and the margin survive save and reopen | Met | Video 0:57, Header 0.5, Footer 0.5, and every margin 1. The test reads `headerFromEdge: 48` and `footerFromEdge: 48` from the saved file and measures them again after reopen. |

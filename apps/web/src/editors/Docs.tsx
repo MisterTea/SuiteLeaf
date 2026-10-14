@@ -13,6 +13,7 @@ import { TextStyleKit } from "@tiptap/extension-text-style";
 import Highlight from "@tiptap/extension-highlight";
 import TextAlign from "@tiptap/extension-text-align";
 import { croppableImage } from "./doc-image-crop";
+import { inlineImage } from "./doc-image-inline";
 import { TableKit } from "@tiptap/extension-table";
 import Superscript from "@tiptap/extension-superscript";
 import Subscript from "@tiptap/extension-subscript";
@@ -108,20 +109,32 @@ import {
   documentHtml,
   documentPageSettings,
   edgeDistancesValid,
+  gutterAccepted,
   pageDimensions,
   pageMarginsValid,
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
-import { PageFurniture, PageSetupFields } from "./page-setup";
+import { PageSetupFields } from "./page-setup";
+import { PageFurniture } from "./doc-header-editor";
+import { PageGutterBands } from "./page-gutter";
 import { ArabicNumberStart, ArabicStartControl } from "./doc-arabic-start";
 import { paragraphLineSpacing } from "./doc-line-spacing";
 import { LineSpacingControl } from "./doc-line-spacing-ui";
 import { paragraphSpacing } from "./doc-paragraph-spacing";
 import { paragraphIndent } from "./doc-paragraph-indent";
-import { DocWatermarkField, pageSetupToSave } from "./doc-watermark";
+import { pageSetupToSave } from "./doc-watermark";
 import { columnLayout } from "./doc-columns";
-import { PageMarginFields } from "./page-setup-margins";
-import { HeaderEdgeFields } from "./header-edge";
+import { PageSetupFit } from "./page-setup-fit";
+import { publishLiveOrientation } from "./landscape-live";
+import { publishLiveLetterhead } from "./letterhead-text-live";
+import { publishLiveEdges } from "./letterhead-live";
+import { livePageSettings, publishLiveMargins } from "./margin-live";
+import {
+  paperPreviewZoom,
+  paperSizeCaption,
+  publishLivePaper,
+} from "./paper-size-live";
+import "./letterhead-live.css";
 import { KeepWithNext, KeepWithNextControl } from "./doc-keep-next";
 import { DontLeaveOneLineControl, WidowControl } from "./doc-widow-control";
 import { KeepLines, KeepLinesTogetherControl } from "./doc-keep-lines";
@@ -146,6 +159,7 @@ export const extensions: Extensions = [
   WidowControl,
   KeepLines,
   croppableImage,
+  inlineImage,
   TableKit.configure({ table: { resizable: true } }),
   CharacterCount,
   DocumentSearchHighlight,
@@ -258,10 +272,13 @@ export default function Docs({
   const docTools = useRef<HTMLFieldSetElement>(null);
   const moreDocTools = useToolbarOverflow(
     docTools,
-    '[aria-label="Page setup"], [aria-label="Page break"], [aria-label="Superscript"], [aria-label="Subscript"], [aria-label="Bulleted list"], [aria-label="Decrease indent"], [aria-label="Increase indent"], [aria-label="Find and replace"], [aria-label="Insert table"], [aria-label="Insert link"], .mode-switch',
+    '[aria-label="Bold"], [aria-label="Italic"], [aria-label="Page setup"], [aria-label="Page break"], [aria-label="Superscript"], [aria-label="Subscript"], [aria-label="Bulleted list"], [aria-label="Decrease indent"], [aria-label="Increase indent"], [aria-label="Find and replace"], [aria-label="Insert table"], [aria-label="Insert link"], .mode-switch',
   );
   const [pageViewportWidth, setPageViewportWidth] = useState(
     window.innerWidth - 32,
+  );
+  const [pageViewportHeight, setPageViewportHeight] = useState(() =>
+    Math.max(240, window.innerHeight - 180),
   );
   const [textColor, setTextColor] = useState("#202124");
   const [highlightColor, setHighlightColor] = useState("#ffff00");
@@ -469,13 +486,27 @@ export default function Docs({
       },
       handlePaste: (_view, event) => {
         if (readOnlyRef.current) return true;
-        if (event.clipboardData?.getData("text/html")) {
+        const html = event.clipboardData?.getData("text/html");
+        if (!html) return false;
+        const content = importHTML(html);
+        const blocks = content.content ?? [];
+        const only = blocks.length === 1 ? blocks[0] : null;
+        const pasted = only?.type === "paragraph" ? only.content ?? [] : blocks;
+        const picture =
+          pasted.length === 1 &&
+          (pasted[0].type === "inlineImage" || pasted[0].type === "image")
+            ? pasted[0]
+            : null;
+        // A copied picture arrives as its own one-line document. Put it back
+        // in the sentence instead of starting a new paragraph.
+        if (picture) {
           editor?.commands.insertContent(
-            importHTML(event.clipboardData.getData("text/html")),
+            picture.type === "image" ? { ...picture, type: "inlineImage" } : picture,
           );
           return true;
         }
-        return false;
+        editor?.commands.insertContent(content);
+        return true;
       },
       // Internal "#anchor" links scroll to the heading that owns that slug.
       handleDOMEvents: {
@@ -567,9 +598,16 @@ export default function Docs({
       },
     },
     onUpdate: ({ editor, transaction }) => {
-      if (!transaction.docChanged || transaction.getMeta("addToHistory") === false)
-        return;
-      if (!readOnlyRef.current) changes.current(editor.getJSON() as JsonNode);
+      if (!transaction.docChanged || readOnlyRef.current) return;
+      // Live layout skips the undo stack. Proofing and suggestion mode still
+      // have to be saved, or a reload drops an ignored issue or a word-count stop.
+      if (transaction.getMeta("addToHistory") === false) {
+        const before = transaction.before.attrs;
+        const after = transaction.doc.attrs;
+        if (before.proofing === after.proofing && before.editingMode === after.editingMode)
+          return;
+      }
+      changes.current(editor.getJSON() as JsonNode);
     },
   });
 
@@ -634,13 +672,22 @@ export default function Docs({
   ).width;
   useEffect(() => {
     const container = paperContainer.current;
-    if (!editor || !container) return;
-    const update = () => setPageViewportWidth(container.clientWidth);
+    const stage = documentStage.current;
+    if (!editor || !container || !stage) return;
+    const update = () => {
+      setPageViewportWidth(container.clientWidth);
+      const style = getComputedStyle(stage);
+      const pad =
+        parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+      const next = Math.max(0, stage.clientHeight - pad);
+      setPageViewportHeight((prev) => (Math.abs(prev - next) < 0.5 ? prev : next));
+    };
     const observer = new ResizeObserver(update);
     observer.observe(container);
+    observer.observe(stage);
     update();
     return () => observer.disconnect();
-  }, [editor, paperWidth]);
+  }, [editor, paperWidth, pageSetupOpen]);
 
   const insertTable = () => {
     editor
@@ -921,6 +968,26 @@ export default function Docs({
     return () => editor.view.dom.removeEventListener("suiteleaf-pages", pages);
   }, [editor]);
 
+  useLayoutEffect(() => {
+    if (!editor) return;
+    const root = editor.view.dom as HTMLElement;
+    if (!pageSetupOpen) {
+      publishLiveEdges(root, null);
+      publishLiveMargins(root, null);
+      publishLivePaper(root, null);
+      publishLiveOrientation(root, null);
+      publishLiveLetterhead(root, null);
+      return;
+    }
+    const saved = documentPageSettings(editor.getJSON() as JsonNode);
+    const shown = livePageSettings(saved, pageDraft);
+    publishLiveEdges(root, shown);
+    publishLiveMargins(root, shown);
+    publishLivePaper(root, shown);
+    publishLiveOrientation(root, shown);
+    publishLiveLetterhead(root, shown);
+  }, [editor, pageSetupOpen, pageDraft]);
+
   // The outline highlights the section being read: the last heading above a
   // line near the top of the window (or the first heading), as Word does.
   useEffect(() => {
@@ -1048,21 +1115,31 @@ export default function Docs({
     return <div className="loading">Opening document…</div>;
 
   const pageSettings = documentPageSettings(editor.getJSON() as JsonNode);
+  const shownSettings = pageSetupOpen
+    ? livePageSettings(pageSettings, pageDraft)
+    : pageSettings;
   const pageDraftValid =
     pageMarginsValid(pageDraft) &&
     edgeDistancesValid(pageDraft) &&
+    gutterAccepted(pageDraft.gutter) &&
     Number.isInteger(pageDraft.pageNumberStart) &&
     pageDraft.pageNumberStart >= 1 &&
     pageDraft.pageNumberStart <= 9999;
-  const dimensions = pageDimensions(pageSettings);
-  const edgeInsets = bodyEdgeInsets(pageSettings, dimensions.width);
+  const dimensions = pageDimensions(shownSettings);
+  const edgeInsets = bodyEdgeInsets(shownSettings, dimensions.width);
   const requestedZoom =
     zoomLevel === "Fit" ? 1 : Number.parseInt(zoomLevel, 10) / 100;
-  const pageZoom = commentGutter || citationsOpen
-    ? Math.min(requestedZoom, pageViewportWidth / dimensions.width)
+  const widthFit = pageViewportWidth / dimensions.width;
+  let pageZoom = commentGutter || citationsOpen
+    ? Math.min(requestedZoom, widthFit)
     : zoomLevel === "Fit"
-      ? Math.min(1, pageViewportWidth / dimensions.width)
+      ? Math.min(1, widthFit)
       : requestedZoom;
+  if (pageSetupOpen)
+    pageZoom = Math.min(
+      pageZoom,
+      paperPreviewZoom(pageViewportWidth, pageViewportHeight - 36),
+    );
   const search = documentMatches(editor.state.doc, findOpen ? query : "", {
     matchCase,
     regex: useRegex,
@@ -1142,7 +1219,7 @@ export default function Docs({
   return (
     <SuggestionProvider editor={editor}>
     <SuggestionBridge api={suggestionApi} />
-    <div className="docs-editor">
+    <div className={`docs-editor${pageSetupOpen ? " seeing-letterhead" : ""}`}>
       <div className="toolbar docs-toolbar" role="toolbar" aria-label="Document formatting">
         <MenuSearchPill />
         <fieldset className="toolbar-edits" disabled={readOnly}>
@@ -1495,54 +1572,55 @@ export default function Docs({
               </button>
             </div>
             <div className="dialog-body page-setup-fields">
-              <label>
-                <span>Paper size</span>
-                <select
-                  autoFocus
-                  aria-label="Paper size"
-                  value={pageDraft.size}
-                  onChange={(e) =>
-                    setPageDraft({
-                      ...pageDraft,
-                      size: e.target.value as PageSettings["size"],
-                    })
-                  }
-                >
-                  <option value="letter">Letter (8.5 × 11 in)</option>
-                  <option value="a4">A4 (21 × 29.7 cm)</option>
-                </select>
-              </label>
-              <fieldset className="page-setup-orientation">
-                <legend>Orientation</legend>
-                {(["Portrait", "Landscape"] as const).map((name) => (
-                  <label key={name}>
-                    <input
-                      type="radio"
-                      name="page-orientation"
-                      checked={pageDraft.landscape === (name === "Landscape")}
-                      onChange={() =>
-                        setPageDraft({
-                          ...pageDraft,
-                          landscape: name === "Landscape",
-                        })
-                      }
-                    />
-                    {name}
-                  </label>
-                ))}
-              </fieldset>
-              <PageMarginFields draft={pageDraft} onChange={setPageDraft} />
-              <HeaderEdgeFields draft={pageDraft} onChange={setPageDraft} />
+              <div className="page-setup-basics">
+                <label>
+                  <span>Paper size</span>
+                  <select
+                    autoFocus
+                    aria-label="Paper size"
+                    value={pageDraft.size}
+                    onChange={(e) =>
+                      setPageDraft({
+                        ...pageDraft,
+                        size: e.target.value as PageSettings["size"],
+                      })
+                    }
+                  >
+                    <option value="letter">
+                      {pageDraft.landscape
+                        ? "Letter (11 × 8.5 in)"
+                        : "Letter (8.5 × 11 in)"}
+                    </option>
+                    <option value="a4">
+                      {pageDraft.landscape ? "A4 (29.7 × 21 cm)" : "A4 (21 × 29.7 cm)"}
+                    </option>
+                  </select>
+                </label>
+                <fieldset className="page-setup-orientation">
+                  <legend>Orientation</legend>
+                  {(["Portrait", "Landscape"] as const).map((name) => (
+                    <label key={name}>
+                      <input
+                        type="radio"
+                        name="page-orientation"
+                        checked={pageDraft.landscape === (name === "Landscape")}
+                        onChange={() =>
+                          setPageDraft({
+                            ...pageDraft,
+                            landscape: name === "Landscape",
+                          })
+                        }
+                      />
+                      {name}
+                    </label>
+                  ))}
+                </fieldset>
+              </div>
+              <PageSetupFit draft={pageDraft} onChange={setPageDraft} />
               <PageSetupFields
                 draft={pageDraft}
                 pageCount={pageCount}
                 onChange={setPageDraft}
-              />
-              <DocWatermarkField
-                value={pageDraft.watermark}
-                onChange={(watermark) =>
-                  setPageDraft({ ...pageDraft, watermark })
-                }
               />
             </div>
             <div className="dialog-footer">
@@ -2037,6 +2115,11 @@ export default function Docs({
                 : "center",
           }}
         >
+          {pageSetupOpen ? (
+            <p className="paper-size-live" aria-live="polite">
+              {paperSizeCaption(shownSettings)}
+            </p>
+          ) : null}
           <style>{`@page { size: ${dimensions.width / 96}in ${dimensions.height / 96}in; margin: 0; }`}</style>
           <div
             className="paper paginated-paper"
@@ -2044,17 +2127,18 @@ export default function Docs({
               {
                 "--page-width": `${dimensions.width}px`,
                 "--page-height": `${dimensions.height}px`,
-                "--page-margin": `${pageSettings.marginTop}px`,
-                "--page-margin-top": `${pageSettings.marginTop}px`,
-                "--page-margin-right": `${pageSettings.marginRight}px`,
-                "--page-margin-bottom": `${pageSettings.marginBottom}px`,
-                "--page-margin-left": `${pageSettings.marginLeft}px`,
-                "--header-from-edge": `${pageSettings.headerFromEdge}px`,
-                "--footer-from-edge": `${pageSettings.footerFromEdge}px`,
+                "--page-margin": `${shownSettings.marginTop}px`,
+                "--page-margin-top": `${shownSettings.marginTop}px`,
+                "--page-margin-right": `${shownSettings.marginRight}px`,
+                "--page-margin-bottom": `${shownSettings.marginBottom}px`,
+                "--page-margin-left": `${shownSettings.marginLeft}px`,
+                "--header-from-edge": `${shownSettings.headerFromEdge}px`,
+                "--footer-from-edge": `${shownSettings.footerFromEdge}px`,
                 "--body-inset-top": `${edgeInsets.top}px`,
                 "--body-inset-bottom": `${edgeInsets.bottom}px`,
                 "--page-stride": `${dimensions.height + 24}px`,
                 minHeight: `${pageCount * dimensions.height + (pageCount - 1) * 24}px`,
+"--page-zoom": String(Math.max(pageZoom, 0.2)),
                 // zoom: 1 still makes WebKit a zoom container, and then a
                 // heading shares its line with the paragraph above it.
                 ...(pageZoom === 1 ? {} : { zoom: pageZoom }),
@@ -2062,10 +2146,13 @@ export default function Docs({
             }
           >
             <PageFurniture
-              settings={pageSettings}
+              editor={editor}
+              settings={shownSettings}
               pageCount={pageCount}
+              readOnly={readOnly}
               arabicStart={arabicPage}
             />
+            <PageGutterBands settings={shownSettings} pageCount={pageCount} />
             <EditorContent editor={editor} />
             <KeepWithNextControl editor={editor} readOnly={readOnly} />
             <DontLeaveOneLineControl editor={editor} readOnly={readOnly} />

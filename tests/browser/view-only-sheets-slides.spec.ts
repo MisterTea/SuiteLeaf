@@ -189,6 +189,8 @@ test("a viewer cannot edit a sheet or a deck, and a commenter can still reply", 
     ).toBeEnabled();
     await expect(page.getByRole("button", { name: "Print (Cmd+P)" })).toBeEnabled();
     await expect(page.locator("[data-u-comp='formula-bar'] [data-view-locked]").first()).toBeVisible();
+    // The name box ignores Enter until the grid has finished starting.
+    await expect(page.locator(".sheet-host")).toHaveAttribute("aria-busy", "false");
     const name = page.locator(".sheet-host input.univer-size-full");
     await name.fill("C4");
     await name.press("Enter");

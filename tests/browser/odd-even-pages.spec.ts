@@ -52,10 +52,16 @@ test("odd and even pages keep the letterhead, mirror numbers, and survive reopen
   await expect(setup.getByLabel("Even page footer")).toHaveValue("Club copy");
   await expect(setup.getByLabel("Odd page footer")).toHaveValue("Club copy");
   const preview = setup.getByRole("group", { name: "Page preview" });
-  await expect(preview).toContainText("Riverside Garden Club");
-  await expect(preview).toContainText("No number");
-  await expect(preview).toContainText("2 / 4 on the left");
+  await expect(preview.locator(".page-setup-preview-sheet")).toHaveCount(2);
+  await expect(preview.locator("[data-preview-role='last-odd']")).toContainText(
+    "3 / 4",
+  );
+  await expect(preview.locator("[data-preview-role='last-even']")).toContainText(
+    "4 / 4",
+  );
   await expect(preview).toContainText("3 / 4 on the right");
+  await expect(preview).toContainText("4 / 4 on the left");
+  await expect(preview).not.toContainText("2 / 4");
   await setup.getByLabel("Even page header").fill("Minutes");
   await setup.getByLabel("Odd page header").fill("Garden club");
   await setup.getByLabel("Even page footer").fill("Left edge");

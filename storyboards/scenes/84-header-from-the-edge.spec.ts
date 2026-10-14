@@ -104,7 +104,7 @@ test("84-header-from-the-edge", async ({ page }) => {
   await expect(page.locator(".save-status")).toContainText("Saved");
   await beat(page, 400);
 
-  await caption(page, "Page setup. The margin is 1 inch, and the header starts on that same line.", 900);
+  await caption(page, "Page setup. The margin is 1 inch, and the header uses that same distance.", 900);
   await page.getByRole("button", { name: "Page setup", exact: true }).click();
   const setup = page.getByRole("dialog", { name: "Page setup" });
   await expect(setup).toBeVisible();
@@ -127,12 +127,12 @@ test("84-header-from-the-edge", async ({ page }) => {
   await showTop(page);
   const same = await places(page);
   near(same.headerTop, 1);
-  near(same.textTop, 1);
+  expect(same.textTop).toBeGreaterThan(same.headerTop + 0.1);
   const paper = await page.locator(".paginated-paper").boundingBox();
   if (paper) await page.mouse.move(paper.x + 120, paper.y + 96, { steps: 14 });
   await caption(
     page,
-    "Town council and the first line start the same distance from the top.",
+    "Town council sits an inch from the top. The notes start on the next line.",
     2200,
   );
 

@@ -66,7 +66,8 @@ describe("Word picture crop import", () => {
     const [image] = imagesOf(file.content);
     expect(imageCrop(image.attrs)).toEqual({ left: 10, top: 20, right: 30, bottom: 5 });
     expect(image.attrs?.src).toBe(png);
-    expect(image.attrs?.width).toBeUndefined();
+    expect(image.attrs?.width).toBe(200);
+    expect(image.attrs?.height).toBe(100);
     expect(report.warnings).toEqual([
       "SuiteLeaf lays out its own pages, so Word's exact line and page breaks, floating placement and font styling may differ.",
     ]);

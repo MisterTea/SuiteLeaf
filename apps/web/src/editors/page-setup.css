@@ -61,61 +61,222 @@
 .page-setup-preview {
   display: grid;
   grid-template-columns: repeat(var(--preview-columns, 3), minmax(0, 1fr));
-  gap: 8px;
+  gap: 12px;
+  justify-items: center;
 }
 .page-setup-preview-page {
+  position: relative;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  gap: 8px;
-  min-height: 84px;
-  padding: 8px;
-  border: 1px solid #dadce0;
-  border-radius: 6px;
-  background: #fff;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
   box-sizing: border-box;
 }
+.page-setup-preview:not(.is-parity) .page-setup-preview-sheet {
+  width: 96px;
+  height: 120px;
+  min-width: 96px;
+  min-height: 120px;
+  flex-shrink: 0;
+}
+.page-setup-preview-sheet {
+  position: relative;
+  width: 136px;
+  height: 176px;
+  box-sizing: border-box;
+  border: 1px solid #bdc1c6;
+  border-radius: 2px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(60, 64, 67, 0.16);
+  overflow: hidden;
+}
+.page-setup-preview-sheet::before {
+  content: "";
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 44px;
+  height: 88px;
+  background:
+    linear-gradient(#e8eaed, #e8eaed) 0 0 / 100% 2px no-repeat,
+    linear-gradient(#e8eaed, #e8eaed) 0 12px / 88% 2px no-repeat,
+    linear-gradient(#e8eaed, #e8eaed) 0 24px / 74% 2px no-repeat,
+    linear-gradient(#e8eaed, #e8eaed) 0 36px / 92% 2px no-repeat,
+    linear-gradient(#e8eaed, #e8eaed) 0 48px / 66% 2px no-repeat,
+    linear-gradient(#e8eaed, #e8eaed) 0 60px / 80% 2px no-repeat;
+  pointer-events: none;
+}
 .page-setup-preview-label {
+  max-width: 148px;
   font-size: 11px;
   font-weight: 600;
+  line-height: 1.2;
   color: #5f6368;
+  text-align: center;
 }
 .page-setup-preview-header {
-  font-size: 12px;
+  position: absolute;
+  z-index: 1;
+  top: 8px;
+  left: 10px;
+  right: 10px;
+  font-size: 10px;
   font-weight: 600;
+  line-height: 1.15;
   color: #1f1f1f;
-  white-space: nowrap;
+  /* A running header such as "Garden club minutes" has to stay readable
+     beside a corner number, so it may use a second line. */
+  white-space: normal;
   overflow: hidden;
-  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 .page-setup-preview-header.align-right { text-align: right; }
+.page-setup-preview-sheet[data-number-corner="top-right"] .page-setup-preview-header {
+  right: 72px;
+}
 .page-header.align-right {
   left: 0;
   right: 0;
   text-align: right;
 }
 .page-setup-preview-number {
+  position: absolute;
+  z-index: 1;
+  top: 8px;
+  left: 8px;
+  max-width: calc(100% - 16px);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  color: #174ea6;
+  background: #e8f0fe;
+  border-radius: 999px;
+  padding: 1px 6px;
+  white-space: nowrap;
+  transition: top 480ms ease, left 480ms ease, transform 480ms ease;
+}
+.page-setup-preview-number.side-top-right {
+  top: 8px;
+  left: calc(100% - 8px);
+  transform: translateX(-100%);
+}
+.page-setup-preview-number.side-top-left {
+  top: 8px;
+  left: 8px;
+  transform: none;
+}
+.page-setup-preview-sheet[data-number-corner="top-left"] .page-setup-preview-header {
+  left: 72px;
+}
+.page-setup-preview-number.side-center {
+  top: calc(100% - 8px);
+  left: 50%;
+  transform: translate(-50%, -100%);
+}
+.page-setup-preview-number.side-right {
+  top: calc(100% - 8px);
+  left: calc(100% - 8px);
+  transform: translate(-100%, -100%);
+}
+.page-setup-preview-number.side-left {
+  top: calc(100% - 8px);
+  left: 8px;
+  transform: translateY(-100%);
+}
+.page-setup-preview-number.side-none {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #80868b;
+  background: transparent;
+  font-weight: 500;
+  font-size: 11px;
+}
+.page-setup-preview-place {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.page-setup-preview.is-ends {
+  grid-template-columns: minmax(96px, 1fr) auto minmax(96px, 1fr);
+  align-items: stretch;
+}
+.page-setup-preview.is-parity {
+  width: max-content;
+  max-width: 100%;
+  margin-inline: auto;
+  grid-template-columns: repeat(var(--preview-columns, 2), 156px);
+  justify-content: center;
+  gap: 4px 36px;
+}
+.page-setup-dialog .page-setup-preview-sheet {
+  width: 96px;
+  height: 120px;
+  min-width: 96px;
+  min-height: 120px;
+  max-width: none;
+  flex-shrink: 0;
+}
+.page-setup-preview.is-parity .page-setup-preview-sheet::before {
+  top: 28px;
+  height: 72px;
+}
+@media (max-width: 760px) {
+  .page-setup-preview.is-parity {
+    width: 100%;
+    gap: 8px 12px;
+    grid-template-columns: repeat(var(--preview-columns, 2), minmax(0, 1fr));
+  }
+  .page-setup-preview.is-parity .page-setup-preview-sheet {
+    width: 100%;
+    max-width: 136px;
+    height: auto;
+    aspect-ratio: 136 / 176;
+  }
+}
+.page-setup-dialog .page-setup-preview .page-setup-preview-sheet {
+  width: 96px;
+  height: 120px;
+  min-width: 96px;
+  min-height: 120px;
+  max-width: none;
+  aspect-ratio: auto;
+  flex-shrink: 0;
+}
+.page-setup-preview-skip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  gap: 1px;
+  padding: 0 10px;
+  color: #5f6368;
+  text-align: center;
+}
+.page-setup-preview-skip-mark {
+  color: #1a73e8;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.12em;
+}
+.page-setup-preview-skip-label {
+  display: block;
   font-size: 12px;
   font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  color: #1a73e8;
-}
-.page-setup-preview-number.side-left { text-align: left; }
-.page-setup-preview-number.side-right,
-.page-setup-preview-number.side-top-right { text-align: right; }
-.page-setup-preview-number.side-center { text-align: center; }
-.page-setup-preview-page:has(.side-top-right) {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-content: start;
-  gap: 6px;
-}
-.page-setup-preview-page:has(.side-top-right) .page-setup-preview-label { grid-column: 1 / -1; }
-.page-setup-preview-page:has(.side-top-right) .side-top-right { grid-column: 2; grid-row: 2; }
-.page-setup-preview-number.side-none {
-  text-align: left;
-  color: #80868b;
-  font-weight: 500;
+  line-height: 1.25;
+  white-space: nowrap;
 }
 .page-setup-check.page-setup-numbers > label {
   grid-column: 1 / -1;
@@ -154,6 +315,7 @@
   background: #fff;
   font-weight: 500;
   cursor: pointer;
+  white-space: nowrap;
 }
 .page-setup-check.page-setup-numbers .page-number-choice label:has(input:checked) {
   border-color: #1a73e8;
@@ -188,6 +350,14 @@
 .page-setup-check.page-setup-numbers .page-number-start input:focus-visible {
   outline: 2px solid #1a73e8;
   outline-offset: 2px;
+}
+.page-setup-check.page-setup-numbers .page-number-start.is-refused input[type="number"] {
+  border-color: #d93025;
+  background: #fce8e6;
+}
+.page-setup-check.page-setup-numbers > .page-setup-hint.is-refused {
+  color: #a50e0e;
+  font-weight: 600;
 }
 .page-setup-check.page-setup-numbers > .page-number-cover {
   grid-column: 1 / -1;
@@ -237,31 +407,58 @@
   text-align: right;
 }
 .page-footer.number-none .page-footer-text { grid-column: 1 / -1; }
+.page-furniture {
+  /* Same size the pill uses, so the header can leave room for it. */
+  --page-number-size: calc(14px / var(--page-zoom, 1));
+}
 .page-furniture-page[data-number-side="top-right"] .page-header {
   left: 0;
-  right: 8em;
+  /* The pill stays a readable size when the sheet zooms down, so the
+     header inset grows with it. The words stop short of the number. */
+  right: max(8em, calc(var(--page-number-size, 14px) * 6.8));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.page-furniture-page[data-number-side="top-left"] .page-header {
+  right: 0;
+  /* The even-page number sits on the outside left. The words start after it. */
+  left: max(8em, calc(var(--page-number-size, 14px) * 6.8));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .page-number-top {
   position: absolute;
-  right: 0;
+  left: 0;
   top: var(--header-from-edge, calc(var(--page-margin) / 2 - 10px));
+  transition: left 480ms ease, transform 480ms ease;
+}
+.page-number-top.side-top-right {
+  left: 100%;
+  transform: translateX(-100%);
+}
+.page-number-top.side-top-left {
+  left: 0;
+  transform: none;
 }
 .page-number {
   color: #174ea6;
-  font-weight: 600;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
+  /* The sheet zooms down beside Page setup. Counter that zoom so the
+     number stays a readable label instead of shrinking with the paper. */
+  font-size: var(--page-number-size, calc(14px / var(--page-zoom, 1)));
   background: #e8f0fe;
   border-radius: 999px;
-  padding: 0 8px;
-  line-height: 18px;
+  padding: 0.05em 0.55em;
+  line-height: 1.35;
   white-space: nowrap;
 }
 @media (max-width: 700px) {
   .page-setup-variants,
-  .page-setup-preview { grid-template-columns: 1fr; }
+  .page-setup-preview,
+  .page-setup-preview.is-ends { grid-template-columns: 1fr; }
   .page-setup-fields > label,
   .page-setup-check,
   .page-setup-orientation {
@@ -270,4 +467,18 @@
   .page-setup-check label,
   .page-setup-hint { grid-column: 1; }
   .page-setup-orientation legend { float: none; }
+}
+
+.page-gutter-band {
+  position: absolute;
+  z-index: 1;
+  height: var(--page-height);
+  background: rgba(232, 234, 237, 0.85);
+  pointer-events: none;
+}
+.paginated-paper .doc-bind-odd {
+  margin-left: var(--page-gutter, 0px);
+}
+.paginated-paper .doc-bind-even {
+  margin-right: var(--page-gutter, 0px);
 }

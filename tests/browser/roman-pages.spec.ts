@@ -76,10 +76,10 @@ test("lowercase roman and an arabic restart survive save and Word export", async
   await page.getByRole("button", { name: "Page setup", exact: true }).click();
   const setup = page.getByRole("dialog", { name: "Page setup" });
   await expect(setup.getByRole("radio", { name: "Page 1" })).toBeChecked();
-  await expect(setup.getByRole("radio", { name: "i, ii, iii" })).toBeVisible();
+  await expect(setup.getByRole("radio", { name: "i … iv", exact: true })).toBeVisible();
   await expect(setup.getByLabel("Start at")).toHaveValue("1");
   await expect(setup.getByRole("checkbox", { name: "Cover has no number" })).toBeVisible();
-  await setup.getByRole("radio", { name: "i, ii, iii" }).check();
+  await setup.getByRole("radio", { name: "i … iv", exact: true }).check();
   await expect(setup.locator("#page-numbers-hint")).toContainText("i");
   await expect(setup.locator(".page-setup-preview-number").first()).toContainText("i");
   await setup.getByRole("button", { name: "Apply", exact: true }).click();

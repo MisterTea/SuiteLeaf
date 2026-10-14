@@ -139,8 +139,28 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 83 | [Line up the times](83-line-up-the-times.md) | single-node | Docs |
 | 84 | [Set how far the header sits from the edge](84-header-from-the-edge.md) | single-node | Docs |
 | 86 | [Keep the heading with the list](86-keep-the-heading-with-the-list.md) | single-node | Docs |
+| 87 | [Keep the letterhead's distance](87-keep-the-letterhead-distance.md) | single-node | Docs |
 | 89 | [Don't leave one line behind](89-dont-leave-one-line-behind.md) | single-node | Docs |
+| 91 | [Keep the letterhead off the title](91-keep-the-letterhead-off-the-title.md) | single-node | Docs |
 | 92 | [Keep the note on one page](92-keep-the-note-on-one-page.md) | single-node | Docs |
+| 94 | [See the margin and the reason](94-see-the-margin-and-the-reason.md) | single-node | Docs |
 | 95 | [Space before and after](95-space-before-and-after.md) | single-node | Docs |
+| 97 | [See the letterhead move](97-see-the-letterhead-move.md) | single-node | Docs |
 | 98 | [Indent the first line](98-indent-the-first-line.md) | single-node | Docs |
+| 100 | [See the margin move](100-see-the-margin-move.md) | single-node | Docs |
 | 102 | [Keep the indent from Word](102-keep-the-indent-from-word.md) | single-node | Docs |
+| 103 | [See the paper size change](103-see-the-paper-size.md) | single-node | Docs |
+| 105 | [See landscape before you apply](105-see-landscape.md) | single-node | Docs |
+| 106 | [See the header text before you apply](106-see-the-header-text.md) | single-node | Docs |
+| 110 | [See the page number before you apply](110-see-the-page-number.md) | single-node | Docs |
+| 113 | [See where the page number goes](113-see-where-the-number-goes.md) | single-node | Docs |
+| 114 | [See the starting number before you apply](114-see-the-starting-number.md) | single-node | Docs |
+| 117 | [Show the starting number on the format chips](117-show-the-start-on-the-chips.md) | single-node | Docs |
+| 119 | [Show the starting number on the roman chip](119-show-the-start-in-roman.md) | single-node | Docs |
+| 122 | [List only the roman pages you have](122-list-the-roman-pages-you-have.md) | single-node | Docs |
+| 124 | [Preview the first and last roman pages](124-preview-the-roman-ends.md) | single-node | Docs |
+| 127 | [Draw the number on the preview page](127-draw-the-number-on-the-preview.md) | single-node | Docs |
+| 128 | [Preview the last odd and even pages](128-preview-the-last-odd-and-even.md) | single-node | Docs |
+| 132 | [Put odd and even numbers on the outside](132-numbers-on-the-outside.md) | single-node | Docs |
+| 134 | [See the cover before you apply](134-see-the-cover.md) | single-node | Docs |
+| 135 | [See a different first page before you apply](135-see-a-different-first-page.md) | single-node | Docs |

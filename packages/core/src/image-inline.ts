@@ -85,6 +85,47 @@ function settleBlocks(nodes: JsonNode[]): JsonNode[] {
   return out;
 }
 
+/**
+ * Mammoth lifts an inline picture out of its paragraph, leaving the words
+ * on either side. Put that picture back between those words. A picture that
+ * was the only thing in its paragraph, or a square wrap, stays on its own line.
+ */
+export function rejoinSplitPictures(
+  doc: JsonNode,
+  sharesParagraph: boolean[],
+): JsonNode {
+  if (!doc.content) return doc;
+  const out: JsonNode[] = [];
+  let imageIndex = 0;
+  const blocks = doc.content;
+  for (let i = 0; i < blocks.length; i++) {
+    const node = blocks[i];
+    if (node.type !== "image") {
+      out.push(node);
+      continue;
+    }
+    const shares = sharesParagraph[imageIndex++] === true;
+    const wrap = node.attrs?.wrap;
+    if (!shares || wrap === "left" || wrap === "right" || wrap === "break") {
+      out.push(node);
+      continue;
+    }
+    const inline = inlineImageFrom(node);
+    const prev = out[out.length - 1];
+    const next = blocks[i + 1];
+    if (prev?.type === "paragraph" && next?.type === "paragraph") {
+      prev.content = [...(prev.content ?? []), inline, ...(next.content ?? [])];
+      i += 1;
+    } else if (prev?.type === "paragraph") {
+      prev.content = [...(prev.content ?? []), inline];
+    } else if (next?.type === "paragraph") {
+      out.push({ ...next, content: [inline, ...(next.content ?? [])] });
+      i += 1;
+    } else out.push(node);
+  }
+  return { ...doc, content: out };
+}
+
 /** After Word crops and wrap are copied on, put inline pictures back in the sentence. */
 export function settleWordPictures(doc: JsonNode): JsonNode {
   if (!doc.content) return doc;

@@ -8,7 +8,7 @@ import {
 } from "@suiteleaf/core/document-layout";
 import "./header-edge.css";
 
-function EdgeField({
+export function EdgeField({
   kind,
   draft,
   onChange,
@@ -76,7 +76,7 @@ export function HeaderEdgeFields({
     <fieldset className="header-edge-fields">
       <legend>Distance from the page edge</legend>
       <p className="header-edge-hint">
-        Separate from the margins. These move the header and the footer, not the notes.
+        Separate from the margins. These place the header and the footer. The margin numbers stay as they are.
       </p>
       <EdgeField kind="header" draft={draft} onChange={onChange} />
       <EdgeField kind="footer" draft={draft} onChange={onChange} />
