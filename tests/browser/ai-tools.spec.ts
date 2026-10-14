@@ -38,7 +38,7 @@ test("document tools write, style, find, replace and check spelling", async ({ p
   expect(read).not.toContain("(empty)\n");
 
   expect(await call(page, "check_spelling")).toContain('"recieve" (2×): receive');
-  await expect(page.getByRole("complementary", { name: "Spelling and grammar" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Spelling" })).toBeVisible();
   const replaced = await call(page, "find_and_replace", { find: "recieve", replace: "receive", all: true });
   expect(replaced).toContain('Replaced 2 of 2 "recieve" with "receive", in: "We receive so much help.", "We receive it gladly."');
   expect(replaced).toContain('No "recieve" is left');
@@ -68,7 +68,8 @@ test("document tools write, style, find, replace and check spelling", async ({ p
   await expect(page.locator(".page-footer").first()).toContainText("Garden club");
   expect(await call(page, "page_setup", { margin_inches: 1 })).toContain('1.00" margins');
   await page.getByRole("button", { name: "Page setup", exact: true }).click();
-  await expect(page.getByLabel("Page margins")).toHaveValue("1");
+  await expect(page.getByLabel("Top margin")).toHaveValue("1");
+  await expect(page.getByLabel("Left margin")).toHaveValue("1");
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   expect(await call(page, "page_setup", { margin_inches: 3 })).toContain('1.50" margins (3" is outside');
   const download = page.waitForEvent("download");
@@ -403,8 +404,11 @@ test("file tools download a file, remove it, and open it again without replacing
 
   expect(await call(page, "remove_file", { name: "Trip list" }, "Delete the trip list.")).toContain("A copy that was downloaded or saved elsewhere is not affected");
   await expect(page.locator(".file-row")).toHaveCount(0);
+  // Trash keeps the file, and that copy was edited after the download, so opening the download asks again.
   const [opened] = await Promise.all([call(page, "open_from_computer"), choose()]);
-  expect(opened).toContain('Opened "Trip list.sldoc"');
+  expect(opened).toContain("already in this browser");
+  expect(opened).toContain("The one here has newer changes");
+  await page.getByRole("dialog").getByRole("button", { name: "Keep both" }).click();
   await expect(page.getByRole("textbox", { name: "Document content" }).locator("li")).toHaveText(["Passport", "Plug adapter"]);
   await waitForTools(page, "set_list");
   expect(await call(page, "set_list", { from_text: "Trip", list: "bullet" })).toBe('Made 1 paragraph(s) a bullet list: "Trip" (was Heading 1).');

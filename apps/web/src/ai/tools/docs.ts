@@ -59,7 +59,12 @@ function blocks(editor: Editor) {
 function images(editor: Editor) {
   const list: { pos: number; end: number; name: string }[] = [];
   editor.state.doc.descendants((node, pos) => {
-    if (node.type.name === "image") list.push({ pos, end: pos + node.nodeSize, name: String(node.attrs.alt || "photo") });
+    if (node.type.name === "image")
+      list.push({
+        pos,
+        end: pos + node.nodeSize,
+        name: String(node.attrs.alt || node.attrs.title || "photo"),
+      });
   });
   return list;
 }
@@ -144,7 +149,10 @@ function objectAfter(editor: Editor, after: string, found?: { pos: number; label
   let last: { end: number; label: string } | undefined;
   doc.descendants((node, pos) => {
     if (node.type.name === type)
-      last = { end: pos + node.nodeSize, label: type === "table" ? "the table" : `the photo "${node.attrs.alt || "photo"}"` };
+      last = {
+        end: pos + node.nodeSize,
+        label: type === "table" ? "the table" : `the photo "${node.attrs.alt || node.attrs.title || "photo"}"`,
+      };
   });
   return last;
 }
@@ -705,8 +713,24 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
           ...current,
           ...(args.paper ? { size: args.paper as PageSettings["size"] } : {}),
           ...(args.orientation ? { landscape: args.orientation === "landscape" } : {}),
-          // Margins are stored in CSS pixels (96 per inch).
-          ...(args.margin_inches !== undefined ? { margin: Math.round(Math.min(1.5, Math.max(0.25, args.margin_inches)) * 96) } : {}),
+          // Margins are stored in CSS pixels (96 per inch). Each edge is stored too;
+          // a file that already has per-edge margins ignores the single `margin`.
+          ...(args.margin_inches !== undefined
+            ? (() => {
+                const margin = Math.round(Math.min(1.5, Math.max(0.25, args.margin_inches)) * 96);
+                return {
+                  margin,
+                  marginTop: margin,
+                  marginBottom: margin,
+                  marginLeft: margin,
+                  marginRight: margin,
+                  top: margin,
+                  bottom: margin,
+                  left: margin,
+                  right: margin,
+                };
+              })()
+            : {}),
           ...(args.header !== undefined ? { header: args.header } : {}),
           ...(args.footer !== undefined ? { footer: args.footer } : {}),
           ...(args.page_numbers !== undefined ? { pageNumbers: args.page_numbers } : {}),

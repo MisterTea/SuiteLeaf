@@ -833,7 +833,7 @@ export default function Docs({
       editor
         ?.chain()
         .focus()
-        .setImage({ src, alt: "" })
+        .setImage({ src, alt: "", title: f.name })
         .command(({ tr, state }) => {
           // Typing must continue after the photo, not replace it.
           if (!(tr.selection instanceof NodeSelection)) return true;
