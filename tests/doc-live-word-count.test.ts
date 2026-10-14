@@ -8,6 +8,7 @@ import { searchCommands } from "../apps/web/src/commands";
 import {
   countDocument,
   defaultProofing,
+  formatLiveCount,
   formatWordCount,
   selectionSnapshot,
 } from "../apps/web/src/editors/doc-word-count";
@@ -128,6 +129,106 @@ describe("live word count", () => {
     expect(xml).toContain("Apples were four dollars.");
     expect(xml).toContain("Pears were ten.");
     expect(xml).not.toContain("7 words");
+  });
+
+  it("shows words, characters, and characters without spaces for the sentence", () => {
+    const sentence: JsonNode = {
+      type: "doc",
+      content: [paragraph("Apples were four dollars.")],
+    };
+    const withBlank = minutes(false);
+    const alone = countDocument(sentence, settings);
+    const counted = countDocument(withBlank, settings);
+    expect(alone).toMatchObject({ words: 4, characters: 25, charactersWithoutSpaces: 22 });
+    expect(counted).toMatchObject({ words: 4, characters: 25, charactersWithoutSpaces: 22 });
+    expect(
+      formatLiveCount({
+        totalWords: counted.words,
+        totalCharacters: counted.characters,
+        totalWithoutSpaces: counted.charactersWithoutSpaces,
+        selectionWords: null,
+        selectionCharacters: null,
+        excludes: [],
+      }),
+    ).toBe("4 words, 25 characters, and 22 without spaces");
+    expect(
+      formatLiveCount({
+        totalWords: 0,
+        totalCharacters: 0,
+        totalWithoutSpaces: 0,
+        selectionWords: null,
+        selectionCharacters: null,
+        excludes: [],
+      }),
+    ).toBe("0 words, 0 characters, and 0 without spaces");
+
+    const doc = prose.nodeFromJSON(sentence);
+    let from = 0;
+    let to = 0;
+    doc.descendants((node, pos) => {
+      if (!node.isText || !node.text) return;
+      const at = node.text.indexOf("four dollars");
+      if (at < 0) return;
+      from = pos + at;
+      to = from + "four dollars".length;
+    });
+    const selected = selectionSnapshot(doc, from, to, null);
+    expect(selected?.stats.words).toBe(2);
+    expect(selected?.stats.characters).toBe(12);
+    expect(
+      formatLiveCount({
+        totalWords: 4,
+        totalCharacters: 25,
+        totalWithoutSpaces: 22,
+        selectionWords: selected?.stats.words ?? null,
+        selectionCharacters: selected?.stats.characters ?? null,
+        excludes: [],
+      }),
+    ).toBe("2 of 4 words and 12 of 25 characters");
+    expect(selectionSnapshot(doc, from, from, null)).toBeNull();
+    expect(
+      formatLiveCount({
+        totalWords: 4,
+        totalCharacters: 25,
+        totalWithoutSpaces: 22,
+        selectionWords: null,
+        selectionCharacters: null,
+        excludes: [],
+      }),
+    ).toBe("4 words, 25 characters, and 22 without spaces");
+  });
+
+  it("counts spaces inside a table cell and leaves the label out of Word", async () => {
+    const doc: JsonNode = {
+      type: "doc",
+      content: [
+        {
+          type: "table",
+          content: [row([cell("tableCell", "four dollars")])],
+        },
+      ],
+    };
+    expect(countDocument(doc, settings)).toMatchObject({
+      words: 2,
+      characters: 12,
+      charactersWithoutSpaces: 11,
+    });
+
+    const file = createFile("doc", "Market minutes");
+    if (file.kind !== "doc") throw new Error("expected a document");
+    file.content = {
+      type: "doc",
+      content: [paragraph("Apples were four dollars.")],
+    };
+    const stored = JSON.stringify(file.content);
+    expect(stored).toContain("Apples were four dollars.");
+    expect(stored).not.toContain("25 characters");
+    expect(stored).not.toContain("22 without spaces");
+    const zip = await JSZip.loadAsync(await exportDocx(file));
+    const xml = await zip.file("word/document.xml")!.async("string");
+    expect(xml).toContain("Apples were four dollars.");
+    expect(xml).not.toContain("25 characters");
+    expect(xml).not.toContain("22 without spaces");
   });
 
   it("does not say SuiteLeaf lacks word count", () => {

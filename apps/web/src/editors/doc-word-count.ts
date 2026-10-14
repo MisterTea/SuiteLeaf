@@ -220,6 +220,31 @@ export function formatWordCount(input: {
   return input.excludes.length ? `${base} (excludes ${input.excludes.join(" and ")})` : base;
 }
 
+/**
+ * The status-bar count: words, characters (spaces and punctuation included),
+ * and characters without spaces. A selection replaces the first two with
+ * "selected of total" and leaves the without-spaces total until the caret
+ * is only a caret again. The string is chrome; it is not written into the file.
+ */
+export function formatLiveCount(input: {
+  totalWords: number;
+  totalCharacters: number;
+  totalWithoutSpaces: number;
+  selectionWords: number | null;
+  selectionCharacters: number | null;
+  excludes: string[];
+}) {
+  const selected = input.selectionWords !== null;
+  const words = selected
+    ? `${formatNumber(input.selectionWords ?? 0)} of ${formatNumber(input.totalWords)} words`
+    : `${formatNumber(input.totalWords)} words`;
+  const characters = selected
+    ? `${formatNumber(input.selectionCharacters ?? 0)} of ${formatNumber(input.totalCharacters)} characters`
+    : `${formatNumber(input.totalCharacters)} characters, and ${formatNumber(input.totalWithoutSpaces)} without spaces`;
+  const base = selected ? `${words} and ${characters}` : `${words}, ${characters}`;
+  return input.excludes.length ? `${base} (excludes ${input.excludes.join(" and ")})` : base;
+}
+
 export function exclusionNotes(counts: DocumentCounts, settings: ProofingSettings) {
   const notes: string[] = [];
   if (settings.stopAtHeading) notes.push(settings.stopAtHeading);

@@ -39,11 +39,15 @@ test("word count is on by default, follows the selection, and stays shown after 
   await page.getByRole("button", { name: "New document" }).click();
   const editor = editorOf(page);
   await editor.click();
-  await expect(page.locator(".word-count")).toHaveText("0 words");
+  await expect(page.locator(".word-count")).toHaveText(
+    "0 words, 0 characters, and 0 without spaces",
+  );
   await page.keyboard.type("one two three four");
-  await expect(page.locator(".word-count")).toHaveText("4 words");
+  await expect(page.locator(".word-count")).toHaveText(
+    "4 words, 18 characters, and 15 without spaces",
+  );
   await page.keyboard.press("ControlOrMeta+A");
-  await expect(page.locator(".word-count")).toHaveText("4 of 4 words");
+  await expect(page.locator(".word-count")).toHaveText("4 of 4 words and 18 of 18 characters");
   await page.keyboard.press("ControlOrMeta+Shift+C");
   const dialog = page.getByRole("dialog", { name: "Word count" });
   await expect(dialog).toBeVisible();
@@ -53,13 +57,15 @@ test("word count is on by default, follows the selection, and stays shown after 
   await expect(dialog.getByRole("checkbox", { name: "Count footnotes" })).not.toBeChecked();
   await expect(dialog.getByRole("checkbox", { name: "Show word count while typing" })).toHaveCount(0);
   await dialog.getByRole("button", { name: "Done" }).click();
-  await expect(page.locator(".word-count")).toHaveText("4 of 4 words");
+  await expect(page.locator(".word-count")).toHaveText("4 of 4 words and 18 of 18 characters");
   await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByRole("menuitem", { name: "Save now" }).click();
   await expect(page.getByRole("status")).toContainText("Saved");
   await page.reload();
   await expect(editor).toContainText("one two three four");
-  await expect(page.locator(".word-count")).toHaveText("4 words");
+  await expect(page.locator(".word-count")).toHaveText(
+    "4 words, 18 characters, and 15 without spaces",
+  );
 });
 
 test("spelling keeps formatting, stays on device, and the dictionary can be undone", async ({
@@ -109,16 +115,22 @@ test("spelling keeps formatting, stays on device, and the dictionary can be undo
 
 test("essay word count excludes a heading and is saved with the file", async ({ page }) => {
   await seedEssay(page);
-  await expect(page.locator(".word-count")).toHaveText("1,612 words");
+  await expect(page.locator(".word-count")).toHaveText(
+    "1,612 words, 9,396 characters, and 7,823 without spaces",
+  );
   await page.getByRole("button", { name: "Tools", exact: true }).click();
   await page.getByRole("menuitem", { name: /Word count/ }).click();
   const dialog = page.getByRole("dialog", { name: "Word count" });
   await dialog.getByLabel("Stop counting at heading").selectOption("References");
   await expect(dialog.locator("tr", { hasText: "Words" }).locator("td").nth(1)).toHaveText("1,488");
   await dialog.getByRole("button", { name: "Done" }).click();
-  await expect(page.locator(".word-count")).toHaveText("1,488 words (excludes References)");
+  await expect(page.locator(".word-count")).toHaveText(
+    "1,488 words, 8,668 characters, and 7,215 without spaces (excludes References)",
+  );
   await expect(page.getByRole("status")).toContainText("Saved");
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Independence essay" }).click();
-  await expect(page.locator(".word-count")).toHaveText("1,488 words (excludes References)");
+  await expect(page.locator(".word-count")).toHaveText(
+    "1,488 words, 8,668 characters, and 7,215 without spaces (excludes References)",
+  );
 });

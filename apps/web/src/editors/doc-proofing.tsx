@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState, type MutableRefObject, type R
 import {
   countDocument,
   exclusionNotes,
-  formatWordCount,
+  formatLiveCount,
   readProofing,
   selectionPages,
   selectionSnapshot,
@@ -229,12 +229,15 @@ export function useDocProofing(
   const close = () => setDialog(null);
   const notes = snapshot ? exclusionNotes(snapshot.counts, snapshot.settings) : [];
   const label = snapshot
-    ? formatWordCount({
+    ? formatLiveCount({
         totalWords: snapshot.counts.words,
+        totalCharacters: snapshot.counts.characters,
+        totalWithoutSpaces: snapshot.counts.charactersWithoutSpaces,
         selectionWords: snapshot.selection ? snapshot.selection.stats.words : null,
+        selectionCharacters: snapshot.selection ? snapshot.selection.stats.characters : null,
         excludes: notes,
       })
-    : "0 words";
+    : "0 words, 0 characters, and 0 without spaces";
   const headings = [
     ...new Set(
       (snapshot?.counts.headings ?? []).filter((heading) => heading.trim()),
