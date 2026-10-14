@@ -150,11 +150,11 @@ import {
   slideZoom,
 } from "./slide-zoom";
 import {
-  canvasMatches,
   findBarStatus,
   findDeckMatches,
   indexAfterReplace,
   nextMatchIndex,
+  noteReplacedStatus,
   replaceAllDeckMatches,
   replaceAllLabel,
   replaceDeckMatch,
@@ -402,13 +402,13 @@ export default function Slides({
     const before = findDeckMatches(deckRef.current, findQuery);
     if (!before.length) return;
     const index = findIndex >= 0 && findIndex < before.length ? findIndex : 0;
-    if (before[index].inNotes) return;
-    const next = replaceDeckMatch(deckRef.current, before[index], findQuery, replaceWith);
+    const current = before[index];
+    const next = replaceDeckMatch(deckRef.current, current, findQuery, replaceWith);
     if (next === deckRef.current) return;
     commitRef.current(next);
-    setReplacedNotice(null);
     const after = findDeckMatches(next, findQuery);
     const land = indexAfterReplace(before, index, after, findQuery, replaceWith);
+    setReplacedNotice(current.inNotes ? noteReplacedStatus(findQuery, after, land) : null);
     if (after.length) showMatch(land);
     else setFindIndex(0);
   };
@@ -2710,23 +2710,21 @@ ${slidesHtml}
             type="button"
             className="slide-find-replace"
             title={
-              matches[findIndex]?.inNotes
-                ? "Notes are not replaced"
-                : "Replace this match"
+              matches[findIndex]?.inNotes ? "Replace this note" : "Replace this match"
             }
             onClick={replaceCurrent}
-            disabled={readOnly || !matches.length || !!matches[findIndex]?.inNotes}
+            disabled={readOnly || !matches.length}
           >
             Replace
           </button>
-          {canvasMatches(matches).length > 0 ? (
+          {matches.length > 0 ? (
             <button
               type="button"
               className="slide-find-replace-all"
               onClick={replaceEvery}
               disabled={readOnly}
             >
-              {replaceAllLabel(canvasMatches(matches).length)}
+              {replaceAllLabel(matches.length)}
             </button>
           ) : null}
           <button

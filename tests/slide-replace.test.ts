@@ -4,6 +4,7 @@ import {
   findDeckMatches,
   findStatus,
   indexAfterReplace,
+  noteReplacedStatus,
   replaceAllDeckMatches,
   replaceAllLabel,
   replaceDeckMatch,
@@ -101,7 +102,12 @@ describe("replace across the deck", () => {
     ]);
     expect(indexAfterReplace(matches, 0, remaining, "Market", "Bazaar")).toBe(0);
     expect(findStatus("Market", remaining, 0)).toBe("1 of 2 in the notes on Prices");
-    expect(replaceDeckMatch(next, remaining[0], "Market", "Bazaar")).toBe(next);
+    const noted = replaceDeckMatch(next, remaining[0], "Market", "Bazaar");
+    expect(noted.slides.prices.notes).toBe("Remember the Bazaar stall.");
+    expect(noted.slides.prices.elements[0].content).toBe("Prices");
+    expect(noted.slides.prices.elements[0].x).toBe(72);
+    expect(noted.slides.thanks.elements[0].content).toBe("Market day");
+    expect(noted.slides[welcome].elements[0].content).toBe("Bazaar");
     expect(next.slides.prices.notes).toBe("Remember the market stall.");
     expect(deck.slides[welcome].elements[0].content).toBe("Market");
   });
@@ -111,8 +117,8 @@ describe("replace across the deck", () => {
     const welcome = deck.slideOrder[0];
     expect(replaceAllLabel(2)).toBe("Replace all 2");
     const { deck: next, count } = replaceAllDeckMatches(deck, "Market", "Bazaar");
-    expect(count).toBe(2);
-    expect(replacedStatus(count)).toBe("2 replaced");
+    expect(count).toBe(3);
+    expect(replacedStatus(count)).toBe("3 replaced");
     expect(next.slides[welcome].elements[0].content).toBe("Bazaar");
     expect(next.slides[welcome].elements[0].x).toBe(72);
     expect(next.slides[welcome].elements[0].y).toBe(180);
@@ -125,12 +131,10 @@ describe("replace across the deck", () => {
     expect(next.slides.thanks.elements[0].y).toBe(200);
     expect(next.slides.prices.elements[0].content).toBe("Prices");
     expect(next.slides.prices.elements[1].content).toBe("Market");
-    expect(next.slides.prices.notes).toBe("Remember the market stall.");
+    expect(next.slides.prices.notes).toBe("Remember the Bazaar stall.");
     expect(next.slideOrder).toEqual(deck.slideOrder);
-    expect(findDeckMatches(next, "Market").map((match) => [match.place, match.inNotes])).toEqual([
-      ["Prices", true],
-    ]);
-    expect(next.slides.prices.notes).toBe("Remember the market stall.");
+    expect(findDeckMatches(next, "Market")).toEqual([]);
+    expect(deck.slides.prices.notes).toBe("Remember the market stall.");
     expect(deck.slides[welcome].elements[0].content).toBe("Market");
   });
 
@@ -145,7 +149,8 @@ describe("replace across the deck", () => {
       bold: true,
     });
     expect(next.slides.thanks.elements[0].content).not.toMatch(/MARKET/);
-    expect(next.slides.prices.notes).toBe("Remember the market stall.");
+    expect(next.slides.prices.notes).toBe("Remember the Bazaar stall.");
+    expect(next.slides.prices.notes).not.toMatch(/MARKET|bazaar/);
   });
 
   it("leaves the deck unchanged when nothing matches", () => {
@@ -166,12 +171,144 @@ describe("replace across the deck", () => {
     deck.slides.prices.skipped = true;
     deck.slides.prices.elements[0].content = "Market";
     const { deck: next, count } = replaceAllDeckMatches(deck, "Market", "Bazaar");
-    expect(count).toBe(3);
+    expect(count).toBe(4);
     expect(next.slides.prices.skipped).toBe(true);
     expect(next.slides.prices.elements[0].content).toBe("Bazaar");
     expect(next.slides.prices.elements[0].x).toBe(72);
-    expect(next.slides.prices.notes).toBe("Remember the market stall.");
+    expect(next.slides.prices.notes).toBe("Remember the Bazaar stall.");
     expect(deck.slides.prices.elements[0].content).toBe("Market");
+    expect(deck.slides.prices.notes).toBe("Remember the market stall.");
     expect(deck.slides.prices.skipped).toBe(true);
+  });
+});
+
+describe("replace a speaker note", () => {
+  function withPears() {
+    const deck = townHall();
+    const welcome = deck.slideOrder[0];
+    deck.slides[welcome].notes = "mention the pears";
+    deck.slides.thanks.notes = "mention the pears";
+    return deck;
+  }
+
+  it("replaces one of two note matches and leaves the other and the canvas", () => {
+    const deck = withPears();
+    const welcome = deck.slideOrder[0];
+    const matches = findDeckMatches(deck, "pears");
+    expect(matches.map((match) => [match.place, match.inNotes])).toEqual([
+      ["Welcome", true],
+      ["Thanks", true],
+    ]);
+    const next = replaceDeckMatch(deck, matches[0], "pears", "apples");
+    expect(next.slides[welcome].notes).toBe("mention the apples");
+    expect(next.slides[welcome].elements[0].content).toBe("Market");
+    expect(next.slides[welcome].elements[0].x).toBe(72);
+    expect(next.slides[welcome].elements[0].y).toBe(180);
+    expect(next.slides.thanks.notes).toBe("mention the pears");
+    expect(next.slides.thanks.elements[0].content).toBe("Market day");
+    expect(next.slides.thanks.elements[0].x).toBe(96);
+    expect(next.slideOrder).toEqual(deck.slideOrder);
+    const remaining = findDeckMatches(next, "pears");
+    expect(remaining.map((match) => [match.place, match.inNotes])).toEqual([["Thanks", true]]);
+    expect(indexAfterReplace(matches, 0, remaining, "pears", "apples")).toBe(0);
+    expect(noteReplacedStatus("pears", remaining, 0)).toBe(
+      "Replaced in the notes. 1 of 1 in the notes on Thanks",
+    );
+    expect(replaceAllLabel(remaining.length)).toBe("Replace all 1");
+    const { deck: all, count } = replaceAllDeckMatches(next, "pears", "apples");
+    expect(count).toBe(1);
+    expect(all.slides.thanks.notes).toBe("mention the apples");
+    expect(all.slides[welcome].notes).toBe("mention the apples");
+    expect(all.slides[welcome].elements[0].content).toBe("Market");
+    expect(deck.slides[welcome].notes).toBe("mention the pears");
+    expect(deck.slides[welcome].elements[0].content).toBe("Market");
+  });
+
+  it("replaces every note and leaves the canvas", () => {
+    const deck = withPears();
+    const welcome = deck.slideOrder[0];
+    const { deck: next, count } = replaceAllDeckMatches(deck, "pears", "apples");
+    expect(count).toBe(2);
+    expect(replacedStatus(count)).toBe("2 replaced");
+    expect(next.slides[welcome].notes).toBe("mention the apples");
+    expect(next.slides.thanks.notes).toBe("mention the apples");
+    expect(next.slides[welcome].elements[0].content).toBe("Market");
+    expect(next.slides[welcome].elements[0].x).toBe(72);
+    expect(next.slides[welcome].elements[0].y).toBe(180);
+    expect(next.slides.thanks.elements[0].content).toBe("Market day");
+    expect(next.slides.prices.elements[0].content).toBe("Prices");
+    expect(next.slides.prices.notes).toBe("Remember the market stall.");
+    expect(findDeckMatches(next, "pears")).toEqual([]);
+    expect(deck.slides[welcome].notes).toBe("mention the pears");
+    expect(deck.slides.thanks.notes).toBe("mention the pears");
+  });
+
+  it("keeps apples lowercase when the note says Pears", () => {
+    const deck = townHall();
+    const welcome = deck.slideOrder[0];
+    deck.slides[welcome].notes = "mention the Pears";
+    const matches = findDeckMatches(deck, "pears");
+    expect(matches).toHaveLength(1);
+    const next = replaceDeckMatch(deck, matches[0], "pears", "apples");
+    expect(next.slides[welcome].notes).toBe("mention the apples");
+    expect(next.slides[welcome].elements[0].content).toBe("Market");
+    expect(next.slides[welcome].elements[0].x).toBe(72);
+    expect(deck.slides[welcome].notes).toBe("mention the Pears");
+  });
+
+  it("still replaces a canvas Market with Bazaar", () => {
+    const deck = withPears();
+    const welcome = deck.slideOrder[0];
+    const matches = findDeckMatches(deck, "Market");
+    const canvas = matches.find((match) => !match.inNotes && match.slideId === welcome);
+    expect(canvas).toBeTruthy();
+    const next = replaceDeckMatch(deck, canvas!, "Market", "Bazaar");
+    expect(next.slides[welcome].elements[0].content).toBe("Bazaar");
+    expect(next.slides[welcome].notes).toBe("mention the pears");
+    expect(next.slides.thanks.notes).toBe("mention the pears");
+    expect(next.slides.thanks.elements[0].content).toBe("Market day");
+    const { deck: all, count } = replaceAllDeckMatches(deck, "Market", "Bazaar");
+    expect(count).toBe(3);
+    expect(all.slides[welcome].elements[0].content).toBe("Bazaar");
+    expect(all.slides.thanks.elements[0].content).toBe("Bazaar day");
+    expect(all.slides.prices.notes).toBe("Remember the Bazaar stall.");
+    expect(all.slides[welcome].notes).toBe("mention the pears");
+  });
+
+  it("leaves notes unchanged when nothing matches", () => {
+    const deck = withPears();
+    const welcome = deck.slideOrder[0];
+    const missed = replaceAllDeckMatches(deck, "zzzz", "apples");
+    expect(missed.count).toBe(0);
+    expect(missed.deck).toBe(deck);
+    expect(replaceAllDeckMatches(deck, "   ", "apples").deck).toBe(deck);
+    const matches = findDeckMatches(deck, "pears");
+    expect(replaceDeckMatch(deck, matches[0], "zzzz", "apples")).toBe(deck);
+    expect(deck.slides[welcome].notes).toBe("mention the pears");
+    expect(deck.slides.thanks.notes).toBe("mention the pears");
+    expect(deck.slides[welcome].elements[0].content).toBe("Market");
+    expect(noteReplacedStatus("zzzz", [], 0)).toBe("Replaced in the notes");
+  });
+
+  it("replaces a skipped slide's note and leaves it skipped", () => {
+    const deck = withPears();
+    deck.slides.prices.skipped = true;
+    deck.slides.prices.notes = "mention the pears";
+    const matches = findDeckMatches(deck, "pears");
+    expect(matches.map((match) => match.place)).toEqual(["Welcome", "Prices", "Thanks"]);
+    const next = replaceDeckMatch(deck, matches[1], "pears", "apples");
+    expect(next.slides.prices.skipped).toBe(true);
+    expect(next.slides.prices.notes).toBe("mention the apples");
+    expect(next.slides.prices.elements[0].content).toBe("Prices");
+    expect(next.slides.prices.elements[0].x).toBe(72);
+    expect(next.slides.prices.elements[0].y).toBe(180);
+    expect(next.slides[deck.slideOrder[0]].notes).toBe("mention the pears");
+    expect(deck.slides.prices.notes).toBe("mention the pears");
+    expect(deck.slides.prices.skipped).toBe(true);
+    const { deck: all, count } = replaceAllDeckMatches(deck, "pears", "apples");
+    expect(count).toBe(3);
+    expect(all.slides.prices.skipped).toBe(true);
+    expect(all.slides.prices.notes).toBe("mention the apples");
+    expect(all.slides.prices.elements[0].content).toBe("Prices");
   });
 });

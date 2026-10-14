@@ -106,24 +106,15 @@ export function findStatus(
 }
 
 /**
- * Find status for the bar. A notes match says Replace will not change it.
- * Canvas matches keep the plain "on the slide" wording.
+ * Find status for the bar. A notes match says it is in the notes, so Replace
+ * can change that note. Canvas matches keep the plain "on the slide" wording.
  */
 export function findBarStatus(
   query: string,
   matches: readonly { place: string; inNotes?: boolean }[],
   index: number,
 ): string {
-  const located = findStatus(query, matches, index);
-  if (!query.trim() || !matches.length) return located;
-  const at = index >= 0 && index < matches.length ? index : 0;
-  if (!matches[at]?.inNotes) return located;
-  return `${located}. Notes are not replaced`;
-}
-
-/** Canvas matches only. Speaker notes are left out of Replace and Replace all. */
-export function canvasMatches<T extends { inNotes?: boolean }>(matches: readonly T[]): T[] {
-  return matches.filter((match) => !match.inNotes);
+  return findStatus(query, matches, index);
 }
 
 /** "Replace all 2". Zero matches are not offered a button. */
@@ -134,6 +125,19 @@ export function replaceAllLabel(count: number): string {
 /** "2 replaced" after Replace all. */
 export function replacedStatus(count: number): string {
   return `${count} replaced`;
+}
+
+/**
+ * Status after Replace changes one speaker note. The bar says the change is
+ * in the notes, then names the remaining match when one is still there.
+ */
+export function noteReplacedStatus(
+  query: string,
+  matches: readonly { place: string; inNotes?: boolean }[],
+  index: number,
+): string {
+  if (!matches.length) return "Replaced in the notes";
+  return `Replaced in the notes. ${findStatus(query, matches, index)}`;
 }
 
 function needleOf(query: string): string {
@@ -193,6 +197,17 @@ function replaceInElement(
   };
 }
 
+function replaceInNotes(
+  notes: string,
+  from: number,
+  to: number,
+  needle: string,
+  replacement: string,
+): string {
+  if (notes.slice(from, to).toLowerCase() !== needle) return notes;
+  return notes.slice(0, from) + replacement + notes.slice(to);
+}
+
 function applyMatchReplacements(
   deck: Presentation,
   matches: readonly DeckMatch[],
@@ -200,7 +215,14 @@ function applyMatchReplacements(
   replacement: string,
 ): Presentation {
   const groups = new Map<string, DeckMatch[]>();
-  for (const match of canvasMatches(matches)) {
+  const noteGroups = new Map<string, DeckMatch[]>();
+  for (const match of matches) {
+    if (match.inNotes) {
+      const list = noteGroups.get(match.slideId);
+      if (list) list.push(match);
+      else noteGroups.set(match.slideId, [match]);
+      continue;
+    }
     const key = `${match.slideId}\0${match.elementId}`;
     const list = groups.get(key);
     if (list) list.push(match);
@@ -237,14 +259,40 @@ function applyMatchReplacements(
       [slideId]: { ...slide, elements },
     };
   }
+  for (const list of noteGroups.values()) {
+    const slideId = list[0].slideId;
+    const slide = slides[slideId];
+    if (!slide) continue;
+    const ordered = [...list].sort((a, b) => b.start - a.start);
+    let notes = slide.notes ?? "";
+    let changed = false;
+    for (const match of ordered) {
+      const updated = replaceInNotes(
+        notes,
+        match.start,
+        match.start + needle.length,
+        needle,
+        replacement,
+      );
+      if (updated !== notes) {
+        notes = updated;
+        changed = true;
+      }
+    }
+    if (!changed) continue;
+    slides = {
+      ...slides,
+      [slideId]: { ...slide, notes },
+    };
+  }
   if (slides === deck.slides) return deck;
   return { ...deck, slides };
 }
 
 /**
- * Replace one canvas match with the typed text. Capitalization is kept as typed.
- * Notes matches are skipped so the note text stays. Other matches and box
- * positions stay.
+ * Replace one match with the typed text. Capitalization is kept as typed.
+ * A notes match changes only that occurrence in the speaker notes. Canvas
+ * text, other matches, and box positions stay.
  */
 export function replaceDeckMatch(
   deck: Presentation,
@@ -253,13 +301,13 @@ export function replaceDeckMatch(
   replacement: string,
 ): Presentation {
   const needle = needleOf(query);
-  if (!needle || match.inNotes) return deck;
+  if (!needle) return deck;
   return applyMatchReplacements(deck, [match], needle, replacement);
 }
 
 /**
- * Replace every current canvas match. Notes matches are left unchanged.
- * A query that hits nothing on the canvas returns the same deck.
+ * Replace every current match, including speaker notes. A query that hits
+ * nothing returns the same deck.
  */
 export function replaceAllDeckMatches(
   deck: Presentation,
@@ -268,7 +316,7 @@ export function replaceAllDeckMatches(
 ): { deck: Presentation; count: number } {
   const needle = needleOf(query);
   if (!needle) return { deck, count: 0 };
-  const matches = canvasMatches(findDeckMatches(deck, query));
+  const matches = findDeckMatches(deck, query);
   if (!matches.length) return { deck, count: 0 };
   return {
     deck: applyMatchReplacements(deck, matches, needle, replacement),

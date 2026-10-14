@@ -5,8 +5,6 @@ import {
   findDeckMatches,
   findStatus,
   nextMatchIndex,
-  replaceAllDeckMatches,
-  replaceDeckMatch,
 } from "../apps/web/src/editors/slide-find";
 
 function townHall() {
@@ -88,7 +86,7 @@ describe("find across the deck", () => {
     expect(matches[notes].inNotes).toBe(true);
     expect(findStatus("Market", matches, notes)).toBe("2 of 3 in the notes on Prices");
     expect(findBarStatus("Market", matches, notes)).toBe(
-      "2 of 3 in the notes on Prices. Notes are not replaced",
+      "2 of 3 in the notes on Prices",
     );
 
     const thanks = nextMatchIndex(notes, matches.length);
@@ -156,13 +154,10 @@ describe("find across the deck", () => {
     expect(matches[0].start).toBe("mention the pears".indexOf("pears"));
     expect(findStatus("pears", matches, 0)).toBe("1 of 1 in the notes on Welcome");
     expect(findBarStatus("pears", matches, 0)).toBe(
-      "1 of 1 in the notes on Welcome. Notes are not replaced",
+      "1 of 1 in the notes on Welcome",
     );
     expect(deck).toEqual(before);
     expect(deck.slides[welcome].elements[0].content).toBe("Market");
-    expect(deck.slides[welcome].notes).toBe("mention the pears");
-    expect(replaceDeckMatch(deck, matches[0], "pears", "apples")).toBe(deck);
-    expect(replaceAllDeckMatches(deck, "pears", "apples")).toEqual({ deck, count: 0 });
     expect(deck.slides[welcome].notes).toBe("mention the pears");
   });
 
