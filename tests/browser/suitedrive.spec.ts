@@ -214,7 +214,7 @@ test.describe("SuiteDrive across two nodes", () => {
         const r = await fetch(url, {
           method: "PUT",
           headers: { ...headers, "content-type": "application/json" },
-          body: text.replace(from, to),
+          body: text.replaceAll(from, to),
         });
         if (!r.ok) throw new Error(`upload failed: ${r.status}`);
       },
