@@ -63,6 +63,16 @@ fn users(db: &Db) -> Result<Vec<std::collections::BTreeMap<String, Value>>, Driv
 
 /// If nobody has the admin role, the oldest account becomes the admin.
 pub fn ensure_an_admin(db: &Db) -> anyhow::Result<()> {
+    // Adapter tests grow the auth schema one plugin at a time. Until `role`
+    // exists, there is nothing to promote.
+    if db
+        .schema()
+        .table("user")
+        .and_then(|table| table.column_type("role"))
+        .is_none()
+    {
+        return Ok(());
+    }
     let rows = users(db)?;
     if rows.is_empty()
         || rows
