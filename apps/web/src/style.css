@@ -3796,8 +3796,9 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   font-weight: 600;
   color: #202124;
 }
-.slide-find-input {
-  width: 220px;
+.slide-find-input,
+.slide-replace-input {
+  width: 148px;
   border: 1px solid #dadce0;
   border-radius: 6px;
   padding: 6px 8px;
@@ -3812,6 +3813,8 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   white-space: nowrap;
 }
 .slide-find-next,
+.slide-find-replace,
+.slide-find-replace-all,
 .slide-find-close {
   border: 0;
   background: #e8f0fe;
@@ -3822,8 +3825,11 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   border-radius: 6px;
   padding: 6px 10px;
   cursor: pointer;
+  white-space: nowrap;
 }
-.slide-find-next:disabled {
+.slide-find-next:disabled,
+.slide-find-replace:disabled,
+.slide-find-replace-all:disabled {
   opacity: 0.45;
   cursor: default;
 }

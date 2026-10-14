@@ -152,7 +152,12 @@ import {
 import {
   findDeckMatches,
   findStatus,
+  indexAfterReplace,
   nextMatchIndex,
+  replaceAllDeckMatches,
+  replaceAllLabel,
+  replaceDeckMatch,
+  replacedStatus,
 } from "./slide-find";
 
 type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
@@ -212,7 +217,9 @@ export default function Slides({
   const [zoom, setZoom] = useState(() => slideZoom(file.id));
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
+  const [replaceWith, setReplaceWith] = useState("");
   const [findIndex, setFindIndex] = useState(0);
+  const [replacedNotice, setReplacedNotice] = useState<string | null>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
   const matches = useMemo(
     () => findDeckMatches(deck, findQuery),
@@ -365,6 +372,7 @@ export default function Slides({
 
   const updateFind = (value: string) => {
     setFindQuery(value);
+    setReplacedNotice(null);
     const found = findDeckMatches(deckRef.current, value);
     setFindIndex(0);
     if (!value.trim() || !found.length) return;
@@ -374,12 +382,41 @@ export default function Slides({
   };
 
   const findNext = () => {
+    setReplacedNotice(null);
     const found = findDeckMatches(deckRef.current, findQuery);
     if (!found.length) return;
     showMatch(nextMatchIndex(findIndex, found.length));
   };
 
   const closeFind = () => setFindOpen(false);
+
+  const replaceCurrent = () => {
+    if (readOnlyRef.current) return;
+    const before = findDeckMatches(deckRef.current, findQuery);
+    if (!before.length) return;
+    const index = findIndex >= 0 && findIndex < before.length ? findIndex : 0;
+    const next = replaceDeckMatch(deckRef.current, before[index], findQuery, replaceWith);
+    if (next === deckRef.current) return;
+    commitRef.current(next);
+    setReplacedNotice(null);
+    const after = findDeckMatches(next, findQuery);
+    const land = indexAfterReplace(before, index, after, findQuery, replaceWith);
+    if (after.length) showMatch(land);
+    else setFindIndex(0);
+  };
+
+  const replaceEvery = () => {
+    if (readOnlyRef.current) return;
+    const { deck: next, count } = replaceAllDeckMatches(
+      deckRef.current,
+      findQuery,
+      replaceWith,
+    );
+    if (!count || next === deckRef.current) return;
+    commitRef.current(next);
+    setFindIndex(0);
+    setReplacedNotice(replacedStatus(count));
+  };
 
   useEffect(() => {
     if (findOpen) findInputRef.current?.focus();
@@ -2628,8 +2665,46 @@ ${slidesHtml}
             }}
           />
           <span className="slide-find-status" role="status">
-            {findStatus(findQuery, matches, findIndex)}
+            {replacedNotice ?? findStatus(findQuery, matches, findIndex)}
           </span>
+          <label htmlFor="slide-replace-input">Replace</label>
+          <input
+            id="slide-replace-input"
+            className="slide-replace-input"
+            aria-label="Replace with"
+            value={replaceWith}
+            disabled={readOnly}
+            onChange={(e) => setReplaceWith(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                replaceCurrent();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                closeFind();
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="slide-find-replace"
+            title="Replace this match"
+            onClick={replaceCurrent}
+            disabled={readOnly || !matches.length}
+          >
+            Replace
+          </button>
+          {matches.length > 0 ? (
+            <button
+              type="button"
+              className="slide-find-replace-all"
+              onClick={replaceEvery}
+              disabled={readOnly}
+            >
+              {replaceAllLabel(matches.length)}
+            </button>
+          ) : null}
           <button
             type="button"
             className="slide-find-next"
