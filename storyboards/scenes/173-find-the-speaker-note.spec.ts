@@ -185,9 +185,7 @@ test("173-find-the-speaker-note", async ({ page }) => {
   await expect(field).toBeVisible();
   await field.click();
   await typeSlowly(page, "pears", 90);
-  await expect(status(page)).toHaveText(
-    "1 of 1 in the notes on Welcome. Notes are not replaced",
-  );
+  await expect(status(page)).toHaveText("1 of 1 in the notes on Welcome");
   const statusBox = await status(page).boundingBox();
   expect(statusBox).toBeTruthy();
   expect(statusBox!.x).toBeGreaterThanOrEqual(0);
@@ -198,7 +196,7 @@ test("173-find-the-speaker-note", async ({ page }) => {
   await expect(word(page)).toHaveAttribute("data-y", storedY!);
   await expect(page.locator("select.zoom-select")).toHaveValue("100%");
   await expect(page.locator(".slide-number-chrome")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /Replace all/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Replace all 1" })).toBeVisible();
   await placeCaption(page);
   await notesStayClear(page, "mention the pears");
   await pointAt(page, status(page));
