@@ -198,7 +198,7 @@ Its weaknesses:
 
 - **It does things nobody asked for.** It ticked a box to try out the rule it had just set up (18), made an editable copy of a new pivot table (15), removed a file after reopening it (08), and exported to Excel when asked to download the file (17, every browser run). Gemma's failures were mostly the opposite: leaving part of the task undone.
 - **It is slower per request.** It thinks before every step, so a request takes about twice as long as Gemma's on every backend, even though it generates tokens faster.
-- **It is weaker in the browser.** The browser export passed 79% against 90% for both desktop builds. Every browser run failed 17 and 23; in 23 it made the folder, then created the document in My Drive. The browser's community q4f16 export (block size 32, symmetric) may lose more accuracy than the Q4_K_M GGUF does, but three runs per storyboard are too few to be sure.
+- **It is weaker in the browser.** The browser export passed 79% against 90% for both desktop builds. Every browser run failed 17 and 23; in 23 it made the folder, then created the document in My Drive. The browser's community q4f16 export (block size 32, symmetric) may lose more accuracy than the Q4_K_M GGUF does, but three runs per storyboard are too few to be sure. A rerun of the four storyboards it lost (02, 17, 18, 23), after the browser and desktop tools were given the same descriptions, passed 11/12. It saved the SuiteLeaf file instead of exporting Excel (17: 3/3), opened the new folder before creating the file (23: 3/3), and left the document filter on (02: 3/3). One run of 18 still ticked a box itself.
 - **Like Gemma, it claims success when it has failed.** Every failed run ended with a confident summary.
 
 ### Thinking budget
