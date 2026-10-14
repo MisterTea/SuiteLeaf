@@ -224,10 +224,21 @@ export function ShareDialog({
     }
     setSearching(true);
     const timer = setTimeout(() => {
-      void drive
-        .accounts(text)
-        .then((found) => {
-          setMatches(found);
+      void Promise.all([
+        drive.accounts(text),
+        drive.searchGroups(text).catch(() => []),
+      ])
+        .then(([people, groups]) => {
+          setMatches([
+            ...people.map((person) => ({ ...person, kind: "user" as const })),
+            ...groups.map((group) => ({
+              id: group.id,
+              name: group.name,
+              email: null,
+              username: null,
+              kind: "group" as const,
+            })),
+          ]);
           setSearched(text);
         })
         .catch((e) => setError(e instanceof Error ? e.message : String(e)))
@@ -282,7 +293,12 @@ export function ShareDialog({
     const person = picked;
     const role = grantRole;
     void apply(async () => {
-      await drive.share(target.id, person.id, role);
+      await drive.share(
+        target.id,
+        person.id,
+        role,
+        person.kind === "group" ? "group" : "user",
+      );
       setPicked(null);
       setQuery("");
       setGrantRole(defaultRole);
@@ -292,7 +308,15 @@ export function ShareDialog({
   const changeRole = (person: AccessGrant, role: GrantRole) => {
     const name = givenName(person);
     void apply(
-      () => drive.share(target.id, person.principalId, role),
+      () =>
+        drive.share(
+          target.id,
+          person.principalId,
+          role,
+          person.principalType === "group" || person.principalType === "org"
+            ? person.principalType
+            : "user",
+        ),
       `${name} can now ${roleVerb(role)}`,
     );
   };
@@ -300,7 +324,14 @@ export function ShareDialog({
   const remove = (person: AccessGrant) => {
     const name = personLabel(person);
     void apply(async () => {
-      await drive.share(target.id, person.principalId, null);
+      await drive.share(
+        target.id,
+        person.principalId,
+        null,
+        person.principalType === "group" || person.principalType === "org"
+          ? person.principalType
+          : "user",
+      );
       setUndo({ person, until: Date.now() + UNDO_MS });
     }, `${name} no longer has access`);
   };
@@ -320,8 +351,12 @@ export function ShareDialog({
     const person = expiring;
     setExpiring(null);
     const when = untilPhrase(iso).replace(/^until /, "");
+    const principalType =
+      person.principalType === "group" || person.principalType === "org"
+        ? person.principalType
+        : "user";
     void apply(
-      () => drive.expire(target.id, person.principalId, iso),
+      () => drive.expire(target.id, person.principalId, iso, principalType),
       `${givenName(person)}'s access ends ${when}`,
     );
   };
@@ -336,6 +371,9 @@ export function ShareDialog({
           target.id,
           person.principalId,
           person.role === "owner" ? "editor" : person.role,
+          person.principalType === "group" || person.principalType === "org"
+            ? person.principalType
+            : "user",
         ),
       `${personLabel(person)} has access again`,
     );
@@ -386,11 +424,11 @@ export function ShareDialog({
         ) : null}
         {canManage ? (
           <div className="share-add">
-            <label htmlFor="share-people">Add people</label>
+            <label htmlFor="share-people">Add people or groups</label>
             <input
               id="share-people"
               autoFocus
-              placeholder="Name or email"
+              placeholder="Name, email, or group"
               autoComplete="off"
               aria-autocomplete="list"
               aria-controls="share-suggestions"
@@ -422,8 +460,9 @@ export function ShareDialog({
                     >
                       <strong>{person.name || person.email}</strong>
                       <small>
-                        {person.email}
-                        {person.username ? ` · ${person.username}` : ""}
+                        {person.kind === "group"
+                          ? "Group"
+                          : `${person.email ?? ""}${person.username ? ` · ${person.username}` : ""}`}
                       </small>
                     </button>
                   </li>
@@ -490,7 +529,7 @@ export function ShareDialog({
             onClose={() => setExpiring(null)}
           />
         ) : null}
-        <h3 className="share-list-title">People with access</h3>
+        <h3 className="share-list-title">People and groups with access</h3>
         {access ? null : <p className="share-private">Loading…</p>}
         <ul className="share-people">
           {(access?.grants ?? []).map((person) => {
@@ -518,6 +557,7 @@ export function ShareDialog({
                     {personLabel(person)}
                     {yours ? " (you)" : ""}
                   </strong>
+                  {person.principalType === "group" ? <small>Group</small> : null}
                   {person.email ? <small>{person.email}</small> : null}
                   {when ? <small className="share-until">{when}</small> : null}
                   {inherited ? (
@@ -547,8 +587,8 @@ export function ShareDialog({
                         ? untilPhrase(person.expiresAt)
                         : undefined
                     }
-                    extras={
-                      person.principalType === "user"
+                    extras={[
+                      ...(person.principalType === "user"
                         ? [
                             {
                               label: "Make owner",
@@ -558,6 +598,10 @@ export function ShareDialog({
                                 setHandover(person);
                               },
                             },
+                          ]
+                        : []),
+                      ...(person.principalType === "user" || person.principalType === "group"
+                        ? [
                             {
                               label: "Access expires",
                               description: "Pick the day it ends",
@@ -567,8 +611,8 @@ export function ShareDialog({
                               },
                             },
                           ]
-                        : []
-                    }
+                        : []),
+                    ]}
                     onChange={(next) =>
                       next === "remove" ? remove(person) : changeRole(person, next)
                     }
@@ -582,7 +626,7 @@ export function ShareDialog({
         </ul>
         {access ? (
           <p className="share-private">
-            Only the people listed here can open this file.
+            Only the people and groups listed here can open this file.
           </p>
         ) : null}
         {notice ? (

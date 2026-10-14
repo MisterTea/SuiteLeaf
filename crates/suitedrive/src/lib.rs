@@ -10,6 +10,9 @@
 //! version stays available in the file's history.
 
 pub mod blobs;
+mod directory;
+
+pub use directory::{AuditEvent, DirectoryGroup, GroupDetail, GroupMember, PersonFile, TrailEntry};
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -27,7 +30,7 @@ use tokio::sync::Notify;
 pub use blobs::{BlobStore, CHUNK_SIZE, Hash, Manifest};
 
 /// Bump when the drive tables change.
-pub const SCHEMA_VERSION: u32 = 4;
+pub const SCHEMA_VERSION: u32 = 5;
 const MAX_BLOB_RESPONSE: usize = 24 * 1024 * 1024;
 const MAX_DEPTH: usize = 64;
 
@@ -112,6 +115,26 @@ pub fn tables() -> Vec<TableDef> {
             .column("unit", Text)
             .column("key", Text)
             .index("itemId"),
+        TableDef::new("directory_group", "id")
+            .column("name", Text)
+            .column("createdAt", Text)
+            .column("updatedAt", Text)
+            .index("name"),
+        TableDef::new("directory_edge", "id")
+            .column("groupId", Text)
+            .column("memberType", Text)
+            .column("memberId", Text)
+            .index("groupId")
+            .index("memberId"),
+        TableDef::new("audit_event", "id")
+            .column("at", Text)
+            .column("actorId", Text)
+            .column("action", Text)
+            .column("targetType", Text)
+            .column("targetId", Text)
+            .column("name", Text)
+            .index("actorId")
+            .index("targetId"),
     ]
 }
 
@@ -509,6 +532,43 @@ impl From<suitedb::Error> for DriveError {
 pub type DriveResult<T> = Result<T, DriveError>;
 
 type Row = BTreeMap<String, Value>;
+
+/// User, organization, and group grants that apply to one person.
+fn principal_clause(
+    alias: &str,
+    user_param: usize,
+    orgs: &[Value],
+    groups: &[Value],
+    params: &mut Vec<Value>,
+) -> String {
+    let col = |name: &str| {
+        if alias.is_empty() {
+            name.to_string()
+        } else {
+            format!("{alias}.{name}")
+        }
+    };
+    let mut clause = format!(
+        "({} = 'user' AND {} = ?{user_param})",
+        col("principalType"),
+        col("principalId")
+    );
+    for (kind, ids) in [("org", orgs), ("group", groups)] {
+        if ids.is_empty() {
+            continue;
+        }
+        let start = params.len() + 1;
+        let marks: Vec<String> = (0..ids.len()).map(|i| format!("?{}", start + i)).collect();
+        params.extend(ids.iter().cloned());
+        clause.push_str(&format!(
+            " OR ({} = '{kind}' AND {} IN ({}))",
+            col("principalType"),
+            col("principalId"),
+            marks.join(", ")
+        ));
+    }
+    clause
+}
 
 fn text(row: &Row, key: &str) -> Option<String> {
     match row.get(key) {
@@ -1098,6 +1158,7 @@ impl Drive {
             return Ok(Some(Role::Owner));
         }
         let orgs = self.orgs(who)?;
+        let groups = self.group_ids(&who.id)?;
         let now = iso_now();
         let mut best = None;
         for _ in 0..MAX_DEPTH {
@@ -1107,21 +1168,9 @@ impl Drive {
                 return Ok(Some(Role::Owner));
             }
             let mut params = vec![Value::Text(item), Value::Text(who.id.clone())];
-            let org_clause = if orgs.is_empty() {
-                String::new()
-            } else {
-                let marks: Vec<String> = (0..orgs.len()).map(|i| format!("?{}", i + 3)).collect();
-                params.extend(orgs.iter().cloned());
-                format!(
-                    " OR (principalType = 'org' AND principalId IN ({}))",
-                    marks.join(", ")
-                )
-            };
+            let grant = principal_clause("", 2, &orgs, &groups, &mut params);
             let grants = self.db.query(
-                &format!(
-                    "SELECT role, expiresAt FROM drive_acl WHERE itemId = ?1
-                     AND ((principalType = 'user' AND principalId = ?2){org_clause})"
-                ),
+                &format!("SELECT role, expiresAt FROM drive_acl WHERE itemId = ?1 AND ({grant})"),
                 &params,
             )?;
             for grant in grants {
@@ -1257,23 +1306,15 @@ impl Drive {
     /// Items shared directly with the caller or their organizations.
     pub fn shared(&self, who: &Principal) -> DriveResult<Vec<Item>> {
         let now = iso_now();
-        let mut params = vec![Value::Text(who.id.clone()), Value::Text(now)];
+        let mut params = vec![Value::Text(who.id.clone()), Value::Text(now.clone())];
         let orgs = self.orgs(who)?;
-        let org_clause = if orgs.is_empty() {
-            String::new()
-        } else {
-            let marks: Vec<String> = (0..orgs.len()).map(|i| format!("?{}", i + 3)).collect();
-            params.extend(orgs);
-            format!(
-                " OR (a.principalType = 'org' AND a.principalId IN ({}))",
-                marks.join(", ")
-            )
-        };
+        let groups = self.group_ids(&who.id)?;
+        let grant = principal_clause("a", 1, &orgs, &groups, &mut params);
         self.items(
             &format!(
                 "SELECT DISTINCT i.* FROM drive_item i JOIN drive_acl a ON a.itemId = i.id
                  WHERE i.trashed = 0 AND i.ownerId != ?1
-                   AND ((a.principalType = 'user' AND a.principalId = ?1){org_clause})
+                   AND ({grant})
                    AND (a.expiresAt IS NULL OR a.expiresAt > ?2)
                  ORDER BY i.name COLLATE NOCASE"
             ),
@@ -2345,9 +2386,11 @@ impl Drive {
         })
     }
 
-    /// Grant a user or organization a role, or remove it with `None`.
-    /// A user grant also writes an in-app notice for that person. There is no
-    /// mail step. An organization grant has no single recipient, so it does not.
+    /// Grant a user, group, or organization a role, or remove it with `None`.
+    /// Viewer can read, commenter can read and comment, and editor can write.
+    /// A user grant notifies that person. A group grant notifies everyone who
+    /// belongs to the group, including through nesting. There is no mail step.
+    /// An organization grant has no single recipient, so it does not notify.
     /// Changing a role leaves an end date already stored on the grant.
     /// Ownership is [`Self::transfer`], not a role in this list.
     pub fn share(
@@ -2364,20 +2407,27 @@ impl Drive {
                 "Hand over the file to make someone the owner.".into(),
             ));
         }
-        if principal_type != "user" && principal_type != "org" {
+        if principal_type != "user" && principal_type != "org" && principal_type != "group" {
             return Err(DriveError::BadRequest(
-                "principalType must be user or org".into(),
+                "principalType must be user, group, or org".into(),
             ));
         }
         let key = format!("{id}:{principal_type}:{principal_id}");
         let now = iso_now();
-        let dismiss_ids = if principal_type == "user" {
-            self.open_notice_ids(id, principal_id)?
+        let recipients = match principal_type {
+            "user" => vec![principal_id.to_owned()],
+            "group" => self.people_in(principal_id)?,
+            _ => Vec::new(),
+        };
+        let mut dismiss_ids = Vec::new();
+        for recipient in &recipients {
+            dismiss_ids.extend(self.open_notice_ids(id, recipient)?);
+        }
+        let notify: Vec<String> = if role.is_some() {
+            recipients.into_iter().filter(|id| id != &who.id).collect()
         } else {
             Vec::new()
         };
-        let notice_id = (role.is_some() && principal_type == "user" && principal_id != who.id)
-            .then(|| uuid::Uuid::now_v7().to_string());
         self.db.transact(|tx| {
             match role {
                 Some(role) => tx.upsert(
@@ -2399,18 +2449,20 @@ impl Drive {
                     [("dismissedAt", Value::Text(now.clone()))],
                 )?;
             }
-            if let (Some(role), Some(notice_id)) = (role, notice_id.as_deref()) {
-                tx.upsert(
-                    "drive_notice",
-                    notice_id,
-                    [
-                        ("itemId", Value::from(id)),
-                        ("recipientId", principal_id.into()),
-                        ("sharerId", who.id.clone().into()),
-                        ("role", role.as_str().into()),
-                        ("createdAt", now.clone().into()),
-                    ],
-                )?;
+            if let Some(role) = role {
+                for recipient in &notify {
+                    tx.upsert(
+                        "drive_notice",
+                        &uuid::Uuid::now_v7().to_string(),
+                        [
+                            ("itemId", Value::from(id)),
+                            ("recipientId", recipient.as_str().into()),
+                            ("sharerId", who.id.clone().into()),
+                            ("role", role.as_str().into()),
+                            ("createdAt", now.clone().into()),
+                        ],
+                    )?;
+                }
             }
             Ok(())
         })?;
@@ -2543,9 +2595,9 @@ impl Drive {
         expires_at: Option<&str>,
     ) -> DriveResult<ItemAccess> {
         self.require(who, id, Role::Owner)?;
-        if principal_type != "user" && principal_type != "org" {
+        if principal_type != "user" && principal_type != "org" && principal_type != "group" {
             return Err(DriveError::BadRequest(
-                "principalType must be user or org".into(),
+                "principalType must be user, group, or org".into(),
             ));
         }
         if principal_type == "user"

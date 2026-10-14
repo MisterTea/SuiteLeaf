@@ -155,12 +155,50 @@ impl Auth {
         if claims.banned == Some(true) {
             bail!("user is banned");
         }
-        Ok(AuthUser {
+        let mut user = AuthUser {
             id: claims.sub,
             email: claims.email,
             name: claims.name,
             role: claims.role,
-        })
+        };
+        // Role and ban live in the user row. A JWT issued before a change
+        // would otherwise keep the old role until it expired.
+        if let Some(row) = self.db.get("user", &user.id)? {
+            if matches!(row.get("banned"), Some(Value::Integer(n)) if *n != 0) {
+                bail!("user is banned");
+            }
+            if let Some(Value::Text(role)) = row.get("role") {
+                user.role = Some(role.clone());
+            }
+        }
+        Ok(user)
+    }
+
+    /// POST JSON to the auth sidecar, forwarding the caller's bearer token.
+    pub async fn sidecar_post(
+        &self,
+        path: &str,
+        authorization: &str,
+        body: &serde_json::Value,
+    ) -> Result<(u16, serde_json::Value)> {
+        let Some(base) = self.sidecar() else {
+            bail!("Authentication is not available on this node.");
+        };
+        let response = self
+            .client
+            .post(format!("{base}{path}"))
+            .header(header::AUTHORIZATION, authorization)
+            .header(header::CONTENT_TYPE, "application/json")
+            .json(body)
+            .send()
+            .await
+            .context("Authentication service unavailable.")?;
+        let status = response.status().as_u16();
+        let payload = response
+            .json::<serde_json::Value>()
+            .await
+            .unwrap_or(serde_json::json!({}));
+        Ok((status, payload))
     }
 
     /// Accounts whose name, username, or email contains `query` (at least two

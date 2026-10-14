@@ -36,4 +36,5 @@ uuid.workspace = true
 yrs = "0.21.3"
 
 [dev-dependencies]
+libp2p-identity = { version = "0.3", features = ["ed25519", "rand"] }
 tempfile.workspace = true

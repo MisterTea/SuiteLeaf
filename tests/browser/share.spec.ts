@@ -212,3 +212,106 @@ test("sharing suggests accounts, enforces commenter and viewer, and updates Shar
     node.child.kill();
   }
 });
+
+test("a group can be given read, comment, or write access", async ({ browser }) => {
+  test.skip(!ready, "Build the node, auth bundle, and web app first.");
+  test.setTimeout(120_000);
+  const node = await startNode();
+  const contexts: BrowserContext[] = [];
+  try {
+    const rosa = await signup(node.url, "Rosa Diaz", "rosa@gardenclub.org");
+    const sam = await signup(node.url, "Sam Okafor", "sam@gardenclub.org");
+    const group = await (
+      await authed(node.url, rosa.token, "/api/admin/groups", {
+        method: "POST",
+        body: JSON.stringify({ name: "Volunteers" }),
+      })
+    ).json();
+    await authed(node.url, rosa.token, `/api/admin/groups/${group.id}/members`, {
+      method: "POST",
+      body: JSON.stringify({ memberType: "user", memberId: sam.user.id }),
+    });
+    const file = createFile("doc", "Watering rota");
+    file.content = {
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Monday: Rosa." }] }],
+    };
+    const item = await (
+      await authed(node.url, rosa.token, "/api/drive/items", {
+        method: "POST",
+        body: JSON.stringify({ name: nativeFilename(file), kind: "file", mime: mimeFor("doc") }),
+      })
+    ).json();
+    await authed(node.url, rosa.token, `/api/drive/items/${item.id}/content`, {
+      method: "PUT",
+      headers: { "content-type": mimeFor("doc") },
+      body: serializeFile(file),
+    });
+
+    const rosaContext = await browser.newContext();
+    contexts.push(rosaContext);
+    const page = await openAs(rosaContext, node.url, rosa);
+    await page.getByRole("button", { name: "Watering rota.sldoc", exact: true }).click();
+    await page.getByRole("button", { name: "Share", exact: true }).click();
+    const dialog = page.locator(".share-dialog");
+    await dialog.getByLabel("Add people or groups").fill("Vol");
+    await expect(dialog.getByRole("option", { name: /Volunteers/ })).toContainText("Group");
+    await dialog.getByRole("option", { name: /Volunteers/ }).click();
+    await dialog.getByRole("button", { name: "Role for Volunteers" }).click();
+    await expect(dialog.getByRole("option", { name: /^Viewer/ })).toContainText("Can read");
+    await expect(dialog.getByRole("option", { name: /Commenter/ })).toContainText("Can read and comment");
+    await expect(dialog.getByRole("option", { name: /^Editor/ })).toContainText("Can change anything");
+    await dialog.getByRole("option", { name: /Commenter/ }).click();
+    await dialog.getByRole("button", { name: "Share", exact: true }).click();
+    await expect(dialog.getByText("Volunteers can now comment")).toBeVisible();
+    await expect(dialog.getByText("Group", { exact: true })).toBeVisible();
+
+    const denied = await authed(node.url, sam.token, `/api/drive/items/${item.id}/content`, {
+      method: "PUT",
+      headers: { "content-type": mimeFor("doc") },
+      body: serializeFile(file),
+    }).then(
+      () => "allowed",
+      (error: Error) => error.message,
+    );
+    expect(denied).toContain("403");
+    expect(
+      (await authed(node.url, sam.token, `/api/drive/items/${item.id}/comments`, {
+        method: "POST",
+        body: JSON.stringify({ body: "I can comment through the group." }),
+      })).status,
+    ).toBe(201);
+
+    await dialog.getByRole("button", { name: "Role for Volunteers" }).click();
+    await dialog.getByRole("option", { name: /^Viewer/ }).click();
+    await expect(dialog.getByText("Volunteers can now view")).toBeVisible();
+    const commentDenied = await authed(node.url, sam.token, `/api/drive/items/${item.id}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ body: "This should not stick." }),
+    }).then(
+      () => "allowed",
+      (error: Error) => error.message,
+    );
+    expect(commentDenied).toContain("403");
+
+    await dialog.getByRole("button", { name: "Role for Volunteers" }).click();
+    await dialog.getByRole("option", { name: /^Editor/ }).click();
+    await expect(dialog.getByText("Volunteers can now edit")).toBeVisible();
+    const written = await authed(node.url, sam.token, `/api/drive/items/${item.id}/content`, {
+      method: "PUT",
+      headers: { "content-type": mimeFor("doc") },
+      body: serializeFile(file),
+    });
+    expect(written.status).toBe(200);
+
+    const samContext = await browser.newContext();
+    contexts.push(samContext);
+    const samPage = await openAs(samContext, node.url, sam);
+    await samPage.getByRole("heading", { name: "SuiteDrive" }).scrollIntoViewIfNeeded();
+    await samPage.getByRole("tab", { name: "Shared with me" }).click();
+    await expect(samPage.getByRole("button", { name: "Watering rota.sldoc", exact: true })).toBeVisible();
+  } finally {
+    for (const context of contexts) await context.close();
+    node.child.kill();
+  }
+});

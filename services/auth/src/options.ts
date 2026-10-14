@@ -1,4 +1,5 @@
 import type { BetterAuthOptions } from "better-auth";
+import { APIError } from "better-auth/api";
 import {
   admin,
   bearer,
@@ -8,6 +9,7 @@ import {
   organization,
   username,
 } from "better-auth/plugins";
+import { firstAccountIsAdmin, isAdminRole, removesLastAdmin } from "./guards";
 
 /** JWTs are verified by every node, so issuer and audience are cluster-wide
  * constants rather than a node's own URL. */
@@ -149,5 +151,158 @@ export function authOptions(
     rateLimit: { enabled: true, storage: "memory" },
     telemetry: { enabled: false },
     plugins: plugins(env),
+    databaseHooks: {
+      user: {
+        create: {
+          async before(user, context) {
+            if (!context) return;
+            const existing = await context.context.adapter.count({ model: "user" });
+            if (firstAccountIsAdmin(existing))
+              return { data: { ...user, role: "admin" } };
+          },
+          async after(user, context) {
+            await writeAudit(context, {
+              actorId: sessionActor(context) ?? user.id,
+              action: "user.create",
+              targetType: "user",
+              targetId: user.id,
+              name: user.email ?? user.name ?? "",
+            });
+          },
+        },
+        update: {
+          async before(data, context) {
+            const userId = bodyUserId(context);
+            if (!context || !userId) return;
+            const current = await context.context.adapter.findOne<{
+              id: string;
+              role?: string | null;
+              banned?: boolean | number | null;
+            }>({
+              model: "user",
+              where: [{ field: "id", value: userId }],
+            });
+            if (!current) return;
+            const others = await otherActiveAdmins(
+              context.context.adapter,
+              userId,
+            );
+            if (
+              removesLastAdmin({
+                targetIsActiveAdmin:
+                  isAdminRole(current.role) && !current.banned,
+                otherActiveAdmins: others,
+                nextRole: "role" in data ? data.role : undefined,
+                banned: "banned" in data ? data.banned : undefined,
+              })
+            ) {
+              throw new APIError("BAD_REQUEST", {
+                message: "The server needs at least one admin.",
+              });
+            }
+          },
+        },
+        delete: {
+          async before(user, context) {
+            if (!context || !isAdminRole(user.role) || user.banned) return;
+            const others = await otherActiveAdmins(
+              context.context.adapter,
+              user.id,
+            );
+            if (others === 0) {
+              throw new APIError("BAD_REQUEST", {
+                message: "The server needs at least one admin.",
+              });
+            }
+          },
+        },
+      },
+      session: {
+        create: {
+          async after(session, context) {
+            const where = [session.ipAddress, session.userAgent]
+              .filter(Boolean)
+              .join(" · ");
+            await writeAudit(context, {
+              actorId: session.userId,
+              action: "sign-in",
+              targetType: "session",
+              targetId: session.id,
+              name: where,
+            });
+          },
+        },
+      },
+    },
   } satisfies BetterAuthOptions;
+}
+
+function sessionActor(context: {
+  context?: { session?: { user?: { id?: string } } | null };
+} | null): string | undefined {
+  return context?.context?.session?.user?.id;
+}
+
+function bodyUserId(context: { body?: unknown } | null): string | undefined {
+  const body = context?.body as { userId?: unknown } | undefined;
+  return typeof body?.userId === "string" ? body.userId : undefined;
+}
+
+async function otherActiveAdmins(
+  adapter: {
+    findMany: (input: { model: string }) => Promise<unknown[]>;
+  },
+  exceptId: string,
+): Promise<number> {
+  const rows = (await adapter.findMany({ model: "user" })) as {
+    id: string;
+    role?: string | null;
+    banned?: boolean | number | null;
+  }[];
+  return rows.filter(
+    (row) => row.id !== exceptId && isAdminRole(row.role) && !row.banned,
+  ).length;
+}
+
+async function writeAudit(
+  _context: unknown,
+  event: {
+    actorId: string;
+    action: string;
+    targetType: string;
+    targetId: string;
+    name: string;
+  },
+) {
+  const url = process.env.SUITELEAF_INTERNAL_URL;
+  const token = process.env.SUITELEAF_INTERNAL_TOKEN;
+  if (!url || !token || !event.actorId || !event.targetId) return;
+  try {
+    const response = await fetch(`${url}/internal/db`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-suiteleaf-internal": token,
+      },
+      body: JSON.stringify({
+        op: "create",
+        model: "audit_event",
+        data: {
+          id: crypto.randomUUID(),
+          at: new Date().toISOString(),
+          actorId: event.actorId,
+          action: event.action,
+          targetType: event.targetType,
+          targetId: event.targetId,
+          name: event.name,
+        },
+      }),
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      console.error("SuiteLeaf audit:", response.status, body);
+    }
+  } catch (error) {
+    console.error("SuiteLeaf audit:", error);
+  }
 }

@@ -1,0 +1,114 @@
+.admin-page {
+  min-height: 100vh;
+  background: var(--bg-app);
+  color: var(--text-primary);
+}
+.admin-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.admin-bar h1 {
+  margin: 0;
+  font-size: 20px;
+}
+.admin-bar nav {
+  display: flex;
+  gap: 8px;
+}
+.admin-bar a,
+.admin-tabs button,
+.admin-back {
+  color: var(--google-blue);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+}
+.admin-tabs button[aria-selected="true"] {
+  font-weight: 650;
+  text-decoration: underline;
+}
+.admin-main {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 24px;
+  display: grid;
+  gap: 20px;
+}
+.admin-card,
+.admin-form {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+}
+.admin-form label,
+.admin-inline {
+  display: grid;
+  gap: 4px;
+}
+.admin-form input,
+.admin-form select,
+.admin-inline input,
+.admin-inline select {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: inherit;
+}
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.admin-actions button,
+.admin-form button,
+.admin-list button {
+  font: inherit;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+}
+.admin-primary {
+  background: var(--google-blue) !important;
+  color: white !important;
+  border-color: transparent !important;
+}
+.admin-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.admin-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+}
+.admin-error {
+  color: var(--google-red);
+  margin: 0;
+}
+.admin-muted {
+  color: #5f6368;
+}
+.admin-link {
+  display: inline-flex;
+  margin: 8px 12px 0;
+  color: var(--google-blue);
+  font-weight: 600;
+  text-decoration: none;
+}

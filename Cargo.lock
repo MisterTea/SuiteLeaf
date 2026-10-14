@@ -4028,6 +4028,7 @@ dependencies = [
  "futures",
  "hex",
  "jsonwebtoken",
+ "libp2p-identity",
  "reqwest",
  "serde",
  "serde_json",

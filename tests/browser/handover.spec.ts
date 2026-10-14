@@ -94,6 +94,16 @@ test("an owner hands a file over immediately and a share can expire", async ({ b
     const rosa = await signup(node.url, "Rosa Diaz", "rosa@gardenclub.org");
     const sam = await signup(node.url, "Sam Okafor", "sam@gardenclub.org");
     const priya = await signup(node.url, "Priya Shah", "priya@gardenclub.org");
+    // The first account is an admin, and an admin stays an owner of every file.
+    // Hand Rosa's admin role to Sam so this handover is an ordinary owner.
+    await authed(node.url, rosa.token, `/api/admin/users/${sam.user.id}/role`, {
+      method: "POST",
+      body: JSON.stringify({ role: "admin" }),
+    });
+    await authed(node.url, rosa.token, `/api/admin/users/${rosa.user.id}/role`, {
+      method: "POST",
+      body: JSON.stringify({ role: "user" }),
+    });
     const file = createFile("doc", "Watering rota");
     file.content = {
       type: "doc",
