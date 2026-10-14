@@ -182,3 +182,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 163 | [Keep the zoom](163-keep-the-zoom.md) | single-node | Docs |
 | 165 | [Paint the cell](165-paint-the-cell.md) | single-node | Sheets |
 | 167 | [Line under the header](167-line-under-the-header.md) | single-node | Sheets |
+| 168 | [Keep the sheet zoom](168-keep-the-sheet-zoom.md) | single-node | Sheets |
