@@ -33,6 +33,11 @@ import { drive, uploadDriveFile } from "../node-client";
 import { storage } from "../storage";
 import { editorCollaborator } from "../collaborator";
 import {
+  localVersions,
+  nameLocalVersion,
+  restoreLocalVersion,
+} from "./local-versions";
+import {
   paragraphRestoreExtension,
   type ParagraphRestoreControl,
 } from "./doc-paragraph-restore-ui";
@@ -217,57 +222,61 @@ export function VersionHistory({
           );
         } else {
           const live = fileNow.current();
+          const snaps = await localVersions(live.id);
+          const liveNative = serializeFile(live);
           const stored = [...(live.versions ?? [])].reverse();
           const last = live.versions?.at(-1);
-          const liveMatches =
+          const liveMatchesFile =
             !!last &&
             last.title === live.title &&
             JSON.stringify(last.content) === JSON.stringify(live.content);
           const snapshot = (content: unknown, title: string) => {
-            const copy = {
-              ...live,
-              title,
-              content,
-            } as SuiteFile;
+            const copy = { ...live, title, content } as SuiteFile;
             delete copy.edits;
             delete copy.versions;
             return serializeFile(copy);
           };
-          const rows = [
-            ...(liveMatches
-              ? []
-              : [
-                  {
-                    id: "current",
-                    createdAt: live.updatedAt,
-                    authorId: live.edits?.at(-1)?.by.id ?? "local",
-                    authorName: live.edits?.at(-1)?.by.name ?? "You",
-                    name: null,
-                    restoredFrom: null,
-                  },
-                ]),
-            ...stored.map((version) => ({
-              id: version.id,
-              createdAt: version.at,
-              authorId: version.by.id,
-              authorName: version.by.name,
-              name: version.label ?? null,
-              restoredFrom: null,
-              summary: version.summary,
-            })),
-          ];
-          if (cancel) return;
-          natives.current = new Map(
-            rows.map((row) => [
-              row.id,
-              row.id === "current"
-                ? serializeFile(live)
-                : snapshot(
-                    stored.find((version) => version.id === row.id)?.content,
-                    stored.find((version) => version.id === row.id)?.title ?? live.title,
-                  ),
-            ]),
+          const fromFile = stored.map((version) => ({
+            id: version.id,
+            createdAt: version.at,
+            authorId: version.by.id,
+            authorName: version.by.name,
+            name: version.label ?? null,
+            restoredFrom: null,
+            summary: version.summary,
+          }));
+          const fromSnaps = snaps.map((version) => ({
+            id: version.id,
+            createdAt: version.createdAt,
+            authorId: version.authorId,
+            authorName: version.authorName,
+            name: version.name,
+            restoredFrom: version.restoredFrom,
+          }));
+          const rows = [...fromFile, ...fromSnaps].sort(
+            (a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id),
           );
+          const headIsLive =
+            liveMatchesFile || snaps[0]?.native === liveNative;
+          if (!headIsLive) {
+            rows.unshift({
+              id: "current",
+              createdAt: live.updatedAt,
+              authorId: live.edits?.at(-1)?.by.id ?? "local",
+              authorName: live.edits?.at(-1)?.by.name ?? "You",
+              name: null,
+              restoredFrom: null,
+            });
+          }
+          if (cancel) return;
+          natives.current = new Map<string, string>([
+            ["current", liveNative],
+            ...stored.map(
+              (version) =>
+                [version.id, snapshot(version.content, version.title)] as [string, string],
+            ),
+            ...snaps.map((version) => [version.id, version.native] as [string, string]),
+          ]);
           setVersions(rows);
           setHeadId(rows[0]?.id ?? "");
           setSelectedId((current) =>
@@ -439,7 +448,9 @@ export function VersionHistory({
     try {
       if (record.drive)
         await drive.nameVersion(record.drive.itemId, naming.id, name);
-      else onCommitFile(nameVersion(fileNow.current(), naming.id, name));
+      else if (fileNow.current().versions?.some((version) => version.id === naming.id))
+        onCommitFile(nameVersion(fileNow.current(), naming.id, name));
+      else await nameLocalVersion(naming.id, name);
       setNaming(null);
       setRefresh((value) => value + 1);
     } catch (e) {
@@ -504,7 +515,7 @@ export function VersionHistory({
             name: item.name,
           },
         });
-      } else {
+      } else if (fileNow.current().versions?.some((version) => version.id === selected.id)) {
         const restored = restoreToVersion(
           fileNow.current(),
           selected.id,
@@ -512,6 +523,15 @@ export function VersionHistory({
           new Date().toISOString(),
         );
         onRestored({ ...record, file: restored.file });
+      } else {
+        const native = natives.current.get(selected.id);
+        if (!native) throw new Error("That version is no longer on this computer.");
+        const file = await restoreLocalVersion({
+          ...selected,
+          fileId: record.file.id,
+          native,
+        });
+        onRestored({ ...record, file });
       }
     } catch (e) {
       setError(message(e));

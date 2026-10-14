@@ -12,20 +12,20 @@ use std::{
 use anyhow::Context;
 use axum::{
     extract::{
-        ws::{Message, WebSocket, WebSocketUpgrade},
         Path, Query, State,
+        ws::{Message, WebSocket, WebSocketUpgrade},
     },
-    http::{header, HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, header},
     response::IntoResponse,
 };
-use base64::{engine::general_purpose::STANDARD, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD};
 use futures::{SinkExt, StreamExt};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use suitedb::{Db, Value as DbValue};
 use suitedrive::{Drive, Principal, Role};
 use tokio::sync::broadcast;
-use yrs::{updates::decoder::Decode, Array, Doc, GetString, ReadTxn, Transact, Update};
+use yrs::{Array, Doc, GetString, ReadTxn, Transact, Update, updates::decoder::Decode};
 
 use crate::{auth::AuthUser, http::AppState};
 
@@ -66,13 +66,7 @@ impl Rooms {
         }
     }
 
-    pub fn join(
-        &self,
-        item: &str,
-        user: &AuthUser,
-        role: Role,
-        now: i64,
-    ) -> anyhow::Result<Join> {
+    pub fn join(&self, item: &str, user: &AuthUser, role: Role, now: i64) -> anyhow::Result<Join> {
         if role < Role::Commenter {
             return Ok(Join {
                 joined: false,
@@ -90,7 +84,10 @@ impl Rooms {
                 [
                     ("itemId", DbValue::from(item)),
                     ("userId", DbValue::from(user.id.as_str())),
-                    ("name", DbValue::from(user.name.clone().unwrap_or_else(|| "You".into()))),
+                    (
+                        "name",
+                        DbValue::from(user.name.clone().unwrap_or_else(|| "You".into())),
+                    ),
                     ("role", DbValue::from(role_name(role))),
                     ("lastActiveMs", DbValue::Integer(now)),
                 ],
@@ -108,7 +105,11 @@ impl Rooms {
                 relay,
             }
         });
-        let count = if already { writers.len() } else { writers.len() + 1 };
+        let count = if already {
+            writers.len()
+        } else {
+            writers.len() + 1
+        };
         if count >= 2 && room.mode == "solo" {
             room.mode = "multiuser";
             room.generation += 1;
@@ -139,7 +140,11 @@ impl Rooms {
             live.get(item).and_then(|room| {
                 let txn = room.doc.transact();
                 let update = txn.encode_state_as_update_v1(&yrs::StateVector::default());
-                if update.len() <= 2 { None } else { Some(STANDARD.encode(update)) }
+                if update.len() <= 2 {
+                    None
+                } else {
+                    Some(STANDARD.encode(update))
+                }
             })
         };
         let mode = self
@@ -237,7 +242,9 @@ impl Rooms {
             if now.saturating_sub(last) < pause {
                 continue;
             }
-            let Some(id) = text_col(&row, "id") else { continue };
+            let Some(id) = text_col(&row, "id") else {
+                continue;
+            };
             let item = text_col(&row, "itemId").unwrap_or_default();
             let user = text_col(&row, "userId").unwrap_or_default();
             self.db.transact(|tx| tx.delete("drive_presence", &id))?;
@@ -260,7 +267,11 @@ impl Rooms {
         }
         let stored = self.db.get("drive_room", item)?;
         let generation = room.generation;
-        if stored.as_ref().and_then(|row| row.get("generation")).and_then(as_int) != Some(generation)
+        if stored
+            .as_ref()
+            .and_then(|row| row.get("generation"))
+            .and_then(as_int)
+            != Some(generation)
             && stored.is_some()
         {
             // Another node already advanced the room.
@@ -396,11 +407,7 @@ fn role_name(role: Role) -> &'static str {
     }
 }
 
-fn role_of(
-    drive: &Drive,
-    who: &Principal,
-    id: &str,
-) -> suitedrive::DriveResult<Option<Role>> {
+fn role_of(drive: &Drive, who: &Principal, id: &str) -> suitedrive::DriveResult<Option<Role>> {
     drive.get(who, id).map(|item| item.role)
 }
 
@@ -651,7 +658,9 @@ async fn run_socket(
             }
         };
         let Some(message) = incoming else { break };
-        let Message::Text(text) = message? else { continue };
+        let Message::Text(text) = message? else {
+            continue;
+        };
         let value: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
         let kind = value.get("type").and_then(|v| v.as_str()).unwrap_or("");
         match kind {
@@ -677,14 +686,21 @@ async fn run_socket(
                     continue;
                 };
                 let bytes = STANDARD.decode(encoded).unwrap_or_default();
-                let unit = value.get("unit").and_then(|v| v.as_str()).unwrap_or("paragraph");
+                let unit = value
+                    .get("unit")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("paragraph");
                 let key = value.get("key").and_then(|v| v.as_str()).unwrap_or("0");
                 let at = value
                     .get("at")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_owned();
-                let at = if at.is_empty() { iso_from_ms(now_ms()) } else { at };
+                let at = if at.is_empty() {
+                    iso_from_ms(now_ms())
+                } else {
+                    at
+                };
                 let name = user.name.clone().unwrap_or_else(|| "You".into());
                 if rooms.apply_update(&item, &user.id, &name, role, &bytes, unit, key, &at)? {
                     rooms.activity(&item, &user.id, now_ms())?;

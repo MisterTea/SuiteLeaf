@@ -72,8 +72,26 @@ mod tests {
                 .column_type("expiresAt")
                 .is_some()
         );
-        assert!(schema.table("drive_presence").unwrap().column_type("lastActiveMs").is_some());
-        assert!(schema.table("drive_room").unwrap().column_type("generation").is_some());
-        assert!(schema.table("drive_room_update").unwrap().column_type("bytes").is_some());
+        assert!(
+            schema
+                .table("drive_presence")
+                .unwrap()
+                .column_type("lastActiveMs")
+                .is_some()
+        );
+        assert!(
+            schema
+                .table("drive_room")
+                .unwrap()
+                .column_type("generation")
+                .is_some()
+        );
+        assert!(
+            schema
+                .table("drive_room_update")
+                .unwrap()
+                .column_type("bytes")
+                .is_some()
+        );
     }
 }

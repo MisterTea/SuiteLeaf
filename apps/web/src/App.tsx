@@ -57,7 +57,6 @@ import {
   parseFile,
   compactSession,
   recordEdit,
-  restoreToVersion,
   sealIfIdle,
   versionPauseMs,
   type SuiteFile,
