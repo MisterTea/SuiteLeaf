@@ -7868,7 +7868,34 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
   aspect-ratio: auto !important;
 }
 
-/* On-device assistant */
+/* On-device assistant: AI button, side panel and the agent's pointer. */
+:root {
+  --agent-width: 340px;
+  --agent-accent: #7c3aed;
+  --agent-accent-soft: #f3edff;
+}
+:root[data-theme="dark"],
+:root.dark-theme {
+  --agent-accent: #b794f6;
+  --agent-accent-soft: #2a2140;
+}
+body.agent-open .home,
+body.agent-open .workspace,
+body.agent-open .loading {
+  margin-right: var(--agent-width);
+}
+body.agent-open .workspace {
+  width: calc(100vw - var(--agent-width));
+}
+body.agent-open .title-block input {
+  min-width: 0;
+}
+body.agent-open .save-status {
+  flex-shrink: 0;
+}
+body.agent-open .gdocs-modal-overlay {
+  right: var(--agent-width);
+}
 .ai-button {
   display: inline-flex;
   align-items: center;
@@ -8185,11 +8212,6 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 /* Near the bottom edge (e.g. pointing at a sheet tab) the label goes above the pointer. */
 .agent-cursor-label.above {
   top: -26px;
-}
-  background: var(--surface-hover);
-}
-.spelling-suggestions .spelling-ignore {
-  color: var(--text-secondary);
 }
 body.agent-open .home-main {
   min-width: 0;
