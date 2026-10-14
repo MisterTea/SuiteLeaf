@@ -1391,6 +1391,8 @@ export async function importDocx(
   const captionXml =
     (await zip.file("word/document.xml")?.async("string")) ?? officeXml;
   const stylesXml = (await zip.file("word/styles.xml")?.async("string")) ?? "";
+  // Caption paragraphs and a:xfrm rot are copied onto the image. The stored
+  // width and height stay the drawing extent; 90 and 270 swap the on-page box.
   content = applyImportedImageCaptions(content, captionXml, stylesXml);
   let output = normalize(
     documentText(

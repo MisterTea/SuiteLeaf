@@ -1,16 +1,26 @@
 import { XMLParser } from "fast-xml-parser";
 import type { JsonNode } from "./index";
+import {
+  imageRotation,
+  imageRotationFromXfrmRot,
+  type ImageRotation,
+} from "./image-rotation";
 
 /**
  * A Word caption is the Caption-styled paragraph immediately after a photo.
- * The drawing's `docPr descr` is the description. A later sentence stays a paragraph.
+ * The drawing's `docPr descr` is the description. `a:xfrm rot` is the quarter
+ * turn. A later sentence stays a paragraph. Width and height stay the extent.
  */
-type CaptionSlot = { descr: string; caption: string | null };
+type CaptionSlot = {
+  descr: string;
+  caption: string | null;
+  rotation: ImageRotation;
+};
 
 type WordParagraph = {
   styleId: string;
   text: string;
-  images: { descr: string }[];
+  images: { descr: string; rotation: ImageRotation }[];
 };
 
 const orderedParser = new XMLParser({
@@ -132,12 +142,58 @@ function paragraphText(children: unknown[]): string {
   return text;
 }
 
+function blipCount(nodes: unknown[]): number {
+  let count = 0;
+  const walk = (list: unknown[]) => {
+    for (const child of elements(list)) {
+      if (child.name === "AlternateContent") {
+        const choice = elements(child.children).find(
+          (part) => part.name === "Choice",
+        );
+        walk(choice ? choice.children : child.children);
+        continue;
+      }
+      if (child.name === "Fallback") continue;
+      if (child.name === "blip" || child.name === "imagedata") count += 1;
+      else walk(child.children);
+    }
+  };
+  walk(nodes);
+  return count;
+}
+
+/** The picture's `a:xfrm rot`. The first transform in the picture wins. */
+function xfrmRotation(nodes: unknown[]): ImageRotation {
+  let rotation: ImageRotation | null = null;
+  const walk = (list: unknown[]) => {
+    if (rotation !== null) return;
+    for (const child of elements(list)) {
+      if (child.name === "AlternateContent") {
+        const choice = elements(child.children).find(
+          (part) => part.name === "Choice",
+        );
+        walk(choice ? choice.children : child.children);
+        continue;
+      }
+      if (child.name === "Fallback") continue;
+      if (child.name === "xfrm") {
+        rotation = imageRotationFromXfrmRot(attr(child.attrs, "rot"));
+        return;
+      }
+      walk(child.children);
+      if (rotation !== null) return;
+    }
+  };
+  walk(nodes);
+  return rotation ?? 0;
+}
+
 /** One slot per blip. `docPr descr` only; a picture's empty `cNvPr descr` is not the description. */
-function imagesIn(nodes: unknown[]): { descr: string }[] {
-  const images: { descr: string }[] = [];
+function imagesIn(nodes: unknown[]): { descr: string; rotation: ImageRotation }[] {
+  const images: { descr: string; rotation: ImageRotation }[] = [];
   const drawingImages = (nodes: unknown[]) => {
     let descr = "";
-    let blips = 0;
+    const rotations: ImageRotation[] = [];
     const walk = (list: unknown[]) => {
       for (const child of elements(list)) {
         if (child.name === "AlternateContent") {
@@ -152,12 +208,22 @@ function imagesIn(nodes: unknown[]): { descr: string }[] {
           const value = attr(child.attrs, "descr").trim();
           if (value && !descr) descr = value;
         }
-        if (child.name === "blip" || child.name === "imagedata") blips += 1;
+        // The turn lives on the picture's own transform, not a swapped extent.
+        if (child.name === "pic") {
+          const count = blipCount(child.children);
+          const rotation = xfrmRotation(child.children);
+          for (let i = 0; i < count; i++) rotations.push(rotation);
+          continue;
+        }
+        if (child.name === "blip" || child.name === "imagedata") {
+          rotations.push(0);
+          continue;
+        }
         walk(child.children);
       }
     };
     walk(nodes);
-    for (let i = 0; i < blips; i++) images.push({ descr });
+    for (const rotation of rotations) images.push({ descr, rotation });
   };
   const walk = (list: unknown[]) => {
     for (const child of elements(list)) {
@@ -224,6 +290,7 @@ function captionSlots(xml: string, stylesXml: string): CaptionSlot[] {
       slots.push({
         descr: images[j].descr,
         caption: last ? caption : null,
+        rotation: images[j].rotation,
       });
     }
   }
@@ -243,7 +310,8 @@ function hasImage(node: JsonNode): boolean {
 
 /**
  * Puts a following Caption paragraph on the image and drops it from the body.
- * The description stays on `alt`. A paragraph that is not Caption stays put.
+ * The description stays on `alt`. `a:xfrm rot` becomes the image rotation.
+ * Width and height are left as stored. A paragraph that is not Caption stays put.
  */
 export function applyImportedImageCaptions(
   doc: JsonNode,
@@ -262,9 +330,15 @@ export function applyImportedImageCaptions(
       const existing = typeof node.attrs?.alt === "string" ? node.attrs.alt : "";
       const descr = slot.descr.trim();
       const caption = slot.caption?.trim() ?? "";
+      const rotation = slot.rotation;
       if (caption) pending.push(caption);
-      if (!descr && !caption) return node;
-      if (descr === existing && !caption && node.attrs?.caption == null)
+      if (!descr && !caption && rotation === 0) return node;
+      if (
+        descr === existing &&
+        !caption &&
+        node.attrs?.caption == null &&
+        imageRotation(node.attrs?.rotation) === rotation
+      )
         return node;
       return {
         ...node,
@@ -272,6 +346,7 @@ export function applyImportedImageCaptions(
           ...(node.attrs ?? {}),
           ...(descr ? { alt: descr } : {}),
           ...(caption ? { caption } : {}),
+          ...(rotation !== 0 ? { rotation } : {}),
         },
       };
     }

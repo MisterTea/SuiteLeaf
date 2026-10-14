@@ -39,3 +39,16 @@ export function docxImageRotation(value: unknown): number | undefined {
   const angle = imageRotation(value);
   return angle === 0 ? undefined : angle;
 }
+
+/**
+ * Word stores `a:xfrm rot` as degrees × 60,000. Only an exact quarter turn
+ * comes back. A missing value, or anything else, stays upright.
+ */
+export function imageRotationFromXfrmRot(value: unknown): ImageRotation {
+  if (value == null || value === "") return 0;
+  const rot = typeof value === "number" ? value : Number(String(value).trim());
+  if (rot === 5_400_000) return 90;
+  if (rot === 10_800_000) return 180;
+  if (rot === 16_200_000) return 270;
+  return 0;
+}
