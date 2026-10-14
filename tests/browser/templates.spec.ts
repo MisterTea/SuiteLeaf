@@ -162,7 +162,7 @@ test("File › New › From template filters to that editor", async ({ page }) =
       await page.getByRole("textbox", { name: "Document content" }).waitFor();
     else await page.locator(".slides-editor").waitFor();
     await page.getByRole("button", { name: "File", exact: true }).click();
-    await page.getByRole("menuitem", { name: "New", exact: true }).hover();
+    await page.getByRole("menuitem", { name: "New", exact: true }).click();
     await page.getByRole("menuitem", { name: "From template" }).click();
     await expect(page.getByRole("heading", { name: shown })).toBeVisible();
     await expect(page.getByRole("heading", { name: hidden })).toHaveCount(0);
