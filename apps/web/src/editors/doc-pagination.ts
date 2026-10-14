@@ -230,7 +230,8 @@ export const DocumentPagination = Extension.create({
                 }
                 if (
                   node.type.name === "image" ||
-                  node.type.name === "horizontalRule"
+                  node.type.name === "horizontalRule" ||
+                  node.type.name === "linkedChart"
                 ) {
                   boundaries.push({ pos, top, bottom });
                   return false;

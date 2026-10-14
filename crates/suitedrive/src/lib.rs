@@ -15,7 +15,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     path::Path,
     sync::{Arc, Mutex},
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use anyhow::Context;
@@ -82,6 +82,12 @@ pub fn tables() -> Vec<TableDef> {
             .column("dismissedAt", Text)
             .index("recipientId")
             .index("itemId"),
+        // A secret that lets someone add one form response without an account.
+        // The token is the primary key so a public request looks up one row.
+        TableDef::new("drive_respond_link", "token")
+            .column("itemId", Text)
+            .column("createdAt", Text)
+            .index("itemId"),
         // Who currently has a file open with comment or edit access.
         // Dropped after 15 minutes without activity. Not shown in the editor.
         TableDef::new("drive_presence", "id")
@@ -109,12 +115,17 @@ pub fn tables() -> Vec<TableDef> {
     ]
 }
 
+/// Declaration order is the privilege order. [`Drive::require`] allows this
+/// role or any role listed after it, and the highest grant wins.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     Viewer,
     /// Can read and add comments, but cannot change the file.
     Commenter,
+    /// Can append responses on a `.slform` file, and can comment, but cannot
+    /// change the questions or write any other file.
+    Responder,
     Editor,
     Owner,
 }
@@ -124,6 +135,7 @@ impl Role {
         match s {
             "viewer" => Some(Role::Viewer),
             "commenter" => Some(Role::Commenter),
+            "responder" => Some(Role::Responder),
             "editor" => Some(Role::Editor),
             "owner" => Some(Role::Owner),
             _ => None,
@@ -134,10 +146,157 @@ impl Role {
         match self {
             Role::Viewer => "viewer",
             Role::Commenter => "commenter",
+            Role::Responder => "responder",
             Role::Editor => "editor",
             Role::Owner => "owner",
         }
     }
+}
+
+/// Questions are unchanged, and responses are the previous array plus one or
+/// more new items. Earlier response objects are unchanged.
+fn appends_form_responses(previous: &[u8], next: &[u8]) -> bool {
+    let (Ok(previous), Ok(next)) = (
+        serde_json::from_slice::<serde_json::Value>(previous),
+        serde_json::from_slice::<serde_json::Value>(next),
+    ) else {
+        return false;
+    };
+    let (Some(previous_questions), Some(next_questions)) = (
+        previous.pointer("/content/questions"),
+        next.pointer("/content/questions"),
+    ) else {
+        return false;
+    };
+    if previous_questions.as_array().is_none() || previous_questions != next_questions {
+        return false;
+    }
+    let (Some(previous_rows), Some(next_rows)) = (
+        previous
+            .pointer("/content/responses")
+            .and_then(serde_json::Value::as_array),
+        next.pointer("/content/responses")
+            .and_then(serde_json::Value::as_array),
+    ) else {
+        return false;
+    };
+    next_rows.len() > previous_rows.len()
+        && next_rows
+            .iter()
+            .zip(previous_rows)
+            .all(|(next_row, previous_row)| next_row == previous_row)
+}
+
+fn is_form_name(name: &str) -> bool {
+    name.to_ascii_lowercase().ends_with(".slform")
+}
+
+fn valid_respond_token(token: &str) -> bool {
+    uuid::Uuid::parse_str(token).is_ok()
+}
+
+fn question_prompt(question: &serde_json::Value) -> &str {
+    question
+        .get("prompt")
+        .and_then(|value| value.as_str())
+        .filter(|prompt| !prompt.is_empty())
+        .unwrap_or("This question")
+}
+
+/// Keep answers that satisfy the questions. A required text or choice must be
+/// present, and a choice must be one of that question's choices.
+fn checked_answers(
+    questions: &[serde_json::Value],
+    answers: &BTreeMap<String, String>,
+) -> DriveResult<serde_json::Map<String, serde_json::Value>> {
+    let mut clean = serde_json::Map::new();
+    for question in questions {
+        let Some(id) = question
+            .get("id")
+            .and_then(|value| value.as_str())
+            .filter(|id| !id.is_empty())
+        else {
+            continue;
+        };
+        let prompt = question_prompt(question);
+        let required = question
+            .get("required")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false);
+        let kind = question
+            .get("kind")
+            .and_then(|value| value.as_str())
+            .unwrap_or("text");
+        let value = answers.get(id).map(|answer| answer.trim()).unwrap_or("");
+        if value.chars().count() > 2000 {
+            return Err(DriveError::BadRequest(format!("{prompt} is too long")));
+        }
+        if required && value.is_empty() {
+            return Err(DriveError::BadRequest(format!("{prompt} is required")));
+        }
+        if kind == "choice" && !value.is_empty() {
+            let allowed = question
+                .get("choices")
+                .and_then(|choices| choices.as_array())
+                .is_some_and(|choices| choices.iter().any(|choice| choice.as_str() == Some(value)));
+            if !allowed {
+                return Err(DriveError::BadRequest(format!(
+                    "{prompt} must be one of the choices"
+                )));
+            }
+        }
+        if !value.is_empty() {
+            clean.insert(id.to_owned(), serde_json::Value::String(value.to_owned()));
+        }
+    }
+    Ok(clean)
+}
+
+fn public_question(question: &serde_json::Value) -> Option<serde_json::Value> {
+    let id = question.get("id").and_then(|value| value.as_str())?;
+    if id.is_empty() {
+        return None;
+    }
+    let kind = if question.get("kind").and_then(|value| value.as_str()) == Some("choice") {
+        "choice"
+    } else {
+        "text"
+    };
+    let mut out = serde_json::json!({
+        "id": id,
+        "prompt": question.get("prompt").and_then(|value| value.as_str()).unwrap_or(""),
+        "kind": kind,
+        "required": question.get("required").and_then(|value| value.as_bool()).unwrap_or(false),
+    });
+    if kind == "choice" {
+        let choices: Vec<&str> = question
+            .get("choices")
+            .and_then(|value| value.as_array())
+            .map(|choices| {
+                choices
+                    .iter()
+                    .filter_map(|choice| choice.as_str())
+                    .collect()
+            })
+            .unwrap_or_default();
+        out["choices"] = serde_json::json!(choices);
+    }
+    Some(out)
+}
+
+fn form_title(file: &serde_json::Value, name: &str) -> String {
+    if let Some(title) = file
+        .get("title")
+        .and_then(|value| value.as_str())
+        .filter(|title| !title.is_empty())
+    {
+        return title.to_owned();
+    }
+    let lower = name.to_ascii_lowercase();
+    if lower.ends_with(".slform") && name.len() > 7 {
+        return name[..name.len() - 7].to_owned();
+    }
+    name.to_owned()
 }
 
 /// The caller of a drive operation.
@@ -152,6 +311,9 @@ pub struct Principal {
 pub struct Item {
     pub id: String,
     pub parent_id: Option<String>,
+    /// The parent folder's name, when a trash listing looked it up.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_name: Option<String>,
     pub name: String,
     pub kind: String,
     pub owner_id: String,
@@ -171,6 +333,28 @@ pub struct Item {
     pub role: Option<Role>,
     /// Whether this node holds every blob of the head version.
     pub available: bool,
+}
+
+/// One file found by [`Drive::search`]. The file's bytes are not included.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchHit {
+    pub id: String,
+    pub name: String,
+    /// The parent folder's name, or "My Drive" when the file is at the top.
+    pub parent_name: String,
+    /// About 80 characters of the name or file text, with the match in it.
+    pub snippet: String,
+}
+
+/// One `.slsheet` the caller can read. The file's bytes are not included.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SpreadsheetHit {
+    pub id: String,
+    pub name: String,
+    /// The parent folder's name, or "My Drive" when the file is at the top.
+    pub parent_name: String,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -242,6 +426,50 @@ pub struct DriveComment {
     pub author_id: String,
     pub body: String,
     pub created_at: String,
+}
+
+/// What someone with a sign-up link is allowed to see: the title and the
+/// questions. Responses, the file's access list, and the owner's other files
+/// are not part of this.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct PublicForm {
+    pub title: String,
+    pub questions: Vec<serde_json::Value>,
+}
+
+/// How long another person's open-file beat stays visible.
+/// A beat older than this is omitted. Nothing sweeps it in the background.
+pub const PRESENCE_TTL: Duration = Duration::from_secs(15);
+
+/// Someone else who currently has a file open.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct Presence {
+    pub name: String,
+    pub editing: bool,
+}
+
+struct PresenceBeat {
+    name: String,
+    editing: bool,
+    at: SystemTime,
+}
+
+fn presence_name(name: &str) -> String {
+    let cleaned: String = name.split_whitespace().collect::<Vec<_>>().join(" ");
+    let cleaned: String = cleaned.chars().take(200).collect();
+    if cleaned.is_empty() {
+        "Someone".to_owned()
+    } else {
+        cleaned
+    }
+}
+
+fn presence_fresh(at: SystemTime, now: SystemTime) -> bool {
+    match now.duration_since(at) {
+        Ok(age) => age <= PRESENCE_TTL,
+        // A beat slightly ahead of this clock is still current.
+        Err(_) => true,
+    }
 }
 
 /// An undismissed in-app notice that `sharer_id` shared `item_id`.
@@ -402,6 +630,373 @@ pub struct BlobResponse {
     pub blobs: Vec<(Hash, Option<ByteBuf>)>,
 }
 
+const SEARCH_HITS: usize = 20;
+const SNIPPET_CHARS: usize = 80;
+const SEARCH_TEXT_LIMIT: usize = 200_000;
+
+struct Words {
+    text: String,
+    len: usize,
+}
+
+impl Words {
+    fn new() -> Self {
+        Self {
+            text: String::new(),
+            len: 0,
+        }
+    }
+
+    fn full(&self) -> bool {
+        self.len >= SEARCH_TEXT_LIMIT
+    }
+
+    fn push(&mut self, raw: &str) {
+        if self.full() {
+            return;
+        }
+        let mut spaced = !self.text.is_empty();
+        for ch in raw.chars() {
+            if self.full() {
+                break;
+            }
+            if ch.is_whitespace() {
+                spaced = true;
+                continue;
+            }
+            if spaced {
+                self.text.push(' ');
+                self.len += 1;
+                spaced = false;
+                if self.full() {
+                    break;
+                }
+            }
+            self.text.push(ch);
+            self.len += 1;
+        }
+    }
+}
+
+fn collect_doc(node: &serde_json::Value, words: &mut Words, depth: usize) {
+    if depth > MAX_DEPTH || words.full() {
+        return;
+    }
+    if node.get("type").and_then(|value| value.as_str()) == Some("hardBreak") {
+        words.push(" ");
+    }
+    if let Some(text) = node.get("text").and_then(|value| value.as_str()) {
+        words.push(text);
+    }
+    if let Some(children) = node.get("content").and_then(|value| value.as_array()) {
+        for child in children {
+            collect_doc(child, words, depth + 1);
+        }
+    }
+}
+
+fn cell_display(cell: &serde_json::Value) -> Option<String> {
+    match cell.get("v") {
+        Some(serde_json::Value::String(text)) if !text.is_empty() => return Some(text.clone()),
+        Some(serde_json::Value::Number(number)) => return Some(number.to_string()),
+        Some(serde_json::Value::Bool(value)) => {
+            return Some(if *value { "true" } else { "false" }.into());
+        }
+        _ => {}
+    }
+    cell.pointer("/p/body/dataStream")
+        .and_then(|value| value.as_str())
+        .map(|text| text.trim_end_matches(['\r', '\n']).to_owned())
+        .filter(|text| !text.is_empty())
+}
+
+fn collect_sheet(file: &serde_json::Value, words: &mut Words) {
+    let Some(sheets) = file
+        .pointer("/content/workbook/sheets")
+        .and_then(|value| value.as_object())
+    else {
+        return;
+    };
+    for sheet in sheets.values() {
+        let Some(rows) = sheet.get("cellData").and_then(|value| value.as_object()) else {
+            continue;
+        };
+        for row in rows.values() {
+            let Some(cells) = row.as_object() else {
+                continue;
+            };
+            for cell in cells.values() {
+                if let Some(text) = cell_display(cell) {
+                    words.push(&text);
+                }
+                if words.full() {
+                    return;
+                }
+            }
+        }
+    }
+}
+
+fn collect_slides(file: &serde_json::Value, words: &mut Words) {
+    let Some(slides) = file
+        .pointer("/content/slides")
+        .and_then(|value| value.as_object())
+    else {
+        return;
+    };
+    for slide in slides.values() {
+        if let Some(elements) = slide.get("elements").and_then(|value| value.as_array()) {
+            for element in elements {
+                if let Some(content) = element.get("content").and_then(|value| value.as_str()) {
+                    words.push(content);
+                }
+                if let Some(rows) = element.get("rows").and_then(|value| value.as_array()) {
+                    for row in rows {
+                        let Some(cells) = row.as_array() else {
+                            continue;
+                        };
+                        for cell in cells {
+                            if let Some(text) = cell.as_str() {
+                                words.push(text);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(notes) = slide.get("notes").and_then(|value| value.as_str()) {
+            words.push(notes);
+        }
+        if words.full() {
+            return;
+        }
+    }
+}
+
+fn collect_form(file: &serde_json::Value, words: &mut Words) {
+    if let Some(questions) = file
+        .pointer("/content/questions")
+        .and_then(|value| value.as_array())
+    {
+        for question in questions {
+            if let Some(prompt) = question.get("prompt").and_then(|value| value.as_str()) {
+                words.push(prompt);
+            }
+            if let Some(choices) = question.get("choices").and_then(|value| value.as_array()) {
+                for choice in choices {
+                    if let Some(text) = choice.as_str() {
+                        words.push(text);
+                    }
+                }
+            }
+        }
+    }
+    if let Some(responses) = file
+        .pointer("/content/responses")
+        .and_then(|value| value.as_array())
+    {
+        for response in responses {
+            let Some(answers) = response.get("answers").and_then(|value| value.as_object()) else {
+                continue;
+            };
+            for answer in answers.values() {
+                if let Some(text) = answer.as_str() {
+                    words.push(text);
+                }
+            }
+        }
+    }
+}
+
+fn doc_text(node: &serde_json::Value) -> String {
+    let mut words = Words::new();
+    collect_doc(node, &mut words, 0);
+    words.text
+}
+
+fn named_piece(name: &str, text: &str) -> String {
+    if text.is_empty() {
+        format!("{name}:")
+    } else {
+        format!("{name}: {text}")
+    }
+}
+
+fn first_tab_name(file: &serde_json::Value) -> String {
+    file.get("tabTitle")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .unwrap_or("Document")
+        .to_owned()
+}
+
+/// One string per tab. A document with no extra tabs is just `content`.
+/// With extra tabs, every piece is `Name: text`, including the first tab.
+fn doc_pieces(file: &serde_json::Value) -> Vec<String> {
+    let Some(content) = file.get("content") else {
+        return Vec::new();
+    };
+    let tabs = file
+        .get("tabs")
+        .and_then(|value| value.as_array())
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let body = doc_text(content);
+    if tabs.is_empty() {
+        return vec![body];
+    }
+    let mut pieces = Vec::with_capacity(tabs.len() + 1);
+    pieces.push(named_piece(&first_tab_name(file), &body));
+    for (index, tab) in tabs.iter().enumerate() {
+        let name = tab
+            .get("title")
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|title| !title.is_empty())
+            .map(str::to_owned)
+            .unwrap_or_else(|| format!("Tab {}", index + 2));
+        let text = tab.get("content").map(doc_text).unwrap_or_default();
+        pieces.push(named_piece(&name, &text));
+    }
+    pieces
+}
+
+/// Keep the tab name at the front when the hit sits far enough into the tab
+/// that the usual window would start mid-sentence.
+fn tab_window(piece: &str, query: &str) -> String {
+    let window = snippet_around(piece, query);
+    let Some(name) = piece.split(':').next() else {
+        return window;
+    };
+    let prefix = format!("{name}:");
+    if window.starts_with(&prefix) {
+        return window;
+    }
+    let head = format!("{name}: ");
+    let room = SNIPPET_CHARS.saturating_sub(head.chars().count());
+    let rest: String = window.trim().chars().take(room).collect();
+    head.chars()
+        .chain(rest.chars())
+        .take(SNIPPET_CHARS)
+        .collect()
+}
+
+fn snippet_for_file(bytes: &[u8], query: &str) -> String {
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(bytes) else {
+        return String::new();
+    };
+    if value.get("kind").and_then(|kind| kind.as_str()) == Some("doc") {
+        let pieces = doc_pieces(&value);
+        if pieces.len() > 1 {
+            for piece in &pieces {
+                if find_ci(piece, query).is_some() {
+                    return tab_window(piece, query);
+                }
+            }
+        }
+    }
+    snippet_around(&file_words(bytes), query)
+}
+
+/// Paragraph and heading text, cell display values, slide text and notes, and
+/// form prompts, choices, and answers. A document contributes every tab.
+/// Anything else contributes nothing.
+fn file_words(bytes: &[u8]) -> String {
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(bytes) else {
+        return String::new();
+    };
+    let mut words = Words::new();
+    match value.get("kind").and_then(|kind| kind.as_str()) {
+        Some("doc") => {
+            for piece in doc_pieces(&value) {
+                words.push(&piece);
+            }
+        }
+        Some("sheet") => collect_sheet(&value, &mut words),
+        Some("slide") => collect_slides(&value, &mut words),
+        Some("form") => collect_form(&value, &mut words),
+        _ => {}
+    }
+    words.text
+}
+
+/// Byte range of `needle` in `haystack`, ignoring case. Empty needles never match.
+fn find_ci(haystack: &str, needle: &str) -> Option<(usize, usize)> {
+    let needle = needle.to_lowercase();
+    if needle.is_empty() || haystack.is_empty() {
+        return None;
+    }
+    let mut lower = String::new();
+    let mut map = Vec::new();
+    for (idx, ch) in haystack.char_indices() {
+        for low in ch.to_lowercase() {
+            let mut buf = [0; 4];
+            let encoded = low.encode_utf8(&mut buf);
+            for _ in 0..encoded.len() {
+                map.push(idx);
+            }
+            lower.push(low);
+        }
+    }
+    let at = lower.find(&needle)?;
+    let start = *map.get(at)?;
+    let last = *map.get(at + needle.len() - 1)?;
+    let end = haystack[last..]
+        .chars()
+        .next()
+        .map(|ch| last + ch.len_utf8())
+        .unwrap_or(haystack.len());
+    Some((start, end))
+}
+
+fn snippet_around(text: &str, query: &str) -> String {
+    let Some((start, end)) = find_ci(text, query) else {
+        return text.chars().take(SNIPPET_CHARS).collect();
+    };
+    let chars: Vec<(usize, char)> = text.char_indices().collect();
+    if chars.len() <= SNIPPET_CHARS {
+        return text.to_owned();
+    }
+    let match_from = chars.iter().position(|(i, _)| *i >= start).unwrap_or(0);
+    let match_to = chars
+        .iter()
+        .position(|(i, _)| *i >= end)
+        .unwrap_or(chars.len());
+    let match_len = match_to.saturating_sub(match_from);
+    if match_len >= SNIPPET_CHARS {
+        return chars[match_from..match_from + SNIPPET_CHARS]
+            .iter()
+            .map(|(_, ch)| *ch)
+            .collect();
+    }
+    let extra = SNIPPET_CHARS - match_len;
+    let mut from = match_from.saturating_sub(extra / 3);
+    let mut to = (match_to + (extra - (match_from - from))).min(chars.len());
+    if to - from < SNIPPET_CHARS {
+        from = from.saturating_sub(SNIPPET_CHARS - (to - from));
+    }
+    to = (from + SNIPPET_CHARS).min(chars.len());
+    if from > 0
+        && from < match_from
+        && let Some(space) = chars[from..match_from]
+            .iter()
+            .position(|(_, ch)| ch.is_whitespace())
+    {
+        let next = from + space + 1;
+        if next <= match_from {
+            from = next;
+        }
+    }
+    let snippet: String = chars[from..to].iter().map(|(_, ch)| *ch).collect();
+    let trimmed = snippet.trim();
+    if trimmed.chars().count() <= SNIPPET_CHARS {
+        trimmed.to_owned()
+    } else {
+        trimmed.chars().take(SNIPPET_CHARS).collect()
+    }
+}
+
 /// How a node reaches its peers for blob replication.
 #[async_trait::async_trait]
 pub trait BlobTransport: Send + Sync {
@@ -414,6 +1009,9 @@ pub struct Drive {
     blobs: BlobStore,
     wanted: Mutex<BTreeSet<Hash>>,
     notify: Notify,
+    /// Latest open-file beat per item, then per user. Read paths drop beats
+    /// older than [`PRESENCE_TTL`]; there is no sweeper thread.
+    presence: Mutex<BTreeMap<String, BTreeMap<String, PresenceBeat>>>,
 }
 
 impl Drive {
@@ -429,6 +1027,7 @@ impl Drive {
             blobs: BlobStore::open(root)?,
             wanted: Mutex::default(),
             notify: Notify::new(),
+            presence: Mutex::default(),
         });
         let weak = Arc::downgrade(&drive);
         db.on_applied(Box::new(move |rows| {
@@ -573,6 +1172,7 @@ impl Drive {
         Ok(Item {
             id: text(row, "id").unwrap_or_default(),
             parent_id: text(row, "parentId"),
+            parent_name: None,
             name: text(row, "name").unwrap_or_default(),
             kind: text(row, "kind").unwrap_or_else(|| "file".into()),
             owner_id: text(row, "ownerId").unwrap_or_default(),
@@ -592,7 +1192,15 @@ impl Drive {
 
     pub fn get(&self, who: &Principal, id: &str) -> DriveResult<Item> {
         let role = self.require(who, id, Role::Viewer)?;
-        self.to_item(&self.item_row(id)?, Some(role))
+        let mut item = self.to_item(&self.item_row(id)?, Some(role))?;
+        if let Some(parent_id) = item.parent_id.clone() {
+            item.parent_name = self
+                .db
+                .get("drive_item", &parent_id)?
+                .as_ref()
+                .and_then(|parent| text(parent, "name"));
+        }
+        Ok(item)
     }
 
     fn items(&self, sql: &str, params: &[Value], who: &Principal) -> DriveResult<Vec<Item>> {
@@ -626,6 +1234,26 @@ impl Drive {
         }
     }
 
+    /// Folders the caller can edit, including nested ones, so a move dialog
+    /// can show a path without opening each folder. A folder they can only
+    /// view or comment on is left out. Trashed folders are left out.
+    pub fn list_folders(&self, who: &Principal) -> DriveResult<Vec<Item>> {
+        let rows = self.db.query(
+            "SELECT * FROM drive_item WHERE kind = 'folder' AND trashed = 0 ORDER BY name COLLATE NOCASE",
+            &[],
+        )?;
+        let mut out = Vec::new();
+        for row in rows {
+            let id = text(&row, "id").unwrap_or_default();
+            if let Some(role) = self.role(who, &id)?
+                && role >= Role::Editor
+            {
+                out.push(self.to_item(&row, Some(role))?);
+            }
+        }
+        Ok(out)
+    }
+
     /// Items shared directly with the caller or their organizations.
     pub fn shared(&self, who: &Principal) -> DriveResult<Vec<Item>> {
         let now = iso_now();
@@ -652,6 +1280,151 @@ impl Drive {
             &params,
             who,
         )
+    }
+
+    /// Trashed items the caller owns, with the folder name they came from.
+    pub fn list_trashed(&self, who: &Principal) -> DriveResult<Vec<Item>> {
+        let rows = self.db.query(
+            "SELECT * FROM drive_item WHERE ownerId = ?1 AND trashed = 1 ORDER BY name COLLATE NOCASE",
+            &[Value::Text(who.id.clone())],
+        )?;
+        let mut out = Vec::new();
+        for row in rows {
+            let mut item = self.to_item(&row, Some(Role::Owner))?;
+            if let Some(parent_id) = item.parent_id.clone() {
+                item.parent_name = self
+                    .db
+                    .get("drive_item", &parent_id)?
+                    .as_ref()
+                    .and_then(|parent| text(parent, "name"));
+            }
+            out.push(item);
+        }
+        Ok(out)
+    }
+
+    /// Files the caller can read whose name or text contains `query`.
+    ///
+    /// The match is a case-insensitive substring of the file name or of the
+    /// text inside a native SuiteLeaf file. Folders are not hits. Trashed
+    /// files, and files inside a trashed folder, are skipped. At most 20 hits
+    /// come back, each with the parent folder name (or "My Drive") and a short
+    /// snippet. The response does not include file bytes.
+    pub fn search(&self, who: &Principal, query: &str) -> DriveResult<Vec<SearchHit>> {
+        let query = query.trim();
+        if query.is_empty() {
+            return Ok(Vec::new());
+        }
+        let rows = self.db.query(
+            "SELECT * FROM drive_item WHERE kind = 'file' AND trashed = 0 ORDER BY name COLLATE NOCASE",
+            &[],
+        )?;
+        let mut hits = Vec::new();
+        for row in rows {
+            if hits.len() == SEARCH_HITS {
+                break;
+            }
+            let id = text(&row, "id").unwrap_or_default();
+            if self.role(who, &id)?.is_none() {
+                continue;
+            }
+            let parent_id = text(&row, "parentId");
+            if self.hidden_by_trash(parent_id.as_deref())? {
+                continue;
+            }
+            let name = text(&row, "name").unwrap_or_default();
+            let bytes = self.head_bytes(&row)?;
+            let body = match &bytes {
+                Some(raw) => file_words(raw),
+                None => String::new(),
+            };
+            let in_body = find_ci(&body, query).is_some();
+            if !in_body && find_ci(&name, query).is_none() {
+                continue;
+            }
+            let snippet = if in_body {
+                match &bytes {
+                    Some(raw) => snippet_for_file(raw, query),
+                    None => String::new(),
+                }
+            } else {
+                snippet_around(&name, query)
+            };
+            let parent_name = self.folder_name(parent_id.as_deref())?;
+            hits.push(SearchHit {
+                id,
+                name,
+                parent_name,
+                snippet,
+            });
+        }
+        Ok(hits)
+    }
+
+    /// Spreadsheets the caller can read, including files inside folders and
+    /// files they have never opened. A folder listing only sees one folder,
+    /// so this walks every readable `.slsheet` instead. Trashed files, and
+    /// files inside a trashed folder, are left out. Each hit is the file id,
+    /// name, and parent folder name. The response does not include file bytes.
+    pub fn list_spreadsheets(&self, who: &Principal) -> DriveResult<Vec<SpreadsheetHit>> {
+        let rows = self.db.query(
+            "SELECT * FROM drive_item WHERE kind = 'file' AND trashed = 0 ORDER BY name COLLATE NOCASE",
+            &[],
+        )?;
+        let mut hits = Vec::new();
+        for row in rows {
+            let name = text(&row, "name").unwrap_or_default();
+            if !name.to_ascii_lowercase().ends_with(".slsheet") {
+                continue;
+            }
+            let id = text(&row, "id").unwrap_or_default();
+            if self.role(who, &id)?.is_none() {
+                continue;
+            }
+            let parent_id = text(&row, "parentId");
+            if self.hidden_by_trash(parent_id.as_deref())? {
+                continue;
+            }
+            hits.push(SpreadsheetHit {
+                id,
+                name,
+                parent_name: self.folder_name(parent_id.as_deref())?,
+            });
+        }
+        Ok(hits)
+    }
+
+    /// The parent folder's name, or "My Drive" when the file is at the top.
+    fn folder_name(&self, parent_id: Option<&str>) -> DriveResult<String> {
+        Ok(match parent_id {
+            Some(parent) => self
+                .db
+                .get("drive_item", parent)?
+                .as_ref()
+                .and_then(|folder| text(folder, "name"))
+                .filter(|folder| !folder.is_empty())
+                .unwrap_or_else(|| "My Drive".into()),
+            None => "My Drive".into(),
+        })
+    }
+
+    /// True when an ancestor folder is in Trash. The file itself is filtered
+    /// by the search query; trashing a folder does not mark its children.
+    fn hidden_by_trash(&self, parent_id: Option<&str>) -> DriveResult<bool> {
+        let mut current = parent_id.map(str::to_owned);
+        for _ in 0..MAX_DEPTH {
+            let Some(id) = current else {
+                return Ok(false);
+            };
+            let Some(row) = self.db.get("drive_item", &id)? else {
+                return Ok(false);
+            };
+            if int(&row, "trashed") != 0 {
+                return Ok(true);
+            }
+            current = text(&row, "parentId");
+        }
+        Ok(false)
     }
 
     pub fn create(
@@ -696,8 +1469,42 @@ impl Drive {
         self.get(who, &id)
     }
 
+    /// A responder may save a `.slform` file only by appending responses.
+    fn responder_may_append(&self, id: &str, bytes: &[u8]) -> DriveResult<bool> {
+        let row = self.item_row(id)?;
+        let name = text(&row, "name").unwrap_or_default();
+        if !name.to_ascii_lowercase().ends_with(".slform") {
+            return Ok(false);
+        }
+        let Some(previous) = self.head_bytes(&row)? else {
+            return Ok(false);
+        };
+        Ok(appends_form_responses(&previous, bytes))
+    }
+
+    fn head_bytes(&self, row: &Row) -> DriveResult<Option<Vec<u8>>> {
+        let Some(version) = text(row, "headVersionId") else {
+            return Ok(None);
+        };
+        let version_row = self
+            .db
+            .get("drive_version", &version)?
+            .ok_or(DriveError::NotFound)?;
+        let Some(hash) = text(&version_row, "contentHash") else {
+            return Ok(None);
+        };
+        let hash = hash
+            .parse()
+            .map_err(|_| DriveError::Other(anyhow::anyhow!("corrupt content hash")))?;
+        Ok(self.blobs.get_content(&hash)?)
+    }
+
     /// Save new content. `if_match` is the head version the caller last saw;
     /// a different head means someone else saved first.
+    ///
+    /// Editors and owners may write any bytes. A responder may write a
+    /// `.slform` file only to append responses. Viewers and commenters may
+    /// not change file bytes.
     pub fn write(
         &self,
         who: &Principal,
@@ -706,7 +1513,14 @@ impl Drive {
         mime: Option<&str>,
         bytes: &[u8],
     ) -> DriveResult<Item> {
-        self.require(who, id, Role::Editor)?;
+        let allowed = match self.role(who, id)? {
+            Some(role) if role >= Role::Editor => true,
+            Some(Role::Responder) => self.responder_may_append(id, bytes)?,
+            _ => false,
+        };
+        if !allowed {
+            return Err(DriveError::Forbidden);
+        }
         let row = self.item_row(id)?;
         if text(&row, "kind").as_deref() != Some("file") {
             return Err(DriveError::BadRequest("Folders have no content.".into()));
@@ -719,6 +1533,17 @@ impl Drive {
             let role = self.role(who, id)?;
             return Err(DriveError::Conflict(Box::new(self.to_item(&row, role)?)));
         }
+        self.commit_bytes(id, &who.id, mime, bytes)?;
+        self.get(who, id)
+    }
+
+    fn commit_bytes(
+        &self,
+        id: &str,
+        author_id: &str,
+        mime: Option<&str>,
+        bytes: &[u8],
+    ) -> DriveResult<()> {
         let hash = self.blobs.put_content(bytes).context("store content")?;
         let version = uuid::Uuid::now_v7().to_string();
         let now = iso_now();
@@ -731,7 +1556,7 @@ impl Drive {
                     ("itemId", Value::from(id)),
                     ("contentHash", hash.to_string().into()),
                     ("size", Value::Integer(size)),
-                    ("authorId", who.id.clone().into()),
+                    ("authorId", author_id.to_owned().into()),
                     ("createdAt", now.clone().into()),
                 ],
             )?;
@@ -745,7 +1570,146 @@ impl Drive {
             }
             tx.upsert("drive_item", id, cols)
         })?;
-        self.get(who, id)
+        Ok(())
+    }
+
+    fn respond_tokens(&self, item_id: &str) -> DriveResult<Vec<String>> {
+        Ok(self
+            .db
+            .query(
+                "SELECT token FROM drive_respond_link WHERE itemId = ?1",
+                &[Value::Text(item_id.to_owned())],
+            )?
+            .into_iter()
+            .filter_map(|row| text(&row, "token"))
+            .collect())
+    }
+
+    /// Create a sign-up link, or return the one already on this form.
+    /// Only an editor or owner of a `.slform` file may do this.
+    pub fn create_respond_link(&self, who: &Principal, id: &str) -> DriveResult<String> {
+        self.require(who, id, Role::Editor)?;
+        let row = self.item_row(id)?;
+        if text(&row, "kind").as_deref() != Some("file")
+            || !is_form_name(&text(&row, "name").unwrap_or_default())
+        {
+            return Err(DriveError::BadRequest(
+                "A sign-up link is only for a form.".into(),
+            ));
+        }
+        if let Some(token) = self.respond_tokens(id)?.into_iter().next() {
+            return Ok(token);
+        }
+        let token = uuid::Uuid::now_v7().to_string();
+        let now = iso_now();
+        self.db.transact(|tx| {
+            tx.upsert(
+                "drive_respond_link",
+                &token,
+                [("itemId", Value::from(id)), ("createdAt", now.into())],
+            )
+        })?;
+        Ok(token)
+    }
+
+    /// Turn the sign-up link off. The form, including responses already
+    /// collected, stays. Only an editor or owner may do this.
+    pub fn clear_respond_link(&self, who: &Principal, id: &str) -> DriveResult<()> {
+        self.require(who, id, Role::Editor)?;
+        let tokens = self.respond_tokens(id)?;
+        if tokens.is_empty() {
+            return Ok(());
+        }
+        self.db.transact(|tx| {
+            for token in &tokens {
+                tx.delete("drive_respond_link", token)?;
+            }
+            Ok(())
+        })?;
+        Ok(())
+    }
+
+    fn linked_form(&self, token: &str) -> DriveResult<(String, String, Vec<u8>)> {
+        if !valid_respond_token(token) {
+            return Err(DriveError::NotFound);
+        }
+        let link = self
+            .db
+            .get("drive_respond_link", token)?
+            .ok_or(DriveError::NotFound)?;
+        let item_id = text(&link, "itemId").ok_or(DriveError::NotFound)?;
+        let row = self.item_row(&item_id)?;
+        if int(&row, "trashed") != 0 {
+            return Err(DriveError::NotFound);
+        }
+        let name = text(&row, "name").unwrap_or_default();
+        if !is_form_name(&name) {
+            return Err(DriveError::NotFound);
+        }
+        let bytes = self.head_bytes(&row)?.ok_or(DriveError::NotFound)?;
+        Ok((item_id, name, bytes))
+    }
+
+    /// The title and questions for a sign-up link. No account is required.
+    /// The response list is not included.
+    pub fn public_form(&self, token: &str) -> DriveResult<PublicForm> {
+        let (_id, name, bytes) = self.linked_form(token)?;
+        let file: serde_json::Value =
+            serde_json::from_slice(&bytes).map_err(|_| DriveError::NotFound)?;
+        if let Some(kind) = file.get("kind").and_then(|value| value.as_str())
+            && kind != "form"
+        {
+            return Err(DriveError::NotFound);
+        }
+        let questions = file
+            .pointer("/content/questions")
+            .and_then(|value| value.as_array())
+            .ok_or(DriveError::NotFound)?;
+        Ok(PublicForm {
+            title: form_title(&file, &name),
+            questions: questions.iter().filter_map(public_question).collect(),
+        })
+    }
+
+    /// Append one response through a sign-up link. Questions stay as they are.
+    pub fn submit_public_response(
+        &self,
+        token: &str,
+        answers: &BTreeMap<String, String>,
+    ) -> DriveResult<()> {
+        let (id, _name, bytes) = self.linked_form(token)?;
+        let file: serde_json::Value = serde_json::from_slice(&bytes)
+            .map_err(|_| DriveError::BadRequest("This form could not be read.".into()))?;
+        let questions = file
+            .pointer("/content/questions")
+            .and_then(|value| value.as_array())
+            .cloned()
+            .ok_or_else(|| DriveError::BadRequest("This form could not be read.".into()))?;
+        let clean = checked_answers(&questions, answers)?;
+        let mut next = file;
+        let responses = next
+            .pointer_mut("/content/responses")
+            .ok_or_else(|| DriveError::BadRequest("This form could not be read.".into()))?;
+        let rows = responses
+            .as_array_mut()
+            .ok_or_else(|| DriveError::BadRequest("This form could not be read.".into()))?;
+        if rows.len() >= 5000 {
+            return Err(DriveError::BadRequest(
+                "This form is not taking more responses.".into(),
+            ));
+        }
+        rows.push(serde_json::json!({
+            "id": uuid::Uuid::now_v7().to_string(),
+            "at": iso_now(),
+            "answers": clean,
+        }));
+        let next_bytes = serde_json::to_vec(&next).map_err(|e| DriveError::Other(e.into()))?;
+        if !appends_form_responses(&bytes, &next_bytes) {
+            return Err(DriveError::BadRequest(
+                "That response could not be added.".into(),
+            ));
+        }
+        self.commit_bytes(&id, "", None, &next_bytes)
     }
 
     /// Write file bytes without an If-Match check. Used when a collaboration
@@ -877,6 +1841,123 @@ impl Drive {
         }
         self.db.transact(|tx| tx.upsert("drive_item", id, cols))?;
         self.get(who, id)
+    }
+
+    fn column_values(&self, sql: &str, column: &str, item_id: &str) -> DriveResult<Vec<String>> {
+        Ok(self
+            .db
+            .query(sql, &[Value::Text(item_id.to_owned())])?
+            .into_iter()
+            .filter_map(|row| text(&row, column))
+            .collect())
+    }
+
+    /// Remove a trashed item the caller owns, plus its versions, grants, and
+    /// any blobs no other version still uses.
+    pub fn delete_forever(&self, who: &Principal, id: &str) -> DriveResult<()> {
+        let row = self.item_row(id)?;
+        if text(&row, "ownerId").as_deref() != Some(who.id.as_str()) {
+            return Err(DriveError::Forbidden);
+        }
+        if int(&row, "trashed") == 0 {
+            return Err(DriveError::BadRequest(
+                "Move it to Trash before deleting it forever.".into(),
+            ));
+        }
+        let children = self.db.query(
+            "SELECT id FROM drive_item WHERE parentId = ?1 LIMIT 1",
+            &[Value::Text(id.to_owned())],
+        )?;
+        if !children.is_empty() {
+            return Err(DriveError::BadRequest(
+                "This folder still has something in it. Move those out, or delete them forever, before deleting the folder.".into(),
+            ));
+        }
+        let versions = self.db.query(
+            "SELECT id, contentHash FROM drive_version WHERE itemId = ?1",
+            &[Value::Text(id.to_owned())],
+        )?;
+        let version_ids: Vec<String> = versions.iter().filter_map(|row| text(row, "id")).collect();
+        let hashes: Vec<String> = versions
+            .iter()
+            .filter_map(|row| text(row, "contentHash"))
+            .collect();
+        let acls = self.column_values("SELECT id FROM drive_acl WHERE itemId = ?1", "id", id)?;
+        let comments =
+            self.column_values("SELECT id FROM drive_comment WHERE itemId = ?1", "id", id)?;
+        let notices =
+            self.column_values("SELECT id FROM drive_notice WHERE itemId = ?1", "id", id)?;
+        let links = self.column_values(
+            "SELECT token FROM drive_respond_link WHERE itemId = ?1",
+            "token",
+            id,
+        )?;
+        self.db.transact(|tx| {
+            for version_id in &version_ids {
+                tx.delete("drive_version", version_id)?;
+            }
+            for acl_id in &acls {
+                tx.delete("drive_acl", acl_id)?;
+            }
+            for comment_id in &comments {
+                tx.delete("drive_comment", comment_id)?;
+            }
+            for notice_id in &notices {
+                tx.delete("drive_notice", notice_id)?;
+            }
+            for token in &links {
+                tx.delete("drive_respond_link", token)?;
+            }
+            tx.delete("drive_item", id)?;
+            Ok(())
+        })?;
+        self.release_unreferenced_blobs(&hashes)?;
+        Ok(())
+    }
+
+    /// Drop manifest and chunk blobs that no remaining version still names.
+    fn release_unreferenced_blobs(&self, hashes: &[String]) -> DriveResult<()> {
+        let live: BTreeSet<String> = self
+            .db
+            .query("SELECT contentHash FROM drive_version", &[])?
+            .into_iter()
+            .filter_map(|row| text(&row, "contentHash"))
+            .collect();
+        let mut live_chunks = BTreeSet::new();
+        for hash in &live {
+            let Ok(parsed) = hash.parse::<Hash>() else {
+                continue;
+            };
+            if let Some(bytes) = self.blobs.get(&parsed)?
+                && let Ok(manifest) = Manifest::decode(&bytes)
+            {
+                live_chunks.extend(manifest.chunks);
+            }
+        }
+        for hash in hashes {
+            if live.contains(hash) {
+                continue;
+            }
+            let Ok(parsed) = hash.parse::<Hash>() else {
+                continue;
+            };
+            let chunks = self
+                .blobs
+                .get(&parsed)?
+                .and_then(|bytes| Manifest::decode(&bytes).ok())
+                .map(|manifest| manifest.chunks)
+                .unwrap_or_default();
+            for chunk in chunks {
+                if live_chunks.contains(&chunk) {
+                    continue;
+                }
+                self.blobs.remove(&chunk).context("remove chunk")?;
+                self.wanted.lock().unwrap().remove(&chunk);
+            }
+            self.blobs.remove(&parsed).context("remove content")?;
+            self.wanted.lock().unwrap().remove(&parsed);
+        }
+        Ok(())
     }
 
     fn version_row(&self, item_id: &str, version_id: &str) -> DriveResult<Row> {
@@ -1156,6 +2237,60 @@ impl Drive {
         })
     }
 
+    /// Record that `who` has this item open. Viewers and commenters may report
+    /// viewing. `editing` is only what their client says; it does not grant
+    /// write access. `write` still refuses viewers and commenters.
+    pub fn report_presence(
+        &self,
+        who: &Principal,
+        id: &str,
+        name: &str,
+        editing: bool,
+        at: SystemTime,
+    ) -> DriveResult<()> {
+        self.require(who, id, Role::Viewer)?;
+        let mut items = self.presence.lock().unwrap();
+        items.entry(id.to_owned()).or_default().insert(
+            who.id.clone(),
+            PresenceBeat {
+                name: presence_name(name),
+                editing,
+                at,
+            },
+        );
+        Ok(())
+    }
+
+    /// Other people whose latest beat is not older than [`PRESENCE_TTL`].
+    /// The caller is left out. A beat older than that is omitted here, so no
+    /// background thread is required.
+    pub fn presence(
+        &self,
+        who: &Principal,
+        id: &str,
+        now: SystemTime,
+    ) -> DriveResult<Vec<Presence>> {
+        self.require(who, id, Role::Viewer)?;
+        let mut items = self.presence.lock().unwrap();
+        let Some(people) = items.get_mut(id) else {
+            return Ok(vec![]);
+        };
+        people.retain(|_, beat| presence_fresh(beat.at, now));
+        let mut out: Vec<Presence> = people
+            .iter()
+            .filter(|(user_id, _)| *user_id != &who.id)
+            .map(|(_, beat)| Presence {
+                name: beat.name.clone(),
+                editing: beat.editing,
+            })
+            .collect();
+        if people.is_empty() {
+            items.remove(id);
+        }
+        out.sort_by(|a, b| a.name.cmp(&b.name).then(a.editing.cmp(&b.editing)));
+        Ok(out)
+    }
+
     /// Comments on an item. Viewers can read them; writing is [`add_comment`].
     pub fn comments(&self, who: &Principal, id: &str) -> DriveResult<Vec<DriveComment>> {
         self.require(who, id, Role::Viewer)?;
@@ -1176,8 +2311,9 @@ impl Drive {
             .collect())
     }
 
-    /// Add a comment. Commenters, editors, and owners may do this. Changing
-    /// the file itself still requires an editor (`write` returns forbidden).
+    /// Add a comment. Commenters and every higher role may do this. Changing
+    /// the file itself still requires an editor (`write` returns forbidden),
+    /// except a responder appending form responses.
     pub fn add_comment(&self, who: &Principal, id: &str, body: &str) -> DriveResult<DriveComment> {
         self.require(who, id, Role::Commenter)?;
         let body = body.trim();

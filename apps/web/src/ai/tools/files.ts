@@ -28,7 +28,12 @@ const KINDS: Record<string, Kind> = {
   slides: "slide",
   slide: "slide",
 };
-const NAMES: Record<Kind, string> = { doc: "document", sheet: "spreadsheet", slide: "presentation" };
+const NAMES: Record<Kind, string> = {
+  doc: "document",
+  sheet: "spreadsheet",
+  slide: "presentation",
+  form: "form",
+};
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** What the file list (home screen) lends the agent. */

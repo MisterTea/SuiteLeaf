@@ -49,6 +49,7 @@ In Google Docs the path is Format, Line & paragraph spacing, Keep with next ([Do
 
 ## Gaps and notes
 
+- The Keep with next switch no longer floats beside the caret. It covered the heading while someone was typing. A heading already saved with keep-with-next still travels with the following block.
 - Keep lines together and widow/orphan control are still out of scope.
 - Columns, margins, line spacing, tab stops, and headers are unchanged.
 - A Word file’s existing keep-with-next is not read on import.

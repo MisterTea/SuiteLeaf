@@ -59,7 +59,6 @@ import {
 import { useSheetFunctions } from "./function-help-ui";
 import SortRangeDialog from "./SortRangeDialog";
 import NamedRanges, { type NamedRangesHandle } from "./named-ranges-ui";
-import { useToolbarOverflow } from "./toolbar-overflow";
 import {
   attachSheetViewLock,
   blocksSheetEdit,
@@ -115,9 +114,9 @@ import {
   Link,
   MessageSquarePlus,
   ChevronDown,
-  EllipsisVertical,
   Lock,
 } from "lucide-react";
+import { ColorTool } from "./color-picker";
 import {
   filename,
   parseRange,
@@ -762,6 +761,21 @@ function EmbeddedChart({ data }: { data?: { chartId: string } }) {
     </div>
   );
 }
+/** Menu clicks can land before the grid's helpers have mounted. */
+function callWhenMounted<T>(ref: { current: T | null }, run: (value: T) => void) {
+  if (ref.current) {
+    run(ref.current);
+    return;
+  }
+  const started = Date.now();
+  const timer = window.setInterval(() => {
+    if (ref.current) {
+      window.clearInterval(timer);
+      run(ref.current);
+    } else if (Date.now() - started > 8000) window.clearInterval(timer);
+  }, 50);
+}
+
 export default function Sheets({
   file,
   onChange,
@@ -831,7 +845,7 @@ export default function Sheets({
       hidden: number;
     } | null>(null);
   const pending = useRef(false);
-  const tabSettings = useRef<{ openTabs: () => void }>(null);
+  const tabSettings = useRef<{ openTabs: () => void; openCommentName: () => void }>(null);
   const dropdowns = useRef<SheetDropdownHandle>(null);
   const links = useRef<SheetLinkHandle>(null);
   const dropdownEngine = useRef<{ api: any; injector: any } | null>(null);
@@ -843,12 +857,6 @@ export default function Sheets({
   const printing = useRef<SheetPrintHandle>(null);
   const printSheet = useRef<() => Promise<void>>(async () => {});
   const engine = useRef<any>(null);
-  const toolbar = useRef<HTMLDivElement>(null);
-  const moreTools = useToolbarOverflow(
-    toolbar,
-    '[aria-label^="Insert comment"], [aria-label="Undo (Cmd+Z)"], [aria-label="Redo (Cmd+Y)"], .menu-search-pill, .chart-btn, .filter-btn, .functions-btn, .pivot-btn, .sheet-analyses-dropdown',
-    { foldNarrow: true },
-  );
   const functionActions = useRef<{
     insertFunction: (name: string) => void;
     autoSum: () => void;
@@ -2015,11 +2023,13 @@ export default function Sheets({
           input.click();
         },
         dataValidation: () => {
-          if (dropdowns.current?.openExisting()) return;
-          void api.current?.executeCommand(
-            "data-validation.operation.open-validation-panel",
-            {},
-          );
+          callWhenMounted(dropdowns, (dropdown) => {
+            if (dropdown.openExisting()) return;
+            void api.current?.executeCommand(
+              "data-validation.operation.open-validation-panel",
+              {},
+            );
+          });
         },
         conditionalFormatting: () =>
           void api.current?.executeCommand(
@@ -2036,7 +2046,10 @@ export default function Sheets({
             "sheet.operation.show-comment-modal",
             {},
           ),
-        tabsProtection: () => tabSettings.current?.openTabs(),
+        insertNote: () =>
+          void api.current?.executeCommand("sheet.operation.add-note-popup", {}),
+        commentName: () => callWhenMounted(tabSettings, (tabs) => tabs.openCommentName()),
+        tabsProtection: () => callWhenMounted(tabSettings, (tabs) => tabs.openTabs()),
         insertCheckbox: () => {
           const range = book.current?.getActiveRange();
           if (range) {
@@ -2066,7 +2079,7 @@ export default function Sheets({
             ).then(() => persist.current());
           }
         },
-        insertDropdown: () => dropdowns.current?.openNew(),
+        insertDropdown: () => callWhenMounted(dropdowns, (dropdown) => dropdown.openNew()),
         insertLink: () => links.current?.open(),
         undo: () => void api.current?.undo(),
         redo: () => void api.current?.redo(),
@@ -2091,8 +2104,9 @@ export default function Sheets({
         },
         sortRange: openSortRange,
         namedRanges: () => names.current?.open(),
-        groupRows: () => rowGroups.current?.groupRows(),
-        groupColumns: () => columnGroups.current?.groupColumns(),
+        groupRows: () => callWhenMounted(rowGroups, (groups) => groups.groupRows()),
+        groupColumns: () =>
+          callWhenMounted(columnGroups, (groups) => groups.groupColumns()),
         trimWhitespace: () => cleanup.current?.trim(),
         removeDuplicates: () => cleanup.current?.duplicates(),
         splitTextToColumns: () => cleanup.current?.split(),
@@ -2131,7 +2145,6 @@ export default function Sheets({
     });
   }, [booted, file.title, onActions]);
   const startPanel = (type: "chart" | "pivot", id?: string) => {
-    moreTools.setOpen(false);
     setPanel(type);
     setEditing(id);
     const c =
@@ -2399,7 +2412,6 @@ export default function Sheets({
             await api.current?.getFormula().onCalculationResultApplied(10000);
           },
           openPanel: (type, v, id) => {
-            moreTools.setOpen(false);
             setPanel(type);
             setEditing(id);
             setSourceSheet(v.sheetId);
@@ -2491,7 +2503,10 @@ export default function Sheets({
     autoSum: functions.autoSum,
   };
   return (
-    <div className={`sheets-editor${readOnly ? " view-locked" : ""}`}>
+    <div
+      className={`sheets-editor${readOnly ? " view-locked" : ""}`}
+      data-sheet-ready={ready ? "true" : "false"}
+    >
       {functions.panel}
       {functions.stats}
       {notice ? (
@@ -2567,12 +2582,9 @@ export default function Sheets({
           persist={() => persist.current()}
           onError={onError}
         />
-      ) : (
-        <div className="sheet-features" aria-hidden="true" />
-      )}
+      ) : null}
       <div
-        ref={toolbar}
-        className={`sheets-toolbar${moreTools.overflowing ? " has-overflow" : ""}${moreTools.open ? " show-more" : ""}`}
+        className="sheets-toolbar"
         role="toolbar"
         aria-label="Spreadsheet formatting"
       >
@@ -2669,171 +2681,6 @@ export default function Sheets({
 
         <span className="toolbar-divider" />
 
-        <select
-          className="toolbar-select font-family-select"
-          aria-label="Font family"
-          disabled={readOnly}
-          value={fontFamily}
-          onChange={(e) => handleFontFamily(e.target.value)}
-        >
-          <option value="Arial">Arial</option>
-          <option value="Roboto">Roboto</option>
-          <option value="Calibri">Calibri</option>
-          <option value="Times New Roman">Times New Roman</option>
-          <option value="Courier New">Courier New</option>
-          <option value="Georgia">Georgia</option>
-        </select>
-
-        <span className="toolbar-divider" />
-
-        <div className="font-size-stepper">
-          <button
-            type="button"
-            className="stepper-btn"
-            title="Decrease font size"
-            aria-label="Decrease font size"
-            disabled={readOnly}
-            onClick={() => handleFontSize(Math.max(6, fontSize - 1))}
-          >
-            <Minus size={12} />
-          </button>
-          <input
-            className="font-size-input"
-            aria-label="Font size"
-            disabled={readOnly}
-            value={fontSize}
-            onChange={(e) => handleFontSize(Number(e.target.value) || 10)}
-          />
-          <button
-            type="button"
-            className="stepper-btn"
-            title="Increase font size"
-            aria-label="Increase font size"
-            disabled={readOnly}
-            onClick={() => handleFontSize(Math.min(72, fontSize + 1))}
-          >
-            <Plus size={12} />
-          </button>
-        </div>
-
-        <span className="toolbar-divider" />
-
-        <Tool label="Bold (Cmd+B)" disabled={readOnly} active={isBold} onClick={toggleBold}>
-          <Bold size={16} />
-        </Tool>
-        <Tool label="Italic (Cmd+I)" disabled={readOnly} active={isItalic} onClick={toggleItalic}>
-          <Italic size={16} />
-        </Tool>
-        <Tool
-          label="Strikethrough (Alt+Shift+5)"
-          disabled={readOnly}
-          active={isStrike}
-          onClick={toggleStrike}
-        >
-          <Strikethrough size={16} />
-        </Tool>
-        <label className="color-tool" title="Text color">
-          <span className="color-icon-wrapper">
-            <span className="text-color-letter">A</span>
-            <span
-              className="color-bar"
-              style={{ backgroundColor: textColor }}
-            />
-          </span>
-          <input
-            type="color"
-            value={textColor}
-            disabled={readOnly}
-            onChange={(e) => handleTextColor(e.target.value)}
-          />
-        </label>
-        <label className="color-tool" title="Fill color">
-          <span className="color-icon-wrapper">
-            <PaintBucket size={16} />
-            <span
-              className="color-bar"
-              style={{ backgroundColor: fillColor }}
-            />
-          </span>
-          <input
-            type="color"
-            value={fillColor}
-            disabled={readOnly}
-            onChange={(e) => handleFillColor(e.target.value)}
-          />
-        </label>
-
-        <button
-          type="button"
-          className="tool borders-btn"
-          title="Borders"
-          aria-label="Borders"
-          disabled={readOnly}
-          onClick={applyBorders}
-        >
-          <Grid size={16} />
-          <ChevronDown size={10} />
-        </button>
-
-        <button
-          type="button"
-          className="tool merge-btn"
-          title="Merge cells"
-          aria-label="Merge cells"
-          disabled={readOnly}
-          onClick={mergeCells}
-        >
-          <Split size={16} />
-          <ChevronDown size={10} />
-        </button>
-
-        <span className="toolbar-divider" />
-
-        <button
-          type="button"
-          className="tool align-btn"
-          title="Horizontal align"
-          aria-label="Horizontal align"
-          disabled={readOnly}
-          onClick={cycleHorizontalAlign}
-        >
-          <AlignLeft size={16} />
-          <ChevronDown size={10} />
-        </button>
-
-        <button
-          type="button"
-          className="tool valign-btn"
-          title="Vertical align"
-          aria-label="Vertical align"
-          disabled={readOnly}
-          onClick={cycleVerticalAlign}
-        >
-          <AlignVerticalSpaceAround size={16} />
-          <ChevronDown size={10} />
-        </button>
-
-        <button
-          type="button"
-          className="tool wrap-btn"
-          title="Text wrapping"
-          aria-label="Text wrapping"
-          disabled={readOnly}
-          onClick={toggleWrap}
-        >
-          <WrapText size={16} />
-          <ChevronDown size={10} />
-        </button>
-
-        <span className="toolbar-divider" />
-
-        <Tool
-          label="Insert link (Cmd+K)"
-          disabled={readOnly}
-          onClick={() => links.current?.open()}
-        >
-          <Link size={16} />
-        </Tool>
         <Tool
           label="Insert comment (Cmd+Option+M)"
           disabled={readOnly}
@@ -2969,19 +2816,163 @@ export default function Sheets({
             ))}
           </div>
         </details>
-        {moreTools.open ? (
-          <span className="toolbar-break" aria-hidden="true" />
-        ) : null}
+      </div>
+      <div
+        className="sheets-toolbar sheets-format-toolbar"
+        role="toolbar"
+        aria-label="Text formatting"
+      >
+        <select
+          className="toolbar-select font-family-select"
+          aria-label="Font family"
+          disabled={readOnly}
+          value={fontFamily}
+          onChange={(e) => handleFontFamily(e.target.value)}
+        >
+          <option value="Arial">Arial</option>
+          <option value="Roboto">Roboto</option>
+          <option value="Calibri">Calibri</option>
+          <option value="Times New Roman">Times New Roman</option>
+          <option value="Courier New">Courier New</option>
+          <option value="Georgia">Georgia</option>
+        </select>
+
+        <span className="toolbar-divider" />
+
+        <div className="font-size-stepper">
+          <button
+            type="button"
+            className="stepper-btn"
+            title="Decrease font size"
+            aria-label="Decrease font size"
+            disabled={readOnly}
+            onClick={() => handleFontSize(Math.max(6, fontSize - 1))}
+          >
+            <Minus size={12} />
+          </button>
+          <input
+            className="font-size-input"
+            aria-label="Font size"
+            disabled={readOnly}
+            value={fontSize}
+            onChange={(e) => handleFontSize(Number(e.target.value) || 10)}
+          />
+          <button
+            type="button"
+            className="stepper-btn"
+            title="Increase font size"
+            aria-label="Increase font size"
+            disabled={readOnly}
+            onClick={() => handleFontSize(Math.min(72, fontSize + 1))}
+          >
+            <Plus size={12} />
+          </button>
+        </div>
+
+        <span className="toolbar-divider" />
+
+        <Tool label="Bold (Cmd+B)" disabled={readOnly} active={isBold} onClick={toggleBold}>
+          <Bold size={16} />
+        </Tool>
+        <Tool label="Italic (Cmd+I)" disabled={readOnly} active={isItalic} onClick={toggleItalic}>
+          <Italic size={16} />
+        </Tool>
+        <Tool
+          label="Strikethrough (Alt+Shift+5)"
+          disabled={readOnly}
+          active={isStrike}
+          onClick={toggleStrike}
+        >
+          <Strikethrough size={16} />
+        </Tool>
+        <ColorTool
+          label="Text color"
+          value={textColor}
+          disabled={readOnly}
+          onCommit={handleTextColor}
+        >
+          <span className="text-color-letter">A</span>
+        </ColorTool>
+        <ColorTool
+          label="Fill color"
+          value={fillColor}
+          disabled={readOnly}
+          onCommit={handleFillColor}
+        >
+          <PaintBucket size={16} />
+        </ColorTool>
+
         <button
           type="button"
-          className="tool more-tools"
-          title="More tools"
-          aria-label="More tools"
-          aria-expanded={moreTools.open}
-          onClick={() => moreTools.setOpen(!moreTools.open)}
+          className="tool borders-btn"
+          title="Borders"
+          aria-label="Borders"
+          disabled={readOnly}
+          onClick={applyBorders}
         >
-          <EllipsisVertical size={16} />
+          <Grid size={16} />
+          <ChevronDown size={10} />
         </button>
+
+        <button
+          type="button"
+          className="tool merge-btn"
+          title="Merge cells"
+          aria-label="Merge cells"
+          disabled={readOnly}
+          onClick={mergeCells}
+        >
+          <Split size={16} />
+          <ChevronDown size={10} />
+        </button>
+
+        <span className="toolbar-divider" />
+
+        <button
+          type="button"
+          className="tool align-btn"
+          title="Horizontal align"
+          aria-label="Horizontal align"
+          disabled={readOnly}
+          onClick={cycleHorizontalAlign}
+        >
+          <AlignLeft size={16} />
+          <ChevronDown size={10} />
+        </button>
+
+        <button
+          type="button"
+          className="tool valign-btn"
+          title="Vertical align"
+          aria-label="Vertical align"
+          disabled={readOnly}
+          onClick={cycleVerticalAlign}
+        >
+          <AlignVerticalSpaceAround size={16} />
+          <ChevronDown size={10} />
+        </button>
+
+        <button
+          type="button"
+          className="tool wrap-btn"
+          title="Text wrapping"
+          aria-label="Text wrapping"
+          disabled={readOnly}
+          onClick={toggleWrap}
+        >
+          <WrapText size={16} />
+          <ChevronDown size={10} />
+        </button>
+
+        <span className="toolbar-divider" />
+
+        <Tool
+          label="Insert link (Cmd+K)"
+          disabled={readOnly}
+          onClick={() => links.current?.open()}
+        >
+          <Link size={16} />
+        </Tool>
       </div>
       {filterView ? (
         <div

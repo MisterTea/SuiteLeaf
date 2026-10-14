@@ -3,7 +3,8 @@ use std::sync::Arc;
 use axum::{
     Json, Router,
     extract::{FromRef, State},
-    http::{HeaderName, HeaderValue, Method, header},
+    http::{HeaderName, HeaderValue, Method, StatusCode, header},
+    response::{IntoResponse, Response},
     routing::{any, get},
 };
 use serde_json::json;
@@ -111,12 +112,42 @@ pub fn cors(config: &Config) -> CorsLayer {
         ])
 }
 
+/// The web app at `/sign-up/:token`. A `<base href="/">` keeps the built
+/// assets, which are relative, loading from the site root.
+async fn sign_up_shell(State(state): State<AppState>) -> Response {
+    let Some(root) = state.config.web_root.clone() else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let Ok(html) = tokio::fs::read_to_string(root.join("index.html")).await else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let html = match html.find("<head>") {
+        Some(at) => {
+            let mut out = String::with_capacity(html.len() + 24);
+            out.push_str(&html[..at + "<head>".len()]);
+            out.push_str("<base href=\"/\">");
+            out.push_str(&html[at + "<head>".len()..]);
+            out
+        }
+        None => html,
+    };
+    (
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
+        html,
+    )
+        .into_response()
+}
+
 pub fn router(state: AppState) -> Router {
     let auth = state.auth.clone();
     let config = state.config.clone();
     let api = Router::new()
         .route("/healthz", get(health))
         .route("/api/node/info", get(info))
+        .route("/sign-up/{token}", get(sign_up_shell))
         .with_state(state.clone())
         .merge(crate::drive_api::router(state))
         .merge(

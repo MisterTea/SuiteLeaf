@@ -23,7 +23,7 @@ export {
   type SlideDiffFrame,
   type SlideTextRun,
 } from "./slide-diff";
-export type Kind = "doc" | "sheet" | "slide";
+export type Kind = "doc" | "sheet" | "slide" | "form";
 export type JsonNode = {
   type: string;
   text?: string;
@@ -306,6 +306,25 @@ const meta = {
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 };
+const formQuestionSchema = z.object({
+  id: z.string().min(1),
+  prompt: z.string().max(200),
+  kind: z.enum(["text", "choice"]),
+  required: z.boolean(),
+  choices: z.array(z.string().max(80)).max(20).optional(),
+});
+const formResponseSchema = z.object({
+  id: z.string().min(1),
+  at: z.string().datetime(),
+  answers: z.record(z.string(), z.string().max(2000)),
+});
+/** A tab after the first. The first tab's body stays in `content`. */
+const docTabSchema = z.object({
+  id: z.string().min(1).max(80),
+  title: z.string().min(1).max(80),
+  content: node,
+});
+export type DocTab = z.infer<typeof docTabSchema>;
 const collaboratorSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1).max(200),
@@ -336,7 +355,16 @@ const historyFields = {
   versions: z.array(versionSchema).optional(),
 };
 export const fileSchema = z.discriminatedUnion("kind", [
-  z.object({ ...meta, ...historyFields, kind: z.literal("doc"), content: node }),
+  z.object({
+    ...meta,
+    ...historyFields,
+    kind: z.literal("doc"),
+    content: node,
+    /** Name of the first tab. Missing means Document. */
+    tabTitle: z.string().min(1).max(80).optional(),
+    /** Tabs after the first, in order. Missing or empty means there are no extra tabs. */
+    tabs: z.array(docTabSchema).max(40).optional(),
+  }),
   z.object({
     ...meta,
     kind: z.literal("sheet"),
@@ -400,11 +428,21 @@ export const fileSchema = z.discriminatedUnion("kind", [
     kind: z.literal("slide"),
     content: presentationSchema,
   }),
+  z.object({
+    ...meta,
+    kind: z.literal("form"),
+    ...historyFields,
+    content: z.object({
+      questions: z.array(formQuestionSchema).max(100),
+      responses: z.array(formResponseSchema).max(5000),
+    }),
+  }),
 ]);
 export type SuiteFile = z.infer<typeof fileSchema>;
 export type DocFile = Extract<SuiteFile, { kind: "doc" }>;
 export type SheetFile = Extract<SuiteFile, { kind: "sheet" }>;
 export type SlideFile = Extract<SuiteFile, { kind: "slide" }>;
+export type FormFile = Extract<SuiteFile, { kind: "form" }>;
 export {
   VERSION_PAUSE_MS,
   VERSION_PAUSE_KEY,
@@ -484,11 +522,13 @@ const nativeExtensions = {
   doc: "sldoc",
   sheet: "slsheet",
   slide: "slslides",
+  form: "slform",
 } as const satisfies Record<Kind, string>;
 const nativeMimes = {
   doc: "application/vnd.suiteleaf.doc+json",
   sheet: "application/vnd.suiteleaf.sheet+json",
   slide: "application/vnd.suiteleaf.slides+json",
+  form: "application/vnd.suiteleaf.form+json",
 } as const satisfies Record<Kind, string>;
 export const NATIVE_EXTENSIONS = [
   ...Object.values(nativeExtensions),
@@ -527,6 +567,13 @@ export function parseFile(text: string, expectedKind?: Kind | null): SuiteFile {
   if (file.kind === "doc") {
     if (file.content.type !== "doc") throw new Error("Invalid document root.");
     validateTree(file.content);
+    const ids = new Set<string>();
+    for (const tab of file.tabs ?? []) {
+      if (ids.has(tab.id)) throw new Error("Document tabs must have distinct ids.");
+      ids.add(tab.id);
+      if (tab.content.type !== "doc") throw new Error("Invalid document tab.");
+      validateTree(tab.content);
+    }
   } else if (file.kind === "sheet") {
     if (
       new Set(file.content.workbook.sheetOrder).size !==
@@ -565,6 +612,13 @@ export function parseFile(text: string, expectedKind?: Kind | null): SuiteFile {
           );
       }
     }
+  } else if (file.kind === "form") {
+    const ids = file.content.questions.map((q) => q.id);
+    if (new Set(ids).size !== ids.length)
+      throw new Error("Form questions must have distinct ids.");
+    const responseIds = file.content.responses.map((r) => r.id);
+    if (new Set(responseIds).size !== responseIds.length)
+      throw new Error("Form responses must have distinct ids.");
   }
   return file;
 }
@@ -581,7 +635,9 @@ export function createFile(
     ? "Untitled document"
     : kind === "sheet"
       ? "Untitled spreadsheet"
-      : "Untitled presentation",
+      : kind === "form"
+        ? "Untitled form"
+        : "Untitled presentation",
 ): SuiteFile {
   const id = crypto.randomUUID(),
     now = new Date().toISOString();
@@ -648,6 +704,8 @@ export function createFile(
       },
     };
   }
+  if (kind === "form")
+    return { ...base, kind, content: { questions: [], responses: [] } };
   const sheetId = crypto.randomUUID();
   return {
     ...base,

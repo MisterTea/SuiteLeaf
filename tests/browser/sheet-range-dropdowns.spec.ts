@@ -42,7 +42,7 @@ async function openRoster(page: Page) {
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),
   });
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).waitFor();
+  await page.locator("[data-sheet-ready='true']").waitFor();
 }
 
 test("dropdowns can read a range and accept more than one choice", async ({ page }) => {

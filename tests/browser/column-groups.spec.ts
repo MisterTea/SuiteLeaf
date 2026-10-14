@@ -53,7 +53,7 @@ async function open(
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),
   });
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).waitFor();
+  await page.locator("[data-sheet-ready='true']").waitFor();
 }
 
 async function native(page: Page) {
@@ -160,7 +160,7 @@ test("Data › Group columns collapses months, keeps the year total, and undoes 
   await page.waitForTimeout(700);
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Rent budget" }).click();
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).waitFor();
+  await page.getByRole("toolbar", { name: "Spreadsheet formatting" }).waitFor();
   await expect(page.locator(".column-group-controls")).toHaveAttribute("data-collapsed", "2,3");
   await expect(page.getByRole("button", { name: "Expand columns B to D" })).toBeVisible();
   await select(page, "E2");

@@ -7,6 +7,7 @@
     "./ai": "./src/ai.ts",
     "./office": "./src/office.ts",
     "./docx-export": "./src/docx-export.ts",
+    "./linked-chart": "./src/linked-chart.ts",
     "./doc-comments": "./src/doc-comments.ts",
     "./xlsx-export": "./src/xlsx-export.ts",
     "./document-layout": "./src/document-layout.ts",

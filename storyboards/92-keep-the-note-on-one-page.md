@@ -48,7 +48,8 @@ The reminder sits together on page 2. Turning the control off lets it split agai
 
 ## Gaps and notes
 
-- Don’t leave one line and Keep with next stay separate switches. A heading still travels with the paragraph after it, so the reminder is not that paragraph.
+- The Keep lines together switch no longer floats beside the caret. It covered the reminder while someone was typing. A paragraph already saved with keep-lines still stays on one page.
+- Don’t leave one line and Keep with next stay separate rules. A heading still travels with the paragraph after it, so the reminder is not that paragraph.
 - A paragraph longer than one page is out of scope.
 - Opening a Word file does not read keep-lines back. Export writes it.
 - Margins, columns, and line spacing are unchanged.

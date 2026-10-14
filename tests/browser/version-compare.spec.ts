@@ -87,7 +87,7 @@ test("a local spreadsheet version compares cells, including format, and stays re
     { id: "roster-earlier", createdAt: earlierAt, native: earlier },
   ]);
   await page.goto(`/#/file/${id}`);
-  await expect(page.getByRole("button", { name: "Sheet tools", exact: true })).toBeVisible();
+  await expect(page.getByRole("toolbar", { name: "Spreadsheet formatting" })).toBeVisible();
   await page.getByRole("button", { name: "Version history", exact: true }).click();
   const panel = page.getByRole("complementary", { name: "Version history" });
   await panel.getByRole("button", { name: `${versionWhen(yesterdayAt)} · You`, exact: true }).click();

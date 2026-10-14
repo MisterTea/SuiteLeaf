@@ -67,7 +67,7 @@ import { Tool, type EditorActions, type TableAction } from "../ui";
 import { MenuSearchPill } from "../command-palette";
 import { useToolbarOverflow } from "./toolbar-overflow";
 import { linkTarget } from "./doc-links";
-import { NodeSelection, TextSelection } from "@tiptap/pm/state";
+import { EditorState, NodeSelection, TextSelection } from "@tiptap/pm/state";
 import {
   DocumentSearchHighlight,
   documentMatches,
@@ -79,7 +79,11 @@ import {
   positionClearOf,
   type Point,
 } from "./doc-find";
-import { documentPlainText } from "./doc-text";
+import {
+  exportTabSections,
+  exportTabsBodyHtml,
+  exportTabsPlainText,
+} from "./doc-export-tabs";
 import { commentExtensions, DocComments } from "./doc-comments";
 import { slugify, uniqueSlug, anchorHref, isInternalAnchor } from "../anchors";
 import { Suggestions } from "./doc-suggestions";
@@ -98,8 +102,8 @@ import {
 import { DocumentPagination, PageBreak } from "./doc-pagination";
 import { Grammar } from "./doc-grammar";
 import { useDocGrammar } from "./doc-grammar-ui";
-import { focusTabStop, TabCharacter, TabStops } from "./doc-tab-stops";
-import { TabStopBar } from "./doc-tab-stops-ui";
+import { TabCharacter, TabStops } from "./doc-tab-stops";
+import { ColorTool } from "./color-picker";
 import { Proofing } from "./doc-spelling";
 import { useDocProofing, type ProofingContext } from "./doc-proofing";
 import { DocImageAlt } from "./doc-image-alt-ui";
@@ -122,7 +126,7 @@ import {
 import { PageSetupFields } from "./page-setup";
 import { PageFurniture } from "./doc-header-editor";
 import { PageGutterBands } from "./page-gutter";
-import { ArabicNumberStart, ArabicStartControl } from "./doc-arabic-start";
+import { ArabicNumberStart } from "./doc-arabic-start";
 import { paragraphLineSpacing } from "./doc-line-spacing";
 import { LineSpacingControl } from "./doc-line-spacing-ui";
 import { paragraphSpacing } from "./doc-paragraph-spacing";
@@ -140,9 +144,12 @@ import {
   publishLivePaper,
 } from "./paper-size-live";
 import "./letterhead-live.css";
-import { KeepWithNext, KeepWithNextControl } from "./doc-keep-next";
-import { DontLeaveOneLineControl, WidowControl } from "./doc-widow-control";
-import { KeepLines, KeepLinesTogetherControl } from "./doc-keep-lines";
+import { KeepWithNext } from "./doc-keep-next";
+import { WidowControl } from "./doc-widow-control";
+import { KeepLines } from "./doc-keep-lines";
+import { MailMergeDialog } from "./mail-merge-dialog";
+import { InsertChartDialog } from "./doc-chart-dialog";
+import { LinkedChart } from "./doc-linked-chart";
 
 export const extensions: Extensions = [
   DocumentPagination,
@@ -175,6 +182,7 @@ export const extensions: Extensions = [
   Superscript,
   Subscript,
   Equation,
+  LinkedChart,
   TabCharacter,
   TabStops,
   Extension.create({
@@ -226,14 +234,20 @@ export default function Docs({
   onChange,
   onActions,
   onError,
+  onCreateDocument,
   readOnly = false,
   collabDoc = null,
   collabTouch,
 }: {
   file: DocFile;
-  onChange: (content: DocFile["content"], op?: unknown) => void;
+  onChange: (
+    content: DocFile["content"],
+    extra?: { tabTitle?: string; tabs?: DocFile["tabs"] } | unknown,
+  ) => void;
   onActions: (actions: EditorActions) => void;
   onError: (s: string) => void;
+  /** Save this document, then open `created` the way New document does. */
+  onCreateDocument: (created: DocFile) => Promise<void>;
   /** Viewers and commenters can read, but not change the document. */
   readOnly?: boolean;
   /** Set while another writer is in the file. Edits go through this Y.Doc. */
@@ -242,6 +256,10 @@ export default function Docs({
 }) {
   const changes = useRef(onChange);
   changes.current = onChange;
+  const createDocument = useRef(onCreateDocument);
+  createDocument.current = onCreateDocument;
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const [chartOpen, setChartOpen] = useState(false);
   const [findOpen, setFindOpen] = useState(false),
     [query, setQuery] = useState(""),
     [replacement, setReplacement] = useState("");
@@ -311,6 +329,56 @@ export default function Docs({
 
   const readOnlyRef = useRef(readOnly);
   readOnlyRef.current = readOnly;
+  const [active, setActive] = useState(0);
+  const activeRef = useRef(0);
+  activeRef.current = active;
+  const showTabRef = useRef<
+    (index: number, focus?: "editor" | "find") => void
+  >(() => {});
+  const [tabTitle, setTabTitle] = useState(
+    () => file.tabTitle?.trim() || "Document",
+  );
+  const tabTitleRef = useRef(tabTitle);
+  tabTitleRef.current = tabTitle;
+  const [extras, setExtras] = useState<
+    { id: string; title: string; content: JsonNode }[]
+  >(() =>
+    (file.tabs ?? []).map((tab) => ({
+      id: tab.id,
+      title: tab.title,
+      content: tab.content,
+    })),
+  );
+  const extrasRef = useRef(extras);
+  const firstBody = useRef<JsonNode>(file.content);
+  const ignoreEdits = useRef(false);
+  const publishTabs = () => {
+    const title = tabTitleRef.current.trim();
+    const tabs = extrasRef.current.map((tab, index) => ({
+      id: tab.id,
+      title: tab.title.trim() || `Tab ${index + 2}`,
+      content: tab.content,
+    }));
+    changes.current(firstBody.current, {
+      tabTitle: title && title !== "Document" ? title : undefined,
+      tabs: tabs.length ? tabs : undefined,
+    });
+  };
+  const writeBody = (json: JsonNode) => {
+    if (activeRef.current === 0) firstBody.current = json;
+    else {
+      const index = activeRef.current - 1;
+      extrasRef.current = extrasRef.current.map((tab, i) =>
+        i === index ? { ...tab, content: json } : tab,
+      );
+    }
+  };
+  const commitRef = useRef<(json: JsonNode) => void>(() => {});
+  commitRef.current = (json) => {
+    if (ignoreEdits.current) return;
+    writeBody(json);
+    publishTabs();
+  };
   const editor = useEditor({
     immediatelyRender: false,
     editable: !readOnly,
@@ -643,10 +711,7 @@ export default function Docs({
         syncParagraphTexts(collabDoc, next);
         return;
       }
-      changes.current(json, {
-        kind: "doc",
-        steps: transaction.steps.map((step) => step.toJSON()),
-      });
+      commitRef.current(json);
     },
   });
 
@@ -899,42 +964,68 @@ export default function Docs({
 
   const exportDocument = async (format: string) => {
     if (!editor) return null;
-    let content = editor.getJSON() as JsonNode;
-    let resolved = false;
+    const activeJson = editor.getJSON() as JsonNode;
+    const saved = exportTabSections(
+      {
+        title: tabTitleRef.current,
+        content: activeRef.current === 0 ? activeJson : firstBody.current,
+      },
+      extrasRef.current.map((tab, index) => ({
+        title: tab.title,
+        content: activeRef.current === index + 1 ? activeJson : tab.content,
+      })),
+    );
+    let choice: "accepted" | "original" | null = null;
     if (
       (format === "html" || format === "txt") &&
-      listSuggestions(content).length
+      saved.some((section) => listSuggestions(section.content).length)
     ) {
-      const choice = await suggestionApi.current?.askPlainExport();
+      choice = (await suggestionApi.current?.askPlainExport()) ?? null;
       if (!choice) return null;
-      content = resolveSuggestions(content, choice);
-      resolved = true;
     }
+    const picked = choice;
+    const sections = picked
+      ? saved.map((section) => ({
+          ...section,
+          content: resolveSuggestions(section.content, picked),
+        }))
+      : saved;
     if (format === "docx") {
       const { exportDocx } = await import("@suiteleaf/core/docx-export");
+      const labeled = saved.length > 1 || saved.some((section) => section.label);
       return exportBinary(
         filename(file.title, "docx"),
-        await exportDocx({
-          title: file.title,
-          content: editor.getJSON() as JsonNode,
-        }),
+        await exportDocx(
+          labeled
+            ? {
+                title: file.title,
+                content: saved[0].content,
+                sections: saved.map((section) => ({
+                  title: section.label,
+                  content: section.content,
+                })),
+              }
+            : { title: file.title, content: saved[0].content },
+        ),
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       );
     }
+    const pageSettings = documentPageSettings(sections[0].content);
     if (format === "html")
       return exportText(
         filename(file.title, "html"),
         documentHtml(
           file.title,
-          resolved ? generateHTML(content, extensions) : editor.getHTML(),
-          documentPageSettings(content),
+          exportTabsBodyHtml(sections, (content, index) =>
+            !choice && index === activeRef.current
+              ? editor.getHTML()
+              : generateHTML(content, extensions),
+          ),
+          pageSettings,
         ),
         "text/html",
       );
-    return exportText(
-      filename(file.title, "txt"),
-      documentPlainText(content),
-    );
+    return exportText(filename(file.title, "txt"), exportTabsPlainText(sections));
   };
   const exportRef = useRef(exportDocument);
   exportRef.current = exportDocument;
@@ -980,7 +1071,10 @@ export default function Docs({
   useEffect(() => {
     if (!editor) return;
     onActions({
-      flush: async () => {},
+      flush: async () => {
+        if (!editor || editor.isDestroyed) return;
+        commitRef.current(editor.getJSON() as JsonNode);
+      },
       export: (format) => exportDocument(format),
       print: () => printDocument(file.title),
       docActions: {
@@ -1037,7 +1131,12 @@ export default function Docs({
           editor.chain().focus().toggleOrderedList().run(),
         tableActions,
         openSuggestions: () => suggestionApi.current?.openReview(),
-        focusTabStop,
+        openMailMerge: () => {
+          if (!readOnlyRef.current) setMergeOpen(true);
+        },
+        insertChart: () => {
+          if (!readOnlyRef.current) setChartOpen(true);
+        },
       },
     });
   }, [editor, file.title, onActions, proofing.openWordCount, proofing.openSpelling, proofing.openDictionary, grammar.openGrammar, grammar.openIgnoredGrammar]);
@@ -1182,6 +1281,33 @@ export default function Docs({
     if (!editor?.schema) return;
     const options = { matchCase, regex: useRegex, ignoreDiacritics };
     const activeQuery = findOpen ? query : "";
+    // A query missing from this tab is looked up on the others, in order.
+    // Typing again is what moves; clicking a tab leaves that page in place.
+    let switched = false;
+    if (activeQuery) {
+      const here = documentMatches(editor.state.doc, activeQuery, options);
+      if (!here.error && !here.matches.length) {
+        const bodies = [
+          firstBody.current,
+          ...extrasRef.current.map((tab) => tab.content),
+        ];
+        for (let index = 0; index < bodies.length; index++) {
+          if (index === activeRef.current) continue;
+          let node;
+          try {
+            node = editor.schema.nodeFromJSON(bodies[index]);
+          } catch {
+            continue;
+          }
+          const found = documentMatches(node, activeQuery, options);
+          if (found.error) break;
+          if (!found.matches.length) continue;
+          showTabRef.current(index, "find");
+          switched = true;
+          break;
+        }
+      }
+    }
     const result = documentMatches(editor.state.doc, activeQuery, options);
     let transaction = editor.state.tr.setMeta(searchKey, {
       query: activeQuery,
@@ -1195,6 +1321,16 @@ export default function Docs({
         .setSelection(TextSelection.create(transaction.doc, next.from, next.to))
         .scrollIntoView();
     editor.view.dispatch(transaction);
+    if (!switched) return;
+    const restoreFind = () => {
+      const input = findInput.current;
+      if (!input || document.activeElement === input) return;
+      const pos = input.value.length;
+      input.focus();
+      input.setSelectionRange(pos, pos);
+    };
+    restoreFind();
+    requestAnimationFrame(restoreFind);
   }, [editor, findOpen, query, matchCase, useRegex, ignoreDiacritics]);
 
   if (!editor || !editor.schema)
@@ -1286,6 +1422,80 @@ export default function Docs({
     editor.view.dispatch(tr);
     setReplacedCount(search.matches.length);
   };
+
+  const loadIntoEditor = (json: JsonNode, focusEditor = true) => {
+    if (!editor || editor.isDestroyed) return;
+    ignoreEdits.current = true;
+    const doc = editor.schema.nodeFromJSON(json);
+    editor.view.updateState(
+      EditorState.create({
+        schema: editor.schema,
+        doc,
+        plugins: editor.state.plugins,
+      }),
+    );
+    ignoreEdits.current = false;
+    if (focusEditor && !readOnlyRef.current) editor.commands.focus("end");
+  };
+  const showTab = (index: number, focus: "editor" | "find" = "editor") => {
+    if (!editor || editor.isDestroyed || index === activeRef.current) return;
+    if (index > 0 && !extrasRef.current[index - 1]) return;
+    writeBody(editor.getJSON() as JsonNode);
+    activeRef.current = index;
+    setActive(index);
+    loadIntoEditor(
+      index === 0 ? firstBody.current : extrasRef.current[index - 1].content,
+      focus === "editor",
+    );
+    publishTabs();
+    if (focus === "find") {
+      const input = findInput.current;
+      if (input) {
+        const pos = input.value.length;
+        input.focus();
+        input.setSelectionRange(pos, pos);
+      }
+    }
+  };
+  showTabRef.current = showTab;
+  const addTab = () => {
+    if (!editor || editor.isDestroyed || readOnly) return;
+    writeBody(editor.getJSON() as JsonNode);
+    const tab = {
+      id: crypto.randomUUID(),
+      title: `Tab ${extrasRef.current.length + 2}`,
+      content: { type: "doc", content: [{ type: "paragraph" }] } as JsonNode,
+    };
+    extrasRef.current = [...extrasRef.current, tab];
+    setExtras(extrasRef.current);
+    activeRef.current = extrasRef.current.length;
+    setActive(extrasRef.current.length);
+    loadIntoEditor(tab.content);
+    publishTabs();
+  };
+  const renameTab = (value: string) => {
+    const clipped = value.slice(0, 80);
+    if (activeRef.current === 0) {
+      tabTitleRef.current = clipped;
+      setTabTitle(clipped);
+    } else {
+      const index = activeRef.current - 1;
+      extrasRef.current = extrasRef.current.map((tab, i) =>
+        i === index ? { ...tab, title: clipped } : tab,
+      );
+      setExtras(extrasRef.current);
+    }
+    publishTabs();
+  };
+  const tabNames = [
+    tabTitle.trim() || "Document",
+    ...extras.map((tab, index) => tab.title.trim() || `Tab ${index + 2}`),
+  ];
+  const activeName = active === 0 ? tabTitle : (extras[active - 1]?.title ?? "");
+  const matchTab =
+    query && !search.error && search.matches.length > 0 && tabNames.length > 1
+      ? tabNames[active]
+      : "";
 
   const dragFind = (event: React.PointerEvent<HTMLDivElement>) => {
     const box = findDialog.current?.getBoundingClientRect();
@@ -1476,50 +1686,27 @@ export default function Docs({
           <SubscriptIcon size={16} />
         </Tool>
 
-        <label className="color-tool text-color-picker" title="Text color">
-          <span className="color-icon-wrapper">
-            <span className="text-color-letter">A</span>
-            <span
-              className="color-bar"
-              style={{ backgroundColor: textColor }}
-            />
-          </span>
-          <input
-            aria-label="Text color"
-            type="color"
-            value={textColor}
-            onChange={(e) => {
-              setTextColor(e.target.value);
-              editor.chain().focus().setColor(e.target.value).run();
-            }}
-          />
-        </label>
-
-        <label
-          className="color-tool highlight-color-picker"
-          title="Highlight color"
+        <ColorTool
+          label="Text color"
+          value={textColor}
+          onCommit={(color) => {
+            setTextColor(color);
+            editor.chain().focus().setColor(color).run();
+          }}
         >
-          <span className="color-icon-wrapper">
-            <Highlighter size={15} />
-            <span
-              className="color-bar"
-              style={{ backgroundColor: highlightColor }}
-            />
-          </span>
-          <input
-            aria-label="Highlight color"
-            type="color"
-            value={highlightColor}
-            onChange={(e) => {
-              setHighlightColor(e.target.value);
-              editor
-                .chain()
-                .focus()
-                .toggleHighlight({ color: e.target.value })
-                .run();
-            }}
-          />
-        </label>
+          <span className="text-color-letter">A</span>
+        </ColorTool>
+
+        <ColorTool
+          label="Highlight color"
+          value={highlightColor}
+          onCommit={(color) => {
+            setHighlightColor(color);
+            editor.chain().focus().toggleHighlight({ color }).run();
+          }}
+        >
+          <Highlighter size={15} />
+        </ColorTool>
 
         <span className="divider" />
 
@@ -1805,6 +1992,9 @@ export default function Docs({
                         )}
                     </span>
                   </div>
+                  {matchTab ? (
+                    <p className="find-tab-place">on {matchTab}</p>
+                  ) : null}
                 </div>
 
                 <div className="floating-field">
@@ -1903,6 +2093,19 @@ export default function Docs({
 
       {equationOpen && editor ? (
         <EquationDialog editor={editor} onClose={() => setEquationOpen(false)} />
+      ) : null}
+
+      {chartOpen && editor ? (
+        <InsertChartDialog editor={editor} onClose={() => setChartOpen(false)} />
+      ) : null}
+
+      {mergeOpen && editor ? (
+        <MailMergeDialog
+          template={() => editor.getJSON() as JsonNode}
+          sourceTitle={file.title}
+          onClose={() => setMergeOpen(false)}
+          onCreate={(created) => createDocument.current(created)}
+        />
       ) : null}
 
       {tableOpen ? (
@@ -2146,7 +2349,6 @@ export default function Docs({
         </div>
       ) : null}
 
-      <TabStopBar editor={editor} readOnly={readOnly} />
       <div
         className={`document-stage${commentGutter ? " with-comments" : ""}${citationsOpen ? " with-citations" : ""}`}
         ref={documentStage}
@@ -2188,9 +2390,7 @@ export default function Docs({
               <span>Headings you add to the document will appear here.</span>
             </div>
           )}
-          <ArabicStartControl editor={editor} readOnly={readOnly} />
         </aside>
-        <ArabicStartControl editor={editor} readOnly={readOnly} phone />
         <div
           className="paper-container"
           ref={paperContainer}
@@ -2240,9 +2440,6 @@ export default function Docs({
             />
             <PageGutterBands settings={shownSettings} pageCount={pageCount} />
             <EditorContent editor={editor} />
-            <KeepWithNextControl editor={editor} readOnly={readOnly} />
-            <DontLeaveOneLineControl editor={editor} readOnly={readOnly} />
-            <KeepLinesTogetherControl editor={editor} readOnly={readOnly} />
           </div>
         </div>
         <DocComments
@@ -2270,6 +2467,40 @@ export default function Docs({
           {pageCount} {pageCount === 1 ? "page" : "pages"} · English
         </span>
       </footer>
+      <div className="doc-tab-bar">
+        <div className="doc-tab-list" role="tablist" aria-label="Document tabs">
+          {tabNames.map((name, index) => (
+            <button
+              key={index === 0 ? "first" : extras[index - 1].id}
+              type="button"
+              role="tab"
+              className="document-tab"
+              aria-selected={index === active}
+              onClick={() => showTab(index)}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          className="doc-tab-add"
+          disabled={readOnly || !editor}
+          onClick={addTab}
+        >
+          Add tab
+        </button>
+        <label className="doc-tab-name">
+          Tab name
+          <input
+            aria-label="Tab name"
+            value={activeName}
+            maxLength={80}
+            disabled={readOnly}
+            onChange={(event) => renameTab(event.target.value)}
+          />
+        </label>
+      </div>
       <DocImageAlt editor={editor} />
       <input
         ref={imageInput}

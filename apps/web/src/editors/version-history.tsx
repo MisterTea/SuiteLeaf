@@ -11,6 +11,7 @@ import Superscript from "@tiptap/extension-superscript";
 import Subscript from "@tiptap/extension-subscript";
 import { columnLayout } from "./doc-columns";
 import { Equation } from "./doc-equations";
+import { LinkedChart } from "./doc-linked-chart";
 import { MoreHorizontal, X } from "lucide-react";
 import {
   applyParagraphRestore,
@@ -55,7 +56,12 @@ import {
   type ChangeUnit,
   type HistoryVersion,
 } from "./version-history-model";
-import { historyPreviewFor, type HistoryPreview } from "./version-compare";
+import {
+  FIRST_DOC_TAB,
+  historyPreviewFor,
+  type DocCompareTab,
+  type HistoryPreview,
+} from "./version-compare";
 
 const previewExtensions: Extensions = [
   StarterKit.configure({
@@ -70,6 +76,7 @@ const previewExtensions: Extensions = [
   Subscript,
   Equation,
   columnLayout,
+  LinkedChart,
 ];
 
 function message(error: unknown) {
@@ -107,16 +114,26 @@ export function VersionPreview({
   content,
   label,
   offers = null,
+  tabs,
   onRestoreParagraph,
 }: {
   content: JsonNode;
   label: string;
   offers?: (ParagraphRestoreControl | null)[] | null;
+  tabs?: DocCompareTab[];
   onRestoreParagraph?: (key: string) => void;
 }) {
-  const offersRef = useRef(offers);
+  const many = (tabs?.length ?? 0) > 1;
+  const initialId = many
+    ? (tabs!.find((tab) => tab.status !== "same")?.id ?? tabs![0].id)
+    : "";
+  const [picked, setPicked] = useState(initialId);
+  const active = many ? (tabs!.find((tab) => tab.id === picked) ?? tabs![0]) : null;
+  const shown = active?.content ?? content;
+  const shownOffers = active ? (active.offers ?? null) : offers;
+  const offersRef = useRef(shownOffers);
   const restoreRef = useRef(onRestoreParagraph);
-  offersRef.current = offers;
+  offersRef.current = shownOffers;
   restoreRef.current = onRestoreParagraph;
   const [restoreExtension] = useState(() =>
     paragraphRestoreExtension(offersRef, restoreRef),
@@ -125,7 +142,7 @@ export function VersionPreview({
     immediatelyRender: true,
     editable: false,
     extensions: [...previewExtensions, restoreExtension],
-    content,
+    content: shown,
     editorProps: {
       attributes: {
         class: "document-content",
@@ -137,9 +154,31 @@ export function VersionPreview({
       handleDrop: () => true,
     },
   });
+  useEffect(() => {
+    offersRef.current = shownOffers;
+    if (!editor || editor.isDestroyed) return;
+    if (JSON.stringify(editor.getJSON()) === JSON.stringify(shown)) return;
+    editor.commands.setContent(shown);
+  }, [editor, shown, shownOffers]);
   return (
     <div className="version-preview" aria-label="Version preview">
       <p className="version-preview-banner">{label}</p>
+      {many ? (
+        <div className="sheet-compare-tabs doc-compare-tabs" role="tablist" aria-label="Document tabs">
+          {tabs!.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={tab.id === active?.id}
+              onClick={() => setPicked(tab.id)}
+            >
+              {tab.title}
+              {tab.status === "removed" ? " · deleted" : tab.status === "added" ? " · added" : ""}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div className="paper version-preview-paper">
         <EditorContent editor={editor} />
       </div>
@@ -374,53 +413,34 @@ export function VersionHistory({
           preview.current(step.preview);
           return;
         }
-        if (before.kind === "doc" && current.kind === "doc") {
-          const againstCurrent = compareParagraphs(before.content, current.content);
-          setChangeCount(againstCurrent.changedParagraphs);
-          setChangeUnit("paragraph");
+        if (before.kind === "doc" && current.kind === "doc" && against.preview.kind === "doc") {
           const source = selected.name
             ? `"${selected.name}"`
             : versionWhen(selected.createdAt);
-          const controls = againstCurrent.offers.map((offer) =>
+          const first = compareParagraphs(before.content, current.content);
+          const controls = first.offers.map((offer) =>
             offer
               ? { key: offer.key, prompt: paragraphRestorePrompt(offer, source) }
               : null,
           );
-          setViewSummary("");
+          setChangeCount(against.count);
+          setChangeUnit("paragraph");
+          setViewSummary(against.summary);
+          const tabs = against.preview.tabs?.map((tab) =>
+            tab.id === FIRST_DOC_TAB
+              ? { ...tab, content: first.content, offers: controls }
+              : { ...tab, offers: null },
+          );
           preview.current({
             kind: "doc",
-            content: againstCurrent.content,
-            label:
-              "Comparing with the current version · read-only. Green underline was added later. Red strikethrough was removed.",
-            offers: controls,
+            content: first.content,
+            label: against.preview.label,
+            offers: tabs && tabs.length > 1 ? null : controls,
+            tabs,
           });
           return;
         }
         setViewSummary(against.summary);
-        if (
-          before.kind === "doc" &&
-          current.kind === "doc" &&
-          against.preview.kind === "doc"
-        ) {
-          const againstCurrent = compareParagraphs(before.content, current.content);
-          const source = selected.name
-            ? `"${selected.name}"`
-            : versionWhen(selected.createdAt);
-          const controls = againstCurrent.offers.map((offer) =>
-            offer
-              ? { key: offer.key, prompt: paragraphRestorePrompt(offer, source) }
-              : null,
-          );
-          setChangeCount(againstCurrent.changedParagraphs);
-          setChangeUnit("paragraph");
-          preview.current({
-            kind: "doc",
-            content: againstCurrent.content,
-            label: against.preview.label,
-            offers: controls,
-          });
-          return;
-        }
         preview.current(against.preview);
       } catch (e) {
         if (!cancel) setError(message(e));

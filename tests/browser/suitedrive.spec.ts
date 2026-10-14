@@ -270,7 +270,8 @@ test.describe("SuiteDrive across two nodes", () => {
       timeout: 20000,
     });
 
-    // Node A still holds the old version, so its next upload conflicts.
+    // Once node A has node B's bytes, the open file picks them up while Ann
+    // is idle. A later unsent line still raises the conflict banner.
     await expect
       .poll(
         async () =>
@@ -292,17 +293,32 @@ test.describe("SuiteDrive across two nodes", () => {
           await (await fetch(`${b.url}/api/node/info`)).json()
         ).suitedb.heads.join(),
       );
-    await editorA.fill("A stale edit from node A");
+    await expect(editorA).toContainText("Rewritten on node B", {
+      timeout: 8000,
+    });
+    await expect(pageA.locator(".save-status")).toContainText(
+      "Ann Example updated this.",
+    );
+    await editorA.press("End");
+    await pageA.keyboard.type(" — still drafting");
+    await saveElsewhere(
+      pageA,
+      "Field report.sldoc",
+      "Rewritten on node B",
+      "Rewritten on node B, final",
+    );
     await expect(
       pageA.getByText("This file was changed in SuiteDrive"),
     ).toBeVisible({
       timeout: 20000,
     });
+    await expect(editorA).toContainText("still drafting");
     pageA.once("dialog", (d) => void d.accept());
     await pageA.getByRole("button", { name: "Reload from SuiteDrive" }).click();
     await expect(
       pageA.getByRole("textbox", { name: "Document content" }),
-    ).toContainText("Rewritten on node B");
+    ).toContainText("Rewritten on node B, final");
+    await expect(editorA).not.toContainText("still drafting");
     await pageA.screenshot({
       path: "test-results/suitedrive.png",
       fullPage: true,
@@ -329,13 +345,13 @@ test.describe("SuiteDrive across two nodes", () => {
     };
     const banner = page.getByText("This file was changed in SuiteDrive");
 
+    await editor.fill("Edits only on this device");
     await saveElsewhere(
       page,
       "Offline notes.sldoc",
       "First draft",
       "Saved elsewhere",
     );
-    await editor.fill("Edits only on this device");
     await expect(banner).toBeVisible({ timeout: 20000 });
 
     await reopen();
@@ -603,13 +619,13 @@ test.describe("SuiteDrive across two nodes", () => {
     const status = page.getByRole("status");
     await expect(status).toHaveText("Saved to SuiteDrive", { timeout: 20000 });
 
+    await editor.fill("My version");
     await saveElsewhere(
       page,
       "Draft plan.sldoc",
       "First draft",
       "Saved elsewhere",
     );
-    await editor.fill("My version");
     await expect(
       page.getByText("This file was changed in SuiteDrive"),
     ).toBeVisible({ timeout: 20000 });
@@ -936,14 +952,18 @@ test.describe("SuiteDrive across two nodes", () => {
     const trash = page.getByRole("button", {
       name: "Move Watering rota.sldoc to trash",
     });
-    const confirm = page.getByRole("dialog", { name: "Move to trash?" });
     await trash.click();
-    await page.keyboard.press("Escape");
-    await expect(confirm).toHaveCount(0);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(item("Watering rota.sldoc")).toHaveCount(0);
+    const notice = page
+      .getByRole("status")
+      .filter({ hasText: "Watering rota.sldoc" });
+    await expect(notice).toContainText("Trash");
+    await page.waitForTimeout(3000);
+    await expect(notice).toBeVisible();
+    await notice.getByRole("button", { name: "Undo" }).click();
     await expect(item("Watering rota.sldoc")).toBeVisible();
-    await trash.click();
-    await confirm.getByRole("button", { name: "Move to trash" }).click();
-    await expect(page.getByText("This folder is empty.")).toBeVisible();
+    await expect(notice).toHaveCount(0);
     expect(native).toEqual([]);
   });
 });

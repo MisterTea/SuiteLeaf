@@ -193,7 +193,7 @@ test.describe("Desktop & Mobile End-to-End Responsive Suite", () => {
     await assertNoHorizontalScroll(page, "Sheets workspace");
 
     // Toolbar is single-row and scrollable
-    const sheetsToolbar = page.locator(".sheets-toolbar");
+    const sheetsToolbar = page.getByRole("toolbar", { name: "Spreadsheet formatting" });
     await expect(sheetsToolbar).toBeVisible();
     const toolbarBox = (await sheetsToolbar.boundingBox())!;
     expect(toolbarBox.height).toBeLessThanOrEqual(55);

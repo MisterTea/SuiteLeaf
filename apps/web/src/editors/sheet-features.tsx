@@ -3,9 +3,12 @@ import type { FUniver } from "@univerjs/core/facade";
 import { X } from "lucide-react";
 
 import { localName, setLocalName } from "../identity";
-import { useMode } from "../mode";
-import { getSession } from "../node-client";
-import { Menu, MenuItem } from "../ui";
+import { ColorTool, parseHex } from "./color-picker";
+
+function tabHex(value: string | undefined | null) {
+  const withHash = !value ? "#ffffff" : value.startsWith("#") ? value : `#${value}`;
+  return parseHex(withHash) ? withHash.slice(0, 7).toLowerCase() : "#ffffff";
+}
 
 /** Local tab organization lives in worksheet metadata and travels with native files. */
 export default function SheetFeatures({
@@ -14,7 +17,7 @@ export default function SheetFeatures({
   onError,
   ref,
 }: {
-  ref?: Ref<{ openTabs: () => void }>;
+  ref?: Ref<{ openTabs: () => void; openCommentName: () => void }>;
   api: FUniver;
   persist: () => void;
   onError: (message: string) => void;
@@ -27,7 +30,6 @@ export default function SheetFeatures({
   const [busy, setBusy] = useState(false);
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState("");
-  const signedIn = useMode().mode.kind === "cluster" && !!getSession();
   const saveName = () => {
     setLocalName(name);
     setNaming(false);
@@ -51,6 +53,10 @@ export default function SheetFeatures({
           )
           .catch((e) => onError(String(e)));
       },
+      openCommentName: () => {
+        setName(localName());
+        setNaming(true);
+      },
     }),
     [api, onError],
   );
@@ -58,13 +64,6 @@ export default function SheetFeatures({
   if (!workbook) return null;
   const active = workbook.getActiveSheet();
   const sheets = workbook.getSheets();
-  const groups = [
-    ...new Set(
-      sheets
-        .map((s) => String(s.getCustomMetadata()?.suiteleafTabGroup ?? ""))
-        .filter(Boolean),
-    ),
-  ];
   const run = async (work: () => unknown | Promise<unknown>) => {
     setBusy(true);
     try {
@@ -77,18 +76,6 @@ export default function SheetFeatures({
       setBusy(false);
     }
   };
-  const command = (id: string) =>
-    void run(async () => {
-      if (
-        !(await api.executeCommand(
-          id,
-          id === "sheet.operation.open.conditional.formatting.panel"
-            ? { value: 2 }
-            : {},
-        ))
-      )
-        throw new Error("Select a cell or range first.");
-    });
   const loadRules = async () => {
     const rules = await active
       .getWorksheetPermission()
@@ -96,81 +83,7 @@ export default function SheetFeatures({
     setRules(rules.map((r) => ({ id: r.id, name: r.options.name || r.id })));
   };
   return (
-    <div className="sheet-features" data-revision={revision}>
-      <Menu label="Sheet tools">
-        <MenuItem
-          onSelect={() =>
-            command("data-validation.operation.open-validation-panel")
-          }
-        >
-          Data validation
-        </MenuItem>
-        <MenuItem
-          onSelect={() =>
-            command("sheet.operation.open.conditional.formatting.panel")
-          }
-        >
-          Conditional formatting
-        </MenuItem>
-        <MenuItem
-          focusesTarget
-          onSelect={() => command("sheet.operation.add-note-popup")}
-        >
-          Add or edit cell note
-        </MenuItem>
-        <MenuItem
-          onSelect={() => command("sheet.operation.show-comment-modal")}
-        >
-          Add cell comment
-        </MenuItem>
-        <MenuItem
-          onSelect={() => command("sheet.operation.toggle-comment-panel")}
-        >
-          Comments and replies
-        </MenuItem>
-        {signedIn ? null : (
-          <MenuItem
-            onSelect={() => {
-              setName(localName());
-              setNaming(true);
-            }}
-          >
-            Your name on comments…
-          </MenuItem>
-        )}
-        <MenuItem
-          onSelect={() => {
-            setSelected([active.getSheetId()]);
-            setGroup(
-              String(active.getCustomMetadata()?.suiteleafTabGroup ?? ""),
-            );
-            setOpen(true);
-            void run(loadRules);
-          }}
-        >
-          Tabs and protection…
-        </MenuItem>
-      </Menu>
-      {groups.map((name) => (
-        <details key={name} className="tab-group">
-          <summary>{name}</summary>
-          {sheets
-            .filter((s) => s.getCustomMetadata()?.suiteleafTabGroup === name)
-            .map((s) => (
-              <button
-                key={s.getSheetId()}
-                onClick={() =>
-                  void run(() => {
-                    s.showSheet();
-                    workbook.setActiveSheet(s);
-                  })
-                }
-              >
-                {s.getSheetName()}
-              </button>
-            ))}
-        </details>
-      ))}
+    <div data-revision={revision}>
       {naming ? (
         <div className="gdocs-modal-overlay" onClick={() => setNaming(false)}>
           <form
@@ -349,13 +262,12 @@ export default function SheetFeatures({
                       {s.getSheetName()}
                       {s.isSheetHidden() ? " (hidden)" : ""}
                     </label>
-                    <input
-                      type="color"
-                      aria-label={`Tab color for ${s.getSheetName()}`}
-                      defaultValue={s.getTabColor() || "#ffffff"}
-                      onChange={(e) =>
-                        void run(() => s.setTabColor(e.target.value))
-                      }
+                    <ColorTool
+                      swatch
+                      label={`Tab color for ${s.getSheetName()}`}
+                      value={tabHex(s.getTabColor())}
+                      disabled={busy}
+                      onCommit={(color) => void run(() => s.setTabColor(color))}
                     />
                     <button
                       onClick={() =>

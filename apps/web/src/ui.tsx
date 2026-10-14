@@ -384,12 +384,18 @@ export type EditorActions = {
     tableActions: () => TableAction[];
     openSuggestions?: () => void;
     focusTabStop?: () => void;
+    /** Tools › Merge from a spreadsheet. */
+    openMailMerge?: () => void;
+    /** Insert › Insert chart, from a library spreadsheet. */
+    insertChart?: () => void;
   };
   sheetActions?: {
     dataValidation?: () => void;
     conditionalFormatting?: () => void;
     openComments?: () => void;
     insertComment?: () => void;
+    insertNote?: () => void;
+    commentName?: () => void;
     tabsProtection?: () => void;
     insertCheckbox?: () => void;
     insertDropdown?: () => void;

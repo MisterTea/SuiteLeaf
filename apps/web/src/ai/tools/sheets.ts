@@ -1033,7 +1033,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         select(cell);
         sheet().getRange(cell).createOrUpdateNote({ note: text, width: 180, height: 90 });
         ctx.persist();
-        // Opened as Sheet tools › Add or edit cell note does; it closes when the selection moves.
+        // Opened as Insert › Note does; it closes when the selection moves.
         await ctx.api.executeCommand("sheet.operation.add-note-popup");
         await wait(600);
         return `Added a note to ${cell}${cellLabel(cell)}: "${text}". It pops up when the pointer is over the cell.`;

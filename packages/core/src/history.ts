@@ -8,7 +8,7 @@ export const VERSION_SNAPSHOT_CAP = 50;
 /** An edit op larger than this is stored as a marker, not the payload. */
 export const OP_BYTE_CAP = 32 * 1024;
 
-export type FileKind = "doc" | "sheet" | "slide";
+export type FileKind = "doc" | "sheet" | "slide" | "form";
 export type Collaborator = { id: string; name: string };
 export type RegionUnit = "paragraph" | "cell" | "slide" | "comment";
 
@@ -101,6 +101,7 @@ function blankContent(kind: FileKind): unknown {
   if (kind === "doc") return { type: "doc", content: [{ type: "paragraph" }] };
   if (kind === "sheet")
     return { workbook: { id: "", sheetOrder: ["s"], sheets: { s: { id: "s", name: "Sheet", rowCount: 1, columnCount: 1, cellData: {} } } }, charts: [], pivots: [] };
+  if (kind === "form") return { questions: [], responses: [] };
   return { id: "", width: 1, height: 1, slideOrder: ["s"], slides: { s: { id: "s", elements: [] } } };
 }
 
@@ -404,17 +405,29 @@ export function summarizeChange(
       ? sheetBody(before.content, after.content)
       : kind === "slide"
         ? slideBody(before.content, after.content)
-        : docBody(before.content, after.content);
+        : kind === "form"
+          ? formBody(before.content, after.content)
+          : docBody(before.content, after.content);
   const fallback =
     kind === "sheet"
       ? "Edited the spreadsheet"
       : kind === "slide"
         ? "Edited the presentation"
-        : "Edited a paragraph";
+        : kind === "form"
+          ? "Edited the form"
+          : "Edited a paragraph";
   return joinClauses(title, body, fallback);
 }
 
+function formBody(before: unknown, after: unknown): string | null {
+  return JSON.stringify(before) === JSON.stringify(after) ? null : "Edited the form";
+}
+
 function excerptOf(kind: FileKind, content: unknown): string {
+  if (kind === "form") {
+    const questions = (content as { questions?: { prompt?: string }[] } | null)?.questions ?? [];
+    return questions.map((question) => question.prompt ?? "").join("\n");
+  }
   if (kind === "doc") return blockTexts(content).join("\n");
   if (kind === "sheet") {
     return [...cellEntries(content).entries()]
@@ -449,7 +462,14 @@ export function changeExcerpt(
 
 /** FrogNano prompt with thinking already closed, matching `enable_thinking: false`. */
 export function summaryPrompt(kind: FileKind, before: string, after: string): string {
-  const label = kind === "sheet" ? "spreadsheet" : kind === "slide" ? "presentation" : "document";
+  const label =
+    kind === "sheet"
+      ? "spreadsheet"
+      : kind === "slide"
+        ? "presentation"
+        : kind === "form"
+          ? "form"
+          : "document";
   return [
     "<|im_start|>system\n",
     "You describe what changed in one short sentence a person can scan. No list and no preamble.\n",
@@ -471,6 +491,10 @@ export type RegionTouch = {
 export type RegionChange = { unit: RegionUnit; key: string };
 
 export function changedRegions(kind: FileKind, before: unknown, after: unknown): RegionChange[] {
+  if (kind === "form")
+    return JSON.stringify(before) === JSON.stringify(after)
+      ? []
+      : [{ unit: "paragraph", key: "0" }];
   if (kind === "sheet") {
     const left = cellEntries(before);
     const right = cellEntries(after);
@@ -557,7 +581,11 @@ export function compactSession<T extends TrackedFile>(
       id: make.edit(),
       at,
       by,
-      op: { kind: "region", unit: file.kind === "sheet" ? "cell" : file.kind === "slide" ? "slide" : "paragraph", key: "0" },
+      op: {
+        kind: "region",
+        unit: file.kind === "sheet" ? "cell" : file.kind === "slide" ? "slide" : "paragraph",
+        key: "0",
+      },
     });
   }
   const through = edits.at(-1)!;

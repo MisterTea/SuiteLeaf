@@ -10,7 +10,16 @@ import {
 } from "../node-client";
 import { ExpiryCalendar } from "./ExpiryCalendar";
 import { endedPhrase, untilPhrase } from "./share-expiry";
-import { GRANT_ROLES, roleDescription, type GrantRole } from "./roles";
+import {
+  GRANT_ROLES,
+  asGrantRole,
+  defaultGrantRole,
+  grantRolesFor,
+  roleDescription,
+  roleVerb,
+  type GrantRole,
+  type GrantRoleOption,
+} from "./roles";
 
 const UNDO_MS = 8000;
 
@@ -37,6 +46,7 @@ function givenName(person: {
 
 /** Choose a role. The current role, and what it means, stay visible before the menu opens. */
 function RoleMenu({
+  roles,
   value,
   label,
   allowRemove = false,
@@ -45,6 +55,7 @@ function RoleMenu({
   detail,
   onChange,
 }: {
+  roles: readonly GrantRoleOption[];
   value: GrantRole;
   label: string;
   allowRemove?: boolean;
@@ -87,7 +98,7 @@ function RoleMenu({
       </button>
       {open ? (
         <ul className="share-role-menu" role="listbox" aria-label={label}>
-          {GRANT_ROLES.map((role) => (
+          {roles.map((role) => (
             <li key={role.id}>
               <button
                 type="button"
@@ -145,10 +156,12 @@ function RoleMenu({
 export function ShareDialog({
   itemId,
   itemName,
+  kind,
   onClose,
 }: {
   itemId: string;
   itemName: string;
+  kind: string;
   onClose: () => void;
 }) {
   const titleId = useId();
@@ -161,7 +174,7 @@ export function ShareDialog({
   const [searching, setSearching] = useState(false);
   const [searched, setSearched] = useState("");
   const [picked, setPicked] = useState<AccountProfile | null>(null);
-  const [grantRole, setGrantRole] = useState<GrantRole>("editor");
+  const [grantRole, setGrantRole] = useState<GrantRole>(defaultGrantRole(kind));
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [undo, setUndo] = useState<{
@@ -172,6 +185,9 @@ export function ShareDialog({
   const [expiring, setExpiring] = useState<AccessGrant | null>(null);
   const listRef = useRef(0);
   const you = getSession()?.user.id ?? "";
+  const sharingForm = kind === "form" && target.id === itemId;
+  const roles = grantRolesFor(sharingForm ? "form" : "other");
+  const defaultRole = defaultGrantRole(sharingForm ? "form" : "other");
 
   const load = async (id: string) => {
     const n = ++listRef.current;
@@ -224,11 +240,13 @@ export function ShareDialog({
   const accessNote =
     access?.yourRole === "editor"
       ? "You can edit this file. Only the owner can change who has access."
-      : access?.yourRole === "commenter"
-        ? "You can comment on this file. Only the owner can change who has access."
-        : access?.yourRole === "viewer"
-          ? "You can view this file. Only the owner can change who has access."
-          : "Only the owner can change who has access.";
+      : access?.yourRole === "responder"
+        ? "You can sign up on this form. Only the owner can change who has access."
+        : access?.yourRole === "commenter"
+          ? "You can comment on this file. Only the owner can change who has access."
+          : access?.yourRole === "viewer"
+            ? "You can view this file. Only the owner can change who has access."
+            : "Only the owner can change who has access.";
   const unknown =
     !picked &&
     searched.includes("@") &&
@@ -267,19 +285,15 @@ export function ShareDialog({
       await drive.share(target.id, person.id, role);
       setPicked(null);
       setQuery("");
-      setGrantRole("editor");
-    }, `${givenName(person)} can now ${role === "editor" ? "edit" : role === "commenter" ? "comment" : "view"}`);
+      setGrantRole(defaultRole);
+    }, `${givenName(person)} can now ${roleVerb(role)}`);
   };
 
   const changeRole = (person: AccessGrant, role: GrantRole) => {
     const name = givenName(person);
     void apply(
       () => drive.share(target.id, person.principalId, role),
-      role === "viewer"
-        ? `${name} can now view`
-        : role === "commenter"
-          ? `${name} can now comment`
-          : `${name} can now edit`,
+      `${name} can now ${roleVerb(role)}`,
     );
   };
 
@@ -390,7 +404,7 @@ export function ShareDialog({
                 if (e.key === "Enter" && matches[0] && !picked) {
                   e.preventDefault();
                   setPicked(matches[0]);
-                  setGrantRole("editor");
+                  setGrantRole(defaultRole);
                 }
               }}
             />
@@ -403,7 +417,7 @@ export function ShareDialog({
                       role="option"
                       onClick={() => {
                         setPicked(person);
-                        setGrantRole("editor");
+                        setGrantRole(defaultRole);
                       }}
                     >
                       <strong>{person.name || person.email}</strong>
@@ -424,6 +438,7 @@ export function ShareDialog({
             {picked ? (
               <div className="share-pending">
                 <RoleMenu
+                  roles={roles}
                   value={grantRole}
                   label={`Role for ${personLabel(picked)}`}
                   onChange={(next) => {
@@ -522,13 +537,8 @@ export function ShareDialog({
                   </button>
                 ) : manageable ? (
                   <RoleMenu
-                    value={
-                      person.role === "commenter"
-                        ? "commenter"
-                        : person.role === "editor"
-                          ? "editor"
-                          : "viewer"
-                    }
+                    roles={roles}
+                    value={asGrantRole(person.role)}
                     label={`Role for ${personLabel(person)}`}
                     allowRemove
                     disabled={busy}

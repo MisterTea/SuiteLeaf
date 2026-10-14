@@ -1,21 +1,6 @@
-import { useLayoutEffect, useRef } from "react";
-import { createPortal } from "react-dom";
 import { Extension } from "@tiptap/core";
 import type { Node as ProseNode } from "@tiptap/pm/model";
-import { useEditorState, type Editor } from "@tiptap/react";
-import type { EditorState } from "@tiptap/pm/state";
-import "./doc-keep-next.css";
 
-declare module "@tiptap/core" {
-  interface Commands<ReturnType> {
-    keepWithNext: {
-      /** Keep the paragraph at the caret on the same page as the one after it. */
-      toggleKeepNext: () => ReturnType;
-    };
-  }
-}
-
-const textBlocks = new Set(["paragraph", "heading"]);
 const listContainers = new Set(["bulletList", "orderedList"]);
 
 /**
@@ -61,24 +46,6 @@ export function breakPosBeforeList(doc: ProseNode, pos: number): number | null {
 
 export function keepsWithNext(node: { attrs: Record<string, unknown> }): boolean {
   return node.attrs.keepNext === true;
-}
-
-/** The paragraph or heading that contains the caret, outside a table. */
-export function caretKeepTarget(
-  state: EditorState,
-): { pos: number; on: boolean } | null {
-  const { $from } = state.selection;
-  for (let depth = $from.depth; depth > 0; depth--) {
-    const name = $from.node(depth).type.name;
-    if (name === "tableCell" || name === "tableHeader" || $from.node(depth).type.spec.tableRole)
-      return null;
-  }
-  for (let depth = $from.depth; depth > 0; depth--) {
-    const node = $from.node(depth);
-    if (!textBlocks.has(node.type.name)) continue;
-    return { pos: $from.before(depth), on: node.attrs.keepNext === true };
-  }
-  return null;
 }
 
 type BreakBoundary = { top: number; keepNext?: boolean; manual?: boolean };
@@ -134,127 +101,4 @@ export const KeepWithNext = Extension.create({
       },
     ];
   },
-  addCommands() {
-    return {
-      toggleKeepNext:
-        () =>
-        ({ state, dispatch }) => {
-          const target = caretKeepTarget(state);
-          if (!target) return false;
-          const node = state.doc.nodeAt(target.pos);
-          if (!node) return false;
-          if (dispatch)
-            dispatch(
-              state.tr.setNodeMarkup(target.pos, undefined, {
-                ...node.attrs,
-                keepNext: node.attrs.keepNext === true ? null : true,
-              }),
-            );
-          return true;
-        },
-    };
-  },
 });
-
-function placeKeepNextButton(block: HTMLElement, button: HTMLButtonElement) {
-  const stage = block.closest(".document-stage");
-  const stageRect = stage?.getBoundingClientRect();
-  const blockRect = block.getBoundingClientRect();
-  const inView =
-    !!stageRect &&
-    blockRect.bottom > stageRect.top + 4 &&
-    blockRect.top < stageRect.bottom - 4 &&
-    blockRect.width > 8;
-  if (!inView || !stageRect) {
-    button.style.visibility = "hidden";
-    return;
-  }
-  const range = block.ownerDocument.createRange();
-  range.selectNodeContents(block);
-  const rects = Array.from(range.getClientRects()).filter(
-    (rect) => rect.width > 0 && rect.height > 0,
-  );
-  const first = rects[0] ?? blockRect;
-  const lineRight = rects
-    .filter((rect) => Math.abs(rect.top - first.top) < 3)
-    .reduce((max, rect) => Math.max(max, rect.right), first.left);
-  const width = button.offsetWidth;
-  const height = button.offsetHeight;
-  let left = lineRight + 10;
-  let top = first.top + (first.height - height) / 2;
-  // A full line has no empty space. Sit in the page margin, beside that line.
-  if (left + width > blockRect.right - 4) {
-    left = blockRect.right + 8;
-    top = first.top + (first.height - height) / 2;
-  }
-  const maxLeft = Math.min(window.innerWidth, stageRect.right) - width - 8;
-  const minLeft = Math.max(8, stageRect.left + 4);
-  const maxTop = stageRect.bottom - height - 4;
-  const minTop = stageRect.top + 4;
-  left = Math.max(minLeft, Math.min(left, maxLeft));
-  top = Math.max(minTop, Math.min(top, maxTop));
-  button.style.left = `${left}px`;
-  button.style.top = `${top}px`;
-  button.style.visibility = "visible";
-}
-
-/** One switch for the paragraph that has the caret. It shows On or Off. */
-export function KeepWithNextControl({
-  editor,
-  readOnly = false,
-}: {
-  editor: Editor | null;
-  readOnly?: boolean;
-}) {
-  const button = useRef<HTMLButtonElement>(null);
-  const target = useEditorState({
-    editor,
-    selector: ({ editor: current }) =>
-      current?.isEditable ? caretKeepTarget(current.state) : null,
-    equalityFn: (a, b) => a?.pos === b?.pos && a?.on === b?.on,
-  });
-  useLayoutEffect(() => {
-    const el = button.current;
-    if (!editor || !el || !target) return;
-    const place = () => {
-      const dom = editor.view.nodeDOM(target.pos);
-      if (!(dom instanceof HTMLElement)) {
-        el.style.visibility = "hidden";
-        return;
-      }
-      placeKeepNextButton(dom, el);
-    };
-    place();
-    const dom = editor.view.dom;
-    const stage = dom.closest(".document-stage");
-    stage?.addEventListener("scroll", place);
-    window.addEventListener("resize", place);
-    dom.addEventListener("suiteleaf-pages", place);
-    return () => {
-      stage?.removeEventListener("scroll", place);
-      window.removeEventListener("resize", place);
-      dom.removeEventListener("suiteleaf-pages", place);
-    };
-  }, [editor, target]);
-
-  if (readOnly || !target) return null;
-  const on = target.on;
-  return createPortal(
-    <button
-      ref={button}
-      type="button"
-      className={`keep-next-control${on ? " is-on" : ""}`}
-      aria-pressed={on}
-      aria-label={on ? "Keep with next, on" : "Keep with next, off"}
-      onMouseDown={(event) => {
-        // Keep the caret in the paragraph this control belongs to.
-        event.preventDefault();
-      }}
-      onClick={() => editor?.commands.toggleKeepNext()}
-    >
-      <span>Keep with next</span>
-      <span className="keep-next-state">{on ? "On" : "Off"}</span>
-    </button>,
-    document.body,
-  );
-}

@@ -54,5 +54,5 @@ The welcome has a gap under it. The Motion heading has a gap above it. The motio
 
 - Opening a Word file still does not read `w:before` and `w:after` back in. Export writes them.
 - 12 pt after the welcome and 12 pt before Motion both stay, so the gap between them is the sum. Neither value is cleared.
-- The point values live in `packages/core/src/paragraph-spacing.ts`. Line spacing, Keep with next, Don't leave one line, and Keep lines together were left in place. Those three switches still float beside the caret, so they sit on top of a short motion line.
+- The point values live in `packages/core/src/paragraph-spacing.ts`. Line spacing stays in place. Keep with next, Don't leave one line, and Keep lines together no longer float beside the caret.
 - The closed button shows the line spacing. Space before and Space after are the fields in that same menu, so the font tools stay on the toolbar.

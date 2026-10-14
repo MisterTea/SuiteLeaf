@@ -18,7 +18,7 @@ async function selectCells(page: Page, ref: string) {
 }
 
 async function sheetReady(page: Page) {
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).waitFor();
+  await page.locator("[data-sheet-ready='true']").waitFor();
 }
 
 test("home shows two templates of each kind and the gallery is one click away", async ({
@@ -156,6 +156,11 @@ test("File › New › From template filters to that editor", async ({ page }) =
   for (const [create, , shown, hidden] of editors) {
     await page.goto("/");
     await page.getByRole("button", { name: create }).click();
+    if (create === "New spreadsheet")
+      await page.locator("[data-sheet-ready='true']").waitFor();
+    else if (create === "New document")
+      await page.getByRole("textbox", { name: "Document content" }).waitFor();
+    else await page.locator(".slides-editor").waitFor();
     await page.getByRole("button", { name: "File", exact: true }).click();
     await page.getByRole("menuitem", { name: "New", exact: true }).hover();
     await page.getByRole("menuitem", { name: "From template" }).click();

@@ -8,7 +8,7 @@ import { beat, caption, expect, selectCells, test, typeSlowly } from "./harness"
 const widths = [180];
 
 async function ready(page: Page) {
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).waitFor();
+  await page.getByRole("toolbar", { name: "Spreadsheet formatting" }).waitFor();
   await beat(page, 600);
 }
 
@@ -101,7 +101,7 @@ test("53-link-a-cell", async ({ page }) => {
   await clickCell(page, "A2");
   await beat(page, 700);
   expect(followed).toBe(false);
-  await expect(page.getByRole("button", { name: "Sheet tools", exact: true })).toBeVisible();
+  await expect(page.getByRole("toolbar", { name: "Spreadsheet formatting" })).toBeVisible();
   await expect(link).toBeVisible();
 
   await caption(page, "She clicks the address. It opens in a new tab, and this sheet stays.", 1400);

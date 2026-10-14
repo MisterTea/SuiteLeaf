@@ -3,25 +3,50 @@ import { readFile } from "node:fs/promises";
 import JSZip from "jszip";
 import { gardenClubRecord } from "../garden-club-news";
 
-async function seed(page: Page) {
+function withKeepNext(record: ReturnType<typeof gardenClubRecord>) {
+  const file = JSON.parse(record.native) as {
+    content: {
+      content: Array<{
+        type: string;
+        attrs?: Record<string, unknown>;
+        content?: Array<{ text?: string }>;
+      }>;
+    };
+  };
+  const heading = file.content.content.find(
+    (node) =>
+      node.type === "heading" && node.content?.some((part) => part.text === "This week"),
+  );
+  if (!heading) throw new Error("missing heading");
+  heading.attrs = { ...heading.attrs, keepNext: true };
+  return { ...record, native: JSON.stringify(file) };
+}
+
+async function seed(page: Page, record = gardenClubRecord()) {
   await page.goto("/");
   await page.getByRole("button", { name: "New document" }).waitFor();
-  await page.evaluate(async (record) => {
+  await page.evaluate(async (stored) => {
     await new Promise<void>((resolve, reject) => {
       const open = indexedDB.open("SuiteLeaf");
       open.onerror = () => reject(open.error);
       open.onsuccess = () => {
         const db = open.result;
         const tx = db.transaction("encoded", "readwrite");
-        tx.objectStore("encoded").put(record);
+        tx.objectStore("encoded").put(stored);
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error);
       };
     });
-  }, gardenClubRecord());
+  }, record);
   await page.reload();
   await page.getByRole("link", { name: "Garden club news" }).click();
   await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
+}
+
+async function expectNoPaginationSwitches(page: Page) {
+  await expect(page.getByRole("button", { name: /Keep with next/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Don't leave one line/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Keep lines together/ })).toHaveCount(0);
 }
 
 async function pageOf(locator: Locator) {
@@ -40,62 +65,28 @@ function paragraphsOf(xml: string) {
   return [...xml.matchAll(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g)].map((match) => match[0]);
 }
 
-test("keep with next moves a heading with the following paragraph", async ({ page }) => {
+test("typing in a heading does not show pagination switches", async ({ page }) => {
   await seed(page);
   const heading = page.getByRole("heading", { name: "This week" });
   const firstItem = page.getByText("Seed swap on Saturday");
-  const editor = page.getByRole("textbox", { name: "Document content" });
   await expect.poll(() => pageOf(heading)).toBe(0);
   await expect.poll(() => pageOf(firstItem)).toBe(1);
-
   await heading.click({ position: { x: 20, y: 12 } });
-  const control = page.getByRole("button", { name: "Keep with next, off" });
-  await expect(control).toBeVisible();
-  await expect(control).toHaveAttribute("aria-pressed", "false");
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  const overlap = await page.evaluate(() => {
-    const headingEl = [...document.querySelectorAll("h2")].find((el) =>
-      el.textContent?.includes("This week"),
-    );
-    const button = document.querySelector(".keep-next-control");
-    if (!headingEl || !button) return true;
-    const range = document.createRange();
-    range.selectNodeContents(headingEl);
-    const text = range.getBoundingClientRect();
-    const box = button.getBoundingClientRect();
-    return !(box.right < text.left || box.left > text.right || box.bottom < text.top || box.top > text.bottom);
-  });
-  expect(overlap).toBe(false);
+  await page.keyboard.press("End");
+  await page.keyboard.type(" still");
+  await expectNoPaginationSwitches(page);
+  await expect.poll(() => pageOf(heading)).toBe(0);
+});
 
-  await control.click();
-  await expect(page.getByRole("button", { name: "Keep with next, on" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+test("a saved keep-with-next heading stays with the following list", async ({ page }) => {
+  await seed(page, withKeepNext(gardenClubRecord()));
+  const heading = page.getByRole("heading", { name: "This week" });
+  const firstItem = page.getByText("Seed swap on Saturday");
   await expect(heading).toHaveAttribute("data-keep-next", "true");
   await expect.poll(() => pageOf(heading)).toBe(1);
   await expect.poll(() => pageOf(firstItem)).toBe(1);
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-
-  await page.getByRole("button", { name: "Keep with next, on" }).click();
-  await expect(page.getByRole("button", { name: "Keep with next, off" })).toBeVisible();
-  await expect(heading).not.toHaveAttribute("data-keep-next", "true");
-  await expect.poll(() => pageOf(heading)).toBe(0);
-  await expect.poll(() => pageOf(firstItem)).toBe(1);
-
-  await page.getByRole("button", { name: "Keep with next, off" }).click();
-  await expect.poll(() => pageOf(heading)).toBe(1);
-  await expect(page.locator(".save-status")).toContainText("Saved", { timeout: 5000 });
-  await page.getByRole("button", { name: "Back to files" }).click();
-  await page.getByRole("link", { name: "Garden club news" }).click();
-  await expect(heading).toBeVisible();
-  await expect.poll(() => pageOf(heading)).toBe(1);
-  await expect.poll(() => pageOf(firstItem)).toBe(1);
   await heading.click({ position: { x: 20, y: 12 } });
-  await expect(page.getByRole("button", { name: "Keep with next, on" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expectNoPaginationSwitches(page);
 
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "File", exact: true }).click();
@@ -110,5 +101,4 @@ test("keep with next moves a heading with the following paragraph", async ({ pag
   expect(headingXml).toContain("<w:keepNext");
   expect(lead).not.toContain("<w:keepNext");
   expect(item).not.toContain("<w:keepNext");
-  await expect(editor).toContainText("This week");
 });

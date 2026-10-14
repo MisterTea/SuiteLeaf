@@ -408,6 +408,7 @@ fn role_name(role: Role) -> &'static str {
     match role {
         Role::Viewer => "viewer",
         Role::Commenter => "commenter",
+        Role::Responder => "responder",
         Role::Editor => "editor",
         Role::Owner => "owner",
     }

@@ -94,6 +94,12 @@ export function SheetViewMenu({
         )}
       </SubMenu>
       <MenuSeparator />
+      <MenuItem
+        synonyms={["comments and replies", "comment panel", "show comments"]}
+        onSelect={() => sheet?.openComments?.()}
+      >
+        Comments
+      </MenuItem>
       <MenuItem onSelect={onPrint}>Print layout</MenuItem>
       <MenuItem onSelect={() => sheet?.toggleFilter()}>Toggle filter</MenuItem>
     </>

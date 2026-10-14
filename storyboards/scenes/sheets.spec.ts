@@ -704,9 +704,9 @@ test("17-review-a-budget-with-notes-and-comments", async ({ page, browser, baseU
 
   await caption(page, "First, a note to explain a number: notes are quiet context that stays with the cell.", 1400);
   await selectCells(page, "C3");
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).click();
+  await page.getByRole("button", { name: "Insert", exact: true }).click();
   await beat(page, 600);
-  await page.getByRole("menuitem", { name: "Add or edit cell note" }).click();
+  await page.getByRole("menuitem", { name: "Note", exact: true }).click();
   const note = page.locator('[data-u-comp="note-textarea"]');
   await note.click();
   await typeSlowly(page, "Includes the contractor invoice from September.", 30);
@@ -724,7 +724,7 @@ test("17-review-a-budget-with-notes-and-comments", async ({ page, browser, baseU
   await expect(note).toBeHidden();
 
   await caption(page, "Comments carry the writer's name, so Alex sets it once on this computer.", 1000);
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).click();
+  await page.getByRole("button", { name: "Tools", exact: true }).click();
   await beat(page, 600);
   await page.getByRole("menuitem", { name: "Your name on comments…" }).click();
   const naming = page.getByRole("dialog", { name: "Your name on comments" });

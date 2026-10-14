@@ -39,7 +39,7 @@ Sam turns on odd and even pages and sees page 5 with the number on the right and
 
 ## Gaps and notes
 
-- No live cover, no live watermark, and no section break that restarts at arabic 1. The outline's "Start Arabic numbers here" control was already there; this story does not drive it.
+- No live cover, no live watermark, and no section break that restarts at arabic 1. The outline no longer shows "Start Arabic numbers here." A heading already saved with that restart still begins at 1.
 - No control for the numeral's font or size.
 - With a chosen position already saved, odd and even pages keep that corner on the page, the same as before. This preview's outside edges are the default, when the position has not been set: bottom right until the switch is on, then left on the even page and right on the odd page.
 - Storyboard 62's scene still looks for the old first-three preview. The browser test for that feature now expects the last odd page and the last even page.

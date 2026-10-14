@@ -31,7 +31,7 @@ async function open(page: Page) {
     buffer: Buffer.from(serializeFile(file)),
   });
   await page
-    .getByRole("button", { name: "Sheet tools", exact: true })
+    .getByRole("toolbar", { name: "Spreadsheet formatting" })
     .waitFor();
 }
 
@@ -77,10 +77,7 @@ test("Data › Sort range keeps the detected header row in place", async ({
     ["Priya Shah", "Kitchen", 14],
     ["Alba Reyes", "Kitchen", 9],
   ]);
-  const undo = page.getByRole("button", { name: "Undo (Cmd+Z)" });
-  if (!(await undo.isVisible()))
-    await page.getByRole("button", { name: "More tools" }).click();
-  await undo.click();
+  await page.getByRole("button", { name: "Undo (Cmd+Z)" }).click();
   expect(await rows(page)).toEqual(volunteers);
 });
 

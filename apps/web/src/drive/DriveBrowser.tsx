@@ -4,10 +4,8 @@ import {
   useRef,
   useState,
   type FormEvent,
-  type ReactNode,
   type RefObject,
 } from "react";
-import { createPortal } from "react-dom";
 import {
   ChevronRight,
   CloudOff,
@@ -22,7 +20,16 @@ import {
   X,
 } from "lucide-react";
 import { isNativeName, kindFromName } from "@suiteleaf/core";
-import { drive, getSession, type DriveItem } from "../node-client";
+import {
+  drive,
+  getSession,
+  type DriveItem,
+  type DriveSearchHit,
+} from "../node-client";
+import { DriveDialog } from "./drive-dialog";
+import { folderCrumbs } from "./folder-paths";
+import { MoveBanner, type MoveNotice } from "./file-folder";
+import { MoveDialog } from "./MoveDialog";
 import { versionWhen } from "../editors/version-history-model";
 import { DRIVE_SAVED, lastEditOf } from "./last-edit";
 import { accessLabel } from "./roles";
@@ -42,7 +49,7 @@ export interface DriveControl {
   switchView: (view: "mine" | "shared") => void;
   newFolder: (name: string) => Promise<void>;
 }
-type View = "mine" | "shared";
+type View = "mine" | "shared" | "trash";
 type Place = { view: View; path: Crumb[] };
 
 const PLACE_KEY = "suiteleaf:drive-place";
@@ -75,74 +82,19 @@ const place = {
   },
 };
 
-/** A small in-app dialog over everything else, including other dialogs. */
-export function DriveDialog({
-  title,
-  submitLabel,
-  canSubmit = true,
-  onSubmit,
-  onClose,
-  children,
-}: {
-  title: string;
-  submitLabel: string;
-  canSubmit?: boolean;
-  onSubmit: () => void;
-  onClose: () => void;
-  children: ReactNode;
-}) {
-  return createPortal(
-    <div
-      className="modal-overlay"
-      onClick={(e) => {
-        e.stopPropagation();
-        onClose();
-      }}
-      onKeyDown={(e) => {
-        e.stopPropagation();
-        if (e.key === "Escape") onClose();
-      }}
-    >
-      <form
-        className="gdocs-dialog node-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        onClick={(e) => e.stopPropagation()}
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (canSubmit) onSubmit();
-        }}
-      >
-        <div className="dialog-header">
-          <h2>{title}</h2>
-          <button
-            type="button"
-            className="dialog-close-btn"
-            aria-label="Close"
-            onClick={onClose}
-          >
-            <X size={18} />
-          </button>
-        </div>
-        <div className="dialog-body">{children}</div>
-        <div className="dialog-footer">
-          <button type="button" className="dialog-text-btn" onClick={onClose}>
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className="dialog-primary-btn"
-            disabled={!canSubmit}
-            autoFocus
-          >
-            {submitLabel}
-          </button>
-        </div>
-      </form>
-    </div>,
-    document.body,
-  );
+export { DriveDialog } from "./drive-dialog";
+
+/** Opens this folder the next time the home screen's SuiteDrive list mounts. */
+export function rememberDriveFolder(
+  parentId: string | null,
+  parentName: string,
+  folders: { id: string; name: string; parentId: string | null }[] = [],
+) {
+  if (!place.owner()) return;
+  place.save({
+    view: "mine",
+    path: folderCrumbs(parentId, parentName, folders),
+  });
 }
 
 /** Ask for a folder or file name. Renaming a file selects the name without
@@ -194,7 +146,7 @@ export function NameDialog({
   );
 }
 
-function ItemIcon({ item }: { item: DriveItem }) {
+function ItemIcon({ item }: { item: { name: string; kind: string } }) {
   if (item.kind === "folder") return <Folder size={20} />;
   const kind = kindFromName(item.name);
   return (
@@ -222,10 +174,13 @@ export function DriveBrowser({
   onFolderChange,
   refreshKey,
   control,
+  startIn,
 }: {
   mode: "open" | "save";
   defaultName?: string;
   inline?: boolean;
+  /** Open this folder instead of the top of My Drive. Used by the editor's Open and Save as. */
+  startIn?: { id: string; name: string } | null;
   onOpen?: (item: DriveItem) => void | Promise<void>;
   onSave?: (folderId: string | null, name: string) => void | Promise<void>;
   onClose?: () => void;
@@ -237,7 +192,17 @@ export function DriveBrowser({
   /** Receives the browser's current folder and actions, for the assistant. */
   control?: RefObject<DriveControl | null>;
 }) {
-  const [initial] = useState(() => (inline && place.load()) || rootOf("mine"));
+  const [initial] = useState(() =>
+    startIn
+      ? {
+          view: "mine" as const,
+          path: [
+            { id: null, name: "My Drive" },
+            { id: startIn.id, name: startIn.name },
+          ],
+        }
+      : (inline && place.load()) || rootOf("mine"),
+  );
   const [view, setView] = useState<View>(initial.view);
   const [path, setPath] = useState<Crumb[]>(initial.path);
   const [items, setItems] = useState<DriveItem[]>([]);
@@ -248,13 +213,26 @@ export function DriveBrowser({
   const [kept, setKept] = useState("");
   const [asking, setAsking] = useState<
     | { action: "new-folder" }
-    | { action: "rename" | "trash"; item: DriveItem }
+    | { action: "rename" | "delete-forever"; item: DriveItem }
     | null
+  >(null);
+  const [notice, setNotice] = useState<{ id: string; name: string } | null>(
+    null,
+  );
+  const [moving, setMoving] = useState<DriveItem | null>(null);
+  const [moveNotice, setMoveNotice] = useState<
+    (MoveNotice & { id: string }) | null
   >(null);
   const restored = useRef(initial.path.length > 1);
   const seenEdit = useRef(new Map<string, string>());
   const flash = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [justEdited, setJustEdited] = useState<ReadonlySet<string>>(new Set());
+  const [query, setQuery] = useState("");
+  const [outcome, setOutcome] = useState<
+    | { query: string; hits: DriveSearchHit[] }
+    | { query: string; failed: true }
+    | null
+  >(null);
   const folder = path[path.length - 1];
   const shown = useRef(""),
     request = useRef(0);
@@ -266,9 +244,11 @@ export function DriveBrowser({
     if (shown.current !== key) setLoading(true);
     try {
       const next =
-        view === "shared" && folder.id === null
-          ? await drive.shared()
-          : await drive.list(folder.id);
+        view === "trash"
+          ? await drive.listTrashed()
+          : view === "shared" && folder.id === null
+            ? await drive.shared()
+            : await drive.list(folder.id);
       if (n !== request.current) return;
       setItems(next);
       shown.current = key;
@@ -287,6 +267,30 @@ export function DriveBrowser({
     }
   }, [folder.id, view]);
   useEffect(() => void refresh(), [refresh, refreshKey]);
+  // An empty box stays on the folder. A short pause lets a recording type
+  // the whole word before the list switches to results.
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void drive.search(q).then(
+        (hits) => {
+          if (!cancelled) setOutcome({ query: q, hits });
+        },
+        (e) => {
+          if (!cancelled) {
+            setOutcome({ query: q, failed: true });
+            setError(e instanceof Error ? e.message : String(e));
+          }
+        },
+      );
+    }, 200);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query]);
   useEffect(() => {
     const changed: string[] = [];
     const next = new Map<string, string>();
@@ -330,10 +334,40 @@ export function DriveBrowser({
     }
   };
 
-  const switchView = (next: View) => {
+  const switchView = (next: "mine" | "shared") => {
     setView(next);
     setPath(rootOf(next).path);
     setKept("");
+  };
+  const openTrash = () => {
+    setView("trash");
+    setPath([{ id: null, name: "Trash" }]);
+    setKept("");
+  };
+  const moveToTrash = (item: DriveItem) => {
+    void act(async () => {
+      await drive.update(item.id, { trashed: true });
+      setNotice({ id: item.id, name: item.name });
+      await refresh();
+    });
+  };
+  const undoNotice = () => {
+    if (!notice) return;
+    const id = notice.id;
+    void act(async () => {
+      await drive.update(id, { trashed: false });
+      setNotice((current) => (current?.id === id ? null : current));
+      await refresh();
+    });
+  };
+  const undoMove = () => {
+    if (!moveNotice) return;
+    const { id, previousParentId } = moveNotice;
+    void act(async () => {
+      await drive.update(id, { parentId: previousParentId });
+      setMoveNotice((current) => (current?.id === id ? null : current));
+      await refresh();
+    });
   };
 
   const choose = (item: DriveItem) => {
@@ -359,7 +393,11 @@ export function DriveBrowser({
       goTo: (depth) => setPath(path.slice(0, Math.max(1, depth))),
       switchView,
       newFolder: async (folderName) => {
-        await drive.create({ name: folderName, parentId: folder.id, kind: "folder" });
+        await drive.create({
+          name: folderName,
+          parentId: folder.id,
+          kind: "folder",
+        });
         await refresh();
       },
     };
@@ -369,27 +407,54 @@ export function DriveBrowser({
     if (name.trim()) void act(async () => onSave?.(folder.id, name.trim()));
   };
 
+  const typed = query.trim();
+  const found =
+    typed && outcome && outcome.query === typed && !("failed" in outcome)
+      ? outcome.hits
+      : null;
   const body = (
     <div className={`drive-browser ${inline ? "inline" : ""}`}>
+      <div className="drive-search">
+        <label htmlFor="drive-search">Search SuiteDrive</label>
+        <input
+          id="drive-search"
+          type="search"
+          placeholder="Search names and words"
+          value={query}
+          autoComplete="off"
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </div>
       <div className="drive-toolbar">
-        <div className="drive-tabs" role="tablist">
+        <div className="drive-tabs">
+          <div className="drive-tablist" role="tablist">
+            <button
+              role="tab"
+              aria-selected={view === "mine"}
+              className={view === "mine" ? "selected" : ""}
+              onClick={() => switchView("mine")}
+            >
+              <Folder size={16} />
+              My Drive
+            </button>
+            <button
+              role="tab"
+              aria-selected={view === "shared"}
+              className={view === "shared" ? "selected" : ""}
+              onClick={() => switchView("shared")}
+            >
+              <Users size={16} />
+              Shared with me
+            </button>
+          </div>
           <button
-            role="tab"
-            aria-selected={view === "mine"}
-            className={view === "mine" ? "selected" : ""}
-            onClick={() => switchView("mine")}
+            type="button"
+            aria-pressed={view === "trash"}
+            className={view === "trash" ? "selected" : ""}
+            onClick={openTrash}
           >
-            <Folder size={16} />
-            My Drive
-          </button>
-          <button
-            role="tab"
-            aria-selected={view === "shared"}
-            className={view === "shared" ? "selected" : ""}
-            onClick={() => switchView("shared")}
-          >
-            <Users size={16} />
-            Shared with me
+            <Trash2 size={16} />
+            Trash
           </button>
         </div>
         {canWrite ? (
@@ -403,19 +468,23 @@ export function DriveBrowser({
           </button>
         ) : null}
       </div>
-      <nav className="drive-crumbs" aria-label="Folder path">
-        {path.map((crumb, i) => (
-          <span key={crumb.id ?? "root"}>
-            {i ? <ChevronRight size={14} /> : null}
-            <button
-              disabled={i === path.length - 1}
-              onClick={() => setPath(path.slice(0, i + 1))}
-            >
-              {crumb.name}
-            </button>
-          </span>
-        ))}
-      </nav>
+      {view === "trash" ? (
+        <h2 className="drive-trash-heading">Trash</h2>
+      ) : (
+        <nav className="drive-crumbs" aria-label="Folder path">
+          {path.map((crumb, i) => (
+            <span key={crumb.id ?? "root"}>
+              {i ? <ChevronRight size={14} /> : null}
+              <button
+                disabled={i === path.length - 1}
+                onClick={() => setPath(path.slice(0, i + 1))}
+              >
+                {crumb.name}
+              </button>
+            </span>
+          ))}
+        </nav>
+      )}
       {error ? (
         <p className="dialog-error" role="alert">
           {error}
@@ -429,14 +498,79 @@ export function DriveBrowser({
           {kept}
         </p>
       ) : null}
-      <div className="drive-list" role="list" aria-busy={loading}>
-        {loading ? (
+      {notice ? (
+        <div className="drive-trash-banner" role="status">
+          <p>{notice.name} is in Trash.</p>
+          <span className="drive-trash-banner-actions">
+            <button type="button" onClick={undoNotice} disabled={busy}>
+              Undo
+            </button>
+            <button
+              type="button"
+              onClick={() => setNotice(null)}
+              disabled={busy}
+            >
+              Dismiss
+            </button>
+          </span>
+        </div>
+      ) : null}
+      {moveNotice ? (
+        <MoveBanner
+          notice={moveNotice}
+          busy={busy}
+          onUndo={undoMove}
+          onDismiss={() => setMoveNotice(null)}
+        />
+      ) : null}
+      <div
+        className="drive-list"
+        role="list"
+        aria-busy={loading || (!!typed && found === null && !error)}
+      >
+        {typed ? (
+          found === null ? (
+            <p className="drive-empty">{error ? "" : "Searching…"}</p>
+          ) : found.length === 0 ? (
+            <p className="drive-empty" role="status">
+              No files match.
+            </p>
+          ) : (
+            found.map((hit) => (
+              <div className="drive-row" role="listitem" key={hit.id}>
+                <button
+                  type="button"
+                  className="drive-item drive-search-hit"
+                  disabled={busy}
+                  onClick={() => {
+                    void (async () => {
+                      try {
+                        choose(await drive.get(hit.id));
+                      } catch (e) {
+                        setError(e instanceof Error ? e.message : String(e));
+                      }
+                    })();
+                  }}
+                >
+                  <ItemIcon item={{ name: hit.name, kind: "file" }} />
+                  <span className="drive-item-label">
+                    <span className="drive-item-name">{hit.name}</span>
+                    <small className="drive-share-meta">{hit.parentName}</small>
+                    <small className="drive-search-snippet">{hit.snippet}</small>
+                  </span>
+                </button>
+              </div>
+            ))
+          )
+        ) : loading ? (
           <p className="drive-empty">Loading…</p>
         ) : visible.length === 0 ? (
           <p className="drive-empty">
-            {view === "shared" && folder.id === null
-              ? "Nothing has been shared with you yet."
-              : "This folder is empty."}
+            {view === "trash"
+              ? "The trash is empty."
+              : view === "shared" && folder.id === null
+                ? "Nothing has been shared with you yet."
+                : "This folder is empty."}
           </p>
         ) : (
           visible.map((item) => {
@@ -445,93 +579,144 @@ export function DriveBrowser({
               ? `Last edited by ${edit.name}, ${versionWhen(edit.at)}`
               : undefined;
             return (
-            <div
-              className={`drive-row${justEdited.has(item.id) ? " just-edited" : ""}`}
-              role="listitem"
-              key={item.id}
-            >
-              <button
-                className="drive-item"
-                aria-label={item.name}
-                aria-description={edited}
-                disabled={busy}
-                onClick={() => choose(item)}
-                title={
-                  item.available
-                    ? edited || item.name
-                    : `${item.name} (still replicating)`
-                }
+              <div
+                className={`drive-row${justEdited.has(item.id) ? " just-edited" : ""}`}
+                role="listitem"
+                key={item.id}
               >
-                <ItemIcon item={item} />
-                <span className="drive-item-label">
-                  <span className="drive-item-name">{item.name}</span>
-                  {view === "shared" && folder.id === null ? (
-                    <small className="drive-share-meta">
-                      {item.ownerName || "Someone"} · {accessLabel(item.role)}
-                    </small>
-                  ) : null}
-                </span>
-                {!item.available ? (
-                  <small className="drive-copying">
-                    <CloudOff size={14} aria-label="Replicating" />
-                    Copying…
-                  </small>
-                ) : null}
-                {edit ? (
-                  <time dateTime={edit.at} title={edited} aria-live="polite">
-                    <span className="drive-editor">{edit.name}</span>
-                    {" · "}
-                    {versionWhen(edit.at)}
-                  </time>
-                ) : (
-                  <time
-                    dateTime={item.updatedAt}
-                    title={new Date(item.updatedAt).toLocaleString()}
-                  >
-                    {formatModified(item.updatedAt)}
-                  </time>
-                )}
-              </button>
-              {view === "shared" && item.kind === "file" ? (
                 <button
-                  type="button"
-                  className="drive-keep"
-                  title="A copy you own in My Drive. It stays if access to the original is removed."
+                  className="drive-item"
+                  aria-label={item.name}
+                  aria-description={edited}
                   disabled={busy}
-                  onClick={() =>
-                    void act(async () => {
-                      await drive.keepCopy(item.id);
-                      setKept(
-                        `Kept a copy of ${item.name} in My Drive. This copy is yours.`,
-                      );
-                      await refresh();
-                    })
+                  onClick={() => {
+                    if (view !== "trash") choose(item);
+                  }}
+                  title={
+                    item.available
+                      ? edited || item.name
+                      : `${item.name} (still replicating)`
                   }
                 >
-                  Keep a copy
+                  <ItemIcon item={item} />
+                  <span className="drive-item-label">
+                    <span className="drive-item-name">{item.name}</span>
+                    {view === "shared" && folder.id === null ? (
+                      <small className="drive-share-meta">
+                        {item.ownerName || "Someone"} · {accessLabel(item.role)}
+                      </small>
+                    ) : null}
+                    {view === "trash" ? (
+                      <small className="drive-share-meta">
+                        {item.parentName ||
+                          (item.parentId ? "A folder" : "My Drive")}
+                      </small>
+                    ) : null}
+                  </span>
+                  {!item.available ? (
+                    <small className="drive-copying">
+                      <CloudOff size={14} aria-label="Replicating" />
+                      Copying…
+                    </small>
+                  ) : null}
+                  {edit ? (
+                    <time dateTime={edit.at} title={edited} aria-live="polite">
+                      <span className="drive-editor">{edit.name}</span>
+                      {" · "}
+                      {versionWhen(edit.at)}
+                    </time>
+                  ) : (
+                    <time
+                      dateTime={item.updatedAt}
+                      title={new Date(item.updatedAt).toLocaleString()}
+                    >
+                      {formatModified(item.updatedAt)}
+                    </time>
+                  )}
                 </button>
-              ) : null}
-              {item.role === "owner" || item.role === "editor" ? (
-                <span className="drive-row-actions">
+                {view === "shared" && item.kind === "file" ? (
                   <button
-                    title="Rename"
-                    aria-label={`Rename ${item.name}`}
+                    type="button"
+                    className="drive-keep"
+                    title="A copy you own in My Drive. It stays if access to the original is removed."
                     disabled={busy}
-                    onClick={() => setAsking({ action: "rename", item })}
+                    onClick={() =>
+                      void act(async () => {
+                        await drive.keepCopy(item.id);
+                        setKept(
+                          `Kept a copy of ${item.name} in My Drive. This copy is yours.`,
+                        );
+                        await refresh();
+                      })
+                    }
                   >
-                    <Pencil size={14} />
+                    Keep a copy
                   </button>
-                  <button
-                    title="Move to trash"
-                    aria-label={`Move ${item.name} to trash`}
-                    disabled={busy}
-                    onClick={() => setAsking({ action: "trash", item })}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </span>
-              ) : null}
-            </div>
+                ) : null}
+                {view === "trash" ? (
+                  <span className="drive-row-actions">
+                    <button
+                      type="button"
+                      className="drive-keep"
+                      aria-label={`Restore ${item.name}`}
+                      disabled={busy}
+                      onClick={() =>
+                        void act(async () => {
+                          await drive.update(item.id, { trashed: false });
+                          setNotice((current) =>
+                            current?.id === item.id ? null : current,
+                          );
+                          await refresh();
+                        })
+                      }
+                    >
+                      Restore
+                    </button>
+                    <button
+                      type="button"
+                      className="drive-keep"
+                      aria-label={`Delete ${item.name} forever`}
+                      disabled={busy}
+                      onClick={() =>
+                        setAsking({ action: "delete-forever", item })
+                      }
+                    >
+                      Delete forever
+                    </button>
+                  </span>
+                ) : item.role === "owner" || item.role === "editor" ? (
+                  <span className="drive-row-actions">
+                    {item.kind === "file" ? (
+                      <button
+                        type="button"
+                        className="drive-row-move"
+                        aria-label={`Move ${item.name}`}
+                        disabled={busy}
+                        onClick={() => setMoving(item)}
+                      >
+                        Move
+                      </button>
+                    ) : null}
+                    <button
+                      title="Rename"
+                      aria-label={`Rename ${item.name}`}
+                      disabled={busy}
+                      onClick={() => setAsking({ action: "rename", item })}
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      title="Move to trash"
+                      aria-label={`Move ${item.name} to trash`}
+                      disabled={busy}
+                      onClick={() => moveToTrash(item)}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </span>
+                ) : null}
+              </div>
             );
           })
         )}
@@ -591,24 +776,51 @@ export function DriveBrowser({
               });
           }}
         />
-      ) : asking?.action === "trash" ? (
+      ) : asking?.action === "delete-forever" ? (
         <DriveDialog
-          title="Move to trash?"
-          submitLabel="Move to trash"
+          title="Delete forever"
+          submitLabel="Delete forever"
           onClose={() => setAsking(null)}
           onSubmit={() => {
             const { item } = asking;
             setAsking(null);
             void act(async () => {
-              await drive.update(item.id, { trashed: true });
+              await drive.deleteForever(item.id);
+              setNotice((current) =>
+                current?.id === item.id ? null : current,
+              );
               await refresh();
             });
           }}
         >
           <p className="dialog-note">
-            &ldquo;{asking.item.name}&rdquo; will be moved to the trash.
+            &ldquo;{asking.item.name}&rdquo; will be deleted forever. This
+            cannot be undone.
           </p>
         </DriveDialog>
+      ) : null}
+      {moving ? (
+        <MoveDialog
+          item={moving}
+          currentName={
+            moving.parentId == null
+              ? "My Drive"
+              : moving.parentName ||
+                (folder.id === moving.parentId ? folder.name : "A folder")
+          }
+          includeMyDrive={moving.role === "owner" && moving.parentId != null}
+          onClose={() => setMoving(null)}
+          onMoved={(result) => {
+            setMoveNotice({
+              id: result.item.id,
+              fileName: result.item.name,
+              folderName: result.folderName,
+              previousParentId: result.previousParentId,
+            });
+            setMoving(null);
+            void refresh();
+          }}
+        />
       ) : null}
     </div>
   );

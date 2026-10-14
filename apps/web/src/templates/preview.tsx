@@ -183,8 +183,14 @@ export function TemplatePreview({
         <DocPreview file={file} />
       ) : file.kind === "sheet" ? (
         <SheetPreview file={file} />
-      ) : (
+      ) : file.kind === "slide" ? (
         <SlidePreview file={file} width={compact ? 112 : 760} />
+      ) : (
+        <ul className="form-template-preview">
+          {file.content.questions.map((q) => (
+            <li key={q.id}>{q.prompt || "Untitled question"}</li>
+          ))}
+        </ul>
       )}
     </div>
   );

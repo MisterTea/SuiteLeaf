@@ -39,7 +39,8 @@ In Google Docs the path is Format, Line & paragraph spacing, Prevent single line
 
 ## Gaps and notes
 
-- Keep with next (storyboard 86) is a different control. It still sits on the paragraph, and headings still travel with the following block.
+- The Don’t leave one line switch no longer floats beside the caret. It covered the paragraph while someone was typing. A paragraph already saved with widow and orphan control still keeps two lines together.
+- Keep with next (storyboard 86) is a different rule. Headings still travel with the following block.
 - A one-line paragraph has nothing to pair, so the control cannot pull another line.
 - Keeping a whole paragraph on one page is out of scope.
 - The .docx write sets `w:widowControl` only on the paragraph that is on. Opening a Word file does not read that flag back.

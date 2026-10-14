@@ -1,0 +1,86 @@
+.linked-chart {
+  margin: 12px 0;
+  padding: 12px 14px 10px;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  background: #fff;
+  user-select: none;
+}
+
+.linked-chart.ProseMirror-selectednode {
+  outline: 2px solid #1a73e8;
+  outline-offset: 2px;
+}
+
+.linked-chart-row {
+  display: grid;
+  grid-template-columns: minmax(4.5em, 8em) minmax(0, 1fr) 3em;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+}
+
+.linked-chart-label,
+.linked-chart-value {
+  font-size: 14px;
+  line-height: 1.3;
+  color: #202124;
+}
+
+.linked-chart-value {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.linked-chart-track {
+  display: block;
+  height: 18px;
+  border-radius: 4px;
+  background: #e8eaed;
+  overflow: hidden;
+}
+
+.linked-chart-bar {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: #1a73e8;
+}
+
+.linked-chart-source,
+.linked-chart-missing,
+.linked-chart-notice {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.linked-chart-source {
+  color: #3c4043;
+}
+
+.linked-chart-missing,
+.linked-chart-notice {
+  color: #b06000;
+}
+
+.linked-chart-update {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 6px 12px;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  background: #fff;
+  color: #1a73e8;
+  font: 600 13px Arial, sans-serif;
+  cursor: pointer;
+}
+
+.linked-chart-update:hover:not(:disabled) {
+  background: #f1f3f4;
+}
+
+.linked-chart-update:disabled {
+  color: #80868b;
+  cursor: default;
+}

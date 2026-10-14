@@ -59,7 +59,7 @@ Known pain points:
 
 - The week-later shot sets the recipe's deletion time to seven days ago, then reloads. A file left in Trash is removed on the next visit once it is 30 days old. Nothing deletes it while the app is closed in between.
 - The recording is the browser. On the desktop app the bin, the Trash note, and Delete forever say the saved file stays on disk, and removing a library entry does not delete that file. Covered by `tests/library-trash.test.ts` and `tests/store.test.ts`.
-- SuiteDrive's trash is unchanged: cluster mode can mark an item trashed, and still has no Trash list, restore, or permanent delete.
+- SuiteDrive trash, restore, and delete forever are storyboard [139](139-get-a-shared-file-back.md). This story is the library on this computer, which still removes a file from Trash after 30 days.
 - Search from All files, Documents, Spreadsheets, and Presentations includes Trash. There is no `is:starred` operator; Starred is the sidebar view, and the search box filters that view.
 
 ## Result

@@ -13,6 +13,7 @@ ciborium.workspace = true
 hex.workspace = true
 serde.workspace = true
 serde_bytes.workspace = true
+serde_json.workspace = true
 suitedb.workspace = true
 thiserror.workspace = true
 tokio = { version = "1", features = ["sync", "time", "rt", "macros"] }
@@ -21,5 +22,6 @@ uuid.workspace = true
 
 [dev-dependencies]
 libp2p-identity = { version = "0.3", features = ["ed25519", "rand"] }
+serde_json.workspace = true
 tempfile.workspace = true
 tokio = { version = "1", features = ["full"] }

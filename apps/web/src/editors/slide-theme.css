@@ -277,15 +277,6 @@
   align-items: center;
   gap: 8px;
 }
-.theme-accent-row input[type="color"] {
-  width: 36px;
-  height: 28px;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: #fff;
-  cursor: pointer;
-}
 .theme-accent-row input[type="text"],
 .theme-field select {
   border: 1px solid var(--border);

@@ -45,7 +45,7 @@ export function gardenPicture(width = 360, height = 200) {
 
 /** Waits for the spreadsheet editor to finish starting. */
 export async function ready(page: Page) {
-  await page.getByRole("button", { name: "Sheet tools", exact: true }).waitFor();
+  await page.getByRole("toolbar", { name: "Spreadsheet formatting" }).waitFor();
   await beat(page, 700);
 }
 
