@@ -161,6 +161,7 @@ import {
   replacedStatus,
   revealNotesMatch,
   revealShapeMatch,
+  revealTableMatch,
   shapeText,
   type DeckMatch,
 } from "./slide-find";
@@ -373,7 +374,7 @@ export default function Slides({
     applySelection(
       match.slideId,
       [match.slideId],
-      match.inShape ? match.elementId : null,
+      match.inShape || match.inTable ? match.elementId : null,
     );
   };
 
@@ -457,6 +458,20 @@ export default function Slides({
         `.slide-canvas [data-element-id="${CSS.escape(match.elementId)}"]`,
       );
       if (shape instanceof HTMLElement) revealShapeMatch(shape);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [findOpen, presenting, matches, findIndex, activeSlideId]);
+
+  useEffect(() => {
+    if (!findOpen || presenting) return;
+    const match = matches[findIndex];
+    if (!match?.inTable || match.slideId !== activeSlideId) return;
+    const frame = requestAnimationFrame(() => {
+      const table = document.querySelector(
+        `.slide-canvas [data-element-id="${CSS.escape(match.elementId)}"]`,
+      );
+      if (table instanceof HTMLElement)
+        revealTableMatch(table, match.row ?? 0, match.col ?? 0);
     });
     return () => cancelAnimationFrame(frame);
   }, [findOpen, presenting, matches, findIndex, activeSlideId]);
@@ -2733,7 +2748,9 @@ ${slidesHtml}
                 ? "Replace this note"
                 : matches[findIndex]?.inShape
                   ? "Replace this shape"
-                  : "Replace this match"
+                  : matches[findIndex]?.inTable
+                    ? "Replace this table"
+                    : "Replace this match"
             }
             onClick={replaceCurrent}
             disabled={readOnly || !matches.length}
@@ -3278,13 +3295,19 @@ ${slidesHtml}
                 }
 
                 if (el.type === "table" && el.rows) {
+                  const tableMatch =
+                    findOpen &&
+                    matches[findIndex]?.inTable &&
+                    matches[findIndex]?.elementId === el.id &&
+                    matches[findIndex]?.slideId === activeSlideId;
                   return (
                     <div
                       key={el.id}
                       data-element-id={el.id}
                       data-x={el.x}
                       data-y={el.y}
-                      className={`slide-element slide-table ${isSelected ? "selected" : ""}${editorFadeClass(el)}`}
+                      data-selected={isSelected ? "true" : "false"}
+                      className={`slide-element slide-table ${isSelected ? "selected" : ""}${editorFadeClass(el)}${tableMatch ? " find-match" : ""}`}
                       {...editorFadeAttrs(el)}
                       style={posStyle}
                       onMouseDown={(e) => onElementMouseDown(e, el.id)}
@@ -3295,9 +3318,29 @@ ${slidesHtml}
                         <tbody>
                           {el.rows.map((row, rIdx) => (
                             <tr key={rIdx}>
-                              {row.map((cell, cIdx) => (
-                                <td key={cIdx}>{cell}</td>
-                              ))}
+                              {row.map((cell, cIdx) => {
+                                const cellMatch =
+                                  tableMatch &&
+                                  matches[findIndex]?.row === rIdx &&
+                                  matches[findIndex]?.col === cIdx;
+                                return (
+                                  <td
+                                    key={cIdx}
+                                    data-row={rIdx}
+                                    data-col={cIdx}
+                                    className={cellMatch ? "find-cell" : undefined}
+                                    style={
+                                      el.fontSize
+                                        ? {
+                                            fontSize: `${el.fontSize * 0.95 * zoomRatio}px`,
+                                          }
+                                        : undefined
+                                    }
+                                  >
+                                    {cell}
+                                  </td>
+                                );
+                              })}
                             </tr>
                           ))}
                         </tbody>

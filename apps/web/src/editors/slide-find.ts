@@ -4,17 +4,23 @@ import { hasTextRuns, plainText, replaceRunRange } from "./slide-runs";
 /** Element id used for a speaker-notes match. It is not a canvas box. */
 export const SPEAKER_NOTES_ID = "speaker-notes";
 
-/** One occurrence of the query, in slide order. Text boxes, then shapes, then notes. */
+/** One occurrence of the query, in slide order. Text boxes, then shapes, then table cells, then notes. */
 export type DeckMatch = {
   slideId: string;
   slideIndex: number;
   /** Slide name shown beside the count, such as Welcome. */
   place: string;
   elementId: string;
-  /** True when this match is in the speaker notes, not a text box or shape. */
+  /** True when this match is in the speaker notes, not a text box, shape, or table. */
   inNotes: boolean;
-  /** True when this match is text inside a shape, not a text box or the notes. */
+  /** True when this match is text inside a shape, not a text box, table, or the notes. */
   inShape: boolean;
+  /** True when this match is a table cell, not a text box, shape, or the notes. */
+  inTable: boolean;
+  /** Row of a table cell, in reading order. Absent for other matches. */
+  row?: number;
+  /** Column of a table cell, in reading order. Absent for other matches. */
+  col?: number;
   start: number;
 };
 
@@ -65,10 +71,10 @@ function pushMatches(
 }
 
 /**
- * Every match in slide order, including skipped slides, shapes, and speaker
- * notes. On one slide, text boxes come first, then shapes, then that slide's
- * notes. Tables are skipped. The deck is left unchanged. Matching is
- * case-insensitive.
+ * Every match in slide order, including skipped slides, shapes, table cells,
+ * and speaker notes. On one slide, text boxes come first, then shapes, then
+ * table cells in row-major order, then that slide's notes. The deck is left
+ * unchanged. Matching is case-insensitive.
  */
 export function findDeckMatches(deck: Presentation, query: string): DeckMatch[] {
   const needle = query.trim().toLowerCase();
@@ -87,6 +93,7 @@ export function findDeckMatches(deck: Presentation, query: string): DeckMatch[] 
         elementId: el.id,
         inNotes: false,
         inShape: false,
+        inTable: false,
       });
     }
     for (const el of slide.elements) {
@@ -98,6 +105,25 @@ export function findDeckMatches(deck: Presentation, query: string): DeckMatch[] 
         elementId: el.id,
         inNotes: false,
         inShape: true,
+        inTable: false,
+      });
+    }
+    for (const el of slide.elements) {
+      if (el.type !== "table" || !el.rows) continue;
+      el.rows.forEach((row, rowIndex) => {
+        row.forEach((cell, colIndex) => {
+          pushMatches(matches, cell, needle, {
+            slideId,
+            slideIndex,
+            place,
+            elementId: el.id,
+            inNotes: false,
+            inShape: false,
+            inTable: true,
+            row: rowIndex,
+            col: colIndex,
+          });
+        });
       });
     }
     pushMatches(matches, slide.notes ?? "", needle, {
@@ -107,6 +133,7 @@ export function findDeckMatches(deck: Presentation, query: string): DeckMatch[] 
       elementId: SPEAKER_NOTES_ID,
       inNotes: true,
       inShape: false,
+      inTable: false,
     });
   });
   return matches;
@@ -119,10 +146,15 @@ export function nextMatchIndex(current: number, count: number): number {
   return (current + 1) % count;
 }
 
-/** "1 of 2 on Welcome", "1 of 1 in the shape on Welcome", or "No matches". */
+/** "1 of 2 on Welcome", "1 of 1 in the table on Welcome", or "No matches". */
 export function findStatus(
   query: string,
-  matches: readonly { place: string; inNotes?: boolean; inShape?: boolean }[],
+  matches: readonly {
+    place: string;
+    inNotes?: boolean;
+    inShape?: boolean;
+    inTable?: boolean;
+  }[],
   index: number,
 ): string {
   if (!query.trim()) return "";
@@ -133,18 +165,25 @@ export function findStatus(
     ? `in the notes on ${match.place}`
     : match.inShape
       ? `in the shape on ${match.place}`
-      : `on ${match.place}`;
+      : match.inTable
+        ? `in the table on ${match.place}`
+        : `on ${match.place}`;
   return `${at + 1} of ${matches.length} ${place}`;
 }
 
 /**
  * Find status for the bar. A notes match says it is in the notes. A shape
- * match says it is in the shape and names the slide. Canvas matches keep the
- * plain "on the slide" wording.
+ * match says it is in the shape. A table match says it is in the table and
+ * names the slide. Canvas matches keep the plain "on the slide" wording.
  */
 export function findBarStatus(
   query: string,
-  matches: readonly { place: string; inNotes?: boolean; inShape?: boolean }[],
+  matches: readonly {
+    place: string;
+    inNotes?: boolean;
+    inShape?: boolean;
+    inTable?: boolean;
+  }[],
   index: number,
 ): string {
   return findStatus(query, matches, index);
@@ -166,7 +205,12 @@ export function replacedStatus(count: number): string {
  */
 export function noteReplacedStatus(
   query: string,
-  matches: readonly { place: string; inNotes?: boolean; inShape?: boolean }[],
+  matches: readonly {
+    place: string;
+    inNotes?: boolean;
+    inShape?: boolean;
+    inTable?: boolean;
+  }[],
   index: number,
 ): string {
   if (!matches.length) return "Replaced in the notes";
@@ -195,16 +239,21 @@ export function indexAfterReplace(
   const following = before[index + 1] ?? before.find((_, at) => at !== index);
   if (!following) return 0;
   const delta = replacement.length - needleOf(query).length;
-  const start =
+  const sameCell =
     following.slideId === current.slideId &&
     following.elementId === current.elementId &&
-    following.start > current.start
-      ? following.start + delta
-      : following.start;
+    following.inTable === current.inTable &&
+    following.row === current.row &&
+    following.col === current.col &&
+    following.start > current.start;
+  const start = sameCell ? following.start + delta : following.start;
   const at = after.findIndex(
     (match) =>
       match.slideId === following.slideId &&
       match.elementId === following.elementId &&
+      match.inTable === following.inTable &&
+      match.row === following.row &&
+      match.col === following.col &&
       match.start === start,
   );
   return at >= 0 ? at : 0;
@@ -234,6 +283,57 @@ function replaceInElement(
     ...el,
     content: content.slice(0, from) + replacement + content.slice(to),
   };
+}
+
+function replaceCellSpan(
+  cell: string,
+  from: number,
+  to: number,
+  needle: string,
+  replacement: string,
+): string {
+  if (cell.slice(from, to).toLowerCase() !== needle) return cell;
+  return cell.slice(0, from) + replacement + cell.slice(to);
+}
+
+/** Later cells and later spans first, so earlier offsets stay valid. */
+function laterFirst(a: DeckMatch, b: DeckMatch): number {
+  const row = (b.row ?? 0) - (a.row ?? 0);
+  if (row) return row;
+  const col = (b.col ?? 0) - (a.col ?? 0);
+  if (col) return col;
+  return b.start - a.start;
+}
+
+function replaceInTable(
+  el: SlideElement,
+  matches: readonly DeckMatch[],
+  needle: string,
+  replacement: string,
+): SlideElement {
+  if (!el.rows) return el;
+  const rows = el.rows.map((row) => row.slice());
+  let changed = false;
+  for (const match of [...matches].sort(laterFirst)) {
+    const rowIndex = match.row;
+    const colIndex = match.col;
+    if (rowIndex == null || colIndex == null) continue;
+    const row = rows[rowIndex];
+    const cell = row?.[colIndex];
+    if (cell == null) continue;
+    const next = replaceCellSpan(
+      cell,
+      match.start,
+      match.start + needle.length,
+      needle,
+      replacement,
+    );
+    if (next === cell) continue;
+    row[colIndex] = next;
+    changed = true;
+  }
+  if (!changed) return el;
+  return { ...el, rows };
 }
 
 function replaceInNotes(
@@ -272,10 +372,15 @@ function applyMatchReplacements(
     const { slideId, elementId } = list[0];
     const slide = slides[slideId];
     if (!slide) continue;
-    const ordered = [...list].sort((a, b) => b.start - a.start);
+    const ordered = [...list].sort(laterFirst);
     let changed = false;
     const elements = slide.elements.map((el) => {
       if (el.id !== elementId) return el;
+      if (el.type === "table") {
+        const updated = replaceInTable(el, ordered, needle, replacement);
+        if (updated !== el) changed = true;
+        return updated;
+      }
       let next = el;
       for (const match of ordered) {
         const updated = replaceInElement(
@@ -331,8 +436,8 @@ function applyMatchReplacements(
 /**
  * Replace one match with the typed text. Capitalization is kept as typed.
  * A notes match changes only that occurrence in the speaker notes. A shape
- * match changes only that occurrence inside the shape. Other text and
- * positions stay.
+ * match changes only that occurrence inside the shape. A table match changes
+ * only that span inside its cell. Other cells, text, and positions stay.
  */
 export function replaceDeckMatch(
   deck: Presentation,
@@ -346,8 +451,8 @@ export function replaceDeckMatch(
 }
 
 /**
- * Replace every current match, including shapes and speaker notes. A query
- * that hits nothing returns the same deck.
+ * Replace every current match, including table cells, shapes, and speaker
+ * notes. A query that hits nothing returns the same deck.
  */
 export function replaceAllDeckMatches(
   deck: Presentation,
@@ -435,6 +540,28 @@ export function revealShapeMatch(shape: HTMLElement): void {
     box.left < barBox.right &&
     box.right > barBox.left;
   const viewBottom = shape.ownerDocument.documentElement.clientHeight;
+  const minTop = (barBox?.bottom ?? 0) + 8;
+  const clipped = box.top < minTop || box.bottom > viewBottom - 8 || box.height <= 0;
+  if (covered || clipped) target.scrollIntoView({ block: "center", inline: "nearest" });
+}
+
+/**
+ * Scroll a table cell so the matched word is on screen and not under the find
+ * bar. The cell text and the table position are not edited.
+ */
+export function revealTableMatch(table: HTMLElement, row: number, col: number): void {
+  const cell = table.querySelector(`td[data-row="${row}"][data-col="${col}"]`);
+  const target = cell instanceof HTMLElement ? cell : table;
+  const box = target.getBoundingClientRect();
+  const bar = table.ownerDocument.querySelector(".slide-find-bar");
+  const barBox = bar instanceof HTMLElement ? bar.getBoundingClientRect() : null;
+  const covered =
+    !!barBox &&
+    box.top < barBox.bottom &&
+    box.bottom > barBox.top &&
+    box.left < barBox.right &&
+    box.right > barBox.left;
+  const viewBottom = table.ownerDocument.documentElement.clientHeight;
   const minTop = (barBox?.bottom ?? 0) + 8;
   const clipped = box.top < minTop || box.bottom > viewBottom - 8 || box.height <= 0;
   if (covered || clipped) target.scrollIntoView({ block: "center", inline: "nearest" });

@@ -3844,6 +3844,9 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   outline: 3px solid #1a73e8;
   outline-offset: 3px;
 }
+.slide-table td.find-cell {
+  background: #e8f0fe;
+}
 .notes-textarea.find-match {
   outline: 3px solid #1a73e8;
   outline-offset: -3px;

@@ -368,7 +368,7 @@ describe("find text in a shape", () => {
     expect(matches[0].start).toBe(0);
   });
 
-  it("skips an empty shape and a table", () => {
+  it("skips an empty shape and finds a table cell", () => {
     const deck = townHall();
     const welcome = deck.slideOrder[0];
     deck.slides[welcome].elements.push(
@@ -390,7 +390,222 @@ describe("find text in a shape", () => {
         rows: [["pears"]],
       },
     );
-    expect(findDeckMatches(deck, "pears")).toEqual([]);
+    const matches = findDeckMatches(deck, "pears");
+    expect(matches).toHaveLength(1);
+    expect(matches[0].inTable).toBe(true);
+    expect(matches[0].inShape).toBe(false);
+    expect(matches[0].elementId).toBe("grid");
+    expect(matches[0].row).toBe(0);
+    expect(matches[0].col).toBe(0);
     expect(deck.slides[welcome].elements[0].content).toBe("Market");
+    expect(deck.slides[welcome].elements.find((el) => el.id === "empty-shape")?.content).toBeUndefined();
+  });
+});
+
+describe("find text in a table", () => {
+  function withTable(rows: string[][]) {
+    const deck = townHall();
+    const welcome = deck.slideOrder[0];
+    deck.slides[welcome].notes = "Say hello.";
+    deck.slides[welcome].elements.push(
+      {
+        id: "welcome-shape",
+        type: "shape",
+        x: 40,
+        y: 40,
+        width: 120,
+        height: 80,
+        content: "Fresh",
+      },
+      {
+        id: "welcome-table",
+        type: "table",
+        x: 180,
+        y: 140,
+        width: 600,
+        height: 280,
+        rows,
+      },
+    );
+    return { deck, welcome };
+  }
+
+  const amountTable = [
+    ["Item", "Amount"],
+    ["Apples", "2"],
+    ["Pears", "10"],
+  ];
+
+  it("finds a number that exists only in a table cell and marks it as a table", () => {
+    const { deck, welcome } = withTable(amountTable);
+    const before = structuredClone(deck);
+    const matches = findDeckMatches(deck, "10");
+    expect(matches).toHaveLength(1);
+    expect(matches[0].inTable).toBe(true);
+    expect(matches[0].inShape).toBe(false);
+    expect(matches[0].inNotes).toBe(false);
+    expect(matches[0].elementId).toBe("welcome-table");
+    expect(matches[0].place).toBe("Welcome");
+    expect(matches[0].slideId).toBe(welcome);
+    expect(matches[0].row).toBe(2);
+    expect(matches[0].col).toBe(1);
+    expect(matches[0].start).toBe(0);
+    expect(findStatus("10", matches, 0)).toBe("1 of 1 in the table on Welcome");
+    expect(findBarStatus("10", matches, 0)).toBe("1 of 1 in the table on Welcome");
+    expect(deck).toEqual(before);
+    expect(deck.slides[welcome].elements[0].content).toBe("Market");
+    expect(deck.slides[welcome].elements.find((el) => el.id === "welcome-shape")?.content).toBe(
+      "Fresh",
+    );
+    expect(deck.slides[welcome].notes).toBe("Say hello.");
+    const table = deck.slides[welcome].elements.find((el) => el.id === "welcome-table");
+    expect(table?.rows).toEqual(amountTable);
+    expect(table?.x).toBe(180);
+    expect(table?.y).toBe(140);
+  });
+
+  it("lists a text box, then a shape, then table cells, then notes", () => {
+    const deck = townHall();
+    const welcome = deck.slideOrder[0];
+    deck.slides[welcome].elements.push(
+      {
+        id: "welcome-shape",
+        type: "shape",
+        x: 40,
+        y: 40,
+        width: 80,
+        height: 80,
+        content: "Market",
+      },
+      {
+        id: "welcome-table",
+        type: "table",
+        x: 180,
+        y: 140,
+        width: 400,
+        height: 160,
+        rows: [
+          ["Market", "stall"],
+          ["left", "Market day"],
+        ],
+      },
+    );
+    deck.slides[welcome].notes = "mention the Market";
+    const matches = findDeckMatches(deck, "Market");
+    const onWelcome = matches.filter((match) => match.slideId === welcome);
+    expect(
+      onWelcome.map((match) => [
+        match.inNotes,
+        match.inShape,
+        match.inTable,
+        match.elementId,
+        match.row,
+        match.col,
+      ]),
+    ).toEqual([
+      [false, false, false, "welcome-word", undefined, undefined],
+      [false, true, false, "welcome-shape", undefined, undefined],
+      [false, false, true, "welcome-table", 0, 0],
+      [false, false, true, "welcome-table", 1, 1],
+      [true, false, false, SPEAKER_NOTES_ID, undefined, undefined],
+    ]);
+    expect(onWelcome[3].start).toBe(0);
+    const shapeAt = matches.findIndex((match) => match.inShape && match.slideId === welcome);
+    const tableAt = matches.findIndex((match) => match.inTable && match.slideId === welcome);
+    const secondCell = tableAt + 1;
+    const notesAt = matches.findIndex((match) => match.inNotes && match.slideId === welcome);
+    expect(nextMatchIndex(0, matches.length)).toBe(shapeAt);
+    expect(nextMatchIndex(shapeAt, matches.length)).toBe(tableAt);
+    expect(nextMatchIndex(tableAt, matches.length)).toBe(secondCell);
+    expect(nextMatchIndex(secondCell, matches.length)).toBe(notesAt);
+    expect(findStatus("Market", matches, 0)).toBe(`1 of ${matches.length} on Welcome`);
+    expect(findBarStatus("Market", matches, tableAt)).toBe(
+      `${tableAt + 1} of ${matches.length} in the table on Welcome`,
+    );
+    expect(findStatus("Market", matches, notesAt)).toBe(
+      `${notesAt + 1} of ${matches.length} in the notes on Welcome`,
+    );
+  });
+
+  it("reads a second match in the same cell before the next cell", () => {
+    const { deck } = withTable([
+      ["10 and 10", "Pears"],
+      ["10", "Apples"],
+    ]);
+    const matches = findDeckMatches(deck, "10");
+    expect(matches.map((match) => [match.row, match.col, match.start])).toEqual([
+      [0, 0, 0],
+      [0, 0, "10 and 10".indexOf("10", 1)],
+      [1, 0, 0],
+    ]);
+    expect(nextMatchIndex(0, matches.length)).toBe(1);
+    expect(nextMatchIndex(1, matches.length)).toBe(2);
+  });
+
+  it("matches Pears in a cell when the query is pears", () => {
+    const { deck, welcome } = withTable([["Pears", "10"]]);
+    const matches = findDeckMatches(deck, "pears");
+    expect(matches).toHaveLength(1);
+    expect(matches[0].inTable).toBe(true);
+    expect(matches[0].start).toBe(0);
+    expect(matches[0].col).toBe(0);
+    const ten = findDeckMatches(deck, "10");
+    expect(ten).toHaveLength(1);
+    expect(ten[0].col).toBe(1);
+    expect(deck.slides[welcome].elements.find((el) => el.id === "welcome-table")?.rows).toEqual([
+      ["Pears", "10"],
+    ]);
+    expect(deck.slides[welcome].elements[0].content).toBe("Market");
+  });
+
+  it("says there are no matches and leaves every cell unchanged", () => {
+    const { deck, welcome } = withTable(amountTable);
+    const before = structuredClone(deck);
+    expect(findDeckMatches(deck, "zzzz")).toEqual([]);
+    expect(findDeckMatches(deck, "")).toEqual([]);
+    expect(findStatus("zzzz", [], 0)).toBe("No matches");
+    expect(findBarStatus("zzzz", [], 0)).toBe("No matches");
+    expect(deck).toEqual(before);
+    expect(deck.slides[welcome].elements.find((el) => el.id === "welcome-table")?.rows).toEqual(
+      amountTable,
+    );
+    expect(deck.slides[welcome].elements[0].content).toBe("Market");
+    expect(deck.slides[welcome].notes).toBe("Say hello.");
+  });
+
+  it("includes a skipped slide's table text while editing", () => {
+    const deck = townHall();
+    deck.slides.prices.skipped = true;
+    deck.slides.prices.elements.push({
+      id: "prices-table",
+      type: "table",
+      x: 48,
+      y: 220,
+      width: 400,
+      height: 120,
+      rows: [
+        ["Item", "Amount"],
+        ["Pears", "10"],
+      ],
+    });
+    const matches = findDeckMatches(deck, "10");
+    expect(matches).toHaveLength(1);
+    expect(matches[0].inTable).toBe(true);
+    expect(matches[0].inShape).toBe(false);
+    expect(matches[0].inNotes).toBe(false);
+    expect(matches[0].slideIndex).toBe(1);
+    expect(matches[0].place).toBe("Prices");
+    expect(matches[0].elementId).toBe("prices-table");
+    expect(matches[0].row).toBe(1);
+    expect(matches[0].col).toBe(1);
+    expect(findStatus("10", matches, 0)).toBe("1 of 1 in the table on Prices");
+    expect(findBarStatus("10", matches, 0)).toBe("1 of 1 in the table on Prices");
+    expect(deck.slides.prices.skipped).toBe(true);
+    expect(deck.slides.prices.elements[0].content).toBe("Prices");
+    expect(deck.slides.prices.notes).toBe("Remember the market stall.");
+    const table = deck.slides.prices.elements.find((el) => el.id === "prices-table");
+    expect(table?.rows?.[1]).toEqual(["Pears", "10"]);
+    expect(table?.x).toBe(48);
+    expect(table?.y).toBe(220);
   });
 });
