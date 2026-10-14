@@ -156,6 +156,11 @@ test("File › New › From template filters to that editor", async ({ page }) =
   for (const [create, , shown, hidden] of editors) {
     await page.goto("/");
     await page.getByRole("button", { name: create }).click();
+    if (create === "New spreadsheet")
+      await page.locator("[data-sheet-ready='true']").waitFor();
+    else if (create === "New document")
+      await page.getByRole("textbox", { name: "Document content" }).waitFor();
+    else await page.locator(".slides-editor").waitFor();
     await page.getByRole("button", { name: "File", exact: true }).click();
     await page.getByRole("menuitem", { name: "New", exact: true }).hover();
     await page.getByRole("menuitem", { name: "From template" }).click();
