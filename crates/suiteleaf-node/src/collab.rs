@@ -57,6 +57,17 @@ struct Touch {
     key: String,
 }
 
+struct LiveUpdate<'a> {
+    item: &'a str,
+    user_id: &'a str,
+    name: &'a str,
+    role: Role,
+    bytes: &'a [u8],
+    unit: &'a str,
+    key: &'a str,
+    at: &'a str,
+}
+
 impl Rooms {
     pub fn new(db: Arc<Db>, drive: Arc<Drive>) -> Self {
         Rooms {
@@ -176,43 +187,33 @@ impl Rooms {
         Ok(())
     }
 
-    pub fn apply_update(
-        &self,
-        item: &str,
-        user_id: &str,
-        name: &str,
-        role: Role,
-        bytes: &[u8],
-        unit: &str,
-        key: &str,
-        at: &str,
-    ) -> anyhow::Result<bool> {
-        if role == Role::Commenter && unit != "comment" {
+    fn apply_update(&self, update: LiveUpdate<'_>) -> anyhow::Result<bool> {
+        if update.role == Role::Commenter && update.unit != "comment" {
             return Ok(false);
         }
         let mut live = self.live.lock().expect("rooms");
-        let Some(room) = live.get_mut(item) else {
+        let Some(room) = live.get_mut(update.item) else {
             return Ok(false);
         };
         if room.mode != "multiuser" {
             return Ok(false);
         }
-        let update = Update::decode_v1(bytes).context("decode Yjs update")?;
+        let decoded = Update::decode_v1(update.bytes).context("decode Yjs update")?;
         room.doc
             .transact_mut()
-            .apply_update(update)
+            .apply_update(decoded)
             .context("apply Yjs update")?;
         let generation = room.generation;
-        if unit != "comment" {
+        if update.unit != "comment" {
             room.touches.push(Touch {
-                user_id: user_id.to_owned(),
-                name: name.to_owned(),
-                at: at.to_owned(),
-                unit: unit.to_owned(),
-                key: key.to_owned(),
+                user_id: update.user_id.to_owned(),
+                name: update.name.to_owned(),
+                at: update.at.to_owned(),
+                unit: update.unit.to_owned(),
+                key: update.key.to_owned(),
             });
         }
-        let _ = room.relay.send(STANDARD.encode(bytes));
+        let _ = room.relay.send(STANDARD.encode(update.bytes));
         drop(live);
         let id = uuid::Uuid::now_v7().to_string();
         self.db.transact(|tx| {
@@ -220,13 +221,13 @@ impl Rooms {
                 "drive_room_update",
                 &id,
                 [
-                    ("itemId", DbValue::from(item)),
+                    ("itemId", DbValue::from(update.item)),
                     ("generation", DbValue::Integer(generation)),
-                    ("bytes", DbValue::from(STANDARD.encode(bytes))),
-                    ("userId", DbValue::from(user_id)),
-                    ("at", DbValue::from(at)),
-                    ("unit", DbValue::from(unit)),
-                    ("key", DbValue::from(key)),
+                    ("bytes", DbValue::from(STANDARD.encode(update.bytes))),
+                    ("userId", DbValue::from(update.user_id)),
+                    ("at", DbValue::from(update.at)),
+                    ("unit", DbValue::from(update.unit)),
+                    ("key", DbValue::from(update.key)),
                 ],
             )
         })?;
@@ -585,10 +586,10 @@ pub async fn session(
     upgrade: WebSocketUpgrade,
 ) -> impl IntoResponse {
     let mut headers = headers;
-    if let Some(token) = query.access_token.as_deref() {
-        if let Ok(value) = format!("Bearer {token}").parse() {
-            headers.insert(header::AUTHORIZATION, value);
-        }
+    if let Some(token) = query.access_token.as_deref()
+        && let Ok(value) = format!("Bearer {token}").parse()
+    {
+        headers.insert(header::AUTHORIZATION, value);
     }
     let Some(user) = state.auth.user(&headers) else {
         return StatusCode::UNAUTHORIZED.into_response();
@@ -647,12 +648,14 @@ async fn run_socket(
                     None => std::future::pending().await,
                 }
             } => {
-                if let Some(update) = remote {
-                    if !update.is_empty() {
-                        let _ = sink.send(Message::Text(
+                if let Some(update) = remote
+                    && !update.is_empty()
+                {
+                    let _ = sink
+                        .send(Message::Text(
                             json!({"type":"update","update": update}).to_string().into(),
-                        )).await;
-                    }
+                        ))
+                        .await;
                 }
                 continue;
             }
@@ -702,7 +705,16 @@ async fn run_socket(
                     at
                 };
                 let name = user.name.clone().unwrap_or_else(|| "You".into());
-                if rooms.apply_update(&item, &user.id, &name, role, &bytes, unit, key, &at)? {
+                if rooms.apply_update(LiveUpdate {
+                    item: &item,
+                    user_id: &user.id,
+                    name: &name,
+                    role,
+                    bytes: &bytes,
+                    unit,
+                    key,
+                    at: &at,
+                })? {
                     rooms.activity(&item, &user.id, now_ms())?;
                 }
             }
