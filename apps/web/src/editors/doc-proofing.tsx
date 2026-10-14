@@ -11,9 +11,7 @@ import {
   readProofing,
   selectionPages,
   selectionSnapshot,
-  setWordCountVisible,
   stopPosition,
-  wordCountIsVisible,
   type ProofingSettings,
 } from "./doc-word-count";
 import {
@@ -89,7 +87,6 @@ export function useDocProofing(
 ) {
   const [dialog, setDialog] = useState<"count" | "spelling" | "dictionary" | null>(null);
   const [menu, setMenu] = useState<SpellingMenuHit | null>(null);
-  const [visible, setVisible] = useState(wordCountIsVisible);
   const [personal, setPersonal] = useState(readPersonalDictionary);
   const [session, setSession] = useState<{ total: number; step: number; after: number } | null>(
     null,
@@ -209,6 +206,8 @@ export function useDocProofing(
   const openWordCount = useCallback(() => {
     setMenu(null);
     setDialog("count");
+    // The count is already on the page. Point at it instead of a missing-feature note.
+    document.getElementById("live-word-count")?.focus();
   }, []);
   const openSpelling = useCallback(() => {
     setMenu(null);
@@ -229,14 +228,13 @@ export function useDocProofing(
   }, []);
   const close = () => setDialog(null);
   const notes = snapshot ? exclusionNotes(snapshot.counts, snapshot.settings) : [];
-  const label =
-    visible && snapshot
-      ? formatWordCount({
-          totalWords: snapshot.counts.words,
-          selectionWords: snapshot.selection ? snapshot.selection.stats.words : null,
-          excludes: notes,
-        })
-      : "";
+  const label = snapshot
+    ? formatWordCount({
+        totalWords: snapshot.counts.words,
+        selectionWords: snapshot.selection ? snapshot.selection.stats.words : null,
+        excludes: notes,
+      })
+    : "0 words";
   const headings = [
     ...new Set(
       (snapshot?.counts.headings ?? []).filter((heading) => heading.trim()),
@@ -532,20 +530,9 @@ export function useDocProofing(
                 ))}
               </select>
             </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={visible}
-                onChange={(event) => {
-                  setWordCountVisible(event.target.checked);
-                  setVisible(event.target.checked);
-                }}
-              />
-              Show word count while typing
-            </label>
             <p className="word-count-hint">
-              Headers and footers are never counted. Exclusions are saved in the
-              file. Showing or hiding the status count stays on this device.
+              The count stays on the page while you type. Headers and footers
+              are never counted. Exclusions are saved in the file.
             </p>
           </div>
           <div className="dialog-footer">

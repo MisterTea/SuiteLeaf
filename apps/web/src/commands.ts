@@ -30,13 +30,6 @@ type ParsedShortcut = {
 
 const MISSING: CommandView[] = [
   {
-    id: "missing/word-count",
-    label: "Word count",
-    path: ["Tools"],
-    synonyms: ["word count", "count", "wordcount", "count words", "words"],
-    disabledReason: "SuiteLeaf doesn't have word count yet.",
-  },
-  {
     id: "missing/remove-duplicates",
     label: "Remove duplicates",
     path: ["Data"],

@@ -64,11 +64,24 @@ describe("command search", () => {
     expect(top.path).toEqual(["Format"]);
   });
 
-  it("finds word count from count, and says it is not in SuiteLeaf yet", () => {
-    const [top] = searchCommands(commands, "count");
+  it("finds word count from count, and does not say the feature is missing", () => {
+    const [top] = searchCommands(
+      [
+        ...commands,
+        {
+          id: "Tools/Word count",
+          label: "Word count",
+          path: ["Tools"],
+          synonyms: ["count", "word count", "words"],
+        },
+      ],
+      "count",
+    );
     expect(top.label).toBe("Word count");
     expect(top.path).toEqual(["Tools"]);
-    expect(top.disabledReason).toMatch(/doesn't have word count yet/);
+    expect(top.disabledReason).toBeUndefined();
+    const [absent] = searchCommands(commands, "word count");
+    expect(absent?.disabledReason ?? "").not.toMatch(/doesn't have word count/);
   });
 
   it("runs a real word count command instead of the missing-feature note", () => {

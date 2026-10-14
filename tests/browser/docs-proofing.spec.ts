@@ -32,13 +32,14 @@ async function seedEssay(page: Page) {
   await expect(editorOf(page)).toContainText("this ends the introduction");
 }
 
-test("word count is on by default, follows the selection, and stays hidden after reload", async ({
+test("word count is on by default, follows the selection, and stays shown after reload", async ({
   page,
 }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "New document" }).click();
   const editor = editorOf(page);
   await editor.click();
+  await expect(page.locator(".word-count")).toHaveText("0 words");
   await page.keyboard.type("one two three four");
   await expect(page.locator(".word-count")).toHaveText("4 words");
   await page.keyboard.press("ControlOrMeta+A");
@@ -50,19 +51,15 @@ test("word count is on by default, follows the selection, and stays hidden after
     await expect(dialog.locator("tr", { hasText: name }).first()).toBeVisible();
   await expect(dialog.locator("tr", { hasText: "Characters" }).first()).toBeVisible();
   await expect(dialog.getByRole("checkbox", { name: "Count footnotes" })).not.toBeChecked();
-  await dialog.getByRole("checkbox", { name: "Show word count while typing" }).uncheck();
+  await expect(dialog.getByRole("checkbox", { name: "Show word count while typing" })).toHaveCount(0);
   await dialog.getByRole("button", { name: "Done" }).click();
-  await expect(page.locator(".word-count")).toHaveText("");
+  await expect(page.locator(".word-count")).toHaveText("4 of 4 words");
   await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByRole("menuitem", { name: "Save now" }).click();
   await expect(page.getByRole("status")).toContainText("Saved");
   await page.reload();
   await expect(editor).toContainText("one two three four");
-  await expect(page.locator(".word-count")).toHaveText("");
-  await page.keyboard.press("ControlOrMeta+Shift+C");
-  await page.getByRole("checkbox", { name: "Show word count while typing" }).check();
-  await page.getByRole("button", { name: "Done" }).click();
-  await expect(page.locator(".word-count")).toContainText("words");
+  await expect(page.locator(".word-count")).toHaveText("4 words");
 });
 
 test("spelling keeps formatting, stays on device, and the dictionary can be undone", async ({

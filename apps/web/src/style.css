@@ -4691,6 +4691,7 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 .doc-watermark-field { display: grid; gap: 4px; align-content: start; min-width: 0; }
 .doc-watermark-field .page-setup-hint { grid-column: auto; }
 .word-count { color: #1f1f1f; font-weight: 600; font-size: 13px; }
+.word-count:focus { outline: 2px solid #1a73e8; outline-offset: 2px; border-radius: 4px; }
 .word-count-dialog,
 .dictionary-dialog,
 .spelling-panel {

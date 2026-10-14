@@ -2409,7 +2409,16 @@ export default function Docs({
       {proofing.ui}
       {grammar.ui}
       <footer className="editor-status">
-        <span className="word-count">{proofing.label}</span> <SuggestionFlag />{" "}
+        <span
+          id="live-word-count"
+          className="word-count"
+          tabIndex={-1}
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          {proofing.label}
+        </span>{" "}
+        <SuggestionFlag />{" "}
         <span>
           {pageCount} {pageCount === 1 ? "page" : "pages"} · English
         </span>
