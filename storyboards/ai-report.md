@@ -299,6 +299,6 @@ pi's coding agent ships its todo list as an example extension (`examples/extensi
 | --- | --- | --- |
 | Guardrails only | 16/24 | – |
 | Checklist, when the model chooses | 21/30 | 2/30 |
-| Checklist required before the first step | 3/24 | 19/24 |
+| Checklist required before the first step | 5/30 | 21/30 |
 
 Gemma almost never wrote a checklist on its own. When it had to write one first, it did much worse. Writing the plan made it lose the step it had been about to take: it opened a file that didn't exist instead of creating it, called tools that don't exist, and then ticked every item as done anyway. The checklist became one more way to claim success, and since every item was ticked, holding back the reply never triggered. So the checklist is off by default (`localStorage["suiteleaf.ai.checklist"]`: `off`, `on` or `required`). A checklist that held Gemma to account would need ticks the app can verify, for example only accepting a tick right after a successful change. It would also need the plan written in a turn of its own, rather than in place of the first step.
