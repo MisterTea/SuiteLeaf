@@ -63,6 +63,12 @@ import {
 } from "./paste-values";
 import { cellForFillDown, cellsFilledDown } from "./fill-down";
 import { cellForFillRight, cellsFilledRight } from "./fill-right";
+import {
+  applyCopiedCellFormat,
+  copyCellFormat,
+  type CellPaintTarget,
+  type CopiedCellFormat,
+} from "./sheet-paint-format";
 import SheetColumnGroups, { type SheetColumnGroupsHandle } from "./sheet-column-groups-ui";
 import {
   contiguousColumnRanges,
@@ -123,7 +129,6 @@ import {
   Undo2,
   Redo2,
   Printer,
-  PaintRoller,
   Minus,
   Plus,
   Bold,
@@ -845,6 +850,7 @@ export default function Sheets({
       values: CellValue[][];
     } | null>(null),
     [notice, setNotice] = useState(""),
+    [copiedFormat, setCopiedFormat] = useState<CopiedCellFormat | null>(null),
     [filterView, setFilterView] = useState<{
       header: string;
       value: string;
@@ -1424,12 +1430,24 @@ export default function Sheets({
       const publishValue = () => {
         try {
           const range = workbook.getActiveRange();
-          const value = range?.getValue();
+          const value = range?.getRawValue?.() ?? range?.getValue();
+          const shown = range?.getValue();
+          const style = range?.getCellStyleData?.("cell");
+          const color = style?.cl?.rgb;
           container.dataset.activeValue = value == null ? "" : String(value);
+          container.dataset.activeDisplay = shown == null ? "" : String(shown);
           container.dataset.activeFormula = range?.getFormula?.() ?? "";
+          container.dataset.activeBold = style?.bl === 1 ? "true" : "false";
+          container.dataset.activeColor = typeof color === "string" ? color : "";
+          container.dataset.activeFormat =
+            range?.getNumberFormat?.() || style?.n?.pattern || "";
         } catch {
           container.dataset.activeValue = "";
+          container.dataset.activeDisplay = "";
           container.dataset.activeFormula = "";
+          container.dataset.activeBold = "";
+          container.dataset.activeColor = "";
+          container.dataset.activeFormat = "";
         }
       };
       publishValue();
@@ -1828,6 +1846,93 @@ export default function Sheets({
   }, [isDark]);
   // Univer's own currency command applies an accounting pattern with red
   // parentheses; the toolbar $ follows Sheets' plain currency instead.
+  const paintTarget = (range: {
+    getRawValue?: () => unknown;
+    getValue?: () => unknown;
+    getCellStyleData?: (type?: string) => {
+      bl?: number | boolean | null;
+      cl?: { rgb?: string | null } | string | null;
+      n?: { pattern?: string | null } | null;
+    } | null;
+    getNumberFormat?: () => string;
+  }): CellPaintTarget => {
+    let style: {
+      bl?: number | boolean | null;
+      cl?: { rgb?: string | null } | string | null;
+      n?: { pattern?: string | null } | null;
+    } | null = null;
+    let pattern: string | null = null;
+    let value: unknown = null;
+    try {
+      style = range.getCellStyleData?.("cell") ?? null;
+    } catch {
+      style = null;
+    }
+    try {
+      const read = range.getNumberFormat?.();
+      pattern = typeof read === "string" ? read : null;
+    } catch {
+      pattern = null;
+    }
+    try {
+      // getValue is the formatted display. The stored number is the raw value.
+      value = range.getRawValue?.() ?? range.getValue?.() ?? null;
+    } catch {
+      value = null;
+    }
+    const format = copyCellFormat(style, pattern);
+    return {
+      value,
+      bold: format.bold,
+      color: format.color,
+      numberFormat: format.numberFormat,
+    };
+  };
+  // One click copies bold, font color, and number format. The value stays put.
+  // The same control then reads Apply format, and one click paints that format.
+  const copyFormat = () => {
+    if (readOnlyRef.current) return;
+    const range = book.current?.getActiveRange();
+    if (!range) return;
+    const source = paintTarget(range);
+    setCopiedFormat({
+      bold: source.bold,
+      color: source.color,
+      numberFormat: source.numberFormat,
+    });
+  };
+  const applyFormat = () => {
+    if (readOnlyRef.current || !copiedFormat) return;
+    const workbook = book.current;
+    const active = workbook?.getActiveRange();
+    const sheet = workbook?.getActiveSheet();
+    if (!active || !sheet) return;
+    const before = paintTarget(active);
+    const painted = applyCopiedCellFormat(before, copiedFormat);
+    if (painted.value !== before.value) return;
+    const box = active.getRange();
+    const target = sheet.getRange(
+      box.startRow,
+      box.startColumn,
+      box.endRow - box.startRow + 1,
+      box.endColumn - box.startColumn + 1,
+    );
+    try {
+      // Number format is stored beside bold and color. Set it again after the
+      // style writes so a style mutation cannot drop the pattern.
+      if (painted.numberFormat) target.setNumberFormat(painted.numberFormat);
+      if (painted.bold && !before.bold) target.setFontWeight("bold");
+      if (painted.color && painted.color !== before.color)
+        target.setFontColor(painted.color);
+      if (painted.numberFormat) target.setNumberFormat(painted.numberFormat);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+      return;
+    }
+    persist.current();
+    setCopiedFormat(null);
+    syncTextStyle.current();
+  };
   const formatCurrency = () => {
     const ranges =
       book.current?.getActiveSheet()?.getSelection()?.getActiveRangeList() ??
@@ -2894,9 +2999,18 @@ export default function Sheets({
         >
           <Printer size={16} />
         </Tool>
-        <Tool label="Paint format" disabled={readOnly} onClick={() => {}}>
-          <PaintRoller size={16} />
-        </Tool>
+        <button
+          type="button"
+          className="tool paint-format"
+          title={copiedFormat ? "Apply format" : "Copy format"}
+          aria-label={copiedFormat ? "Apply format" : "Copy format"}
+          data-copied-format={copiedFormat ? JSON.stringify(copiedFormat) : ""}
+          disabled={readOnly}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={copiedFormat ? applyFormat : copyFormat}
+        >
+          {copiedFormat ? "Apply format" : "Copy format"}
+        </button>
 
         <select
           className="toolbar-select zoom-select"

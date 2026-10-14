@@ -2648,6 +2648,12 @@ a {
   font-weight: 500;
   white-space: nowrap;
 }
+.sheets-toolbar .tool.paint-format {
+  padding: 4px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
 .sheets-toolbar select.toolbar-select {
   background: transparent;
   border: 0;
