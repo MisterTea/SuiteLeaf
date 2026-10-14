@@ -7832,10 +7832,10 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
   outline-offset: 2px;
 }
 .page-setup-preview-sheet {
-  width: 96px !important;
-  height: 120px !important;
-  min-width: 96px !important;
-  min-height: 120px !important;
+  width: 112px !important;
+  height: 140px !important;
+  min-width: 112px !important;
+  min-height: 140px !important;
   max-width: none !important;
   aspect-ratio: auto !important;
 }
