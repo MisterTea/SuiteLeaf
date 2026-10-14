@@ -79,7 +79,8 @@ describe("replace across the deck", () => {
     const deck = townHall();
     const welcome = deck.slideOrder[0];
     const matches = findDeckMatches(deck, "Market");
-    expect(matches).toHaveLength(2);
+    expect(matches).toHaveLength(3);
+    expect(matches[0].inNotes).toBe(false);
     const next = replaceDeckMatch(deck, matches[0], "Market", "Bazaar");
     expect(next.slides[welcome].elements[0].content).toBe("Bazaar");
     expect(next.slides[welcome].elements[0].x).toBe(72);
@@ -94,9 +95,14 @@ describe("replace across the deck", () => {
     expect(next.slides.prices.notes).toBe("Remember the market stall.");
     expect(next.slides.prices.elements[1].content).toBe("Market");
     const remaining = findDeckMatches(next, "Market");
-    expect(remaining.map((match) => match.place)).toEqual(["Thanks"]);
+    expect(remaining.map((match) => [match.place, match.inNotes])).toEqual([
+      ["Prices", true],
+      ["Thanks", false],
+    ]);
     expect(indexAfterReplace(matches, 0, remaining, "Market", "Bazaar")).toBe(0);
-    expect(findStatus("Market", remaining, 0)).toBe("1 of 1 on Thanks");
+    expect(findStatus("Market", remaining, 0)).toBe("1 of 2 in the notes on Prices");
+    expect(replaceDeckMatch(next, remaining[0], "Market", "Bazaar")).toBe(next);
+    expect(next.slides.prices.notes).toBe("Remember the market stall.");
     expect(deck.slides[welcome].elements[0].content).toBe("Market");
   });
 
@@ -121,7 +127,10 @@ describe("replace across the deck", () => {
     expect(next.slides.prices.elements[1].content).toBe("Market");
     expect(next.slides.prices.notes).toBe("Remember the market stall.");
     expect(next.slideOrder).toEqual(deck.slideOrder);
-    expect(findDeckMatches(next, "Market")).toEqual([]);
+    expect(findDeckMatches(next, "Market").map((match) => [match.place, match.inNotes])).toEqual([
+      ["Prices", true],
+    ]);
+    expect(next.slides.prices.notes).toBe("Remember the market stall.");
     expect(deck.slides[welcome].elements[0].content).toBe("Market");
   });
 
@@ -136,6 +145,7 @@ describe("replace across the deck", () => {
       bold: true,
     });
     expect(next.slides.thanks.elements[0].content).not.toMatch(/MARKET/);
+    expect(next.slides.prices.notes).toBe("Remember the market stall.");
   });
 
   it("leaves the deck unchanged when nothing matches", () => {

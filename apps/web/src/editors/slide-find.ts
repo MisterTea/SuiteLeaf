@@ -1,13 +1,18 @@
 import type { Presentation, SlideElement } from "@suiteleaf/core";
 import { hasTextRuns, plainText, replaceRunRange } from "./slide-runs";
 
-/** One occurrence of the query in a text box, in slide order. */
+/** Element id used for a speaker-notes match. It is not a canvas box. */
+export const SPEAKER_NOTES_ID = "speaker-notes";
+
+/** One occurrence of the query, in slide order. Canvas boxes come before notes. */
 export type DeckMatch = {
   slideId: string;
   slideIndex: number;
   /** Slide name shown beside the count, such as Welcome. */
   place: string;
   elementId: string;
+  /** True when this match is in the speaker notes, not a text box. */
+  inNotes: boolean;
   start: number;
 };
 
@@ -29,9 +34,27 @@ function slidePlace(
   return line || `Slide ${index + 1}`;
 }
 
+function pushMatches(
+  matches: DeckMatch[],
+  text: string,
+  needle: string,
+  where: Omit<DeckMatch, "start">,
+) {
+  if (!text) return;
+  const hay = text.toLowerCase();
+  let from = 0;
+  while (from <= hay.length - needle.length) {
+    const at = hay.indexOf(needle, from);
+    if (at < 0) break;
+    matches.push({ ...where, start: at });
+    from = at + needle.length;
+  }
+}
+
 /**
- * Every match in slide order, including skipped slides. Notes are not searched.
- * The deck is left unchanged.
+ * Every match in slide order, including skipped slides and speaker notes.
+ * On one slide, text boxes come before that slide's notes. The deck is left
+ * unchanged. Matching is case-insensitive.
  */
 export function findDeckMatches(deck: Presentation, query: string): DeckMatch[] {
   const needle = query.trim().toLowerCase();
@@ -42,23 +65,21 @@ export function findDeckMatches(deck: Presentation, query: string): DeckMatch[] 
     if (!slide) return;
     const place = slidePlace(slide, slideIndex);
     for (const el of slide.elements) {
-      const text = textBoxText(el);
-      if (!text) continue;
-      const hay = text.toLowerCase();
-      let from = 0;
-      while (from <= hay.length - needle.length) {
-        const at = hay.indexOf(needle, from);
-        if (at < 0) break;
-        matches.push({
-          slideId,
-          slideIndex,
-          place,
-          elementId: el.id,
-          start: at,
-        });
-        from = at + needle.length;
-      }
+      pushMatches(matches, textBoxText(el), needle, {
+        slideId,
+        slideIndex,
+        place,
+        elementId: el.id,
+        inNotes: false,
+      });
     }
+    pushMatches(matches, slide.notes ?? "", needle, {
+      slideId,
+      slideIndex,
+      place,
+      elementId: SPEAKER_NOTES_ID,
+      inNotes: true,
+    });
   });
   return matches;
 }
@@ -70,16 +91,39 @@ export function nextMatchIndex(current: number, count: number): number {
   return (current + 1) % count;
 }
 
-/** "1 of 2 on Welcome", or "No matches" when the query hits nothing. */
+/** "1 of 2 on Welcome", "1 of 1 in the notes on Welcome", or "No matches". */
 export function findStatus(
   query: string,
-  matches: readonly { place: string }[],
+  matches: readonly { place: string; inNotes?: boolean }[],
   index: number,
 ): string {
   if (!query.trim()) return "";
   if (!matches.length) return "No matches";
   const at = index >= 0 && index < matches.length ? index : 0;
-  return `${at + 1} of ${matches.length} on ${matches[at].place}`;
+  const match = matches[at];
+  const place = match.inNotes ? `in the notes on ${match.place}` : `on ${match.place}`;
+  return `${at + 1} of ${matches.length} ${place}`;
+}
+
+/**
+ * Find status for the bar. A notes match says Replace will not change it.
+ * Canvas matches keep the plain "on the slide" wording.
+ */
+export function findBarStatus(
+  query: string,
+  matches: readonly { place: string; inNotes?: boolean }[],
+  index: number,
+): string {
+  const located = findStatus(query, matches, index);
+  if (!query.trim() || !matches.length) return located;
+  const at = index >= 0 && index < matches.length ? index : 0;
+  if (!matches[at]?.inNotes) return located;
+  return `${located}. Notes are not replaced`;
+}
+
+/** Canvas matches only. Speaker notes are left out of Replace and Replace all. */
+export function canvasMatches<T extends { inNotes?: boolean }>(matches: readonly T[]): T[] {
+  return matches.filter((match) => !match.inNotes);
 }
 
 /** "Replace all 2". Zero matches are not offered a button. */
@@ -156,7 +200,7 @@ function applyMatchReplacements(
   replacement: string,
 ): Presentation {
   const groups = new Map<string, DeckMatch[]>();
-  for (const match of matches) {
+  for (const match of canvasMatches(matches)) {
     const key = `${match.slideId}\0${match.elementId}`;
     const list = groups.get(key);
     if (list) list.push(match);
@@ -198,8 +242,9 @@ function applyMatchReplacements(
 }
 
 /**
- * Replace one match with the typed text. Capitalization is kept as typed.
- * Other matches, notes, and box positions stay.
+ * Replace one canvas match with the typed text. Capitalization is kept as typed.
+ * Notes matches are skipped so the note text stays. Other matches and box
+ * positions stay.
  */
 export function replaceDeckMatch(
   deck: Presentation,
@@ -208,12 +253,13 @@ export function replaceDeckMatch(
   replacement: string,
 ): Presentation {
   const needle = needleOf(query);
-  if (!needle) return deck;
+  if (!needle || match.inNotes) return deck;
   return applyMatchReplacements(deck, [match], needle, replacement);
 }
 
 /**
- * Replace every current match. A query that hits nothing returns the same deck.
+ * Replace every current canvas match. Notes matches are left unchanged.
+ * A query that hits nothing on the canvas returns the same deck.
  */
 export function replaceAllDeckMatches(
   deck: Presentation,
@@ -222,10 +268,64 @@ export function replaceAllDeckMatches(
 ): { deck: Presentation; count: number } {
   const needle = needleOf(query);
   if (!needle) return { deck, count: 0 };
-  const matches = findDeckMatches(deck, query);
+  const matches = canvasMatches(findDeckMatches(deck, query));
   if (!matches.length) return { deck, count: 0 };
   return {
     deck: applyMatchReplacements(deck, matches, needle, replacement),
     count: matches.length,
   };
+}
+
+/**
+ * Scroll a notes box so the matched words sit in its visible area.
+ * The note text is not edited.
+ */
+export function revealNotesMatch(
+  area: HTMLTextAreaElement,
+  start: number,
+  length: number,
+): void {
+  const value = area.value;
+  const from = Math.max(0, Math.min(start, value.length));
+  const style = getComputedStyle(area);
+  const mirror = area.ownerDocument.createElement("div");
+  mirror.setAttribute("aria-hidden", "true");
+  mirror.style.cssText = [
+    "position:absolute",
+    "visibility:hidden",
+    "pointer-events:none",
+    "left:0",
+    "top:0",
+    "white-space:pre-wrap",
+    "overflow-wrap:break-word",
+    `width:${area.clientWidth}px`,
+    `font:${style.font}`,
+    `line-height:${style.lineHeight}`,
+    `letter-spacing:${style.letterSpacing}`,
+    `padding:${style.padding}`,
+    `border:${style.border}`,
+    `box-sizing:${style.boxSizing}`,
+  ].join(";");
+  mirror.textContent = value.slice(0, from);
+  const marker = area.ownerDocument.createElement("span");
+  marker.textContent = value.slice(from, from + Math.max(length, 1)) || " ";
+  mirror.appendChild(marker);
+  area.ownerDocument.body.appendChild(mirror);
+  const top = marker.offsetTop;
+  const height = Math.max(marker.offsetHeight, 1);
+  mirror.remove();
+  const padding = Number.parseFloat(style.paddingTop) || 0;
+  const target = Math.max(0, top - padding);
+  const bottom = target + height;
+  const viewBottom = area.scrollTop + area.clientHeight - padding;
+  if (target < area.scrollTop + 4 || bottom > viewBottom - 4) {
+    area.scrollTop = Math.max(0, target - (area.clientHeight - height) / 2);
+  }
+  const bar = area.ownerDocument.querySelector(".slide-find-bar");
+  if (!(bar instanceof HTMLElement)) return;
+  const box = area.getBoundingClientRect();
+  const barBox = bar.getBoundingClientRect();
+  const covered =
+    box.top < barBox.bottom && box.bottom > barBox.top && box.left < barBox.right && box.right > barBox.left;
+  if (covered) area.scrollIntoView({ block: "end", inline: "nearest" });
 }

@@ -3844,6 +3844,10 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   outline: 3px solid #1a73e8;
   outline-offset: 3px;
 }
+.notes-textarea.find-match {
+  outline: 3px solid #1a73e8;
+  outline-offset: -3px;
+}
 .slides-toolbar .tool.active {
   background: #d3e3fd;
   color: #041e49;

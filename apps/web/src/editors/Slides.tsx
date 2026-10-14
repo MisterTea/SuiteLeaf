@@ -150,14 +150,17 @@ import {
   slideZoom,
 } from "./slide-zoom";
 import {
+  canvasMatches,
+  findBarStatus,
   findDeckMatches,
-  findStatus,
   indexAfterReplace,
   nextMatchIndex,
   replaceAllDeckMatches,
   replaceAllLabel,
   replaceDeckMatch,
   replacedStatus,
+  revealNotesMatch,
+  type DeckMatch,
 } from "./slide-find";
 
 type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
@@ -221,6 +224,7 @@ export default function Slides({
   const [findIndex, setFindIndex] = useState(0);
   const [replacedNotice, setReplacedNotice] = useState<string | null>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
+  const notesRef = useRef<HTMLTextAreaElement>(null);
   const matches = useMemo(
     () => findDeckMatches(deck, findQuery),
     [deck, findQuery],
@@ -361,13 +365,18 @@ export default function Slides({
     }
   };
 
+  const landOn = (match: DeckMatch) => {
+    if (match.inNotes) setShowNotes(true);
+    anchorRef.current = match.slideId;
+    applySelection(match.slideId, [match.slideId], null);
+  };
+
   const showMatch = (index: number) => {
     const found = findDeckMatches(deckRef.current, findQuery);
     const match = found[index];
     if (!match) return;
     setFindIndex(index);
-    anchorRef.current = match.slideId;
-    applySelection(match.slideId, [match.slideId], null);
+    landOn(match);
   };
 
   const updateFind = (value: string) => {
@@ -376,9 +385,7 @@ export default function Slides({
     const found = findDeckMatches(deckRef.current, value);
     setFindIndex(0);
     if (!value.trim() || !found.length) return;
-    const match = found[0];
-    anchorRef.current = match.slideId;
-    applySelection(match.slideId, [match.slideId], null);
+    landOn(found[0]);
   };
 
   const findNext = () => {
@@ -395,6 +402,7 @@ export default function Slides({
     const before = findDeckMatches(deckRef.current, findQuery);
     if (!before.length) return;
     const index = findIndex >= 0 && findIndex < before.length ? findIndex : 0;
+    if (before[index].inNotes) return;
     const next = replaceDeckMatch(deckRef.current, before[index], findQuery, replaceWith);
     if (next === deckRef.current) return;
     commitRef.current(next);
@@ -421,6 +429,18 @@ export default function Slides({
   useEffect(() => {
     if (findOpen) findInputRef.current?.focus();
   }, [findOpen]);
+
+  useEffect(() => {
+    if (!findOpen || presenting) return;
+    const match = matches[findIndex];
+    if (!match?.inNotes || match.slideId !== activeSlideId || !showNotes) return;
+    const area = notesRef.current;
+    if (!area) return;
+    const frame = requestAnimationFrame(() => {
+      revealNotesMatch(area, match.start, findQuery.trim().length);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [findOpen, presenting, matches, findIndex, activeSlideId, showNotes, findQuery]);
 
   // Commit changes and push to undo history
   const commit = (next: SlideFile["content"], key?: string) => {
@@ -2665,7 +2685,7 @@ ${slidesHtml}
             }}
           />
           <span className="slide-find-status" role="status">
-            {replacedNotice ?? findStatus(findQuery, matches, findIndex)}
+            {replacedNotice ?? findBarStatus(findQuery, matches, findIndex)}
           </span>
           <label htmlFor="slide-replace-input">Replace</label>
           <input
@@ -2689,20 +2709,24 @@ ${slidesHtml}
           <button
             type="button"
             className="slide-find-replace"
-            title="Replace this match"
+            title={
+              matches[findIndex]?.inNotes
+                ? "Notes are not replaced"
+                : "Replace this match"
+            }
             onClick={replaceCurrent}
-            disabled={readOnly || !matches.length}
+            disabled={readOnly || !matches.length || !!matches[findIndex]?.inNotes}
           >
             Replace
           </button>
-          {matches.length > 0 ? (
+          {canvasMatches(matches).length > 0 ? (
             <button
               type="button"
               className="slide-find-replace-all"
               onClick={replaceEvery}
               disabled={readOnly}
             >
-              {replaceAllLabel(matches.length)}
+              {replaceAllLabel(canvasMatches(matches).length)}
             </button>
           ) : null}
           <button
@@ -3257,7 +3281,14 @@ ${slidesHtml}
             </div>
             {showNotes ? (
               <textarea
-                className="notes-textarea"
+                ref={notesRef}
+                className={`notes-textarea${
+                  findOpen &&
+                  matches[findIndex]?.inNotes &&
+                  matches[findIndex]?.slideId === activeSlideId
+                    ? " find-match"
+                    : ""
+                }`}
                 readOnly={readOnly}
                 placeholder="Click to add speaker notes"
                 value={activeSlide?.notes || ""}
