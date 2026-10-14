@@ -284,6 +284,7 @@ test("a group can be given read, comment, or write access", async ({ browser }) 
 
     await dialog.getByRole("button", { name: "Role for Volunteers" }).click();
     await dialog.getByRole("option", { name: /^Viewer/ }).click();
+    await expect(dialog.getByText("Volunteers can now view")).toBeVisible();
     const commentDenied = await authed(node.url, sam.token, `/api/drive/items/${item.id}/comments`, {
       method: "POST",
       body: JSON.stringify({ body: "This should not stick." }),
