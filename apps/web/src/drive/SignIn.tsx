@@ -11,7 +11,7 @@ import {
   socialStartUrl,
   type AuthProviders,
 } from "../node-client";
-import { disconnect, probeServer, switchMode } from "../mode";
+import { probeServer, switchMode } from "../mode";
 import { useServerSync } from "./status";
 import { useAgentHost } from "../ai/host";
 import { signInSnapshot, signInTools } from "../ai/tools/cluster";
@@ -34,10 +34,10 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 /** The cluster-mode sign-in page for one server. */
 export function SignInScreen({
   serverUrl,
-  canDisconnect,
+  onDisconnect,
 }: {
   serverUrl: string;
-  canDisconnect: boolean;
+  onDisconnect?: () => Promise<void>;
 }) {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [available, setAvailable] = useState<AuthProviders | null>(null);
@@ -59,8 +59,8 @@ export function SignInScreen({
     tools: signInTools({
       host,
       signedIn: () => !!getSession(),
-      canLeave: canDisconnect,
-      leave: () => disconnect(serverUrl),
+      canLeave: !!onDisconnect,
+      leave: () => onDisconnect?.() ?? Promise.resolve(),
     }),
   }));
 
@@ -241,11 +241,12 @@ export function SignInScreen({
                 : "Create account"}
           </button>
         </div>
-        {canDisconnect ? (
+        {onDisconnect ? (
           <button
             type="button"
             className="dialog-text-btn sign-in-disconnect"
-            onClick={() => void disconnect(serverUrl)}
+            disabled={busy}
+            onClick={() => void run(onDisconnect)}
           >
             Work on this computer without a server
           </button>

@@ -5,7 +5,7 @@ import { undoDepth } from "@tiptap/pm/history";
 import { Type } from "@earendil-works/pi-ai";
 import type { PageSettings } from "@suiteleaf/core/document-layout";
 import { documentMatches } from "../../editors/doc-search-plugin";
-import { findMisspellings, spellchecker } from "../../editors/doc-spelling";
+import { misspelledWords, spellingSuggestions } from "../../editors/doc-spelling";
 import { ToolError, tool, type SuiteTool } from "../host";
 import { requestFile } from "../file-request";
 import { baselineSnapshot, markBaseline, ownUndoSteps } from "../guard";
@@ -673,17 +673,15 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       target: () => [...document.querySelectorAll(".menu-trigger")].find((el) => el.textContent === "Tools") ?? editor.view.dom,
       async execute() {
         ctx.showSpelling();
-        const spell = await spellchecker();
-        const found = findMisspellings(editor.state.doc, spell);
-        if (!found.length) return "No spelling mistakes found.";
-        const words = new Map<string, { count: number; suggestions: string[] }>();
-        for (const f of found) {
-          const entry = words.get(f.word) ?? { count: 0, suggestions: f.suggestions };
-          entry.count++;
-          words.set(f.word, entry);
-        }
+        const words = new Map<string, number>();
+        for (const word of misspelledWords(editor.getJSON()))
+          words.set(word, (words.get(word) ?? 0) + 1);
+        if (!words.size) return "No spelling mistakes found.";
         return [...words]
-          .map(([w, e]) => `"${w}" (${e.count}×): ${e.suggestions.length ? e.suggestions.join(", ") : "no suggestions"}`)
+          .map(([w, count]) => {
+            const suggestions = spellingSuggestions(w);
+            return `"${w}" (${count}×): ${suggestions.length ? suggestions.join(", ") : "no suggestions"}`;
+          })
           .join("\n");
       },
     }),

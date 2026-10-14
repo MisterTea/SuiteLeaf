@@ -276,12 +276,15 @@ export function homeTools(ctx: HomeAgentContext): SuiteTool[] {
         const r = findRecord(ctx.records, name);
         ctx.showRemove(r);
         await wait(500);
-        await moveCursor(document.querySelector('[role="dialog"] button[type="submit"]'), "Remove file");
-        await wait(400);
+        const submit = document.querySelector('[role="dialog"] button[type="submit"]');
+        if (submit) {
+          await moveCursor(submit, "Remove file");
+          await wait(400);
+        }
         await ctx.remove(r);
         return r.path
-          ? `Removed "${r.file.title}" from the library. Its saved file stays on disk at ${r.path}; open_from_computer opens it again.`
-          : `Deleted "${r.file.title}" from SuiteLeaf; this can't be undone. A copy that was downloaded or saved elsewhere is not affected: open_from_computer opens it again.`;
+          ? `Moved "${r.file.title}" to Trash. Its saved file stays on disk at ${r.path}; open_from_computer opens it again.`
+          : `Moved "${r.file.title}" to Trash. Empty Trash deletes it. A copy that was downloaded or saved elsewhere is not affected.`;
       },
     }),
     tool({

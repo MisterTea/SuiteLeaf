@@ -2,6 +2,7 @@
   "name": "@suiteleaf/desktop",
   "productName": "SuiteLeaf",
   "version": "0.1.0",
+  "homepage": "https://github.com/MisterTea/SuiteLeaf",
   "private": true,
   "type": "module",
   "main": "out/main/index.js",

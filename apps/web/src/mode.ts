@@ -20,13 +20,20 @@ interface NodeInfo {
   auth?: { enabled?: boolean };
 }
 
+function abortAfter(timeout: number): AbortSignal {
+  if (typeof AbortSignal.timeout === "function") return AbortSignal.timeout(timeout);
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), timeout);
+  return controller.signal;
+}
+
 async function nodeInfo(
   url: string,
   timeout?: number,
 ): Promise<NodeInfo | null> {
   try {
     const response = await fetch(`${url}/api/node/info`, {
-      signal: timeout ? AbortSignal.timeout(timeout) : undefined,
+      signal: timeout ? abortAfter(timeout) : undefined,
     });
     return response.ok ? await response.json() : null;
   } catch {
@@ -101,10 +108,10 @@ export async function resolveMode(): Promise<ResolvedMode> {
 
 /** Persist a mode and restart the app in it. */
 export async function switchMode(mode: AppMode) {
+  location.hash = "#/";
   if (window.suiteleaf?.setMode) return window.suiteleaf.setMode(mode);
   if (mode.kind === "single") localStorage.removeItem(KEY);
   else localStorage.setItem(KEY, JSON.stringify(mode));
-  location.hash = "#/";
   location.reload();
 }
 

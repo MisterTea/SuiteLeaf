@@ -1,7 +1,10 @@
 import * as XLSX from "xlsx";
 import JSZip from "jszip";
 import { addXlsxDrawings } from "./xlsx-drawings";
+import { applyWorksheetOutline } from "./excel-outline";
+import { excelErrorStyle } from "./excel-validation";
 import { columnName, type SheetFile } from "./index";
+import { cellHyperlink } from "./sheet-links";
 
 type Data = Record<string, any>;
 const esc = (v: unknown) =>
@@ -128,7 +131,7 @@ function validation(rule: Data): string {
   }
   if (type === "list" && !String(f1).startsWith("="))
     f1 = `"${rule.type === "checkbox" ? (f1 || f2 ? `${f1 || "TRUE"},${f2 || "FALSE"}` : "1,0") : String(f1).replace(/^"|"$/g, "").replace(/"/g, '""')}"`;
-  return `<dataValidation type="${type}" sqref="${esc((rule.ranges ?? []).map(rangeRef).join(" "))}" allowBlank="${rule.allowBlank ? 1 : 0}" showErrorMessage="${rule.showErrorMessage ? 1 : 0}" errorStyle="${esc(rule.errorStyle || "stop")}"${rule.operator && type !== "list" ? ` operator="${esc(rule.operator)}"` : ""} error="${esc(rule.error)}" errorTitle="${esc(rule.errorTitle)}"><formula1>${esc(String(f1).replace(/^=/, ""))}</formula1>${f2 && type !== "list" ? `<formula2>${esc(f2)}</formula2>` : ""}</dataValidation>`;
+  return `<dataValidation type="${type}" sqref="${esc((rule.ranges ?? []).map(rangeRef).join(" "))}" allowBlank="${rule.allowBlank ? 1 : 0}" showErrorMessage="${rule.showErrorMessage ? 1 : 0}" errorStyle="${esc(excelErrorStyle(rule.errorStyle))}"${rule.operator && type !== "list" ? ` operator="${esc(rule.operator)}"` : ""} error="${esc(rule.error)}" errorTitle="${esc(rule.errorTitle)}"><formula1>${esc(String(f1).replace(/^=/, ""))}</formula1>${f2 && type !== "list" ? `<formula2>${esc(f2)}</formula2>` : ""}</dataValidation>`;
 }
 function conditional(rule: Data, priority: number, dxfs: string[]): string {
   const r = rule.rule ?? rule;
@@ -221,8 +224,9 @@ export async function exportXlsx(
           r = Number(row),
           c = Number(col),
           ref = XLSX.utils.encode_cell({ r, c });
+        const href = cellHyperlink(cell);
         const stored =
-          cell.v ?? cell.p?.body?.dataStream?.replace(/\r?\n$/, "") ?? "";
+          cell.v ?? cell.p?.body?.dataStream?.replace(/[\r\n]+$/g, "") ?? "";
         const value =
           cell.t === 3
             ? stored === true ||
@@ -256,6 +260,7 @@ export async function exportXlsx(
               ? String(value)
               : value,
           ...(cell.f ? { f: String(cell.f).replace(/^=/, "") } : {}),
+          ...(href ? { l: { Target: href } } : {}),
         };
         const style = {
           ...resolve(s.defaultStyle),
@@ -451,16 +456,20 @@ export async function exportXlsx(
       (dv.length
         ? `<dataValidations count="${dv.length}">${dv.join("")}</dataValidations>`
         : "");
+    const selfClosingSheet =
+      !text.includes("</sheetData>") && text.includes("<sheetData/>");
     const after = text.includes("</mergeCells>")
       ? "</mergeCells>"
-      : "</sheetData>";
-    if (protection?.sheet && !text.includes("</mergeCells>"))
+      : selfClosingSheet
+        ? "<sheetData/>"
+        : "</sheetData>";
+    if (protection?.sheet && !text.includes("</mergeCells>") && !selfClosingSheet)
       text = text.replace(
         '<sheetProtection sheet="1" objects="1" scenarios="1"/>',
         `<sheetProtection sheet="1" objects="1" scenarios="1"/>${extra}`,
       );
     else text = text.replace(after, `${after}${extra}`);
-    zip.file(path, text);
+    zip.file(path, applyWorksheetOutline(text, s.custom));
   }
   const formats = styles
     .map(

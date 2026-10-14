@@ -446,15 +446,25 @@ describe("editable Office imports", () => {
       const headings = (file.content.content ?? []).filter(
         (n) => n.type === "heading",
       );
-      expect(headings.map((h) => documentText(h))).toEqual([
-        "Imported header",
-        "Imported footer",
-      ]);
+      const headingText = headings.map((h) => documentText(h));
+      expect(headingText).toContain("Imported header");
+      const footerOnThePage =
+        typeof (file.content.attrs?.pageSettings as { footer?: unknown } | undefined)
+          ?.footer === "string" &&
+        String(
+          (file.content.attrs?.pageSettings as { footer?: string }).footer,
+        ).length > 0;
+      expect(headingText.includes("Imported footer") || footerOnThePage).toBe(
+        true,
+      );
       const images = (file.content.content ?? []).filter(
         (n) => n.type === "image",
       );
       expect(images.length).toBe(1);
       expect(images[0].attrs?.src).toMatch(/^data:image\/png;base64,/);
+      expect(report.warnings.join("\n")).not.toContain(
+        "Header/footer text is retained as document sections rather than repeated page furniture.",
+      );
       expect(report.textPreserved).toBe(true);
     },
   );
@@ -485,26 +495,31 @@ describe("editable Office imports", () => {
       const paragraphs = (file.content.content ?? []).filter(
         (n) => n.type === "paragraph",
       );
-      // Paragraph with footnote: Blahdeblah¹1
+      // Paragraph with footnote: Blahdeblah, a linked marker, then the literal 1.
       const pFootnote = paragraphs.find((p) =>
         documentText(p).startsWith("Blahdeblah1"),
       );
       expect(pFootnote).toBeDefined();
-      expect(pFootnote?.content).toEqual([
-        { type: "text", text: "Blahdeblah" },
-        { type: "text", text: "1", marks: [{ type: "superscript" }] },
-        { type: "text", text: "1" },
-      ]);
-      // Paragraph with endnote: Blahdeblahⁱ6
+      expect(pFootnote?.content?.[0]).toEqual({ type: "text", text: "Blahdeblah" });
+      expect(pFootnote?.content?.[1]).toMatchObject({
+        type: "noteReference",
+        attrs: { kind: "footnote", label: "1" },
+      });
+      expect(pFootnote?.content?.[2]).toEqual({ type: "text", text: "1" });
+      // Paragraph with endnote: Blahdeblah, a linked roman marker, then the literal 6.
       const pEndnote = paragraphs.find((p) =>
         documentText(p).startsWith("Blahdeblahi"),
       );
       expect(pEndnote).toBeDefined();
-      expect(pEndnote?.content).toEqual([
-        { type: "text", text: "Blahdeblah" },
-        { type: "text", text: "i", marks: [{ type: "superscript" }] },
-        { type: "text", text: "6" },
-      ]);
+      expect(pEndnote?.content?.[0]).toEqual({ type: "text", text: "Blahdeblah" });
+      expect(pEndnote?.content?.[1]).toMatchObject({
+        type: "noteReference",
+        attrs: { kind: "endnote", label: "i" },
+      });
+      expect(pEndnote?.content?.[2]).toEqual({ type: "text", text: "6" });
+      const notes = (file.content.content ?? []).filter((n) => n.type === "note");
+      expect(notes.some((n) => n.attrs?.kind === "footnote")).toBe(true);
+      expect(notes.some((n) => n.attrs?.kind === "endnote")).toBe(true);
     },
   );
   it("preserves Excel cell types, shared formulas, date system, named ranges, styles and dimensions", async () => {

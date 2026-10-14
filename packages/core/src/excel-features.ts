@@ -1,11 +1,21 @@
 import type JSZip from "jszip";
 import * as XLSX from "xlsx";
+import { univerErrorStyle } from "./excel-validation";
 import { parseRange, type SheetFile } from "./index";
 import { array, parseXml } from "./office";
 type Data = Record<string, any>;
 const segment = (text: string, tag: string) =>
   text.match(new RegExp(`<${tag}\\b[^>]*(?:/>|>[\\s\\S]*?</${tag}>)`))?.[0];
 const flag = (value: unknown) => value === "1" || value === "true";
+const CELL_REF = /^\$?[A-Za-z]{1,3}\$?\d+(?::\$?[A-Za-z]{1,3}\$?\d+)?$/;
+/** Excel writes a list-from-range as Statuses!$A$2:$A$5, without a leading =. */
+function isExcelRangeRef(literal: string): boolean {
+  const body = literal.trim().replace(/^=/, "");
+  const bang = body.lastIndexOf("!");
+  const cells = bang >= 0 ? body.slice(bang + 1) : body;
+  if (!CELL_REF.test(cells)) return false;
+  return bang < 0 || body.slice(0, bang).length > 0;
+}
 const color = (node: Data | undefined) =>
   node?.["@_rgb"] ? `#${String(node["@_rgb"]).slice(-6)}` : undefined;
 function differentialStyle(d: Data = {}) {
@@ -198,10 +208,29 @@ export async function importExcelFeatures(
           "promptTitle",
         ])
           if (rule[`@_${key}`] !== undefined) dv[key] = rule[`@_${key}`];
-        if (dv.type === "list")
-          dv.formula1 = dv.formula1.startsWith('"')
-            ? dv.formula1.slice(1, -1).replace(/""/g, '"')
-            : `=${dv.formula1.replace(/^=/, "")}`;
+        const errorStyle = univerErrorStyle(dv.errorStyle);
+        if (errorStyle !== undefined) dv.errorStyle = errorStyle;
+        if (dv.type === "list") {
+          const quoted = String(dv.formula1).startsWith('"');
+          const literal = quoted
+            ? String(dv.formula1).slice(1, -1).replace(/""/g, '"')
+            : String(dv.formula1).replace(/^=/, "");
+          // A quoted formula is Excel's inline list. Anything else that is a
+          // cell reference is a dropdown whose options are that range.
+          if (!quoted && isExcelRangeRef(literal)) {
+            dv.formula1 = `=${literal.replace(/^=/, "")}`;
+          } else {
+            const options = literal
+              .split(",")
+              .map((item) => item.trim())
+              .filter(Boolean);
+            // Univer matches a JSON list. A comma string still displays, but every
+            // cell is marked invalid until the options are stored the way the
+            // editor writes them.
+            dv.formula1 = JSON.stringify(options);
+          }
+          if (dv.renderMode === undefined) dv.renderMode = 2;
+        }
         (validations[id] ??= []).push(dv);
       }
     for (const match of text.matchAll(

@@ -75,6 +75,9 @@ describe("local Office export", () => {
     expect(doc).toContain("<w:pageBreakBefore");
     expect(doc).toContain('w:w="16838"');
     expect(doc).toContain('w:top="720"');
+    expect(doc).toContain('w:bottom="720"');
+    expect(doc).toContain('w:left="720"');
+    expect(doc).toContain('w:right="720"');
     expect(await zip.file("word/header1.xml")!.async("string")).toContain(
       "Confidential &amp; internal",
     );
@@ -82,6 +85,61 @@ describe("local Office export", () => {
       "NUMPAGES",
     );
     expect(parseFile(serializeFile(file)).content).toEqual(file.content);
+  });
+  it("writes a different first page as a Word title page with no number on it", async () => {
+    const file = createFile("doc", "Minutes");
+    if (file.kind !== "doc") throw new Error();
+    file.content = {
+      type: "doc",
+      attrs: {
+        pageSettings: {
+          header: "Garden club minutes",
+          footer: "Draft",
+          pageNumbers: true,
+          differentFirstPage: true,
+          firstHeader: "Riverside Garden Club",
+          firstFooter: "",
+        },
+      },
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "October meeting" }] },
+      ],
+    };
+    const zip = await JSZip.loadAsync(await exportDocx(file));
+    const doc = await zip.file("word/document.xml")!.async("string");
+    expect(doc).toContain("w:titlePg");
+    expect(doc).toContain('w:type="first"');
+    const headers = await Promise.all(
+      Object.keys(zip.files)
+        .filter((name) => /word\/header\d+\.xml$/.test(name))
+        .map((name) => zip.file(name)!.async("string")),
+    );
+    expect(headers.some((xml) => xml.includes("Riverside Garden Club"))).toBe(true);
+    expect(headers.some((xml) => xml.includes("Garden club minutes"))).toBe(true);
+    const footers = await Promise.all(
+      Object.keys(zip.files)
+        .filter((name) => /word\/footer\d+\.xml$/.test(name))
+        .map((name) => zip.file(name)!.async("string")),
+    );
+    expect(footers.some((xml) => xml.includes("NUMPAGES"))).toBe(true);
+    expect(footers.some((xml) => !xml.includes("PAGE"))).toBe(true);
+  });
+  it("writes a different Word margin for each edge", async () => {
+    const file = createFile("doc", "Minutes");
+    if (file.kind !== "doc") throw new Error();
+    file.content = {
+      type: "doc",
+      attrs: {
+        pageSettings: { top: 144, bottom: 72, left: 96, right: 48, margin: 72 },
+      },
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Minutes" }] }],
+    };
+    const zip = await JSZip.loadAsync(await exportDocx(file));
+    const doc = await zip.file("word/document.xml")!.async("string");
+    expect(doc).toContain('w:top="2160"');
+    expect(doc).toContain('w:bottom="1080"');
+    expect(doc).toContain('w:left="1440"');
+    expect(doc).toContain('w:right="720"');
   });
   it("marks a document table's header row as a repeating Word header row", async () => {
     const file = createFile("doc", "Sign-up");

@@ -52,3 +52,21 @@ export async function excelFixture(empty = false) {
   );
   return z.generateAsync({ type: "uint8array" });
 }
+
+/** A one-paragraph Word file whose only math is the superscript n². */
+export async function equationDocx() {
+  const z = new JSZip();
+  z.file(
+    "[Content_Types].xml",
+    `${xmlHeader}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`,
+  );
+  z.file(
+    "_rels/.rels",
+    `${xmlHeader}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`,
+  );
+  z.file(
+    "word/document.xml",
+    `${xmlHeader}<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><w:body><w:p><w:r><w:t xml:space="preserve">The sample variance uses </w:t></w:r><m:oMath><m:sSup><m:e><m:r><m:t>n</m:t></m:r></m:e><m:sup><m:r><m:t>2</m:t></m:r></m:sup></m:sSup></m:oMath><w:r><w:t>.</w:t></w:r></w:p></w:body></w:document>`,
+  );
+  return z.generateAsync({ type: "uint8array" });
+}

@@ -1,0 +1,62 @@
+.widow-control {
+  position: fixed;
+  z-index: 41;
+  visibility: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 4px 0 10px;
+  border: 1px solid #c4c7c5;
+  border-radius: 999px;
+  background: #fff;
+  color: #1f1f1f;
+  box-shadow:
+    0 1px 2px rgba(60, 64, 67, 0.2),
+    0 2px 6px rgba(60, 64, 67, 0.12);
+  font: 600 12px/1 Arial, sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.widow-control:hover {
+  background: #f8f9fa;
+}
+.widow-control:focus-visible {
+  outline: 2px solid #137333;
+  outline-offset: 2px;
+}
+.widow-control.is-on {
+  background: #e6f4ea;
+  border-color: #137333;
+  color: #0d652d;
+}
+.widow-control.is-on:hover {
+  background: #ceead6;
+}
+.widow-control-state {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #f1f3f4;
+  color: #5f6368;
+  font-size: 11px;
+}
+.widow-control.is-on .widow-control-state {
+  background: #137333;
+  color: #fff;
+}
+@media (max-width: 700px) {
+  .widow-control {
+    height: 32px;
+    font-size: 13px;
+  }
+}
+@media print {
+  .widow-control {
+    display: none !important;
+  }
+}

@@ -21,7 +21,7 @@ Maya runs the garden club's paperwork. She has a budget, a talk and a monthly ne
 5. **Filter by type.** The sidebar's **Documents** shows the two documents and the heading changes to "Documents". **Spreadsheets** and **Presentations** each show one file. **All files** brings back all four.
 6. **Sort.** Clicking the **Name** column header sorts A to Z (an arrow shows the direction). Clicking **Last edited** goes back to newest first.
 7. **Duplicate and rename.** The copy icon on "Garden club newsletter" adds "Garden club newsletter copy". The pencil icon on the copy opens a **Rename** dialog, and Maya names it "Garden club newsletter - November" without opening it. Both newsletters are listed.
-8. **Remove.** The trash icon on "Welcome to SuiteLeaf" opens an in-app **Delete this file?** dialog that names the file and says it can't be undone. After she clicks **Delete**, the sample is gone.
+8. **Remove.** The trash icon on "Welcome to SuiteLeaf" moves it to Trash, with Undo if that was a mistake. The sample leaves the list.
 
 ## Success looks like
 
@@ -69,6 +69,6 @@ App fixes made while recording this, which help any similar request:
 - Fixed: files could only be renamed by opening them. The pencil icon renames from the list. If the file is open in another tab, SuiteLeaf asks you to rename it there instead, so the open editor can't save the old name over the new one.
 - Fixed: the list was always newest first. The Name and Last edited headers sort the list.
 - Fixed: the remove confirmation was the browser's own dialog, which didn't appear in the recording. It is now an in-app dialog. In the desktop app it says "Remove from library?" and keeps the saved file on disk.
-- Remove is still permanent, with no Trash or undo (SuiteDrive in cluster mode has a Trash). A local Trash needs its own storage and a Trash view.
-- The editor's Star button isn't saved anywhere, so there is no Starred filter. Saving stars needs a field in the file record (core, browser and desktop storage).
+- Remove now moves a file to Trash, with Undo (storyboard 40). Delete forever is the permanent step, and it still names the file. The recording above still shows the earlier confirm-and-delete dialog.
+- The star on a file is saved, and Starred is in the sidebar (storyboard 40). This recording doesn't show that.
 - There are no folders in single-node mode. The list is flat, which matches how the people quoted above actually work.

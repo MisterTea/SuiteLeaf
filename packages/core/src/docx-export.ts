@@ -1,28 +1,75 @@
 import {
   AlignmentType,
   BorderStyle,
+  CommentRangeEnd,
+  CommentRangeStart,
+  CommentReference,
   Document,
+  EndnoteReferenceRun,
   ExternalHyperlink,
   Footer,
+  FootnoteReferenceRun,
   Header,
   HeadingLevel,
+  HorizontalPositionAlign,
+  HorizontalPositionRelativeFrom,
   ImageRun,
+  Math as OfficeMath,
+  MathFraction,
+  MathRun,
+  MathSubScript,
+  MathSuperScript,
+  NumberFormat,
   Packer,
   PageNumber,
   Paragraph,
+  SectionType,
+  SimpleField,
+  Tab,
+  TabStopType,
   Table,
   TableCell,
+  TableOfContents,
   TableRow,
   TextRun,
+  TextWrappingSide,
+  TextWrappingType,
   UnderlineType,
   VerticalAlign,
+  VerticalPositionAlign,
+  VerticalPositionRelativeFrom,
   WidthType,
   type IRunOptions,
+  type MathComponent,
   type ParagraphChild,
 } from "docx";
 import type { DocFile, JsonNode } from "./index";
-
-import { documentPageSettings } from "./document-layout";
+import { docxParagraphIndent } from "./paragraph-indent";
+import { asEquation, type EqNode } from "./equations";
+import {
+  documentPageSettings,
+  wordPageNumberStart,
+  type PageNumberFormat,
+  type PageSettings,
+} from "./document-layout";
+import { docxWatermarkParagraph } from "./doc-watermark";
+import { pagePxToTwips } from "./word-page-margins";
+import {
+  planDocxComments,
+  stampDocxComments,
+  type DocxCommentPlan,
+} from "./doc-comments";
+import { embedSuggestionMarkers, revisionizeDocx } from "./suggestions";
+import { docxLineSpacing } from "./line-spacing";
+import { docxParagraphGap } from "./paragraph-spacing";
+import {
+  citationLibrary,
+  inText,
+  stampDocxCitations,
+  type CitationLibrary,
+} from "./citations";
+import { croppedFrame, docxImageCrop, imageCrop } from "./image-crop";
+import { imageWrap } from "./image-wrap";
 
 const color = (v: unknown) =>
   typeof v === "string" && /^#[\da-f]{6}$/i.test(v) ? v.slice(1) : undefined;
@@ -33,6 +80,19 @@ const alignment = (v: unknown) =>
     center: AlignmentType.CENTER,
     justify: AlignmentType.JUSTIFIED,
   })[String(v) as "left"];
+/**
+ * Word announces `descr` and can fall back to the required drawing `name`.
+ * Both are the description someone wrote, never the file name or "Image".
+ */
+export function docxImageAlt(alt: unknown): {
+  title: string;
+  description: string;
+  name: string;
+} {
+  const description = typeof alt === "string" ? alt : "";
+  return { title: description, description, name: description || "photo" };
+}
+
 function imageSize(data: Uint8Array, type: string): [number, number] {
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   if (type === "png" && data.length >= 24)
@@ -55,38 +115,195 @@ function imageSize(data: Uint8Array, type: string): [number, number] {
     }
   return [480, 320];
 }
-function runs(node: JsonNode): ParagraphChild[] {
+function marked(
+  plan: DocxCommentPlan,
+  index: number,
+  edge: "starts" | "ends",
+): ParagraphChild[] {
+  return (plan[edge].get(index) ?? []).flatMap((id) =>
+    edge === "starts"
+      ? [new CommentRangeStart(id)]
+      : [new CommentRangeEnd(id), new CommentReference(id)],
+  );
+}
+type NoteSlot = { kind: "footnote" | "endnote"; num: number };
+
+function noteIndex(content: JsonNode): Map<string, NoteSlot> {
+  const index = new Map<string, NoteSlot>();
+  let footnotes = 0;
+  let endnotes = 0;
+  const walk = (node: JsonNode) => {
+    if (node.type === "noteReference") {
+      const id = String(node.attrs?.id ?? "");
+      if (id && !index.has(id)) {
+        const kind = node.attrs?.kind === "endnote" ? "endnote" : "footnote";
+        index.set(id, {
+          kind,
+          num: kind === "endnote" ? ++endnotes : ++footnotes,
+        });
+      }
+    }
+    if (node.type !== "note") node.content?.forEach(walk);
+  };
+  walk(content);
+  return index;
+}
+
+function findNote(content: JsonNode, id: string): JsonNode | undefined {
+  let found: JsonNode | undefined;
+  const walk = (node: JsonNode) => {
+    if (found) return;
+    if (node.type === "note" && String(node.attrs?.id ?? "") === id) found = node;
+    else node.content?.forEach(walk);
+  };
+  walk(content);
+  return found;
+}
+
+function blankCommentPlan(): DocxCommentPlan {
+  return {
+    comments: [],
+    starts: new Map(),
+    ends: new Map(),
+    index: 0,
+    trailing: [],
+    resolvedWordIds: [],
+  };
+}
+
+function exprToMath(node: EqNode): MathComponent[] {
+  switch (node.kind) {
+    case "text":
+      return node.text ? [new MathRun(node.text)] : [];
+    case "sup":
+      return [
+        new MathSuperScript({
+          children: exprToMath(node.base),
+          superScript: exprToMath(node.exp),
+        }),
+      ];
+    case "sub":
+      return [
+        new MathSubScript({
+          children: exprToMath(node.base),
+          subScript: exprToMath(node.sub),
+        }),
+      ];
+    case "frac":
+      return [
+        new MathFraction({
+          numerator: exprToMath(node.num),
+          denominator: exprToMath(node.den),
+          type: "stacked",
+        }),
+      ];
+    case "row":
+      return node.items.flatMap(exprToMath);
+  }
+}
+
+function equationChildren(node: JsonNode): ParagraphChild[] {
+  const children = exprToMath(asEquation(node.attrs?.expr));
+  if (!children.length) return [new TextRun(String(node.attrs?.plain ?? ""))];
+  return [new OfficeMath({ children })];
+}
+
+function runs(
+  node: JsonNode,
+  plan: DocxCommentPlan,
+  notes: Map<string, NoteSlot>,
+  library: CitationLibrary,
+): ParagraphChild[] {
   return (node.content ?? []).flatMap((n): ParagraphChild[] => {
+    if (n.type === "citation") {
+      const source = library.sources.find(
+        (item) => item.id === String(n.attrs?.sourceId ?? ""),
+      );
+      if (!source) return [];
+      return [
+        new SimpleField(
+          ` CITATION ${source.tag} \\l 1033 `,
+          inText(source, library.style),
+        ),
+      ];
+    }
+    if (n.type === "noteReference") {
+      const slot = notes.get(String(n.attrs?.id ?? ""));
+      if (!slot) return [];
+      return [
+        slot.kind === "endnote"
+          ? new EndnoteReferenceRun(slot.num)
+          : new FootnoteReferenceRun(slot.num),
+      ];
+    }
     if (n.type === "hardBreak") return [new TextRun({ break: 1 })];
-    if (n.type === "image") {
+    if (n.type === "tab") return [new TextRun({ children: [new Tab()] })];
+    if (n.type === "image" || n.type === "inlineImage") {
       const match = /^data:image\/(png|jpeg|gif);base64,(.*)$/i.exec(
         String(n.attrs?.src),
       );
       if (!match) return [new TextRun(String(n.attrs?.alt ?? "[Image]"))];
       const data = Uint8Array.from(atob(match[2]), (c) => c.charCodeAt(0));
       const [naturalWidth, naturalHeight] = imageSize(data, match[1]);
-      const requestedWidth = Number(n.attrs?.width) || naturalWidth;
-      const requestedHeight =
-        Number(n.attrs?.height) ||
-        (naturalHeight * requestedWidth) / naturalWidth;
-      const scale = Math.min(1, 600 / requestedWidth, 800 / requestedHeight);
+      const explicitWidth = Number(n.attrs?.width);
+      const explicitHeight = Number(n.attrs?.height);
+      const sized = explicitWidth > 0 && explicitHeight > 0;
+      const requestedWidth = sized ? explicitWidth : naturalWidth;
+      const requestedHeight = sized
+        ? explicitHeight
+        : (naturalHeight * requestedWidth) / naturalWidth;
+      const scale = sized
+        ? 1
+        : Math.min(1, 600 / requestedWidth, 800 / requestedHeight);
+      const crop = imageCrop(n.attrs);
+      // The frame is the cropped region at the same scale as the full picture.
+      // `data` stays the whole image so Word's crop reset can reveal it.
+      const frame = croppedFrame(
+        { width: requestedWidth * scale, height: requestedHeight * scale },
+        crop,
+      );
+      const docxCrop = docxImageCrop(crop);
+      const wrap = n.type === "image" ? imageWrap(n.attrs) : null;
+      const beside = wrap === "left" || wrap === "right";
       return [
         new ImageRun({
           type: match[1] === "jpeg" ? "jpg" : (match[1] as "png" | "gif"),
           data,
           transformation: {
-            width: requestedWidth * scale,
-            height: requestedHeight * scale,
+            width: Math.max(1, frame.width),
+            height: Math.max(1, frame.height),
           },
-          altText: {
-            title: String(n.attrs?.alt ?? ""),
-            description: String(n.attrs?.alt ?? ""),
-            name: "Image",
-          },
+          ...(docxCrop ? { crop: docxCrop } : {}),
+          ...(beside
+            ? {
+                floating: {
+                  horizontalPosition: {
+                    relative: HorizontalPositionRelativeFrom.COLUMN,
+                    align:
+                      wrap === "right"
+                        ? HorizontalPositionAlign.RIGHT
+                        : HorizontalPositionAlign.LEFT,
+                  },
+                  verticalPosition: {
+                    relative: VerticalPositionRelativeFrom.PARAGRAPH,
+                    align: VerticalPositionAlign.TOP,
+                  },
+                  wrap: {
+                    type: TextWrappingType.SQUARE,
+                    side: TextWrappingSide.BOTH_SIDES,
+                  },
+                },
+              }
+            : {}),
+          altText: docxImageAlt(n.attrs?.alt),
         }),
       ];
     }
-    if (n.type !== "text") return runs(n);
+    if (n.type === "note") return [];
+    if (n.type === "equation") return equationChildren(n);
+    if (n.type !== "text") return runs(n, plan, notes, library);
+    const index = plan.index;
+    plan.index += 1;
     const opts: { -readonly [K in keyof IRunOptions]: IRunOptions[K] } = {
       text: n.text ?? "",
     };
@@ -115,28 +332,66 @@ function runs(node: JsonNode): ParagraphChild[] {
     }
     const run = new TextRun(opts);
     const link = n.marks?.find((m) => m.type === "link");
-    if (link && /^(https?:|mailto:|tel:)/i.test(String(link.attrs?.href)))
-      return [
-        new ExternalHyperlink({
-          link: String(link.attrs?.href),
-          children: [run],
-        }),
-      ];
-    return [run];
+    const body: ParagraphChild =
+      link && /^(https?:|mailto:|tel:)/i.test(String(link.attrs?.href))
+        ? new ExternalHyperlink({
+            link: String(link.attrs?.href),
+            children: [run],
+          })
+        : run;
+    return [...marked(plan, index, "starts"), body, ...marked(plan, index, "ends")];
   });
+}
+function columnSegments(
+  nodes: JsonNode[],
+): { columns: 1 | 2; nodes: JsonNode[] }[] {
+  const out: { columns: 1 | 2; nodes: JsonNode[] }[] = [];
+  const push = (columns: 1 | 2, node: JsonNode) => {
+    const last = out[out.length - 1];
+    if (last && last.columns === columns) last.nodes.push(node);
+    else out.push({ columns, nodes: [node] });
+  };
+  const walk = (items: JsonNode[], columns: 1 | 2) => {
+    for (const node of items) {
+      if (node.type === "columnLayout")
+        walk(node.content ?? [], node.attrs?.columns === 1 ? 1 : 2);
+      else push(columns, node);
+    }
+  };
+  walk(nodes, 1);
+  return out;
 }
 function blocks(
   nodes: JsonNode[],
+  plan: DocxCommentPlan,
+  notes: Map<string, NoteSlot>,
+  library: CitationLibrary,
   list?: { ordered: boolean; level: number },
-): (Paragraph | Table)[] {
-  return nodes.flatMap((n): (Paragraph | Table)[] => {
+): (Paragraph | Table | TableOfContents)[] {
+  return nodes.flatMap((n): (Paragraph | Table | TableOfContents)[] => {
+    if (n.type === "note") return [];
+    if (n.type === "columnLayout")
+      return blocks(n.content ?? [], plan, notes, library, list);
+    if (n.type === "bibliography")
+      return [new Paragraph({ children: [new TextRun("SLBIBFIELD")] })];
+    if (n.type === "tableOfContents") {
+      const max = Number(n.attrs?.maxLevel) === 1 ? "1-1" : "1-3";
+      const pageNumbers = n.attrs?.pageNumbers !== false;
+      return [
+        new TableOfContents("Contents", {
+          hyperlink: true,
+          headingStyleRange: max,
+          ...(pageNumbers ? {} : { pageNumbersEntryLevelsRange: max }),
+        }),
+      ];
+    }
     if (n.type === "bulletList" || n.type === "orderedList")
-      return blocks(n.content ?? [], {
+      return blocks(n.content ?? [], plan, notes, library, {
         ordered: n.type === "orderedList",
         level: list ? Math.min(8, list.level + 1) : 0,
       });
     if (n.type === "listItem" || n.type === "blockquote")
-      return blocks(n.content ?? [], list);
+      return blocks(n.content ?? [], plan, notes, library, list);
     if (n.type === "table")
       return [
         new Table({
@@ -154,7 +409,10 @@ function blocks(
                       columnSpan: Number(cell.attrs?.colspan) || 1,
                       rowSpan: Number(cell.attrs?.rowspan) || 1,
                       verticalAlign: VerticalAlign.TOP,
-                      children: blocks(cell.content ?? []),
+                      children: blocks(cell.content ?? [], plan, notes, library).filter(
+                        (block): block is Paragraph | Table =>
+                          block instanceof Paragraph || block instanceof Table,
+                      ),
                     }),
                 ),
               }),
@@ -172,11 +430,29 @@ function blocks(
         }),
       ];
     const children =
-      n.type === "image" ? runs({ type: "paragraph", content: [n] }) : runs(n);
+      n.type === "image"
+        ? runs({ type: "paragraph", content: [n] }, plan, notes, library)
+        : runs(n, plan, notes, library);
+    const spacing =
+      n.type === "paragraph" || n.type === "heading"
+        ? { ...docxLineSpacing(n.attrs?.lineSpacing), ...docxParagraphGap(n.attrs) }
+        : undefined;
+    const indent =
+      n.type === "paragraph" || n.type === "heading"
+        ? docxParagraphIndent(n.attrs)
+        : undefined;
+    const stop = Number(n.attrs?.tabStop);
+    const tabStops =
+      Number.isFinite(stop) && stop > 0 && stop <= 22
+        ? [{ type: TabStopType.LEFT, position: Math.round(stop * 1440) }]
+        : undefined;
     return [
       new Paragraph({
         children,
+        tabStops,
         alignment: alignment(n.attrs?.textAlign),
+        ...(spacing ? { spacing } : {}),
+        ...(indent ? { indent } : {}),
         heading:
           n.type === "heading"
             ? ([
@@ -188,6 +464,9 @@ function blocks(
                 HeadingLevel.HEADING_6,
               ][Number(n.attrs?.level) - 1] ?? HeadingLevel.HEADING_1)
             : undefined,
+        ...(n.attrs?.keepNext === true ? { keepNext: true } : {}),
+        ...(n.attrs?.keepLines === true ? { keepLines: true } : {}),
+        ...(n.attrs?.widowControl === true ? { widowControl: true } : {}),
         ...(list
           ? list.ordered
             ? { numbering: { reference: "suiteleaf-list", level: list.level } }
@@ -197,13 +476,248 @@ function blocks(
     ];
   });
 }
+type ExportNumberFormat = PageNumberFormat | "arabic";
+/** The first heading marked startArabic begins a new page numbered 1. */
+function splitAtArabicRestart(nodes: JsonNode[]): {
+  front: JsonNode[];
+  body: JsonNode[] | null;
+} {
+  const at = nodes.findIndex(
+    (node) => node.type === "heading" && node.attrs?.startArabic === true,
+  );
+  if (at < 0) return { front: nodes, body: null };
+  const cut = at > 0 && nodes[at - 1]?.type === "pageBreak" ? at - 1 : at;
+  return { front: nodes.slice(0, cut), body: nodes.slice(at) };
+}
+function docxSection(
+  settings: PageSettings,
+  watermark: Paragraph | null,
+  format: ExportNumberFormat,
+  lead: boolean,
+  nextPage: boolean,
+) {
+  const numberRun = () =>
+    new TextRun({
+      children:
+        format === "page"
+          ? ["Page ", PageNumber.CURRENT]
+          : format === "fraction"
+            ? [PageNumber.CURRENT, " / ", PageNumber.TOTAL_PAGES]
+            : [PageNumber.CURRENT],
+    });
+  const topRight =
+    settings.pageNumbers &&
+    settings.pageNumberPositionSet &&
+    settings.pageNumberPosition === "top-right";
+  const headerPart = (
+    text: string,
+    withNumber = false,
+    alignment: (typeof AlignmentType)["LEFT"] | (typeof AlignmentType)["RIGHT"] = AlignmentType.RIGHT,
+  ) =>
+    new Header({
+      children: [
+        ...(watermark ? [watermark] : []),
+        new Paragraph(text),
+        ...(withNumber
+          ? [
+              new Paragraph({
+                alignment,
+                children: [numberRun()],
+              }),
+            ]
+          : []),
+      ],
+    });
+  const footerPart = (
+    text: string,
+    side: "left" | "right" | "center" | "none",
+    numbers: boolean,
+  ) => {
+    const number = numberRun();
+    if (numbers && side === "center")
+      return new Footer({
+        children: [
+          new Paragraph(text),
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            children: [number],
+          }),
+        ],
+      });
+    const children = !numbers
+      ? [new TextRun(text)]
+      : side === "left"
+        ? text
+          ? [number, new TextRun(`  ${text}`)]
+          : [number]
+        : text
+          ? [new TextRun(`${text}  `), number]
+          : [number];
+    return new Footer({
+      children: [
+        new Paragraph({
+          alignment:
+            side === "right" ? AlignmentType.RIGHT : AlignmentType.LEFT,
+          children,
+        }),
+      ],
+    });
+  };
+  const placedFooterSide = (
+    even = false,
+  ): "left" | "right" | "center" | "none" => {
+    if (!settings.pageNumbers) return "none";
+    if (!settings.pageNumberPositionSet) return even ? "left" : "right";
+    if (settings.pageNumberPosition === "top-right") return "none";
+    if (settings.differentOddEven) return even ? "left" : "right";
+    if (settings.pageNumberPosition === "bottom-center") return "center";
+    return "right";
+  };
+  const firstPage = lead && settings.differentFirstPage;
+  const coverPage =
+    lead &&
+    settings.pageNumbers &&
+    settings.coverHasNoNumber &&
+    !settings.differentFirstPage;
+  const coverHeader = settings.differentOddEven
+    ? settings.oddHeader
+    : settings.header;
+  const coverFooter = settings.differentOddEven
+    ? settings.oddFooter
+    : settings.footer;
+  const splitFurniture = firstPage || settings.differentOddEven || coverPage;
+  const start = lead ? wordPageNumberStart(settings) : null;
+  const pageNumbers = !settings.pageNumbers
+    ? undefined
+    : !lead || format === "arabic"
+      ? { start: 1, formatType: NumberFormat.DECIMAL }
+      : format === "roman"
+        ? {
+            ...(start == null ? {} : { start }),
+            formatType: NumberFormat.LOWER_ROMAN,
+          }
+        : start == null
+          ? undefined
+          : { start };
+  const [width, height] =
+    settings.size === "a4" ? [11906, 16838] : [12240, 15840];
+  return {
+    properties: {
+      ...(nextPage ? { type: SectionType.NEXT_PAGE } : {}),
+      ...(firstPage || coverPage ? { titlePage: true } : {}),
+      page: {
+        size: {
+          width: settings.landscape ? height : width,
+          height: settings.landscape ? width : height,
+        },
+        margin: {
+              top: pagePxToTwips(settings.marginTop),
+              bottom: pagePxToTwips(settings.marginBottom),
+              left: pagePxToTwips(settings.marginLeft),
+              right: pagePxToTwips(settings.marginRight),
+          header: pagePxToTwips(settings.headerFromEdge),
+          footer: pagePxToTwips(settings.footerFromEdge),
+        },
+        ...(pageNumbers ? { pageNumbers } : {}),
+      },
+    },
+    headers: splitFurniture
+      ? {
+          default: headerPart(
+            settings.differentOddEven ? settings.oddHeader : settings.header,
+            topRight,
+          ),
+          ...(settings.differentOddEven
+            ? {
+                even: headerPart(
+                  settings.evenHeader,
+                  topRight,
+                  AlignmentType.LEFT,
+                ),
+              }
+            : {}),
+          ...(firstPage
+            ? { first: headerPart(settings.firstHeader) }
+            : coverPage
+              ? { first: headerPart(coverHeader) }
+              : {}),
+        }
+      : {
+          default: headerPart(settings.header, topRight),
+        },
+    footers: splitFurniture
+      ? {
+          default: footerPart(
+            settings.differentOddEven ? settings.oddFooter : settings.footer,
+            placedFooterSide(false),
+            settings.pageNumbers && !topRight,
+          ),
+          ...(settings.differentOddEven
+            ? {
+                even: footerPart(
+                  settings.evenFooter,
+                  placedFooterSide(true),
+                  settings.pageNumbers && !topRight,
+                ),
+              }
+            : {}),
+          ...(firstPage
+            ? { first: footerPart(settings.firstFooter, "none", false) }
+            : coverPage
+              ? { first: footerPart(coverFooter, "none", false) }
+              : {}),
+        }
+      : topRight
+        ? { default: footerPart(settings.footer, "none", false) }
+        : settings.pageNumberPositionSet &&
+            settings.pageNumberPosition === "bottom-center"
+          ? {
+              default: footerPart(
+                settings.footer,
+                "center",
+                settings.pageNumbers,
+              ),
+            }
+          : format === "fraction"
+            ? {
+                default: new Footer({
+                  children: [
+                    new Paragraph({
+                      children: [
+                        new TextRun(settings.footer),
+                        ...(settings.pageNumbers
+                          ? [
+                              new TextRun({
+                                children: [
+                                  "  ",
+                                  PageNumber.CURRENT,
+                                  " / ",
+                                  PageNumber.TOTAL_PAGES,
+                                ],
+                              }),
+                            ]
+                          : []),
+                      ],
+                    }),
+                  ],
+                }),
+              }
+            : {
+                default: footerPart(
+                  settings.footer,
+                  "right",
+                  settings.pageNumbers,
+                ),
+              },
+  };
+}
 export async function exportDocx(
   file: Pick<DocFile, "title" | "content">,
 ): Promise<Uint8Array> {
-  const content = structuredClone(file.content);
+  const content = embedSuggestionMarkers(structuredClone(file.content));
   const prepareImages = async (node: JsonNode): Promise<void> => {
     if (
-      node.type === "image" &&
+      (node.type === "image" || node.type === "inlineImage") &&
       String(node.attrs?.src).startsWith("data:image/webp")
     ) {
       if (typeof document === "undefined")
@@ -224,12 +738,100 @@ export async function exportDocx(
     await Promise.all((node.content ?? []).map(prepareImages));
   };
   await prepareImages(content);
+  const notes = noteIndex(content);
+  const library = citationLibrary(content);
+  const noteBody = (id: string): Paragraph[] => {
+    const note = findNote(content, id);
+    const paragraphs = blocks(note?.content ?? [], blankCommentPlan(), notes, library).filter(
+      (block): block is Paragraph => block instanceof Paragraph,
+    );
+    return paragraphs.length ? paragraphs : [new Paragraph("")];
+  };
+  const footnotes: Record<string, { children: Paragraph[] }> = {};
+  const endnotes: Record<string, { children: Paragraph[] }> = {};
+  for (const [id, slot] of notes) {
+    const target = slot.kind === "endnote" ? endnotes : footnotes;
+    target[String(slot.num)] = { children: noteBody(id) };
+  }
   const settings = documentPageSettings(content);
-  const [width, height] =
-    settings.size === "a4" ? [11906, 16838] : [12240, 15840];
+  const watermark = docxWatermarkParagraph(settings.watermark);
+  const comments = planDocxComments(content);
+  const split = splitAtArabicRestart(content.content ?? []);
+  const parts: {
+    nodes: JsonNode[];
+    format: ExportNumberFormat;
+    lead: boolean;
+    nextPage: boolean;
+  }[] =
+    split.body && split.front.length
+      ? [
+          {
+            nodes: split.front,
+            format: settings.pageNumberFormat,
+            lead: true,
+            nextPage: false,
+          },
+          { nodes: split.body, format: "arabic", lead: false, nextPage: true },
+        ]
+      : [
+          {
+            nodes: split.body ?? split.front,
+            format: split.body ? "arabic" : settings.pageNumberFormat,
+            lead: split.body == null,
+            nextPage: false,
+          },
+        ];
+  const built = parts.flatMap((part) => {
+    const segments = columnSegments(part.nodes);
+    if (!segments.length) segments.push({ columns: 1, nodes: [] });
+    return segments.map((segment, index) => ({
+      format: part.format,
+      lead: part.lead && index === 0,
+      nextPage: part.nextPage && index === 0,
+      continuous: index > 0,
+      columns: segment.columns,
+      children: blocks(segment.nodes, comments, notes, library),
+    }));
+  });
+  const lastBuilt = built[built.length - 1];
+  if (comments.trailing.length)
+    lastBuilt.children.push(
+      new Paragraph({
+        children: comments.trailing.flatMap((id) => [
+          new CommentRangeStart(id),
+          new CommentRangeEnd(id),
+          new CommentReference(id),
+        ]),
+      }),
+    );
+  const sections = built.map((part) => {
+    const section = docxSection(
+      settings,
+      watermark,
+      part.format,
+      part.lead,
+      part.nextPage,
+    );
+    return {
+      ...section,
+      properties: {
+        ...section.properties,
+        ...(part.continuous ? { type: SectionType.CONTINUOUS } : {}),
+        ...(part.columns === 2
+          ? { column: { count: 2, space: 720, equalWidth: true } }
+          : {}),
+      },
+      children: part.children,
+    };
+  });
   const doc = new Document({
     title: file.title,
     creator: "SuiteLeaf",
+    ...(settings.differentOddEven
+      ? { evenAndOddHeaderAndFooters: true }
+      : {}),
+    ...(Object.keys(footnotes).length ? { footnotes } : {}),
+    ...(Object.keys(endnotes).length ? { endnotes } : {}),
     styles: { default: { document: { run: { font: "Arial", size: 22 } } } },
     numbering: {
       config: [
@@ -247,53 +849,26 @@ export async function exportDocx(
         },
       ],
     },
-    sections: [
-      {
-        properties: {
-          page: {
-            size: {
-              width: settings.landscape ? height : width,
-              height: settings.landscape ? width : height,
-            },
-            margin: {
-              top: settings.margin * 15,
-              bottom: settings.margin * 15,
-              left: settings.margin * 15,
-              right: settings.margin * 15,
-              header: 360,
-              footer: 360,
-            },
-          },
-        },
-        headers: {
-          default: new Header({ children: [new Paragraph(settings.header)] }),
-        },
-        footers: {
-          default: new Footer({
-            children: [
-              new Paragraph({
-                children: [
-                  new TextRun(settings.footer),
-                  ...(settings.pageNumbers
-                    ? [
-                        new TextRun({
-                          children: [
-                            "  ",
-                            PageNumber.CURRENT,
-                            " / ",
-                            PageNumber.TOTAL_PAGES,
-                          ],
-                        }),
-                      ]
-                    : []),
-                ],
-              }),
-            ],
-          }),
-        },
-        children: blocks(content.content ?? []),
-      },
-    ],
+    comments: comments.comments.length
+      ? {
+          children: comments.comments.map((comment) => ({
+            id: comment.wordId,
+            author: comment.author,
+            initials: comment.initials,
+            date: comment.date,
+            parentId: comment.parentWordId,
+            resolved: comment.resolved,
+            children: [new Paragraph(comment.text)],
+          })),
+        }
+      : undefined,
+    sections,
   });
-  return new Uint8Array(await Packer.toArrayBuffer(doc));
+  const packed = await revisionizeDocx(
+    new Uint8Array(await Packer.toArrayBuffer(doc)),
+  );
+  const withComments = comments.comments.length
+    ? await stampDocxComments(packed, comments.resolvedWordIds)
+    : packed;
+  return stampDocxCitations(withComments, library, content);
 }

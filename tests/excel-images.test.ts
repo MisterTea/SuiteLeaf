@@ -67,29 +67,28 @@ test.skipIf(!existsSync(fixturePath))(
   },
 );
 
-test("EMF preview keeps its bitmap face opaque without masking cells outside it", async () => {
-  const zip = await JSZip.loadAsync(
-    await readFile(
-      "datasets/apache-poi/files/test-data/spreadsheet/45540_form_Footer.xlsx",
-    ),
-  );
-  const src = rasterEmf(
-    await zip.file("xl/media/image2.emf")!.async("uint8array"),
-  )!;
-  const png = Buffer.from(src.split(",")[1], "base64"),
-    width = png.readUInt32BE(16);
-  const parts: Uint8Array[] = [];
-  for (let offset = 8; offset < png.length;) {
-    const size = png.readUInt32BE(offset);
-    if (png.toString("ascii", offset + 4, offset + 8) === "IDAT")
-      parts.push(png.subarray(offset + 8, offset + 8 + size));
-    offset += size + 12;
-  }
-  const pixels = inflate(Buffer.concat(parts)),
-    stride = width * 4 + 1;
-  expect(pixels[1 + 3]).toBe(0);
-  expect(pixels[5 * stride + 1 + 4 + 3]).toBe(255);
-});
+test.skipIf(!existsSync(fixturePath))(
+  "EMF preview keeps its bitmap face opaque without masking cells outside it",
+  async () => {
+    const zip = await JSZip.loadAsync(await readFile(fixturePath));
+    const src = rasterEmf(
+      await zip.file("xl/media/image2.emf")!.async("uint8array"),
+    )!;
+    const png = Buffer.from(src.split(",")[1], "base64"),
+      width = png.readUInt32BE(16);
+    const parts: Uint8Array[] = [];
+    for (let offset = 8; offset < png.length;) {
+      const size = png.readUInt32BE(offset);
+      if (png.toString("ascii", offset + 4, offset + 8) === "IDAT")
+        parts.push(png.subarray(offset + 8, offset + 8 + size));
+      offset += size + 12;
+    }
+    const pixels = inflate(Buffer.concat(parts)),
+      stride = width * 4 + 1;
+    expect(pixels[1 + 3]).toBe(0);
+    expect(pixels[5 * stride + 1 + 4 + 3]).toBe(255);
+  },
+);
 
 test("text-box appearances preserve run formatting and escape source markup", () => {
   const src = textBoxSource(

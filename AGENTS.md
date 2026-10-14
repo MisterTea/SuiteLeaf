@@ -1,0 +1,12 @@
+# Agent notes
+
+## Tests
+
+Use Vitest for behavior. A Playwright test is for something Vitest cannot see:
+
+- Layout: positions, overlap, scrolling, and whether a control is actually on screen.
+- The sheet grid and the slide canvas, which are painted rather than written as DOM text.
+- Real typing in the document, including caret, selection, and browser-specific keys.
+- Storyboard recordings.
+
+Dialog text, page-number rules, import and export, and saved document state belong in `tests/**/*.test.ts` or a jsdom component test under `tests/ui/`. Do not add a browser spec that only opens the app to read a string the unit test already checks.

@@ -28,6 +28,17 @@ export interface NodeSession {
   token: string;
   user: NodeUser;
 }
+export interface DriveVersion {
+  id: string;
+  itemId: string;
+  contentHash: string;
+  size: number;
+  authorId: string;
+  authorName: string;
+  createdAt: string;
+  name: string | null;
+  restoredFrom: string | null;
+}
 export interface DriveItem {
   id: string;
   parentId: string | null;
@@ -41,8 +52,55 @@ export interface DriveItem {
   createdAt: string;
   updatedAt: string;
   trashed: boolean;
-  role: "viewer" | "editor" | "owner" | null;
+  role: DriveRole | null;
+  /** Display name of the owner, when the server includes it (shared lists). */
+  ownerName?: string | null;
+  /** Head version author. Not the owner, and absent for folders. */
+  lastAuthorId?: string | null;
+  lastAuthorName?: string | null;
+  /** When that head version was written. Same instant version history shows. */
+  lastEditedAt?: string | null;
   available: boolean;
+}
+export type DriveRole = "viewer" | "commenter" | "editor" | "owner";
+export interface AccountProfile {
+  id: string;
+  name: string | null;
+  email: string | null;
+  username: string | null;
+}
+export interface AccessGrant {
+  principalType: "user" | "org" | "owner";
+  principalId: string;
+  role: DriveRole;
+  name: string | null;
+  email: string | null;
+  inheritedFrom: { id: string; name: string } | null;
+  /** When this grant stops opening the file. Null means it does not expire. */
+  expiresAt?: string | null;
+  /** The end time has passed. The owner can still see the row and remove it. */
+  expired?: boolean;
+}
+export interface DriveComment {
+  id: string;
+  itemId: string;
+  authorId: string;
+  body: string;
+  createdAt: string;
+}
+export interface ItemAccess {
+  grants: AccessGrant[];
+  parent: { id: string; name: string } | null;
+  yourRole: DriveRole;
+}
+export interface ShareNotice {
+  id: string;
+  itemId: string;
+  itemName: string;
+  sharerId: string;
+  sharerName: string | null;
+  role: DriveRole;
+  createdAt: string;
 }
 export interface AuthProviders {
   emailAndPassword: boolean;
@@ -160,13 +218,33 @@ export function pendingHandoffUrl() {
   return url;
 }
 
+/** A signed-out session the server may not have revoked yet. */
+const SIGNING_OUT_KEY = "suiteleaf:signing-out";
+
+async function revoke(pending: string) {
+  const { url, token } = JSON.parse(pending) as NodeSession;
+  // Disconnecting waits for this, so a server that never answers can't hold it up.
+  await authClient(url, token)
+    .signOut({ fetchOptions: { signal: AbortSignal.timeout(5000) } })
+    .catch(() => {});
+  if (localStorage.getItem(SIGNING_OUT_KEY) === pending)
+    localStorage.removeItem(SIGNING_OUT_KEY);
+}
+
 export async function signOut() {
   const current = session;
+  if (!current) return;
+  const pending = JSON.stringify({ url: current.url, token: current.token });
+  localStorage.setItem(SIGNING_OUT_KEY, pending);
   setSession(null, "signed-out");
-  if (current)
-    await authClient(current.url, current.token)
-      .signOut()
-      .catch(() => {});
+  await revoke(pending);
+}
+
+/** Revoke a session whose sign-out the app closed before finishing. */
+export async function finishSignOut() {
+  const pending = localStorage.getItem(SIGNING_OUT_KEY);
+  if (pending)
+    await revoke(pending).catch(() => localStorage.removeItem(SIGNING_OUT_KEY));
 }
 
 function requireSession(): NodeSession {
@@ -265,6 +343,77 @@ export const drive = {
       versionId: response.headers.get("etag")?.replace(/"/g, "") || undefined,
     };
   },
+  async accounts(query: string): Promise<AccountProfile[]> {
+    const response = await api(
+      `/api/accounts?q=${encodeURIComponent(query)}`,
+    );
+    return (await response.json()).accounts;
+  },
+  async access(id: string): Promise<ItemAccess> {
+    return (
+      await api(`/api/drive/items/${encodeURIComponent(id)}/access`)
+    ).json();
+  },
+  async share(
+    id: string,
+    principalId: string,
+    role: Exclude<DriveRole, "owner"> | null,
+  ): Promise<void> {
+    await api(`/api/drive/items/${encodeURIComponent(id)}/acl`, {
+      method: "PUT",
+      ...json({
+        principalType: "user",
+        principalId,
+        role,
+      }),
+    });
+  },
+  async notices(): Promise<ShareNotice[]> {
+    return (await (await api("/api/drive/notices")).json()).notices;
+  },
+  async dismissNotice(id: string): Promise<void> {
+    await api(`/api/drive/notices/${encodeURIComponent(id)}/dismiss`, {
+      method: "POST",
+    });
+  },
+  /** A new file the caller owns in My Drive, with the same name and bytes. */
+  async keepCopy(id: string): Promise<DriveItem> {
+    return (
+      await api(`/api/drive/items/${encodeURIComponent(id)}/copy`, {
+        method: "POST",
+      })
+    ).json();
+  },
+  /** End this person's access at `expiresAt`, or clear the end date with null. */
+  async expire(
+    id: string,
+    principalId: string,
+    expiresAt: string | null,
+  ): Promise<void> {
+    await api(`/api/drive/items/${encodeURIComponent(id)}/expiry`, {
+      method: "PUT",
+      ...json({ principalId, expiresAt }),
+    });
+  },
+  /** Make this person the owner now. The caller becomes an editor. */
+  async transfer(id: string, userId: string): Promise<void> {
+    await api(`/api/drive/items/${encodeURIComponent(id)}/owner`, {
+      method: "POST",
+      ...json({ userId }),
+    });
+  },
+  async comments(id: string): Promise<DriveComment[]> {
+    const response = await api(
+      `/api/drive/items/${encodeURIComponent(id)}/comments`,
+    );
+    return (await response.json()).comments;
+  },
+  async comment(id: string, body: string): Promise<void> {
+    await api(`/api/drive/items/${encodeURIComponent(id)}/comments`, {
+      method: "POST",
+      ...json({ body }),
+    });
+  },
   async write(
     id: string,
     body: string,
@@ -280,6 +429,59 @@ export const drive = {
     const result = await response.json();
     if (response.status === 409) throw new DriveConflict(result.item);
     return result;
+  },
+  async versions(id: string): Promise<DriveVersion[]> {
+    return (
+      await (
+        await api(`/api/drive/items/${encodeURIComponent(id)}/versions`)
+      ).json()
+    ).versions;
+  },
+  async readVersion(id: string, versionId: string): Promise<string> {
+    return (
+      await api(
+        `/api/drive/items/${encodeURIComponent(id)}/content?version=${encodeURIComponent(versionId)}`,
+      )
+    ).text();
+  },
+  async nameVersion(
+    id: string,
+    versionId: string,
+    name: string,
+  ): Promise<DriveVersion> {
+    return (
+      await api(
+        `/api/drive/items/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}`,
+        { method: "PATCH", ...json({ name }) },
+      )
+    ).json();
+  },
+  async restoreVersion(
+    id: string,
+    versionId: string,
+    ifMatch?: string,
+  ): Promise<DriveItem> {
+    const headers: Record<string, string> = {};
+    if (ifMatch) headers["if-match"] = `"${ifMatch}"`;
+    const response = await api(
+      `/api/drive/items/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/restore`,
+      { method: "POST", headers },
+    );
+    const result = await response.json();
+    if (response.status === 409) throw new DriveConflict(result.item);
+    return result;
+  },
+  async copyVersion(
+    id: string,
+    versionId: string,
+    name: string,
+  ): Promise<DriveItem> {
+    return (
+      await api(
+        `/api/drive/items/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/copy`,
+        { method: "POST", ...json({ name }) },
+      )
+    ).json();
   },
 };
 
@@ -300,9 +502,20 @@ export async function openDriveFile(item: DriveItem): Promise<FileRecord> {
   };
 }
 
-/** Upload `file` as a new version. Throws [`DriveConflict`] if someone else
- * saved after `link.versionId`. */
-export async function uploadDriveFile(
+let driveWrite: Promise<void> = Promise.resolve();
+
+/** Run drive content writes one at a time so a restore cannot be overwritten
+ * by a save that was already queued. */
+export function withDriveLock<T>(task: () => Promise<T>): Promise<T> {
+  const run = driveWrite.then(task, task);
+  driveWrite = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+export async function uploadDriveFileUnlocked(
   file: SuiteFile,
   link: DriveLink,
 ): Promise<DriveLink> {
@@ -321,6 +534,15 @@ export async function uploadDriveFile(
     syncedAt: file.updatedAt,
     name: item.name,
   };
+}
+
+/** Upload `file` as a new version. Throws [`DriveConflict`] if someone else
+ * saved after `link.versionId`. */
+export async function uploadDriveFile(
+  file: SuiteFile,
+  link: DriveLink,
+): Promise<DriveLink> {
+  return withDriveLock(() => uploadDriveFileUnlocked(file, link));
 }
 
 export async function saveNewDriveFile(

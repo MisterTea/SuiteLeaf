@@ -1,35 +1,604 @@
 import type { JsonNode } from "./index";
+import { bodyEdgeInsets, resolveEdgePx } from "./header-edge";
+export {
+  bodyEdgeInsets,
+  edgeDistanceError,
+  edgeDistancesValid,
+  edgeIntrusionNote,
+  formatEdgeInches,
+  resolveEdgePx,
+  type EdgeKind,
+} from "./header-edge";
+export type PageNumberFormat = "fraction" | "page" | "roman";
+export type PageNumberPosition = "bottom-right" | "bottom-center" | "top-right";
+const pageNumberPositions: PageNumberPosition[] = [
+  "bottom-right",
+  "bottom-center",
+  "top-right",
+];
+/** Page setup accepts 0.25–3 inches. CSS pixels at 96 per inch. */
+export const PX_PER_INCH = 96;
+export const MARGIN_MIN_PX = 0.25 * PX_PER_INCH;
+export const MARGIN_MAX_PX = 3 * PX_PER_INCH;
+export const MIN_MARGIN_PX = MARGIN_MIN_PX;
+export const MAX_MARGIN_PX = MARGIN_MAX_PX;
+export const MARGIN_DEFAULT_PX = 72;
+/** A binding gutter above 2 inches is refused so the text stays on the page. */
+export const maxGutter = 2 * PX_PER_INCH;
+export type MarginEdge = "top" | "bottom" | "left" | "right";
+export type PageMargins = {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+};
 export type PageSettings = {
   size: "letter" | "a4";
   landscape: boolean;
+  /** Older files stored this one inset, in CSS pixels, for every edge. */
   margin: number;
+  /** Extra inside margin, in CSS pixels. 0 means the edges stay equal. */
+  gutter: number;
+  marginTop: number;
+  marginBottom: number;
+  marginLeft: number;
+  marginRight: number;
+  /** Same edges, under the names the gutter and margin dialogs read. */
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
   header: string;
   footer: string;
   pageNumbers: boolean;
+  /** "1 / 2", "Page 1", or lowercase roman "i". */
+  pageNumberFormat: PageNumberFormat;
+  /** Where the number sits. Ignored until pageNumberPositionSet is true. */
+  pageNumberPosition: PageNumberPosition;
+  /**
+   * Files saved before a position was chosen leave this false, so odd and even
+   * pages still number on the outside edge.
+   */
+  pageNumberPositionSet: boolean;
+  /**
+   * The number on the first page of the file. A cover does not use it, and
+   * turning the cover off puts it back. Older files omit it and start at 1.
+   */
+  pageNumberStart: number;
+  /**
+   * The first page has no number and is not counted, so the second page is
+   * page 1 rather than page 2. Footer text stays. The start number is kept.
+   */
+  coverHasNoNumber: boolean;
+  /** Page 1 uses firstHeader and firstFooter and has no page number. */
+  differentFirstPage: boolean;
+  firstHeader: string;
+  firstFooter: string;
+  /**
+   * Pages after the first split by parity. Even pages use evenHeader/evenFooter
+   * and put the page number on the outside left; odd pages use oddHeader/oddFooter
+   * and put it on the outside right. A number already at the top right moves to
+   * the top left on even pages. A number at the bottom center or bottom right
+   * moves to the outside bottom edge. The shared header/footer stay stored so
+   * turning this off puts one header, and the chosen corner, back on every page.
+   */
+  differentOddEven: boolean;
+  evenHeader: string;
+  evenFooter: string;
+  oddHeader: string;
+  oddFooter: string;
+  /**
+   * CSS pixels from the top edge of the paper to the header. One distance for
+   * every header, including a different first page and odd or even pages.
+   * Separate from the top margin.
+   */
+  headerFromEdge: number;
+  /** CSS pixels from the bottom edge of the paper to the footer. One distance for every footer. */
+  footerFromEdge: number;
+  /** A short phrase drawn behind the text. Empty means no watermark. */
+  watermark: string;
 };
+/** Long enough for a word or a short phrase, not a sentence. */
+export const WATERMARK_LIMIT = 40;
+/** The watermark actually drawn. Blank, and anything that is not text, means none. */
+export function watermarkText(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.replace(/\s+/g, " ").trim().slice(0, WATERMARK_LIMIT);
+}
 export const defaultPageSettings: PageSettings = {
   size: "letter",
   landscape: false,
-  margin: 72,
+  margin: MARGIN_DEFAULT_PX,
+  gutter: 0,
+  marginTop: MARGIN_DEFAULT_PX,
+  marginBottom: MARGIN_DEFAULT_PX,
+  marginLeft: MARGIN_DEFAULT_PX,
+  marginRight: MARGIN_DEFAULT_PX,
+  top: MARGIN_DEFAULT_PX,
+  bottom: MARGIN_DEFAULT_PX,
+  left: MARGIN_DEFAULT_PX,
+  right: MARGIN_DEFAULT_PX,
   header: "",
   footer: "",
   pageNumbers: false,
+  pageNumberFormat: "fraction",
+  pageNumberPosition: "bottom-right",
+  pageNumberPositionSet: false,
+  pageNumberStart: 1,
+  coverHasNoNumber: false,
+  differentFirstPage: false,
+  firstHeader: "",
+  firstFooter: "",
+  differentOddEven: false,
+  evenHeader: "",
+  evenFooter: "",
+  oddHeader: "",
+  oddFooter: "",
+  headerFromEdge: MARGIN_DEFAULT_PX,
+  footerFromEdge: MARGIN_DEFAULT_PX,
+  watermark: "",
 };
+const pageText = (value: unknown) =>
+  typeof value === "string" ? value.slice(0, 500) : "";
+function clampMargin(value: unknown, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.min(MARGIN_MAX_PX, Math.max(MARGIN_MIN_PX, value));
+}
+function storedMargin(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
 export function documentPageSettings(content: JsonNode): PageSettings {
   const a = content.attrs?.pageSettings as Partial<PageSettings> | undefined;
+  const uniform = clampMargin(a?.margin, MARGIN_DEFAULT_PX);
+  // A SuiteLeaf file that stored one margin opens with that inset on every
+  // edge. An edge that is present replaces it; Word cannot be stored as one.
+  const edge = (value: unknown) =>
+    storedMargin(value) === undefined ? uniform : clampMargin(value, uniform);
+  const marginTop = edge(a?.marginTop ?? a?.top);
+  const marginBottom = edge(a?.marginBottom ?? a?.bottom);
+  const marginLeft = edge(a?.marginLeft ?? a?.left);
+  const marginRight = edge(a?.marginRight ?? a?.right);
+  const storedGutter = storedMargin(a?.gutter);
+  const gutter =
+    storedGutter === undefined || storedGutter <= 0
+      ? 0
+      : Math.min(maxGutter, storedGutter);
   return {
     size: a?.size === "a4" ? "a4" : "letter",
     landscape: a?.landscape === true,
-    margin:
-      typeof a?.margin === "number" && Number.isFinite(a.margin)
-        ? Math.min(144, Math.max(24, a.margin))
-        : 72,
-    header: typeof a?.header === "string" ? a.header : "",
-    footer: typeof a?.footer === "string" ? a.footer : "",
+    margin: uniform,
+    gutter,
+    marginTop,
+    marginBottom,
+    marginLeft,
+    marginRight,
+    top: marginTop,
+    bottom: marginBottom,
+    left: marginLeft,
+    right: marginRight,
+    headerFromEdge: resolveEdgePx(a?.headerFromEdge, marginTop),
+    footerFromEdge: resolveEdgePx(a?.footerFromEdge, marginBottom),
+    header: pageText(a?.header),
+    footer: pageText(a?.footer),
     // Like Docs and Word, page numbers are off until chosen; settings saved
     // before that default changed keep numbering unless it was turned off.
     pageNumbers: a ? a.pageNumbers !== false : false,
+    pageNumberFormat:
+      a?.pageNumberFormat === "page" || a?.pageNumberFormat === "roman"
+        ? a.pageNumberFormat
+        : "fraction",
+    pageNumberPosition: pageNumberPositions.includes(
+      a?.pageNumberPosition as PageNumberPosition,
+    )
+      ? (a?.pageNumberPosition as PageNumberPosition)
+      : "bottom-right",
+    pageNumberPositionSet: a?.pageNumberPositionSet === true,
+    pageNumberStart: pageNumberStartValue(a?.pageNumberStart),
+    coverHasNoNumber: a?.coverHasNoNumber === true,
+    differentFirstPage: a?.differentFirstPage === true,
+    firstHeader: pageText(a?.firstHeader),
+    firstFooter: pageText(a?.firstFooter),
+    differentOddEven: a?.differentOddEven === true,
+    evenHeader: pageText(a?.evenHeader),
+    evenFooter: pageText(a?.evenFooter),
+    oddHeader: pageText(a?.oddHeader),
+    oddFooter: pageText(a?.oddFooter),
+    watermark: watermarkText(a?.watermark),
   };
+}
+export type PageNumberSide =
+  | "left"
+  | "right"
+  | "center"
+  | "top-right"
+  | "top-left"
+  | "none";
+export type PageFace = {
+  header: string;
+  footer: string;
+  /** Outside edge when odd and even pages differ; otherwise the left. */
+  headerAlign: "left" | "right";
+  numberSide: PageNumberSide;
+  /** Empty when this page has no number. Otherwise "2 / 3" or "Page 2". */
+  pageNumber: string;
+};
+const ROMAN: [number, string][] = [
+  [1000, "m"],
+  [900, "cm"],
+  [500, "d"],
+  [400, "cd"],
+  [100, "c"],
+  [90, "xc"],
+  [50, "l"],
+  [40, "xl"],
+  [10, "x"],
+  [9, "ix"],
+  [5, "v"],
+  [4, "iv"],
+  [1, "i"],
+];
+/** Lowercase roman, as in a contents page. Zero and negatives stay "0". */
+export function lowerRoman(value: number): string {
+  let n = Math.floor(value);
+  if (n <= 0) return "0";
+  let out = "";
+  for (const [amount, glyph] of ROMAN) {
+    while (n >= amount) {
+      out += glyph;
+      n -= amount;
+    }
+  }
+  return out;
+}
+export function pageNumberText(
+  format: PageNumberFormat,
+  page: number,
+  pageCount: number,
+): string {
+  const total = Math.max(pageCount, 1);
+  if (format === "page") return `Page ${page}`;
+  if (format === "roman") return lowerRoman(page);
+  return `${page} / ${total}`;
+}
+/**
+ * The roman chip lists only the pages that exist, from the first printed
+ * number. One page starting at 4 is "iv". Two pages are "iv, v". Three
+ * pages are "iv, v, vi". Longer than three, it shows the first, an ellipsis,
+ * and the last, such as "iv … viii".
+ */
+export function romanPageChip(first: number, pageCount: number): string {
+  const count = Math.max(1, Math.floor(pageCount) || 1);
+  const start = Math.trunc(first);
+  const at = (offset: number) => lowerRoman(start + offset);
+  if (count > 3) return `${at(0)} … ${at(count - 1)}`;
+  return Array.from({ length: count }, (_, offset) => at(offset)).join(", ");
+}
+/**
+ * Labels for the fraction, "Page N", and roman chips. They use the number
+ * on the first page, so a start of 4 on two pages reads "4 / 5", "Page 4",
+ * and "iv, v". The roman chip does not add a page the file does not have.
+ * Pass the last accepted start. The caller keeps that number when the field
+ * is below 1, so the chips do not move.
+ */
+export function pageNumberFormatChips(
+  start: number,
+  pageCount: number,
+): { fraction: string; page: string; roman: string } {
+  const count = Math.max(1, Math.floor(pageCount) || 1);
+  const shown = pageNumberAt(
+    {
+      ...defaultPageSettings,
+      pageNumberStart: pageNumberStartValue(start),
+    },
+    0,
+    count,
+  );
+  return {
+    fraction: pageNumberText("fraction", shown.page, shown.total),
+    page: pageNumberText("page", shown.page, shown.total),
+    roman: romanPageChip(shown.page, count),
+  };
+}
+/** A start number is a whole page from 1 through 9999. Anything else starts at 1. */
+export const PAGE_NUMBER_START_MAX = 9999;
+export function pageNumberStartValue(value: unknown): number {
+  if (typeof value !== "number" || !Number.isInteger(value)) return 1;
+  if (value < 1 || value > PAGE_NUMBER_START_MAX) return 1;
+  return value;
+}
+/**
+ * The number drawn on a page, and the last number in the file.
+ * A cover is not counted: the second page is 1, and Start at waits until the
+ * cover is turned off.
+ */
+export function pageNumberAt(
+  settings: PageSettings,
+  pageIndex: number,
+  pageCount: number,
+): { page: number; total: number } {
+  const cover = settings.coverHasNoNumber;
+  const start = cover ? 1 : settings.pageNumberStart;
+  const skip = cover ? 1 : 0;
+  const count = Math.max(1, pageCount - skip);
+  return {
+    page: start + pageIndex - skip,
+    total: start + count - 1,
+  };
+}
+/**
+ * Word's `w:start`, or null when the section still begins at 1.
+ * A cover hides page 0, so the second page displays as 1.
+ */
+export function wordPageNumberStart(settings: PageSettings): number | null {
+  if (!settings.pageNumbers) return null;
+  if (settings.coverHasNoNumber) return 0;
+  if (settings.pageNumberStart === 1) return null;
+  return settings.pageNumberStart;
+}
+function chosenNumberSide(settings: PageSettings): PageNumberSide {
+  if (settings.pageNumberPosition === "bottom-center") return "center";
+  if (settings.pageNumberPosition === "top-right") return "top-right";
+  return "right";
+}
+/**
+ * The outside edge of a corner the reader already chose.
+ * Top right stays on the right of an odd page and moves to the top left of an
+ * even page. Bottom center and bottom right both sit on the outside bottom edge.
+ */
+function outsideNumberSide(settings: PageSettings, even: boolean): PageNumberSide {
+  if (settings.pageNumberPosition === "top-right")
+    return even ? "top-left" : "top-right";
+  return even ? "left" : "right";
+}
+/**
+ * Which header, footer, and page-number edge a page uses.
+ * Page 1 keeps its letterhead when different first page is on.
+ * With odd and even pages, the number sits on the outside edge: left on even
+ * pages, right on odd pages. A chosen top-right corner stays at the top.
+ * A cover is not a numbered sheet. The next page is page 1, so its number
+ * sits on the outside right, and the page after that is page 2 on the left.
+ * Otherwise every numbered page uses the chosen corner, or the bottom right.
+ */
+function spreadEven(
+  settings: PageSettings,
+  pageIndex: number,
+  pageCount: number,
+): boolean {
+  const page = pageIndex + 1;
+  if (!settings.coverHasNoNumber) return page % 2 === 0;
+  // The cover keeps the odd-page header. Numbering starts on the next sheet.
+  if (page === 1) return false;
+  return pageNumberAt(settings, pageIndex, pageCount).page % 2 === 0;
+}
+export function pageFace(
+  settings: PageSettings,
+  pageIndex: number,
+  pageCount: number,
+  /** 0-based page where a heading restarts numbering at arabic 1. */
+  arabicStart?: number | null,
+): PageFace {
+  const page = pageIndex + 1;
+  const first = page === 1 && settings.differentFirstPage;
+  const even = spreadEven(settings, pageIndex, pageCount);
+  let header = settings.header;
+  let footer = settings.footer;
+  let headerAlign: "left" | "right" = "left";
+  let numberSide: PageNumberSide = "none";
+  if (settings.pageNumbers) {
+    numberSide =
+      settings.pageNumberPositionSet && !first
+        ? chosenNumberSide(settings)
+        : "right";
+  }
+  if (first) {
+    header = settings.firstHeader;
+    footer = settings.firstFooter;
+    numberSide = "none";
+  } else if (settings.differentOddEven) {
+    header = even ? settings.evenHeader : settings.oddHeader;
+    footer = even ? settings.evenFooter : settings.oddFooter;
+    headerAlign = even ? "left" : "right";
+    if (settings.pageNumbers)
+      numberSide = settings.pageNumberPositionSet
+        ? outsideNumberSide(settings, even)
+        : even
+          ? "left"
+          : "right";
+  }
+  // A cover keeps its footer and drops only the number. It is not page 1.
+  if (page === 1 && settings.coverHasNoNumber) numberSide = "none";
+  const shown = pageNumberAt(settings, pageIndex, pageCount);
+  const restarted =
+    typeof arabicStart === "number" &&
+    Number.isInteger(arabicStart) &&
+    arabicStart >= 0 &&
+    pageIndex >= arabicStart;
+  return {
+    header,
+    footer,
+    headerAlign,
+    numberSide,
+    pageNumber:
+      numberSide === "none"
+        ? ""
+        : restarted
+          ? String(pageIndex - arabicStart + 1)
+          : pageNumberText(settings.pageNumberFormat, shown.page, shown.total),
+  };
+}
+/** Copy the shared header into the even and odd fields the first time they are used. */
+export function setDifferentOddEven(
+  settings: PageSettings,
+  on: boolean,
+): PageSettings {
+  if (!on) return { ...settings, differentOddEven: false };
+  const blank =
+    !settings.evenHeader &&
+    !settings.evenFooter &&
+    !settings.oddHeader &&
+    !settings.oddFooter;
+  if (!blank) return { ...settings, differentOddEven: true };
+  return {
+    ...settings,
+    differentOddEven: true,
+    evenHeader: settings.header,
+    evenFooter: settings.footer,
+    oddHeader: settings.header,
+    oddFooter: settings.footer,
+  };
+}
+export function setDifferentFirstPage(
+  settings: PageSettings,
+  on: boolean,
+): PageSettings {
+  return { ...settings, differentFirstPage: on };
+}
+/** Where a chosen number goes once odd and even pages are on, or null when they are not. */
+function mirroredNumberPlace(settings: PageSettings): string | null {
+  if (!settings.differentOddEven || !settings.pageNumberPositionSet) return null;
+  return settings.pageNumberPosition === "top-right"
+    ? "Top left on even pages, top right on odd pages"
+    : "Bottom left on even pages, bottom right on odd pages";
+}
+function numberPlace(settings: PageSettings): string {
+  return settings.pageNumberPositionSet && settings.pageNumberPosition === "bottom-center"
+    ? "Bottom center"
+    : settings.pageNumberPositionSet && settings.pageNumberPosition === "top-right"
+      ? "Top right"
+      : "Bottom right";
+}
+export function pageNumberHint(settings: PageSettings, pageCount = 2): string {
+  if (!settings.pageNumbers)
+    return "Off on every page. Start at and the cover choice stay until you turn numbers on.";
+  const kept = "Editing the footer leaves it in place.";
+  if (settings.coverHasNoNumber) {
+    const next = pageNumberAt(settings, 1, pageCount);
+    const counted = pageNumberAt(
+      { ...settings, coverHasNoNumber: false, pageNumberStart: 1 },
+      1,
+      pageCount,
+    );
+    const shown = pageNumberText(settings.pageNumberFormat, next.page, next.total);
+    const asTwo = pageNumberText(
+      settings.pageNumberFormat,
+      counted.page,
+      counted.total,
+    );
+    const edge = settings.differentOddEven
+      ? " The next page’s number sits on the outside right, and the page after that on the left."
+      : "";
+    return `No number on the cover. The next page is “${shown}”, not “${asTwo}”. Start at stays for when the cover has a number.${edge} ${kept}`;
+  }
+  const mirrored = mirroredNumberPlace(settings);
+  if (mirrored) {
+    const where = settings.differentFirstPage
+      ? `No number on page 1. ${mirrored}`
+      : mirrored;
+    if (settings.pageNumberStart !== 1) {
+      const count = Math.max(1, Math.floor(pageCount) || 1);
+      const first = pageNumberAt(settings, 0, count);
+      const started = pageNumberText(
+        settings.pageNumberFormat,
+        first.page,
+        first.total,
+      );
+      if (count < 2) return `${where}, “${started}”. ${kept}`;
+      const second = pageNumberAt(settings, 1, count);
+      const next = pageNumberText(
+        settings.pageNumberFormat,
+        second.page,
+        second.total,
+      );
+      return `${where}, starting at “${started}”. The next page is “${next}”. ${kept}`;
+    }
+    const sample =
+      settings.pageNumberFormat === "page"
+        ? "Page 1"
+        : settings.pageNumberFormat === "roman"
+          ? settings.differentFirstPage
+            ? "ii"
+            : "i"
+          : pageNumberText("fraction", 1, pageCount);
+    return `${where}, as “${sample}”. ${kept}`;
+  }
+  if (settings.pageNumberStart !== 1) {
+    const count = Math.max(1, Math.floor(pageCount) || 1);
+    const first = pageNumberAt(settings, 0, count);
+    const started = pageNumberText(
+      settings.pageNumberFormat,
+      first.page,
+      first.total,
+    );
+    if (count < 2)
+      return `${numberPlace(settings)} of the only page, “${started}”. ${kept}`;
+    const second = pageNumberAt(settings, 1, count);
+    const next = pageNumberText(
+      settings.pageNumberFormat,
+      second.page,
+      second.total,
+    );
+    return `${numberPlace(settings)} of every page, starting at “${started}”. The next page is “${next}”. ${kept}`;
+  }
+  if (!settings.pageNumberPositionSet && settings.differentOddEven)
+    return settings.differentFirstPage
+      ? "No number on page 1. Left on even pages, right on odd pages."
+      : "Left on even pages, right on odd pages.";
+  if (
+    settings.differentFirstPage &&
+    !settings.pageNumberPositionSet &&
+    settings.pageNumberFormat === "fraction"
+  )
+    return "Page 1 has no number. Page 2 shows 2.";
+  const sample =
+    settings.pageNumberFormat === "page"
+      ? settings.differentFirstPage
+        ? "Page 2"
+        : "Page 1"
+      : settings.pageNumberFormat === "roman"
+        ? settings.differentFirstPage
+          ? "ii"
+          : "i"
+        : pageNumberText("fraction", 1, pageCount);
+  const place = numberPlace(settings);
+  if (settings.differentFirstPage)
+    return `No number on page 1. ${place} on later pages, as “${sample}”. ${kept}`;
+  return `${place} of every page, as “${sample}”. ${kept}`;
+}
+export function pageMarginsValid(
+  settings: Pick<
+    PageSettings,
+    "marginTop" | "marginBottom" | "marginLeft" | "marginRight"
+  >,
+): boolean {
+  return pageMarginsError(settings) === null;
+}
+/** Why Apply must stay off, or null when every edge is inside 0.25–3 inches. */
+export function pageMarginError(marginPx: number): string | null {
+  if (!Number.isFinite(marginPx)) return "Enter a margin in inches.";
+  if (marginPx > MARGIN_MAX_PX) return "A margin cannot be more than 3 inches.";
+  if (marginPx < MARGIN_MIN_PX) return "A margin must be at least 0.25 inches.";
+  return null;
+}
+export function pageMarginsError(
+  settings: Pick<
+    PageSettings,
+    "marginTop" | "marginBottom" | "marginLeft" | "marginRight"
+  >,
+): string | null {
+  for (const n of [
+    settings.marginTop,
+    settings.marginBottom,
+    settings.marginLeft,
+    settings.marginRight,
+  ]) {
+    const error = pageMarginError(n);
+    if (error) return error;
+  }
+  return null;
+}
+/** Inches for Page setup, trimmed so 0.75 does not show as a long decimal. */
+export function formatMarginInches(px: number): string {
+  return String(Math.round((px / 96) * 1000) / 1000);
 }
 export function pageDimensions(settings: PageSettings) {
   const [width, height] = settings.size === "a4" ? [794, 1123] : [816, 1056];
@@ -37,6 +606,45 @@ export function pageDimensions(settings: PageSettings) {
     width: settings.landscape ? height : width,
     height: settings.landscape ? width : height,
   };
+}
+function pageNumberContent(settings: PageSettings): string {
+  return settings.pageNumberFormat === "page"
+    ? '"Page " counter(page)'
+    : settings.pageNumberFormat === "roman"
+      ? "counter(page, lower-roman)"
+      : 'counter(page) " / " counter(pages)';
+}
+function pageNumberMarginBox(settings: PageSettings): string {
+  if (!settings.pageNumbers) return "";
+  if (settings.differentOddEven && settings.pageNumberPositionSet) return "";
+  const slot =
+    settings.pageNumberPositionSet && settings.pageNumberPosition === "bottom-center"
+      ? "bottom-center"
+      : settings.pageNumberPositionSet && settings.pageNumberPosition === "top-right"
+        ? "top-right"
+        : "bottom-right";
+  return `@${slot} { content: ${pageNumberContent(settings)}; font: 10pt Arial, sans-serif; color: #555; }`;
+}
+/** Print the outside edge: even pages on the left, odd pages on the right. */
+function printedOutsideRule(settings: PageSettings): string {
+  if (!settings.pageNumbers || !settings.differentOddEven || !settings.pageNumberPositionSet)
+    return "";
+  const content = pageNumberContent(settings);
+  const box = (slot: string) =>
+    `@${slot} { content: ${content}; font: 10pt Arial, sans-serif; color: #555; }`;
+  if (settings.pageNumberPosition === "top-right")
+    return `@page:left { ${box("top-left")} } @page:right { ${box("top-right")} }`;
+  return `@page:left { ${box("bottom-left")} } @page:right { ${box("bottom-right")} }`;
+}
+/** Print the same start the screen uses. A cover's hidden first page is 0. */
+function printedPageStart(settings: PageSettings): string {
+  const start = wordPageNumberStart(settings);
+  if (start == null) return "";
+  return `counter-reset: page ${start - 1};`;
+}
+function printedCoverRule(settings: PageSettings): string {
+  if (!settings.pageNumbers || !settings.coverHasNoNumber) return "";
+  return "@page:first { @top-left { content: none; } @top-center { content: none; } @top-right { content: none; } @bottom-left { content: none; } @bottom-center { content: none; } @bottom-right { content: none; } }";
 }
 const escapeHtml = (text: string) =>
   text.replace(
@@ -54,15 +662,34 @@ export function documentHtml(
   settings: PageSettings,
 ) {
   const { width, height } = pageDimensions(settings);
+  const layout = {
+    ...settings,
+    headerFromEdge: resolveEdgePx(settings.headerFromEdge, settings.marginTop),
+    footerFromEdge: resolveEdgePx(settings.footerFromEdge, settings.marginBottom),
+  };
+  const insets = bodyEdgeInsets(layout, width);
+  const edges = `${settings.marginTop / 96}in ${settings.marginRight / 96}in ${settings.marginBottom / 96}in ${settings.marginLeft / 96}in`;
+  const padding = `${insets.top / 96}in ${settings.marginRight / 96}in ${insets.bottom / 96}in ${settings.marginLeft / 96}in`;
   const pageRule = [
     `size: ${width / 96}in ${height / 96}in;`,
-    `margin: ${settings.margin / 96}in;`,
-    settings.pageNumbers
-      ? `@bottom-right { content: counter(page) " / " counter(pages); font: 10pt Arial, sans-serif; color: #555; }`
-      : "",
-  ].join(" ");
+    `margin: ${edges};`,
+    printedPageStart(settings),
+    pageNumberMarginBox(settings),
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const coverRule = printedCoverRule(settings);
+  const outsideRule = printedOutsideRule(settings);
   const furniture = (tag: "header" | "footer", text: string) =>
     text ? `<${tag} class="page-${tag}">${escapeHtml(text)}</${tag}>` : "";
+  const mark = watermarkText(settings.watermark);
+  const watermark = mark
+    ? `<div class="page-watermark" aria-hidden="true">${escapeHtml(mark)}</div>`
+    : "";
+  const watermarkCss = mark
+    ? `.page-watermark { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; font: 700 96px/1 Arial, sans-serif; letter-spacing: 0.08em; color: rgba(95, 99, 104, 0.36); pointer-events: none; user-select: none; z-index: 0; }
+main { position: relative; z-index: 1; }`
+    : "";
   return `<!doctype html>
 <html>
 <head>
@@ -70,20 +697,81 @@ export function documentHtml(
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title>
 <style>
-body { max-width: ${width / 96}in; margin: 0 auto; padding: ${settings.margin / 96}in; box-sizing: border-box; font: 11pt/1.5 Arial, sans-serif; }
-.page-header, .page-footer { color: #555; font-size: 10pt; white-space: pre-wrap; }
-.page-header { margin-bottom: 2em; }
-.page-footer { margin-top: 2em; }
+body { position: relative; max-width: ${width / 96}in; margin: 0 auto; padding: ${padding}; box-sizing: border-box; font: 11pt/1.5 Arial, sans-serif; }
+.page-header, .page-footer { color: #555; font-size: 10pt; line-height: 16px; white-space: pre-wrap; }
+.page-header { position: absolute; top: ${layout.headerFromEdge / 96}in; left: ${settings.marginLeft / 96}in; right: ${settings.marginRight / 96}in; margin: 0; }
+.page-footer { position: absolute; bottom: ${layout.footerFromEdge / 96}in; left: ${settings.marginLeft / 96}in; right: ${settings.marginRight / 96}in; margin: 0; }
+${watermarkCss}
 [data-page-break] { break-before: page; }
+[data-columns="2"] { column-count: 2; column-gap: 0.5in; }
+.doc-columns { column-count: 2; column-gap: 0.5in; }
 @page { ${pageRule} }
+${outsideRule}
+${coverRule}
 @media print { body { max-width: none; padding: 0; } }
 </style>
 </head>
 <body>
+${watermark}
 ${furniture("header", settings.header)}
 <main>${bodyHtml}</main>
 ${furniture("footer", settings.footer)}
 </body>
 </html>
 `;
+}
+
+/** True when a gutter, in CSS pixels, can be stored and laid out. */
+export function gutterAccepted(px: number): boolean {
+  return Number.isFinite(px) && px >= 0 && px <= maxGutter;
+}
+/** Why a margin cannot be applied, or null when it is inside 0.25–3 inches. */
+export function marginError(px: number): string | null {
+  if (!Number.isFinite(px)) return "Enter each margin in inches.";
+  if (px < MIN_MARGIN_PX) return "A margin must be at least 0.25 inches.";
+  if (px > MAX_MARGIN_PX) return "A margin must be at most 3 inches.";
+  return null;
+}
+const marginField = {
+  top: "marginTop",
+  bottom: "marginBottom",
+  left: "marginLeft",
+  right: "marginRight",
+} as const;
+/** Replace one edge. The named field and the marginTop-style field stay equal. */
+export function setPageMargin(
+  settings: PageSettings,
+  edge: MarginEdge,
+  px: number,
+): PageSettings {
+  return { ...settings, [edge]: px, [marginField[edge]]: px };
+}
+/**
+ * Horizontal insets for a 1-based page. Odd pages keep the extra space on
+ * the left. Even pages keep it on the right.
+ */
+export function pageSideInsets(
+  settings: PageSettings,
+  pageNumber: number,
+): { left: number; right: number } {
+  const odd = Math.abs(pageNumber) % 2 === 1;
+  return odd
+    ? { left: settings.left + settings.gutter, right: settings.right }
+    : { left: settings.left, right: settings.right + settings.gutter };
+}
+/** CSS variables the page, furniture, and notes read. */
+export function pageMarginVars(settings: PageMargins): {
+  "--page-margin": string;
+  "--page-margin-top": string;
+  "--page-margin-right": string;
+  "--page-margin-bottom": string;
+  "--page-margin-left": string;
+} {
+  return {
+    "--page-margin": `${settings.top}px`,
+    "--page-margin-top": `${settings.top}px`,
+    "--page-margin-right": `${settings.right}px`,
+    "--page-margin-bottom": `${settings.bottom}px`,
+    "--page-margin-left": `${settings.left}px`,
+  };
 }

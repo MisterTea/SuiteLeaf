@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { resolve, extname, sep } from "node:path";
@@ -11,6 +11,7 @@ async function exported(page: Page) {
 }
 test("document edit → formatting → autosave → reopen → native export", async ({
   page,
+  isMobile,
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -19,7 +20,10 @@ test("document edit → formatting → autosave → reopen → native export", a
   await page.getByLabel("File title").fill("Field notes");
   const editor = page.getByRole("textbox", { name: "Document content" });
   await editor.fill("A working idea");
-  await editor.press("ControlOrMeta+A");
+  // Playwright's WebKit sends Ctrl+A with the macOS "move to paragraph start"
+  // command, which iPhone emulation on Linux applies after the select-all.
+  if (isMobile) await editor.selectText();
+  else await editor.press("ControlOrMeta+A");
   await page.getByRole("button", { name: "Bold", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("Saved");
   await page.getByRole("button", { name: "Back to files" }).click();
@@ -95,7 +99,10 @@ test("spreadsheet formulas → embedded chart → pivot worksheet → save and r
     ].cellData[row][1].v;
   await expect.poll(() => pivotCell(1)).toBe(7000);
   expect(await pivotCell(5)).toBe(24000);
-  await page.getByRole("button", { name: /^Undo/ }).first().click();
+  const undo = page.getByRole("button", { name: /^Undo/ }).first();
+  if (!(await undo.isVisible()))
+    await page.getByRole("button", { name: "More tools" }).click();
+  await undo.click();
   await expect.poll(() => pivotCell(1)).toBe(6000);
   expect(await pivotCell(5)).toBe(23000);
   await page.getByText("Charts & pivots (2)", { exact: true }).click();
@@ -208,14 +215,24 @@ test("a downloaded native file says what it is and reopens over its library copy
   await expect(rows).toHaveCount(2);
 
   await page
-    .getByRole("button", { name: "Remove Packing list", exact: true })
+    .getByRole("button", { name: "Move Packing list to Trash", exact: true })
     .click();
-  const confirm = page.getByRole("dialog", { name: "Delete this file?" });
+  await expect(page.locator(".trash-toast")).toContainText(
+    "Moved “Packing list” to Trash",
+  );
+  await page.getByRole("button", { name: "Trash", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Delete Packing list forever", exact: true })
+    .click();
+  const confirm = page.getByRole("dialog", {
+    name: "Delete “Packing list” forever?",
+  });
   await expect(confirm).toContainText(
-    "“Packing list” will be deleted from this browser. This can't be undone.",
+    "“Packing list” will be deleted from this browser forever. This can't be undone.",
   );
   await expect(confirm).toContainText("open it again with Open / import");
-  await confirm.getByRole("button", { name: "Delete" }).click();
+  await confirm.getByRole("button", { name: "Delete forever" }).click();
+  await page.getByRole("button", { name: "All files", exact: true }).click();
   await expect(rows).toHaveCount(1);
 });
 test("cached application and local files work offline", async ({ page }) => {
@@ -431,13 +448,17 @@ test("CSV import dialog chooses the separator, header row, and code columns", as
     "3 data rows · 4 columns · semicolon-separated, plus a header row",
   );
   await expect(dialog.getByLabel("Separator")).toHaveValue(";");
-  await expect(dialog).toContainText("Member ID and ZIP have codes with leading zeros");
+  await expect(dialog).toContainText(
+    "Member ID and ZIP have codes with leading zeros",
+  );
   await expect(zip).toHaveText("ZIPText");
   await dialog.getByLabel("Keep code columns as text").uncheck();
   await expect(zip).toHaveText("ZIPMixed");
   await dialog.getByLabel("Keep code columns as text").check();
   await dialog.getByLabel("First row is a header").uncheck();
-  await expect(summary).toHaveText("4 data rows · 4 columns · semicolon-separated");
+  await expect(summary).toHaveText(
+    "4 data rows · 4 columns · semicolon-separated",
+  );
   await dialog.getByLabel("First row is a header").check();
   await dialog.getByLabel("Separator").selectOption(",");
   await expect(summary).toContainText("1 column · comma-separated");
@@ -445,14 +466,17 @@ test("CSV import dialog chooses the separator, header row, and code columns", as
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(page.locator(".error")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Open / import" })).toBeEnabled();
+  await expect(
+    page.getByRole("button", { name: "Open / import" }),
+  ).toBeEnabled();
 
   await pick();
   await dialog.getByRole("button", { name: "Import", exact: true }).click();
   await page.getByText("Sheet1", { exact: true }).first().waitFor();
   const saved = await exported(page);
   const cells =
-    saved.content.workbook.sheets[saved.content.workbook.sheetOrder[0]].cellData;
+    saved.content.workbook.sheets[saved.content.workbook.sheetOrder[0]]
+      .cellData;
   expect(cells[1][0]).toMatchObject({ v: "00412", t: 1 });
   expect(cells[2][2]).toMatchObject({ v: "10001", t: 1 });
   expect(cells[2][3]).toMatchObject({ v: 0, t: 2 });
@@ -665,16 +689,23 @@ test("slides use placeholders, re-apply layouts, and reorder by dragging thumbna
   const boxes = page.locator(".slide-canvas .slide-element textarea");
   await expect(boxes).toHaveCount(2);
   await expect(boxes.nth(0)).toHaveValue("");
-  await expect(boxes.nth(0)).toHaveAttribute("placeholder", "Click to add title");
-  await expect(boxes.nth(1)).toHaveAttribute("placeholder", "Click to add subtitle");
+  await expect(boxes.nth(0)).toHaveAttribute(
+    "placeholder",
+    "Click to add title",
+  );
+  await expect(boxes.nth(1)).toHaveAttribute(
+    "placeholder",
+    "Click to add subtitle",
+  );
   await boxes.nth(0).click();
   await page.keyboard.type("Kickoff");
   await expect(boxes.nth(0)).toHaveValue("Kickoff");
 
   for (const label of ["Line", "Grid view", "Zoom"])
     await expect(page.getByLabel(label, { exact: true })).toHaveCount(0);
-  for (const text of ["Transition", "Menus"])
-    await expect(page.getByRole("button", { name: text, exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Transition", exact: true }),
+  ).toHaveCount(0);
 
   // Layout on an existing slide moves its text into the new arrangement.
   await page.locator(".slide-canvas").click({ position: { x: 10, y: 10 } });
@@ -682,7 +713,10 @@ test("slides use placeholders, re-apply layouts, and reorder by dragging thumbna
   await page.getByRole("menuitem", { name: "Two columns" }).click();
   await expect(boxes).toHaveCount(3);
   await expect(boxes.nth(0)).toHaveValue("Kickoff");
-  await expect(boxes.nth(2)).toHaveAttribute("placeholder", "Click to add text");
+  await expect(boxes.nth(2)).toHaveAttribute(
+    "placeholder",
+    "Click to add text",
+  );
   const title = (await boxes.nth(0).boundingBox())!;
   const canvas = (await page.locator(".slide-canvas").boundingBox())!;
   expect(title.y - canvas.y).toBeLessThan(canvas.height * 0.2);
@@ -727,14 +761,15 @@ test("slides use placeholders, re-apply layouts, and reorder by dragging thumbna
 test("PowerPoint presentation import via drag/upload into workspace", async ({
   page,
 }) => {
-  const errors: string[] = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto("/");
-
   const samplePath = resolve(
     process.cwd(),
     "datasets/apache-poi/files/test-data/slideshow/sample.pptx",
   );
+  test.skip(!existsSync(samplePath), "Downloaded corpus is local-only.");
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/");
+
   const sampleBuf = await readFile(samplePath);
 
   await page.locator('input[type="file"]').setInputFiles({

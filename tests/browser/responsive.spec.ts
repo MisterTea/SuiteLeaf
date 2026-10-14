@@ -122,7 +122,10 @@ test.describe("Desktop & Mobile End-to-End Responsive Suite", () => {
     const editor = page.getByRole("textbox", { name: "Document content" });
     await editor.click();
     await editor.fill("Responsive editing verified");
-    await editor.press("ControlOrMeta+A");
+    // Playwright's WebKit sends Ctrl+A with the macOS "move to paragraph start"
+    // command, which iPhone emulation on Linux applies after the select-all.
+    if (isMobile) await editor.selectText();
+    else await editor.press("ControlOrMeta+A");
 
     const boldBtn = page.getByRole("button", { name: "Bold", exact: true });
     await boldBtn.scrollIntoViewIfNeeded();

@@ -1,5 +1,28 @@
 import { z } from "zod";
 
+export { diffDocuments, type DocDiff } from "./doc-diff";
+export {
+  applyParagraphRestore,
+  compareParagraphs,
+  paragraphRestorePrompt,
+  type ParagraphCompare,
+  type ParagraphOffer,
+} from "./doc-paragraph-restore";
+export {
+  diffSheets,
+  type CellLook,
+  type SheetCellChange,
+  type SheetDiff,
+  type SheetDiffSheet,
+  type SheetPlainCell,
+} from "./sheet-diff";
+export {
+  diffSlides,
+  type SlideDiff,
+  type SlideDiffElement,
+  type SlideDiffFrame,
+  type SlideTextRun,
+} from "./slide-diff";
 export type Kind = "doc" | "sheet" | "slide";
 export type JsonNode = {
   type: string;
@@ -101,6 +124,15 @@ export const pivotSchema = z.object({
   invalid: z.boolean().optional(),
 });
 export type PivotDefinition = z.infer<typeof pivotSchema>;
+/** One slice of a text box. Unset bold, italic, underline, and colour follow the box. */
+export const textRunSchema = z.object({
+  text: z.string(),
+  bold: z.boolean().optional(),
+  italic: z.boolean().optional(),
+  underline: z.boolean().optional(),
+  color: z.string().max(40).optional(),
+});
+export type TextRun = z.infer<typeof textRunSchema>;
 export const slideElementSchema = z.object({
   id: z.string(),
   type: z.enum(["text", "shape", "image", "table"]),
@@ -110,6 +142,8 @@ export const slideElementSchema = z.object({
   height: z.number().nonnegative(),
   rotation: z.number().optional(),
   content: z.string().optional(),
+  /** Per-word styles. The plain `content` string stays in sync with these runs. */
+  runs: z.array(textRunSchema).optional(),
   placeholder: z.string().optional(),
   fontSize: z.number().optional(),
   fontFamily: z.string().optional(),
@@ -125,11 +159,36 @@ export const slideElementSchema = z.object({
   fill: z.string().optional(),
   stroke: z.string().optional(),
   strokeWidth: z.number().optional(),
+  /** Set when someone chose this element's font or colour by hand. */
+  themeOverride: z.boolean().optional(),
+  /** Hidden in the slideshow until the next click, then faded in. */
+  animation: z.literal("fade-on-click").optional(),
   src: z.string().optional(),
   alt: z.string().optional(),
   rows: z.array(z.array(z.string())).optional(),
 });
 export type SlideElement = z.infer<typeof slideElementSchema>;
+export const slideCommentMessageSchema = z.object({
+  id: z.string().min(1),
+  authorName: z.string().min(1).max(80),
+  text: z.string().min(1).max(4000),
+  createdAt: z.string().datetime(),
+});
+export type SlideCommentMessage = z.infer<typeof slideCommentMessageSchema>;
+/** A review thread on one object. Speaker notes stay on the slide, not here. */
+export const slideCommentThreadSchema = z.object({
+  id: z.string().min(1),
+  elementId: z.string().min(1),
+  resolved: z.boolean().optional(),
+  resolvedBy: z.string().max(80).optional(),
+  messages: z.array(slideCommentMessageSchema).min(1).max(50),
+});
+export type SlideCommentThread = z.infer<typeof slideCommentThreadSchema>;
+export const slideTransitionSchema = z.object({
+  type: z.enum(["none", "fade", "slide", "push"]),
+  duration: z.number().min(0).max(10),
+});
+export type SlideTransition = z.infer<typeof slideTransitionSchema>;
 export const slideSchema = z.object({
   id: z.string(),
   title: z.string().optional(),
@@ -144,14 +203,28 @@ export const slideSchema = z.object({
     .optional(),
   elements: z.array(slideElementSchema),
   notes: z.string().optional(),
+  comments: z.array(slideCommentThreadSchema).max(40).optional(),
+  transition: slideTransitionSchema.optional(),
 });
 export type Slide = z.infer<typeof slideSchema>;
+export const slideThemeSchema = z.object({
+  id: z.string().min(1).max(80),
+  name: z.string().min(1).max(80),
+  background: z.string().min(1).max(40),
+  headingColor: z.string().min(1).max(40),
+  bodyColor: z.string().min(1).max(40),
+  accent: z.string().min(1).max(40),
+  headingFont: z.string().min(1).max(80),
+  bodyFont: z.string().min(1).max(80),
+});
+export type SlideTheme = z.infer<typeof slideThemeSchema>;
 export const presentationSchema = z.object({
   id: z.string(),
   width: z.number().positive(),
   height: z.number().positive(),
   slideOrder: z.array(z.string()),
   slides: z.record(z.string(), slideSchema),
+  theme: slideThemeSchema.optional(),
 });
 export type Presentation = z.infer<typeof presentationSchema>;
 type NativeCell = {
@@ -274,6 +347,21 @@ export const fileSchema = z.discriminatedUnion("kind", [
         .optional(),
       charts: z.array(chartSchema),
       pivots: z.array(pivotSchema),
+      /** Paper layout. Independent of a frozen row on screen. */
+      print: z
+        .object({
+          sheets: z.record(
+            z.string(),
+            z.object({
+              /** 0-based rows that start a new printed page. The break sits above each row. */
+              breaksAbove: z
+                .array(z.number().int().min(1).max(1048575))
+                .max(200),
+              repeatFirstRow: z.boolean(),
+            }),
+          ),
+        })
+        .optional(),
     }),
   }),
   z.object({
@@ -289,10 +377,31 @@ export type SlideFile = Extract<SuiteFile, { kind: "slide" }>;
 export function safeLink(url: string): boolean {
   return /^(https?:|mailto:|tel:|#)/i.test(url);
 }
+/**
+ * Turns what someone typed into a link into a safe href, or null.
+ * A bare web address gets https:// and a bare email address gets mailto:;
+ * anything else must already pass `safeLink`. Docs and Sheets share this.
+ */
+export function linkTarget(input: string): string | null {
+  const url = input.trim();
+  if (!url || /\s/.test(url)) return null;
+  if (safeLink(url)) return url;
+  if (/^[\w.+-]+@[\w-]+(\.[\w-]+)+$/.test(url)) return `mailto:${url}`;
+  if (/^[\w-]+(\.[\w-]+)+(:\d+)?([/?#]\S*)?$/.test(url)) return `https://${url}`;
+  return null;
+}
+export {
+  cellHyperlink,
+  cellLabel,
+  linkDocument,
+  linkedCell,
+  removedLinkWarning,
+  takeExcelHyperlink,
+} from "./sheet-links";
 function validateTree(n: JsonNode, depth = 0) {
   if (depth > 100) throw new Error("Document is nested too deeply.");
   if (
-    n.type === "image" &&
+    (n.type === "image" || n.type === "inlineImage") &&
     !/^data:image\/(png|jpeg|gif|webp);base64,/i.test(String(n.attrs?.src))
   )
     throw new Error(
@@ -553,7 +662,16 @@ export interface FileRecord {
   fingerprint?: string;
   recovery?: boolean;
   drive?: DriveLink;
+  /** Saved on the library entry so starring and Trash never rewrite the native file. */
+  starred?: boolean;
+  /** When the file was moved to Trash. Absent means it is not in Trash. */
+  trashedAt?: string;
 }
+export {
+  applyLibraryMarks,
+  readLibraryMarks,
+  type LibraryMarks,
+} from "./library-marks";
 /** Whether a SuiteDrive file has local edits that were never uploaded. */
 export function hasUnsyncedEdits(record: FileRecord) {
   return !!record.drive && record.drive.syncedAt !== record.file.updatedAt;

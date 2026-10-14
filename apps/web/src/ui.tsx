@@ -4,10 +4,24 @@ import {
   createContext,
   Fragment,
   useContext,
+  useEffect,
+  useMemo,
   useRef,
+  useState,
   type ReactNode,
 } from "react";
+import { isUnimplemented, pendingReason } from "./commands";
+import { useRegisterCommand } from "./command-palette";
 const AfterClose = createContext<{ current: (() => void) | null } | null>(null);
+const MenuPath = createContext<string[]>([]);
+/** Renders menu children only to register commands, with no popup. */
+const MenuRegistrar = createContext(false);
+export function useMenuPath() {
+  return useContext(MenuPath);
+}
+export function useRegisteringMenus() {
+  return useContext(MenuRegistrar);
+}
 export function Menu({
   label,
   children,
@@ -16,27 +30,31 @@ export function Menu({
   children: ReactNode;
 }) {
   const afterClose = useRef<(() => void) | null>(null);
+  const path = useMemo(() => [label], [label]);
   return (
-    <Dropdown.Root>
-      <Dropdown.Trigger className="menu-trigger">{label}</Dropdown.Trigger>
-      <Dropdown.Portal>
-        <Dropdown.Content
-          className="menu-content"
-          sideOffset={4}
-          onCloseAutoFocus={(e) => {
-            const run = afterClose.current;
-            afterClose.current = null;
-            if (!run) return;
-            e.preventDefault();
-            run();
-          }}
-        >
-          <AfterClose.Provider value={afterClose}>
-            {children}
-          </AfterClose.Provider>
-        </Dropdown.Content>
-      </Dropdown.Portal>
-    </Dropdown.Root>
+    <MenuPath.Provider value={path}>
+      <MenuRegistrar.Provider value={true}>{children}</MenuRegistrar.Provider>
+      <Dropdown.Root>
+        <Dropdown.Trigger className="menu-trigger">{label}</Dropdown.Trigger>
+        <Dropdown.Portal>
+          <Dropdown.Content
+            className="menu-content"
+            sideOffset={4}
+            onCloseAutoFocus={(e) => {
+              const run = afterClose.current;
+              afterClose.current = null;
+              if (!run) return;
+              e.preventDefault();
+              run();
+            }}
+          >
+            <AfterClose.Provider value={afterClose}>
+              {children}
+            </AfterClose.Provider>
+          </Dropdown.Content>
+        </Dropdown.Portal>
+      </Dropdown.Root>
+    </MenuPath.Provider>
   );
 }
 export function MenuItem({
@@ -45,6 +63,10 @@ export function MenuItem({
   disabled = false,
   shortcut,
   focusesTarget = false,
+  searchLabel,
+  synonyms,
+  group,
+  availability,
 }: {
   children: ReactNode;
   onSelect: () => void;
@@ -52,12 +74,50 @@ export function MenuItem({
   shortcut?: string;
   /** Run after the menu closes, so focus can go to the editor or a dialog. */
   focusesTarget?: boolean;
+  /** Label for command search when the visible children are not plain text. */
+  searchLabel?: string;
+  synonyms?: string[];
+  group?: string;
+  /** Return a reason when the command cannot run, or true when it can. */
+  availability?: () => true | string;
 }) {
   const afterClose = useContext(AfterClose);
+  const path = useContext(MenuPath);
+  const label = searchLabel ?? (typeof children === "string" ? children : "");
+  const pending = isUnimplemented(onSelect);
+  const reason = availability?.();
+  const unavailable =
+    disabled || pending || (typeof reason === "string" && reason.length > 0);
+  const title =
+    typeof reason === "string"
+      ? reason
+      : pending
+        ? pendingReason(label)
+        : undefined;
+  useRegisterCommand(
+    label
+      ? {
+          id: [...path, label].join("/"),
+          label,
+          path,
+          shortcut,
+          synonyms,
+          group,
+          pending,
+          availability: () => {
+            const live = availability?.();
+            return typeof live === "string" ? live : true;
+          },
+          run: onSelect,
+        }
+      : null,
+  );
+  if (useContext(MenuRegistrar)) return null;
   return (
     <Dropdown.Item
       className="menu-item"
-      disabled={disabled}
+      disabled={unavailable}
+      title={title}
       onSelect={
         focusesTarget && afterClose
           ? () => (afterClose.current = onSelect)
@@ -65,7 +125,9 @@ export function MenuItem({
       }
     >
       <span className="menu-item-label">{children}</span>
-      {shortcut ? <span className="menu-item-shortcut">{shortcut}</span> : null}
+      {shortcut ? (
+        <span className="menu-item-shortcut">{shortcut}</span>
+      ) : null}
     </Dropdown.Item>
   );
 }
@@ -76,23 +138,81 @@ export function SubMenu({
   label: string;
   children: ReactNode;
 }) {
+  const parent = useContext(MenuPath);
+  const path = useMemo(() => [...parent, label], [parent, label]);
+  const registerOnly = useContext(MenuRegistrar);
+  const narrow = useNarrowScreen();
+  const [openNested, setOpenNested] = useState(false);
+  if (registerOnly) {
+    return (
+      <MenuPath.Provider value={path}>
+        <MenuRegistrar.Provider value={true}>{children}</MenuRegistrar.Provider>
+      </MenuPath.Provider>
+    );
+  }
+  // A side submenu opens off a phone screen, under the page, so the items
+  // are drawn in the same menu after the label is chosen.
+  if (narrow) {
+    return (
+      <MenuPath.Provider value={path}>
+        <Dropdown.Item
+          className="menu-item"
+          onPointerEnter={() => setOpenNested(true)}
+          onSelect={(event) => {
+            event.preventDefault();
+            setOpenNested(true);
+          }}
+        >
+          <span className="menu-item-label">{label}</span>
+          <span className="menu-item-shortcut" aria-hidden="true">
+            ›
+          </span>
+        </Dropdown.Item>
+        {openNested ? children : null}
+      </MenuPath.Provider>
+    );
+  }
   return (
-    <Dropdown.Sub>
-      <Dropdown.SubTrigger className="menu-item">
-        <span className="menu-item-label">{label}</span>
-        <span className="menu-item-shortcut" aria-hidden="true">
-          ›
-        </span>
-      </Dropdown.SubTrigger>
-      <Dropdown.Portal>
-        <Dropdown.SubContent className="menu-content" sideOffset={6}>
-          {children}
-        </Dropdown.SubContent>
-      </Dropdown.Portal>
-    </Dropdown.Sub>
+    <MenuPath.Provider value={path}>
+      <Dropdown.Sub>
+        <Dropdown.SubTrigger className="menu-item">
+          <span className="menu-item-label">{label}</span>
+          <span className="menu-item-shortcut" aria-hidden="true">
+            ›
+          </span>
+        </Dropdown.SubTrigger>
+        <Dropdown.Portal>
+          <Dropdown.SubContent
+            className="menu-content"
+            sideOffset={-4}
+            alignOffset={-4}
+            collisionPadding={8}
+          >
+            {children}
+          </Dropdown.SubContent>
+        </Dropdown.Portal>
+      </Dropdown.Sub>
+    </MenuPath.Provider>
   );
 }
+function useNarrowScreen() {
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== "undefined" && window.innerWidth <= 700,
+  );
+  useEffect(() => {
+    const update = () => setNarrow(window.innerWidth <= 700);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+  return narrow;
+}
+/** Run a menu action after the menu closes, so the editor can take focus. */
+export function useMenuClose() {
+  return useContext(AfterClose);
+}
 export function MenuSeparator() {
+  if (useContext(MenuRegistrar)) return null;
   return <Dropdown.Separator className="menu-separator" />;
 }
 export function MenuCheckItem({
@@ -100,17 +220,45 @@ export function MenuCheckItem({
   checked,
   onSelect,
   disabled = false,
+  synonyms,
+  group,
+  availability,
 }: {
   children: ReactNode;
   checked: boolean;
   onSelect: () => void;
   disabled?: boolean;
+  synonyms?: string[];
+  group?: string;
+  availability?: () => true | string;
 }) {
+  const path = useContext(MenuPath);
+  const label = typeof children === "string" ? children : "";
+  const reason = availability?.();
+  const unavailable = disabled || (typeof reason === "string" && !!reason);
+  useRegisterCommand(
+    label
+      ? {
+          id: [...path, label].join("/"),
+          label,
+          path,
+          synonyms,
+          group,
+          availability: () => {
+            const live = availability?.();
+            return typeof live === "string" ? live : true;
+          },
+          run: onSelect,
+        }
+      : null,
+  );
+  if (useContext(MenuRegistrar)) return null;
   return (
     <Dropdown.CheckboxItem
       className="menu-item menu-check-item"
       checked={checked}
-      disabled={disabled}
+      disabled={unavailable}
+      title={typeof reason === "string" ? reason : undefined}
       onSelect={onSelect}
     >
       <span className="menu-item-check" aria-hidden="true">
@@ -130,6 +278,7 @@ export type TableAction = {
 };
 /** Rendered when the submenu opens, so `actions()` reads the current selection. */
 export function TableMenuItems({ actions }: { actions: () => TableAction[] }) {
+  if (useContext(MenuRegistrar)) return null;
   return (
     <>
       {actions().map((action) => (
@@ -199,16 +348,31 @@ export type EditorActions = {
     undo: () => void;
     redo: () => void;
     openFind: () => void;
-    openSpelling: () => void;
     selectAll: () => void;
     insertLink: () => void;
+    /** Why Insert › Link cannot run, if the caret has no selection. */
+    linkState?: () => { ok: true } | { ok: false; reason: string };
     insertImage: () => void;
     insertTable: () => void;
     insertHorizontalRule: () => void;
     insertPageBreak: () => void;
+    insertComment?: () => void;
+    openComments?: () => void;
+    insertTableOfContents: (pageNumbers?: boolean) => void;
+    insertFootnote: () => void;
+    insertEndnote: () => void;
+    insertEquation: () => void;
     openPageSetup: () => void;
+    openWordCount: () => void;
+    openSpelling: () => void;
+    openGrammar: () => void;
+    openIgnoredGrammar: () => void;
+    openDictionary: () => void;
+    openCitations: () => void;
     clearFormatting: () => void;
     align: (alignment: "left" | "center" | "right" | "justify") => void;
+    setColumns: (columns: 1 | 2) => void;
+    columnCount: () => 1 | 2;
     toggleBold: () => void;
     toggleItalic: () => void;
     toggleUnderline: () => void;
@@ -218,6 +382,8 @@ export type EditorActions = {
     toggleBulletList: () => void;
     toggleOrderedList: () => void;
     tableActions: () => TableAction[];
+    openSuggestions?: () => void;
+    focusTabStop?: () => void;
   };
   sheetActions?: {
     dataValidation?: () => void;
@@ -226,6 +392,8 @@ export type EditorActions = {
     insertComment?: () => void;
     tabsProtection?: () => void;
     insertCheckbox?: () => void;
+    insertDropdown?: () => void;
+    insertLink?: () => void;
     undo: () => void;
     redo: () => void;
     cut: () => void;
@@ -233,9 +401,22 @@ export type EditorActions = {
     paste: () => void;
     deleteValues: () => void;
     insertChart: () => void;
+    insertImage?: () => void;
     insertPivot: () => void;
+    insertFunction?: (name: string) => void;
     toggleFilter: () => void;
+    /** Unsaved filter for someone who cannot edit. Not stored in the file. */
+    createFilterView?: () => void;
+    applyFilterView?: (value: string) => void;
+    clearFilterView?: () => void;
+    filterViewChoices?: () => { label: string; value: string }[];
     sortRange?: () => void;
+    namedRanges?: () => void;
+    groupRows?: () => void;
+    groupColumns?: () => void;
+    trimWhitespace?: () => void;
+    removeDuplicates?: () => void;
+    splitTextToColumns?: () => void;
     hasFilter?: () => boolean;
     formatCurrency: () => void;
     formatPercent: () => void;
@@ -249,6 +430,42 @@ export type EditorActions = {
     freezeColumns: (count: number) => void;
     showGridlines: (visible: boolean) => void;
     showFormulaBar: (visible: boolean) => void;
+    openSpelling?: () => void;
+    insertPageBreak?: () => void;
+    openPrintSettings?: () => void;
+  };
+  slideActions?: {
+    undo: () => void;
+    redo: () => void;
+    cut: () => void;
+    copy: () => void;
+    paste: () => void;
+    insertTextBox: () => void;
+    insertImage: () => void;
+    insertShape: (shape: "rect" | "roundRect" | "ellipse") => void;
+    newSlide: () => void;
+    duplicate: () => void;
+    deleteSlides: () => void;
+    move: (where: "up" | "down" | "start" | "end") => void;
+    toggleBold: () => void;
+    toggleItalic: () => void;
+    align: (alignment: "left" | "center" | "right") => void;
+    applyLayout: (
+      layout: "title" | "title-body" | "section" | "two-column" | "blank",
+    ) => void;
+    openTheme: () => void;
+    openTransition: () => void;
+    insertComment?: () => void;
+    openComments?: () => void;
+    openResolved?: () => void;
+    /** Insert › Animation › Fade in on click, for the selected object. */
+    fadeOnClick?: () => void;
+    /** Why that command cannot run, if it cannot. */
+    fadeOnClickReason?: () => string | undefined;
+    undoReason?: () => string | undefined;
+    redoReason?: () => string | undefined;
+    deleteReason?: () => string | undefined;
+    openSpelling?: () => void;
   };
 };
 export type SheetView = {

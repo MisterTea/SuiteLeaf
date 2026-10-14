@@ -7,8 +7,19 @@
     "./ai": "./src/ai.ts",
     "./office": "./src/office.ts",
     "./docx-export": "./src/docx-export.ts",
+    "./doc-comments": "./src/doc-comments.ts",
     "./xlsx-export": "./src/xlsx-export.ts",
-    "./document-layout": "./src/document-layout.ts"
+    "./document-layout": "./src/document-layout.ts",
+    "./suggestions": "./src/suggestions.ts",
+    "./citations": "./src/citations.ts",
+    "./equations": "./src/equations.ts",
+    "./image-crop": "./src/image-crop.ts",
+    "./line-spacing": "./src/line-spacing.ts",
+    "./paragraph-spacing": "./src/paragraph-spacing.ts",
+    "./paragraph-indent": "./src/paragraph-indent.ts",
+    "./image-wrap": "./src/image-wrap.ts",
+    "./image-inline": "./src/image-inline.ts",
+    "./image-extent": "./src/image-extent.ts"
   },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",
