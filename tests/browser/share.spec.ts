@@ -296,6 +296,7 @@ test("a group can be given read, comment, or write access", async ({ browser }) 
 
     await dialog.getByRole("button", { name: "Role for Volunteers" }).click();
     await dialog.getByRole("option", { name: /^Editor/ }).click();
+    await expect(dialog.getByText("Volunteers can now edit")).toBeVisible();
     const written = await authed(node.url, sam.token, `/api/drive/items/${item.id}/content`, {
       method: "PUT",
       headers: { "content-type": mimeFor("doc") },
