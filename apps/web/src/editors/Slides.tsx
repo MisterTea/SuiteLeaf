@@ -141,6 +141,12 @@ import {
   type ShowMove,
 } from "./slide-fade-in";
 import { FadeOnClickMark } from "./slide-fade-mark";
+import {
+  attachSlideZoom,
+  isSlideZoom,
+  rememberSlideZoom,
+  slideZoom,
+} from "./slide-zoom";
 
 type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
@@ -196,6 +202,14 @@ export default function Slides({
   });
   const [showNotes, setShowNotes] = useState(true);
   const [presenting, setPresenting] = useState(false);
+  const [zoom, setZoom] = useState(() => slideZoom(file.id));
+  const zoomStartedWithoutId = useRef(!file.id);
+  useEffect(() => {
+    if (!zoomStartedWithoutId.current || !file.id) return;
+    zoomStartedWithoutId.current = false;
+    attachSlideZoom(file.id);
+    setZoom(slideZoom(file.id));
+  }, [file.id]);
   const [showCursor, setShowCursor] = useState<ShowCursor>(() => startOfShow());
   const presentSlideIndex = showCursor.slideIndex;
   const [showSpeakerNotes, setShowSpeakerNotes] = useState(false);
@@ -1194,8 +1208,10 @@ export default function Slides({
         initW = 100,
         initH = 50,
       } = draggingRef.current;
-      const stageRect = stageRef.current.getBoundingClientRect();
-      const scale = stageRect.width / (deck.width || 960);
+      const canvas = stageRef.current.querySelector(".slide-canvas");
+      const rect = (canvas ?? stageRef.current).getBoundingClientRect();
+      const scale = rect.width / (deck.width || 960);
+      if (!scale) return;
 
       const dx = (e.clientX - startX) / scale;
       const dy = (e.clientY - startY) / scale;
@@ -1376,15 +1392,20 @@ ${slidesHtml}
     const now = Date.now();
     setShowStartedAt(now);
     setClock(now);
+    presentingRef.current = true;
     setPresenting(true);
-    // Browsers only allow fullscreen from inside the click or key press.
+    // Fullscreen is optional. If the browser denies it, the show stays on the page
+    // at the show size, not at the editing zoom.
+    showFullscreenRef.current = false;
     const root = document.documentElement;
     if (!document.fullscreenElement && root.requestFullscreen) {
-      showFullscreenRef.current = true;
       root.requestFullscreen().then(
         () => {
-          if (!showFullscreenRef.current)
+          if (!presentingRef.current) {
             document.exitFullscreen().catch(() => {});
+            return;
+          }
+          showFullscreenRef.current = true;
         },
         () => {
           showFullscreenRef.current = false;
@@ -1412,6 +1433,7 @@ ${slidesHtml}
   };
 
   const endShow = useCallback(() => {
+    presentingRef.current = false;
     setPresenting(false);
     if (showFullscreenRef.current) {
       showFullscreenRef.current = false;
@@ -1932,6 +1954,8 @@ ${slidesHtml}
     </div>
   );
 
+  const zoomRatio = Number.parseInt(zoom, 10) / 100;
+
   return (
     <div
       className="slides-editor"
@@ -2450,6 +2474,25 @@ ${slidesHtml}
 
         {/* Google Slides styled Slideshow button */}
         <div className="tool-group right-tools" style={{ marginLeft: "auto" }}>
+          <select
+            className="toolbar-select zoom-select"
+            aria-label="Zoom"
+            value={zoom}
+            onChange={(e) => {
+              const next = e.target.value;
+              if (!isSlideZoom(next)) return;
+              setZoom(next);
+              rememberSlideZoom(file.id, next);
+            }}
+          >
+            <option value="50%">50%</option>
+            <option value="75%">75%</option>
+            <option value="90%">90%</option>
+            <option value="100%">100%</option>
+            <option value="125%">125%</option>
+            <option value="150%">150%</option>
+            <option value="200%">200%</option>
+          </select>
           <div className="slideshow-split">
             <button
               type="button"
@@ -2800,10 +2843,21 @@ ${slidesHtml}
           >
             <div
               className={`slide-canvas print-slide${canvasMotion ? ` deck-motion-${canvasMotion.type}` : ""}`}
+              data-zoom={zoom}
               style={{
                 backgroundColor: shownSlide?.background?.color || "#ffffff",
                 aspectRatio: `${deck.width || 960} / ${deck.height || 540}`,
                 ["--deck-motion" as string]: `${canvasMotion?.ms ?? 0}ms`,
+                // Zoom enlarges the editing canvas only. Stored coordinates stay put.
+                ...(zoom === "100%"
+                  ? {}
+                  : {
+                      width: 960 * zoomRatio,
+                      maxWidth: 960 * zoomRatio,
+                      minWidth: 960 * zoomRatio,
+                      marginTop: 0,
+                      marginBottom: 0,
+                    }),
               }}
             >
               {shownSlide?.elements.map((el) => {
@@ -2828,7 +2882,7 @@ ${slidesHtml}
                       {...editorFadeAttrs(el)}
                       style={{
                         ...posStyle,
-                        fontSize: `${(el.fontSize || 20) * 0.95}px`,
+                        fontSize: `${(el.fontSize || 20) * 0.95 * zoomRatio}px`,
                         ...boxFont(el),
                         fontFamily: el.fontFamily || "Arial",
                         color: el.color || "#1e293b",
