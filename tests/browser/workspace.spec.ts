@@ -75,9 +75,9 @@ test("spreadsheet formulas → embedded chart → pivot worksheet → save and r
   expect(pivot.cellData["1"]["1"].v).toBe(6000);
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Quarterly studio budget" }).click();
-  await page
-    .getByRole("button", { name: "Insert chart", exact: true })
-    .waitFor();
+  await expect(
+    page.getByRole("button", { name: "Insert chart", exact: true }),
+  ).toBeEnabled();
   await expect(page.getByRole("alert")).toHaveCount(0);
   const reopened = await exported(page);
   expect(reopened.content.charts[0].title).toBe("Studio costs");
@@ -90,11 +90,12 @@ test("spreadsheet formulas → embedded chart → pivot worksheet → save and r
   await page.keyboard.type("7000");
   await page.keyboard.press("Enter");
   await expect(nameBox).toHaveValue("B3");
-  const edited = await exported(page);
-  expect(
-    edited.content.workbook.sheets[edited.content.workbook.sheetOrder[0]]
-      .cellData[1][3].v,
-  ).toBe(1800);
+  const remaining = async () => {
+    const edited = await exported(page);
+    return edited.content.workbook.sheets[edited.content.workbook.sheetOrder[0]]
+      .cellData[1][3].v;
+  };
+  await expect.poll(remaining).toBe(1800);
   const pivotCell = async (row: number) =>
     (await exported(page)).content.workbook.sheets[
       file.content.pivots[0].targetSheetId
