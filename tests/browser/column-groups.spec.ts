@@ -53,7 +53,7 @@ async function open(
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),
   });
-  await page.getByRole("toolbar", { name: "Spreadsheet formatting" }).waitFor();
+  await page.locator("[data-sheet-ready='true']").waitFor();
 }
 
 async function native(page: Page) {

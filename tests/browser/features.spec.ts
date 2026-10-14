@@ -76,7 +76,7 @@ test("sheet feature panels, tab grouping and colors persist, XLSX downloads", as
   page.on("pageerror", (e) => errors.push(e.stack || e.message));
   await page.goto("/");
   await page.getByRole("button", { name: "Sample budget" }).click();
-  await page.getByRole("toolbar", { name: "Spreadsheet formatting" }).waitFor();
+  await page.locator("[data-sheet-ready='true']").waitFor();
   await page.getByRole("button", { name: "Data", exact: true }).click();
   await page
     .getByRole("menuitem", { name: "Data validation", exact: true })
@@ -119,12 +119,9 @@ test("cell notes and range protection survive reopen and can be removed", async 
   await page.goto("/");
   await page.getByRole("button", { name: "Sample budget" }).click();
   const box = page.locator(".sheet-host input.univer-size-full");
-  await page
-    .getByRole("toolbar", { name: "Spreadsheet formatting" })
-    .waitFor();
-  const initialBounds = await page.locator(".sheet-host").boundingBox();
-  if (!initialBounds) throw new Error();
-  await page.mouse.click(initialBounds.x + 195, initialBounds.y + 82);
+  await page.locator("[data-sheet-ready='true']").waitFor();
+  await box.fill("B2");
+  await box.press("Enter");
   await expect(box).toHaveValue("B2");
   await page.getByRole("button", { name: "Insert", exact: true }).click();
   await page.getByRole("menuitem", { name: "Note", exact: true }).click();
@@ -152,9 +149,7 @@ test("cell notes and range protection survive reopen and can be removed", async 
     before = saved.content.workbook.sheets[id].cellData[1][1].v;
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Quarterly studio budget" }).click();
-  await page
-    .getByRole("toolbar", { name: "Spreadsheet formatting" })
-    .waitFor();
+  await page.locator("[data-sheet-ready='true']").waitFor();
   const bounds = await page.locator(".sheet-host").boundingBox();
   if (!bounds) throw new Error();
   await page.mouse.click(bounds.x + 195, bounds.y + 82);
@@ -189,9 +184,7 @@ test("cell comment threads can be authored and reopened locally", async ({
   page.on("pageerror", (e) => errors.push(e.stack || e.message));
   await page.goto("/");
   await page.getByRole("button", { name: "Sample budget" }).click();
-  await page
-    .getByRole("toolbar", { name: "Spreadsheet formatting" })
-    .waitFor();
+  await page.locator("[data-sheet-ready='true']").waitFor();
   await page
     .getByRole("button", { name: "Insert comment (Cmd+Option+M)" })
     .click();
@@ -205,9 +198,7 @@ test("cell comment threads can be authored and reopened locally", async ({
   expect(resource.data).toContain("Please review this budget");
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Quarterly studio budget" }).click();
-  await page
-    .getByRole("toolbar", { name: "Spreadsheet formatting" })
-    .waitFor();
+  await page.locator("[data-sheet-ready='true']").waitFor();
   await page.getByRole("button", { name: "Comments", exact: true }).click();
   await expect(page.locator("body")).toContainText("Please review this budget");
   expect(errors).toEqual([]);
@@ -217,9 +208,7 @@ test("an open cell note closes when the name box moves the selection", async ({
 }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Sample budget" }).click();
-  await page
-    .getByRole("toolbar", { name: "Spreadsheet formatting" })
-    .waitFor();
+  await page.locator("[data-sheet-ready='true']").waitFor();
   const box = page.locator(".sheet-host input.univer-size-full");
   await box.fill("C3");
   await box.press("Enter");
@@ -241,9 +230,7 @@ test("comments are signed with the local name and keep it on another computer", 
   page.on("pageerror", (e) => errors.push(e.stack || e.message));
   await page.goto("/");
   await page.getByRole("button", { name: "Sample budget" }).click();
-  await page
-    .getByRole("toolbar", { name: "Spreadsheet formatting" })
-    .waitFor();
+  await page.locator("[data-sheet-ready='true']").waitFor();
   await page.getByRole("button", { name: "Tools", exact: true }).click();
   await page
     .getByRole("menuitem", { name: "Your name on comments…" })
@@ -294,9 +281,7 @@ test("checkbox validation can be created from the Insert menu and reopened", asy
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
   await page.getByRole("button", { name: "Sample budget" }).click();
-  await page
-    .getByRole("toolbar", { name: "Spreadsheet formatting" })
-    .waitFor();
+  await page.locator("[data-sheet-ready='true']").waitFor();
   const box = page.locator(".sheet-host input.univer-size-full");
   await box.fill("A8");
   await box.press("Enter");
@@ -309,9 +294,7 @@ test("checkbox validation can be created from the Insert menu and reopened", asy
   expect(rule.data).toContain('"type":"checkbox"');
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Quarterly studio budget" }).click();
-  await page
-    .getByRole("toolbar", { name: "Spreadsheet formatting" })
-    .waitFor();
+  await page.locator("[data-sheet-ready='true']").waitFor();
   const restored = await native(page);
   expect(
     restored.content.workbook.resources.find(
@@ -341,9 +324,7 @@ async function openChecklist(page: Page, resources: unknown[] = []) {
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),
   });
-  await page
-    .getByRole("toolbar", { name: "Spreadsheet formatting" })
-    .waitFor();
+  await page.locator("[data-sheet-ready='true']").waitFor();
   const box = page.locator(".sheet-host input.univer-size-full");
   await box.fill("A2:A4");
   await box.press("Enter");

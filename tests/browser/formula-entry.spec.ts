@@ -15,7 +15,7 @@ test("formula suggestions never replace a formula typed past them", async ({ pag
   const host = page.locator(".sheet-host");
   await host.waitFor();
   const before = (await host.boundingBox())!.y;
-  await page.getByRole("toolbar", { name: "Spreadsheet formatting" }).waitFor();
+  await page.locator("[data-sheet-ready='true']").waitFor();
   expect((await host.boundingBox())!.y).toBe(before);
 
   const box = page.locator(".sheet-host input.univer-size-full");
