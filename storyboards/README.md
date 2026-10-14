@@ -188,3 +188,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 172 | [Replace across the deck](172-replace-across-the-deck.md) | single-node | Slides |
 | 173 | [Find the speaker note](173-find-the-speaker-note.md) | single-node | Slides |
 | 174 | [Replace the speaker note](174-replace-the-speaker-note.md) | single-node | Slides |
+| 176 | [Find the shape](176-find-the-shape.md) | single-node | Slides |
