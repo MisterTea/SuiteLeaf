@@ -977,15 +977,15 @@ fn snippet_around(text: &str, query: &str) -> String {
         from = from.saturating_sub(SNIPPET_CHARS - (to - from));
     }
     to = (from + SNIPPET_CHARS).min(chars.len());
-    if from > 0 && from < match_from {
-        if let Some(space) = chars[from..match_from]
+    if from > 0
+        && from < match_from
+        && let Some(space) = chars[from..match_from]
             .iter()
             .position(|(_, ch)| ch.is_whitespace())
-        {
-            let next = from + space + 1;
-            if next <= match_from {
-                from = next;
-            }
+    {
+        let next = from + space + 1;
+        if next <= match_from {
+            from = next;
         }
     }
     let snippet: String = chars[from..to].iter().map(|(_, ch)| *ch).collect();

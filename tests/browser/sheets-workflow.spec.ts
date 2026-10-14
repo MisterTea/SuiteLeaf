@@ -188,9 +188,7 @@ test("View menu freezes rows and columns, hides gridlines and the formula bar, a
 async function newSheet(page: Page, rows: string[][]) {
   await page.goto("/");
   await page.getByRole("button", { name: "New spreadsheet" }).click();
-  await page
-    .getByRole("toolbar", { name: "Spreadsheet formatting" })
-    .waitFor();
+  await page.locator("[data-sheet-ready='true']").waitFor();
   const box = page.locator(".sheet-host input.univer-size-full");
   const select = async (ref: string) => {
     await box.fill(ref);

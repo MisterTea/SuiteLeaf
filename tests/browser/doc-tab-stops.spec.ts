@@ -16,6 +16,7 @@ test("typing in a document does not show a tab stop bar", async ({ page }) => {
   await page.getByRole("button", { name: "Format", exact: true }).click();
   await expect(page.getByRole("menuitem", { name: "Tab stop" })).toHaveCount(0);
   await expect(page.locator(".doc-tab")).toHaveCount(1);
+  await page.keyboard.press("Escape");
   await expect(editor).toContainText("Plant sale");
   await expect(editor).toContainText("9:00");
 });

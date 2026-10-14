@@ -2017,7 +2017,7 @@ a {
   min-width: 0;
   overflow-x: auto;
 }
-.doc-tab {
+.document-tab {
   appearance: none;
   border: 1px solid transparent;
   border-bottom: 0;
@@ -2031,7 +2031,7 @@ a {
   cursor: pointer;
   white-space: nowrap;
 }
-.doc-tab[aria-selected="true"] {
+.document-tab[aria-selected="true"] {
   background: var(--surface);
   color: var(--text-primary);
   border-color: var(--border);

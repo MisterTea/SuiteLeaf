@@ -761,6 +761,21 @@ function EmbeddedChart({ data }: { data?: { chartId: string } }) {
     </div>
   );
 }
+/** Menu clicks can land before the grid's helpers have mounted. */
+function callWhenMounted<T>(ref: { current: T | null }, run: (value: T) => void) {
+  if (ref.current) {
+    run(ref.current);
+    return;
+  }
+  const started = Date.now();
+  const timer = window.setInterval(() => {
+    if (ref.current) {
+      window.clearInterval(timer);
+      run(ref.current);
+    } else if (Date.now() - started > 8000) window.clearInterval(timer);
+  }, 50);
+}
+
 export default function Sheets({
   file,
   onChange,
@@ -2008,11 +2023,13 @@ export default function Sheets({
           input.click();
         },
         dataValidation: () => {
-          if (dropdowns.current?.openExisting()) return;
-          void api.current?.executeCommand(
-            "data-validation.operation.open-validation-panel",
-            {},
-          );
+          callWhenMounted(dropdowns, (dropdown) => {
+            if (dropdown.openExisting()) return;
+            void api.current?.executeCommand(
+              "data-validation.operation.open-validation-panel",
+              {},
+            );
+          });
         },
         conditionalFormatting: () =>
           void api.current?.executeCommand(
@@ -2031,8 +2048,8 @@ export default function Sheets({
           ),
         insertNote: () =>
           void api.current?.executeCommand("sheet.operation.add-note-popup", {}),
-        commentName: () => tabSettings.current?.openCommentName(),
-        tabsProtection: () => tabSettings.current?.openTabs(),
+        commentName: () => callWhenMounted(tabSettings, (tabs) => tabs.openCommentName()),
+        tabsProtection: () => callWhenMounted(tabSettings, (tabs) => tabs.openTabs()),
         insertCheckbox: () => {
           const range = book.current?.getActiveRange();
           if (range) {
@@ -2062,7 +2079,7 @@ export default function Sheets({
             ).then(() => persist.current());
           }
         },
-        insertDropdown: () => dropdowns.current?.openNew(),
+        insertDropdown: () => callWhenMounted(dropdowns, (dropdown) => dropdown.openNew()),
         insertLink: () => links.current?.open(),
         undo: () => void api.current?.undo(),
         redo: () => void api.current?.redo(),
@@ -2087,8 +2104,9 @@ export default function Sheets({
         },
         sortRange: openSortRange,
         namedRanges: () => names.current?.open(),
-        groupRows: () => rowGroups.current?.groupRows(),
-        groupColumns: () => columnGroups.current?.groupColumns(),
+        groupRows: () => callWhenMounted(rowGroups, (groups) => groups.groupRows()),
+        groupColumns: () =>
+          callWhenMounted(columnGroups, (groups) => groups.groupColumns()),
         trimWhitespace: () => cleanup.current?.trim(),
         removeDuplicates: () => cleanup.current?.duplicates(),
         splitTextToColumns: () => cleanup.current?.split(),
@@ -2485,7 +2503,10 @@ export default function Sheets({
     autoSum: functions.autoSum,
   };
   return (
-    <div className={`sheets-editor${readOnly ? " view-locked" : ""}`}>
+    <div
+      className={`sheets-editor${readOnly ? " view-locked" : ""}`}
+      data-sheet-ready={ready ? "true" : "false"}
+    >
       {functions.panel}
       {functions.stats}
       {notice ? (

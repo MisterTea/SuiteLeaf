@@ -2474,7 +2474,7 @@ export default function Docs({
               key={index === 0 ? "first" : extras[index - 1].id}
               type="button"
               role="tab"
-              className="doc-tab"
+              className="document-tab"
               aria-selected={index === active}
               onClick={() => showTab(index)}
             >

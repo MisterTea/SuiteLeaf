@@ -4,8 +4,7 @@ import { readFile } from "node:fs/promises";
 async function sheet(page: Page) {
   await page.goto("/");
   await page.getByRole("button", { name: "New spreadsheet" }).click();
-  await page.locator(".sheet-host").waitFor();
-  await page.getByRole("toolbar", { name: "Spreadsheet formatting" }).waitFor();
+  await page.locator("[data-sheet-ready='true']").waitFor();
 }
 
 async function goTo(page: Page, ref: string) {

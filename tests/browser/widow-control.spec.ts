@@ -106,6 +106,7 @@ test("typing in a paragraph does not show pagination switches", async ({ page })
   await expect.poll(() => pageOfText(page, "See you Saturday.")).toBe(1);
   await expect.poll(() => pageOfText(page, "Bring a chair if you can.")).toBe(0);
   await clickTextLine(page, "See you Saturday.");
+  await page.keyboard.press("End");
   await page.keyboard.type("!");
   await expectNoPaginationSwitches(page);
   await expect.poll(() => pageOfText(page, "See you Saturday.!")).toBe(1);

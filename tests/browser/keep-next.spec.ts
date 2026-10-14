@@ -72,6 +72,7 @@ test("typing in a heading does not show pagination switches", async ({ page }) =
   await expect.poll(() => pageOf(heading)).toBe(0);
   await expect.poll(() => pageOf(firstItem)).toBe(1);
   await heading.click({ position: { x: 20, y: 12 } });
+  await page.keyboard.press("End");
   await page.keyboard.type(" still");
   await expectNoPaginationSwitches(page);
   await expect.poll(() => pageOf(heading)).toBe(0);

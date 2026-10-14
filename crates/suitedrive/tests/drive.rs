@@ -7,8 +7,8 @@ use std::{
 use libp2p_identity::ed25519;
 use suitedb::{Db, Schema, Value};
 use suitedrive::{
-    tables, BlobTransport, Drive, DriveError, Hash, Manifest, Presence, Principal, Role,
-    CHUNK_SIZE, PRESENCE_TTL,
+    BlobTransport, CHUNK_SIZE, Drive, DriveError, Hash, Manifest, PRESENCE_TTL, Presence,
+    Principal, Role, tables,
 };
 use tempfile::TempDir;
 
@@ -303,18 +303,21 @@ fn moves_rename_and_trash_respect_the_folder_tree() {
         .create(&ann, Some(&outer.id), "Inner", "folder", None)
         .unwrap();
     let file = n.drive.create(&ann, None, "a.sldoc", "file", None).unwrap();
-    assert!(n
-        .drive
-        .update(&ann, &outer.id, None, Some(Some(&inner.id)), None)
-        .is_err());
-    assert!(n
-        .drive
-        .update(&ann, &outer.id, None, Some(Some(&file.id)), None)
-        .is_err());
-    assert!(n
-        .drive
-        .create(&ann, None, "bad/name", "file", None)
-        .is_err());
+    assert!(
+        n.drive
+            .update(&ann, &outer.id, None, Some(Some(&inner.id)), None)
+            .is_err()
+    );
+    assert!(
+        n.drive
+            .update(&ann, &outer.id, None, Some(Some(&file.id)), None)
+            .is_err()
+    );
+    assert!(
+        n.drive
+            .create(&ann, None, "bad/name", "file", None)
+            .is_err()
+    );
     let moved = n
         .drive
         .update(&ann, &file.id, Some("b.sldoc"), Some(Some(&inner.id)), None)
@@ -594,14 +597,16 @@ fn ownership_moves_immediately_and_a_share_can_expire() {
             .set_expiry(&rosa, &file.id, "user", person, Some(saturday))
             .unwrap();
     }
-    assert!(a
-        .drive
-        .set_expiry(&rosa, &file.id, "user", "rosa", Some(saturday))
-        .is_err());
-    assert!(a
-        .drive
-        .set_expiry(&rosa, &file.id, "user", "priya", Some("next saturday"))
-        .is_err());
+    assert!(
+        a.drive
+            .set_expiry(&rosa, &file.id, "user", "rosa", Some(saturday))
+            .is_err()
+    );
+    assert!(
+        a.drive
+            .set_expiry(&rosa, &file.id, "user", "priya", Some("next saturday"))
+            .is_err()
+    );
     // A role change keeps the end date.
     a.drive
         .share(&rosa, &file.id, "user", "sam", Some(Role::Editor))
@@ -672,10 +677,12 @@ fn ownership_moves_immediately_and_a_share_can_expire() {
         .unwrap();
     assert_eq!(rosa_grant.role, Role::Editor);
     assert!(rosa_grant.expires_at.is_none());
-    assert!(after
-        .grants
-        .iter()
-        .any(|g| g.principal_type == "owner" && g.principal_id == "sam"));
+    assert!(
+        after
+            .grants
+            .iter()
+            .any(|g| g.principal_type == "owner" && g.principal_id == "sam")
+    );
     assert_eq!(
         after
             .grants
@@ -690,14 +697,16 @@ fn ownership_moves_immediately_and_a_share_can_expire() {
         a.drive.transfer(&rosa, &file.id, "priya"),
         Err(DriveError::Forbidden)
     ));
-    assert!(a
-        .drive
-        .share(&sam, &file.id, "user", "eve", Some(Role::Owner))
-        .is_err());
-    assert!(a
-        .drive
-        .set_expiry(&sam, &file.id, "user", "sam", Some(saturday))
-        .is_err());
+    assert!(
+        a.drive
+            .share(&sam, &file.id, "user", "eve", Some(Role::Owner))
+            .is_err()
+    );
+    assert!(
+        a.drive
+            .set_expiry(&sam, &file.id, "user", "sam", Some(saturday))
+            .is_err()
+    );
 
     let ended = "2000-01-01T00:00:00.000Z";
     a.drive
@@ -1085,12 +1094,13 @@ fn trash_hides_the_file_and_restore_puts_it_back_in_its_folder() {
         .update(&ann, &top.id, None, None, Some(true))
         .unwrap();
     assert!(n.drive.list(&ann, Some(&folder.id)).unwrap().is_empty());
-    assert!(n
-        .drive
-        .list(&ann, None)
-        .unwrap()
-        .iter()
-        .all(|item| item.id != file.id && item.id != top.id));
+    assert!(
+        n.drive
+            .list(&ann, None)
+            .unwrap()
+            .iter()
+            .all(|item| item.id != file.id && item.id != top.id)
+    );
 
     let trashed = n.drive.list_trashed(&ann).unwrap();
     let rota = trashed.iter().find(|item| item.id == file.id).unwrap();
@@ -1110,18 +1120,20 @@ fn trash_hides_the_file_and_restore_puts_it_back_in_its_folder() {
     let back = n.drive.list(&ann, Some(&folder.id)).unwrap();
     assert_eq!(back.len(), 1);
     assert_eq!(back[0].id, file.id);
-    assert!(n
-        .drive
-        .list(&ann, None)
-        .unwrap()
-        .iter()
-        .all(|item| item.id != file.id));
-    assert!(n
-        .drive
-        .list_trashed(&ann)
-        .unwrap()
-        .iter()
-        .all(|item| item.id != file.id));
+    assert!(
+        n.drive
+            .list(&ann, None)
+            .unwrap()
+            .iter()
+            .all(|item| item.id != file.id)
+    );
+    assert!(
+        n.drive
+            .list_trashed(&ann)
+            .unwrap()
+            .iter()
+            .all(|item| item.id != file.id)
+    );
 }
 
 #[test]
@@ -1170,22 +1182,22 @@ fn delete_forever_removes_a_trashed_file_and_its_bytes() {
         n.drive.get(&ann, &file.id),
         Err(DriveError::NotFound)
     ));
-    assert!(n
-        .db
-        .query(
+    assert!(
+        n.db.query(
             "SELECT id FROM drive_version WHERE itemId = ?1",
             &[Value::Text(file.id.clone())],
         )
         .unwrap()
-        .is_empty());
-    assert!(n
-        .db
-        .query(
+        .is_empty()
+    );
+    assert!(
+        n.db.query(
             "SELECT id FROM drive_acl WHERE itemId = ?1",
             &[Value::Text(file.id.clone())],
         )
         .unwrap()
-        .is_empty());
+        .is_empty()
+    );
     let (_, bytes) = n.drive.read(&ann, &copy.id, None).unwrap();
     assert_eq!(bytes, b"Thursday: Rosa");
     assert!(n.drive.blobs().has(&hash));
@@ -1216,12 +1228,13 @@ fn delete_forever_removes_a_trashed_file_and_its_bytes() {
         );
     }
     assert!(n.drive.list(&ann, Some(&folder.id)).unwrap().is_empty());
-    assert!(n
-        .drive
-        .list_trashed(&ann)
-        .unwrap()
-        .iter()
-        .all(|item| item.id != only.id));
+    assert!(
+        n.drive
+            .list_trashed(&ann)
+            .unwrap()
+            .iter()
+            .all(|item| item.id != only.id)
+    );
 
     n.drive
         .update(&ann, &folder.id, None, None, Some(true))
@@ -1825,28 +1838,31 @@ fn list_spreadsheets_offers_a_sheet_the_caller_has_not_opened() {
             .parent_name,
         "My Drive"
     );
-    assert!(hits
-        .iter()
-        .any(|hit| { hit.id == shared.id && hit.parent_name == "Shared plots" }));
+    assert!(
+        hits.iter()
+            .any(|hit| { hit.id == shared.id && hit.parent_name == "Shared plots" })
+    );
     assert!(hits.iter().all(|hit| hit.id != letter.id));
     assert!(hits.iter().all(|hit| hit.id != secret.id));
     assert!(hits.iter().all(|hit| hit.id != old.id));
     assert!(hits.iter().all(|hit| hit.id != buried.id));
-    assert!(n
-        .drive
-        .list_folders(&rosa)
-        .unwrap()
-        .iter()
-        .all(|folder| folder.id != shared_folder.id));
+    assert!(
+        n.drive
+            .list_folders(&rosa)
+            .unwrap()
+            .iter()
+            .all(|folder| folder.id != shared_folder.id)
+    );
 
     let listed = serde_json::to_value(garden).unwrap();
     assert_eq!(listed["parentName"], "Garden club");
     assert!(listed.get("bytes").is_none());
     assert!(listed.get("content").is_none());
-    assert!(n
-        .drive
-        .list_spreadsheets(&sam)
-        .unwrap()
-        .iter()
-        .all(|hit| hit.id != roster.id));
+    assert!(
+        n.drive
+            .list_spreadsheets(&sam)
+            .unwrap()
+            .iter()
+            .all(|hit| hit.id != roster.id)
+    );
 }

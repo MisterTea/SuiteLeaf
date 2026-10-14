@@ -76,6 +76,7 @@ test("sheet feature panels, tab grouping and colors persist, XLSX downloads", as
   page.on("pageerror", (e) => errors.push(e.stack || e.message));
   await page.goto("/");
   await page.getByRole("button", { name: "Sample budget" }).click();
+  await page.getByRole("toolbar", { name: "Spreadsheet formatting" }).waitFor();
   await page.getByRole("button", { name: "Data", exact: true }).click();
   await page
     .getByRole("menuitem", { name: "Data validation", exact: true })

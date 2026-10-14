@@ -27,6 +27,8 @@ function report(restart = false): DocFile {
         pageNumberFormat: restart ? "roman" : "page",
         pageNumberPosition: "bottom-center",
         pageNumberPositionSet: true,
+        pageNumberStart: 1,
+        coverHasNoNumber: false,
       },
     },
     content: [
