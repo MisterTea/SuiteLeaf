@@ -47,7 +47,6 @@
   }
   .docs-editor.seeing-letterhead .gdocs-dialog.page-setup-dialog {
     pointer-events: auto;
-    transform: scale(0.74);
     transform-origin: top right;
     box-shadow:
       0 8px 28px rgba(32, 33, 36, 0.28),
