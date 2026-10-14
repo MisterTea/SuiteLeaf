@@ -177,3 +177,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 156 | [Keep the turn from Word](156-keep-the-turn-from-word.md) | single-node | Docs |
 | 157 | [Number the slides](157-number-the-slides.md) | single-node | Slides |
 | 159 | [See the word count](159-see-the-word-count.md) | single-node | Docs |
+| 161 | [See the character count](161-see-the-character-count.md) | single-node | Docs |
