@@ -10,7 +10,7 @@ const generations = new Map<string, WebContents>();
 
 export const modelPath = () =>
   process.env.SUITELEAF_MODEL_PATH ??
-  join(app.getPath("userData"), "models", "gemma-4-E4B-it-Q4_0.gguf");
+  join(app.getPath("userData"), "models", "FrogNano-4B-2609-Q4_K_M.gguf");
 
 function start(owner: () => WebContents | undefined) {
   if (host) return host;

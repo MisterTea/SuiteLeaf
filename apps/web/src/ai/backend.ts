@@ -17,10 +17,10 @@ export function modelHost() {
   );
 }
 
-/** The model the browser runs ("gemma-4-e4b", the default, or "frognano-4b"). */
+/** The model the browser runs. FrogNano is the default; "gemma-4-e4b" selects Gemma 4 E4B. */
 export function selectedModel(): AiModelId {
   const chosen = localStorage.getItem("suiteleaf.ai.model");
-  return chosen && chosen in AI_MODELS ? (chosen as AiModelId) : "gemma-4-e4b";
+  return chosen && chosen in AI_MODELS ? (chosen as AiModelId) : "frognano-4b";
 }
 
 /** Force a browser device ("webnn-gpu", "webgpu", "wasm"); otherwise WebNN, then WebGPU. */

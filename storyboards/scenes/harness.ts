@@ -57,7 +57,7 @@ const thinkingScript =
 function assistantScript(baseURL: string | undefined) {
   const models = process.env.STORYBOARD_MODEL_HOST ?? `${baseURL}/models/`;
   const device = process.env.STORYBOARD_AI_DEVICE ?? "webgpu";
-  const model = process.env.STORYBOARD_AI_MODEL ?? "gemma-4-e4b";
+  const model = process.env.STORYBOARD_AI_MODEL ?? "frognano-4b";
   return `(() => {
     localStorage.setItem("suiteleaf.ai.modelHost", ${JSON.stringify(models)});
     localStorage.setItem("suiteleaf.ai.model", ${JSON.stringify(model)});
@@ -101,7 +101,7 @@ export const test = base.extend<{ page: Page }>({
           SUITELEAF_HIDE_WINDOWS: process.env.SUITELEAF_HIDE_WINDOWS ?? "1",
           SUITELEAF_MODEL_PATH:
             process.env.SUITELEAF_MODEL_PATH ??
-            join(homedir(), ".cache/suiteleaf-models/gguf/gemma-4-E4B-it-Q4_0.gguf"),
+            join(homedir(), ".cache/suiteleaf-models/gguf/FrogNano-4B-2609-Q4_K_M.gguf"),
         },
         recordVideo: { dir, size },
       });

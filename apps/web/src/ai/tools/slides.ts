@@ -581,7 +581,8 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
     tool({
       name: "export_presentation",
       label: "Export",
-      description: "Export the slides as a web page (html) or plain text (txt). The file downloads.",
+      description:
+        "Export a copy in another format, for other apps: a web page (html) or plain text (txt). Only when the user asks for one of these; to download or save the file itself, use download_file.",
       parameters: Type.Object({ format: Type.String({ enum: ["html", "txt"] }) }),
       target: () => document.querySelector(".workspace-header [aria-haspopup]"),
       async execute({ format }) {

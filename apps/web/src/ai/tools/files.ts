@@ -165,7 +165,8 @@ export function homeTools(ctx: HomeAgentContext): SuiteTool[] {
     tool({
       name: "show_files",
       label: "Filter files",
-      description: "Show all files or one kind (sidebar), and sort the list by name or by last edited.",
+      description:
+        "Show all files or one kind (sidebar), and sort the list by name or by last edited. The list stays as this call left it, so don't follow it with show \"all\" unless the user asked to see every file.",
       parameters: Type.Object({
         show: Type.String({ enum: ["all", "documents", "spreadsheets", "presentations"] }),
         sort_by: Type.Optional(Type.String({ enum: ["name", "edited"] })),
@@ -280,7 +281,7 @@ export function homeTools(ctx: HomeAgentContext): SuiteTool[] {
         await ctx.remove(r);
         return r.path
           ? `Removed "${r.file.title}" from the library. Its saved file stays on disk at ${r.path}; open_from_computer opens it again.`
-          : `Deleted "${r.file.title}" from ${window.suiteleaf ? "this computer" : "this browser"}; this can't be undone. A copy that was downloaded or saved elsewhere is not affected: open_from_computer opens it again.`;
+          : `Deleted "${r.file.title}" from SuiteLeaf; this can't be undone. A copy that was downloaded or saved elsewhere is not affected: open_from_computer opens it again.`;
       },
     }),
     tool({
@@ -405,10 +406,8 @@ export interface WorkspaceAgentContext {
   kind: Kind;
   status: string;
   rename: (title: string) => void;
-  /** Download (or, on desktop, Save As): the file's name, and where it went when known; null if cancelled. */
+  /** A copy of the open file: its name, and where it went when known; null if cancelled. */
   download: () => Promise<{ name: string; path?: string } | null>;
-  /** The desktop app saves through a Save As dialog instead of downloading. */
-  saveAs?: boolean;
   back: () => Promise<void>;
   /** File > New: save this file, then create and open a new one. */
   create?: (kind: Kind, title?: string) => Promise<void>;
@@ -435,8 +434,9 @@ export function workspaceTools(ctx: WorkspaceAgentContext): SuiteTool[] {
     }),
     tool({
       name: "download_file",
-      label: ctx.saveAs ? "Save As" : "Download",
-      description: `${ctx.saveAs ? "Save the open file to a file on the computer (Save As)" : "Download the open file"} as one SuiteLeaf file that keeps everything in it, to keep or move to another computer. Use this when the user asks to download or save the file.`,
+      label: "Save a copy",
+      description:
+        "Save a copy of the open file as one SuiteLeaf file that keeps everything in it, to keep or move to another computer. Use this when the user asks to download or save the file. Export tools are only for a copy in another format, such as Word, Excel or CSV.",
       parameters: Type.Object({}),
       target: () => document.querySelector(".save-copy"),
       async execute() {

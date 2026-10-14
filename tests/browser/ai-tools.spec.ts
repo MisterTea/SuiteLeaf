@@ -72,7 +72,7 @@ test("document tools write, style, find, replace and check spelling", async ({ p
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   expect(await call(page, "page_setup", { margin_inches: 3 })).toContain('1.50" margins (3" is outside');
   const download = page.waitForEvent("download");
-  expect(await call(page, "export_document", { format: "html" })).toContain("downloaded to the browser's downloads");
+  expect(await call(page, "export_document", { format: "html" })).toContain('Exported "Volunteer letter.html".');
   expect((await download).suggestedFilename()).toBe("Volunteer letter.html");
   expect(await call(page, "write_text", { after: "# Thank you", text: "Dear friends," })).toContain('right after "Thank you"');
   await expect(doc.locator("h1 + p")).toHaveText("Dear friends,");
@@ -455,7 +455,7 @@ test("a CSV opens through its import preview, with codes kept as text, and expor
   await waitForTools(page, "export_spreadsheet");
   const download = page.waitForEvent("download");
   expect(await call(page, "export_spreadsheet", { format: "csv" })).toBe(
-    `Exported the sheet "Sheet1" as "members.csv"; it downloaded to the browser's downloads.`,
+    `Exported the sheet "Sheet1" as "members.csv".`,
   );
   const csv = readFileSync((await (await download).path())!, "utf8");
   expect(csv.trim().split(/\r?\n/)).toEqual(["ID,Name,ZIP,Paid", "00412,Rosa,02139,45", "01205,Mei,10001,0"]);

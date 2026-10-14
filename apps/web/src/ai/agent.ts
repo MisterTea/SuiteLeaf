@@ -20,6 +20,12 @@ How to work:
 - Leave the file you worked on open when you finish, so the user sees the result; files save by themselves. Only go back to the file list when the user asked or the task needs another file.
 - Never ask for or type passwords. If the user must sign in, tell them to sign in themselves.`;
 
+/** Extra rules for FrogNano, which otherwise does things the user did not ask for. */
+const FROG_PROMPT = `
+- Do only what the user asked. Do not try out what you made: don't tick a box to test a rule, don't add an example, and don't export a second format.
+- download_file downloads or saves the SuiteLeaf file. Use export_document, export_spreadsheet or export_presentation only when the user named that format, such as Excel, CSV, Word, a web page, or plain text.
+- Leave the screen as the user asked to see it. If they asked for just their documents, your last show_files stays on documents.`;
+
 /** The chat format of the model the backend runs (the desktop app reports it; the browser uses the chosen one). */
 export const currentFormat = () => formatFor(localModel().status().modelId ?? selectedModel());
 
@@ -232,7 +238,10 @@ class AgentSession {
   private build() {
     const agent = new Agent({
       initialState: {
-        systemPrompt: SYSTEM_PROMPT + (checklistSetting() !== "off" ? CHECKLIST_PROMPT : ""),
+        systemPrompt:
+          SYSTEM_PROMPT +
+          (currentFormat().info.id === "frognano-4b" ? FROG_PROMPT : "") +
+          (checklistSetting() !== "off" ? CHECKLIST_PROMPT : ""),
         model: localModelDescriptor(currentFormat().info, this.model.backend ?? "local"),
         tools: currentSuiteTools().map(toAgentTool),
       },

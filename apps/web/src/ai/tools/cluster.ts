@@ -180,7 +180,7 @@ export function driveTools(ctx: DriveAgentContext): SuiteTool[] {
       target: () => onScreen(document.querySelector(".drive-new-folder")),
       async execute({ name }) {
         await control().newFolder(name);
-        return `Made the folder "${name}" in ${control().path.join(" › ")}.`;
+        return `Made the folder "${name}" in ${control().path.join(" › ")}. It is not open yet: call open_folder for "${name}" before creating a file that belongs in it.`;
       },
     }),
     tool({

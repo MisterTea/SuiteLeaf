@@ -1221,7 +1221,8 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
     tool({
       name: "export_spreadsheet",
       label: "Export",
-      description: "Export as an Excel workbook (xlsx), or the active sheet as CSV or TSV. The file downloads.",
+      description:
+        "Export a copy in another format, for other apps: an Excel workbook (xlsx), or the active sheet as CSV or TSV. Only when the user asks for one of these; to download or save the file itself, use download_file.",
       parameters: Type.Object({ format: Type.String({ enum: ["xlsx", "csv", "tsv"] }) }),
       target: () => document.querySelector(".workspace-header [aria-haspopup]"),
       async execute({ format }) {
@@ -1229,9 +1230,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         const name = `"${ctx.title}.${format}"`;
         const what = format === "xlsx" ? "every sheet" : `the sheet "${ctx.book.getActiveSheet().getSheetName()}"`;
         if (saved === null) return `The user closed the save dialog, so ${name} was not exported. Tell them; export again only if they ask.`;
-        return saved
-          ? `Exported ${what} as ${name}; the user saved it as ${saved}.`
-          : `Exported ${what} as ${name}; it downloaded to the browser's downloads.`;
+        return `Exported ${what} as ${name}${saved ? `; the user saved it as ${saved}` : ""}.`;
       },
     }),
     tool({

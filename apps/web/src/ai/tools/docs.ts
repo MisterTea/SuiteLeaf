@@ -763,7 +763,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         const saved = await ctx.exportAs(format as "docx");
         const name = `"${ctx.title}.${format}"`;
         if (saved === null) return `The user closed the save dialog, so ${name} was not exported. Tell them; export again only if they ask.`;
-        return saved ? `Exported ${name}; the user saved it as ${saved}.` : `Exported ${name}; it downloaded to the browser's downloads.`;
+        return `Exported ${name}${saved ? `; the user saved it as ${saved}` : ""}.`;
       },
     }),
     tool({

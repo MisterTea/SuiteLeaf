@@ -16,7 +16,7 @@ import type {
 import { AI_MODELS, modelIdForFile, type AiGenerateRequest, type AiStatus } from "@suiteleaf/core/ai";
 
 const MODEL_URL =
-  "https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_0.gguf";
+  "https://huggingface.co/bartowski/FrogNano-4B-2609-GGUF/resolve/main/FrogNano-4B-2609-Q4_K_M.gguf";
 
 type Inbound =
   | { type: "load" }
