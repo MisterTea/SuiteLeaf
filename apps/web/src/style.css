@@ -980,10 +980,12 @@ a {
 .sheets-editor.view-locked .font-size-stepper,
 .sheets-editor.view-locked .color-tool,
 .sheets-editor.view-locked .more-formats,
+.sheets-editor.view-locked .sheet-borders,
 .sheets-editor.view-locked .sheet-analyses-dropdown {
   opacity: 0.45;
 }
 .sheets-editor.view-locked .more-formats,
+.sheets-editor.view-locked .sheet-borders,
 .sheets-editor.view-locked .sheet-analyses-dropdown,
 .sheets-editor.view-locked .color-tool {
   pointer-events: none;
@@ -3003,6 +3005,36 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
 .more-formats-item:hover {
   background: rgba(0, 0, 0, 0.06);
   color: #1f1f1f;
+}
+.sheet-borders {
+  position: relative;
+}
+.sheet-borders-menu {
+  position: absolute;
+  left: 0;
+  top: 34px;
+  z-index: 30;
+  min-width: 148px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+  box-shadow: 0 5px 20px #24472b22;
+}
+.sheet-borders-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 7px 12px;
+  border-radius: 4px;
+  font: 600 15px/1.3 var(--font-google, Roboto, sans-serif);
+  color: #1f1f1f;
+  cursor: pointer;
+}
+.sheet-borders-item:hover {
+  background: rgba(0, 0, 0, 0.06);
 }
 .analysis-panel {
   position: absolute;

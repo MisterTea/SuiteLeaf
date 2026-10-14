@@ -69,6 +69,12 @@ import {
   type CellPaintTarget,
   type CopiedCellFormat,
 } from "./sheet-paint-format";
+import {
+  borderTypesToApply,
+  visibleBorderSides,
+  sheetBorderKinds,
+  type SheetBorderTypeName,
+} from "./sheet-borders";
 import SheetColumnGroups, { type SheetColumnGroupsHandle } from "./sheet-column-groups-ui";
 import {
   contiguousColumnRanges,
@@ -851,6 +857,7 @@ export default function Sheets({
     } | null>(null),
     [notice, setNotice] = useState(""),
     [copiedFormat, setCopiedFormat] = useState<CopiedCellFormat | null>(null),
+    [bordersOpen, setBordersOpen] = useState(false),
     [filterView, setFilterView] = useState<{
       header: string;
       value: string;
@@ -872,7 +879,7 @@ export default function Sheets({
   const toolbar = useRef<HTMLDivElement>(null);
   const moreTools = useToolbarOverflow(
     toolbar,
-    '[aria-label^="Insert comment"], [aria-label="Undo (Cmd+Z)"], [aria-label="Redo (Cmd+Y)"], .menu-search-pill, .chart-btn, .filter-btn, .functions-btn, .pivot-btn, .sheet-analyses-dropdown, .merge-btn',
+    '[aria-label^="Insert comment"], [aria-label="Undo (Cmd+Z)"], [aria-label="Redo (Cmd+Y)"], .menu-search-pill, .chart-btn, .filter-btn, .functions-btn, .pivot-btn, .sheet-analyses-dropdown, .merge-btn, .sheet-borders',
     { foldNarrow: true },
   );
   const functionActions = useRef<{
@@ -1441,6 +1448,7 @@ export default function Sheets({
           container.dataset.activeColor = typeof color === "string" ? color : "";
           container.dataset.activeFormat =
             range?.getNumberFormat?.() || style?.n?.pattern || "";
+          container.dataset.activeBorder = visibleBorderSides(style?.bd);
         } catch {
           container.dataset.activeValue = "";
           container.dataset.activeDisplay = "";
@@ -1448,6 +1456,7 @@ export default function Sheets({
           container.dataset.activeBold = "";
           container.dataset.activeColor = "";
           container.dataset.activeFormat = "";
+          container.dataset.activeBorder = "";
         }
       };
       publishValue();
@@ -2186,18 +2195,19 @@ export default function Sheets({
       persist.current();
     }
   };
-  const applyBorders = () => {
-    const r = book.current?.getActiveRange();
-    if (r && api.current) {
-      try {
-        r.setBorder(
-          api.current.Enum.BorderType.ALL,
-          api.current.Enum.BorderStyleTypes.THIN,
-          "#000000",
-        );
-      } catch {}
-      persist.current();
+  const applyBorder = (typeName: SheetBorderTypeName) => {
+    const range = book.current?.getActiveRange();
+    const types = api.current?.Enum?.BorderType;
+    const thin = api.current?.Enum?.BorderStyleTypes?.THIN;
+    if (!range || !types || thin == null) return;
+    try {
+      for (const step of borderTypesToApply(typeName))
+        range.setBorder(types[step], thin, "#000000");
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+      return;
     }
+    persist.current();
   };
   const mergeCells = () => {
     const ranges =
@@ -3169,17 +3179,40 @@ export default function Sheets({
           />
         </label>
 
-        <button
-          type="button"
-          className="tool borders-btn"
-          title="Borders"
-          aria-label="Borders"
-          disabled={readOnly}
-          onClick={applyBorders}
-        >
-          <Grid size={16} />
-          <ChevronDown size={10} />
-        </button>
+        <div className="sheet-borders">
+          <button
+            type="button"
+            className="tool borders-btn"
+            title="Borders"
+            aria-label="Borders"
+            aria-expanded={bordersOpen}
+            disabled={readOnly}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => setBordersOpen((open) => !open)}
+          >
+            <Grid size={16} />
+            <ChevronDown size={10} />
+          </button>
+          {bordersOpen ? (
+            <div className="sheet-borders-menu" role="group" aria-label="Border choices">
+              {sheetBorderKinds.map((kind) => (
+                <button
+                  key={kind.type}
+                  type="button"
+                  className="sheet-borders-item"
+                  disabled={readOnly}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    applyBorder(kind.type);
+                    setBordersOpen(false);
+                  }}
+                >
+                  {kind.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
 
         <button
           type="button"
