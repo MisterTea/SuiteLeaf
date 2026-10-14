@@ -186,3 +186,4 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | 169 | [Zoom the deck](169-zoom-the-deck.md) | single-node | Slides |
 | 171 | [Find across the deck](171-find-across-the-deck.md) | single-node | Slides |
 | 172 | [Replace across the deck](172-replace-across-the-deck.md) | single-node | Slides |
+| 173 | [Find the speaker note](173-find-the-speaker-note.md) | single-node | Slides |
