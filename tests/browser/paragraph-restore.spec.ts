@@ -73,7 +73,7 @@ test("restoring one paragraph keeps the rest of a local document", async ({ page
   await page.getByRole("button", { name: "Version history", exact: true }).click();
   await expect(panel.getByText("Restored the north-bed paragraph", { exact: true })).toBeVisible();
   await expect(panel.getByText("Agreed rota", { exact: true })).toBeVisible();
-  await panel.locator(".version-title", { hasText: /^Today / }).click();
+  await panel.locator(".version-title", { hasText: /^Today / }).first().click();
   await expect(panel.getByRole("button", { name: "Restore this version" })).toBeVisible();
   await panel.getByRole("button", { name: "Restore this version" }).click();
   await expect(editor).toContainText("North bed: 8am");

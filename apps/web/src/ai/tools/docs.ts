@@ -246,20 +246,13 @@ async function writeLines(editor: Editor, text: string, animate: boolean, keepLi
       leaveList();
       editor.chain().setParagraph().run();
     }
-    for (const [index, part] of line.split(/\*\*/).entries()) {
-      if (!part) continue;
-      const bold = index % 2 === 1;
-      const words = animate ? part.match(/\S+\s*|\s+/g) ?? [part] : [part];
-      for (const word of words) {
-        editor
-          .chain()
-          .focus()
-          .insertContent(bold ? { type: "text", text: word, marks: [{ type: "bold" }] } : { type: "text", text: word })
-          .run();
-        if (animate) await wait(18);
-      }
-      editor.chain().unsetBold().run();
-    }
+    const content = line
+      .split(/\*\*/)
+      .flatMap((part, index) =>
+        part ? [{ type: "text", text: part, ...(index % 2 === 1 ? { marks: [{ type: "bold" }] } : {}) }] : [],
+      );
+    if (content.length) editor.chain().focus().insertContent(content).run();
+    if (animate) await wait(18);
   }
   return continued;
 }

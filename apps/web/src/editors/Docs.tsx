@@ -814,7 +814,7 @@ export default function Docs({
     }
   };
 
-  const insertImage = async (f?: File) => {
+  const insertImage = async (f?: File, rememberName = false) => {
     if (!f) return;
     if (
       !/^image\/(png|jpeg|gif|webp)$/.test(f.type) ||
@@ -833,7 +833,11 @@ export default function Docs({
       editor
         ?.chain()
         .focus()
-        .setImage({ src, alt: "", title: f.name })
+        .setImage({
+          src,
+          alt: "",
+          ...(rememberName && f.name ? { title: f.name } : {}),
+        })
         .command(({ tr, state }) => {
           // Typing must continue after the photo, not replace it.
           if (!(tr.selection instanceof NodeSelection)) return true;
@@ -922,7 +926,7 @@ export default function Docs({
           closePageSetup: () => setPageSetupOpen(false),
           showSpelling: () => proofing.openSpelling(),
           jumpToHeading,
-          insertImage,
+          insertImage: (file) => insertImage(file, true),
           exportAs: (format) => exportRef.current(format),
           pageCount,
         }

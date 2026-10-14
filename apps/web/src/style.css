@@ -5686,6 +5686,8 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
   pointer-events: none;
 }
 .version-history {
+  position: relative;
+  z-index: 40;
   width: 320px;
   flex-shrink: 0;
   display: flex;
