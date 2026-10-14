@@ -37,6 +37,7 @@ import {
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import {
   filename,
+  slideOp,
   type SlideFile,
   type Slide,
   type SlideElement,
@@ -136,7 +137,7 @@ export default function Slides({
   readOnly = false,
 }: {
   file: SlideFile;
-  onChange: (content: SlideFile["content"]) => void;
+  onChange: (content: SlideFile["content"], op?: unknown) => void;
   onActions: (actions: EditorActions) => void;
   onError: (s: string) => void;
   /** Viewers can present, but not change slides or text. */
@@ -270,9 +271,10 @@ export default function Slides({
 
   const applyDeck = (next: SlideFile["content"]) => {
     if (readOnlyRef.current) return;
+    const op = slideOp(deckRef.current, next);
     deckRef.current = next;
     setDeck(next);
-    onChange(next);
+    onChange(next, op);
   };
 
   const applySelection = (
@@ -605,7 +607,7 @@ export default function Slides({
         deckRef.current = next;
         liveDirty.current = true;
         setDeck(next);
-        onChange(next);
+        onChange(next, slideOp(prev, next));
         return;
       }
       commitRef.current(next, mode?.coalesce);
