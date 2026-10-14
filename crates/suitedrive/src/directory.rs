@@ -7,7 +7,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Serialize;
-use suitedb::{Value, hlc::{iso_from_ms, iso_now, now_ms}};
+use suitedb::{
+    Value,
+    hlc::{iso_from_ms, iso_now, now_ms},
+};
 
 use super::{Drive, DriveError, DriveResult, text};
 
@@ -240,7 +243,10 @@ impl Drive {
             member_id.to_owned()
         } else {
             text(
-                &self.db.get("directory_group", member_id)?.unwrap_or_default(),
+                &self
+                    .db
+                    .get("directory_group", member_id)?
+                    .unwrap_or_default(),
                 "name",
             )
             .unwrap_or_else(|| member_id.to_owned())
@@ -289,7 +295,7 @@ impl Drive {
     }
 
     pub fn list_groups(&self) -> DriveResult<Vec<DirectoryGroup>> {
-        let mut groups: Vec<_> = self
+        Ok(self
             .db
             .query(
                 "SELECT * FROM directory_group ORDER BY name COLLATE NOCASE, id",
@@ -297,9 +303,7 @@ impl Drive {
             )?
             .into_iter()
             .filter_map(|row| group_from(&row))
-            .collect();
-        groups.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-        Ok(groups)
+            .collect())
     }
 
     pub fn search_groups(&self, query: &str) -> DriveResult<Vec<DirectoryGroup>> {
@@ -673,7 +677,12 @@ impl Drive {
     }
 
     /// Hand every item they own to someone else. The caller must be an admin.
-    pub fn transfer_owned(&self, actor: &super::Principal, from: &str, to: &str) -> DriveResult<usize> {
+    pub fn transfer_owned(
+        &self,
+        actor: &super::Principal,
+        from: &str,
+        to: &str,
+    ) -> DriveResult<usize> {
         if !actor.admin {
             return Err(DriveError::Forbidden);
         }

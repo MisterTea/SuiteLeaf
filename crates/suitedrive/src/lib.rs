@@ -12,9 +12,7 @@
 pub mod blobs;
 mod directory;
 
-pub use directory::{
-    AuditEvent, DirectoryGroup, GroupDetail, GroupMember, PersonFile, TrailEntry,
-};
+pub use directory::{AuditEvent, DirectoryGroup, GroupDetail, GroupMember, PersonFile, TrailEntry};
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -1172,9 +1170,7 @@ impl Drive {
             let mut params = vec![Value::Text(item), Value::Text(who.id.clone())];
             let grant = principal_clause("", 2, &orgs, &groups, &mut params);
             let grants = self.db.query(
-                &format!(
-                    "SELECT role, expiresAt FROM drive_acl WHERE itemId = ?1 AND ({grant})"
-                ),
+                &format!("SELECT role, expiresAt FROM drive_acl WHERE itemId = ?1 AND ({grant})"),
                 &params,
             )?;
             for grant in grants {

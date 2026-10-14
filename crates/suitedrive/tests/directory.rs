@@ -88,7 +88,7 @@ fn a_replicated_loop_does_not_trap_membership_walks() {
         .collect();
     assert!(ids.contains(&volunteers.id.as_str()));
     assert!(ids.contains(&club.id.as_str()));
-    assert_eq!(n.drive.group_detail(&club.id).unwrap().loop_present, true);
+    assert!(n.drive.group_detail(&club.id).unwrap().loop_present);
 }
 
 #[test]
@@ -129,14 +129,14 @@ fn opening_the_same_file_twice_within_fifteen_minutes_is_one_event() {
     assert_eq!(trail.len(), 1);
     assert_eq!(trail[0].action, "open");
 
-    let rows = n
-        .db
-        .query("SELECT id FROM audit_event", &[])
+    let rows = n.db.query("SELECT id FROM audit_event", &[]).unwrap();
+    let id = rows[0]
+        .get("id")
+        .and_then(|v| match v {
+            Value::Text(s) => Some(s.clone()),
+            _ => None,
+        })
         .unwrap();
-    let id = rows[0].get("id").and_then(|v| match v {
-        Value::Text(s) => Some(s.clone()),
-        _ => None,
-    }).unwrap();
     n.db.transact(|tx| {
         tx.upsert(
             "audit_event",
@@ -160,9 +160,15 @@ fn edits_already_in_version_history_show_on_the_trail() {
     n.drive
         .write(&sam, &file.id, None, Some("text/plain"), b"Saturday")
         .unwrap();
-    n.drive.note_open("sam", &file.id, "Watering rota.sldoc").unwrap();
+    n.drive
+        .note_open("sam", &file.id, "Watering rota.sldoc")
+        .unwrap();
     let trail = n.drive.document_trail("sam").unwrap();
-    assert!(trail.iter().any(|entry| entry.action == "edit" && entry.name.contains("Watering")));
+    assert!(
+        trail
+            .iter()
+            .any(|entry| entry.action == "edit" && entry.name.contains("Watering"))
+    );
     assert!(trail.iter().any(|entry| entry.action == "open"));
 }
 
@@ -196,7 +202,8 @@ fn a_group_grant_is_read_comment_or_write() {
         Err(DriveError::Forbidden)
     ));
     assert!(matches!(
-        n.drive.write(&sam, &file.id, None, Some("text/plain"), b"changed"),
+        n.drive
+            .write(&sam, &file.id, None, Some("text/plain"), b"changed"),
         Err(DriveError::Forbidden)
     ));
     let notices = n.drive.notices(&sam).unwrap();
@@ -208,17 +215,19 @@ fn a_group_grant_is_read_comment_or_write() {
         .unwrap();
     assert!(n.drive.add_comment(&sam, &file.id, "Tuesday?").is_ok());
     assert!(matches!(
-        n.drive.write(&sam, &file.id, None, Some("text/plain"), b"changed"),
+        n.drive
+            .write(&sam, &file.id, None, Some("text/plain"), b"changed"),
         Err(DriveError::Forbidden)
     ));
 
     n.drive
         .share(&rosa, &file.id, "group", &club.id, Some(Role::Editor))
         .unwrap();
-    assert!(n
-        .drive
-        .write(&sam, &file.id, None, Some("text/plain"), b"Tuesday")
-        .is_ok());
+    assert!(
+        n.drive
+            .write(&sam, &file.id, None, Some("text/plain"), b"Tuesday")
+            .is_ok()
+    );
 
     n.drive
         .add_member("rosa", &volunteers.id, "user", "priya")

@@ -36,11 +36,7 @@ fn forbid() -> Response {
 }
 
 fn bad(message: &str) -> Response {
-    (
-        StatusCode::BAD_REQUEST,
-        Json(json!({ "error": message })),
-    )
-        .into_response()
+    (StatusCode::BAD_REQUEST, Json(json!({ "error": message }))).into_response()
 }
 
 fn text(row: &std::collections::BTreeMap<String, Value>, key: &str) -> Option<String> {
@@ -68,7 +64,11 @@ fn users(db: &Db) -> Result<Vec<std::collections::BTreeMap<String, Value>>, Driv
 /// If nobody has the admin role, the oldest account becomes the admin.
 pub fn ensure_an_admin(db: &Db) -> anyhow::Result<()> {
     let rows = users(db)?;
-    if rows.is_empty() || rows.iter().any(|row| is_admin_role(text(row, "role").as_deref())) {
+    if rows.is_empty()
+        || rows
+            .iter()
+            .any(|row| is_admin_role(text(row, "role").as_deref()))
+    {
         return Ok(());
     }
     let Some(id) = rows.first().and_then(|row| text(row, "id")) else {
@@ -114,8 +114,12 @@ async fn blocking<T: Send + 'static>(
         .map_err(ApiError)
 }
 
-fn require_admin(user: &AuthUser) -> Result<(), Response> {
-    if user.is_admin() { Ok(()) } else { Err(forbid()) }
+fn require_admin(user: &AuthUser) -> Option<Response> {
+    if user.is_admin() {
+        None
+    } else {
+        Some(forbid())
+    }
 }
 
 #[derive(Deserialize)]
@@ -129,7 +133,7 @@ async fn list_users(
     crate::auth::RequireUser(user): crate::auth::RequireUser,
     Query(q): Query<ListQuery>,
 ) -> Result<Response, ApiError> {
-    if let Err(response) = require_admin(&user) {
+    if let Some(response) = require_admin(&user) {
         return Ok(response);
     }
     let db = s.db.clone();
@@ -179,7 +183,7 @@ async fn get_user(
     crate::auth::RequireUser(actor): crate::auth::RequireUser,
     Path(id): Path<String>,
 ) -> Result<Response, ApiError> {
-    if let Err(response) = require_admin(&actor) {
+    if let Some(response) = require_admin(&actor) {
         return Ok(response);
     }
     let db = s.db.clone();
@@ -257,17 +261,25 @@ async fn create_user(
     headers: HeaderMap,
     Json(body): Json<CreateUser>,
 ) -> Result<Response, ApiError> {
-    if let Err(response) = require_admin(&actor) {
+    if let Some(response) = require_admin(&actor) {
         return Ok(response);
     }
     if body.password.chars().count() < 8 {
         return Ok(bad("Use a password of at least 8 characters."));
     }
-    let Some(authorization) = headers.get(header::AUTHORIZATION).and_then(|v| v.to_str().ok()) else {
+    let Some(authorization) = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+    else {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
     };
     let mut data = serde_json::Map::new();
-    if let Some(username) = body.username.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+    if let Some(username) = body
+        .username
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
         data.insert("username".into(), json!(username));
     }
     let payload = json!({
@@ -287,10 +299,18 @@ async fn create_user(
             .get("message")
             .and_then(|v| v.as_str())
             .unwrap_or("Could not create that account.");
-        return Ok((StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY), Json(json!({ "error": message }))).into_response());
+        return Ok((
+            StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),
+            Json(json!({ "error": message })),
+        )
+            .into_response());
     }
     let created = response.get("user").cloned().unwrap_or(json!({}));
-    let id = created.get("id").and_then(|v| v.as_str()).unwrap_or("").to_owned();
+    let id = created
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_owned();
     let name = body.name.trim().to_owned();
     let drive = s.drive.clone();
     let actor_id = actor.id.clone();
@@ -314,7 +334,7 @@ async fn update_user(
     Path(id): Path<String>,
     Json(body): Json<ProfileBody>,
 ) -> Result<Response, ApiError> {
-    if let Err(response) = require_admin(&actor) {
+    if let Some(response) = require_admin(&actor) {
         return Ok(response);
     }
     let db = s.db.clone();
@@ -376,7 +396,7 @@ async fn set_role(
     Path(id): Path<String>,
     Json(body): Json<RoleBody>,
 ) -> Result<Response, ApiError> {
-    if let Err(response) = require_admin(&actor) {
+    if let Some(response) = require_admin(&actor) {
         return Ok(response);
     }
     let role = body.role.trim();
@@ -418,7 +438,7 @@ async fn set_banned(
     Path(id): Path<String>,
     Json(body): Json<BanBody>,
 ) -> Result<Response, ApiError> {
-    if let Err(response) = require_admin(&actor) {
+    if let Some(response) = require_admin(&actor) {
         return Ok(response);
     }
     let db = s.db.clone();
@@ -456,7 +476,11 @@ async fn set_banned(
             }
             Ok(())
         })?;
-        let action = if body.banned { "user.disable" } else { "user.enable" };
+        let action = if body.banned {
+            "user.disable"
+        } else {
+            "user.enable"
+        };
         drive.record_audit(&actor_id, action, "user", &user_id, "")?;
         Ok(())
     })
@@ -479,13 +503,16 @@ async fn set_password(
     Path(id): Path<String>,
     Json(body): Json<PasswordBody>,
 ) -> Result<Response, ApiError> {
-    if let Err(response) = require_admin(&actor) {
+    if let Some(response) = require_admin(&actor) {
         return Ok(response);
     }
     if body.password.chars().count() < 8 {
         return Ok(bad("Use a password of at least 8 characters."));
     }
-    let Some(authorization) = headers.get(header::AUTHORIZATION).and_then(|v| v.to_str().ok()) else {
+    let Some(authorization) = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+    else {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
     };
     let (status, response) = s
@@ -517,7 +544,7 @@ async fn revoke(
     crate::auth::RequireUser(actor): crate::auth::RequireUser,
     Path(id): Path<String>,
 ) -> Result<Response, ApiError> {
-    if let Err(response) = require_admin(&actor) {
+    if let Some(response) = require_admin(&actor) {
         return Ok(response);
     }
     revoke_sessions(&s, &actor.id, &id).await?;
@@ -564,7 +591,7 @@ async fn remove_user(
     Path(id): Path<String>,
     Json(body): Json<RemoveBody>,
 ) -> Result<Response, ApiError> {
-    if let Err(response) = require_admin(&actor) {
+    if let Some(response) = require_admin(&actor) {
         return Ok(response);
     }
     let db = s.db.clone();
@@ -581,7 +608,12 @@ async fn remove_user(
         }
         let owned = drive.owned_item_ids(&id)?;
         if !owned.is_empty() {
-            let Some(owner) = body.owner_id.as_deref().map(str::trim).filter(|s| !s.is_empty()) else {
+            let Some(owner) = body
+                .owner_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            else {
                 return Err(DriveError::BadRequest(
                     "Choose who should own their files.".into(),
                 ));
@@ -647,7 +679,7 @@ async fn list_groups(
     State(s): State<AppState>,
     crate::auth::RequireUser(actor): crate::auth::RequireUser,
 ) -> Result<Response, ApiError> {
-    if let Err(response) = require_admin(&actor) {
+    if let Some(response) = require_admin(&actor) {
         return Ok(response);
     }
     let groups = blocking(&s.drive, |d| d.list_groups()).await?;
@@ -659,7 +691,7 @@ async fn create_group(
     crate::auth::RequireUser(actor): crate::auth::RequireUser,
     Json(body): Json<GroupBody>,
 ) -> Result<Response, ApiError> {
-    if let Err(response) = require_admin(&actor) {
+    if let Some(response) = require_admin(&actor) {
         return Ok(response);
     }
     let actor_id = actor.id.clone();
@@ -672,7 +704,7 @@ async fn get_group(
     crate::auth::RequireUser(actor): crate::auth::RequireUser,
     Path(id): Path<String>,
 ) -> Result<Response, ApiError> {
-    if let Err(response) = require_admin(&actor) {
+    if let Some(response) = require_admin(&actor) {
         return Ok(response);
     }
     let detail = blocking(&s.drive, move |d| d.group_detail(&id)).await?;
@@ -685,11 +717,14 @@ async fn rename_group(
     Path(id): Path<String>,
     Json(body): Json<GroupBody>,
 ) -> Result<Response, ApiError> {
-    if let Err(response) = require_admin(&actor) {
+    if let Some(response) = require_admin(&actor) {
         return Ok(response);
     }
     let actor_id = actor.id.clone();
-    let group = blocking(&s.drive, move |d| d.rename_group(&actor_id, &id, &body.name)).await?;
+    let group = blocking(&s.drive, move |d| {
+        d.rename_group(&actor_id, &id, &body.name)
+    })
+    .await?;
     Ok(Json(group).into_response())
 }
 
@@ -698,7 +733,7 @@ async fn delete_group(
     crate::auth::RequireUser(actor): crate::auth::RequireUser,
     Path(id): Path<String>,
 ) -> Result<Response, ApiError> {
-    if let Err(response) = require_admin(&actor) {
+    if let Some(response) = require_admin(&actor) {
         return Ok(response);
     }
     let actor_id = actor.id.clone();
@@ -719,7 +754,7 @@ async fn add_member(
     Path(id): Path<String>,
     Json(body): Json<MemberBody>,
 ) -> Result<Response, ApiError> {
-    if let Err(response) = require_admin(&actor) {
+    if let Some(response) = require_admin(&actor) {
         return Ok(response);
     }
     let actor_id = actor.id.clone();
@@ -737,7 +772,7 @@ async fn remove_member(
     Path(id): Path<String>,
     Json(body): Json<MemberBody>,
 ) -> Result<Response, ApiError> {
-    if let Err(response) = require_admin(&actor) {
+    if let Some(response) = require_admin(&actor) {
         return Ok(response);
     }
     let actor_id = actor.id.clone();
@@ -757,9 +792,18 @@ pub fn router(state: AppState) -> Router {
             get(get_user).patch(update_user).delete(remove_user),
         )
         .route("/api/admin/users/{id}/role", axum::routing::post(set_role))
-        .route("/api/admin/users/{id}/banned", axum::routing::post(set_banned))
-        .route("/api/admin/users/{id}/password", axum::routing::post(set_password))
-        .route("/api/admin/users/{id}/sessions", axum::routing::delete(revoke))
+        .route(
+            "/api/admin/users/{id}/banned",
+            axum::routing::post(set_banned),
+        )
+        .route(
+            "/api/admin/users/{id}/password",
+            axum::routing::post(set_password),
+        )
+        .route(
+            "/api/admin/users/{id}/sessions",
+            axum::routing::delete(revoke),
+        )
         .route("/api/admin/groups", get(list_groups).post(create_group))
         .route(
             "/api/admin/groups/{id}",
