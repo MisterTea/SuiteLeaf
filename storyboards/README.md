@@ -207,3 +207,4 @@ The browser runs need the model weights in `~/.cache/suiteleaf-models` (`RASMUS/
 | 150 | [Use the roster on the server](150-use-the-roster-on-the-server.md) | cluster | Docs |
 | 151 | [Put the fee chart in the minutes](151-put-the-fee-chart-in-the-minutes.md) | single-node | Docs |
 | 152 | [Send the minutes with the fees still in them](152-send-the-minutes-with-the-fees-still-in-them.md) | single-node | Docs |
+| 153 | [See who opened the rota](153-see-who-opened-the-rota.md) | cluster | Admin |

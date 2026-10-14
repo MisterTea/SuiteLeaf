@@ -1,3 +1,4 @@
+mod admin_api;
 mod auth;
 mod collab;
 mod config;
@@ -197,6 +198,7 @@ async fn run(config: Config, init: bool, internal_token: Option<String>) -> Resu
         .then(|| config.allowlist.iter().copied().chain([peer_id]).collect());
     db.set_allowlist(allowlist.clone());
     let drive = Drive::open(db.clone(), &config.data_dir.join("blobs"))?;
+    admin_api::ensure_an_admin(&db).context("choose an admin")?;
 
     let (net, events) = suiteleaf_net::start(NetConfig {
         keypair: identity,

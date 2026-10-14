@@ -149,7 +149,8 @@ pub fn router(state: AppState) -> Router {
         .route("/api/node/info", get(info))
         .route("/sign-up/{token}", get(sign_up_shell))
         .with_state(state.clone())
-        .merge(crate::drive_api::router(state))
+        .merge(crate::drive_api::router(state.clone()))
+        .merge(crate::admin_api::router(state))
         .merge(
             Router::new()
                 .route("/api/auth/{*rest}", any(crate::auth::proxy))

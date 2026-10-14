@@ -54,7 +54,7 @@ fn principal(user: &AuthUser) -> Principal {
     }
 }
 
-struct ApiError(DriveError);
+pub(crate) struct ApiError(pub(crate) DriveError);
 
 impl From<DriveError> for ApiError {
     fn from(e: DriveError) -> Self {
@@ -343,6 +343,12 @@ async fn read_content(
         }
         other => other?,
     };
+    let opened = (who.id.clone(), item.id.clone(), item.name.clone());
+    let _ = blocking(&s.drive, {
+        let (actor, item_id, name) = opened;
+        move |d| d.note_open(&actor, &item_id, &name)
+    })
+    .await;
     let mut response = Response::new(Body::from(bytes));
     let headers = response.headers_mut();
     let mime = item.mime.as_deref().unwrap_or("application/octet-stream");
@@ -626,7 +632,13 @@ async fn put_acl(
 #[serde(rename_all = "camelCase")]
 struct ExpiryBody {
     principal_id: String,
+    #[serde(default = "user_principal")]
+    principal_type: String,
     expires_at: Option<String>,
+}
+
+fn user_principal() -> String {
+    "user".into()
 }
 
 async fn put_expiry(
@@ -640,7 +652,7 @@ async fn put_expiry(
         d.set_expiry(
             &who,
             &id,
-            "user",
+            &body.principal_type,
             &body.principal_id,
             body.expires_at.as_deref(),
         )
@@ -697,6 +709,16 @@ async fn search_accounts(
     Ok(Json(json!({ "accounts": accounts })).into_response())
 }
 
+async fn search_groups(
+    State(s): State<AppState>,
+    RequireUser(_user): RequireUser,
+    Query(q): Query<AccountQuery>,
+) -> ApiResult<Response> {
+    let query = q.q.unwrap_or_default();
+    let groups = blocking(&s.drive, move |d| d.search_groups(&query)).await?;
+    Ok(Json(json!({ "groups": groups })).into_response())
+}
+
 async fn get_access(
     State(s): State<AppState>,
     RequireUser(user): RequireUser,
@@ -716,16 +738,39 @@ async fn get_access(
         .map_err(|e| ApiError(DriveError::Other(e)))?;
     let by_id: std::collections::HashMap<_, _> =
         profiles.into_iter().map(|p| (p.id.clone(), p)).collect();
+    let group_ids: Vec<String> = access
+        .grants
+        .iter()
+        .filter(|g| g.principal_type == "group")
+        .map(|g| g.principal_id.clone())
+        .collect();
+    let drive = s.drive.clone();
+    let group_names = tokio::task::spawn_blocking(move || {
+        let mut names = std::collections::HashMap::new();
+        for id in group_ids {
+            if let Ok(Some(name)) = drive.group_name(&id) {
+                names.insert(id, name);
+            }
+        }
+        names
+    })
+    .await
+    .map_err(|e| ApiError(DriveError::Other(e.into())))?;
     let grants: Vec<_> = access
         .grants
         .into_iter()
         .map(|g| {
             let profile = by_id.get(&g.principal_id);
+            let name = if g.principal_type == "group" {
+                group_names.get(&g.principal_id).cloned()
+            } else {
+                profile.and_then(|p| p.name.clone())
+            };
             json!({
                 "principalType": g.principal_type,
                 "principalId": g.principal_id,
                 "role": g.role,
-                "name": profile.and_then(|p| p.name.clone()),
+                "name": name,
                 "email": profile.and_then(|p| p.email.clone()),
                 "inheritedFrom": g.inherited_from,
                 "expiresAt": g.expires_at,
@@ -914,6 +959,7 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/me", get(me))
         .route("/api/accounts", get(search_accounts))
+        .route("/api/drive/groups", get(search_groups))
         .route("/api/drive/items", get(list).post(create))
         .route("/api/drive/folders", get(list_folders))
         .route("/api/drive/trash", get(list_trash))

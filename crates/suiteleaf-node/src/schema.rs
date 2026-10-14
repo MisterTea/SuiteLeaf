@@ -49,6 +49,9 @@ mod tests {
             "organization",
             "member",
             "drive_item",
+            "directory_group",
+            "directory_edge",
+            "audit_event",
         ] {
             assert!(schema.table(table).is_some(), "{table} is missing");
         }

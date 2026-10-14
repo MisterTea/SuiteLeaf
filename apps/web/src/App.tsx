@@ -138,6 +138,7 @@ import {
   visibleRecords,
   type LibraryFilter,
 } from "./library-trash";
+import { AdminLink, AdminScreen } from "./admin/Admin";
 import { ConnectDialog, SignInScreen, useNodeSession } from "./drive/SignIn";
 import { syncSummary, useServerSync } from "./drive/status";
 import { VersionHistory, VersionPreview } from "./editors/version-history";
@@ -1307,6 +1308,7 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
             </small>
           ) : null}
         </div>
+        <AdminLink cluster role={session?.user.role} />
         <AccountChip serverUrl={serverUrl} onError={setError} />
       </aside>
       <main className="home-main">
@@ -4190,6 +4192,14 @@ export default function App() {
         <AgentLayer />
         <Routes>
           <Route path="/auth-complete" element={<AuthComplete />} />
+          <Route
+            path="/admin"
+            element={
+              <ClusterGate>
+                <AdminScreen />
+              </ClusterGate>
+            }
+          />
           <Route
             path="/templates"
             element={

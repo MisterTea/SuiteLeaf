@@ -92,9 +92,10 @@ export interface AccountProfile {
   name: string | null;
   email: string | null;
   username: string | null;
+  kind?: "user" | "group";
 }
 export interface AccessGrant {
-  principalType: "user" | "org" | "owner";
+  principalType: "user" | "group" | "org" | "owner";
   principalId: string;
   role: DriveRole;
   name: string | null;
@@ -439,6 +440,10 @@ export const drive = {
     const response = await api(`/api/accounts?q=${encodeURIComponent(query)}`);
     return (await response.json()).accounts;
   },
+  async searchGroups(query: string): Promise<{ id: string; name: string }[]> {
+    const response = await api(`/api/drive/groups?q=${encodeURIComponent(query)}`);
+    return (await response.json()).groups;
+  },
   async access(id: string): Promise<ItemAccess> {
     return (
       await api(`/api/drive/items/${encodeURIComponent(id)}/access`)
@@ -448,11 +453,12 @@ export const drive = {
     id: string,
     principalId: string,
     role: Exclude<DriveRole, "owner"> | null,
+    principalType: "user" | "group" | "org" = "user",
   ): Promise<void> {
     await api(`/api/drive/items/${encodeURIComponent(id)}/acl`, {
       method: "PUT",
       ...json({
-        principalType: "user",
+        principalType,
         principalId,
         role,
       }),
@@ -479,10 +485,11 @@ export const drive = {
     id: string,
     principalId: string,
     expiresAt: string | null,
+    principalType: "user" | "group" | "org" = "user",
   ): Promise<void> {
     await api(`/api/drive/items/${encodeURIComponent(id)}/expiry`, {
       method: "PUT",
-      ...json({ principalId, expiresAt }),
+      ...json({ principalId, principalType, expiresAt }),
     });
   },
   /** Make this person the owner now. The caller becomes an editor. */
@@ -705,6 +712,182 @@ export async function uploadDriveFile(
 ): Promise<DriveLink> {
   return withDriveLock(() => uploadDriveFileUnlocked(file, link));
 }
+
+export async function currentAccount(): Promise<NodeUser> {
+  return (await api("/api/me")).json();
+}
+
+export interface AdminUser {
+  id: string;
+  name: string | null;
+  email: string | null;
+  username: string | null;
+  role: string | null;
+  banned: boolean;
+  createdAt: string | null;
+  groups?: string[];
+}
+
+export interface AdminDocument {
+  at: string;
+  action: "open" | "edit" | string;
+  itemId: string;
+  name: string;
+}
+
+export interface AdminSignIn {
+  id: string;
+  at: string;
+  targetId: string;
+  name: string;
+}
+
+export interface AdminSession {
+  id: string;
+  at: string | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+}
+
+export interface AdminPerson {
+  user: AdminUser;
+  groups: { id: string; name: string | null }[];
+  directGroupIds: string[];
+  files: {
+    id: string;
+    name: string;
+    size: number;
+    via: string;
+    groupName: string | null;
+  }[];
+  bytes: number;
+  documents: AdminDocument[];
+  signIns: AdminSignIn[];
+  sessions: AdminSession[];
+  changes: {
+    id: string;
+    at: string;
+    actorId: string;
+    action: string;
+    name: string;
+  }[];
+}
+
+export interface AdminGroup {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminGroupDetail {
+  group: AdminGroup;
+  members: { memberType: string; memberId: string; direct: boolean }[];
+  people: string[];
+  loopPresent: boolean;
+}
+
+export const adminApi = {
+  async users(query = "", group = ""): Promise<AdminUser[]> {
+    const params = new URLSearchParams();
+    if (query) params.set("q", query);
+    if (group) params.set("group", group);
+    const suffix = params.size ? `?${params}` : "";
+    return (await (await api(`/api/admin/users${suffix}`)).json()).users;
+  },
+  async user(id: string): Promise<AdminPerson> {
+    return (await api(`/api/admin/users/${encodeURIComponent(id)}`)).json();
+  },
+  async createUser(body: {
+    name: string;
+    email: string;
+    password: string;
+    username?: string;
+    admin?: boolean;
+  }): Promise<void> {
+    await api("/api/admin/users", { method: "POST", ...json(body) });
+  },
+  async updateUser(
+    id: string,
+    body: { name?: string; email?: string; username?: string },
+  ): Promise<AdminPerson> {
+    return (
+      await api(`/api/admin/users/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        ...json(body),
+      })
+    ).json();
+  },
+  async setRole(id: string, role: "admin" | "user"): Promise<AdminPerson> {
+    return (
+      await api(`/api/admin/users/${encodeURIComponent(id)}/role`, {
+        method: "POST",
+        ...json({ role }),
+      })
+    ).json();
+  },
+  async setBanned(id: string, banned: boolean): Promise<AdminPerson> {
+    return (
+      await api(`/api/admin/users/${encodeURIComponent(id)}/banned`, {
+        method: "POST",
+        ...json({ banned }),
+      })
+    ).json();
+  },
+  async setPassword(id: string, password: string): Promise<void> {
+    await api(`/api/admin/users/${encodeURIComponent(id)}/password`, {
+      method: "POST",
+      ...json({ password }),
+    });
+  },
+  async revokeSessions(id: string): Promise<void> {
+    await api(`/api/admin/users/${encodeURIComponent(id)}/sessions`, {
+      method: "DELETE",
+    });
+  },
+  async removeUser(id: string, ownerId?: string): Promise<void> {
+    await api(`/api/admin/users/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      ...json({ ownerId: ownerId ?? null }),
+    });
+  },
+  async groups(): Promise<AdminGroup[]> {
+    return (await (await api("/api/admin/groups")).json()).groups;
+  },
+  async group(id: string): Promise<AdminGroupDetail> {
+    return (await api(`/api/admin/groups/${encodeURIComponent(id)}`)).json();
+  },
+  async createGroup(name: string): Promise<AdminGroup> {
+    return (await api("/api/admin/groups", { method: "POST", ...json({ name }) })).json();
+  },
+  async renameGroup(id: string, name: string): Promise<AdminGroup> {
+    return (
+      await api(`/api/admin/groups/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        ...json({ name }),
+      })
+    ).json();
+  },
+  async deleteGroup(id: string): Promise<void> {
+    await api(`/api/admin/groups/${encodeURIComponent(id)}`, { method: "DELETE" });
+  },
+  async addMember(groupId: string, memberType: "user" | "group", memberId: string): Promise<AdminGroupDetail> {
+    return (
+      await api(`/api/admin/groups/${encodeURIComponent(groupId)}/members`, {
+        method: "POST",
+        ...json({ memberType, memberId }),
+      })
+    ).json();
+  },
+  async removeMember(groupId: string, memberType: "user" | "group", memberId: string): Promise<AdminGroupDetail> {
+    return (
+      await api(`/api/admin/groups/${encodeURIComponent(groupId)}/members`, {
+        method: "DELETE",
+        ...json({ memberType, memberId }),
+      })
+    ).json();
+  },
+};
 
 export async function saveNewDriveFile(
   file: SuiteFile,
