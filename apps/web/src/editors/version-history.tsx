@@ -245,7 +245,16 @@ export function VersionHistory({
             restoredFrom: null,
             summary: version.summary,
           }));
-          const fromSnaps = snaps.map((version) => ({
+          const fileContents = new Set(stored.map((version) => JSON.stringify(version.content)));
+          const fromSnaps = snaps
+            .filter((version) => {
+              try {
+                return !fileContents.has(JSON.stringify(parseFile(version.native).content));
+              } catch {
+                return true;
+              }
+            })
+            .map((version) => ({
             id: version.id,
             createdAt: version.createdAt,
             authorId: version.authorId,
