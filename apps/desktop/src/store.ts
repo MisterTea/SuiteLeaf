@@ -112,6 +112,20 @@ export class FileStore {
       const existing = this.records.get(file.id);
       if (existing?.recovery && existing.path === full)
         return structuredClone(existing);
+      // A different version of this file is already in the library (a draft,
+      // or saved elsewhere): return it unsaved, so the user chooses which to keep.
+      if (
+        existing &&
+        !existing.drive &&
+        existing.path !== full &&
+        serializeFile(existing.file) !== serializeFile(file)
+      )
+        return structuredClone({
+          file,
+          path: full,
+          fingerprint: fingerprint(text),
+          recovery: false,
+        });
       const r = applyLibraryMarks(
         {
           file,

@@ -13,6 +13,9 @@ import {
 } from "../node-client";
 import { probeServer, switchMode } from "../mode";
 import { useServerSync } from "./status";
+import { useAgentHost } from "../ai/host";
+import { signInSnapshot, signInTools } from "../ai/tools/cluster";
+import { AiButton } from "../ai/AgentSidebar";
 
 export function useNodeSession() {
   const [session, setSession] = useState(getSession);
@@ -50,6 +53,16 @@ export function SignInScreen({
   const clustered = Boolean(useServerSync(serverUrl)?.peers);
   const [ended] = useState(sessionEndReason);
   const host = new URL(serverUrl).host;
+  useAgentHost("signin", () => ({
+    kind: "home",
+    snapshot: () => signInSnapshot(host),
+    tools: signInTools({
+      host,
+      signedIn: () => !!getSession(),
+      canLeave: !!onDisconnect,
+      leave: () => onDisconnect?.() ?? Promise.resolve(),
+    }),
+  }));
 
   useEffect(() => {
     loadProviders(serverUrl)
@@ -100,6 +113,9 @@ export function SignInScreen({
 
   return (
     <div className="sign-in-screen">
+      <div className="sign-in-tools">
+        <AiButton />
+      </div>
       <form
         className="gdocs-dialog sign-in-card"
         aria-label="Sign in to SuiteLeaf"

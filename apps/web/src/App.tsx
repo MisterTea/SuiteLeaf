@@ -5,6 +5,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type RefObject,
   Component,
   type ReactNode,
 } from "react";
@@ -126,10 +127,30 @@ import {
   disconnect,
   forgetLeftServer,
   leftServer,
+  probeServer,
   resolveMode,
+  switchMode,
   useMode,
   type ResolvedMode,
 } from "./mode";
+import { useAgentHost } from "./ai/host";
+import { AiButton, AgentLayer } from "./ai/AgentSidebar";
+import {
+  homeSnapshot,
+  homeTools,
+  workspaceSnapshot,
+  workspaceTools,
+  type HomeAgentContext,
+  type WorkspaceAgentContext,
+} from "./ai/tools/files";
+import {
+  conflictTools,
+  connectTools,
+  driveSnapshot,
+  driveTools,
+  type DriveAgentContext,
+} from "./ai/tools/cluster";
+import type { DriveControl } from "./drive/DriveBrowser";
 import {
   SaveTemplateDialog,
   TemplateGallery,
@@ -287,12 +308,15 @@ function ImportButton({
   onImport,
   onError,
   filePicker = false,
+  importer,
 }: {
   /** `name` is the chosen file's name when it came from the file picker. */
   onImport: (r: FileRecord, name?: string) => Promise<void>;
   onError: (s: string) => void;
   /** Always use the browser file picker, even on desktop. */
   filePicker?: boolean;
+  /** Receives a function that imports a chosen file the same way the picker does. */
+  importer?: RefObject<((f: File) => Promise<void>) | null>;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
@@ -300,6 +324,21 @@ function ImportButton({
     draft: DelimitedDraft;
     resolve: (options: DelimitedOptions | null) => void;
   } | null>(null);
+  const importChosen = async (f: File) => {
+    setImporting(true);
+    try {
+      const file = await importFile(
+        f,
+        (draft) => new Promise((resolve) => setReview({ draft, resolve })),
+      );
+      if (file) await onImport({ file }, f.name);
+    } catch (e) {
+      onError(message(e));
+    } finally {
+      setImporting(false);
+    }
+  };
+  if (importer) importer.current = importChosen;
   const open = async () => {
     setImporting(true);
     try {
@@ -327,20 +366,7 @@ function ImportButton({
         onChange={async (e) => {
           const f = e.target.files?.[0];
           e.target.value = "";
-          if (!f) return;
-          setImporting(true);
-          try {
-            const file = await importFile(
-              f,
-              (draft) =>
-                new Promise((resolve) => setReview({ draft, resolve })),
-            );
-            if (file) await onImport({ file }, f.name);
-          } catch (e) {
-            onError(message(e));
-          } finally {
-            setImporting(false);
-          }
+          if (f) await importChosen(f);
         }}
       />
       {window.suiteleaf && !filePicker ? (
@@ -484,7 +510,13 @@ function LocalHome() {
   );
   useEffect(() => {
     void refresh();
-    return () => clearTimeout(undoTimer.current);
+    // The assistant's "Undo all of this" puts files back behind the list's back.
+    const changed = () => void refresh();
+    window.addEventListener("suiteleaf:library-changed", changed);
+    return () => {
+      clearTimeout(undoTimer.current);
+      window.removeEventListener("suiteleaf:library-changed", changed);
+    };
   }, [refresh]);
   const open = useCallback(
     async (r: FileRecord, notice?: string) => {
@@ -682,6 +714,54 @@ function LocalHome() {
       ) : null}
     </button>
   );
+  const importer = useRef<((f: File) => Promise<void>) | null>(null);
+  useAgentHost("home", () => {
+    const ctx: HomeAgentContext = {
+      records,
+      shown: shown.map((s) => s.r),
+      query,
+      filter,
+      setQuery,
+      setFilter: (f) => setFilter(f as LibraryFilter),
+      setSort,
+      create: (kind, title) => open({ file: createFile(kind, title) }),
+      open: (r) => navigate(`/file/${r.file.id}`),
+      openSample: (kind) =>
+        void open({
+          file: (kind === "doc" ? sampleDoc : kind === "sheet" ? sampleSheet : sampleSlide)(),
+        }),
+      rename,
+      duplicate: async (r) => {
+        const copy = await storage.save({ file: duplicateFile(r.file) });
+        await refresh();
+        return copy;
+      },
+      showRemove: () => {},
+      remove: async (r) => {
+        const latest = (await storage.get(r.file.id)) ?? r;
+        await storage.save(trashRecord(latest));
+        rememberUndo(latest);
+        await refresh();
+      },
+      importFile: async (f) => {
+        if (!importer.current) throw new Error("Clear the search to import a file.");
+        await importer.current(f);
+      },
+    };
+    return {
+      kind: "home",
+      snapshot: () => homeSnapshot(ctx),
+      tools: [
+        ...homeTools(ctx),
+        ...(locked
+          ? []
+          : connectTools({
+              probe: probeServer,
+              connect: (serverUrl) => switchMode({ kind: "cluster", serverUrl }),
+            })),
+      ],
+    };
+  });
   const samples = (
     [
       ["Sample document", sampleDoc],
@@ -789,6 +869,7 @@ function LocalHome() {
             />
           </label>
           <span className="version">OPEN SOURCE · v0.1</span>
+          <AiButton />
         </header>
         <LeftServerNotice />
         {focused ? null : (
@@ -812,7 +893,7 @@ function LocalHome() {
             {searching ? (
               <button onClick={() => setQuery("")}>Clear search</button>
             ) : (
-              <ImportButton onImport={importRecord} onError={setError} />
+              <ImportButton onImport={importRecord} onError={setError} importer={importer} />
             )}
           </header>
           {filter === "trash" ? (
@@ -1108,6 +1189,27 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
     [make],
   );
   useEffect(() => window.suiteleaf?.onMenu(menu), [menu]);
+  const driveControl = useRef<DriveControl | null>(null);
+  const session = useNodeSession();
+  useAgentHost("home", () => {
+    const ctx: DriveAgentContext = {
+      host: new URL(serverUrl).host,
+      user: session?.user.name || session?.user.username || session?.user.email || "",
+      drive: () => driveControl.current,
+      create: (kind, title) =>
+        createInDrive(createFile(kind, title), folder.current, navigate),
+      open: (item) => openFromDrive(item, navigate),
+      signOut: async () => {
+        if (!(await forgetDriveFiles())) return false;
+        await signOut();
+        return true;
+      },
+      canDisconnect: !locked,
+      mayDisconnect: () => forgetDriveFiles(),
+      disconnect: () => disconnect(serverUrl),
+    };
+    return { kind: "home", snapshot: () => driveSnapshot(ctx), tools: driveTools(ctx) };
+  });
   return (
     <div className="home">
       <aside className="sidebar">
@@ -1137,6 +1239,7 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
         <header className="home-top">
           <span />
           <span className="version">OPEN SOURCE · v0.1</span>
+          <AiButton />
         </header>
         <section className="welcome">
           <p className="eyebrow">YOUR TEAM WORKSPACE</p>
@@ -1160,6 +1263,7 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
           <DriveBrowser
             inline
             mode="open"
+            control={driveControl}
             onFolderChange={onFolderChange}
             onOpen={(item) => openFromDrive(item, navigate)}
             refreshKey={sync ? `${sync.heads}:${sync.replicating}` : undefined}
@@ -1658,6 +1762,65 @@ function Workspace() {
     actions.current = a;
     setActionsReady(true);
   }, []);
+  const downloadFile = () =>
+    (cluster ? exportNative().then(() => true) : saveAs()).then((done) => {
+      if (done && !cluster && !window.suiteleaf && alive.current)
+        setStatus(`Downloaded “${nativeFilename(current.current!.file)}”`);
+      return !!done;
+    });
+  useAgentHost("workspace", () => {
+    const file = record?.file;
+    const ctx: WorkspaceAgentContext | null = file
+      ? {
+          title: file.title,
+          kind: file.kind,
+          status,
+          rename: changeTitle,
+          download: () =>
+            downloadFile().then((done) =>
+              done
+                ? {
+                    name:
+                      (!cluster && current.current?.path?.split(/[\\/]/).pop()) ||
+                      nativeFilename(current.current!.file),
+                    path: cluster ? undefined : current.current?.path,
+                  }
+                : null,
+            ),
+          back: () => save().then(() => navigate("/")),
+          create: async (kind, title) => {
+            await save();
+            const created = createFile(kind, title);
+            if (cluster) await createInDrive(created, null, navigate);
+            else navigate(`/file/${(await storage.save({ file: created })).file.id}`);
+          },
+        }
+      : null;
+    return {
+      kind: file?.kind ?? "doc",
+      snapshot: () =>
+        ctx
+          ? workspaceSnapshot(ctx) +
+            (driveConflictRef.current
+              ? " Someone else saved a newer version of this file in SuiteDrive; changes here are not being uploaded until the conflict is resolved."
+              : "")
+          : "",
+      tools: ctx
+        ? [
+            ...workspaceTools(ctx),
+            ...(driveConflict
+              ? conflictTools({
+                  conflict: () => !!driveConflictRef.current,
+                  saveCopy: saveDriveCopy,
+                  reload: reloadFromDrive,
+                  title: () => current.current?.file.title ?? "",
+                  rename: changeTitle,
+                })
+              : []),
+          ]
+        : [],
+    };
+  });
   if (locked)
     return (
       <div className="loading">
@@ -2966,6 +3129,7 @@ function Workspace() {
               Share
             </button>
           ) : null}
+          <AiButton />
           {mode.kind === "cluster" ? (
             <span
               className="workspace-brand workspace-server"
@@ -3311,6 +3475,7 @@ export default function App() {
   return (
     <ModeContext.Provider value={mode}>
       <HashRouter>
+        <AgentLayer />
         <Routes>
           <Route path="/auth-complete" element={<AuthComplete />} />
           <Route

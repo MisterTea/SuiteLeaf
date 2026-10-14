@@ -199,7 +199,8 @@ export function useDocProofing(
         .setMeta(spellingKey, spellingHighlight(current.from, current.to))
         .setMeta("addToHistory", false),
     );
-  }, [editor, dialog, issueId]);
+    // Follow the word the person asked to see. Typing must not move the caret onto a new misspelling.
+  }, [editor, dialog, session?.step]);
 
   const updatePersonal = (next: PersonalDictionary) => {
     writePersonalDictionary(next);

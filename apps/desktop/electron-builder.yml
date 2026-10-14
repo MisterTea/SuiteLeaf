@@ -12,6 +12,9 @@ extraResources:
     to: THIRD_PARTY_NOTICES.txt
 icon: resources/icon.png
 asar: true
+asarUnpack:
+  - node_modules/node-llama-cpp/**
+  - node_modules/@node-llama-cpp/**
 fileAssociations:
   - ext: sldoc
     name: SuiteLeaf Document

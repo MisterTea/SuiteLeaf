@@ -372,4 +372,32 @@ describe("local Office export", () => {
       /sqref="B2:B3"[^>]*><formula1>&quot;1,0&quot;<\/formula1>/,
     );
   });
+  it("exports rule colours that Univer stores as rgb(…)", async () => {
+    const file = createFile("sheet", "Bake sale prep");
+    if (file.kind !== "sheet") throw new Error();
+    const id = file.content.workbook.sheetOrder[0];
+    file.content.workbook.resources = [
+      {
+        name: "SHEET_CONDITIONAL_FORMATTING_PLUGIN",
+        data: JSON.stringify({
+          [id]: [
+            {
+              cfId: "done",
+              ranges: [{ startRow: 1, endRow: 5, startColumn: 0, endColumn: 3 }],
+              rule: {
+                type: "highlightCell",
+                subType: "formula",
+                value: "=$A2=TRUE",
+                style: { bg: { rgb: "rgb(217,234,211)" }, st: { s: 1 } },
+              },
+            },
+          ],
+        }),
+      },
+    ];
+    const styles = await (await JSZip.loadAsync(await exportXlsx(file)))
+      .file("xl/styles.xml")!
+      .async("string");
+    expect(styles).toMatch(/<dxf><font>[^]*<strike\/>[^]*<fgColor rgb="FFD9EAD3"\/>/);
+  });
 });

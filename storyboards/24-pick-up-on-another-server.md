@@ -28,6 +28,21 @@ The garden club runs two SuiteLeaf servers in one cluster: one at the office and
 - She can always see which server she's on: in the sidebar on the home screen and in the top bar of the editor.
 - The presentation saved on one server opens, with the same content, on the other, and new edits save there.
 
+## AI version
+
+**Video:** [web](videos/24-pick-up-on-another-server-ai.mp4) · **Script:** [scenes/ai/24-pick-up-on-another-server-ai.spec.ts](scenes/ai/24-pick-up-on-another-server-ai.spec.ts) (web only; cluster mode)
+
+The script starts the same two clustered servers. Priya creates her account on the office server herself, then asks the on-device assistant (Gemma 4 E4B):
+
+1. At the office: "Make a presentation called Budget update with a title slide: Budget update, and the subtitle Seeds $120 · Tools $85 · Compost $60."
+2. That evening, on the library server, after signing in herself: "Open Budget update and add " · Hoses $40" to the end of the subtitle."
+
+Gemma uses `create_file` and `set_slide_text` for the first request, and `open_file` and `set_slide_text` for the second. The pointer goes to New presentation, then to the title box while both boxes fill in. On the library server it goes to "Budget update.slslides" in SuiteDrive, and then to the subtitle, which gains " · Hoses $40". The top bar shows each server's address and "Saved to SuiteDrive". The test checks that the sign-in card says an account made on any server works there, that the sidebar names the server and reads "Connected to 1 other server", and that the editor's top bar names the office server and then the library server. It also checks the slide text on both servers and that the edit saves on the library server: after a reload the subtitle still reads "Seeds $120 · Tools $85 · Compost $60 · Hoses $40", and SuiteDrive has only one Budget update.
+
+Fixes made along the way: with the AI panel open the editor's save status was cut off ("Saved to Suit…"). Now the file title gives way so the status stays readable. `set_slide_text` now points at the first box it changes (the subtitle here), not always the title. SuiteDrive's `open_file` and `open_folder` scroll the item into view before pointing at it. With the panel open the file list sits at the bottom edge of the home screen.
+
+**How Gemma did:** 3 of 3 web runs passed with the final tools (6 of 6 overall), each in two tool calls per request and about 15–25 seconds per request. It always gave `create_file` the title and filled title and subtitle in one `set_slide_text`. For the edit it passed the old subtitle with " · Hoses $40" appended, leaving the title alone. No model mistakes were seen. Gemma opened the existing file rather than making a new one, and it did not call `back_to_files`.
+
 ## Gaps and notes
 
 - Sign-in is per server address, so moving between servers means signing in again. This is expected (sessions are per origin). The sign-in card now explains that the account is shared, but there's no single sign-on across the cluster.

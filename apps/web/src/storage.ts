@@ -44,13 +44,17 @@ const browserStorage: StorageAdapter = {
   },
 };
 export const storage: StorageAdapter = window.suiteleaf ?? browserStorage;
+/**
+ * Export a file: a download in the browser (resolves to undefined); on the
+ * desktop, the saved path, or null if the person cancelled the save dialog.
+ */
 export async function exportText(
   name: string,
   text: string,
   type = "text/plain",
 ) {
-  if (window.suiteleaf) await window.suiteleaf.exportFile(name, text);
-  else download(name, text, type);
+  if (window.suiteleaf) return window.suiteleaf.exportFile(name, text);
+  download(name, text, type);
 }
 export async function printDocument(title?: string) {
   if (window.suiteleaf) await window.suiteleaf.print(title);
@@ -76,7 +80,7 @@ export async function exportBinary(
   bytes: Uint8Array,
   type: string,
 ) {
-  if (window.suiteleaf) await window.suiteleaf.exportFile(name, bytes);
+  if (window.suiteleaf) return window.suiteleaf.exportFile(name, bytes);
   else {
     const url = URL.createObjectURL(
       new Blob([new Uint8Array(bytes)], { type }),

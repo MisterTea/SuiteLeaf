@@ -30,6 +30,27 @@ Jo runs a small online shop and keeps orders in a spreadsheet. Each morning she 
 - The status bar's Sum always matches the visible rows: 615.44 unfiltered, 228.44 filtered to Pending, without reselecting.
 - After clearing and removing, every row is visible and the file has no filter.
 
+## AI version
+
+**Videos:** [web](videos/11-filter-to-what-matters-ai.mp4) · [desktop](videos/electron/11-filter-to-what-matters-ai.mp4) · **Script:** [scenes/ai/11-filter-to-what-matters-ai.spec.ts](scenes/ai/11-filter-to-what-matters-ai.spec.ts)
+
+Jo opens the same "Shop orders" workbook and asks the on-device assistant (Gemma 4 E4B) twice, once each morning moment:
+
+1. *Show me only the orders that are still waiting to ship. What do they add up to?*
+2. (After packing) *All packed, thanks. Show me all the orders again and take the filter off.*
+
+The request never says "Pending" or "Status". Gemma works out from the values that "waiting to ship" means Pending.
+
+**Tools Gemma used:** `filter_rows` with `column: "Status"` and `show_values: ["Pending"]`, which creates the filter and filters it in one call. Then `clear_filter` with `remove: true`. That is the whole run: one tool call per request.
+
+**What the recording shows:** The pointer moves to the Status header, the filter buttons appear, and only rows 3, 6, 8 and 11 stay visible. Gemma replies that the pending orders add up to 228.44. Jo selects D2:D11 herself, and the status bar agrees: Sum: 228.44. The test downloads the file (Save As on desktop) and checks that the saved filter has one criterion, Pending, hiding rows 2, 4, 5, 7, 9 and 10. It also checks that Gemma's answer says 228.44. For the second request the pointer moves to the funnel. All ten rows come back, the funnel is no longer pressed, and the sum returns to 615.44 without Jo reselecting. The saved file has no filter.
+
+**How Gemma did:** On the final code the web recording passed 3 of 3 runs and desktop (llama.cpp) passed 1 of 1. The first request takes about 15–35 seconds, including about 10 seconds to load the model. The second takes 2–9 seconds. Gemma always chose the right column, value and tools. Model mistakes seen:
+- Before the fix below, it read D2:D11 twice in a row with the same call. Then it answered "the total is 327.14". That is neither the pending total (228.44) nor the total of all orders (615.44).
+- Once it described the four orders as "range from #1042 to #1050". That's true, but it could suggest all the orders in between.
+
+Fixed while making it: `read_sheet` and the app state listed rows the filter had hidden as if they were showing, so Gemma had no way to tell which totals counted. `filter_rows` only said "4 row(s) shown". Now hidden rows are left out of every cell listing, with a note saying which rows are hidden. `filter_rows` shows the rows that remain and the sum of each number column over them, as the status bar does for a selection. `read_sheet` adds the same sums when rows in its range are hidden. The app state now names the filter's column and values and how many rows it hides. `clear_filter` says whether the filter buttons stayed and how many rows are showing.
+
 ## Gaps and notes
 
 - Fixed: the status bar kept counting rows a filter had just hidden (or kept the filtered total after clearing) until the selection changed. Sheets and Excel aggregate only visible rows. It now recalculates whenever a filter, or hiding/showing rows, changes what's visible.

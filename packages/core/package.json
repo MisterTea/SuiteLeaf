@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "exports": {
     ".": "./src/index.ts",
+    "./ai": "./src/ai.ts",
     "./office": "./src/office.ts",
     "./docx-export": "./src/docx-export.ts",
     "./doc-comments": "./src/doc-comments.ts",

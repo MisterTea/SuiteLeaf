@@ -50,6 +50,8 @@ import {
   applyLayout,
   type Layout,
 } from "./slide-layouts";
+import { useAgentHost } from "../ai/host";
+import { slideSnapshot, slideTools, type SlidesAgentContext } from "../ai/tools/slides";
 import {
   DeckHistory,
   canDeleteSlides,
@@ -1207,6 +1209,42 @@ ${slidesHtml}
       if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     }
   }, []);
+
+  useAgentHost("editor", () => {
+    const ctx: SlidesAgentContext = {
+      title: file.title,
+      deck: () => deckRef.current,
+      commit: (next) => {
+        deckRef.current = next;
+        commit(next);
+      },
+      activeSlideId,
+      select: (slideId, elementId) => {
+        setActiveSlideId(slideId);
+        setSelectedElementId(elementId ?? null);
+      },
+      presenting,
+      present: (index, withNotes) => beginShow(index, withNotes),
+      goToShowSlide: (index) => {
+        setBlankScreen(null);
+        const next = startOfShow(index);
+        showCursorRef.current = next;
+        setShowCursor(next);
+      },
+      showIndex: presentSlideIndex,
+      endShow,
+      readImage: (f) =>
+        new Promise((resolve, reject) => {
+          if (f.size > 5 * 1024 * 1024) return reject(new Error("Choose an image smaller than 5 MB."));
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(new Error("Could not read that image."));
+          reader.readAsDataURL(f);
+        }),
+      exportAs: (format) => (format === "html" ? exportHtmlRef.current() : exportTxtRef.current()),
+    };
+    return { kind: "slide", snapshot: () => slideSnapshot(ctx), tools: slideTools(ctx) };
+  });
 
   const currentSlideIndex = Math.max(0, deck.slideOrder.indexOf(activeSlideId));
   const slideApi = useRef({

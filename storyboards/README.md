@@ -52,6 +52,32 @@ Run a single storyboard with `npm run storyboards -- -g 08-sort-data`. Recording
 | `STORYBOARD_NODE`, `STORYBOARD_AUTH` | Server binary and auth bundle for cluster storyboards. |
 | `STORYBOARD_SLOWMO` | Delay between actions in ms (default 60). |
 
+## AI versions
+
+Every storyboard also has an AI version, `scenes/ai/NN-slug-ai.spec.ts`, described under "AI version" in its Markdown file. The person types their request into the AI panel, and the on-device model (FrogNano 4B by default), does the task with the app's tools. Nothing is scripted or mocked: the test only sends the prompt, then checks the result the way the original storyboard does. A passing run saves `videos/<slug>-ai.mp4` (desktop runs: `videos/electron/<slug>-ai.mp4`). Failed AI runs are kept in `test-results/ai-videos/` so the model's mistakes can be watched, and each run's transcript and metrics go to `test-results/ai-metrics/`.
+
+```sh
+npm run storyboards -- --project=ai                                     # browser, WebGPU
+npx playwright test --config playwright.storyboards-electron.config.ts  # desktop app, llama.cpp (01–21)
+```
+
+The browser runs need the model weights in `~/.cache/suiteleaf-models` (`RASMUS/FrogNano-4B-2609-ONNX`, q4f16 files), and the desktop runs need `gguf/FrogNano-4B-2609-Q4_K_M.gguf` there. Set `STORYBOARD_AI_MODEL=gemma-4-e4b` and point `SUITELEAF_MODEL_PATH` at a Gemma GGUF to record Gemma instead. [ai-report.md](ai-report.md) has the pass rates, the failure analysis, and the backend comparison.
+
+| Variable | Purpose |
+| --- | --- |
+| `STORYBOARD_MODELS` | Folder the static server serves as `/models/` (default `~/.cache/suiteleaf-models`). |
+| `STORYBOARD_MODEL_HOST` | Where the browser loads weights from (default the static server's `/models/`). |
+| `STORYBOARD_AI_DEVICE` | `webgpu` (default), or `auto` to try WebNN first and fall back to WebGPU. |
+| `STORYBOARD_AI_MODEL` | Browser model: `frognano-4b` (default) or `gemma-4-e4b`. |
+| `STORYBOARD_AI_THINKING` | FrogNano's thinking budget per reply, in tokens (default: no limit). |
+| `STORYBOARD_AI_REVIEW` | The check before the final reply: `issues` (default: only when the app sees a problem), `always` or `off`. |
+| `STORYBOARD_AI_CHECKLIST` | The todo checklist: `off` (default), `on`, or `required` (the first step of a multi-part request waits for it). |
+| `STORYBOARD_AI_CAPTURE` | `1` keeps every prompt in the metrics, for `scripts/ai-fidelity.mjs`. |
+| `STORYBOARD_AI_REVIEW` | The check before the final reply: `issues` (default: only when the app sees a problem), `always` or `off`. |
+| `STORYBOARD_AI_CAPTURE` | `1` keeps every prompt in the metrics, for `scripts/ai-fidelity.mjs`. |
+| `SUITELEAF_MODEL_PATH` | GGUF file for desktop runs, e.g. the Q8_0 build or a FrogNano GGUF (the model is read from the file name). |
+| `STORYBOARD_RUN_TAG` | Stress runs: with `--repeat-each=N`, keep every repeat's metrics and video under `test-results/ai-*/runs/<tag>/`. Summarize with `node scripts/ai-stress-report.mjs <tag> …`. |
+
 ## Index
 
 | # | Storyboard | Mode | App |

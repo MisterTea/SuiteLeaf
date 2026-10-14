@@ -3,9 +3,9 @@ import JSZip from "jszip";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { deflateSync, crc32 } from "node:zlib";
 import { wordFixture } from "../../tests/office-fixtures";
 import { beat, caption, expect, test, typeSlowly } from "./harness";
+import { gardenPicture } from "./fixtures";
 
 const editorOf = (page: Page) => page.getByRole("textbox", { name: "Document content" });
 
@@ -64,39 +64,6 @@ async function fileMenu(page: Page, item: string) {
 
 async function savedBytes(download: Download) {
   return readFileSync((await download.path())!);
-}
-
-/** A small landscape picture (sky, sun, and garden rows) as a PNG. */
-function gardenPicture(width = 360, height = 200) {
-  const raw = Buffer.alloc((width * 3 + 1) * height);
-  for (let y = 0; y < height; y++) {
-    raw[y * (width * 3 + 1)] = 0;
-    for (let x = 0; x < width; x++) {
-      let rgb = [135, 196, 235];
-      if ((x - 290) ** 2 + (y - 45) ** 2 < 24 ** 2) rgb = [252, 202, 70];
-      if (y > 120 + Math.sin(x / 40) * 8) rgb = [86, 150, 70];
-      if (y > 140 && (y - 140) % 18 < 6) rgb = [120, 84, 52];
-      raw.set(rgb, y * (width * 3 + 1) + 1 + x * 3);
-    }
-  }
-  const chunk = (type: string, data: Buffer) => {
-    const body = Buffer.concat([Buffer.from(type), data]);
-    const out = Buffer.alloc(body.length + 8);
-    out.writeUInt32BE(data.length, 0);
-    body.copy(out, 4);
-    out.writeUInt32BE(crc32(body), body.length + 4);
-    return out;
-  };
-  const header = Buffer.alloc(13);
-  header.writeUInt32BE(width, 0);
-  header.writeUInt32BE(height, 4);
-  header.set([8, 2, 0, 0, 0], 8);
-  return Buffer.concat([
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    chunk("IHDR", header),
-    chunk("IDAT", deflateSync(raw)),
-    chunk("IEND", Buffer.alloc(0)),
-  ]);
 }
 
 test("02-find-and-organize-files", async ({ page }) => {

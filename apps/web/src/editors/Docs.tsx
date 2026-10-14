@@ -104,6 +104,8 @@ import { documentNotes } from "./doc-notes";
 import { documentCitations } from "./doc-citations";
 import { DocCitations } from "./doc-citations-panel";
 import { Equation, EquationDialog } from "./doc-equations";
+import { useAgentHost } from "../ai/host";
+import { docBeforeTool, docReview, docSnapshot, docTools as docAgentTools, type DocsAgentContext } from "../ai/tools/docs";
 import {
   bodyEdgeInsets,
   documentHtml,
@@ -812,7 +814,7 @@ export default function Docs({
     }
   };
 
-  const insertImage = async (f?: File) => {
+  const insertImage = async (f?: File, rememberName = false) => {
     if (!f) return;
     if (
       !/^image\/(png|jpeg|gif|webp)$/.test(f.type) ||
@@ -831,7 +833,11 @@ export default function Docs({
       editor
         ?.chain()
         .focus()
-        .setImage({ src, alt: "" })
+        .setImage({
+          src,
+          alt: "",
+          ...(rememberName && f.name ? { title: f.name } : {}),
+        })
         .command(({ tr, state }) => {
           // Typing must continue after the photo, not replace it.
           if (!(tr.selection instanceof NodeSelection)) return true;
@@ -854,48 +860,91 @@ export default function Docs({
     editor.chain().focus().setFontSize(`${next}pt`).run();
   };
 
+  const exportDocument = async (format: string) => {
+    if (!editor) return null;
+    let content = editor.getJSON() as JsonNode;
+    let resolved = false;
+    if (
+      (format === "html" || format === "txt") &&
+      listSuggestions(content).length
+    ) {
+      const choice = await suggestionApi.current?.askPlainExport();
+      if (!choice) return null;
+      content = resolveSuggestions(content, choice);
+      resolved = true;
+    }
+    if (format === "docx") {
+      const { exportDocx } = await import("@suiteleaf/core/docx-export");
+      return exportBinary(
+        filename(file.title, "docx"),
+        await exportDocx({
+          title: file.title,
+          content: editor.getJSON() as JsonNode,
+        }),
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      );
+    }
+    if (format === "html")
+      return exportText(
+        filename(file.title, "html"),
+        documentHtml(
+          file.title,
+          resolved ? generateHTML(content, extensions) : editor.getHTML(),
+          documentPageSettings(content),
+        ),
+        "text/html",
+      );
+    return exportText(
+      filename(file.title, "txt"),
+      documentPlainText(content),
+    );
+  };
+  const exportRef = useRef(exportDocument);
+  exportRef.current = exportDocument;
+
+  useAgentHost("editor", () => {
+    const ready = !!editor?.schema;
+    const ctx: DocsAgentContext | null = ready
+      ? {
+          editor: editor!,
+          title: file.title,
+          showFind: (q, r, mc) => {
+            setQuery(q);
+            setReplacement(r);
+            setMatchCase(mc);
+            setUseRegex(false);
+            setIgnoreDiacritics(!mc);
+            setFindOpen(true);
+          },
+          showReplaced: (n) => setReplacedCount(n),
+          closeFind: () => setFindOpen(false),
+          showPageSetup: (draft) => {
+            setPageDraft(draft);
+            setPageSetupOpen(true);
+          },
+          pageSettings: () => documentPageSettings(editor!.getJSON() as JsonNode),
+          closePageSetup: () => setPageSetupOpen(false),
+          showSpelling: () => proofing.openSpelling(),
+          jumpToHeading,
+          insertImage: (file) => insertImage(file, true),
+          exportAs: (format) => exportRef.current(format),
+          pageCount,
+        }
+      : null;
+    return {
+      kind: "doc",
+      snapshot: () => (ctx ? docSnapshot(ctx) : "A document is opening."),
+      tools: ctx ? docAgentTools(ctx) : [],
+      beforeTool: () => ctx && docBeforeTool(ctx),
+      review: () => (ctx ? docReview(ctx) : []),
+    };
+  });
+
   useEffect(() => {
     if (!editor) return;
     onActions({
       flush: async () => {},
-      async export(format) {
-        let content = editor.getJSON() as JsonNode;
-        let resolved = false;
-        if (
-          (format === "html" || format === "txt") &&
-          listSuggestions(content).length
-        ) {
-          const choice = await suggestionApi.current?.askPlainExport();
-          if (!choice) return;
-          content = resolveSuggestions(content, choice);
-          resolved = true;
-        }
-        if (format === "docx") {
-          const { exportDocx } = await import("@suiteleaf/core/docx-export");
-          await exportBinary(
-            filename(file.title, "docx"),
-            await exportDocx({
-              title: file.title,
-              content: editor.getJSON() as JsonNode,
-            }),
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-          );
-        } else if (format === "html")
-          await exportText(
-            filename(file.title, "html"),
-            documentHtml(
-              file.title,
-              resolved ? generateHTML(content, extensions) : editor.getHTML(),
-              documentPageSettings(content),
-            ),
-            "text/html",
-          );
-        else
-          await exportText(
-            filename(file.title, "txt"),
-            documentPlainText(content),
-          );
-      },
+      export: (format) => exportDocument(format),
       print: () => printDocument(file.title),
       docActions: {
         undo: () => editor.commands.undo(),

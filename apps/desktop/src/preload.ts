@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { DesktopBridge } from "@suiteleaf/core";
+import type { AiGenerateEvent, AiStatus } from "@suiteleaf/core/ai";
 const bridge: DesktopBridge = {
   reload: (id) => ipcRenderer.invoke("files:reload", id),
   list: () => ipcRenderer.invoke("files:list"),
@@ -18,6 +19,27 @@ const bridge: DesktopBridge = {
     const listener = (_event: unknown, action: string) => callback(action);
     ipcRenderer.on("menu", listener);
     return () => ipcRenderer.removeListener("menu", listener);
+  },
+  ai: {
+    status: () => ipcRenderer.invoke("ai:status"),
+    load: () => ipcRenderer.invoke("ai:load"),
+    chatTemplate: () => ipcRenderer.invoke("ai:template"),
+    generate: (request, onEvent) => {
+      const id = crypto.randomUUID();
+      const listener = (_event: unknown, eventId: string, event: AiGenerateEvent) => {
+        if (eventId !== id) return;
+        if (event.type !== "text") ipcRenderer.removeListener("ai:event", listener);
+        onEvent(event);
+      };
+      ipcRenderer.on("ai:event", listener);
+      ipcRenderer.send("ai:generate", id, request);
+      return () => ipcRenderer.send("ai:abort", id);
+    },
+    onStatus: (callback) => {
+      const listener = (_event: unknown, status: AiStatus) => callback(status);
+      ipcRenderer.on("ai:status", listener);
+      return () => ipcRenderer.removeListener("ai:status", listener);
+    },
   },
 };
 contextBridge.exposeInMainWorld("suiteleaf", bridge);

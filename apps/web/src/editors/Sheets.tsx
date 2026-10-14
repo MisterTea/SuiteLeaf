@@ -8,6 +8,7 @@ import {
   mergeLocales,
   numfmt,
   UserManagerService,
+  IUndoRedoService,
   type IWorkbookData,
 } from "@univerjs/presets";
 import {
@@ -153,9 +154,11 @@ import "../excel-wrap";
 import "../excel-cell";
 import { resolveExcelColumnWidths } from "../excel-layout";
 import { useTheme } from "../theme";
-import { currentAuthor, onAuthorChange } from "../identity";
+import { currentAuthor, onAuthorChange, setLocalName } from "../identity";
 import { useMode } from "../mode";
 import { getSession } from "../node-client";
+import { useAgentHost } from "../ai/host";
+import { sheetBeforeTool, sheetReview, sheetSnapshot, sheetTools, type SheetsAgentContext } from "../ai/tools/sheets";
 
 const FORMULA_BAR_KEY = "suiteleaf_sheets_formula_bar";
 /** Formula bar visibility is a per-person preference, not part of the workbook. */
@@ -782,6 +785,7 @@ export default function Sheets({
     api = useRef<any>(null),
     book = useRef<any>(null),
     injectorRef = useRef<any>(null),
+    sheetActionsRef = useRef<EditorActions | null>(null),
     content = useRef(structuredClone(file.content)),
     changes = useRef(onChange),
     error = useRef(onError);
@@ -816,6 +820,8 @@ export default function Sheets({
     [sorting, setSorting] = useState<{
       range: GridRange;
       values: CellValue[][];
+      initialRules?: SortRule[];
+      initialHeader?: boolean;
     } | null>(null),
     [notice, setNotice] = useState(""),
     [filterView, setFilterView] = useState<{
@@ -1947,7 +1953,11 @@ export default function Sheets({
         el.remove();
       }
     };
-    onActions({
+    const reportActions = (actions: EditorActions) => {
+      sheetActionsRef.current = actions;
+      onActions(actions);
+    };
+    reportActions({
       flush: async () => {
         await api.current?.getFormula().onCalculationResultApplied(10000);
         if (pending.current) persist.current();
@@ -2364,6 +2374,76 @@ export default function Sheets({
       onError(e instanceof Error ? e.message : String(e));
     }
   };
+  const submitRef = useRef(submit);
+  submitRef.current = submit;
+  const sortRef = useRef(sortRange);
+  sortRef.current = sortRange;
+  useAgentHost("editor", () => {
+    const ctx: SheetsAgentContext | null = ready
+      ? {
+          api: api.current,
+          book: book.current,
+          title: file.title,
+          content: () => content.current,
+          persist: () => persist.current(),
+          settle: async () => {
+            await api.current?.getFormula().onCalculationResultApplied(10000);
+          },
+          openPanel: (type, v, id) => {
+            moreTools.setOpen(false);
+            setPanel(type);
+            setEditing(id);
+            setSourceSheet(v.sheetId);
+            setRange(v.range);
+            setTitle(v.title);
+            if (type === "chart") setChartType(v.chartType ?? "bar");
+            else {
+              valueChosen.current = v.value !== undefined;
+              setRowFields((v.rows ?? [0]).join(","));
+              setColumnFields((v.columns ?? []).join(","));
+              setValueField(v.value ?? 1);
+              setAggregate(v.aggregate ?? "SUM");
+              setFilterColumn(v.filterColumn ?? -1);
+              setFilterValue(v.filterValue ?? "");
+            }
+          },
+          submitPanel: () => submitRef.current(),
+          refreshCharts: () => refreshCharts.current(),
+          copyPivot,
+          showSort: (r, initialRules, initialHeader) => {
+            const sheet = book.current.getActiveSheet();
+            const target = sheet.getRange(
+              r.startRow,
+              r.startColumn,
+              r.endRow - r.startRow + 1,
+              r.endColumn - r.startColumn + 1,
+            );
+            setSorting({
+              range: target.getRange(),
+              values: target.getValues(),
+              initialRules,
+              initialHeader,
+            });
+          },
+          sort: (rules, hasHeader) => sortRef.current(rules, hasHeader),
+          freeze: setFrozen,
+          insertCheckbox: () => sheetActionsRef.current?.sheetActions?.insertCheckbox?.(),
+          exportAs: (format) => sheetActionsRef.current!.export(format),
+          setAuthor: cluster ? undefined : setLocalName,
+          signature: () =>
+            currentAuthor(cluster ? getSession()?.user : null).signature,
+          undoCount: () =>
+            injectorRef.current?.get(IUndoRedoService).getUndoRedoStatus(book.current.getId()).undos ?? 0,
+        }
+      : null;
+    return {
+      kind: "sheet",
+      snapshot: () => (ctx ? sheetSnapshot(ctx) : "A spreadsheet is opening."),
+      tools: ctx ? sheetTools(ctx) : [],
+      beforeTool: () => ctx && sheetBeforeTool(ctx),
+      review: () => (ctx ? sheetReview(ctx) : []),
+    };
+  });
   let fields: CellValue[] = [],
     shownValueField = valueField;
   try {

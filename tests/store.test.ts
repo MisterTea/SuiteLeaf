@@ -95,6 +95,23 @@ it("lists records and opens paths through openPath", async () => {
   expect(list.some((r) => r.file.id === f.id)).toBe(true);
 });
 
+it("opening a file never replaces a different version already in the library", async () => {
+  const f = createFile("doc", "Trip list");
+  const path = join(dir, "Trip list.sldoc");
+  await store.saveAs({ file: f }, path);
+  await store.remove(f.id);
+  await store.save({ file: { ...f, title: "Trip list, edited" } });
+
+  const opened = await store.openPath(path);
+  expect(opened.file.title).toBe("Trip list");
+  expect((await store.get(f.id))?.file.title).toBe("Trip list, edited");
+  expect((await store.get(f.id))?.path).toBeUndefined();
+
+  await store.save({ file: f });
+  expect((await store.openPath(path)).path).toBe(path);
+  expect((await store.get(f.id))?.path).toBe(path);
+});
+
 it("throws when a saved file on disk is deleted or inaccessible", async () => {
   const f = createFile("doc", "Missing Disk File");
   const filePath = join(dir, "missing.suiteleaf");

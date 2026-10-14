@@ -27,6 +27,7 @@ import {
   type FileRecord,
 } from "@suiteleaf/core";
 import { FileStore, atomicWrite, driveLink } from "./store";
+import { registerAi } from "./ai";
 protocol.registerSchemesAsPrivileged([
   {
     scheme: "suiteleaf",
@@ -417,8 +418,9 @@ else {
           extname(name).slice(1) || "txt",
         ),
       });
-      if (!result.canceled && result.filePath)
-        await atomicWrite(result.filePath, text);
+      if (result.canceled || !result.filePath) return null;
+      await atomicWrite(result.filePath, text);
+      return result.filePath;
     });
     register("print", async (title?: string) => {
       if (title !== undefined && typeof title !== "string")
@@ -464,6 +466,11 @@ else {
       if (typeof url !== "string") throw new Error("Invalid sign-in address.");
       return authWindow(url);
     });
+    registerAi(
+      register,
+      () => window?.webContents,
+      (sender) => sender === window?.webContents,
+    );
     ipcMain.on("dirty", (event, value) => {
       if (event.sender === window?.webContents && typeof value === "boolean")
         dirty = value;
