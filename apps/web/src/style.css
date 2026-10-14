@@ -1787,6 +1787,17 @@ a {
 .doc-image-host:hover > .doc-image-actions {
   display: flex;
 }
+.document-content .doc-image-host[data-wrap="left"] {
+  float: left;
+  margin: 0 12px 8px 0;
+}
+.document-content .doc-image-host[data-wrap="right"] {
+  float: right;
+  margin: 0 0 8px 12px;
+}
+.document-content .doc-image-host[data-wrap="break"] {
+  clear: both;
+}
 .doc-image-crop-button[hidden],
 .doc-image-crop-hint[hidden],
 .doc-crop-edge[hidden] {
