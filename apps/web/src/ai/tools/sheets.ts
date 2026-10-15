@@ -3613,7 +3613,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         const sentenceSource = sentence ? sourceInSentence(sentence) : "";
         const requestNamesSource = requestSentences().some((item) => sourceInSentence(item));
         // The source written beside these cells wins. When the request names a source for another range, don't copy it here.
-        let sourceText = sentenceSource || (!requestNamesSource ? source || "" : "");
+        const sourceText = sentenceSource || (!requestNamesSource ? source || "" : "");
         const allowSeveral = sentence ? multipleInSentence(sentence) : Boolean(multiple);
         const pinnedRange = sentence ? concreteInSentence(sentence) : "";
         if (sourceText || add || rename_source || insert_blank) {

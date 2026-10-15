@@ -2119,6 +2119,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       prepare: (args) => {
         const author = typeof args.author === "string" ? String(unquoteArg(args.author)).replace(/^suggesting as\s+/i, "").trim() : args.author;
         const { accept: _accept, accept_insert, accept_delete, reject_format, ...rest } = args;
+        void _accept;
         return {
           ...rest,
           author,

@@ -72,8 +72,7 @@ function indentKind(value: string): SpecialIndent {
   throw new ToolError('kind is first-line, hanging, or none.');
 }
 
-const WRAPS = ["inline", "left", "right", "break", "behind"] as const;
-type Wrap = (typeof WRAPS)[number];
+type Wrap = "inline" | "left" | "right" | "break" | "behind";
 
 function wrapArg(value: string): Wrap {
   const raw = value.trim().toLowerCase().replace(/[\s_-]+/g, "");
