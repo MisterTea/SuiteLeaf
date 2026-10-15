@@ -147,7 +147,8 @@ import {
   SlideVersionPreview,
   type HistoryPreview,
 } from "./editors/version-compare";
-import { noteLocalSnapshot } from "./editors/local-versions";
+import { localVersions, noteLocalSnapshot, restoreLocalVersion } from "./editors/local-versions";
+import { copyFilename, copyTitle } from "./editors/version-history-model";
 import { completeHandoff } from "./node-client";
 import {
   ModeContext,
@@ -161,13 +162,16 @@ import {
   type ResolvedMode,
 } from "./mode";
 import { useAgentHost } from "./ai/host";
+import { bindRestoredFile } from "./ai/restored-file";
 import { AiButton, AgentLayer } from "./ai/AgentSidebar";
 import {
   homeSnapshot,
   homeTools,
+  versionPreview,
   workspaceSnapshot,
   workspaceTools,
   type HomeAgentContext,
+  type ListedVersion,
   type WorkspaceAgentContext,
 } from "./ai/tools/files";
 import {
@@ -771,6 +775,7 @@ function LocalHome() {
       setFilter: (f) => setFilter(f as LibraryFilter),
       setSort,
       create: (kind, title) => open({ file: createFile(kind, title) }),
+      openNew: (file) => open({ file }),
       open: (r) => navigate(`/file/${r.file.id}`),
       openSample: (kind) =>
         void open({
@@ -796,6 +801,28 @@ function LocalHome() {
         rememberUndo(latest);
         await refresh();
       },
+      star: async (record, starred) => {
+        const latest = (await storage.get(record.file.id)) ?? record;
+        await storage.save(starRecord(latest, starred));
+        await refresh();
+      },
+      restore: async (record) => {
+        const latest = (await storage.get(record.file.id)) ?? record;
+        if (latest.trashedAt) await storage.save(restoreRecord(latest));
+        if (undo?.id === record.file.id) {
+          clearTimeout(undoTimer.current);
+          setUndo(null);
+        }
+        setFilter("all");
+        setQuery("");
+        await refresh();
+      },
+      fresh: async () => {
+        const all = await storage.list();
+        const now = new Date();
+        return all.filter((r) => !r.drive && !isTrashExpired(r, now));
+      },
+      deleteForever: (ids) => removeForever(ids),
       importFile: async (f) => {
         if (!importer.current)
           throw new Error("Clear the search to import a file.");
@@ -2213,6 +2240,140 @@ function Workspace() {
         setStatus(`Downloaded “${nativeFilename(current.current!.file)}”`);
       return !!done;
     });
+  const applyRestored = (next: FileRecord) => {
+    clearTimeout(timer.current);
+    clearTimeout(driveTimer.current);
+    current.current = next;
+    version.current = 0;
+    savedVersion.current = 0;
+    setRecord(next);
+    setEditorEpoch((epoch) => epoch + 1);
+    setHistoryPreview(null);
+    setHistoryOpen(false);
+    setStatus(next.drive ? "Saved to SuiteDrive" : "Saved on this device");
+    void storage.save(next).catch((e) => setError(message(e)));
+  };
+  const applyRestoredRef = useRef(applyRestored);
+  applyRestoredRef.current = applyRestored;
+  useEffect(() => {
+    bindRestoredFile((next) => {
+      const base = current.current;
+      applyRestoredRef.current(
+        base ? { ...base, file: next.file, drive: next.drive ?? base.drive } : next,
+      );
+    });
+    return () => bindRestoredFile(null);
+  }, []);
+  const listVersions = async (): Promise<ListedVersion[]> => {
+    const rec = current.current;
+    if (!rec) throw new Error("No file is open.");
+    if (rec.drive) {
+      const link = rec.drive;
+      const [list, item] = await Promise.all([
+        drive.versions(link.itemId),
+        drive.get(link.itemId),
+      ]);
+      const head = item.headVersionId ?? "";
+      return Promise.all(
+        list.map(async (entry) => {
+          let preview = "";
+          try {
+            const native =
+              entry.id === head
+                ? (await drive.read(link.itemId)).text
+                : await drive.readVersion(link.itemId, entry.id);
+            preview = versionPreview(native);
+          } catch {
+            preview = "";
+          }
+          return {
+            id: entry.id,
+            author: entry.authorName || "Someone",
+            createdAt: entry.createdAt,
+            name: entry.name,
+            current: entry.id === head,
+            preview,
+          };
+        }),
+      );
+    }
+    const snaps = await localVersions(rec.file.id);
+    const live = serializeFile(rec.file);
+    const rows =
+      snaps[0]?.native === live
+        ? snaps
+        : [
+            {
+              id: "current",
+              createdAt: rec.file.updatedAt,
+              authorName: "You",
+              name: null as string | null,
+              native: live,
+            },
+            ...snaps,
+          ];
+    return rows.map((entry, index) => ({
+      id: entry.id,
+      author: entry.authorName,
+      createdAt: entry.createdAt,
+      name: entry.name,
+      current: index === 0,
+      preview: versionPreview(entry.native),
+    }));
+  };
+  const restoreVersion = async (id: string) => {
+    const rec = current.current;
+    if (!rec) throw new Error("No file is open.");
+    if (rec.drive) {
+      let item: DriveItem;
+      try {
+        item = await drive.restoreVersion(rec.drive.itemId, id, rec.drive.versionId);
+      } catch (e) {
+        if (e instanceof DriveConflict)
+          throw new Error(
+            "SuiteDrive has a newer version than the one open here. Call list_versions and restore_version again. Do not type over the document.",
+          );
+        throw e;
+      }
+      const { text, versionId } = await drive.read(item.id);
+      const file = parseNamedFile(item.name, text);
+      applyRestored({
+        ...rec,
+        file,
+        drive: {
+          ...rec.drive,
+          versionId: versionId ?? item.headVersionId ?? undefined,
+          syncedAt: file.updatedAt,
+          name: item.name,
+        },
+      });
+      return;
+    }
+    const snaps = await localVersions(rec.file.id);
+    const snap = snaps.find((entry) => entry.id === id);
+    if (!snap) throw new Error("That version is no longer on this computer.");
+    applyRestored({ ...rec, file: await restoreLocalVersion(snap) });
+  };
+  const copyVersionFile = async (entry: ListedVersion) => {
+    const rec = current.current;
+    if (!rec) throw new Error("No file is open.");
+    const filename = copyFilename(
+      rec.file.title,
+      entry.author,
+      entry.createdAt,
+      extensionFor(rec.file.kind),
+    );
+    if (rec.drive) {
+      await drive.copyVersion(rec.drive.itemId, entry.id, filename);
+      return filename;
+    }
+    const snaps = await localVersions(rec.file.id);
+    const native =
+      entry.id === "current" ? serializeFile(rec.file) : snaps.find((snap) => snap.id === entry.id)?.native;
+    if (!native) throw new Error("That version is no longer on this computer.");
+    await storage.save({ file: duplicateFile(parseFile(native), copyTitle(filename)) });
+    return filename;
+  };
   useAgentHost("workspace", () => {
     const file = record?.file;
     const ctx: WorkspaceAgentContext | null = file
@@ -2244,6 +2405,17 @@ function Workspace() {
                 `/file/${(await storage.save({ file: created })).file.id}`,
               );
           },
+          openNew: async (file) => {
+            await save();
+            if (cluster) await createInDrive(file, null, navigate);
+            else navigate(`/file/${(await storage.save({ file })).file.id}`);
+          },
+          snapshotFile: async () => {
+            await save();
+            if (!current.current) throw new Error("No file is open.");
+            return structuredClone(current.current.file);
+          },
+          versions: { list: listVersions, restore: restoreVersion, copy: copyVersionFile },
         }
       : null;
     return {

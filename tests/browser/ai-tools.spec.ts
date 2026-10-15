@@ -71,7 +71,9 @@ test("document tools write, style, find, replace and check spelling", async ({ p
   await expect(page.getByLabel("Top margin")).toHaveValue("1");
   await expect(page.getByLabel("Left margin")).toHaveValue("1");
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
-  expect(await call(page, "page_setup", { margin_inches: 3 })).toContain('1.50" margins (3" is outside');
+  expect(await call(page, "page_setup", { margin_inches: 2 })).toContain('2.00" margins');
+  await expect(call(page, "page_setup", { margin_inches: 4 })).rejects.toThrow(/cannot be more than 3/);
+  await expect(call(page, "page_setup", { margin_inches: 0 })).rejects.toThrow(/at least 0.25/);
   const download = page.waitForEvent("download");
   expect(await call(page, "export_document", { format: "html" })).toContain('Exported "Volunteer letter.html".');
   expect((await download).suggestedFilename()).toBe("Volunteer letter.html");

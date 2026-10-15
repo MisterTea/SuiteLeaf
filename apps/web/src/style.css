@@ -1876,6 +1876,24 @@ a {
   position: relative;
   z-index: 2;
 }
+/* Behind text keeps the sentence slot. The photo paints under the words. */
+.document-content:has(.doc-image-host[data-wrap="behind"]) {
+  isolation: isolate;
+  overflow: clip;
+}
+.document-content .doc-image-host[data-wrap="behind"] {
+  z-index: auto;
+  overflow: visible;
+}
+.document-content .doc-image-host[data-wrap="behind"] [data-resize-wrapper] {
+  overflow: visible;
+  z-index: auto;
+}
+.document-content .doc-image-host[data-wrap="behind"] img {
+  position: relative;
+  z-index: -1;
+  opacity: 0.4;
+}
 .document-content .doc-image-host[data-inline="true"] [data-resize-handle] {
   z-index: 3;
 }
