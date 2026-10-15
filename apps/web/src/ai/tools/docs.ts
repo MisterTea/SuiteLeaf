@@ -19,6 +19,7 @@ import {
   applyParagraphRestore,
   compareParagraphs,
   parseFile,
+  type DocFile,
   type FileRecord,
   type JsonNode,
   type ParagraphOffer,
@@ -1885,15 +1886,16 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
               `No version named "${version}". Named versions: ${named.map((item) => item.name).join(", ") || "none"}. Call restore_paragraph with the version's name. Do not call restore_version.`,
             );
           const beforeFile = parseFile(picked.native);
-          if (beforeFile.kind !== "doc") throw new ToolError("Only a document can restore one paragraph.");
+          if (beforeFile.kind !== "doc" || record.file.kind !== "doc")
+            throw new ToolError("Only a document can restore one paragraph.");
           const liveContent = editor.getJSON() as JsonNode;
-          const live: SuiteFile = { ...record.file, content: liveContent, updatedAt: new Date().toISOString() };
+          const live: DocFile = { ...record.file, content: liveContent, updatedAt: new Date().toISOString() };
           const offers = compareParagraphs(beforeFile.content, liveContent).offers.filter(
             (item): item is ParagraphOffer => item !== null,
           );
           const offer = pickParagraphOffer(offers, paragraphQuery);
           const content = applyParagraphRestore(liveContent, beforeFile.content, offer.key);
-          const next: SuiteFile = { ...live, content, updatedAt: new Date().toISOString() };
+          const next: DocFile = { ...live, content, updatedAt: new Date().toISOString() };
           const title = partialRestoreTitle(offer.label);
           const applied = await commitParagraphRestore(record, live, next, title);
           if (!applied) editor.view.dispatch(replaceDocument(editor.state, content));

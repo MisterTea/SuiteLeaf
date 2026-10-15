@@ -3633,7 +3633,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         const requestedChoices = choicesFromRequest();
         const listed = requestedChoices.length >= 2 ? requestedChoices : (options ?? []).map((label) => ({ label: label.trim() }));
         let labels = listed.map((item) => item.label.trim()).filter(Boolean);
-        let listedColors = requestedChoices.length >= 2 ? listed.map((item) => item.color ?? "") : colors;
+        let listedColors = requestedChoices.length >= 2 ? requestedChoices.map((item) => item.color ?? "") : colors;
         let allowMultiple = allowSeveral;
         if (!labels.length) {
           const probe = dropdownTarget(sheet(), range, []);
