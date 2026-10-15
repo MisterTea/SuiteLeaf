@@ -50,6 +50,59 @@ function imagePos(getPos: () => number | undefined): number | null {
   }
 }
 
+/** Drop a behind-text backdrop without touching a left, right, or inline picture. */
+function clearBehindPaint(host: HTMLElement) {
+  if (host.dataset.behindPaint !== "true") return;
+  delete host.dataset.behindPaint;
+  host.style.zIndex = "";
+  host.style.overflow = "";
+  const frame = host.querySelector("[data-resize-wrapper]");
+  if (frame instanceof HTMLElement) {
+    frame.style.overflow = "";
+    frame.style.zIndex = "";
+  }
+  const img = host.querySelector("img");
+  if (!(img instanceof HTMLElement)) return;
+  img.style.position = "";
+  img.style.zIndex = "";
+  img.style.opacity = "";
+  img.style.transform = "";
+  img.style.transformOrigin = "";
+}
+
+/**
+ * Keep the picture's layout slot so the line does not reflow, and scale the
+ * photo out from that slot so the words draw on top of it.
+ */
+function paintBehind(host: HTMLElement) {
+  host.dataset.behindPaint = "true";
+  host.style.zIndex = "auto";
+  host.style.overflow = "visible";
+  const frame = host.querySelector("[data-resize-wrapper]");
+  if (frame instanceof HTMLElement) {
+    frame.style.overflow = "visible";
+    frame.style.zIndex = "auto";
+  }
+  const img = host.querySelector("img");
+  if (!(img instanceof HTMLElement)) return;
+  const paragraph = host.closest("p");
+  const paraBox = paragraph?.getBoundingClientRect();
+  const box = host.getBoundingClientRect();
+  let scale = 16;
+  if (paraBox && box.width > 4 && box.height > 4) {
+    const cx = (box.left + box.right) / 2;
+    const cy = (box.top + box.bottom) / 2;
+    const reachX = Math.max(cx - paraBox.left, paraBox.right - cx) + 12;
+    const reachY = Math.max(cy - paraBox.top, paraBox.bottom - cy, box.height) + 8;
+    scale = Math.max((reachX * 2) / box.width, (reachY * 2) / box.height, 8);
+  }
+  img.style.position = "relative";
+  img.style.zIndex = "-1";
+  img.style.opacity = "0.4";
+  img.style.transformOrigin = "center center";
+  img.style.transform = `scale(${Number(scale.toFixed(3))})`;
+}
+
 /**
  * Size the floated picture to the visible frame so the paragraph starts
  * beside it, not beside a full-width block. Break text clears that width.
@@ -59,6 +112,12 @@ export function syncImageWrap(
   attrs: Record<string, unknown> | null | undefined,
 ) {
   const wrap = imageWrap(attrs);
+  if (wrap === "behind") {
+    host.dataset.wrap = "behind";
+    paintBehind(host);
+    return;
+  }
+  clearBehindPaint(host);
   if (wrap === "left" || wrap === "right") host.dataset.wrap = wrap;
   else if (wrap === "break") host.dataset.wrap = "break";
   else delete host.dataset.wrap;

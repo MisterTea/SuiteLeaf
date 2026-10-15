@@ -9,6 +9,14 @@ export interface TemplateRow {
   native: string;
 }
 
+/** Home and the gallery reload when a template is saved, renamed, or removed. */
+export const TEMPLATES_CHANGED = "suiteleaf:templates-changed";
+
+function notifyTemplates() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(TEMPLATES_CHANGED));
+}
+
 /** User templates live beside the file library, so removing one cannot delete a file. */
 export class TemplateStore extends Dexie {
   templates!: Table<TemplateRow, string>;
@@ -28,6 +36,7 @@ export class TemplateStore extends Dexie {
       native: serializeFile(snapshot),
     };
     await this.templates.put(row);
+    notifyTemplates();
     return row;
   }
   async rename(id: string, name: string): Promise<void> {
@@ -41,9 +50,11 @@ export class TemplateStore extends Dexie {
       updatedAt: new Date().toISOString(),
       native: serializeFile(file),
     });
+    notifyTemplates();
   }
   async remove(id: string) {
     await this.templates.delete(id);
+    notifyTemplates();
   }
   async list(): Promise<TemplateRow[]> {
     return this.templates.orderBy("updatedAt").reverse().toArray();

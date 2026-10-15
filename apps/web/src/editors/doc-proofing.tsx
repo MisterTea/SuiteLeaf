@@ -32,6 +32,7 @@ import {
   misspelledRanges,
   readPersonalDictionary,
   removePersonalWord,
+  SPELLING_CHANGED_EVENT,
   spellingHighlight,
   spellingHit,
   spellingKey,
@@ -47,7 +48,7 @@ export type ProofingContext = (view: EditorView, event: Event) => boolean;
 
 const formatNumber = (value: number) => value.toLocaleString("en-US");
 
-function writeProofing(editor: Editor, settings: ProofingSettings) {
+export function writeProofing(editor: Editor, settings: ProofingSettings) {
   editor.view.dispatch(
     editor.state.tr
       .setDocAttribute("proofing", settings)
@@ -55,7 +56,7 @@ function writeProofing(editor: Editor, settings: ProofingSettings) {
   );
 }
 
-function refreshSpelling(editor: Editor, from = -1, to = -1) {
+export function refreshSpelling(editor: Editor, from = -1, to = -1) {
   if (editor.isDestroyed) return;
   editor.view.dispatch(
     editor.state.tr
@@ -103,6 +104,17 @@ export function useDocProofing(
   } | null>(null);
   const personalRef = useRef(personal);
   personalRef.current = personal;
+
+  useEffect(() => {
+    const sync = () => {
+      const next = readPersonalDictionary();
+      personalRef.current = next;
+      setPersonal(next);
+      if (editor && !editor.isDestroyed) refreshSpelling(editor);
+    };
+    window.addEventListener(SPELLING_CHANGED_EVENT, sync);
+    return () => window.removeEventListener(SPELLING_CHANGED_EVENT, sync);
+  }, [editor]);
   const snapshot = useEditorState({
     editor,
     selector: ({ editor: current }) => {
@@ -808,5 +820,5 @@ export function useDocProofing(
     </>
   );
 
-  return { label, openWordCount, openSpelling, openDictionary, ui };
+  return { label, openWordCount, openSpelling, openDictionary, closeProofing: close, ui };
 }

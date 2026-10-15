@@ -58,6 +58,16 @@ Known pain points:
 - Garden club also has "Watering rota (Sam's draft, 12 Oct 09:14).sldoc".
 - The history still lists "Agreed rota", Sam's morning autosaves, and both restores.
 
+## AI version
+
+**Video:** [web](videos/28-restore-an-earlier-version-ai.mp4) · **Script:** [scenes/ai/28-restore-an-earlier-version-ai.spec.ts](scenes/ai/28-restore-an-earlier-version-ai.spec.ts)
+
+Web only: this is a cluster storyboard. Rosa signs in herself; the assistant never types a password. Sam's morning versions are already on the server, the same way the original scene uploads them. The watering rota is open on Sam's rewrite. Rosa asks the on-device assistant (FrogNano 4B) once:
+
+"Sam rewrote this watering rota this morning. Restore Rosa Diaz's version from yesterday evening, 18:02, so the document is the agreed rota again. Keep Sam's rewrite in the history."
+
+The assistant calls `list_versions`, then `restore_version` with Rosa's version. The page becomes Monday evening's rota (Rosa on Monday, Priya on Wednesday, no Friday seed-library line) and the status reads "Saved to SuiteDrive". Sam's 09:14 rewrite stays in the version history. The test checks the document text and the saved file against that rota, and that Sam's four lines are still in a saved version or a copy. It does not require the green-and-red preview, the folded autosaves, or the keyboard shortcut.
+
 ## Gaps and notes
 
 - Restoring replaces the whole file. Taking one paragraph from an old version is still "Make a copy", then copy that paragraph.

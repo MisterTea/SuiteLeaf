@@ -252,7 +252,7 @@ export async function askAgent(
       const question = ((await asks.textContent().catch(() => "")) ?? "").replace(/Allow\s*Don't allow\s*$/, "").trim();
       const allowed = !!options.allow?.test(question);
       await beat(page, 1200);
-      await asks.getByRole("button", { name: allowed ? "Allow" : "Don't allow" }).click();
+      await asks.getByRole("button", { name: allowed ? "Allow" : "Don't allow", exact: true }).click();
       approvals.push({ question, allowed });
     }
     await page.waitForTimeout(500);

@@ -71,7 +71,9 @@ test("document tools write, style, find, replace and check spelling", async ({ p
   await expect(page.getByLabel("Top margin")).toHaveValue("1");
   await expect(page.getByLabel("Left margin")).toHaveValue("1");
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
-  expect(await call(page, "page_setup", { margin_inches: 3 })).toContain('1.50" margins (3" is outside');
+  expect(await call(page, "page_setup", { margin_inches: 2 })).toContain('2.00" margins');
+  await expect(call(page, "page_setup", { margin_inches: 4 })).rejects.toThrow(/cannot be more than 3/);
+  await expect(call(page, "page_setup", { margin_inches: 0 })).rejects.toThrow(/at least 0.25/);
   const download = page.waitForEvent("download");
   expect(await call(page, "export_document", { format: "html" })).toContain('Exported "Volunteer letter.html".');
   expect((await download).suggestedFilename()).toBe("Volunteer letter.html");
@@ -361,7 +363,7 @@ test("document tools say where a table and a photo went", async ({ page }) => {
   expect(caption).toContain("6 paragraph(s) with text, 1 table(s), 1 photo(s).");
   expect(await call(page, "write_text", { after: "garden.png", text: "By Ruth." })).toContain('right after the photo "garden.png", before "Taken in May."');
   expect(await call(page, "read_document")).toMatch(
-    /\[Paragraph\] Last year's table:\n\d+\. \[Photo\] garden\.png\n\d+\. \[Paragraph\] By Ruth\.\n\d+\. \[Paragraph\] Taken in May\.\n\d+\. \[Paragraph\] Full rules online\./,
+    /\[Paragraph\] Last year's table:\n\d+\. \[Photo\] file name "garden\.png", no description\n\d+\. \[Paragraph\] By Ruth\.\n\d+\. \[Paragraph\] Taken in May\.\n\d+\. \[Paragraph\] Full rules online\./,
   );
   expect(await call(page, "insert_link", { text: "club site", url: "example.org" })).toContain(
     '"club site" was not in the document, so it was added at the end',
