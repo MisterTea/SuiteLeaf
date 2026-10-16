@@ -889,3 +889,118 @@ export async function parsePowerPoint(
   }
   return out;
 }
+
+const SLIDE_EMU_WIDTH = 9144000;
+const SLIDE_EMU_HEIGHT = 5143500;
+
+function xmlEscape(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function textShape(el: SlideElement, index: number, width: number, height: number) {
+  const x = Math.round((el.x / width) * SLIDE_EMU_WIDTH);
+  const y = Math.round((el.y / height) * SLIDE_EMU_HEIGHT);
+  const cx = Math.max(1, Math.round((el.width / width) * SLIDE_EMU_WIDTH));
+  const cy = Math.max(1, Math.round((el.height / height) * SLIDE_EMU_HEIGHT));
+  const size = Math.round((el.fontSize || 18) * 100);
+  const paragraphs = (el.content ?? "").split("\n").map((line) => {
+    const bullet = /^•\s+(.*)$/.exec(line);
+    const text = xmlEscape(bullet ? bullet[1] : line);
+    const props = bullet ? `<a:pPr><a:buChar char="•"/></a:pPr>` : "";
+    const bold = el.bold ? ` b="1"` : "";
+    return `<a:p>${props}<a:r><a:rPr lang="en-US" sz="${size}"${bold}/><a:t>${text}</a:t></a:r></a:p>`;
+  });
+  return `<p:sp>
+    <p:nvSpPr><p:cNvPr id="${index + 2}" name="Text ${index + 1}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+    <p:spPr>
+      <a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>
+      <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+    </p:spPr>
+    <p:txBody><a:bodyPr/><a:lstStyle/>${paragraphs.join("")}</p:txBody>
+  </p:sp>`;
+}
+
+function slideXml(slide: Slide, width: number, height: number) {
+  const color = (slide.background?.color || "#ffffff").replace("#", "");
+  const shapes = slide.elements
+    .filter((el) => el.type === "text")
+    .map((el, index) => textShape(el, index, width, height))
+    .join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld>
+    <p:bg><p:bgPr><a:solidFill><a:srgbClr val="${xmlEscape(color)}"/></a:solidFill></p:bgPr></p:bg>
+    <p:spTree>
+      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+      <p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>
+      ${shapes}
+    </p:spTree>
+  </p:cSld>
+</p:sld>`;
+}
+
+/** A PowerPoint file of the deck's text, in the positions the editor uses. */
+export async function writePowerPoint(file: SlideFile): Promise<Uint8Array> {
+  const zip = new JSZip();
+  const width = file.content.width || 960;
+  const height = file.content.height || 540;
+  const ids = file.content.slideOrder.filter((id) => file.content.slides[id]);
+  const overrides = ids
+    .map(
+      (_, index) =>
+        `<Override PartName="/ppt/slides/slide${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`,
+    )
+    .join("");
+  zip.file(
+    "[Content_Types].xml",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
+  ${overrides}
+</Types>`,
+  );
+  zip.file(
+    "_rels/.rels",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>
+</Relationships>`,
+  );
+  const slideRels = ids
+    .map(
+      (_, index) =>
+        `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide${index + 1}.xml"/>`,
+    )
+    .join("");
+  zip.file(
+    "ppt/_rels/presentation.xml.rels",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  ${slideRels}
+</Relationships>`,
+  );
+  const sldIds = ids
+    .map((_, index) => `<p:sldId id="${256 + index}" r:id="rId${index + 1}"/>`)
+    .join("");
+  zip.file(
+    "ppt/presentation.xml",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:sldIdLst>${sldIds}</p:sldIdLst>
+  <p:sldSz cx="${SLIDE_EMU_WIDTH}" cy="${SLIDE_EMU_HEIGHT}"/>
+</p:presentation>`,
+  );
+  ids.forEach((id, index) => {
+    zip.file(
+      `ppt/slides/slide${index + 1}.xml`,
+      slideXml(file.content.slides[id], width, height),
+    );
+  });
+  return zip.generateAsync({ type: "uint8array" });
+}

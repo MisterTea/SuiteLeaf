@@ -16,7 +16,7 @@ const safe = <T>(f: () => T) => {
 };
 
 export const IMPORT_ACCEPT =
-  ".sldoc,.slsheet,.slslides,.suiteleaf,.docx,.xlsx,.xls,.xlsm,.xlsb,.xltx,.pptx,.ppt,.ppsx,.pptm,.potx,.ppsm,.html,.htm,.txt,.csv,.tsv";
+  ".sldoc,.slsheet,.slslides,.suiteleaf,.docx,.xlsx,.xls,.xlsm,.xlsb,.xltx,.pptx,.ppt,.ppsx,.pptm,.potx,.ppsm,.md,.markdown,.html,.htm,.txt,.csv,.tsv";
 
 type Kind = SuiteFile["kind"];
 const KINDS: Record<string, Kind> = {

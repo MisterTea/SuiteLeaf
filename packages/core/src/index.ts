@@ -196,6 +196,8 @@ export const slideSchema = z.object({
     .object({
       color: z.string().optional(),
       image: z.string().optional(),
+      /** Set from markdown. A theme change leaves this color alone. */
+      pinned: z.boolean().optional(),
     })
     .optional(),
   layout: z
@@ -225,6 +227,8 @@ export const presentationSchema = z.object({
   slideOrder: z.array(z.string()),
   slides: z.record(z.string(), slideSchema),
   theme: slideThemeSchema.optional(),
+  /** A MARP deck is markdown with a single column or two columns, not free placement. */
+  marp: z.boolean().optional(),
 });
 export type Presentation = z.infer<typeof presentationSchema>;
 type NativeCell = {
@@ -747,7 +751,7 @@ export function duplicateFile(
   if (copy.kind === "slide") copy.content.id = copy.id;
   return copy;
 }
-export { parsePowerPoint } from "./pptx";
+export { parsePowerPoint, writePowerPoint } from "./pptx";
 export function filename(title: string, extension = "suiteleaf") {
   return `${
     title

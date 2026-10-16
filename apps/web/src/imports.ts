@@ -11,6 +11,7 @@ import {
   type SuiteFile,
   type SheetFile,
 } from "@suiteleaf/core";
+import { createMarpFile, marpToDeck } from "./editors/slide-marp";
 
 export const maxDelimitedCells = 200000;
 /** A parsed CSV/TSV file awaiting the person's import choices. */
@@ -94,6 +95,14 @@ export async function importFile(
     sheet.cellData = delimitedCellData(rows, options);
     return out;
   }
+  if (ext === "md" || ext === "markdown") {
+    const deck = createMarpFile(title);
+    const parsed = marpToDeck(text, deck.content, { marp: true });
+    if ("error" in parsed) throw new Error(parsed.error);
+    deck.content = parsed.deck;
+    deck.content.marp = true;
+    return deck;
+  }
   if (
     ext === "pptx" ||
     ext === "ppt" ||
@@ -107,6 +116,6 @@ export async function importFile(
     return parsePowerPoint(buffer, title);
   }
   throw new Error(
-    "Supported formats: SuiteLeaf (.sldoc, .slsheet, .slslides, .suiteleaf), DOCX, Excel (.xlsx, .xls, .xlsm, .xlsb, .xltx), PowerPoint (.pptx, .ppt), HTML, text, CSV, and TSV.",
+    "Supported formats: SuiteLeaf (.sldoc, .slsheet, .slslides, .suiteleaf), DOCX, Excel (.xlsx, .xls, .xlsm, .xlsb, .xltx), PowerPoint (.pptx, .ppt), Markdown (.md), HTML, text, CSV, and TSV.",
   );
 }

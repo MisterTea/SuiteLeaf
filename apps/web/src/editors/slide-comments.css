@@ -240,6 +240,12 @@
     border-left: 0;
     border-top: 1px solid var(--border);
   }
+  .marp-pane {
+    width: auto;
+    flex-basis: 220px;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
 }
 
 @media print {

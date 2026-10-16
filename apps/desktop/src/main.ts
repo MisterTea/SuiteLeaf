@@ -291,6 +291,10 @@ function buildMenu() {
             click: () => send("new-slide"),
           },
           {
+            label: "New MARP presentation",
+            click: () => send("new-marp"),
+          },
+          {
             label: "Open…",
             accelerator: "CmdOrCtrl+O",
             click: () => send("open"),

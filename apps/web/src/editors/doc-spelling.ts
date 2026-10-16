@@ -194,6 +194,11 @@ export function isMisspelling(
 
 const WORD = /[A-Za-z]+(?:['’-][A-Za-z]+)*/g;
 
+/** The caret is still inside this word, so the person has not finished typing it. */
+export function isTypingWord(from: number, to: number, caret: number | null) {
+  return caret != null && caret >= from && caret <= to;
+}
+
 export function spellingTokens(text: string): { word: string; from: number; to: number }[] {
   return [...text.matchAll(WORD)].map((match) => {
     const from = match.index ?? 0;
@@ -385,9 +390,12 @@ export const Proofing = Extension.create({
             const highlight = spellingKey.getState(state);
             const settings = readProofing(state.doc.toJSON() as JsonNode);
             const personal = readPersonalDictionary();
+            const caret = state.selection.empty ? state.selection.from : null;
             return DecorationSet.create(
               state.doc,
-              misspelledRanges(state.doc, personal, settings.ignored).map((range) =>
+              misspelledRanges(state.doc, personal, settings.ignored)
+                .filter((range) => !isTypingWord(range.from, range.to, caret))
+                .map((range) =>
                 Decoration.inline(range.from, range.to, {
                   class:
                     highlight &&

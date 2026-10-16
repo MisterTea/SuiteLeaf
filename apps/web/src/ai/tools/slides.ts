@@ -10,6 +10,7 @@ import {
   type Layout,
 } from "../../editors/slide-layouts";
 import { ToolError, tool, type SuiteTool } from "../host";
+import { deckToMarp, marpToDeck } from "../../editors/slide-marp";
 import { requestFile } from "../file-request";
 import { REMOVE_INTENT } from "./files";
 
@@ -229,6 +230,43 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
       execute() {
         const deck = ctx.deck();
         return `"${ctx.title}", ${deck.slideOrder.length} slide(s):\n${deck.slideOrder.map((id, i) => describeSlide(deck.slides[id], i)).join("\n")}`;
+      },
+    }),
+    tool({
+      name: "read_marp",
+      label: "Read markdown",
+      description:
+        "Read a MARP presentation as markdown. A slide is one column, or two columns written as a pair of <div> blocks. Only a presentation created as MARP has this.",
+      parameters: Type.Object({}),
+      target: () =>
+        document.querySelector(".marp-textarea") ??
+        document.querySelector('[aria-label="Slide thumbnails"]'),
+      execute() {
+        const deck = ctx.deck();
+        if (!deck.marp) throw new ToolError("This presentation is not a MARP deck. MARP is chosen when the presentation is created, or when a markdown file is imported.");
+        return deckToMarp(deck);
+      },
+    }),
+    tool({
+      name: "replace_marp",
+      label: "Replace markdown",
+      description:
+        "Replace a MARP presentation from markdown. Separate slides with ---. One column is a heading and the text under it. Two columns are two <div> blocks. A trailing HTML comment is speaker notes. The theme is a built-in name (paper, meadow, ink, sand) or a theme: block of colors and fonts. A document that cannot be read is left unchanged. This only works on a presentation created as MARP.",
+      parameters: Type.Object({
+        markdown: Type.String({ description: "The full MARP document." }),
+      }),
+      target: () => document.querySelector(".marp-textarea") ?? canvas(),
+      execute({ markdown }) {
+        if (!ctx.deck().marp)
+          throw new ToolError("This presentation is not a MARP deck. MARP is chosen when the presentation is created, or when a markdown file is imported.");
+        const result = marpToDeck(markdown, ctx.deck(), { marp: true });
+        if ("error" in result) throw new ToolError(result.error);
+        ctx.commit(result.deck);
+        if (!result.deck.slides[ctx.activeSlideId])
+          ctx.select(result.deck.slideOrder[0], null);
+        const count = result.deck.slideOrder.length;
+        const extra = result.warnings.length ? ` ${result.warnings.join(" ")}` : "";
+        return `Updated ${count} slide${count === 1 ? "" : "s"} from markdown.${extra}`;
       },
     }),
     tool({

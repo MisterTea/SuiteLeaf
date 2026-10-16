@@ -74,6 +74,7 @@ import { useDocumentRoom, mirrorLiveEdit } from "./collab/session";
 import { blockTexts, syncParagraphTexts, type RegionTouch } from "@suiteleaf/core";
 import type * as Y from "yjs";
 import { importFile, type DelimitedDraft } from "./imports";
+import { createMarpFile } from "./editors/slide-marp";
 import { CsvImportDialog } from "./csv-import";
 import type { DelimitedOptions } from "./csv";
 import { SameFileDialog, openNotices } from "./same-file";
@@ -395,7 +396,7 @@ function ImportButton({
         hidden
         type="file"
         ref={input}
-        accept=".sldoc,.slsheet,.slslides,.suiteleaf,.docx,.xlsx,.xls,.xlsm,.xlsb,.xltx,.pptx,.ppt,.ppsx,.pptm,.potx,.ppsm,.html,.htm,.txt,.csv,.tsv"
+        accept=".sldoc,.slsheet,.slslides,.suiteleaf,.docx,.xlsx,.xls,.xlsm,.xlsb,.xltx,.pptx,.ppt,.ppsx,.pptm,.potx,.ppsm,.md,.markdown,.html,.htm,.txt,.csv,.tsv"
         onChange={async (e) => {
           const f = e.target.files?.[0];
           e.target.value = "";
@@ -436,7 +437,7 @@ function NewCards({
   onCreate,
   folder,
 }: {
-  onCreate: (kind: SuiteFile["kind"]) => void;
+  onCreate: (kind: SuiteFile["kind"] | "marp") => void;
   /** The SuiteDrive folder new files go in, when it isn't the top level. */
   folder?: string;
 }) {
@@ -470,6 +471,16 @@ function NewCards({
         <span>
           <strong>New presentation</strong>
           {where ?? <small>A clean canvas for your next pitch</small>}
+        </span>
+        <Plus size={22} />
+      </button>
+      <button className="new-card" onClick={() => onCreate("marp")}>
+        <span className="app-icon slide">
+          <FileText size={30} />
+        </span>
+        <span>
+          <strong>New MARP deck</strong>
+          {where ?? <small>A markdown presentation, in one or two columns</small>}
         </span>
         <Plus size={22} />
       </button>
@@ -612,8 +623,10 @@ function LocalHome() {
     navigate(`/file/${id}`);
   };
   const make = useCallback(
-    (kind: SuiteFile["kind"]) =>
-      void open({ file: createFile(kind) }).catch((e) => setError(message(e))),
+    (kind: SuiteFile["kind"] | "marp") =>
+      void open({ file: kind === "marp" ? createMarpFile() : createFile(kind) }).catch((e) =>
+        setError(message(e)),
+      ),
     [open],
   );
   const menu = useCallback(
@@ -621,6 +634,7 @@ function LocalHome() {
       if (action === "new-doc") make("doc");
       if (action === "new-sheet") make("sheet");
       if (action === "new-slide") make("slide");
+      if (action === "new-marp") make("marp");
       if (action === "new-form") make("form");
       if (action === "connect-server") setConnecting(true);
       if (action === "open")
@@ -1239,10 +1253,12 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
   const sync = useServerSync(serverUrl);
   const summary = syncSummary(sync);
   const make = useCallback(
-    (kind: SuiteFile["kind"]) =>
-      void createInDrive(createFile(kind), folder.current, navigate).catch(
-        (e) => setError(message(e)),
-      ),
+    (kind: SuiteFile["kind"] | "marp") =>
+      void createInDrive(
+        kind === "marp" ? createMarpFile() : createFile(kind),
+        folder.current,
+        navigate,
+      ).catch((e) => setError(message(e))),
     [navigate],
   );
   const menu = useCallback(
@@ -1250,6 +1266,7 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
       if (action === "new-doc") make("doc");
       if (action === "new-sheet") make("sheet");
       if (action === "new-slide") make("slide");
+      if (action === "new-marp") make("marp");
       if (action === "new-form") make("form");
     },
     [make],
@@ -2072,18 +2089,22 @@ function Workspace() {
           action === "new-doc" ||
           action === "new-sheet" ||
           action === "new-slide" ||
+          action === "new-marp" ||
           action === "new-form"
         ) {
           await save();
-          const file = createFile(
-            action === "new-doc"
-              ? "doc"
-              : action === "new-sheet"
-                ? "sheet"
-                : action === "new-form"
-                  ? "form"
-                  : "slide",
-          );
+          const file =
+            action === "new-marp"
+              ? createMarpFile()
+              : createFile(
+                  action === "new-doc"
+                    ? "doc"
+                    : action === "new-sheet"
+                      ? "sheet"
+                      : action === "new-form"
+                        ? "form"
+                        : "slide",
+                );
           if (cluster)
             await createInDrive(file, driveParentId.current, navigate);
           else navigate(`/file/${(await storage.save({ file })).file.id}`);
@@ -2486,6 +2507,9 @@ function Workspace() {
                   <MenuItem onSelect={() => void doAction("new-slide")}>
                     Presentation
                   </MenuItem>
+                  <MenuItem onSelect={() => void doAction("new-marp")}>
+                    MARP presentation
+                  </MenuItem>
                   <MenuItem onSelect={() => void doAction("new-form")}>
                     Form
                   </MenuItem>
@@ -2554,7 +2578,11 @@ function Workspace() {
                     ? ["xlsx", "csv", "tsv"]
                     : f.kind === "form"
                       ? []
-                      : ["txt", "html"]
+                      : f.kind === "slide" && f.content.marp
+                        ? ["md"]
+                        : f.kind === "slide"
+                          ? ["pptx"]
+                          : ["txt", "html"]
                 ).map((format) => (
                   <MenuItem
                     key={format}
