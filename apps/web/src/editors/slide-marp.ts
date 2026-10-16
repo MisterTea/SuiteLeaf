@@ -143,7 +143,7 @@ function stacked(items: SlideElement[], x: number, columnWidth: number) {
 }
 
 /** Snap every item into the column flow. Array order within a column is the reading order. */
-export function reflowMarp(slide: Slide, width = 960, _height = 540): Slide {
+export function reflowMarp(slide: Slide, width = 960): Slide {
   const title = slide.elements.find(isMarpTitle);
   const items = slide.elements.filter((el) => !isMarpTitle(el));
   const two = slide.layout === "two-column";

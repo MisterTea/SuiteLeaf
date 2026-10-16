@@ -1013,7 +1013,7 @@ export function SlideSpellMirror({
   const personal = usePersonalDictionary();
   const ignored = useIgnoredWords(fileId);
   const hits = misspellingsInText(text, personal, ignored).filter(
-    (hit) => !isTypingWord(hit.from, hit.to, caret),
+    (hit) => !isTypingWord(hit.to, caret, text[hit.to]),
   );
   if (!hits.length) return null;
   const parts: ReactNode[] = [];

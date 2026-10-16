@@ -194,9 +194,13 @@ export function isMisspelling(
 
 const WORD = /[A-Za-z]+(?:['’-][A-Za-z]+)*/g;
 
-/** The caret is still inside this word, so the person has not finished typing it. */
-export function isTypingWord(from: number, to: number, caret: number | null) {
-  return caret != null && caret >= from && caret <= to;
+/**
+ * The caret is at the end of this word and the word is not yet followed by a
+ * letter, so the person is still typing it. A space or punctuation finishes it.
+ */
+export function isTypingWord(to: number, caret: number | null, next?: string) {
+  if (caret == null || caret !== to) return false;
+  return next == null || next === "" || /\s/.test(next);
 }
 
 export function spellingTokens(text: string): { word: string; from: number; to: number }[] {
@@ -394,7 +398,13 @@ export const Proofing = Extension.create({
             return DecorationSet.create(
               state.doc,
               misspelledRanges(state.doc, personal, settings.ignored)
-                .filter((range) => !isTypingWord(range.from, range.to, caret))
+                .filter((range) => {
+                  const next = state.doc.textBetween(
+                    range.to,
+                    Math.min(state.doc.content.size, range.to + 1),
+                  );
+                  return !isTypingWord(range.to, caret, next);
+                })
                 .map((range) =>
                 Decoration.inline(range.from, range.to, {
                   class:

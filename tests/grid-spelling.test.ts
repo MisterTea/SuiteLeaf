@@ -31,8 +31,9 @@ describe("grid spelling", () => {
   it("does not treat the word under the caret as finished", () => {
     const hits = misspellingsInText("reciev", none, []);
     expect(hits.map((hit) => hit.word)).toEqual(["reciev"]);
-    expect(isTypingWord(hits[0].from, hits[0].to, hits[0].to)).toBe(true);
-    expect(isTypingWord(hits[0].from, hits[0].to, hits[0].to + 1)).toBe(false);
+    expect(isTypingWord(hits[0].to, hits[0].to, "")).toBe(true);
+    expect(isTypingWord(hits[0].to, hits[0].to + 1, " ")).toBe(false);
+    expect(isTypingWord(hits[0].to, hits[0].from, "r")).toBe(false);
   });
 
   it("replaces one word and leaves the rest of the text alone", () => {
