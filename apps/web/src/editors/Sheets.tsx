@@ -2448,6 +2448,26 @@ export default function Sheets({
           },
           sort: (rules, hasHeader) => sortRef.current(rules, hasHeader),
           freeze: setFrozen,
+          groupRows: (startRow, endRow) =>
+            rowGroups.current?.groupSpan(startRow, endRow) ?? {
+              ok: false,
+              message: "Row groups are not ready.",
+            },
+          showOnlyRow: (row) =>
+            rowGroups.current?.showOnlyRow(row) ?? {
+              ok: false,
+              message: "Row groups are not ready.",
+            },
+          groupColumns: (startColumn, endColumn) =>
+            columnGroups.current?.groupSpan(startColumn, endColumn) ?? {
+              ok: false,
+              message: "Column groups are not ready.",
+            },
+          showOnlyColumn: (column) =>
+            columnGroups.current?.showOnlyColumn(column) ?? {
+              ok: false,
+              message: "Column groups are not ready.",
+            },
           insertCheckbox: () => sheetActionsRef.current?.sheetActions?.insertCheckbox?.(),
           exportAs: (format) => sheetActionsRef.current!.export(format),
           setAuthor: cluster ? undefined : setLocalName,

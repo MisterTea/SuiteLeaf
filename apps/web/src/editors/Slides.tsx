@@ -52,7 +52,7 @@ import {
   type Layout,
 } from "./slide-layouts";
 import { useAgentHost } from "../ai/host";
-import { slideSnapshot, slideTools, type SlidesAgentContext } from "../ai/tools/slides";
+import { slideSnapshot, slideSpellingReview, slideTools, type SlidesAgentContext } from "../ai/tools/slides";
 import {
   DeckHistory,
   canDeleteSlides,
@@ -1262,9 +1262,34 @@ ${slidesHtml}
         commit(next);
       },
       activeSlideId,
+      selectedElementId,
       select: (slideId, elementId) => {
-        setActiveSlideId(slideId);
-        setSelectedElementId(elementId ?? null);
+        applySelection(slideId, [slideId], elementId ?? null);
+      },
+      copyElements: (slideId, elementIds) => {
+        const slide = deckRef.current.slides[slideId];
+        const elements = elementIds
+          .map((id) => slide?.elements.find((el) => el.id === id))
+          .filter((el): el is SlideElement => !!el)
+          .map((el) => structuredClone(el));
+        if (!elements.length) return false;
+        clipboard.current = { kind: "elements", elements };
+        applySelection(slideId, [slideId], elements[0].id);
+        return true;
+      },
+      pasteElements: (slideId) => {
+        const clip = clipboard.current;
+        const deckNow = deckRef.current;
+        const slide = deckNow.slides[slideId];
+        if (!clip || clip.kind !== "elements" || !slide) return [];
+        const placed = pastedElements(slide.elements, clip.elements, () => crypto.randomUUID(), {
+          width: deckNow.width,
+          height: deckNow.height,
+        });
+        commit(withElements(deckNow, slideId, placed));
+        const last = placed[placed.length - 1];
+        applySelection(slideId, [slideId], last?.id ?? null);
+        return placed.map((el) => ({ id: el.id, type: el.type, x: el.x, y: el.y, shapeType: el.shapeType }));
       },
       presenting,
       present: (index, withNotes) => beginShow(index, withNotes),
@@ -1291,7 +1316,12 @@ ${slidesHtml}
             ? exportHtmlRef.current()
             : exportTxtRef.current(),
     };
-    return { kind: "slide", snapshot: () => slideSnapshot(ctx), tools: slideTools(ctx) };
+    return {
+      kind: "slide",
+      snapshot: () => slideSnapshot(ctx),
+      tools: slideTools(ctx),
+      review: () => slideSpellingReview(ctx),
+    };
   });
 
   const currentSlideIndex = Math.max(0, deck.slideOrder.indexOf(activeSlideId));

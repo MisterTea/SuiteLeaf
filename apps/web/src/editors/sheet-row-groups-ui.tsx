@@ -16,6 +16,7 @@ import {
   expandAll,
   expandLabel,
   makeGroup,
+  NOTHING_TO_GROUP,
   planGroupRows,
   readRowGroups,
   replaceGroups,
@@ -33,7 +34,28 @@ const SHOW = "sheet.mutation.set-row-visible";
 type Engine = { get: (id: unknown) => any };
 type Mutation = { id: string; params: Record<string, unknown> };
 
-export type SheetRowGroupsHandle = { groupRows: () => void };
+export type RowGroupResult =
+  | { ok: true; startRow: number; endRow: number; keptTotal: boolean; already: boolean }
+  | { ok: false; message: string };
+
+export type ShowOnlyRowResult =
+  | {
+      ok: true;
+      startRow: number;
+      endRow: number;
+      kept: number;
+      collapsed: number[];
+      label: string;
+    }
+  | { ok: false; message: string };
+
+export type SheetRowGroupsHandle = {
+  groupRows: () => void;
+  /** Group an explicit row span. A total whose formula adds the rows below stays outside the group. */
+  groupSpan: (startRow: number, endRow: number) => RowGroupResult;
+  /** Keep one 0-based detail row and collapse the others in its group. Does not change cell values. */
+  showOnlyRow: (row: number) => ShowOnlyRowResult;
+};
 
 type Dialog = { title: string; message: string };
 type Selection = { sheetId: string; startRow: number; endRow: number };
@@ -262,57 +284,121 @@ export default function SheetRowGroups({
     refreshRef.current();
   };
 
+  const commitGroup = (startRow: number, endRow: number, dialogs: boolean): RowGroupResult => {
+    const workbook = api.getActiveWorkbook();
+    const facade = workbook?.getActiveSheet();
+    if (!workbook || !facade) return { ok: false, message: "The sheet is not ready." };
+    let formulas: string[] = [];
+    try {
+      const last = Math.max(0, facade.getLastColumn());
+      formulas = (
+        facade.getRange(startRow, 0, 1, last + 1).getFormulas()?.[0] ?? []
+      ).map((formula: unknown) => (formula ? String(formula) : ""));
+    } catch {
+      formulas = [];
+    }
+    const plan = planGroupRows({ startRow, endRow }, formulas);
+    if (!plan.ok) {
+      if (dialogs) setDialog({ title: "Nothing to group", message: plan.message });
+      return plan;
+    }
+    const unitId = workbook.getId();
+    const sheetId = facade.getSheetId();
+    const before = readGroups(engine, unitId, sheetId);
+    if (
+      before.some(
+        (group) => group.startRow === plan.startRow && group.endRow === plan.endRow,
+      )
+    ) {
+      if (dialogs)
+        setDialog({
+          title: "Already grouped",
+          message:
+            "Those rows are already grouped. Use the minus beside them to collapse the rows under the total.",
+        });
+      return {
+        ok: true,
+        startRow: plan.startRow,
+        endRow: plan.endRow,
+        keptTotal: plan.keptTotal,
+        already: true,
+      };
+    }
+    applyGroups(
+      engine,
+      unitId,
+      sheetId,
+      before,
+      replaceGroups(before, makeGroup(plan.startRow, plan.endRow)),
+      true,
+    );
+    persistRef.current();
+    setDialog(null);
+    refreshRef.current();
+    return {
+      ok: true,
+      startRow: plan.startRow,
+      endRow: plan.endRow,
+      keptTotal: plan.keptTotal,
+      already: false,
+    };
+  };
+
   useImperativeHandle(
     ref,
     () => ({
       groupRows() {
-        const workbook = api.getActiveWorkbook();
-        const facade = workbook?.getActiveSheet();
-        if (!workbook || !facade) return;
-        const range = workbook.getActiveRange()?.getRange() ?? null;
-        const selection = range
-          ? { startRow: range.startRow, endRow: range.endRow }
-          : null;
-        let formulas: string[] = [];
-        if (selection) {
-          const last = Math.max(0, facade.getLastColumn());
-          formulas = (
-            facade.getRange(selection.startRow, 0, 1, last + 1).getFormulas()?.[0] ??
-            []
-          ).map((formula: unknown) => (formula ? String(formula) : ""));
-        }
-        const plan = planGroupRows(selection, formulas);
-        if (!plan.ok) {
-          setDialog({ title: "Nothing to group", message: plan.message });
+        const range = api.getActiveWorkbook()?.getActiveRange()?.getRange() ?? null;
+        if (!range) {
+          setDialog({ title: "Nothing to group", message: NOTHING_TO_GROUP });
           return;
         }
+        commitGroup(range.startRow, range.endRow, true);
+      },
+      groupSpan(startRow, endRow) {
+        return commitGroup(startRow, endRow, false);
+      },
+      showOnlyRow(row) {
+        const workbook = api.getActiveWorkbook();
+        const facade = workbook?.getActiveSheet();
+        if (!workbook || !facade) return { ok: false, message: "The sheet is not ready." };
+        if (!Number.isInteger(row) || row < 0)
+          return { ok: false, message: "Give a detail row to keep, such as row 2." };
         const unitId = workbook.getId();
         const sheetId = facade.getSheetId();
         const before = readGroups(engine, unitId, sheetId);
-        if (
-          before.some(
-            (group) =>
-              group.startRow === plan.startRow && group.endRow === plan.endRow,
-          )
-        ) {
-          setDialog({
-            title: "Already grouped",
+        const group = before.find((item) => row >= item.startRow && row <= item.endRow);
+        if (!group) {
+          if (before.some((item) => row < item.startRow)) {
+            return {
+              ok: false,
+              message: `Row ${row + 1} is outside the group and stays visible. Pass a detail row inside the group, such as {"row":2}. Do not hide row ${row + 1}.`,
+            };
+          }
+          return {
+            ok: false,
             message:
-              "Those rows are already grouped. Use the minus beside them to collapse the rows under the total.",
-          });
-          return;
+              'There is no row group yet. Call group_rows first, for example {"range":"2:13"}, then show_only_row.',
+          };
         }
-        applyGroups(
-          engine,
-          unitId,
-          sheetId,
-          before,
-          replaceGroups(before, makeGroup(plan.startRow, plan.endRow)),
-          true,
-        );
-        persistRef.current();
-        setDialog(null);
-        refreshRef.current();
+        let label = "";
+        try {
+          const value = facade.getRange(row, 0).getValue();
+          label =
+            typeof value === "string" || typeof value === "number" ? String(value).trim() : "";
+        } catch {
+          label = "";
+        }
+        const next = showOnly(group, row);
+        actions.current(group, next);
+        return {
+          ok: true,
+          startRow: group.startRow,
+          endRow: group.endRow,
+          kept: row,
+          collapsed: next.collapsed,
+          label,
+        };
       },
     }),
     [api, engine],

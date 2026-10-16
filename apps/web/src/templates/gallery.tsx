@@ -19,7 +19,7 @@ import {
   suggestTemplateName,
   type TemplateEntry,
 } from "./model";
-import { templateStore } from "./store";
+import { TEMPLATES_CHANGED, templateStore } from "./store";
 
 async function openCreated(file: SuiteFile, cluster: boolean) {
   if (cluster) {
@@ -42,6 +42,9 @@ export function useTemplates() {
   }, []);
   useEffect(() => {
     void reload();
+    const onChange = () => void reload();
+    window.addEventListener(TEMPLATES_CHANGED, onChange);
+    return () => window.removeEventListener(TEMPLATES_CHANGED, onChange);
   }, [reload]);
   return { entries, error, reload };
 }
