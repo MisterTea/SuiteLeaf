@@ -6,6 +6,7 @@ import {
   type Slide,
   type SlideElement,
 } from "./index";
+import { readClickAnimations, readSlideMotion } from "./slide-motion";
 
 function decodeXmlEntities(s: string): string {
   return s
@@ -266,6 +267,11 @@ async function parseZipPptx(
     const slideId = crypto.randomUUID();
     let slideTitle = "";
     const elements: SlideElement[] = [];
+    const shapeIndex = new Map<string, number>();
+    const rememberShape = (xml: string) => {
+      const id = /<p:cNvPr\b[^>]*\bid="(\d+)"/.exec(xml)?.[1];
+      if (id && !shapeIndex.has(id)) shapeIndex.set(id, elements.length);
+    };
 
     // Parse Background Color
     let bgColor: string | undefined = undefined;
@@ -309,6 +315,7 @@ async function parseZipPptx(
         bullet?: boolean;
         bold?: boolean;
         italic?: boolean;
+        underline?: boolean;
         size?: number;
         align?: "left" | "center" | "right" | "justify";
         color?: string;
@@ -335,6 +342,7 @@ async function parseZipPptx(
         let pText = "";
         let isBold = false;
         let isItalic = false;
+        let isUnderline = false;
         let fontSize: number | undefined = undefined;
         let fontColor: string | undefined = undefined;
         let fontFamily: string | undefined = undefined;
@@ -354,6 +362,7 @@ async function parseZipPptx(
             const rAttrs = parseXmlAttrs(rPrMatch[1]);
             if (rAttrs.b === "1" || rAttrs.b === "true") isBold = true;
             if (rAttrs.i === "1" || rAttrs.i === "true") isItalic = true;
+            if (rAttrs.u && rAttrs.u !== "none") isUnderline = true;
             if (rAttrs.sz) {
               const szPt = Math.round(parseInt(rAttrs.sz, 10) / 100);
               if (szPt > 6 && szPt < 120) fontSize = szPt;
@@ -371,6 +380,7 @@ async function parseZipPptx(
             bullet: hasBullet,
             bold: isBold,
             italic: isItalic,
+            underline: isUnderline,
             size: fontSize,
             align,
             color: fontColor,
@@ -380,6 +390,36 @@ async function parseZipPptx(
       }
       return paragraphs;
     };
+
+    // A picture painted on the group itself sits behind the shapes in that group.
+    const grpPrRx = /<p:grpSpPr\b[\s\S]*?<\/p:grpSpPr>/g;
+    let grpPrMatch: RegExpExecArray | null;
+    while ((grpPrMatch = grpPrRx.exec(slideXml)) !== null) {
+      const grpPr = grpPrMatch[0];
+      for (const blipMatch of grpPr.matchAll(/<a:blip\b([^>]*)\/?>/g)) {
+        const blipAttrs = parseXmlAttrs(blipMatch[1]);
+        const rId = blipAttrs["r:embed"] || blipAttrs["r:link"];
+        if (!rId || !slideRels[rId]) continue;
+        const mediaFile = zip.file(
+          resolveZipPath(slidePath, slideRels[rId].target),
+        );
+        if (!mediaFile) continue;
+        const imgBytes = await mediaFile.async("uint8array");
+        const mime = detectImageMime(imgBytes);
+        if (!mime) continue;
+        const { x, y, width: w, height: h } = parseTransform(grpPr);
+        elements.push({
+          id: crypto.randomUUID(),
+          type: "image",
+          x,
+          y,
+          width: w,
+          height: h,
+          src: `data:${mime};base64,${uint8ToBase64(imgBytes)}`,
+          alt: "Slide image",
+        });
+      }
+    }
 
     // 3. Parse Shapes (<p:sp>)
     const spRx = /<p:sp\b[\s\S]*?<\/p:sp>/g;
@@ -393,16 +433,16 @@ async function parseZipPptx(
       }
 
       const txBodyMatch = /<p:txBody\b[\s\S]*?<\/p:txBody>/.exec(spXml);
+      const spPr = /<p:spPr\b[\s\S]*?<\/p:spPr>/.exec(spXml)?.[0] ?? "";
       const { x, y, width: w, height: h } = parseTransform(spXml);
 
       // Check fill color
       let fillColor: string | undefined = undefined;
       const fillMatch =
-        /<a:spPr\b[\s\S]*?<a:solidFill\b[\s\S]*?<a:srgbClr\s+val="([0-9a-fA-F]{6})"/.exec(
-          spXml,
-        );
+        /<a:solidFill\b[\s\S]*?<a:srgbClr\s+val="([0-9a-fA-F]{6})"/.exec(spPr);
       if (fillMatch) fillColor = `#${fillMatch[1]}`;
 
+      let addedText = false;
       if (txBodyMatch) {
         const paragraphs = parseTextBody(txBodyMatch[0]);
         if (paragraphs.length > 0) {
@@ -417,6 +457,7 @@ async function parseZipPptx(
           }
 
           const first = paragraphs[0];
+          rememberShape(spXml);
           elements.push({
             id: crypto.randomUUID(),
             type: "text",
@@ -427,6 +468,7 @@ async function parseZipPptx(
             content: fullText,
             bold: first.bold,
             italic: first.italic,
+            ...(first.underline ? { underline: true } : {}),
             fontSize:
               first.size ||
               (phType === "title" || phType === "ctrTitle" ? 36 : 18),
@@ -436,12 +478,12 @@ async function parseZipPptx(
             bullet: paragraphs.some((p) => p.bullet),
             fill: fillColor,
           });
-          continue;
+          addedText = true;
         }
       }
 
-      // Check for image fill (<a:blipFill>)
-      const blipMatch = /<a:blip\b([^>]*)\/?>/.exec(spXml);
+      // A picture filling the shape is separate from a label drawn on top of it.
+      const blipMatch = /<a:blip\b([^>]*)\/?>/.exec(spPr);
       let blipHandled = false;
       if (blipMatch) {
         const blipAttrs = parseXmlAttrs(blipMatch[1]);
@@ -471,10 +513,11 @@ async function parseZipPptx(
         }
       }
 
-      if (!blipHandled) {
+      if (!addedText && !blipHandled) {
         // If it's a visible shape without text
         const geomMatch = /<a:prstGeom\s+prst="([^"]+)"/.exec(spXml);
         if (geomMatch || fillColor) {
+          rememberShape(spXml);
           let shapeType: "rect" | "roundRect" | "ellipse" | "line" | "arrow" =
             "rect";
           const geom = geomMatch ? geomMatch[1] : "rect";
@@ -503,32 +546,35 @@ async function parseZipPptx(
     let picMatch: RegExpExecArray | null;
     while ((picMatch = picRx.exec(slideXml)) !== null) {
       const picXml = picMatch[0];
-      const blipMatch = /<a:blip\b([^>]*)\/?>/.exec(picXml);
-      if (!blipMatch) continue;
-      const blipAttrs = parseXmlAttrs(blipMatch[1]);
-      const rId = blipAttrs["r:embed"] || blipAttrs["r:link"];
-      if (!rId || !slideRels[rId]) continue;
-
-      const mediaRelTarget = slideRels[rId].target;
-      const mediaZipPath = resolveZipPath(slidePath, mediaRelTarget);
-      const mediaFile = zip.file(mediaZipPath);
-      if (mediaFile) {
+      const blips = [...picXml.matchAll(/<a:blip\b([^>]*)\/?>/g)];
+      const shapeFill = blips.filter((blip) => {
+        const at = blip.index ?? 0;
+        return picXml.lastIndexOf("<p:spPr", at) > picXml.lastIndexOf("</p:spPr>", at);
+      });
+      for (const blipMatch of [...shapeFill, ...blips.filter((blip) => !shapeFill.includes(blip))]) {
+        const blipAttrs = parseXmlAttrs(blipMatch[1]);
+        const rId = blipAttrs["r:embed"] || blipAttrs["r:link"];
+        if (!rId || !slideRels[rId]) continue;
+        const mediaRelTarget = slideRels[rId].target;
+        const mediaZipPath = resolveZipPath(slidePath, mediaRelTarget);
+        const mediaFile = zip.file(mediaZipPath);
+        if (!mediaFile) continue;
         const imgBytes = await mediaFile.async("uint8array");
         const mime = detectImageMime(imgBytes);
-        if (mime) {
-          const b64 = uint8ToBase64(imgBytes);
-          const { x, y, width: w, height: h } = parseTransform(picXml);
-          elements.push({
-            id: crypto.randomUUID(),
-            type: "image",
-            x,
-            y,
-            width: w,
-            height: h,
-            src: `data:${mime};base64,${b64}`,
-            alt: "Slide image",
-          });
-        }
+        if (!mime) continue;
+        const b64 = uint8ToBase64(imgBytes);
+        const { x, y, width: w, height: h } = parseTransform(picXml);
+        rememberShape(picXml);
+        elements.push({
+          id: crypto.randomUUID(),
+          type: "image",
+          x,
+          y,
+          width: w,
+          height: h,
+          src: `data:${mime};base64,${b64}`,
+          alt: "Slide image",
+        });
       }
     }
 
@@ -539,29 +585,107 @@ async function parseZipPptx(
       const gfXml = gfMatch[0];
       const tblMatch = /<a:tbl\b[\s\S]*?<\/a:tbl>/.exec(gfXml);
       if (tblMatch) {
+        const tbl = tblMatch[0];
+        const frame = parseTransform(gfXml);
+        const cols = [...tbl.matchAll(/<a:gridCol\b[^>]*\bw="(\d+)"/g)].map(
+          (match) => Number(match[1]),
+        );
         const rows: string[][] = [];
+        const cellMarks: { bold?: boolean; italic?: boolean }[][] = [];
+        const pictures: {
+          xEmu: number;
+          yEmu: number;
+          wEmu: number;
+          hEmu: number;
+          src: string;
+        }[] = [];
+        let yEmu = 0;
         const trRx = /<a:tr\b[\s\S]*?<\/a:tr>/g;
         let trMatch: RegExpExecArray | null;
-        while ((trMatch = trRx.exec(tblMatch[0])) !== null) {
+        while ((trMatch = trRx.exec(tbl)) !== null) {
+          const rowXml = trMatch[0];
+          const rowH = Number(/<a:tr\b[^>]*\bh="(\d+)"/.exec(rowXml)?.[1] ?? 0);
           const row: string[] = [];
+          const marks: { bold?: boolean; italic?: boolean }[] = [];
+          let xEmu = 0;
+          let col = 0;
           const tcRx = /<a:tc\b[\s\S]*?<\/a:tc>/g;
           let tcMatch: RegExpExecArray | null;
-          while ((tcMatch = tcRx.exec(trMatch[0])) !== null) {
-            const cellTx = parseTextBody(tcMatch[0]);
+          while ((tcMatch = tcRx.exec(rowXml)) !== null) {
+            const cell = tcMatch[0];
+            const span = Number(/gridSpan="(\d+)"/.exec(cell)?.[1] ?? 1);
+            const wEmu = cols
+              .slice(col, col + span)
+              .reduce((sum, width) => sum + width, 0);
+            const tcPr = /<a:tcPr\b[\s\S]*?<\/a:tcPr>/.exec(cell)?.[0] ?? "";
+            for (const blipMatch of tcPr.matchAll(/<a:blip\b([^>]*)\/?>/g)) {
+              const blipAttrs = parseXmlAttrs(blipMatch[1]);
+              const rId = blipAttrs["r:embed"] || blipAttrs["r:link"];
+              if (!rId || !slideRels[rId]) continue;
+              const mediaFile = zip.file(
+                resolveZipPath(slidePath, slideRels[rId].target),
+              );
+              if (!mediaFile) continue;
+              const imgBytes = await mediaFile.async("uint8array");
+              const mime = detectImageMime(imgBytes);
+              if (!mime) continue;
+              pictures.push({
+                xEmu,
+                yEmu,
+                wEmu,
+                hEmu: rowH,
+                src: `data:${mime};base64,${uint8ToBase64(imgBytes)}`,
+              });
+            }
+            const cellTx = parseTextBody(cell);
             row.push(cellTx.map((p) => p.text).join(" "));
+            const mark: { bold?: boolean; italic?: boolean } = {};
+            if (cellTx.some((paragraph) => paragraph.bold)) mark.bold = true;
+            if (cellTx.some((paragraph) => paragraph.italic)) mark.italic = true;
+            marks.push(mark);
+            xEmu += wEmu;
+            col += span;
           }
-          if (row.length > 0) rows.push(row);
+          if (row.length > 0) {
+            rows.push(row);
+            cellMarks.push(marks);
+          }
+          yEmu += rowH;
+        }
+        const tableW = cols.reduce((sum, width) => sum + width, 0) || 1;
+        const tableH = yEmu || 1;
+        for (const picture of pictures) {
+          elements.push({
+            id: crypto.randomUUID(),
+            type: "image",
+            x: frame.x + Math.round((picture.xEmu / tableW) * frame.width),
+            y: frame.y + Math.round((picture.yEmu / tableH) * frame.height),
+            width: Math.max(
+              20,
+              Math.round((picture.wEmu / tableW) * frame.width),
+            ),
+            height: Math.max(
+              16,
+              Math.round((picture.hEmu / tableH) * frame.height),
+            ),
+            src: picture.src,
+            alt: "Slide image",
+          });
         }
         if (rows.length > 0) {
-          const { x, y, width: w, height: h } = parseTransform(gfXml);
+          const hasMarks = cellMarks.some((tableRow) =>
+            tableRow.some((cell) => cell.bold || cell.italic),
+          );
+          rememberShape(gfXml);
           elements.push({
             id: crypto.randomUUID(),
             type: "table",
-            x,
-            y,
-            width: w,
-            height: h,
+            x: frame.x,
+            y: frame.y,
+            width: frame.width,
+            height: frame.height,
             rows,
+            ...(hasMarks ? { cellMarks } : {}),
           });
         }
       }
@@ -601,6 +725,16 @@ async function parseZipPptx(
     else if (elements.length === 0) layout = "blank";
     else if (elements.length >= 3) layout = "two-column";
 
+    let mapped = 0;
+    for (const click of readClickAnimations(slideXml)) {
+      const index = shapeIndex.get(click.spid);
+      const el = index == null ? undefined : elements[index];
+      if (!el || el.animation) continue;
+      el.animation = click.kind;
+      el.animationOrder = click.order;
+      mapped += 1;
+    }
+    const motion = readSlideMotion(slideXml);
     slides[slideId] = {
       id: slideId,
       title: slideTitle || `Slide ${idx + 1}`,
@@ -608,6 +742,8 @@ async function parseZipPptx(
       layout,
       elements,
       notes: notes.trim(),
+      ...(motion.transition ? { transition: motion.transition } : {}),
+      ...(mapped === 0 && motion.timing ? { timing: motion.timing } : {}),
     };
     slideOrder.push(slideId);
   }
@@ -888,119 +1024,4 @@ export async function parsePowerPoint(
     ];
   }
   return out;
-}
-
-const SLIDE_EMU_WIDTH = 9144000;
-const SLIDE_EMU_HEIGHT = 5143500;
-
-function xmlEscape(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function textShape(el: SlideElement, index: number, width: number, height: number) {
-  const x = Math.round((el.x / width) * SLIDE_EMU_WIDTH);
-  const y = Math.round((el.y / height) * SLIDE_EMU_HEIGHT);
-  const cx = Math.max(1, Math.round((el.width / width) * SLIDE_EMU_WIDTH));
-  const cy = Math.max(1, Math.round((el.height / height) * SLIDE_EMU_HEIGHT));
-  const size = Math.round((el.fontSize || 18) * 100);
-  const paragraphs = (el.content ?? "").split("\n").map((line) => {
-    const bullet = /^•\s+(.*)$/.exec(line);
-    const text = xmlEscape(bullet ? bullet[1] : line);
-    const props = bullet ? `<a:pPr><a:buChar char="•"/></a:pPr>` : "";
-    const bold = el.bold ? ` b="1"` : "";
-    return `<a:p>${props}<a:r><a:rPr lang="en-US" sz="${size}"${bold}/><a:t>${text}</a:t></a:r></a:p>`;
-  });
-  return `<p:sp>
-    <p:nvSpPr><p:cNvPr id="${index + 2}" name="Text ${index + 1}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
-    <p:spPr>
-      <a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>
-      <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
-    </p:spPr>
-    <p:txBody><a:bodyPr/><a:lstStyle/>${paragraphs.join("")}</p:txBody>
-  </p:sp>`;
-}
-
-function slideXml(slide: Slide, width: number, height: number) {
-  const color = (slide.background?.color || "#ffffff").replace("#", "");
-  const shapes = slide.elements
-    .filter((el) => el.type === "text")
-    .map((el, index) => textShape(el, index, width, height))
-    .join("");
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
-  <p:cSld>
-    <p:bg><p:bgPr><a:solidFill><a:srgbClr val="${xmlEscape(color)}"/></a:solidFill></p:bgPr></p:bg>
-    <p:spTree>
-      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
-      <p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>
-      ${shapes}
-    </p:spTree>
-  </p:cSld>
-</p:sld>`;
-}
-
-/** A PowerPoint file of the deck's text, in the positions the editor uses. */
-export async function writePowerPoint(file: SlideFile): Promise<Uint8Array> {
-  const zip = new JSZip();
-  const width = file.content.width || 960;
-  const height = file.content.height || 540;
-  const ids = file.content.slideOrder.filter((id) => file.content.slides[id]);
-  const overrides = ids
-    .map(
-      (_, index) =>
-        `<Override PartName="/ppt/slides/slide${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`,
-    )
-    .join("");
-  zip.file(
-    "[Content_Types].xml",
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-  <Default Extension="xml" ContentType="application/xml"/>
-  <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
-  ${overrides}
-</Types>`,
-  );
-  zip.file(
-    "_rels/.rels",
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>
-</Relationships>`,
-  );
-  const slideRels = ids
-    .map(
-      (_, index) =>
-        `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide${index + 1}.xml"/>`,
-    )
-    .join("");
-  zip.file(
-    "ppt/_rels/presentation.xml.rels",
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  ${slideRels}
-</Relationships>`,
-  );
-  const sldIds = ids
-    .map((_, index) => `<p:sldId id="${256 + index}" r:id="rId${index + 1}"/>`)
-    .join("");
-  zip.file(
-    "ppt/presentation.xml",
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
-  <p:sldIdLst>${sldIds}</p:sldIdLst>
-  <p:sldSz cx="${SLIDE_EMU_WIDTH}" cy="${SLIDE_EMU_HEIGHT}"/>
-</p:presentation>`,
-  );
-  ids.forEach((id, index) => {
-    zip.file(
-      `ppt/slides/slide${index + 1}.xml`,
-      slideXml(file.content.slides[id], width, height),
-    );
-  });
-  return zip.generateAsync({ type: "uint8array" });
 }

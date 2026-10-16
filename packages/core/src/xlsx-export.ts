@@ -19,6 +19,28 @@ const esc = (v: unknown) =>
         "'": "&apos;",
       })[c]!,
   );
+/**
+ * SheetJS writes plain strings as formula-string cells and decodes `_xHHHH_`
+ * twice when it reads them back. A shared string is decoded once, which keeps
+ * letters that already spell an escape. `&` is escaped by that writer.
+ */
+const sheetJsText = (value: string) =>
+  value.replace(/_x([0-9A-Fa-f]{4})_/g, "_x005F_x$1_");
+
+/** Excel sheet tabs are at most 31 characters and cannot contain \ / ? * [ ] :. */
+export function excelSheetAlias(name: string, used: Set<string>): string {
+  const cleaned = name.replace(/[\u0000-\u001f[\]:*?/\\]/g, "").trim();
+  const base = (cleaned || "Sheet").slice(0, 31);
+  let alias = base;
+  let n = 2;
+  while (used.has(alias)) {
+    const suffix = ` ${n}`;
+    alias = `${base.slice(0, 31 - suffix.length)}${suffix}`;
+    n += 1;
+  }
+  used.add(alias);
+  return alias;
+}
 const rgb = (v: unknown) =>
   /^#[\da-f]{3}$/i.test(String(v))
     ? `FF${String(v)
@@ -257,8 +279,10 @@ export async function exportXlsx(
           v: error
             ? errorCodes[String(value)]
             : cell.t === 4
-              ? String(value)
-              : value,
+              ? sheetJsText(String(value))
+              : typeof value === "string"
+                ? sheetJsText(value)
+                : value,
           ...(cell.f ? { f: String(cell.f).replace(/^=/, "") } : {}),
           ...(href ? { l: { Target: href } } : {}),
         };
@@ -357,14 +381,15 @@ export async function exportXlsx(
         hidden: !!(data as Data).hd,
       };
     }
-    XLSX.utils.book_append_sheet(book, sheet, s.name);
+    const usedNames = (book.SheetNames ?? []) as string[];
+    XLSX.utils.book_append_sheet(book, sheet, excelSheetAlias(String(s.name ?? ""), new Set(usedNames)));
     sheetStyles.push(cellStyles);
   }
   book.Workbook = {
     WBProps: { date1904: wb.dateSystem === "date1904" },
-    Sheets: wb.sheetOrder.map((id: string) => ({
-      name: wb.sheets[id].name,
-      Hidden: wb.sheets[id].hidden || 0,
+    Sheets: book.SheetNames.map((name: string, index: number) => ({
+      name,
+      Hidden: wb.sheets[wb.sheetOrder[index]].hidden || 0,
     })),
   };
   const names = resource(wb, "SHEET_DEFINED_NAME_PLUGIN");
@@ -380,7 +405,12 @@ export async function exportXlsx(
     };
   });
   const zip = await JSZip.loadAsync(
-    XLSX.write(book, { type: "array", bookType: "xlsx", compression: true }),
+    XLSX.write(book, {
+      type: "array",
+      bookType: "xlsx",
+      bookSST: true,
+      compression: true,
+    }),
   );
   const dxfs: string[] = [];
   for (let i = 0; i < wb.sheetOrder.length; i++) {

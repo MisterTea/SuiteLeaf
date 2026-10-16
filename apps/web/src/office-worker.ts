@@ -1,24 +1,21 @@
-import {
-  importOffice,
-  OfficeImportError,
-  type OfficeFormat,
-} from "@suiteleaf/core/office";
+import { OfficeImportError } from "@suiteleaf/core/office";
+import { openOfficeFile } from "@suiteleaf/core/open-office";
 self.onmessage = async (
   event: MessageEvent<{
     bytes: ArrayBuffer;
-    format: OfficeFormat;
+    format: string;
     name: string;
     password?: string;
   }>,
 ) => {
   try {
-    const result = await importOffice(
+    const file = await openOfficeFile(
       event.data.bytes,
       event.data.format,
       event.data.name,
       { password: event.data.password },
     );
-    self.postMessage({ ok: true, file: result.file });
+    self.postMessage({ ok: true, file });
   } catch (e) {
     self.postMessage({
       ok: false,

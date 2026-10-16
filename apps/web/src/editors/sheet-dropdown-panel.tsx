@@ -577,6 +577,20 @@ export default function SheetDropdowns({
           }));
           const next = reconcileSource(previous, cells);
           if (!next.options.length) continue;
+          const renamedTo = new Set(next.renames.map((item) => item.to.toLowerCase()));
+          for (const option of next.options) {
+            if (renamedTo.has(option.label.toLowerCase())) continue;
+            const hinted =
+              meta?.colors?.[option.label] ??
+              Object.entries(meta?.colors ?? {}).find(
+                ([name]) => name.toLowerCase() === option.label.toLowerCase(),
+              )?.[1];
+            if (typeof hinted === "string" && /^#[\da-f]{6}$/i.test(hinted)) option.color = hinted;
+          }
+          for (const cell of next.sources) {
+            const match = next.options.find((option) => option.label.toLowerCase() === cell.label.toLowerCase());
+            if (match) cell.color = match.color;
+          }
           const nextFormula = formatRangeFormula(parsed);
           const nextMeta = {
             colors: Object.fromEntries(

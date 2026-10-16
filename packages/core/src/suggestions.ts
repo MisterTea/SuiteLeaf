@@ -432,13 +432,10 @@ export function annotateTrackedChanges(xml: string): string {
       };
       const body = inner.replaceAll("<w:delText", "<w:t").replaceAll("</w:delText>", "</w:t>");
       const open = encode(payload);
-      let seen = 0;
-      const count = body.match(/<w:t\b/g)?.length ?? 0;
-      if (!count) return body;
+      if (!/<w:t\b/.test(body)) return body;
+      // Each text node is parsed on its own, so every run needs both sentinels.
       return body.replace(/<w:t\b([^>]*)>([\s\S]*?)<\/w:t>/g, (_tag, tagAttrs: string, text: string) => {
-        seen += 1;
-        const value = `${seen === 1 ? open : ""}${text}${seen === count ? CLOSE : ""}`;
-        return `<w:t${tagAttrs}>${value}</w:t>`;
+        return `<w:t${tagAttrs}>${open}${text}${CLOSE}</w:t>`;
       });
     });
     if (next === before) break;

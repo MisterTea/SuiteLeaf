@@ -5,6 +5,7 @@ import {
   imageCropFromSrcRect,
   type ImageCrop,
 } from "./image-crop";
+import type { PictureBeside } from "./image-inline";
 import { type DrawingPlacement, type ImageWrap } from "./image-wrap";
 
 /**
@@ -70,6 +71,8 @@ export type ImportedDrawing = {
   placement: DrawingPlacement;
   /** The Word paragraph also contained words, so Mammoth's split should be joined. */
   sharesParagraph: boolean;
+  /** Words before the picture, after it, or on both sides. */
+  beside: PictureBeside;
 };
 
 /**
@@ -90,20 +93,20 @@ export function importedDrawings(xml: string): ImportedDrawing[] {
 export function applyImportedDrawings(
   doc: JsonNode,
   xml: string,
-): { doc: JsonNode; placements: DrawingPlacement[]; sharesParagraph: boolean[] } {
+): { doc: JsonNode; placements: DrawingPlacement[]; sharesParagraph: PictureBeside[] } {
   const facts = importedDrawings(xml);
   const placements: DrawingPlacement[] = [];
-  const sharesParagraph: boolean[] = [];
+  const sharesParagraph: PictureBeside[] = [];
   let index = 0;
   const walk = (node: JsonNode): JsonNode => {
     if (node.type === "image") {
       const fact = facts[index++];
       if (!fact) {
-        sharesParagraph.push(false);
+        sharesParagraph.push("none");
         return node;
       }
       placements.push(fact.placement);
-      sharesParagraph.push(fact.sharesParagraph);
+      sharesParagraph.push(fact.beside);
       const attrs = { ...(node.attrs ?? {}) };
       if (fact.size) {
         attrs.width = fact.size.width;
@@ -135,7 +138,7 @@ function drawingFacts(
     if (name === "del" || name === "moveFrom") continue;
     if (name === "tr" && rowDeleted(node)) continue;
     if (name === "p") {
-      facts.push(...drawingFacts(childNodes(node), paragraphHasText(node)));
+      facts.push(...paragraphDrawings(node));
       continue;
     }
     if (name === "AlternateContent") {
@@ -154,22 +157,13 @@ function drawingFacts(
         crop: null,
         placement: { wrap: null, floating: false, represented: true },
         sharesParagraph,
+        beside: sharesParagraph ? "both" : "none",
       });
       continue;
     }
     facts.push(...drawingFacts(childNodes(node), sharesParagraph));
   }
   return facts;
-}
-
-function paragraphHasText(node: OrderedNode): boolean {
-  const walk = (current: OrderedNode): boolean => {
-    const name = tag(current);
-    if (!name || name === "drawing" || name === "pict") return false;
-    if (name === "t" && textOf(current).trim()) return true;
-    return childNodes(current).some(walk);
-  };
-  return childNodes(node).some(walk);
 }
 
 function alternateFacts(
@@ -192,6 +186,7 @@ function alternateFacts(
       crop: alt?.crop ?? fact.crop,
       placement: alt?.placement ?? fact.placement,
       sharesParagraph,
+      beside: sharesParagraph ? "both" : "none",
     };
   });
 }
@@ -206,7 +201,43 @@ function drawingFact(
     crop: srcRectCrop(node),
     placement: name === "inline" ? inlinePlacement : anchorPlacement(node),
     sharesParagraph,
+    beside: sharesParagraph ? "both" : "none",
   };
+}
+
+/** Words on either side of each picture in one paragraph, ignoring text inside the drawing. */
+function paragraphDrawings(paragraph: OrderedNode): ImportedDrawing[] {
+  const items: Array<"text" | ImportedDrawing> = [];
+  const walk = (nodes: OrderedNode[]) => {
+    for (const node of nodes) {
+      const name = tag(node);
+      if (!name || name === ":@") continue;
+      if (name === "del" || name === "moveFrom") continue;
+      if (name === "tr" && rowDeleted(node)) continue;
+      if (name === "drawing" || name === "pict" || name === "AlternateContent") {
+        const found =
+          name === "AlternateContent"
+            ? alternateFacts(node, false)
+            : drawingFacts(childNodes(node), false);
+        items.push(...found);
+        continue;
+      }
+      if ((name === "t" || name === "delText") && textOf(node).trim()) {
+        items.push("text");
+        continue;
+      }
+      walk(childNodes(node));
+    }
+  };
+  walk(childNodes(paragraph));
+  return items.flatMap((item, index) => {
+    if (item === "text") return [];
+    const before = items.slice(0, index).includes("text");
+    const after = items.slice(index + 1).includes("text");
+    const beside: PictureBeside =
+      before && after ? "both" : before ? "before" : after ? "after" : "none";
+    return [{ ...item, sharesParagraph: beside !== "none", beside }];
+  });
 }
 
 const inlinePlacement: DrawingPlacement = {

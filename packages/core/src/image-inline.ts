@@ -85,14 +85,18 @@ function settleBlocks(nodes: JsonNode[]): JsonNode[] {
   return out;
 }
 
+/** Where the words that belong with a picture sit in its Word paragraph. */
+export type PictureBeside = "before" | "after" | "both" | "none";
+
 /**
  * Mammoth lifts an inline picture out of its paragraph, leaving the words
  * on either side. Put that picture back between those words. A picture that
  * was the only thing in its paragraph, or a square wrap, stays on its own line.
+ * A picture at the start or end of its paragraph does not take the neighboring paragraph.
  */
 export function rejoinSplitPictures(
   doc: JsonNode,
-  sharesParagraph: boolean[],
+  sharesParagraph: Array<boolean | PictureBeside>,
 ): JsonNode {
   if (!doc.content) return doc;
   const out: JsonNode[] = [];
@@ -104,21 +108,23 @@ export function rejoinSplitPictures(
       out.push(node);
       continue;
     }
-    const shares = sharesParagraph[imageIndex++] === true;
+    const side = sharesParagraph[imageIndex++] ?? "none";
+    const takePrev = side === true || side === "both" || side === "before";
+    const takeNext = side === true || side === "both" || side === "after";
     const wrap = node.attrs?.wrap;
-    if (!shares || wrap === "left" || wrap === "right" || wrap === "break") {
+    if ((!takePrev && !takeNext) || wrap === "left" || wrap === "right" || wrap === "break") {
       out.push(node);
       continue;
     }
     const inline = inlineImageFrom(node);
     const prev = out[out.length - 1];
     const next = blocks[i + 1];
-    if (prev?.type === "paragraph" && next?.type === "paragraph") {
+    if (takePrev && takeNext && prev?.type === "paragraph" && next?.type === "paragraph") {
       prev.content = [...(prev.content ?? []), inline, ...(next.content ?? [])];
       i += 1;
-    } else if (prev?.type === "paragraph") {
+    } else if (takePrev && prev?.type === "paragraph") {
       prev.content = [...(prev.content ?? []), inline];
-    } else if (next?.type === "paragraph") {
+    } else if (takeNext && next?.type === "paragraph") {
       out.push({ ...next, content: [inline, ...(next.content ?? [])] });
       i += 1;
     } else out.push(node);

@@ -161,11 +161,32 @@ export const slideElementSchema = z.object({
   strokeWidth: z.number().optional(),
   /** Set when someone chose this element's font or colour by hand. */
   themeOverride: z.boolean().optional(),
-  /** Hidden in the slideshow until the next click, then faded in. */
-  animation: z.literal("fade-on-click").optional(),
+  /** Hidden in the slideshow until its click, then brought in. */
+  animation: z
+    .enum([
+      "fade-on-click",
+      "appear-on-click",
+      "fly-on-click",
+      "wipe-on-click",
+      "zoom-on-click",
+    ])
+    .optional(),
+  /** Click sequence. Objects that share an order appear on the same click. */
+  animationOrder: z.number().int().nonnegative().optional(),
   src: z.string().optional(),
   alt: z.string().optional(),
   rows: z.array(z.array(z.string())).optional(),
+  /** Bold and italic for each slide-table cell, aligned with `rows`. */
+  cellMarks: z
+    .array(
+      z.array(
+        z.object({
+          bold: z.boolean().optional(),
+          italic: z.boolean().optional(),
+        }),
+      ),
+    )
+    .optional(),
 });
 export type SlideElement = z.infer<typeof slideElementSchema>;
 export const slideCommentMessageSchema = z.object({
@@ -187,6 +208,8 @@ export type SlideCommentThread = z.infer<typeof slideCommentThreadSchema>;
 export const slideTransitionSchema = z.object({
   type: z.enum(["none", "fade", "slide", "push"]),
   duration: z.number().min(0).max(10),
+  /** The original Office transition element, when it is one of the kinds above. */
+  office: z.string().max(400).optional(),
 });
 export type SlideTransition = z.infer<typeof slideTransitionSchema>;
 export const slideSchema = z.object({
@@ -207,6 +230,8 @@ export const slideSchema = z.object({
   notes: z.string().optional(),
   comments: z.array(slideCommentThreadSchema).max(40).optional(),
   transition: slideTransitionSchema.optional(),
+  /** Office animation timeline, written back when the deck is saved as PowerPoint. */
+  timing: z.string().max(100_000).optional(),
 });
 export type Slide = z.infer<typeof slideSchema>;
 export const slideThemeSchema = z.object({
@@ -297,7 +322,33 @@ const worksheetSchema = z
 const meta = {
   importInfo: z
     .object({
-      sourceFormat: z.enum(["docx", "xlsx", "xls", "xlsm", "xlsb", "xltx"]),
+      sourceFormat: z.enum([
+        "docx",
+        "docm",
+        "dotx",
+        "dotm",
+        "doc",
+        "dot",
+        "xlsx",
+        "xlsm",
+        "xlsb",
+        "xltx",
+        "xls",
+        "pptx",
+        "ppt",
+        "ppsx",
+        "pptm",
+        "potx",
+        "ppsm",
+        "odt",
+        "ott",
+        "fodt",
+        "ods",
+        "fods",
+        "odp",
+        "fodp",
+        "rtf",
+      ]),
       sourceName: z.string(),
       warnings: z.array(z.string()),
       features: z.array(z.string()),
@@ -751,7 +802,7 @@ export function duplicateFile(
   if (copy.kind === "slide") copy.content.id = copy.id;
   return copy;
 }
-export { parsePowerPoint, writePowerPoint } from "./pptx";
+export { parsePowerPoint } from "./pptx";
 export function filename(title: string, extension = "suiteleaf") {
   return `${
     title

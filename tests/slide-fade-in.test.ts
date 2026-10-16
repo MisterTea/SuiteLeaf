@@ -9,6 +9,7 @@ import {
 import {
   FADE_ON_CLICK,
   applyFadeOnClick,
+  applySlideAnimation,
   audiencePhase,
   fadeOnClickIds,
   fadeOnClickReason,
@@ -64,6 +65,16 @@ function deck(): { presentation: Presentation; slideId: string; chartId: string;
 }
 
 describe("fade in on click", () => {
+  it("stores a chosen entrance and plays click order", () => {
+    const { presentation, slideId, chartId, calloutId } = deck();
+    const flown = applySlideAnimation(presentation, slideId, chartId, "fly-on-click");
+    const faded = applySlideAnimation(flown!, slideId, calloutId, "fade-on-click");
+    const elements = faded!.slides[slideId].elements;
+    expect(elements.find((el) => el.id === chartId)?.animation).toBe("fly-on-click");
+    expect(fadeOnClickIds(elements)).toEqual([chartId, calloutId]);
+    expect(applySlideAnimation(faded!, slideId, chartId, null)!.slides[slideId].elements.find((el) => el.id === chartId)?.animation).toBeUndefined();
+  });
+
   it("marks only the selected object and keeps it in the saved file", () => {
     const { presentation, slideId, chartId, calloutId } = deck();
     const marked = applyFadeOnClick(presentation, slideId, calloutId);

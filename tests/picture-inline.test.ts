@@ -9,7 +9,8 @@ import {
   settleWordPictures,
 } from "../packages/core/src/image-inline";
 import type { JsonNode } from "../packages/core/src";
-import { stallSentenceDocx } from "./sentence-picture";
+import { Document, ImageRun, Packer, Paragraph, TextRun } from "docx";
+import { stallPhoto, stallSentenceDocx } from "./sentence-picture";
 
 const png =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
@@ -96,6 +97,39 @@ describe("picture in the sentence", () => {
     expect(paragraph?.content?.[imageAt + 1].text).toContain("stall");
     expect(image?.attrs?.src).toMatch(/^data:image\/png;base64,/);
     expect(pictures(file.content, "image")).toEqual([]);
+  });
+
+  it("does not join the previous paragraph when a picture opens the next one", async () => {
+    const photo = stallPhoto(64, 48);
+    const doc = new Document({
+      sections: [
+        {
+          children: [
+            new Paragraph({ children: [new TextRun("Earlier line")] }),
+            new Paragraph({
+              children: [
+                new ImageRun({
+                  type: "png",
+                  data: photo,
+                  transformation: { width: 64, height: 48 },
+                  altText: { title: "Mark", description: "Mark", name: "Mark" },
+                }),
+                new TextRun("Caption"),
+              ],
+            }),
+          ],
+        },
+      ],
+    });
+    const { file } = await importOffice(await Packer.toBuffer(doc), "docx", "caption.docx");
+    if (file.kind !== "doc") throw new Error("expected a document");
+    const paragraphs = file.content.content?.filter((node) => node.type === "paragraph") ?? [];
+    const earlier = paragraphs.find((node) => node.content?.some((child) => child.text?.includes("Earlier line")));
+    const caption = paragraphs.find((node) => node.content?.some((child) => child.text?.includes("Caption")));
+    expect(earlier).toBeTruthy();
+    expect(caption).toBeTruthy();
+    expect(earlier).not.toBe(caption);
+    expect(caption?.content?.some((child) => child.type === "inlineImage" || child.type === "image")).toBe(true);
   });
 
   it("writes an in-line picture back to Word and reads it in the sentence again", async () => {

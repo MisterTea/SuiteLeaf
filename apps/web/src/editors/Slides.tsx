@@ -38,13 +38,12 @@ import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import {
   filename,
   slideOp,
-  writePowerPoint,
   type SlideFile,
   type Slide,
   type SlideElement,
   type SlideTheme,
 } from "@suiteleaf/core";
-import { exportText, printDocument } from "../storage";
+import { exportBinary, exportText, printDocument } from "../storage";
 import { Menu, MenuItem, Tool, type EditorActions } from "../ui";
 import { MenuSearchPill } from "../command-palette";
 import {
@@ -53,7 +52,7 @@ import {
   type Layout,
 } from "./slide-layouts";
 import { useAgentHost } from "../ai/host";
-import { slideSnapshot, slideTools, type SlidesAgentContext } from "../ai/tools/slides";
+import { slideSnapshot, slideSpellingReview, slideTools, type SlidesAgentContext } from "../ai/tools/slides";
 import {
   DeckHistory,
   canDeleteSlides,
@@ -112,14 +111,17 @@ import { useSlideThemeLibrary } from "./slide-theme-library";
 import { replaceSlideWord } from "./grid-spelling";
 import { SlideSpellMirror, SlideSpelling } from "./grid-spelling-ui";
 import { useSlideComments } from "./slide-comments-ui";
+import { toggleSlideCellMark } from "./slide-table-format";
 import {
-  applyFadeOnClick,
+  applySlideAnimation,
+  FADE_ON_CLICK,
   audienceClass,
   audiencePhase,
   editorFadeAttrs,
   editorFadeClass,
   fadeOnClickIds,
   fadeOnClickReason,
+  type SlideAnimationKind,
   moveShowCursor,
   samePlace,
   startOfShow,
@@ -164,6 +166,13 @@ export default function Slides({
   const [selectedElementId, setSelectedElementId] = useState<string | null>(
     null,
   );
+  const [tableCell, setTableCell] = useState<{
+    id: string;
+    row: number;
+    col: number;
+  } | null>(null);
+  const tableCellRef = useRef(tableCell);
+  tableCellRef.current = tableCell;
   const [editingId, setEditingId] = useState<string | null>(null);
   const [caretMarks, setCaretMarks] = useState<{
     id: string;
@@ -843,6 +852,20 @@ export default function Slides({
     return null;
   };
   const formatText = (kind: "bold" | "italic" | "underline") => {
+    const slide = activeDeckSlide(deckRef.current);
+    const selected = slide?.elements.find(
+      (item) => item.id === selectedElementRef.current,
+    );
+    const cell = tableCellRef.current;
+    if (
+      selected?.type === "table" &&
+      cell?.id === selected.id &&
+      (kind === "bold" || kind === "italic")
+    ) {
+      const next = toggleSlideCellMark(selected, cell.row, cell.col, kind);
+      if (next) updateElement(selected.id, next);
+      return;
+    }
     const el = selectedText();
     if (!el) return;
     const range = selectionIn(el.id);
@@ -1000,19 +1023,20 @@ export default function Slides({
     }
   };
 
-  const applyFadeToSelection = () => {
+  const applyAnimation = (kind: SlideAnimationKind | null) => {
     const elementId = selectedElementRef.current;
     const slideId = activeRef.current;
     if (!elementId || !slideId) return;
-    const next = applyFadeOnClick(deckRef.current, slideId, elementId);
+    const next = applySlideAnimation(deckRef.current, slideId, elementId, kind);
     if (next) commit(next);
   };
-  const fadeReason = () => {
+  const applyFadeToSelection = () => applyAnimation(FADE_ON_CLICK);
+  const fadeReason = (kind: SlideAnimationKind = FADE_ON_CLICK) => {
     const slide = deckRef.current.slides[activeRef.current];
     const el = slide?.elements.find(
       (item) => item.id === selectedElementRef.current,
     );
-    return fadeOnClickReason(el);
+    return fadeOnClickReason(el, kind);
   };
 
   const api = useRef({
@@ -1033,7 +1057,9 @@ export default function Slides({
     toggleUnderline,
     align: alignText,
     fadeOnClick: applyFadeToSelection,
-    fadeOnClickReason: fadeReason,
+    fadeOnClickReason: () => fadeReason(),
+    animate: applyAnimation,
+    animationReason: fadeReason,
     run: runCommand,
   });
   api.current = {
@@ -1054,7 +1080,9 @@ export default function Slides({
     toggleUnderline,
     align: alignText,
     fadeOnClick: applyFadeToSelection,
-    fadeOnClickReason: fadeReason,
+    fadeOnClickReason: () => fadeReason(),
+    animate: applyAnimation,
+    animationReason: fadeReason,
     run: runCommand,
   };
 
@@ -1071,6 +1099,7 @@ export default function Slides({
     dragMoved.current = false;
     selectedElementRef.current = elementId;
     setSelectedElementId(elementId);
+    setTableCell((current) => (current?.id === elementId ? current : null));
     if (!handle && editingRef.current && editingRef.current !== elementId) {
       editingRef.current = null;
       setEditingId(null);
@@ -1310,17 +1339,12 @@ ${slidesHtml}
   };
 
   const exportPptx = async () => {
-    const bytes = await writePowerPoint({ ...file, content: deckRef.current });
-    const url = URL.createObjectURL(
-      new Blob([bytes as unknown as BlobPart], {
-        type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-      }),
+    const { exportPptx: writePptx } = await import("@suiteleaf/core/pptx-export");
+    await exportBinary(
+      filename(file.title, "pptx"),
+      await writePptx({ ...file, title: file.title, content: deckRef.current }),
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     );
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename(file.title, "pptx");
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const exportTxtRef = useRef(exportTxt);
@@ -1399,9 +1423,34 @@ ${slidesHtml}
         commit(next);
       },
       activeSlideId,
+      selectedElementId,
       select: (slideId, elementId) => {
-        setActiveSlideId(slideId);
-        setSelectedElementId(elementId ?? null);
+        applySelection(slideId, [slideId], elementId ?? null);
+      },
+      copyElements: (slideId, elementIds) => {
+        const slide = deckRef.current.slides[slideId];
+        const elements = elementIds
+          .map((id) => slide?.elements.find((el) => el.id === id))
+          .filter((el): el is SlideElement => !!el)
+          .map((el) => structuredClone(el));
+        if (!elements.length) return false;
+        clipboard.current = { kind: "elements", elements };
+        applySelection(slideId, [slideId], elements[0].id);
+        return true;
+      },
+      pasteElements: (slideId) => {
+        const clip = clipboard.current;
+        const deckNow = deckRef.current;
+        const slide = deckNow.slides[slideId];
+        if (!clip || clip.kind !== "elements" || !slide) return [];
+        const placed = pastedElements(slide.elements, clip.elements, () => crypto.randomUUID(), {
+          width: deckNow.width,
+          height: deckNow.height,
+        });
+        commit(withElements(deckNow, slideId, placed));
+        const last = placed[placed.length - 1];
+        applySelection(slideId, [slideId], last?.id ?? null);
+        return placed.map((el) => ({ id: el.id, type: el.type, x: el.x, y: el.y, shapeType: el.shapeType }));
       },
       presenting,
       present: (index, withNotes) => beginShow(index, withNotes),
@@ -1421,9 +1470,19 @@ ${slidesHtml}
           reader.onerror = () => reject(new Error("Could not read that image."));
           reader.readAsDataURL(f);
         }),
-      exportAs: (format) => (format === "html" ? exportHtmlRef.current() : exportTxtRef.current()),
+      exportAs: (format) =>
+        format === "pptx"
+          ? exportPptxRef.current()
+          : format === "html"
+            ? exportHtmlRef.current()
+            : exportTxtRef.current(),
     };
-    return { kind: "slide", snapshot: () => slideSnapshot(ctx), tools: slideTools(ctx) };
+    return {
+      kind: "slide",
+      snapshot: () => slideSnapshot(ctx),
+      tools: slideTools(ctx),
+      review: () => slideSpellingReview(ctx),
+    };
   });
 
   const currentSlideIndex = Math.max(0, deck.slideOrder.indexOf(activeSlideId));
@@ -1499,6 +1558,8 @@ ${slidesHtml}
         openResolved: () => openSlideResolved(),
         fadeOnClick: () => api.current.fadeOnClick(),
         fadeOnClickReason: () => api.current.fadeOnClickReason(),
+        animate: (kind) => api.current.animate(kind),
+        animationReason: (kind) => api.current.animationReason(kind),
         undoReason: () => slideApi.current.undoReason(),
         redoReason: () => slideApi.current.redoReason(),
         deleteReason: () => slideApi.current.deleteReason(),
@@ -1752,7 +1813,7 @@ ${slidesHtml}
       const phase = audiencePhase(el, revealed, order, enteringId);
       const fadeProps = {
         "data-element-id": el.id,
-        className: audienceClass(phase),
+        className: audienceClass(phase, el.animation),
         ...(phase === "plain"
           ? {}
           : { "data-fade": phase === "hidden" ? ("hidden" as const) : ("visible" as const) }),
@@ -1846,6 +1907,8 @@ ${slidesHtml}
                       style={{
                         fontSize: units(14),
                         padding: `${units(4)} ${units(8)}`,
+                        fontWeight: el.cellMarks?.[rIdx]?.[cIdx]?.bold ? 700 : undefined,
+                        fontStyle: el.cellMarks?.[rIdx]?.[cIdx]?.italic ? "italic" : undefined,
                       }}
                     >
                       {cell}
@@ -2327,6 +2390,23 @@ ${slidesHtml}
                   }
                 >
                   <List size={16} />
+                </Tool>
+              </>
+            ) : selectedElement.type === "table" && tableCell?.id === selectedElement.id ? (
+              <>
+                <Tool
+                  label="Bold"
+                  active={!!selectedElement.cellMarks?.[tableCell.row]?.[tableCell.col]?.bold}
+                  onClick={toggleBold}
+                >
+                  <Bold size={16} />
+                </Tool>
+                <Tool
+                  label="Italic"
+                  active={!!selectedElement.cellMarks?.[tableCell.row]?.[tableCell.col]?.italic}
+                  onClick={toggleItalic}
+                >
+                  <Italic size={16} />
                 </Tool>
               </>
             ) : null}
@@ -2998,7 +3078,27 @@ ${slidesHtml}
                           {el.rows.map((row, rIdx) => (
                             <tr key={rIdx}>
                               {row.map((cell, cIdx) => (
-                                <td key={cIdx}>{cell}</td>
+                                <td
+                                  key={cIdx}
+                                  className={
+                                    tableCell?.id === el.id &&
+                                    tableCell.row === rIdx &&
+                                    tableCell.col === cIdx
+                                      ? "slide-cell-selected"
+                                      : undefined
+                                  }
+                                  style={{
+                                    fontWeight: el.cellMarks?.[rIdx]?.[cIdx]?.bold ? 700 : undefined,
+                                    fontStyle: el.cellMarks?.[rIdx]?.[cIdx]?.italic ? "italic" : undefined,
+                                  }}
+                                  onMouseDown={(event) => {
+                                    event.stopPropagation();
+                                    onElementMouseDown(event, el.id);
+                                    setTableCell({ id: el.id, row: rIdx, col: cIdx });
+                                  }}
+                                >
+                                  {cell}
+                                </td>
                               ))}
                             </tr>
                           ))}

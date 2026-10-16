@@ -16,6 +16,7 @@ import {
   contiguousColumnRanges,
   expandAllColumns,
   expandColumnLabel,
+  columnName,
   makeColumnGroup,
   planGroupColumns,
   readColumnGroups,
@@ -34,7 +35,35 @@ const SHOW = "sheet.mutation.set-col-visible";
 type Engine = { get: (id: unknown) => any };
 type Mutation = { id: string; params: Record<string, unknown> };
 
-export type SheetColumnGroupsHandle = { groupColumns: () => void };
+export type ColumnGroupResult =
+  | {
+      ok: true;
+      startColumn: number;
+      endColumn: number;
+      keptTotal: boolean;
+      keptLabel: boolean;
+      already: boolean;
+    }
+  | { ok: false; message: string };
+
+export type ShowOnlyColumnResult =
+  | {
+      ok: true;
+      startColumn: number;
+      endColumn: number;
+      kept: number;
+      collapsed: number[];
+      label: string;
+    }
+  | { ok: false; message: string };
+
+export type SheetColumnGroupsHandle = {
+  groupColumns: () => void;
+  /** Group an explicit column span. A label on the left and a year total on the right stay outside. */
+  groupSpan: (startColumn: number, endColumn: number) => ColumnGroupResult;
+  /** Keep one 0-based detail column and collapse the others in its group. Does not change cell values. */
+  showOnlyColumn: (column: number) => ShowOnlyColumnResult;
+};
 
 type Dialog = { title: string; message: string };
 type Selection = { sheetId: string; startColumn: number; endColumn: number };
@@ -264,78 +293,154 @@ export default function SheetColumnGroups({
     refreshRef.current();
   };
 
+  const commitGroup = (startColumn: number, endColumn: number, dialogs: boolean): ColumnGroupResult => {
+    const workbook = api.getActiveWorkbook();
+    const facade = workbook?.getActiveSheet();
+    if (!workbook || !facade) return { ok: false, message: "The sheet is not ready." };
+    const selection =
+      startColumn < 0 || endColumn < startColumn
+        ? null
+        : {
+            startColumn: Math.min(startColumn, endColumn),
+            endColumn: Math.max(startColumn, endColumn),
+          };
+    let formulas: string[] = [];
+    let firstColumn: { values: unknown[]; formulas: string[] } | undefined;
+    if (selection && selection.endColumn > selection.startColumn) {
+      try {
+        const height = Math.max(1, facade.getLastRow() + 1);
+        const cells = (matrix: unknown) =>
+          (Array.isArray(matrix) ? matrix : []).map((row: unknown) => {
+            const value = Array.isArray(row) ? row[0] : row;
+            return value ?? "";
+          });
+        formulas = cells(
+          facade.getRange(0, selection.endColumn, height, 1).getFormulas(),
+        ).map((formula) => (formula ? String(formula) : ""));
+        firstColumn = {
+          values: cells(
+            facade.getRange(0, selection.startColumn, height, 1).getRawValues(),
+          ),
+          formulas: cells(
+            facade.getRange(0, selection.startColumn, height, 1).getFormulas(),
+          ).map((formula) => (formula ? String(formula) : "")),
+        };
+      } catch {
+        formulas = [];
+      }
+    }
+    const plan = planGroupColumns(selection, formulas, firstColumn);
+    if (!plan.ok) {
+      if (dialogs) setDialog({ title: "Nothing to group", message: plan.message });
+      return plan;
+    }
+    const unitId = workbook.getId();
+    const sheetId = facade.getSheetId();
+    const before = readGroups(engine, unitId, sheetId);
+    if (
+      before.some(
+        (group) =>
+          group.startColumn === plan.startColumn &&
+          group.endColumn === plan.endColumn,
+      )
+    ) {
+      if (dialogs)
+        setDialog({
+          title: "Already grouped",
+          message:
+            "Those columns are already grouped. Use the minus above them to collapse the months and leave the label on screen.",
+        });
+      return {
+        ok: true,
+        startColumn: plan.startColumn,
+        endColumn: plan.endColumn,
+        keptTotal: plan.keptTotal,
+        keptLabel: plan.keptLabel,
+        already: true,
+      };
+    }
+    applyGroups(
+      engine,
+      unitId,
+      sheetId,
+      before,
+      replaceColumnGroups(before, makeColumnGroup(plan.startColumn, plan.endColumn)),
+      true,
+    );
+    persistRef.current();
+    setDialog(null);
+    refreshRef.current();
+    return {
+      ok: true,
+      startColumn: plan.startColumn,
+      endColumn: plan.endColumn,
+      keptTotal: plan.keptTotal,
+      keptLabel: plan.keptLabel,
+      already: false,
+    };
+  };
+
   useImperativeHandle(
     ref,
     () => ({
       groupColumns() {
-        const workbook = api.getActiveWorkbook();
-        const facade = workbook?.getActiveSheet();
-        if (!workbook || !facade) return;
-        const range = workbook.getActiveRange()?.getRange() ?? null;
-        const selection = range
-          ? {
-              startColumn: Math.min(range.startColumn, range.endColumn),
-              endColumn: Math.max(range.startColumn, range.endColumn),
-            }
-          : null;
-        let formulas: string[] = [];
-        let firstColumn: { values: unknown[]; formulas: string[] } | undefined;
-        if (selection && selection.endColumn > selection.startColumn) {
-          try {
-            const height = Math.max(1, facade.getLastRow() + 1);
-            const cells = (matrix: unknown) =>
-              (Array.isArray(matrix) ? matrix : []).map((row: unknown) => {
-                const value = Array.isArray(row) ? row[0] : row;
-                return value ?? "";
-              });
-            formulas = cells(
-              facade.getRange(0, selection.endColumn, height, 1).getFormulas(),
-            ).map((formula) => (formula ? String(formula) : ""));
-            firstColumn = {
-              values: cells(
-                facade.getRange(0, selection.startColumn, height, 1).getRawValues(),
-              ),
-              formulas: cells(
-                facade.getRange(0, selection.startColumn, height, 1).getFormulas(),
-              ).map((formula) => (formula ? String(formula) : "")),
-            };
-          } catch {
-            formulas = [];
-          }
-        }
-        const plan = planGroupColumns(selection, formulas, firstColumn);
-        if (!plan.ok) {
-          setDialog({ title: "Nothing to group", message: plan.message });
+        const range = api.getActiveWorkbook()?.getActiveRange()?.getRange() ?? null;
+        if (!range) {
+          commitGroup(-1, -1, true);
           return;
         }
+        commitGroup(
+          Math.min(range.startColumn, range.endColumn),
+          Math.max(range.startColumn, range.endColumn),
+          true,
+        );
+      },
+      groupSpan(startColumn, endColumn) {
+        return commitGroup(startColumn, endColumn, false);
+      },
+      showOnlyColumn(column) {
+        const workbook = api.getActiveWorkbook();
+        const facade = workbook?.getActiveSheet();
+        if (!workbook || !facade) return { ok: false, message: "The sheet is not ready." };
+        if (!Number.isInteger(column) || column < 0)
+          return { ok: false, message: 'Give a detail column to keep, such as {"column":"B"}.' };
         const unitId = workbook.getId();
         const sheetId = facade.getSheetId();
         const before = readGroups(engine, unitId, sheetId);
-        if (
-          before.some(
-            (group) =>
-              group.startColumn === plan.startColumn &&
-              group.endColumn === plan.endColumn,
-          )
-        ) {
-          setDialog({
-            title: "Already grouped",
+        const group = before.find((item) => column >= item.startColumn && column <= item.endColumn);
+        if (!group) {
+          const letter = columnName(column);
+          if (before.length) {
+            const inside = before[0]!;
+            return {
+              ok: false,
+              message: `Column ${letter} is outside the group and stays visible. Pass a detail column inside the group, such as {"column":"${columnName(inside.startColumn)}"}. Do not hide column ${letter}.`,
+            };
+          }
+          return {
+            ok: false,
             message:
-              "Those columns are already grouped. Use the minus above them to collapse the months and leave the label on screen.",
-          });
-          return;
+              'There is no column group yet. Call group_columns first, for example {"range":"B:M"}, then show_only_column.',
+          };
         }
-        applyGroups(
-          engine,
-          unitId,
-          sheetId,
-          before,
-          replaceColumnGroups(before, makeColumnGroup(plan.startColumn, plan.endColumn)),
-          true,
-        );
-        persistRef.current();
-        setDialog(null);
-        refreshRef.current();
+        let label = "";
+        try {
+          const value = facade.getRange(0, column).getValue();
+          label =
+            typeof value === "string" || typeof value === "number" ? String(value).trim() : "";
+        } catch {
+          label = "";
+        }
+        const next = showOnlyColumn(group, column);
+        actions.current(group, next);
+        return {
+          ok: true,
+          startColumn: group.startColumn,
+          endColumn: group.endColumn,
+          kept: column,
+          collapsed: next.collapsed,
+          label,
+        };
       },
     }),
     [api, engine],

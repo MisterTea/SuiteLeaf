@@ -32,7 +32,35 @@ export async function importFile(
   review?: ReviewDelimited,
 ): Promise<SuiteFile | null> {
   const ext = file.name.split(".").pop()?.toLowerCase();
-  if (["docx", "xlsx", "xls", "xlsm", "xlsb", "xltx"].includes(ext ?? "")) {
+  if (
+    [
+      "docx",
+      "docm",
+      "dotx",
+      "dotm",
+      "doc",
+      "dot",
+      "xlsx",
+      "xlsm",
+      "xlsb",
+      "xltx",
+      "xls",
+      "pptx",
+      "ppt",
+      "ppsx",
+      "pptm",
+      "potx",
+      "ppsm",
+      "odt",
+      "ott",
+      "fodt",
+      "ods",
+      "fods",
+      "odp",
+      "fodp",
+      "rtf",
+    ].includes(ext ?? "")
+  ) {
     if (file.size > 120 * 1024 * 1024)
       throw new Error("Office imports are limited to 120 MB.");
     const { importOfficeFile } = await import("./office-import");
@@ -103,19 +131,7 @@ export async function importFile(
     deck.content.marp = true;
     return deck;
   }
-  if (
-    ext === "pptx" ||
-    ext === "ppt" ||
-    ext === "ppsx" ||
-    ext === "pptm" ||
-    ext === "potx" ||
-    ext === "ppsm"
-  ) {
-    const { parsePowerPoint } = await import("@suiteleaf/core");
-    const buffer = await file.arrayBuffer();
-    return parsePowerPoint(buffer, title);
-  }
   throw new Error(
-    "Supported formats: SuiteLeaf (.sldoc, .slsheet, .slslides, .suiteleaf), DOCX, Excel (.xlsx, .xls, .xlsm, .xlsb, .xltx), PowerPoint (.pptx, .ppt), Markdown (.md), HTML, text, CSV, and TSV.",
+    "Supported formats: SuiteLeaf (.sldoc, .slsheet, .slslides, .suiteleaf), Word, Excel, PowerPoint, OpenDocument, RTF, Markdown (.md), HTML, text, CSV, and TSV.",
   );
 }

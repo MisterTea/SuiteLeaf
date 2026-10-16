@@ -2,16 +2,19 @@
  * How a picture sits with the paragraph beside it.
  * `left` and `right` are square wrap: the lines continue on the open side.
  * `break` puts the picture on its own line, with text above and below.
+ * `behind` paints the picture under the words. The words stay in the line.
  * A missing value is the same as `break` — pictures still open on their own line.
  */
-export const IMAGE_WRAPS = ["left", "right", "break"] as const;
+export const IMAGE_WRAPS = ["left", "right", "break", "behind"] as const;
 export type ImageWrap = (typeof IMAGE_WRAPS)[number];
 
 export function imageWrap(
   attrs: Record<string, unknown> | null | undefined,
 ): ImageWrap | null {
   const value = attrs?.wrap;
-  return value === "left" || value === "right" || value === "break" ? value : null;
+  return value === "left" || value === "right" || value === "break" || value === "behind"
+    ? value
+    : null;
 }
 
 export type DrawingPlacement = {
