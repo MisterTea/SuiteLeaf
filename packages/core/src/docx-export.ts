@@ -43,6 +43,7 @@ import {
   type MathComponent,
   type ParagraphChild,
 } from "docx";
+import JSZip from "jszip";
 import type { DocFile, JsonNode } from "./index";
 import { docxParagraphIndent } from "./paragraph-indent";
 import { asEquation, type EqNode } from "./equations";
@@ -458,6 +459,13 @@ function blocks(
           ),
         }),
       ];
+    if (n.type === "textBox") {
+      const text = String(n.attrs?.text ?? "");
+      const hex = [...new TextEncoder().encode(text)]
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
+      return [new Paragraph({ children: [new TextRun(`SLTBXEXPORT${hex}END`)] })];
+    }
     if (n.type === "pageBreak")
       return [new Paragraph({ pageBreakBefore: true })];
     if (n.type === "horizontalRule")
@@ -940,5 +948,38 @@ export async function exportDocx(
   const withComments = comments.comments.length
     ? await stampDocxComments(packed, comments.resolvedWordIds)
     : packed;
-  return stampDocxCitations(withComments, library, content);
+  return stampDocxTextBoxes(await stampDocxCitations(withComments, library, content));
+}
+
+function hexToText(hex: string): string {
+  if (hex.length % 2) return "";
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++)
+    bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  return new TextDecoder().decode(bytes);
+}
+
+function textBoxParagraph(text: string): string {
+  const escaped = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return `<w:p><w:r><w:pict><v:shape style="width:180pt;height:48pt" filled="f" stroked="t"><v:textbox><w:txbxContent><w:p><w:r><w:t xml:space="preserve">${escaped}</w:t></w:r></w:p></w:txbxContent></v:textbox></v:shape></w:pict></w:r></w:p>`;
+}
+
+/** Turns text-box tokens into Word text boxes. */
+async function stampDocxTextBoxes(bytes: Uint8Array): Promise<Uint8Array> {
+  const zip = await JSZip.loadAsync(bytes);
+  const file = zip.file("word/document.xml");
+  if (!file) return bytes;
+  let xml = await file.async("string");
+  if (!xml.includes("SLTBXEXPORT")) return bytes;
+  xml = xml.replace(
+    /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*SLTBXEXPORT([0-9a-f]*)END(?:(?!<\/w:p>)[\s\S])*<\/w:p>/g,
+    (_paragraph, hex: string) => textBoxParagraph(hexToText(hex)),
+  );
+  if (!xml.includes('xmlns:v="urn:schemas-microsoft-com:vml"'))
+    xml = xml.replace(/<w:document\b/, '<w:document xmlns:v="urn:schemas-microsoft-com:vml"');
+  zip.file("word/document.xml", xml);
+  return zip.generateAsync({ type: "uint8array" });
 }

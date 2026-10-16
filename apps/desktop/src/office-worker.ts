@@ -1,12 +1,13 @@
 import { parentPort, workerData } from "node:worker_threads";
-import { importOffice } from "@suiteleaf/core/office";
+import { openOfficeFile } from "@suiteleaf/core/open-office";
 try {
-  const result = await importOffice(
+  const file = await openOfficeFile(
     new Uint8Array(workerData.bytes),
     workerData.format,
     workerData.name,
+    { password: workerData.password },
   );
-  parentPort!.postMessage({ ok: true, file: result.file });
+  parentPort!.postMessage({ ok: true, file });
 } catch (e) {
   parentPort!.postMessage({
     ok: false,

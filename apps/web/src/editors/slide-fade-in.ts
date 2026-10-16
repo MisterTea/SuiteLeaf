@@ -3,17 +3,38 @@ import type { Presentation } from "@suiteleaf/core";
 /** Hidden in the slideshow until the next click, then faded in. Visible while editing. */
 export const FADE_ON_CLICK = "fade-on-click" as const;
 
-export type FadeOnClick = typeof FADE_ON_CLICK;
+export const SLIDE_ANIMATION_CHOICES = [
+  { kind: "fade-on-click", label: "Fade" },
+  { kind: "appear-on-click", label: "Appear" },
+  { kind: "fly-on-click", label: "Fly in" },
+  { kind: "wipe-on-click", label: "Wipe" },
+  { kind: "zoom-on-click", label: "Zoom" },
+] as const;
 
-type FadeElement = { id: string; animation?: string };
+export type SlideAnimationKind = (typeof SLIDE_ANIMATION_CHOICES)[number]["kind"];
 
-export function fadesOnClick(el: { animation?: string } | null | undefined): boolean {
-  return el?.animation === FADE_ON_CLICK;
+const CLICK_ANIMATIONS = new Set<string>(SLIDE_ANIMATION_CHOICES.map((choice) => choice.kind));
+
+export function animationLabel(animation: string | undefined): string {
+  return SLIDE_ANIMATION_CHOICES.find((choice) => choice.kind === animation)?.label ?? "On click";
 }
 
-/** Objects that wait for a click, in the order they are drawn. */
+type FadeElement = { id: string; animation?: string; animationOrder?: number };
+
+export function fadesOnClick(el: { animation?: string } | null | undefined): boolean {
+  return !!el?.animation && CLICK_ANIMATIONS.has(el.animation);
+}
+
+/** Objects that wait for a click, in click order. */
 export function fadeOnClickIds(elements: readonly FadeElement[]): string[] {
-  return elements.filter((el) => fadesOnClick(el)).map((el) => el.id);
+  return elements
+    .map((el, index) => ({ el, index }))
+    .filter(({ el }) => fadesOnClick(el))
+    .sort(
+      (a, b) =>
+        (a.el.animationOrder ?? a.index) - (b.el.animationOrder ?? b.index) || a.index - b.index,
+    )
+    .map(({ el }) => el.id);
 }
 
 export type ShowCursor = {
@@ -110,46 +131,69 @@ export function audiencePhase(
   return "shown";
 }
 
-export function audienceClass(phase: AudiencePhase): string {
+export function audienceClass(phase: AudiencePhase, animation?: string): string {
   if (phase === "hidden") return "show-object fade-on-click-hidden";
-  if (phase === "entering") return "show-object fade-on-click-enter";
   if (phase === "shown") return "show-object fade-on-click-shown";
+  if (phase === "entering") {
+    if (!animation || animation === FADE_ON_CLICK) return "show-object fade-on-click-enter";
+    return `show-object ${animation}-enter`;
+  }
   return "show-object";
 }
 
-/** Why Insert › Animation › Fade in on click cannot run. */
+/** Why Insert › Animation cannot apply this entrance. */
 export function fadeOnClickReason(
   el: { animation?: string } | null | undefined,
+  kind: SlideAnimationKind = FADE_ON_CLICK,
 ): string | undefined {
   if (!el) return "Select an object on the slide.";
-  if (fadesOnClick(el)) return "This object already fades in on the next click.";
+  if (el.animation === kind) return `This object already uses ${animationLabel(kind).toLowerCase()}.`;
   return undefined;
 }
 
 /**
  * Mark one object. Other objects on the slide are left alone.
- * Returns null when there is nothing to change, so undo stays clean.
+ * Pass null to remove the animation. Returns null when nothing changes.
  */
-export function applyFadeOnClick(
+export function applySlideAnimation(
   deck: Presentation,
   slideId: string,
   elementId: string,
+  animation: SlideAnimationKind | null,
 ): Presentation | null {
   const slide = deck.slides[slideId];
   const target = slide?.elements.find((el) => el.id === elementId);
-  if (!slide || !target || fadesOnClick(target)) return null;
+  if (!slide || !target) return null;
+  if (animation === null && !target.animation) return null;
+  if (animation && target.animation === animation) return null;
+  const order =
+    animation == null
+      ? undefined
+      : Math.max(0, ...slide.elements.map((el) => el.animationOrder ?? 0)) + 1;
   return {
     ...deck,
     slides: {
       ...deck.slides,
       [slideId]: {
         ...slide,
+        timing: undefined,
         elements: slide.elements.map((el) =>
-          el.id === elementId ? { ...el, animation: FADE_ON_CLICK } : el,
+          el.id === elementId
+            ? { ...el, animation: animation ?? undefined, animationOrder: order }
+            : el,
         ),
       },
     },
   };
+}
+
+/** Mark one object to fade in on the next click. */
+export function applyFadeOnClick(
+  deck: Presentation,
+  slideId: string,
+  elementId: string,
+): Presentation | null {
+  return applySlideAnimation(deck, slideId, elementId, FADE_ON_CLICK);
 }
 
 export function editorFadeClass(el: { animation?: string }): string {

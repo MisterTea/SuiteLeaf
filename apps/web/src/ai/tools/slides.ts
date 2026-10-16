@@ -28,7 +28,7 @@ export interface SlidesAgentContext {
   showIndex: number;
   endShow: () => void;
   readImage: (file: File) => Promise<string>;
-  exportAs: (format: "html" | "txt") => Promise<void>;
+  exportAs: (format: "pptx" | "html" | "txt") => Promise<void>;
 }
 
 const LAYOUTS: Record<string, Layout> = {
@@ -582,11 +582,11 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
       name: "export_presentation",
       label: "Export",
       description:
-        "Export a copy in another format, for other apps: a web page (html) or plain text (txt). Only when the user asks for one of these; to download or save the file itself, use download_file.",
-      parameters: Type.Object({ format: Type.String({ enum: ["html", "txt"] }) }),
+        "Export a copy in another format, for other apps: PowerPoint (pptx), a web page (html), or plain text (txt). Only when the user asks for one of these; to download or save the file itself, use download_file.",
+      parameters: Type.Object({ format: Type.String({ enum: ["pptx", "html", "txt"] }) }),
       target: () => document.querySelector(".workspace-header [aria-haspopup]"),
       async execute({ format }) {
-        await ctx.exportAs(format as "html");
+        await ctx.exportAs(format as "pptx");
         return `Exported "${ctx.title}.${format}".`;
       },
     }),

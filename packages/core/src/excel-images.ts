@@ -156,9 +156,11 @@ async function imageSource(
   const part = zip.file(path);
   if (!part) return;
   const bytes = await part.async("uint8array");
-  const kind = /\.(png|jpe?g|gif|webp)$/i.exec(path)?.[1].toLowerCase();
-  if (kind)
-    return `data:image/${kind === "jpg" ? "jpeg" : kind};base64,${base64(bytes)}`;
+  const kind = /\.(png|jpe?g|gif|webp|svg)$/i.exec(path)?.[1].toLowerCase();
+  if (kind) {
+    const mime = kind === "jpg" ? "jpeg" : kind === "svg" ? "svg+xml" : kind;
+    return `data:image/${mime};base64,${base64(bytes)}`;
+  }
   if (/\.emf$/i.test(path)) {
     try {
       return rasterEmf(bytes);
@@ -269,7 +271,15 @@ export async function readExcelImages(
         for (const a of [
           ...array<any>(xml.wsDr?.twoCellAnchor),
           ...array<any>(xml.wsDr?.oneCellAnchor),
+          ...array<any>(xml.wsDr?.absoluteAnchor),
         ]) {
+          const pageAnchored = a.pos && !a.from;
+          const row = Number(a.from?.row ?? 0);
+          const column = Number(a.from?.col ?? 0);
+          const offsetX =
+            Number(pageAnchored ? a.pos?.["@_x"] : (a.from?.colOff ?? 0)) / 9525;
+          const offsetY =
+            Number(pageAnchored ? a.pos?.["@_y"] : (a.from?.rowOff ?? 0)) / 9525;
           if (a.sp?.txBody) {
             const ext = a.sp.spPr?.xfrm?.ext ?? a.ext;
             const width = Number(ext?.["@_cx"]) / 9525,
@@ -280,13 +290,13 @@ export async function readExcelImages(
                 id: `excel-textbox-${sheetId}-${out.length}`,
                 sheetId,
                 src,
-                row: Number(a.from?.row ?? 0),
-                column: Number(a.from?.col ?? 0),
-                offsetX: Number(a.from?.colOff ?? 0) / 9525,
-                offsetY: Number(a.from?.rowOff ?? 0) / 9525,
+                row,
+                column,
+                offsetX,
+                offsetY,
                 width,
                 height,
-                anchorType: "1",
+                anchorType: pageAnchored ? "2" : "1",
                 to: a.to
                   ? {
                       row: Number(a.to.row),
@@ -296,6 +306,76 @@ export async function readExcelImages(
                     }
                   : undefined,
               });
+          }
+          const emu = (value: unknown) => Number(value ?? 0);
+          const collectGroupPictures = (
+            group: any,
+            toAnchor: (x: number, y: number) => [number, number],
+          ): { pic: any; x: number; y: number; width: number; height: number }[] => {
+            const xfrm = group?.grpSpPr?.xfrm ?? {};
+            const chX = emu(xfrm.chOff?.["@_x"]);
+            const chY = emu(xfrm.chOff?.["@_y"]);
+            const chW = emu(xfrm.chExt?.["@_cx"]) || 1;
+            const chH = emu(xfrm.chExt?.["@_cy"]) || 1;
+            const extW = emu(xfrm.ext?.["@_cx"]) || chW;
+            const extH = emu(xfrm.ext?.["@_cy"]) || chH;
+            const local = (x: number, y: number): [number, number] => [
+              ((x - chX) * extW) / chW,
+              ((y - chY) * extH) / chH,
+            ];
+            const placed: { pic: any; x: number; y: number; width: number; height: number }[] = [];
+            for (const pic of array<any>(group?.pic)) {
+              const child = pic?.spPr?.xfrm ?? {};
+              const ox = emu(child.off?.["@_x"]);
+              const oy = emu(child.off?.["@_y"]);
+              const w = emu(child.ext?.["@_cx"]);
+              const h = emu(child.ext?.["@_cy"]);
+              const [x0, y0] = toAnchor(...local(ox, oy));
+              const [x1, y1] = toAnchor(...local(ox + w, oy + h));
+              placed.push({ pic, x: x0, y: y0, width: x1 - x0, height: y1 - y0 });
+            }
+            for (const nested of array<any>(group?.grpSp)) {
+              const offX = emu(nested?.grpSpPr?.xfrm?.off?.["@_x"]);
+              const offY = emu(nested?.grpSpPr?.xfrm?.off?.["@_y"]);
+              placed.push(
+                ...collectGroupPictures(nested, (x, y) => {
+                  const [lx, ly] = local(offX + x, offY + y);
+                  return toAnchor(lx, ly);
+                }),
+              );
+            }
+            return placed;
+          };
+          for (const group of array<any>(a.grpSp)) {
+            for (const picture of collectGroupPictures(group, (x, y) => [x, y])) {
+              const image = rels.get(
+                picture.pic?.blipFill?.blip?.["@_embed"] ??
+                  picture.pic?.blipFill?.blip?.["@_id"],
+              );
+              if (!image || image.external) continue;
+              const src = await imageSource(zip, image.path);
+              if (!src) {
+                warnings.push(
+                  "An embedded spreadsheet image format could not be displayed.",
+                );
+                continue;
+              }
+              const width = picture.width / 9525;
+              const height = picture.height / 9525;
+              if (!(width > 0 && height > 0)) continue;
+              out.push({
+                id: `excel-image-${sheetId}-${out.length}`,
+                sheetId,
+                src,
+                row,
+                column,
+                offsetX: offsetX + picture.x / 9525,
+                offsetY: offsetY + picture.y / 9525,
+                width,
+                height,
+                anchorType: pageAnchored ? "2" : "0",
+              });
+            }
           }
           if (!a.pic) continue;
           const image = rels.get(
@@ -317,10 +397,10 @@ export async function readExcelImages(
             id: `excel-image-${sheetId}-${out.length}`,
             sheetId,
             src,
-            row: Number(a.from?.row ?? 0),
-            column: Number(a.from?.col ?? 0),
-            offsetX: Number(a.from?.colOff ?? 0) / 9525,
-            offsetY: Number(a.from?.rowOff ?? 0) / 9525,
+            row,
+            column,
+            offsetX,
+            offsetY,
             width,
             height,
             to: a.to
@@ -331,8 +411,9 @@ export async function readExcelImages(
                   offsetY: Number(a.to.rowOff ?? 0) / 9525,
                 }
               : undefined,
-            anchorType:
-              a["@_editAs"] === "absolute"
+            anchorType: pageAnchored
+              ? "2"
+              : a["@_editAs"] === "absolute"
                 ? "2"
                 : a["@_editAs"] === "oneCell"
                   ? "0"
@@ -409,13 +490,28 @@ export async function readExcelImages(
               .map(Number),
             style = styles(String(s["@_style"] ?? ""));
           const width = dimension(style.width),
-            height = dimension(style.height),
-            row = anchor[2],
+            height = dimension(style.height);
+          if (!(width > 0 && height > 0)) continue;
+          // A header picture has a size and no cell anchor.
+          if (anchor.length !== 8) {
+            out.push({
+              id: `excel-image-${sheetId}-${out.length}`,
+              sheetId,
+              src,
+              row: 0,
+              column: 0,
+              offsetX: dimension(style["margin-left"]),
+              offsetY: dimension(style["margin-top"]),
+              width,
+              height,
+              anchorType: "0",
+            });
+            continue;
+          }
+          const row = anchor[2],
             column = anchor[0],
             offsetX = anchor[1],
             offsetY = anchor[3];
-          if (anchor.length !== 8) continue;
-          if (!(width > 0 && height > 0)) continue;
           out.push({
             id: `excel-image-${sheetId}-${out.length}`,
             sheetId,

@@ -128,11 +128,30 @@ async function openFile() {
         extensions: [
           ...NATIVE_EXTENSIONS,
           "docx",
+          "docm",
+          "dotx",
+          "dotm",
+          "doc",
+          "dot",
           "xlsx",
-          "xls",
           "xlsm",
           "xlsb",
           "xltx",
+          "xls",
+          "pptx",
+          "ppt",
+          "ppsx",
+          "pptm",
+          "potx",
+          "ppsm",
+          "odt",
+          "ott",
+          "fodt",
+          "ods",
+          "fods",
+          "odp",
+          "fodp",
+          "rtf",
         ],
       },
     ],
@@ -141,8 +160,34 @@ async function openFile() {
   if (result.canceled) return null;
   const path = resolve(result.filePaths[0]);
   const ext = extname(path).toLowerCase();
-  if (![".docx", ".xlsx", ".xls", ".xlsm", ".xlsb", ".xltx"].includes(ext))
-    return store.openPath(path);
+  const officeExtensions = new Set([
+    ".docx",
+    ".docm",
+    ".dotx",
+    ".dotm",
+    ".doc",
+    ".dot",
+    ".xlsx",
+    ".xlsm",
+    ".xlsb",
+    ".xltx",
+    ".xls",
+    ".pptx",
+    ".ppt",
+    ".ppsx",
+    ".pptm",
+    ".potx",
+    ".ppsm",
+    ".odt",
+    ".ott",
+    ".fodt",
+    ".ods",
+    ".fods",
+    ".odp",
+    ".fodp",
+    ".rtf",
+  ]);
+  if (!officeExtensions.has(ext)) return store.openPath(path);
   const bytes = await readFile(path);
   if (bytes.length > 120 * 1024 * 1024)
     throw new Error("Office imports are limited to 120 MB.");
