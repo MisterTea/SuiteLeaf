@@ -1,6 +1,7 @@
 import { useState, type CSSProperties } from "react";
 import {
   PAGE_NUMBER_START_MAX,
+  furnitureImage,
   pageFace,
   pageNumberFormatChips,
   pageNumberHint,
@@ -19,6 +20,46 @@ import {
   type PreviewPageRole,
   type PreviewSlot,
 } from "./page-preview";
+
+function ImageField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label>
+      <span>{label}</span>
+      <span className="furniture-image-field">
+        {value ? <img src={value} alt="" /> : null}
+        <input
+          aria-label={label}
+          type="file"
+          accept="image/png,image/jpeg,image/gif,image/webp"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            if (!file || file.size > 1024 * 1024) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+              const next = furnitureImage(reader.result);
+              if (next) onChange(next);
+            };
+            reader.readAsDataURL(file);
+          }}
+        />
+        {value ? (
+          <button type="button" onClick={() => onChange("")}>
+            Remove
+          </button>
+        ) : null}
+      </span>
+    </label>
+  );
+}
 
 function TextField({
   span,
@@ -401,6 +442,16 @@ export function PageSetupFields({
             value={draft.firstFooter}
             onChange={(firstFooter) => onChange({ ...draft, firstFooter })}
           />
+          <ImageField
+            label="First header image"
+            value={draft.firstHeaderImage}
+            onChange={(firstHeaderImage) => onChange({ ...draft, firstHeaderImage })}
+          />
+          <ImageField
+            label="First footer image"
+            value={draft.firstFooterImage}
+            onChange={(firstFooterImage) => onChange({ ...draft, firstFooterImage })}
+          />
         </>
       ) : null}
       {draft.differentOddEven ? (
@@ -485,6 +536,16 @@ export function PageSetupFields({
             }
             value={draft.footer}
             onChange={(footer) => onChange({ ...draft, footer })}
+          />
+          <ImageField
+            label="Header image"
+            value={draft.headerImage}
+            onChange={(headerImage) => onChange({ ...draft, headerImage })}
+          />
+          <ImageField
+            label="Footer image"
+            value={draft.footerImage}
+            onChange={(footerImage) => onChange({ ...draft, footerImage })}
           />
         </>
       )}

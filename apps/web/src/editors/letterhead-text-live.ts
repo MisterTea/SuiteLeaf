@@ -24,6 +24,25 @@ function letterheadText(value: unknown, fallback: string): string {
  * Distances, margins, paper size, and orientation are applied beside this.
  * Cancel drops the draft, and the saved words return.
  */
+const imageKeys = [
+  "headerImage",
+  "footerImage",
+  "firstHeaderImage",
+  "firstFooterImage",
+] as const;
+
+/** Header and footer pictures are drawn while Page setup is open. */
+export function liveFurnitureImages(base: PageSettings, draft: PageSettings): PageSettings {
+  let next: PageSettings | null = null;
+  for (const key of imageKeys) {
+    const value = draft[key] ?? "";
+    if (value === (base[key] ?? "")) continue;
+    next ??= { ...base };
+    next[key] = value;
+  }
+  return next ?? base;
+}
+
 export function liveLetterheadText(
   base: PageSettings,
   draft: PageSettings,

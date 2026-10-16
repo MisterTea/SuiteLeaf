@@ -142,6 +142,49 @@ function tableHtml(page: PrintedPage, repeat: boolean): string {
   return `<table>${thead}<tbody>${body.map(rowHtml).join("")}</tbody></table>`;
 }
 
+/** A printed sheet can be larger than the old 10,000-cell cap. Past this, the page would be too large to lay out. */
+export const PRINT_MAX_CELLS = 500_000;
+/** Rows on one printed page when a used range is taller than a single sheet of paper. */
+export const PRINT_ROWS_PER_PAGE = 60;
+
+export function usedCellCount(grid: readonly (readonly unknown[])[]): number {
+  const width = grid.reduce((max, row) => Math.max(max, row.length), 0);
+  return grid.length * width;
+}
+
+/**
+ * Split a tall printed page so a sheet with more than 10,000 cells still prints.
+ * A repeated header row stays at the top of each piece.
+ */
+export function paginatePrinted(
+  pages: readonly PrintedPage[],
+  rowsPerPage = PRINT_ROWS_PER_PAGE,
+): PrintedPage[] {
+  const repeating = pages.some((page) => page.rows.some((row) => row.repeated));
+  const out: PrintedPage[] = [];
+  for (const page of pages) {
+    if (page.rows.length <= rowsPerPage) {
+      out.push(page);
+      continue;
+    }
+    const head =
+      repeating && page.rows[0]?.source === 0 ? page.rows[0] : null;
+    const body = head ? page.rows.slice(1) : page.rows;
+    const size = Math.max(1, rowsPerPage - (head ? 1 : 0));
+    if (!body.length && head) {
+      out.push({ rows: [head] });
+      continue;
+    }
+    for (let index = 0; index < body.length; index += size) {
+      const slice = body.slice(index, index + size);
+      out.push({
+        rows: head ? [{ ...head, repeated: index > 0 }, ...slice] : slice,
+      });
+    }
+  }
+  return out;
+}
+
 /** HTML for the existing print path. Page breaks are real pages; row 1 repeats only when asked. */
 export function printMarkup(
   title: string,

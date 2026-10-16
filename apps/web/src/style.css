@@ -4694,6 +4694,18 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 .page-header, .page-footer, .page-header *, .page-footer * { pointer-events: auto; }
 .page-furniture-page { position: absolute; left: var(--page-margin-left, var(--page-margin)); right: var(--page-margin-right, var(--page-margin)); top: calc(var(--page-index) * var(--page-stride)); height: var(--page-height); }
 .page-header { position: absolute; top: var(--header-from-edge, calc(var(--page-margin-top, var(--page-margin)) / 2 - 8px)); line-height: 16px; white-space: pre-wrap; z-index: 2; }
+.page-furniture-image { display: block; max-width: 160px; max-height: 36px; object-fit: contain; }
+.section-break { display: flex; align-items: center; gap: 8px; margin: 12px 0; color: #5f6368; font-size: 12px; user-select: none; }
+.section-break::before, .section-break::after { content: ""; flex: 1; border-top: 1px dashed #c4c7c5; }
+.drawing-dialog { width: min(1080px, calc(100vw - 24px)); height: min(820px, calc(100vh - 24px)); display: flex; flex-direction: column; }
+.drawing-dialog .dialog-body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0; }
+.drawing-stage { flex: 1; min-height: 420px; height: 100%; }
+.drawing-stage .excalidraw { height: 100%; }
+.furniture-image-field { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.furniture-image-field img { max-height: 36px; max-width: 120px; }
+.animation-pane-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.animation-pane-list li { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.slide-master-layer { position: absolute; inset: 0; pointer-events: none; }
 .page-footer { position: absolute; bottom: var(--footer-from-edge, calc(var(--page-margin-bottom, var(--page-margin)) / 2 - 8px)); display: flex; justify-content: space-between; gap: 16px; width: 100%; line-height: 16px; white-space: pre-wrap; z-index: 2; }
 .page-watermark { position: absolute; left: 0; right: 0; top: calc(var(--page-margin-top, var(--page-margin)) + 28px); height: 210px; z-index: 0; display: flex; align-items: center; justify-content: center; overflow: visible; pointer-events: none; user-select: none; }
 .page-watermark span { font-family: Arial, sans-serif; font-weight: 700; line-height: 1; letter-spacing: 0.06em; color: rgba(95, 99, 104, 0.36); white-space: nowrap; font-size: min(108px, calc(var(--page-width) / var(--mark-em, 5))); }

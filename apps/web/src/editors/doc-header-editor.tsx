@@ -8,6 +8,7 @@ import {
   pageSideInsets,
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
+import { applySection, type DocSection } from "./doc-section-break";
 import { DocWatermark } from "./doc-watermark";
 
 /** Header and footer text stored on the document. The page number is not part of it. */
@@ -127,6 +128,7 @@ export function PageFurniture({
   readOnly,
   settings: liveSettings,
   arabicStart = null,
+  sections = [],
 }: {
   editor: Editor;
   pageCount: number;
@@ -134,6 +136,7 @@ export function PageFurniture({
   /** Draft page setup while the dialog is open. The saved document is used otherwise. */
   settings?: PageSettings;
   arabicStart?: number | null;
+  sections?: DocSection[];
 }) {
   const saved =
     useEditorState({
@@ -212,6 +215,7 @@ export function PageFurniture({
           pageCount={pageCount}
           settings={settings}
           arabicStart={arabicStart}
+          sections={sections}
           editing={editing}
           readOnly={readOnly}
           onOpen={open}
@@ -236,6 +240,7 @@ function FurniturePage({
   pageCount,
   settings,
   arabicStart = null,
+  sections = [],
   editing,
   readOnly,
   onOpen,
@@ -246,13 +251,20 @@ function FurniturePage({
   pageCount: number;
   settings: PageSettings;
   arabicStart?: number | null;
+  sections?: DocSection[];
   editing: { field: FurnitureField; pageIndex: number } | null;
   readOnly: boolean;
   onOpen: (field: FurnitureField, pageIndex: number) => void;
   onCommit: (field: FurnitureField, value: string) => void;
   onTab: (field: FurnitureField, pageIndex: number) => void;
 }) {
-  const face = pageFace(settings, pageIndex, pageCount, arabicStart);
+  const face = applySection(
+    pageFace(settings, pageIndex, pageCount, arabicStart),
+    sections,
+    pageIndex,
+    pageCount,
+    settings.pageNumberFormat,
+  );
   const insets = pageSideInsets(settings, pageIndex + 1);
   const headerSlot = furnitureSlot(settings, "header", pageIndex);
   const footerSlot = furnitureSlot(settings, "footer", pageIndex);
@@ -286,7 +298,7 @@ function FurniturePage({
         </span>
       ) : null}
       <div
-        className={`page-header align-${face.headerAlign}${face.header ? "" : " is-empty"}${headerHere ? " is-active" : ""}`}
+        className={`page-header align-${face.headerAlign}${face.header || face.headerImage ? "" : " is-empty"}${headerHere ? " is-active" : ""}`}
         role={headerHere || !keyboard ? undefined : "button"}
         tabIndex={headerHere || !keyboard ? undefined : 0}
         aria-label={
@@ -320,7 +332,12 @@ function FurniturePage({
             onTab={() => onTab("header", pageIndex)}
           />
         ) : (
-          <span className="page-header-text">{face.header}</span>
+          <span className="page-header-text">
+            {face.headerImage ? (
+              <img className="page-furniture-image" src={face.headerImage} alt="" />
+            ) : null}
+            {face.header}
+          </span>
         )}
       </div>
       <div
@@ -364,7 +381,12 @@ function FurniturePage({
               onTab={() => onTab("footer", pageIndex)}
             />
           ) : (
-            face.footer
+            <>
+              {face.footerImage ? (
+                <img className="page-furniture-image" src={face.footerImage} alt="" />
+              ) : null}
+              {face.footer}
+            </>
           )}
         </span>
         {face.numberSide === "right" || face.numberSide === "center" ? (

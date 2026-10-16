@@ -49,7 +49,7 @@ import SheetRowGroups, { type SheetRowGroupsHandle } from "./sheet-row-groups-ui
 import SheetColumnGroups, { type SheetColumnGroupsHandle } from "./sheet-column-groups-ui";
 import SheetFeatures from "./sheet-features";
 import SheetPrint, { type SheetPrintHandle } from "./sheet-print-ui";
-import { printMarkup, printedPages, readSheetPrint } from "./sheet-print";
+import { PRINT_MAX_CELLS, paginatePrinted, printMarkup, printedPages, readSheetPrint } from "./sheet-print";
 import SheetDropdowns, { type SheetDropdownHandle } from "./sheet-dropdown-panel";
 import SheetLinks, { type SheetLinkHandle } from "./sheet-links";
 import {
@@ -1947,15 +1947,16 @@ export default function Sheets({
       await api.current.getFormula().onCalculationResultApplied(10000);
       const s = book.current.getActiveSheet();
       const values = s.getDataRange().getValues() as CellValue[][];
-      if (values.length * (values[0]?.length ?? 0) > 10000)
-        throw new Error("Print a sheet with at most 10,000 cells.");
+      const cellCount = values.length * (values[0]?.length ?? 0);
+      if (cellCount > PRINT_MAX_CELLS)
+        throw new Error(`Print a sheet with at most ${PRINT_MAX_CELLS.toLocaleString()} cells.`);
       const settings = readSheetPrint(content.current, s.getSheetId());
       const el = document.createElement("section");
       el.className = "sheet-print";
       el.innerHTML = printMarkup(
         file.title,
         s.getSheetName(),
-        printedPages(values, settings),
+        paginatePrinted(printedPages(values, settings)),
         settings.repeatFirstRow,
       );
       document

@@ -162,6 +162,7 @@ import {
   useMode,
   type ResolvedMode,
 } from "./mode";
+import { formsEnabled } from "./flags";
 import { useAgentHost } from "./ai/host";
 import { bindRestoredFile } from "./ai/restored-file";
 import { AiButton, AgentLayer } from "./ai/AgentSidebar";
@@ -488,6 +489,7 @@ function NewCards({
         </span>
         <Plus size={22} />
       </button>
+      {formsEnabled ? (
       <button className="new-card" onClick={() => onCreate("form")}>
         <span className="app-icon form">
           <ClipboardList size={30} />
@@ -498,6 +500,7 @@ function NewCards({
         </span>
         <Plus size={22} />
       </button>
+      ) : null}
     </div>
   );
 }
@@ -639,7 +642,7 @@ function LocalHome() {
       if (action === "new-sheet") make("sheet");
       if (action === "new-slide") make("slide");
       if (action === "new-marp") make("marp");
-      if (action === "new-form") make("form");
+      if (action === "new-form" && formsEnabled) make("form");
       if (action === "connect-server") setConnecting(true);
       if (action === "open")
         void storage
@@ -740,7 +743,7 @@ function LocalHome() {
     kept = records.filter((r) => !r.trashedAt),
     trashed = records.filter((r) => r.trashedAt),
     focused = searching || filter === "trash" || filter === "starred";
-  const shown = visibleRecords(records, filter, query)
+  const shown = visibleRecords(records, filter, query, new Date(), { forms: formsEnabled })
     .flatMap((r) => {
       const hit = searchFile(r.file, query);
       return hit ? [{ r, snippet: hit.snippet }] : [];
@@ -918,6 +921,7 @@ function LocalHome() {
             <Presentation size={18} />
             Presentations
           </button>
+          {formsEnabled ? (
           <button
             className={filter === "form" ? "selected" : ""}
             onClick={() => setFilter("form")}
@@ -925,6 +929,7 @@ function LocalHome() {
             <ClipboardList size={18} />
             Forms
           </button>
+          ) : null}
           <button
             className={filter === "trash" ? "selected" : ""}
             onClick={() => setFilter("trash")}
@@ -1294,7 +1299,7 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
       if (action === "new-sheet") make("sheet");
       if (action === "new-slide") make("slide");
       if (action === "new-marp") make("marp");
-      if (action === "new-form") make("form");
+      if (action === "new-form" && formsEnabled) make("form");
     },
     [make],
   );
@@ -2117,7 +2122,7 @@ function Workspace() {
           action === "new-sheet" ||
           action === "new-slide" ||
           action === "new-marp" ||
-          action === "new-form"
+          (action === "new-form" && formsEnabled)
         ) {
           await save();
           const file =
@@ -2682,9 +2687,11 @@ function Workspace() {
                   <MenuItem onSelect={() => void doAction("new-marp")}>
                     MARP presentation
                   </MenuItem>
+                  {formsEnabled ? (
                   <MenuItem onSelect={() => void doAction("new-form")}>
                     Form
                   </MenuItem>
+                  ) : null}
                   <MenuItem onSelect={() => void doAction("from-template")}>
                     From template
                   </MenuItem>
@@ -2898,6 +2905,24 @@ function Workspace() {
                     >
                       Page break
                     </MenuItem>
+                    <MenuItem
+                      synonyms={["section", "section break", "new section"]}
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.docActions?.insertSectionBreak?.()
+                      }
+                    >
+                      Section break
+                    </MenuItem>
+                    <MenuItem
+                      synonyms={["drawing", "draw", "canvas"]}
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.docActions?.insertDrawing?.()
+                      }
+                    >
+                      Drawing
+                    </MenuItem>
                     <SubMenu label="Table of contents">
                       <MenuItem
                         synonyms={[
@@ -3080,6 +3105,20 @@ function Workspace() {
                         }
                       />
                     </SubMenu>
+                    <MenuItem
+                      synonyms={[
+                        "widow",
+                        "orphan",
+                        "prevent single lines",
+                        "don't leave one line",
+                      ]}
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.docActions?.toggleWidowControl?.()
+                      }
+                    >
+                      Don't leave one line
+                    </MenuItem>
                     <MenuItem
                       shortcut="Cmd+\"
                       onSelect={() =>
@@ -3617,12 +3656,20 @@ function Workspace() {
                     </MenuItem>
                   </Menu>
                   <Menu label="View">
-                    <MenuItem
-                      shortcut="Cmd+Enter"
-                      onSelect={() => void actions.current?.present?.()}
-                    >
-                      Slideshow
-                    </MenuItem>
+                  <MenuItem
+                    shortcut="Cmd+Enter"
+                    onSelect={() => void actions.current?.present?.()}
+                  >
+                    Slideshow
+                  </MenuItem>
+                  <MenuItem
+                    synonyms={["presenter", "speaker notes", "presenter view"]}
+                    onSelect={() =>
+                      actions.current?.slideActions?.presenterView?.()
+                    }
+                  >
+                    Presenter view
+                  </MenuItem>
                     <MenuItem onSelect={() => void actions.current?.print()}>
                       Print preview
                     </MenuItem>
@@ -3864,6 +3911,22 @@ function Workspace() {
                       }
                     >
                       Transition
+                    </MenuItem>
+                    <MenuItem
+                      synonyms={["animation pane", "animations"]}
+                      onSelect={() =>
+                        actions.current?.slideActions?.openAnimationPane?.()
+                      }
+                    >
+                      Animation pane
+                    </MenuItem>
+                    <MenuItem
+                      synonyms={["slide master", "master"]}
+                      onSelect={() =>
+                        actions.current?.slideActions?.openMaster?.()
+                      }
+                    >
+                      Edit master
                     </MenuItem>
                   </Menu>
                   <Menu label="Comments">
@@ -4243,6 +4306,8 @@ function Workspace() {
                       onActions={onActions}
                       onError={setError}
                     />
+                  ) : f.kind === "form" && !formsEnabled ? (
+                    <p className="loading">Forms are turned off in this build.</p>
                   ) : f.kind === "form" ? (
                     <Forms
                       key={`${id}:${editorEpoch}`}

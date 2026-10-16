@@ -21,6 +21,7 @@ import {
   staysWithFollowingBlock,
 } from "./doc-keep-next";
 import { annotateWidowLines, avoidSingleLine } from "./doc-widow-control";
+import { sectionAttrs, type DocSection } from "./doc-section-break";
 import { keepParagraphTogether, keepsLines } from "./doc-keep-lines";
 import { gutterDecorations } from "./doc-gutter";
 
@@ -102,6 +103,7 @@ type Boundary = {
   page?: number;
   /** Set on each visual line of a paragraph with widow/orphan control. */
   widowControl?: boolean;
+  section?: DocSection;
   blockPos?: number;
   line?: number;
   lineCount?: number;
@@ -210,8 +212,12 @@ export const DocumentPagination = Extension.create({
                 const rect = dom.getBoundingClientRect();
                 const top = (rect.top - origin) / scale - topMargin;
                 const bottom = (rect.bottom - origin) / scale - topMargin;
-                if (node.type.name === "pageBreak") {
-                  boundaries.push({ pos, top, bottom, manual: true });
+                if (node.type.name === "pageBreak" || node.type.name === "sectionBreak") {
+                  const section =
+                    node.type.name === "sectionBreak"
+                      ? { page: 0, ...sectionAttrs(node.attrs) }
+                      : undefined;
+                  boundaries.push({ pos, top, bottom, manual: true, section });
                   return false;
                 }
                 if (node.type.name === "tableRow") {
@@ -314,6 +320,7 @@ export const DocumentPagination = Extension.create({
               const decorations: Decoration[] = [];
               let added = 0,
                 page = 0;
+              const sectionMarks: DocSection[] = [];
               for (const [i, next] of boundaries.entries()) {
                 const start = page * (height + 24),
                   end = start + bodyHeight - (reserves[page] ?? 0);
@@ -367,6 +374,8 @@ export const DocumentPagination = Extension.create({
                   );
                   added += gap;
                   page++;
+                  if (b.section)
+                    sectionMarks.push({ ...b.section, page });
                 } else if (next.page == null) next.page = page;
               }
               let arabicPage: number | null = null;
@@ -414,6 +423,12 @@ export const DocumentPagination = Extension.create({
                 new CustomEvent("suiteleaf-pages", {
                   bubbles: true,
                   detail: pages,
+                }),
+              );
+              view.dom.dispatchEvent(
+                new CustomEvent("suiteleaf-sections", {
+                  bubbles: true,
+                  detail: sectionMarks,
                 }),
               );
               if (reveal) {

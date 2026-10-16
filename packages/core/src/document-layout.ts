@@ -50,6 +50,11 @@ export type PageSettings = {
   right: number;
   header: string;
   footer: string;
+  /** PNG, JPEG, GIF, or WebP data URL drawn with the header. Empty means none. */
+  headerImage: string;
+  footerImage: string;
+  firstHeaderImage: string;
+  firstFooterImage: string;
   pageNumbers: boolean;
   /** "1 / 2", "Page 1", or lowercase roman "i". */
   pageNumberFormat: PageNumberFormat;
@@ -120,6 +125,10 @@ export const defaultPageSettings: PageSettings = {
   right: MARGIN_DEFAULT_PX,
   header: "",
   footer: "",
+  headerImage: "",
+  footerImage: "",
+  firstHeaderImage: "",
+  firstFooterImage: "",
   pageNumbers: false,
   pageNumberFormat: "fraction",
   pageNumberPosition: "bottom-right",
@@ -140,6 +149,15 @@ export const defaultPageSettings: PageSettings = {
 };
 const pageText = (value: unknown) =>
   typeof value === "string" ? value.slice(0, 500) : "";
+const FURNITURE_IMAGE =
+  /^data:image\/(png|jpeg|gif|webp);base64,[a-z0-9+/=\s]+$/i;
+/** A header or footer image is a small embedded picture, or nothing. */
+export function furnitureImage(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const compact = value.replace(/\s+/g, "");
+  if (compact.length > 1_500_000 || !FURNITURE_IMAGE.test(compact)) return "";
+  return compact;
+}
 function clampMargin(value: unknown, fallback: number): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
   return Math.min(MARGIN_MAX_PX, Math.max(MARGIN_MIN_PX, value));
@@ -180,6 +198,10 @@ export function documentPageSettings(content: JsonNode): PageSettings {
     footerFromEdge: resolveEdgePx(a?.footerFromEdge, marginBottom),
     header: pageText(a?.header),
     footer: pageText(a?.footer),
+    headerImage: furnitureImage(a?.headerImage),
+    footerImage: furnitureImage(a?.footerImage),
+    firstHeaderImage: furnitureImage(a?.firstHeaderImage),
+    firstFooterImage: furnitureImage(a?.firstFooterImage),
     // Like Docs and Word, page numbers are off until chosen; settings saved
     // before that default changed keep numbering unless it was turned off.
     pageNumbers: a ? a.pageNumbers !== false : false,
@@ -216,6 +238,8 @@ export type PageNumberSide =
 export type PageFace = {
   header: string;
   footer: string;
+  headerImage: string;
+  footerImage: string;
   /** Outside edge when odd and even pages differ; otherwise the left. */
   headerAlign: "left" | "right";
   numberSide: PageNumberSide;
@@ -382,6 +406,8 @@ export function pageFace(
   const even = spreadEven(settings, pageIndex, pageCount);
   let header = settings.header;
   let footer = settings.footer;
+  let headerImage = settings.headerImage;
+  let footerImage = settings.footerImage;
   let headerAlign: "left" | "right" = "left";
   let numberSide: PageNumberSide = "none";
   if (settings.pageNumbers) {
@@ -393,6 +419,8 @@ export function pageFace(
   if (first) {
     header = settings.firstHeader;
     footer = settings.firstFooter;
+    headerImage = settings.firstHeaderImage;
+    footerImage = settings.firstFooterImage;
     numberSide = "none";
   } else if (settings.differentOddEven) {
     header = even ? settings.evenHeader : settings.oddHeader;
@@ -416,6 +444,8 @@ export function pageFace(
   return {
     header,
     footer,
+    headerImage,
+    footerImage,
     headerAlign,
     numberSide,
     pageNumber:

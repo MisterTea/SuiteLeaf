@@ -81,6 +81,20 @@ describe("grammar", () => {
     expect(misspelledWords(essay)).toEqual(["movment", "Nkrumah"]);
   });
 
+  it("flags articles, pronouns, and common mix-ups", () => {
+    const flagged = grammarIssues(
+      paragraph("a apple and an book and your going and could of been more then ready and i am here"),
+    );
+    expect(flagged.map((issue) => [issue.text, issue.suggestion])).toEqual([
+      ["a", "an"],
+      ["an", "a"],
+      ["your", "you're"],
+      ["of", "have"],
+      ["then", "than"],
+      ["i", "I"],
+    ]);
+  });
+
   it("keeps bold, italic, and the link on words the suggestion does not replace", () => {
     const essay = grammarEssayContent();
     const marks: { text: string; types: string[] }[] = [];
