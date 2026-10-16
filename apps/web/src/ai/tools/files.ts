@@ -20,7 +20,7 @@ const safe = <T>(f: () => T) => {
 };
 
 export const IMPORT_ACCEPT =
-  ".sldoc,.slsheet,.slslides,.suiteleaf,.docx,.xlsx,.xls,.xlsm,.xlsb,.xltx,.pptx,.ppt,.ppsx,.pptm,.potx,.ppsm,.html,.htm,.txt,.csv,.tsv";
+  ".sldoc,.slsheet,.slslides,.suiteleaf,.docx,.docm,.dotx,.dotm,.doc,.dot,.xlsx,.xlsm,.xlsb,.xltx,.xls,.pptx,.ppt,.ppsx,.pptm,.potx,.ppsm,.odt,.ott,.fodt,.ods,.fods,.odp,.fodp,.rtf,.md,.markdown,.html,.htm,.txt,.csv,.tsv";
 
 type Kind = SuiteFile["kind"];
 const KINDS: Record<string, Kind> = {

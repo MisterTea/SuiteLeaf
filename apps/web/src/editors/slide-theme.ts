@@ -108,7 +108,9 @@ export function paintElement(el: SlideElement, theme: SlideTheme): SlideElement 
 export function paintSlide(slide: Slide, theme: SlideTheme): Slide {
   return {
     ...slide,
-    background: { ...slide.background, color: theme.background },
+    background: slide.background?.pinned
+      ? slide.background
+      : { ...slide.background, color: theme.background },
     elements: slide.elements.map((el) => paintElement(el, theme)),
   };
 }

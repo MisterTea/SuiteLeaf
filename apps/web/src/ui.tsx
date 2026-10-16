@@ -39,6 +39,8 @@ export function Menu({
         <Dropdown.Portal>
           <Dropdown.Content
             className="menu-content"
+            align="start"
+            alignOffset={7}
             sideOffset={4}
             onCloseAutoFocus={(e) => {
               const run = afterClose.current;

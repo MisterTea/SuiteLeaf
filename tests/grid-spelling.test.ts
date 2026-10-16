@@ -19,11 +19,23 @@ import {
   type Box,
   type SheetIssue,
 } from "../apps/web/src/editors/grid-spelling";
-import { addToPersonalDictionary, type PersonalDictionary } from "../apps/web/src/editors/doc-spelling";
+import {
+  addToPersonalDictionary,
+  isTypingWord,
+  type PersonalDictionary,
+} from "../apps/web/src/editors/doc-spelling";
 
 const none: PersonalDictionary = { added: [], flagged: [] };
 
 describe("grid spelling", () => {
+  it("does not treat the word under the caret as finished", () => {
+    const hits = misspellingsInText("reciev", none, []);
+    expect(hits.map((hit) => hit.word)).toEqual(["reciev"]);
+    expect(isTypingWord(hits[0].to, hits[0].to, "")).toBe(true);
+    expect(isTypingWord(hits[0].to, hits[0].to + 1, " ")).toBe(false);
+    expect(isTypingWord(hits[0].to, hits[0].from, "r")).toBe(false);
+  });
+
   it("replaces one word and leaves the rest of the text alone", () => {
     expect(replaceWordAt("We will recieve the grant", 8, 15, "receive")).toBe(
       "We will receive the grant",

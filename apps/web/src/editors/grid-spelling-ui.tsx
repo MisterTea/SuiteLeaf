@@ -14,6 +14,7 @@ import {
 } from "react";
 import {
   addToPersonalDictionary,
+  isTypingWord,
   readPersonalDictionary,
   SPELLING_CHANGED_EVENT,
   writePersonalDictionary,
@@ -999,10 +1000,21 @@ export function SheetSpelling({
   );
 }
 
-export function SlideSpellMirror({ text, fileId }: { text: string; fileId: string }) {
+export function SlideSpellMirror({
+  text,
+  fileId,
+  caret = null,
+}: {
+  text: string;
+  fileId: string;
+  /** While this box is being edited, the word at the caret is not underlined. */
+  caret?: number | null;
+}) {
   const personal = usePersonalDictionary();
   const ignored = useIgnoredWords(fileId);
-  const hits = misspellingsInText(text, personal, ignored);
+  const hits = misspellingsInText(text, personal, ignored).filter(
+    (hit) => !isTypingWord(hit.to, caret, text[hit.to]),
+  );
   if (!hits.length) return null;
   const parts: ReactNode[] = [];
   let cursor = 0;

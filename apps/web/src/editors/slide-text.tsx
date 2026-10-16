@@ -5,9 +5,11 @@ import {
   hasTextRuns,
   mergeRuns,
   plainText,
+  replaceRunRange,
   runsOf,
   runsToHtml,
 } from "./slide-runs";
+import { continueList, listShortcut } from "./slide-list";
 import "./slide-text.css";
 
 export function runStyle(run: TextRun): CSSProperties {
@@ -159,7 +161,7 @@ export function SlideTextBody({
   underline?: boolean;
   placeholder?: string;
   editing: boolean;
-  onText: (runs: TextRun[]) => void;
+  onText: (runs: TextRun[], opts?: { bullet?: boolean }) => void;
   onCaret: (sel: { start: number; end: number } | null) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -214,10 +216,40 @@ export function SlideTextBody({
       onMouseDown={(e) => {
         if (editing) e.stopPropagation();
       }}
+      onKeyDown={(e) => {
+        if (e.key !== "Enter" || e.shiftKey || e.altKey || e.metaKey || e.ctrlKey) return;
+        const node = ref.current;
+        if (!node) return;
+        const sel = selectionOffsets(node);
+        if (!sel || sel.start !== sel.end) return;
+        const current = runsFromDom(node);
+        const next = continueList(plainText(current), sel.start);
+        if (!next) return;
+        e.preventDefault();
+        const runs = replaceRunRange(current, next.from, next.to, next.replacement);
+        node.innerHTML = runsToHtml(runs);
+        node.dataset.empty = plainText(runs) ? "false" : "true";
+        restoreSelection(node, next.caret, next.caret);
+        onTextRef.current(runs);
+      }}
       onInput={() => {
         const node = ref.current;
         if (!node) return;
-        onTextRef.current(runsFromDom(node));
+        const current = runsFromDom(node);
+        const sel = selectionOffsets(node);
+        const text = plainText(current);
+        if (sel && sel.start === sel.end) {
+          const next = listShortcut(text, sel.start);
+          if (next) {
+            const runs = replaceRunRange(current, next.from, next.to, next.replacement);
+            node.innerHTML = runsToHtml(runs);
+            node.dataset.empty = plainText(runs) ? "false" : "true";
+            restoreSelection(node, next.caret, next.caret);
+            onTextRef.current(runs, next.bullet ? { bullet: true } : undefined);
+            return;
+          }
+        }
+        onTextRef.current(current);
       }}
     />
   );
