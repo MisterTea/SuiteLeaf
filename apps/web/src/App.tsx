@@ -399,7 +399,7 @@ function ImportButton({
         hidden
         type="file"
         ref={input}
-        accept=".sldoc,.slsheet,.slslides,.suiteleaf,.docx,.xlsx,.xls,.xlsm,.xlsb,.xltx,.pptx,.ppt,.ppsx,.pptm,.potx,.ppsm,.html,.htm,.txt,.csv,.tsv"
+        accept=".sldoc,.slsheet,.slslides,.suiteleaf,.docx,.docm,.dotx,.dotm,.doc,.dot,.xlsx,.xlsm,.xlsb,.xltx,.xls,.pptx,.ppt,.ppsx,.pptm,.potx,.ppsm,.odt,.ott,.fodt,.ods,.fods,.odp,.fodp,.rtf,.html,.htm,.txt,.csv,.tsv"
         onChange={async (e) => {
           const f = e.target.files?.[0];
           e.target.value = "";
@@ -2726,7 +2726,7 @@ function Workspace() {
                     ? ["xlsx", "csv", "tsv"]
                     : f.kind === "form"
                       ? []
-                      : ["txt", "html"]
+                      : ["pptx", "txt", "html"]
                 ).map((format) => (
                   <MenuItem
                     key={format}
@@ -3644,22 +3644,36 @@ function Workspace() {
                       </MenuItem>
                     </SubMenu>
                     <SubMenu label="Animation">
+                      {(
+                        [
+                          ["fade-on-click", "Fade in on click", ["fade in", "animation"]],
+                          ["appear-on-click", "Appear on click", ["appear"]],
+                          ["fly-on-click", "Fly in on click", ["fly in"]],
+                          ["wipe-on-click", "Wipe on click", ["wipe"]],
+                          ["zoom-on-click", "Zoom in on click", ["zoom in"]],
+                        ] as const
+                      ).map(([kind, label, synonyms]) => (
+                        <MenuItem
+                          key={kind}
+                          synonyms={[...synonyms]}
+                          availability={() =>
+                            actions.current?.slideActions?.animationReason?.(kind) ??
+                            actions.current?.slideActions?.fadeOnClickReason?.() ??
+                            true
+                          }
+                          onSelect={() => {
+                            const slideActions = actions.current?.slideActions;
+                            if (slideActions?.animate) slideActions.animate(kind);
+                            else if (kind === "fade-on-click") slideActions?.fadeOnClick?.();
+                          }}
+                        >
+                          {label}
+                        </MenuItem>
+                      ))}
                       <MenuItem
-                        synonyms={[
-                          "fade in",
-                          "fade in on click",
-                          "appear on click",
-                          "animation",
-                        ]}
-                        availability={() =>
-                          actions.current?.slideActions?.fadeOnClickReason?.() ??
-                          true
-                        }
-                        onSelect={() =>
-                          actions.current?.slideActions?.fadeOnClick?.()
-                        }
+                        onSelect={() => actions.current?.slideActions?.animate?.(null)}
                       >
-                        Fade in on click
+                        Remove animation
                       </MenuItem>
                     </SubMenu>
                     <MenuItem

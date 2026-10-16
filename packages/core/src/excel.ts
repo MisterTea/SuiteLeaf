@@ -227,7 +227,7 @@ function decodeXmlEntities(text: string): string {
     )
     .replace(/&amp;/g, "&");
 }
-function implicitIntersectConcatenatedWholeColumns(
+export function implicitIntersectConcatenatedWholeColumns(
   formula: string,
   row: number,
 ): string {
@@ -746,6 +746,19 @@ export async function importXlsx(
         const fText = formula[2]
           ? decodeXmlEntities(formula[2].trim())
           : undefined;
+        // SheetJS omits a formula cell that has no cached value.
+        if (cAttrs.r && fText) {
+          const pos = XLSX.utils.decode_cell(cAttrs.r);
+          if (pos.r >= 0 && pos.r <= 1048575 && pos.c >= 0 && pos.c <= 16383) {
+            const target = ((cellData[pos.r] ??= {})[pos.c] ??= {});
+            if (!target.f) {
+              target.f = "=" + fText.replace(/^=/, "");
+              stats.formulas++;
+              maxRow = Math.max(maxRow, pos.r);
+              maxCol = Math.max(maxCol, pos.c);
+            }
+          }
+        }
         if (
           cAttrs.r &&
           fAttrs.si !== undefined &&
@@ -794,8 +807,13 @@ export async function importXlsx(
               corrected,
               pos.r,
             );
-            if (cellData[pos.r]?.[pos.c] && corrected !== def.formula) {
-              cellData[pos.r][pos.c].f = "=" + corrected;
+            if (pos.r < 0 || pos.r > 1048575 || pos.c < 0 || pos.c > 16383) continue;
+            const target = ((cellData[pos.r] ??= {})[pos.c] ??= {});
+            if (!target.f || corrected !== def.formula) {
+              if (!target.f) stats.formulas++;
+              target.f = "=" + corrected;
+              maxRow = Math.max(maxRow, pos.r);
+              maxCol = Math.max(maxCol, pos.c);
             }
           }
         }

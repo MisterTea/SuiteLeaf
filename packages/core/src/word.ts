@@ -5,6 +5,7 @@ import JSZip from "jszip";
 import { parseDocument } from "htmlparser2";
 import type { AnyNode, Element } from "domhandler";
 import { XMLParser } from "fast-xml-parser";
+import { hex as dingbatHex } from "dingbat-to-unicode";
 import { createFile, safeLink, type JsonNode, type DocFile } from "./index";
 import { commentImportSummary, importWordComments } from "./doc-comments";
 import {
@@ -259,11 +260,15 @@ export function htmlToDocument(
       if (t === "p") {
         out.push(...paragraph(inline(e.children), attrs(e)));
       } else if (/^h[1-6]$/.test(t)) {
-        out.push({
-          type: "heading",
-          attrs: { ...attrs(e), level: +t[1] },
-          content: inline(e.children).filter((n) => n.type !== "image"),
-        });
+        const pieces = inline(e.children);
+        const text = pieces.filter((n) => n.type !== "image");
+        if (text.length)
+          out.push({
+            type: "heading",
+            attrs: { ...attrs(e), level: +t[1] },
+            content: text,
+          });
+        for (const image of pieces) if (image.type === "image") out.push(image);
       } else if (t === "ul" || t === "ol") {
         const children = e.children.filter(
           (n) => n.type === "tag" && (n as Element).name === "li",
@@ -332,7 +337,27 @@ export function htmlToDocument(
         });
       else if (t === "hr") out.push({ type: "horizontalRule" });
       else if (t === "img") out.push(...paragraph(inline([e])));
-      else out.push(...blocks(e.children));
+      else if (
+        [
+          "a",
+          "b",
+          "code",
+          "del",
+          "em",
+          "i",
+          "s",
+          "span",
+          "strong",
+          "sub",
+          "sup",
+          "u",
+        ].includes(t) &&
+        !hasBlockElement(e.children)
+      ) {
+        const inlines = inline([e]);
+        if (inlines.some((n) => n.type !== "text" || n.text?.trim()))
+          out.push(...paragraph(inlines));
+      } else out.push(...blocks(e.children));
     }
     return out;
   }
@@ -409,7 +434,16 @@ function indentFromParagraph(nodes: any[]): WordIndentAttrs | null {
  * Body paragraphs in document order, with the special indent from `w:ind`.
  * Null means the XML could not be read as paragraphs.
  */
-function readWordBody(xml: string): WordBodyParagraph[] | null {
+/** The same dingbat mapping Mammoth uses, so a symbol is the character beside it. */
+function wordSymbol(attrs: Record<string, string> | undefined): string {
+  const font = attrs?.["@_w:font"] ?? attrs?.["@_font"] ?? "";
+  const char = attrs?.["@_w:char"] ?? attrs?.["@_char"] ?? "";
+  if (!font || !char) return "";
+  const mapped = dingbatHex(font, char) ?? (/^F0..$/i.test(char) ? dingbatHex(font, char.slice(2)) : undefined);
+  return mapped?.string ?? "";
+}
+
+function readWordBody(xml: string, markers = true): WordBodyParagraph[] | null {
   let tree: any[];
   try {
     tree = orderedParser.parse(xml) as any[];
@@ -429,18 +463,21 @@ function readWordBody(xml: string): WordBodyParagraph[] | null {
           s += (v as any[]).map((n) => n["#text"] ?? "").join("");
         else if (k.endsWith(":tab")) s += "\t";
         else if (k.endsWith(":br")) s += "\n";
+        else if (k.endsWith(":noBreakHyphen")) s += "\u2011";
+        else if (k.endsWith(":softHyphen")) s += "\u00AD";
+        else if (k.endsWith(":sym") || k === "sym") s += wordSymbol(n[":@"]);
         else if (
           k.endsWith(":footnoteReference") ||
           k === "footnoteReference"
         ) {
           footnoteCount++;
-          s += String(footnoteCount);
+          if (markers) s += String(footnoteCount);
         } else if (
           k.endsWith(":endnoteReference") ||
           k === "endnoteReference"
         ) {
           endnoteCount++;
-          s += toLowerRoman(endnoteCount);
+          if (markers) s += toLowerRoman(endnoteCount);
         } else if (k.endsWith(":checkBox") || k === "checkBox") {
           let checked = false;
           if (Array.isArray(v)) {
@@ -487,8 +524,8 @@ function readWordBody(xml: string): WordBodyParagraph[] | null {
   return result;
 }
 
-export function wordParagraphs(xml: string): string[] {
-  const body = readWordBody(xml);
+export function wordParagraphs(xml: string, markers = true): string[] {
+  const body = readWordBody(xml, markers);
   if (!body) {
     const texts = [
       ...xml.matchAll(/<(?:\w+:)?t\b[^>]*>([\s\S]*?)<\/(?:\w+:)?t>/g),
@@ -755,6 +792,18 @@ function parseWordNumbering(numXml: string) {
   return { nums, abstractNums, pStyleToNum };
 }
 
+/** Every visible run is directly bold, so a flattened cover-page line can keep that bold. */
+function coverTextIsBold(xml: string): boolean {
+  const runs = [...xml.matchAll(/<w:r\b[^>]*>[\s\S]*?<\/w:r>/g)].map((match) => match[0]);
+  const textRuns = runs.filter((run) => /<w:t\b[^>]*>\s*\S/.test(run));
+  return (
+    textRuns.length > 0 &&
+    textRuns.every(
+      (run) => /<w:b\b/.test(run) && !/<w:b\b[^>]*w:val="(?:0|false|off)"/.test(run),
+    )
+  );
+}
+
 function makeBoldRuns(xml: string): string {
   return xml.replace(
     /<w:r\b([^>]*)>([\s\S]*?)<\/w:r>/g,
@@ -780,6 +829,126 @@ function formatNumber(val: number, fmt: string): string {
     return String.fromCharCode(65 + ((val - 1) % 26));
   }
   return String(val);
+}
+
+/** A match must include a nested table or text box, not stop at the first closing tag inside it. */
+function balancedWordRanges(
+  xml: string,
+  tag: "w:p" | "w:tr" | "w:tbl",
+): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  const token = new RegExp(`<(/?)${tag}(?:\\s[^>]*?)?(/?)>`, "g");
+  let match: RegExpExecArray | null;
+  let depth = 0;
+  let start = -1;
+  while ((match = token.exec(xml))) {
+    if (match[2] === "/") continue;
+    if (!match[1]) {
+      if (depth === 0) start = match.index;
+      depth += 1;
+    } else if (depth > 0) {
+      depth -= 1;
+      if (depth === 0 && start >= 0) {
+        out.push([start, match.index + match[0].length]);
+        start = -1;
+      }
+    }
+  }
+  return out;
+}
+
+function balancedWordElements(xml: string, tag: "w:p" | "w:tr" | "w:tbl"): string[] {
+  return balancedWordRanges(xml, tag).map(([start, end]) => xml.slice(start, end));
+}
+
+function replaceBalancedWordElements(
+  xml: string,
+  tag: "w:p" | "w:tr" | "w:tbl",
+  replacer: (element: string) => string,
+): string {
+  const ranges = balancedWordRanges(xml, tag);
+  if (!ranges.length) return xml;
+  let out = "";
+  let cursor = 0;
+  for (const [start, end] of ranges) {
+    out += xml.slice(cursor, start) + replacer(xml.slice(start, end));
+    cursor = end;
+  }
+  return out + xml.slice(cursor);
+}
+
+function balancedWordParagraphs(xml: string): string[] {
+  return balancedWordElements(xml, "w:p");
+}
+
+function decodeXmlText(value: string): string {
+  return value
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+}
+
+function textBoxWords(xml: string): string {
+  return [...xml.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g)]
+    .map((match) => decodeXmlText(match[1]))
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Pull floating text boxes out of the body mammoth reads, and leave a token for each one. */
+export function extractWordTextBoxes(xml: string): { xml: string; boxes: string[] } {
+  const boxes: string[] = [];
+  let next = xml.replace(/<w:txbxContent\b[^>]*>([\s\S]*?)<\/w:txbxContent>/g, (_all, inner: string) => {
+    boxes.push(textBoxWords(inner));
+    return "<w:txbxContent/>";
+  });
+  if (!boxes.length && /<wps:wsp\b/.test(xml)) {
+    const shapes = [...xml.matchAll(/<wps:wsp\b[\s\S]*?<\/wps:wsp>/g)];
+    for (const shape of shapes) {
+      const text = [...shape[0].matchAll(/<a:t\b[^>]*>([\s\S]*?)<\/a:t>/g)]
+        .map((match) => decodeXmlText(match[1]))
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+      boxes.push(text);
+    }
+    if (!boxes.length) boxes.push("");
+  }
+  if (!boxes.length) return { xml, boxes };
+  const tokens = boxes
+    .map((_, index) => `<w:p><w:r><w:t>SLTBXTOKEN${index}END</w:t></w:r></w:p>`)
+    .join("");
+  next = next.includes("</w:body>") ? next.replace("</w:body>", `${tokens}</w:body>`) : `${next}${tokens}`;
+  return { xml: next, boxes };
+}
+
+/** Swap each text-box token for a text box node. */
+export function spliceTextBoxTokens(node: JsonNode, boxes: string[]): JsonNode {
+  const visit = (current: JsonNode): JsonNode[] => {
+    const joined = (current.content ?? []).map((child) => child.text ?? "").join("");
+    const only = /^SLTBXTOKEN(\d+)END$/.exec(joined.trim());
+    if ((current.type === "paragraph" || current.type === "heading") && only) {
+      return [{ type: "textBox", attrs: { text: boxes[Number(only[1])] ?? "" } }];
+    }
+    if (current.type === "text" && current.text?.includes("SLTBXTOKEN")) {
+      const parts: JsonNode[] = [];
+      let last = 0;
+      for (const match of current.text.matchAll(/SLTBXTOKEN(\d+)END/g)) {
+        const at = match.index ?? 0;
+        if (at > last) parts.push({ ...current, text: current.text.slice(last, at) });
+        parts.push({ type: "textBox", attrs: { text: boxes[Number(match[1])] ?? "" } });
+        last = at + match[0].length;
+      }
+      if (last < current.text.length) parts.push({ ...current, text: current.text.slice(last) });
+      return parts;
+    }
+    if (!current.content) return [current];
+    return [{ ...current, content: current.content.flatMap(visit) }];
+  };
+  return visit(node)[0] ?? node;
 }
 
 async function preprocessDocx(
@@ -857,24 +1026,21 @@ async function preprocessDocx(
       "p[style-name='Centered'] => p.center:fresh",
     );
 
-    docXml = docXml.replace(/<w:tbl\b[\s\S]*?<\/w:tbl>/g, (tblXml) => {
+    docXml = replaceBalancedWordElements(docXml, "w:tbl", (tblXml) => {
       const texts = [...tblXml.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g)].map(
         (m) => m[1],
       );
-      if (texts.length === 0) {
+      if (texts.length === 0 && !/<a:blip\b|<v:imagedata\b/.test(tblXml)) {
         modified = true;
         return "";
       }
 
       const rows: string[] = [];
-      const trRegex = /<w:tr\b[\s\S]*?<\/w:tr>/g;
-      let trMatch: RegExpExecArray | null;
-      while ((trMatch = trRegex.exec(tblXml)) !== null) {
-        const tr = trMatch[0];
+      for (const tr of balancedWordElements(tblXml, "w:tr")) {
         const rowTexts = [...tr.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g)].map(
           (m) => m[1],
         );
-        if (rowTexts.length === 0) continue;
+        if (rowTexts.length === 0 && !/<a:blip\b|<v:imagedata\b/.test(tr)) continue;
 
         const isTitle =
           /w:alias\b[^>]*w:val="Title"/.test(tr) ||
@@ -886,23 +1052,33 @@ async function preprocessDocx(
         const isCompany = /w:alias\b[^>]*w:val="Company"/.test(tr);
 
         const textContent = rowTexts.join("");
+        const runProps = coverTextIsBold(tr) ? "<w:rPr><w:b/></w:rPr>" : "";
         if (isTitle) {
           rows.push(
             '<w:p><w:pPr><w:pStyle w:val="Centered"/><w:jc w:val="center"/></w:pPr></w:p>',
-            `<w:p><w:pPr><w:pStyle w:val="Title"/><w:jc w:val="center"/></w:pPr><w:r><w:t>${textContent}</w:t></w:r></w:p>`,
+            `<w:p><w:pPr><w:pStyle w:val="Title"/><w:jc w:val="center"/></w:pPr><w:r>${runProps}<w:t>${textContent}</w:t></w:r></w:p>`,
           );
         } else if (isSubtitle) {
           rows.push(
-            `<w:p><w:pPr><w:pStyle w:val="Subtitle"/><w:jc w:val="center"/></w:pPr><w:r><w:t>${textContent}</w:t></w:r></w:p>`,
+            `<w:p><w:pPr><w:pStyle w:val="Subtitle"/><w:jc w:val="center"/></w:pPr><w:r>${runProps}<w:t>${textContent}</w:t></w:r></w:p>`,
           );
         } else if (isAuthor) {
           rows.push(
             '<w:p><w:pPr><w:pStyle w:val="Centered"/><w:jc w:val="center"/></w:pPr></w:p>',
             `<w:p><w:pPr><w:pStyle w:val="Centered"/><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>${textContent}</w:t></w:r></w:p>`,
           );
-        } else {
+        } else if (isCompany) {
           rows.push(
-            `<w:p><w:pPr><w:pStyle w:val="Centered"/><w:jc w:val="center"/></w:pPr><w:r><w:rPr>${isCompany ? "<w:caps/>" : ""}</w:rPr><w:t>${textContent}</w:t></w:r></w:p>`,
+            `<w:p><w:pPr><w:pStyle w:val="Centered"/><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:caps/></w:rPr><w:t>${textContent}</w:t></w:r></w:p>`,
+          );
+        } else {
+          const paragraphs = balancedWordParagraphs(tr);
+          rows.push(
+            ...(paragraphs.length
+              ? paragraphs
+              : [
+                  `<w:p><w:pPr><w:pStyle w:val="Centered"/><w:jc w:val="center"/></w:pPr><w:r><w:t>${textContent}</w:t></w:r></w:p>`,
+                ]),
           );
         }
       }
@@ -1117,6 +1293,260 @@ async function preprocessDocx(
   };
 }
 
+/** VML pictures Mammoth does not already import as a drawing. */
+async function vmlPictureSources(zip: JSZip, xml: string): Promise<string[]> {
+  const rels = await zip.file("word/_rels/document.xml.rels")?.async("string");
+  if (!rels) return [];
+  const targets = new Map<string, string>();
+  for (const tag of rels.matchAll(/<Relationship\b[^>]*>/g)) {
+    const id = /Id="([^"]+)"/.exec(tag[0])?.[1];
+    const target = /Target="([^"]+)"/.exec(tag[0])?.[1];
+    if (id && target) targets.set(id, decodeURIComponent(target));
+  }
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = async (target: string | undefined) => {
+    if (!target || seen.has(target)) return;
+    const kind = /\.(png|jpe?g|gif|webp)$/i.exec(target)?.[1]?.toLowerCase();
+    if (!kind) return;
+    const path = target.replace(/^\//, "").replace(/^\.\//, "");
+    const part = zip.file(path.startsWith("word/") ? path : `word/${path}`);
+    if (!part) return;
+    const mime = kind === "jpg" ? "jpeg" : kind;
+    out.push(`data:image/${mime};base64,${await part.async("base64")}`);
+    seen.add(target);
+  };
+  const drawing = new Set(
+    [...xml.matchAll(/<a:blip\b[^>]*\br:embed="([^"]+)"/g)].map(
+      (match) => targets.get(match[1]) ?? "",
+    ),
+  );
+  for (const match of xml.matchAll(/<v:imagedata\b[^>]*\br:id="([^"]+)"/g)) {
+    const target = targets.get(match[1]);
+    if (target && drawing.has(target)) continue;
+    await add(target);
+  }
+  return out;
+}
+
+/**
+ * Mammoth refuses a text run that contains another paragraph and then
+ * abandons the whole file. Close the run before that paragraph.
+ */
+function liftBlocksOutOfWordText(xml: string): string {
+  if (!/<w:t\b/.test(xml)) return xml;
+  const blocks = new Set(["w:p", "w:tbl", "w:sdt"]);
+  const stop = new Set(["w:body", "w:tc", "w:hdr", "w:ftr", "w:footnote", "w:endnote"]);
+  const surplus = new Map<string, number>();
+  const stack: string[] = [];
+  let out = "";
+  let i = 0;
+  while (i < xml.length) {
+    if (xml.startsWith("<!--", i) || xml.startsWith("<![CDATA[", i) || xml.startsWith("<?", i)) {
+      const closer = xml.startsWith("<!--", i) ? "-->" : xml.startsWith("<?", i) ? "?>" : "]]>";
+      const end = xml.indexOf(closer, i + 2);
+      const next = end < 0 ? xml.length : end + closer.length;
+      out += xml.slice(i, next);
+      i = next;
+      continue;
+    }
+    if (xml[i] !== "<") {
+      const start = i;
+      while (i < xml.length && xml[i] !== "<") i++;
+      out += xml.slice(start, i);
+      continue;
+    }
+    const end = xml.indexOf(">", i + 1);
+    if (end < 0) {
+      out += xml.slice(i);
+      break;
+    }
+    const raw = xml.slice(i, end + 1);
+    const closing = raw.startsWith("</");
+    const self = /\/\s*>$/.test(raw);
+    const name = /^<\/?\s*([A-Za-z0-9:]+)/.exec(raw)?.[1] ?? "";
+    if (!closing && !self && blocks.has(name) && stack.includes("w:t")) {
+      while (stack.length) {
+        const open = stack[stack.length - 1]!;
+        if (stop.has(open)) break;
+        stack.pop();
+        out += `</${open}>`;
+        surplus.set(open, (surplus.get(open) ?? 0) + 1);
+        if (open === "w:p" || open === "w:tbl" || open === "w:sdt") break;
+      }
+    }
+    if (closing) {
+      const found = name ? stack.lastIndexOf(name) : -1;
+      if (found >= 0) {
+        stack.splice(found);
+        out += raw;
+      } else if ((surplus.get(name) ?? 0) > 0) {
+        surplus.set(name, (surplus.get(name) ?? 0) - 1);
+      } else out += raw;
+    } else {
+      out += raw;
+      if (!self && name) stack.push(name);
+    }
+    i = end + 1;
+  }
+  return out;
+}
+
+/** Mammoth ignores ruby, including the word and its reading. */
+function unwrapWordRuby(xml: string): string {
+  if (!xml.includes("<w:ruby")) return xml;
+  let next = xml.replace(/<w:rubyPr\b[^>]*\/>/g, "");
+  let previous = "";
+  while (next !== previous) {
+    previous = next;
+    next = next.replace(/<w:rubyPr\b[^>]*>[\s\S]*?<\/w:rubyPr>/g, "");
+  }
+  return next.replace(/<\/?w:(?:ruby|rubyBase|rt)\b[^>]*>/g, "");
+}
+
+/** Mammoth ignores a content control, including the text inside it. */
+function unwrapWordContentControls(xml: string): string {
+  if (!xml.includes("<w:sdt")) return xml;
+  let next = xml.replace(/<w:sdtPr\b[^>]*\/>/g, "");
+  let previous = "";
+  while (next !== previous) {
+    previous = next;
+    next = next.replace(/<w:sdtPr\b[^>]*>[\s\S]*?<\/w:sdtPr>/g, "");
+  }
+  return next.replace(/<\/?w:sdt(?:Content)?\b[^>]*>/g, "");
+}
+
+/**
+ * A hidden paragraph mark only hides the line break. Join those paragraphs
+ * and leave the words visible.
+ */
+function joinHiddenParagraphMarks(xml: string): string {
+  if (!/<w:pPr\b[\s\S]*?<w:vanish\b/.test(xml)) return xml;
+  const matches = [...xml.matchAll(/<w:p\b(?:[^>]*?[^/])>[\s\S]*?<\/w:p>/g)];
+  if (!matches.length) return xml;
+  const markHidden = (paragraph: string) => {
+    const props = /<w:pPr\b[^>]*>[\s\S]*?<\/w:pPr>/.exec(paragraph)?.[0] ?? "";
+    const hidden = /<w:vanish\b([^>]*)(?:\/>|>)/.exec(props);
+    if (!hidden) return false;
+    const val = /w:val="([^"]*)"/.exec(hidden[1])?.[1];
+    return val !== "0" && val !== "false" && val !== "off";
+  };
+  const reveal = (paragraph: string) =>
+    paragraph.replace(/<w:pPr\b[^>]*>[\s\S]*?<\/w:pPr>/g, (props) =>
+      props
+        .replace(/<w:vanish\b[^>]*\/>/g, "")
+        .replace(/<w:vanish\b[^>]*>[\s\S]*?<\/w:vanish>/g, ""),
+    );
+  let out = "";
+  let cursor = 0;
+  for (let i = 0; i < matches.length; i++) {
+    const first = matches[i];
+    if (first.index === undefined) continue;
+    out += xml.slice(cursor, first.index);
+    const parts = [first[0]];
+    let end = first.index + first[0].length;
+    while (markHidden(parts[parts.length - 1] ?? "") && i + 1 < matches.length) {
+      const next = matches[i + 1];
+      if (next?.index === undefined || next.index < end) break;
+      // A table or another element between the paragraphs stays where it is.
+      if (xml.slice(end, next.index).trim()) break;
+      i += 1;
+      parts.push(next[0]);
+      end = next.index + next[0].length;
+    }
+    const joined =
+      parts.length === 1
+        ? parts[0]
+        : (() => {
+            const last = parts[parts.length - 1] ?? "<w:p></w:p>";
+            const open = /^<w:p\b[^>]*>/.exec(last)?.[0] ?? "<w:p>";
+            const props = /<w:pPr\b[^>]*>[\s\S]*?<\/w:pPr>/.exec(last)?.[0] ?? "";
+            const bodies = parts.map((part) =>
+              part
+                .replace(/^<w:p\b[^>]*>/, "")
+                .replace(/<\/w:p>$/, "")
+                .replace(/<w:pPr\b[^>]*>[\s\S]*?<\/w:pPr>/, ""),
+            );
+            return `${open}${props}${bodies.join("")}</w:p>`;
+          })();
+    out += reveal(joined);
+    cursor = end;
+  }
+  return out + xml.slice(cursor);
+}
+
+/** A relationship target with `..` points outside `word/`, which the converter does not read. */
+function resolveZipPath(sourcePart: string, target: string): string {
+  const parts = sourcePart.split("/").slice(0, -1);
+  for (const piece of decodeURIComponent(target).split("/")) {
+    if (!piece || piece === ".") continue;
+    if (piece === "..") parts.pop();
+    else parts.push(piece);
+  }
+  return parts.join("/");
+}
+
+async function relocateEscapingPictures(zip: JSZip): Promise<boolean> {
+  let changed = false;
+  for (const relName of Object.keys(zip.files)) {
+    if (!/^word\/_rels\/.+\.rels$/i.test(relName)) continue;
+    const sourcePart = relName.replace("/_rels/", "/").replace(/\.rels$/i, "");
+    const file = zip.file(relName);
+    if (!file) continue;
+    let rels = await file.async("string");
+    let relsChanged = false;
+    for (const tag of [...rels.matchAll(/<Relationship\b[^>]*>/g)]) {
+      const target = /Target="([^"]+)"/.exec(tag[0])?.[1];
+      if (!target || !target.includes("..") || !/\.(png|jpe?g|gif|webp)$/i.test(target))
+        continue;
+      const resolved = resolveZipPath(sourcePart, target);
+      const part = zip.file(resolved);
+      if (!part) continue;
+      const base = resolved.split("/").pop() || "image";
+      let dest = `word/media/${base}`;
+      if (zip.file(dest) && dest !== resolved) {
+        const dot = base.lastIndexOf(".");
+        const stem = dot >= 0 ? base.slice(0, dot) : base;
+        const ext = dot >= 0 ? base.slice(dot) : "";
+        let n = 2;
+        while (zip.file(`word/media/${stem}-${n}${ext}`)) n += 1;
+        dest = `word/media/${stem}-${n}${ext}`;
+      }
+      if (!zip.file(dest)) zip.file(dest, await part.async("uint8array"));
+      const nextTarget = dest.slice("word/".length);
+      if (nextTarget === target) continue;
+      rels = rels.replace(tag[0], tag[0].replace(/Target="[^"]+"/, `Target="${nextTarget}"`));
+      relsChanged = true;
+    }
+    if (!relsChanged) continue;
+    zip.file(relName, rels);
+    changed = true;
+  }
+  return changed;
+}
+
+/** A vanished run is hidden text, not body text. */
+function withoutHiddenRuns(xml: string): string {
+  if (!/<w:vanish\b/.test(xml)) return xml;
+  return xml.replace(/<w:r\b[^>]*>[\s\S]*?<\/w:r>/g, (run) => {
+    const hidden = /<w:vanish\b([^>]*)(?:\/>|>[\s\S]*?<\/w:vanish>)/.exec(run);
+    if (!hidden) return run;
+    const val = /w:val="([^"]*)"/.exec(hidden[1])?.[1];
+    if (val === "0" || val === "false" || val === "off") return run;
+    return "";
+  });
+}
+
+/** Mammoth ignores `w:u` unless `w:val` is set. Omitted means single underline. */
+function withDefaultUnderline(xml: string): string {
+  return xml.replace(/<w:u\b([^>]*)>/g, (full, attrs: string) => {
+    if (/\bw:val\s*=/.test(attrs)) return full;
+    const selfClosing = attrs.endsWith("/");
+    const body = selfClosing ? attrs.slice(0, -1) : attrs;
+    return `<w:u w:val="single"${body}${selfClosing ? "/>" : ">"}`;
+  });
+}
+
 export async function importDocx(
   bytes: Uint8Array,
   title: string,
@@ -1184,8 +1614,28 @@ export async function importDocx(
   if (annotated !== updatedXml) officeXml = annotated;
   if (rewritten.changed) officeXml = rewritten.xml;
   if (cited.changed) officeXml = cited.xml;
+  const boxed = extractWordTextBoxes(officeXml);
+  if (boxed.boxes.length) officeXml = boxed.xml;
   const extracted = extractOfficeMath(officeXml);
-  if (extracted.equations.length) zip.file("word/document.xml", extracted.xml);
+  if (extracted.equations.length || boxed.boxes.length)
+    zip.file("word/document.xml", extracted.xml);
+  let packageChanged = false;
+  for (const entry of Object.values(zip.files)) {
+    if (entry.dir || !/^word\/.+\.xml$/i.test(entry.name)) continue;
+    const value = await entry.async("string");
+    const lifted = joinHiddenParagraphMarks(
+      withoutHiddenRuns(
+        liftBlocksOutOfWordText(
+          unwrapWordRuby(unwrapWordContentControls(withDefaultUnderline(value))),
+        ),
+      ),
+    );
+    if (lifted !== value) {
+      zip.file(entry.name, lifted);
+      packageChanged = true;
+    }
+  }
+  if (await relocateEscapingPictures(zip)) packageChanged = true;
   try {
     const input =
       features.includes("strict-ooxml") ||
@@ -1193,7 +1643,9 @@ export async function importDocx(
       annotated !== updatedXml ||
       rewritten.changed ||
       cited.changed ||
-      extracted.equations.length
+      extracted.equations.length ||
+      boxed.boxes.length ||
+      packageChanged
         ? await zip.generateAsync({ type: "uint8array" })
         : bytes;
     const result = await mammoth.convertToHtml(
@@ -1209,19 +1661,23 @@ export async function importDocx(
           "p[style-name='Subtitle'] => h2:fresh",
         ],
         convertImage: mammoth.images.imgElement(async (image) => {
-          if (
-            !["image/png", "image/jpeg", "image/gif", "image/webp"].includes(
-              image.contentType,
-            )
-          ) {
+          const contentType =
+            image.contentType === "image/jpg" || image.contentType === "image/pjpeg"
+              ? "image/jpeg"
+              : image.contentType;
+          if (!["image/png", "image/jpeg", "image/gif", "image/webp"].includes(contentType)) {
             warnings.push(
               `An ${image.contentType || "unknown"} image was replaced by an editable label.`,
             );
             return { src: "", alt: `Unsupported ${image.contentType} image` };
           }
-          return {
-            src: `data:${image.contentType};base64,${await image.readAsBase64String()}`,
-          };
+          try {
+            const encoded = await image.readAsBase64String();
+            if (!encoded) return { src: "", alt: "" };
+            return { src: `data:${contentType};base64,${encoded}` };
+          } catch {
+            return { src: "", alt: "" };
+          }
         }),
       },
     );
@@ -1294,6 +1750,7 @@ export async function importDocx(
     };
   if (extracted.equations.length)
     content = spliceEquationTokens(content, extracted.equations);
+  if (boxed.boxes.length) content = spliceTextBoxTokens(content, boxed.boxes);
   let output = normalize(
     documentText(
       suggestionCount ? resolveSuggestions(content, "accepted") : content,
@@ -1445,6 +1902,15 @@ export async function importDocx(
   }
   const indentXml =
     (await zip.file("word/document.xml")?.async("string")) ?? xml;
+  for (const src of await vmlPictureSources(zip, indentXml)) {
+    content = {
+      ...content,
+      content: [
+        ...(content.content ?? []),
+        { type: "image", attrs: { src, alt: "Image" } },
+      ],
+    };
+  }
   content = applyWordParagraphIndents(content, indentXml);
   const file = createFile("doc", title) as DocFile;
   file.content = content;

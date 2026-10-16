@@ -111,6 +111,7 @@ import { documentNotes } from "./doc-notes";
 import { documentCitations } from "./doc-citations";
 import { DocCitations } from "./doc-citations-panel";
 import { Equation, EquationDialog } from "./doc-equations";
+import { TextBox } from "./doc-text-box";
 import { useAgentHost } from "../ai/host";
 import { docBeforeTool, docReview, docSnapshot, docTools as docAgentTools, type DocsAgentContext } from "../ai/tools/docs";
 import {
@@ -182,6 +183,7 @@ export const extensions: Extensions = [
   Superscript,
   Subscript,
   Equation,
+  TextBox,
   LinkedChart,
   TabCharacter,
   TabStops,

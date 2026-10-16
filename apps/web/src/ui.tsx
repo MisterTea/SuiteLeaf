@@ -468,6 +468,24 @@ export type EditorActions = {
     fadeOnClick?: () => void;
     /** Why that command cannot run, if it cannot. */
     fadeOnClickReason?: () => string | undefined;
+    /** Insert › Animation, for the selected object. Null removes it. */
+    animate?: (
+      kind:
+        | "fade-on-click"
+        | "appear-on-click"
+        | "fly-on-click"
+        | "wipe-on-click"
+        | "zoom-on-click"
+        | null,
+    ) => void;
+    animationReason?: (
+      kind:
+        | "fade-on-click"
+        | "appear-on-click"
+        | "fly-on-click"
+        | "wipe-on-click"
+        | "zoom-on-click",
+    ) => string | undefined;
     undoReason?: () => string | undefined;
     redoReason?: () => string | undefined;
     deleteReason?: () => string | undefined;

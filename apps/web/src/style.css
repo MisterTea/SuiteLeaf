@@ -4245,6 +4245,10 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   padding: 4px 8px;
   font-size: 14px;
 }
+.slide-table td.slide-cell-selected {
+  outline: 2px solid #1a73e8;
+  outline-offset: -2px;
+}
 .speaker-notes-pane {
   background: white;
   border-top: 1px solid var(--border);
@@ -7981,6 +7985,13 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
   height: 0;
   margin: 1px 0;
   border-top: 1.25px solid currentColor;
+}
+.doc-text-box {
+  border: 1px solid #94a3b8;
+  border-radius: 4px;
+  margin: 0.6em 0;
+  padding: 8px 10px;
+  white-space: pre-wrap;
 }
 .eq-slot,
 .eq-slot-input {

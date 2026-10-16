@@ -27,16 +27,47 @@
   visibility: visible;
 }
 .show-object.fade-on-click-enter {
-  animation: fade-in-on-click 1.15s ease both;
+  animation: fade-in-on-click 0.6s ease both;
+}
+.show-object.appear-on-click-enter {
+  animation: none;
+  opacity: 1;
+  visibility: visible;
+}
+.show-object.fly-on-click-enter {
+  animation: fly-in-on-click 0.6s ease both;
+}
+.show-object.wipe-on-click-enter {
+  animation: wipe-in-on-click 0.6s ease both;
+}
+.show-object.zoom-on-click-enter {
+  animation: zoom-in-on-click 0.6s ease both;
 }
 @keyframes fade-in-on-click {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+@keyframes fly-in-on-click {
+  from { opacity: 0; transform: translateX(-32px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes wipe-in-on-click {
+  from { opacity: 1; clip-path: inset(0 100% 0 0); }
+  to { opacity: 1; clip-path: inset(0 0 0 0); }
+}
+@keyframes zoom-in-on-click {
+  from { opacity: 0; transform: scale(0.82); }
+  to { opacity: 1; transform: none; }
+}
 @media (prefers-reduced-motion: reduce) {
-  .show-object.fade-on-click-enter {
+  .show-object.fade-on-click-enter,
+  .show-object.fly-on-click-enter,
+  .show-object.wipe-on-click-enter,
+  .show-object.zoom-on-click-enter {
     animation: none;
     opacity: 1;
+    transform: none;
+    clip-path: none;
   }
 }
 @media print {

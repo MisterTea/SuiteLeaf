@@ -68,6 +68,7 @@ interface ElementLike {
   src?: string;
   alt?: string;
   rows?: string[][];
+  cellMarks?: { bold?: boolean; italic?: boolean }[][];
   placeholder?: string;
 }
 
@@ -219,7 +220,8 @@ function frameOf(
           left.y !== right.y ||
           left.width !== right.width ||
           left.height !== right.height ||
-          JSON.stringify(left.rows ?? null) !== JSON.stringify(right.rows ?? null);
+          JSON.stringify(left.rows ?? null) !== JSON.stringify(right.rows ?? null) ||
+          JSON.stringify(left.cellMarks ?? null) !== JSON.stringify(right.cellMarks ?? null);
         elements.push(elementView(changed ? "changed" : "same", right, left, right));
       } else if (right) elements.push(elementView("added", right, undefined, right));
       else if (left) elements.push(elementView("removed", left, left, undefined));
