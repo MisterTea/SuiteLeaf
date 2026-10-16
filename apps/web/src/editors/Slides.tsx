@@ -574,7 +574,6 @@ export default function Slides({
           activeSlide,
           chosen === "two-column" ? "two-column" : "title-body",
           deck.width,
-          deck.height,
         )
       : deck.theme
         ? layoutWithTheme(activeSlide, chosen, deck.theme)
@@ -761,7 +760,6 @@ export default function Slides({
     const nextSlide = reflowMarp(
       { ...slide, elements: [...slide.elements, box] },
       prev.width,
-      prev.height,
     );
     commit({ ...prev, slides: { ...prev.slides, [slide.id]: nextSlide } });
     selectElement(box.id);
@@ -809,7 +807,6 @@ export default function Slides({
       const nextSlide = reflowMarp(
         { ...slide, elements: [...slide.elements, image] },
         prev.width,
-        prev.height,
       );
       commitRef.current({
         ...prev,
@@ -1167,7 +1164,6 @@ export default function Slides({
             y: ((e.clientY - rect.top) / rect.height) * height,
           },
           width,
-          height,
         );
         if (!nextSlide) return;
         const prev = deckRef.current;

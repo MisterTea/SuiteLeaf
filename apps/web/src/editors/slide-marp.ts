@@ -178,7 +178,6 @@ export function reorderMarpItem(
   elementId: string,
   point: { x: number; y: number },
   width = 960,
-  height = 540,
 ): Slide | null {
   const dragged = slide.elements.find((el) => el.id === elementId);
   if (!dragged || isMarpTitle(dragged)) return null;
@@ -213,7 +212,6 @@ export function reorderMarpItem(
       elements: [...(title ? [title] : []), ...nextLeft, ...nextRight],
     },
     width,
-    height,
   );
 }
 
@@ -232,7 +230,6 @@ export function switchMarpLayout(
   slide: Slide,
   layout: "title-body" | "two-column",
   width = 960,
-  height = 540,
 ): Slide {
   if (slide.layout === layout) return slide;
   const title = slide.elements.find(isMarpTitle);
@@ -261,7 +258,6 @@ export function switchMarpLayout(
         ],
       },
       width,
-      height,
     );
   }
   return reflowMarp(
@@ -274,7 +270,6 @@ export function switchMarpLayout(
       ],
     },
     width,
-    height,
   );
 }
 

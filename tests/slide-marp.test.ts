@@ -389,7 +389,7 @@ Thoughtful slide design
     slide.elements[2].content = "Right";
     const flowed = reflowMarp(slide);
     const left = flowed.elements.find((el) => el.content === "Left")!;
-    const moved = reorderMarpItem(flowed, left.id, { x: 800, y: 2000 }, 960, 540);
+    const moved = reorderMarpItem(flowed, left.id, { x: 800, y: 2000 }, 960);
     const [stillLeft, nowRight] = marpColumns(moved!, 960);
     expect(stillLeft.map((el) => el.content)).not.toContain("Left");
     expect(nowRight.map((el) => el.content)).toEqual(["Right", "Left"]);
