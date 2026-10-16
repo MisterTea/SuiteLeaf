@@ -2101,9 +2101,7 @@ ${slidesHtml}
                 <Tool
                   label="Bold"
                   active={
-                    selectedElement.type === "table" && tableCell?.id === selectedElement.id
-                      ? !!selectedElement.cellMarks?.[tableCell.row]?.[tableCell.col]?.bold
-                      : editingId === selectedElement.id && caretMarks?.id === selectedElement.id
+                    editingId === selectedElement.id && caretMarks?.id === selectedElement.id
                       ? caretMarks.bold
                       : hasTextRuns(selectedElement)
                         ? !!selectedElement.runs?.every((run) => run.bold)
@@ -2116,9 +2114,7 @@ ${slidesHtml}
                 <Tool
                   label="Italic"
                   active={
-                    selectedElement.type === "table" && tableCell?.id === selectedElement.id
-                      ? !!selectedElement.cellMarks?.[tableCell.row]?.[tableCell.col]?.italic
-                      : editingId === selectedElement.id && caretMarks?.id === selectedElement.id
+                    editingId === selectedElement.id && caretMarks?.id === selectedElement.id
                       ? caretMarks.italic
                       : hasTextRuns(selectedElement)
                         ? !!selectedElement.runs?.every((run) => run.italic)
@@ -2195,6 +2191,23 @@ ${slidesHtml}
                   }
                 >
                   <List size={16} />
+                </Tool>
+              </>
+            ) : selectedElement.type === "table" && tableCell?.id === selectedElement.id ? (
+              <>
+                <Tool
+                  label="Bold"
+                  active={!!selectedElement.cellMarks?.[tableCell.row]?.[tableCell.col]?.bold}
+                  onClick={toggleBold}
+                >
+                  <Bold size={16} />
+                </Tool>
+                <Tool
+                  label="Italic"
+                  active={!!selectedElement.cellMarks?.[tableCell.row]?.[tableCell.col]?.italic}
+                  onClick={toggleItalic}
+                >
+                  <Italic size={16} />
                 </Tool>
               </>
             ) : null}

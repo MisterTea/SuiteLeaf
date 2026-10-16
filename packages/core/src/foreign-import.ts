@@ -492,14 +492,12 @@ function readerFromAst(ast: Ast, kind: "doc" | "sheet" | "slide"): OfficeDigest 
         }
         flush();
       }
-      const nextNote = inNote || (kind === "slide" && node.type === "note");
-      const nextTable = inTable || node.type === "table";
       for (const child of node.children ?? []) {
         const structural = child.type === "table" || child.type === "list";
-        visit(child, structural ? false : true, nextNote, nextTable);
+        visit(child, structural ? false : true, inNote, inTable);
       }
       for (const note of node.notes ?? []) {
-        if (!(node.children ?? []).includes(note)) visit(note, true, true, nextTable);
+        if (!(node.children ?? []).includes(note)) visit(note, true, true, inTable);
       }
       return;
     }

@@ -1293,7 +1293,7 @@ async function preprocessDocx(
   };
 }
 
-/** VML pictures and floating drawings. Mammoth reads inline DrawingML only. */
+/** VML pictures Mammoth does not already import as a drawing. */
 async function vmlPictureSources(zip: JSZip, xml: string): Promise<string[]> {
   const rels = await zip.file("word/_rels/document.xml.rels")?.async("string");
   if (!rels) return [];
@@ -1316,20 +1316,6 @@ async function vmlPictureSources(zip: JSZip, xml: string): Promise<string[]> {
     out.push(`data:image/${mime};base64,${await part.async("base64")}`);
     seen.add(target);
   };
-  const inline = new Set<string>();
-  for (const region of xml.split(/<wp:inline\b/).slice(1)) {
-    const body = region.split(/<\/wp:inline>/)[0] ?? region;
-    for (const match of body.matchAll(/<a:blip\b[^>]*\br:embed="([^"]+)"/g))
-      inline.add(targets.get(match[1]) ?? "");
-  }
-  for (const region of xml.split(/<wp:anchor\b/).slice(1)) {
-    const body = region.split(/<\/wp:anchor>/)[0] ?? region;
-    for (const match of body.matchAll(/<a:blip\b[^>]*\br:embed="([^"]+)"/g)) {
-      const target = targets.get(match[1]);
-      if (target && inline.has(target)) continue;
-      await add(target);
-    }
-  }
   const drawing = new Set(
     [...xml.matchAll(/<a:blip\b[^>]*\br:embed="([^"]+)"/g)].map(
       (match) => targets.get(match[1]) ?? "",

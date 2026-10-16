@@ -6,13 +6,19 @@ export const TextBox = Node.create({
   group: "block",
   atom: true,
   selectable: true,
-  attrs: {
-    text: { default: "" },
+  addAttributes() {
+    return {
+      text: { default: "" },
+    };
   },
-  parseHTML: () => [{ tag: "div[data-text-box]" }],
-  renderHTML: ({ node }) => [
-    "div",
-    { "data-text-box": "", class: "doc-text-box" },
-    String(node.attrs.text ?? ""),
-  ],
+  parseHTML() {
+    return [{ tag: "div[data-text-box]" }];
+  },
+  renderHTML({ node }) {
+    return [
+      "div",
+      { "data-text-box": "", class: "doc-text-box" },
+      String(node.attrs.text ?? ""),
+    ];
+  },
 });

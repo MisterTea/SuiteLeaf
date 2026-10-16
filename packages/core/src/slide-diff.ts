@@ -68,6 +68,7 @@ interface ElementLike {
   src?: string;
   alt?: string;
   rows?: string[][];
+  cellMarks?: { bold?: boolean; italic?: boolean }[][];
   placeholder?: string;
 }
 

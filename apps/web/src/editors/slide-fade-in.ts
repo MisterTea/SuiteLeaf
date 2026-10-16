@@ -4,7 +4,7 @@ import type { Presentation } from "@suiteleaf/core";
 export const FADE_ON_CLICK = "fade-on-click" as const;
 
 export const SLIDE_ANIMATION_CHOICES = [
-  { kind: "fade-on-click", label: "Fade" },
+  { kind: "fade-on-click", label: "On click" },
   { kind: "appear-on-click", label: "Appear" },
   { kind: "fly-on-click", label: "Fly in" },
   { kind: "wipe-on-click", label: "Wipe" },
