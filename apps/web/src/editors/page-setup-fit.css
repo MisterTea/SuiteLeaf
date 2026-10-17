@@ -187,6 +187,34 @@
   align-items: center;
   min-width: 0;
 }
+.page-setup-dialog .page-setup-text-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.page-setup-dialog .page-setup-text-line > input {
+  width: auto;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.page-setup-dialog .page-setup-text-line .furniture-image-field {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+.page-setup-dialog .page-setup-text-line .furniture-image-field input[type="file"] {
+  width: auto;
+  max-width: 9em;
+  font-size: 0;
+  line-height: 0;
+}
+.page-setup-dialog .page-setup-text-line .furniture-image-field input[type="file"]::file-selector-button {
+  font-size: 12px;
+  line-height: 1.2;
+  height: 28px;
+  padding: 4px 8px;
+}
 .page-setup-dialog .doc-watermark-field {
   display: grid;
   grid-template-columns: 6.6em minmax(0, 1fr) auto;

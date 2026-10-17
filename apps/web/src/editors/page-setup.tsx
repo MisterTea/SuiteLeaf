@@ -21,7 +21,7 @@ import {
   type PreviewSlot,
 } from "./page-preview";
 
-function ImageField({
+function ImageControl({
   label,
   value,
   onChange,
@@ -31,33 +31,30 @@ function ImageField({
   onChange: (value: string) => void;
 }) {
   return (
-    <label>
-      <span>{label}</span>
-      <span className="furniture-image-field">
-        {value ? <img src={value} alt="" /> : null}
-        <input
-          aria-label={label}
-          type="file"
-          accept="image/png,image/jpeg,image/gif,image/webp"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            event.target.value = "";
-            if (!file || file.size > 1024 * 1024) return;
-            const reader = new FileReader();
-            reader.onload = () => {
-              const next = furnitureImage(reader.result);
-              if (next) onChange(next);
-            };
-            reader.readAsDataURL(file);
-          }}
-        />
-        {value ? (
-          <button type="button" onClick={() => onChange("")}>
-            Remove
-          </button>
-        ) : null}
-      </span>
-    </label>
+    <span className="furniture-image-field">
+      {value ? <img src={value} alt="" /> : null}
+      <input
+        aria-label={label}
+        type="file"
+        accept="image/png,image/jpeg,image/gif,image/webp"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (!file || file.size > 1024 * 1024) return;
+          const reader = new FileReader();
+          reader.onload = () => {
+            const next = furnitureImage(reader.result);
+            if (next) onChange(next);
+          };
+          reader.readAsDataURL(file);
+        }}
+      />
+      {value ? (
+        <button type="button" onClick={() => onChange("")}>
+          Remove
+        </button>
+      ) : null}
+    </span>
   );
 }
 
@@ -67,23 +64,28 @@ function TextField({
   value,
   placeholder,
   onChange,
+  image,
 }: {
   span: string;
   label: string;
   value: string;
   placeholder: string;
   onChange: (value: string) => void;
+  image?: { label: string; value: string; onChange: (value: string) => void };
 }) {
   return (
     <label>
       <span>{span}</span>
-      <input
-        aria-label={label}
-        placeholder={placeholder}
-        value={value}
-        maxLength={500}
-        onChange={(e) => onChange(e.target.value)}
-      />
+      <span className="page-setup-text-line">
+        <input
+          aria-label={label}
+          placeholder={placeholder}
+          value={value}
+          maxLength={500}
+          onChange={(e) => onChange(e.target.value)}
+        />
+        {image ? <ImageControl {...image} /> : null}
+      </span>
     </label>
   );
 }
@@ -434,6 +436,12 @@ export function PageSetupFields({
             placeholder="Letterhead on page 1 only"
             value={draft.firstHeader}
             onChange={(firstHeader) => onChange({ ...draft, firstHeader })}
+            image={{
+              label: "First header image",
+              value: draft.firstHeaderImage,
+              onChange: (firstHeaderImage) =>
+                onChange({ ...draft, firstHeaderImage }),
+            }}
           />
           <TextField
             span="First footer"
@@ -441,16 +449,12 @@ export function PageSetupFields({
             placeholder="Footer on page 1 only"
             value={draft.firstFooter}
             onChange={(firstFooter) => onChange({ ...draft, firstFooter })}
-          />
-          <ImageField
-            label="First header image"
-            value={draft.firstHeaderImage}
-            onChange={(firstHeaderImage) => onChange({ ...draft, firstHeaderImage })}
-          />
-          <ImageField
-            label="First footer image"
-            value={draft.firstFooterImage}
-            onChange={(firstFooterImage) => onChange({ ...draft, firstFooterImage })}
+            image={{
+              label: "First footer image",
+              value: draft.firstFooterImage,
+              onChange: (firstFooterImage) =>
+                onChange({ ...draft, firstFooterImage }),
+            }}
           />
         </>
       ) : null}
@@ -523,6 +527,11 @@ export function PageSetupFields({
             }
             value={draft.header}
             onChange={(header) => onChange({ ...draft, header })}
+            image={{
+              label: "Header image",
+              value: draft.headerImage,
+              onChange: (headerImage) => onChange({ ...draft, headerImage }),
+            }}
           />
           <TextField
             span={draft.differentFirstPage ? "Later footer" : "Footer"}
@@ -536,16 +545,11 @@ export function PageSetupFields({
             }
             value={draft.footer}
             onChange={(footer) => onChange({ ...draft, footer })}
-          />
-          <ImageField
-            label="Header image"
-            value={draft.headerImage}
-            onChange={(headerImage) => onChange({ ...draft, headerImage })}
-          />
-          <ImageField
-            label="Footer image"
-            value={draft.footerImage}
-            onChange={(footerImage) => onChange({ ...draft, footerImage })}
+            image={{
+              label: "Footer image",
+              value: draft.footerImage,
+              onChange: (footerImage) => onChange({ ...draft, footerImage }),
+            }}
           />
         </>
       )}
