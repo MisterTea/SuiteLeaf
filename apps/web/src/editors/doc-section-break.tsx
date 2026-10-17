@@ -3,6 +3,7 @@ import { Node } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 import {
   pageNumberText,
+  restartedSectionTotal,
   type PageNumberFormat,
   type PageFace,
 } from "@suiteleaf/core/document-layout";
@@ -62,7 +63,11 @@ export function applySection(
   if (section.restartAt == null || face.numberSide === "none")
     return { ...face, header, footer };
   const page = section.restartAt + pageIndex - section.page;
-  const total = section.restartAt + Math.max(0, pageCount - section.page) - 1;
+  let end = pageCount;
+  for (const later of sections) {
+    if (later.page > section.page && later.page < end) end = later.page;
+  }
+  const total = restartedSectionTotal(section.restartAt, section.page, end);
   return {
     ...face,
     header,
@@ -87,19 +92,38 @@ export const SectionBreak = Node.create({
   selectable: false,
   addAttributes() {
     return {
-      header: { default: "" },
-      footer: { default: "" },
-      restartAt: { default: null },
+      header: {
+        default: "",
+        parseHTML: (element: HTMLElement) => element.getAttribute("data-header") ?? "",
+        renderHTML: (attributes: Record<string, unknown>) =>
+          attributes.header ? { "data-header": attributes.header } : {},
+      },
+      footer: {
+        default: "",
+        parseHTML: (element: HTMLElement) => element.getAttribute("data-footer") ?? "",
+        renderHTML: (attributes: Record<string, unknown>) =>
+          attributes.footer ? { "data-footer": attributes.footer } : {},
+      },
+      restartAt: {
+        default: null,
+        parseHTML: (element: HTMLElement) => {
+          const raw = element.getAttribute("data-restart-at");
+          if (raw == null || raw === "") return null;
+          return sectionAttrs({ restartAt: Number(raw) }).restartAt;
+        },
+        renderHTML: (attributes: Record<string, unknown>) =>
+          attributes.restartAt == null ? {} : { "data-restart-at": attributes.restartAt },
+      },
     };
   },
   parseHTML: () => [{ tag: "div[data-section-break]" }],
   renderHTML({ HTMLAttributes }) {
-    const label = HTMLAttributes.header
-      ? `Section break · ${HTMLAttributes.header}`
-      : "Section break";
+    const header = HTMLAttributes["data-header"];
+    const label = header ? `Section break · ${header}` : "Section break";
     return [
       "div",
       {
+        ...HTMLAttributes,
         "data-section-break": "true",
         class: "section-break",
         "aria-label": label,
@@ -113,8 +137,13 @@ export const SectionBreak = Node.create({
         (attrs) =>
         ({ state, chain }) => {
           const { $from } = state.selection;
-          for (let depth = $from.depth; depth > 0; depth--)
-            if ($from.node(depth).type.spec.tableRole) return false;
+          for (let depth = $from.depth; depth > 0; depth--) {
+            const parent = $from.node(depth);
+            // A section break inside a table or a column layout would not
+            // start a page. Page breaks stay where they are; a section has
+            // to be refused here and honored later if one was already stored.
+            if (parent.type.spec.tableRole || parent.type.name === "columnLayout") return false;
+          }
           const stored = sectionAttrs(attrs);
           return chain()
             .insertContent({ type: this.name, attrs: stored })

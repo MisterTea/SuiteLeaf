@@ -52,4 +52,27 @@ describe("slideshow recording", () => {
       src: "data:image/png;base64,aaaa",
     });
   });
+
+  it("fills a slide that has no background with the master color", () => {
+    const slide: Slide = {
+      id: "s",
+      elements: [
+        { id: "title", type: "text", x: 40, y: 40, width: 400, height: 80, content: "Welcome" },
+      ],
+    };
+    const ops = slideDrawOps(
+      slide,
+      960,
+      540,
+      960,
+      540,
+      [{ id: "foot", type: "text", x: 40, y: 480, width: 200, height: 32, content: "Club" }],
+      "#0d2818",
+    );
+    expect(ops[0]).toEqual({ kind: "fill", color: "#0d2818" });
+    expect(slideDrawOps({ ...slide, background: { color: "#111111" } }, 960, 540, 960, 540, [], "#0d2818")[0]).toEqual({
+      kind: "fill",
+      color: "#111111",
+    });
+  });
 });

@@ -23,6 +23,8 @@ export type PrintedRow = {
 
 export type PrintedPage = {
   rows: PrintedRow[];
+  /** Row 1 is copied onto later pieces when a tall page is split. */
+  repeatFirstRow?: boolean;
 };
 
 export function emptyPrint(): SheetPrintSettings {
@@ -110,7 +112,10 @@ export function printedPages(
         rows.push({ source: row, repeated: false, cells: cellsOf(row) });
       if (settings.repeatFirstRow && start > 0 && rowCount > 0)
         rows.unshift({ source: 0, repeated: true, cells: cellsOf(0) });
-      return { rows };
+      return {
+        rows,
+        ...(settings.repeatFirstRow ? { repeatFirstRow: true } : {}),
+      };
     })
     .filter((page) => page.rows.length > 0);
 }
@@ -160,7 +165,9 @@ export function paginatePrinted(
   pages: readonly PrintedPage[],
   rowsPerPage = PRINT_ROWS_PER_PAGE,
 ): PrintedPage[] {
-  const repeating = pages.some((page) => page.rows.some((row) => row.repeated));
+  const repeating = pages.some(
+    (page) => page.repeatFirstRow || page.rows.some((row) => row.repeated),
+  );
   const out: PrintedPage[] = [];
   for (const page of pages) {
     if (page.rows.length <= rowsPerPage) {

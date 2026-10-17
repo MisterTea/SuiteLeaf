@@ -44,7 +44,7 @@ import {
   type SlideTheme,
 } from "@suiteleaf/core";
 import { exportBinary, exportText, printDocument } from "../storage";
-import { SlideMasterLayer } from "./slide-master-ui";
+import { PresenterNextSlide, SlideMasterLayer } from "./slide-master-ui";
 import { SlideMasterPanel } from "./slide-master-panel";
 import { AnimationPane } from "./slide-animation-pane";
 import { SlideshowRecorder } from "./slide-record";
@@ -1797,11 +1797,13 @@ ${slidesHtml}
     deck.slides[deck.slideOrder[presentSlideIndex]] || activeSlide;
   useEffect(() => {
     if (!recording) return;
+    const master = readMaster(deck);
     recorderRef.current?.paint(
       presentSlide,
       deck.width || 960,
       deck.height || 540,
-      readMaster(deck).elements,
+      master.elements,
+      master.background?.color,
     );
   }, [recording, presentSlide, deck]);
   const nextPresentSlide = deck.slides[deck.slideOrder[presentSlideIndex + 1]];
@@ -3368,16 +3370,9 @@ ${slidesHtml}
                       {slideHeading(nextPresentSlide) ||
                         `Slide ${presentSlideIndex + 2}`}
                     </span>
-                    <div
-                      className="presenter-next-slide show-slide"
-                      style={{
-                        backgroundColor:
-                          nextPresentSlide.background?.color || "#ffffff",
-                        aspectRatio: `${deck.width || 960} / ${deck.height || 540}`,
-                      }}
-                    >
+                    <PresenterNextSlide deck={deck} slide={nextPresentSlide}>
                       {renderShowElements(nextPresentSlide, false)}
-                    </div>
+                    </PresenterNextSlide>
                   </>
                 ) : (
                   <span>End of presentation</span>
@@ -3444,11 +3439,13 @@ ${slidesHtml}
                   return;
                 }
                 const recorder = new SlideshowRecorder(deck.width || 960, deck.height || 540);
+                const master = readMaster(deck);
                 recorder.paint(
                   presentSlide,
                   deck.width || 960,
                   deck.height || 540,
-                  readMaster(deck).elements,
+                  master.elements,
+                  master.background?.color,
                 );
                 try {
                   recorder.start();

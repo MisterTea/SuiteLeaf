@@ -23,8 +23,14 @@ export function slideDrawOps(
   deckW: number,
   deckH: number,
   master?: SlideElement[],
+  masterBackground?: string,
 ): DrawOp[] {
-  const ops: DrawOp[] = [{ kind: "fill", color: slide?.background?.color || "#ffffff" }];
+  const ops: DrawOp[] = [
+    {
+      kind: "fill",
+      color: slide?.background?.color || masterBackground || "#ffffff",
+    },
+  ];
   const paint = (el: SlideElement) => {
     const place = box(el, width, height, deckW, deckH);
     if (el.type === "shape") {
@@ -95,11 +101,26 @@ export class SlideshowRecorder {
     this.recorder.start(200);
   }
 
-  paint(slide: Slide | undefined, deckW: number, deckH: number, master?: SlideElement[]) {
+  paint(
+    slide: Slide | undefined,
+    deckW: number,
+    deckH: number,
+    master?: SlideElement[],
+    masterBackground?: string,
+  ) {
     const ctx = this.canvas.getContext("2d");
     if (!ctx) return;
-    paintOps(ctx, slideDrawOps(slide, this.canvas.width, this.canvas.height, deckW, deckH, master));
-    for (const op of slideDrawOps(slide, this.canvas.width, this.canvas.height, deckW, deckH, master)) {
+    const ops = slideDrawOps(
+      slide,
+      this.canvas.width,
+      this.canvas.height,
+      deckW,
+      deckH,
+      master,
+      masterBackground,
+    );
+    paintOps(ctx, ops);
+    for (const op of ops) {
       if (op.kind !== "image") continue;
       const image = new Image();
       image.onload = () => {

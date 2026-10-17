@@ -112,6 +112,21 @@ test("a repeated print header stays on each piece of a tall page", () => {
   expect(pages.some((page) => page.rows[0]?.repeated)).toBe(true);
 });
 
+test("a tall sheet repeats row 1 on later pages when there is no manual break", () => {
+  const rows = Array.from({ length: 80 }, (_, index) => [String(index)]);
+  const pages = paginatePrinted(
+    printedPages(rows, { breaksAbove: [], repeatFirstRow: true }),
+    15,
+  );
+  expect(pages.length).toBeGreaterThan(1);
+  expect(pages.every((page) => page.rows[0]?.cells[0] === "0")).toBe(true);
+  expect(pages[0]?.rows[0]?.repeated).toBe(false);
+  expect(pages.slice(1).every((page) => page.rows[0]?.repeated)).toBe(true);
+  expect(pages.slice(1).map((page) => page.rows[1]?.source)).toEqual([15, 29, 43, 57, 71]);
+  const html = printMarkup("Tall", "Sheet", pages, true);
+  expect(html.match(/<thead>/g)).toHaveLength(pages.length);
+});
+
 test("print settings survive the native file round trip and can be cleared", () => {
   const file = createFile("sheet", "Rent budget");
   if (file.kind !== "sheet") throw new Error("expected a sheet");

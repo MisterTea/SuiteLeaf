@@ -1689,6 +1689,18 @@ a {
   min-width: 0;
   margin-top: 0;
 }
+/* A stored section break is not a grid cell. Spanning both columns pushes the following text to the next page. */
+.document-content .doc-columns.doc-columns-page-break {
+  display: block;
+  column-count: 2;
+  column-gap: 0.5in;
+  column-fill: balance;
+}
+.document-content .doc-columns.doc-columns-page-break > .section-break,
+.document-content .doc-columns.doc-columns-page-break > .doc-page-spacer {
+  column-span: all;
+  width: 100%;
+}
 .document-content p[data-tab-stop] {
   position: relative;
 }
