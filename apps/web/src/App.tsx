@@ -1792,8 +1792,8 @@ function Workspace() {
       version.current !== savedVersion.current ||
       (!!current.current?.drive && hasUnsyncedEdits(current.current));
     const notice = (
-      remoteHead: string | undefined,
-      localHead: string | undefined,
+      remoteHead: string | null | undefined,
+      localHead: string | null | undefined,
     ) =>
       driveWatchDecision({
         uploading: driveSyncing.current,

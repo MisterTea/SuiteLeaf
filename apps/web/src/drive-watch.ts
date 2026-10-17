@@ -7,8 +7,8 @@ export function driveWatchDecision(input: {
   uploading: boolean;
   /** Local edits have not been stored as the current SuiteDrive head yet. */
   unsent: boolean;
-  remoteHead?: string;
-  localHead?: string;
+  remoteHead?: string | null;
+  localHead?: string | null;
 }): DriveWatchDecision {
   // The head we just wrote is visible before this tab stores it. That is our
   // upload, not a newer copy from someone else. If-Match reports a real clash.

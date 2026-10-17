@@ -45,4 +45,12 @@ test("a different head while idle is a conflict if edits are unsent, otherwise a
       localHead: "ours",
     }),
   ).toBe("idle");
+  expect(
+    driveWatchDecision({
+      uploading: false,
+      unsent: true,
+      remoteHead: null,
+      localHead: "ours",
+    }),
+  ).toBe("idle");
 });
