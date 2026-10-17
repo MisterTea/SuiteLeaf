@@ -226,8 +226,100 @@ fn question_prompt(question: &serde_json::Value) -> &str {
         .unwrap_or("This question")
 }
 
-/// Keep answers that satisfy the questions. A required text or choice must be
-/// present, and a choice must be one of that question's choices.
+fn question_labels(question: &serde_json::Value, key: &str) -> Vec<String> {
+    question
+        .get(key)
+        .and_then(|value| value.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str())
+                .map(str::trim)
+                .filter(|item| !item.is_empty())
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// One column for each named row. Returns None when the value is not that grid.
+fn accepted_grid(
+    rows: &[String],
+    columns: &[String],
+    value: &str,
+) -> Option<BTreeMap<String, String>> {
+    let parsed: serde_json::Value = serde_json::from_str(value).ok()?;
+    let object = parsed.as_object()?;
+    let mut chosen = BTreeMap::new();
+    for (row, column) in object {
+        let column = column.as_str()?;
+        if !rows.iter().any(|item| item == row) || !columns.iter().any(|item| item == column) {
+            return None;
+        }
+        chosen.insert(row.clone(), column.to_owned());
+    }
+    Some(chosen)
+}
+
+fn grid_answer(
+    prompt: &str,
+    required: bool,
+    question: &serde_json::Value,
+    value: &str,
+) -> DriveResult<Option<String>> {
+    let rows = question_labels(question, "rows");
+    let columns = question_labels(question, "columns");
+    if value.is_empty() {
+        if required {
+            return Err(DriveError::BadRequest(format!("{prompt} is required")));
+        }
+        return Ok(None);
+    }
+    let Some(chosen) = accepted_grid(&rows, &columns, value) else {
+        return Err(DriveError::BadRequest(format!(
+            "{prompt} must be one of the columns"
+        )));
+    };
+    if required && rows.iter().any(|row| !chosen.contains_key(row)) {
+        return Err(DriveError::BadRequest(format!("{prompt} is required")));
+    }
+    if chosen.is_empty() {
+        return Ok(None);
+    }
+    if grid_cells_too_long(&chosen) {
+        return Err(DriveError::BadRequest(format!("{prompt} is too long")));
+    }
+    let mut clean = serde_json::Map::new();
+    for row in &rows {
+        if let Some(column) = chosen.get(row) {
+            clean.insert(row.clone(), serde_json::Value::String(column.clone()));
+        }
+    }
+    Ok(Some(serde_json::Value::Object(clean).to_string()))
+}
+
+/// Text, choice, and rating answers. A grid is JSON around those labels, so
+/// it is not held to this.
+const ANSWER_CHARS: usize = 2_000;
+/// A form label is at most 80 characters. Twenty labels, each answered with
+/// an 80-character column, are 3_200 characters of cells.
+const GRID_CELL_CHARS: usize = 20 * 80 * 2;
+/// JSON quotes and escaping around that grid. Anything larger is rejected
+/// before it is parsed.
+const GRID_ENVELOPE_CHARS: usize = 32_768;
+
+fn grid_cells_too_long(chosen: &BTreeMap<String, String>) -> bool {
+    let cells = chosen.iter().fold(0usize, |sum, (row, column)| {
+        sum.saturating_add(row.chars().count())
+            .saturating_add(column.chars().count())
+    });
+    cells > GRID_CELL_CHARS
+}
+
+/// Keep answers that satisfy the questions. A required text, choice, rating,
+/// or grid must be present. A choice must be one of that question's choices.
+/// A rating must be 1, 2, 3, 4, or 5. A grid picks one of that question's
+/// columns for each row, and a required grid needs every row.
 fn checked_answers(
     questions: &[serde_json::Value],
     answers: &BTreeMap<String, String>,
@@ -251,7 +343,16 @@ fn checked_answers(
             .and_then(|value| value.as_str())
             .unwrap_or("text");
         let value = answers.get(id).map(|answer| answer.trim()).unwrap_or("");
-        if value.chars().count() > 2000 {
+        if kind == "grid" {
+            if value.chars().count() > GRID_ENVELOPE_CHARS {
+                return Err(DriveError::BadRequest(format!("{prompt} is too long")));
+            }
+            if let Some(stored) = grid_answer(prompt, required, question, value)? {
+                clean.insert(id.to_owned(), serde_json::Value::String(stored));
+            }
+            continue;
+        }
+        if value.chars().count() > ANSWER_CHARS {
             return Err(DriveError::BadRequest(format!("{prompt} is too long")));
         }
         if required && value.is_empty() {
@@ -268,6 +369,11 @@ fn checked_answers(
                 )));
             }
         }
+        if kind == "rating" && !value.is_empty() && !matches!(value, "1" | "2" | "3" | "4" | "5") {
+            return Err(DriveError::BadRequest(format!(
+                "{prompt} must be a rating from 1 to 5"
+            )));
+        }
         if !value.is_empty() {
             clean.insert(id.to_owned(), serde_json::Value::String(value.to_owned()));
         }
@@ -280,10 +386,11 @@ fn public_question(question: &serde_json::Value) -> Option<serde_json::Value> {
     if id.is_empty() {
         return None;
     }
-    let kind = if question.get("kind").and_then(|value| value.as_str()) == Some("choice") {
-        "choice"
-    } else {
-        "text"
+    let kind = match question.get("kind").and_then(|value| value.as_str()) {
+        Some("choice") => "choice",
+        Some("rating") => "rating",
+        Some("grid") => "grid",
+        _ => "text",
     };
     let mut out = serde_json::json!({
         "id": id,
@@ -303,6 +410,10 @@ fn public_question(question: &serde_json::Value) -> Option<serde_json::Value> {
             })
             .unwrap_or_default();
         out["choices"] = serde_json::json!(choices);
+    }
+    if kind == "grid" {
+        out["rows"] = serde_json::json!(question_labels(question, "rows"));
+        out["columns"] = serde_json::json!(question_labels(question, "columns"));
     }
     Some(out)
 }

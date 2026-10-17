@@ -61,7 +61,16 @@ function collect(file: SuiteFile): string[] {
     }
   } else {
     for (const question of file.content.questions)
-      parts.push(question.prompt, " ", ...(question.choices ?? []), " ");
+      parts.push(
+        question.prompt,
+        " ",
+        ...(question.choices ?? []),
+        " ",
+        ...(question.rows ?? []),
+        " ",
+        ...(question.columns ?? []),
+        " ",
+      );
     for (const response of file.content.responses)
       parts.push(...Object.values(response.answers), " ");
   }

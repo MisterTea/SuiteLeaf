@@ -327,7 +327,9 @@ function describeSlide(slide: Slide, index: number) {
         ? `${e.shapeType} shape (${e.fill ?? "no fill"}, ${e.width}×${e.height}, ${whereOn(e)})${animationNote(e)}`
         : e.type === "image"
           ? `image${e.alt ? ` "${e.alt}"` : ""} id ${e.id}${animationNote(e)}`
-          : `${e.type}${animationNote(e)}`,
+          : e.type === "audio" || e.type === "video"
+            ? `${e.type}${e.alt ? ` "${e.alt}"` : ""} id ${e.id}${animationNote(e)}`
+            : `${e.type}${animationNote(e)}`,
     );
   const transition = slide.transition ? `; transition ${slide.transition.type}` : "";
   return `Slide ${index + 1} [${slide.layout ?? "custom"}${slide.background?.color ? `, background ${slide.background.color}` : ""}] ${parts.join("; ")}${others.length ? `; also ${others.join(", ")}` : ""}${slide.notes ? `; notes: ${slide.notes.slice(0, 120)}` : ""}${commentSummary(slide)}${transition}`;

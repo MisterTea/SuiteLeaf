@@ -11,6 +11,7 @@ import {
   IUndoRedoService,
   type IWorkbookData,
 } from "@univerjs/presets";
+import type { FRange } from "@univerjs/sheets/facade";
 import {
   IDescriptionService,
   IEditorService,
@@ -48,6 +49,7 @@ import { SheetSpelling } from "./grid-spelling-ui";
 import SheetRowGroups, { type SheetRowGroupsHandle } from "./sheet-row-groups-ui";
 import SheetColumnGroups, { type SheetColumnGroupsHandle } from "./sheet-column-groups-ui";
 import SheetFeatures from "./sheet-features";
+import SheetList from "./sheet-list";
 import SheetPrint, { type SheetPrintHandle } from "./sheet-print-ui";
 import { PRINT_MAX_CELLS, paginatePrinted, printMarkup, printedPages, readSheetPrint } from "./sheet-print";
 import SheetDropdowns, { type SheetDropdownHandle } from "./sheet-dropdown-panel";
@@ -138,6 +140,11 @@ import {
   type CellValue,
 } from "../analysis";
 import { sortBody, type GridRange, type SortRule } from "../sort-range";
+import {
+  copiedRangeAfterMenuCopy,
+  transposeCopiedRange,
+  type CopiedCell,
+} from "../sheet-transpose";
 import {
   numberFormatsByGroup,
   applyNamedFormat,
@@ -761,6 +768,66 @@ function EmbeddedChart({ data }: { data?: { chartId: string } }) {
     </div>
   );
 }
+const HEADER_FILL = "#d2e3fc";
+const DATA_FILLS = ["#ffffff", "#e8f0fe"] as const;
+type CellBounds = {
+  startRow: number;
+  endRow: number;
+  startColumn: number;
+  endColumn: number;
+};
+function singleCell(box: CellBounds) {
+  return box.startRow === box.endRow && box.startColumn === box.endColumn;
+}
+function boundsCover(outer: CellBounds, inner: CellBounds) {
+  return (
+    inner.startRow >= outer.startRow &&
+    inner.endRow <= outer.endRow &&
+    inner.startColumn >= outer.startColumn &&
+    inner.endColumn <= outer.endColumn
+  );
+}
+/**
+ * A single cell grows to the sheet's used block when that block is more than
+ * one cell and contains the selection. Univer range themes persist as a
+ * workbook resource and paint through a render interceptor, so they never
+ * land on cell style bg. Each row is filled with setBackgroundColor instead.
+ */
+function rangeForAlternatingColors(sheet: {
+  getDataRange?: () => { getRange: () => CellBounds };
+}, range: { getRange: () => CellBounds }) {
+  const box = range.getRange();
+  if (!singleCell(box)) return range;
+  const data = sheet.getDataRange?.();
+  if (!data) return range;
+  const used = data.getRange();
+  const rows = used.endRow - used.startRow + 1;
+  const columns = used.endColumn - used.startColumn + 1;
+  if ((rows < 2 && columns < 2) || !boundsCover(used, box)) return range;
+  return data;
+}
+function paintAlternatingColors(
+  sheet: {
+    getRange: (
+      row: number,
+      column: number,
+      rows: number,
+      columns: number,
+    ) => { setBackgroundColor: (color: string) => unknown };
+  },
+  box: CellBounds,
+) {
+  const width = box.endColumn - box.startColumn + 1;
+  const height = box.endRow - box.startRow + 1;
+  if (width < 1 || height < 1) return;
+  for (let row = 0; row < height; row++) {
+    const color = row === 0 ? HEADER_FILL : DATA_FILLS[(row - 1) % 2];
+    sheet
+      .getRange(box.startRow + row, box.startColumn, 1, width)
+      .setBackgroundColor(color);
+  }
+}
+
 /** Menu clicks can land before the grid's helpers have mounted. */
 function callWhenMounted<T>(ref: { current: T | null }, run: (value: T) => void) {
   if (ref.current) {
@@ -846,6 +913,7 @@ export default function Sheets({
     } | null>(null);
   const pending = useRef(false);
   const tabSettings = useRef<{ openTabs: () => void; openCommentName: () => void }>(null);
+  const sheetList = useRef<{ open: () => void }>(null);
   const dropdowns = useRef<SheetDropdownHandle>(null);
   const links = useRef<SheetLinkHandle>(null);
   const dropdownEngine = useRef<{ api: any; injector: any } | null>(null);
@@ -864,6 +932,10 @@ export default function Sheets({
     insertFunction: () => {},
     autoSum: () => {},
   });
+  const copiedRange = useRef<{
+    source: { row: number; column: number };
+    cells: CopiedCell[][];
+  } | null>(null);
   const persist = useRef<() => void>(() => {}),
     refreshCharts = useRef<() => void>(() => {}),
     syncTextStyle = useRef<() => void>(() => {}),
@@ -1691,16 +1763,88 @@ export default function Sheets({
   const toggleBold = () => toggleTextStyle("sheet.command.set-range-bold");
   const toggleItalic = () => toggleTextStyle("sheet.command.set-range-italic");
   const toggleStrike = () => toggleTextStyle("sheet.command.set-range-stroke");
+  const readCopiedRange = () => {
+    try {
+      const range = book.current?.getActiveRange?.();
+      if (!range) return null;
+      const box = range.getRange();
+      const height = box.endRow - box.startRow + 1;
+      const width = box.endColumn - box.startColumn + 1;
+      if (height < 1 || width < 1) return null;
+      const formulas = (range.getFormulas?.() ?? []) as unknown[][];
+      const values = (range.getValues?.() ?? []) as unknown[][];
+      const cells: CopiedCell[][] = Array.from({ length: height }, (_, r) =>
+        Array.from({ length: width }, (_, c) => {
+          const raw = formulas[r]?.[c];
+          const text = typeof raw === "string" ? raw.trim() : "";
+          const formula = text
+            ? text.startsWith("=")
+              ? text
+              : `=${text}`
+            : null;
+          const current = values[r]?.[c];
+          const plain =
+            typeof current === "string" ||
+            typeof current === "number" ||
+            typeof current === "boolean"
+              ? current
+              : null;
+          return { formula, value: formula ? null : plain };
+        }),
+      );
+      return {
+        source: { row: box.startRow, column: box.startColumn },
+        cells,
+      };
+    } catch {
+      return null;
+    }
+  };
   const clipboard = async (action: "cut" | "copy" | "paste") => {
+    // Snapshot before the command returns. Paste special must not read the cells again.
+    const snapshot = action === "copy" ? readCopiedRange() : null;
     let done = false;
     try {
       done = !!(await api.current?.executeCommand(`univer.command.${action}`));
     } catch {}
+    if (action === "copy") {
+      copiedRange.current = copiedRangeAfterMenuCopy(
+        done,
+        snapshot,
+        copiedRange.current,
+      );
+    }
     if (done) return;
     const key = shortcut({ cut: "X", copy: "C", paste: "V" }[action]);
     setNotice(
       `Your browser doesn't let the Edit menu ${action} here. Use ${key} to ${action}.`,
     );
+  };
+  const pasteTranspose = () => {
+    const snap = copiedRange.current;
+    if (!snap?.cells.length) {
+      setNotice("Copy a range before you transpose it.");
+      return;
+    }
+    if (readOnlyRef.current) return;
+    const sheet = book.current?.getActiveSheet?.();
+    const active = book.current?.getActiveCell?.();
+    if (!sheet || !active) return;
+    const destination = { row: active.getRow(), column: active.getColumn() };
+    const grid = transposeCopiedRange(snap.cells, snap.source, destination);
+    if (!grid.length || !grid[0]?.length) return;
+    try {
+      sheet
+        .getRange(destination.row, destination.column, grid.length, grid[0].length)
+        .setValues(
+          grid.map((row) => row.map((cell) => cell.formula ?? cell.value)),
+        );
+    } catch (e) {
+      error.current(e instanceof Error ? e.message : String(e));
+      return;
+    }
+    setNotice("");
+    persist.current();
   };
   const deleteValues = () => {
     const ranges =
@@ -1729,6 +1873,14 @@ export default function Sheets({
       persist.current();
     }
   };
+  const alternatingColors = () => {
+    const sheet = book.current?.getActiveSheet?.();
+    const selected = book.current?.getActiveRange?.();
+    if (!sheet || !selected) return;
+    const target = rangeForAlternatingColors(sheet, selected);
+    paintAlternatingColors(sheet, target.getRange());
+    persist.current();
+  };
   const applyBorders = () => {
     const r = book.current?.getActiveRange();
     if (r && api.current) {
@@ -1750,6 +1902,24 @@ export default function Sheets({
       } catch {}
       persist.current();
     }
+  };
+  const unmergeCells = () => {
+    const listed = book.current?.getActiveSheet()?.getSelection()?.getActiveRangeList();
+    const active = book.current?.getActiveRange();
+    const selected: FRange[] =
+      Array.isArray(listed) && listed.length ? listed : active ? [active] : [];
+    if (!selected.length) return;
+    if (!selected.some((range) => range.isPartOfMerge())) {
+      setNotice("These cells are not merged.");
+      return;
+    }
+    try {
+      for (const range of selected) {
+        if (range.isPartOfMerge()) range.breakApart();
+      }
+    } catch {}
+    setNotice("");
+    persist.current();
   };
   const cycleHorizontalAlign = () => {
     const next =
@@ -1779,6 +1949,15 @@ export default function Sheets({
       r.setWrap(next);
       persist.current();
     }
+  };
+  // Positive tr.a is clockwise on this grid. A non-number is stacked text
+  // ({ a: 0, v: 1 }). Null removes tr and leaves wrap.
+  const rotateText = (angle: number | { a: 0; v: 1 } | null) => {
+    const r = book.current?.getActiveRange();
+    if (!r) return;
+    if (angle == null) r.setValue({ s: { tr: null } });
+    else r.setTextRotation(angle);
+    persist.current();
   };
   const handleFontFamily = (family: string) => {
     setFontFamily(family);
@@ -2051,6 +2230,7 @@ export default function Sheets({
           void api.current?.executeCommand("sheet.operation.add-note-popup", {}),
         commentName: () => callWhenMounted(tabSettings, (tabs) => tabs.openCommentName()),
         tabsProtection: () => callWhenMounted(tabSettings, (tabs) => tabs.openTabs()),
+        openSheetList: () => callWhenMounted(sheetList, (list) => list.open()),
         insertCheckbox: () => {
           const range = book.current?.getActiveRange();
           if (range) {
@@ -2087,6 +2267,7 @@ export default function Sheets({
         cut: () => void clipboard("cut"),
         copy: () => void clipboard("copy"),
         paste: () => void clipboard("paste"),
+        pasteTranspose,
         deleteValues,
         insertChart: () => startPanel("chart"),
         insertPivot: () => startPanel("pivot"),
@@ -2127,6 +2308,9 @@ export default function Sheets({
           book.current?.getActiveRange()?.setHorizontalAlignment(al);
           persist.current();
         },
+        rotateText,
+        unmergeCells,
+        alternatingColors,
         view,
         freezeRows: (count) => setFrozen("rows", count),
         freezeColumns: (count) => setFrozen("columns", count),
@@ -2599,6 +2783,14 @@ export default function Sheets({
       {ready && api.current ? (
         <SheetFeatures
           ref={tabSettings}
+          api={api.current}
+          persist={() => persist.current()}
+          onError={onError}
+        />
+      ) : null}
+      {ready && api.current ? (
+        <SheetList
+          ref={sheetList}
           api={api.current}
           persist={() => persist.current()}
           onError={onError}

@@ -35,6 +35,8 @@ export function elementLabel(element: SlideElement | undefined): string {
     return line ? line.slice(0, 48) : "Text box";
   }
   if (element.type === "image") return "Image";
+  if (element.type === "audio") return "Audio";
+  if (element.type === "video") return "Video";
   if (element.type === "table") return "Table";
   if (element.shapeType === "ellipse") return "Oval";
   if (element.shapeType === "line" || element.shapeType === "arrow")

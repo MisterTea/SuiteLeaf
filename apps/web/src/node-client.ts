@@ -616,9 +616,11 @@ export const drive = {
 export interface PublicQuestion {
   id: string;
   prompt: string;
-  kind: "text" | "choice";
+  kind: "text" | "choice" | "rating" | "grid";
   required: boolean;
   choices?: string[];
+  rows?: string[];
+  columns?: string[];
 }
 
 export interface PublicForm {

@@ -224,7 +224,7 @@ export function applyBackground(
       if (keepSections && slide.layout === "section" && !dark)
         return [id, slide];
       const elements = slide.elements.map((el) => {
-        if (el.type !== "text" || isDark(el.color || "#1e293b") !== dark)
+        if (el.type !== "text" || el.wordArt || isDark(el.color || "#1e293b") !== dark)
           return el;
         const heading = el.bold || (el.fontSize ?? 20) >= 30;
         const next = dark

@@ -45,6 +45,9 @@ import {
 } from "@suiteleaf/core";
 import { exportBinary, exportText, printDocument } from "../storage";
 import { PresenterNextSlide, SlideMasterLayer } from "./slide-master-ui";
+import { SlideHandouts } from "./slide-handouts";
+import { WordArtDialog, wordArtProps } from "./slide-word-art";
+import { SlideMediaControls } from "./slide-media";
 import { SlideMasterPanel } from "./slide-master-panel";
 import { AnimationPane } from "./slide-animation-pane";
 import { SlideshowRecorder } from "./slide-record";
@@ -69,13 +72,18 @@ import {
   duplicateSlides,
   extendSelection,
   logoImage,
+  mediaDataUrl,
+  mediaElement,
+  mediaMime,
   moveSelection,
   pastedElements,
   pasteSlides,
   rangeIds,
   reorderGroup,
   shapeElement,
+  wordArtElement,
   toggleId,
+  type WordArtStyle,
   typingContext,
   withElements,
   withoutElements,
@@ -109,8 +117,8 @@ import {
   runsOf,
   styleSelection,
   styleWholeBox,
-  textInnerHtml,
 } from "./slide-runs";
+import { AutofitBox, autofitSignature } from "./slide-autofit";
 import { boxFont, RunSpans, SlideTextBody } from "./slide-text";
 import { useSlideThemeLibrary } from "./slide-theme-library";
 import { replaceSlideWord } from "./grid-spelling";
@@ -144,9 +152,19 @@ import {
   reflowMarp,
   switchMarpLayout,
 } from "./slide-marp";
+import { deckToHtml } from "./slide-html";
 import { continueList, listShortcut } from "./slide-list";
 
 type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
+
+/** Painted on the slide, not stored in a text box, so editing the title leaves it. */
+function SlideNumber({ n }: { n: number }) {
+  return (
+    <div className="slide-number" aria-label={`Slide number ${n}`}>
+      {n}
+    </div>
+  );
+}
 
 export default function Slides({
   file,
@@ -200,6 +218,8 @@ export default function Slides({
   });
   const [showNotes, setShowNotes] = useState(true);
   const [presenting, setPresenting] = useState(false);
+  const [handoutsOpen, setHandoutsOpen] = useState(false);
+  const [wordArtOpen, setWordArtOpen] = useState(false);
   const [showCursor, setShowCursor] = useState<ShowCursor>(() => startOfShow());
   const presentSlideIndex = showCursor.slideIndex;
   const [showSpeakerNotes, setShowSpeakerNotes] = useState(false);
@@ -265,6 +285,8 @@ export default function Slides({
   const anchorRef = useRef(activeSlideId);
   const presentingRef = useRef(false);
   presentingRef.current = presenting;
+  const handoutsRef = useRef(false);
+  handoutsRef.current = handoutsOpen;
   const showCursorRef = useRef(showCursor);
   showCursorRef.current = showCursor;
   const moveShowRef = useRef<(where: ShowMove) => void>(() => {});
@@ -294,6 +316,8 @@ export default function Slides({
   readOnlyRef.current = readOnly;
 
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
   const spellingRef = useRef<{ open: () => void }>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef<{
@@ -786,6 +810,24 @@ export default function Slides({
     insertOnActive([shape]);
   };
 
+  const addWordArt = (text: string, style: WordArtStyle) => {
+    const words = text.trim();
+    if (!words) return;
+    const prev = deckRef.current;
+    const slide = activeDeckSlide(prev);
+    if (!slide) return;
+    const taken = slide.elements.filter((el) => el.wordArt).length;
+    const art = wordArtElement(
+      words,
+      style,
+      prev.width,
+      prev.height,
+      () => crypto.randomUUID(),
+      taken,
+    );
+    insertOnActive([art]);
+  };
+
   const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
     const picked = e.target.files?.[0];
     e.target.value = "";
@@ -823,6 +865,77 @@ export default function Slides({
     };
     reader.readAsDataURL(picked);
   };
+
+  const handleMediaUpload =
+    (kind: "audio" | "video") => (e: ChangeEvent<HTMLInputElement>) => {
+      const picked = e.target.files?.[0];
+      e.target.value = "";
+      if (!picked) return;
+      const mime = mediaMime(picked, kind);
+      if (!mime) {
+        onError(
+          kind === "audio"
+            ? "Choose a WAV, MP3, or Ogg audio file."
+            : "Choose an MP4 or WebM video.",
+        );
+        return;
+      }
+      if (picked.size > 5 * 1024 * 1024) {
+        onError(
+          kind === "audio"
+            ? "Please choose an audio file smaller than 5 MB."
+            : "Please choose a video smaller than 5 MB.",
+        );
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const raw = reader.result;
+        if (typeof raw !== "string" || !raw) {
+          onError(
+            kind === "audio"
+              ? "Could not read that audio file."
+              : "Could not read that video.",
+          );
+          return;
+        }
+        const prev = deckRef.current;
+        const slide = activeDeckSlide(prev);
+        if (!slide) return;
+        const taken = slide.elements.filter((el) => el.type === kind).length;
+        const media = mediaElement(
+          kind,
+          mediaDataUrl(raw, mime),
+          picked.name,
+          () => crypto.randomUUID(),
+          prev.width,
+          prev.height,
+          taken,
+        );
+        if (!prev.marp) {
+          commitRef.current(withElements(prev, slide.id, [media]));
+          selectElement(media.id);
+          return;
+        }
+        media.y = 10000;
+        const nextSlide = reflowMarp(
+          { ...slide, elements: [...slide.elements, media] },
+          prev.width,
+        );
+        commitRef.current({
+          ...prev,
+          slides: { ...prev.slides, [slide.id]: nextSlide },
+        });
+        selectElement(media.id);
+      };
+      reader.onerror = () =>
+        onError(
+          kind === "audio"
+            ? "Could not read that audio file."
+            : "Could not read that video.",
+        );
+      reader.readAsDataURL(picked);
+    };
 
   const deleteSelectedElement = () => {
     const elementId = selectedElementRef.current;
@@ -1051,7 +1164,10 @@ export default function Slides({
     paste: pasteClipboard,
     insertTextBox: addTextBox,
     insertImage: () => imageInputRef.current?.click(),
+    insertAudio: () => audioInputRef.current?.click(),
+    insertVideo: () => videoInputRef.current?.click(),
     insertShape: addShape,
+    insertWordArt: () => setWordArtOpen(true),
     newSlide: () => addSlide(),
     duplicate: duplicateCurrentSlide,
     deleteSlides: deleteCurrentSlide,
@@ -1074,7 +1190,10 @@ export default function Slides({
     paste: pasteClipboard,
     insertTextBox: addTextBox,
     insertImage: () => imageInputRef.current?.click(),
+    insertAudio: () => audioInputRef.current?.click(),
+    insertVideo: () => videoInputRef.current?.click(),
     insertShape: addShape,
+    insertWordArt: () => setWordArtOpen(true),
     newSlide: () => addSlide(),
     duplicate: duplicateCurrentSlide,
     deleteSlides: deleteCurrentSlide,
@@ -1258,7 +1377,7 @@ export default function Slides({
       const s = deck.slides[id];
       if (!s) return;
       const heading = s.elements
-        .find((el) => el.type === "text" && el.content?.trim())
+        .find((el) => el.type === "text" && !el.wordArt && el.content?.trim())
         ?.content?.trim()
         .split("\n")[0];
       lines.push(`--- Slide ${i + 1}: ${s.title || heading || "Untitled"} ---`);
@@ -1267,6 +1386,8 @@ export default function Slides({
         if (el.type === "table" && el.rows) {
           lines.push(el.rows.map((r) => r.join("\t")).join("\n"));
         }
+        if ((el.type === "audio" || el.type === "video") && el.alt)
+          lines.push(`${el.type === "audio" ? "Audio" : "Video"}: ${el.alt}`);
       }
       if (s.notes) lines.push(`[Speaker notes: ${s.notes}]`);
       lines.push("");
@@ -1276,65 +1397,7 @@ export default function Slides({
   };
 
   const exportHtml = async () => {
-    const slidesHtml = deck.slideOrder
-      .map((id, i) => {
-        const s = deck.slides[id];
-        if (!s) return "";
-        const bg = s.background?.color
-          ? `background-color: ${s.background.color};`
-          : "background-color: #fff;";
-        const elsHtml = s.elements
-          .map((el) => {
-            const pos = `position: absolute; left: ${(el.x / (deck.width || 960)) * 100}%; top: ${(el.y / (deck.height || 540)) * 100}%; width: ${(el.width / (deck.width || 960)) * 100}%; height: ${(el.height / (deck.height || 540)) * 100}%;`;
-            if (el.type === "text") {
-              const weight = hasTextRuns(el) ? "normal" : el.bold ? "bold" : "normal";
-              const family = JSON.stringify(el.fontFamily || "Arial");
-              const style = `${pos} font-size: ${(el.fontSize || 20) * 1.5}px; font-weight: ${weight}; font-style: ${hasTextRuns(el) ? "normal" : el.italic ? "italic" : "normal"}; color: ${el.color || "#1e293b"}; text-align: ${el.align || "left"}; white-space: pre-wrap; word-break: break-word; font-family: ${family};`;
-              return `<div style="${style}">${textInnerHtml(el)}</div>`;
-            }
-            if (el.type === "image" && el.src) {
-              return `<img src="${el.src}" alt="${el.alt || "image"}" style="${pos} object-fit: contain;" />`;
-            }
-            if (el.type === "shape") {
-              const border = el.stroke
-                ? `border: ${el.strokeWidth || 1}px solid ${el.stroke};`
-                : "";
-              const rad =
-                el.shapeType === "ellipse"
-                  ? "border-radius: 50%;"
-                  : el.shapeType === "roundRect"
-                    ? "border-radius: 12px;"
-                    : "";
-              return `<div style="${pos} background-color: ${el.fill || "#e2e8f0"}; ${border} ${rad}"></div>`;
-            }
-            return "";
-          })
-          .join("\n");
-        return `<section class="slide" id="slide-${i + 1}" style="${bg}">
-          ${elsHtml}
-          ${s.notes ? `<div class="notes">Notes: ${s.notes}</div>` : ""}
-        </section>`;
-      })
-      .join("\n");
-
-    const fullHtml = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>${file.title}</title>
-  <style>
-    body { margin: 0; background: #0f172a; font-family: system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
-    .slide { width: 960px; height: 540px; position: relative; box-shadow: 0 10px 25px rgba(0,0,0,0.5); overflow: hidden; margin-bottom: 2rem; border-radius: 4px; }
-    .notes { position: absolute; bottom: 8px; left: 8px; right: 8px; background: rgba(0,0,0,0.7); color: #fff; padding: 6px; font-size: 12px; border-radius: 4px; }
-    @media print { body { background: #fff; } .slide { page-break-after: always; box-shadow: none; margin: 0; width: 100%; height: 100vh; } }
-  </style>
-</head>
-<body>
-${slidesHtml}
-</body>
-</html>`;
-
-    await exportText(filename(file.title, "html"), fullHtml);
+    await exportText(filename(file.title, "html"), deckToHtml(deck, file.title));
   };
 
   const exportMarp = async () => {
@@ -1555,7 +1618,10 @@ ${slidesHtml}
         paste: () => api.current.paste(),
         insertTextBox: () => api.current.insertTextBox(),
         insertImage: () => api.current.insertImage(),
+        insertAudio: () => api.current.insertAudio(),
+        insertVideo: () => api.current.insertVideo(),
         insertShape: (shape) => api.current.insertShape(shape),
+        insertWordArt: () => api.current.insertWordArt(),
         newSlide: () => api.current.newSlide(),
         duplicate: () => api.current.duplicate(),
         deleteSlides: () => api.current.deleteSlides(),
@@ -1570,6 +1636,18 @@ ${slidesHtml}
         openMaster: () => setPanel((open) => (open === "master" ? null : "master")),
         presenterView: () =>
           beginShow(Math.max(0, deckRef.current.slideOrder.indexOf(activeSlideId)), true),
+        handouts: () => setHandoutsOpen(true),
+        slideNumbers: () => deckRef.current.slideNumbers === true,
+        toggleSlideNumbers: () => {
+          const prev = deckRef.current;
+          if (prev.slideNumbers) {
+            const rest = { ...prev };
+            delete rest.slideNumbers;
+            commitRef.current(rest);
+            return;
+          }
+          commitRef.current({ ...prev, slideNumbers: true });
+        },
         insertComment: () => openSlideComment(),
         openComments: () => openSlideCommentPanel(),
         openResolved: () => openSlideResolved(),
@@ -1595,7 +1673,7 @@ ${slidesHtml}
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (presentingRef.current) return;
+      if (presentingRef.current || handoutsRef.current) return;
       if (e.key === "Escape") {
         setContextMenu(null);
         const editing = editingRef.current;
@@ -1650,6 +1728,7 @@ ${slidesHtml}
   useEffect(() => {
     if (presenting) return;
     const onKeyDown = (e: KeyboardEvent) => {
+      if (handoutsRef.current) return;
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key === "Enter") {
         if (
@@ -1856,14 +1935,23 @@ ${slidesHtml}
       };
 
       if (el.type === "text") {
+        const art = wordArtProps(el);
+        const normalPx = (el.fontSize || 20) * 0.95;
         return (
-          <div
+          <AutofitBox
             key={el.id}
+            autofit={!!el.autofit && !el.wordArt}
+            normalPx={normalPx}
+            fitTo={w}
+            signature={autofitSignature(el)}
             {...fadeProps}
-            className={`${fadeProps.className} show-text`}
+            data-word-art={el.wordArt}
+            data-autofit={el.autofit && !el.wordArt ? "on" : undefined}
+            className={`${fadeProps.className} show-text${art.className}`}
             style={{
               ...posStyle,
-              fontSize: units((el.fontSize || 20) * 0.95),
+              ...art.style,
+              fontSize: units(normalPx),
               padding: units(4),
               ...boxFont(el),
               fontFamily: el.fontFamily || "Arial",
@@ -1881,7 +1969,7 @@ ${slidesHtml}
               italic={el.italic}
               underline={el.underline}
             />
-          </div>
+          </AutofitBox>
         );
       }
       if (el.type === "image" && el.src) {
@@ -1948,13 +2036,26 @@ ${slidesHtml}
           </table>
         );
       }
+      if ((el.type === "audio" || el.type === "video") && el.src) {
+        return (
+          <div
+            key={el.id}
+            {...fadeProps}
+            data-media={el.type}
+            className={`${fadeProps.className} show-${el.type}`}
+            style={posStyle}
+          >
+            <SlideMediaControls element={el} />
+          </div>
+        );
+      }
       return null;
     });
   };
 
   const slideHeading = (slide: Slide) =>
     slide.elements
-      .find((el) => el.type === "text" && el.content?.trim())
+      .find((el) => el.type === "text" && !el.wordArt && el.content?.trim())
       ?.content?.trim()
       .split("\n")[0];
 
@@ -2184,6 +2285,20 @@ ${slidesHtml}
             accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
             onChange={handleImageUpload}
           />
+          <input
+            hidden
+            type="file"
+            ref={audioInputRef}
+            accept="audio/wav,audio/wave,audio/x-wav,audio/mpeg,audio/ogg,.wav,.mp3,.ogg"
+            onChange={handleMediaUpload("audio")}
+          />
+          <input
+            hidden
+            type="file"
+            ref={videoInputRef}
+            accept="video/mp4,video/webm,.mp4,.webm"
+            onChange={handleMediaUpload("video")}
+          />
         </div>
 
         <div className="toolbar-divider" />
@@ -2275,6 +2390,20 @@ ${slidesHtml}
                   <option value="Roboto">Roboto</option>
                   <option value="Helvetica">Helvetica</option>
                 </select>
+
+                {selectedElement.wordArt ? null : (
+                  <Tool
+                    label="Autofit"
+                    active={!!selectedElement.autofit}
+                    onClick={() =>
+                      updateElement(selectedElement.id, {
+                        autofit: !selectedElement.autofit,
+                      })
+                    }
+                  >
+                    Autofit
+                  </Tool>
+                )}
 
                 <div className="font-size-stepper">
                   <button
@@ -2690,7 +2819,7 @@ ${slidesHtml}
               const isActive = id === activeSlideId;
               const isChosen = selectedSlideIds.includes(id);
               const heading = slide?.elements
-                .find((el) => el.type === "text" && el.content?.trim())
+                .find((el) => el.type === "text" && !el.wordArt && el.content?.trim())
                 ?.content?.trim()
                 .split("\n")[0];
               const bg = slide?.background?.color || "#ffffff";
@@ -2777,12 +2906,14 @@ ${slidesHtml}
                           height: `${(el.height / (deck.height || 540)) * 100}%`,
                         };
                         if (el.type === "text") {
+                          const art = wordArtProps(el);
                           return (
                             <div
                               key={el.id}
-                              className="mini-text"
+                              className={`mini-text${art.className}`}
                               style={{
                                 ...miniStyle,
+                                ...art.style,
                                 color: el.color || "#1e293b",
                                 textAlign: el.align || "left",
                                 ...boxFont(el),
@@ -2824,6 +2955,18 @@ ${slidesHtml}
                               alt=""
                               className="mini-img"
                               style={miniStyle}
+                            />
+                          );
+                        }
+                        if (el.type === "audio" || el.type === "video") {
+                          return (
+                            <div
+                              key={el.id}
+                              className="mini-media"
+                              style={{
+                                ...miniStyle,
+                                background: el.type === "audio" ? "#dbeafe" : "#0f172a",
+                              }}
                             />
                           );
                         }
@@ -2895,17 +3038,25 @@ ${slidesHtml}
                 };
 
                 if (el.type === "text") {
+                  const art = wordArtProps(el);
+                  const normalPx = (el.fontSize || 20) * 0.95;
                   return (
-                    <div
+                    <AutofitBox
                       key={el.id}
+                      autofit={!!el.autofit && !el.wordArt}
+                      normalPx={normalPx}
+                      signature={autofitSignature(el)}
                       data-element-id={el.id}
                       data-x={el.x}
                       data-y={el.y}
-                      className={`slide-element slide-text ${isSelected ? "selected" : ""}${editorFadeClass(el)}`}
+                      data-word-art={el.wordArt}
+                      data-autofit={el.autofit && !el.wordArt ? "on" : undefined}
+                      className={`slide-element slide-text ${isSelected ? "selected" : ""}${editorFadeClass(el)}${art.className}`}
                       {...editorFadeAttrs(el)}
                       style={{
                         ...posStyle,
-                        fontSize: `${(el.fontSize || 20) * 0.95}px`,
+                        ...art.style,
+                        fontSize: `${normalPx}px`,
                         ...boxFont(el),
                         fontFamily: el.fontFamily || "Arial",
                         color: el.color || "#1e293b",
@@ -3039,7 +3190,7 @@ ${slidesHtml}
                         </>
                       )}
                       {isSelected && !readOnly && !marpOpen && !deck.marp ? renderHandles(el.id) : null}
-                    </div>
+                    </AutofitBox>
                   );
                 }
 
@@ -3147,8 +3298,36 @@ ${slidesHtml}
                   );
                 }
 
+                if ((el.type === "audio" || el.type === "video") && el.src) {
+                  return (
+                    <div
+                      key={el.id}
+                      data-element-id={el.id}
+                      data-x={el.x}
+                      data-y={el.y}
+                      data-media={el.type}
+                      className={`slide-element slide-${el.type} ${isSelected ? "selected" : ""}${editorFadeClass(el)}`}
+                      {...editorFadeAttrs(el)}
+                      style={posStyle}
+                      onMouseDown={(e) => {
+                        if ((e.target as HTMLElement).closest?.(".slide-media-play")) return;
+                        e.preventDefault();
+                        onElementMouseDown(e, el.id);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <FadeOnClickMark element={el} />
+                      <SlideMediaControls element={el} />
+                      {isSelected && !readOnly && !marpOpen && !deck.marp ? renderHandles(el.id) : null}
+                    </div>
+                  );
+                }
+
                 return null;
               })}
+              {deck.slideNumbers ? (
+                <SlideNumber n={currentSlideIndex + 1} />
+              ) : null}
               {slideComments.marks}
             </div>
           </div>
@@ -3336,6 +3515,9 @@ ${slidesHtml}
               font={(size) => `calc(${size} / ${deck.width || 960} * 100cqw)`}
             />
             {renderShowElements(presentSlide, true)}
+            {deck.slideNumbers ? (
+              <SlideNumber n={presentSlideIndex + 1} />
+            ) : null}
             {blankScreen ? (
               <div
                 className="presenter-blank"
@@ -3372,6 +3554,9 @@ ${slidesHtml}
                     </span>
                     <PresenterNextSlide deck={deck} slide={nextPresentSlide}>
                       {renderShowElements(nextPresentSlide, false)}
+                      {deck.slideNumbers ? (
+                        <SlideNumber n={presentSlideIndex + 2} />
+                      ) : null}
                     </PresenterNextSlide>
                   </>
                 ) : (
@@ -3477,6 +3662,18 @@ ${slidesHtml}
             </button>
           </div>
         </div>
+      ) : null}
+      {wordArtOpen ? (
+        <WordArtDialog
+          onCancel={() => setWordArtOpen(false)}
+          onInsert={(text, style) => {
+            addWordArt(text, style);
+            setWordArtOpen(false);
+          }}
+        />
+      ) : null}
+      {handoutsOpen ? (
+        <SlideHandouts deck={deck} onClose={() => setHandoutsOpen(false)} />
       ) : null}
     </div>
   );

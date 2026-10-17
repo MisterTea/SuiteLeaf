@@ -81,6 +81,7 @@ import { SameFileDialog, openNotices } from "./same-file";
 import { sampleDoc, sampleSheet, sampleSlide } from "./samples";
 import {
   Menu,
+  MenuCheckItem,
   MenuItem,
   SubMenu,
   TableMenuItems,
@@ -163,6 +164,7 @@ import {
   type ResolvedMode,
 } from "./mode";
 import { formsEnabled } from "./flags";
+import { sheetTextRotation } from "./sheet-text-rotation";
 import { useAgentHost } from "./ai/host";
 import { bindRestoredFile } from "./ai/restored-file";
 import { AiButton, AgentLayer } from "./ai/AgentSidebar";
@@ -2855,6 +2857,35 @@ function Workspace() {
                       Image
                     </MenuItem>
                     <MenuItem
+                      synonyms={["text box", "insert text box", "textbox"]}
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.docActions?.insertTextBox()
+                      }
+                    >
+                      Text box
+                    </MenuItem>
+                    <SubMenu label="Shape">
+                      <MenuItem
+                        synonyms={["shape", "insert shape", "rectangle"]}
+                        focusesTarget
+                        onSelect={() =>
+                          actions.current?.docActions?.insertShape("rect")
+                        }
+                      >
+                        Rectangle
+                      </MenuItem>
+                      <MenuItem
+                        synonyms={["ellipse", "oval", "circle"]}
+                        focusesTarget
+                        onSelect={() =>
+                          actions.current?.docActions?.insertShape("ellipse")
+                        }
+                      >
+                        Ellipse
+                      </MenuItem>
+                    </SubMenu>
+                    <MenuItem
                       onSelect={() =>
                         actions.current?.docActions?.insertTable()
                       }
@@ -3127,6 +3158,14 @@ function Workspace() {
                     >
                       Clear formatting
                     </MenuItem>
+                    <MenuItem
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.docActions?.updateNormalText()
+                      }
+                    >
+                      Update Normal text to match
+                    </MenuItem>
                   </Menu>
                   <Menu label="Tools">
                     <MenuItem
@@ -3262,6 +3301,15 @@ function Workspace() {
                     >
                       Paste
                     </MenuItem>
+                    <SubMenu label="Paste special">
+                      <MenuItem
+                        onSelect={() =>
+                          actions.current?.sheetActions?.pasteTranspose()
+                        }
+                      >
+                        Transpose
+                      </MenuItem>
+                    </SubMenu>
                     <MenuItem
                       shortcut="Delete"
                       onSelect={() =>
@@ -3440,6 +3488,69 @@ function Workspace() {
                       Align right
                     </MenuItem>
                     <MenuItem
+                      onSelect={() =>
+                        actions.current?.sheetActions?.unmergeCells()
+                      }
+                    >
+                      Unmerge cells
+                    </MenuItem>
+                    <SubMenu label="Rotate text">
+                      <MenuItem
+                        onSelect={() =>
+                          actions.current?.sheetActions?.rotateText(
+                            sheetTextRotation.tiltCounterclockwise,
+                          )
+                        }
+                      >
+                        Tilt counterclockwise
+                      </MenuItem>
+                      <MenuItem
+                        onSelect={() =>
+                          actions.current?.sheetActions?.rotateText(
+                            sheetTextRotation.tiltClockwise,
+                          )
+                        }
+                      >
+                        Tilt clockwise
+                      </MenuItem>
+                      <MenuItem
+                        onSelect={() =>
+                          actions.current?.sheetActions?.rotateText(
+                            sheetTextRotation.up,
+                          )
+                        }
+                      >
+                        Rotate up
+                      </MenuItem>
+                      <MenuItem
+                        onSelect={() =>
+                          actions.current?.sheetActions?.rotateText(
+                            sheetTextRotation.down,
+                          )
+                        }
+                      >
+                        Rotate down
+                      </MenuItem>
+                      <MenuItem
+                        onSelect={() =>
+                          actions.current?.sheetActions?.rotateText(
+                            sheetTextRotation.vertical,
+                          )
+                        }
+                      >
+                        Vertical
+                      </MenuItem>
+                      <MenuItem
+                        onSelect={() =>
+                          actions.current?.sheetActions?.rotateText(
+                            sheetTextRotation.none,
+                          )
+                        }
+                      >
+                        None
+                      </MenuItem>
+                    </SubMenu>
+                    <MenuItem
                       shortcut="Cmd+\"
                       onSelect={() =>
                         actions.current?.sheetActions?.clearFormatting()
@@ -3453,6 +3564,13 @@ function Workspace() {
                       }
                     >
                       Conditional formatting
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.sheetActions?.alternatingColors()
+                      }
+                    >
+                      Alternating colors
                     </MenuItem>
                   </Menu>
                   <Menu label="Data">
@@ -3673,6 +3791,24 @@ function Workspace() {
                     <MenuItem onSelect={() => void actions.current?.print()}>
                       Print preview
                     </MenuItem>
+                    <MenuItem
+                      synonyms={["handout", "slide handouts"]}
+                      onSelect={() =>
+                        actions.current?.slideActions?.handouts?.()
+                      }
+                    >
+                      Handouts
+                    </MenuItem>
+                    <MenuCheckItem
+                      checked={
+                        !!actions.current?.slideActions?.slideNumbers?.()
+                      }
+                      onSelect={() =>
+                        actions.current?.slideActions?.toggleSlideNumbers?.()
+                      }
+                    >
+                      Slide numbers
+                    </MenuCheckItem>
                   </Menu>
                   <Menu label="Insert">
                     <MenuItem
@@ -3691,6 +3827,22 @@ function Workspace() {
                       }
                     >
                       Image
+                    </MenuItem>
+                    <MenuItem
+                      synonyms={["audio", "insert audio", "sound"]}
+                      onSelect={() =>
+                        actions.current?.slideActions?.insertAudio()
+                      }
+                    >
+                      Audio
+                    </MenuItem>
+                    <MenuItem
+                      synonyms={["video", "insert video", "movie"]}
+                      onSelect={() =>
+                        actions.current?.slideActions?.insertVideo()
+                      }
+                    >
+                      Video
                     </MenuItem>
                     <SubMenu label="Shape">
                       <MenuItem
@@ -3718,6 +3870,15 @@ function Workspace() {
                         Ellipse
                       </MenuItem>
                     </SubMenu>
+                    <MenuItem
+                      synonyms={["word art", "wordart"]}
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.slideActions?.insertWordArt()
+                      }
+                    >
+                      Word art
+                    </MenuItem>
                     <SubMenu label="Animation">
                       {(
                         [
