@@ -220,10 +220,10 @@
   gap: 4px 36px;
 }
 .page-setup-dialog .page-setup-preview-sheet {
-  width: 96px !important;
-  height: 96px !important;
-  min-width: 96px !important;
-  min-height: 96px !important;
+  width: 96px;
+  height: 120px;
+  min-width: 96px;
+  min-height: 120px;
   max-width: none;
   flex-shrink: 0;
 }
@@ -245,10 +245,10 @@
   }
 }
 .page-setup-dialog .page-setup-preview .page-setup-preview-sheet {
-  width: 96px !important;
-  height: 96px !important;
-  min-width: 96px !important;
-  min-height: 96px !important;
+  width: 96px;
+  height: 120px;
+  min-width: 96px;
+  min-height: 120px;
   max-width: none;
   aspect-ratio: auto;
   flex-shrink: 0;
