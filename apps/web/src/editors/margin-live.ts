@@ -3,7 +3,7 @@ import {
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
 import { liveOrientation } from "./landscape-live";
-import { liveLetterheadText } from "./letterhead-text-live";
+import { liveFurnitureImages, liveLetterheadText } from "./letterhead-text-live";
 import { letterheadLiveEvent, liveEdgeDistances } from "./letterhead-live";
 import { livePageNumbers } from "./page-number-live";
 import { livePaperSize } from "./paper-size-live";
@@ -38,10 +38,13 @@ export function livePageSettings(
   saved: PageSettings,
   draft: PageSettings,
 ): PageSettings {
-  return livePageNumbers(
-    liveLetterheadText(
-      liveOrientation(
-        livePaperSize(liveMargins(liveEdgeDistances(saved, draft), draft), draft),
+  return liveFurnitureImages(
+    livePageNumbers(
+      liveLetterheadText(
+        liveOrientation(
+          livePaperSize(liveMargins(liveEdgeDistances(saved, draft), draft), draft),
+          draft,
+        ),
         draft,
       ),
       draft,

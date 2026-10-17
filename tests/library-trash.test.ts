@@ -71,6 +71,17 @@ it("searches Trash from All files and keeps stars sorted by the caller", () => {
   expect(titles("trash", "")).toEqual(["Lasagne"]);
 });
 
+it("hides forms until the feature flag asks for them", () => {
+  const now = new Date("2026-04-01T00:00:00.000Z");
+  const notes = { file: createFile("doc", "Notes") };
+  const signUps = { file: createFile("form", "Plot sign-ups") };
+  const titles = (forms: boolean) =>
+    visibleRecords([notes, signUps], "all", "", now, { forms }).map((record) => record.file.title);
+  expect(titles(true)).toEqual(["Notes", "Plot sign-ups"]);
+  expect(titles(false)).toEqual(["Notes"]);
+  expect(visibleRecords([signUps], "form", "", now, { forms: false })).toEqual([]);
+});
+
 it("names the desktop file and says the copy on disk stays", () => {
   const file = createFile("doc", "Medication times");
   expect(moveToTrashTitle(true)).toContain("stays on disk");

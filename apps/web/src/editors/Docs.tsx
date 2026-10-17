@@ -55,6 +55,8 @@ import {
   EllipsisVertical,
   Check,
   X,
+  Pencil,
+  Rows3,
 } from "lucide-react";
 import {
   filename,
@@ -151,10 +153,13 @@ import { KeepLines } from "./doc-keep-lines";
 import { MailMergeDialog } from "./mail-merge-dialog";
 import { InsertChartDialog } from "./doc-chart-dialog";
 import { LinkedChart } from "./doc-linked-chart";
+import { DrawingDialog } from "./doc-drawing";
+import { SectionBreak, SectionBreakDialog, type DocSection } from "./doc-section-break";
 
 export const extensions: Extensions = [
   DocumentPagination,
   PageBreak,
+  SectionBreak,
   columnLayout,
   ArabicNumberStart,
   ...documentNotes,
@@ -328,6 +333,10 @@ export default function Docs({
   const [pageDraft, setPageDraft] = useState<PageSettings>(() =>
     documentPageSettings(file.content),
   );
+  const [drawingOpen, setDrawingOpen] = useState(false);
+  const [drawingScene, setDrawingScene] = useState<string | null>(null);
+  const [sectionOpen, setSectionOpen] = useState(false);
+  const [sections, setSections] = useState<DocSection[]>([]);
 
   const readOnlyRef = useRef(readOnly);
   readOnlyRef.current = readOnly;
@@ -731,6 +740,7 @@ export default function Docs({
       return {
         revision: transactionNumber,
         bold: e?.isActive("bold"),
+        widowControl: e?.isActive("paragraph", { widowControl: true }),
         italic: e?.isActive("italic"),
         underline: e?.isActive("underline"),
         strike: e?.isActive("strike"),
@@ -1101,6 +1111,19 @@ export default function Docs({
         insertHorizontalRule: () =>
           editor.chain().focus().setHorizontalRule().run(),
         insertPageBreak: () => editor.chain().focus().setPageBreak().run(),
+        insertDrawing: () => {
+          if (readOnlyRef.current) return;
+          const saved = editor.isActive("image") ? editor.getAttributes("image").drawing : null;
+          setDrawingScene(typeof saved === "string" ? saved : null);
+          setDrawingOpen(true);
+        },
+        insertSectionBreak: () => {
+          if (!readOnlyRef.current) setSectionOpen(true);
+        },
+        toggleWidowControl: () => {
+          const on = editor.isActive("paragraph", { widowControl: true });
+          editor.chain().focus().updateAttributes("paragraph", { widowControl: on ? null : true }).run();
+        },
         insertComment: () => insertComment.current(),
         openComments: () => openComments.current(),
         insertTableOfContents: (pageNumbers = true) =>
@@ -1154,8 +1177,16 @@ export default function Docs({
       const start = raw === "" ? Number.NaN : Number(raw);
       setArabicPage(Number.isInteger(start) && start >= 0 ? start : null);
     };
+    const sectionsEvent = (event: Event) => {
+      const detail = (event as CustomEvent<DocSection[]>).detail;
+      setSections(Array.isArray(detail) ? detail : []);
+    };
     editor.view.dom.addEventListener("suiteleaf-pages", pages);
-    return () => editor.view.dom.removeEventListener("suiteleaf-pages", pages);
+    editor.view.dom.addEventListener("suiteleaf-sections", sectionsEvent);
+    return () => {
+      editor.view.dom.removeEventListener("suiteleaf-pages", pages);
+      editor.view.dom.removeEventListener("suiteleaf-sections", sectionsEvent);
+    };
   }, [editor]);
 
   useLayoutEffect(() => {
@@ -1725,6 +1756,17 @@ export default function Docs({
         <Tool label="Insert image" onClick={() => imageInput.current?.click()}>
           <ImagePlus size={16} />
         </Tool>
+        <Tool
+          label="Drawing"
+          onClick={() => {
+            const saved = editor.isActive("image") ? editor.getAttributes("image").drawing : null;
+            setDrawingScene(typeof saved === "string" ? saved : null);
+            setDrawingOpen(true);
+          }}
+          disabled={readOnly}
+        >
+          <Pencil size={16} />
+        </Tool>
         <Tool label="Insert table" onClick={() => setTableOpen(true)}>
           <Table size={16} />
         </Tool>
@@ -1794,6 +1836,21 @@ export default function Docs({
         </Tool>
         <Tool label="Find and replace" onClick={() => setFindOpen((v) => !v)}>
           <Search size={16} />
+        </Tool>
+        <Tool
+          label="Don't leave one line"
+          active={state?.widowControl}
+          disabled={readOnly}
+          onClick={() => {
+            const on = editor.isActive("paragraph", { widowControl: true });
+            editor
+              .chain()
+              .focus()
+              .updateAttributes("paragraph", { widowControl: on ? null : true })
+              .run();
+          }}
+        >
+          <Rows3 size={16} />
         </Tool>
         <SuggestionModeSwitch />
         {moreDocTools.open ? (
@@ -2442,6 +2499,7 @@ export default function Docs({
               pageCount={pageCount}
               readOnly={readOnly}
               arabicStart={arabicPage}
+              sections={sections}
             />
             <PageGutterBands settings={shownSettings} pageCount={pageCount} />
             <EditorContent editor={editor} />
@@ -2466,6 +2524,49 @@ export default function Docs({
       </div>
       {proofing.ui}
       {grammar.ui}
+      {drawingOpen ? (
+        <DrawingDialog
+          scene={drawingScene}
+          onClose={() => setDrawingOpen(false)}
+          onInsert={(src, scene) => {
+            const replacing = editor.isActive("image");
+            const chain = editor.chain().focus();
+            if (replacing) {
+              chain
+                .updateAttributes("image", {
+                  src,
+                  alt: "Drawing",
+                  drawing: scene,
+                })
+                .run();
+              return;
+            }
+            chain
+              .setImage({ src, alt: "Drawing" })
+              .command(({ tr }) => {
+                if (
+                  scene &&
+                  tr.selection instanceof NodeSelection &&
+                  tr.selection.node.type.name === "image"
+                )
+                  tr.setNodeAttribute(tr.selection.from, "drawing", scene);
+                if (!(tr.selection instanceof NodeSelection)) return true;
+                const after = tr.selection.to;
+                if (!tr.doc.resolve(after).nodeAfter?.isTextblock)
+                  tr.insert(after, tr.doc.type.schema.nodes.paragraph.create());
+                tr.setSelection(TextSelection.create(tr.doc, after + 1));
+                return true;
+              })
+              .run();
+          }}
+        />
+      ) : null}
+      {sectionOpen ? (
+        <SectionBreakDialog
+          onClose={() => setSectionOpen(false)}
+          onInsert={(attrs) => editor.chain().focus().setSectionBreak(attrs).run()}
+        />
+      ) : null}
       <footer className="editor-status">
         <span className="word-count">{proofing.label}</span> <SuggestionFlag />{" "}
         <span>

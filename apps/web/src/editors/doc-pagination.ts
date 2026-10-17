@@ -21,6 +21,7 @@ import {
   staysWithFollowingBlock,
 } from "./doc-keep-next";
 import { annotateWidowLines, avoidSingleLine } from "./doc-widow-control";
+import { sectionAttrs, type DocSection } from "./doc-section-break";
 import { keepParagraphTogether, keepsLines } from "./doc-keep-lines";
 import { gutterDecorations } from "./doc-gutter";
 
@@ -102,6 +103,9 @@ type Boundary = {
   page?: number;
   /** Set on each visual line of a paragraph with widow/orphan control. */
   widowControl?: boolean;
+  section?: DocSection;
+  /** This break is stored inside a column grid, so its spacer must span both columns. */
+  inColumns?: boolean;
   blockPos?: number;
   line?: number;
   lineCount?: number;
@@ -201,6 +205,9 @@ export const DocumentPagination = Extension.create({
                   (view.dom as HTMLElement).offsetWidth || 1;
               const boundaries: Boundary[] = [];
               const reserves = noteReserves(view);
+              // A section break inside the column grid would be measured beside
+              // the next paragraph. Lift it out before reading positions.
+              layoutColumnSectionBreaks(view);
               view.state.doc.descendants((node, pos, parent) => {
                 // Footnote bodies are positioned on the page that cites them.
                 if (node.type.name === "note" && node.attrs.kind !== "endnote")
@@ -210,8 +217,12 @@ export const DocumentPagination = Extension.create({
                 const rect = dom.getBoundingClientRect();
                 const top = (rect.top - origin) / scale - topMargin;
                 const bottom = (rect.bottom - origin) / scale - topMargin;
-                if (node.type.name === "pageBreak") {
-                  boundaries.push({ pos, top, bottom, manual: true });
+                if (node.type.name === "pageBreak" || node.type.name === "sectionBreak") {
+                  const section =
+                    node.type.name === "sectionBreak"
+                      ? { page: 0, ...sectionAttrs(node.attrs) }
+                      : undefined;
+                  boundaries.push({ pos, top, bottom, manual: true, section });
                   return false;
                 }
                 if (node.type.name === "tableRow") {
@@ -239,7 +250,30 @@ export const DocumentPagination = Extension.create({
                 if (node.type.name === "columnLayout") {
                   // The two columns share one vertical band, so a page break
                   // belongs to the group rather than to each paragraph.
+                  // A stored section break is not part of that grid: it spans
+                  // both columns and the text after it starts on the next page.
                   boundaries.push({ pos, top, bottom });
+                  node.descendants((child, rel) => {
+                    if (child.type.name !== "sectionBreak") return;
+                    const at = pos + 1 + rel;
+                    const childDom = view.nodeDOM(at);
+                    const childRect =
+                      childDom instanceof HTMLElement
+                        ? childDom.getBoundingClientRect()
+                        : rect;
+                    boundaries.push({
+                      pos: at,
+                      top: (childRect.top - origin) / scale - topMargin,
+                      bottom: (childRect.bottom - origin) / scale - topMargin,
+                      manual: true,
+                      inColumns: true,
+                      section: {
+                        page: 0,
+                        ...sectionAttrs(child.attrs as Record<string, unknown>),
+                      },
+                    });
+                    return false;
+                  });
                   return false;
                 }
                 if (
@@ -314,6 +348,7 @@ export const DocumentPagination = Extension.create({
               const decorations: Decoration[] = [];
               let added = 0,
                 page = 0;
+              const sectionMarks: DocSection[] = [];
               for (const [i, next] of boundaries.entries()) {
                 const start = page * (height + 24),
                   end = start + bodyHeight - (reserves[page] ?? 0);
@@ -351,6 +386,11 @@ export const DocumentPagination = Extension.create({
                         spacer.setAttribute("aria-hidden", "true");
                         spacer.contentEditable = "false";
                         spacer.style.setProperty("--spacer-height", `${gap}px`);
+                        if (b.inColumns) {
+                          spacer.style.display = "block";
+                          spacer.style.width = "100%";
+                          spacer.style.setProperty("column-span", "all");
+                        }
                         if (b.row) {
                           const cell = document.createElement("td");
                           cell.colSpan = b.columns || 1;
@@ -367,6 +407,8 @@ export const DocumentPagination = Extension.create({
                   );
                   added += gap;
                   page++;
+                  if (b.section)
+                    sectionMarks.push({ ...b.section, page });
                 } else if (next.page == null) next.page = page;
               }
               let arabicPage: number | null = null;
@@ -409,11 +451,18 @@ export const DocumentPagination = Extension.create({
                   )
                   .setMeta("addToHistory", false),
               );
+              layoutColumnSectionBreaks(view);
               for (const [el, top] of scrolled) el.scrollTop = top;
               view.dom.dispatchEvent(
                 new CustomEvent("suiteleaf-pages", {
                   bubbles: true,
                   detail: pages,
+                }),
+              );
+              view.dom.dispatchEvent(
+                new CustomEvent("suiteleaf-sections", {
+                  bubbles: true,
+                  detail: sectionMarks,
                 }),
               );
               if (reveal) {
@@ -467,6 +516,42 @@ export const DocumentPagination = Extension.create({
     ];
   },
 });
+/**
+ * A section break stored in a column grid is another grid item, so with
+ * align-items: start the page spacer sits beside the following blocks.
+ * Switch that group to columns the break can span, which pushes the
+ * following text onto the next page.
+ */
+function layoutColumnSectionBreaks(view: EditorView) {
+  view.state.doc.descendants((node, pos) => {
+    if (node.type.name !== "columnLayout") return;
+    const dom = view.nodeDOM(pos);
+    if (!(dom instanceof HTMLElement)) return false;
+    let broken = false;
+    node.forEach((child) => {
+      if (child.type.name === "sectionBreak") broken = true;
+    });
+    dom.classList.toggle("doc-columns-page-break", broken);
+    if (broken) {
+      dom.style.display = "block";
+      dom.style.columnCount = "2";
+      dom.style.columnGap = "0.5in";
+    } else {
+      dom.style.display = "";
+      dom.style.columnCount = "";
+      dom.style.columnGap = "";
+    }
+    node.descendants((child, rel) => {
+      if (child.type.name !== "sectionBreak") return;
+      const childDom = view.nodeDOM(pos + 1 + rel);
+      if (childDom instanceof HTMLElement)
+        childDom.style.setProperty("column-span", broken ? "all" : "");
+      return false;
+    });
+    return false;
+  });
+}
+
 function noteReserves(view: EditorView): number[] {
   const raw = (view.dom as HTMLElement).dataset.noteReserve;
   if (!raw) return [];

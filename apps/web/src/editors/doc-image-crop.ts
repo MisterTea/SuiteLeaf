@@ -72,6 +72,12 @@ export const croppableImage = Image.extend({
       cropRight: cropAttribute("cropRight", "data-crop-right"),
       cropBottom: cropAttribute("cropBottom", "data-crop-bottom"),
       wrap: imageWrapAttribute(),
+      /** Excalidraw scene, so Insert › Drawing can open this picture again. */
+      drawing: {
+        default: null,
+        parseHTML: (element: HTMLElement) => element.getAttribute("data-drawing"),
+        renderHTML: () => ({}),
+      },
     };
   },
   addNodeView() {

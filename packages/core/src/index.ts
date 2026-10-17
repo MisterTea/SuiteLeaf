@@ -252,6 +252,13 @@ export const presentationSchema = z.object({
   slideOrder: z.array(z.string()),
   slides: z.record(z.string(), slideSchema),
   theme: slideThemeSchema.optional(),
+  /** Objects and a background drawn behind every slide. */
+  master: z
+    .object({
+      background: z.object({ color: z.string().max(40).optional() }).optional(),
+      elements: z.array(slideElementSchema).max(30),
+    })
+    .optional(),
   /** A MARP deck is markdown with a single column or two columns, not free placement. */
   marp: z.boolean().optional(),
 });

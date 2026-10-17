@@ -2,11 +2,14 @@ import { expect, test } from "vitest";
 import { createFile, parseFile, serializeFile } from "../packages/core/src";
 
 import {
+  PRINT_MAX_CELLS,
   escapePrint,
   mergePrint,
+  paginatePrinted,
   printMarkup,
   printedPages,
   toggleBreak,
+  usedCellCount,
   writeSheetPrint,
   type PrintContent,
 } from "../apps/web/src/editors/sheet-print";
@@ -88,6 +91,40 @@ test("print markup repeats the header on page 2 and escapes cell text", () => {
   const plain = printMarkup("Budget", "Sheet", printedPages([["A"], ["B"]], { breaksAbove: [1], repeatFirstRow: false }), false);
   expect(plain).not.toContain("<thead>");
   expect(escapePrint(`"'<>&`)).toBe("&quot;&#39;&lt;&gt;&amp;");
+});
+
+test("a sheet larger than 10,000 cells splits across printed pages", () => {
+  const rows = Array.from({ length: 200 }, () => Array.from({ length: 60 }, () => 1));
+  expect(usedCellCount(rows)).toBe(12_000);
+  expect(usedCellCount(rows)).toBeGreaterThan(10_000);
+  expect(PRINT_MAX_CELLS).toBeGreaterThan(10_000);
+  const pages = paginatePrinted(printedPages(rows, { breaksAbove: [], repeatFirstRow: false }));
+  expect(pages.length).toBeGreaterThan(1);
+  expect(pages.every((page) => page.rows.length <= 60)).toBe(true);
+  expect(pages.flatMap((page) => page.rows)).toHaveLength(200);
+});
+
+test("a repeated print header stays on each piece of a tall page", () => {
+  const rows = Array.from({ length: 80 }, (_, index) => [String(index)]);
+  const printed = printedPages(rows, { breaksAbove: [10], repeatFirstRow: true });
+  const pages = paginatePrinted(printed, 15);
+  expect(pages.slice(1).every((page) => page.rows[0]?.cells[0] === "0")).toBe(true);
+  expect(pages.some((page) => page.rows[0]?.repeated)).toBe(true);
+});
+
+test("a tall sheet repeats row 1 on later pages when there is no manual break", () => {
+  const rows = Array.from({ length: 80 }, (_, index) => [String(index)]);
+  const pages = paginatePrinted(
+    printedPages(rows, { breaksAbove: [], repeatFirstRow: true }),
+    15,
+  );
+  expect(pages.length).toBeGreaterThan(1);
+  expect(pages.every((page) => page.rows[0]?.cells[0] === "0")).toBe(true);
+  expect(pages[0]?.rows[0]?.repeated).toBe(false);
+  expect(pages.slice(1).every((page) => page.rows[0]?.repeated)).toBe(true);
+  expect(pages.slice(1).map((page) => page.rows[1]?.source)).toEqual([15, 29, 43, 57, 71]);
+  const html = printMarkup("Tall", "Sheet", pages, true);
+  expect(html.match(/<thead>/g)).toHaveLength(pages.length);
 });
 
 test("print settings survive the native file round trip and can be cleared", () => {

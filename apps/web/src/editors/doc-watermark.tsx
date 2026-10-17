@@ -1,12 +1,20 @@
 import type { CSSProperties } from "react";
 import {
+  furnitureImage,
   watermarkText,
   type PageSettings,
 } from "@suiteleaf/core/document-layout";
 
 /** Store the phrase that is actually drawn, not surrounding spaces. */
 export function pageSetupToSave(draft: PageSettings): PageSettings {
-  return { ...draft, watermark: watermarkText(draft.watermark) };
+  return {
+    ...draft,
+    watermark: watermarkText(draft.watermark),
+    headerImage: furnitureImage(draft.headerImage),
+    footerImage: furnitureImage(draft.footerImage),
+    firstHeaderImage: furnitureImage(draft.firstHeaderImage),
+    firstFooterImage: furnitureImage(draft.firstFooterImage),
+  };
 }
 
 /** The Page setup field, placed beside the page-number choices. */

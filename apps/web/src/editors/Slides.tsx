@@ -44,6 +44,11 @@ import {
   type SlideTheme,
 } from "@suiteleaf/core";
 import { exportBinary, exportText, printDocument } from "../storage";
+import { PresenterNextSlide, SlideMasterLayer } from "./slide-master-ui";
+import { SlideMasterPanel } from "./slide-master-panel";
+import { AnimationPane } from "./slide-animation-pane";
+import { SlideshowRecorder } from "./slide-record";
+import { readMaster } from "./slide-master";
 import { Menu, MenuItem, Tool, type EditorActions } from "../ui";
 import { MenuSearchPill } from "../command-palette";
 import {
@@ -201,7 +206,9 @@ export default function Slides({
   const [blankScreen, setBlankScreen] = useState<string | null>(null);
   const [showStartedAt, setShowStartedAt] = useState(0);
   const [clock, setClock] = useState(0);
-  const [panel, setPanel] = useState<"theme" | "transition" | null>(null);
+  const [panel, setPanel] = useState<"theme" | "transition" | "animation" | "master" | null>(null);
+  const [recording, setRecording] = useState(false);
+  const recorderRef = useRef<SlideshowRecorder | null>(null);
   const [marpOpen, setMarpOpen] = useState(false);
   const [marpText, setMarpText] = useState("");
   const [marpError, setMarpError] = useState<string | null>(null);
@@ -1403,12 +1410,22 @@ ${slidesHtml}
   };
 
   const endShow = useCallback(() => {
+    const recorder = recorderRef.current;
+    recorderRef.current = null;
+    setRecording(false);
+    if (recorder) {
+      void recorder.stop().then(async (blob) => {
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        if (!bytes.length) return;
+        await exportBinary(filename(file.title, "webm"), bytes, blob.type || "video/webm");
+      });
+    }
     setPresenting(false);
     if (showFullscreenRef.current) {
       showFullscreenRef.current = false;
       if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     }
-  }, []);
+  }, [file.title]);
 
   useAgentHost("editor", () => {
     const ctx: SlidesAgentContext = {
@@ -1549,6 +1566,10 @@ ${slidesHtml}
         applyLayout: (layout) => apiRef.current.applyLayout(layout),
         openTheme: () => apiRef.current.openTheme(),
         openTransition: () => apiRef.current.openTransition(),
+        openAnimationPane: () => setPanel((open) => (open === "animation" ? null : "animation")),
+        openMaster: () => setPanel((open) => (open === "master" ? null : "master")),
+        presenterView: () =>
+          beginShow(Math.max(0, deckRef.current.slideOrder.indexOf(activeSlideId)), true),
         insertComment: () => openSlideComment(),
         openComments: () => openSlideCommentPanel(),
         openResolved: () => openSlideResolved(),
@@ -1774,6 +1795,17 @@ ${slidesHtml}
 
   const presentSlide =
     deck.slides[deck.slideOrder[presentSlideIndex]] || activeSlide;
+  useEffect(() => {
+    if (!recording) return;
+    const master = readMaster(deck);
+    recorderRef.current?.paint(
+      presentSlide,
+      deck.width || 960,
+      deck.height || 540,
+      master.elements,
+      master.background?.color,
+    );
+  }, [recording, presentSlide, deck]);
   const nextPresentSlide = deck.slides[deck.slideOrder[presentSlideIndex + 1]];
   const fadeIdsAt = (index: number) =>
     fadeOnClickIds(deck.slides[deck.slideOrder[index]]?.elements ?? []);
@@ -2543,8 +2575,11 @@ ${slidesHtml}
                   >
                     Present from current slide
                   </MenuItem>
-                  <MenuItem onSelect={() => beginShow(currentSlideIndex, true)}>
-                    Present with speaker notes
+                  <MenuItem
+                    synonyms={["presenter view", "speaker view"]}
+                    onSelect={() => beginShow(currentSlideIndex, true)}
+                  >
+                    Presenter view
                   </MenuItem>
                 </Dropdown.Content>
               </Dropdown.Portal>
@@ -2837,11 +2872,18 @@ ${slidesHtml}
             <div
               className={`slide-canvas print-slide${canvasMotion ? ` deck-motion-${canvasMotion.type}` : ""}`}
               style={{
-                backgroundColor: shownSlide?.background?.color || "#ffffff",
+                backgroundColor:
+                  shownSlide?.background?.color ||
+                  deck.master?.background?.color ||
+                  "#ffffff",
                 aspectRatio: `${deck.width || 960} / ${deck.height || 540}`,
                 ["--deck-motion" as string]: `${canvasMotion?.ms ?? 0}ms`,
               }}
             >
+              <SlideMasterLayer
+                deck={deck}
+                font={(size) => `${size * 0.95}px`}
+              />
               {shownSlide?.elements.map((el) => {
                 const isSelected = el.id === selectedElementId;
                 const posStyle: React.CSSProperties = {
@@ -3170,7 +3212,24 @@ ${slidesHtml}
             ) : null}
           </div>
         </div>
-        {panel ? (
+        {panel === "animation" ? (
+          <AnimationPane
+            deck={deck}
+            slideId={activeSlideId}
+            slide={deck.slides[activeSlideId]}
+            onChange={(next) => commit(next)}
+            onClose={() => setPanel(null)}
+            onSelect={(elementId) => selectElement(elementId)}
+          />
+        ) : null}
+        {panel === "master" ? (
+          <SlideMasterPanel
+            deck={deck}
+            onChange={(next) => commit(next)}
+            onClose={() => setPanel(null)}
+          />
+        ) : null}
+        {panel === "theme" || panel === "transition" ? (
           <SlideDesignPanel
             mode={panel}
             onClose={() => {
@@ -3260,7 +3319,10 @@ ${slidesHtml}
             key={presentSlideIndex}
             className={`presenter-slide-box show-slide${showMotionClass}`}
             style={{
-              backgroundColor: presentSlide?.background?.color || "#ffffff",
+              backgroundColor:
+                presentSlide?.background?.color ||
+                deck.master?.background?.color ||
+                "#ffffff",
               ["--deck-motion" as string]: `${transitionMs(presentSlide?.transition, reducedMotion)}ms`,
               aspectRatio: `${deck.width || 960} / ${deck.height || 540}`,
               width: showSpeakerNotes
@@ -3269,6 +3331,10 @@ ${slidesHtml}
             }}
             onClick={() => moveShowRef.current("next")}
           >
+            <SlideMasterLayer
+              deck={deck}
+              font={(size) => `calc(${size} / ${deck.width || 960} * 100cqw)`}
+            />
             {renderShowElements(presentSlide, true)}
             {blankScreen ? (
               <div
@@ -3304,16 +3370,9 @@ ${slidesHtml}
                       {slideHeading(nextPresentSlide) ||
                         `Slide ${presentSlideIndex + 2}`}
                     </span>
-                    <div
-                      className="presenter-next-slide show-slide"
-                      style={{
-                        backgroundColor:
-                          nextPresentSlide.background?.color || "#ffffff",
-                        aspectRatio: `${deck.width || 960} / ${deck.height || 540}`,
-                      }}
-                    >
+                    <PresenterNextSlide deck={deck} slide={nextPresentSlide}>
                       {renderShowElements(nextPresentSlide, false)}
-                    </div>
+                    </PresenterNextSlide>
                   </>
                 ) : (
                   <span>End of presentation</span>
@@ -3358,6 +3417,46 @@ ${slidesHtml}
             >
               Next
               <ChevronRight size={16} />
+            </button>
+            <button
+              type="button"
+              className="presenter-notes-btn"
+              aria-pressed={recording}
+              onClick={() => {
+                if (recording) {
+                  const recorder = recorderRef.current;
+                  recorderRef.current = null;
+                  setRecording(false);
+                  void recorder?.stop().then(async (blob) => {
+                    const bytes = new Uint8Array(await blob.arrayBuffer());
+                    if (!bytes.length) return;
+                    await exportBinary(
+                      filename(file.title, "webm"),
+                      bytes,
+                      blob.type || "video/webm",
+                    );
+                  });
+                  return;
+                }
+                const recorder = new SlideshowRecorder(deck.width || 960, deck.height || 540);
+                const master = readMaster(deck);
+                recorder.paint(
+                  presentSlide,
+                  deck.width || 960,
+                  deck.height || 540,
+                  master.elements,
+                  master.background?.color,
+                );
+                try {
+                  recorder.start();
+                } catch {
+                  return;
+                }
+                recorderRef.current = recorder;
+                setRecording(true);
+              }}
+            >
+              {recording ? "Stop recording" : "Record"}
             </button>
             <button
               type="button"

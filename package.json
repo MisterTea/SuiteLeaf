@@ -63,5 +63,9 @@
   "dependencies": {
     "@types/localforage": "^0.0.33",
     "localforage": "^1.10.0"
+  },
+  "overrides": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
   }
 }

@@ -6,10 +6,9 @@ import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import { readProofing, type ProofingSettings } from "./doc-word-count";
 
 /**
- * A small on-device grammar pass beside spelling. It never consults the
- * personal dictionary and never sends text anywhere. The rules are the closed
- * set this storyboard can show: "were"/"was" agreement, and "its" before a
- * word that needs "it's".
+ * On-device grammar beside spelling. Nothing is sent off the machine.
+ * Agreement, articles, pronouns, and common mix-ups. The checker replaces
+ * one word at a time so the existing review panel can apply each fix.
  */
 const WORD = /[A-Za-z]+(?:['’-][A-Za-z]+)*/g;
 const SINGULAR_DETERMINERS = new Set(["the", "a", "an", "this", "that"]);
@@ -27,6 +26,32 @@ const IRREGULAR_PLURAL = new Set(["people", "children", "men", "women", "feet", 
 const SINGULAR_PRONOUNS = new Set(["he", "she", "it"]);
 const SUBJUNCTIVE = new Set(["if", "as", "wish"]);
 /** Words that cannot follow possessive "its", so the writer meant "it's". */
+const A_BEFORE_VOWEL = new Set(["hour", "honest", "honor", "honour", "heir"]);
+const AN_BEFORE_CONSONANT = new Set(["university", "unique", "unit", "one", "once", "european", "euro"]);
+const BE_AFTER = new Set(["is", "are", "was", "were", "a", "an", "the"]);
+const THEIR_NOUNS = new Set([
+  "car",
+  "book",
+  "house",
+  "name",
+  "friend",
+  "friends",
+  "family",
+  "home",
+  "job",
+  "work",
+  "money",
+  "time",
+  "idea",
+  "plan",
+]);
+const YOURE_NEXT = new Set(["going", "coming", "welcome", "right", "late", "ready"]);
+const YOUR_NOUNS = new Set(["car", "book", "name", "house", "friend", "job", "turn"]);
+const THAN_PREVIOUS = new Set(["more", "less", "better", "worse", "rather", "other", "fewer"]);
+const HAVE_PREVIOUS = new Set(["could", "should", "would", "might", "must"]);
+const DONT_SINGULAR = new Set(["he", "she", "it"]);
+const DOESNT_PLURAL = new Set(["they", "we", "you"]);
+
 const ITS_BLOCKERS = new Set([
   "the",
   "a",
@@ -162,6 +187,45 @@ function issuesForTokens(tokens: Token[], ignored: readonly string[]): GrammarIs
           key: `its ${follower}`,
         });
       }
+    } else if (lower === "i" && token.text === "i") {
+      add({
+        from: token.from,
+        to: token.to,
+        text: token.text,
+        suggestion: "I",
+        key: "i",
+      });
+    } else {
+      const next = tokens[index + 1]?.text.toLowerCase() ?? "";
+      const suggest = (suggestion: string, key: string) =>
+        add({
+          from: token.from,
+          to: token.to,
+          text: token.text,
+          suggestion: cased(token.text, suggestion),
+          key,
+        });
+      if (lower === "a" && next && (A_BEFORE_VOWEL.has(next) || (/^[aeiou]/.test(next) && !AN_BEFORE_CONSONANT.has(next))))
+        suggest("an", `a ${next}`);
+      else if (lower === "an" && next && (AN_BEFORE_CONSONANT.has(next) || (!/^[aeiou]/.test(next) && !A_BEFORE_VOWEL.has(next))))
+        suggest("a", `an ${next}`);
+      else if (lower === "your" && YOURE_NEXT.has(next)) suggest("you're", `your ${next}`);
+      else if (lower === "you're" && YOUR_NOUNS.has(next)) suggest("your", `you're ${next}`);
+      else if (lower === "their" && BE_AFTER.has(next)) suggest("there", `their ${next}`);
+      else if (lower === "their" && (next === "going" || next === "coming")) suggest("they're", `their ${next}`);
+      else if (lower === "there" && THEIR_NOUNS.has(next)) suggest("their", `there ${next}`);
+      else if (lower === "then" && previous && THAN_PREVIOUS.has(previous.text.toLowerCase()))
+        suggest("than", `${previous.text.toLowerCase()} then`);
+      else if (lower === "of" && previous && HAVE_PREVIOUS.has(previous.text.toLowerCase()))
+        suggest("have", `${previous.text.toLowerCase()} of`);
+      else if (lower === "don't" && previous && DONT_SINGULAR.has(previous.text.toLowerCase()))
+        suggest("doesn't", `${previous.text.toLowerCase()} don't`);
+      else if (lower === "doesn't" && previous && DOESNT_PLURAL.has(previous.text.toLowerCase()))
+        suggest("don't", `${previous.text.toLowerCase()} doesn't`);
+      else if ((lower === "is" || lower === "are") && previous?.text.toLowerCase() === "i")
+        suggest("am", `i ${lower}`);
+      else if (lower === "are" && previous && DONT_SINGULAR.has(previous.text.toLowerCase()))
+        suggest("is", `${previous.text.toLowerCase()} are`);
     }
   }
   return issues;

@@ -1,4 +1,4 @@
-import type { Presentation } from "@suiteleaf/core";
+import type { Presentation, Slide } from "@suiteleaf/core";
 
 /** Hidden in the slideshow until the next click, then faded in. Visible while editing. */
 export const FADE_ON_CLICK = "fade-on-click" as const;
@@ -198,6 +198,60 @@ export function applyFadeOnClick(
 
 export function editorFadeClass(el: { animation?: string }): string {
   return fadesOnClick(el) ? " has-fade-on-click" : "";
+}
+
+export type AnimationRow = {
+  id: string;
+  kind: SlideAnimationKind;
+  order: number;
+  label: string;
+};
+
+/** Click sequence for the animation pane, earliest first. */
+export function animationRows(slide: Slide | undefined): AnimationRow[] {
+  if (!slide) return [];
+  return slide.elements
+    .map((el, index) => ({ el, index }))
+    .filter((item): item is { el: (typeof item)["el"]; index: number } => fadesOnClick(item.el))
+    .map(({ el, index }) => ({
+      id: el.id,
+      kind: (el.animation ?? FADE_ON_CLICK) as SlideAnimationKind,
+      order: el.animationOrder ?? index + 1,
+      label: (el.content?.trim() || el.placeholder || el.alt || el.type).slice(0, 48),
+    }))
+    .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label));
+}
+
+/** Move one animation earlier (-1) or later (1) and renumber the click sequence. */
+export function reorderAnimation(
+  deck: Presentation,
+  slideId: string,
+  elementId: string,
+  direction: -1 | 1,
+): Presentation | null {
+  const slide = deck.slides[slideId];
+  if (!slide) return null;
+  const rows = animationRows(slide);
+  const index = rows.findIndex((row) => row.id === elementId);
+  const target = index + direction;
+  if (index < 0 || target < 0 || target >= rows.length) return null;
+  const order = rows.slice();
+  const [row] = order.splice(index, 1);
+  order.splice(target, 0, row!);
+  const rank = new Map(order.map((item, at) => [item.id, at + 1]));
+  return {
+    ...deck,
+    slides: {
+      ...deck.slides,
+      [slideId]: {
+        ...slide,
+        timing: undefined,
+        elements: slide.elements.map((el) =>
+          rank.has(el.id) ? { ...el, animationOrder: rank.get(el.id) } : el,
+        ),
+      },
+    },
+  };
 }
 
 export function editorFadeAttrs(el: { animation?: string }): {

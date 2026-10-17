@@ -62,6 +62,13 @@
   gap: 8px 12px;
 }
 
+.page-setup-dialog .page-setup-fit {
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+.page-setup-dialog .page-setup-fit-main {
+  gap: 2px;
+}
 .page-setup-fit {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -85,6 +92,9 @@
   color: #3c4043;
   font-size: 13px;
   line-height: 1.35;
+}
+.page-setup-dialog .measure-pair {
+  row-gap: 2px;
 }
 .measure-pair {
   display: grid;
@@ -149,7 +159,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 8px;
+  gap: 2px 8px;
 }
 .page-setup-dialog .page-setup-numbers > label,
 .page-setup-dialog .page-setup-numbers > .page-setup-hint,
@@ -165,7 +175,7 @@
 }
 .page-setup-dialog .page-setup-preview-page {
   min-height: 0;
-  gap: 6px;
+  gap: 0;
   padding: 0;
   border: 0;
   background: transparent;
@@ -175,6 +185,7 @@
   grid-template-columns: 1fr 1fr;
   gap: 8px 16px;
   align-items: center;
+  overflow: hidden;
 }
 .page-setup-dialog .page-setup-text > .page-setup-group {
   grid-column: 1 / -1;
@@ -186,6 +197,38 @@
   gap: 8px;
   align-items: center;
   min-width: 0;
+}
+.page-setup-dialog .page-setup-text-line {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.page-setup-dialog .page-setup-text-line > input {
+  width: 100%;
+  min-width: 0;
+  padding-right: 7.5em;
+}
+.page-setup-dialog .page-setup-text-line .furniture-image-field {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  flex-wrap: nowrap;
+  max-width: 7em;
+  pointer-events: auto;
+}
+.page-setup-dialog .page-setup-text-line .furniture-image-field input[type="file"] {
+  width: 7em;
+  max-width: 7em;
+  font-size: 0;
+  line-height: 0;
+}
+.page-setup-dialog .page-setup-text-line .furniture-image-field input[type="file"]::file-selector-button {
+  font-size: 12px;
+  line-height: 1.2;
+  height: 24px;
+  padding: 2px 6px;
 }
 .page-setup-dialog .doc-watermark-field {
   display: grid;
@@ -214,6 +257,9 @@
   .page-setup-dialog .page-setup-text,
   .page-setup-dialog .doc-watermark-field {
     grid-template-columns: 1fr;
+  }
+  .page-setup-dialog .page-setup-text {
+    overflow: visible;
   }
   .page-setup-dialog .page-setup-basics .page-setup-orientation {
     grid-template-columns: 1fr;

@@ -4,5 +4,6 @@ declare module "dictionary-en-files/*?raw" {
 }
 interface ImportMetaEnv {
   readonly VITE_SUITELEAF_DEMO?: string;
+  readonly VITE_SUITELEAF_FORMS?: string;
   readonly VITE_SUITELEAF_MODEL_HOST?: string;
 }

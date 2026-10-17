@@ -93,13 +93,16 @@ export function visibleRecords(
   filter: LibraryFilter,
   query: string,
   now = new Date(),
+  options?: { forms?: boolean },
 ): FileRecord[] {
   const alive = records.filter((r) => !isTrashExpired(r, now));
+  const forms = options?.forms !== false;
+  const listed = forms ? alive : alive.filter((r) => r.file.kind !== "form");
   const kind =
     filter === "doc" || filter === "sheet" || filter === "slide" || filter === "form"
       ? filter
       : null;
-  const typed = kind ? alive.filter((r) => r.file.kind === kind) : alive;
+  const typed = kind ? listed.filter((r) => r.file.kind === kind) : listed;
   if (query.trim()) {
     if (filter === "trash") return typed.filter((r) => r.trashedAt);
     if (filter === "starred")
