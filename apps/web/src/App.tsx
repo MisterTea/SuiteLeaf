@@ -67,6 +67,7 @@ import {
   type SheetFile,
   type SlideFile,
 } from "@suiteleaf/core";
+import { driveWatchDecision } from "./drive-watch";
 import { storage, SaveQueue, exportText } from "./storage";
 import { editorCollaborator } from "./collaborator";
 import { frogSummary } from "./ai/summarize";
@@ -1425,6 +1426,8 @@ function Workspace() {
     driveQueue = useRef(driveQueueFor(id!)),
     driveTimer = useRef<ReturnType<typeof setTimeout>>(undefined),
     driveConflictRef = useRef<DriveItem | null>(null),
+    /** True while this tab is uploading, so the remote poll ignores our own head. */
+    driveSyncing = useRef(false),
     /** Bumped when a remote save replaces the open file, so a queued upload of the old bytes is dropped. */
     driveGeneration = useRef(0),
     snapshotExplicit = useRef(false),
@@ -1556,6 +1559,7 @@ function Workspace() {
     const generation = driveGeneration.current;
     const snapshot = structuredClone(current.current.file);
     let uploaded = false;
+    driveSyncing.current = true;
     try {
       await driveQueue.current.enqueue(async () => {
         if (driveGeneration.current !== generation || driveConflictRef.current)
@@ -1580,6 +1584,8 @@ function Workspace() {
         setDriveConflict(e.item);
         setStatus("SuiteDrive has a newer version");
       } else setStatus(`Saved on this device · ${message(e)}`);
+    } finally {
+      driveSyncing.current = false;
     }
   }, []);
   const save = useCallback(async () => {
@@ -1785,8 +1791,23 @@ function Workspace() {
     const unsent = () =>
       version.current !== savedVersion.current ||
       (!!current.current?.drive && hasUnsyncedEdits(current.current));
+    const notice = (
+      remoteHead: string | undefined,
+      localHead: string | undefined,
+    ) =>
+      driveWatchDecision({
+        uploading: driveSyncing.current,
+        unsent: unsent(),
+        remoteHead,
+        localHead,
+      });
     const showConflict = (item: DriveItem) => {
       if (item.id !== current.current?.drive?.itemId) return;
+      if (
+        notice(item.headVersionId, current.current?.drive?.versionId) !==
+        "conflict"
+      )
+        return;
       clearTimeout(driveTimer.current);
       driveTimer.current = undefined;
       setDriveConflict(item);
@@ -1803,8 +1824,9 @@ function Workspace() {
         const linked = current.current;
         if (!linked?.drive || linked.drive.itemId !== itemId) return;
         const remote = item.headVersionId;
-        if (!remote || remote === linked.drive.versionId) return;
-        if (unsent()) {
+        const seen = notice(remote, linked.drive.versionId);
+        if (seen === "wait" || seen === "idle") return;
+        if (seen === "conflict") {
           showConflict(item);
           return;
         }
@@ -1813,8 +1835,9 @@ function Workspace() {
         const linkedNow = current.current;
         if (!linkedNow?.drive || linkedNow.drive.itemId !== itemId) return;
         const head = read.versionId || remote;
-        if (head === linkedNow.drive.versionId) return;
-        if (unsent()) {
+        const readSeen = notice(head, linkedNow.drive.versionId);
+        if (readSeen === "wait" || readSeen === "idle") return;
+        if (readSeen === "conflict") {
           showConflict(item);
           return;
         }
@@ -1822,7 +1845,9 @@ function Workspace() {
           if (stop || !alive.current || driveConflictRef.current) return;
           const live = current.current;
           if (!live?.drive || live.drive.itemId !== itemId) return;
-          if (unsent()) {
+          const queued = notice(head, live.drive.versionId);
+          if (queued === "wait" || queued === "idle") return;
+          if (queued === "conflict") {
             showConflict(item);
             return;
           }
@@ -1830,12 +1855,16 @@ function Workspace() {
           if (stop || !alive.current || driveConflictRef.current) return;
           const openNow = current.current;
           if (!openNow?.drive || openNow.drive.itemId !== itemId) return;
-          if (unsent()) {
+          const latestSeen = notice(
+            latest.headVersionId,
+            openNow.drive.versionId,
+          );
+          if (latestSeen === "wait" || latestSeen === "idle") return;
+          if (latestSeen === "conflict") {
             showConflict(latest);
             return;
           }
           if (!latest.headVersionId || latest.headVersionId !== head) return;
-          if (latest.headVersionId === openNow.drive.versionId) return;
           const parsed = parseNamedFile(
             latest.name || openNow.drive.name,
             read.text,
