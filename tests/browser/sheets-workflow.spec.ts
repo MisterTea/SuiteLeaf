@@ -269,7 +269,9 @@ test("$ applies plain currency and Edit menu cut, copy, paste and delete use the
   await page.getByRole("button", { name: "Format as currency" }).click();
   const edit = async (item: string) => {
     await page.getByRole("button", { name: "Edit", exact: true }).click();
-    await page.getByRole("menuitem", { name: item }).click();
+    // "Paste" is also a prefix of "Paste special".
+    const name = item === "Paste" ? /^Paste(?! special)/ : item;
+    await page.getByRole("menuitem", { name }).click();
   };
   // Menu clipboard actions finish asynchronously; wait for each to land
   // before moving the selection, as a person would.
@@ -310,7 +312,7 @@ test("Edit menu paste explains the shortcut when the browser blocks clipboard re
   page.on("pageerror", (e) => errors.push(e.message));
   await newSheet(page, [["Hello"]]);
   await page.getByRole("button", { name: "Edit", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Paste" }).click();
+  await page.getByRole("menuitem", { name: /^Paste(?! special)/ }).click();
   await expect(
     page.getByRole("status").filter({ hasText: "paste" }),
   ).toHaveText(/Use (⌘|Ctrl\+)V to paste\./);

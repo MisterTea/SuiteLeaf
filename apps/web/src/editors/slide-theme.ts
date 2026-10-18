@@ -94,7 +94,7 @@ export function textRole(el: SlideElement): "heading" | "body" | null {
 
 /** Restyle one element. Exceptions keep the font and colours someone set by hand. */
 export function paintElement(el: SlideElement, theme: SlideTheme): SlideElement {
-  if (el.themeOverride) return el;
+  if (el.wordArt || el.themeOverride) return el;
   const role = textRole(el);
   if (role === "heading")
     return { ...el, fontFamily: theme.headingFont, color: theme.headingColor };

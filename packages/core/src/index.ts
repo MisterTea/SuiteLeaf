@@ -135,7 +135,7 @@ export const textRunSchema = z.object({
 export type TextRun = z.infer<typeof textRunSchema>;
 export const slideElementSchema = z.object({
   id: z.string(),
-  type: z.enum(["text", "shape", "image", "table"]),
+  type: z.enum(["text", "shape", "image", "table", "audio", "video"]),
   x: z.number(),
   y: z.number(),
   width: z.number().nonnegative(),
@@ -146,6 +146,11 @@ export const slideElementSchema = z.object({
   runs: z.array(textRunSchema).optional(),
   placeholder: z.string().optional(),
   fontSize: z.number().optional(),
+  /**
+   * Shrink the rendered type so the words fit in the box. Absent means off,
+   * so existing boxes and older files keep their normal size.
+   */
+  autofit: z.boolean().optional(),
   fontFamily: z.string().optional(),
   bold: z.boolean().optional(),
   italic: z.boolean().optional(),
@@ -159,6 +164,11 @@ export const slideElementSchema = z.object({
   fill: z.string().optional(),
   stroke: z.string().optional(),
   strokeWidth: z.number().optional(),
+  /**
+   * Display lettering. The letter fill is `color` and the outline is `stroke`,
+   * so both survive save. Absent on ordinary text boxes and older files.
+   */
+  wordArt: z.enum(["blue", "gold"]).optional(),
   /** Set when someone chose this element's font or colour by hand. */
   themeOverride: z.boolean().optional(),
   /** Hidden in the slideshow until its click, then brought in. */
@@ -261,6 +271,8 @@ export const presentationSchema = z.object({
     .optional(),
   /** A MARP deck is markdown with a single column or two columns, not free placement. */
   marp: z.boolean().optional(),
+  /** When set, each slide shows its place in the deck, starting at 1. Absent means off. */
+  slideNumbers: z.boolean().optional(),
 });
 export type Presentation = z.infer<typeof presentationSchema>;
 type NativeCell = {
@@ -371,14 +383,62 @@ const meta = {
 const formQuestionSchema = z.object({
   id: z.string().min(1),
   prompt: z.string().max(200),
-  kind: z.enum(["text", "choice"]),
+  kind: z.enum(["text", "choice", "rating", "grid"]),
   required: z.boolean(),
   choices: z.array(z.string().max(80)).max(20).optional(),
+  rows: z.array(z.string().max(80)).max(20).optional(),
+  columns: z.array(z.string().max(80)).max(20).optional(),
 });
+/**
+ * Text, choice, and rating answers. A grid is JSON around those labels, so
+ * it is not held to this.
+ */
+const ANSWER_CHARS = 2_000;
+/**
+ * A form label is at most 80 characters. Twenty labels, each answered with
+ * an 80-character column, are 3,200 characters of cells.
+ */
+const GRID_CELL_CHARS = 20 * 80 * 2;
+/**
+ * JSON quotes and escaping around that grid. Anything larger is rejected
+ * before it is parsed.
+ */
+const GRID_ENVELOPE_CHARS = 32_768;
+
+function charCount(value: string): number {
+  return [...value].length;
+}
+
+/** Row and column characters, or null when the answer is not one object of strings. */
+function gridCellChars(value: string): number | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  let cells = 0;
+  for (const [row, column] of Object.entries(parsed)) {
+    if (typeof column !== "string") return null;
+    cells += charCount(row) + charCount(column);
+  }
+  return cells;
+}
+
+function formAnswerFits(kind: string | undefined, value: string): boolean {
+  const length = charCount(value);
+  if (length > GRID_ENVELOPE_CHARS) return false;
+  if (kind !== "grid") return length <= ANSWER_CHARS;
+  if (length <= ANSWER_CHARS) return true;
+  const cells = gridCellChars(value);
+  return cells !== null && cells <= GRID_CELL_CHARS;
+}
+
 const formResponseSchema = z.object({
   id: z.string().min(1),
   at: z.string().datetime(),
-  answers: z.record(z.string(), z.string().max(2000)),
+  answers: z.record(z.string(), z.string().max(GRID_ENVELOPE_CHARS)),
 });
 /** A tab after the first. The first tab's body stays in `content`. */
 const docTabSchema = z.object({
@@ -494,10 +554,27 @@ export const fileSchema = z.discriminatedUnion("kind", [
     ...meta,
     kind: z.literal("form"),
     ...historyFields,
-    content: z.object({
-      questions: z.array(formQuestionSchema).max(100),
-      responses: z.array(formResponseSchema).max(5000),
-    }),
+    content: z
+      .object({
+        questions: z.array(formQuestionSchema).max(100),
+        responses: z.array(formResponseSchema).max(5000),
+      })
+      // Text stays at 2,000 characters. A grid may total 3,200 characters of cells.
+      .superRefine((content, ctx) => {
+        const kinds = new Map(
+          content.questions.map((question) => [question.id, question.kind]),
+        );
+        content.responses.forEach((response, index) => {
+          for (const [id, answer] of Object.entries(response.answers)) {
+            if (formAnswerFits(kinds.get(id), answer)) continue;
+            ctx.addIssue({
+              code: "custom",
+              message: "Answer is too long",
+              path: ["responses", index, "answers", id],
+            });
+          }
+        });
+      }),
   }),
 ]);
 export type SuiteFile = z.infer<typeof fileSchema>;
@@ -672,6 +749,20 @@ export function parseFile(text: string, expectedKind?: Kind | null): SuiteFile {
           throw new Error(
             "Native images must be embedded PNG, JPEG, GIF, WebP, or SVG data.",
           );
+        if (
+          el.type === "audio" &&
+          el.src &&
+          !/^data:audio\/(wav|mpeg|ogg);base64,/i.test(el.src)
+        )
+          throw new Error(
+            "Native audio must be embedded WAV, MP3, or Ogg data.",
+          );
+        if (
+          el.type === "video" &&
+          el.src &&
+          !/^data:video\/(mp4|webm);base64,/i.test(el.src)
+        )
+          throw new Error("Native video must be embedded MP4 or WebM data.");
       }
     }
   } else if (file.kind === "form") {

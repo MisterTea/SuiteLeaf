@@ -61,7 +61,11 @@ jobs:
       # The SuiteDrive browser test runs against a real node and auth sidecar.
       - run: cargo build -p suiteleaf-node
       - run: npm run build:auth
+      # Form cards and the form editor stay behind this flag. The browser
+      # specs open them from Home, so the preview build has to include them.
       - run: npm run build
+        env:
+          VITE_SUITELEAF_FORMS: "1"
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test --shard=${{ matrix.shard }}/4
       - uses: actions/upload-artifact@v4

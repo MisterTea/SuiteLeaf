@@ -359,6 +359,8 @@ export type EditorActions = {
     insertHorizontalRule: () => void;
     insertPageBreak: () => void;
     insertDrawing?: () => void;
+    insertTextBox: () => void;
+    insertShape: (shape: "rect" | "ellipse") => void;
     insertSectionBreak?: () => void;
     toggleWidowControl?: () => void;
     insertComment?: () => void;
@@ -375,6 +377,8 @@ export type EditorActions = {
     openDictionary: () => void;
     openCitations: () => void;
     clearFormatting: () => void;
+    /** Format › Update Normal text to match. */
+    updateNormalText: () => void;
     align: (alignment: "left" | "center" | "right" | "justify") => void;
     setColumns: (columns: 1 | 2) => void;
     columnCount: () => 1 | 2;
@@ -402,6 +406,8 @@ export type EditorActions = {
     insertNote?: () => void;
     commentName?: () => void;
     tabsProtection?: () => void;
+    /** View › Sheet list. Every worksheet, including hidden ones. */
+    openSheetList?: () => void;
     insertCheckbox?: () => void;
     insertDropdown?: () => void;
     insertLink?: () => void;
@@ -410,6 +416,7 @@ export type EditorActions = {
     cut: () => void;
     copy: () => void;
     paste: () => void;
+    pasteTranspose: () => void;
     deleteValues: () => void;
     insertChart: () => void;
     insertImage?: () => void;
@@ -436,6 +443,12 @@ export type EditorActions = {
     toggleStrike: () => void;
     clearFormatting: () => void;
     align: (alignment: "left" | "center" | "right") => void;
+    /** Format › Rotate text. Null clears rotation and leaves wrap alone. */
+    rotateText: (angle: number | { a: 0; v: 1 } | null) => void;
+    /** Format › Unmerge cells. Separates every merge the selection touches. */
+    unmergeCells: () => void;
+    /** Format › Alternating colors. Header fill, then alternating data rows. */
+    alternatingColors: () => void;
     view: () => SheetView;
     freezeRows: (count: number) => void;
     freezeColumns: (count: number) => void;
@@ -453,7 +466,13 @@ export type EditorActions = {
     paste: () => void;
     insertTextBox: () => void;
     insertImage: () => void;
+    /** Insert › Audio. A WAV, MP3, or Ogg file on the current slide. */
+    insertAudio: () => void;
+    /** Insert › Video. An MP4 or WebM file on the current slide. */
+    insertVideo: () => void;
     insertShape: (shape: "rect" | "roundRect" | "ellipse") => void;
+    /** Insert › Word art. Asks for the words and a blue or gold style. */
+    insertWordArt: () => void;
     newSlide: () => void;
     duplicate: () => void;
     deleteSlides: () => void;
@@ -469,6 +488,12 @@ export type EditorActions = {
     openAnimationPane?: () => void;
     openMaster?: () => void;
     presenterView?: () => void;
+    /** View › Handouts. Several slides from this deck on each page. */
+    handouts?: () => void;
+    /** View › Slide numbers. True when the open deck paints a number on each slide. */
+    slideNumbers?: () => boolean;
+    /** View › Slide numbers. Turns the painted numbers on, or clears them. */
+    toggleSlideNumbers?: () => void;
     recordSlideshow?: () => void;
     insertComment?: () => void;
     openComments?: () => void;

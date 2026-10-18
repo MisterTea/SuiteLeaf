@@ -5,10 +5,23 @@ import {
   type PublicForm,
   type PublicQuestion,
 } from "./node-client";
+import { canonicalGridAnswer, filledLabels, gridAnswerError } from "./form-grid";
+import { GridAnswer } from "./form-grid-view";
+
+const RATING_SCORES = ["1", "2", "3", "4", "5"];
 
 function questionError(question: PublicQuestion, value: string): string | null {
   const answer = value.trim();
   const prompt = question.prompt || "This question";
+  if (question.kind === "grid") {
+    return gridAnswerError(
+      prompt,
+      question.required,
+      filledLabels(question.rows),
+      filledLabels(question.columns),
+      value,
+    );
+  }
   if (question.required && !answer) return `${prompt} is required`;
   if (
     question.kind === "choice" &&
@@ -16,6 +29,9 @@ function questionError(question: PublicQuestion, value: string): string | null {
     !(question.choices ?? []).includes(answer)
   ) {
     return `${prompt} must be one of the choices`;
+  }
+  if (question.kind === "rating" && answer && !RATING_SCORES.includes(answer)) {
+    return `${prompt} must be a rating from 1 to 5`;
   }
   return null;
 }
@@ -54,8 +70,17 @@ export default function SignUpPage({ token }: { token: string }) {
     }
     const answers: Record<string, string> = {};
     for (const question of form.questions) {
-      const value = (draft[question.id] ?? "").trim();
-      if (value) answers[question.id] = value;
+      if (question.kind === "grid") {
+        const value = canonicalGridAnswer(
+          filledLabels(question.rows),
+          filledLabels(question.columns),
+          draft[question.id] ?? "",
+        );
+        if (value) answers[question.id] = value;
+      } else {
+        const value = (draft[question.id] ?? "").trim();
+        if (value) answers[question.id] = value;
+      }
     }
     try {
       await submitSignUp(token, answers);
@@ -125,6 +150,36 @@ export default function SignUpPage({ token }: { token: string }) {
                         }
                       />
                       <label htmlFor={`${question.id}-${choice}`}>{choice}</label>
+                    </span>
+                  ))}
+                </div>
+              ) : question.kind === "grid" ? (
+                <GridAnswer
+                  questionId={question.id}
+                  rows={filledLabels(question.rows)}
+                  columns={filledLabels(question.columns)}
+                  value={draft[question.id] ?? ""}
+                  onChange={(value) => setDraft({ ...draft, [question.id]: value })}
+                />
+              ) : question.kind === "rating" ? (
+                <div
+                  className="form-rating"
+                  role="radiogroup"
+                  aria-label={question.prompt || "Rating"}
+                >
+                  {RATING_SCORES.map((score) => (
+                    <span key={score}>
+                      <input
+                        id={`${question.id}-rating-${score}`}
+                        type="radio"
+                        name={question.id}
+                        value={score}
+                        checked={draft[question.id] === score}
+                        onChange={() =>
+                          setDraft({ ...draft, [question.id]: score })
+                        }
+                      />
+                      <label htmlFor={`${question.id}-rating-${score}`}>{score}</label>
                     </span>
                   ))}
                 </div>

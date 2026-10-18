@@ -412,6 +412,131 @@ export function shapeElement(
   };
 }
 
+/** Letter fill and contrasting outline. Both are stored on the element. */
+export const WORD_ART = {
+  blue: { color: "#1565c0", stroke: "#0a1840", strokeWidth: 3 },
+  gold: { color: "#e6ac00", stroke: "#3a2504", strokeWidth: 3 },
+} as const;
+
+export type WordArtStyle = keyof typeof WORD_ART;
+
+/**
+ * Large display text. `taken` is how many word-art pieces are already on the
+ * slide, so a second one does not land on the first.
+ */
+export function wordArtElement(
+  text: string,
+  style: WordArtStyle,
+  deckWidth: number,
+  deckHeight: number,
+  newId: () => string,
+  taken = 0,
+): SlideElement {
+  const paint = WORD_ART[style];
+  const width = Math.min(760, Math.round(deckWidth * 0.8));
+  const height = 120;
+  const x = Math.round((deckWidth - width) / 2);
+  const y =
+    taken === 0
+      ? 24
+      : Math.max(24, deckHeight - height - 24 - (taken - 1) * 16);
+  return {
+    id: newId(),
+    type: "text",
+    x,
+    y,
+    width,
+    height,
+    content: text,
+    fontSize: 54,
+    fontFamily: "Georgia",
+    bold: true,
+    align: "center",
+    color: paint.color,
+    stroke: paint.stroke,
+    strokeWidth: paint.strokeWidth,
+    wordArt: style,
+    themeOverride: true,
+  };
+}
+
+const AUDIO_MIME: Record<string, string> = {
+  "audio/wav": "audio/wav",
+  "audio/wave": "audio/wav",
+  "audio/x-wav": "audio/wav",
+  "audio/mpeg": "audio/mpeg",
+  "audio/mp3": "audio/mpeg",
+  "audio/ogg": "audio/ogg",
+};
+const VIDEO_MIME: Record<string, string> = {
+  "video/mp4": "video/mp4",
+  "video/webm": "video/webm",
+};
+const AUDIO_EXT: Record<string, string> = {
+  wav: "audio/wav",
+  mp3: "audio/mpeg",
+  ogg: "audio/ogg",
+};
+const VIDEO_EXT: Record<string, string> = {
+  mp4: "video/mp4",
+  webm: "video/webm",
+};
+
+/** WAV, MP3, or Ogg for audio. MP4 or WebM for video. Null when the file is neither. */
+export function mediaMime(
+  file: { name: string; type: string },
+  kind: "audio" | "video",
+): string | null {
+  const types = kind === "audio" ? AUDIO_MIME : VIDEO_MIME;
+  const exts = kind === "audio" ? AUDIO_EXT : VIDEO_EXT;
+  const raw = file.type.toLowerCase().split(";")[0]?.trim() ?? "";
+  if (types[raw]) return types[raw];
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+  return exts[ext] ?? null;
+}
+
+/** Keep the bytes, and force the data-URL type the player and the file format expect. */
+export function mediaDataUrl(result: string, mime: string): string {
+  const comma = result.indexOf(",");
+  const payload = comma >= 0 ? result.slice(comma + 1) : result;
+  return `data:${mime};base64,${payload}`;
+}
+
+/**
+ * A sound or movie on the slide. The file name is `alt`, same as an image.
+ * Audio sits along the bottom. Video sits above the title so the picture stays clear of it.
+ */
+export function mediaElement(
+  kind: "audio" | "video",
+  src: string,
+  name: string,
+  newId: () => string,
+  deckWidth: number,
+  deckHeight: number,
+  taken = 0,
+): SlideElement {
+  const width = Math.min(kind === "audio" ? 320 : 360, Math.max(160, deckWidth - 72));
+  const height = kind === "audio" ? 96 : 124;
+  const x =
+    kind === "audio"
+      ? 36 + taken * 28
+      : Math.max(24, deckWidth - width - 36 - taken * 16);
+  const y =
+    kind === "audio"
+      ? Math.max(24, deckHeight - height - 28)
+      : 24 + taken * 16;
+  return {
+    id: newId(),
+    type: kind,
+    x,
+    y,
+    width,
+    height,
+    src,
+    alt: name,
+  };
+}
+
 /** A corner logo, small enough to sit beside the title instead of covering it. */
 export function logoImage(
   src: string,

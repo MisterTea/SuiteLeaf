@@ -67,6 +67,7 @@ import {
   type SheetFile,
   type SlideFile,
 } from "@suiteleaf/core";
+import { driveWatchDecision } from "./drive-watch";
 import { storage, SaveQueue, exportText } from "./storage";
 import { editorCollaborator } from "./collaborator";
 import { frogSummary } from "./ai/summarize";
@@ -81,6 +82,7 @@ import { SameFileDialog, openNotices } from "./same-file";
 import { sampleDoc, sampleSheet, sampleSlide } from "./samples";
 import {
   Menu,
+  MenuCheckItem,
   MenuItem,
   SubMenu,
   TableMenuItems,
@@ -163,6 +165,7 @@ import {
   type ResolvedMode,
 } from "./mode";
 import { formsEnabled } from "./flags";
+import { sheetTextRotation } from "./sheet-text-rotation";
 import { useAgentHost } from "./ai/host";
 import { bindRestoredFile } from "./ai/restored-file";
 import { AiButton, AgentLayer } from "./ai/AgentSidebar";
@@ -1423,6 +1426,8 @@ function Workspace() {
     driveQueue = useRef(driveQueueFor(id!)),
     driveTimer = useRef<ReturnType<typeof setTimeout>>(undefined),
     driveConflictRef = useRef<DriveItem | null>(null),
+    /** True while this tab is uploading, so the remote poll ignores our own head. */
+    driveSyncing = useRef(false),
     /** Bumped when a remote save replaces the open file, so a queued upload of the old bytes is dropped. */
     driveGeneration = useRef(0),
     snapshotExplicit = useRef(false),
@@ -1554,6 +1559,7 @@ function Workspace() {
     const generation = driveGeneration.current;
     const snapshot = structuredClone(current.current.file);
     let uploaded = false;
+    driveSyncing.current = true;
     try {
       await driveQueue.current.enqueue(async () => {
         if (driveGeneration.current !== generation || driveConflictRef.current)
@@ -1578,6 +1584,8 @@ function Workspace() {
         setDriveConflict(e.item);
         setStatus("SuiteDrive has a newer version");
       } else setStatus(`Saved on this device · ${message(e)}`);
+    } finally {
+      driveSyncing.current = false;
     }
   }, []);
   const save = useCallback(async () => {
@@ -1783,8 +1791,23 @@ function Workspace() {
     const unsent = () =>
       version.current !== savedVersion.current ||
       (!!current.current?.drive && hasUnsyncedEdits(current.current));
+    const notice = (
+      remoteHead: string | null | undefined,
+      localHead: string | null | undefined,
+    ) =>
+      driveWatchDecision({
+        uploading: driveSyncing.current,
+        unsent: unsent(),
+        remoteHead,
+        localHead,
+      });
     const showConflict = (item: DriveItem) => {
       if (item.id !== current.current?.drive?.itemId) return;
+      if (
+        notice(item.headVersionId, current.current?.drive?.versionId) !==
+        "conflict"
+      )
+        return;
       clearTimeout(driveTimer.current);
       driveTimer.current = undefined;
       setDriveConflict(item);
@@ -1801,8 +1824,9 @@ function Workspace() {
         const linked = current.current;
         if (!linked?.drive || linked.drive.itemId !== itemId) return;
         const remote = item.headVersionId;
-        if (!remote || remote === linked.drive.versionId) return;
-        if (unsent()) {
+        const seen = notice(remote, linked.drive.versionId);
+        if (seen === "wait" || seen === "idle") return;
+        if (seen === "conflict") {
           showConflict(item);
           return;
         }
@@ -1811,8 +1835,9 @@ function Workspace() {
         const linkedNow = current.current;
         if (!linkedNow?.drive || linkedNow.drive.itemId !== itemId) return;
         const head = read.versionId || remote;
-        if (head === linkedNow.drive.versionId) return;
-        if (unsent()) {
+        const readSeen = notice(head, linkedNow.drive.versionId);
+        if (readSeen === "wait" || readSeen === "idle") return;
+        if (readSeen === "conflict") {
           showConflict(item);
           return;
         }
@@ -1820,7 +1845,9 @@ function Workspace() {
           if (stop || !alive.current || driveConflictRef.current) return;
           const live = current.current;
           if (!live?.drive || live.drive.itemId !== itemId) return;
-          if (unsent()) {
+          const queued = notice(head, live.drive.versionId);
+          if (queued === "wait" || queued === "idle") return;
+          if (queued === "conflict") {
             showConflict(item);
             return;
           }
@@ -1828,12 +1855,16 @@ function Workspace() {
           if (stop || !alive.current || driveConflictRef.current) return;
           const openNow = current.current;
           if (!openNow?.drive || openNow.drive.itemId !== itemId) return;
-          if (unsent()) {
+          const latestSeen = notice(
+            latest.headVersionId,
+            openNow.drive.versionId,
+          );
+          if (latestSeen === "wait" || latestSeen === "idle") return;
+          if (latestSeen === "conflict") {
             showConflict(latest);
             return;
           }
           if (!latest.headVersionId || latest.headVersionId !== head) return;
-          if (latest.headVersionId === openNow.drive.versionId) return;
           const parsed = parseNamedFile(
             latest.name || openNow.drive.name,
             read.text,
@@ -2855,6 +2886,35 @@ function Workspace() {
                       Image
                     </MenuItem>
                     <MenuItem
+                      synonyms={["text box", "insert text box", "textbox"]}
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.docActions?.insertTextBox()
+                      }
+                    >
+                      Text box
+                    </MenuItem>
+                    <SubMenu label="Shape">
+                      <MenuItem
+                        synonyms={["shape", "insert shape", "rectangle"]}
+                        focusesTarget
+                        onSelect={() =>
+                          actions.current?.docActions?.insertShape("rect")
+                        }
+                      >
+                        Rectangle
+                      </MenuItem>
+                      <MenuItem
+                        synonyms={["ellipse", "oval", "circle"]}
+                        focusesTarget
+                        onSelect={() =>
+                          actions.current?.docActions?.insertShape("ellipse")
+                        }
+                      >
+                        Ellipse
+                      </MenuItem>
+                    </SubMenu>
+                    <MenuItem
                       onSelect={() =>
                         actions.current?.docActions?.insertTable()
                       }
@@ -3127,6 +3187,14 @@ function Workspace() {
                     >
                       Clear formatting
                     </MenuItem>
+                    <MenuItem
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.docActions?.updateNormalText()
+                      }
+                    >
+                      Update Normal text to match
+                    </MenuItem>
                   </Menu>
                   <Menu label="Tools">
                     <MenuItem
@@ -3262,6 +3330,15 @@ function Workspace() {
                     >
                       Paste
                     </MenuItem>
+                    <SubMenu label="Paste special">
+                      <MenuItem
+                        onSelect={() =>
+                          actions.current?.sheetActions?.pasteTranspose()
+                        }
+                      >
+                        Transpose
+                      </MenuItem>
+                    </SubMenu>
                     <MenuItem
                       shortcut="Delete"
                       onSelect={() =>
@@ -3440,6 +3517,69 @@ function Workspace() {
                       Align right
                     </MenuItem>
                     <MenuItem
+                      onSelect={() =>
+                        actions.current?.sheetActions?.unmergeCells()
+                      }
+                    >
+                      Unmerge cells
+                    </MenuItem>
+                    <SubMenu label="Rotate text">
+                      <MenuItem
+                        onSelect={() =>
+                          actions.current?.sheetActions?.rotateText(
+                            sheetTextRotation.tiltCounterclockwise,
+                          )
+                        }
+                      >
+                        Tilt counterclockwise
+                      </MenuItem>
+                      <MenuItem
+                        onSelect={() =>
+                          actions.current?.sheetActions?.rotateText(
+                            sheetTextRotation.tiltClockwise,
+                          )
+                        }
+                      >
+                        Tilt clockwise
+                      </MenuItem>
+                      <MenuItem
+                        onSelect={() =>
+                          actions.current?.sheetActions?.rotateText(
+                            sheetTextRotation.up,
+                          )
+                        }
+                      >
+                        Rotate up
+                      </MenuItem>
+                      <MenuItem
+                        onSelect={() =>
+                          actions.current?.sheetActions?.rotateText(
+                            sheetTextRotation.down,
+                          )
+                        }
+                      >
+                        Rotate down
+                      </MenuItem>
+                      <MenuItem
+                        onSelect={() =>
+                          actions.current?.sheetActions?.rotateText(
+                            sheetTextRotation.vertical,
+                          )
+                        }
+                      >
+                        Vertical
+                      </MenuItem>
+                      <MenuItem
+                        onSelect={() =>
+                          actions.current?.sheetActions?.rotateText(
+                            sheetTextRotation.none,
+                          )
+                        }
+                      >
+                        None
+                      </MenuItem>
+                    </SubMenu>
+                    <MenuItem
                       shortcut="Cmd+\"
                       onSelect={() =>
                         actions.current?.sheetActions?.clearFormatting()
@@ -3453,6 +3593,13 @@ function Workspace() {
                       }
                     >
                       Conditional formatting
+                    </MenuItem>
+                    <MenuItem
+                      onSelect={() =>
+                        actions.current?.sheetActions?.alternatingColors()
+                      }
+                    >
+                      Alternating colors
                     </MenuItem>
                   </Menu>
                   <Menu label="Data">
@@ -3673,6 +3820,24 @@ function Workspace() {
                     <MenuItem onSelect={() => void actions.current?.print()}>
                       Print preview
                     </MenuItem>
+                    <MenuItem
+                      synonyms={["handout", "slide handouts"]}
+                      onSelect={() =>
+                        actions.current?.slideActions?.handouts?.()
+                      }
+                    >
+                      Handouts
+                    </MenuItem>
+                    <MenuCheckItem
+                      checked={
+                        !!actions.current?.slideActions?.slideNumbers?.()
+                      }
+                      onSelect={() =>
+                        actions.current?.slideActions?.toggleSlideNumbers?.()
+                      }
+                    >
+                      Slide numbers
+                    </MenuCheckItem>
                   </Menu>
                   <Menu label="Insert">
                     <MenuItem
@@ -3691,6 +3856,22 @@ function Workspace() {
                       }
                     >
                       Image
+                    </MenuItem>
+                    <MenuItem
+                      synonyms={["audio", "insert audio", "sound"]}
+                      onSelect={() =>
+                        actions.current?.slideActions?.insertAudio()
+                      }
+                    >
+                      Audio
+                    </MenuItem>
+                    <MenuItem
+                      synonyms={["video", "insert video", "movie"]}
+                      onSelect={() =>
+                        actions.current?.slideActions?.insertVideo()
+                      }
+                    >
+                      Video
                     </MenuItem>
                     <SubMenu label="Shape">
                       <MenuItem
@@ -3718,6 +3899,15 @@ function Workspace() {
                         Ellipse
                       </MenuItem>
                     </SubMenu>
+                    <MenuItem
+                      synonyms={["word art", "wordart"]}
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.slideActions?.insertWordArt()
+                      }
+                    >
+                      Word art
+                    </MenuItem>
                     <SubMenu label="Animation">
                       {(
                         [

@@ -95,6 +95,13 @@ export function SheetViewMenu({
       </SubMenu>
       <MenuSeparator />
       <MenuItem
+        focusesTarget
+        synonyms={["table of contents", "sheet summaries", "all sheets"]}
+        onSelect={() => actions.current?.sheetActions?.openSheetList?.()}
+      >
+        Sheet list
+      </MenuItem>
+      <MenuItem
         synonyms={["comments and replies", "comment panel", "show comments"]}
         onSelect={() => sheet?.openComments?.()}
       >

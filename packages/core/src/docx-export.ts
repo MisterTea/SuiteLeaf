@@ -442,7 +442,7 @@ function blocks(
   list?: { ordered: boolean; level: number },
 ): (Paragraph | Table | TableOfContents)[] {
   return nodes.flatMap((n): (Paragraph | Table | TableOfContents)[] => {
-    if (n.type === "note" || n.type === "sectionBreak") return [];
+    if (n.type === "note" || n.type === "sectionBreak" || n.type === "docShape") return [];
     if (n.type === "linkedChart") return linkedChartBlocks(n);
     if (n.type === "columnLayout")
       return blocks(n.content ?? [], plan, notes, library, list);
@@ -494,7 +494,7 @@ function blocks(
         }),
       ];
     if (n.type === "textBox") {
-      const text = String(n.attrs?.text ?? "");
+      const text = textBoxPlain(n);
       const hex = [...new TextEncoder().encode(text)]
         .map((byte) => byte.toString(16).padStart(2, "0"))
         .join("");
@@ -1153,12 +1153,30 @@ function hexToText(hex: string): string {
   return new TextDecoder().decode(bytes);
 }
 
+function textBoxPlain(node: JsonNode): string {
+  const parts: string[] = [];
+  const walk = (current: JsonNode) => {
+    if (current.type === "text" && current.text) parts.push(current.text);
+    if (current.type === "hardBreak") parts.push("\n");
+    for (const child of current.content ?? []) walk(child);
+  };
+  walk(node);
+  return parts.join("") || String(node.attrs?.text ?? "");
+}
+
 function textBoxParagraph(text: string): string {
-  const escaped = text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-  return `<w:p><w:r><w:pict><v:shape style="width:180pt;height:48pt" filled="f" stroked="t"><v:textbox><w:txbxContent><w:p><w:r><w:t xml:space="preserve">${escaped}</w:t></w:r></w:p></w:txbxContent></v:textbox></v:shape></w:pict></w:r></w:p>`;
+  const runs = text
+    .split("\n")
+    .map((line, index) => {
+      const escaped = line
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+      const breakBefore = index > 0 ? "<w:r><w:br/></w:r>" : "";
+      return `${breakBefore}<w:r><w:t xml:space="preserve">${escaped}</w:t></w:r>`;
+    })
+    .join("");
+  return `<w:p><w:r><w:pict><v:shape style="width:180pt;height:48pt" filled="f" stroked="t"><v:textbox><w:txbxContent><w:p>${runs}</w:p></w:txbxContent></v:textbox></v:shape></w:pict></w:r></w:p>`;
 }
 
 /** Turns text-box tokens into Word text boxes. */

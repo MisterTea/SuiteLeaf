@@ -114,6 +114,7 @@ import { documentCitations } from "./doc-citations";
 import { DocCitations } from "./doc-citations-panel";
 import { Equation, EquationDialog } from "./doc-equations";
 import { TextBox } from "./doc-text-box";
+import { DocShape } from "./doc-shape";
 import { useAgentHost } from "../ai/host";
 import { docBeforeTool, docReview, docSnapshot, docTools as docAgentTools, type DocsAgentContext } from "../ai/tools/docs";
 import {
@@ -150,6 +151,7 @@ import "./letterhead-live.css";
 import { KeepWithNext } from "./doc-keep-next";
 import { WidowControl } from "./doc-widow-control";
 import { KeepLines } from "./doc-keep-lines";
+import { normalText } from "./doc-normal-text";
 import { MailMergeDialog } from "./mail-merge-dialog";
 import { InsertChartDialog } from "./doc-chart-dialog";
 import { LinkedChart } from "./doc-linked-chart";
@@ -176,6 +178,7 @@ export const extensions: Extensions = [
   KeepWithNext,
   WidowControl,
   KeepLines,
+  normalText,
   croppableImage,
   inlineImage,
   TableKit.configure({ table: { resizable: true } }),
@@ -189,6 +192,7 @@ export const extensions: Extensions = [
   Subscript,
   Equation,
   TextBox,
+  DocShape,
   LinkedChart,
   TabCharacter,
   TabStops,
@@ -1117,6 +1121,14 @@ export default function Docs({
           setDrawingScene(typeof saved === "string" ? saved : null);
           setDrawingOpen(true);
         },
+        insertTextBox: () => {
+          if (readOnlyRef.current) return;
+          if (editor.commands.insertTextBox()) editor.view.focus();
+        },
+        insertShape: (shape) => {
+          if (readOnlyRef.current) return;
+          if (editor.commands.insertShape(shape)) editor.view.focus();
+        },
         insertSectionBreak: () => {
           if (!readOnlyRef.current) setSectionOpen(true);
         },
@@ -1142,6 +1154,8 @@ export default function Docs({
         openCitations: () => setCitationsOpen(true),
         clearFormatting: () =>
           editor.chain().focus().unsetAllMarks().clearNodes().run(),
+        updateNormalText: () =>
+          editor.chain().focus().updateNormalTextToMatch().run(),
         align: (alignment) =>
           editor.chain().focus().setTextAlign(alignment).run(),
         setColumns: (columns: 1 | 2) =>
