@@ -284,7 +284,7 @@ test("11-filter-to-what-matters", async ({ page }) => {
   const phone = (page.viewportSize()?.width ?? 1280) < 700;
   // Showing the totals scrolls the phone past Status. Come back before tapping that header.
   if (phone) await selectCells(page, "A1");
-  await pointAt(page, await cellPoint(page, "C1", widths));
+  await pointAt(page, await cellPoint(page, "C1", widths, !phone));
   await expect(page.getByText("By Values", { exact: true })).toBeVisible();
   if (phone) await page.getByRole("button", { name: "By Values", exact: true }).click();
   const values = phone
@@ -323,7 +323,7 @@ test("11-filter-to-what-matters", async ({ page }) => {
 
   await caption(page, "When she's done, she opens the Status filter again and clears it.", 1200);
   if (phone) await selectCells(page, "A1");
-  await pointAt(page, await cellPoint(page, "C1", widths));
+  await pointAt(page, await cellPoint(page, "C1", widths, !phone));
   await expect(page.getByText("Clear Filter", { exact: true })).toBeVisible();
   await beat(page, 500);
   await page.getByText("Clear Filter", { exact: true }).click();

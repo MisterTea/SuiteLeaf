@@ -67,6 +67,14 @@ import { useSheetFunctions } from "./function-help-ui";
 import SortRangeDialog from "./SortRangeDialog";
 import NamedRanges, { type NamedRangesHandle } from "./named-ranges-ui";
 import {
+  checkboxForFilterLabel,
+  phoneCheckboxWrite,
+  pointInBox,
+  pointerScrolled,
+  shouldOpenPhoneHeaderFilter,
+  type ScreenBox,
+} from "./sheet-phone-gestures";
+import {
   attachSheetViewLock,
   blocksSheetEdit,
   filterViewChoices,
@@ -586,17 +594,7 @@ const rowVisibilityMutation =
 function toggleFilterValueFromLabel(event: MouseEvent) {
   const target = event.target instanceof Element ? event.target : null;
   if (!target) return;
-  if (target.closest('label[data-u-comp="checkbox"], a, button, input')) return;
-  const desktop = target.closest('[data-u-comp="sheets-filter-panel"]');
-  if (desktop) {
-    const row = target.closest('div:has(> label[data-u-comp="checkbox"])');
-    if (!row || row.firstElementChild?.tagName !== "LABEL") return;
-    row.querySelector<HTMLInputElement>("input[type=checkbox]")?.click();
-    return;
-  }
-  // The phone list draws the name beside the box. Tapping the name ticks it.
-  const line = target.closest('[data-u-comp="mobile-sheets-filter-by-values"] .univer-flex');
-  line?.querySelector<HTMLInputElement>('label[data-u-comp="checkbox"] input[type=checkbox]')?.click();
+  checkboxForFilterLabel(target)?.click();
 }
 const charts = new Map<string, ChartState>();
 const emptyChart: ChartState | undefined = undefined;
@@ -1271,30 +1269,33 @@ export default function Sheets({
           );
         });
       // The filter funnel is a 16px mark on the right of the header. On a phone
-      // that mark is often off the screen, so a tap anywhere in the header cell
-      // opens the same panel.
-      const openHeaderFilter = () => {
-        if (window.innerWidth > 700) return;
-        window.setTimeout(() => {
-          const sheet = workbook.getActiveSheet();
-          const range = sheet?.getSelection()?.getActiveRange();
-          if (!range || range.getRow() !== 0) return;
-          if (range.getLastRow() !== range.getRow() || range.getLastColumn() !== range.getColumn())
-            return;
-          injector.get(ICommandService).executeCommand("sheet.operation.open-filter-panel", {
-            unitId: workbook.getId(),
-            subUnitId: sheet.getSheetId(),
-            col: range.getColumn(),
-          });
-        }, 0);
-      };
-      sheetHost?.addEventListener("pointerup", openHeaderFilter);
+      // that mark is often off the screen, so a tap in the header cell opens
+      // the same panel. A scroll or a lift elsewhere must not: opening the
+      // panel closes the cell editor.
       const validations = injector.get(SheetDataValidationModel);
       const checkedValue = (value: unknown) =>
         value === true || value === 1 || value === "1" || value === "TRUE";
-      // A phone tap often misses the 16px box. The cell that ends up selected
-      // toggles, unless Univer's own box already did.
-      let armedCheckbox: { row: number; col: number; on: boolean } | null = null;
+      const readActiveBox = (): ScreenBox | null => {
+        const raw = sheetHost?.dataset.activeCell;
+        if (!raw) return null;
+        try {
+          const box = JSON.parse(raw) as Partial<ScreenBox>;
+          if (
+            typeof box.left !== "number" ||
+            typeof box.top !== "number" ||
+            typeof box.right !== "number" ||
+            typeof box.bottom !== "number"
+          )
+            return null;
+          return { left: box.left, top: box.top, right: box.right, bottom: box.bottom };
+        } catch {
+          return null;
+        }
+      };
+      // Univer toggles a checkbox on pointer down when the tap hits its box,
+      // including the first time that cell is selected. That write is not
+      // repeated. A tap that misses the box on an already-selected cell still
+      // flips it. A scroll does not.
       const checkboxCell = () => {
         const sheet = workbook.getActiveSheet();
         const cell = sheet?.getActiveCell();
@@ -1303,33 +1304,129 @@ export default function Sheets({
         const col = cell.getColumn();
         const rule = validations.getRuleByLocation(workbook.getId(), sheet.getSheetId(), row, col);
         if (rule?.type !== "checkbox") return null;
-        return { row, col, on: checkedValue(cell.getValue()) };
+        return {
+          row,
+          col,
+          on: checkedValue(cell.getValue()),
+          checked: rule.formula1 ?? "TRUE",
+          unchecked: rule.formula2 ?? "FALSE",
+        };
       };
-      const armCheckbox = (event: PointerEvent) => {
+      let phoneGesture = 0;
+      const phoneBoxWrites: { gesture: number; row: number; col: number }[] = [];
+      const watchPhoneBoxWrite = injector.get(ICommandService).onCommandExecuted((command) => {
+        if (command.id !== SetRangeValuesCommand.id) return;
+        const params = command.params as {
+          suiteleafPhoneWrite?: boolean;
+          range?: {
+            startRow?: number;
+            endRow?: number;
+            startColumn?: number;
+            endColumn?: number;
+          };
+        } | undefined;
+        if (params?.suiteleafPhoneWrite) return;
+        const range = params?.range;
+        if (!range) return;
+        const { startRow, endRow, startColumn, endColumn } = range;
+        if (
+          typeof startRow !== "number" ||
+          typeof startColumn !== "number" ||
+          startRow !== endRow ||
+          startColumn !== endColumn
+        )
+          return;
+        phoneBoxWrites.push({ gesture: phoneGesture, row: startRow, col: startColumn });
+        if (phoneBoxWrites.length > 8) phoneBoxWrites.shift();
+      });
+      let press: {
+        x: number;
+        y: number;
+        gesture: number;
+        checkbox: ReturnType<typeof checkboxCell>;
+      } | null = null;
+      const onPhonePointerDown = (event: PointerEvent) => {
         if (window.innerWidth > 700 || event.button === 2) return;
-        armedCheckbox = checkboxCell();
+        phoneGesture += 1;
+        press = {
+          x: event.clientX,
+          y: event.clientY,
+          gesture: phoneGesture,
+          checkbox: checkboxCell(),
+        };
       };
-      const finishCheckbox = () => {
+      const onPhonePointerUp = (event: PointerEvent) => {
+        const start = press;
+        press = null;
         if (window.innerWidth > 700) return;
-        const before = armedCheckbox;
-        armedCheckbox = null;
+        const up = { x: event.clientX, y: event.clientY };
+        const down = start ? { x: start.x, y: start.y } : null;
+        const scrolled = pointerScrolled(down, up);
+        const before = start?.checkbox ?? null;
         window.setTimeout(() => {
-          const now = checkboxCell();
-          if (!now) return;
-          if (before && before.row === now.row && before.col === now.col && before.on !== now.on) return;
+          const sheet = workbook.getActiveSheet();
+          const range = sheet?.getSelection()?.getActiveRange();
+          const singleHeaderCell =
+            !!range &&
+            range.getRow() === 0 &&
+            range.getLastRow() === range.getRow() &&
+            range.getLastColumn() === range.getColumn();
+          if (
+            sheet &&
+            range &&
+            shouldOpenPhoneHeaderFilter({
+              narrow: true,
+              singleHeaderCell,
+              down,
+              up,
+              headerBox: singleHeaderCell ? readActiveBox() : null,
+            })
+          ) {
+            injector.get(ICommandService).executeCommand("sheet.operation.open-filter-panel", {
+              unitId: workbook.getId(),
+              subUnitId: sheet.getSheetId(),
+              col: range.getColumn(),
+            });
+          }
+        }, 0);
+        window.setTimeout(() => {
+          const after = checkboxCell();
+          const box = readActiveBox();
+          const tapOnCell =
+            !!box && !!down && pointInBox(down, box) && pointInBox(up, box);
+          const alreadyToggled =
+            !!after &&
+            !!start &&
+            phoneBoxWrites.some(
+              (entry) =>
+                entry.gesture === start.gesture &&
+                entry.row === after.row &&
+                entry.col === after.col,
+            );
+          const write = phoneCheckboxWrite({
+            before,
+            after,
+            scrolled,
+            tapOnCell,
+            alreadyToggled,
+            checked: after?.checked ?? "TRUE",
+            unchecked: after?.unchecked ?? "FALSE",
+          });
+          if (!write || !after) return;
           injector.get(ICommandService).executeCommand(SetRangeValuesCommand.id, {
+            suiteleafPhoneWrite: true,
             range: {
-              startRow: now.row,
-              endRow: now.row,
-              startColumn: now.col,
-              endColumn: now.col,
+              startRow: after.row,
+              endRow: after.row,
+              startColumn: after.col,
+              endColumn: after.col,
             },
-            value: { v: now.on ? 0 : 1, t: 3, p: null },
+            value: write,
           });
         }, 180);
       };
-      sheetHost?.addEventListener("pointerdown", armCheckbox, true);
-      sheetHost?.addEventListener("pointerup", finishCheckbox);
+      sheetHost?.addEventListener("pointerdown", onPhonePointerDown, true);
+      sheetHost?.addEventListener("pointerup", onPhonePointerUp);
       // Excel stores a cached result for every formula cell but recalculates formulas on
       // open. An imported snapshot can carry a stale or missing cached value that would
       // display 0 while the formula resolves to a real number, so force one explicit full
@@ -1783,10 +1880,10 @@ export default function Sheets({
         stopViewLock();
         stopFormulaLock();
         closeNoteOnMove.unsubscribe();
-        fillScroll?.dispose();
-        sheetHost?.removeEventListener("pointerup", openHeaderFilter);
-        sheetHost?.removeEventListener("pointerdown", armCheckbox, true);
-        sheetHost?.removeEventListener("pointerup", finishCheckbox);
+        fillScroll?.unsubscribe();
+        watchPhoneBoxWrite.dispose();
+        sheetHost?.removeEventListener("pointerdown", onPhonePointerDown, true);
+        sheetHost?.removeEventListener("pointerup", onPhonePointerUp);
         partialCleanup?.();
         partialCleanup = undefined;
       };
