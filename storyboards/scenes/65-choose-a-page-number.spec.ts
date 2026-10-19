@@ -90,11 +90,10 @@ async function say(page: Page, text: string, hold = 1500) {
 async function showFooter(page: Page, index: number) {
   const number = page.locator(".page-number").nth(index);
   await number.evaluate((el) => {
-    const stage = el.closest(".document-stage") as HTMLElement;
-    const stageBox = stage.getBoundingClientRect();
+    el.scrollIntoView({ block: "center", inline: "nearest" });
     const box = el.getBoundingClientRect();
-    const top = stage.scrollTop + (box.top - stageBox.top) - stageBox.height * 0.4;
-    stage.scrollTo({ top: Math.max(0, top), behavior: "auto" });
+    if (box.top < 80 || box.bottom > window.innerHeight - 8)
+      window.scrollBy(0, box.top - window.innerHeight * 0.45);
   });
   await beat(page, 400);
   await expect(number).toBeInViewport();
@@ -102,15 +101,15 @@ async function showFooter(page: Page, index: number) {
 
 /** Show the top of a page, where a top-right number sits. */
 async function showPage(page: Page, index: number) {
-  await page.locator(".page-furniture-page").nth(index).evaluate((el) => {
-    const stage = el.closest(".document-stage") as HTMLElement;
-    const stageBox = stage.getBoundingClientRect();
+  const number = page.locator(".page-number").nth(index);
+  await number.evaluate((el) => {
+    el.scrollIntoView({ block: "center", inline: "nearest" });
     const box = el.getBoundingClientRect();
-    const top = stage.scrollTop + (box.top - stageBox.top) - 8;
-    stage.scrollTo({ top: Math.max(0, top), behavior: "auto" });
+    if (box.top < 80 || box.bottom > window.innerHeight - 8)
+      window.scrollBy(0, box.top - window.innerHeight * 0.35);
   });
   await beat(page, 450);
-  await expect(page.locator(".page-number").nth(index)).toBeInViewport();
+  await expect(number).toBeInViewport();
 }
 
 test("65-choose-a-page-number", async ({ page }) => {

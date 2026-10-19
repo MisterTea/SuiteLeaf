@@ -27,14 +27,23 @@ async function linesOf(page: Page, text: string) {
       if (!line) lines.push({ top: rect.top, left: rect.left });
       else line.left = Math.min(line.left, rect.left);
     }
+    const paper = el.closest(".paginated-paper") as HTMLElement | null;
+    const zoom =
+      paper && paper.offsetWidth
+        ? paper.getBoundingClientRect().width / paper.offsetWidth || 1
+        : 1;
     const probe = document.createElement("div");
     probe.style.cssText =
       "position:absolute;left:0;top:0;width:0.5in;height:1px;pointer-events:none;";
-    el.appendChild(probe);
-    const half = probe.getBoundingClientRect().width;
+    (paper ?? document.body).appendChild(probe);
+    const half = probe.getBoundingClientRect().width / zoom;
     probe.remove();
-    const advance = lines.length > 1 ? lines[1].top - lines[0].top : 0;
-    return { lines, half, advance };
+    const layout = lines.map((line) => ({
+      top: line.top / zoom,
+      left: line.left / zoom,
+    }));
+    const advance = layout.length > 1 ? layout[1].top - layout[0].top : 0;
+    return { lines: layout, half, advance };
   });
 }
 

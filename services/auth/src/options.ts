@@ -156,7 +156,9 @@ export function authOptions(
         create: {
           async before(user, context) {
             if (!context) return;
-            const existing = await context.context.adapter.count({ model: "user" });
+            const existing = Number(
+              await context.context.adapter.count({ model: "user" }),
+            );
             if (firstAccountIsAdmin(existing))
               return { data: { ...user, role: "admin" } };
           },

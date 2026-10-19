@@ -100,11 +100,30 @@ async function clickLine(page: Page, text: string) {
   if (!point) throw new Error(`missing ${text}`);
   await page.mouse.move(point.x, point.y, { steps: 18 });
   await page.mouse.click(point.x, point.y);
+  await page.locator(".document-content").evaluate((root, needle) => {
+    const block = [...root.querySelectorAll("p")].find((el) => el.textContent?.includes(needle));
+    const walker = document.createTreeWalker(block ?? root, NodeFilter.SHOW_TEXT);
+    let node: Node | null;
+    let found: Text | null = null;
+    while ((node = walker.nextNode())) {
+      if (node.textContent?.includes(needle)) found = node as Text;
+    }
+    if (!found) return;
+    const at = found.textContent?.indexOf(needle) ?? 0;
+    const range = document.createRange();
+    range.setStart(found, Math.max(0, at));
+    range.collapse(true);
+    const selection = root.ownerDocument.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    if (root instanceof HTMLElement) root.focus();
+  }, text);
   await beat(page, 500);
 }
 
 async function pressControl(page: Page, name: string) {
   const button = page.getByRole("button", { name });
+  await button.scrollIntoViewIfNeeded();
   await expect(button).toBeVisible();
   const box = (await button.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 16 });
@@ -132,25 +151,21 @@ test("92-keep-the-note-on-one-page", async ({ page }) => {
     1800,
   );
   await clickLine(page, first);
-  await expect(page.getByRole("button", { name: "Keep lines together, off" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Keep with next, off" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Don't leave one line, off" })).toBeVisible();
+  const together = page.getByRole("button", { name: "Keep lines together" });
+  const keepNext = page.getByRole("button", { name: "Keep with next" });
+  const widows = page.getByRole("button", { name: "Don't leave one line" });
+  await together.scrollIntoViewIfNeeded();
+  await expect(together).toBeVisible();
+  await expect(keepNext).toBeVisible();
+  await expect(widows).toBeVisible();
+  await expect(together).toHaveAttribute("aria-pressed", "false");
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await beat(page, 1100);
 
-  await pressControl(page, "Keep lines together, off");
-  await expect(page.getByRole("button", { name: "Keep lines together, on" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  await expect(page.getByRole("button", { name: "Keep with next, off" })).toHaveAttribute(
-    "aria-pressed",
-    "false",
-  );
-  await expect(page.getByRole("button", { name: "Don't leave one line, off" })).toHaveAttribute(
-    "aria-pressed",
-    "false",
-  );
+  await pressControl(page, "Keep lines together");
+  await expect(together).toHaveAttribute("aria-pressed", "true");
+  await expect(keepNext).toHaveAttribute("aria-pressed", "false");
+  await expect(widows).toHaveAttribute("aria-pressed", "false");
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await showLine(page, keepLinesHeading, 0.18);
   await caption(page, "It is on. The whole reminder is on page 2. What to bring stays on page 1.", 2200);
@@ -162,7 +177,7 @@ test("92-keep-the-note-on-one-page", async ({ page }) => {
   await beat(page, 1200);
 
   await caption(page, "She turns it off.", 600);
-  await pressControl(page, "Keep lines together, on");
+  await pressControl(page, "Keep lines together");
   await showLine(page, keepLinesHeading, 0.18);
   await caption(page, "The reminder splits across the page break again.", 1600);
   await expect.poll(() => pageOfText(page, first)).toBe(0);
@@ -171,7 +186,7 @@ test("92-keep-the-note-on-one-page", async ({ page }) => {
   await beat(page, 1000);
 
   await caption(page, "She turns it on again and leaves the file.", 700);
-  await pressControl(page, "Keep lines together, off");
+  await pressControl(page, "Keep lines together");
   await expect.poll(() => pageOfText(page, first)).toBe(1);
   await expect(page.locator(".save-status")).toContainText("Saved", { timeout: 5000 });
   await beat(page, 700);
@@ -184,10 +199,7 @@ test("92-keep-the-note-on-one-page", async ({ page }) => {
   await expect.poll(() => pageOfText(page, middle)).toBe(1);
   await expect.poll(() => pageOfText(page, last)).toBe(1);
   await clickLine(page, first);
-  await expect(page.getByRole("button", { name: "Keep lines together, on" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect(together).toHaveAttribute("aria-pressed", "true");
   await beat(page, 900);
 
   await caption(page, "Word gets keep-lines on that reminder, and not on the other paragraphs.", 1700);

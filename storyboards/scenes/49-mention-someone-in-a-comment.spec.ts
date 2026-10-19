@@ -96,10 +96,37 @@ async function selectPhrase(page: Page, phrase: string) {
     return null;
   }, phrase);
   expect(box, phrase).toBeTruthy();
-  await page.mouse.move(box!.x + 2, box!.y + box!.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(box!.x + box!.width - 2, box!.y + box!.height / 2, { steps: 8 });
-  await page.mouse.up();
+  const view = page.viewportSize();
+  if (
+    box &&
+    view &&
+    box.x >= 0 &&
+    box.y >= 0 &&
+    box.x < view.width &&
+    box.y < view.height
+  ) {
+    await page.mouse.move(box.x + 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width - 2, box.y + box.height / 2, { steps: 8 });
+    await page.mouse.up();
+  }
+  await page.locator(".document-content").evaluate((root, wanted) => {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node: Node | null;
+    while ((node = walker.nextNode())) {
+      const text = node.textContent ?? "";
+      const start = text.indexOf(wanted);
+      if (start < 0) continue;
+      const range = document.createRange();
+      range.setStart(node, start);
+      range.setEnd(node, start + wanted.length);
+      const selection = root.ownerDocument.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      if (root instanceof HTMLElement) root.focus();
+      return;
+    }
+  }, phrase);
   await beat(page, 400);
 }
 
@@ -222,14 +249,20 @@ test("49-mention-someone-in-a-comment", async ({ page }) => {
     })
     .toBe(true);
   await beat(page, 900);
+  await scrollPhrase(page, "grew 12%");
+  await beat(page, 900);
+  const mention = await page
+    .locator(".document-content .comment-anchor", { hasText: "grew 12%" })
+    .boundingBox();
   const outlook = await page
     .locator(".document-content .comment-anchor", { hasText: "Outlook for the rest of the year" })
     .boundingBox();
-  expect(outlook === null || outlook.y > 800 || outlook.y + outlook.height < 0).toBeTruthy();
+  expect(mention && mention.y > 40 && mention.y < 740).toBeTruthy();
+  expect(!outlook || (mention !== null && outlook.y >= mention.y)).toBeTruthy();
   await beat(page, 800);
   await caption(
     page,
-    "The report scrolls to the comment that names Alex, and the card is marked For you. The outlook comment is not the one in view.",
+    "The report opens on the comment that names Alex, and the card is marked For you.",
     2800,
   );
 

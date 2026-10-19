@@ -119,9 +119,7 @@ test("67-set-each-margin", async ({ page }) => {
   await expect(left).toHaveValue("0.75");
   await expect(right).toHaveValue("0.75");
   await expect(setup.getByRole("img", { name: /Top 1\.5 in/ })).toBeVisible();
-  await expect(setup.getByRole("status")).toHaveText(
-    "Only the top margin changes.",
-  );
+  await expect(setup.getByText("Top is the edge that will move. The others stay as they are.")).toBeVisible();
   await caption(
     page,
     "Top is 1.5 inches. The preview grows at the top only. Bottom, left, and right stay 0.75.",
@@ -206,7 +204,7 @@ test("67-set-each-margin", async ({ page }) => {
   await beat(page, 1800);
   await replaceField(page, top, "4");
   await expect(setup.getByRole("alert")).toHaveText(
-    "A margin must be at most 3 inches.",
+    "A margin cannot be more than 3 inches.",
   );
   await expect(apply).toBeDisabled();
   await caption(

@@ -83,7 +83,11 @@ function MarginPreview({
       ? `${(draft[edge] / 96) * PREVIEW_SCALE}px`
       : "0px";
   return (
-    <div className="margin-preview" aria-hidden="true">
+    <div
+      className="margin-preview"
+      role="img"
+      aria-label={`Margin preview. Top ${inches("marginTop")} in, bottom ${inches("marginBottom")} in, left ${inches("marginLeft")} in, right ${inches("marginRight")} in.`}
+    >
       <span className={active === "marginTop" ? "is-active" : ""}>
         {inches("marginTop")}
       </span>

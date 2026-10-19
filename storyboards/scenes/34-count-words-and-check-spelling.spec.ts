@@ -141,7 +141,7 @@ test("34-count-words-and-check-spelling", async ({ page }) => {
   const spellingMenu = page.getByRole("menu", { name: /Spelling for movment/ });
   await expect(spellingMenu.getByRole("menuitem", { name: "movement", exact: true })).toBeVisible();
   await expect(spellingMenu.getByRole("menuitem", { name: "Add to dictionary" })).toBeVisible();
-  await expect(spellingMenu.getByRole("menuitem", { name: "Ignore" })).toBeVisible();
+  await expect(spellingMenu.getByRole("menuitem", { name: "Ignore", exact: true })).toBeVisible();
   await beat(page, 900);
   await spellingMenu.getByRole("menuitem", { name: "movement", exact: true }).click();
   await expect(mistake).toHaveCount(0);

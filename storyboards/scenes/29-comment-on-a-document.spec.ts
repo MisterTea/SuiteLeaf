@@ -112,7 +112,27 @@ async function showCards(page: Page) {
 
 async function caret(page: Page, phrase: string, offset: number) {
   const box = await phraseBox(page, phrase, offset, true);
-  await page.mouse.click(box.x + 1, box.y + box.height / 2);
+  await page.mouse.click(box.x + Math.max(1, box.width / 2), box.y + box.height / 2);
+  await page.locator(".document-content").evaluate(
+    (root, { phrase, offset }) => {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      let node: Node | null;
+      while ((node = walker.nextNode())) {
+        const text = node.textContent ?? "";
+        const start = text.indexOf(phrase);
+        if (start < 0) continue;
+        const range = document.createRange();
+        range.setStart(node, Math.min(start + offset, text.length));
+        range.collapse(true);
+        const selection = root.ownerDocument.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+        if (root instanceof HTMLElement) root.focus();
+        return;
+      }
+    },
+    { phrase, offset },
+  );
   await beat(page, 250);
 }
 

@@ -283,7 +283,8 @@ test("04-long-report-with-outline", async ({ page }) => {
   await caption(page, "Back to the start: he clicks Summary in the outline.", 900);
   await jump("Summary");
   await caption(page, "As he scrolls, the outline highlights the section he's reading.", 600);
-  await page.mouse.move(640, 420);
+  const stage = (await page.locator(".document-stage").boundingBox())!;
+  await page.mouse.move(stage.x + stage.width / 2, stage.y + Math.min(220, stage.height / 2));
   for (let i = 0; i < 9; i++) {
     await page.mouse.wheel(0, 70);
     await beat(page, 220);

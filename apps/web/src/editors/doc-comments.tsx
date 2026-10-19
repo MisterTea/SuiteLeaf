@@ -200,7 +200,12 @@ function scrollCommentIntoView(anchor: Element) {
   }
   const stageBox = stage.getBoundingClientRect();
   const box = anchor.getBoundingClientRect();
-  const delta = box.top - stageBox.top - stage.clientHeight / 2 + box.height / 2;
+  // On a phone, pin the mention near the top so the later comment leaves the screen.
+  const align =
+    window.innerWidth <= 700
+      ? stageBox.top + 16
+      : stageBox.top + stage.clientHeight / 2 - box.height / 2;
+  const delta = box.top - align;
   if (Math.abs(delta) < 24) return;
   const start = stage.scrollTop;
   const target = Math.max(0, start + delta);
@@ -346,12 +351,17 @@ export function DocComments({
     const text = empty ? "" : editor.state.doc.textBetween(from, to, "\n").trim();
     const coords = empty ? null : editor.view.coordsAtPos(from);
     const paperBox = stage.querySelector(".paper")?.getBoundingClientRect();
+    const narrow = window.innerWidth <= 700;
     const nextSelection =
       text && !composing && !panel && coords
         ? {
             text,
-            top: coords.top,
-            left: (paperBox?.right ?? coords.right) + 8,
+            top: narrow
+              ? Math.max(72, Math.min(coords.top - 40, window.innerHeight - 48))
+              : coords.top,
+            left: narrow
+              ? Math.max(8, Math.min(coords.left, window.innerWidth - 148))
+              : (paperBox?.right ?? coords.right) + 8,
           }
         : null;
     setSelection((prev) =>

@@ -242,7 +242,7 @@ con.commit()`,
     await panel.getByRole("button", { name: "Compare with current" }).click();
 
     await caption(page, "The preview is read-only. Typing here changes nothing.", 800);
-    await preview.locator(".document-content").click();
+    await preview.locator(".document-content p").first().click();
     await page.keyboard.type("oops");
     await expect(preview).not.toContainText("oops");
     await expect(page.locator(".live-editor .document-content")).toContainText(

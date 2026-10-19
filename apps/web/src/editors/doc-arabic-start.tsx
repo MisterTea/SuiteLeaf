@@ -57,6 +57,7 @@ export const ArabicNumberStart = Extension.create({
           });
           for (const update of updates)
             tr.setNodeMarkup(update.pos, undefined, update.attrs);
+          dispatch(tr);
           return true;
         },
     };

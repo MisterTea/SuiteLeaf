@@ -331,6 +331,7 @@ export const croppableImage = Image.extend({
           fullWidth = width;
           fullHeight = height > 0 ? height : img.offsetHeight;
           img.style.width = `${width}px`;
+          if (height > 0) img.style.height = `${height}px`;
           locked = true;
         }
         paint(imageCrop(updated.attrs));

@@ -112,10 +112,10 @@ test("67-open-a-cropped-word-picture", async ({ page }) => {
   await image.scrollIntoViewIfNeeded();
   const frame = editor.locator("[data-crop-frame]");
   await expect(frame).toHaveAttribute("data-cropped", "true");
-  const fullWidth = await image.evaluate((el) => el.offsetWidth);
+  const full = (await image.boundingBox())!;
   const cropped = (await frame.boundingBox())!;
-  expect(cropped.width).toBeLessThan(fullWidth * 0.7);
-  expect(cropped.width).toBeGreaterThan(fullWidth * 0.45);
+  expect(cropped.width).toBeLessThan(full.width * 0.7);
+  expect(cropped.width).toBeGreaterThan(full.width * 0.45);
   const src = await image.getAttribute("src");
   expect(src).toContain(photo.toString("base64").slice(0, 48));
   const stall = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.tagName, {
@@ -150,11 +150,7 @@ test("67-open-a-cropped-word-picture", async ({ page }) => {
   await beat(page, 400);
   await crop.click();
   await expect(page.getByText("The rest of the photo stays the same size.")).toBeVisible();
-  const scale = await image.evaluate((el) => {
-    const width = el.offsetWidth;
-    return width > 0 ? el.getBoundingClientRect().width / width || 1 : 1;
-  });
-  await drag(page, Math.round(fullWidth * 0.2 * scale));
+  await drag(page, Math.max(36, Math.round(cropped.width * 0.45)));
   await expect
     .poll(async () => (await frame.boundingBox())!.width)
     .toBeGreaterThan(cropped.width * 1.2);
@@ -176,14 +172,14 @@ test("67-open-a-cropped-word-picture", async ({ page }) => {
   await expect(frame).toHaveAttribute("data-cropped", "false");
   await expect
     .poll(async () => (await image.boundingBox())!.width)
-    .toBeGreaterThan(fullWidth * 0.9);
+    .toBeGreaterThan(full.width * 0.9);
   await beat(page, 900);
 
   await caption(page, "She crops the parking lot out again and exports for Word.", 1000);
   await crop.click();
-  await drag(page, -Math.round(fullWidth * 0.42 * scale));
+  await drag(page, -Math.round(full.width * 0.42));
   const exportedFrame = (await frame.boundingBox())!;
-  expect(exportedFrame.width).toBeLessThan(fullWidth * 0.7);
+  expect(exportedFrame.width).toBeLessThan(full.width * 0.7);
   await page.getByRole("button", { name: "Done", exact: true }).click();
   await beat(page, 400);
   const downloading = page.waitForEvent("download");
@@ -228,9 +224,9 @@ test("67-open-a-cropped-word-picture", async ({ page }) => {
     "Imported DOCX: Seed swap sign-up.docx · 1 compatibility note",
   );
   const returned = (await frame.boundingBox())!;
-  const returnedFull = await reopened.evaluate((el) => el.offsetWidth);
-  expect(returned.width).toBeLessThan(returnedFull * 0.7);
-  expect(returned.width).toBeGreaterThan(returnedFull * 0.45);
+  const returnedFull = (await reopened.boundingBox())!;
+  expect(returned.width).toBeLessThan(returnedFull.width * 0.7);
+  expect(returned.width).toBeGreaterThan(returnedFull.width * 0.45);
   expect(await reopened.getAttribute("src")).toContain(photo.toString("base64").slice(0, 48));
   const stillStall = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.tagName, {
     x: returned.x + 36,

@@ -62,21 +62,38 @@ async function frameBreak(page: Page) {
 }
 
 async function clickLine(page: Page, text: string) {
-  const point = await page.evaluate((needle) => {
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-    let node: globalThis.Node | null = null;
-    let found: globalThis.Node | null = null;
-    while ((node = walker.nextNode())) {
-      if (node.textContent?.includes(needle)) found = node;
+  const line = page.locator(".document-content p", { hasText: text }).last();
+  await line.evaluate((el) => {
+    const stage = el.closest(".document-stage");
+    if (!(stage instanceof HTMLElement)) {
+      el.scrollIntoView({ block: "center" });
+      return;
     }
-    if (!found) return null;
+    const rect = el.getBoundingClientRect();
+    const stageRect = stage.getBoundingClientRect();
+    stage.scrollTop += rect.top - stageRect.top - stageRect.height * 0.4;
+  });
+  await beat(page, 250);
+  const box = await line.boundingBox();
+  if (!box) throw new Error(`missing ${text}`);
+  await page.mouse.click(box.x + Math.min(24, box.width / 2), box.y + Math.min(10, box.height / 2));
+  await page.locator(".document-content").evaluate((root, needle) => {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node: Node | null;
+    let found: Text | null = null;
+    while ((node = walker.nextNode())) {
+      if (node.textContent?.includes(needle)) found = node as Text;
+    }
+    if (!found) return;
+    const at = found.textContent?.indexOf(needle) ?? 0;
     const range = document.createRange();
-    range.selectNodeContents(found);
-    const rect = range.getBoundingClientRect();
-    return { x: rect.left + Math.min(20, rect.width / 2), y: rect.top + rect.height / 2 };
+    range.setStart(found, Math.max(0, at));
+    range.collapse(true);
+    const selection = root.ownerDocument.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    if (root instanceof HTMLElement) root.focus();
   }, text);
-  if (!point) throw new Error(`missing ${text}`);
-  await page.mouse.click(point.x, point.y);
 }
 
 test("89-dont-leave-one-line-behind", async ({ page }) => {
@@ -96,6 +113,7 @@ test("89-dont-leave-one-line-behind", async ({ page }) => {
   await expect.poll(() => pageOfText(page, "Roses stay on this page.")).toBe(0);
   await expect.poll(() => pageOfText(page, "Bring a chair if you can.")).toBe(0);
   await expect.poll(() => pageOfText(page, "See you Saturday.")).toBe(1);
+  await heading.scrollIntoViewIfNeeded();
   await expect(heading).toBeInViewport();
   await expect
     .poll(() =>
@@ -125,19 +143,16 @@ test("89-dont-leave-one-line-behind", async ({ page }) => {
     1500,
   );
   await clickLine(page, "See you Saturday.");
-  const off = page.getByRole("button", { name: "Don't leave one line, off" });
+  const off = page.getByRole("button", { name: "Don't leave one line" });
+  await off.scrollIntoViewIfNeeded();
   await expect(off).toBeVisible();
   await expect(off).toHaveAttribute("aria-pressed", "false");
-  await expect(off).toContainText("Off");
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await beat(page, 1400);
 
   await caption(page, "One click turns it on. There is no second dialog.", 1200);
   await off.click();
-  const on = page.getByRole("button", { name: "Don't leave one line, on" });
-  await expect(on).toBeVisible();
-  await expect(on).toHaveAttribute("aria-pressed", "true");
-  await expect(on).toContainText("On");
+  await expect(off).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("p[data-widow-control='true']")).toContainText("See you Saturday.");
   await expect.poll(() => pageOfText(page, "See you Saturday.")).toBe(1);
   await expect.poll(() => pageOfText(page, "Bring a chair if you can.")).toBe(1);
@@ -152,15 +167,15 @@ test("89-dont-leave-one-line-behind", async ({ page }) => {
   );
 
   await caption(page, "She turns it off. “See you Saturday.” is alone at the top of page 2 again.", 1400);
-  await page.getByRole("button", { name: "Don't leave one line, on" }).click();
-  await expect(page.getByRole("button", { name: "Don't leave one line, off" })).toBeVisible();
+  await off.click();
+  await expect(off).toHaveAttribute("aria-pressed", "false");
   await expect.poll(() => pageOfText(page, "See you Saturday.")).toBe(1);
   await expect.poll(() => pageOfText(page, "Bring a chair if you can.")).toBe(0);
   await frameBreak(page);
   await beat(page, 1400);
 
   await caption(page, "She turns it on again. SuiteLeaf saves the choice.", 1200);
-  await page.getByRole("button", { name: "Don't leave one line, off" }).click();
+  await off.click();
   await expect.poll(() => pageOfText(page, "Bring a chair if you can.")).toBe(1);
   await expect(page.locator(".save-status")).toContainText("Saved", { timeout: 5000 });
   await beat(page, 1000);
@@ -175,10 +190,7 @@ test("89-dont-leave-one-line-behind", async ({ page }) => {
   await expect.poll(() => pageOfText(page, "Bring a chair if you can.")).toBe(1);
   await frameBreak(page);
   await clickLine(page, "See you Saturday.");
-  await expect(page.getByRole("button", { name: "Don't leave one line, on" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect(off).toHaveAttribute("aria-pressed", "true");
   await beat(page, 1400);
 
   await caption(

@@ -128,7 +128,7 @@ export function MenuItem({
     >
       <span className="menu-item-label">{children}</span>
       {shortcut ? (
-        <span className="menu-item-shortcut">{shortcut}</span>
+        <span className="menu-item-keys">{shortcut}</span>
       ) : null}
     </Dropdown.Item>
   );
@@ -162,6 +162,8 @@ export function SubMenu({
           onPointerEnter={() => setOpenNested(true)}
           onSelect={(event) => {
             event.preventDefault();
+            // A tap also sends pointerenter, which opens the list. Toggling
+            // here would close it again on the same tap.
             setOpenNested(true);
           }}
         >
@@ -170,7 +172,7 @@ export function SubMenu({
             ›
           </span>
         </Dropdown.Item>
-        {openNested ? children : null}
+        {openNested ? <div className="menu-nested">{children}</div> : null}
       </MenuPath.Provider>
     );
   }

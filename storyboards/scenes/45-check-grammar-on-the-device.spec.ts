@@ -56,6 +56,23 @@ async function clickAfter(page: Page, text: string) {
   }, text);
   if (!point) throw new Error(`Could not click after “${text}”`);
   await page.mouse.click(point.x, point.y);
+  await page.locator(".document-content").evaluate((root, value) => {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node: Node | null;
+    while ((node = walker.nextNode())) {
+      const content = node.textContent ?? "";
+      const at = content.lastIndexOf(value);
+      if (at < 0) continue;
+      const range = document.createRange();
+      range.setStart(node, at + value.length);
+      range.collapse(true);
+      const selection = root.ownerDocument.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      if (root instanceof HTMLElement) root.focus();
+      return;
+    }
+  }, text);
 }
 
 test("45-check-grammar-on-the-device", async ({ page }) => {

@@ -103,8 +103,12 @@ test.describe("Desktop & Mobile End-to-End Responsive Suite", () => {
       const toolbarBox = (await toolbar.boundingBox())!;
       expect(toolbarBox.height).toBeLessThanOrEqual(55);
 
-      // 5. Outline is hidden on mobile
-      await expect(page.locator(".outline")).toBeHidden();
+      // 5. Headings sit in a slim bar across the top, not a side column
+      const outline = page.locator(".outline");
+      await expect(outline).toBeVisible();
+      const outlineBox = (await outline.boundingBox())!;
+      expect(outlineBox.height).toBeLessThanOrEqual(48);
+      expect(outlineBox.x + outlineBox.width).toBeLessThanOrEqual(viewport.width + 1);
     } else {
       // Desktop: paper is standard width and centered
       expect(paperBox.width).toBeCloseTo(816, 0);

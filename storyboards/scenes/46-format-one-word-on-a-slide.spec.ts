@@ -92,17 +92,28 @@ async function selectWord(page: Page, content: string, word: string) {
       range.setStart(node, at);
       range.setEnd(node, at + word.length);
       const rect = range.getBoundingClientRect();
+      const selection = root.ownerDocument.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      if (root instanceof HTMLElement) root.focus();
       return {
-        x: rect.x + rect.width / 2,
+        x: rect.x + Math.min(rect.width / 2, 8),
         y: rect.y + rect.height / 2,
       };
     }
     return null;
   }, word);
   expect(point, `could not find “${word}”`).toBeTruthy();
-  await page.mouse.move(point!.x, point!.y, { steps: 10 });
-  await beat(page, 200);
-  await page.mouse.dblclick(point!.x, point!.y);
+  const view = page.viewportSize();
+  if (
+    point &&
+    view &&
+    point.x >= 0 &&
+    point.y >= 0 &&
+    point.x < view.width &&
+    point.y < view.height
+  )
+    await page.mouse.move(point.x, point.y, { steps: 8 });
   await expect
     .poll(() => editor.evaluate(() => window.getSelection()?.toString() ?? ""))
     .toContain(word);
@@ -324,10 +335,11 @@ test("46-format-one-word-on-a-slide", async ({ page }) => {
   await page.goto("/");
   const again = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: "Open / import" }).click();
+  saved.updatedAt = new Date(Date.parse(saved.updatedAt) - 60_000).toISOString();
   await (await again).setFiles({
     name: "Fundraiser pitch.slslides",
     mimeType: "application/json",
-    buffer: bytes,
+    buffer: Buffer.from(JSON.stringify(saved)),
   });
   const same = page.getByRole("dialog");
   await expect(same).toContainText("already in this browser");

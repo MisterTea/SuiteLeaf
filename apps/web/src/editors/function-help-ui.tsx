@@ -345,12 +345,26 @@ export function useSheetFunctions({
           : "below",
       );
       try {
-        setStats(selectionStatistics(range.getValues() as unknown[][]));
+        const values = range.getValues() as unknown[][];
+        let hidden: number[] = [];
+        try {
+          hidden = bookRef.current?.getActiveSheet?.()?.getFilter?.()?.getFilteredOutRows?.() ?? [];
+        } catch {
+          hidden = [];
+        }
+        const gone = new Set(hidden);
+        const visible = gone.size
+          ? values.filter((_, index) => !gone.has(grid.startRow + index))
+          : values;
+        setStats(selectionStatistics(visible));
       } catch {
         setStats(null);
       }
     };
     const selectionSub = selections.selectionChanged$.subscribe(readSelection);
+    const filterSub = bookRef.current?.onCommandExecuted?.((command: { id?: string }) => {
+      if (command.id?.includes("filter")) readSelection();
+    });
     readSelection();
     const findChrome = () => {
       attachEditors();
@@ -380,6 +394,7 @@ export function useSheetFunctions({
     return () => {
       subs.forEach((sub) => sub.unsubscribe());
       selectionSub.unsubscribe();
+      filterSub?.dispose?.();
       observer.disconnect();
       window.removeEventListener("keydown", onKey, true);
     };

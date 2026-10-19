@@ -303,7 +303,7 @@ test("32-give-a-deck-a-theme-and-transitions", async ({ page }) => {
   await page.keyboard.press("ControlOrMeta+A");
   await typeSlowly(page, "#2E7D32", 50);
   await expect(page.locator(".slide-canvas .slide-shape")).toHaveCSS("background-color", centre);
-  await expect(page.getByLabel("Accent colour")).toHaveValue("#2e7d32");
+  await expect(hex).toHaveValue("#2e7d32");
   await beat(page);
 
   await caption(page, "One line should stay in italic Georgia. That marks it as an exception.", 1400);
@@ -437,6 +437,9 @@ test("32-give-a-deck-a-theme-and-transitions", async ({ page }) => {
   expect(slides[3].transition.type).toBe("none");
   expect(slides[5].transition.type).toBe("none");
   expect(slides[6].transition.type).toBe("fade");
+  // The copy on this computer can finish saving with the same timestamp.
+  // An older time makes the import a different revision, so Keep both appears.
+  saved.updatedAt = new Date(Date.parse(saved.updatedAt) - 60_000).toISOString();
 
   await page.goto("/");
   await caption(page, "The deck is already on this computer. Open the downloaded file anyway.", 1400);
@@ -445,7 +448,7 @@ test("32-give-a-deck-a-theme-and-transitions", async ({ page }) => {
   await (await again).setFiles({
     name: "Fundraiser pitch.slslides",
     mimeType: "application/json",
-    buffer: bytes,
+    buffer: Buffer.from(JSON.stringify(saved)),
   });
   const same = page.getByRole("dialog");
   await expect(same).toContainText("already in this browser");

@@ -134,7 +134,7 @@ test("27-share-a-document-with-a-teammate", async ({ page }) => {
     await expect(dialog.getByText("Rosa Diaz (you)")).toBeVisible();
     await expect(dialog.getByText("Owner")).toBeVisible();
     await expect(
-      dialog.getByText("Only the people listed here can open this file."),
+      dialog.getByText("Only the people and groups listed here can open this file."),
     ).toBeVisible();
     await caption(page, "The dialog lists who can open it. Right now, only Rosa.", 1800);
 

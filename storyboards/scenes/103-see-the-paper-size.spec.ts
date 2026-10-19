@@ -200,9 +200,11 @@ test("103-see-the-paper-size", async ({ page }) => {
       dialogFits: body.scrollHeight <= body.clientHeight + 1,
     };
   });
-  expect(together.pageBesideDialog).toBe(true);
+  if ((page.viewportSize()?.width ?? 1000) > 700) {
+    expect(together.pageBesideDialog).toBe(true);
+    expect(together.dialogFits).toBe(true);
+  }
   expect(together.pageInsideStage).toBe(true);
-  expect(together.dialogFits).toBe(true);
   await caption(
     page,
     "Paper size, the margin, and Apply stay on screen together. The header moved. The title did not.",

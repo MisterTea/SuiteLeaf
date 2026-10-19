@@ -161,8 +161,10 @@ test("54-spell-a-sheet-and-a-deck", async ({ page, context }) => {
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Update", exact: true }).click();
   const extra = page.locator(".slide-canvas textarea").nth(2);
+  await extra.scrollIntoViewIfNeeded();
   await extra.click();
   await typeSlowly(page, "recieve", 70);
+  await page.locator(".slide-canvas textarea").first().click();
   await expect(page.locator(".slide-spell-mirror .spelling-misspelling")).toHaveText("recieve");
   const offlineSlide = await spell(page);
   await expect(offlineSlide.getByRole("button", { name: "receive", exact: true })).toBeVisible();

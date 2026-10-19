@@ -54,10 +54,18 @@ export function previewPlan(
   pageCount: number,
   differentOddEven: boolean,
   coverHasNoNumber = false,
+  differentFirstPage = false,
 ): { slots: PreviewSlot[]; total: number } {
   const count = Math.max(1, Math.floor(pageCount) || 1);
   if (coverHasNoNumber && differentOddEven)
     return { slots: coverSlots(count), total: count };
+  // The letterhead stays in the preview, then the first even page and the first odd page.
+  if (differentFirstPage && differentOddEven) {
+    const slots: PreviewSlot[] = [{ kind: "page", index: 0 }];
+    if (count > 1) slots.push({ kind: "page", index: 1 });
+    if (count > 2) slots.push({ kind: "page", index: 2 });
+    return { slots, total: count };
+  }
   if (differentOddEven) return { slots: lastParitySlots(count), total: count };
   if (count <= 3) {
     return {
@@ -110,6 +118,7 @@ export function previewSheetNumbers(
     pageCount,
     settings.differentOddEven,
     settings.coverHasNoNumber,
+    settings.differentFirstPage,
   );
   return plan.slots.flatMap((slot) => {
     if (slot.kind !== "page") return [];

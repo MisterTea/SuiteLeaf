@@ -24,13 +24,17 @@ function expectTwoInches(insets: Awaited<ReturnType<typeof pageEdgeInsets>>) {
     expect(Math.abs(insets[edge] - 2), edge).toBeLessThanOrEqual(0.1);
 }
 
+const marginFields = ["Top margin", "Bottom margin", "Left margin", "Right margin"];
+
 async function replaceMargin(page: Page, value: string) {
   const setup = page.getByRole("dialog", { name: "Page setup" });
-  const margins = setup.getByLabel("Page margins");
-  await margins.click();
-  await margins.press("ControlOrMeta+A");
-  await beat(page, 400);
-  await typeSlowly(page, value, 160);
+  for (const label of marginFields) {
+    const field = setup.getByLabel(label);
+    await field.scrollIntoViewIfNeeded();
+    await field.click();
+    await field.press("ControlOrMeta+A");
+    await typeSlowly(page, value, 40);
+  }
 }
 
 /** Park the pointer on the title so the error and the gray Apply button stay readable. */
@@ -122,7 +126,8 @@ test("82-use-a-two-inch-margin", async ({ page }) => {
   await expect(editor).toContainText("committee marks");
   expectTwoInches(await pageEdgeInsets(page));
   await page.getByRole("button", { name: "Page setup", exact: true }).click();
-  await expect(setup.getByLabel("Page margins")).toHaveValue("2");
+  for (const label of marginFields)
+    await expect(setup.getByLabel(label)).toHaveValue("2");
   await beat(page, 1200);
   await caption(page, "The margin is still 2 inches after the file is reopened.", 1800);
   await setup.getByRole("button", { name: "Cancel", exact: true }).click();

@@ -9,23 +9,38 @@ import { createInterface } from "node:readline";
 const root = resolve(import.meta.dirname, "../..");
 export const videos = join(root, "storyboards/videos");
 const size = { width: 1280, height: 800 };
+const phone = { width: 390, height: 844 };
 
 /** Draws the pointer, which Playwright's recordings do not show. */
-const cursorScript = `
+function cursorScript(touch: boolean) {
+  const box = touch
+    ? "width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;background:rgba(26,115,232,.28);border:2px solid #1a73e8;"
+    : "width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;background:rgba(26,115,232,.35);border:2px solid #1a73e8;";
+  return `
 (() => {
   const install = () => {
     if (document.getElementById("storyboard-cursor")) return;
     const dot = document.createElement("div");
     dot.id = "storyboard-cursor";
-    dot.style.cssText = "position:fixed;left:0;top:0;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;background:rgba(26,115,232,.35);border:2px solid #1a73e8;z-index:2147483647;pointer-events:none;transition:transform .12s;";
+    dot.style.cssText = "position:fixed;left:0;top:0;${box}z-index:2147483647;pointer-events:none;transition:transform .12s;";
     document.documentElement.appendChild(dot);
-    addEventListener("mousemove", (e) => { dot.style.left = e.clientX + "px"; dot.style.top = e.clientY + "px"; }, true);
-    addEventListener("mousedown", () => { dot.style.transform = "scale(.6)"; }, true);
-    addEventListener("mouseup", () => { dot.style.transform = "scale(1)"; }, true);
+    const place = (e) => {
+      const x = e.clientX ?? e.touches?.[0]?.clientX;
+      const y = e.clientY ?? e.touches?.[0]?.clientY;
+      if (x == null || y == null) return;
+      dot.style.left = x + "px";
+      dot.style.top = y + "px";
+    };
+    addEventListener("pointermove", place, true);
+    addEventListener("pointerdown", (e) => { place(e); dot.style.transform = "scale(.72)"; }, true);
+    addEventListener("pointerup", () => { dot.style.transform = "scale(1)"; }, true);
+    addEventListener("touchstart", (e) => { place(e); dot.style.transform = "scale(.72)"; }, true);
+    addEventListener("touchend", () => { dot.style.transform = "scale(1)"; }, true);
   };
   if (document.readyState === "loading") addEventListener("DOMContentLoaded", install);
   else install();
 })();`;
+}
 
 /**
  * Stress runs (e.g. STORYBOARD_RUN_TAG=web-q4 with --repeat-each=3) keep every
@@ -86,6 +101,8 @@ function encode(webm: string, mp4: string) {
 export const test = base.extend<{ page: Page }>({
   page: async ({ browser, baseURL }, provide, info) => {
     const ai = info.title.endsWith("-ai");
+    const mobile = info.project.name === "mobile";
+    const frame = mobile ? phone : size;
     const dir = mkdtempSync(join(tmpdir(), "storyboard-video-"));
     let page: Page;
     let close: () => Promise<void>;
@@ -110,7 +127,7 @@ export const test = base.extend<{ page: Page }>({
       // The video is cropped to the window, so the window must match the viewport.
       await app.evaluate(({ BrowserWindow }, s) => BrowserWindow.getAllWindows()[0]?.setContentSize(s.width, s.height), size);
       await page.setViewportSize(size);
-      await page.context().addInitScript(cursorScript);
+      await page.context().addInitScript(cursorScript(false));
       await page.context().addInitScript(thinkingScript);
       await page.reload();
       page.context().setDefaultTimeout(15000);
@@ -128,12 +145,20 @@ export const test = base.extend<{ page: Page }>({
     } else {
       const context = await browser.newContext({
         baseURL,
-        viewport: size,
-        recordVideo: { dir, size },
+        viewport: frame,
+        recordVideo: { dir, size: frame },
         acceptDownloads: true,
+        hasTouch: mobile,
+        isMobile: mobile,
+        ...(mobile
+          ? {
+              userAgent:
+                "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36",
+            }
+          : {}),
       });
       context.setDefaultTimeout(15000);
-      await context.addInitScript(cursorScript);
+      await context.addInitScript(cursorScript(mobile));
       if (ai) await context.addInitScript(assistantScript(baseURL));
       page = await context.newPage();
       close = () => context.close();
@@ -157,8 +182,8 @@ export const test = base.extend<{ page: Page }>({
       encode(
         await video.path(),
         passed
-          ? join(videos, electronMode ? "electron" : "", name)
-          : join(root, "test-results/ai-videos", electronMode ? "electron" : "", name),
+          ? join(videos, mobile ? "mobile" : electronMode ? "electron" : "", name)
+          : join(root, "test-results/ai-videos", mobile ? "mobile" : electronMode ? "electron" : "", name),
       );
     }
     rmSync(dir, { recursive: true, force: true });

@@ -165,7 +165,7 @@ test("77-number-the-front-in-roman", async ({ page }) => {
   await format.scrollIntoViewIfNeeded();
   await beat(page, 400);
   await expect(setup.getByRole("radio", { name: "Page 1" })).toBeChecked();
-  const roman = setup.getByRole("radio", { name: "i, ii, iii" });
+  const roman = setup.getByRole("radio", { name: /^i … / });
   const start = setup.getByLabel("Start at");
   await expect(roman).toBeVisible();
   await expect(start).toBeVisible();

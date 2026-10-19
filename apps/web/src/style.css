@@ -794,7 +794,8 @@ a {
 .menu-item-label {
   flex: 1;
 }
-.menu-item-shortcut {
+.menu-item-shortcut,
+.menu-item-keys {
   font-size: 11px;
   color: var(--text-secondary);
   font-weight: 400;
@@ -1322,6 +1323,23 @@ a {
 .font-family-select {
   max-width: 135px;
 }
+.tab-stop-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 13px;
+}
+.tab-stop-field input {
+  width: 4.4em;
+  box-sizing: border-box;
+}
+#doc-tab-stop-hint:empty { display: none; }
+#doc-tab-stop-hint {
+  color: var(--text-secondary, #5f6368);
+  font-size: 12px;
+  white-space: nowrap;
+}
 .line-spacing-control {
   position: relative;
   display: inline-flex;
@@ -1812,7 +1830,7 @@ a {
   line-height: 0;
 }
 /* Keeps the photo's proportions even when the page is narrower than the drag. */
-.document-content [data-resize-container] img {
+.document-content [data-resize-container]:not([data-inline="true"]) img {
   display: block;
   height: auto !important;
 }
@@ -1851,13 +1869,19 @@ a {
   overflow: hidden;
   line-height: 0;
 }
+.doc-image-host {
+  position: relative;
+}
 .doc-image-actions {
   display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 4;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
   max-width: 100%;
-  margin-top: 8px;
 }
 .ProseMirror-selectednode.doc-image-host > .doc-image-actions,
 .doc-image-host[data-cropping="true"] > .doc-image-actions,
@@ -1866,11 +1890,31 @@ a {
   display: flex;
 }
 .document-content .doc-image-host[data-wrap="left"] {
+  display: block !important;
   float: left;
+  max-width: 55%;
   margin: 0 12px 8px 0;
 }
+.document-content > .doc-image-host[data-wrap="left"] + p {
+  margin-left: var(--wrap-indent, 0px);
+}
+.document-content > .doc-image-host[data-wrap="right"] + p {
+  margin-right: var(--wrap-indent, 0px);
+}
+.document-content .doc-image-host[data-wrap="left"] [data-resize-wrapper],
+.document-content .doc-image-host[data-wrap="right"] [data-resize-wrapper] {
+  width: 100% !important;
+  max-width: 100%;
+}
+.document-content .doc-image-host[data-wrap="left"] img,
+.document-content .doc-image-host[data-wrap="right"] img {
+  max-width: 100%;
+  height: auto;
+}
 .document-content .doc-image-host[data-wrap="right"] {
+  display: block !important;
   float: right;
+  max-width: 55%;
   margin: 0 0 8px 12px;
 }
 .document-content .doc-image-host[data-wrap="break"] {
@@ -1878,15 +1922,27 @@ a {
 }
 /* An inline picture's box is only as wide as the picture, so max-width: 100%
    freezes a corner drag. Let the drag set a real width. */
-.document-content .doc-image-host[data-inline="true"],
-.document-content .doc-image-host[data-inline="true"] [data-resize-wrapper],
-.document-content .doc-image-host[data-inline="true"] img {
-  max-width: none;
-}
-/* The corner handle hangs over the next word. Keep it above that word. */
 .document-content .doc-image-host[data-inline="true"] {
+  display: inline-block !important;
+  width: fit-content;
+  max-width: none;
+  min-width: 0;
+  vertical-align: text-bottom;
   position: relative;
   z-index: 2;
+}
+.document-content .doc-image-host[data-inline="true"] [data-resize-wrapper] {
+  display: inline-block !important;
+  width: auto;
+  max-width: none;
+  min-width: 0;
+}
+.document-content .doc-image-host[data-inline="true"] img {
+  display: inline-block !important;
+  max-width: none;
+  max-height: none;
+  min-width: 0;
+  vertical-align: text-bottom;
 }
 /* Behind text keeps the sentence slot. The photo paints under the words. */
 .document-content:has(.doc-image-host[data-wrap="behind"]) {
@@ -2076,6 +2132,28 @@ a {
   display: flex;
   justify-content: flex-end;
   margin-top: 8px;
+}
+@media (max-width: 700px) {
+  /* A closed description sits in the corner, clear of the paragraph under the photo. */
+  .image-alt-card:not(:has(form)) {
+    top: 108px !important;
+    left: auto !important;
+    right: 8px !important;
+    width: auto;
+    max-width: 148px;
+    padding: 6px;
+  }
+  .image-alt-card:not(:has(form)) .image-alt-status {
+    display: none;
+  }
+  .image-alt-card:has(form) {
+    top: auto !important;
+    bottom: 8px !important;
+    left: 8px !important;
+    right: 8px !important;
+    width: auto;
+    max-height: min(46vh, 360px);
+  }
 }
 @media print {
   .image-alt-card {
@@ -2996,7 +3074,13 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
     border-top: 1px solid var(--border);
   }
   .sheet-stats-slot {
-    max-width: 46vw !important;
+    max-width: none !important;
+    min-height: 32px;
+    overflow: visible !important;
+  }
+  .sheet-stat {
+    min-height: 32px;
+    padding: 4px 8px;
   }
 }
 
@@ -3533,15 +3617,62 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
     flex-direction: column;
   }
   .document-stage {
-    justify-content: center;
-    padding: 14px 12px 36px;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    padding: 0 0 36px;
     gap: 0;
     box-sizing: border-box;
+  }
+  /* Headings stay one tap away. A side outline does not fit, so they scroll across the top. */
+  .outline {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-height: 48px;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    margin: 0;
+    padding: 0 4px;
+    background: var(--surface, #fff);
+    border-bottom: 1px solid var(--border, #e1e3e1);
+    overflow: hidden;
+  }
+  .outline:has(.arabic-start) {
+    max-height: none;
+    overflow: visible;
+  }
+  .outline-header,
+  .outline-empty,
+  .outline-link-btn {
+    display: none;
+  }
+  .outline-list {
+    flex-direction: row;
+    align-items: center;
+    overflow-x: auto;
+    gap: 0;
+    scrollbar-width: none;
+  }
+  .outline-item {
+    width: auto;
+    flex: 0 0 auto;
+    min-height: 44px;
+    padding: 0 2px;
+    border-radius: 0;
+  }
+  .outline-item-text {
+    min-height: 44px;
+    padding: 10px 12px !important;
+    font-size: 14px;
   }
   .paper-container {
     width: 100%;
     max-width: 100%;
     min-width: 0;
+    padding: 8px 12px 0;
+    box-sizing: border-box;
   }
   .paper {
     width: 100%;
@@ -3557,59 +3688,238 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
     overflow-wrap: break-word;
   }
   .workspace-header {
-    padding: 6px 10px;
-    gap: 6px;
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 2px;
+    row-gap: 0;
+    padding: 2px 4px 0;
     max-width: 100vw;
     box-sizing: border-box;
-    overflow: hidden;
+    overflow: visible;
   }
-  .title-block {
-    flex: 1;
+  .workspace-header > .back {
+    grid-column: 1;
+    grid-row: 1;
+    width: 40px;
+    height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+  .workspace-header > .file-icon {
+    grid-column: 2;
+    grid-row: 1;
+    padding: 2px;
+  }
+  .workspace-header > .title-block {
+    display: contents;
+  }
+  .workspace-header .title-top-row {
+    grid-column: 3 / -1;
+    grid-row: 1;
     min-width: 0;
-  }
-  .title-top-row {
     flex-wrap: nowrap;
-    gap: 4px;
+    gap: 2px;
+  }
+  .workspace-header .title-folder-row {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    padding: 0 10px 2px;
+  }
+  .workspace-header .last-edited {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    padding: 0 12px 2px;
+    font-size: 12px;
   }
   .title-block input {
-    font-size: 15px;
+    font-size: 16px;
+    font-weight: 500;
     width: 100%;
-    min-width: 60px;
-    max-width: 140px;
+    min-width: 0;
+    max-width: none;
+    flex: 1;
+    text-overflow: ellipsis;
+    padding: 6px 4px;
+  }
+  .workspace-header > .header-right-tools {
+    grid-column: 4;
+    grid-row: 4;
+    align-self: stretch;
+    gap: 0;
+    margin: 2px 0 0;
+    padding-right: 2px;
+    background: var(--toolbar-bg);
+    border-top: 1px solid var(--border);
+  }
+  .workspace-header > .header-right-tools .doc-icon-btn,
+  .workspace-header > .header-right-tools .ai-button,
+  .workspace-header > .header-right-tools .save-copy {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    min-height: 36px;
+    padding: 0;
+    justify-content: center;
+  }
+  .workspace-header .title-top-row .doc-icon-btn {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0;
+  }
+  .workspace-header .ai-button span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
   .file-menu {
+    grid-column: 1 / 4;
+    grid-row: 4;
+    width: auto;
+    max-width: none;
+    margin: 2px 0 0 -4px;
+    padding: 0 2px;
     overflow-x: auto;
-    max-width: calc(100vw - 120px);
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
     white-space: nowrap;
-    gap: 1px;
+    gap: 0;
+    border-top: 1px solid var(--border);
+    background: var(--toolbar-bg);
   }
   .file-menu::-webkit-scrollbar {
     display: none;
   }
   .menu-trigger {
-    padding: 2px 5px;
-    font-size: 12px;
+    min-height: 44px;
+    padding: 0 14px;
+    font-size: 15px;
+    font-weight: 500;
     flex-shrink: 0;
+    border-radius: 0;
+    color: var(--text-primary);
+  }
+  .menu-trigger[data-state="open"] {
+    background: var(--toolbar-active);
+    color: var(--toolbar-active-text);
+    box-shadow: inset 0 -2px 0 var(--google-blue, #1a73e8);
   }
   .header-right-tools {
-    gap: 4px;
+    gap: 2px;
     flex-shrink: 0;
   }
   .share-btn {
-    padding: 6px 10px;
-    font-size: 13px;
+    min-height: 36px;
+    padding: 6px 12px;
+    font-size: 14px;
+  }
+  .header-right-tools .workspace-server {
+    display: inline-flex;
+    max-width: 108px;
+    overflow: hidden;
+    font-size: 11px;
+    line-height: 1.2;
+    white-space: nowrap;
   }
   .toolbar-edits-rest {
     flex-wrap: nowrap;
   }
   .save-status {
-    font-size: 11px;
+    flex-shrink: 0;
+    max-width: 72px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 12px;
     white-space: nowrap;
+    margin-left: 0;
   }
-  .last-edited {
-    font-size: 11px;
+  /* A saved file is the check mark. The full sentence stays in the
+     status text for people using a screen reader and for the tests. */
+  .save-status:has(svg) {
+    max-width: 16px;
+  }
+  .menu-item {
+    min-height: 48px;
+    padding: 12px 16px;
+    font-size: 16px;
+    gap: 12px;
+  }
+  .menu-item-keys {
+    display: none;
+  }
+  .menu-nested {
+    margin: 0 8px 6px 16px;
+    padding-left: 8px;
+    border-left: 3px solid var(--toolbar-active);
+  }
+  .menu-nested .menu-item {
+    min-height: 44px;
+  }
+  [data-radix-popper-content-wrapper]:has(> .menu-content) {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: auto !important;
+    bottom: 0 !important;
+    transform: none !important;
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+    z-index: 1100 !important;
+  }
+  .menu-content {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    max-height: min(70vh, 520px);
+    border-radius: 16px 16px 0 0;
+    padding: 8px 8px calc(12px + env(safe-area-inset-bottom));
+    box-shadow:
+      0 -12px 40px rgba(32, 33, 36, 0.28),
+      0 0 0 100vmax rgba(32, 33, 36, 0.4);
+  }
+  .menu-content::before {
+    content: "";
+    display: block;
+    width: 36px;
+    height: 4px;
+    margin: 2px auto 8px;
+    border-radius: 4px;
+    background: #c4c7c5;
+  }
+  .table-context-menu,
+  .slide-context-menu {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: auto !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    z-index: 1100;
+  }
+  .line-spacing-menu {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: auto;
+    min-width: 0;
+    max-height: min(560px, calc(100dvh - 72px));
+    overflow: auto;
+    border-radius: 16px 16px 0 0;
+    z-index: 1100;
   }
   .drive-item time {
     max-width: 48%;
@@ -3623,17 +3933,37 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
     padding: 7px;
     margin-left: auto;
   }
-  .toolbar {
-    margin: 4px 8px 6px;
-    padding: 4px 6px;
-    border-radius: 12px;
+  .toolbar,
+  .sheets-toolbar,
+  .slides-toolbar {
+    margin: 0;
+    padding: 4px 4px;
+    border-radius: 0;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    min-height: 48px;
+    height: auto;
+  }
+  .toolbar,
+  .slides-toolbar {
     flex-wrap: nowrap;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
-    max-width: calc(100vw - 16px);
   }
-  .toolbar::-webkit-scrollbar {
+  /* The formatting row must keep its width and scroll. If it shrinks,
+     Italic and the other tools paint underneath Print. */
+  .slides-toolbar > .toolbar-edits {
+    flex: 0 0 auto;
+    min-inline-size: max-content;
+  }
+  .sheets-toolbar {
+    overflow: visible;
+  }
+  .toolbar::-webkit-scrollbar,
+  .sheets-toolbar::-webkit-scrollbar,
+  .slides-toolbar::-webkit-scrollbar {
     display: none;
   }
   .toolbar .tool,
@@ -3643,33 +3973,42 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   .toolbar .divider,
   .toolbar .menu-search-pill,
   .toolbar .mode-switch,
-  .toolbar .line-spacing-control {
+  .toolbar .line-spacing-control,
+  .sheets-toolbar .tool,
+  .sheets-toolbar .toolbar-select,
+  .sheets-toolbar .menu-search-pill,
+  .slides-toolbar .tool,
+  .slides-toolbar .toolbar-select,
+  .slides-toolbar .menu-search-pill {
     flex-shrink: 0;
   }
-  .sheets-toolbar {
-    margin: 4px 8px 6px;
-    padding: 4px 6px;
-    border-radius: 12px;
-    width: calc(100vw - 16px);
-    max-width: calc(100vw - 16px);
-    box-sizing: border-box;
+  .toolbar .tool,
+  .sheets-toolbar .tool,
+  .slides-toolbar .tool {
+    min-width: 40px;
+    min-height: 40px;
   }
-  .sheets-toolbar .tool {
-    padding: 5px 4px;
+  .toolbar .toolbar-select,
+  .sheets-toolbar select.toolbar-select,
+  .slides-toolbar select.toolbar-select {
+    height: 40px;
+    font-size: 14px;
+    padding: 0 8px;
   }
   .sheet-analyses-dropdown summary {
-    font-size: 11px;
-    padding: 4px 6px;
+    font-size: 13px;
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 10px;
   }
-  .sheets-toolbar .menu-search-pill {
-    padding: 4px 8px;
-  }
-  .sheets-toolbar .tool {
-    padding: 4px 2px;
-  }
-  .sheets-toolbar .menu-search-pill {
-    gap: 0;
-    padding: 4px;
+  .sheets-toolbar .menu-search-pill,
+  .slides-toolbar .menu-search-pill,
+  .toolbar .menu-search-pill {
+    min-width: 40px;
+    min-height: 40px;
+    justify-content: center;
+    padding: 0 10px;
   }
   .sheets-toolbar .menu-search-pill span {
     position: absolute;
@@ -3681,11 +4020,6 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
     border: 0;
-  }
-  .sheet-analyses-dropdown summary {
-    font-size: 10px;
-    line-height: 1.2;
-    padding: 3px 4px;
   }
   /* The comment editor canvas is absolutely positioned and, on a phone,
      covers the Comment button. Keep it to the text line. */
@@ -3718,11 +4052,13 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
     border-top: 1px solid var(--border, #dadce0);
   }
   .print-settings {
-    top: 0;
+    top: auto;
+    left: 0;
     right: 0;
     bottom: 0;
-    width: min(440px, 100vw);
-    border-radius: 0;
+    width: auto;
+    max-height: 46vh;
+    border-radius: 16px 16px 0 0;
   }
   .print-break-notice {
     max-width: calc(100% - 32px);
@@ -5715,9 +6051,10 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
     margin: 0 8px 8px auto;
   }
   .share-arrivals.floating {
-    top: 8px;
+    top: auto;
+    bottom: 16px;
     right: 8px;
-    left: 8px;
+    left: 68px;
     width: auto;
   }
 }
@@ -5918,9 +6255,39 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
     font-size: 0;
   }
   .local-note .local-dot,
-  .local-note small,
-  .cluster-note {
+  .local-note small:not(.cluster-sync) {
     display: none;
+  }
+  .cluster-note {
+    display: flex;
+    position: fixed;
+    z-index: 30;
+    top: 14px;
+    left: 72px;
+    right: 64px;
+    margin: 0;
+    font-size: 0;
+    pointer-events: none;
+  }
+  .cluster-note svg {
+    display: none;
+  }
+  .cluster-note .cluster-sync {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    line-height: 1.3;
+    color: var(--text-primary);
+    pointer-events: auto;
+  }
+  .cluster-note small:not(.cluster-sync) {
+    display: block;
+    font-size: 12px;
+    line-height: 1.3;
+    color: var(--text-secondary);
+    pointer-events: auto;
+    white-space: normal;
   }
   .sign-in-link {
     justify-content: center;
@@ -6784,7 +7151,7 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 .slide-compare-frame {
   position: relative;
   width: min(100%, 820px);
-  container-type: size;
+  container-type: inline-size;
   border-radius: 10px;
   overflow: hidden;
   box-shadow: 0 8px 24px rgba(60, 64, 67, 0.16);
@@ -6861,6 +7228,11 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
   }
   .slide-compare {
     flex-direction: column;
+    align-items: stretch;
+  }
+  .slide-compare-stage,
+  .slide-compare-frame {
+    width: 100%;
   }
   .slide-compare-strip {
     flex-direction: row;
@@ -9273,4 +9645,38 @@ body.agent-open .sign-in-screen {
   border: 1px solid #e0e0e0;
   padding: 1px 2px;
   vertical-align: top;
+}
+
+/* Phone: the assistant covers the screen from the bottom, and the document
+   keeps the full width. A side panel would leave a sliver of the page. */
+@media (max-width: 700px) {
+  body.agent-open .home,
+  body.agent-open .workspace,
+  body.agent-open .loading,
+  body.agent-open .sign-in-screen {
+    margin-right: 0;
+  }
+  body.agent-open .workspace {
+    width: 100%;
+  }
+  body.agent-open .gdocs-modal-overlay {
+    right: 0;
+  }
+  .agent-sidebar {
+    top: auto;
+    left: 0;
+    width: 100%;
+    height: min(72vh, 640px);
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -12px 40px rgba(32, 33, 36, 0.28);
+  }
+  body.agent-open .title-block input {
+    field-sizing: auto;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    flex: 1;
+  }
 }

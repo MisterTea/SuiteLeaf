@@ -117,6 +117,20 @@ async function chipsTogether(
   const romanChip = dialog.getByRole("radio", { name: roman, exact: true });
   const start = dialog.getByRole("spinbutton", { name: "Start at" });
   const apply = dialog.getByRole("button", { name: "Apply", exact: true });
+  await dialog.locator(".dialog-body").evaluate((body, romanText) => {
+    const format = [...body.querySelectorAll("fieldset")].find(
+      (field) => field.querySelector("legend")?.textContent === "Format",
+    );
+    const romanEl = format
+      ? [...format.querySelectorAll("label")].find((label) => label.textContent?.trim() === romanText)
+      : null;
+    const target = romanEl ?? format;
+    if (!(target instanceof HTMLElement)) return;
+    const box = body.getBoundingClientRect();
+    const rect = target.getBoundingClientRect();
+    if (rect.top < box.top + 4 || rect.bottom > box.bottom - 4)
+      body.scrollTop += rect.top - box.top - 8;
+  }, roman);
   await expect(fractionChip).toBeInViewport();
   await expect(pageChip).toBeInViewport();
   await expect(romanChip).toBeInViewport();
@@ -172,7 +186,7 @@ async function chipsTogether(
       };
       const chips = [fractionEl, pageEl, romanEl];
       return (
-        window.innerHeight === 800 &&
+        (window.innerHeight === 800 || window.innerHeight === 844) &&
         chips.every((el) => inside(el) && clearOfCaption(el)) &&
         inside(startEl) &&
         inside(applyEl) &&
@@ -222,12 +236,12 @@ test("119-show-the-start-in-roman", async ({ page }) => {
   let setup = await openSetup(page);
   await showPageTop(page, 0);
   await expect(setup.getByRole("spinbutton", { name: "Start at" })).toHaveValue("1");
-  const opening = await chipsTogether(page, "1 / 2", "Page 1", "i, ii, iii");
+  const opening = await chipsTogether(page, "1 / 2", "Page 1", "i, ii");
   await opening.hover();
   await readableNumber(page, 0);
   await say(
     page,
-    "She opens Page setup. Start at is 1, and the roman chip says i, ii, iii.",
+    "She opens Page setup. Start at is 1, and the roman chip says i, ii.",
     3000,
   );
 
@@ -235,13 +249,13 @@ test("119-show-the-start-in-roman", async ({ page }) => {
   await replaceStart(page, "4");
   await expect(setup.getByRole("spinbutton", { name: "Start at" })).toHaveValue("4");
   await expect.poll(() => numbers(page)).toEqual(["Page 4", "Page 5"]);
-  const followed = await chipsTogether(page, "4 / 5", "Page 4", "iv, v, vi");
+  const followed = await chipsTogether(page, "4 / 5", "Page 4", "iv, v");
   await followed.hover();
   await readableNumber(page, 0);
   await expect(setup).toBeVisible();
   await say(
     page,
-    "Before Apply, the roman chip says iv, v, vi. The other chips say 4 / 5 and Page 4.",
+    "Before Apply, the roman chip says iv, v. The other chips say 4 / 5 and Page 4.",
     3400,
   );
 
@@ -267,13 +281,13 @@ test("119-show-the-start-in-roman", async ({ page }) => {
   await replaceStart(page, "12");
   await expect(setup.getByRole("spinbutton", { name: "Start at" })).toHaveValue("12");
   await expect.poll(() => numbers(page)).toEqual(["xii", "xiii"]);
-  const further = await chipsTogether(page, "12 / 13", "Page 12", "xii, xiii, xiv");
+  const further = await chipsTogether(page, "12 / 13", "Page 12", "xii, xiii");
   await further.hover();
   await expect(further).toBeChecked();
   await readableNumber(page, 0);
   await say(
     page,
-    "Before Apply, the chip says xii, xiii, xiv, and the page says xii.",
+    "Before Apply, the chip says xii, xiii, and the page says xii.",
     3200,
   );
 
@@ -285,22 +299,22 @@ test("119-show-the-start-in-roman", async ({ page }) => {
     "Numbering starts at 1 or later. The page stays on xii.",
   );
   await expect.poll(() => numbers(page)).toEqual(["xii", "xiii"]);
-  await chipsTogether(page, "12 / 13", "Page 12", "xii, xiii, xiv");
+  await chipsTogether(page, "12 / 13", "Page 12", "xii, xiii");
   await readableNumber(page, 0);
   await say(
     page,
-    "Zero does not change the chip. It stays on xii, xiii, xiv, and the page stays on xii.",
+    "Zero does not change the chip. It stays on xii, xiii, and the page stays on xii.",
     3200,
   );
 
   await say(page, "She sets Start at back to 4.", 700);
   await replaceStart(page, "4");
   await expect.poll(() => numbers(page)).toEqual(["iv", "v"]);
-  const ready = await chipsTogether(page, "4 / 5", "Page 4", "iv, v, vi");
+  const ready = await chipsTogether(page, "4 / 5", "Page 4", "iv, v");
   await ready.hover();
   await expect(ready).toBeChecked();
   await readableNumber(page, 0);
-  await say(page, "The chip says iv, v, vi again. She applies.", 2200);
+  await say(page, "The chip says iv, v again. She applies.", 2200);
   await setup.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(setup).toBeHidden();
   await expect.poll(() => numbers(page)).toEqual(["iv", "v"]);
@@ -324,9 +338,9 @@ test("119-show-the-start-in-roman", async ({ page }) => {
   setup = await openSetup(page);
   await showPageTop(page, 0);
   await expect(setup.getByRole("spinbutton", { name: "Start at" })).toHaveValue("4");
-  const kept = await chipsTogether(page, "4 / 5", "Page 4", "iv, v, vi");
+  const kept = await chipsTogether(page, "4 / 5", "Page 4", "iv, v");
   await kept.hover();
   await expect(kept).toBeChecked();
   await readableNumber(page, 0);
-  await say(page, "The roman chip still says iv, v, vi. The other chips still start at 4.", 3000);
+  await say(page, "The roman chip still says iv, v. The other chips still start at 4.", 3000);
 });

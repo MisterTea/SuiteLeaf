@@ -218,8 +218,10 @@ test("37-dropdown-lists-in-a-sheet", async ({ page }) => {
   await beat(page, 400);
   await selectCells(page, "A1");
   await beat(page, 400);
-  await pointAt(page, await cellPoint(page, "C1", true));
+  const phone = (page.viewportSize()?.width ?? 1280) < 700;
+  await pointAt(page, await cellPoint(page, "C1", !phone));
   await expect(page.getByText("By Values", { exact: true })).toBeVisible();
+  if (phone) await page.getByRole("button", { name: "By Values", exact: true }).click();
   for (const label of ["Confirmed", "Maybe", "Can't make it", "Waitlist"])
     await expect(page.getByText(label, { exact: true }).last()).toBeVisible();
   await expect(page.getByText("Tentative", { exact: true })).toHaveCount(0);

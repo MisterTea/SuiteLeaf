@@ -95,17 +95,37 @@ test("39-insert-a-function-with-help", async ({ page }) => {
   await page.keyboard.press("Enter");
   await expect(help).toHaveCount(0);
   await beat(page, 300);
-  const host = (await page.locator(".sheet-host").boundingBox())!;
-  await page.mouse.click(host.x + 396, host.y + 68);
-  const x = host.x + 445;
-  const y = host.y + 77;
-  await page.mouse.move(x, y, { steps: 10 });
-  await beat(page, 200);
-  await page.mouse.down();
-  await page.mouse.move(x, y + 27 * 16, { steps: 30 });
-  await beat(page, 250);
-  await page.mouse.up();
-  await beat(page, 500);
+  const phone = (page.viewportSize()?.width ?? 1280) < 700;
+  if (phone) {
+    // Bring column D onto the screen, then drag the fill handle at the
+    // bottom-right corner of that cell.
+    await selectCells(page, "D2");
+    const corner = await page.locator(".sheet-host").evaluate((host) => {
+      const raw = host.getAttribute("data-active-cell");
+      if (!raw) return null;
+      const box = JSON.parse(raw) as { right: number; bottom: number };
+      return { x: box.right - 3, y: box.bottom - 3 };
+    });
+    expect(corner, "the selected cell should be on screen").toBeTruthy();
+    await page.mouse.move(corner!.x, corner!.y, { steps: 8 });
+    await page.mouse.down();
+    await page.mouse.move(corner!.x, corner!.y + 27 * 16, { steps: 30 });
+    await beat(page, 250);
+    await page.mouse.up();
+    await beat(page, 500);
+  } else {
+    const host = (await page.locator(".sheet-host").boundingBox())!;
+    await page.mouse.click(host.x + 396, host.y + 68);
+    const x = host.x + 445;
+    const y = host.y + 77;
+    await page.mouse.move(x, y, { steps: 10 });
+    await beat(page, 200);
+    await page.mouse.down();
+    await page.mouse.move(x, y + 27 * 16, { steps: 30 });
+    await beat(page, 250);
+    await page.mouse.up();
+    await beat(page, 500);
+  }
 
   await caption(page, "COUNTIF explains range and criterion, with an example, while he counts the passes.");
   await selectCells(page, "D30");

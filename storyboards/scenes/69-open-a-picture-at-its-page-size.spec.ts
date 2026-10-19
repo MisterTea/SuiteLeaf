@@ -60,10 +60,11 @@ test("69-open-a-picture-at-its-page-size", async ({ page }) => {
   await expect.poll(() => logo.evaluate((img: HTMLImageElement) => img.style.width)).toBe(
     `${logoPage.width}px`,
   );
-  const logoWidth = await boxWidth(logo);
+  const logoWidth = await logo.evaluate((img) => Math.round(img.offsetWidth));
   expect(Math.abs(logoWidth - logoPage.width)).toBeLessThanOrEqual(4);
+  const shown = (await logo.boundingBox())!;
   const column = (await greeting.boundingBox())!;
-  expect(logoWidth).toBeLessThan(column.width / 2);
+  expect(shown.width).toBeLessThan(column.width / 2);
   await greeting.click();
   await caption(
     page,
@@ -113,8 +114,8 @@ test("69-open-a-picture-at-its-page-size", async ({ page }) => {
   await expect.poll(() => photo.evaluate((img: HTMLImageElement) => img.style.width)).toBe(
     `${photoPage.width}px`,
   );
-  const photoWidth = await boxWidth(photo);
-  const textWidth = await boxWidth(greeting);
+  const photoWidth = await photo.evaluate((img) => Math.round(img.offsetWidth));
+  const textWidth = await greeting.evaluate((el) => Math.round(el.offsetWidth));
   expect(Math.abs(photoWidth - textWidth)).toBeLessThanOrEqual(8);
   expect(Math.abs(photoWidth - photoPage.width)).toBeLessThanOrEqual(8);
   await beat(page, 1800);
@@ -143,7 +144,11 @@ test("69-open-a-picture-at-its-page-size", async ({ page }) => {
   await beat(page, 1000);
   await caption(page, "Both pictures keep the size they had on the page.", 400);
   await showWhole(page, photoAgain);
-  await expect.poll(() => boxWidth(photoAgain)).toBeGreaterThanOrEqual(photoPage.width - 8);
-  await expect.poll(() => boxWidth(photoAgain)).toBeLessThanOrEqual(photoPage.width + 8);
+  await expect
+    .poll(() => photoAgain.evaluate((img) => Math.round(img.offsetWidth)))
+    .toBeGreaterThanOrEqual(photoPage.width - 8);
+  await expect
+    .poll(() => photoAgain.evaluate((img) => Math.round(img.offsetWidth)))
+    .toBeLessThanOrEqual(photoPage.width + 8);
   await beat(page, 1800);
 });

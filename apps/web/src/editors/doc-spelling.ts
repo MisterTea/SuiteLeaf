@@ -200,7 +200,10 @@ const WORD = /[A-Za-z]+(?:['’-][A-Za-z]+)*/g;
  */
 export function isTypingWord(to: number, caret: number | null, next?: string) {
   if (caret == null || caret !== to) return false;
-  return next == null || next === "" || /\s/.test(next);
+  // A space after the word means it is finished, so the underline can show
+  // while the caret is still sitting there.
+  if (next && /\s/.test(next)) return false;
+  return !next;
 }
 
 export function spellingTokens(text: string): { word: string; from: number; to: number }[] {

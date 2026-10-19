@@ -17,7 +17,6 @@ import {
 } from "@suiteleaf/core/suggestions";
 import type { JsonNode } from "@suiteleaf/core";
 import { liveSuggestion, replaceDocument, type SuggestionMode } from "./doc-suggestions";
-import { useMode } from "../mode";
 
 const authorStorage = "suiteleaf-author";
 
@@ -319,9 +318,7 @@ function SuggestionActions() {
 }
 
 export function SuggestionModeSwitch() {
-  const { mode: appMode } = useMode();
   const { mode, setMode, author, setAuthor } = useSuggestions();
-  if (appMode.kind === "single") return null;
   return (
     <div className={`mode-switch ${mode}`} role="group" aria-label="Editing mode">
       <button

@@ -35,6 +35,12 @@ function letterFile() {
   };
 }
 
+async function pageZoom(page: import("@playwright/test").Page) {
+  return page.evaluate(
+    () => Number((document.querySelector(".paginated-paper") as HTMLElement | null)?.style.zoom) || 1,
+  );
+}
+
 async function lineBox(page: import("@playwright/test").Page) {
   const picture = (await page.locator(".document-content img").boundingBox())!;
   const line = await page.locator(".document-content p", { hasText: "Dear friend" }).evaluate((paragraph) => {
@@ -103,7 +109,7 @@ test("70-put-a-picture-beside-the-text", async ({ page }) => {
     .poll(async () => {
       const { picture, line } = await lineBox(page);
       const overlap = Math.min(picture.y + picture.height, line.bottom) - Math.max(picture.y, line.y);
-      return overlap >= 8 && line.x >= picture.x + picture.width - 8;
+      return overlap >= 8 * (await pageZoom(page)) && line.x >= picture.x + picture.width - 8;
     })
     .toBe(true);
   await page.getByText("Dear friend").click();
@@ -116,7 +122,7 @@ test("70-put-a-picture-beside-the-text", async ({ page }) => {
     .poll(async () => {
       const { picture, line } = await lineBox(page);
       const overlap = Math.min(picture.y + picture.height, line.bottom) - Math.max(picture.y, line.y);
-      return overlap >= 8 && line.right <= picture.x + 8;
+      return overlap >= 8 * (await pageZoom(page)) && line.right <= picture.x + 8;
     })
     .toBe(true);
   await page.getByText("Dear friend").click();
@@ -153,7 +159,7 @@ test("70-put-a-picture-beside-the-text", async ({ page }) => {
     .poll(async () => {
       const { picture, line } = await lineBox(page);
       const overlap = Math.min(picture.y + picture.height, line.bottom) - Math.max(picture.y, line.y);
-      return overlap >= 8 && line.x >= picture.x + picture.width - 8;
+      return overlap >= 8 * (await pageZoom(page)) && line.x >= picture.x + picture.width - 8;
     })
     .toBe(true);
   await page.getByText("Dear friend").click();
@@ -191,7 +197,7 @@ test("70-put-a-picture-beside-the-text", async ({ page }) => {
     .poll(async () => {
       const { picture, line } = await lineBox(page);
       const overlap = Math.min(picture.y + picture.height, line.bottom) - Math.max(picture.y, line.y);
-      return overlap >= 8 && line.x >= picture.x + picture.width - 8;
+      return overlap >= 8 * (await pageZoom(page)) && line.x >= picture.x + picture.width - 8;
     })
     .toBe(true);
   await caption(page, "The logo still sits beside “Dear friend.”", 2000);

@@ -11,6 +11,11 @@ import {
   IUndoRedoService,
   type IWorkbookData,
 } from "@univerjs/presets";
+import { ICommandService } from "@univerjs/core";
+import { IRenderManagerService } from "@univerjs/engine-render";
+import { SetRangeValuesCommand } from "@univerjs/sheets";
+import { SheetDataValidationModel } from "@univerjs/sheets-data-validation";
+import { SheetsNoteModel } from "@univerjs/sheets-note";
 import type { FRange } from "@univerjs/sheets/facade";
 import {
   IDescriptionService,
@@ -580,11 +585,18 @@ const rowVisibilityMutation =
  */
 function toggleFilterValueFromLabel(event: MouseEvent) {
   const target = event.target instanceof Element ? event.target : null;
-  if (!target?.closest('[data-u-comp="sheets-filter-panel"]')) return;
-  if (target.closest('label[data-u-comp="checkbox"], a')) return;
-  const row = target.closest('div:has(> label[data-u-comp="checkbox"])');
-  if (!row || row.firstElementChild?.tagName !== "LABEL") return;
-  row.querySelector<HTMLInputElement>("input[type=checkbox]")?.click();
+  if (!target) return;
+  if (target.closest('label[data-u-comp="checkbox"], a, button, input')) return;
+  const desktop = target.closest('[data-u-comp="sheets-filter-panel"]');
+  if (desktop) {
+    const row = target.closest('div:has(> label[data-u-comp="checkbox"])');
+    if (!row || row.firstElementChild?.tagName !== "LABEL") return;
+    row.querySelector<HTMLInputElement>("input[type=checkbox]")?.click();
+    return;
+  }
+  // The phone list draws the name beside the box. Tapping the name ticks it.
+  const line = target.closest('[data-u-comp="mobile-sheets-filter-by-values"] .univer-flex');
+  line?.querySelector<HTMLInputElement>('label[data-u-comp="checkbox"] input[type=checkbox]')?.click();
 }
 const charts = new Map<string, ChartState>();
 const emptyChart: ChartState | undefined = undefined;
@@ -1169,22 +1181,155 @@ export default function Sheets({
       // Univer closes an open note only when a selection move ends, not when the
       // name box or a command sets the selection.
       const notePopups = injector.get(SheetsNotePopupService);
+      const noteModel = injector.get(SheetsNoteModel);
+      const sheetHost = host.current;
       const closeNoteOnMove = injector
         .get(SheetsSelectionsService)
         .selectionChanged$.subscribe((selections) => {
           const popup = notePopups.activePopup,
-            range = selections?.[0]?.range;
+            range = selections?.[0]?.range,
+            sheet = workbook.getActiveSheet(),
+            sheetId = sheet.getSheetId();
           if (
             popup &&
             range &&
             !(
-              popup.subUnitId === workbook.getActiveSheet().getSheetId() &&
+              popup.subUnitId === sheetId &&
               range.startRow === popup.row &&
               range.startColumn === popup.col
             )
           )
             notePopups.hidePopup(true);
+          // A phone has no hover. Selecting the cell opens its note.
+          if (
+            window.innerWidth <= 700 &&
+            range &&
+            range.startRow === range.endRow &&
+            range.startColumn === range.endColumn
+          ) {
+            const note = noteModel.getNote(workbook.getId(), sheetId, {
+              row: range.startRow,
+              col: range.startColumn,
+            });
+            if (note)
+              notePopups.showPopup({
+                unitId: workbook.getId(),
+                subUnitId: sheetId,
+                noteId: note.id,
+                row: range.startRow,
+                col: range.startColumn,
+              });
+          }
+          publishActiveCell(range);
         });
+      // The fill handle is a few canvas pixels at the selection's corner.
+      // Store that corner in screen coordinates, including the sheet's scroll.
+      const publishActiveCell = (
+        range: { startRow: number; startColumn: number; endRow: number; endColumn: number } | null | undefined,
+      ) => {
+        if (!sheetHost || !range) return;
+        try {
+          const corner = workbook.getActiveSheet()?.getRange(range.endRow, range.endColumn).getCellRect();
+          if (!corner) return;
+          const render = injector.get(IRenderManagerService).getRenderUnitById(workbook.getId());
+          const viewport = render?.scene.getViewport("viewMain");
+          const canvas = render?.engine.getCanvasElement();
+          if (!render || !viewport || !canvas) return;
+          const { scaleX, scaleY } = render.scene.getAncestorScale();
+          const bounds = canvas.getBoundingClientRect();
+          const painted = Number.parseFloat(canvas.style.width) || bounds.width;
+          const scaleAdjust = bounds.width / painted || 1;
+          const toX = (value: number) =>
+            (value - viewport.viewportScrollX) * scaleAdjust * scaleX + bounds.left;
+          const toY = (value: number) =>
+            (value - viewport.viewportScrollY) * scaleAdjust * scaleY + bounds.top;
+          sheetHost.dataset.activeCell = JSON.stringify({
+            left: toX(corner.left),
+            top: toY(corner.top),
+            right: toX(corner.right),
+            bottom: toY(corner.bottom),
+          });
+        } catch {
+          delete sheetHost.dataset.activeCell;
+        }
+      };
+      const fillScroll = injector
+        .get(IRenderManagerService)
+        .getRenderUnitById(workbook.getId())
+        ?.scene.getViewport("viewMain")
+        ?.onScrollAfter$.subscribeEvent(() => {
+          const active = workbook.getActiveSheet()?.getSelection()?.getActiveRange();
+          publishActiveCell(
+            active
+              ? {
+                  startRow: active.getRow(),
+                  startColumn: active.getColumn(),
+                  endRow: active.getLastRow(),
+                  endColumn: active.getLastColumn(),
+                }
+              : null,
+          );
+        });
+      // The filter funnel is a 16px mark on the right of the header. On a phone
+      // that mark is often off the screen, so a tap anywhere in the header cell
+      // opens the same panel.
+      const openHeaderFilter = () => {
+        if (window.innerWidth > 700) return;
+        window.setTimeout(() => {
+          const sheet = workbook.getActiveSheet();
+          const range = sheet?.getSelection()?.getActiveRange();
+          if (!range || range.getRow() !== 0) return;
+          if (range.getLastRow() !== range.getRow() || range.getLastColumn() !== range.getColumn())
+            return;
+          injector.get(ICommandService).executeCommand("sheet.operation.open-filter-panel", {
+            unitId: workbook.getId(),
+            subUnitId: sheet.getSheetId(),
+            col: range.getColumn(),
+          });
+        }, 0);
+      };
+      sheetHost?.addEventListener("pointerup", openHeaderFilter);
+      const validations = injector.get(SheetDataValidationModel);
+      const checkedValue = (value: unknown) =>
+        value === true || value === 1 || value === "1" || value === "TRUE";
+      // A phone tap often misses the 16px box. The cell that ends up selected
+      // toggles, unless Univer's own box already did.
+      let armedCheckbox: { row: number; col: number; on: boolean } | null = null;
+      const checkboxCell = () => {
+        const sheet = workbook.getActiveSheet();
+        const cell = sheet?.getActiveCell();
+        if (!sheet || !cell) return null;
+        const row = cell.getRow();
+        const col = cell.getColumn();
+        const rule = validations.getRuleByLocation(workbook.getId(), sheet.getSheetId(), row, col);
+        if (rule?.type !== "checkbox") return null;
+        return { row, col, on: checkedValue(cell.getValue()) };
+      };
+      const armCheckbox = (event: PointerEvent) => {
+        if (window.innerWidth > 700 || event.button === 2) return;
+        armedCheckbox = checkboxCell();
+      };
+      const finishCheckbox = () => {
+        if (window.innerWidth > 700) return;
+        const before = armedCheckbox;
+        armedCheckbox = null;
+        window.setTimeout(() => {
+          const now = checkboxCell();
+          if (!now) return;
+          if (before && before.row === now.row && before.col === now.col && before.on !== now.on) return;
+          injector.get(ICommandService).executeCommand(SetRangeValuesCommand.id, {
+            range: {
+              startRow: now.row,
+              endRow: now.row,
+              startColumn: now.col,
+              endColumn: now.col,
+            },
+            value: { v: now.on ? 0 : 1, t: 3, p: null },
+          });
+        }, 180);
+      };
+      sheetHost?.addEventListener("pointerdown", armCheckbox, true);
+      sheetHost?.addEventListener("pointerup", finishCheckbox);
       // Excel stores a cached result for every formula cell but recalculates formulas on
       // open. An imported snapshot can carry a stale or missing cached value that would
       // display 0 while the formula resolves to a real number, so force one explicit full
@@ -1638,6 +1783,10 @@ export default function Sheets({
         stopViewLock();
         stopFormulaLock();
         closeNoteOnMove.unsubscribe();
+        fillScroll?.dispose();
+        sheetHost?.removeEventListener("pointerup", openHeaderFilter);
+        sheetHost?.removeEventListener("pointerdown", armCheckbox, true);
+        sheetHost?.removeEventListener("pointerup", finishCheckbox);
         partialCleanup?.();
         partialCleanup = undefined;
       };
@@ -2364,33 +2513,36 @@ export default function Sheets({
     // selected chart's pointer events to the canvas (re-dispatching each
     // press), so no native dblclick reaches the chart element.
     let last = { id: "", time: 0, x: 0, y: 0 };
+    const chartAt = (x: number, y: number) =>
+      [...container.querySelectorAll<HTMLElement>("[data-chart-id]")].find((el) => {
+        const r = el.getBoundingClientRect();
+        return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+      })?.dataset.chartId ?? "";
     const pointerDown = (e: PointerEvent) => {
       if (e.button !== 0 || !e.isTrusted) return;
-      const id =
-        [...container.querySelectorAll<HTMLElement>("[data-chart-id]")].find(
-          (el) => {
-            const r = el.getBoundingClientRect();
-            return (
-              e.clientX >= r.left &&
-              e.clientX <= r.right &&
-              e.clientY >= r.top &&
-              e.clientY <= r.bottom
-            );
-          },
-        )?.dataset.chartId ?? "";
+      const id = chartAt(e.clientX, e.clientY);
       if (
         id &&
         id === last.id &&
         e.timeStamp - last.time < 500 &&
-        Math.hypot(e.clientX - last.x, e.clientY - last.y) < 8
+        Math.hypot(e.clientX - last.x, e.clientY - last.y) < 28
       ) {
         last = { id: "", time: 0, x: 0, y: 0 };
         editChart.current(id);
       } else last = { id, time: e.timeStamp, x: e.clientX, y: e.clientY };
     };
+    const doubleClick = (event: MouseEvent) => {
+      const id = chartAt(event.clientX, event.clientY);
+      if (!id) return;
+      last = { id: "", time: 0, x: 0, y: 0 };
+      editChart.current(id);
+    };
     container.addEventListener("pointerdown", pointerDown, true);
-    return () =>
+    container.addEventListener("dblclick", doubleClick, true);
+    return () => {
       container.removeEventListener("pointerdown", pointerDown, true);
+      container.removeEventListener("dblclick", doubleClick, true);
+    };
   }, []);
   const takeSelection = () => {
     const r = book.current?.getActiveRange();

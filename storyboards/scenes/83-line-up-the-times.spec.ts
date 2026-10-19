@@ -44,6 +44,13 @@ async function timeLeft(page: Page, time: string) {
   }, time);
 }
 
+async function pageZoom(page: Page) {
+  return page.locator(".paginated-paper").evaluate((paper) => {
+    const width = (paper as HTMLElement).offsetWidth;
+    return width ? paper.getBoundingClientRect().width / width || 1 : 1;
+  });
+}
+
 /** Move the pointer to a phrase and leave the caret there. */
 async function caretAt(page: Page, phrase: string) {
   const point = await pointOf(page, phrase);
@@ -53,6 +60,23 @@ async function caretAt(page: Page, phrase: string) {
   const box = await root.boundingBox();
   expect(box).toBeTruthy();
   await root.click({ position: { x: point.x - box!.x, y: point.y - box!.y } });
+  await root.evaluate((el, phrase) => {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let node: Node | null;
+    while ((node = walker.nextNode())) {
+      const text = node.textContent ?? "";
+      const start = text.indexOf(phrase);
+      if (start < 0) continue;
+      const range = document.createRange();
+      range.setStart(node, start);
+      range.collapse(true);
+      const selection = el.ownerDocument.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      if (el instanceof HTMLElement) el.focus();
+      return;
+    }
+  }, phrase);
   // ProseMirror ignores a selection change for a moment after an edit.
   await page.waitForTimeout(120);
 }
@@ -148,7 +172,8 @@ test("83-line-up-the-times", async ({ page }) => {
       const [nine, ten, eleven] = await Promise.all(
         ["9:00", "10:30", "11:00"].map((time) => timeLeft(page, time)),
       );
-      return Math.abs(nine! - ten!) <= 2 && eleven! - nine! > 70;
+      const zoom = await pageZoom(page);
+      return Math.abs(nine! - ten!) <= 2 && eleven! - nine! > 70 * zoom;
     })
     .toBe(true);
   await beat(page, 900);
@@ -166,7 +191,8 @@ test("83-line-up-the-times", async ({ page }) => {
       const [nine, ten, eleven] = await Promise.all(
         ["9:00", "10:30", "11:00"].map((time) => timeLeft(page, time)),
       );
-      return Math.abs(nine! - ten!) <= 2 && eleven! - nine! > 70;
+      const zoom = await pageZoom(page);
+      return Math.abs(nine! - ten!) <= 2 && eleven! - nine! > 70 * zoom;
     })
     .toBe(true);
   await caption(page, "The first two times are still at 3 inches. Officers is still at 4.");

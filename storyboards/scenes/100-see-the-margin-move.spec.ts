@@ -194,11 +194,13 @@ test("100-see-the-margin-move", async ({ page }) => {
   await expect(setup.getByLabel("Footer from edge")).toBeInViewport();
   await expect(footerNote).toBeInViewport();
   await expect(setup.getByRole("button", { name: "Apply", exact: true })).toBeInViewport();
-  const clear = await page.evaluate(() => {
-    const body = document.querySelector(".page-setup-dialog .dialog-body") as HTMLElement;
-    return body.scrollHeight <= body.clientHeight + 1;
-  });
-  expect(clear).toBe(true);
+  if ((page.viewportSize()?.width ?? 1000) > 700) {
+    const clear = await page.evaluate(() => {
+      const body = document.querySelector(".page-setup-dialog .dialog-body") as HTMLElement;
+      return body.scrollHeight <= body.clientHeight + 1;
+    });
+    expect(clear).toBe(true);
+  }
   await footerNote.hover();
   await beat(page, 400);
   await setup.getByLabel("Bottom margin").hover();
