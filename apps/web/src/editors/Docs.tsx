@@ -130,7 +130,11 @@ import {
 import { PageSetupFields } from "./page-setup";
 import { PageFurniture } from "./doc-header-editor";
 import { PageGutterBands } from "./page-gutter";
-import { ArabicNumberStart } from "./doc-arabic-start";
+import {
+  ArabicNumberStart,
+  nextHeadingPick,
+  type HeadingPick,
+} from "./doc-arabic-start";
 import { paragraphLineSpacing } from "./doc-line-spacing";
 import { LineSpacingControl } from "./doc-line-spacing-ui";
 import { TabStopField } from "./doc-tab-stop-ui";
@@ -331,10 +335,9 @@ export default function Docs({
   const proofingContext = useRef<ProofingContext>(() => false);
   const grammarContext = useRef<ProofingContext>(() => false);
   const [activeHeading, setActiveHeading] = useState<number | null>(null);
-  const [headingPick, setHeadingPick] = useState<{
-    text: string;
-    startArabic: boolean;
-  } | null>(null);
+  const [headingPick, setHeadingPick] = useState<HeadingPick | null>(null);
+  const headingPickRef = useRef(headingPick);
+  headingPickRef.current = headingPick;
   const [pageCount, setPageCount] = useState(1);
   const [arabicPage, setArabicPage] = useState<number | null>(null);
   const [pageSetupOpen, setPageSetupOpen] = useState(false);
@@ -1276,25 +1279,33 @@ export default function Docs({
 
   useEffect(() => {
     if (!editor) return;
-    const read = () => {
+    const atCaret = (): HeadingPick | null => {
       const { $from } = editor.state.selection;
       for (let depth = $from.depth; depth > 0; depth -= 1) {
         const node = $from.node(depth);
         if (node.type.name !== "heading") continue;
-        setHeadingPick({
+        return {
           text: node.textContent,
           startArabic: node.attrs.startArabic === true,
-        });
-        return;
+        };
       }
-      setHeadingPick(null);
+      return null;
     };
-    editor.on("selectionUpdate", read);
-    editor.on("update", read);
-    read();
+    const read = (source: "selection" | "document") => {
+      const next = nextHeadingPick(headingPickRef.current, atCaret(), source);
+      setHeadingPick((current) =>
+        current?.text === next?.text && current?.startArabic === next?.startArabic
+          ? current
+          : next,
+      );
+    };
+    const onSelection = () => read("selection");
+    const onDocument = () => read("document");
+    editor.on("selectionUpdate", onSelection);
+    editor.on("update", onDocument);
     return () => {
-      editor.off("selectionUpdate", read);
-      editor.off("update", read);
+      editor.off("selectionUpdate", onSelection);
+      editor.off("update", onDocument);
     };
   }, [editor]);
 

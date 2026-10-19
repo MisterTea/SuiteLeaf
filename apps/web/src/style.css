@@ -1875,7 +1875,8 @@ a {
 .doc-image-actions {
   display: none;
   position: absolute;
-  top: calc(100% + 4px);
+  /* The corner handle sits 5px past the photo. A 4px gap paints Wrap text on it. */
+  top: calc(100% + 14px);
   left: 0;
   z-index: 4;
   align-items: center;

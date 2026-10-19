@@ -9,6 +9,23 @@ declare module "@tiptap/core" {
   }
 }
 
+export type HeadingPick = { text: string; startArabic: boolean };
+
+/**
+ * The outline control follows a heading the person moved the caret into.
+ * Opening a file, or applying page setup, leaves the caret where it already
+ * was. That is not a request to restart the numbers.
+ */
+export function nextHeadingPick(
+  shown: HeadingPick | null,
+  atCaret: HeadingPick | null,
+  source: "selection" | "document",
+): HeadingPick | null {
+  if (source === "selection") return atCaret;
+  if (!shown || !atCaret || shown.text !== atCaret.text) return shown;
+  return atCaret;
+}
+
 /** One heading can restart page numbers at arabic 1. Not a section-break dialog. */
 export const ArabicNumberStart = Extension.create({
   name: "arabicNumberStart",

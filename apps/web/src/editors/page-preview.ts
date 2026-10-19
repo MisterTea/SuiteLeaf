@@ -47,8 +47,9 @@ function coverSlots(count: number): PreviewSlot[] {
  * A cover with odd and even pages already on shows the cover and the next
  * sheet, so the blank cover and the outside-edge number are visible before
  * Apply. Different odd and even pages otherwise shows the last even page
- * and the last odd page. Every other file shows each page it has, up to
- * three. A longer file shows the first sheet and the last sheet.
+ * and the last odd page, including when the first page has its own
+ * letterhead. Every other file shows each page it has, up to three. A
+ * longer file shows the first sheet and the last sheet.
  */
 export function previewPlan(
   pageCount: number,
@@ -59,14 +60,12 @@ export function previewPlan(
   const count = Math.max(1, Math.floor(pageCount) || 1);
   if (coverHasNoNumber && differentOddEven)
     return { slots: coverSlots(count), total: count };
-  // The letterhead stays in the preview, then the first even page and the first odd page.
-  if (differentFirstPage && differentOddEven) {
-    const slots: PreviewSlot[] = [{ kind: "page", index: 0 }];
-    if (count > 1) slots.push({ kind: "page", index: 1 });
-    if (count > 2) slots.push({ kind: "page", index: 2 });
-    return { slots, total: count };
+  // The first page's letterhead stays on that page. It does not replace
+  // the last even and last odd sheets in this preview.
+  if (differentOddEven) {
+    void differentFirstPage;
+    return { slots: lastParitySlots(count), total: count };
   }
-  if (differentOddEven) return { slots: lastParitySlots(count), total: count };
   if (count <= 3) {
     return {
       slots: Array.from({ length: count }, (_, index) => ({

@@ -12,7 +12,10 @@ test("typing in a document does not show a tab stop bar", async ({ page }) => {
   await page.keyboard.type("9:00");
 
   await expect(page.locator(".tab-stop-bar")).toHaveCount(0);
-  await expect(page.getByRole("spinbutton", { name: "Tab stop in inches" })).toHaveCount(0);
+  await expect(page.locator(".tab-stop-field")).toBeVisible();
+  await expect(
+    page.locator(".tab-stop-bar").getByRole("spinbutton"),
+  ).toHaveCount(0);
   await page.getByRole("button", { name: "Format", exact: true }).click();
   await expect(page.getByRole("menuitem", { name: "Tab stop" })).toHaveCount(0);
   await expect(page.locator(".doc-tab")).toHaveCount(1);
