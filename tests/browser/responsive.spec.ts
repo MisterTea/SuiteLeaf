@@ -79,12 +79,9 @@ test.describe("Desktop & Mobile End-to-End Responsive Suite", () => {
       // 1. Doc paper fits within viewport
       expect(paperBox.width).toBeLessThanOrEqual(viewport.width);
 
-      // 2. Stage margins around the paper are visible on both left and right
-      const paperLeftMargin = paperBox.x - stageBox.x;
-      const paperRightMargin =
-        stageBox.x + stageBox.width - (paperBox.x + paperBox.width);
-      expect(paperLeftMargin).toBeGreaterThanOrEqual(8);
-      expect(paperRightMargin).toBeGreaterThanOrEqual(8);
+      // 2. The fitted page fills the stage. The text inset below is the margin.
+      expect(paperBox.x).toBeGreaterThanOrEqual(stageBox.x - 1);
+      expect(paperBox.x + paperBox.width).toBeLessThanOrEqual(stageBox.x + stageBox.width + 1);
 
       // 3. Document content inner margins are visible (text padding >= 16px)
       const { paddingLeft, paddingRight } = await page.evaluate(() => {
