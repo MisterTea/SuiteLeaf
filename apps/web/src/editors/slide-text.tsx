@@ -216,6 +216,37 @@ export function SlideTextBody({
       onMouseDown={(e) => {
         if (editing) e.stopPropagation();
       }}
+      onDoubleClick={(event) => {
+        if (!editing) return;
+        const root = ref.current;
+        if (!root) return;
+        if ((window.getSelection()?.toString() ?? "").trim()) return;
+        const doc = root.ownerDocument;
+        const caret =
+          doc.caretRangeFromPoint?.(event.clientX, event.clientY) ??
+          (() => {
+            const pos = doc.caretPositionFromPoint?.(event.clientX, event.clientY);
+            if (!pos) return null;
+            const range = doc.createRange();
+            range.setStart(pos.offsetNode, pos.offset);
+            range.collapse(true);
+            return range;
+          })();
+        const node = caret?.startContainer;
+        if (!node || node.nodeType !== Node.TEXT_NODE || !root.contains(node)) return;
+        const text = node.textContent ?? "";
+        let start = caret.startOffset;
+        let end = start;
+        while (start > 0 && !/\s/.test(text[start - 1] ?? "")) start -= 1;
+        while (end < text.length && !/\s/.test(text[end] ?? "")) end += 1;
+        if (end <= start) return;
+        const range = doc.createRange();
+        range.setStart(node, start);
+        range.setEnd(node, end);
+        const selection = doc.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      }}
       onKeyDown={(e) => {
         if (e.key !== "Enter" || e.shiftKey || e.altKey || e.metaKey || e.ctrlKey) return;
         const node = ref.current;

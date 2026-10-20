@@ -122,6 +122,16 @@ describe("page preview ends", () => {
     ]);
   });
 
+  it("still previews the last odd and even pages when the first page is different", () => {
+    expect(previewPlan(4, true, false, true)).toEqual({
+      slots: [
+        { kind: "page", index: 2, role: "last-odd" },
+        { kind: "page", index: 3, role: "last-even" },
+      ],
+      total: 4,
+    });
+  });
+
   it("draws iv and viii in the selected corner, and a two-page file has two sheets", () => {
     const top = pages();
     const first = pageFace(top, 0, 5);

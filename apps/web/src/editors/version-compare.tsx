@@ -447,7 +447,7 @@ function SlideElementView({
     );
   }
   if (el.type !== "text" || (!el.runs.length && !el.notes.length)) return null;
-  const font = el.fontSize ? `${(el.fontSize / height) * 100}cqh` : `${(20 / height) * 100}cqh`;
+  const font = el.fontSize ? `${(el.fontSize / width) * 100}cqw` : `${(20 / width) * 100}cqw`;
   return (
     <div
       className={`slide-compare-text${el.status === "removed" ? " is-removed" : ""}`}

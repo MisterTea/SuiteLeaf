@@ -49,8 +49,14 @@ async function laidOut(page: import("@playwright/test").Page) {
   });
 }
 
-function sharesLine(picture: Box, word: Box) {
-  return Math.min(picture.bottom, word.bottom) - Math.max(picture.y, word.y) >= 8;
+function sharesLine(picture: Box, word: Box, minimum = 8) {
+  return Math.min(picture.bottom, word.bottom) - Math.max(picture.y, word.y) >= minimum;
+}
+
+async function pageZoom(page: import("@playwright/test").Page) {
+  return page.evaluate(
+    () => Number((document.querySelector(".paginated-paper") as HTMLElement | null)?.style.zoom) || 1,
+  );
 }
 
 test("73-put-a-picture-in-the-sentence", async ({ page }) => {
@@ -94,11 +100,12 @@ test("73-put-a-picture-in-the-sentence", async ({ page }) => {
   await expect.poll(async () => {
     const laid = await laidOut(page);
     if (!laid?.picture || !laid.the || !laid.stall || !laid.inSentence) return false;
+    const line = 8 * (await pageZoom(page));
     return (
       laid.picture.height <= 36 &&
       laid.picture.width < 120 &&
-      sharesLine(laid.picture, laid.the) &&
-      sharesLine(laid.picture, laid.stall)
+      sharesLine(laid.picture, laid.the, line) &&
+      sharesLine(laid.picture, laid.stall, line)
     );
   }).toBe(true);
   await editor.getByText("Saturday").click();
@@ -139,7 +146,8 @@ test("73-put-a-picture-in-the-sentence", async ({ page }) => {
   await expect.poll(async () => {
     const laid = await laidOut(page);
     if (!laid?.picture || !laid.saturday || laid.paragraphs !== 1) return false;
-    return laid.picture.x >= laid.saturday.right - 8 && sharesLine(laid.picture, laid.saturday);
+    const line = 8 * (await pageZoom(page));
+    return laid.picture.x >= laid.saturday.right - 8 && sharesLine(laid.picture, laid.saturday, line);
   }).toBe(true);
   await beat(page, 2000);
 
@@ -162,7 +170,8 @@ test("73-put-a-picture-in-the-sentence", async ({ page }) => {
   await expect.poll(async () => {
     const laid = await laidOut(page);
     if (!laid?.picture || !laid.the || !laid.stall || !laid.inSentence) return false;
-    return sharesLine(laid.picture, laid.the) && sharesLine(laid.picture, laid.stall);
+    const line = 8 * (await pageZoom(page));
+    return sharesLine(laid.picture, laid.the, line) && sharesLine(laid.picture, laid.stall, line);
   }).toBe(true);
   await beat(page, 1800);
 
@@ -188,7 +197,8 @@ test("73-put-a-picture-in-the-sentence", async ({ page }) => {
   await expect.poll(async () => {
     const laid = await laidOut(page);
     if (!laid?.picture || !laid.the || !laid.stall || !laid.inSentence) return false;
-    return sharesLine(laid.picture, laid.the) && sharesLine(laid.picture, laid.stall);
+    const line = 8 * (await pageZoom(page));
+    return sharesLine(laid.picture, laid.the, line) && sharesLine(laid.picture, laid.stall, line);
   }).toBe(true);
   await caption(page, "“Meet at the” photo “stall on Saturday” still reads as one sentence.", 2000);
 });

@@ -2127,7 +2127,7 @@ export default function Slides({
             }}
           >
             <span className="menu-item-label">Duplicate slide</span>
-            <span className="menu-item-shortcut">Cmd+D</span>
+            <span className="menu-item-keys">Cmd+D</span>
           </button>
           <button
             type="button"
@@ -2139,7 +2139,7 @@ export default function Slides({
             }}
           >
             <span className="menu-item-label">Delete slide</span>
-            <span className="menu-item-shortcut">Delete</span>
+            <span className="menu-item-keys">Delete</span>
           </button>
           <button
             type="button"
@@ -2151,7 +2151,7 @@ export default function Slides({
             }}
           >
             <span className="menu-item-label">Move to start</span>
-            <span className="menu-item-shortcut">Cmd+Shift+Up</span>
+            <span className="menu-item-keys">Cmd+Shift+Up</span>
           </button>
           <button
             type="button"
@@ -2163,7 +2163,7 @@ export default function Slides({
             }}
           >
             <span className="menu-item-label">Move to end</span>
-            <span className="menu-item-shortcut">Cmd+Shift+Down</span>
+            <span className="menu-item-keys">Cmd+Shift+Down</span>
           </button>
         </div>
       ) : null}

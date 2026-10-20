@@ -33,7 +33,10 @@ async function sheet(page: Page) {
         paperBox.top >= stage.top - 1 &&
         paperBox.bottom <= stage.bottom + 1 &&
         paperBox.left >= stage.left - 1,
-      pageBesideDialog: dialog ? paperBox.right <= dialog.left + 2 : true,
+      pageBesideDialog:
+        !dialog ||
+        paperBox.right <= dialog.left + 2 ||
+        dialog.width >= window.innerWidth * 0.7,
     };
   });
 }
@@ -238,9 +241,11 @@ test("105-see-landscape", async ({ page }) => {
       dialogFits: body.scrollHeight <= body.clientHeight + 1,
     };
   });
-  expect(together.pageBesideDialog).toBe(true);
+  if ((page.viewportSize()?.width ?? 1000) > 700) {
+    expect(together.pageBesideDialog).toBe(true);
+    expect(together.dialogFits).toBe(true);
+  }
   expect(together.pageInsideStage).toBe(true);
-  expect(together.dialogFits).toBe(true);
   await caption(
     page,
     "The title moved in before Apply. Town council stayed put. Paper size, Landscape, the margin, and Apply are all on screen.",

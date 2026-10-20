@@ -32,6 +32,7 @@ describe("grid spelling", () => {
     const hits = misspellingsInText("reciev", none, []);
     expect(hits.map((hit) => hit.word)).toEqual(["reciev"]);
     expect(isTypingWord(hits[0].to, hits[0].to, "")).toBe(true);
+    expect(isTypingWord(hits[0].to, hits[0].to, " ")).toBe(false);
     expect(isTypingWord(hits[0].to, hits[0].to + 1, " ")).toBe(false);
     expect(isTypingWord(hits[0].to, hits[0].from, "r")).toBe(false);
   });

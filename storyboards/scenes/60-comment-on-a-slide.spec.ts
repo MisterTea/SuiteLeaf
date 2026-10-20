@@ -50,7 +50,9 @@ test("60-comment-on-a-slide", async ({ page }) => {
   await expect(dock).toBeVisible();
   const chartBox = (await chart.boundingBox())!;
   const dockBox = (await dock.boundingBox())!;
-  expect(chartBox.x + chartBox.width).toBeLessThanOrEqual(dockBox.x + 4);
+  const phone = (page.viewportSize()?.width ?? 1280) < 700;
+  if (phone) expect(chartBox.y + chartBox.height).toBeLessThanOrEqual(dockBox.y + 4);
+  else expect(chartBox.x + chartBox.width).toBeLessThanOrEqual(dockBox.x + 4);
   await beat(page, 500);
   await typeSlowly(page, "Use the September numbers");
   await beat(page, 400);

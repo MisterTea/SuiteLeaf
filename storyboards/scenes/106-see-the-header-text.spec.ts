@@ -67,6 +67,20 @@ async function wordsTogether(page: Page) {
   const header = dialog.getByLabel("Page header");
   const footer = dialog.getByLabel("Page footer");
   const apply = dialog.getByRole("button", { name: "Apply", exact: true });
+  await dialog.locator(".dialog-body").evaluate((body) => {
+    const headerEl = body.querySelector('[aria-label="Page header"]');
+    const footerEl = body.querySelector('[aria-label="Page footer"]');
+    const target = headerEl?.closest(".page-setup-text") ?? headerEl;
+    if (!(target instanceof HTMLElement) || !(footerEl instanceof HTMLElement)) return;
+    const box = body.getBoundingClientRect();
+    const top = Math.min(target.getBoundingClientRect().top, footerEl.getBoundingClientRect().top);
+    const bottom = Math.max(
+      target.getBoundingClientRect().bottom,
+      footerEl.getBoundingClientRect().bottom,
+    );
+    if (top < box.top + 4 || bottom > box.bottom - 4)
+      body.scrollTop += top - box.top - 8;
+  });
   await expect(header).toBeInViewport();
   await expect(footer).toBeInViewport();
   await expect(apply).toBeInViewport();

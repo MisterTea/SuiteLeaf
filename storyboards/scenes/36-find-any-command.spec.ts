@@ -150,7 +150,9 @@ test("36-find-any-command", async ({ page }) => {
 
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Quarterly Report" }).click();
-  await editor.locator("p").click({ position: { x: 2, y: 12 } });
+  const line = editor.getByText("The west region beat its target.");
+  await line.click({ force: true, position: { x: 2, y: 8 } });
+  await page.keyboard.press(mac ? "Meta+ArrowLeft" : "Home");
   for (let i = 0; i < 3; i++) await page.keyboard.press("Shift+ArrowRight");
   await caption(page, "Back in the report, ⌘⇧X strikes “The”, the shortcut the dialog listed.");
   await page.keyboard.press(mac ? "Meta+Shift+X" : "Control+Shift+X");

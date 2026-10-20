@@ -130,9 +130,14 @@ import {
 import { PageSetupFields } from "./page-setup";
 import { PageFurniture } from "./doc-header-editor";
 import { PageGutterBands } from "./page-gutter";
-import { ArabicNumberStart } from "./doc-arabic-start";
+import {
+  ArabicNumberStart,
+  nextHeadingPick,
+  type HeadingPick,
+} from "./doc-arabic-start";
 import { paragraphLineSpacing } from "./doc-line-spacing";
 import { LineSpacingControl } from "./doc-line-spacing-ui";
+import { TabStopField } from "./doc-tab-stop-ui";
 import { paragraphSpacing } from "./doc-paragraph-spacing";
 import { paragraphIndent } from "./doc-paragraph-indent";
 import { pageSetupToSave } from "./doc-watermark";
@@ -330,6 +335,9 @@ export default function Docs({
   const proofingContext = useRef<ProofingContext>(() => false);
   const grammarContext = useRef<ProofingContext>(() => false);
   const [activeHeading, setActiveHeading] = useState<number | null>(null);
+  const [headingPick, setHeadingPick] = useState<HeadingPick | null>(null);
+  const headingPickRef = useRef(headingPick);
+  headingPickRef.current = headingPick;
   const [pageCount, setPageCount] = useState(1);
   const [arabicPage, setArabicPage] = useState<number | null>(null);
   const [pageSetupOpen, setPageSetupOpen] = useState(false);
@@ -626,12 +634,17 @@ export default function Docs({
           const parent = view.state.selection.$from.parent;
           // Enter already opened a fresh paragraph. A second split would add a blank line.
           if (parent.content.size === 0) return true;
-          const pos = view.state.selection.from;
-          try {
-            view.dispatch(view.state.tr.split(pos));
-          } catch {
-            return false;
-          }
+          // Use the same Enter command as a desktop keyboard. A raw split would
+          // copy a heading onto the next line, so the outline fills with duplicates.
+          // Then keep the marks of the character just left, the way Word and Docs
+          // keep superscript on the new line. An empty storedMarks list means it was turned off.
+          const stored = view.state.storedMarks;
+          const $from = view.state.selection.$from;
+          const before = $from.parent.childBefore($from.parentOffset).node;
+          const marks =
+            stored ?? (before?.isText ? before.marks : $from.marks());
+          if (!editor?.commands.keyboardShortcut("Enter")) return false;
+          if (marks?.length) view.dispatch(view.state.tr.setStoredMarks(marks));
           // iPhone WebKit keeps the DOM caret in the previous paragraph, so
           // the next character is typed onto that line.
           const dom = view.domAtPos(view.state.selection.from);
@@ -745,6 +758,10 @@ export default function Docs({
         revision: transactionNumber,
         bold: e?.isActive("bold"),
         widowControl: e?.isActive("paragraph", { widowControl: true }),
+        keepNext:
+          e?.isActive("paragraph", { keepNext: true }) ||
+          e?.isActive("heading", { keepNext: true }),
+        keepLines: e?.isActive("paragraph", { keepLines: true }),
         italic: e?.isActive("italic"),
         underline: e?.isActive("underline"),
         strike: e?.isActive("strike"),
@@ -1260,6 +1277,38 @@ export default function Docs({
     };
   }, [editor]);
 
+  useEffect(() => {
+    if (!editor) return;
+    const atCaret = (): HeadingPick | null => {
+      const { $from } = editor.state.selection;
+      for (let depth = $from.depth; depth > 0; depth -= 1) {
+        const node = $from.node(depth);
+        if (node.type.name !== "heading") continue;
+        return {
+          text: node.textContent,
+          startArabic: node.attrs.startArabic === true,
+        };
+      }
+      return null;
+    };
+    const read = (source: "selection" | "document") => {
+      const next = nextHeadingPick(headingPickRef.current, atCaret(), source);
+      setHeadingPick((current) =>
+        current?.text === next?.text && current?.startArabic === next?.startArabic
+          ? current
+          : next,
+      );
+    };
+    const onSelection = () => read("selection");
+    const onDocument = () => read("document");
+    editor.on("selectionUpdate", onSelection);
+    editor.on("update", onDocument);
+    return () => {
+      editor.off("selectionUpdate", onSelection);
+      editor.off("update", onDocument);
+    };
+  }, [editor]);
+
   const jumpToHeading = (pos: number) => {
     if (!editor) return;
     editor
@@ -1636,6 +1685,7 @@ export default function Docs({
           <option value="3">Heading 3</option>
         </select>
         <LineSpacingControl editor={editor} />
+        <TabStopField editor={editor} />
 
         <span className="divider" />
 
@@ -1861,6 +1911,37 @@ export default function Docs({
               .chain()
               .focus()
               .updateAttributes("paragraph", { widowControl: on ? null : true })
+              .run();
+          }}
+        >
+          <Rows3 size={16} />
+        </Tool>
+        <Tool
+          label="Keep with next"
+          active={state?.keepNext}
+          disabled={readOnly}
+          onClick={() => {
+            const type = editor.isActive("heading") ? "heading" : "paragraph";
+            const on = editor.isActive(type, { keepNext: true });
+            editor
+              .chain()
+              .focus()
+              .updateAttributes(type, { keepNext: on ? null : true })
+              .run();
+          }}
+        >
+          <Rows3 size={16} />
+        </Tool>
+        <Tool
+          label="Keep lines together"
+          active={state?.keepLines}
+          disabled={readOnly}
+          onClick={() => {
+            const on = editor.isActive("paragraph", { keepLines: true });
+            editor
+              .chain()
+              .focus()
+              .updateAttributes("paragraph", { keepLines: on ? null : true })
               .run();
           }}
         >
@@ -2466,6 +2547,22 @@ export default function Docs({
               <span>Headings you add to the document will appear here.</span>
             </div>
           )}
+          {shownSettings.pageNumbers &&
+          shownSettings.pageNumberFormat === "roman" &&
+          headingPick ? (
+            <div className="arabic-start">
+              <button
+                type="button"
+                className="arabic-start-btn"
+                aria-pressed={headingPick.startArabic}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => editor?.chain().focus().toggleArabicNumberStart().run()}
+              >
+                Start Arabic numbers here
+              </button>
+              <p className="arabic-start-hint">{headingPick.text}</p>
+            </div>
+          ) : null}
         </aside>
         <div
           className="paper-container"

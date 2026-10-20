@@ -59,6 +59,22 @@ async function controlsTogether(page: Page) {
   const numbersSwitch = dialog.getByRole("checkbox", { name: "Page numbers" });
   const header = dialog.getByLabel("Page header");
   const apply = dialog.getByRole("button", { name: "Apply", exact: true });
+  await dialog.locator(".dialog-body").evaluate((body) => {
+    const switchEl = body.querySelector(".page-setup-numbers input[type=checkbox]");
+    const headerEl = body.querySelector('[aria-label="Page header"]');
+    if (!(switchEl instanceof HTMLElement) || !(headerEl instanceof HTMLElement)) return;
+    const box = body.getBoundingClientRect();
+    const top = Math.min(
+      switchEl.getBoundingClientRect().top,
+      headerEl.getBoundingClientRect().top,
+    );
+    const bottom = Math.max(
+      switchEl.getBoundingClientRect().bottom,
+      headerEl.getBoundingClientRect().bottom,
+    );
+    if (top < box.top + 4 || bottom > box.bottom - 4)
+      body.scrollTop += top - box.top - 8;
+  });
   await expect(numbersSwitch).toBeInViewport();
   await expect(header).toBeInViewport();
   await expect(apply).toBeInViewport();

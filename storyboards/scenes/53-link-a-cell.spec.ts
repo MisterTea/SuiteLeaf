@@ -33,6 +33,20 @@ async function openNative(page: Page, title: string, rows: string[][]) {
   await ready(page);
 }
 
+async function openLinkDialog(page: Page, name: string) {
+  await page.keyboard.press("ControlOrMeta+k");
+  const dialog = page.getByRole("dialog", { name });
+  if ((page.viewportSize()?.width ?? 1280) < 700) {
+    try {
+      await expect(dialog).toBeVisible({ timeout: 1500 });
+    } catch {
+      await page.getByRole("button", { name: /Insert link/ }).click();
+    }
+  }
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
 async function clickCell(page: Page, ref: string) {
   const box = (await page.locator(".sheet-host").boundingBox())!;
   const column = ref.charCodeAt(0) - 65;
@@ -75,9 +89,7 @@ test("53-link-a-cell", async ({ page }) => {
   ]);
   await caption(page, "She selects Northwind and presses Ctrl/Cmd+K.", 1200);
   await selectCells(page, "A2");
-  await page.keyboard.press("ControlOrMeta+k");
-  const dialog = page.getByRole("dialog", { name: "Insert link" });
-  await expect(dialog).toBeVisible();
+  const dialog = await openLinkDialog(page, "Insert link");
   await expect(dialog.getByLabel("Link text")).toHaveValue("Northwind");
   await expect(dialog.getByLabel("Link address")).toBeFocused();
   await caption(page, "She types the address. The name stays in its own field.", 1000);
@@ -153,16 +165,14 @@ test("53-link-a-cell", async ({ page }) => {
   await beat(page, 900);
 
   await caption(page, "Remove link drops the address and leaves the word Northwind.", 1400);
-  await page.keyboard.press("ControlOrMeta+k");
-  const removing = page.getByRole("dialog", { name: "Edit link" });
+  const removing = await openLinkDialog(page, "Edit link");
   await expect(removing.getByLabel("Link text")).toHaveValue("Northwind");
   await removing.getByRole("button", { name: "Remove link" }).click();
   await expect(page.getByRole("group", { name: "Cell link" })).toHaveCount(0);
   await beat(page, 800);
 
   await caption(page, "She tries an unsafe address. The dialog refuses it.", 1200);
-  await page.keyboard.press("ControlOrMeta+k");
-  const refused = page.getByRole("dialog", { name: "Insert link" });
+  const refused = await openLinkDialog(page, "Insert link");
   await expect(refused.getByLabel("Link text")).toHaveValue("Northwind");
   await typeSlowly(page, "javascript:alert(1)", 35);
   await beat(page, 300);

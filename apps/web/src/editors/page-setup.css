@@ -244,6 +244,13 @@
     aspect-ratio: 136 / 176;
   }
 }
+.page-setup-dialog .page-setup-preview-sheet[data-number-corner="top-right"] .page-setup-preview-header,
+.page-setup-dialog .page-setup-preview-sheet[data-number-corner="top-left"] .page-setup-preview-header {
+  top: 26px;
+  left: 8px;
+  right: 8px;
+  font-size: 9px;
+}
 .page-setup-dialog .page-setup-preview .page-setup-preview-sheet {
   width: 96px;
   height: 120px;

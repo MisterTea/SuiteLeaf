@@ -49,7 +49,12 @@ async function textGap(page: Page, above: string, below: string) {
       const start = find(topText);
       const end = find(bottomText);
       if (!start || !end) throw new Error("missing paragraph");
-      return edge(end, "top") - edge(start, "bottom");
+      const paper = document.querySelector(".paginated-paper") as HTMLElement | null;
+      const zoom =
+        paper && paper.offsetWidth
+          ? paper.getBoundingClientRect().width / paper.offsetWidth || 1
+          : 1;
+      return (edge(end, "top") - edge(start, "bottom")) / zoom;
     },
     { topText: above, bottomText: below },
   );
@@ -61,7 +66,12 @@ async function lineAdvance(page: Page) {
     range.selectNodeContents(el);
     const rects = [...range.getClientRects()].filter((rect) => rect.height > 0);
     if (rects.length < 2) throw new Error("welcome paragraph did not wrap");
-    return rects[1].top - rects[0].top;
+    const paper = el.closest(".paginated-paper") as HTMLElement | null;
+    const zoom =
+      paper && paper.offsetWidth
+        ? paper.getBoundingClientRect().width / paper.offsetWidth || 1
+        : 1;
+    return (rects[1].top - rects[0].top) / zoom;
   });
 }
 

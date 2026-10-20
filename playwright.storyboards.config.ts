@@ -32,6 +32,17 @@ export default defineConfig({
       use: { ...shared, launchOptions: { slowMo: Number(process.env.STORYBOARD_SLOWMO ?? 60) } },
     },
     {
+      name: "mobile",
+      testIgnore: /\/ai\//,
+      use: {
+        ...shared,
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
+        isMobile: true,
+        launchOptions: { slowMo: Number(process.env.STORYBOARD_SLOWMO ?? 60) },
+      },
+    },
+    {
       name: "ai",
       testMatch: /\/ai\/.*\.spec\.ts$/,
       timeout: 30 * 60_000,

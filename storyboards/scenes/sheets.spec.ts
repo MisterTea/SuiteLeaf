@@ -61,8 +61,18 @@ async function pointAt(page: Page, point: { x: number; y: number }, button: "lef
 
 /** Selects a range by dragging across it, which also gives the grid keyboard focus. */
 async function dragSelect(page: Page, from: string, to: string, widths: number[] = []) {
+  const host = (await page.locator(".sheet-host").boundingBox())!;
   const start = await cellPoint(page, from, widths),
     end = await cellPoint(page, to, widths);
+  // A phone is narrower than the table. The name box selects the same cells
+  // and scrolls them into view; a drag would start off the edge of the screen.
+  const offScreen = [start, end].some(
+    (point) => point.x < host.x + 4 || point.x > host.x + host.width - 4,
+  );
+  if (offScreen) {
+    await selectCells(page, from === to ? from : `${from}:${to}`);
+    return;
+  }
   await page.mouse.move(start.x, start.y, { steps: 10 });
   await page.mouse.down();
   await page.mouse.move(end.x, end.y, { steps: 15 });
@@ -184,6 +194,7 @@ test("10-sort-without-the-header", async ({ page }) => {
   await caption(page, "…but in other apps, sorting dragged the \"Hours\" header down into the list.", 1800);
 
   const press = async (target: ReturnType<Page["locator"]>) => {
+    await target.scrollIntoViewIfNeeded();
     const box = (await target.boundingBox())!;
     await pointAt(page, { x: box.x + box.width / 2, y: box.y + box.height / 2 });
   };
@@ -249,8 +260,9 @@ test("11-filter-to-what-matters", async ({ page }) => {
     widths,
   );
 
-  const sum = page.getByText(/^Sum:/);
+  const sum = page.locator('.sheet-stat[data-stat="sum"]');
   const pointTo = async (target: Locator, click = true) => {
+    await target.scrollIntoViewIfNeeded();
     const box = (await target.boundingBox())!;
     const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
     if (click) await pointAt(page, point);
@@ -265,28 +277,41 @@ test("11-filter-to-what-matters", async ({ page }) => {
   await caption(page, "Each header now has a filter button.", 1300);
 
   await dragSelect(page, "D2", "D11", widths);
-  await expect(sum).toHaveText("Sum: 615.44");
+  await expect(sum).toHaveText(/^Sum:? 615\.44/);
   await pointTo(sum, false);
   await caption(page, "Selecting the totals shows their sum: 615.44 for all ten orders.", 1800);
 
-  await pointAt(page, await cellPoint(page, "C1", widths, true));
+  const phone = (page.viewportSize()?.width ?? 1280) < 700;
+  // Showing the totals scrolls the phone past Status. Come back before tapping that header.
+  if (phone) await selectCells(page, "A1");
+  await pointAt(page, await cellPoint(page, "C1", widths, !phone));
   await expect(page.getByText("By Values", { exact: true })).toBeVisible();
+  if (phone) await page.getByRole("button", { name: "By Values", exact: true }).click();
+  const values = phone
+    ? page.locator("body")
+    : page.locator('[data-u-comp="sheets-filter-panel"]');
   await caption(page, "The Status filter lists every value with a count.", 1500);
   const checked = page.getByText(/^\(\d+\/10\)$/);
   await caption(page, "Clicking a name ticks or unticks it…", 600);
-  await pointTo(page.getByText("Shipped", { exact: true }).last());
+  await values.getByText("Shipped", { exact: true }).filter({ visible: true }).click();
   await expect(checked).toHaveText("(6/10)");
   await beat(page, 700);
-  const pending = page.getByText("Pending", { exact: true }).last();
-  await pending.hover();
-  await beat(page, 400);
-  await caption(page, "…and \"Filter Only\" keeps just the Pending orders in one click.", 1300);
-  await pending.locator("xpath=ancestor::*[.//a[normalize-space()='Filter Only']][1]").getByText("Filter Only").click();
+  if (phone) {
+    await caption(page, "…and unticking Cancelled leaves just the Pending orders.", 1300);
+    await values.getByText("Cancelled", { exact: true }).filter({ visible: true }).click();
+  } else {
+    const pending = values.getByText("Pending", { exact: true });
+    await pending.hover();
+    await beat(page, 400);
+    await caption(page, "…and \"Filter Only\" keeps just the Pending orders in one click.", 1300);
+    await pending.locator("xpath=ancestor::*[.//a[normalize-space()='Filter Only']][1]").getByText("Filter Only").click();
+  }
   await expect(checked).toHaveText("(4/10)");
   await beat(page, 600);
   await page.getByRole("button", { name: "Confirm", exact: true }).click();
   await caption(page, "Four orders to pack. Row numbers skip because the others are hidden, not deleted.", 2400);
-  await expect(sum).toHaveText("Sum: 228.44");
+  if (phone) await selectCells(page, "D2:D11");
+  await expect(sum).toHaveText(/^Sum:? 228\.44/);
   await pointTo(sum, false);
   await caption(page, "The sum now counts only what's showing: 228.44 still to ship.", 2200);
 
@@ -297,11 +322,13 @@ test("11-filter-to-what-matters", async ({ page }) => {
   expect([...filter.cachedFilteredOut].sort((a: number, b: number) => a - b)).toEqual([1, 3, 4, 6, 8, 9]);
 
   await caption(page, "When she's done, she opens the Status filter again and clears it.", 1200);
-  await pointAt(page, await cellPoint(page, "C1", widths, true));
+  if (phone) await selectCells(page, "A1");
+  await pointAt(page, await cellPoint(page, "C1", widths, !phone));
   await expect(page.getByText("Clear Filter", { exact: true })).toBeVisible();
   await beat(page, 500);
   await page.getByText("Clear Filter", { exact: true }).click();
-  await expect(sum).toHaveText("Sum: 615.44");
+  if (phone) await selectCells(page, "D2:D11");
+  await expect(sum).toHaveText(/^Sum:? 615\.44/);
   await caption(page, "All ten orders are back, and so is the full 615.44.", 1800);
   await caption(page, "Data › Remove filter (or the funnel) takes the filter buttons away.", 1100);
   await pointTo(page.getByText("Data", { exact: true }));
@@ -448,12 +475,15 @@ test("14-chart-from-a-table", async ({ page }) => {
   await ready(page);
 
   await caption(page, "She selects the categories with their Budget and Actual columns, headers included.", 1200);
-  const a1 = await cellPoint(page, "A1"),
-    c5 = await cellPoint(page, "C5");
-  await page.mouse.move(a1.x, a1.y, { steps: 12 });
-  await page.mouse.down();
-  await page.mouse.move(c5.x, c5.y, { steps: 25 });
-  await page.mouse.up();
+  if ((page.viewportSize()?.width ?? 1280) < 700) await selectCells(page, "A1:C5");
+  else {
+    const a1 = await cellPoint(page, "A1"),
+      c5 = await cellPoint(page, "C5");
+    await page.mouse.move(a1.x, a1.y, { steps: 12 });
+    await page.mouse.down();
+    await page.mouse.move(c5.x, c5.y, { steps: 25 });
+    await page.mouse.up();
+  }
   await expect(page.locator(".sheet-host input.univer-size-full")).toHaveValue("A1:C5");
   await beat(page);
   await caption(page, "Insert chart reads the selection; the headers become the legend.", 1000);
@@ -477,25 +507,33 @@ test("14-chart-from-a-table", async ({ page }) => {
   await expect(chart.locator(".recharts-bar-rectangle")).toHaveCount(8);
   await caption(page, "A column chart appears below the table, with a legend and labelled axes.", 2000);
 
-  await caption(page, "She drags it up beside the table…", 900);
-  const start = (await chart.boundingBox())!;
-  const e1 = await cellPoint(page, "E1");
-  const target = { x: e1.x - columnWidth / 2 + 12, y: e1.y - rowHeight / 2 + 4 };
-  await page.mouse.move(start.x + start.width / 2, start.y + 12, { steps: 10 });
-  await page.mouse.down();
-  await page.mouse.move(target.x + start.width / 2, target.y + 12, { steps: 30 });
-  await page.mouse.up();
-  await beat(page, 600);
-  await caption(page, "…and pulls the corner in to make it a little smaller.", 900);
+  const phone = (page.viewportSize()?.width ?? 1280) < 700;
+  let desktopChart: { width: number } | null = null;
+  if (!phone) {
+    await caption(page, "She drags it up beside the table…", 900);
+    const start = (await chart.boundingBox())!;
+    const e1 = await cellPoint(page, "E1");
+    const target = { x: e1.x - columnWidth / 2 + 12, y: e1.y - rowHeight / 2 + 4 };
+    await page.mouse.move(start.x + start.width / 2, start.y + 12, { steps: 10 });
+    await page.mouse.down();
+    await page.mouse.move(target.x + start.width / 2, target.y + 12, { steps: 30 });
+    await page.mouse.up();
+    await beat(page, 600);
+    await caption(page, "…and pulls the corner in to make it a little smaller.", 900);
+    let box = (await chart.boundingBox())!;
+    expect(Math.abs(box.y - target.y)).toBeLessThan(20);
+    await page.mouse.move(box.x + box.width + 1, box.y + box.height + 1, { steps: 10 });
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width - 110, box.y + box.height - 55, { steps: 20 });
+    await page.mouse.up();
+    await beat(page);
+    box = (await chart.boundingBox())!;
+    expect(box.width).toBeLessThan(start.width - 50);
+    desktopChart = { width: start.width };
+  } else {
+    await caption(page, "On a phone the chart stays under the table, where it fits.", 900);
+  }
   let box = (await chart.boundingBox())!;
-  expect(Math.abs(box.y - target.y)).toBeLessThan(20);
-  await page.mouse.move(box.x + box.width + 1, box.y + box.height + 1, { steps: 10 });
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width - 110, box.y + box.height - 55, { steps: 20 });
-  await page.mouse.up();
-  await beat(page);
-  box = (await chart.boundingBox())!;
-  expect(box.width).toBeLessThan(start.width - 50);
 
   const heights = async () =>
     chart.locator(".recharts-bar-rectangle").evaluateAll((bars) => bars.map((b) => Math.round(b.getBoundingClientRect().height)));
@@ -508,6 +546,8 @@ test("14-chart-from-a-table", async ({ page }) => {
   await caption(page, "…and the chart redraws on its own: Engineering is now over budget.", 2600);
 
   await caption(page, "Double-clicking the chart reopens its editor, for when the range needs to grow.", 900);
+  await chart.scrollIntoViewIfNeeded();
+  box = (await chart.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 12 });
   await page.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
   await expect(panel.getByRole("heading", { name: "Edit chart" })).toBeVisible();
@@ -519,9 +559,12 @@ test("14-chart-from-a-table", async ({ page }) => {
   const moved = file.content.charts[0];
   expect(moved.title).toBe("Studio costs by team");
   // Beside the table (columns A–D, rows 1–6) rather than below it.
-  expect(moved.x).toBeGreaterThan(rowHeader + 4 * columnWidth);
-  expect(moved.y).toBeLessThan(6 * rowHeight);
-  expect(moved.width).toBeLessThan(start.width - 50);
+  // A phone keeps the chart under the table, inside the screen.
+  if (desktopChart) {
+    expect(moved.x).toBeGreaterThan(rowHeader + 4 * columnWidth);
+    expect(moved.y).toBeLessThan(6 * rowHeight);
+    expect(moved.width).toBeLessThan(desktopChart.width - 50);
+  }
   expect(cellsOf(file)[2][2].v).toBe(13500);
   await caption(page, "Saved with the workbook in its new place and size, and in step with the numbers.", 1800);
 });
@@ -715,12 +758,15 @@ test("17-review-a-budget-with-notes-and-comments", async ({ page, browser, baseU
   await selectCells(page, "G12");
   await expect(note).toBeHidden();
   await beat(page, 1600);
-  await caption(page, "Hovering C3 reads the note back.", 300);
+  const phone = (page.viewportSize()?.width ?? 1280) < 700;
+  await caption(page, phone ? "Tapping C3 reads the note back." : "Hovering C3 reads the note back.", 300);
   const c3 = await cellPoint(page, "C3");
-  await page.mouse.move(c3.x - 10, c3.y, { steps: 12 });
+  if (phone) await selectCells(page, "C3");
+  else await page.mouse.move(c3.x - 10, c3.y, { steps: 12 });
   await expect(note).toBeVisible();
   await beat(page, 1600);
-  await page.mouse.move(c3.x + 300, c3.y + 260, { steps: 10 });
+  if (phone) await selectCells(page, "A1");
+  else await page.mouse.move(c3.x + 300, c3.y + 260, { steps: 10 });
   await expect(note).toBeHidden();
 
   await caption(page, "Comments carry the writer's name, so Alex sets it once on this computer.", 1000);
@@ -861,10 +907,15 @@ test("18-highlight-and-check-off", async ({ page }) => {
   await sidebar.getByRole("button", { name: "Close sidebar" }).click();
 
   await caption(page, "The hall is booked. Tick!", 900);
-  await pointAt(page, await cellPoint(page, "A2", widths));
+  const tick = async (ref: string) => {
+    await selectCells(page, "A1");
+    await selectCells(page, ref);
+    await pointAt(page, await cellPoint(page, ref, widths));
+  };
+  await tick("A2");
   await caption(page, "The ticked box now holds TRUE, as the formula bar shows.", 1800);
   await caption(page, "Bags are ordered too.", 800);
-  await pointAt(page, await cellPoint(page, "A3", widths));
+  await tick("A3");
   await beat(page, 600);
   await pointAt(page, await cellPoint(page, "F12", widths));
   await caption(page, "Finished rows turn green and cross themselves out; what's left stands out.", 2400);

@@ -103,6 +103,75 @@ function paintBehind(host: HTMLElement) {
   img.style.transform = `scale(${Number(scale.toFixed(3))})`;
 }
 
+const wrapShift = new WeakMap<HTMLElement, HTMLElement>();
+
+function clearWrapShift(host: HTMLElement) {
+  host.style.marginBottom = "";
+  host.style.marginLeft = "";
+  host.style.maxWidth = "";
+  host.style.removeProperty("--wrap-indent");
+  const page = host.closest(".document-content");
+  if (page instanceof HTMLElement) page.style.removeProperty("--wrap-indent");
+  wrapShift.delete(host);
+}
+
+/** The paragraph that should run beside the picture, skipping page spacers. */
+function blockAfter(host: HTMLElement): HTMLElement | null {
+  let next = host.nextElementSibling;
+  while (next instanceof HTMLElement) {
+    if (
+      next.classList.contains("doc-page-spacer") ||
+      next.classList.contains("ProseMirror-separator") ||
+      next.tagName === "BR"
+    ) {
+      next = next.nextElementSibling;
+      continue;
+    }
+    return next;
+  }
+  return null;
+}
+
+/**
+ * A phone contenteditable ignores a float on this picture. Pull the next
+ * paragraph up beside it and indent that paragraph by the picture's width.
+ */
+function alignBeside(host: HTMLElement, wrap: "left" | "right", widthPx: number) {
+  const token = `${Date.now()}-${Math.random()}`;
+  host.dataset.wrapAlign = token;
+  requestAnimationFrame(() => {
+    if (host.dataset.wrapAlign !== token || host.dataset.wrap !== wrap) return;
+    const img = host.querySelector("img");
+    const next = blockAfter(host);
+    if (!(img instanceof HTMLElement) || !next) return;
+    const picture = img.getBoundingClientRect();
+    const text = next.firstChild;
+    const line = (() => {
+      if (text?.nodeType !== Node.TEXT_NODE || !text.textContent) return next.getBoundingClientRect();
+      const range = document.createRange();
+      range.setStart(text, 0);
+      range.setEnd(text, Math.min(11, text.textContent.length));
+      return range.getBoundingClientRect();
+    })();
+    const overlap = Math.min(picture.bottom, line.bottom) - Math.max(picture.top, line.top);
+    const beside =
+      wrap === "left" ? line.left >= picture.right - 8 : line.right <= picture.left + 8;
+    if (overlap >= 8 && beside) return;
+    host.style.cssFloat = "none";
+    host.style.width = `${widthPx}px`;
+    host.style.maxWidth = `${widthPx}px`;
+    host.style.position = "relative";
+    host.style.zIndex = "2";
+    host.style.marginLeft = wrap === "right" ? "auto" : "";
+    const height = host.offsetHeight;
+    host.style.marginBottom = height > 0 ? `-${height}px` : "";
+    // A sibling paragraph does not inherit a variable set on the picture.
+    const page = host.closest(".document-content");
+    if (page instanceof HTMLElement) page.style.setProperty("--wrap-indent", `${widthPx + 12}px`);
+    wrapShift.set(host, next);
+  });
+}
+
 /**
  * Size the floated picture to the visible frame so the paragraph starts
  * beside it, not beside a full-width block. Break text clears that width.
@@ -118,11 +187,13 @@ export function syncImageWrap(
     return;
   }
   clearBehindPaint(host);
+  clearWrapShift(host);
   if (wrap === "left" || wrap === "right") host.dataset.wrap = wrap;
   else if (wrap === "break") host.dataset.wrap = "break";
   else delete host.dataset.wrap;
   if (wrap !== "left" && wrap !== "right") {
     host.style.width = "";
+    host.style.cssFloat = "";
     return;
   }
   const img = host.querySelector("img");
@@ -149,7 +220,19 @@ export function syncImageWrap(
       ? Math.max(120, Math.round(page.clientWidth * 0.46))
       : 280;
   raw = Math.min(raw, limit);
-  host.style.width = `${Math.round(raw)}px`;
+  const widthPx = Math.round(raw);
+  const width = `${widthPx}px`;
+  host.style.width = width;
+  host.style.display = "block";
+  host.style.cssFloat = wrap;
+  const wrapper = host.querySelector("[data-resize-wrapper]");
+  if (wrapper instanceof HTMLElement) wrapper.style.width = width;
+  if (img instanceof HTMLElement) {
+    img.style.width = width;
+    img.style.maxWidth = "100%";
+    img.style.height = "auto";
+  }
+  alignBeside(host, wrap, widthPx);
 }
 
 /**

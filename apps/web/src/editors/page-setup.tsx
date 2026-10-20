@@ -216,6 +216,7 @@ function Preview({
     pageCount,
     draft.differentOddEven,
     draft.coverHasNoNumber,
+    draft.differentFirstPage,
   );
   const ends = plan.slots.some((slot) => slot.kind === "skip");
   const parity = draft.differentOddEven;

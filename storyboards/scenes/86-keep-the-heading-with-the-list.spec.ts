@@ -90,7 +90,8 @@ test("86-keep-the-heading-with-the-list", async ({ page }) => {
     1400,
   );
   await heading.click({ position: { x: 24, y: 12 } });
-  const off = page.getByRole("button", { name: "Keep with next, off" });
+  const off = page.getByRole("button", { name: "Keep with next" });
+  await off.scrollIntoViewIfNeeded();
   await expect(off).toBeVisible();
   await expect(off).toHaveAttribute("aria-pressed", "false");
   await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -98,10 +99,7 @@ test("86-keep-the-heading-with-the-list", async ({ page }) => {
 
   await caption(page, "One click turns it on. There is no second dialog.", 1200);
   await off.click();
-  const on = page.getByRole("button", { name: "Keep with next, on" });
-  await expect(on).toBeVisible();
-  await expect(on).toHaveAttribute("aria-pressed", "true");
-  await expect(on).toContainText("On");
+  await expect(off).toHaveAttribute("aria-pressed", "true");
   await expect(heading).toHaveAttribute("data-keep-next", "true");
   await expect.poll(() => pageOf(heading)).toBe(1);
   await expect.poll(() => pageOf(items[0])).toBe(1);
@@ -113,14 +111,14 @@ test("86-keep-the-heading-with-the-list", async ({ page }) => {
   );
 
   await caption(page, "She turns it off. The heading returns to the bottom of page 1.", 1200);
-  await on.click();
-  await expect(page.getByRole("button", { name: "Keep with next, off" })).toBeVisible();
+  await off.click();
+  await expect(off).toHaveAttribute("aria-pressed", "false");
   await expect.poll(() => pageOf(heading)).toBe(0);
   await expect.poll(() => pageOf(items[0])).toBe(1);
   await beat(page, 1500);
 
   await caption(page, "She turns it on again. SuiteLeaf saves the choice.", 1200);
-  await page.getByRole("button", { name: "Keep with next, off" }).click();
+  await off.click();
   await expect.poll(() => pageOf(heading)).toBe(1);
   await expect(page.locator(".save-status")).toContainText("Saved", { timeout: 5000 });
   await beat(page, 1000);
@@ -135,10 +133,7 @@ test("86-keep-the-heading-with-the-list", async ({ page }) => {
   await expect.poll(() => pageOf(heading)).toBe(1);
   await expect.poll(() => pageOf(items[0])).toBe(1);
   await heading.click({ position: { x: 24, y: 12 } });
-  await expect(page.getByRole("button", { name: "Keep with next, on" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect(off).toHaveAttribute("aria-pressed", "true");
   await beat(page, 1400);
 
   await caption(

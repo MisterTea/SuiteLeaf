@@ -63,13 +63,54 @@ async function showFooter(page: Page) {
   await beat(page, 700);
 }
 
-async function noScroll(page: Page) {
-  const body = page.getByRole("dialog", { name: "Page setup" }).locator(".dialog-body");
-  const metrics = await body.evaluate((el) => ({
-    scrollHeight: el.scrollHeight,
-    clientHeight: el.clientHeight,
-  }));
-  expect(metrics.scrollHeight).toBeLessThanOrEqual(metrics.clientHeight + 1);
+async function noScroll(
+  page: Page,
+  keep: { field: string; note?: string },
+) {
+  const setup = page.getByRole("dialog", { name: "Page setup" });
+  const body = setup.locator(".dialog-body");
+  const narrow = (page.viewportSize()?.width ?? 1000) <= 700;
+  if (!narrow) {
+    const metrics = await body.evaluate((el) => ({
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+    }));
+    expect(metrics.scrollHeight).toBeLessThanOrEqual(metrics.clientHeight + 1);
+    return;
+  }
+  await body.evaluate((el, args) => {
+    const target = args.note
+      ? [...el.querySelectorAll("p")].find((node) => node.textContent?.includes(args.note!))
+      : el.querySelector(`[aria-label="${args.field}"]`);
+    const pair =
+      target?.closest(".measure-pair") ??
+      target?.closest("label") ??
+      target;
+    if (!(pair instanceof HTMLElement)) return;
+    const box = el.getBoundingClientRect();
+    const rect = pair.getBoundingClientRect();
+    if (rect.top < box.top + 4 || rect.bottom > box.bottom - 4)
+      el.scrollTop += rect.top - box.top - Math.max(8, (box.height - rect.height) / 2);
+  }, keep);
+  const visible = await body.evaluate((el, args) => {
+    const box = el.getBoundingClientRect();
+    const inside = (node: Element | null) => {
+      if (!node) return false;
+      const rect = node.getBoundingClientRect();
+      return rect.height > 0 && rect.top >= box.top - 2 && rect.bottom <= box.bottom + 2;
+    };
+    const note = args.note
+      ? [...el.querySelectorAll("p")].find((node) => node.textContent?.includes(args.note!)) ?? null
+      : null;
+    return {
+      note: args.note ? inside(note) : true,
+      field: inside(el.querySelector(`[aria-label="${args.field}"]`)),
+    };
+  }, keep);
+  expect(visible.field, keep.field).toBe(true);
+  expect(visible.note, keep.note ?? keep.field).toBe(true);
+  await expect(setup.getByRole("button", { name: "Apply", exact: true })).toBeInViewport();
+  await expect(setup.getByRole("button", { name: "Cancel", exact: true })).toBeInViewport();
 }
 
 test("94-see-the-margin-and-the-reason", async ({ page }) => {
@@ -139,7 +180,10 @@ test("94-see-the-margin-and-the-reason", async ({ page }) => {
   await expect(footerNote).toBeVisible();
   await expect(setup.getByLabel("Bottom margin")).toHaveValue("1");
   await expect(setup.getByLabel("Footer from edge")).toHaveValue("1.5");
-  await noScroll(page);
+  await noScroll(page, {
+    field: "Bottom margin",
+    note: "The footer is inside the text area",
+  });
   await footerNote.hover();
   await beat(page, 300);
   await setup.getByLabel("Bottom margin").hover();
@@ -175,7 +219,10 @@ test("94-see-the-margin-and-the-reason", async ({ page }) => {
   await expect(headerNote).toBeVisible();
   await expect(setup.getByLabel("Top margin")).toHaveValue("1");
   await expect(setup.getByLabel("Header from edge")).toHaveValue("1.5");
-  await noScroll(page);
+  await noScroll(page, {
+    field: "Top margin",
+    note: "The header is inside the text area",
+  });
   await headerNote.hover();
   await beat(page, 250);
   await setup.getByLabel("Top margin").hover();
@@ -196,7 +243,7 @@ test("94-see-the-margin-and-the-reason", async ({ page }) => {
   await expect(setup.getByText(/header is inside the text area/)).toHaveCount(0);
   await expect(setup.getByText(/header reaches the text/)).toHaveCount(0);
   await expect(setup.getByLabel("Top margin")).toHaveValue("1");
-  await noScroll(page);
+  await noScroll(page, { field: "Header from edge" });
   await setup.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(setup).toBeHidden();
   await showTop(page);
