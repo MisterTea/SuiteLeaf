@@ -1,4 +1,5 @@
 import { AI_MODELS, type AiBridge, type AiGenerateEvent, type AiGenerateRequest, type AiModelId, type AiStatus } from "@suiteleaf/core/ai";
+import { wllamaModel } from "./wllama-model";
 
 /** The on-device model, wherever it runs. */
 export interface LocalModel {
@@ -212,5 +213,9 @@ function workerModel(): LocalModel {
 
 let instance: LocalModel | undefined;
 export function localModel(): LocalModel {
-  return (instance ??= window.suiteleaf?.ai ? electronModel(window.suiteleaf.ai) : workerModel());
+  if (instance) return instance;
+  if (window.suiteleaf?.ai) return (instance = electronModel(window.suiteleaf.ai));
+  // FrogNano's ONNX WebGPU kernels hung the GPU. The browser runs its GGUF
+  // through llama.cpp instead. Gemma stays on the ONNX worker.
+  return (instance = selectedModel() === "frognano-4b" ? wllamaModel() : workerModel());
 }

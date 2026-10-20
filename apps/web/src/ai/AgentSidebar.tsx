@@ -257,7 +257,15 @@ export function AgentSidebar() {
     void session.prompt(prompt);
   };
   const backend =
-    model.backend === "llama.cpp" ? "llama.cpp · Metal" : model.backend === "webnn" ? "WebNN" : model.backend === "webgpu" ? "WebGPU" : model.backend;
+    model.state === "ready" && model.message?.startsWith("llama.cpp")
+      ? model.message
+      : model.backend === "llama.cpp"
+        ? "llama.cpp · Metal"
+        : model.backend === "webnn"
+          ? "WebNN"
+          : model.backend === "webgpu"
+            ? "WebGPU"
+            : model.backend;
   return (
     <aside className="agent-sidebar" aria-label="AI assistant" data-agent-state={session.state}>
       <header className="agent-header">
