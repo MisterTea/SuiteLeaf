@@ -46,8 +46,8 @@ Fixes made along the way: `edit_chart` placed charts about a column too far left
 
 ## Gaps and notes
 
-- At a 1280-pixel-wide window the toolbar no longer overflows. Tools that don't fit fold into a More tools (⋮) button at the right end, which opens them as a floating row, as in Google Sheets. Insert comment, Insert chart, the filter button, Pivot table and Charts & pivots fold last, so they stay visible at 1280 pixels and on phones. The toolbar also stops clipping its own menus: the Charts & pivots list and More formats (123) used to open invisibly.
-- The chart's range is fixed (A1:C5), like a Sheets chart with a closed range. To include a new team, double-click the chart (or pick it under Charts & pivots), select the new range in the grid, choose **Use selection** and **Update chart**. Here row 6 is the Total row, so extending the range is not part of the story.
-- Univer's own drawing menu (the small button at a selected chart's corner) still shows a greyed-out Edit item; double-click and Charts & pivots are the ways to edit.
+- At a 1280-pixel-wide window the toolbar no longer overflows. Tools that don't fit fold into a More tools (⋮) button at the right end, which opens them as a floating row, as in Google Sheets. Insert comment, Insert chart, the filter button, and Pivot table fold last, so they stay visible at 1280 pixels and on phones. Charts and pivots are listed under Data → Charts & pivots. The toolbar also stops clipping its own menus: More formats (123) used to open invisibly.
+- The chart's range is fixed (A1:C5), like a Sheets chart with a closed range. To include a new team, double-click the chart (or pick it under Data → Charts & pivots), select the new range in the grid, choose **Use selection** and **Update chart**. Here row 6 is the Total row, so extending the range is not part of the story.
+- Univer's own drawing menu (the small button at a selected chart's corner) still shows a greyed-out Edit item; double-click and Data → Charts & pivots are the ways to edit.
 - Chart styling is basic compared with Sheets' chart editor: there are no per-series colours, axis titles beyond the category label, or data labels, and changes in the panel apply on Update rather than live.
 - The "Sheet tools" strip above the toolbar takes a full row for one menu button (not changed here).

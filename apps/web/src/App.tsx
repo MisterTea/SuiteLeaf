@@ -7,6 +7,7 @@ import {
   useState,
   type RefObject,
   Component,
+  type DragEvent,
   type ReactNode,
 } from "react";
 import {
@@ -40,10 +41,12 @@ import {
   MessageSquare,
   Cloud,
   LogIn,
+  X,
   LogOut,
   Unplug,
   ArrowDown,
   ArrowUp,
+  MoreVertical,
 } from "lucide-react";
 import {
   createFile,
@@ -74,7 +77,16 @@ import { frogSummary } from "./ai/summarize";
 import { useDocumentRoom, mirrorLiveEdit } from "./collab/session";
 import { blockTexts, syncParagraphTexts, type RegionTouch } from "@suiteleaf/core";
 import type * as Y from "yjs";
-import { importFile, type DelimitedDraft } from "./imports";
+import { importFile, type DelimitedDraft, type ImportAssets } from "./imports";
+import {
+  filesBeside,
+  listRelativeFiles,
+  markdownInFolder,
+  marpAssetPaths,
+  normalizeFolderFiles,
+  preferredMarkdown,
+  selectMarpAssetFiles,
+} from "./editors/slide-marp-import";
 import { createMarpFile } from "./editors/slide-marp";
 import { CsvImportDialog } from "./csv-import";
 import type { DelimitedOptions } from "./csv";
@@ -91,6 +103,7 @@ import {
 import { FunctionMenu } from "./editors/function-help-ui";
 import { SheetViewMenu } from "./editors/SheetViewMenu";
 import { FilterViewChoices } from "./editors/sheet-filter-view";
+import { ChartPivotMenu } from "./editors/chart-pivot-menu";
 import { CommandPalette, useCommandPalette } from "./command-palette";
 import {
   DriveConflict,
@@ -346,6 +359,107 @@ function Logo() {
     </span>
   );
 }
+function MarpPicturesDialog({
+  name,
+  paths,
+  onDone,
+}: {
+  name: string;
+  paths: string[];
+  onDone: (choice: { relativePath: string; file: File }[] | "skip" | "cancel") => void;
+}) {
+  const folderInput = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const accept = (listed: { relativePath: string; file: File }[]) => {
+    const { chosen, ambiguous } = selectMarpAssetFiles(paths, listed);
+    if (!chosen.length) {
+      setBusy(false);
+      setError(
+        ambiguous
+          ? "That folder has more than one copy of these files. Choose the folder that contains the markdown file."
+          : "None of those files were in that folder. Choose the folder that contains the markdown file.",
+      );
+      return;
+    }
+    onDone(chosen.map((item) => ({ relativePath: item.path, file: item.file.file })));
+  };
+  const choose = async () => {
+    setError("");
+    const show = (window as unknown as { showDirectoryPicker?: () => Promise<unknown> }).showDirectoryPicker;
+    if (!show) {
+      folderInput.current?.click();
+      return;
+    }
+    setBusy(true);
+    try {
+      accept(await listRelativeFiles(await show() as Parameters<typeof listRelativeFiles>[0]));
+    } catch (e) {
+      setBusy(false);
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      setError(e instanceof Error ? e.message : "Could not read that folder.");
+    }
+  };
+  return (
+    <div className="modal-overlay" onClick={() => onDone("cancel")}>
+      <section
+        className="gdocs-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="marp-pictures-title"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.key === "Escape" && onDone("cancel")}
+      >
+        <div className="dialog-header">
+          <h2 id="marp-pictures-title">Include pictures</h2>
+          <button
+            type="button"
+            className="dialog-close-btn"
+            aria-label="Cancel import"
+            onClick={() => onDone("cancel")}
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div className="dialog-body">
+          <p className="dialog-note">
+            {name} uses {paths.length} file{paths.length === 1 ? "" : "s"} stored next to the
+            markdown, such as {paths[0]}. Choose the folder that contains the markdown file so
+            those pictures are included.
+          </p>
+          {error ? (
+            <p className="dialog-error" role="alert">
+              {error}
+            </p>
+          ) : null}
+        </div>
+        <div className="dialog-footer">
+          <button type="button" className="dialog-text-btn" onClick={() => onDone("skip")}>
+            Import without pictures
+          </button>
+          <button type="button" className="dialog-primary-btn" disabled={busy} onClick={() => void choose()}>
+            <FolderOpen size={16} /> {busy ? "Reading…" : "Choose folder"}
+          </button>
+        </div>
+        <input
+          hidden
+          type="file"
+          ref={folderInput}
+          multiple
+          {...{ webkitdirectory: "" }}
+          onChange={(e) => {
+            const list = [...(e.target.files ?? [])];
+            e.target.value = "";
+            if (!list.length) return;
+            setBusy(true);
+            accept(list.map((file) => ({ relativePath: file.webkitRelativePath || file.name, file })));
+          }}
+        />
+      </section>
+    </div>
+  );
+}
+
 function ImportButton({
   onImport,
   onError,
@@ -361,17 +475,55 @@ function ImportButton({
   importer?: RefObject<((f: File) => Promise<void>) | null>;
 }) {
   const input = useRef<HTMLInputElement>(null);
+  const folderInput = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menu, setMenu] = useState(false);
+  const [dropOver, setDropOver] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [deckChoice, setDeckChoice] = useState<{
+    choices: string[];
+    resolve: (path: string | null) => void;
+  } | null>(null);
   const [review, setReview] = useState<{
     draft: DelimitedDraft;
     resolve: (options: DelimitedOptions | null) => void;
   } | null>(null);
+  const [pictures, setPictures] = useState<{
+    name: string;
+    paths: string[];
+    resolve: (choice: { relativePath: string; file: File }[] | "skip" | "cancel") => void;
+  } | null>(null);
   const importChosen = async (f: File) => {
     setImporting(true);
     try {
+      const ext = f.name.split(".").pop()?.toLowerCase();
+      let assets: ImportAssets | undefined;
+      if (ext === "md" || ext === "markdown") {
+        const paths = marpAssetPaths(await f.text());
+        if (paths.length) {
+          const choice = await new Promise<{ relativePath: string; file: File }[] | "skip" | "cancel">(
+            (resolve) => setPictures({ name: f.name, paths, resolve }),
+          );
+          setPictures(null);
+          if (choice === "cancel") return;
+          if (choice !== "skip") {
+            assets = {};
+            let total = 0;
+            for (const item of choice) {
+              if (item.file.size > 25 * 1024 * 1024)
+                throw new Error(`"${item.relativePath}" is larger than 25 MB.`);
+              total += item.file.size;
+              if (total > 80 * 1024 * 1024)
+                throw new Error("The files for this deck are larger than 80 MB.");
+              assets[item.relativePath] = new Uint8Array(await item.file.arrayBuffer());
+            }
+          }
+        }
+      }
       const file = await importFile(
         f,
         (draft) => new Promise((resolve) => setReview({ draft, resolve })),
+        assets,
       );
       if (file) await onImport({ file }, f.name);
     } catch (e) {
@@ -381,7 +533,116 @@ function ImportButton({
     }
   };
   if (importer) importer.current = importChosen;
+  const importFolder = async (raw: { relativePath: string; file: File }[], folderName = "") => {
+    const normalized = folderName ? { folderName, files: raw } : normalizeFolderFiles(raw);
+    const choices = markdownInFolder(normalized.files);
+    if (!choices.length) throw new Error("That folder has no markdown file.");
+    let markdownPath = preferredMarkdown(choices, folderName || normalized.folderName);
+    if (!markdownPath) {
+      markdownPath = await new Promise<string | null>((resolve) => setDeckChoice({ choices, resolve }));
+      setDeckChoice(null);
+      if (!markdownPath) return;
+    }
+    const markdown = normalized.files.find((item) => item.relativePath === markdownPath);
+    if (!markdown) throw new Error("That folder has no markdown file.");
+    const text = await markdown.file.text();
+    const needed = marpAssetPaths(text);
+    let assets: ImportAssets | undefined;
+    if (needed.length) {
+      const { chosen } = selectMarpAssetFiles(needed, filesBeside(markdownPath, normalized.files));
+      if (chosen.length) {
+        assets = {};
+        let total = 0;
+        for (const item of chosen) {
+          if (item.file.file.size > 25 * 1024 * 1024)
+            throw new Error(`"${item.path}" is larger than 25 MB.`);
+          total += item.file.file.size;
+          if (total > 80 * 1024 * 1024) throw new Error("The files for this deck are larger than 80 MB.");
+          assets[item.path] = new Uint8Array(await item.file.file.arrayBuffer());
+        }
+      }
+    }
+    const file = await importFile(
+      markdown.file,
+      (draft) => new Promise((resolve) => setReview({ draft, resolve })),
+      assets,
+    );
+    if (file) await onImport({ file }, markdown.file.name);
+  };
+  const openFolder = () => {
+    setMenu(false);
+    // The directory input reports each file's path inside the folder. The
+    // separate directory picker was cancelled as soon as the page updated.
+    folderInput.current?.click();
+  };
+  const droppedEntries = async (entry: FileSystemEntry, prefix = ""): Promise<
+    { relativePath: string; file: File }[]
+  > => {
+    if (entry.isFile) {
+      const file = await new Promise<File>((resolve, reject) =>
+        (entry as FileSystemFileEntry).file(resolve, reject),
+      );
+      return [{ relativePath: prefix ? `${prefix}/${file.name}` : file.name, file }];
+    }
+    if (!entry.isDirectory) return [];
+    const reader = (entry as FileSystemDirectoryEntry).createReader();
+    const children = await new Promise<FileSystemEntry[]>((resolve, reject) => {
+      const all: FileSystemEntry[] = [];
+      const read = () =>
+        reader.readEntries((batch) => {
+          if (!batch.length) resolve(all);
+          else {
+            all.push(...batch);
+            read();
+          }
+        }, reject);
+      read();
+    });
+    const next = prefix ? `${prefix}/${entry.name}` : entry.name;
+    const nested: { relativePath: string; file: File }[] = [];
+    for (const child of children) nested.push(...(await droppedEntries(child, next)));
+    return nested;
+  };
+  const onDrop = async (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setDropOver(false);
+    setMenu(false);
+    const entries = [...event.dataTransfer.items]
+      .map((item) => item.webkitGetAsEntry?.() ?? null)
+      .filter((entry): entry is FileSystemEntry => !!entry);
+    try {
+      if (entries.length) {
+        for (const entry of entries) {
+          if (entry.isDirectory) await importFolder(await droppedEntries(entry));
+          else {
+            const [picked] = await droppedEntries(entry);
+            if (picked) await importChosen(picked.file);
+          }
+        }
+        return;
+      }
+      for (const file of event.dataTransfer.files) await importChosen(file);
+    } catch (err) {
+      onError(message(err));
+    }
+  };
+  useEffect(() => {
+    if (!menu) return;
+    const close = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setMenu(false);
+    };
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenu(false);
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", key);
+    };
+  }, [menu]);
   const open = async () => {
+    setMenu(false);
     setImporting(true);
     try {
       if (window.suiteleaf && !filePicker) {
@@ -396,10 +657,55 @@ function ImportButton({
   };
   return (
     <>
-      <button disabled={importing} onClick={() => void open()}>
-        <Upload size={16} />
-        {importing ? "Importing…" : "Open / import"}
-      </button>
+      <div className="import-menu" ref={menuRef}>
+        <button
+          type="button"
+          disabled={importing}
+          aria-expanded={menu}
+          aria-haspopup="dialog"
+          onClick={() => setMenu((open) => !open)}
+        >
+          <Upload size={16} />
+          {importing ? "Importing…" : "Import"}
+        </button>
+        {menu ? (
+          <div className="import-popover" role="dialog" aria-label="Import">
+            <div
+              className={`import-drop${dropOver ? " over" : ""}`}
+              onDragOver={(event) => {
+                event.preventDefault();
+                setDropOver(true);
+              }}
+              onDragLeave={(event) => {
+                if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+                setDropOver(false);
+              }}
+              onDrop={(event) => void onDrop(event)}
+            >
+              Drop a file or folder
+            </div>
+            <div className="import-popover-actions">
+              <button type="button" disabled={importing} onClick={() => void open()}>
+                <Upload size={16} /> Open / import
+              </button>
+              <button type="button" disabled={importing} onClick={openFolder}>
+                <FolderOpen size={16} /> Open folder
+              </button>
+              {window.suiteleaf && !filePicker ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenu(false);
+                    input.current?.click();
+                  }}
+                >
+                  Import Office / HTML / CSV
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+      </div>
       <input
         hidden
         type="file"
@@ -411,10 +717,68 @@ function ImportButton({
           if (f) await importChosen(f);
         }}
       />
-      {window.suiteleaf && !filePicker ? (
-        <button onClick={() => input.current?.click()}>
-          Import Office / HTML / CSV
-        </button>
+      <input
+        className="import-folder-input"
+        type="file"
+        ref={folderInput}
+        multiple
+        {...{ webkitdirectory: "" }}
+        onChange={async (e) => {
+          const list = [...(e.target.files ?? [])];
+          e.target.value = "";
+          if (!list.length) return;
+          setImporting(true);
+          try {
+            await importFolder(list.map((file) => ({ relativePath: file.webkitRelativePath || file.name, file })));
+          } catch (err) {
+            onError(message(err));
+          } finally {
+            setImporting(false);
+          }
+        }}
+      />
+      {deckChoice ? (
+        <div className="modal-overlay">
+          <section
+            className="gdocs-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="folder-deck-title"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.key === "Escape" && deckChoice.resolve(null)}
+          >
+            <div className="dialog-header">
+              <h2 id="folder-deck-title">Which presentation?</h2>
+              <button
+                type="button"
+                className="dialog-close-btn"
+                aria-label="Cancel import"
+                onClick={() => deckChoice.resolve(null)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="dialog-body">
+              <p className="dialog-note">This folder contains more than one markdown file.</p>
+              <ul className="folder-deck-list">
+                {deckChoice.choices.map((path) => (
+                  <li key={path}>
+                    <button type="button" onClick={() => deckChoice.resolve(path)}>
+                      {path}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </section>
+        </div>
+      ) : null}
+      {pictures ? (
+        <MarpPicturesDialog
+          name={pictures.name}
+          paths={pictures.paths}
+          onDone={pictures.resolve}
+        />
       ) : null}
       {review ? (
         <CsvImportDialog
@@ -1434,6 +1798,9 @@ function Workspace() {
     /** Folder of the open SuiteDrive file. `null` is the top of My Drive. */
     driveParentId = useRef<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [menusOpen, setMenusOpen] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const menuBar = useRef<HTMLDivElement>(null);
   const [editorEpoch, setEditorEpoch] = useState(0);
   const [historyPreview, setHistoryPreview] = useState<HistoryPreview | null>(
     null,
@@ -1449,6 +1816,27 @@ function Workspace() {
     [othersHere, setOthersHere] = useState<FilePresence[]>([]),
     { mode } = useMode(),
     cluster = mode.kind === "cluster";
+  useEffect(() => {
+    if (!menusOpen) return;
+    const close = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (event instanceof KeyboardEvent) {
+        if (event.key === "Escape") setMenusOpen(false);
+        return;
+      }
+      if (menuButton.current?.contains(target) || menuBar.current?.contains(target))
+        return;
+      if (target instanceof Element && target.closest(".menu-content")) return;
+      setMenusOpen(false);
+    };
+    document.addEventListener("pointerdown", close, true);
+    document.addEventListener("keydown", close);
+    return () => {
+      document.removeEventListener("pointerdown", close, true);
+      document.removeEventListener("keydown", close);
+    };
+  }, [menusOpen]);
   const canEditRef = useRef(true);
   const canSaveRef = useRef(true);
   const canEdit =
@@ -2670,6 +3058,17 @@ function Workspace() {
                   color={starred ? "#fbbc04" : "#5f6368"}
                 />
               </button>
+              <button
+                ref={menuButton}
+                type="button"
+                className="doc-icon-btn file-menu-more"
+                aria-label="Main menu"
+                aria-expanded={menusOpen}
+                aria-controls="file-menu"
+                onClick={() => setMenusOpen((open) => !open)}
+              >
+                <MoreVertical size={18} />
+              </button>
               <span className="save-status" role="status">
                 {status.includes("Saved") ? <Check size={13} /> : null}
                 {status}
@@ -2703,7 +3102,12 @@ function Workspace() {
               />
             ) : null}
             {record.drive ? <LastEdited itemId={record.drive.itemId} /> : null}
-            <div className="file-menu" role="menubar">
+            <div
+              ref={menuBar}
+              id="file-menu"
+              className={`file-menu${menusOpen ? " open" : ""}`}
+              role="menubar"
+            >
               <Menu label="File">
                 <SubMenu label="New">
                   <MenuItem onSelect={() => void doAction("new-doc")}>
@@ -3647,6 +4051,28 @@ function Workspace() {
                     >
                       Pivot table
                     </MenuItem>
+                    <SubMenu label="Charts & pivots">
+                      <ChartPivotMenu
+                        load={() =>
+                          actions.current?.sheetActions?.analyses?.() ?? {
+                            charts: [],
+                            pivots: [],
+                          }
+                        }
+                        onEdit={(kind, id) =>
+                          actions.current?.sheetActions?.editAnalysis?.(kind, id)
+                        }
+                        onDeleteChart={(id) =>
+                          actions.current?.sheetActions?.deleteChart?.(id)
+                        }
+                        onRefresh={(id) =>
+                          actions.current?.sheetActions?.refreshPivot?.(id)
+                        }
+                        onCopy={(id) =>
+                          actions.current?.sheetActions?.copyPivot?.(id)
+                        }
+                      />
+                    </SubMenu>
                     <MenuItem
                       onSelect={() =>
                         actions.current?.sheetActions?.sortRange?.()

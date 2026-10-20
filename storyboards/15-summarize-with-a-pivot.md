@@ -60,5 +60,5 @@ After the model loads (6–10 s), the first request takes 20–27 s on the web a
 
 - Pivots update when cells on their source worksheet change. A pivot whose source is another pivot's output still needs Refresh after the first pivot changes. Pivots saved by an older version that are out of date update on the next source edit or Refresh.
 - Grand totals are always shown; there is no "Show totals" toggle like the one in Sheets.
-- Opening Charts & pivots replaces the formatting toolbar with the list of charts and pivots. The toolbar comes back when the list is closed. The pivot bar avoids that list for this storyboard.
+- Charts and pivots are listed under Data → Charts & pivots. The pivot bar stays on the sheet for this storyboard.
 - Field pickers are multi-select list boxes ("Use Command / Ctrl to select several fields"), not the drag-and-drop field editor that Sheets and Excel users expect.

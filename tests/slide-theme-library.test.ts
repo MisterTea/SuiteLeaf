@@ -116,6 +116,7 @@ describe("saved slide themes", () => {
       "Meadow",
       "Ink",
       "Warm Sand",
+      "Beam UT",
     ]);
     expect(meadow.accent).toBe("#95d5b2");
   });

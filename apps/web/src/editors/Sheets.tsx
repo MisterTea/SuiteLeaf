@@ -55,6 +55,7 @@ import SheetRowGroups, { type SheetRowGroupsHandle } from "./sheet-row-groups-ui
 import SheetColumnGroups, { type SheetColumnGroupsHandle } from "./sheet-column-groups-ui";
 import SheetFeatures from "./sheet-features";
 import SheetList from "./sheet-list";
+import { FontControls } from "./font-controls";
 import SheetPrint, { type SheetPrintHandle } from "./sheet-print-ui";
 import { PRINT_MAX_CELLS, paginatePrinted, printMarkup, printedPages, readSheetPrint } from "./sheet-print";
 import SheetDropdowns, { type SheetDropdownHandle } from "./sheet-dropdown-panel";
@@ -2517,6 +2518,36 @@ export default function Sheets({
         deleteValues,
         insertChart: () => startPanel("chart"),
         insertPivot: () => startPanel("pivot"),
+        analyses: () => ({
+          charts: content.current.charts.map((c) => ({
+            id: c.id,
+            title: c.title,
+            invalid: !!c.invalid,
+          })),
+          pivots: content.current.pivots.map((p) => ({
+            id: p.id,
+            title: p.title,
+            invalid: !!p.invalid,
+            stale: pivotErrors.current.has(p.id),
+          })),
+        }),
+        editAnalysis: (kind, id) => startPanel(kind, id),
+        deleteChart: (id) => {
+          const chart = content.current.charts.find((c) => c.id === id);
+          if (!chart) return;
+          book.current?.getSheetBySheetId(chart.sheetId)?.removeFloatDom(chart.id);
+          content.current.charts = content.current.charts.filter((c) => c.id !== id);
+          charts.delete(id);
+          persist.current();
+        },
+        refreshPivot: (id) => {
+          const pivot = content.current.pivots.find((p) => p.id === id);
+          if (pivot) void refreshPivot(pivot).catch((e) => onError(String(e)));
+        },
+        copyPivot: (id) => {
+          const pivot = content.current.pivots.find((p) => p.id === id);
+          if (pivot) copyPivot(pivot);
+        },
         insertFunction: (name: string) => functionActions.current.insertFunction(name),
         toggleFilter,
         createFilterView,
@@ -3217,73 +3248,13 @@ export default function Sheets({
         >
           <TableProperties size={16} />
         </button>
-
-        <details className="sheet-analyses-dropdown">
-          <summary>
-            Charts & pivots ({items.charts.length + items.pivots.length})
-          </summary>
-          <div className="analysis-list">
-            {!items.charts.length && !items.pivots.length ? (
-              <p>Select a range, then insert a chart or pivot table.</p>
-            ) : null}
-            {items.charts.map((c) => (
-              <div key={c.id}>
-                <button onClick={() => startPanel("chart", c.id)}>
-                  {c.title}
-                  {c.invalid ? " · source missing" : ""}
-                </button>
-                <button
-                  aria-label={`Delete ${c.title}`}
-                  onClick={() => {
-                    book.current
-                      .getSheetBySheetId(c.sheetId)
-                      ?.removeFloatDom(c.id);
-                    content.current.charts = items.charts.filter(
-                      (x) => x.id !== c.id,
-                    );
-                    charts.delete(c.id);
-                    persist.current();
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-            {items.pivots.map((p) => (
-              <div key={p.id}>
-                <button onClick={() => startPanel("pivot", p.id)}>
-                  {p.title}
-                  {p.invalid
-                    ? " · source missing"
-                    : pivotErrors.current.has(p.id)
-                      ? " · not updated"
-                      : ""}
-                </button>
-                <button
-                  title="Refresh pivot"
-                  aria-label={`Refresh ${p.title}`}
-                  onClick={() =>
-                    void refreshPivot(p).catch((e) => onError(String(e)))
-                  }
-                >
-                  <RefreshCw size={14} />
-                </button>
-                <button
-                  title="Make editable copy"
-                  onClick={() => copyPivot(p)}
-                >
-                  Copy
-                </button>
-              </div>
-            ))}
-          </div>
-        </details>
       </div>
       <div
         className="sheets-toolbar sheets-format-toolbar"
         role="toolbar"
         aria-label="Text formatting"
       >
+        <FontControls disabled={readOnly}>
         <select
           className="toolbar-select font-family-select"
           aria-label="Font family"
@@ -3330,6 +3301,7 @@ export default function Sheets({
             <Plus size={12} />
           </button>
         </div>
+        </FontControls>
 
         <span className="toolbar-divider" />
 

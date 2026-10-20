@@ -157,6 +157,18 @@ export const slideElementSchema = z.object({
   underline: z.boolean().optional(),
   color: z.string().optional(),
   align: z.enum(["left", "center", "right", "justify"]).optional(),
+  /** Unitless line height. A fitted MARP box uses the theme's line height. */
+  lineHeight: z.number().positive().max(4).optional(),
+  /** Left inset, in slide units, so a heading can sit inside its bar. */
+  padLeft: z.number().nonnegative().max(400).optional(),
+  /** Corner radius for a rounded rectangle, in slide units. */
+  radius: z.number().nonnegative().max(200).optional(),
+  /** Keep the line breaks of a code block. */
+  preformatted: z.boolean().optional(),
+  /** Language of a code block, used to color it until the box is edited. */
+  codeLanguage: z.string().max(40).optional(),
+  /** The text is LaTeX. The box shows typeset math until it is edited. */
+  math: z.boolean().optional(),
   bullet: z.boolean().optional(),
   shapeType: z
     .enum(["rect", "roundRect", "ellipse", "line", "arrow"])
@@ -273,6 +285,12 @@ export const presentationSchema = z.object({
   marp: z.boolean().optional(),
   /** When set, each slide shows its place in the deck, starting at 1. Absent means off. */
   slideNumbers: z.boolean().optional(),
+  /** The markdown the deck was imported from. Editing a text box does not rewrite it. */
+  marpSource: z.string().max(500_000).optional(),
+  /** Relative path from the markdown file to a data URI. Image boxes keep the path. */
+  marpAssets: z.record(z.string().max(400), z.string().max(8_000_000)).optional(),
+  /** Text boxes have been placed to match the MARP theme. A number is the layout revision. */
+  marpFit: z.union([z.boolean(), z.number()]).optional(),
 });
 export type Presentation = z.infer<typeof presentationSchema>;
 type NativeCell = {
@@ -642,6 +660,13 @@ export {
   removedLinkWarning,
   takeExcelHyperlink,
 } from "./sheet-links";
+/** A slide picture is either embedded, or a relative path filled from the deck's imported files. */
+function allowedSlideImage(src: string) {
+  if (/^data:image\/(png|jpeg|gif|webp|svg\+xml);base64,/i.test(src)) return true;
+  if (src.length > 400 || src.includes("..") || src.includes("\\") || src.includes(":"))
+    return false;
+  return /^[A-Za-z0-9._~/+-]+$/.test(src);
+}
 function validateTree(n: JsonNode, depth = 0) {
   if (depth > 100) throw new Error("Document is nested too deeply.");
   if (
@@ -741,11 +766,7 @@ export function parseFile(text: string, expectedKind?: Kind | null): SuiteFile {
         throw new Error("Presentation contains a missing slide.");
     for (const s of Object.values(file.content.slides)) {
       for (const el of s.elements) {
-        if (
-          el.type === "image" &&
-          el.src &&
-          !/^data:image\/(png|jpeg|gif|webp|svg\+xml);base64,/i.test(el.src)
-        )
+        if (el.type === "image" && el.src && !allowedSlideImage(el.src))
           throw new Error(
             "Native images must be embedded PNG, JPEG, GIF, WebP, or SVG data.",
           );

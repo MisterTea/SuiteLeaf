@@ -11,7 +11,7 @@ import {
   type SuiteFile,
   type SheetFile,
 } from "@suiteleaf/core";
-import { createMarpFile, marpToDeck } from "./editors/slide-marp";
+import { buildMarpFile, dataUriFor } from "./editors/slide-marp-import";
 
 export const maxDelimitedCells = 200000;
 /** A parsed CSV/TSV file awaiting the person's import choices. */
@@ -26,10 +26,14 @@ export type ReviewDelimited = (
   draft: DelimitedDraft,
 ) => Promise<DelimitedOptions | null>;
 
+/** Local files that belong with an imported markdown deck, keyed by the path written in the markdown. */
+export type ImportAssets = Record<string, Uint8Array | string>;
+
 /** Converts a picked file; resolves to null if the person cancels a review step. */
 export async function importFile(
   file: File,
   review?: ReviewDelimited,
+  assets?: ImportAssets,
 ): Promise<SuiteFile | null> {
   const ext = file.name.split(".").pop()?.toLowerCase();
   if (
@@ -124,12 +128,11 @@ export async function importFile(
     return out;
   }
   if (ext === "md" || ext === "markdown") {
-    const deck = createMarpFile(title);
-    const parsed = marpToDeck(text, deck.content, { marp: true });
-    if ("error" in parsed) throw new Error(parsed.error);
-    deck.content = parsed.deck;
-    deck.content.marp = true;
-    return deck;
+    const pictures: Record<string, string> = {};
+    for (const [path, value] of Object.entries(assets ?? {})) {
+      pictures[path] = typeof value === "string" ? value : dataUriFor(path, value);
+    }
+    return buildMarpFile(title, text, pictures);
   }
   throw new Error(
     "Supported formats: SuiteLeaf (.sldoc, .slsheet, .slslides, .suiteleaf), Word, Excel, PowerPoint, OpenDocument, RTF, Markdown (.md), HTML, text, CSV, and TSV.",

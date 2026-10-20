@@ -1,4 +1,5 @@
 import type { Presentation } from "@suiteleaf/core";
+import { marpMediaSrc } from "./slide-marp-import";
 import { escapeHtml, hasTextRuns, textInnerHtml } from "./slide-runs";
 
 /** Standalone HTML download for a deck. */
@@ -24,7 +25,7 @@ export function deckToHtml(deck: Presentation, title: string): string {
             return `<div style="${style}">${textInnerHtml(el)}</div>`;
           }
           if (el.type === "image" && el.src) {
-            return `<img src="${el.src}" alt="${el.alt || "image"}" style="${pos} object-fit: contain;" />`;
+            return `<img src="${marpMediaSrc(el.src, deck.marpAssets) ?? ""}" alt="${el.alt || "image"}" style="${pos} object-fit: contain;" />`;
           }
           if ((el.type === "audio" || el.type === "video") && el.src) {
             const name = escapeHtml(el.alt || el.type);

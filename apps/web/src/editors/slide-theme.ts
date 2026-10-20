@@ -53,6 +53,16 @@ export const DECK_THEMES: SlideTheme[] = [
     headingFont: "Georgia",
     bodyFont: "Trebuchet MS",
   },
+  {
+    id: "beam_ut",
+    name: "Beam UT",
+    background: "#ffffff",
+    headingColor: "#141414",
+    bodyColor: "#141414",
+    accent: "#BF5700",
+    headingFont: "Times",
+    bodyFont: "Helvetica",
+  },
 ];
 
 export const THEME_FONTS = [
@@ -62,6 +72,8 @@ export const THEME_FONTS = [
   "Georgia",
   "Trebuchet MS",
   "Times New Roman",
+  "Times",
+  "Helvetica",
   "Courier New",
 ];
 

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { createFile, type Presentation, type Slide, type SlideElement, type SlideFile } from "../packages/core/src";
+import {
+  createFile,
+  parseFile,
+  serializeFile,
+  type Presentation,
+  type Slide,
+  type SlideElement,
+  type SlideFile,
+} from "../packages/core/src";
 import { newSlide } from "../apps/web/src/editors/slide-layouts";
 import { DECK_THEMES, paintSlide } from "../apps/web/src/editors/slide-theme";
 import {
@@ -9,12 +17,24 @@ import {
   marpToDeck,
   moveToOtherColumn,
   marpColumns,
+  mergeConsecutiveText,
+  reorderFittedMarpItem,
   reorderMarpItem,
   reflowMarp,
   slideIsMarpClean,
   switchMarpLayout,
 } from "../apps/web/src/editors/slide-marp";
 import { importFile } from "../apps/web/src/imports";
+import {
+  dataUriFor,
+  filesBeside,
+  listRelativeFiles,
+  markdownInFolder,
+  marpAssetPaths,
+  normalizeFolderFiles,
+  preferredMarkdown,
+  selectMarpAssetFiles,
+} from "../apps/web/src/editors/slide-marp-import";
 
 const meadow = DECK_THEMES.find((theme) => theme.id === "meadow")!;
 const ink = DECK_THEMES.find((theme) => theme.id === "ink")!;
@@ -154,6 +174,12 @@ Speaker notes.
 
   it("reads lead as a title slide and keeps text that does not fit a layout", () => {
     const file = createFile("slide", "Deck") as SlideFile;
+    const themeClass = marpToDeck(
+      "<!-- _class: body-clearance -->\n\n# Hello\n\n- One\n",
+      file.content,
+    );
+    expect(themeClass).not.toHaveProperty("error");
+
     const lead = marpToDeck("<!-- _class: lead -->\n\n# Hello\n\nSub\n", file.content);
     if ("error" in lead) throw new Error(lead.error);
     const title = lead.deck.slides[lead.deck.slideOrder[0]];
@@ -382,6 +408,136 @@ Thoughtful slide design
     expect(reorderMarpItem(flowed, flowed.elements[0].id, { x: 100, y: 400 })).toBeNull();
   });
 
+  it("keeps fitted boxes in place and only exchanges their contents", () => {
+    const slide = newSlide("title-body");
+    slide.elements[0].content = "Title";
+    slide.elements[1] = {
+      ...slide.elements[1],
+      id: "a",
+      content: "First",
+      x: 48,
+      y: 140,
+      width: 800,
+      height: 40,
+    };
+    slide.elements.push(
+      {
+        id: "b",
+        type: "text",
+        x: 48,
+        y: 200,
+        width: 800,
+        height: 40,
+        content: "Second",
+        placeholder: "Click to add text",
+      },
+      {
+        id: "bar",
+        type: "shape",
+        x: 0,
+        y: 0,
+        width: 960,
+        height: 50,
+        shapeType: "rect",
+        fill: "#BF5700",
+      },
+    );
+    expect(reorderFittedMarpItem(slide, "b", { x: 200, y: 210 }, 960)).toBeNull();
+    const moved = reorderFittedMarpItem(slide, "b", { x: 80, y: 140 }, 960);
+    expect(moved?.elements.find((el) => el.id === "b")).toMatchObject({
+      x: 48,
+      y: 140,
+      content: "Second",
+    });
+    expect(moved?.elements.find((el) => el.id === "a")).toMatchObject({
+      x: 48,
+      y: 200,
+      content: "First",
+    });
+    expect(moved?.elements.find((el) => el.id === "bar")).toMatchObject({ x: 0, y: 0 });
+  });
+
+  it("reorders an image into an existing slot instead of the pointer", () => {
+    const slide = newSlide("title-body");
+    slide.elements[0].content = "Title";
+    slide.elements[1] = {
+      ...slide.elements[1],
+      id: "copy",
+      content: "• Points",
+      x: 48,
+      y: 140,
+      width: 420,
+      height: 160,
+    };
+    slide.elements.push({
+      id: "pic",
+      type: "image",
+      x: 520,
+      y: 150,
+      width: 380,
+      height: 220,
+      src: "media/plot.png",
+    });
+    expect(reorderFittedMarpItem(slide, "pic", { x: 700, y: 400 })).toBeNull();
+    const moved = reorderFittedMarpItem(slide, "pic", { x: 700, y: 40 });
+    expect(moved?.elements.find((el) => el.id === "pic")).toMatchObject({
+      x: 48,
+      y: 140,
+      width: 420,
+      height: 160,
+    });
+    expect(moved?.elements.find((el) => el.id === "copy")).toMatchObject({
+      x: 520,
+      y: 150,
+      width: 380,
+      height: 220,
+    });
+  });
+
+  it("merges consecutive body text and leaves the title, pictures, and other columns alone", () => {
+    const text = (
+      id: string,
+      content: string,
+      y: number,
+      x = 48,
+    ): SlideElement => ({
+      id,
+      type: "text",
+      x,
+      y,
+      width: 400,
+      height: 36,
+      content,
+      fontSize: 20,
+      color: "#141414",
+      align: "left",
+    });
+    const merged = mergeConsecutiveText([
+      {
+        id: "title",
+        type: "text",
+        x: 0,
+        y: 0,
+        width: 960,
+        height: 52,
+        content: "Title",
+        fontSize: 32,
+        color: "#ffffff",
+        fill: "#BF5700",
+        placeholder: "Click to add title",
+      },
+      text("a", "• One", 140),
+      text("b", "• Two", 184),
+      text("c", "• Three", 228),
+      { id: "pic", type: "image", x: 520, y: 140, width: 300, height: 180, src: "media/a.png" },
+      text("right", "Aside", 140, 520),
+    ]);
+    expect(merged.map((el) => el.id)).toEqual(["title", "a", "pic", "right"]);
+    expect(merged[1].content).toBe("• One\n• Two\n• Three");
+    expect(merged[1]).toMatchObject({ x: 48, y: 140, height: 228 + 36 - 140 });
+    expect(merged[0].content).toBe("Title");
+  });
+
   it("drags an item from the left column into the right, and folds it back", () => {
     const slide = newSlide("two-column");
     slide.elements[0].content = "Title";
@@ -429,5 +585,81 @@ Thoughtful slide design
     expect(imported.content.slides[imported.content.slideOrder[0]].elements[0].content).toBe(
       "Hello",
     );
+  });
+
+  it("keeps the Beam UT theme and the pictures a markdown file points at", async () => {
+    const png = dataUriFor("media/plot.png", Uint8Array.from([137, 80, 78, 71]));
+    expect(marpAssetPaths("# Hi\n\n![](media/plot.png)\n\n![](https://example.com/a.png)\n")).toEqual([
+      "media/plot.png",
+    ]);
+    expect(marpAssetPaths("![](../secret.png)")).toEqual([]);
+    const deck = selectMarpAssetFiles(
+      ["media/plot.png", "media/logo.svg"],
+      [
+        { relativePath: "lecture/media/plot.png" },
+        { relativePath: "other/media/plot.png" },
+        { relativePath: "logo.svg" },
+      ],
+    );
+    expect(deck.ambiguous).toBe(true);
+    expect(deck.chosen.map((item) => item.path)).toEqual(["media/logo.svg"]);
+    const folder = selectMarpAssetFiles(
+      ["media/plot.png"],
+      [{ relativePath: "media/plot.png" }, { relativePath: "notes.txt" }],
+    );
+    expect(folder.ambiguous).toBe(false);
+    expect(folder.chosen.map((item) => item.path)).toEqual(["media/plot.png"]);
+    const listed = await listRelativeFiles({
+      entries: async function* () {
+        yield [
+          "media",
+          {
+            kind: "directory",
+            entries: async function* () {
+              yield ["plot.png", { kind: "file", getFile: async () => new File([png], "plot.png") }];
+            },
+          },
+        ] as const;
+      },
+    });
+    expect(listed.map((item) => item.relativePath)).toEqual(["media/plot.png"]);
+    expect(
+      markdownInFolder([
+        { relativePath: "13_Feature_Engineering/13_Feature_Engineering.md" },
+        { relativePath: "13_Feature_Engineering/media/plot.png" },
+        { relativePath: "13_Feature_Engineering/node_modules/readme.md" },
+        { relativePath: "notes.md" },
+      ]),
+    ).toEqual(["notes.md", "13_Feature_Engineering/13_Feature_Engineering.md"]);
+    expect(preferredMarkdown(["13_Feature_Engineering.md", "notes.md"], "13_Feature_Engineering")).toBe(
+      "13_Feature_Engineering.md",
+    );
+    expect(preferredMarkdown(["a.md", "b.md"], "")).toBeNull();
+    const flat = normalizeFolderFiles([
+      { relativePath: "13_Feature_Engineering/13_Feature_Engineering.md" },
+      { relativePath: "13_Feature_Engineering/media/plot.png" },
+    ]);
+    expect(flat.folderName).toBe("13_Feature_Engineering");
+    expect(filesBeside("13_Feature_Engineering.md", flat.files).map((item) => item.relativePath)).toEqual([
+      "media/plot.png",
+    ]);
+    const file = new File(
+      ["---\ntheme: beam_ut\n---\n\n# Hello\n\n![](media/plot.png)\n"],
+      "lecture.md",
+      { type: "text/markdown" },
+    );
+    const imported = await importFile(file, undefined, { "media/plot.png": png });
+    expect(imported?.kind).toBe("slide");
+    if (imported?.kind !== "slide") return;
+    expect(imported.content.theme?.id).toBe("beam_ut");
+    expect(imported.content.marpSource).toContain("media/plot.png");
+    expect(imported.content.marpAssets?.["media/plot.png"]).toBe(png);
+    expect(imported.content.marpFit).toBe(false);
+    const picture = Object.values(imported.content.slides)
+      .flatMap((slide) => slide.elements)
+      .find((el) => el.type === "image");
+    expect(picture?.src).toBe("media/plot.png");
+    const again = parseFile(serializeFile(imported));
+    expect(again.kind).toBe("slide");
   });
 });

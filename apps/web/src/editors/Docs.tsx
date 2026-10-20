@@ -68,6 +68,7 @@ import { exportBinary, exportText, printDocument } from "../storage";
 import { Tool, type EditorActions, type TableAction } from "../ui";
 import { MenuSearchPill } from "../command-palette";
 import { useToolbarOverflow } from "./toolbar-overflow";
+import { FontControls } from "./font-controls";
 import { linkTarget } from "./doc-links";
 import { EditorState, NodeSelection, TextSelection } from "@tiptap/pm/state";
 import {
@@ -1635,7 +1636,7 @@ export default function Docs({
           value={zoomLevel}
           onChange={(e) => setZoomLevel(e.target.value)}
         >
-          <option value="Fit">Fit page</option>
+          <option value="Fit">Fit</option>
           <option value="50%">50%</option>
           <option value="75%">75%</option>
           <option value="90%">90%</option>
@@ -1661,6 +1662,7 @@ export default function Docs({
         </Tool>
         <span className="divider" />
 
+        <FontControls disabled={readOnly}>
         <select
           className="toolbar-select style-select"
           aria-label="Paragraph style"
@@ -1740,6 +1742,7 @@ export default function Docs({
             <Plus size={13} />
           </button>
         </div>
+        </FontControls>
 
         <span className="divider" />
 

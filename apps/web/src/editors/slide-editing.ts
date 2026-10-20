@@ -565,7 +565,7 @@ export class DeckHistory {
   private coalesce: string | null = null;
 
   constructor(initial: Presentation) {
-    this.entries = [structuredClone(initial)];
+    this.entries = [cloneDeck(initial)];
   }
 
   get canUndo() {
@@ -584,11 +584,11 @@ export class DeckHistory {
     const replace =
       !!key && key === this.coalesce && this.index === this.entries.length - 1;
     if (replace) {
-      this.entries[this.index] = structuredClone(next);
+      this.entries[this.index] = cloneDeck(next);
       return;
     }
     this.entries = this.entries.slice(0, this.index + 1);
-    this.entries.push(structuredClone(next));
+    this.entries.push(cloneDeck(next));
     if (this.entries.length > 50) this.entries.shift();
     this.index = this.entries.length - 1;
     this.coalesce = key ?? null;
@@ -598,13 +598,23 @@ export class DeckHistory {
     if (!this.canUndo) return null;
     this.coalesce = null;
     this.index--;
-    return structuredClone(this.entries[this.index]);
+    return cloneDeck(this.entries[this.index]);
   }
 
   redo(): Presentation | null {
     if (!this.canRedo) return null;
     this.coalesce = null;
     this.index++;
-    return structuredClone(this.entries[this.index]);
+    return cloneDeck(this.entries[this.index]);
   }
+}
+
+/** Copy a deck without duplicating the imported pictures on every undo step. */
+function cloneDeck(deck: Presentation): Presentation {
+  const assets = deck.marpAssets;
+  const rest = { ...deck };
+  delete rest.marpAssets;
+  const next: Presentation = { ...structuredClone(rest) };
+  if (assets) next.marpAssets = assets;
+  return next;
 }

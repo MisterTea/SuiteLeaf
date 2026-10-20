@@ -108,10 +108,9 @@ test("spreadsheet formulas → embedded chart → pivot worksheet → save and r
   await undo.click();
   await expect.poll(() => pivotCell(1)).toBe(6000);
   expect(await pivotCell(5)).toBe(23000);
-  await page.getByText("Charts & pivots (2)", { exact: true }).click();
-  await page
-    .getByRole("button", { name: "Delete Studio costs", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Data", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Charts & pivots", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Delete Studio costs", exact: true }).click();
   await expect(page.getByLabel("Chart: Studio costs")).toHaveCount(0);
   expect((await exported(page)).content.charts).toHaveLength(0);
   expect(errors).toEqual([]);

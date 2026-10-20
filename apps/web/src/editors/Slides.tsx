@@ -33,6 +33,11 @@ import {
   Minus,
   StickyNote,
   Blend,
+  Palette,
+  PaintBucket,
+  Paintbrush,
+  LayoutTemplate,
+  FileText,
 } from "lucide-react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import {
@@ -53,6 +58,7 @@ import { AnimationPane } from "./slide-animation-pane";
 import { SlideshowRecorder } from "./slide-record";
 import { readMaster } from "./slide-master";
 import { Menu, MenuItem, Tool, type EditorActions } from "../ui";
+import { FontControls } from "./font-controls";
 import { MenuSearchPill } from "../command-palette";
 import {
   applyBackground,
@@ -148,11 +154,15 @@ import {
   marpSlideNotice,
   marpToDeck,
   moveToOtherColumn,
+  reorderFittedMarpItem,
   reorderMarpItem,
   reflowMarp,
   switchMarpLayout,
 } from "./slide-marp";
 import { deckToHtml } from "./slide-html";
+import { marpMediaSrc } from "./slide-marp-import";
+import { fitMarpDeck, MARP_FIT_REVISION } from "./slide-marp-fit";
+import { MarpCode, MarpMath, MarpRichText } from "./slide-marp-math";
 import { continueList, listShortcut } from "./slide-list";
 
 type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
@@ -330,6 +340,7 @@ export default function Slides({
     initW?: number;
     initH?: number;
     reorder?: boolean;
+    fitted?: boolean;
   } | null>(null);
 
   const refreshMarks = () =>
@@ -517,10 +528,28 @@ export default function Slides({
       return;
     }
     if (marpFocused.current) return;
-    setMarpText(deckToMarp(deck));
+    setMarpText(deck.marpSource ?? deckToMarp(deck));
     setMarpError(null);
     setMarpWarnings([]);
   }, [deck, marpOpen]);
+
+  const fitToken = useRef(0);
+  useEffect(() => {
+    if (!deck.marp || !deck.marpSource || deck.marpFit === MARP_FIT_REVISION) return;
+    const token = ++fitToken.current;
+    const handle = window.setTimeout(() => {
+      void fitMarpDeck(deckRef.current)
+        .then((next) => {
+          if (!next || token !== fitToken.current || deckRef.current.marpFit === MARP_FIT_REVISION)
+            return;
+          commitRef.current(next);
+        })
+        .catch((error: unknown) => {
+          console.error(error instanceof Error ? error.message : error);
+        });
+    }, 30);
+    return () => window.clearTimeout(handle);
+  }, [deck.marp, deck.marpSource, deck.marpFit]);
 
   const onMarpChange = (text: string) => {
     setMarpText(text);
@@ -535,7 +564,15 @@ export default function Slides({
     setMarpError(null);
     setMarpWarnings(result.warnings);
     marpFromPane.current = true;
-    commit(result.deck, "marp");
+    commit(
+      {
+        ...result.deck,
+        marpSource: text,
+        marpAssets: deckRef.current.marpAssets,
+        marpFit: false,
+      },
+      "marp",
+    );
     if (!result.deck.slides[activeRef.current]) {
       const id = result.deck.slideOrder[0];
       applySelection(id, [id], null);
@@ -779,7 +816,7 @@ export default function Slides({
       ...centeredTextBox(prev.width, prev.height, () => crypto.randomUUID()),
       ...textDefaults(prev.theme),
     };
-    if (!prev.marp) {
+    if (!prev.marp || prev.marpFit) {
       insertOnActive([box], box.id);
       return;
     }
@@ -847,7 +884,7 @@ export default function Slides({
       );
       const slide = activeDeckSlide(prev);
       if (!slide) return;
-      if (!prev.marp) {
+      if (!prev.marp || prev.marpFit) {
         commitRef.current(withElements(prev, slide.id, [image]));
         selectElement(image.id);
         return;
@@ -1230,8 +1267,16 @@ export default function Slides({
     }
     const el = activeSlide.elements.find((item) => item.id === elementId);
     if (!el || readOnlyRef.current) return;
+    if (
+      el.type === "text" &&
+      (el.math || el.preformatted || hasTextRuns(el) || el.content?.includes("$")) &&
+      deckRef.current.marp
+    ) {
+      editingRef.current = elementId;
+      setEditingId(elementId);
+    }
     if (deckRef.current.marp) {
-      if (handle || isMarpTitle(el)) return;
+      if (handle || isMarpTitle(el) || el.type === "shape") return;
       draggingRef.current = {
         elementId,
         startX: e.clientX,
@@ -1239,6 +1284,7 @@ export default function Slides({
         initX: el.x,
         initY: el.y,
         reorder: true,
+        fitted: !!deckRef.current.marpFit,
       };
       return;
     }
@@ -1269,6 +1315,7 @@ export default function Slides({
         initW = 100,
         initH = 50,
         reorder,
+        fitted,
       } = draggingRef.current;
       if (Math.hypot(e.clientX - startX, e.clientY - startY) < 8) return;
       dragMoved.current = true;
@@ -1282,7 +1329,7 @@ export default function Slides({
         const rect = canvas.getBoundingClientRect();
         const width = deckRef.current.width || 960;
         const height = deckRef.current.height || 540;
-        const nextSlide = reorderMarpItem(
+        const nextSlide = (fitted ? reorderFittedMarpItem : reorderMarpItem)(
           slide,
           elementId,
           {
@@ -1303,6 +1350,7 @@ export default function Slides({
         onChangeRef.current(next, slideOp(prev, next));
         return;
       }
+      if (deckRef.current.marp) return;
       const stageRect = stageRef.current.getBoundingClientRect();
       const scale = stageRect.width / (deck.width || 960);
 
@@ -1951,24 +1999,34 @@ export default function Slides({
             style={{
               ...posStyle,
               ...art.style,
-              fontSize: units(normalPx),
-              padding: units(4),
+              fontSize: units(deck.marpFit ? el.fontSize || 20 : normalPx),
+              padding: deck.marpFit ? undefined : units(4),
+              paddingLeft: deck.marpFit && el.padLeft ? units(el.padLeft) : undefined,
+              lineHeight: el.lineHeight,
               ...boxFont(el),
               fontFamily: el.fontFamily || "Arial",
               color: el.color || "#1e293b",
               textAlign: el.align || "left",
-              whiteSpace: "pre-wrap",
+              whiteSpace: el.preformatted ? "pre" : "pre-wrap",
               wordBreak: "break-word",
               backgroundColor: el.fill || "transparent",
             }}
           >
-            <RunSpans
-              content={el.content}
-              runs={el.runs}
-              bold={el.bold}
-              italic={el.italic}
-              underline={el.underline}
-            />
+            {el.preformatted ? (
+              <MarpCode source={el.content || ""} language={el.codeLanguage} />
+            ) : el.math ? (
+              <MarpMath source={el.content || ""} />
+            ) : el.content?.includes("$") ? (
+              <MarpRichText source={el.content} />
+            ) : (
+              <RunSpans
+                content={el.content}
+                runs={el.runs}
+                bold={el.bold}
+                italic={el.italic}
+                underline={el.underline}
+              />
+            )}
           </AutofitBox>
         );
       }
@@ -1977,7 +2035,7 @@ export default function Slides({
           <img
             key={el.id}
             {...fadeProps}
-            src={el.src}
+            src={marpMediaSrc(el.src, deck.marpAssets)}
             alt={el.alt || "Slide asset"}
             style={{ ...posStyle, objectFit: "contain" }}
           />
@@ -1988,11 +2046,13 @@ export default function Slides({
           ? `${units(el.strokeWidth || 1)} solid ${el.stroke}`
           : "none";
         const rad =
-          el.shapeType === "ellipse"
-            ? "50%"
-            : el.shapeType === "roundRect"
-              ? units(16)
-              : "0px";
+          el.radius && deck.marpFit
+            ? units(el.radius)
+            : el.shapeType === "ellipse"
+              ? "50%"
+              : el.shapeType === "roundRect"
+                ? units(16)
+                : "0px";
         return (
           <div
             key={el.id}
@@ -2184,18 +2244,20 @@ export default function Slides({
               setPanel((open) => (open === "theme" ? null : "theme"))
             }
           >
-            Theme
+            <Palette size={16} className="narrow-only-icon" aria-hidden="true" />
+            <span className="tool-words">Theme</span>
           </button>
           {deck.marp ? (
             <button
               type="button"
               className="menu-trigger theme-toggle"
+              aria-label="Markdown"
               aria-pressed={marpOpen}
               onClick={() => {
                 setMarpOpen((open) => {
                   if (!open) {
                     marpFromPane.current = false;
-                    setMarpText(deckToMarp(deckRef.current));
+                    setMarpText(deckRef.current.marpSource ?? deckToMarp(deckRef.current));
                     setMarpError(null);
                     setMarpWarnings([]);
                   }
@@ -2203,10 +2265,19 @@ export default function Slides({
                 });
               }}
             >
-              Markdown
+              <FileText size={16} className="narrow-only-icon" aria-hidden="true" />
+              <span className="tool-words">Markdown</span>
             </button>
           ) : null}
-          <Menu label="+ New slide">
+          <Menu
+            label="+ New slide"
+            trigger={
+              <>
+                <Plus size={16} className="narrow-only-icon" aria-hidden="true" />
+                <span className="tool-words">+ New slide</span>
+              </>
+            }
+          >
             {deck.marp ? (
               <>
                 <MenuItem onSelect={() => addSlide("title-body")}>
@@ -2307,7 +2378,15 @@ export default function Slides({
         {selectedElement ? (
           <div className="tool-group">
             {/* Fill color */}
-            <Menu label="Fill">
+            <Menu
+              label="Fill"
+              trigger={
+                <>
+                  <PaintBucket size={16} className="narrow-only-icon" aria-hidden="true" />
+                  <span className="tool-words">Fill</span>
+                </>
+              }
+            >
               {[
                 { label: "Transparent", val: "transparent" },
                 { label: "White", val: "#ffffff" },
@@ -2342,7 +2421,15 @@ export default function Slides({
             </Menu>
 
             {/* Border color */}
-            <Menu label="Border">
+            <Menu
+              label="Border"
+              trigger={
+                <>
+                  <Square size={16} className="narrow-only-icon" aria-hidden="true" />
+                  <span className="tool-words">Border</span>
+                </>
+              }
+            >
               {[
                 { label: "None", val: "transparent" },
                 { label: "Grey", val: "#dadce0" },
@@ -2371,6 +2458,7 @@ export default function Slides({
 
             {selectedElement.type === "text" ? (
               <>
+                <FontControls>
                 <select
                   className="toolbar-select font-family-select"
                   aria-label="Font family"
@@ -2453,6 +2541,7 @@ export default function Slides({
                     <Plus size={12} />
                   </button>
                 </div>
+                </FontControls>
 
                 <Tool
                   label="Bold"
@@ -2591,7 +2680,15 @@ export default function Slides({
           </div>
         ) : (
           <div className="tool-group">
-            <Menu label="Background">
+            <Menu
+              label="Background"
+              trigger={
+                <>
+                  <Paintbrush size={16} className="narrow-only-icon" aria-hidden="true" />
+                  <span className="tool-words">Background</span>
+                </>
+              }
+            >
               {[
                 { label: "White", val: "#ffffff" },
                 { label: "Soft light", val: "#f8fafc" },
@@ -2634,7 +2731,15 @@ export default function Slides({
               </MenuItem>
             </Menu>
 
-            <Menu label="Layout">
+            <Menu
+              label="Layout"
+              trigger={
+                <>
+                  <LayoutTemplate size={16} className="narrow-only-icon" aria-hidden="true" />
+                  <span className="tool-words">Layout</span>
+                </>
+              }
+            >
               {(
                 deck.marp
                   ? ([
@@ -2667,7 +2772,7 @@ export default function Slides({
         </Tool>
 
         {/* Google Slides styled Slideshow button */}
-        <div className="tool-group right-tools" style={{ marginLeft: "auto" }}>
+        <div className="tool-group right-tools">
           <div className="slideshow-split">
             <button
               type="button"
@@ -2676,7 +2781,7 @@ export default function Slides({
               title="Present from current slide (Cmd+Enter)"
             >
               <Play size={14} fill="currentColor" />
-              <span>Slideshow</span>
+              <span className="tool-words">Slideshow</span>
             </button>
             <Dropdown.Root>
               <Dropdown.Trigger
@@ -2915,6 +3020,7 @@ export default function Slides({
                                 ...miniStyle,
                                 ...art.style,
                                 color: el.color || "#1e293b",
+                                backgroundColor: el.fill || "transparent",
                                 textAlign: el.align || "left",
                                 ...boxFont(el),
                               }}
@@ -2951,7 +3057,7 @@ export default function Slides({
                           return (
                             <img
                               key={el.id}
-                              src={el.src}
+                              src={marpMediaSrc(el.src, deck.marpAssets)}
                               alt=""
                               className="mini-img"
                               style={miniStyle}
@@ -3013,7 +3119,7 @@ export default function Slides({
             }}
           >
             <div
-              className={`slide-canvas print-slide${canvasMotion ? ` deck-motion-${canvasMotion.type}` : ""}`}
+              className={`slide-canvas print-slide${deck.marpFit ? " marp-fit" : ""}${canvasMotion ? ` deck-motion-${canvasMotion.type}` : ""}`}
               style={{
                 backgroundColor:
                   shownSlide?.background?.color ||
@@ -3056,13 +3162,21 @@ export default function Slides({
                       style={{
                         ...posStyle,
                         ...art.style,
-                        fontSize: `${normalPx}px`,
+                        fontSize: deck.marpFit
+                          ? `calc(${el.fontSize || 20} / ${deck.width || 960} * 100cqw)`
+                          : `${normalPx}px`,
                         ...boxFont(el),
                         fontFamily: el.fontFamily || "Arial",
                         color: el.color || "#1e293b",
                         textAlign: el.align || "left",
+                        lineHeight: el.lineHeight,
+                        whiteSpace: el.preformatted ? "pre" : "pre-wrap",
                         backgroundColor: el.fill || "transparent",
                         ["--spell-caret" as string]: el.color || "#1e293b",
+                        ["--marp-pad" as string]:
+                          deck.marpFit && el.padLeft
+                            ? `calc(${el.padLeft} / ${deck.width || 960} * 100cqw)`
+                            : "0px",
                       }}
                       onMouseDown={(e) => {
                         const inEditor = (e.target as HTMLElement).closest?.(
@@ -3083,7 +3197,15 @@ export default function Slides({
                       onClick={(e) => e.stopPropagation()}
                     >
                       <FadeOnClickMark element={el} />
-                      {editingId === el.id || hasTextRuns(el) ? (
+                      {editingId !== el.id && el.preformatted ? (
+                        <MarpCode source={el.content || ""} language={el.codeLanguage} />
+                      ) : editingId !== el.id && (el.math || el.content?.includes("$")) ? (
+                        el.math ? (
+                          <MarpMath source={el.content || ""} />
+                        ) : (
+                          <MarpRichText source={el.content || ""} />
+                        )
+                      ) : editingId === el.id || hasTextRuns(el) ? (
                         <SlideTextBody
                           content={el.content}
                           runs={el.runs}
@@ -3208,7 +3330,11 @@ export default function Slides({
                       onClick={(e) => e.stopPropagation()}
                     >
                       <FadeOnClickMark element={el} />
-                      <img src={el.src} alt={el.alt || "Slide asset"} />
+                      <img
+                        src={marpMediaSrc(el.src, deck.marpAssets)}
+                        alt={el.alt || "Slide asset"}
+                        draggable={false}
+                      />
                       {isSelected && !readOnly && !marpOpen && !deck.marp ? renderHandles(el.id) : null}
                     </div>
                   );
@@ -3237,7 +3363,10 @@ export default function Slides({
                         ...posStyle,
                         backgroundColor: el.fill || "#e2e8f0",
                         border,
-                        borderRadius: rad,
+                        borderRadius:
+                          el.radius && deck.marpFit
+                            ? `calc(${el.radius} / ${deck.width || 960} * 100cqw)`
+                            : rad,
                       }}
                       onMouseDown={(e) => onElementMouseDown(e, el.id)}
                       onClick={(e) => e.stopPropagation()}
@@ -3257,7 +3386,12 @@ export default function Slides({
                       data-y={el.y}
                       className={`slide-element slide-table ${isSelected ? "selected" : ""}${editorFadeClass(el)}`}
                       {...editorFadeAttrs(el)}
-                      style={posStyle}
+                      style={{
+                        ...posStyle,
+                        ...(deck.marpFit && el.fontSize
+                          ? { fontSize: `calc(${el.fontSize} / ${deck.width || 960} * 100cqw)` }
+                          : {}),
+                      }}
                       onMouseDown={(e) => onElementMouseDown(e, el.id)}
                       onClick={(e) => e.stopPropagation()}
                     >
@@ -3286,7 +3420,15 @@ export default function Slides({
                                     setTableCell({ id: el.id, row: rIdx, col: cIdx });
                                   }}
                                 >
-                                  {cell}
+                                  {cell.includes("`")
+                                    ? cell.split(/(`[^`]+`)/g).map((part, partIndex) =>
+                                        part.startsWith("`") && part.endsWith("`") && part.length > 2 ? (
+                                          <code key={partIndex}>{part.slice(1, -1)}</code>
+                                        ) : (
+                                          <span key={partIndex}>{part}</span>
+                                        ),
+                                      )
+                                    : cell}
                                 </td>
                               ))}
                             </tr>

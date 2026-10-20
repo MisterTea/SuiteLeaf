@@ -9,7 +9,7 @@ import {
   shell,
   type IpcMainInvokeEvent,
 } from "electron";
-import { join, resolve, extname, sep, basename } from "node:path";
+import { join, resolve, extname, sep, basename, dirname } from "node:path";
 import { readFile } from "node:fs/promises";
 import { Worker } from "node:worker_threads";
 import { pathToFileURL } from "node:url";
@@ -27,6 +27,7 @@ import {
   type FileRecord,
 } from "@suiteleaf/core";
 import { FileStore, atomicWrite, driveLink } from "./store";
+import { buildMarpFile, dataUriFor, marpAssetPaths } from "../../web/src/editors/slide-marp-import";
 import { registerAi } from "./ai";
 protocol.registerSchemesAsPrivileged([
   {
@@ -127,6 +128,8 @@ async function openFile() {
         name: "SuiteLeaf and Office files",
         extensions: [
           ...NATIVE_EXTENSIONS,
+          "md",
+          "markdown",
           "docx",
           "docm",
           "dotx",
@@ -160,6 +163,23 @@ async function openFile() {
   if (result.canceled) return null;
   const path = resolve(result.filePaths[0]);
   const ext = extname(path).toLowerCase();
+  if (ext === ".md" || ext === ".markdown") {
+    const text = await readFile(path, "utf8");
+    const folder = dirname(path);
+    const root = resolve(folder);
+    const assets: Record<string, string> = {};
+    for (const relative of marpAssetPaths(text)) {
+      const abs = resolve(folder, relative);
+      if (abs !== root && !abs.startsWith(root + sep)) continue;
+      try {
+        assets[relative] = dataUriFor(relative, await readFile(abs));
+      } catch {
+        // A missing picture stays as a path so the rest of the deck still opens.
+      }
+    }
+    const title = basename(path, ext).slice(0, 200) || "Imported file";
+    return store.save({ file: buildMarpFile(title, text, assets) });
+  }
   const officeExtensions = new Set([
     ".docx",
     ".docm",

@@ -536,7 +536,8 @@ export function homeTools(ctx: HomeAgentContext): SuiteTool[] {
       parameters: Type.Object({ name: Type.String() }),
       target: async ({ name }) =>
         (await revealRow(ctx, name).catch(() => undefined))?.querySelector("a") ??
-        [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Open / import")),
+        [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Open / import")) ??
+        [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Import")),
       async execute({ name }, signal) {
         let r: FileRecord;
         try {
@@ -778,7 +779,9 @@ export function homeTools(ctx: HomeAgentContext): SuiteTool[] {
         first_row_is_header: Type.Optional(Type.Boolean({ description: "CSV/TSV: the first row holds column names. Default: detected." })),
         separator: Type.Optional(Type.String({ enum: ["comma", "semicolon", "tab", "pipe"], description: "CSV/TSV: default detected." })),
       }),
-      target: () => [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Open / import")),
+      target: () =>
+        [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Open / import")) ??
+        [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Import")),
       async execute(choices) {
         const file = await requestFile("Choose the file to open", IMPORT_ACCEPT);
         if (!file) return "The user did not choose a file.";

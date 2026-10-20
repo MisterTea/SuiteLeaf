@@ -24,9 +24,12 @@ export function useRegisteringMenus() {
 }
 export function Menu({
   label,
+  trigger,
   children,
 }: {
   label: string;
+  /** Replaces the word on the button. On a phone the words inside can be hidden. */
+  trigger?: ReactNode;
   children: ReactNode;
 }) {
   const afterClose = useRef<(() => void) | null>(null);
@@ -35,7 +38,12 @@ export function Menu({
     <MenuPath.Provider value={path}>
       <MenuRegistrar.Provider value={true}>{children}</MenuRegistrar.Provider>
       <Dropdown.Root>
-        <Dropdown.Trigger className="menu-trigger">{label}</Dropdown.Trigger>
+        <Dropdown.Trigger
+          className="menu-trigger"
+          aria-label={trigger ? label : undefined}
+        >
+          {trigger ?? label}
+        </Dropdown.Trigger>
         <Dropdown.Portal>
           <Dropdown.Content
             className="menu-content"
@@ -199,7 +207,7 @@ export function SubMenu({
     </MenuPath.Provider>
   );
 }
-function useNarrowScreen() {
+export function useNarrowScreen() {
   const [narrow, setNarrow] = useState(
     () => typeof window !== "undefined" && window.innerWidth <= 700,
   );
@@ -423,6 +431,14 @@ export type EditorActions = {
     insertChart: () => void;
     insertImage?: () => void;
     insertPivot: () => void;
+    analyses?: () => {
+      charts: { id: string; title: string; invalid: boolean }[];
+      pivots: { id: string; title: string; invalid: boolean; stale: boolean }[];
+    };
+    editAnalysis?: (kind: "chart" | "pivot", id: string) => void;
+    deleteChart?: (id: string) => void;
+    refreshPivot?: (id: string) => void;
+    copyPivot?: (id: string) => void;
     insertFunction?: (name: string) => void;
     toggleFilter: () => void;
     /** Unsaved filter for someone who cannot edit. Not stored in the file. */

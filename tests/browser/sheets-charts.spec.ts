@@ -56,8 +56,8 @@ test("every Sheets toolbar control stays on screen, with extras on a second row"
   }
 
   // The toolbar must not clip its own menus.
-  await page.getByText("Charts & pivots (0)", { exact: true }).click();
-  const list = page.locator(".sheet-analyses-dropdown .analysis-list");
+  await page.getByRole("button", { name: "More formats", exact: true }).click();
+  const list = page.locator(".more-formats-menu");
   await expect(list).toBeVisible();
   expect(await onScreen(list)).toBe(true);
 });

@@ -146,7 +146,7 @@ clipboard, row/column operations, freeze, sort, filter, find/replace.
 
 ## W10. Charts (insert, move, resize, refresh)
 **Tutorial:** select a range **with headers** → **Insert chart** → move/resize
-on the grid → edit/remove via **Charts & pivots**.
+on the grid → edit/remove via **Data → Charts & pivots**.
 **Expected behavior:**
 - Column/bar, line, pie, and scatter charts render **calculated source values**
   (via Recharts, using `getRawValues()` so currency formatting doesn't turn
@@ -162,7 +162,7 @@ on the grid → edit/remove via **Charts & pivots**.
 ## W11. Pivots (group, filter, refresh, detach)
 **Tutorial:** pick row/column/value fields + optional equality filter and an
 aggregate (SUM/COUNT/AVERAGE/MIN/MAX) → read the protected worksheet →
-**Charts & pivots → Refresh** after a source change → **Copy** for an editable
+**Data → Charts & pivots → Refresh** after a source change → **Copy** for an editable
 worksheet.
 **Expected behavior:**
 - Results land in a **protected** worksheet (Arquero aggregation).

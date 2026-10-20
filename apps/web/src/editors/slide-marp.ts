@@ -6,6 +6,7 @@ import {
   type SlideElement,
   type SlideFile,
   type SlideTheme,
+  type TextRun,
 } from "@suiteleaf/core";
 import { applyLayout, newSlide, type Layout } from "./slide-layouts";
 import {
@@ -100,6 +101,103 @@ export function isMarpTitle(el: SlideElement): boolean {
   if (el.type !== "text") return false;
   const placeholder = (el.placeholder ?? "").toLowerCase();
   return placeholder.includes("title") && !placeholder.includes("subtitle");
+}
+
+function runsOf(el: SlideElement): TextRun[] {
+  if (el.runs?.length) return el.runs.map((run) => ({ ...run }));
+  if (!el.content) return [];
+  return [
+    {
+      text: el.content,
+      ...(el.bold ? { bold: true } : {}),
+      ...(el.italic ? { italic: true } : {}),
+      ...(el.underline ? { underline: true } : {}),
+    },
+  ];
+}
+
+function writeRuns(el: SlideElement, runs: TextRun[]) {
+  const content = runs.map((run) => run.text).join("");
+  const meaningful = runs.filter((run) => run.text.replace(/\n/g, "") !== "");
+  const bold = meaningful.length > 0 && meaningful.every((run) => run.bold);
+  const italic = meaningful.length > 0 && meaningful.every((run) => run.italic);
+  const underline = meaningful.length > 0 && meaningful.every((run) => run.underline);
+  const uniform = meaningful.every(
+    (run) => !!run.bold === bold && !!run.italic === italic && !!run.underline === underline,
+  );
+  el.content = content;
+  if (uniform) {
+    delete el.runs;
+    if (bold) el.bold = true;
+    else delete el.bold;
+    if (italic) el.italic = true;
+    else delete el.italic;
+    if (underline) el.underline = true;
+    else delete el.underline;
+  } else {
+    el.runs = runs;
+    delete el.bold;
+    delete el.italic;
+    delete el.underline;
+  }
+}
+
+function sameTextStyle(a: SlideElement, b: SlideElement) {
+  return (
+    (a.fontSize || 20) === (b.fontSize || 20) &&
+    (a.color || "") === (b.color || "") &&
+    (a.align || "left") === (b.align || "left") &&
+    (a.fontFamily || "") === (b.fontFamily || "")
+  );
+}
+
+/** Stacked body text with nothing between it becomes one box. Titles, code, and math stay separate. */
+export function mergeConsecutiveText(elements: SlideElement[]): SlideElement[] {
+  const merged: SlideElement[] = [];
+  for (const el of elements) {
+    const prev = merged[merged.length - 1];
+    if (!prev || !canMergeText(prev, el)) {
+      merged.push(el);
+      continue;
+    }
+    const indent = Math.max(0, el.x - prev.x);
+    const spaces =
+      indent > (prev.fontSize || 20) * 0.75
+        ? "  ".repeat(Math.max(1, Math.round(indent / (prev.fontSize || 20))))
+        : "";
+    const right = runsOf(el).map((run, index) =>
+      index === 0 ? { ...run, text: spaces + run.text } : run,
+    );
+    const left = runsOf(prev);
+    if (left.length && !left[left.length - 1].text.endsWith("\n")) {
+      left[left.length - 1] = { ...left[left.length - 1], text: `${left[left.length - 1].text}\n` };
+    }
+    const rightEdge = Math.max(prev.x + prev.width, el.x + el.width);
+    const bottom = Math.max(prev.y + prev.height, el.y + el.height);
+    prev.x = Math.min(prev.x, el.x);
+    prev.y = Math.min(prev.y, el.y);
+    prev.width = rightEdge - prev.x;
+    prev.height = bottom - prev.y;
+    writeRuns(prev, [...left, ...right]);
+    const lines = (prev.content ?? "").split("\n").length;
+    const font = prev.fontSize || 20;
+    if (lines > 1) prev.lineHeight = Math.round((prev.height / (lines * font)) * 100) / 100;
+  }
+  return merged;
+}
+
+function canMergeText(a: SlideElement, b: SlideElement) {
+  if (a.type !== "text" || b.type !== "text") return false;
+  if (a.preformatted || b.preformatted || a.math || b.math || a.fill || b.fill) return false;
+  if (isMarpTitle(a) || isMarpTitle(b)) return false;
+  if (!sameTextStyle(a, b)) return false;
+  const overlap =
+    Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+  if (overlap < Math.min(a.width, b.width) * 0.45) return false;
+  const gap = b.y - (a.y + a.height);
+  const line = (a.fontSize || 20) * (a.lineHeight || 1.4);
+  if (b.y + b.height < a.y + 4) return false;
+  return gap <= Math.max(line * 1.6, 36);
 }
 
 function byReadingOrder(a: SlideElement, b: SlideElement) {
@@ -213,6 +311,42 @@ export function reorderMarpItem(
     },
     width,
   );
+}
+
+/**
+ * Change reading order without moving any box. Each item takes the rectangle
+ * of the slot it lands in. A drag that only shifts a box, or that would change
+ * how many items are in a column, does nothing.
+ */
+export function reorderFittedMarpItem(
+  slide: Slide,
+  elementId: string,
+  point: { x: number; y: number },
+): Slide | null {
+  const dragged = slide.elements.find((el) => el.id === elementId);
+  if (!dragged || isMarpTitle(dragged) || dragged.type === "shape") return null;
+  const items = slide.elements
+    .filter((el) => !isMarpTitle(el) && el.type !== "shape")
+    .sort(byReadingOrder);
+  const rest = items.filter((el) => el.id !== elementId);
+  let index = rest.length;
+  for (let i = 0; i < rest.length; i++) {
+    if (point.y < rest[i].y + rest[i].height / 2) {
+      index = i;
+      break;
+    }
+  }
+  const next = [...rest.slice(0, index), dragged, ...rest.slice(index)];
+  if (next.every((el, i) => el.id === items[i].id)) return null;
+  const slots = items.map((el) => ({
+    x: el.x,
+    y: el.y,
+    width: el.width,
+    height: el.height,
+  }));
+  const placed = next.map((el, i) => ({ ...el, ...slots[i] }));
+  const fixed = slide.elements.filter((el) => isMarpTitle(el) || el.type === "shape");
+  return { ...slide, elements: [...fixed, ...placed] };
 }
 
 function hasColumnContent(el: SlideElement) {
@@ -591,8 +725,9 @@ function readDirectives(directives: string[]): {
         .split(/\s+/)
         .map((token) => CLASS_LAYOUT[token.toLowerCase()])
         .find((item): item is Layout => !!item);
-      if (!known) return { error: `Unknown layout "${value}".` };
-      layout = known;
+      // Theme classes such as body-clearance are not layouts. The fitter still
+      // applies them from the original markdown.
+      if (known) layout = known;
     } else if (name === "backgroundcolor") {
       const color = parseColor(value);
       if (!color)
