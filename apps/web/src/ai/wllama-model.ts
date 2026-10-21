@@ -6,16 +6,21 @@ import wasmUrl from "@wllama/wllama/esm/wasm/wllama.wasm?url";
 import { AI_MODELS, type AiGenerateEvent, type AiGenerateRequest, type AiStatus } from "@suiteleaf/core/ai";
 import { forcedDevice, modelHost, type LocalModel } from "./backend";
 
-/** First shard of the Q4_K_M GGUF. Shards stay under 2 GB, which is as much as the browser runtime can map. */
+/** First shard of the local Q4_K_M split. Each shard stays under the browser's 2 GiB map limit. */
 const SHARD = "gguf/split/FrogNano-4B-2609-Q4_K_M-00001-of-00002.gguf";
+/**
+ * The published site has nowhere to put those shards. Q4_K_M is 2.6 GB and the
+ * runtime rejects it; Q3_K_M is the largest single file that still fits (2.14 GB).
+ */
+const PUBLIC_GGUF =
+  "https://huggingface.co/bartowski/FrogNano-4B-2609-GGUF/resolve/main/FrogNano-4B-2609-Q3_K_M.gguf";
 const info = AI_MODELS["frognano-4b"];
 
-/**
- * Where the shards are fetched from. A Hugging Face host has no shards, so the
- * dev server's /models mirror (the local cache) is used instead.
- */
+/** Local mirrors serve the Q4 shards. Everywhere else, including GitHub Pages, uses the public file. */
 export function frogGgufUrl(host = modelHost()) {
-  if (/huggingface\.co\/?$/.test(host)) return new URL(`models/${SHARD}`, document.baseURI).href;
+  const dev = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+  if (/huggingface\.co\/?$/.test(host))
+    return dev ? new URL(`models/${SHARD}`, document.baseURI).href : PUBLIC_GGUF;
   const base = host.endsWith("/") ? host : `${host}/`;
   return `${base}${SHARD}`;
 }
