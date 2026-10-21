@@ -8,7 +8,7 @@ import react from "@vitejs/plugin-react";
 import { offline } from "./offline";
 import { conditionalFormatDefaults } from "./conditional-format-defaults";
 
-/** Serves ~/.cache/suiteleaf-models at /models, including FrogNano's GGUF shards. */
+/** Serves ~/.cache/suiteleaf-models at /models, including the FrogNano GGUF. */
 function modelCache(): Connect.NextHandleFunction {
   const root = resolve(join(homedir(), ".cache/suiteleaf-models"));
   return (req, res, next) => {

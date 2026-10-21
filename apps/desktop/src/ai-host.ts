@@ -13,10 +13,9 @@ import type {
   LlamaModel,
   Token,
 } from "node-llama-cpp";
-import { AI_MODELS, modelIdForFile, type AiGenerateRequest, type AiStatus } from "@suiteleaf/core/ai";
+import { AI_MODELS, FROG_GGUF_URL, modelIdForFile, type AiGenerateRequest, type AiStatus } from "@suiteleaf/core/ai";
 
-const MODEL_URL =
-  "https://huggingface.co/bartowski/FrogNano-4B-2609-GGUF/resolve/main/FrogNano-4B-2609-Q4_K_M.gguf";
+const MODEL_URL = FROG_GGUF_URL;
 
 type Inbound =
   | { type: "load" }

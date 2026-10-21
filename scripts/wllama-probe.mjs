@@ -11,8 +11,8 @@ import { join } from "node:path";
 import { chromium } from "@playwright/test";
 
 const root = new URL("..", import.meta.url).pathname;
-const splitDir = join(homedir(), ".cache/suiteleaf-models/gguf/split");
-const firstShard = "FrogNano-4B-2609-Q4_K_M-00001-of-00002.gguf";
+const ggufDir = join(homedir(), ".cache/suiteleaf-models/gguf");
+const modelFile = "FrogNano-4B-2609-Q3_K_M.gguf";
 const wasm = join(root, "node_modules/@wllama/wllama/esm/wasm/wllama.wasm");
 const lib = join(root, "node_modules/@wllama/wllama/esm/index.js");
 const port = Number(process.env.WLLAMA_PROBE_PORT ?? 0);
@@ -32,7 +32,7 @@ const { Wllama } = await import("/wllama.js");
 const w = new Wllama({ default: new URL("/wllama.wasm", location.href).href });
 log("webgpu " + w.isSupportWebGPU());
 const started = performance.now();
-await w.loadModelFromUrl(new URL("/gguf/${firstShard}", location.href).href, {
+await w.loadModelFromUrl(new URL("/gguf/${modelFile}", location.href).href, {
   n_ctx: 8192,
   n_batch: 512,
   n_ubatch: 512,
@@ -99,7 +99,7 @@ const server = createServer((req, res) => {
   if (path.startsWith("/gguf/")) {
     const name = path.slice("/gguf/".length);
     if (!name || name.includes("/") || name.includes("..")) return res.writeHead(404).end();
-    return send(req, res, join(splitDir, name), "application/octet-stream");
+    return send(req, res, join(ggufDir, name), "application/octet-stream");
   }
   res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
   res.end(pageHtml);

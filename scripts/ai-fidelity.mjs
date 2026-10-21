@@ -2,7 +2,7 @@
 // plays no part: llama.cpp Q8_0 (the reference), llama.cpp 4-bit, and the
 // browser's WebGPU q4f16, the last both with and without its cache reuse.
 // Prompts come from a capture run (STORYBOARD_AI_CAPTURE=1). FIDELITY_MODEL
-// picks the model (gemma-4-e4b, or frognano-4b with its Q4_K_M build).
+// picks the model (gemma-4-e4b, or frognano-4b with its Q3_K_M build).
 //   npm run dev -w @suiteleaf/web -- --port 5190
 //   node storyboards/scenes/serve.mjs 4790
 //   node scripts/ai-fidelity.mjs test-results/ai-metrics/runs/capture-gemma > fidelity.json
@@ -29,7 +29,7 @@ const setup = {
   },
   "frognano-4b": {
     q8: "FrogNano-4B-2609-Q8_0.gguf",
-    q4: "FrogNano-4B-2609-Q4_K_M.gguf",
+    q4: "FrogNano-4B-2609-Q3_K_M.gguf",
     stop: ["<|im_end|>", "<|endoftext|>"],
     reset: "<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\n",
     call: /<function=([\w.-]+)>([\s\S]*?)<\/function>/,

@@ -2,7 +2,7 @@ import { _electron as electron, type ElectronApplication, type Page } from "@pla
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { ready } from "../fixtures";
+import { officeFileInput, ready } from "../fixtures";
 import { askAgent, beat, caption, describeRun, electronApps, electronMode, expect, openApp, test } from "../harness";
 
 const fileName = "Quarterly studio budget.slsheet";
@@ -122,7 +122,7 @@ test("17-review-a-budget-with-notes-and-comments-ai", async ({ page, browser, ba
   // Jordan works on their own computer; only Alex's screen is recorded.
   const jordan = await otherComputer(browser, baseURL);
   const jordanSaves = await savesTo(jordan.page, jordan.app);
-  await jordan.page.locator("input[type=file]").setInputFiles({
+  await officeFileInput(jordan.page).setInputFiles({
     name: fileName,
     mimeType: "application/json",
     buffer: Buffer.from(JSON.stringify(file)),
@@ -141,7 +141,7 @@ test("17-review-a-budget-with-notes-and-comments-ai", async ({ page, browser, ba
   await jordan.close();
 
   await page.getByRole("button", { name: "Back to files" }).click();
-  await page.locator("input[type=file]").setInputFiles({
+  await officeFileInput(page).setInputFiles({
     name: fileName,
     mimeType: "application/json",
     buffer: Buffer.from(JSON.stringify(reply)),

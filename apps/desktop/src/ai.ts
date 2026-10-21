@@ -1,6 +1,6 @@
 import { app, ipcMain, utilityProcess, type UtilityProcess, type WebContents } from "electron";
 import { join } from "node:path";
-import { modelIdForFile, type AiGenerateRequest, type AiStatus } from "@suiteleaf/core/ai";
+import { FROG_GGUF_FILE, modelIdForFile, type AiGenerateRequest, type AiStatus } from "@suiteleaf/core/ai";
 
 let host: UtilityProcess | undefined;
 let status: AiStatus = { state: "idle", backend: "llama.cpp" };
@@ -10,7 +10,7 @@ const generations = new Map<string, WebContents>();
 
 export const modelPath = () =>
   process.env.SUITELEAF_MODEL_PATH ??
-  join(app.getPath("userData"), "models", "FrogNano-4B-2609-Q4_K_M.gguf");
+  join(app.getPath("userData"), "models", FROG_GGUF_FILE);
 
 function start(owner: () => WebContents | undefined) {
   if (host) return host;

@@ -16,6 +16,19 @@ const minutes: [string, string?][] = [
   ["Tuesdays: Ruth and Marek. Saturdays: Asha, Joy and Ben."],
 ];
 
+/**
+ * The style menu sits inside the font group. On a short toolbar that group
+ * stays closed until opened, so the combobox is not on screen yet.
+ */
+async function chooseParagraphStyle(page: Page, label: string) {
+  const style = page.locator('select[aria-label="Paragraph style"]');
+  if (!(await style.isVisible()))
+    await page.locator(".docs-toolbar .font-popover").evaluate((el: HTMLDetailsElement) => {
+      el.open = true;
+    });
+  await style.selectOption({ label });
+}
+
 async function writeMinutes(page: Page) {
   await page.getByRole("button", { name: "New document" }).click();
   const title = page.getByLabel("File title");
@@ -25,9 +38,10 @@ async function writeMinutes(page: Page) {
   await typeSlowly(page, "October meeting minutes");
   const editor = page.getByRole("textbox", { name: "Document content" });
   await editor.click();
+  await page.getByRole("toolbar", { name: "Document formatting" }).waitFor();
   for (const [i, [text, style]] of minutes.entries()) {
     await page.keyboard.insertText(text);
-    if (style) await page.getByRole("combobox", { name: "Paragraph style" }).selectOption({ label: style });
+    if (style) await chooseParagraphStyle(page, style);
     if (i < minutes.length - 1) {
       await page.keyboard.press(process.platform === "darwin" ? "Meta+ArrowRight" : "End");
       await page.keyboard.press("Enter");

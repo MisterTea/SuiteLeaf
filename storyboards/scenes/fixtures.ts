@@ -49,6 +49,14 @@ export async function ready(page: Page) {
   await beat(page, 700);
 }
 
+/**
+ * The library's document picker. A second `input[type=file]` beside it
+ * imports a whole folder, so a bare file-input locator matches both.
+ */
+export function officeFileInput(page: Page) {
+  return page.locator('input[type="file"][hidden]').first();
+}
+
 /** Opens a workbook the person already keeps, through Open / import. */
 export async function openWorkbook(page: Page, title: string, rows: Value[][], widths: number[] = []) {
   const file = createFile("sheet", title);
@@ -66,7 +74,7 @@ export async function openWorkbook(page: Page, title: string, rows: Value[][], w
   );
   if (widths.length)
     (sheet as Native).columnData = Object.fromEntries(widths.map((w, i) => [i, { w }]));
-  await page.locator("input[type=file]").setInputFiles({
+  await officeFileInput(page).setInputFiles({
     name: `${title}.slsheet`,
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),

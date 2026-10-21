@@ -1,4 +1,5 @@
 import { test as base, expect, _electron as electron, type ElectronApplication, type Page, type TestInfo } from "@playwright/test";
+import { FROG_GGUF_FILE } from "@suiteleaf/core/ai";
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
@@ -118,9 +119,9 @@ export const test = base.extend<{ page: Page }>({
           SUITELEAF_HIDE_WINDOWS: process.env.SUITELEAF_HIDE_WINDOWS ?? "1",
           SUITELEAF_MODEL_PATH:
             process.env.SUITELEAF_MODEL_PATH ??
-            join(homedir(), ".cache/suiteleaf-models/gguf/FrogNano-4B-2609-Q4_K_M.gguf"),
+            join(homedir(), ".cache/suiteleaf-models/gguf", FROG_GGUF_FILE),
         },
-        recordVideo: { dir, size },
+        ...(process.env.STORYBOARD_NO_VIDEO === "1" ? {} : { recordVideo: { dir, size } }),
       });
       page = await app.firstWindow();
       electronApps.set(page, app);
@@ -146,7 +147,7 @@ export const test = base.extend<{ page: Page }>({
       const context = await browser.newContext({
         baseURL,
         viewport: frame,
-        recordVideo: { dir, size: frame },
+        ...(process.env.STORYBOARD_NO_VIDEO === "1" ? {} : { recordVideo: { dir, size: frame } }),
         acceptDownloads: true,
         hasTouch: mobile,
         isMobile: mobile,

@@ -61,7 +61,7 @@ npm run storyboards -- --project=ai                                     # browse
 npx playwright test --config playwright.storyboards-electron.config.ts  # desktop app, llama.cpp (01–21)
 ```
 
-The browser runs need the model weights in `~/.cache/suiteleaf-models` (`RASMUS/FrogNano-4B-2609-ONNX`, q4f16 files), and the desktop runs need `gguf/FrogNano-4B-2609-Q4_K_M.gguf` there. Set `STORYBOARD_AI_MODEL=gemma-4-e4b` and point `SUITELEAF_MODEL_PATH` at a Gemma GGUF to record Gemma instead. [ai-report.md](ai-report.md) has the pass rates, the failure analysis, and the backend comparison.
+Browser and desktop FrogNano runs use `gguf/FrogNano-4B-2609-Q3_K_M.gguf` in `~/.cache/suiteleaf-models`. Set `STORYBOARD_AI_MODEL=gemma-4-e4b` and point `SUITELEAF_MODEL_PATH` at a Gemma GGUF to record Gemma instead. [ai-report.md](ai-report.md) has the pass rates, the failure analysis, and the backend comparison.
 
 | Variable | Purpose |
 | --- | --- |

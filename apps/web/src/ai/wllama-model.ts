@@ -5,25 +5,9 @@ import { Wllama, WllamaAbortError, type RawCompletionChunk } from "@wllama/wllam
 import wasmUrl from "@wllama/wllama/esm/wasm/wllama.wasm?url";
 import { AI_MODELS, type AiGenerateEvent, type AiGenerateRequest, type AiStatus } from "@suiteleaf/core/ai";
 import { forcedDevice, modelHost, type LocalModel } from "./backend";
+import { FROG_GGUF_PATH, resolveFrogGgufUrl } from "./frog-gguf";
 
-/** First shard of the local Q4_K_M split. Each shard stays under the browser's 2 GiB map limit. */
-const SHARD = "gguf/split/FrogNano-4B-2609-Q4_K_M-00001-of-00002.gguf";
-/**
- * The published site has nowhere to put those shards. Q4_K_M is 2.6 GB and the
- * runtime rejects it; Q3_K_M is the largest single file that still fits (2.14 GB).
- */
-const PUBLIC_GGUF =
-  "https://huggingface.co/bartowski/FrogNano-4B-2609-GGUF/resolve/main/FrogNano-4B-2609-Q3_K_M.gguf";
 const info = AI_MODELS["frognano-4b"];
-
-/** Local mirrors serve the Q4 shards. Everywhere else, including GitHub Pages, uses the public file. */
-export function frogGgufUrl(host = modelHost()) {
-  const dev = location.hostname === "localhost" || location.hostname === "127.0.0.1";
-  if (/huggingface\.co\/?$/.test(host))
-    return dev ? new URL(`models/${SHARD}`, document.baseURI).href : PUBLIC_GGUF;
-  const base = host.endsWith("/") ? host : `${host}/`;
-  return `${base}${SHARD}`;
-}
 
 function statusHub(initial: AiStatus) {
   let status = initial;
@@ -71,7 +55,8 @@ export function wllamaModel(): LocalModel {
     hub.set({ state: "loading", progress: 0, backend: "webgpu", modelId: info.id, model: info.name, message: `Downloading ${info.name}` });
     try {
       llama = new Wllama({ default: wasmUrl });
-      await llama.loadModelFromUrl(frogGgufUrl(), {
+      const url = await resolveFrogGgufUrl(modelHost(), new URL(`models/${FROG_GGUF_PATH}`, document.baseURI).href);
+      await llama.loadModelFromUrl(url, {
         n_ctx: info.contextSize,
         n_parallel: 1,
         // Chunk the prefill so one dispatch is not the whole prompt.

@@ -45,7 +45,7 @@ test("10-sort-without-the-header-ai", async ({ page }) => {
   let file;
   if (electronMode) {
     await page.getByRole("button", { name: "Save As", exact: true }).click();
-    await expect(page.getByRole("status")).toContainText("Saved to file");
+    await expect(page.locator(".save-status")).toContainText("Saved to file");
     file = JSON.parse(readFileSync(join(dir, "Volunteer hours.slsheet"), "utf8"));
   } else {
     const download = page.waitForEvent("download");

@@ -110,3 +110,8 @@ export const AI_MODELS: Record<AiModelId, AiModelInfo> = {
 
 /** Which model a GGUF file holds, from its name. */
 export const modelIdForFile = (path: string): AiModelId => (/frognano/i.test(path) ? "frognano-4b" : "gemma-4-e4b");
+
+/** FrogNano quant every runtime loads. Q3_K_M stays under the 2 GiB the browser can map. */
+export const FROG_GGUF_FILE = "FrogNano-4B-2609-Q3_K_M.gguf";
+export const FROG_GGUF_URL =
+  "https://huggingface.co/bartowski/FrogNano-4B-2609-GGUF/resolve/main/FrogNano-4B-2609-Q3_K_M.gguf";
