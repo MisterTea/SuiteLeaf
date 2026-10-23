@@ -1,5 +1,5 @@
 import { it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FileStore, atomicWrite } from "../apps/desktop/src/store";
@@ -140,6 +140,54 @@ it("keeps a star and Trash across a restart and never deletes the file on disk",
   expect(serializeFile(again.file)).toBe(serializeFile(saved.file));
   await reopened.remove(f.id);
   expect(await readFile(path, "utf8")).toBe(disk);
+});
+
+it("imports SuiteLeaf files from a documents folder into the library", async () => {
+  const docs = join(dir, "Suiteleaf");
+  await mkdir(join(docs, "nested"), { recursive: true });
+  const notes = createFile("doc", "Notes");
+  const budget = createFile("sheet", "Budget");
+  const deck = createFile("slide", "Deck");
+  const buried = createFile("doc", "Buried");
+  await writeFile(join(docs, "notes.sldoc"), serializeFile(notes));
+  await writeFile(join(docs, "budget.slsheet"), serializeFile(budget));
+  await writeFile(join(docs, "deck.suiteleaf"), serializeFile(deck));
+  await writeFile(join(docs, "notes.txt"), "not a suiteleaf file");
+  await writeFile(join(docs, "broken.sldoc"), "{");
+  await writeFile(join(docs, "nested", "buried.sldoc"), serializeFile(buried));
+
+  await store.importFolder(docs);
+  expect((await store.list()).map((r) => r.file.title).sort()).toEqual([
+    "Budget",
+    "Deck",
+    "Notes",
+  ]);
+  await store.importFolder(docs);
+  expect(await store.list()).toHaveLength(3);
+
+  const notesRecord = (await store.get(notes.id))!;
+  await store.save({ ...notesRecord, trashedAt: "2026-03-01T12:00:00.000Z" });
+  await store.importFolder(docs);
+  expect((await store.get(notes.id))?.trashedAt).toBe(
+    "2026-03-01T12:00:00.000Z",
+  );
+
+  await store.remove(budget.id);
+  await store.importFolder(docs);
+  expect(await store.get(budget.id)).toBeUndefined();
+
+  await writeFile(
+    join(docs, "budget.slsheet"),
+    serializeFile({ ...budget, title: "Budget revised" }),
+  );
+  await store.importFolder(docs);
+  expect((await store.get(budget.id))?.file.title).toBe("Budget revised");
+});
+
+it("creates a documents folder that does not exist yet", async () => {
+  const docs = join(dir, "Documents", "Suiteleaf");
+  await store.importFolder(docs);
+  expect(await readdir(docs)).toEqual([]);
 });
 
 it("writes PDF-style binary bytes without text encoding corruption", async () => {

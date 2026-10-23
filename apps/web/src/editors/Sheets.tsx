@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   createUniver,
   defaultTheme,
-  darkBlueTheme,
   LocaleType,
   LifecycleStages,
   mergeLocales,
@@ -1043,7 +1042,10 @@ export default function Sheets({
         window.removeEventListener("suiteleaf:open-sheet-comments", openFromHeader);
       };
       const { univer, univerAPI } = createUniver({
-        theme: isDark ? darkBlueTheme : defaultTheme,
+        // The light palette's dark tokens stay dark under univer-dark. The dark
+        // palette's gray-900 is near white, which left black text inverted to
+        // white on a white grid. Dark mode inverts the default black text to white.
+        theme: defaultTheme,
         darkMode: isDark,
         locale: LocaleType.EN_US,
         locales: {
@@ -1950,7 +1952,7 @@ export default function Sheets({
     if (!api.current) return;
     try {
       api.current.toggleDarkMode?.(isDark);
-      api.current.setTheme?.(isDark ? darkBlueTheme : defaultTheme);
+      api.current.setTheme?.(defaultTheme);
     } catch {}
   }, [isDark]);
   // Univer's own currency command applies an accounting pattern with red

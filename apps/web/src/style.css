@@ -44,7 +44,7 @@
   --paper-bg: #ffffff;
   --paper-shadow:
     0 1px 3px 0 rgba(60, 64, 67, 0.15), 0 4px 8px 3px rgba(60, 64, 67, 0.05);
-  --viewport-bg: #f9fbfd;
+  --viewport-bg: #f1f3f4;
   --slides-stage-bg: #f1f3f4;
   --slide-thumb-selected: #e8f0fe;
   --notes-bg: #ffffff;
@@ -287,6 +287,10 @@ a {
 .version {
   font-size: 10px;
   letter-spacing: 1.3px;
+  color: #5f6368;
+}
+:root.dark-theme .version,
+:root[data-theme="dark"] .version {
   color: var(--text-muted);
 }
 .welcome {
@@ -1598,7 +1602,7 @@ a {
   display: flex;
   overflow: auto;
   flex: 1;
-  background: #f9fbfd;
+  background: #f1f3f4;
   padding: 16px 24px 60px;
   gap: 24px;
 }
@@ -1683,7 +1687,7 @@ a {
 }
 .outline-empty {
   font-size: 12px;
-  color: #747775;
+  color: #3c4043;
   line-height: 1.5;
   padding: 8px 4px;
 }
@@ -2297,10 +2301,10 @@ a {
 }
 .editor-status {
   padding: 8px 24px;
-  background: #f9fbfd;
+  background: #f1f3f4;
   border-top: 1px solid #e1e3e1;
   font-size: 11px;
-  color: #747775;
+  color: #3c4043;
   display: flex;
   justify-content: space-between;
 }
@@ -2957,6 +2961,252 @@ a {
 .sheet-analyses-dropdown summary:hover {
   background: rgba(0, 0, 0, 0.08);
 }
+/* Dark mode: the two sheet bars are black, and their icons inherit white. */
+:root.dark-theme .sheets-toolbar,
+:root[data-theme="dark"] .sheets-toolbar {
+  background: #000;
+  color: #fff;
+  color-scheme: dark;
+}
+:root.dark-theme .sheets-toolbar .tool,
+:root[data-theme="dark"] .sheets-toolbar .tool,
+:root.dark-theme .sheets-toolbar select.toolbar-select,
+:root[data-theme="dark"] .sheets-toolbar select.toolbar-select,
+:root.dark-theme .sheets-toolbar .text-color-letter,
+:root[data-theme="dark"] .sheets-toolbar .text-color-letter,
+:root.dark-theme .sheets-toolbar .stepper-btn,
+:root[data-theme="dark"] .sheets-toolbar .stepper-btn,
+:root.dark-theme .sheets-toolbar .font-size-input,
+:root[data-theme="dark"] .sheets-toolbar .font-size-input,
+:root.dark-theme .sheets-toolbar .menu-search-pill,
+:root[data-theme="dark"] .sheets-toolbar .menu-search-pill,
+:root.dark-theme .sheets-toolbar .menu-search-icon,
+:root[data-theme="dark"] .sheets-toolbar .menu-search-icon,
+:root.dark-theme .sheets-toolbar .sheet-analyses-dropdown summary,
+:root[data-theme="dark"] .sheets-toolbar .sheet-analyses-dropdown summary {
+  color: #fff;
+}
+:root.dark-theme .sheets-toolbar .tool:hover,
+:root[data-theme="dark"] .sheets-toolbar .tool:hover,
+:root.dark-theme .sheets-toolbar select.toolbar-select:hover,
+:root[data-theme="dark"] .sheets-toolbar select.toolbar-select:hover,
+:root.dark-theme .sheets-toolbar .color-tool:hover,
+:root[data-theme="dark"] .sheets-toolbar .color-tool:hover,
+:root.dark-theme .sheets-toolbar .stepper-btn:hover,
+:root[data-theme="dark"] .sheets-toolbar .stepper-btn:hover,
+:root.dark-theme .sheets-toolbar .menu-search-pill:hover,
+:root[data-theme="dark"] .sheets-toolbar .menu-search-pill:hover,
+:root.dark-theme .sheets-toolbar .sheet-analyses-dropdown summary:hover,
+:root[data-theme="dark"] .sheets-toolbar .sheet-analyses-dropdown summary:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+:root.dark-theme .sheets-toolbar .tool.active,
+:root[data-theme="dark"] .sheets-toolbar .tool.active,
+:root.dark-theme .sheets-toolbar .more-tools[aria-expanded="true"],
+:root[data-theme="dark"] .sheets-toolbar .more-tools[aria-expanded="true"] {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+:root.dark-theme .sheets-toolbar .toolbar-divider,
+:root[data-theme="dark"] .sheets-toolbar .toolbar-divider {
+  background: rgba(255, 255, 255, 0.28);
+}
+:root.dark-theme .sheets-toolbar .menu-search-pill,
+:root[data-theme="dark"] .sheets-toolbar .menu-search-pill {
+  background: #000;
+  border-color: rgba(255, 255, 255, 0.28);
+}
+:root.dark-theme .sheets-toolbar .color-bar,
+:root[data-theme="dark"] .sheets-toolbar .color-bar {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.45);
+}
+:root.dark-theme .sheet-host [data-u-comp="formula-bar"],
+:root[data-theme="dark"] .sheet-host [data-u-comp="formula-bar"],
+:root.dark-theme .sheet-host footer,
+:root[data-theme="dark"] .sheet-host footer {
+  background: #000 !important;
+  color: #fff !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+}
+:root.dark-theme .sheet-host [data-u-comp="defined-name"],
+:root[data-theme="dark"] .sheet-host [data-u-comp="defined-name"] {
+  border-right-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+/* Document: dark desk, white page. */
+:root.dark-theme .document-stage,
+:root[data-theme="dark"] .document-stage {
+  background: var(--viewport-bg);
+}
+:root.dark-theme .docs-editor .toolbar,
+:root[data-theme="dark"] .docs-editor .toolbar {
+  background: #000;
+  color: #fff;
+  color-scheme: dark;
+}
+:root.dark-theme .docs-editor .toolbar .tool,
+:root[data-theme="dark"] .docs-editor .toolbar .tool,
+:root.dark-theme .docs-editor .toolbar .toolbar-select,
+:root[data-theme="dark"] .docs-editor .toolbar .toolbar-select,
+:root.dark-theme .docs-editor .toolbar .stepper-btn,
+:root[data-theme="dark"] .docs-editor .toolbar .stepper-btn,
+:root.dark-theme .docs-editor .toolbar .font-size-input,
+:root[data-theme="dark"] .docs-editor .toolbar .font-size-input,
+:root.dark-theme .docs-editor .toolbar .text-color-letter,
+:root[data-theme="dark"] .docs-editor .toolbar .text-color-letter,
+:root.dark-theme .docs-editor .toolbar .menu-search-pill,
+:root[data-theme="dark"] .docs-editor .toolbar .menu-search-pill,
+:root.dark-theme .docs-editor .toolbar .menu-search-icon,
+:root[data-theme="dark"] .docs-editor .toolbar .menu-search-icon {
+  color: #fff;
+}
+:root.dark-theme .docs-editor .toolbar .tool:hover,
+:root[data-theme="dark"] .docs-editor .toolbar .tool:hover,
+:root.dark-theme .docs-editor .toolbar .toolbar-select:hover,
+:root[data-theme="dark"] .docs-editor .toolbar .toolbar-select:hover,
+:root.dark-theme .docs-editor .toolbar .menu-search-pill:hover,
+:root[data-theme="dark"] .docs-editor .toolbar .menu-search-pill:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+:root.dark-theme .docs-editor .toolbar .tool.active,
+:root[data-theme="dark"] .docs-editor .toolbar .tool.active {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+:root.dark-theme .docs-editor .toolbar .divider,
+:root[data-theme="dark"] .docs-editor .toolbar .divider,
+:root.dark-theme .docs-editor .toolbar .toolbar-divider,
+:root[data-theme="dark"] .docs-editor .toolbar .toolbar-divider {
+  background: rgba(255, 255, 255, 0.28);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+:root.dark-theme .docs-editor .toolbar .menu-search-pill,
+:root[data-theme="dark"] .docs-editor .toolbar .menu-search-pill {
+  background: #000;
+  border-color: rgba(255, 255, 255, 0.28);
+}
+:root.dark-theme .docs-editor .toolbar .color-bar,
+:root[data-theme="dark"] .docs-editor .toolbar .color-bar {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.45);
+}
+:root.dark-theme .outline,
+:root[data-theme="dark"] .outline,
+:root.dark-theme .outline-item-text,
+:root[data-theme="dark"] .outline-item-text {
+  color: var(--text-secondary);
+}
+:root.dark-theme .outline-header,
+:root[data-theme="dark"] .outline-header {
+  border-bottom-color: var(--border);
+}
+:root.dark-theme .outline-empty,
+:root[data-theme="dark"] .outline-empty {
+  color: var(--text-muted);
+}
+:root.dark-theme .outline-item:hover,
+:root[data-theme="dark"] .outline-item:hover {
+  background: var(--surface-hover);
+}
+:root.dark-theme .outline-item.active,
+:root[data-theme="dark"] .outline-item.active {
+  background: rgba(138, 180, 248, 0.16);
+}
+:root.dark-theme .outline-item.active .outline-item-text,
+:root[data-theme="dark"] .outline-item.active .outline-item-text {
+  color: #8ab4f8;
+}
+:root.dark-theme .editor-status,
+:root[data-theme="dark"] .editor-status {
+  background: #000;
+  border-top-color: rgba(255, 255, 255, 0.16);
+  color: var(--text-secondary);
+}
+:root.dark-theme .editor-status .word-count,
+:root[data-theme="dark"] .editor-status .word-count {
+  color: #fff;
+}
+
+/* Presentations: dark chrome, white slide. */
+:root.dark-theme .slides-editor,
+:root[data-theme="dark"] .slides-editor,
+:root.dark-theme .slides-canvas-stage,
+:root[data-theme="dark"] .slides-canvas-stage {
+  background: var(--slides-stage-bg);
+}
+:root.dark-theme .slides-sidebar,
+:root[data-theme="dark"] .slides-sidebar,
+:root.dark-theme .slides-sidebar-footer,
+:root[data-theme="dark"] .slides-sidebar-footer {
+  background: #000;
+  color: #fff;
+}
+:root.dark-theme .slides-toolbar,
+:root[data-theme="dark"] .slides-toolbar {
+  background: #000;
+  color: #fff;
+  color-scheme: dark;
+}
+:root.dark-theme .slides-toolbar .tool,
+:root[data-theme="dark"] .slides-toolbar .tool,
+:root.dark-theme .slides-toolbar select.toolbar-select,
+:root[data-theme="dark"] .slides-toolbar select.toolbar-select,
+:root.dark-theme .slides-toolbar .menu-search-pill,
+:root[data-theme="dark"] .slides-toolbar .menu-search-pill,
+:root.dark-theme .slides-toolbar .menu-search-icon,
+:root[data-theme="dark"] .slides-toolbar .menu-search-icon {
+  color: #fff;
+}
+:root.dark-theme .slides-toolbar .tool:hover,
+:root[data-theme="dark"] .slides-toolbar .tool:hover,
+:root.dark-theme .slides-toolbar select.toolbar-select:hover,
+:root[data-theme="dark"] .slides-toolbar select.toolbar-select:hover,
+:root.dark-theme .slides-toolbar .menu-search-pill:hover,
+:root[data-theme="dark"] .slides-toolbar .menu-search-pill:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+:root.dark-theme .slides-toolbar .tool.active,
+:root[data-theme="dark"] .slides-toolbar .tool.active {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+:root.dark-theme .slides-toolbar .toolbar-divider,
+:root[data-theme="dark"] .slides-toolbar .toolbar-divider {
+  background: rgba(255, 255, 255, 0.28);
+}
+:root.dark-theme .slides-toolbar .menu-search-pill,
+:root[data-theme="dark"] .slides-toolbar .menu-search-pill {
+  background: #000;
+  border-color: rgba(255, 255, 255, 0.28);
+}
+:root.dark-theme .thumbnail-row.selected,
+:root[data-theme="dark"] .thumbnail-row.selected {
+  background: rgba(255, 255, 255, 0.12);
+}
+:root.dark-theme .add-slide-sidebar-btn,
+:root[data-theme="dark"] .add-slide-sidebar-btn {
+  background: #000;
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.28);
+}
+:root.dark-theme .add-slide-sidebar-btn:hover,
+:root[data-theme="dark"] .add-slide-sidebar-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+:root.dark-theme .speaker-notes-pane,
+:root[data-theme="dark"] .speaker-notes-pane,
+:root.dark-theme .notes-drag-handle,
+:root[data-theme="dark"] .notes-drag-handle {
+  background: #000;
+}
+:root.dark-theme .notes-textarea,
+:root[data-theme="dark"] .notes-textarea {
+  color: #fff;
+}
+:root.dark-theme .marp-pane,
+:root[data-theme="dark"] .marp-pane {
+  background: #000;
+  color: var(--text-primary);
+}
 
 /* Formula Bar Google Sheets parity */
 .sheet-host [data-u-comp="formula-bar"] {
@@ -3197,6 +3447,13 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+}
+/* Empty cells have no fill, so this is their background. Dark mode draws the default text white. */
+:root.dark-theme .sheet-host [data-u-comp="workbench-layout"],
+:root[data-theme="dark"] .sheet-host [data-u-comp="workbench-layout"],
+:root.dark-theme .sheet-host [data-range-selector],
+:root[data-theme="dark"] .sheet-host [data-range-selector] {
+  background: #000 !important;
 }
 .pivot-bar {
   display: flex;
@@ -4906,6 +5163,10 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   color: currentColor;
   opacity: 0.5;
 }
+.slide-canvas .element-editor[data-empty="true"]::before,
+.slide-canvas .element-textarea::placeholder {
+  opacity: 1;
+}
 .slide-word-art,
 .slide-word-art .element-textarea,
 .slide-word-art .slide-spell-mirror,
@@ -5489,7 +5750,7 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
 .find-bar input[type="number"] { width: 65px; }
 
 /* Page spacers are decorations: pagination leaves the editable document intact. */
-.paginated-paper { position: relative; width: var(--page-width); max-width: none; flex-shrink: 0; border: 0; background: repeating-linear-gradient(to bottom, white 0, white var(--page-height), var(--viewport-bg) var(--page-height), var(--viewport-bg) var(--page-stride)); }
+.paginated-paper { position: relative; width: var(--page-width); max-width: none; flex-shrink: 0; border: 0; outline: 1px solid #dadce0; box-shadow: 0 1px 3px 0 rgba(60, 64, 67, 0.3), 0 4px 8px 3px rgba(60, 64, 67, 0.15); background: repeating-linear-gradient(to bottom, white 0, white var(--page-height), var(--viewport-bg) var(--page-height), var(--viewport-bg) var(--page-stride)); }
 .paginated-paper .document-content { padding: var(--body-inset-top, var(--page-margin-top, var(--page-margin))) var(--page-margin-right, var(--page-margin)) var(--body-inset-bottom, var(--page-margin-bottom, var(--page-margin))) var(--page-margin-left, var(--page-margin)); min-height: var(--page-height); position: relative; z-index: 1; }
 .doc-page-spacer { display: block; height: var(--spacer-height); margin: 0 !important; padding: 0 !important; border: 0 !important; pointer-events: none; }
 tr.doc-page-spacer { display: table-row; }
@@ -5769,7 +6030,7 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 .tab-settings-row label { flex: 1; }
 .tab-settings-row .color-tool { flex: none; }
 @media print {
-  .paginated-paper { width: var(--page-width); background: white; box-shadow: none; min-height: 0 !important; zoom: 1 !important; }
+  .paginated-paper { width: var(--page-width); background: white; box-shadow: none; outline: none; min-height: 0 !important; zoom: 1 !important; }
   .paginated-paper .document-content { padding: var(--body-inset-top, var(--page-margin-top, var(--page-margin))) var(--page-margin-right, var(--page-margin)) var(--body-inset-bottom, var(--page-margin-bottom, var(--page-margin))) var(--page-margin-left, var(--page-margin)); }
   .doc-page-spacer { height: calc(var(--spacer-height) - 24px); }
   tr.doc-page-spacer td { height: calc(var(--spacer-height) - 24px); }

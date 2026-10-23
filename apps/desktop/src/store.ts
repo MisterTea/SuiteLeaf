@@ -1,9 +1,10 @@
-import { mkdir, readFile, rename, unlink, open } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, unlink, open } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import {
   applyLibraryMarks,
   driveLinkSchema,
+  isNativeName,
   kindFromName,
   parseFile,
   readLibraryMarks,
@@ -42,6 +43,8 @@ const fingerprint = (text: string) =>
   createHash("sha256").update(text).digest("hex");
 export class FileStore {
   private records = new Map<string, FileRecord>();
+  /** Paths removed from the library, keyed to the file contents at that time. */
+  private dismissed = new Map<string, string>();
   private tail: Promise<unknown> = Promise.resolve();
   constructor(private directory: string) {}
   private async transaction<T>(fn: () => Promise<T>) {
@@ -81,6 +84,61 @@ export class FileStore {
         throw new Error(
           "Could not read the local library. Your saved files remain on disk.",
         );
+    }
+    await this.loadDismissed();
+  }
+  private async loadDismissed() {
+    try {
+      const raw = JSON.parse(
+        await readFile(join(this.directory, "dismissed.json"), "utf8"),
+      );
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return;
+      for (const [path, hash] of Object.entries(raw)) {
+        if (typeof path === "string" && typeof hash === "string")
+          this.dismissed.set(resolve(path), hash);
+      }
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
+        /* A corrupt dismissal list must not hide the library. */
+      }
+    }
+  }
+  private async persistDismissed() {
+    await atomicWrite(
+      join(this.directory, "dismissed.json"),
+      JSON.stringify(Object.fromEntries(this.dismissed)),
+    );
+  }
+  private async remember(path: string) {
+    if (!this.dismissed.delete(resolve(path))) return;
+    await this.persistDismissed();
+  }
+  /**
+   * Create a documents folder and add SuiteLeaf files that are not already
+   * in the library. A file removed from the library stays out until its
+   * contents change or the person opens it again.
+   */
+  async importFolder(directory: string) {
+    await mkdir(directory, { recursive: true });
+    const entries = await readdir(directory, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isFile() || entry.name.startsWith(".")) continue;
+      if (!isNativeName(entry.name)) continue;
+      const full = resolve(directory, entry.name);
+      if ([...this.records.values()].some((r) => r.path && resolve(r.path) === full))
+        continue;
+      let text: string;
+      try {
+        text = await readFile(full, "utf8");
+      } catch {
+        continue;
+      }
+      if (this.dismissed.get(full) === fingerprint(text)) continue;
+      try {
+        await this.openPath(full);
+      } catch {
+        /* Skip a file that is not a readable SuiteLeaf document. */
+      }
     }
   }
   private async persist() {
@@ -137,6 +195,7 @@ export class FileStore {
       );
       this.records.set(file.id, r);
       await this.persist();
+      await this.remember(full);
       return structuredClone(r);
     });
   }
@@ -200,6 +259,7 @@ export class FileStore {
       );
       this.records.set(file.id, r);
       await this.persist();
+      await this.remember(full);
       return structuredClone(r);
     });
   }
@@ -225,8 +285,15 @@ export class FileStore {
   }
   async remove(id: string) {
     await this.transaction(async () => {
+      const old = this.records.get(id);
       this.records.delete(id);
       await this.persist();
+      if (!old?.path) return;
+      this.dismissed.set(
+        resolve(old.path),
+        old.fingerprint ?? fingerprint(serializeFile(old.file)),
+      );
+      await this.persistDismissed();
     });
   }
 }

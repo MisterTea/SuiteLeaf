@@ -437,6 +437,15 @@ else {
     await store.init();
     const saved = appModeSchema.safeParse((await readSettings()).mode);
     if (saved.success) mode = saved.data;
+    // Single-user mode shows the SuiteLeaf files in ~/Documents/Suiteleaf.
+    // Tests set SUITELEAF_TEST_DATA and must not create that folder.
+    if (mode.kind === "single" && !process.env.SUITELEAF_TEST_DATA) {
+      try {
+        await store.importFolder(join(app.getPath("documents"), "Suiteleaf"));
+      } catch {
+        /* The library still opens if Documents cannot be created. */
+      }
+    }
     protocol.handle("suiteleaf", (request) => {
       const url = new URL(request.url);
       const path = resolve(root, `.${decodeURIComponent(url.pathname)}`);
