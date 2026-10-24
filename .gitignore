@@ -49,6 +49,7 @@ next-env.d.ts
 **/out/
 **/release/
 /test-results/
+/output/
 /playwright-report/
 # Local reference books are not distributed with the Apache-licensed source
 /docs/*.pdf

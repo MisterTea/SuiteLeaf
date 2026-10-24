@@ -58,7 +58,10 @@ describe("XLSX column width round trip", () => {
     expect(columns.get(2)).toMatchObject({ width: "12", hidden: "true" });
     expect(columns.get(3)?.width).toBe("14");
     expect(columns.get(4)?.width).toBe("14");
-    expect(format).toMatchObject({ baseColWidth: "9", defaultColWidth: "10.5" });
+    expect(format).toMatchObject({
+      baseColWidth: "9",
+      defaultColWidth: "10.5",
+    });
   });
 
   for (const [platform, nativeMac] of [
@@ -87,4 +90,19 @@ describe("XLSX column width round trip", () => {
     expect(Number(columns.get(1)?.width)).toBeCloseTo(44, 1);
     expect(columns.get(3)?.width).toBe("14");
   });
+});
+
+it("keeps distinct original widths when columns round to the same pixel size", async () => {
+  const file = await importWorkbook();
+  const book = file.content.workbook as any;
+  const sheet = book.sheets[book.sheetOrder[0]];
+  sheet.columnData[0].w = 83;
+  sheet.columnData[2].w = 83;
+  sheet.custom.excelLayout.columnPixels[0] = 83;
+  sheet.custom.excelLayout.columnPixels[2] = 83;
+  sheet.custom.excelLayout.columnWidths[0] = 10.38;
+  sheet.custom.excelLayout.columnWidths[2] = 10.5;
+  const { columns } = await exportedSheet(file);
+  expect(columns.get(1)?.width).toBe("10.38");
+  expect(columns.get(3)?.width).toBe("10.5");
 });

@@ -3,6 +3,12 @@ import { createMarpFile, marpToDeck } from "./slide-marp";
 
 const MIME: Record<string, string> = {
   png: "image/png",
+  css: "text/css",
+  html: "text/html",
+  woff: "font/woff",
+  woff2: "font/woff2",
+  ttf: "font/ttf",
+  otf: "font/otf",
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
   gif: "image/gif",

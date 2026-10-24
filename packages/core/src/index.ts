@@ -287,8 +287,10 @@ export const presentationSchema = z.object({
   slideNumbers: z.boolean().optional(),
   /** The markdown the deck was imported from. Editing a text box does not rewrite it. */
   marpSource: z.string().max(500_000).optional(),
+  /** Direct canvas edits supersede the retained source when printing. */
+  marpSourceDirty: z.boolean().optional(),
   /** Relative path from the markdown file to a data URI. Image boxes keep the path. */
-  marpAssets: z.record(z.string().max(400), z.string().max(8_000_000)).optional(),
+  marpAssets: z.record(z.string().max(400), z.string().max(40_000_000)).optional(),
   /** Text boxes have been placed to match the MARP theme. A number is the layout revision. */
   marpFit: z.union([z.boolean(), z.number()]).optional(),
 });
@@ -989,6 +991,9 @@ export interface StorageAdapter {
   reload(id: string): Promise<FileRecord | undefined>;
 }
 export interface DesktopBridge {
+  getDocumentsDirectory?(): Promise<string>;
+  chooseDocumentsDirectory?(): Promise<string | null>;
+  onFilesChanged?(callback: () => void): () => void;
   /** The on-device model host (Gemma via llama.cpp in the main process). */
   ai?: import("./ai").AiBridge;
   list(): Promise<FileRecord[]>;

@@ -40,6 +40,32 @@ function walk(node: JsonNode, out: JsonNode[] = []): JsonNode[] {
 }
 
 describe("table of contents, footnotes and endnotes", () => {
+  it("keeps digits immediately after note references as literal text", async () => {
+    const file = createFile("doc", "Adjacent digits");
+    if (file.kind !== "doc") throw new Error("Expected a document");
+    file.content = {
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [ref("a", "footnote"), { type: "text", text: "1" }] },
+        { type: "paragraph", content: [ref("b", "endnote"), { type: "text", text: "6" }] },
+        note("a", "footnote", "First source."),
+        note("b", "endnote", "Second source."),
+      ],
+    };
+    const { file: imported, report } = await importOffice(await exportDocx(file), "docx", "Adjacent digits");
+    if (imported.kind !== "doc") throw new Error("Expected a document");
+    const paragraphs = imported.content.content ?? [];
+    expect(paragraphs[0].content).toMatchObject([
+      { type: "noteReference", attrs: { kind: "footnote", label: "1" } },
+      { type: "text", text: "1" },
+    ]);
+    expect(paragraphs[1].content).toMatchObject([
+      { type: "noteReference", attrs: { kind: "endnote", label: "i" } },
+      { type: "text", text: "6" },
+    ]);
+    expect(report.stats.recoveredParagraphs).toBe(0);
+  });
+
   it("summarizes imported notes the way the banner reads them", () => {
     expect(
       notesImportSummary({ footnotes: 4, endnotes: 1, tocs: 1 }),

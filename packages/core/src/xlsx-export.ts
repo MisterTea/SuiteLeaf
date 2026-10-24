@@ -78,8 +78,15 @@ function excelWidths(s: Data) {
   for (const [c, px] of Object.entries(layout.columnPixels ?? {}))
     if (Number.isFinite(layout.columnWidths?.[c]))
       stored.set(Number(px), layout.columnWidths[c]);
-  const chars = (px: number) =>
-    stored.get(px) ?? Math.round((px / unit) * 256) / 256;
+  const chars = (px: number, column?: number) => {
+    if (
+      column !== undefined &&
+      layout.columnPixels?.[column] === px &&
+      Number.isFinite(layout.columnWidths?.[column])
+    )
+      return layout.columnWidths[column];
+    return stored.get(px) ?? Math.round((px / unit) * 256) / 256;
+  };
   const defaultPixels = Number(s.defaultColumnWidth);
   return {
     chars,
@@ -368,7 +375,10 @@ export async function exportXlsx(
     sheet["!cols"] = [];
     for (const [r, data] of Object.entries(s.rowData ?? {}))
       sheet["!rows"][+r] = {
-        hpx: (data as Data).h,
+        hpt:
+          typeof (data as Data).h === "number"
+            ? ((data as Data).h * 72) / 96
+            : undefined,
         hidden: !!(data as Data).hd,
       };
     const widths = excelWidths(s);
@@ -376,13 +386,17 @@ export async function exportXlsx(
       const w = (data as Data).w;
       sheet["!cols"][+c] = {
         ...(widths && typeof w === "number"
-          ? { width: widths.chars(w) }
+          ? { width: widths.chars(w, +c) }
           : { wpx: w }),
         hidden: !!(data as Data).hd,
       };
     }
     const usedNames = (book.SheetNames ?? []) as string[];
-    XLSX.utils.book_append_sheet(book, sheet, excelSheetAlias(String(s.name ?? ""), new Set(usedNames)));
+    XLSX.utils.book_append_sheet(
+      book,
+      sheet,
+      excelSheetAlias(String(s.name ?? ""), new Set(usedNames)),
+    );
     sheetStyles.push(cellStyles);
   }
   book.Workbook = {
@@ -493,7 +507,11 @@ export async function exportXlsx(
       : selfClosingSheet
         ? "<sheetData/>"
         : "</sheetData>";
-    if (protection?.sheet && !text.includes("</mergeCells>") && !selfClosingSheet)
+    if (
+      protection?.sheet &&
+      !text.includes("</mergeCells>") &&
+      !selfClosingSheet
+    )
       text = text.replace(
         '<sheetProtection sheet="1" objects="1" scenarios="1"/>',
         `<sheetProtection sheet="1" objects="1" scenarios="1"/>${extra}`,

@@ -6,7 +6,7 @@ import { rewriteWordNotes } from "./doc-notes";
 import { wordParagraphs } from "./word";
 
 function withoutFieldTokens(text: string): string {
-  return text.replace(/SLFN\d+|SLEN\d+|SLTOC\d[PL]|SLBIB|SLCITE[A-Za-z0-9]+/g, "");
+  return text.replace(/SLFN\d+END|SLEN\d+END|SLTOC\d[PL]|SLBIB|SLCITE[A-Za-z0-9]+/g, "");
 }
 
 /** Excel addresses run from A1 through XFD1048576. `B` is not a cell. */

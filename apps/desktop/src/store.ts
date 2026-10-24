@@ -1,5 +1,13 @@
-import { mkdir, readFile, readdir, rename, unlink, open } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import {
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  unlink,
+  open,
+} from "node:fs/promises";
+import { join, resolve, sep } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import {
   applyLibraryMarks,
@@ -42,6 +50,8 @@ export async function atomicWrite(path: string, text: string | Uint8Array) {
 const fingerprint = (text: string) =>
   createHash("sha256").update(text).digest("hex");
 export class FileStore {
+  private database!: DatabaseSync;
+  private initialized = false;
   private records = new Map<string, FileRecord>();
   /** Paths removed from the library, keyed to the file contents at that time. */
   private dismissed = new Map<string, string>();
@@ -54,10 +64,26 @@ export class FileStore {
   }
   async init() {
     await mkdir(this.directory, { recursive: true });
+    this.database = new DatabaseSync(join(this.directory, "library.sqlite"));
+    this.database.exec(`
+      PRAGMA journal_mode = WAL;
+      PRAGMA busy_timeout = 5000;
+      CREATE TABLE IF NOT EXISTS records (id TEXT PRIMARY KEY, record TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS dismissed (path TEXT PRIMARY KEY, fingerprint TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    `);
+    this.initialized = !!this.database
+      .prepare("SELECT value FROM metadata WHERE key = 'initialized'")
+      .get();
     try {
-      const raw = JSON.parse(
-        await readFile(join(this.directory, "library.json"), "utf8"),
-      );
+      const raw = this.initialized
+        ? this.database
+            .prepare("SELECT record FROM records ORDER BY rowid")
+            .all()
+            .map((row) => JSON.parse(String(row.record)))
+        : JSON.parse(
+            await readFile(join(this.directory, "library.json"), "utf8"),
+          );
       for (const r of raw) {
         try {
           const file = parseFile(JSON.stringify(r.file));
@@ -86,12 +112,32 @@ export class FileStore {
         );
     }
     await this.loadDismissed();
+    if (!this.initialized) {
+      await this.persist();
+      await this.persistDismissed();
+      this.database
+        .prepare(
+          "INSERT INTO metadata (key, value) VALUES ('initialized', '1')",
+        )
+        .run();
+      this.initialized = true;
+    }
+  }
+  close() {
+    this.database?.close();
   }
   private async loadDismissed() {
     try {
-      const raw = JSON.parse(
-        await readFile(join(this.directory, "dismissed.json"), "utf8"),
-      );
+      const raw = this.initialized
+        ? Object.fromEntries(
+            this.database
+              .prepare("SELECT path, fingerprint FROM dismissed")
+              .all()
+              .map((row) => [String(row.path), String(row.fingerprint)]),
+          )
+        : JSON.parse(
+            await readFile(join(this.directory, "dismissed.json"), "utf8"),
+          );
       if (!raw || typeof raw !== "object" || Array.isArray(raw)) return;
       for (const [path, hash] of Object.entries(raw)) {
         if (typeof path === "string" && typeof hash === "string")
@@ -104,10 +150,18 @@ export class FileStore {
     }
   }
   private async persistDismissed() {
-    await atomicWrite(
-      join(this.directory, "dismissed.json"),
-      JSON.stringify(Object.fromEntries(this.dismissed)),
-    );
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      this.database.exec("DELETE FROM dismissed");
+      const insert = this.database.prepare(
+        "INSERT INTO dismissed (path, fingerprint) VALUES (?, ?)",
+      );
+      for (const [path, hash] of this.dismissed) insert.run(path, hash);
+      this.database.exec("COMMIT");
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
   }
   private async remember(path: string) {
     if (!this.dismissed.delete(resolve(path))) return;
@@ -125,7 +179,11 @@ export class FileStore {
       if (!entry.isFile() || entry.name.startsWith(".")) continue;
       if (!isNativeName(entry.name)) continue;
       const full = resolve(directory, entry.name);
-      if ([...this.records.values()].some((r) => r.path && resolve(r.path) === full))
+      if (
+        [...this.records.values()].some(
+          (r) => r.path && resolve(r.path) === full,
+        )
+      )
         continue;
       let text: string;
       try {
@@ -141,11 +199,98 @@ export class FileStore {
       }
     }
   }
+  /** Reconcile a complete directory snapshot without overwriting recovery drafts. */
+  async syncFolder(directory: string, previousDirectory?: string) {
+    return this.transaction(async () => {
+      const root = resolve(directory);
+      const seen = new Set<string>();
+      const found = new Map<
+        string,
+        { file: FileRecord["file"]; hash: string }
+      >();
+      const visit = async (folder: string) => {
+        for (const entry of await readdir(folder, { withFileTypes: true })) {
+          if (entry.name.startsWith(".")) continue;
+          const path = resolve(folder, entry.name);
+          if (entry.isDirectory()) await visit(path);
+          else if (entry.isFile() && isNativeName(entry.name)) {
+            seen.add(path);
+            try {
+              const text = await readFile(path, "utf8");
+              found.set(path, {
+                file: parseFile(text, kindFromName(path)),
+                hash: fingerprint(text),
+              });
+            } catch {
+              // Partial cloud downloads and corrupt files are retried on the next scan.
+            }
+          }
+        }
+      };
+      // Do not prune anything unless the directory could be read completely.
+      await visit(root);
+      const previous = new Map(this.records);
+      const before = JSON.stringify([...this.records.values()]);
+      const inFolder = (path: string, folder: string) =>
+        resolve(path).startsWith(resolve(folder) + sep);
+      for (const [id, record] of this.records) {
+        if (!record.path || record.recovery || record.drive) continue;
+        if (
+          (inFolder(record.path, root) &&
+            (!seen.has(resolve(record.path)) ||
+              (found.has(resolve(record.path)) &&
+                found.get(resolve(record.path))!.file.id !== id))) ||
+          (previousDirectory &&
+            resolve(previousDirectory) !== root &&
+            inFolder(record.path, previousDirectory))
+        )
+          this.records.delete(id);
+      }
+      for (const [path, { file, hash }] of found) {
+        if (this.dismissed.get(path) === hash) continue;
+        const old = this.records.get(file.id);
+        if (old?.recovery || old?.drive) continue;
+        if (
+          old?.path &&
+          resolve(old.path) !== path &&
+          found.get(resolve(old.path))?.file.id === file.id
+        )
+          continue;
+        // Duplicate IDs with different contents must not replace a file elsewhere.
+        if (
+          old?.path &&
+          resolve(old.path) !== path &&
+          !inFolder(old.path, root) &&
+          serializeFile(old.file) !== serializeFile(file)
+        )
+          continue;
+        this.records.set(
+          file.id,
+          applyLibraryMarks(
+            { file, path, fingerprint: hash, recovery: false },
+            readLibraryMarks(old ?? previous.get(file.id) ?? {}),
+          ),
+        );
+      }
+      const changed = before !== JSON.stringify([...this.records.values()]);
+      if (changed) await this.persist();
+      return changed;
+    });
+  }
   private async persist() {
-    await atomicWrite(
-      join(this.directory, "library.json"),
-      JSON.stringify([...this.records.values()]),
-    );
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      this.database.exec("DELETE FROM records");
+      const insert = this.database.prepare(
+        "INSERT INTO records (id, record) VALUES (?, ?)",
+      );
+      for (const record of this.records.values())
+        insert.run(record.file.id, JSON.stringify(record));
+      this.database.exec("COMMIT");
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
   }
   async list() {
     return structuredClone([...this.records.values()]);
@@ -227,7 +372,8 @@ export class FileStore {
           "The saved file is missing or inaccessible. Use Save As; your recovery draft is safe.",
         );
       }
-      if (fingerprint(disk) !== old.fingerprint) throw new FileConflict();
+      if (fingerprint(disk) !== (input.fingerprint ?? old.fingerprint))
+        throw new FileConflict();
       const text = serializeFile(file);
       await atomicWrite(old.path, text);
       const saved = keep({

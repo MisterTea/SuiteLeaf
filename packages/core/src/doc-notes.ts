@@ -18,7 +18,7 @@ export type ImportedToc = {
 };
 
 const TOKEN =
-  /SLFN(\d+)|SLEN(\d+)|SLTOC(\d)([PL])/g;
+  /SLFN(\d+)END|SLEN(\d+)END|SLTOC(\d)([PL])/g;
 
 /** Lower-case roman, matching Word's default endnote format and the importer's text check. */
 export function toRoman(n: number): string {
@@ -111,7 +111,8 @@ function replaceReferences(
     new RegExp(`<(?:\\w+:)?${tag}\\b([^>]*?)(?:/>|></(?:\\w+:)?${tag}>)`, "g"),
     (_whole, attrs: string) => {
       ids.push(/w:id="([^"]+)"/.exec(attrs)?.[1] ?? String(ids.length + 1));
-      return `<w:t xml:space="preserve">${token}${ids.length}</w:t>`;
+      // A terminator keeps adjacent literal digits out of the reference number.
+      return `<w:t xml:space="preserve">${token}${ids.length}END</w:t>`;
     },
   );
   return { xml: next, ids };

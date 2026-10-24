@@ -1,3 +1,4 @@
+import { SlidePrintDeck, useSlidePrint } from "./slide-print";
 import {
   useCallback,
   useEffect,
@@ -162,6 +163,7 @@ import {
 import { deckToHtml } from "./slide-html";
 import { marpMediaSrc } from "./slide-marp-import";
 import { fitMarpDeck, MARP_FIT_REVISION } from "./slide-marp-fit";
+import { MARP_COMPILED_HTML } from "./slide-marp-bundle";
 import { MarpCode, MarpMath, MarpRichText } from "./slide-marp-math";
 import { continueList, listShortcut } from "./slide-list";
 
@@ -380,6 +382,9 @@ export default function Slides({
   // Commit changes and push to undo history
   const commit = (next: SlideFile["content"], key?: string) => {
     if (readOnlyRef.current) return;
+    if (next.marp && next.marpSource && key !== "marp" && key !== "marp-fit") {
+      next = { ...next, marpSourceDirty: true };
+    }
     historyRef.current!.commit(next, key);
     applyDeck(next);
     setNotice(null);
@@ -542,7 +547,7 @@ export default function Slides({
         .then((next) => {
           if (!next || token !== fitToken.current || deckRef.current.marpFit === MARP_FIT_REVISION)
             return;
-          commitRef.current(next);
+          commitRef.current(next, "marp-fit");
         })
         .catch((error: unknown) => {
           console.error(error instanceof Error ? error.message : error);
@@ -568,7 +573,8 @@ export default function Slides({
       {
         ...result.deck,
         marpSource: text,
-        marpAssets: deckRef.current.marpAssets,
+        marpSourceDirty: false,
+        marpAssets: Object.fromEntries(Object.entries(deckRef.current.marpAssets ?? {}).filter(([path]) => path !== MARP_COMPILED_HTML)),
         marpFit: false,
       },
       "marp",
@@ -1416,6 +1422,8 @@ export default function Slides({
   }, [deck.width, updateElement]);
 
   // Export handlers
+  const { printing, print: printSlides } = useSlidePrint(file.title, printDocument);
+
   const exportTxt = async () => {
     const lines: string[] = [];
     lines.push(`Title: ${file.title}`);
@@ -1653,7 +1661,7 @@ export default function Slides({
         else if (format === "html") await exportHtmlRef.current();
         else await exportTxtRef.current();
       },
-      print: async () => printDocument(),
+      print: printSlides,
       present: () =>
         beginShow(
           Math.max(0, deckRef.current.slideOrder.indexOf(activeSlideId)),
@@ -1711,6 +1719,7 @@ export default function Slides({
     });
   }, [
     onActions,
+    printSlides,
     onChange,
     activeSlideId,
     beginShow,
@@ -2161,6 +2170,7 @@ export default function Slides({
       className="slides-editor"
       data-deck-snapshot={JSON.stringify(deck)}
     >
+      <SlidePrintDeck active={printing} deck={deck} renderSlide={(slide) => renderShowElements(slide, false)} />
       {notice && !presenting ? (
         <div className="slides-notice" role="status">
           <span>{deletedSlidesMessage(notice.count)}</span>
@@ -2767,7 +2777,7 @@ export default function Slides({
         )}
         </fieldset>
 
-        <Tool label="Print (Cmd+P)" onClick={() => printDocument()}>
+        <Tool label="Print (Cmd+P)" onClick={() => printSlides()}>
           <Printer size={16} />
         </Tool>
 

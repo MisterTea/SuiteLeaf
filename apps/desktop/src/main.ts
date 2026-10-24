@@ -11,7 +11,9 @@ import {
 } from "electron";
 import { join, resolve, extname, sep, basename, dirname } from "node:path";
 import { readFile } from "node:fs/promises";
-import { Worker } from "node:worker_threads";
+import { mkdirSync } from "node:fs";
+import { convertOffice } from "./office-converter";
+import { runImportCommand } from "./import-cli";
 import { pathToFileURL } from "node:url";
 import {
   applyLibraryMarks,
@@ -27,8 +29,15 @@ import {
   type FileRecord,
 } from "@suiteleaf/core";
 import { FileStore, atomicWrite, driveLink } from "./store";
+import { localDataDirectory, migrateLocalData } from "./local-data";
+import { DocumentsDirectory } from "./documents-directory";
 import { buildMarpFile, dataUriFor, marpAssetPaths } from "../../web/src/editors/slide-marp-import";
 import { registerAi } from "./ai";
+// Test runs need their own Electron profile and single-instance lock as well as registry.
+if (process.env.SUITELEAF_TEST_DATA) {
+  mkdirSync(process.env.SUITELEAF_TEST_DATA, { recursive: true });
+  app.setPath("userData", process.env.SUITELEAF_TEST_DATA);
+}
 protocol.registerSchemesAsPrivileged([
   {
     scheme: "suiteleaf",
@@ -39,10 +48,13 @@ let window: BrowserWindow | null = null,
   store: FileStore,
   mode: AppMode = { kind: "single" },
   dirty = false;
+const localDirectory = process.env.SUITELEAF_TEST_DATA ?? localDataDirectory();
 const settingsPath = () =>
   process.env.SUITELEAF_SETTINGS ??
-  join(app.getPath("userData"), "settings.json");
-async function readSettings(): Promise<{ mode?: unknown }> {
+  join(localDirectory, "settings.json");
+let documentsDirectory: string;
+let documentsWatcher: DocumentsDirectory;
+async function readSettings(): Promise<{ mode?: unknown; documentsDirectory?: unknown }> {
   try {
     return JSON.parse(await readFile(settingsPath(), "utf8"));
   } catch {
@@ -55,6 +67,8 @@ async function setMode(next: AppMode) {
     settingsPath(),
     JSON.stringify({ ...(await readSettings()), mode }),
   );
+  if (mode.kind === "single") await documentsWatcher.set(documentsDirectory);
+  else documentsWatcher.close();
   buildMenu();
   window?.webContents.reload();
 }
@@ -118,6 +132,7 @@ const checked = (r: FileRecord): FileRecord =>
     {
       file: parseFile(JSON.stringify(r.file)),
       drive: driveLink(r.drive),
+      fingerprint: typeof r.fingerprint === "string" && /^[a-f0-9]{64}$/.test(r.fingerprint) ? r.fingerprint : undefined,
     },
     readLibraryMarks(r),
   );
@@ -211,38 +226,7 @@ async function openFile() {
   const bytes = await readFile(path);
   if (bytes.length > 120 * 1024 * 1024)
     throw new Error("Office imports are limited to 120 MB.");
-  const file = await new Promise<FileRecord["file"]>((resolve, reject) => {
-    const worker = new Worker(join(import.meta.dirname, "office-worker.js"), {
-      workerData: { bytes, format: ext.slice(1), name: basename(path) },
-      resourceLimits: { maxOldGenerationSizeMb: 2048 },
-    });
-    const timer = setTimeout(() => {
-      void worker.terminate();
-      reject(new Error("Office import exceeded two minutes."));
-    }, 120000);
-    const finish = () => {
-      clearTimeout(timer);
-      void worker.terminate();
-    };
-    worker.once("message", (result) => {
-      finish();
-      if (result.ok) resolve(result.file);
-      else reject(new Error(result.error));
-    });
-    worker.once("error", (error) => {
-      finish();
-      reject(error);
-    });
-    worker.once("exit", (code) => {
-      clearTimeout(timer);
-      if (code)
-        reject(
-          new Error(
-            "The Office converter exited before completing the import.",
-          ),
-        );
-    });
-  });
+  const file = await convertOffice(bytes, ext.slice(1), basename(path));
   return store.save({ file });
 }
 function send(action: string) {
@@ -335,7 +319,7 @@ function buildMenu() {
     Menu.buildFromTemplate([
       {
         label: "SuiteLeaf",
-        submenu: [{ role: "about" }, { type: "separator" }, { role: "quit" }],
+        submenu: [{ role: "about" }, ...(mode.kind === "single" ? [{ label: "Settings…", click: () => send("settings") }] : []), { type: "separator" }, { role: "quit" }],
       },
       {
         label: "File",
@@ -422,7 +406,24 @@ function buildMenu() {
     ]),
   );
 }
-if (!app.requestSingleInstanceLock()) app.quit();
+const commandArgs = process.argv.slice(app.isPackaged ? 1 : 2);
+if (commandArgs[0] === "import" || commandArgs[0] === "--help" || commandArgs[0] === "-h") {
+  // Run independently of an open GUI. Its directory watcher indexes the output;
+  // the importer never races the GUI's private registry file.
+  void (async () => {
+    if (!process.env.SUITELEAF_TEST_DATA) await migrateLocalData(app.getPath("userData"), localDirectory);
+    const configured = (await readSettings()).documentsDirectory;
+    const defaultDirectory = typeof configured === "string" && configured
+      ? resolve(configured)
+      : join(process.env.SUITELEAF_TEST_DATA ?? app.getPath("documents"), "SuiteLeaf");
+    const code = await runImportCommand(commandArgs[0] === "import" ? commandArgs.slice(1) : ["--help"], {
+      defaultDirectory, convertOffice,
+      log: (message) => console.log(message),
+      error: (message) => console.error(message),
+    });
+    app.exit(code);
+  })().catch((error) => { console.error(error); app.exit(2); });
+} else if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on("second-instance", () => {
     window?.show();
@@ -430,22 +431,21 @@ else {
   });
   void app.whenReady().then(async () => {
     if (hideWindows) app.dock?.hide();
-    store = new FileStore(
-      process.env.SUITELEAF_TEST_DATA ??
-        join(app.getPath("userData"), "library"),
-    );
+    if (!process.env.SUITELEAF_TEST_DATA) await migrateLocalData(app.getPath("userData"), localDirectory);
+    store = new FileStore(localDirectory);
     await store.init();
     const saved = appModeSchema.safeParse((await readSettings()).mode);
     if (saved.success) mode = saved.data;
-    // Single-user mode shows the SuiteLeaf files in ~/Documents/Suiteleaf.
-    // Tests set SUITELEAF_TEST_DATA and must not create that folder.
-    if (mode.kind === "single" && !process.env.SUITELEAF_TEST_DATA) {
-      try {
-        await store.importFolder(join(app.getPath("documents"), "Suiteleaf"));
-      } catch {
-        /* The library still opens if Documents cannot be created. */
-      }
+    const configured = (await readSettings()).documentsDirectory;
+    documentsDirectory = typeof configured === "string" && configured
+      ? resolve(configured)
+      : join(process.env.SUITELEAF_TEST_DATA ?? app.getPath("documents"), "SuiteLeaf");
+    documentsWatcher = new DocumentsDirectory(store, () => window?.webContents.send("files:changed"));
+    if (mode.kind === "single") {
+      try { await documentsWatcher.set(documentsDirectory); }
+      catch { /* Settings can choose another folder if this one is unavailable. */ }
     }
+    app.on("will-quit", () => { documentsWatcher.close(); store.close(); });
     protocol.handle("suiteleaf", (request) => {
       const url = new URL(request.url);
       const path = resolve(root, `.${decodeURIComponent(url.pathname)}`);
@@ -455,6 +455,25 @@ else {
       )
         return new Response("Not found", { status: 404 });
       return net.fetch(pathToFileURL(path).toString());
+    });
+    register("documents:get", () => documentsDirectory);
+    register("documents:choose", async () => {
+      if (mode.kind !== "single") throw new Error("Document folders are available in single-user mode.");
+      const result = await dialog.showOpenDialog(window!, {
+        title: "Document directory", defaultPath: documentsDirectory,
+        properties: ["openDirectory", "createDirectory"],
+      });
+      if (result.canceled || !result.filePaths[0]) return null;
+      const next = resolve(result.filePaths[0]);
+      await documentsWatcher.set(next);
+      try {
+        await atomicWrite(settingsPath(), JSON.stringify({ ...(await readSettings()), documentsDirectory: next }));
+      } catch (error) {
+        await documentsWatcher.set(documentsDirectory);
+        throw error;
+      }
+      documentsDirectory = next;
+      return next;
     });
     register("files:list", () => store.list());
     register("files:get", (id) => {
@@ -471,7 +490,7 @@ else {
       const r = checked(input);
       const ext = extensionFor(r.file.kind);
       const result = await dialog.showSaveDialog(window!, {
-        defaultPath: nativeFilename(r.file),
+        defaultPath: mode.kind === "single" ? join(documentsDirectory, nativeFilename(r.file)) : nativeFilename(r.file),
         filters: [{ name: "SuiteLeaf file", extensions: [ext] }],
       });
       if (result.canceled || !result.filePath) return null;

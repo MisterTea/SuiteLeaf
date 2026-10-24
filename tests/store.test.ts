@@ -198,3 +198,89 @@ it("writes PDF-style binary bytes without text encoding corruption", async () =>
   await atomicWrite(path, bytes);
   expect(await readFile(path)).toEqual(Buffer.from(bytes));
 });
+
+it("reconciles nested documents, edits, renames and deletions while retaining library marks", async () => {
+  const docs = join(dir, "docs"),
+    nested = join(docs, "nested");
+  await mkdir(nested, { recursive: true });
+  const file = createFile("doc", "Cloud document");
+  const path = join(nested, "cloud.sldoc");
+  await writeFile(path, serializeFile(file));
+  expect(await store.syncFolder(docs)).toBe(true);
+  const record = (await store.get(file.id))!;
+  await store.save({ ...record, starred: true });
+  file.title = "Changed in cloud";
+  await writeFile(path, serializeFile(file));
+  await store.syncFolder(docs);
+  expect((await store.list())[0]).toMatchObject({
+    starred: true,
+    file: { title: "Changed in cloud" },
+  });
+  const renamed = join(docs, "renamed.sldoc");
+  await (await import("node:fs/promises")).rename(path, renamed);
+  await store.syncFolder(docs);
+  expect((await store.list())[0]).toMatchObject({
+    path: renamed,
+    starred: true,
+  });
+  expect(await store.syncFolder(docs)).toBe(false);
+  await rm(renamed);
+  await store.syncFolder(docs);
+  expect(await store.list()).toEqual([]);
+});
+
+it("preserves recovery drafts and rejects stale editor saves after a directory refresh", async () => {
+  const docs = join(dir, "docs");
+  await mkdir(docs);
+  const file = createFile("doc", "Original");
+  const path = join(docs, "file.sldoc");
+  const editor = await store.saveAs({ file }, path);
+  file.title = "Cloud edit";
+  await writeFile(path, serializeFile(file));
+  await store.syncFolder(docs);
+  editor.file.title = "Unsaved local edit";
+  await expect(store.save(editor)).rejects.toThrow("changed outside");
+  await rm(path);
+  await store.syncFolder(docs);
+  expect((await store.list())[0]).toMatchObject({
+    recovery: true,
+    file: { title: "Unsaved local edit" },
+  });
+});
+
+it("switches the indexed directory without moving files and skips partial cloud downloads", async () => {
+  const first = join(dir, "first"),
+    second = join(dir, "second");
+  await mkdir(first);
+  await mkdir(second);
+  const a = createFile("doc", "First"),
+    b = createFile("sheet", "Second");
+  const path = join(first, "first.sldoc");
+  await writeFile(path, serializeFile(a));
+  await writeFile(join(second, "second.slsheet"), serializeFile(b));
+  await store.syncFolder(first);
+  await writeFile(path, "partial download");
+  await store.syncFolder(first);
+  expect((await store.list())[0].file.id).toBe(a.id);
+  await store.syncFolder(second, first);
+  expect((await store.list()).map((r) => r.file.id)).toEqual([b.id]);
+  expect(await readFile(path, "utf8")).toBe("partial download");
+});
+
+it("keeps dismissed directory files hidden until their contents change, including after restart", async () => {
+  const docs = join(dir, "docs");
+  await mkdir(docs);
+  const file = createFile("doc", "Dismissed");
+  const path = join(docs, "dismissed.sldoc");
+  await writeFile(path, serializeFile(file));
+  await store.syncFolder(docs);
+  await store.remove(file.id);
+  const reopened = new FileStore(join(dir, "data"));
+  await reopened.init();
+  await reopened.syncFolder(docs);
+  expect(await reopened.list()).toEqual([]);
+  file.title = "New cloud version";
+  await writeFile(path, serializeFile(file));
+  await reopened.syncFolder(docs);
+  expect((await reopened.list())[0].file.title).toBe("New cloud version");
+});

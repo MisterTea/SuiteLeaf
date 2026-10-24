@@ -1,3 +1,4 @@
+import { DocumentSettings, SettingsButton, SettingsPage } from "./document-settings";
 import {
   lazy,
   Suspense,
@@ -79,14 +80,12 @@ import { blockTexts, syncParagraphTexts, type RegionTouch } from "@suiteleaf/cor
 import type * as Y from "yjs";
 import { importFile, type DelimitedDraft, type ImportAssets } from "./imports";
 import {
-  filesBeside,
   listRelativeFiles,
   markdownInFolder,
-  marpAssetPaths,
   normalizeFolderFiles,
   preferredMarkdown,
-  selectMarpAssetFiles,
 } from "./editors/slide-marp-import";
+import { loadMarpBundle, marpBundlePaths, missingMarpTheme } from "./editors/slide-marp-bundle";
 import { createMarpFile } from "./editors/slide-marp";
 import { CsvImportDialog } from "./csv-import";
 import type { DelimitedOptions } from "./csv";
@@ -360,29 +359,42 @@ function Logo() {
   );
 }
 function MarpPicturesDialog({
+  markdown,
   name,
   paths,
   onDone,
 }: {
+  markdown: string;
   name: string;
   paths: string[];
-  onDone: (choice: { relativePath: string; file: File }[] | "skip" | "cancel") => void;
+  onDone: (choice: ImportAssets | "skip" | "cancel") => void;
 }) {
   const folderInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const accept = (listed: { relativePath: string; file: File }[]) => {
-    const { chosen, ambiguous } = selectMarpAssetFiles(paths, listed);
-    if (!chosen.length) {
+  const pendingAssets = useRef<Record<string, string>>({});
+  const accept = async (listed: { relativePath: string; file: File }[], stripRoot = false) => {
+    setError("");
+    try {
+      const normalized = stripRoot ? normalizeFolderFiles(listed).files : listed;
+      const matches = normalized.filter((item) => item.relativePath.split("/").pop() === name);
+      let path = matches.length === 1 ? matches[0].relativePath : name;
+      if (matches.length > 1) {
+        const sameSource = await Promise.all(matches.map(async (item) => ({ item, same: await item.file.text() === markdown })));
+        const exact = sameSource.filter((match) => match.same);
+        if (exact.length !== 1) throw new Error("That folder contains more than one copy of this deck. Choose the folder containing the intended markdown file.");
+        path = exact[0].item.relativePath;
+      }
+      const assets = { ...pendingAssets.current, ...await loadMarpBundle(path, markdown, normalized) };
+      pendingAssets.current = assets;
+      const missing = missingMarpTheme(markdown, assets);
+      if (missing) throw new Error(`The ${missing} theme was not in that selection. Choose the folder containing its CSS file. Pictures already selected are retained.`);
+      if (!Object.keys(assets).length) throw new Error("None of those assets were in that folder. Choose a folder containing the markdown and its themes or pictures.");
+      onDone(assets);
+    } catch (e) {
       setBusy(false);
-      setError(
-        ambiguous
-          ? "That folder has more than one copy of these files. Choose the folder that contains the markdown file."
-          : "None of those files were in that folder. Choose the folder that contains the markdown file.",
-      );
-      return;
+      setError(e instanceof Error ? e.message : "Could not read that folder.");
     }
-    onDone(chosen.map((item) => ({ relativePath: item.path, file: item.file.file })));
   };
   const choose = async () => {
     setError("");
@@ -393,7 +405,7 @@ function MarpPicturesDialog({
     }
     setBusy(true);
     try {
-      accept(await listRelativeFiles(await show() as Parameters<typeof listRelativeFiles>[0]));
+      await accept(await listRelativeFiles(await show() as Parameters<typeof listRelativeFiles>[0]));
     } catch (e) {
       setBusy(false);
       if (e instanceof DOMException && e.name === "AbortError") return;
@@ -425,7 +437,7 @@ function MarpPicturesDialog({
           <p className="dialog-note">
             {name} uses {paths.length} file{paths.length === 1 ? "" : "s"} stored next to the
             markdown, such as {paths[0]}. Choose the folder that contains the markdown file so
-            those pictures are included.
+            the pictures, fonts, and themes are included.
           </p>
           {error ? (
             <p className="dialog-error" role="alert">
@@ -452,7 +464,7 @@ function MarpPicturesDialog({
             e.target.value = "";
             if (!list.length) return;
             setBusy(true);
-            accept(list.map((file) => ({ relativePath: file.webkitRelativePath || file.name, file })));
+            void accept(list.map((file) => ({ relativePath: file.webkitRelativePath || file.name, file })), true);
           }}
         />
       </section>
@@ -489,9 +501,10 @@ function ImportButton({
     resolve: (options: DelimitedOptions | null) => void;
   } | null>(null);
   const [pictures, setPictures] = useState<{
+    markdown: string;
     name: string;
     paths: string[];
-    resolve: (choice: { relativePath: string; file: File }[] | "skip" | "cancel") => void;
+    resolve: (choice: ImportAssets | "skip" | "cancel") => void;
   } | null>(null);
   const importChosen = async (f: File) => {
     setImporting(true);
@@ -499,25 +512,15 @@ function ImportButton({
       const ext = f.name.split(".").pop()?.toLowerCase();
       let assets: ImportAssets | undefined;
       if (ext === "md" || ext === "markdown") {
-        const paths = marpAssetPaths(await f.text());
+        const markdown = await f.text();
+        const paths = marpBundlePaths(markdown);
         if (paths.length) {
-          const choice = await new Promise<{ relativePath: string; file: File }[] | "skip" | "cancel">(
-            (resolve) => setPictures({ name: f.name, paths, resolve }),
+          const choice = await new Promise<ImportAssets | "skip" | "cancel">(
+            (resolve) => setPictures({ markdown, name: f.name, paths, resolve }),
           );
           setPictures(null);
           if (choice === "cancel") return;
-          if (choice !== "skip") {
-            assets = {};
-            let total = 0;
-            for (const item of choice) {
-              if (item.file.size > 25 * 1024 * 1024)
-                throw new Error(`"${item.relativePath}" is larger than 25 MB.`);
-              total += item.file.size;
-              if (total > 80 * 1024 * 1024)
-                throw new Error("The files for this deck are larger than 80 MB.");
-              assets[item.relativePath] = new Uint8Array(await item.file.arrayBuffer());
-            }
-          }
+          if (choice !== "skip") assets = choice;
         }
       }
       const file = await importFile(
@@ -546,22 +549,7 @@ function ImportButton({
     const markdown = normalized.files.find((item) => item.relativePath === markdownPath);
     if (!markdown) throw new Error("That folder has no markdown file.");
     const text = await markdown.file.text();
-    const needed = marpAssetPaths(text);
-    let assets: ImportAssets | undefined;
-    if (needed.length) {
-      const { chosen } = selectMarpAssetFiles(needed, filesBeside(markdownPath, normalized.files));
-      if (chosen.length) {
-        assets = {};
-        let total = 0;
-        for (const item of chosen) {
-          if (item.file.file.size > 25 * 1024 * 1024)
-            throw new Error(`"${item.path}" is larger than 25 MB.`);
-          total += item.file.file.size;
-          if (total > 80 * 1024 * 1024) throw new Error("The files for this deck are larger than 80 MB.");
-          assets[item.path] = new Uint8Array(await item.file.file.arrayBuffer());
-        }
-      }
-    }
+    const assets = await loadMarpBundle(markdownPath, text, normalized.files);
     const file = await importFile(
       markdown.file,
       (draft) => new Promise((resolve) => setReview({ draft, resolve })),
@@ -775,6 +763,7 @@ function ImportButton({
       ) : null}
       {pictures ? (
         <MarpPicturesDialog
+          markdown={pictures.markdown}
           name={pictures.name}
           paths={pictures.paths}
           onDone={pictures.resolve}
@@ -943,9 +932,11 @@ function LocalHome() {
     // The assistant's "Undo all of this" puts files back behind the list's back.
     const changed = () => void refresh();
     window.addEventListener("suiteleaf:library-changed", changed);
+    const unsubscribe = window.suiteleaf?.onFilesChanged?.(changed);
     return () => {
       clearTimeout(undoTimer.current);
       window.removeEventListener("suiteleaf:library-changed", changed);
+      unsubscribe?.();
     };
   }, [refresh]);
   const open = useCallback(
@@ -1250,6 +1241,7 @@ function LocalHome() {
       <aside className="sidebar">
         <Logo />
         <div className="sidebar-links">
+          <SettingsButton />
           <button
             className={filter === "all" ? "selected" : ""}
             onClick={() => setFilter("all")}
@@ -5085,7 +5077,9 @@ export default function App() {
     <ModeContext.Provider value={mode}>
       <HashRouter>
         <AgentLayer />
+        <DocumentSettings />
         <Routes>
+          <Route path="/settings" element={<SettingsPage />} />
           <Route path="/auth-complete" element={<AuthComplete />} />
           <Route
             path="/admin"

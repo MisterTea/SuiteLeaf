@@ -47,11 +47,13 @@ Native SuiteLeaf files are JSON with a distinct extension per kind: `.sldoc` for
 In single-node mode, the website autosaves locally in the browser using localForage (IndexedDB with fallback) on the current browser/device and origin. **Download** saves a portable `.sldoc`, `.slsheet`, or `.slslides` copy; **Open / import** restores it. A second tab cannot edit a file already open in another tab. Browser data is local: download copies before clearing site data or moving between devices.
 An online demo is hosted via GitHub Pages at https://mistertea.github.io/SuiteLeaf/. It is built with `VITE_SUITELEAF_DEMO=1`, which locks it to single-node mode with browser storage.
 
-Electron starts new files as recovery drafts. After **Save As**, changes autosave to that regular file. File writes are serialized and replaced atomically. If another program changes the file, SuiteLeaf keeps a recovery draft and offers **Reload saved** or **Save As** instead of overwriting the external change. Removing a desktop recent-file entry also removes its recovery draft; the saved file stays on disk. Recovery data lives in the application’s user-data directory under `library/library.json`.
+Electron starts new files as recovery drafts. After **Save As**, changes autosave to that regular file. File writes are serialized and replaced atomically. If another program changes the file, SuiteLeaf keeps a recovery draft and offers **Reload saved** or **Save As** instead of overwriting the external change. Removing a desktop recent-file entry also removes its recovery draft; the saved file stays on disk. The local registry and recovery drafts live in `~/.config/suiteleaf/library.sqlite`; settings live beside it in `settings.json`. Existing JSON registry data and settings are migrated automatically, preserving the originals. The SQLite database stays local when the document directory is a cloud-synced folder.
+
+In desktop single-node mode, **Settings → Document directory → Choose folder** selects the folder shown in the library and used by **Save As**. It defaults to `~/Documents/SuiteLeaf`. SuiteLeaf scans its subfolders and watches for files added, changed, renamed, or removed. Choose a locally synced Google Drive or Dropbox folder to let that service sync saved documents. Changing the directory leaves existing files in place; use **Save As** to move a working copy into the selected folder. Recovery drafts remain in the library.
 
 Use **File → Export** for HTML/plain text documents or CSV/TSV spreadsheets. Delimited imports preview their delimiter and rows, retain the header row, infer ordinary numbers and booleans, and preserve formulas, leading-zero identifiers, and high-precision numbers as text. CSV/TSV exports contain the active worksheet’s calculated values; formula-looking text receives a protective apostrophe. HTML imports sanitize executable content and accept embedded images only. Image uploads support PNG/JPEG/GIF/WebP up to 5 MB; Office inputs are limited to 120 MB; native inputs to 200 MB; other imports to 50 MB; CSV ranges to 200,000 cells. Office packages may expand to 1 GB, and spreadsheet imports allow up to 10 million stored cells and 100 MB of cell text. Files outside these limits produce explicit capacity errors.
 
-**File → Print / Save as PDF** prints documents or a table of the active worksheet with its visible charts. Spreadsheet printing is limited to 10,000 cells. Browser or operating-system print dialogs provide PDF output. On desktop, when no printer is available, the command opens a PDF save dialog and generates the PDF directly.
+**File → Print / Save as PDF** prints documents or a table of the active worksheet with its visible charts. Presentations print the complete deck, with one full-size slide per page, including slide backgrounds, master artwork, slide numbers, and all animation content. The selected slide stays unchanged. Spreadsheet printing is limited to 10,000 cells. Browser or operating-system print dialogs provide PDF output. On desktop, when no printer is available, the command opens a PDF save dialog and generates the PDF directly.
 
 ## Cluster mode: SuiteLeaf servers
 
@@ -114,6 +116,28 @@ npm run package:desktop
 ```
 
 Outputs appear in `apps/desktop/release/`: macOS DMG/ZIP, Windows NSIS, and Linux AppImage/DEB. CI has an operating-system matrix for all three. macOS signing/notarization, Windows signing, automatic updates, and publishing are not configured. Run `npm run build:desktop` again before packaging source changes.
+
+The desktop executable includes a directory importer:
+
+```sh
+# Linux (installed executable, or substitute the AppImage path)
+suiteleaf import /path/to/source
+
+# macOS
+/Applications/SuiteLeaf.app/Contents/MacOS/SuiteLeaf import /path/to/source
+
+# Choose a different output folder
+suiteleaf import /path/to/source --output /path/to/SuiteLeaf
+
+# Usage and supported formats
+suiteleaf import --help
+```
+
+On Windows, run `SuiteLeaf.exe import C:\path\to\source` from the installation directory. In a source checkout, build the desktop app and run `npx electron apps/desktop/out/main/index.js import /path/to/source`.
+
+The importer runs without opening a window and scans subfolders for Office, OpenDocument, RTF, native SuiteLeaf, Markdown, HTML, text, CSV, and TSV files. Output defaults to the **Document directory** in Settings (`~/Documents/SuiteLeaf` initially). Subfolder structure is preserved; source files stay untouched, and naming collisions receive numbered suffixes. Markdown imports produce MARP presentations with available local pictures embedded. CSV/TSV imports use the same automatic type and header detection as the app. Hidden files, symlinks, and unsupported formats are skipped. Importing again creates additional copies.
+
+Saved output appears in the desktop library through its directory watcher or the next startup scan. An explicit `--output` folder appears there when it is the selected document directory. The command reports totals and individual failures, continuing with remaining files. Exit status is **0** on success, **1** when individual files fail, and **2** for invalid arguments or an inaccessible source directory.
 
 ## Development and checks
 

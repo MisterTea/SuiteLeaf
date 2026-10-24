@@ -2,6 +2,13 @@ import { contextBridge, ipcRenderer } from "electron";
 import type { DesktopBridge } from "@suiteleaf/core";
 import type { AiGenerateEvent, AiStatus } from "@suiteleaf/core/ai";
 const bridge: DesktopBridge = {
+  getDocumentsDirectory: () => ipcRenderer.invoke("documents:get"),
+  chooseDocumentsDirectory: () => ipcRenderer.invoke("documents:choose"),
+  onFilesChanged: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on("files:changed", listener);
+    return () => ipcRenderer.removeListener("files:changed", listener);
+  },
   reload: (id) => ipcRenderer.invoke("files:reload", id),
   list: () => ipcRenderer.invoke("files:list"),
   get: (id) => ipcRenderer.invoke("files:get", id),
