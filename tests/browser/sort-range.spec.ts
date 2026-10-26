@@ -33,6 +33,8 @@ async function open(page: Page) {
   await page
     .getByRole("toolbar", { name: "Spreadsheet formatting" })
     .waitFor();
+  // Typing before the grid is ready can land in a cell instead of the name box.
+  await page.locator("[data-sheet-ready='true']").waitFor();
 }
 
 async function rows(page: Page) {
@@ -49,6 +51,7 @@ async function rows(page: Page) {
 async function openSortRange(page: Page, ref: string) {
   const box = page.locator(".sheet-host input.univer-size-full");
   await box.fill(ref);
+  await expect(box).toHaveValue(ref);
   await box.press("Enter");
   await page.getByRole("button", { name: "Data", exact: true }).click();
   await page.getByRole("menuitem", { name: "Sort range", exact: true }).click();
