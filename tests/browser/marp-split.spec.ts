@@ -19,7 +19,7 @@ Ship the **beta** in May.
 async function openDeck(page: Page, markdown = DECK) {
   await page.goto("/");
   await page
-    .locator('input[type="file"]')
+    .locator('input[type="file"]:not([webkitdirectory])')
     .first()
     .setInputFiles({ name: "plan.md", mimeType: "text/markdown", buffer: Buffer.from(markdown) });
   const canvas = page.locator(".slide-canvas");
@@ -214,7 +214,7 @@ async function openRaw(page: Page) {
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.goto("/");
   await page
-    .locator('input[type="file"]')
+    .locator('input[type="file"]:not([webkitdirectory])')
     .first()
     .setInputFiles({ name: "raw.md", mimeType: "text/markdown", buffer: Buffer.from(RAW) });
   await page.getByRole("button", { name: "Import without pictures" }).click();

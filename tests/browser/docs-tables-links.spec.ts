@@ -187,7 +187,7 @@ test("links use an in-app dialog that validates the address and can edit or remo
 
 test("images can be resized from a corner handle and keep their proportions", async ({ page }) => {
   const editor = await newDocument(page);
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "garden.png",
     mimeType: "image/png",
     buffer: picture(),

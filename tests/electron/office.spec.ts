@@ -36,6 +36,7 @@ for (const kind of ["docx", "xlsx"] as const)
         });
       });
       const page = await app.firstWindow();
+      await page.getByRole("button", { name: "Import", exact: true }).click();
       await page.getByRole("button", { name: "Open / import" }).click();
       if (kind === "docx")
         await expect(

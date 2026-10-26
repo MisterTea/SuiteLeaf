@@ -6,6 +6,7 @@ import {
 
 async function openDocx(page: Page, name: string, bytes: Uint8Array) {
   const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Import", exact: true }).click();
   await page.getByRole("button", { name: "Open / import" }).click();
   await (
     await chooser

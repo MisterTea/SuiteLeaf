@@ -37,7 +37,7 @@ function thesis(): DocFile {
 
 async function openThesis(page: Page) {
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "thesis-notes.suiteleaf",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(thesis())),

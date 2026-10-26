@@ -43,7 +43,7 @@ test("currency budget charts retain numeric bars, labels, order, formulas and fi
     ]),
   );
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "budget.suiteleaf",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),
@@ -119,7 +119,7 @@ test("View menu freezes rows and columns, hides gridlines and the formula bar, a
     ]),
   );
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "freeze.slsheet",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),

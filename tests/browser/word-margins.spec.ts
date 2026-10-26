@@ -19,7 +19,7 @@ async function openBytes(
 ) {
   await expect(page.getByLabel("Search files")).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Document content" })).toHaveCount(0);
-  await page.locator("input[type=file]").setInputFiles({ name, mimeType, buffer });
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({ name, mimeType, buffer });
   const keep = page.getByRole("button", { name: "Keep both", exact: true });
   const editor = page.getByRole("textbox", { name: "Document content" });
   await expect(editor.or(keep)).toBeVisible();

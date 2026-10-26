@@ -303,6 +303,7 @@ test("presentation tools build slides and present", async ({ page }) => {
 test("document tools find superscript text the way people type it", async ({ page }) => {
   await page.goto("/");
   const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Import", exact: true }).click();
   await page.getByRole("button", { name: "Open / import" }).click();
   await (await chooser).setFiles({
     name: "Office field notes.docx",

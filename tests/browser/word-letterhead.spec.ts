@@ -5,7 +5,7 @@ test("an imported Word letterhead keeps three headers and no number on page 1", 
   page,
 }) => {
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "council-minutes.docx",
     mimeType:
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

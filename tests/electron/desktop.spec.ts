@@ -111,18 +111,19 @@ test("choosing Close in the unsaved prompt closes the window while saves keep fa
       addEventListener("beforeunload", (event) => event.preventDefault());
       await bridge.list();
     });
+    // Off macOS, closing the last window quits the app, so the prompts are counted from its output.
+    let output = "";
+    app.process().stdout?.on("data", (chunk) => (output += String(chunk)));
+    const closed = page.waitForEvent("close");
     await app.evaluate(({ dialog, BrowserWindow }) => {
-      (globalThis as { prompts?: number }).prompts = 0;
       (dialog as any).showMessageBoxSync = () => {
-        (globalThis as { prompts?: number }).prompts! += 1;
+        console.log("suiteleaf-test: close prompt");
         return 1;
       };
       BrowserWindow.getAllWindows()[0].close();
     });
-    await expect
-      .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length))
-      .toBe(0);
-    expect(await app.evaluate(() => (globalThis as { prompts?: number }).prompts)).toBe(1);
+    await closed;
+    await expect.poll(() => output.split("suiteleaf-test: close prompt").length - 1).toBe(1);
   } finally {
     await app
       .evaluate(({ BrowserWindow }) => {

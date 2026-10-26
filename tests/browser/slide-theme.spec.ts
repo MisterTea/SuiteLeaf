@@ -93,7 +93,7 @@ test("a theme restyles free text, and reduced motion cuts transitions", async ({
     document.exitFullscreen = () => change(null);
   });
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "Theme check.slslides",
     mimeType: "application/json",
     buffer: Buffer.from(deck()),
@@ -105,13 +105,13 @@ test("a theme restyles free text, and reduced motion cuts transitions", async ({
   await expect(page.locator(".slide-canvas")).toHaveCSS("background-color", "rgb(13, 40, 24)");
   await expect.poll(() => family(page, "Hello")).toMatch(/Montserrat/);
   await expect.poll(() => family(page, "A free box")).toMatch(/Source Sans/);
-  await expect(page.locator(".slide-shape")).toHaveCSS("background-color", "rgb(149, 213, 178)");
+  await expect(page.locator(".slide-canvas .slide-shape")).toHaveCSS("background-color", "rgb(149, 213, 178)");
 
   await page.getByLabel("Heading font").selectOption("Georgia");
   await expect.poll(() => family(page, "Hello")).toMatch(/Georgia/);
   await expect.poll(() => family(page, "A free box")).toMatch(/Source Sans/);
   await page.getByLabel("Accent hex").fill("#2e7d32");
-  await expect(page.locator(".slide-shape")).toHaveCSS("background-color", "rgb(46, 125, 50)");
+  await expect(page.locator(".slide-canvas .slide-shape")).toHaveCSS("background-color", "rgb(46, 125, 50)");
 
   const box = page.locator(".slide-canvas textarea").nth(1);
   await box.click();

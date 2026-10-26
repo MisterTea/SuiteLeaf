@@ -6,7 +6,7 @@ const mod = process.platform === "darwin" ? "Meta" : "Control";
 
 async function openDeck(page: Page) {
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "Q3 update.slslides",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(q3Update())),

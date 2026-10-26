@@ -87,6 +87,7 @@ test("insert an equation, edit one symbol, and round-trip Office math", async ({
 
   await page.getByRole("button", { name: "Back to files" }).click();
   const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Import", exact: true }).click();
   await page.getByRole("button", { name: "Open / import" }).click();
   await (
     await chooser

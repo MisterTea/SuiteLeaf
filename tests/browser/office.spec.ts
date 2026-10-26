@@ -12,7 +12,7 @@ test("DOCX worker import → editing → native copy → reopen", async ({
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "Office notes.docx",
     mimeType:
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -65,7 +65,7 @@ test("XLSX worker import → formulas, styles and named ranges → edit and reop
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "Imported budget.xlsx",
     mimeType:
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -108,8 +108,8 @@ test("Office failures are visible and leave existing files intact", async ({
   await page.goto("/");
   await page.getByRole("button", { name: "New document" }).click();
   await page.getByRole("button", { name: "Back to files" }).click();
-  await page.getByRole("button", { name: "Open / import" }).waitFor();
-  await page.locator("input[type=file]").setInputFiles({
+  await page.getByRole("button", { name: "Import", exact: true }).waitFor();
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "Broken.docx",
     mimeType: "application/octet-stream",
     buffer: Buffer.from("not a ZIP"),
@@ -149,7 +149,7 @@ for (const [label, path] of corpusExamples)
     page.on("pageerror", (e) => errors.push(e.message));
     const ext = path.split(".").pop()!;
     await page.goto("/");
-    await page.locator("input[type=file]").setInputFiles({
+    await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
       name: `${label}.${ext}`,
       mimeType: "application/octet-stream",
       buffer: await readFile(path),
@@ -187,7 +187,7 @@ test("local corpus: large workbook remains editable in the browser", async ({
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
   await page
-    .locator("input[type=file]")
+    .locator("input[type=file]:not([webkitdirectory])")
     .setInputFiles("datasets/napierone/files/xlsx/0594-xlsx.xlsx");
   await page
     .locator(".sheet-host input.univer-size-full")

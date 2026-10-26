@@ -44,7 +44,7 @@ async function groupedBudget() {
 
 async function open(page: Page, name: string, mimeType: string, buffer: Buffer) {
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({ name, mimeType, buffer });
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({ name, mimeType, buffer });
   await page.getByRole("toolbar", { name: "Spreadsheet formatting" }).waitFor();
 }
 
@@ -65,7 +65,7 @@ test("a sheet outline survives Excel export and import", async ({ page }) => {
   expect(xml).not.toMatch(/min="4"[^>]*outlineLevel/);
 
   await page.getByRole("button", { name: "Back to files" }).click();
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "Rent budget.xlsx",
     mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     buffer: xlsx,

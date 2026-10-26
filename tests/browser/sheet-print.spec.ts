@@ -35,7 +35,7 @@ async function openSheet(page: Page) {
     ]),
   );
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "Rent budget.slsheet",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),

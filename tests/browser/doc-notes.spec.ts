@@ -30,7 +30,7 @@ test("table of contents stays live and footnotes link from the page", async ({ p
     ],
   };
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "notes.suiteleaf",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),

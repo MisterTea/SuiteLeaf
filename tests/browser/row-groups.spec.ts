@@ -31,7 +31,7 @@ async function open(page: Page) {
     1: { w: 110 },
   };
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "Donations.slsheet",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),
