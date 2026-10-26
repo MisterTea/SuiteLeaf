@@ -71,7 +71,7 @@ test("bold and colour apply to one word, and the theme still restyles the rest",
   page,
 }) => {
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "Fundraiser pitch.slslides",
     mimeType: "application/json",
     buffer: Buffer.from(deck()),

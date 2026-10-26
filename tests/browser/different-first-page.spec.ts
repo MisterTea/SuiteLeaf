@@ -54,7 +54,7 @@ function minutes(): DocFile {
 async function openMinutes(page: Page) {
   const file = minutes();
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "minutes.suiteleaf",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),

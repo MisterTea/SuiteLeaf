@@ -32,7 +32,7 @@ test("prints all slide canvases as separate full-size PDF pages", async ({
   );
   await page.goto("/");
   await page
-    .locator('input[type="file"]')
+    .locator('input[type="file"]:not([webkitdirectory])')
     .first()
     .setInputFiles({
       name: "print.slslides",
@@ -81,7 +81,7 @@ test("prints painted Marp diagrams and charts after their runtimes finish", asyn
   test.skip(browserName !== "chromium", "PDF output requires Chromium");
   await page.goto("/");
   await page
-    .locator('input[type="file"]')
+    .locator('input[type="file"]:not([webkitdirectory])')
     .first()
     .setInputFiles({
       name: "painted.md",

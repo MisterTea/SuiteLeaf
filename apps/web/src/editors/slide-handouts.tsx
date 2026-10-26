@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
-import type { Presentation, Slide, SlideElement } from "@suiteleaf/core";
-import { boxFont, RunSpans } from "./slide-text";
-import { wordArtProps } from "./slide-word-art";
+import { useEffect, useRef, useState } from "react";
+import type { Presentation, Slide } from "@suiteleaf/core";
+import { useMarpPages, type MarpPages } from "./slide-marp-backdrop";
+import { SlideStill } from "./slide-surface";
 
 const CHOICES = [2, 4, 6] as const;
 type PerPage = (typeof CHOICES)[number];
@@ -18,120 +18,23 @@ function pagesOf(slides: Slide[], perPage: PerPage): Slide[][] {
   return pages;
 }
 
-function HandoutElement({
-  el,
-  width,
-  height,
+function HandoutSlide({
+  slide,
+  index,
+  deck,
+  pages,
 }: {
-  el: SlideElement;
-  width: number;
-  height: number;
+  slide: Slide;
+  index: number;
+  deck: Presentation;
+  pages: MarpPages | null;
 }) {
-  const units = (n: number) => `calc(${n} / ${width} * 100cqw)`;
-  const box: CSSProperties = {
-    position: "absolute",
-    left: `${(el.x / width) * 100}%`,
-    top: `${(el.y / height) * 100}%`,
-    width: `${(el.width / width) * 100}%`,
-    height: `${(el.height / height) * 100}%`,
-  };
-  if (el.type === "text") {
-    if (!el.content?.trim()) return null;
-    const art = wordArtProps(el);
-    return (
-      <div
-        className={`handout-text${art.className}`}
-        style={{
-          ...box,
-          ...art.style,
-          fontSize: units((el.fontSize || 20) * 0.95),
-          lineHeight: 1.15,
-          ...boxFont(el),
-          fontFamily: el.fontFamily || "Arial",
-          color: el.color || "#1e293b",
-          textAlign: el.align || "left",
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-          overflow: "hidden",
-          backgroundColor: el.fill || "transparent",
-        }}
-      >
-        <RunSpans
-          content={el.content}
-          runs={el.runs}
-          bold={el.bold}
-          italic={el.italic}
-          underline={el.underline}
-        />
-      </div>
-    );
-  }
-  if (el.type === "shape") {
-    const radius =
-      el.shapeType === "ellipse" ? "50%" : el.shapeType === "roundRect" ? units(12) : "0";
-    return (
-      <div
-        className="handout-shape"
-        style={{
-          ...box,
-          backgroundColor: el.fill || "#e2e8f0",
-          border: el.stroke ? `${units(el.strokeWidth || 1)} solid ${el.stroke}` : "none",
-          borderRadius: radius,
-        }}
-      />
-    );
-  }
-  if (el.type === "image" && el.src) {
-    return (
-      <img
-        src={el.src}
-        alt={el.alt || ""}
-        className="handout-image"
-        style={{ ...box, objectFit: "contain" }}
-      />
-    );
-  }
-  if (el.type === "table" && el.rows) {
-    return (
-      <table className="handout-table" style={box}>
-        <tbody>
-          {el.rows.map((row, rIdx) => (
-            <tr key={rIdx}>
-              {row.map((cell, cIdx) => (
-                <td
-                  key={cIdx}
-                  style={{
-                    fontWeight: el.cellMarks?.[rIdx]?.[cIdx]?.bold ? 700 : undefined,
-                    fontStyle: el.cellMarks?.[rIdx]?.[cIdx]?.italic ? "italic" : undefined,
-                  }}
-                >
-                  {cell}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    );
-  }
-  return null;
-}
-
-function HandoutSlide({ slide, deck }: { slide: Slide; deck: Presentation }) {
-  const width = deck.width || 960;
-  const height = deck.height || 540;
   return (
     <div
       className="handout-slide"
-      style={{
-        backgroundColor:
-          slide.background?.color || deck.master?.background?.color || "#ffffff",
-        aspectRatio: `${width} / ${height}`,
-      }}
+      style={{ aspectRatio: `${deck.width || 960} / ${deck.height || 540}` }}
     >
-      {slide.elements.map((el) => (
-        <HandoutElement key={el.id} el={el} width={width} height={height} />
-      ))}
+      <SlideStill deck={deck} slide={slide} index={index} pages={pages} />
     </div>
   );
 }
@@ -145,6 +48,7 @@ export function SlideHandouts({
   onClose: () => void;
 }) {
   const [perPage, setPerPage] = useState<PerPage>(4);
+  const marpPages = useMarpPages(deck);
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -213,7 +117,13 @@ export function SlideHandouts({
                 style={{ gridTemplateColumns: `repeat(${columnsFor(perPage)}, minmax(0, 1fr))` }}
               >
                 {group.map((slide) => (
-                  <HandoutSlide key={slide.id} slide={slide} deck={deck} />
+                  <HandoutSlide
+                    key={slide.id}
+                    slide={slide}
+                    index={deck.slideOrder.indexOf(slide.id)}
+                    deck={deck}
+                    pages={marpPages}
+                  />
                 ))}
               </div>
             </section>

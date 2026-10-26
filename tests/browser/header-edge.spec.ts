@@ -74,7 +74,7 @@ test("header and footer distances stay separate from the page margin", async ({
   test.setTimeout(90000);
   const file = thesis();
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "Thesis notes.sldoc",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),

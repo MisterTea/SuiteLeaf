@@ -37,7 +37,7 @@ async function openRoster(page: Page) {
     ["Waitlist"],
   ]);
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "Volunteer roster.slsheet",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),

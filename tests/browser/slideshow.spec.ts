@@ -78,12 +78,14 @@ test("slide text scales with the slide and controls hide until the mouse moves",
   await page.getByRole("button", { name: "Slideshow", exact: true }).click();
   const show = page.locator(".presenter-overlay");
   await expect(show).toBeVisible();
-  // The title slide's heading is 44pt on a 960-wide deck, drawn at 0.95x as in the editor.
+  // The title slide's heading is 44pt on a 960-wide deck, drawn at 0.95x as in the editor,
+  // then the whole drawing is scaled to the screen.
   const ratio = await page.evaluate(() => {
     const box = document.querySelector(".presenter-slide-box")!;
-    const title = box.querySelector<HTMLElement>(".show-text")!;
+    const title = box.querySelector<HTMLElement>(".slide-text")!;
+    const scale = title.getBoundingClientRect().width / title.offsetWidth;
     return (
-      parseFloat(getComputedStyle(title).fontSize) /
+      (parseFloat(getComputedStyle(title).fontSize) * scale) /
       box.getBoundingClientRect().width
     );
   });

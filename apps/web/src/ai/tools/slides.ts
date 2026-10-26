@@ -45,7 +45,8 @@ import {
 } from "../../editors/grid-spelling";
 import { requested } from "../guard";
 import { ToolError, currentSnapshot, currentSuiteTools, tool, type SuiteTool } from "../host";
-import { deckToMarp, marpToDeck } from "../../editors/slide-marp";
+import { deckToMarp } from "../../editors/slide-marp";
+import { deckFromMarkdown } from "../../editors/slide-marp-sync";
 import { requestFile } from "../file-request";
 import { REMOVE_INTENT } from "./files";
 
@@ -937,7 +938,7 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
       execute() {
         const deck = ctx.deck();
         if (!deck.marp) throw new ToolError("This presentation is not a MARP deck. MARP is chosen when the presentation is created, or when a markdown file is imported.");
-        return deckToMarp(deck);
+        return deck.marpSource ?? deckToMarp(deck);
       },
     }),
     tool({
@@ -952,8 +953,8 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
       execute({ markdown }) {
         if (!ctx.deck().marp)
           throw new ToolError("This presentation is not a MARP deck. MARP is chosen when the presentation is created, or when a markdown file is imported.");
-        const result = marpToDeck(markdown, ctx.deck(), { marp: true });
-        if ("error" in result) throw new ToolError(result.error);
+        const result = deckFromMarkdown(ctx.deck(), markdown);
+        if (result.problem) throw new ToolError(result.problem);
         ctx.commit(result.deck);
         if (!result.deck.slides[ctx.activeSlideId])
           ctx.select(result.deck.slideOrder[0], null);

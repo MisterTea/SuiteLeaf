@@ -14,6 +14,7 @@ async function openNote(page: Page) {
   writeFileSync(path, JSON.stringify(stallNote()));
   await page.goto("/");
   const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Import", exact: true }).click();
   await page.getByRole("button", { name: "Open / import" }).click();
   await (await chooser).setFiles(path);
   const editor = page.getByRole("textbox", { name: "Document content" });
@@ -131,6 +132,7 @@ test("in line puts a picture in the sentence and cut and paste keeps the line", 
 test("a Word inline picture opens in the sentence and survives save", async ({ page }) => {
   await page.goto("/");
   const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Import", exact: true }).click();
   await page.getByRole("button", { name: "Open / import" }).click();
   await (
     await chooser
@@ -163,6 +165,7 @@ test("a Word inline picture opens in the sentence and survives save", async ({ p
 
   await page.getByRole("button", { name: "Back to files" }).click();
   const reopen = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Import", exact: true }).click();
   await page.getByRole("button", { name: "Open / import" }).click();
   await (await reopen).setFiles(savedPath);
   const same = page.getByRole("dialog", { name: /already/i });

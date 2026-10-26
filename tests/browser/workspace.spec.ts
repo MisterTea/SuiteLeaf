@@ -117,7 +117,7 @@ test("spreadsheet formulas → embedded chart → pivot worksheet → save and r
 });
 test("safe HTML import and malformed native files", async ({ page }) => {
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "Imported.html",
     mimeType: "text/html",
     buffer: Buffer.from(
@@ -132,8 +132,8 @@ test("safe HTML import and malformed native files", async ({ page }) => {
     page.locator('.document-content a[href^="javascript:"]'),
   ).toHaveCount(0);
   await page.getByRole("button", { name: "Back to files" }).click();
-  await page.getByRole("button", { name: "Open / import" }).waitFor();
-  await page.locator("input[type=file]").setInputFiles({
+  await page.getByRole("button", { name: "Import", exact: true }).waitFor();
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "Broken.suiteleaf",
     mimeType: "application/json",
     buffer: Buffer.from('{"version":9}'),
@@ -169,14 +169,14 @@ test("a downloaded native file says what it is and reopens over its library copy
     "Downloaded “Packing list.sldoc”",
   );
   const chooseDownloaded = () =>
-    page.locator("input[type=file]").setInputFiles({
+    page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
       name: "Packing list.sldoc",
       mimeType: "application/json",
       buffer: readFileSync(path),
     });
   const back = async () => {
     await page.getByRole("button", { name: "Back to files" }).click();
-    await page.getByRole("button", { name: "Open / import" }).waitFor();
+    await page.getByRole("button", { name: "Import", exact: true }).waitFor();
   };
   const rows = page.locator(".file-row");
 
@@ -363,7 +363,7 @@ test("common formula categories and cross-sheet calculations survive native roun
   cells["1"]["3"] = { v: "South", t: 1 };
   cells["1"]["4"] = { v: 20, t: 2 };
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "formulas.suiteleaf",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),
@@ -393,7 +393,7 @@ test("CSV import preview preserves identifiers and formula-looking text, and exp
   page,
 }) => {
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "sales.csv",
     mimeType: "text/csv",
     buffer: Buffer.from(
@@ -435,7 +435,7 @@ test("CSV import dialog chooses the separator, header row, and code columns", as
 }) => {
   await page.goto("/");
   const pick = () =>
-    page.locator("input[type=file]").setInputFiles({
+    page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
       name: "members.csv",
       mimeType: "text/csv",
       buffer: Buffer.from(
@@ -469,7 +469,7 @@ test("CSV import dialog chooses the separator, header row, and code columns", as
   await expect(dialog).toBeHidden();
   await expect(page.locator(".error")).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Open / import" }),
+    page.getByRole("button", { name: "Import", exact: true }),
   ).toBeEnabled();
 
   await pick();
@@ -495,7 +495,7 @@ test("document outline, images, tables, find/replace, and print layout", async (
   await page.getByRole("button", { name: "Insert table", exact: true }).click();
   await page.getByRole("button", { name: "Create table", exact: true }).click();
   await expect(page.locator(".document-content table")).toBeVisible();
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "pixel.png",
     mimeType: "image/png",
     buffer: Buffer.from(
@@ -774,7 +774,7 @@ test("PowerPoint presentation import via drag/upload into workspace", async ({
 
   const sampleBuf = await readFile(samplePath);
 
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.locator('input[type="file"]:not([webkitdirectory])').setInputFiles({
     name: "sample.pptx",
     mimeType:
       "application/vnd.openxmlformats-officedocument.presentationml.presentation",

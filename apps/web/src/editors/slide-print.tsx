@@ -1,15 +1,9 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
-import type { Presentation, Slide } from "@suiteleaf/core";
+import type { Presentation } from "@suiteleaf/core";
 import { prepareMarpDocument } from "./slide-marp-runtime";
 import { renderMarpPages } from "./slide-marp-render";
-import { SlideMasterLayer } from "./slide-master-ui";
+import { SlideStill, slideBackground } from "./slide-surface";
 
 /** Mount the full deck before both native browser printing and app print commands. */
 export function useSlidePrint(
@@ -77,11 +71,9 @@ export function useSlidePrint(
 export function SlidePrintDeck({
   active,
   deck,
-  renderSlide,
 }: {
   active: boolean;
   deck: Presentation;
-  renderSlide: (slide: Slide) => ReactNode;
 }) {
   const marpRender = useMemo(
     () => (active ? renderMarpPages(deck) : null),
@@ -159,25 +151,15 @@ export function SlidePrintDeck({
         return (
           <div
             key={id}
-            className={`slides-print-page show-slide slide-canvas${deck.marpFit ? " marp-fit" : ""}`}
+            className="slides-print-page"
             data-print-slide={index + 1}
             style={{
               width: cssWidth,
               height: cssHeight,
-              backgroundColor:
-                slide.background?.color ||
-                deck.master?.background?.color ||
-                "#ffffff",
+              backgroundColor: slideBackground(deck, slide),
             }}
           >
-            <SlideMasterLayer
-              deck={deck}
-              font={(size) => `calc(${size} / ${width} * 100cqw)`}
-            />
-            {renderSlide(slide)}
-            {deck.slideNumbers && (
-              <div className="slide-number">{index + 1}</div>
-            )}
+            <SlideStill deck={deck} slide={slide} index={index} />
           </div>
         );
       })}

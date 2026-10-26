@@ -11,7 +11,7 @@ async function download(page: Page) {
 
 async function openNative(page: Page, name: string, file: ReturnType<typeof createFile>) {
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name,
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),

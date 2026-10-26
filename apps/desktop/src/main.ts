@@ -9,7 +9,7 @@ import {
   shell,
   type IpcMainInvokeEvent,
 } from "electron";
-import { join, resolve, extname, sep, basename, dirname } from "node:path";
+import { join, resolve, extname, sep, basename, dirname, relative } from "node:path";
 import { readFile } from "node:fs/promises";
 import { mkdirSync } from "node:fs";
 import { convertOffice } from "./office-converter";
@@ -292,9 +292,10 @@ function createWindow() {
     const current = window?.webContents.getURL();
     if (url.split("#")[0] !== current?.split("#")[0]) event.preventDefault();
   });
-  window.on("close", (event) => {
-    if (dirty) {
-      const choice = dialog.showMessageBoxSync(window!, {
+  let closeChosen = false;
+  const chooseClose = () =>
+    (closeChosen ||=
+      dialog.showMessageBoxSync(window!, {
         type: "warning",
         buttons: ["Keep editing", "Close"],
         defaultId: 0,
@@ -302,9 +303,13 @@ function createWindow() {
         message: "Changes are still being saved.",
         detail:
           "Keep this window open until the save completes. Closing now may lose the latest edits.",
-      });
-      if (choice === 0) event.preventDefault();
-    }
+      }) === 1);
+  window.on("close", (event) => {
+    if (dirty && !chooseClose()) event.preventDefault();
+  });
+  // The page's beforeunload guard would otherwise cancel a close the user already chose.
+  window.webContents.on("will-prevent-unload", (event) => {
+    if (chooseClose()) event.preventDefault();
   });
   window.on("closed", () => {
     window = null;
@@ -474,6 +479,42 @@ else {
       }
       documentsDirectory = next;
       return next;
+    });
+    /** A "/"-separated folder path from the app, resolved inside the documents folder. */
+    const documentsFolder = (folder: unknown) => {
+      if (mode.kind !== "single") throw new Error("Folders are available in single-user mode.");
+      if (typeof folder !== "string") throw new Error("Invalid folder.");
+      const parts = folder.split("/").filter(Boolean);
+      if (parts.some((part) => part === "." || part === ".." || part.startsWith(".") || part.includes("\\")))
+        throw new Error("Invalid folder.");
+      return join(documentsDirectory, ...parts);
+    };
+    const folderName = (name: unknown) => {
+      const trimmed = typeof name === "string" ? name.trim() : "";
+      if (!trimmed || trimmed === "." || trimmed === ".." || trimmed.length > 120)
+        throw new Error("Choose a folder name.");
+      if (trimmed.startsWith(".")) throw new Error("Folder names cannot start with a dot.");
+      if (/[/\\:\0]/.test(trimmed)) throw new Error("Folder names cannot contain / \\ or :.");
+      return trimmed;
+    };
+    const relativeFolder = (path: string) => relative(documentsDirectory, path).split(sep).join("/");
+    register("folders:list", () => (mode.kind === "single" ? store.folderPaths(documentsDirectory) : []));
+    register("folders:create", async (parent, name) =>
+      relativeFolder(await store.createFolder(documentsFolder(parent), folderName(name))),
+    );
+    register("folders:rename", async (folder, name) => {
+      const path = documentsFolder(folder);
+      if (path === documentsDirectory) throw new Error("Choose a folder to rename.");
+      return relativeFolder(await store.moveFolder(path, dirname(path), folderName(name)));
+    });
+    register("folders:move", async (folder, parent) => {
+      const path = documentsFolder(folder);
+      if (path === documentsDirectory) throw new Error("Choose a folder to move.");
+      return relativeFolder(await store.moveFolder(path, documentsFolder(parent)));
+    });
+    register("files:move", (id, folder) => {
+      if (typeof id !== "string") throw new Error("Invalid file ID.");
+      return store.moveFile(id, documentsFolder(folder));
     });
     register("files:list", () => store.list());
     register("files:get", (id) => {

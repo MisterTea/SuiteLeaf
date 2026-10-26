@@ -170,6 +170,7 @@ test("an @mention is stored apart from the sentence and opens on that person", a
 
   await page.getByRole("button", { name: "Back to files" }).click();
   const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Import", exact: true }).click();
   await page.getByRole("button", { name: "Open / import" }).click();
   await (await chooser).setFiles(docxPath);
   await expect(page.getByRole("textbox", { name: "Document content" })).toContainText("grew 12%");

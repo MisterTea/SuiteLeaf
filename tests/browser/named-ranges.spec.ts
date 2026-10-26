@@ -22,7 +22,7 @@ function budgetFile() {
 
 async function openSheet(page: Page) {
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "Rent budget.slsheet",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(budgetFile())),
@@ -122,7 +122,7 @@ function excelRent() {
 
 test("an Excel defined name calculates and survives a SuiteLeaf download and an xlsx export", async ({ page }) => {
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "Rent from Excel.xlsx",
     mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     buffer: excelRent(),

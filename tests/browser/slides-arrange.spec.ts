@@ -86,7 +86,7 @@ test("every Slides Edit, Insert, Format, and Slide menu item does something", as
   await expect(page.locator(".slide-image.selected")).toBeVisible();
   const images = () => page.locator(".slide-canvas .slide-image");
   await expect(images()).toHaveCount(1);
-  const first = await page.locator(".slide-image").getAttribute("data-x");
+  const first = await page.locator(".slide-canvas .slide-image").getAttribute("data-x");
 
   await choose(page, "Edit", "Copy");
   await choose(page, "Edit", "Paste");

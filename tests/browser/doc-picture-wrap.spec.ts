@@ -150,6 +150,7 @@ test("wrap text puts a picture beside the paragraph and keeps corner resize", as
 
   await page.getByRole("button", { name: "Back to files" }).click();
   const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Import", exact: true }).click();
   await page.getByRole("button", { name: "Open / import" }).click();
   await (await chooser).setFiles(savedPath);
   const same = page.getByRole("dialog", { name: /already/ });
@@ -161,6 +162,7 @@ test("wrap text puts a picture beside the paragraph and keeps corner resize", as
 test("a square-wrapped Word picture opens beside the text", async ({ page }) => {
   await page.goto("/");
   const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Import", exact: true }).click();
   await page.getByRole("button", { name: "Open / import" }).click();
   await (
     await chooser
@@ -179,6 +181,7 @@ test("a square-wrapped Word picture opens beside the text", async ({ page }) => 
 
   await page.goto("/");
   const inlineChooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Import", exact: true }).click();
   await page.getByRole("button", { name: "Open / import" }).click();
   await (
     await inlineChooser

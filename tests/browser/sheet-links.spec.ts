@@ -15,7 +15,7 @@ async function openSuppliers(page: Page) {
     0: { w: 180 },
   };
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "Suppliers.slsheet",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),

@@ -11,6 +11,7 @@ extraResources:
   - from: resources/THIRD_PARTY_NOTICES.txt
     to: THIRD_PARTY_NOTICES.txt
 icon: resources/icon.png
+afterPack: scripts/after-pack.mjs
 asar: true
 asarUnpack:
   - node_modules/node-llama-cpp/**

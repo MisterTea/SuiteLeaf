@@ -179,8 +179,9 @@ function spring() {
 async function importDeck(page: Page, title: string, json: string) {
   if (await page.getByRole("button", { name: "Back to files" }).isVisible())
     await page.getByRole("button", { name: "Back to files" }).click();
-  await expect(page.getByRole("button", { name: "Open / import" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Import", exact: true })).toBeVisible();
   const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Import", exact: true }).click();
   await page.getByRole("button", { name: "Open / import" }).click();
   await (await chooser).setFiles({
     name: `${title}.slslides`,
@@ -324,8 +325,9 @@ test("a saved theme applies to another deck as a copy", async ({ page }) => {
   savedFile.id = crypto.randomUUID();
   savedFile.content.id = savedFile.id;
   await page.getByRole("button", { name: "Back to files" }).click();
-  await expect(page.getByRole("button", { name: "Open / import" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Import", exact: true })).toBeVisible();
   const again = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Import", exact: true }).click();
   await page.getByRole("button", { name: "Open / import" }).click();
   await (await again).setFiles({
     name: "Spring classes.slslides",
@@ -344,7 +346,7 @@ test("a saved theme applies to another deck as a copy", async ({ page }) => {
 test("the theme library fits on a phone", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "Fundraiser pitch.slslides",
     mimeType: "application/json",
     buffer: Buffer.from(fundraiser()),

@@ -1,5 +1,5 @@
 import { it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, mkdir, readFile, readdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rename, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FileStore, atomicWrite } from "../apps/desktop/src/store";
@@ -283,4 +283,78 @@ it("keeps dismissed directory files hidden until their contents change, includin
   await writeFile(path, serializeFile(file));
   await reopened.syncFolder(docs);
   expect((await reopened.list())[0].file.title).toBe("New cloud version");
+});
+it("keeps the documents folder's folders, and sees one made or removed outside SuiteLeaf", async () => {
+  const docs = join(dir, "SuiteLeaf");
+  await mkdir(join(docs, "Garden", "Seeds"), { recursive: true });
+  await mkdir(join(docs, ".hidden"), { recursive: true });
+  await store.syncFolder(docs);
+  expect(store.folderPaths(docs)).toEqual(["Garden", "Garden/Seeds"]);
+  expect(await store.syncFolder(docs)).toBe(false);
+  await mkdir(join(docs, "Recipes"));
+  expect(await store.syncFolder(docs)).toBe(true);
+  expect(store.folderPaths(docs)).toEqual(["Garden", "Garden/Seeds", "Recipes"]);
+  await rm(join(docs, "Garden", "Seeds"), { recursive: true });
+  expect(await store.syncFolder(docs)).toBe(true);
+  expect(store.folderPaths(docs)).toEqual(["Garden", "Recipes"]);
+});
+it("moves a file into a folder on disk, and writes a file that was not on disk yet", async () => {
+  const docs = join(dir, "SuiteLeaf");
+  await mkdir(join(docs, "Garden"), { recursive: true });
+  const saved = { ...createFile("doc"), title: "Plan" };
+  await store.saveAs({ file: saved }, join(docs, "Plan.sldoc"));
+  await writeFile(join(docs, "Garden", "Plan.sldoc"), "taken");
+  await store.syncFolder(docs);
+
+  const moved = await store.moveFile(saved.id, join(docs, "Garden"));
+  expect(moved.path).toBe(join(docs, "Garden", "Plan (2).sldoc"));
+  expect(JSON.parse(await readFile(moved.path!, "utf8")).id).toBe(saved.id);
+  expect(await readdir(docs)).toEqual(["Garden"]);
+  expect(await store.syncFolder(docs)).toBe(false);
+  moved.file.title = "Plan, edited";
+  await store.save(moved);
+  expect(JSON.parse(await readFile(moved.path!, "utf8")).title).toBe("Plan, edited");
+
+  const draft = { ...createFile("sheet"), title: "Seed list" };
+  await store.save({ file: draft });
+  const written = await store.moveFile(draft.id, join(docs, "Garden"));
+  expect(written.path).toBe(join(docs, "Garden", "Seed list.slsheet"));
+  expect(written.recovery).toBe(false);
+  expect(JSON.parse(await readFile(written.path!, "utf8")).title).toBe("Seed list");
+  await expect(store.moveFile(draft.id, join(docs, "Nowhere"))).rejects.toThrow("no longer there");
+});
+it("moves and renames a folder on disk with the library's files inside it", async () => {
+  const docs = join(dir, "SuiteLeaf");
+  await mkdir(join(docs, "Garden", "Seeds"), { recursive: true });
+  await mkdir(join(docs, "Archive"), { recursive: true });
+  const seeds = createFile("doc");
+  await store.saveAs({ file: seeds }, join(docs, "Garden", "Seeds", "Seeds.sldoc"));
+  await store.syncFolder(docs);
+
+  await store.moveFolder(join(docs, "Garden"), join(docs, "Archive"));
+  const inside = join(docs, "Archive", "Garden", "Seeds", "Seeds.sldoc");
+  expect((await store.get(seeds.id))?.path).toBe(inside);
+  expect(store.folderPaths(docs)).toEqual(["Archive", "Archive/Garden", "Archive/Garden/Seeds"]);
+  expect(await store.syncFolder(docs)).toBe(false);
+
+  await store.moveFolder(join(docs, "Archive", "Garden"), join(docs, "Archive"), "Yard");
+  expect((await store.get(seeds.id))?.path).toBe(join(docs, "Archive", "Yard", "Seeds", "Seeds.sldoc"));
+  await expect(
+    store.moveFolder(join(docs, "Archive"), join(docs, "Archive", "Yard")),
+  ).rejects.toThrow("inside itself");
+  await store.createFolder(docs, "Yard");
+  await expect(store.moveFolder(join(docs, "Archive", "Yard"), docs)).rejects.toThrow("already something");
+  await expect(store.createFolder(docs, "Yard")).rejects.toThrow("already something");
+  expect(store.folderPaths(docs)).toContain("Yard");
+});
+it("follows a folder renamed outside SuiteLeaf", async () => {
+  const docs = join(dir, "SuiteLeaf");
+  await mkdir(join(docs, "Garden"), { recursive: true });
+  const plan = createFile("doc");
+  await store.saveAs({ file: plan }, join(docs, "Garden", "Plan.sldoc"));
+  await store.syncFolder(docs);
+  await rename(join(docs, "Garden"), join(docs, "Yard"));
+  expect(await store.syncFolder(docs)).toBe(true);
+  expect((await store.get(plan.id))?.path).toBe(join(docs, "Yard", "Plan.sldoc"));
+  expect(store.folderPaths(docs)).toEqual(["Yard"]);
 });

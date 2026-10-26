@@ -55,7 +55,7 @@ test("sheet list summarizes every worksheet and shows a hidden sheet when it is 
   };
 
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "household.suiteleaf",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),

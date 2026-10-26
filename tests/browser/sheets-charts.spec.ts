@@ -56,7 +56,8 @@ test("every Sheets toolbar control stays on screen, with extras on a second row"
   }
 
   // The toolbar must not clip its own menus.
-  await page.getByRole("button", { name: "More formats", exact: true }).click();
+  // A <summary>, so it has a label rather than the button role.
+  await page.getByLabel("More formats", { exact: true }).click();
   const list = page.locator(".more-formats-menu");
   await expect(list).toBeVisible();
   expect(await onScreen(list)).toBe(true);

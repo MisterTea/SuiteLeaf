@@ -18,7 +18,7 @@ try {
   });
   await page.goto("http://127.0.0.1:5173");
   await page
-    .locator("input[type=file]")
+    .locator("input[type=file]:not([webkitdirectory])")
     .first()
     .setInputFiles(
       "datasets/apache-poi/files/test-data/spreadsheet/WithChart.xlsx",

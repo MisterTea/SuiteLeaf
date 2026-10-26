@@ -16,7 +16,7 @@ async function openBytes(
   mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ) {
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name,
     mimeType: mime,
     buffer: Buffer.from(bytes),

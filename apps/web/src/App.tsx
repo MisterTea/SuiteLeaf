@@ -36,6 +36,7 @@ import {
   CircleAlert,
   Trash2,
   FolderOpen,
+  FolderPlus,
   Download,
   Star,
   Clock,
@@ -63,6 +64,8 @@ import {
   parseFile,
   compactSession,
   recordEdit,
+  sameJson,
+  cloneJson,
   sealIfIdle,
   versionPauseMs,
   type SuiteFile,
@@ -139,6 +142,8 @@ import { ShareNotices } from "./drive/share-notices";
 import SignUpPage from "./sign-up";
 import { searchFile } from "./library-search";
 import { FileLibraryRow, TrashToast } from "./library-trash-ui";
+import { childFolders, existingFolder, folderName, folderOfPath, isWithinFolder, parentFolder } from "./local-folders";
+import { dragFile, LocalFolderCrumbs, LocalFolderRow, LocalMoveDialog, type DraggedItem } from "./local-folders-ui";
 import {
   deleteForeverCopy,
   emptyTrashCopy,
@@ -885,6 +890,8 @@ function Home() {
     <LocalHome />
   );
 }
+/** The documents folder the home screen showed last, so returning from a file reopens it. */
+let lastLocalFolder = "";
 /** Single-node mode: files on this computer (or, for the web app, in this
  * browser's storage). */
 function LocalHome() {
@@ -908,21 +915,42 @@ function LocalHome() {
       existing: FileRecord;
       incoming: FileRecord;
     } | null>(null);
+  // Desktop only: "All files" browses the folders of the documents folder.
+  const [folders, setFolders] = useState<string[] | null>(null),
+    [root, setRoot] = useState(""),
+    [folder, setFolderState] = useState(lastLocalFolder),
+    [folderDialog, setFolderDialog] = useState<
+      | { kind: "new" }
+      | { kind: "rename" | "move-folder"; folder: string }
+      | { kind: "move-file"; record: FileRecord }
+      | null
+    >(null);
+  const setFolder = (next: string) => {
+    lastLocalFolder = next;
+    setFolderState(next);
+  };
+  /** The folder new and imported files are written into, when one is open. */
+  const placeIn = useRef("");
   const undoTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
   const refresh = useCallback(
     () =>
-      storage
-        .list()
+      Promise.all([
+        storage.list(),
+        window.suiteleaf?.listFolders?.() ?? null,
+        window.suiteleaf?.getDocumentsDirectory?.() ?? "",
+      ])
         // Cached copies of server files belong to cluster mode.
-        .then(async (all) => {
+        .then(async ([all, nextFolders, documents]) => {
           const local = all.filter((r) => !r.drive);
           const now = new Date();
           const expired = local.filter((r) => isTrashExpired(r, now));
           if (expired.length)
             await Promise.all(expired.map((r) => storage.remove(r.file.id)));
           setRecords(local.filter((r) => !isTrashExpired(r, now)));
+          setFolders(nextFolders);
+          setRoot(documents);
         })
         .catch((e) => setError(message(e))),
     [],
@@ -943,7 +971,9 @@ function LocalHome() {
     async (r: FileRecord, notice?: string) => {
       if (!r.path && !r.recovery && (await storage.get(r.file.id)))
         r = { file: duplicateFile(r.file) };
-      const saved = r.path ? r : await storage.save(r);
+      let saved = r.path ? r : await storage.save(r);
+      if (!r.path && placeIn.current && window.suiteleaf?.moveFile)
+        saved = await window.suiteleaf.moveFile(saved.file.id, placeIn.current);
       if (notice) openNotices.set(saved.file.id, notice);
       navigate(`/file/${saved.file.id}`);
     },
@@ -1101,6 +1131,21 @@ function LocalHome() {
     kept = records.filter((r) => !r.trashedAt),
     trashed = records.filter((r) => r.trashedAt),
     focused = searching || filter === "trash" || filter === "starred";
+  const browsing = !!folders && filter === "all" && !searching;
+  /** The open folder, or the nearest one left if it moved or was deleted outside SuiteLeaf. */
+  const here = browsing ? existingFolder(folder, folders) : "";
+  placeIn.current = here;
+  const subfolders = browsing ? childFolders(folders, here) : [];
+  const folderOf = (r: FileRecord) => folderOfPath(r.path, root);
+  const itemsIn = (f: string) =>
+    childFolders(folders ?? [], f).length + kept.filter((r) => folderOf(r) === f).length;
+  const moveInto = (item: DraggedItem, target: string) => {
+    void (async () => {
+      if ("file" in item) await window.suiteleaf?.moveFile?.(item.file, target);
+      else await window.suiteleaf?.moveFolder?.(item.folder, target);
+      await refresh();
+    })().catch((e) => setError(message(e)));
+  };
   const shown = visibleRecords(records, filter, query, new Date(), { forms: formsEnabled })
     .flatMap((r) => {
       const hit = searchFile(r.file, query);
@@ -1116,6 +1161,7 @@ function LocalHome() {
           : a.r.file.updatedAt.localeCompare(b.r.file.updatedAt);
       return sort.desc ? -order : order;
     });
+  const listed = browsing ? shown.filter(({ r }) => folderOf(r) === here) : shown;
   const sortBy = (by: "name" | "edited", label: string) => (
     <button
       className={`sort-head ${sort.by === by ? "active" : ""}`}
@@ -1358,6 +1404,16 @@ function LocalHome() {
         <section className={`file-section ${focused ? "searching" : ""}`}>
           <header>
             <h2>{heading}</h2>
+            {browsing ? (
+              <button
+                type="button"
+                className="new-folder-btn"
+                onClick={() => setFolderDialog({ kind: "new" })}
+              >
+                <FolderPlus size={16} />
+                New folder
+              </button>
+            ) : null}
             {searching ? (
               <button onClick={() => setQuery("")}>Clear search</button>
             ) : (
@@ -1368,6 +1424,9 @@ function LocalHome() {
               />
             )}
           </header>
+          {browsing ? (
+            <LocalFolderCrumbs folder={here} onOpen={setFolder} onDrop={moveInto} />
+          ) : null}
           {filter === "trash" ? (
             <div className="trash-banner">
               <p>{trashViewNote(desktop)}</p>
@@ -1398,7 +1457,7 @@ function LocalHome() {
               }}
             />
           ) : null}
-          {filter === "all" && !searching && kept.length === 0 ? (
+          {filter === "all" && !searching && kept.length === 0 && subfolders.length === 0 && !here ? (
             <div className="empty">
               <FolderOpen size={34} />
               <h3>A workspace waiting for you</h3>
@@ -1408,11 +1467,13 @@ function LocalHome() {
               </p>
               <div>{samples}</div>
             </div>
-          ) : shown.length === 0 ? (
+          ) : listed.length === 0 && subfolders.length === 0 ? (
             <div className="empty">
               {searching ? <Search size={30} /> : <FolderOpen size={34} />}
               <h3>
-                {searching
+                {browsing
+                  ? "This folder is empty"
+                  : searching
                   ? `No files match “${query.trim()}”`
                   : filter === "trash"
                     ? "Trash is empty"
@@ -1421,7 +1482,9 @@ function LocalHome() {
                       : `No ${kindLabel.toLowerCase()} yet`}
               </h3>
               <p>
-                {searching
+                {browsing
+                  ? "Create a file or a folder here, or drag files onto this folder's name above."
+                  : searching
                   ? "Search looks at file names and the words inside them, including Trash."
                   : filter === "trash"
                     ? "Files you delete wait here for 30 days."
@@ -1437,13 +1500,26 @@ function LocalHome() {
                 {sortBy("edited", "Last edited")}
                 <span />
               </div>
-              {shown.map(({ r, snippet }) => (
+              {subfolders.map((f) => (
+                <LocalFolderRow
+                  key={f}
+                  folder={f}
+                  count={itemsIn(f)}
+                  onOpen={() => setFolder(f)}
+                  onRename={() => setFolderDialog({ kind: "rename", folder: f })}
+                  onMove={() => setFolderDialog({ kind: "move-folder", folder: f })}
+                  onDrop={moveInto}
+                />
+              ))}
+              {listed.map(({ r, snippet }) => (
                 <FileLibraryRow
                   key={r.file.id}
                   record={r}
                   snippet={snippet}
                   view={filter}
                   desktop={desktop}
+                  onMove={folders ? () => setFolderDialog({ kind: "move-file", record: r }) : undefined}
+                  onDragStart={browsing ? (event) => dragFile(event, r.file.id) : undefined}
                   onRename={() => setRenaming(r)}
                   onDuplicate={() =>
                     void storage
@@ -1473,6 +1549,65 @@ function LocalHome() {
                 setRenaming(null);
                 if (title !== record.file.title)
                   void rename(record, title).catch((e) => setError(message(e)));
+              }}
+            />
+          ) : null}
+          {folderDialog?.kind === "new" ? (
+            <NameDialog
+              title="New folder"
+              submitLabel="Create"
+              initial="Untitled folder"
+              onClose={() => setFolderDialog(null)}
+              onSubmit={(name) => {
+                setFolderDialog(null);
+                void (async () => {
+                  await window.suiteleaf?.createFolder?.(here, name);
+                  await refresh();
+                })().catch((e) => setError(message(e)));
+              }}
+            />
+          ) : null}
+          {folderDialog?.kind === "rename" ? (
+            <NameDialog
+              title="Rename folder"
+              submitLabel="OK"
+              initial={folderName(folderDialog.folder)}
+              onClose={() => setFolderDialog(null)}
+              onSubmit={(name) => {
+                const renamed = folderDialog.folder;
+                setFolderDialog(null);
+                if (name === folderName(renamed)) return;
+                void (async () => {
+                  const next = await window.suiteleaf?.renameFolder?.(renamed, name);
+                  if (next !== undefined && isWithinFolder(folder, renamed))
+                    setFolder(next + folder.slice(renamed.length));
+                  await refresh();
+                })().catch((e) => setError(message(e)));
+              }}
+            />
+          ) : null}
+          {folderDialog?.kind === "move-folder" && folders ? (
+            <LocalMoveDialog
+              name={folderName(folderDialog.folder)}
+              from={parentFolder(folderDialog.folder)}
+              folders={folders}
+              moving={folderDialog.folder}
+              onClose={() => setFolderDialog(null)}
+              onMove={(target) => {
+                setFolderDialog(null);
+                moveInto({ folder: folderDialog.folder }, target);
+              }}
+            />
+          ) : null}
+          {folderDialog?.kind === "move-file" && folders ? (
+            <LocalMoveDialog
+              name={folderDialog.record.file.title}
+              from={folderOf(folderDialog.record)}
+              folders={folders}
+              onClose={() => setFolderDialog(null)}
+              onMove={(target) => {
+                setFolderDialog(null);
+                moveInto({ file: folderDialog.record.file.id }, target);
               }}
             />
           ) : null}
@@ -1980,7 +2115,7 @@ function Workspace() {
     clearTimeout(timer.current);
     if (!current.current) return;
     const at = version.current;
-    const snapshot = structuredClone(current.current.file);
+    const snapshot = cloneJson(current.current.file);
     setStatus("Saving…");
     try {
       await queue.current.enqueue(async () => {
@@ -2392,8 +2527,7 @@ function Workspace() {
       if (file.kind === "form") {
         if (!canSaveRef.current) return;
       } else if (!canEditRef.current) return;
-      const sameContent =
-        JSON.stringify(content) === JSON.stringify(file.content);
+      const sameContent = sameJson(content, file.content);
       const sameTabs =
         !docTabs ||
         file.kind !== "doc" ||

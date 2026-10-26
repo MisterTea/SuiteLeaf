@@ -64,7 +64,7 @@ test("binding gutter swaps sides and survives reopen", async ({ page }) => {
     ],
   };
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "minutes.suiteleaf",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),

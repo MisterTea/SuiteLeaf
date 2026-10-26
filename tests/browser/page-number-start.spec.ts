@@ -52,7 +52,7 @@ function minutes(): DocFile {
 
 async function openMinutes(page: Page) {
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "October minutes.sldoc",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(minutes())),
@@ -182,8 +182,8 @@ test("start at and an unnumbered cover survive the page setup dialog", async ({
 test("start at and cover stay reachable on a phone", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 780 });
   await openMinutes(page);
-  await page.getByRole("button", { name: "File", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Page setup…" }).click();
+  // A phone folds the menu bar away; the toolbar keeps Page setup.
+  await page.getByRole("button", { name: "Page setup", exact: true }).click();
   const setup = page.getByRole("dialog", { name: "Page setup" });
   const start = setup.getByLabel("Start at");
   const cover = setup.getByRole("checkbox", { name: "Cover has no number" });

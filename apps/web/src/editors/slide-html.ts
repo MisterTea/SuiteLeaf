@@ -15,7 +15,11 @@ export function deckToHtml(deck: Presentation, title: string): string {
         .map((el) => {
           const pos = `position: absolute; left: ${(el.x / (deck.width || 960)) * 100}%; top: ${(el.y / (deck.height || 540)) * 100}%; width: ${(el.width / (deck.width || 960)) * 100}%; height: ${(el.height / (deck.height || 540)) * 100}%;`;
           if (el.type === "text") {
-            const weight = hasTextRuns(el) ? "normal" : el.bold ? "bold" : "normal";
+            const weight = hasTextRuns(el)
+              ? "normal"
+              : el.bold
+                ? "bold"
+                : "normal";
             const family = JSON.stringify(el.fontFamily || "Arial");
             const outline =
               el.wordArt && el.stroke
@@ -29,7 +33,7 @@ export function deckToHtml(deck: Presentation, title: string): string {
           }
           if ((el.type === "audio" || el.type === "video") && el.src) {
             const name = escapeHtml(el.alt || el.type);
-            return `<div style="${pos}"><${el.type} src="${el.src}" controls></${el.type}><p>${name}</p></div>`;
+            return `<div style="${pos}"><${el.type} src="${el.src}"${el.type === "video" && el.poster ? ` poster="${escapeHtml(el.poster)}"` : ""} controls></${el.type}><p>${name}</p></div>`;
           }
           if (el.type === "shape") {
             const border = el.stroke

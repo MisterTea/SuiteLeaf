@@ -1,10 +1,14 @@
 import { dataUriFor } from "./slide-marp-import";
+import { DECK_THEMES } from "./slide-theme";
 
 type BundleFile = {
   relativePath: string;
   file: Pick<File, "size" | "text" | "arrayBuffer">;
 };
 export const MARP_COMPILED_HTML = "@marp/compiled.html";
+
+/** Themes the editor draws without a stylesheet beside the markdown. */
+const KNOWN_THEMES = new Set(["default", "gaia", "uncover", ...DECK_THEMES.map((theme) => theme.id)]);
 
 const pathsIn = (text: string): string[] => {
   const paths = new Set<string>();
@@ -40,8 +44,7 @@ function resolvePickedPath(base: string, raw: string): string | null {
 export function marpBundlePaths(markdown: string): string[] {
   const paths = pathsIn(markdown);
   const theme = /^theme:\s*([\w-]+)/m.exec(markdown)?.[1];
-  if (theme && !["default", "gaia", "uncover", "beam_ut"].includes(theme))
-    paths.push(`${theme}.css`);
+  if (theme && !KNOWN_THEMES.has(theme)) paths.push(`${theme}.css`);
   return paths;
 }
 
@@ -132,8 +135,7 @@ export function missingMarpTheme(
   assets: Record<string, string>,
 ): string | null {
   const theme = /^theme:\s*([\w-]+)/m.exec(markdown)?.[1];
-  if (!theme || ["default", "gaia", "uncover", "beam_ut"].includes(theme))
-    return null;
+  if (!theme || KNOWN_THEMES.has(theme)) return null;
   const header = new RegExp(`@theme\\s+${theme}(?:\\s|\\*)`);
   return Object.values(assets).some((uri) => {
     const encoded = /^data:text\/css(;base64)?,(.*)$/s.exec(uri);

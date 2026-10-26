@@ -38,7 +38,7 @@ function minutes(): DocFile {
 
 async function openMinutes(page: Page) {
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "Minutes.sldoc",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(minutes())),

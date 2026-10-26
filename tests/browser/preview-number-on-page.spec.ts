@@ -48,7 +48,7 @@ function preface(pages: string[]): DocFile {
 
 async function openPreface(page: Page, pages: string[]) {
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "Preface.sldoc",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(preface(pages))),

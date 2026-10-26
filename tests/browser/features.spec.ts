@@ -37,7 +37,7 @@ test("live pagination, page setup, editing, native reopen and DOCX download", as
     })),
   };
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "pages.suiteleaf",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),
@@ -256,7 +256,7 @@ test("comments are signed with the local name and keep it on another computer", 
   const other = await browser.newContext({ baseURL });
   const jordan = await other.newPage();
   await jordan.goto("/");
-  await jordan.locator("input[type=file]").setInputFiles({
+  await jordan.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "budget.slsheet",
     mimeType: "application/json",
     buffer: Buffer.from(JSON.stringify(saved)),
@@ -319,7 +319,7 @@ async function openChecklist(page: Page, resources: unknown[] = []) {
     data: JSON.stringify({ [id]: (r as { data: unknown }).data }),
   })) as never;
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "checklist.slsheet",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(file)),

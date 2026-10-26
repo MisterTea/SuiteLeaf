@@ -7,6 +7,7 @@ test.use({ viewport: { width: 1280, height: 800 } });
 async function openLetter(page: Page) {
   await page.goto("/");
   const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Import", exact: true }).click();
   await page.getByRole("button", { name: "Open / import" }).click();
   await (
     await chooser

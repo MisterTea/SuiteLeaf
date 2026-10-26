@@ -49,7 +49,7 @@ function report(restart = false): DocFile {
 
 async function openReport(page: Page, restart = false) {
   await page.goto("/");
-  await page.locator("input[type=file]").setInputFiles({
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
     name: "Field report.sldoc",
     mimeType: "application/json",
     buffer: Buffer.from(serializeFile(report(restart))),

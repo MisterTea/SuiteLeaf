@@ -17,23 +17,20 @@ it("prints every slide in deck order with its background and page number", () =>
   const file = createFile("slide");
   if (file.kind !== "slide") throw new Error("Expected slides");
   const first = file.content.slides[file.content.slideOrder[0]];
+  const words = (content: string) => [
+    { id: `${content}-words`, type: "text" as const, x: 40, y: 40, width: 400, height: 80, content },
+  ];
   file.content.slides = {
-    a: { ...first, id: "a", title: "First", background: { color: "#ff0000" } },
-    b: { ...first, id: "b", title: "Second" },
+    a: { ...first, id: "a", title: "First", elements: words("First"), background: { color: "#ff0000" } },
+    b: { ...first, id: "b", title: "Second", elements: words("Second") },
   };
   file.content.slideOrder = ["b", "a"];
   file.content.slideNumbers = true;
-  const view = render(
-    <SlidePrintDeck
-      active
-      deck={file.content}
-      renderSlide={(slide) => <span>{slide.title}</span>}
-    />,
-  );
+  const view = render(<SlidePrintDeck active deck={file.content} />);
   const pages = [
     ...document.querySelectorAll<HTMLElement>(".slides-print-page"),
   ];
-  expect(pages.map((page) => page.querySelector("span")?.textContent)).toEqual([
+  expect(pages.map((page) => page.querySelector(".slide-text")?.textContent)).toEqual([
     "Second",
     "First",
   ]);
@@ -42,11 +39,7 @@ it("prints every slide in deck order with its background and page number", () =>
   ).toEqual(["1", "2"]);
   expect(pages[1].style.backgroundColor).toBe("rgb(255, 0, 0)");
   view.rerender(
-    <SlidePrintDeck
-      active={false}
-      deck={file.content}
-      renderSlide={() => null}
-    />,
+    <SlidePrintDeck active={false} deck={file.content} />,
   );
   expect(document.querySelector(".slides-print-deck")).toBeNull();
 });
@@ -85,13 +78,11 @@ marp: true
 <!-- backgroundColor: black -->
 # Second
 <script>window.untrusted = true</script>`;
-  render(
-    <SlidePrintDeck
-      active
-      deck={file.content}
-      renderSlide={() => <span>Lossy boxes</span>}
-    />,
-  );
+  const slide = file.content.slides[file.content.slideOrder[0]];
+  slide.elements = [
+    { id: "lossy", type: "text", x: 40, y: 40, width: 400, height: 80, content: "Lossy boxes" },
+  ];
+  render(<SlidePrintDeck active deck={file.content} />);
   const frames = [
     ...document.querySelectorAll<HTMLIFrameElement>(".marp-print-deck iframe"),
   ];
@@ -115,13 +106,10 @@ it("prints current canvas content when direct edits supersede the retained Marp 
   file.content.marp = true;
   file.content.marpSource = "# Old source";
   file.content.marpSourceDirty = true;
-  render(
-    <SlidePrintDeck
-      active
-      deck={file.content}
-      renderSlide={() => <span>Edited content</span>}
-    />,
-  );
+  file.content.slides[file.content.slideOrder[0]].elements = [
+    { id: "edited", type: "text", x: 40, y: 40, width: 400, height: 80, content: "Edited content" },
+  ];
+  render(<SlidePrintDeck active deck={file.content} />);
   expect(document.body.textContent).toContain("Edited content");
   expect(document.querySelector(".marp-print-deck")).toBeNull();
 });
@@ -137,7 +125,7 @@ it("preserves compiled companion pagination while stripping authored scripts and
     "@marp/compiled.html": `data:text/html;base64,${btoa(html)}`,
   };
   render(
-    <SlidePrintDeck active deck={file.content} renderSlide={() => null} />,
+    <SlidePrintDeck active deck={file.content} />,
   );
   const frame = document.querySelector<HTMLIFrameElement>(
     ".marp-print-deck iframe",
@@ -167,7 +155,7 @@ it("releases embedded asset URLs after the print surface closes", () => {
     "plot.svg": `data:image/svg+xml;base64,${btoa('<svg xmlns="http://www.w3.org/2000/svg"/>')}`,
   };
   const view = render(
-    <SlidePrintDeck active deck={file.content} renderSlide={() => null} />,
+    <SlidePrintDeck active deck={file.content} />,
   );
   expect(create).toHaveBeenCalledTimes(1);
   expect(document.querySelector("iframe")!.srcdoc).toContain(

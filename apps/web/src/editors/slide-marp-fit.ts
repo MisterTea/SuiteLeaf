@@ -1,12 +1,16 @@
 import type { Presentation, Slide, SlideElement, TextRun } from "@suiteleaf/core";
-import { Marp } from "@marp-team/marp-core";
 import beamUtCss from "./themes/beam_ut.css?raw";
 import { newSlide } from "./slide-layouts";
-import { mergeConsecutiveText } from "./slide-marp";
+import { keepElementIds, mergeConsecutiveText } from "./slide-marp";
+import { marpEngine, SOURCE_LINES } from "./slide-marp-engine";
+import { holdAssetUrl, marpDocument, releaseAssetUrl } from "./slide-marp-render";
+import { prepareMarpDocument } from "./slide-marp-runtime";
+import { isHtmlOnly, mapMarpSource, type LineRange } from "./slide-marp-source";
 
 const LOGO_KEY = "beam-ut-logo";
 /** Bump when measured boxes should be placed again on decks saved with an older fit. */
-export const MARP_FIT_REVISION = 3;
+export const MARP_FIT_REVISION = 4;
+const SOURCE = `[${SOURCE_LINES}]`;
 const BLOCKS = new Set([
   "H1",
   "H2",
@@ -43,28 +47,16 @@ function hexColor(color: string): string | undefined {
   return `#${channel(match[1])}${channel(match[2])}${channel(match[3])}`;
 }
 
-function dataUriToBlob(uri: string): Blob | null {
-  const match = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(uri);
-  if (!match) return null;
-  const mime = match[1] || "application/octet-stream";
-  const data = match[3] ?? "";
-  if (match[2]) {
-    const binary = atob(data);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    return new Blob([bytes], { type: mime });
-  }
-  return new Blob([decodeURIComponent(data)], { type: mime });
-}
-
+/** The markdown with each asset path replaced by a held object URL, and the way back. */
 function blobMarkdown(markdown: string, assets: Record<string, string>) {
   const urls = new Map<string, string>();
+  const held: string[] = [];
   let next = markdown;
   const paths = Object.keys(assets).sort((a, b) => b.length - a.length);
   for (const path of paths) {
-    const blob = dataUriToBlob(assets[path]);
-    if (!blob) continue;
-    const url = URL.createObjectURL(blob);
+    if (!next.includes(path)) continue;
+    const url = holdAssetUrl(assets[path]);
+    held.push(assets[path]);
     urls.set(url, path);
     next = next.split(path).join(url);
   }
@@ -72,22 +64,47 @@ function blobMarkdown(markdown: string, assets: Record<string, string>) {
     markdown: next,
     urls,
     revoke() {
-      for (const url of urls.keys()) URL.revokeObjectURL(url);
+      for (const uri of held) releaseAssetUrl(uri);
     },
   };
 }
 
-function pushRun(runs: TextRun[], text: string, bold: boolean, italic: boolean) {
+type RunStyle = { bold?: boolean; italic?: boolean; underline?: boolean; color?: string };
+
+function pushRun(runs: TextRun[], text: string, style: RunStyle = {}) {
   if (!text) return;
   const prev = runs[runs.length - 1];
-  if (prev && !!prev.bold === bold && !!prev.italic === italic) {
+  if (
+    prev &&
+    !!prev.bold === !!style.bold &&
+    !!prev.italic === !!style.italic &&
+    !!prev.underline === !!style.underline &&
+    prev.color === style.color
+  ) {
     prev.text += text;
     return;
   }
   const run: TextRun = { text };
-  if (bold) run.bold = true;
-  if (italic) run.italic = true;
+  if (style.bold) run.bold = true;
+  if (style.italic) run.italic = true;
+  if (style.underline) run.underline = true;
+  if (style.color) run.color = style.color;
   runs.push(run);
+}
+
+/** Underline and color written in the slide's HTML. A theme's link styling is not markup. */
+function markedStyle(node: Node, root: HTMLElement): { underline?: boolean; color?: string } {
+  let underline = false;
+  let color: string | undefined;
+  for (let at = node.parentElement; at && at !== root; at = at.parentElement) {
+    const decoration = `${at.style?.textDecorationLine ?? ""} ${at.style?.textDecoration ?? ""}`;
+    if (at.tagName === "U" || at.tagName === "INS" || decoration.includes("underline")) underline = true;
+    if (!color) {
+      const written = at.style?.color || (at.tagName === "FONT" ? at.getAttribute("color") : "");
+      if (written) color = hexColor(getComputedStyle(at).color);
+    }
+  }
+  return { ...(underline ? { underline } : {}), ...(color ? { color } : {}) };
 }
 
 function tidyLines(content: string, pre: boolean) {
@@ -112,18 +129,22 @@ function runsIn(el: HTMLElement): TextRun[] {
         text = text.replace(/\s+/g, " ");
         if (text === " " && (runs.length === 0 || runs[runs.length - 1]?.text.endsWith("\n"))) return;
       }
-      pushRun(runs, text, !!style && weight(style) >= 600, style?.fontStyle === "italic");
+      pushRun(runs, text, {
+        bold: !!style && weight(style) >= 600,
+        italic: style?.fontStyle === "italic",
+        ...markedStyle(node, el),
+      });
       return;
     }
     if (node.nodeType !== Node.ELEMENT_NODE) return;
     const child = node as HTMLElement;
     if (child.tagName === "BR") {
-      pushRun(runs, "\n", false, false);
+      pushRun(runs, "\n");
       return;
     }
     if (child.classList.contains("katex")) {
       const tex = child.querySelector("annotation")?.textContent?.trim();
-      if (tex) pushRun(runs, `$${tex}$`, false, false);
+      if (tex) pushRun(runs, `$${tex}$`);
       return;
     }
     if (child.tagName === "IMG" || child.tagName === "UL" || child.tagName === "OL") return;
@@ -138,17 +159,23 @@ function collapse(runs: TextRun[]): {
   runs?: TextRun[];
   bold?: boolean;
   italic?: boolean;
+  underline?: boolean;
 } {
   const content = runs.map((run) => run.text).join("");
   const styled = runs.filter((run) => run.text.trim());
   const bold = styled.length > 0 && styled.every((run) => run.bold);
   const italic = styled.length > 0 && styled.every((run) => run.italic);
-  const uniform = styled.every((run) => !!run.bold === bold && !!run.italic === italic);
+  const underline = styled.length > 0 && styled.every((run) => run.underline);
+  const uniform = styled.every(
+    (run) =>
+      !!run.bold === bold && !!run.italic === italic && !!run.underline === underline && !run.color,
+  );
   if (uniform) {
     return {
       content,
       ...(bold ? { bold: true as const } : {}),
       ...(italic ? { italic: true as const } : {}),
+      ...(underline ? { underline: true as const } : {}),
     };
   }
   return { content, runs };
@@ -199,6 +226,26 @@ function isPre(el: Element) {
   return el.tagName === "PRE" || el.tagName === "MARP-PRE";
 }
 
+function readLines(el: Element | null): [number, number] | undefined {
+  const match = /^(\d+),(\d+)$/.exec(el?.getAttribute(SOURCE_LINES) ?? "");
+  return match ? [Number(match[1]), Number(match[2])] : undefined;
+}
+
+/** The markdown lines a block was written on. A list item stops where its nested list starts. */
+function sourceLines(el: Element): [number, number] | undefined {
+  const holder = el.matches(SOURCE)
+    ? el
+    : isPre(el)
+      ? el.querySelector(SOURCE)
+      : el.tagName === "IMG"
+        ? el.closest(SOURCE)
+        : null;
+  const lines = readLines(holder);
+  if (!lines || el.tagName !== "LI") return lines;
+  const nested = readLines(el.querySelector(`:scope > ul${SOURCE}, :scope > ol${SOURCE}`));
+  return nested && nested[0] > lines[0] ? [lines[0], Math.min(lines[1], nested[0])] : lines;
+}
+
 type Placed = {
   chrome: SlideElement[];
   content: SlideElement[];
@@ -211,6 +258,8 @@ function measureSection(
   deckWidth: number,
   deckHeight: number,
   heading: { used: boolean },
+  html: LineRange[],
+  source: string[],
 ): Placed {
   const origin = section.getBoundingClientRect();
   const scaleX = origin.width ? deckWidth / origin.width : 1;
@@ -235,12 +284,14 @@ function measureSection(
     const raw = img.getAttribute("src") || img.src;
     const path = urls.get(raw) ?? [...urls.entries()].find(([url]) => raw.endsWith(url) || url.endsWith(raw))?.[1];
     if (!path) return;
+    const lines = sourceLines(img);
     placed.content.push({
       id: crypto.randomUUID(),
       type: "image",
       ...frame,
       src: path,
       alt: img.alt && !/^(width|height):/.test(img.alt) ? img.alt : "Image",
+      ...(lines ? { marpLines: lines } : {}),
     });
   };
 
@@ -267,6 +318,7 @@ function measureSection(
       styled.content = tidyLines(styled.content, false);
       const linePx = parseFloat(style.lineHeight);
       const lineHeight = Number.isFinite(linePx) ? round(linePx / (parseFloat(style.fontSize) || fontSize)) : undefined;
+      const lines = sourceLines(item);
       placed.content.push({
         id: crypto.randomUUID(),
         type: "text",
@@ -277,9 +329,11 @@ function measureSection(
         color: hexColor(style.color) ?? "#141414",
         align: "left",
         themeOverride: true,
+        ...(lines ? { marpLines: lines } : {}),
         ...(lineHeight ? { lineHeight } : {}),
         ...(styled.bold ? { bold: true } : {}),
         ...(styled.italic ? { italic: true } : {}),
+        ...(styled.underline ? { underline: true } : {}),
         ...(styled.runs ? { runs: styled.runs } : {}),
       });
       for (const nested of item.querySelectorAll(":scope > ul, :scope > ol"))
@@ -287,9 +341,31 @@ function measureSection(
     });
   };
 
+  const addHtml = (frames: ReturnType<typeof box>[], lines: [number, number]) => {
+    const x = Math.min(...frames.map((f) => f.x));
+    const y = Math.min(...frames.map((f) => f.y));
+    placed.content.push({
+      id: crypto.randomUUID(),
+      type: "shape",
+      shapeType: "rect",
+      marpHtml: true,
+      marpLines: lines,
+      x,
+      y,
+      width: round(Math.max(...frames.map((f) => f.x + f.width)) - x),
+      height: round(Math.max(...frames.map((f) => f.y + f.height)) - y),
+    });
+  };
+
   const addBlock = (el: HTMLElement) => {
     if (el.tagName === "UL" || el.tagName === "OL") {
       addList(el);
+      return;
+    }
+    const own = el.tagName === "P" ? sourceLines(el) : undefined;
+    if (own && isHtmlOnly(source.slice(own[0], own[1]).join("\n"))) {
+      const frame = box(el);
+      if (frame.width >= 2 && frame.height >= 2) addHtml([frame], own);
       return;
     }
     for (const img of el.querySelectorAll("img")) addImage(img);
@@ -338,10 +414,12 @@ function measureSection(
         : "left";
     const styled = collapse(runsIn(el));
     if (!tex) styled.content = tidyLines(styled.content, isPre(el));
+    const lines = sourceLines(el);
     const text: SlideElement = {
       id: crypto.randomUUID(),
       type: "text",
       ...frame,
+      ...(lines ? { marpLines: lines } : {}),
       content: tex ?? styled.content,
       fontSize: round(fontSize) || 20,
       fontFamily: style.fontFamily,
@@ -362,6 +440,7 @@ function measureSection(
       ...(tex ? { math: true } : {}),
       ...(!tex && styled.bold ? { bold: true } : {}),
       ...(!tex && styled.italic ? { italic: true } : {}),
+      ...(!tex && styled.underline ? { underline: true } : {}),
       ...(!tex && styled.runs ? { runs: styled.runs } : {}),
     };
     if (/^H[1-6]$/.test(el.tagName) && !heading.used) {
@@ -404,13 +483,45 @@ function measureSection(
     placed.content.push(text);
   };
 
+  const traced = [...section.querySelectorAll(SOURCE)];
+  const rawHtml: { node: Element; after: number; before: number }[] = [];
+  const isRawHtml = (node: Element) => {
+    if (node.matches(SOURCE) || node.querySelector(SOURCE)) return false;
+    // MARP's header and footer directives, not authored HTML.
+    if (node === section.firstElementChild && node.tagName === "HEADER") return false;
+    if (node === section.lastElementChild && node.tagName === "FOOTER") return false;
+    const rect = node.getBoundingClientRect();
+    return rect.width >= 2 && rect.height >= 2;
+  };
+  const between = (node: Element) => {
+    let after = 0;
+    let before = Number.POSITIVE_INFINITY;
+    for (const other of traced) {
+      if (other.contains(node)) continue;
+      const lines = readLines(other)!;
+      const order = node.compareDocumentPosition(other);
+      if (order & Node.DOCUMENT_POSITION_PRECEDING) after = Math.max(after, lines[1]);
+      else if (order & Node.DOCUMENT_POSITION_FOLLOWING) before = Math.min(before, lines[0]);
+    }
+    return { node, after, before };
+  };
+
   const walk = (node: Element) => {
     const tag = node.tagName;
+    if (tag === "SCRIPT" || tag === "STYLE") return;
+    if (isRawHtml(node)) {
+      rawHtml.push(between(node));
+      return;
+    }
     if (tag === "IMG") {
       addImage(node as HTMLImageElement);
       return;
     }
-    if (tag === "SCRIPT" || tag === "STYLE") return;
+    const wrapsMarkdown = !node.matches(SOURCE) && !isPre(node) && !!node.querySelector(SOURCE);
+    if (wrapsMarkdown) {
+      for (const child of node.children) walk(child);
+      return;
+    }
     if (
       BLOCKS.has(tag) ||
       isPre(node) ||
@@ -439,11 +550,13 @@ function measureSection(
       );
       const fontSize = parseFloat(getComputedStyle(node).fontSize) * scaleX;
       const header = !!node.querySelector("th");
+      const lines = sourceLines(node);
       if (rows.length && frame.width > 2) {
         placed.content.push({
           id: crypto.randomUUID(),
           type: "table",
           ...frame,
+          ...(lines ? { marpLines: lines } : {}),
           rows,
           ...(Number.isFinite(fontSize) ? { fontSize: round(fontSize) } : {}),
           ...(header
@@ -459,7 +572,30 @@ function measureSection(
     }
     for (const child of node.children) walk(child);
   };
-  walk(section);
+  for (const child of section.children) walk(child);
+
+  // Raw HTML has no source lines of its own. It belongs to the self-contained
+  // HTML blocks written between the markdown blocks drawn before and after it.
+  const groups = new Map<string, typeof rawHtml>();
+  for (const item of rawHtml) {
+    const key = `${item.after}:${item.before}`;
+    groups.set(key, [...(groups.get(key) ?? []), item]);
+  }
+  for (const items of groups.values()) {
+    const { after, before } = items[0];
+    const blocks = html.filter((range) => range[0] >= after && range[1] <= before);
+    if (!blocks.length) continue;
+    const pairs =
+      blocks.length === items.length
+        ? items.map((item, i) => ({ nodes: [item.node], lines: blocks[i] }))
+        : [
+            {
+              nodes: items.map((item) => item.node),
+              lines: [blocks[0][0], blocks[blocks.length - 1][1]] as [number, number],
+            },
+          ];
+    for (const pair of pairs) addHtml(pair.nodes.map(box), pair.lines);
+  }
 
   if (section.dataset.theme === "beam_ut") {
     const footer = round((22 / 540) * deckHeight);
@@ -515,28 +651,46 @@ function measureSection(
  * them. The markdown stays the source for a later import; the boxes are what
  * the editor shows.
  */
-export async function fitMarpDeck(deck: Presentation): Promise<Presentation | null> {
+/**
+ * Let a waiting keystroke run before the next piece of work, and break up long
+ * stretches, so laying out a deck never holds up typing for long.
+ */
+async function giveWay(turn: { started: number }) {
+  const scheduling = (navigator as { scheduling?: { isInputPending?: () => boolean } }).scheduling;
+  if (!scheduling?.isInputPending?.() && performance.now() - turn.started < 8) return;
+  const scheduler = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler;
+  await (scheduler?.yield ? scheduler.yield() : new Promise((resolve) => setTimeout(resolve, 0)));
+  turn.started = performance.now();
+}
+
+/**
+ * Lay the deck out from MARP's rendering. It works in short turns, and returns
+ * null without finishing once `stale` says newer markdown has made it pointless.
+ */
+export async function fitMarpDeck(
+  deck: Presentation,
+  { stale = () => false }: { stale?: () => boolean } = {},
+): Promise<Presentation | null> {
   if (typeof document === "undefined" || !deck.marpSource?.trim()) return null;
   const rendered = blobMarkdown(deck.marpSource, deck.marpAssets ?? {});
   const iframe = document.createElement("iframe");
   iframe.setAttribute("aria-hidden", "true");
+  iframe.setAttribute("sandbox", "allow-same-origin allow-scripts");
   iframe.style.cssText =
     "position:fixed;left:0;top:0;width:1280px;height:720px;opacity:0;pointer-events:none;border:0;z-index:-1";
   try {
-    const marp = new Marp({ html: true, math: "katex" });
-    marp.themeSet.add(beamUtCss);
-    const { html, css } = marp.render(rendered.markdown);
-    const scripts = [...html.matchAll(/<script[\s\S]*?<\/script>/gi)]
-      .map((match) => match[0])
-      .filter((script) => script.includes("marp-auto-scaling"));
-    const body = html.replace(/<script[\s\S]*?<\/script>/gi, "");
-    const docHtml = `<!DOCTYPE html><html><head>${scripts.join("")}<style>
-      html,body{margin:0;background:#fff}
-      svg[data-marpit-svg]{width:1280px;height:720px;display:block}
-      ${css}
-    </style></head><body>${body}</body></html>`;
+    const { html, css } = marpEngine({ sourceLines: true }).render(rendered.markdown);
+    const parsed = new DOMParser().parseFromString(html, "text/html");
     document.body.appendChild(iframe);
-    iframe.srcdoc = docHtml;
+    iframe.srcdoc = marpDocument({
+      html,
+      css: `html,body{background:#fff}\n${css}`,
+      source: deck.marpSource,
+      width: 1280,
+      height: 720,
+      scripts: [...parsed.querySelectorAll("script")],
+      themedCharts: /chart-defaults\.js|CDLChart/.test(html),
+    });
     const loaded = await new Promise<Document | null>((resolve) => {
       const deadline = window.setTimeout(() => resolve(iframe.contentDocument), 8000);
       iframe.onload = () => {
@@ -545,7 +699,10 @@ export async function fitMarpDeck(deck: Presentation): Promise<Presentation | nu
       };
     });
     const view = loaded ?? iframe.contentDocument;
-    if (!view?.querySelector("section")) return null;
+    if (stale() || !view?.querySelector("section")) return null;
+    await prepareMarpDocument(view).catch((error: unknown) => {
+      console.error(error instanceof Error ? error.message : error);
+    });
     iframe.style.height = `${Math.max(720, view.body.scrollHeight)}px`;
     await Promise.all(
       [...view.images].map(
@@ -566,8 +723,8 @@ export async function fitMarpDeck(deck: Presentation): Promise<Presentation | nu
       ),
     );
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    // `pre` cannot be a customized built-in here, so MARP rewrites it to <marp-pre>
-    // once the element exists. The scaling script runs in the head, before these do.
+    // A `pre` that was not upgraded to MARP's customized built-in is rewritten
+    // to <marp-pre>, which MARP scales the same way.
     for (const pre of [...view.querySelectorAll('pre[is="marp-pre"]')]) {
       if (pre.shadowRoot) continue;
       pre.outerHTML = pre.outerHTML.replace(/^<pre/i, "<marp-pre").replace(/<\/pre>$/i, "</marp-pre>");
@@ -586,14 +743,27 @@ export async function fitMarpDeck(deck: Presentation): Promise<Presentation | nu
       await new Promise((resolve) => window.setTimeout(resolve, 50));
     }
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    if (stale()) return null;
     const width = deck.width || 960;
     const height = deck.height || 540;
     const sections = [...view.querySelectorAll("section")];
     if (!sections.length) return null;
+    const map = mapMarpSource(deck.marpSource);
     const slides: Record<string, Slide> = { ...deck.slides };
     const order = [...deck.slideOrder];
-    sections.forEach((section, index) => {
-      const placed = measureSection(section as HTMLElement, rendered.urls, width, height, { used: false });
+    const turn = { started: performance.now() };
+    for (const [index, section] of sections.entries()) {
+      await giveWay(turn);
+      if (stale()) return null;
+      const placed = measureSection(
+        section as HTMLElement,
+        rendered.urls,
+        width,
+        height,
+        { used: false },
+        map.slides[index]?.html ?? [],
+        map.lines,
+      );
       const elements = [
         ...placed.chrome,
         ...placed.content,
@@ -605,10 +775,13 @@ export async function fitMarpDeck(deck: Presentation): Promise<Presentation | nu
       slides[id] = {
         ...previous,
         id,
-        elements,
-        background: { color: "#ffffff" },
+        elements: keepElementIds(previous.elements, elements),
+        background: {
+          color: hexColor(getComputedStyle(section).backgroundColor) ?? "#ffffff",
+          ...(previous.background?.pinned ? { pinned: true } : {}),
+        },
       };
-    });
+    }
     const logo = /--ut-logo-data-uri:\s*url\('([^']+)'\)/.exec(beamUtCss)?.[1];
     const assets = { ...(deck.marpAssets ?? {}) };
     if (logo) assets[LOGO_KEY] = logo;

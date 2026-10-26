@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "node --max-old-space-size=4096 ./node_modules/electron-vite/bin/electron-vite.js build",
-    "package": "electron-builder"
+    "package": "electron-builder && node scripts/install-mac-app.mjs"
   },
   "devDependencies": {
     "electron": "44.6.0",
