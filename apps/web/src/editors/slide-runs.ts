@@ -18,6 +18,8 @@ export function cleanRun(run: TextRun): TextRun {
   if (run.italic) next.italic = true;
   if (run.underline) next.underline = true;
   if (run.color) next.color = run.color;
+  if (run.fontSize) next.fontSize = run.fontSize;
+  if (run.paragraphBreak) next.paragraphBreak = true;
   return next;
 }
 
@@ -26,7 +28,10 @@ function sameStyle(a: TextRun, b: TextRun): boolean {
     !!a.bold === !!b.bold &&
     !!a.italic === !!b.italic &&
     !!a.underline === !!b.underline &&
-    (a.color ?? "") === (b.color ?? "")
+    (a.color ?? "") === (b.color ?? "") &&
+    a.fontSize === b.fontSize &&
+    !a.paragraphBreak &&
+    !b.paragraphBreak
   );
 }
 
@@ -90,7 +95,13 @@ export function runsOf(el: {
 
 export function hasTextRuns(el: { runs?: TextRun[] }): boolean {
   return !!el.runs?.some(
-    (run) => run.bold || run.italic || run.underline || run.color,
+    (run) =>
+      run.bold ||
+      run.italic ||
+      run.underline ||
+      run.color ||
+      run.fontSize ||
+      run.paragraphBreak,
   );
 }
 
@@ -109,7 +120,9 @@ export function normalizeColor(value: string): string | undefined {
   const rgb = trimmed.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/);
   if (!rgb) return undefined;
   const channel = (part: string) =>
-    Math.max(0, Math.min(255, Number(part))).toString(16).padStart(2, "0");
+    Math.max(0, Math.min(255, Number(part)))
+      .toString(16)
+      .padStart(2, "0");
   return `#${channel(rgb[1])}${channel(rgb[2])}${channel(rgb[3])}`;
 }
 
@@ -135,6 +148,11 @@ export function runsToHtml(runs: readonly TextRun[]): string {
         styles.push(`color:${color}`);
         data.push(`data-color="${color}"`);
       }
+      if (run.fontSize) {
+        styles.push(`font-size:${run.fontSize}px`);
+        data.push(`data-font-size="${run.fontSize}"`);
+      }
+      if (run.paragraphBreak) data.push('data-paragraph-break="1"');
       const style = styles.length ? ` style="${styles.join(";")}"` : "";
       const attrs = data.length ? ` ${data.join(" ")}` : "";
       return `<span${attrs}${style}>${escapeHtml(run.text)}</span>`;
@@ -243,17 +261,20 @@ function stored(
 ): Pick<SlideElement, "content" | "runs" | "bold" | "italic" | "underline"> {
   const content = plainText(runs);
   if (!hasTextRuns({ runs })) {
-    return { content, runs: undefined, bold: false, italic: false, underline: false };
+    return {
+      content,
+      runs: undefined,
+      bold: false,
+      italic: false,
+      underline: false,
+    };
   }
   // Box-level flags would paint every word, including ones the runs left alone.
   return { content, runs, bold: false, italic: false, underline: false };
 }
 
 export function styleSelection(
-  el: Pick<
-    SlideElement,
-    "content" | "runs" | "bold" | "italic" | "underline"
-  >,
+  el: Pick<SlideElement, "content" | "runs" | "bold" | "italic" | "underline">,
   start: number,
   end: number,
   action: { type: Mark } | { type: "color"; color: string },
@@ -297,7 +318,10 @@ function paintRuns(
  * the object-level action. A word selection must not call this.
  */
 export function styleWholeBox(
-  el: Pick<SlideElement, "content" | "runs" | "bold" | "italic" | "underline" | "themeOverride">,
+  el: Pick<
+    SlideElement,
+    "content" | "runs" | "bold" | "italic" | "underline" | "themeOverride"
+  >,
   key: Mark,
 ): Partial<SlideElement> {
   const on = hasTextRuns(el)

@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
-import type { Presentation, Slide, SlideElement } from "@suiteleaf/core";
+import type { Presentation, SlideElement } from "@suiteleaf/core";
 import { readMaster } from "./slide-master";
 
 function MasterElement({
@@ -61,29 +61,19 @@ export function SlideMasterLayer({
   );
 }
 
-/** The speaker's preview of the following slide. */
+/** The frame for the speaker's preview of the following slide. */
 export function PresenterNextSlide({
   deck,
-  slide,
   children,
 }: {
   deck: Presentation;
-  slide: Slide;
   children?: ReactNode;
 }) {
   return (
     <div
       className="presenter-next-slide show-slide"
-      style={{
-        backgroundColor:
-          slide.background?.color || deck.master?.background?.color || "#ffffff",
-        aspectRatio: `${deck.width || 960} / ${deck.height || 540}`,
-      }}
+      style={{ aspectRatio: `${deck.width || 960} / ${deck.height || 540}` }}
     >
-      <SlideMasterLayer
-        deck={deck}
-        font={(size) => `calc(${size} / ${deck.width || 960} * 100cqw)`}
-      />
       {children}
     </div>
   );

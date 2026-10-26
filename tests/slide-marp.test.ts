@@ -3,6 +3,7 @@ import {
   createFile,
   parseFile,
   serializeFile,
+  slideElementSchema,
   type Presentation,
   type Slide,
   type SlideElement,
@@ -536,6 +537,26 @@ Thoughtful slide design
     expect(merged[1].content).toBe("• One\n• Two\n• Three");
     expect(merged[1]).toMatchObject({ x: 48, y: 140, height: 228 + 36 - 140 });
     expect(merged[0].content).toBe("Title");
+  });
+
+  it("spaces merged bullets by their wrapped rows, so a long list still saves", () => {
+    const bullet = (id: string, y: number): SlideElement => ({
+      id,
+      type: "text",
+      x: 48,
+      y,
+      width: 400,
+      height: 84,
+      content: "• A bullet long enough to wrap onto three rows of its column",
+      fontSize: 20,
+      lineHeight: 1.4,
+      color: "#141414",
+      align: "left",
+    });
+    const [merged] = mergeConsecutiveText([bullet("a", 140), bullet("b", 234)]);
+    expect(merged.height).toBe(178);
+    expect(merged.lineHeight).toBeCloseTo(178 / (6 * 20), 2);
+    expect(slideElementSchema.safeParse(merged).success).toBe(true);
   });
 
   it("drags an item from the left column into the right, and folds it back", () => {

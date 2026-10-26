@@ -580,6 +580,16 @@ export class DeckHistory {
     return this.entries[this.index];
   }
 
+  /** A copy of the current step that can be shown without changing history. */
+  snapshot(): Presentation {
+    return cloneDeck(this.entries[this.index]);
+  }
+
+  /** Replace the current step without adding one, for work the editor does on its own such as layout. */
+  amend(next: Presentation) {
+    this.entries[this.index] = cloneDeck(next);
+  }
+
   commit(next: Presentation, key?: string) {
     const replace =
       !!key && key === this.coalesce && this.index === this.entries.length - 1;

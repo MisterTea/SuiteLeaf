@@ -10,6 +10,11 @@ const bridge: DesktopBridge = {
     return () => ipcRenderer.removeListener("files:changed", listener);
   },
   reload: (id) => ipcRenderer.invoke("files:reload", id),
+  listFolders: () => ipcRenderer.invoke("folders:list"),
+  createFolder: (parent, name) => ipcRenderer.invoke("folders:create", parent, name),
+  renameFolder: (folder, name) => ipcRenderer.invoke("folders:rename", folder, name),
+  moveFolder: (folder, parent) => ipcRenderer.invoke("folders:move", folder, parent),
+  moveFile: (id, folder) => ipcRenderer.invoke("files:move", id, folder),
   list: () => ipcRenderer.invoke("files:list"),
   get: (id) => ipcRenderer.invoke("files:get", id),
   save: (r) => ipcRenderer.invoke("files:save", r),

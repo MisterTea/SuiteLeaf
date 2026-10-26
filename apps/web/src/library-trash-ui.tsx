@@ -8,7 +8,9 @@ import {
   Star,
   Trash2,
   Copy,
+  FolderInput,
 } from "lucide-react";
+import type { DragEvent } from "react";
 import { Link } from "react-router-dom";
 import type { FileRecord } from "@suiteleaf/core";
 import { formatModified } from "./drive/status";
@@ -30,6 +32,8 @@ export function FileLibraryRow({
   onRestore,
   onDeleteForever,
   onToggleStar,
+  onMove,
+  onDragStart,
 }: {
   record: FileRecord;
   snippet?: string;
@@ -41,12 +45,15 @@ export function FileLibraryRow({
   onRestore: () => void;
   onDeleteForever: () => void;
   onToggleStar: () => void;
+  /** Move the file into another folder of the documents folder. */
+  onMove?: () => void;
+  onDragStart?: (event: DragEvent) => void;
 }) {
   const title = record.file.title;
   const trashed = !!record.trashedAt;
   const starred = !!record.starred;
   return (
-    <div className="file-row">
+    <div className="file-row" draggable={!!onDragStart && !trashed} onDragStart={onDragStart}>
       <div className="file-main">
         <Link to={`/file/${record.file.id}`}>
           <span className={`file-icon ${record.file.kind}`}>
@@ -141,6 +148,16 @@ export function FileLibraryRow({
             >
               <Copy size={16} />
             </button>
+            {onMove ? (
+              <button
+                type="button"
+                title="Move to folder"
+                aria-label={`Move ${title} to a folder`}
+                onClick={onMove}
+              >
+                <FolderInput size={16} />
+              </button>
+            ) : null}
             <button
               type="button"
               title={moveToTrashTitle(desktop)}

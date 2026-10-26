@@ -4,16 +4,18 @@ import {
   readFile,
   readdir,
   rename,
+  stat,
   unlink,
   open,
 } from "node:fs/promises";
-import { join, resolve, sep } from "node:path";
+import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import {
   applyLibraryMarks,
   driveLinkSchema,
   isNativeName,
   kindFromName,
+  nativeFilename,
   parseFile,
   readLibraryMarks,
   serializeFile,
@@ -49,12 +51,27 @@ export async function atomicWrite(path: string, text: string | Uint8Array) {
 }
 const fingerprint = (text: string) =>
   createHash("sha256").update(text).digest("hex");
+const exists = (path: string) => stat(path).then(() => true, () => false);
+/** `name` in `folder`, or "name (2).ext" and so on when that is taken. */
+async function freePath(folder: string, name: string) {
+  const ext = extname(name);
+  const stem = name.slice(0, name.length - ext.length);
+  for (let n = 1; ; n++) {
+    const path = join(folder, n === 1 ? name : `${stem} (${n})${ext}`);
+    if (!(await exists(path))) return path;
+  }
+}
+/** Whether `path` is `folder` or lies inside it. */
+const within = (path: string, folder: string) =>
+  resolve(path) === resolve(folder) || resolve(path).startsWith(resolve(folder) + sep);
 export class FileStore {
   private database!: DatabaseSync;
   private initialized = false;
   private records = new Map<string, FileRecord>();
   /** Paths removed from the library, keyed to the file contents at that time. */
   private dismissed = new Map<string, string>();
+  /** Every folder under the documents folder at the last scan, as absolute paths. */
+  private folders: string[] = [];
   private tail: Promise<unknown> = Promise.resolve();
   constructor(private directory: string) {}
   private async transaction<T>(fn: () => Promise<T>) {
@@ -125,6 +142,71 @@ export class FileStore {
   }
   close() {
     this.database?.close();
+  }
+  /** Folders under `root` from the last scan, as "/"-separated paths relative to it. */
+  folderPaths(root: string) {
+    return this.folders
+      .filter((folder) => within(folder, root) && resolve(folder) !== resolve(root))
+      .map((folder) => relative(root, folder).split(sep).join("/"));
+  }
+  async createFolder(parent: string, name: string) {
+    return this.transaction(async () => {
+      const path = join(parent, name);
+      if (await exists(path)) throw new Error(`There is already something named “${name}” here.`);
+      await mkdir(path);
+      this.folders = [...this.folders, path].sort();
+      return path;
+    });
+  }
+  /** Move or rename a folder on disk, and keep the library's files in it. */
+  async moveFolder(folder: string, parent: string, name = basename(folder)) {
+    return this.transaction(async () => {
+      const target = join(parent, name);
+      if (resolve(target) === resolve(folder)) return target;
+      if (within(parent, folder)) throw new Error("A folder cannot go inside itself.");
+      // On a case-insensitive disk, "notes" exists when renaming it to "Notes".
+      const recased = resolve(target).toLowerCase() === resolve(folder).toLowerCase();
+      if (!recased && (await exists(target)))
+        throw new Error(`There is already something named “${name}” there.`);
+      await rename(folder, target);
+      const moved = (path: string) =>
+        within(path, folder) ? join(target, relative(folder, path)) : path;
+      for (const [id, record] of this.records)
+        if (record.path && within(record.path, folder))
+          this.records.set(id, { ...record, path: moved(record.path) });
+      this.dismissed = new Map([...this.dismissed].map(([path, hash]) => [moved(path), hash]));
+      this.folders = this.folders.map(moved).sort();
+      await this.persist();
+      await this.persistDismissed();
+      return target;
+    });
+  }
+  /**
+   * Move a file into `folder`, keeping its file name unless that is taken.
+   * A file that is not on disk yet is written there, so it starts life in that folder.
+   */
+  async moveFile(id: string, folder: string) {
+    return this.transaction(async () => {
+      const record = this.records.get(id);
+      if (!record) throw new Error("This file is no longer in the library.");
+      if (!(await stat(folder).then((s) => s.isDirectory(), () => false)))
+        throw new Error("That folder is no longer there.");
+      let next: FileRecord;
+      if (!record.path) {
+        const path = await freePath(folder, nativeFilename(record.file));
+        const text = serializeFile(record.file);
+        await atomicWrite(path, text);
+        next = { ...record, path, fingerprint: fingerprint(text), recovery: false };
+      } else {
+        if (resolve(dirname(record.path)) === resolve(folder)) return structuredClone(record);
+        const path = await freePath(folder, basename(record.path));
+        await rename(record.path, path);
+        next = { ...record, path };
+      }
+      this.records.set(id, next);
+      await this.persist();
+      return structuredClone(next);
+    });
   }
   private async loadDismissed() {
     try {
@@ -204,6 +286,7 @@ export class FileStore {
     return this.transaction(async () => {
       const root = resolve(directory);
       const seen = new Set<string>();
+      const dirs: string[] = [];
       const found = new Map<
         string,
         { file: FileRecord["file"]; hash: string }
@@ -212,7 +295,10 @@ export class FileStore {
         for (const entry of await readdir(folder, { withFileTypes: true })) {
           if (entry.name.startsWith(".")) continue;
           const path = resolve(folder, entry.name);
-          if (entry.isDirectory()) await visit(path);
+          if (entry.isDirectory()) {
+            dirs.push(path);
+            await visit(path);
+          }
           else if (entry.isFile() && isNativeName(entry.name)) {
             seen.add(path);
             try {
@@ -272,9 +358,12 @@ export class FileStore {
           ),
         );
       }
-      const changed = before !== JSON.stringify([...this.records.values()]);
-      if (changed) await this.persist();
-      return changed;
+      const recordsChanged = before !== JSON.stringify([...this.records.values()]);
+      if (recordsChanged) await this.persist();
+      dirs.sort();
+      const foldersChanged = dirs.join("\0") !== this.folders.join("\0");
+      this.folders = dirs;
+      return recordsChanged || foldersChanged;
     });
   }
   private async persist() {

@@ -1,6 +1,13 @@
+import {
+  nativeDrawingMarker,
+  graftNativeDrawings,
+} from "./pptx-native-objects";
 import PptxGenJS from "pptxgenjs";
+import { stampNativeImageTypes } from "./pptx-native-image-types";
+import { nativeLayerMarker, stampImageLayers } from "./pptx-image-layers";
 import type { SlideElement, SlideFile, TextRun } from "./index";
 import { stampSlideMotion } from "./slide-motion";
+import { stampSvgAlternatives, svgFallbackMarker } from "./pptx-svg";
 
 const PX_PER_INCH = 96;
 
@@ -26,6 +33,7 @@ function box(el: SlideElement) {
     y: el.y / PX_PER_INCH,
     w: Math.max(el.width, 1) / PX_PER_INCH,
     h: Math.max(el.height, 1) / PX_PER_INCH,
+    rotate: el.rotation,
   };
 }
 
@@ -56,10 +64,49 @@ export async function exportPptx(file: SlideFile): Promise<Uint8Array> {
       slide.background = { color: color(source.background.color, "FFFFFF") };
     for (const el of source.elements) {
       const place = box(el);
+      if (el.nativeDrawing) {
+        const marker = nativeDrawingMarker(el.id);
+        if (el.type === "image" && el.src && /^data:image\//.test(el.src))
+          slide.addImage({ data: el.src, altText: marker, ...place });
+        else
+          slide.addShape("rect", {
+            ...place,
+            objectName: marker,
+            fill: { color: "FFFFFF", transparency: 100 },
+            line: { color: "FFFFFF", transparency: 100 },
+          });
+        continue;
+      }
+      if ((el.type === "video" || el.type === "audio") && el.src) {
+        const media =
+          /^data:(video\/(mp4|webm)|audio\/(wav|mpeg|ogg));base64,/i.exec(
+            el.src,
+          );
+        if (media)
+          slide.addMedia({
+            type: el.type,
+            data: el.src,
+            ...place,
+            extn: media[2] || (media[3] === "mpeg" ? "mp3" : media[3]),
+            ...(el.poster ? { cover: el.poster } : {}),
+          });
+        continue;
+      }
       if (el.type === "image" && el.src) {
-        const image = /^data:image\/(png|jpeg|jpg|gif|webp|svg\+xml);base64,/i.exec(el.src);
+        const image =
+          /^data:image\/(png|jpeg|jpg|gif|webp|bmp|svg\+xml|tiff|emf|wmf|wdp);base64,/i.exec(
+            el.src,
+          );
         if (!image) continue;
-        slide.addImage({ data: el.src, altText: el.alt, ...place });
+        slide.addImage({
+          data: el.src,
+          altText: el.svgSrc
+            ? svgFallbackMarker(el.id)
+            : el.imageLayer
+              ? nativeLayerMarker(el.id)
+              : el.alt,
+          ...place,
+        });
         continue;
       }
       if (el.type === "table" && el.rows?.length) {
@@ -68,12 +115,21 @@ export async function exportPptx(file: SlideFile): Promise<Uint8Array> {
             row.map((cell, column) => {
               const mark = el.cellMarks?.[rowIndex]?.[column];
               return {
-                text: cell,
+                text: cell.includes("\n")
+                  ? cell.split("\n").map((text, index, paragraphs) => ({
+                      text,
+                      options: { breakLine: index < paragraphs.length - 1 },
+                    }))
+                  : cell,
                 options: { bold: mark?.bold, italic: mark?.italic },
               };
             }),
           ),
-          { ...place, fontFace: el.fontFamily || "Arial", fontSize: el.fontSize || 14 },
+          {
+            ...place,
+            fontFace: el.fontFamily || "Arial",
+            fontSize: el.fontSize || 14,
+          },
         );
         continue;
       }
@@ -90,11 +146,16 @@ export async function exportPptx(file: SlideFile): Promise<Uint8Array> {
       if (!text.length) continue;
       slide.addText(
         text.map((run) => ({
-          text: run.text,
+          text: run.paragraphBreak ? "" : run.text,
           options: {
             bold: run.bold ?? el.bold,
             italic: run.italic ?? el.italic,
-            underline: run.underline || el.underline ? { style: "sng" as const } : undefined,
+            fontSize: run.fontSize ?? el.fontSize,
+            breakLine: run.paragraphBreak,
+            underline:
+              (run.underline ?? el.underline)
+                ? { style: "sng" as const }
+                : undefined,
             color: color(run.color || el.color),
           },
         })),
@@ -112,7 +173,21 @@ export async function exportPptx(file: SlideFile): Promise<Uint8Array> {
   }
   if (!deck.slideOrder.length) pptx.addSlide();
   const written = await pptx.write({ outputType: "uint8array" });
-  const bytes = written instanceof Uint8Array ? written : new Uint8Array(written as ArrayBuffer);
-  const slides = deck.slideOrder.map((id) => deck.slides[id]).filter((slide) => slide != null);
-  return stampSlideMotion(bytes, slides);
+  const bytes =
+    written instanceof Uint8Array
+      ? written
+      : new Uint8Array(written as ArrayBuffer);
+  const slides = deck.slideOrder
+    .map((id) => deck.slides[id])
+    .filter((slide) => slide != null);
+  const exported = await stampImageLayers(
+    await stampSvgAlternatives(await stampSlideMotion(bytes, slides), slides),
+    slides,
+  );
+  const typed = slides.some((slide) =>
+    slide.elements.some((el) => el.src?.startsWith("data:image/wdp;")),
+  )
+    ? await stampNativeImageTypes(exported)
+    : exported;
+  return graftNativeDrawings(typed, file);
 }

@@ -1,6 +1,8 @@
+import { nativeDrawingSchema } from "./pptx-native-objects";
 import { z } from "zod";
 
 export { diffDocuments, type DocDiff } from "./doc-diff";
+export { cloneJson, sameJson } from "./json-data";
 export {
   applyParagraphRestore,
   compareParagraphs,
@@ -131,6 +133,8 @@ export const textRunSchema = z.object({
   italic: z.boolean().optional(),
   underline: z.boolean().optional(),
   color: z.string().max(40).optional(),
+  fontSize: z.number().positive().optional(),
+  paragraphBreak: z.boolean().optional(),
 });
 export type TextRun = z.infer<typeof textRunSchema>;
 export const slideElementSchema = z.object({
@@ -183,6 +187,12 @@ export const slideElementSchema = z.object({
   wordArt: z.enum(["blue", "gold"]).optional(),
   /** Set when someone chose this element's font or colour by hand. */
   themeOverride: z.boolean().optional(),
+  /** In a MARP deck, the markdown lines this box shows: first line, and the line after the last. */
+  marpLines: z
+    .tuple([z.number().int().nonnegative(), z.number().int().nonnegative()])
+    .optional(),
+  /** In a MARP deck, a block written as HTML. It can be moved or deleted whole, and is edited in the markdown. */
+  marpHtml: z.boolean().optional(),
   /** Hidden in the slideshow until its click, then brought in. */
   animation: z
     .enum([
@@ -195,7 +205,45 @@ export const slideElementSchema = z.object({
     .optional(),
   /** Click sequence. Objects that share an order appear on the same click. */
   animationOrder: z.number().int().nonnegative().optional(),
+  nativeDrawing: nativeDrawingSchema.optional(),
   src: z.string().optional(),
+  /** Authored vector artwork retained alongside the raster fallback in src. */
+  svgSrc: z
+    .string()
+    .regex(/^data:image\/svg\+xml;base64,/i)
+    .optional(),
+  /** Original JPEG XR layer and numeric background removal editing data. */
+  imageLayer: z
+    .object({
+      src: z.string().regex(/^data:image\/wdp;base64,/i),
+      backgroundRemoval: z
+        .object({
+          t: z.number(),
+          b: z.number(),
+          l: z.number(),
+          r: z.number(),
+          foregroundMarks: z.array(
+            z.object({
+              x1: z.number(),
+              y1: z.number(),
+              x2: z.number(),
+              y2: z.number(),
+            }),
+          ),
+          backgroundMarks: z.array(
+            z.object({
+              x1: z.number(),
+              y1: z.number(),
+              x2: z.number(),
+              y2: z.number(),
+            }),
+          ),
+        })
+        .optional(),
+    })
+    .optional(),
+  /** Embedded still frame shown before a clip plays. */
+  poster: z.string().optional(),
   alt: z.string().optional(),
   rows: z.array(z.array(z.string())).optional(),
   /** Bold and italic for each slide-table cell, aligned with `rows`. */
@@ -285,12 +333,14 @@ export const presentationSchema = z.object({
   marp: z.boolean().optional(),
   /** When set, each slide shows its place in the deck, starting at 1. Absent means off. */
   slideNumbers: z.boolean().optional(),
-  /** The markdown the deck was imported from. Editing a text box does not rewrite it. */
+  /** A MARP deck's markdown. It is the source of truth: the slides are drawn from it, and canvas edits are written back into it. */
   marpSource: z.string().max(500_000).optional(),
   /** Direct canvas edits supersede the retained source when printing. */
   marpSourceDirty: z.boolean().optional(),
   /** Relative path from the markdown file to a data URI. Image boxes keep the path. */
-  marpAssets: z.record(z.string().max(400), z.string().max(40_000_000)).optional(),
+  marpAssets: z
+    .record(z.string().max(400), z.string().max(40_000_000))
+    .optional(),
   /** Text boxes have been placed to match the MARP theme. A number is the layout revision. */
   marpFit: z.union([z.boolean(), z.number()]).optional(),
 });
@@ -437,7 +487,8 @@ function gridCellChars(value: string): number | null {
   } catch {
     return null;
   }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+    return null;
   let cells = 0;
   for (const [row, column] of Object.entries(parsed)) {
     if (typeof column !== "string") return null;
@@ -651,7 +702,8 @@ export function linkTarget(input: string): string | null {
   if (!url || /\s/.test(url)) return null;
   if (safeLink(url)) return url;
   if (/^[\w.+-]+@[\w-]+(\.[\w-]+)+$/.test(url)) return `mailto:${url}`;
-  if (/^[\w-]+(\.[\w-]+)+(:\d+)?([/?#]\S*)?$/.test(url)) return `https://${url}`;
+  if (/^[\w-]+(\.[\w-]+)+(:\d+)?([/?#]\S*)?$/.test(url))
+    return `https://${url}`;
   return null;
 }
 export {
@@ -664,8 +716,18 @@ export {
 } from "./sheet-links";
 /** A slide picture is either embedded, or a relative path filled from the deck's imported files. */
 function allowedSlideImage(src: string) {
-  if (/^data:image\/(png|jpeg|gif|webp|svg\+xml);base64,/i.test(src)) return true;
-  if (src.length > 400 || src.includes("..") || src.includes("\\") || src.includes(":"))
+  if (
+    /^data:image\/(png|jpeg|gif|webp|bmp|svg\+xml|tiff|emf|wmf|wdp);base64,/i.test(
+      src,
+    )
+  )
+    return true;
+  if (
+    src.length > 400 ||
+    src.includes("..") ||
+    src.includes("\\") ||
+    src.includes(":")
+  )
     return false;
   return /^[A-Za-z0-9._~/+-]+$/.test(src);
 }
@@ -719,8 +781,17 @@ export function kindFromName(name: string): Kind | null | undefined {
 export function isNativeName(name: string): boolean {
   return kindFromName(name) !== undefined;
 }
+/**
+ * Whether `text` takes more than `limit` bytes as UTF-8. A UTF-16 unit is one to
+ * three bytes, so only text near the limit is encoded to find out.
+ */
+export function utf8LongerThan(text: string, limit: number): boolean {
+  if (text.length * 3 <= limit) return false;
+  if (text.length > limit) return true;
+  return new TextEncoder().encode(text).length > limit;
+}
 export function parseFile(text: string, expectedKind?: Kind | null): SuiteFile {
-  if (new TextEncoder().encode(text).length > 200 * 1024 * 1024)
+  if (utf8LongerThan(text, 200 * 1024 * 1024))
     throw new Error("Native files must be smaller than 200 MB.");
   const raw = JSON.parse(text);
   if (raw.version !== 1)
@@ -735,7 +806,8 @@ export function parseFile(text: string, expectedKind?: Kind | null): SuiteFile {
     validateTree(file.content);
     const ids = new Set<string>();
     for (const tab of file.tabs ?? []) {
-      if (ids.has(tab.id)) throw new Error("Document tabs must have distinct ids.");
+      if (ids.has(tab.id))
+        throw new Error("Document tabs must have distinct ids.");
       ids.add(tab.id);
       if (tab.content.type !== "doc") throw new Error("Invalid document tab.");
       validateTree(tab.content);
@@ -768,9 +840,13 @@ export function parseFile(text: string, expectedKind?: Kind | null): SuiteFile {
         throw new Error("Presentation contains a missing slide.");
     for (const s of Object.values(file.content.slides)) {
       for (const el of s.elements) {
+        if (el.poster && !allowedSlideImage(el.poster))
+          throw new Error(
+            "Native media posters must be embedded image data or an imported image path.",
+          );
         if (el.type === "image" && el.src && !allowedSlideImage(el.src))
           throw new Error(
-            "Native images must be embedded PNG, JPEG, GIF, WebP, or SVG data.",
+            "Native images must be embedded PNG, JPEG, GIF, WebP, BMP, SVG, TIFF, EMF, WMF, or JPEG XR data.",
           );
         if (
           el.type === "audio" &&
@@ -994,6 +1070,17 @@ export interface DesktopBridge {
   getDocumentsDirectory?(): Promise<string>;
   chooseDocumentsDirectory?(): Promise<string | null>;
   onFilesChanged?(callback: () => void): () => void;
+  /**
+   * Folders inside the documents folder. A folder is a "/"-separated path
+   * relative to it, and "" is the documents folder itself. Each call changes
+   * the folders on disk, and resolves with the folder's new path.
+   */
+  listFolders?(): Promise<string[]>;
+  createFolder?(parent: string, name: string): Promise<string>;
+  renameFolder?(folder: string, name: string): Promise<string>;
+  moveFolder?(folder: string, parent: string): Promise<string>;
+  /** Move a file into a folder on disk. A file not saved to disk yet is written there. */
+  moveFile?(id: string, folder: string): Promise<FileRecord>;
   /** The on-device model host (Gemma via llama.cpp in the main process). */
   ai?: import("./ai").AiBridge;
   list(): Promise<FileRecord[]>;
@@ -1004,7 +1091,10 @@ export interface DesktopBridge {
   saveAs(record: FileRecord): Promise<FileRecord | null>;
   reload(id: string): Promise<FileRecord | undefined>;
   /** Where the person saved the export, or null if they cancelled the dialog. */
-  exportFile(name: string, content: string | Uint8Array): Promise<string | null>;
+  exportFile(
+    name: string,
+    content: string | Uint8Array,
+  ): Promise<string | null>;
   print(title?: string): Promise<void>;
   onMenu(callback: (action: string) => void): () => void;
   setDirty(dirty: boolean): void;
@@ -1020,7 +1110,8 @@ export interface DesktopBridge {
  * `cluster`: the app is a client of a SuiteLeaf server; people sign in and
  * files live in SuiteDrive, replicated across the cluster's servers.
  */
-export type AppMode = { kind: "single" } | { kind: "cluster"; serverUrl: string };
+export type AppMode =
+  { kind: "single" } | { kind: "cluster"; serverUrl: string };
 export const appModeSchema: z.ZodType<AppMode> = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("single") }),
   z.object({

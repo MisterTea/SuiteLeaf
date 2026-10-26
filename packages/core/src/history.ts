@@ -1,3 +1,5 @@
+import { cloneJson, sameJson } from "./json-data";
+
 /** How long a writer can be idle before a solo version is sealed, or a
  * multiuser presence is dropped. Tests override this with
  * `localStorage["suiteleaf.versionPauseMs"]`. */
@@ -59,12 +61,10 @@ function ids(source?: IdSource) {
   };
 }
 
-function clone<T>(value: T): T {
-  return structuredClone(value);
-}
+const clone = cloneJson;
 
 export function snapshotsEqual(a: VersionSnapshot, b: VersionSnapshot): boolean {
-  return a.title === b.title && JSON.stringify(a.content) === JSON.stringify(b.content);
+  return a.title === b.title && sameJson(a.content, b.content);
 }
 
 function boundOp(op: unknown): unknown {
@@ -186,7 +186,7 @@ export function recordEdit<T extends TrackedFile>(
   const title = change.title ?? idle.file.title;
   const same =
     idle.file.title === title &&
-    JSON.stringify(idle.file.content) === JSON.stringify(change.content);
+    sameJson(idle.file.content, change.content);
   if (same) return idle;
   const make = ids(source);
   const edit: StoredEdit = {

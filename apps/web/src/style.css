@@ -397,6 +397,42 @@ a {
   color: #ffffff;
   background: #fbbc04;
 }
+.file-icon.folder {
+  color: #5f6368;
+  background: color-mix(in srgb, #5f6368 12%, transparent);
+}
+.new-folder-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.local-crumbs {
+  margin: -8px 0 12px -6px;
+}
+.local-crumbs button.drop-target,
+.file-row.drop-target {
+  background: color-mix(in srgb, var(--google-blue) 14%, transparent);
+  outline: 2px solid var(--google-blue);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+.folder-open {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.folder-kind {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
 .file-section > header {
   display: flex;
   align-items: center;
@@ -4888,19 +4924,6 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   overflow: hidden;
   pointer-events: none;
 }
-.mini-text {
-  font-size: 5px;
-  line-height: 1.1;
-  overflow: hidden;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.mini-shape {
-  pointer-events: none;
-}
-.mini-img {
-  object-fit: contain;
-}
 .thumbnail-title {
   font-size: 10px;
   font-weight: 600;
@@ -4940,15 +4963,154 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   overflow: hidden;
   background: #f1f3f4;
 }
+/* The slide and its markdown share the row, evenly until the border between them is dragged. */
 .marp-pane {
-  width: 360px;
-  flex: 0 0 360px;
+  flex: 1 1 calc((1 - var(--marp-split, 0.5)) * 100%);
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  min-width: 0;
+  min-width: 280px;
   min-height: 0;
   border-left: 1px solid var(--border);
   background: #fff;
+}
+/* Straddles the markdown pane's left border and takes no room in the row. */
+.marp-split-handle {
+  position: relative;
+  z-index: 3;
+  flex: 0 0 8px;
+  margin: 0 -4px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.marp-split-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  transition: background-color 0.15s;
+}
+.marp-split-handle:hover::after,
+.marp-split-handle:focus-visible::after,
+.marp-split-handle.dragging::after {
+  background: var(--google-blue);
+}
+.marp-split-handle:focus-visible {
+  outline: none;
+}
+.slide-stage-row.marp-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+.slide-canvas.marp-pending {
+  pointer-events: none;
+}
+/* MARP's own drawing of the slide sits behind the boxes. */
+.marp-frame-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.marp-frame {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border: 0;
+  transform-origin: 0 0;
+}
+.marp-frame[data-state="incoming"] {
+  visibility: hidden;
+}
+/* Thumbnails and the slideshow keep the slide built from boxes underneath, unseen. */
+/* Thumbnails, the slideshow, handouts, and print show the editor's drawing, scaled like a picture. */
+.slide-still {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.slide-still-live {
+  pointer-events: auto;
+}
+.slide-still-waiting {
+  visibility: hidden;
+}
+.slide-still > .slide-surface {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+.slide-still .slide-element {
+  cursor: inherit;
+}
+/* Once it shows, the boxes become clear hit areas, except the one being typed in. */
+.slide-surface.marp-painted > .slide-element:not(.marp-live):not(.marp-html),
+.slide-surface.marp-painted > .slide-element:not(.marp-live):not(.marp-html) * {
+  color: transparent !important;
+  -webkit-text-fill-color: transparent;
+  text-decoration-color: transparent !important;
+  text-shadow: none !important;
+  background: transparent !important;
+  border-color: transparent !important;
+}
+.slide-surface.marp-painted > .slide-element:not(.marp-live):not(.marp-html) :is(img, video, svg, canvas) {
+  opacity: 0;
+}
+.slide-canvas.marp-painted .element-textarea {
+  caret-color: var(--spell-caret, #1e293b);
+}
+.slide-surface.marp-painted > .slide-shape,
+.slide-surface.marp-painted > .slide-number {
+  visibility: hidden;
+}
+.slide-canvas .marp-html {
+  cursor: grab;
+}
+.slide-canvas .marp-html:hover,
+.slide-canvas .marp-html.selected {
+  outline: 2px dashed var(--google-blue);
+  outline-offset: 2px;
+}
+.marp-html-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 1px 6px;
+  border-radius: 0 0 4px 0;
+  background: #e8f0fe;
+  color: #174ea6;
+  font: 600 10px/16px system-ui, sans-serif;
+}
+.slide-canvas:not(.marp-painted) .marp-html {
+  outline: 1px dashed #9aa0a6;
+  background: repeating-linear-gradient(45deg, #f8f9fa, #f8f9fa 6px, #f1f3f4 6px, #f1f3f4 12px);
+}
+.slide-canvas.marp-painted .marp-html:not(:hover):not(.selected) .marp-html-label {
+  display: none;
+}
+.marp-invalid {
+  margin: auto;
+  max-width: 420px;
+  padding: 20px 24px;
+  border: 1px solid #f2b8b5;
+  border-radius: 8px;
+  background: #fce8e6;
+  color: #8c1d18;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.marp-invalid p {
+  margin: 8px 0 0;
+}
+:root.dark-theme .marp-invalid,
+:root[data-theme="dark"] .marp-invalid {
+  border-color: #8c1d18;
+  background: #410e0b;
+  color: #f9dedc;
 }
 .marp-textarea {
   flex: 1;
@@ -4964,22 +5126,12 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   font-size: 13px;
   line-height: 1.45;
 }
-.marp-error,
-.marp-warning,
-.marp-notice {
+.marp-warning {
   flex-shrink: 0;
   margin: 8px 12px 0;
   font-size: 12px;
   line-height: 1.4;
-}
-.marp-error {
-  color: #b3261e;
-}
-.marp-warning {
   color: #7a4f01;
-}
-.marp-notice {
-  color: #174ea6;
 }
 .slide-stage-viewport {
   flex: 1;
@@ -4990,52 +5142,52 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   overflow: auto;
   position: relative;
 }
-.slide-canvas.marp-fit {
+.slide-surface.marp-fit {
   container-type: inline-size;
 }
-.slide-canvas.marp-fit .element-textarea,
-.slide-canvas.marp-fit .element-editor,
-.slide-canvas.marp-fit .slide-spell-mirror {
+.slide-surface.marp-fit .element-textarea,
+.slide-surface.marp-fit .element-editor,
+.slide-surface.marp-fit .slide-spell-mirror {
   padding: 0 0 0 var(--marp-pad, 0px);
   line-height: inherit;
 }
-.slide-canvas.marp-fit .slide-spell-mirror .spelling-misspelling {
+.slide-surface.marp-fit .slide-spell-mirror .spelling-misspelling {
   text-decoration: none;
 }
-.slide-canvas.marp-fit .marp-code {
+.slide-surface.marp-fit .marp-code {
   margin: 0;
   font: inherit;
   white-space: pre;
   background: transparent;
 }
-.slide-canvas.marp-fit .marp-code .hljs-keyword { color: #cf222e; }
-.slide-canvas.marp-fit .marp-code .hljs-number,
-.slide-canvas.marp-fit .marp-code .hljs-literal { color: #0550ae; }
-.slide-canvas.marp-fit .marp-code .hljs-string { color: #0a3069; }
-.slide-canvas.marp-fit .marp-code .hljs-comment { color: #59636e; }
-.slide-canvas.marp-fit .marp-code .hljs-built_in,
-.slide-canvas.marp-fit .marp-code .hljs-title { color: #953800; }
-.slide-canvas.marp-fit .marp-rich {
+.slide-surface.marp-fit .marp-code .hljs-keyword { color: #cf222e; }
+.slide-surface.marp-fit .marp-code .hljs-number,
+.slide-surface.marp-fit .marp-code .hljs-literal { color: #0550ae; }
+.slide-surface.marp-fit .marp-code .hljs-string { color: #0a3069; }
+.slide-surface.marp-fit .marp-code .hljs-comment { color: #59636e; }
+.slide-surface.marp-fit .marp-code .hljs-built_in,
+.slide-surface.marp-fit .marp-code .hljs-title { color: #953800; }
+.slide-surface.marp-fit .marp-rich {
   white-space: pre-wrap;
   line-height: inherit;
 }
-.slide-canvas.marp-fit .marp-rich .katex {
+.slide-surface.marp-fit .marp-rich .katex {
   font-size: 1.05em;
 }
-.slide-canvas.marp-fit .marp-math {
+.slide-surface.marp-fit .marp-math {
   width: 100%;
   height: 100%;
   overflow: hidden;
 }
-.slide-canvas.marp-fit .marp-math .katex,
-.slide-canvas.marp-fit .marp-rich .katex {
+.slide-surface.marp-fit .marp-math .katex,
+.slide-surface.marp-fit .marp-rich .katex {
   /* The fitter already measured KaTeX's used size, including the theme's 1.05em. */
   font-size: 1em;
   line-height: 1.2;
 }
-.slide-canvas.marp-fit .marp-math .katex-display,
-.slide-canvas.marp-fit .marp-rich .katex-display,
-.slide-canvas.marp-fit .katex-display > .katex {
+.slide-surface.marp-fit .marp-math .katex-display,
+.slide-surface.marp-fit .marp-rich .katex-display,
+.slide-surface.marp-fit .katex-display > .katex {
   margin: 0;
   text-align: left;
 }
@@ -5070,18 +5222,15 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
     0 0 2px #fff;
   user-select: none;
 }
-.slide-canvas .slide-number {
+.slide-surface .slide-number {
   font-size: 18px;
-}
-.show-slide .slide-number {
-  font-size: 2.8cqw;
 }
 .slide-element {
   position: absolute;
   box-sizing: border-box;
   cursor: move;
 }
-.slide-canvas.marp-fit .slide-element {
+.slide-surface.marp-fit .slide-element {
   cursor: default;
 }
 .slide-element.selected {
@@ -5159,6 +5308,11 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   box-sizing: border-box;
   outline: none;
 }
+/* A text box's words when nobody is typing, laid out as the editor's textarea lays them out. */
+.slide-text-face {
+  overflow: hidden;
+  overflow-wrap: break-word;
+}
 .element-textarea::placeholder {
   color: currentColor;
   opacity: 0.5;
@@ -5171,18 +5325,12 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
 .slide-word-art .element-textarea,
 .slide-word-art .slide-spell-mirror,
 .slide-word-art .element-editor,
-.slide-word-art .element-editor span,
-.show-text.slide-word-art,
-.show-text.slide-word-art span,
-.mini-text.slide-word-art,
-.handout-text.slide-word-art {
+.slide-word-art .element-editor span {
   -webkit-text-stroke: var(--word-outline);
   paint-order: stroke fill;
   -webkit-text-fill-color: currentColor;
 }
-.slide-word-art .element-textarea,
-.show-text.slide-word-art,
-.handout-text.slide-word-art {
+.slide-word-art .element-textarea {
   font-weight: 800;
   letter-spacing: 0.02em;
   line-height: 1.05;
@@ -5225,9 +5373,7 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   pointer-events: none;
 }
 .slide-audio,
-.slide-video,
-.show-audio,
-.show-video {
+.slide-video {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
@@ -5240,12 +5386,10 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   border-radius: 8px;
   user-select: none;
 }
-.slide-video,
-.show-video {
+.slide-video {
   padding: 0;
 }
-.slide-video video,
-.show-video video {
+.slide-video video {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -5254,8 +5398,7 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   background: #0f172a;
   pointer-events: none;
 }
-.slide-audio audio,
-.show-audio audio {
+.slide-audio audio {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -5274,8 +5417,7 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.slide-video .slide-media-name,
-.show-video .slide-media-name {
+.slide-video .slide-media-name {
   margin: 0 8px;
   padding: 2px 6px;
   border-radius: 4px;
@@ -5298,15 +5440,8 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   line-height: 1;
   cursor: pointer;
 }
-.slide-video .slide-media-play,
-.show-video .slide-media-play {
+.slide-video .slide-media-play {
   margin: 0 8px 8px;
-}
-.show-audio .slide-media-name,
-.show-video .slide-media-name,
-.show-audio .slide-media-play,
-.show-video .slide-media-play {
-  font-size: max(12px, 1.5cqw);
 }
 .slide-table table {
   width: 100%;
@@ -5318,23 +5453,23 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   padding: 4px 8px;
   font-size: 14px;
 }
-.slide-canvas.marp-fit .slide-table {
+.slide-surface.marp-fit .slide-table {
   font-family: Helvetica, Arial, sans-serif;
 }
-.slide-canvas.marp-fit .slide-table td {
+.slide-surface.marp-fit .slide-table td {
   font-size: inherit;
   line-height: 1.25;
   border-color: #d0d7de;
   padding: 0.12em 0.28em;
 }
-.slide-canvas.marp-fit .slide-table tr:first-child td {
+.slide-surface.marp-fit .slide-table tr:first-child td {
   text-align: center;
   font-weight: 700;
 }
-.slide-canvas.marp-fit .slide-table tr:nth-child(even) td {
+.slide-surface.marp-fit .slide-table tr:nth-child(even) td {
   background: #f6f8fa;
 }
-.slide-canvas.marp-fit .slide-table code {
+.slide-surface.marp-fit .slide-table code {
   background: rgba(100, 100, 100, 0.2);
   border-radius: 0.3em;
   padding: 0.02em 0.35em;
@@ -5404,12 +5539,6 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   position: relative;
   overflow: hidden;
   container-type: inline-size;
-}
-.show-table {
-  border-collapse: collapse;
-}
-.show-table td {
-  border: 1px solid #94a3b8;
 }
 .presenter-blank {
   position: absolute;
@@ -10196,19 +10325,6 @@ body.agent-open .sign-in-screen {
   border: 1px solid #e0e0e0;
   background: #fff;
 }
-.handout-shape,
-.handout-image {
-  pointer-events: none;
-}
-.handout-table {
-  border-collapse: collapse;
-  font-size: 10px;
-}
-.handout-table td {
-  border: 1px solid #e0e0e0;
-  padding: 1px 2px;
-  vertical-align: top;
-}
 
 /* Phone: the assistant covers the screen from the bottom, and the document
    keeps the full width. A side panel would leave a sliver of the page. */
@@ -10275,6 +10391,7 @@ body.agent-open .sign-in-screen {
   pointer-events: none;
 }
 .slides-print-page {
+  position: relative;
   box-sizing: border-box;
   margin: 0;
   border: 0;

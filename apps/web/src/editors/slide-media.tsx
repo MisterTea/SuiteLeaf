@@ -5,7 +5,8 @@ import type { SlideElement } from "@suiteleaf/core";
 function playClip(event: MouseEvent<HTMLButtonElement>) {
   event.preventDefault();
   event.stopPropagation();
-  const media = event.currentTarget.parentElement?.querySelector("audio, video");
+  const media =
+    event.currentTarget.parentElement?.querySelector("audio, video");
   if (media instanceof HTMLMediaElement) void media.play().catch(() => {});
 }
 
@@ -15,7 +16,14 @@ export function SlideMediaControls({ element }: { element: SlideElement }) {
   const name = element.alt?.trim() || (video ? "Video" : "Audio");
   return (
     <>
-      {video ? <video src={element.src} preload="auto" playsInline /> : null}
+      {video ? (
+        <video
+          src={element.src}
+          poster={element.poster}
+          preload="auto"
+          playsInline
+        />
+      ) : null}
       <span className="slide-media-name">{name}</span>
       <button
         type="button"

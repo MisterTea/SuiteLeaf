@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import {
   loadMarpBundle,
   marpBundlePaths,
+  missingMarpTheme,
 } from "../apps/web/src/editors/slide-marp-bundle";
 
 const picked = (relativePath: string, content: string) => ({
@@ -42,6 +43,9 @@ it("prompts for custom themes even when the Markdown contains no image paths", (
   expect(
     marpBundlePaths("---\nmarp: true\ntheme: default\n---\n# Talk"),
   ).toEqual([]);
+  expect(marpBundlePaths("---\nmarp: true\ntheme: ink\n---\n# Talk")).toEqual([]);
+  expect(missingMarpTheme("---\ntheme: meadow\n---\n# Talk", {})).toBeNull();
+  expect(missingMarpTheme("---\ntheme: custom\n---\n# Talk", {})).toBe("custom");
 });
 it("keeps the per-file folder import limit", async () => {
   const file = {

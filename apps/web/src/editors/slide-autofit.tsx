@@ -56,16 +56,7 @@ export function autofitSignature(el: {
 }
 
 function textNode(root: HTMLElement): HTMLElement {
-  return root.querySelector<HTMLElement>("textarea, .element-editor") ?? root;
-}
-
-/** Editor sizes are already pixels. A slideshow size scales with the slide. */
-function naturalPx(root: HTMLElement, normalPx: number, fitTo?: number) {
-  if (!fitTo) return normalPx;
-  const slide = root.closest(".show-slide");
-  const width = slide instanceof HTMLElement ? slide.clientWidth : 0;
-  if (width <= 0) return 0;
-  return (normalPx / fitTo) * width;
+  return root.querySelector<HTMLElement>("textarea, .element-editor, .slide-text-face") ?? root;
 }
 
 /**
@@ -75,7 +66,6 @@ function naturalPx(root: HTMLElement, normalPx: number, fitTo?: number) {
 export function AutofitBox({
   autofit,
   normalPx,
-  fitTo,
   signature,
   style,
   children,
@@ -83,8 +73,6 @@ export function AutofitBox({
 }: {
   autofit: boolean;
   normalPx: number;
-  /** Deck width. Set on the slideshow, where the natural size scales with the slide. */
-  fitTo?: number;
   signature: string;
   style?: CSSProperties;
 } & Omit<ComponentPropsWithoutRef<"div">, "style">) {
@@ -98,7 +86,7 @@ export function AutofitBox({
       return;
     }
     const measure = () => {
-      const natural = naturalPx(root, normalPx, fitTo);
+      const natural = normalPx;
       const node = textNode(root);
       if (natural <= 0 || node.clientWidth <= 0 || node.clientHeight <= 0) return;
       const previous = node.style.fontSize;
@@ -116,14 +104,12 @@ export function AutofitBox({
       });
     };
     measure();
-    const watch =
-      (fitTo ? root.closest(".show-slide") : root.closest(".slide-canvas")) ??
-      root;
+    const watch = root.closest(".slide-surface") ?? root;
     if (!(watch instanceof HTMLElement)) return;
     const observer = new ResizeObserver(() => measure());
     observer.observe(watch);
     return () => observer.disconnect();
-  }, [autofit, normalPx, fitTo, signature]);
+  }, [autofit, normalPx, signature]);
 
   const fontSize =
     autofit && override != null ? `${override}px` : style?.fontSize;

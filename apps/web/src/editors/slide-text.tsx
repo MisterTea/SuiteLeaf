@@ -12,12 +12,19 @@ import {
 import { continueList, listShortcut } from "./slide-list";
 import "./slide-text.css";
 
-export function runStyle(run: TextRun): CSSProperties {
+export function runStyle(run: TextRun, baseFontSize?: number): CSSProperties {
   return {
     fontWeight: run.bold ? 700 : 400,
     fontStyle: run.italic ? "italic" : "normal",
     textDecoration: run.underline ? "underline" : "none",
     ...(run.color ? { color: run.color } : {}),
+    ...(run.fontSize
+      ? {
+          fontSize: baseFontSize
+            ? `${run.fontSize / baseFontSize}em`
+            : `${run.fontSize}px`,
+        }
+      : {}),
   };
 }
 
@@ -44,22 +51,31 @@ export function RunSpans({
   bold,
   italic,
   underline,
+  fontSize,
 }: {
   content?: string;
   runs?: TextRun[];
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
+  fontSize?: number;
 }) {
   if (!hasTextRuns({ runs })) return <>{content}</>;
-  return runsOf({ content, runs, bold, italic, underline }).map((run, index) => (
-    <span key={index} style={runStyle(run)}>
-      {run.text}
-    </span>
-  ));
+  return runsOf({ content, runs, bold, italic, underline }).map(
+    (run, index) => (
+      <span key={index} style={runStyle(run, fontSize)}>
+        {run.text}
+      </span>
+    ),
+  );
 }
 
-type StyleAttr = Partial<Pick<TextRun, "bold" | "italic" | "underline" | "color">>;
+type StyleAttr = Partial<
+  Pick<
+    TextRun,
+    "bold" | "italic" | "underline" | "color" | "fontSize" | "paragraphBreak"
+  >
+>;
 
 function styleFrom(el: HTMLElement): StyleAttr {
   const next: StyleAttr = {};
@@ -69,6 +85,9 @@ function styleFrom(el: HTMLElement): StyleAttr {
     next.italic = true;
   if (el.dataset.underline === "1" || el.tagName === "U") next.underline = true;
   if (el.dataset.color) next.color = el.dataset.color;
+  if (el.dataset.fontSize && Number(el.dataset.fontSize) > 0)
+    next.fontSize = Number(el.dataset.fontSize);
+  if (el.dataset.paragraphBreak === "1") next.paragraphBreak = true;
   return next;
 }
 
@@ -100,8 +119,10 @@ export function selectionOffsets(
   root: HTMLElement,
 ): { start: number; end: number } | null {
   const sel = window.getSelection();
-  if (!sel || sel.rangeCount === 0 || !sel.anchorNode || !sel.focusNode) return null;
-  if (!root.contains(sel.anchorNode) || !root.contains(sel.focusNode)) return null;
+  if (!sel || sel.rangeCount === 0 || !sel.anchorNode || !sel.focusNode)
+    return null;
+  if (!root.contains(sel.anchorNode) || !root.contains(sel.focusNode))
+    return null;
   const measure = (node: Node, offset: number) => {
     const pre = document.createRange();
     pre.selectNodeContents(root);
@@ -113,7 +134,11 @@ export function selectionOffsets(
   return start <= end ? { start, end } : { start: end, end: start };
 }
 
-export function restoreSelection(root: HTMLElement, start: number, end: number) {
+export function restoreSelection(
+  root: HTMLElement,
+  start: number,
+  end: number,
+) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   let seen = 0;
   let startNode: Node | null = null;
@@ -136,7 +161,10 @@ export function restoreSelection(root: HTMLElement, start: number, end: number) 
   }
   if (!startNode || !endNode) return;
   const range = document.createRange();
-  range.setStart(startNode, Math.min(startOffset, startNode.textContent?.length ?? 0));
+  range.setStart(
+    startNode,
+    Math.min(startOffset, startNode.textContent?.length ?? 0),
+  );
   range.setEnd(endNode, Math.min(endOffset, endNode.textContent?.length ?? 0));
   const sel = window.getSelection();
   sel?.removeAllRanges();
@@ -169,7 +197,9 @@ export function SlideTextBody({
   const onCaretRef = useRef(onCaret);
   onTextRef.current = onText;
   onCaretRef.current = onCaret;
-  const signature = JSON.stringify(runsOf({ content, runs, bold, italic, underline }));
+  const signature = JSON.stringify(
+    runsOf({ content, runs, bold, italic, underline }),
+  );
 
   useLayoutEffect(() => {
     const node = ref.current;
@@ -180,7 +210,9 @@ export function SlideTextBody({
       return;
     }
     const sel =
-      editing && document.activeElement === node ? selectionOffsets(node) : null;
+      editing && document.activeElement === node
+        ? selectionOffsets(node)
+        : null;
     node.innerHTML = runsToHtml(expected);
     node.dataset.empty = plainText(expected) ? "false" : "true";
     if (sel) restoreSelection(node, sel.start, sel.end);
@@ -225,7 +257,10 @@ export function SlideTextBody({
         const caret =
           doc.caretRangeFromPoint?.(event.clientX, event.clientY) ??
           (() => {
-            const pos = doc.caretPositionFromPoint?.(event.clientX, event.clientY);
+            const pos = doc.caretPositionFromPoint?.(
+              event.clientX,
+              event.clientY,
+            );
             if (!pos) return null;
             const range = doc.createRange();
             range.setStart(pos.offsetNode, pos.offset);
@@ -233,7 +268,8 @@ export function SlideTextBody({
             return range;
           })();
         const node = caret?.startContainer;
-        if (!node || node.nodeType !== Node.TEXT_NODE || !root.contains(node)) return;
+        if (!node || node.nodeType !== Node.TEXT_NODE || !root.contains(node))
+          return;
         const text = node.textContent ?? "";
         let start = caret.startOffset;
         let end = start;
@@ -248,7 +284,14 @@ export function SlideTextBody({
         selection?.addRange(range);
       }}
       onKeyDown={(e) => {
-        if (e.key !== "Enter" || e.shiftKey || e.altKey || e.metaKey || e.ctrlKey) return;
+        if (
+          e.key !== "Enter" ||
+          e.shiftKey ||
+          e.altKey ||
+          e.metaKey ||
+          e.ctrlKey
+        )
+          return;
         const node = ref.current;
         if (!node) return;
         const sel = selectionOffsets(node);
@@ -257,7 +300,12 @@ export function SlideTextBody({
         const next = continueList(plainText(current), sel.start);
         if (!next) return;
         e.preventDefault();
-        const runs = replaceRunRange(current, next.from, next.to, next.replacement);
+        const runs = replaceRunRange(
+          current,
+          next.from,
+          next.to,
+          next.replacement,
+        );
         node.innerHTML = runsToHtml(runs);
         node.dataset.empty = plainText(runs) ? "false" : "true";
         restoreSelection(node, next.caret, next.caret);
@@ -272,7 +320,12 @@ export function SlideTextBody({
         if (sel && sel.start === sel.end) {
           const next = listShortcut(text, sel.start);
           if (next) {
-            const runs = replaceRunRange(current, next.from, next.to, next.replacement);
+            const runs = replaceRunRange(
+              current,
+              next.from,
+              next.to,
+              next.replacement,
+            );
             node.innerHTML = runsToHtml(runs);
             node.dataset.empty = plainText(runs) ? "false" : "true";
             restoreSelection(node, next.caret, next.caret);

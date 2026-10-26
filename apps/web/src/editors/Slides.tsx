@@ -2,6 +2,7 @@ import { SlidePrintDeck, useSlidePrint } from "./slide-print";
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ChangeEvent,
@@ -50,10 +51,9 @@ import {
   type SlideTheme,
 } from "@suiteleaf/core";
 import { exportBinary, exportText, printDocument } from "../storage";
-import { PresenterNextSlide, SlideMasterLayer } from "./slide-master-ui";
+import { PresenterNextSlide } from "./slide-master-ui";
 import { SlideHandouts } from "./slide-handouts";
-import { WordArtDialog, wordArtProps } from "./slide-word-art";
-import { SlideMediaControls } from "./slide-media";
+import { WordArtDialog } from "./slide-word-art";
 import { SlideMasterPanel } from "./slide-master-panel";
 import { AnimationPane } from "./slide-animation-pane";
 import { SlideshowRecorder } from "./slide-record";
@@ -125,8 +125,7 @@ import {
   styleSelection,
   styleWholeBox,
 } from "./slide-runs";
-import { AutofitBox, autofitSignature } from "./slide-autofit";
-import { boxFont, RunSpans, SlideTextBody } from "./slide-text";
+import { SlideTextBody } from "./slide-text";
 import { useSlideThemeLibrary } from "./slide-theme-library";
 import { replaceSlideWord } from "./grid-spelling";
 import { SlideSpellMirror, SlideSpelling } from "./grid-spelling-ui";
@@ -151,32 +150,25 @@ import {
 import { FadeOnClickMark } from "./slide-fade-mark";
 import {
   deckToMarp,
+  isMarpChrome,
   isMarpTitle,
-  marpSlideNotice,
-  marpToDeck,
-  moveToOtherColumn,
   reorderFittedMarpItem,
   reorderMarpItem,
   reflowMarp,
   switchMarpLayout,
 } from "./slide-marp";
 import { deckToHtml } from "./slide-html";
-import { marpMediaSrc } from "./slide-marp-import";
 import { fitMarpDeck, MARP_FIT_REVISION } from "./slide-marp-fit";
-import { MARP_COMPILED_HTML } from "./slide-marp-bundle";
-import { MarpCode, MarpMath, MarpRichText } from "./slide-marp-math";
+import { marpProblem } from "./slide-marp-source";
+import { deckFromMarkdown, keepUnchangedParts, syncMarpSource, withMarpLayout } from "./slide-marp-sync";
+import { MarpBackdrop, useMarpPages } from "./slide-marp-backdrop";
+import { SlideFace, SlideStill, type SlideBoxProps, type SlideFaceHooks } from "./slide-surface";
+import { MarpSplitHandle, useMarpSplit } from "./slide-marp-split";
+import { MarpTextarea, type MarpDraft } from "./slide-marp-textarea";
 import { continueList, listShortcut } from "./slide-list";
 
 type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
-/** Painted on the slide, not stored in a text box, so editing the title leaves it. */
-function SlideNumber({ n }: { n: number }) {
-  return (
-    <div className="slide-number" aria-label={`Slide number ${n}`}>
-      {n}
-    </div>
-  );
-}
 
 export default function Slides({
   file,
@@ -241,9 +233,7 @@ export default function Slides({
   const [panel, setPanel] = useState<"theme" | "transition" | "animation" | "master" | null>(null);
   const [recording, setRecording] = useState(false);
   const recorderRef = useRef<SlideshowRecorder | null>(null);
-  const [marpOpen, setMarpOpen] = useState(false);
-  const [marpText, setMarpText] = useState("");
-  const [marpError, setMarpError] = useState<string | null>(null);
+  const [marpOpen, setMarpOpen] = useState(() => !!file.content.marp);
   const [marpWarnings, setMarpWarnings] = useState<string[]>([]);
   const [previewTheme, setPreviewTheme] = useState<SlideTheme | null>(null);
   const [transitionScope, setTransitionScope] = useState<"all" | "selected">(
@@ -318,10 +308,14 @@ export default function Slides({
   const commitRef = useRef<
     (next: SlideFile["content"], key?: string) => void
   >(() => {});
-  const marpFocused = useRef(false);
-  const marpFromPane = useRef(false);
   const marpOpenRef = useRef(false);
   marpOpenRef.current = marpOpen;
+  /** Typing on the canvas changed the markdown; lay the slide out once the box is left. */
+  const marpStale = useRef(false);
+  /** MARP's own drawing of the slide is showing behind the boxes. */
+  const [painted, setPainted] = useState(false);
+  const [focusedBox, setFocusedBox] = useState<string | null>(null);
+  const marpAreaRef = useRef<HTMLTextAreaElement>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const readOnlyRef = useRef(readOnly);
@@ -379,11 +373,36 @@ export default function Slides({
     }
   };
 
-  // Commit changes and push to undo history
+  const typingOnCanvas = () => {
+    if (editingRef.current) return true;
+    const active = document.activeElement as HTMLElement | null;
+    return (
+      !!active &&
+      !!stageRef.current?.contains(active) &&
+      active.matches("textarea, [contenteditable='true'], [contenteditable='']")
+    );
+  };
+
+  // Commit changes and push to undo history. In a MARP deck the markdown is the
+  // source of truth, so a canvas edit is written into it first.
   const commit = (next: SlideFile["content"], key?: string) => {
     if (readOnlyRef.current) return;
-    if (next.marp && next.marpSource && key !== "marp" && key !== "marp-fit") {
-      next = { ...next, marpSourceDirty: true };
+    if (key === "marp-fit") {
+      historyRef.current!.amend(next);
+      applyDeck(next);
+      return;
+    }
+    const tip = historyRef.current!.tip;
+    if (next.marp && tip.marp && tip.marpSource !== undefined && next.marpSource === tip.marpSource) {
+      const synced = syncMarpSource(tip, next, { editing: typingOnCanvas() });
+      if ("error" in synced) {
+        onError(synced.error);
+        liveDirty.current = false;
+        applyDeck(historyRef.current!.snapshot());
+        return;
+      }
+      next = synced.deck;
+      if (synced.relayout === "later") marpStale.current = true;
     }
     historyRef.current!.commit(next, key);
     applyDeck(next);
@@ -392,6 +411,15 @@ export default function Slides({
     liveDirty.current = false;
   };
   commitRef.current = commit;
+
+  /** Lay the slides out again from the markdown, without adding an undo step. */
+  const relayoutMarp = () => {
+    marpStale.current = false;
+    if (readOnlyRef.current || !deckRef.current.marp) return;
+    const next = { ...deckRef.current, marpFit: false };
+    historyRef.current!.amend(next);
+    applyDeck(next);
+  };
 
   const restore = (next: SlideFile["content"] | null) => {
     if (!next) return;
@@ -434,14 +462,30 @@ export default function Slides({
     liveDirty.current = false;
   };
 
-  const undo = () => restore(historyRef.current!.undo());
-  const redo = () => restore(historyRef.current!.redo());
+  /** Markdown typed in the pane that the slides have not followed yet. */
+  const marpDraft = useRef<MarpDraft | null>(null);
+  const flushMarpDraft = () => marpDraft.current?.flush();
+
+  const undo = () => {
+    flushMarpDraft();
+    marpStale.current = false;
+    restore(historyRef.current!.undo());
+  };
+  const redo = () => {
+    flushMarpDraft();
+    marpStale.current = false;
+    restore(historyRef.current!.redo());
+  };
 
   // Active slide
   const activeSlide =
     deck.slides[activeSlideId] || deck.slides[deck.slideOrder[0]];
   const selectedElement =
     activeSlide?.elements.find((el) => el.id === selectedElementId) || null;
+  /** The box being typed in. It shows its own words over MARP's drawing. */
+  const liveId = editingId ?? focusedBox ?? tableCell?.id ?? null;
+  const liveLines =
+    (liveId && activeSlide?.elements.find((el) => el.id === liveId)?.marpLines) || null;
   const slideComments = useSlideComments({
     deck,
     activeSlideId: activeSlide?.id ?? activeSlideId,
@@ -526,59 +570,108 @@ export default function Slides({
   const thumbnailsRef = useRef<HTMLDivElement>(null);
   const suppressThumbnailClick = useRef(false);
 
+  /** The deck for tests to read, with embedded pictures named rather than copied. */
+  const deckSnapshot = useMemo(
+    () =>
+      JSON.stringify(
+        deck.marpAssets ? { ...deck, marpAssets: Object.keys(deck.marpAssets) } : deck,
+      ),
+    [deck],
+  );
+  const marpInvalid = useMemo(
+    () => (deck.marp && deck.marpSource !== undefined ? marpProblem(deck.marpSource) : null),
+    [deck.marp, deck.marpSource],
+  );
+  const marpPending =
+    !!deck.marp && deck.marpSource !== undefined && !marpInvalid && deck.marpFit !== MARP_FIT_REVISION;
+  /** Draw boxes scaled to the canvas, as the fit placed them, also while the next fit runs. */
+  const fittedView = !!deck.marpFit || (!!deck.marp && deck.marpSource !== undefined);
+  const showBackdrop = !!deck.marp && deck.marpSource !== undefined && !marpInvalid && !deck.marpSourceDirty;
+  /**
+   * One drawing serves the editor's backdrop, the thumbnails, and the slideshow.
+   * It holds still while a box on the slide is being typed in.
+   */
+  const marpPages = useMarpPages(deck, { paused: !!liveLines });
+  const [marpSplit, setMarpSplit] = useMarpSplit();
+  /** The slides on either side of the show stay loaded, so MARP's drawing is ready on arrival. */
+  const marpShow = !!deck.marp && !!marpPages;
+
+  // A MARP deck saved before its markdown was kept starts from the markdown its slides write.
   useEffect(() => {
-    if (!marpOpen) return;
-    if (marpFromPane.current) {
-      marpFromPane.current = false;
+    const start = deckRef.current;
+    if (!start.marp || start.marpSource !== undefined) return;
+    const next = deckFromMarkdown(start, deckToMarp(start)).deck;
+    if (readOnlyRef.current) {
+      deckRef.current = next;
+      setDeck(next);
       return;
     }
-    if (marpFocused.current) return;
-    setMarpText(deck.marpSource ?? deckToMarp(deck));
-    setMarpError(null);
-    setMarpWarnings([]);
-  }, [deck, marpOpen]);
+    historyRef.current!.amend(next);
+    applyDeck(next);
+    // Runs once, for the deck the editor opened with.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fitToken = useRef(0);
   useEffect(() => {
-    if (!deck.marp || !deck.marpSource || deck.marpFit === MARP_FIT_REVISION) return;
+    if (!deck.marp || !deck.marpSource || deck.marpFit === MARP_FIT_REVISION || marpInvalid) return;
     const token = ++fitToken.current;
+    const source = deck.marpSource;
+    const settle = (laid: SlideFile["content"] | null) => {
+      const current = deckRef.current;
+      if (token !== fitToken.current || current.marpSource !== source || current.marpFit === MARP_FIT_REVISION)
+        return;
+      const next = laid
+        ? keepUnchangedParts(current, withMarpLayout(current, laid))
+        : { ...current, marpFit: MARP_FIT_REVISION };
+      if (readOnlyRef.current) {
+        deckRef.current = next;
+        setDeck(next);
+        return;
+      }
+      commitRef.current(next, "marp-fit");
+    };
     const handle = window.setTimeout(() => {
-      void fitMarpDeck(deckRef.current)
-        .then((next) => {
-          if (!next || token !== fitToken.current || deckRef.current.marpFit === MARP_FIT_REVISION)
-            return;
-          commitRef.current(next, "marp-fit");
-        })
+      const stale = () => token !== fitToken.current || deckRef.current.marpSource !== source;
+      void fitMarpDeck(deckRef.current, { stale })
+        .then((laid) => (stale() ? undefined : settle(laid)))
         .catch((error: unknown) => {
           console.error(error instanceof Error ? error.message : error);
+          settle(null);
         });
-    }, 30);
+    }, 120);
     return () => window.clearTimeout(handle);
-  }, [deck.marp, deck.marpSource, deck.marpFit]);
+  }, [deck.marp, deck.marpSource, deck.marpFit, marpInvalid]);
+
+  useEffect(() => {
+    if (!editingId && marpStale.current && !typingOnCanvas()) relayoutMarp();
+    // Only a change of the box being edited ends a typing session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingId]);
+
+  /** Open the markdown pane with these lines selected and in view. */
+  const revealMarkdown = (lines?: [number, number]) => {
+    if (!lines) return;
+    setMarpOpen(true);
+    requestAnimationFrame(() => {
+      const area = marpAreaRef.current;
+      if (!area) return;
+      const all = area.value.split("\n");
+      const start = all.slice(0, lines[0]).join("\n").length + (lines[0] > 0 ? 1 : 0);
+      const end = all.slice(0, lines[1]).join("\n").length;
+      area.focus();
+      area.setSelectionRange(start, Math.max(start, end));
+      const lineHeight = parseFloat(getComputedStyle(area).lineHeight) || 19;
+      area.scrollTop = Math.max(0, lines[0] * lineHeight - area.clientHeight / 3);
+    });
+  };
 
   const onMarpChange = (text: string) => {
-    setMarpText(text);
-    const result = marpToDeck(text, deckRef.current, {
-      marp: !!deckRef.current.marp,
-    });
-    if ("error" in result) {
-      setMarpError(result.error);
-      setMarpWarnings([]);
-      return;
-    }
-    setMarpError(null);
+    if (readOnlyRef.current) return;
+    marpStale.current = false;
+    const result = deckFromMarkdown(deckRef.current, text);
     setMarpWarnings(result.warnings);
-    marpFromPane.current = true;
-    commit(
-      {
-        ...result.deck,
-        marpSource: text,
-        marpSourceDirty: false,
-        marpAssets: Object.fromEntries(Object.entries(deckRef.current.marpAssets ?? {}).filter(([path]) => path !== MARP_COMPILED_HTML)),
-        marpFit: false,
-      },
-      "marp",
-    );
+    commit(keepUnchangedParts(deckRef.current, result.deck), "marp");
     if (!result.deck.slides[activeRef.current]) {
       const id = result.deck.slideOrder[0];
       applySelection(id, [id], null);
@@ -1080,7 +1173,10 @@ export default function Slides({
       return;
     }
     if (editingRef.current === el.id) return;
-    updateElement(el.id, handStyle({ color }));
+    // A MARP box's own color is the theme's; the markdown colors its words.
+    if (deckRef.current.marp)
+      updateElement(el.id, styleSelection(el, 0, (el.content ?? "").length, { type: "color", color }));
+    else updateElement(el.id, handStyle({ color }));
   };
   const alignText = (alignment: "left" | "center" | "right") => {
     const el = selectedText();
@@ -1282,7 +1378,7 @@ export default function Slides({
       setEditingId(elementId);
     }
     if (deckRef.current.marp) {
-      if (handle || isMarpTitle(el) || el.type === "shape") return;
+      if (handle || isMarpTitle(el) || isMarpChrome(el)) return;
       draggingRef.current = {
         elementId,
         startX: e.clientX,
@@ -1422,7 +1518,11 @@ export default function Slides({
   }, [deck.width, updateElement]);
 
   // Export handlers
-  const { printing, print: printSlides } = useSlidePrint(file.title, printDocument);
+  const { printing, print: printDeck } = useSlidePrint(file.title, printDocument);
+  const printSlides = useCallback(() => {
+    marpDraft.current?.flush();
+    return printDeck();
+  }, [printDeck]);
 
   const exportTxt = async () => {
     const lines: string[] = [];
@@ -1457,7 +1557,11 @@ export default function Slides({
   };
 
   const exportMarp = async () => {
-    await exportText(filename(file.title, "md"), deckToMarp(deckRef.current));
+    const current = deckRef.current;
+    await exportText(
+      filename(file.title, "md"),
+      current.marp && current.marpSource !== undefined ? current.marpSource : deckToMarp(current),
+    );
   };
 
   const exportPptx = async () => {
@@ -1485,6 +1589,7 @@ export default function Slides({
   const overlayRef = useRef<HTMLDivElement>(null);
 
   const beginShow = useCallback((fromIndex: number, withNotes?: boolean) => {
+    marpDraft.current?.flush();
     const next = startOfShow(fromIndex);
     showCursorRef.current = next;
     setShowCursor(next);
@@ -1654,8 +1759,12 @@ export default function Slides({
   // Wire editor actions for workspace header
   useEffect(() => {
     onActions({
-      flush: async () => onChange(deckRef.current),
+      flush: async () => {
+        flushMarpDraft();
+        onChange(deckRef.current);
+      },
       export: async (format: string) => {
+        flushMarpDraft();
         if (format === "md") await exportMarpRef.current();
         else if (format === "pptx") await exportPptxRef.current();
         else if (format === "html") await exportHtmlRef.current();
@@ -1962,164 +2071,22 @@ export default function Slides({
     elapsedSeconds % 60,
   ).padStart(2, "0")}`;
 
-  /** Slide content for the show, sized in container units so it scales with
-   * whatever box it is drawn in (the full screen or the next-slide preview).
-   * The audience view hides fade-on-click objects until they are revealed.
-   * The speaker's next-slide preview shows them. */
-  const renderShowElements = (slide: Slide | undefined, audience: boolean) => {
-    const w = deck.width || 960;
-    const h = deck.height || 540;
-    const units = (n: number) => `calc(${n} / ${w} * 100cqw)`;
+  /** The audience sees fade-on-click objects only once they are revealed. */
+  const audienceHooks = (slide: Slide | undefined): SlideFaceHooks => {
     const order = fadeOnClickIds(slide?.elements ?? []);
-    const revealed = audience ? showCursor.revealed : order.length;
-    const enteringId = audience ? showCursor.enteringId : null;
-    return slide?.elements.map((el) => {
-      const phase = audiencePhase(el, revealed, order, enteringId);
-      const fadeProps = {
-        "data-element-id": el.id,
-        className: audienceClass(phase, el.animation),
-        ...(phase === "plain"
-          ? {}
-          : { "data-fade": phase === "hidden" ? ("hidden" as const) : ("visible" as const) }),
-        ...(phase === "hidden" ? { "aria-hidden": true as const } : {}),
-      };
-      const posStyle: React.CSSProperties = {
-        position: "absolute",
-        left: `${(el.x / w) * 100}%`,
-        top: `${(el.y / h) * 100}%`,
-        width: `${(el.width / w) * 100}%`,
-        height: `${(el.height / h) * 100}%`,
-      };
-
-      if (el.type === "text") {
-        const art = wordArtProps(el);
-        const normalPx = (el.fontSize || 20) * 0.95;
-        return (
-          <AutofitBox
-            key={el.id}
-            autofit={!!el.autofit && !el.wordArt}
-            normalPx={normalPx}
-            fitTo={w}
-            signature={autofitSignature(el)}
-            {...fadeProps}
-            data-word-art={el.wordArt}
-            data-autofit={el.autofit && !el.wordArt ? "on" : undefined}
-            className={`${fadeProps.className} show-text${art.className}`}
-            style={{
-              ...posStyle,
-              ...art.style,
-              fontSize: units(deck.marpFit ? el.fontSize || 20 : normalPx),
-              padding: deck.marpFit ? undefined : units(4),
-              paddingLeft: deck.marpFit && el.padLeft ? units(el.padLeft) : undefined,
-              lineHeight: el.lineHeight,
-              ...boxFont(el),
-              fontFamily: el.fontFamily || "Arial",
-              color: el.color || "#1e293b",
-              textAlign: el.align || "left",
-              whiteSpace: el.preformatted ? "pre" : "pre-wrap",
-              wordBreak: "break-word",
-              backgroundColor: el.fill || "transparent",
-            }}
-          >
-            {el.preformatted ? (
-              <MarpCode source={el.content || ""} language={el.codeLanguage} />
-            ) : el.math ? (
-              <MarpMath source={el.content || ""} />
-            ) : el.content?.includes("$") ? (
-              <MarpRichText source={el.content} />
-            ) : (
-              <RunSpans
-                content={el.content}
-                runs={el.runs}
-                bold={el.bold}
-                italic={el.italic}
-                underline={el.underline}
-              />
-            )}
-          </AutofitBox>
-        );
-      }
-      if (el.type === "image" && el.src) {
-        return (
-          <img
-            key={el.id}
-            {...fadeProps}
-            src={marpMediaSrc(el.src, deck.marpAssets)}
-            alt={el.alt || "Slide asset"}
-            style={{ ...posStyle, objectFit: "contain" }}
-          />
-        );
-      }
-      if (el.type === "shape") {
-        const border = el.stroke
-          ? `${units(el.strokeWidth || 1)} solid ${el.stroke}`
-          : "none";
-        const rad =
-          el.radius && deck.marpFit
-            ? units(el.radius)
-            : el.shapeType === "ellipse"
-              ? "50%"
-              : el.shapeType === "roundRect"
-                ? units(16)
-                : "0px";
-        return (
-          <div
-            key={el.id}
-            {...fadeProps}
-            style={{
-              ...posStyle,
-              backgroundColor: el.fill || "#e2e8f0",
-              border,
-              borderRadius: rad,
-            }}
-          />
-        );
-      }
-      if (el.type === "table" && el.rows) {
-        return (
-          <table
-            key={el.id}
-            {...fadeProps}
-            className={`${fadeProps.className} show-table`}
-            style={posStyle}
-          >
-            <tbody>
-              {el.rows.map((row, rIdx) => (
-                <tr key={rIdx}>
-                  {row.map((cell, cIdx) => (
-                    <td
-                      key={cIdx}
-                      style={{
-                        fontSize: units(14),
-                        padding: `${units(4)} ${units(8)}`,
-                        fontWeight: el.cellMarks?.[rIdx]?.[cIdx]?.bold ? 700 : undefined,
-                        fontStyle: el.cellMarks?.[rIdx]?.[cIdx]?.italic ? "italic" : undefined,
-                      }}
-                    >
-                      {cell}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        );
-      }
-      if ((el.type === "audio" || el.type === "video") && el.src) {
-        return (
-          <div
-            key={el.id}
-            {...fadeProps}
-            data-media={el.type}
-            className={`${fadeProps.className} show-${el.type}`}
-            style={posStyle}
-          >
-            <SlideMediaControls element={el} />
-          </div>
-        );
-      }
-      return null;
-    });
+    return {
+      box: (el) => {
+        const phase = audiencePhase(el, showCursor.revealed, order, showCursor.enteringId);
+        return {
+          className: ` ${audienceClass(phase, el.animation)}`,
+          props: {
+            "data-element-id": el.id,
+            ...(phase === "plain" ? {} : { "data-fade": phase === "hidden" ? "hidden" : "visible" }),
+            ...(phase === "hidden" ? { "aria-hidden": true } : {}),
+          },
+        };
+      },
+    };
   };
 
   const slideHeading = (slide: Slide) =>
@@ -2165,12 +2132,198 @@ export default function Slides({
     </div>
   );
 
+  /** The editor's words: the box being typed in, and plain text, which is typed into directly. */
+  const editorText = (el: SlideElement) =>
+    editingId === el.id || hasTextRuns(el) ? (
+        <SlideTextBody
+          content={el.content}
+          runs={el.runs}
+          bold={el.bold}
+          italic={el.italic}
+          underline={el.underline}
+          placeholder={el.placeholder}
+          editing={editingId === el.id && !readOnly}
+          onText={(runs, opts) =>
+            updateElement(
+              el.id,
+              {
+                content: runs.map((run) => run.text).join(""),
+                runs: hasTextRuns({ runs }) ? runs : undefined,
+                bold: false,
+                italic: false,
+                underline: false,
+                ...(opts?.bullet ? { bullet: true } : {}),
+              },
+              { coalesce: `type:${el.id}` },
+            )
+          }
+          onCaret={(sel) => rememberCaret(el.id, sel)}
+        />
+      ) : (
+        <>
+          <SlideSpellMirror
+            text={el.content || ""}
+            fileId={file.id}
+            caret={spellCaret?.id === el.id ? spellCaret.at : null}
+          />
+          <textarea
+            className="element-textarea"
+            readOnly={readOnly}
+            value={el.content || ""}
+            placeholder={el.placeholder ?? "Click to add text"}
+            onFocus={(e) => {
+              selectElement(el.id);
+              setSpellCaret({
+                id: el.id,
+                at: e.currentTarget.selectionStart ?? 0,
+              });
+            }}
+            onBlur={() =>
+              setSpellCaret((current) =>
+                current?.id === el.id ? null : current,
+              )
+            }
+            onSelect={(e) =>
+              setSpellCaret({
+                id: el.id,
+                at: e.currentTarget.selectionStart ?? 0,
+              })
+            }
+            onKeyDown={(e) => {
+              if (
+                e.key !== "Enter" ||
+                e.shiftKey ||
+                e.altKey ||
+                e.metaKey ||
+                e.ctrlKey
+              )
+                return;
+              const node = e.currentTarget;
+              const caret = node.selectionStart ?? 0;
+              if ((node.selectionEnd ?? caret) !== caret) return;
+              const next = continueList(node.value, caret);
+              if (!next) return;
+              e.preventDefault();
+              updateElement(
+                el.id,
+                { content: next.text },
+                { coalesce: `type:${el.id}` },
+              );
+              const pos = next.caret;
+              requestAnimationFrame(() =>
+                node.setSelectionRange(pos, pos),
+              );
+            }}
+            onChange={(e) => {
+              const raw = e.target.value;
+              const caret = e.target.selectionStart ?? raw.length;
+              const next =
+                e.target.selectionEnd === caret
+                  ? listShortcut(raw, caret)
+                  : null;
+              updateElement(
+                el.id,
+                {
+                  content: next?.text ?? raw,
+                  ...(next?.bullet ? { bullet: true } : {}),
+                },
+                { coalesce: `type:${el.id}` },
+              );
+              setSpellCaret({ id: el.id, at: next?.caret ?? caret });
+              if (!next) return;
+              const node = e.target;
+              const pos = next.caret;
+              requestAnimationFrame(() =>
+                node.setSelectionRange(pos, pos),
+              );
+            }}
+          />
+        </>
+    );
+  /** The editor's part of the shared drawing: selection, editing, handles, and table cells. */
+  const canvasHooks: SlideFaceHooks = {
+    box: (el) => {
+      const isSelected = el.id === selectedElementId;
+      const position = { "data-element-id": el.id, "data-x": el.x, "data-y": el.y };
+      if (el.type === "shape" && el.marpHtml)
+        return {
+          className: isSelected ? " selected" : "",
+          props: {
+            ...position,
+            "aria-label": "HTML block. Double-click to edit it in the markdown.",
+            title: "HTML block. Double-click to edit it in the markdown.",
+            onMouseDown: (e) => onElementMouseDown(e, el.id),
+            onClick: (e) => e.stopPropagation(),
+            onDoubleClick: (e) => {
+              e.stopPropagation();
+              revealMarkdown(el.marpLines);
+            },
+          },
+        };
+      const live = (el.type === "text" || el.type === "table") && el.id === liveId;
+      const props: SlideBoxProps = {
+        ...position,
+        ...editorFadeAttrs(el),
+        onMouseDown: (e) => onElementMouseDown(e, el.id),
+        onClick: (e) => e.stopPropagation(),
+      };
+      if (el.type === "text") {
+        props.onMouseDown = (e) => {
+          const inEditor = (e.target as HTMLElement).closest?.(".element-editor");
+          if (editingRef.current === el.id && inEditor) return;
+          onElementMouseDown(e, el.id);
+        };
+        props.onDoubleClick = (e) => {
+          e.stopPropagation();
+          if (readOnlyRef.current) return;
+          editingRef.current = el.id;
+          textRange.current = null;
+          setEditingId(el.id);
+          selectedElementRef.current = el.id;
+          setSelectedElementId(el.id);
+        };
+      }
+      if (el.type === "audio" || el.type === "video")
+        props.onMouseDown = (e) => {
+          if ((e.target as HTMLElement).closest?.(".slide-media-play")) return;
+          e.preventDefault();
+          onElementMouseDown(e, el.id);
+        };
+      return {
+        className: `${isSelected ? " selected" : ""}${live ? " marp-live" : ""}${editorFadeClass(el)}`,
+        props,
+      };
+    },
+    text: (el) =>
+      editingId === el.id || !(el.preformatted || el.math || el.content?.includes("$"))
+        ? editorText(el)
+        : undefined,
+    before: (el) => <FadeOnClickMark element={el} />,
+    after: (el) =>
+      el.type === "shape" && el.marpHtml ? (
+        <span className="marp-html-label">HTML</span>
+      ) : el.id === selectedElementId && !readOnly && !marpOpen && !deck.marp ? (
+        renderHandles(el.id)
+      ) : null,
+    cell: (el, row, col) => ({
+      className:
+        tableCell?.id === el.id && tableCell.row === row && tableCell.col === col
+          ? "slide-cell-selected"
+          : undefined,
+      onMouseDown: (event) => {
+        event.stopPropagation();
+        onElementMouseDown(event, el.id);
+        setTableCell({ id: el.id, row, col });
+      },
+    }),
+  };
+
   return (
     <div
       className="slides-editor"
-      data-deck-snapshot={JSON.stringify(deck)}
+      data-deck-snapshot={deckSnapshot}
     >
-      <SlidePrintDeck active={printing} deck={deck} renderSlide={(slide) => renderShowElements(slide, false)} />
+      <SlidePrintDeck active={printing} deck={deck} />
       {notice && !presenting ? (
         <div className="slides-notice" role="status">
           <span>{deletedSlidesMessage(notice.count)}</span>
@@ -2263,17 +2416,8 @@ export default function Slides({
               className="menu-trigger theme-toggle"
               aria-label="Markdown"
               aria-pressed={marpOpen}
-              onClick={() => {
-                setMarpOpen((open) => {
-                  if (!open) {
-                    marpFromPane.current = false;
-                    setMarpText(deckRef.current.marpSource ?? deckToMarp(deckRef.current));
-                    setMarpError(null);
-                    setMarpWarnings([]);
-                  }
-                  return !open;
-                });
-              }}
+              title={marpOpen ? "Hide the markdown" : "Show the markdown beside the slide"}
+              onClick={() => setMarpOpen((open) => !open)}
             >
               <FileText size={16} className="narrow-only-icon" aria-hidden="true" />
               <span className="tool-words">Markdown</span>
@@ -2387,6 +2531,8 @@ export default function Slides({
         {/* Dynamic Contextual Tools: Fill, Border, Typography or Slide background/layout */}
         {selectedElement ? (
           <div className="tool-group">
+            {deck.marp ? null : (
+            <>
             {/* Fill color */}
             <Menu
               label="Fill"
@@ -2465,9 +2611,12 @@ export default function Slides({
                 </MenuItem>
               ))}
             </Menu>
+            </>
+            )}
 
             {selectedElement.type === "text" ? (
               <>
+                {deck.marp ? null : (
                 <FontControls>
                 <select
                   className="toolbar-select font-family-select"
@@ -2552,6 +2701,7 @@ export default function Slides({
                   </button>
                 </div>
                 </FontControls>
+                )}
 
                 <Tool
                   label="Bold"
@@ -2609,6 +2759,8 @@ export default function Slides({
                     />
                   </span>
                 </Tool>
+                {deck.marp ? null : (
+                <>
                 <Tool
                   label="Align left"
                   active={selectedElement.align === "left"}
@@ -2647,6 +2799,8 @@ export default function Slides({
                 >
                   <List size={16} />
                 </Tool>
+                </>
+                )}
               </>
             ) : selectedElement.type === "table" && tableCell?.id === selectedElement.id ? (
               <>
@@ -2667,22 +2821,7 @@ export default function Slides({
               </>
             ) : null}
 
-            {deck.marp &&
-            activeSlide?.layout === "two-column" &&
-            activeSlide.elements
-              .filter((el) => el.type === "text" && el.placeholder !== undefined)
-              .findIndex((el) => el.id === selectedElement.id) > 0 ? (
-              <Tool
-                label="Move to other column"
-                onClick={() => {
-                  const moved = moveToOtherColumn(activeSlide, selectedElement.id);
-                  if (moved) updateSlide({ elements: moved.elements });
-                }}
-              >
-                <ChevronLeft size={16} />
-              </Tool>
-            ) : null}
-            {deck.marp && isMarpTitle(selectedElement) ? null : (
+            {deck.marp && (isMarpTitle(selectedElement) || isMarpChrome(selectedElement)) ? null : (
             <Tool label="Delete element" onClick={deleteSelectedElement}>
               <Trash2 size={16} />
             </Tool>
@@ -2741,6 +2880,7 @@ export default function Slides({
               </MenuItem>
             </Menu>
 
+            {deck.marp ? null : (
             <Menu
               label="Layout"
               trigger={
@@ -2751,18 +2891,13 @@ export default function Slides({
               }
             >
               {(
-                deck.marp
-                  ? ([
-                      ["title-body", "Single column"],
-                      ["two-column", "Two columns"],
-                    ] as const)
-                  : ([
-                      ["title", "Title slide"],
-                      ["title-body", "Title & body"],
-                      ["two-column", "Two columns"],
-                      ["section", "Section header"],
-                      ["blank", "Blank slide"],
-                    ] as const)
+                [
+                  ["title", "Title slide"],
+                  ["title-body", "Title & body"],
+                  ["two-column", "Two columns"],
+                  ["section", "Section header"],
+                  ["blank", "Blank slide"],
+                ] as const
               ).map(([layout, label]) => (
                 <MenuItem
                   key={layout}
@@ -2772,6 +2907,7 @@ export default function Slides({
                 </MenuItem>
               ))}
             </Menu>
+            )}
 
           </div>
         )}
@@ -2832,7 +2968,7 @@ export default function Slides({
         </div>
       </div>
 
-      {selectedElement?.themeOverride && deck.theme ? (
+      {selectedElement?.themeOverride && deck.theme && !deck.marp ? (
         <div className="theme-override-bar" role="status">
           <span>Overrides theme</span>
           <button
@@ -3012,82 +3148,13 @@ export default function Slides({
                     style={{ backgroundColor: bg }}
                   >
                     <div className="thumbnail-preview">
-                      {slide?.elements.map((el) => {
-                        const miniStyle: React.CSSProperties = {
-                          position: "absolute",
-                          left: `${(el.x / (deck.width || 960)) * 100}%`,
-                          top: `${(el.y / (deck.height || 540)) * 100}%`,
-                          width: `${(el.width / (deck.width || 960)) * 100}%`,
-                          height: `${(el.height / (deck.height || 540)) * 100}%`,
-                        };
-                        if (el.type === "text") {
-                          const art = wordArtProps(el);
-                          return (
-                            <div
-                              key={el.id}
-                              className={`mini-text${art.className}`}
-                              style={{
-                                ...miniStyle,
-                                ...art.style,
-                                color: el.color || "#1e293b",
-                                backgroundColor: el.fill || "transparent",
-                                textAlign: el.align || "left",
-                                ...boxFont(el),
-                              }}
-                            >
-                              <RunSpans
-                                content={el.content}
-                                runs={el.runs}
-                                bold={el.bold}
-                                italic={el.italic}
-                                underline={el.underline}
-                              />
-                            </div>
-                          );
-                        }
-                        if (el.type === "shape") {
-                          return (
-                            <div
-                              key={el.id}
-                              className="mini-shape"
-                              style={{
-                                ...miniStyle,
-                                backgroundColor: el.fill || "#cbd5e1",
-                                borderRadius:
-                                  el.shapeType === "ellipse"
-                                    ? "50%"
-                                    : el.shapeType === "roundRect"
-                                      ? "2px"
-                                      : "0",
-                              }}
-                            />
-                          );
-                        }
-                        if (el.type === "image" && el.src) {
-                          return (
-                            <img
-                              key={el.id}
-                              src={marpMediaSrc(el.src, deck.marpAssets)}
-                              alt=""
-                              className="mini-img"
-                              style={miniStyle}
-                            />
-                          );
-                        }
-                        if (el.type === "audio" || el.type === "video") {
-                          return (
-                            <div
-                              key={el.id}
-                              className="mini-media"
-                              style={{
-                                ...miniStyle,
-                                background: el.type === "audio" ? "#dbeafe" : "#0f172a",
-                              }}
-                            />
-                          );
-                        }
-                        return null;
-                      })}
+                      <SlideStill
+                        deck={deck}
+                        slide={slide}
+                        index={index}
+                        pages={marpPages}
+                        lazy
+                      />
                     </div>
                     {slide?.transition && slide.transition.type !== "none" ? (
                       <span
@@ -3119,7 +3186,10 @@ export default function Slides({
         {/* Center Slide Canvas */}
         <div className="slides-canvas-stage">
           {slideComments.notice}
-          <div className="slide-stage-row">
+          <div
+            className="slide-stage-row"
+            style={deck.marp && marpOpen ? { ["--marp-split" as string]: marpSplit } : undefined}
+          >
           <div
             className="slide-stage-viewport"
             ref={stageRef}
@@ -3127,9 +3197,31 @@ export default function Slides({
               if (textPress.current) return;
               selectElement(null);
             }}
+            onFocusCapture={(e) => {
+              const box = (e.target as HTMLElement).closest?.<HTMLElement>("[data-element-id]");
+              setFocusedBox(box?.dataset.elementId ?? null);
+            }}
+            onBlurCapture={(e) => {
+              const box = (e.target as HTMLElement).closest?.("[data-element-id]");
+              const next = (e.relatedTarget as HTMLElement | null)?.closest?.("[data-element-id]");
+              if (box && box === next) return;
+              setFocusedBox(null);
+              if (!marpStale.current) return;
+              window.setTimeout(() => {
+                if (marpStale.current && !typingOnCanvas()) relayoutMarp();
+              });
+            }}
           >
+            {deck.marp && marpInvalid ? (
+              <div className="marp-invalid" role="alert">
+                <strong>The markdown is invalid.</strong>
+                <p>{marpInvalid}</p>
+                <p>The slides will show again once the markdown is fixed.</p>
+              </div>
+            ) : (
             <div
-              className={`slide-canvas print-slide${deck.marpFit ? " marp-fit" : ""}${canvasMotion ? ` deck-motion-${canvasMotion.type}` : ""}`}
+              className={`slide-canvas slide-surface print-slide${fittedView ? " marp-fit" : ""}${marpPending ? " marp-pending" : ""}${showBackdrop && painted ? " marp-painted" : ""}${canvasMotion ? ` deck-motion-${canvasMotion.type}` : ""}`}
+              aria-busy={marpPending || undefined}
               style={{
                 backgroundColor:
                   shownSlide?.background?.color ||
@@ -3139,377 +3231,43 @@ export default function Slides({
                 ["--deck-motion" as string]: `${canvasMotion?.ms ?? 0}ms`,
               }}
             >
-              <SlideMasterLayer
-                deck={deck}
-                font={(size) => `${size * 0.95}px`}
-              />
-              {shownSlide?.elements.map((el) => {
-                const isSelected = el.id === selectedElementId;
-                const posStyle: React.CSSProperties = {
-                  position: "absolute",
-                  left: `${(el.x / (deck.width || 960)) * 100}%`,
-                  top: `${(el.y / (deck.height || 540)) * 100}%`,
-                  width: `${(el.width / (deck.width || 960)) * 100}%`,
-                  height: `${(el.height / (deck.height || 540)) * 100}%`,
-                };
-
-                if (el.type === "text") {
-                  const art = wordArtProps(el);
-                  const normalPx = (el.fontSize || 20) * 0.95;
-                  return (
-                    <AutofitBox
-                      key={el.id}
-                      autofit={!!el.autofit && !el.wordArt}
-                      normalPx={normalPx}
-                      signature={autofitSignature(el)}
-                      data-element-id={el.id}
-                      data-x={el.x}
-                      data-y={el.y}
-                      data-word-art={el.wordArt}
-                      data-autofit={el.autofit && !el.wordArt ? "on" : undefined}
-                      className={`slide-element slide-text ${isSelected ? "selected" : ""}${editorFadeClass(el)}${art.className}`}
-                      {...editorFadeAttrs(el)}
-                      style={{
-                        ...posStyle,
-                        ...art.style,
-                        fontSize: deck.marpFit
-                          ? `calc(${el.fontSize || 20} / ${deck.width || 960} * 100cqw)`
-                          : `${normalPx}px`,
-                        ...boxFont(el),
-                        fontFamily: el.fontFamily || "Arial",
-                        color: el.color || "#1e293b",
-                        textAlign: el.align || "left",
-                        lineHeight: el.lineHeight,
-                        whiteSpace: el.preformatted ? "pre" : "pre-wrap",
-                        backgroundColor: el.fill || "transparent",
-                        ["--spell-caret" as string]: el.color || "#1e293b",
-                        ["--marp-pad" as string]:
-                          deck.marpFit && el.padLeft
-                            ? `calc(${el.padLeft} / ${deck.width || 960} * 100cqw)`
-                            : "0px",
-                      }}
-                      onMouseDown={(e) => {
-                        const inEditor = (e.target as HTMLElement).closest?.(
-                          ".element-editor",
-                        );
-                        if (editingRef.current === el.id && inEditor) return;
-                        onElementMouseDown(e, el.id);
-                      }}
-                      onDoubleClick={(e) => {
-                        e.stopPropagation();
-                        if (readOnlyRef.current) return;
-                        editingRef.current = el.id;
-                        textRange.current = null;
-                        setEditingId(el.id);
-                        selectedElementRef.current = el.id;
-                        setSelectedElementId(el.id);
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <FadeOnClickMark element={el} />
-                      {editingId !== el.id && el.preformatted ? (
-                        <MarpCode source={el.content || ""} language={el.codeLanguage} />
-                      ) : editingId !== el.id && (el.math || el.content?.includes("$")) ? (
-                        el.math ? (
-                          <MarpMath source={el.content || ""} />
-                        ) : (
-                          <MarpRichText source={el.content || ""} />
-                        )
-                      ) : editingId === el.id || hasTextRuns(el) ? (
-                        <SlideTextBody
-                          content={el.content}
-                          runs={el.runs}
-                          bold={el.bold}
-                          italic={el.italic}
-                          underline={el.underline}
-                          placeholder={el.placeholder}
-                          editing={editingId === el.id && !readOnly}
-                          onText={(runs, opts) =>
-                            updateElement(
-                              el.id,
-                              {
-                                content: runs.map((run) => run.text).join(""),
-                                runs: hasTextRuns({ runs }) ? runs : undefined,
-                                bold: false,
-                                italic: false,
-                                underline: false,
-                                ...(opts?.bullet ? { bullet: true } : {}),
-                              },
-                              { coalesce: `type:${el.id}` },
-                            )
-                          }
-                          onCaret={(sel) => rememberCaret(el.id, sel)}
-                        />
-                      ) : (
-                        <>
-                          <SlideSpellMirror
-                            text={el.content || ""}
-                            fileId={file.id}
-                            caret={spellCaret?.id === el.id ? spellCaret.at : null}
-                          />
-                          <textarea
-                            className="element-textarea"
-                            readOnly={readOnly}
-                            value={el.content || ""}
-                            placeholder={el.placeholder ?? "Click to add text"}
-                            onFocus={(e) => {
-                              selectElement(el.id);
-                              setSpellCaret({
-                                id: el.id,
-                                at: e.currentTarget.selectionStart ?? 0,
-                              });
-                            }}
-                            onBlur={() =>
-                              setSpellCaret((current) =>
-                                current?.id === el.id ? null : current,
-                              )
-                            }
-                            onSelect={(e) =>
-                              setSpellCaret({
-                                id: el.id,
-                                at: e.currentTarget.selectionStart ?? 0,
-                              })
-                            }
-                            onKeyDown={(e) => {
-                              if (
-                                e.key !== "Enter" ||
-                                e.shiftKey ||
-                                e.altKey ||
-                                e.metaKey ||
-                                e.ctrlKey
-                              )
-                                return;
-                              const node = e.currentTarget;
-                              const caret = node.selectionStart ?? 0;
-                              if ((node.selectionEnd ?? caret) !== caret) return;
-                              const next = continueList(node.value, caret);
-                              if (!next) return;
-                              e.preventDefault();
-                              updateElement(
-                                el.id,
-                                { content: next.text },
-                                { coalesce: `type:${el.id}` },
-                              );
-                              const pos = next.caret;
-                              requestAnimationFrame(() =>
-                                node.setSelectionRange(pos, pos),
-                              );
-                            }}
-                            onChange={(e) => {
-                              const raw = e.target.value;
-                              const caret = e.target.selectionStart ?? raw.length;
-                              const next =
-                                e.target.selectionEnd === caret
-                                  ? listShortcut(raw, caret)
-                                  : null;
-                              updateElement(
-                                el.id,
-                                {
-                                  content: next?.text ?? raw,
-                                  ...(next?.bullet ? { bullet: true } : {}),
-                                },
-                                { coalesce: `type:${el.id}` },
-                              );
-                              setSpellCaret({ id: el.id, at: next?.caret ?? caret });
-                              if (!next) return;
-                              const node = e.target;
-                              const pos = next.caret;
-                              requestAnimationFrame(() =>
-                                node.setSelectionRange(pos, pos),
-                              );
-                            }}
-                          />
-                        </>
-                      )}
-                      {isSelected && !readOnly && !marpOpen && !deck.marp ? renderHandles(el.id) : null}
-                    </AutofitBox>
-                  );
-                }
-
-                if (el.type === "image" && el.src) {
-                  return (
-                    <div
-                      key={el.id}
-                      data-element-id={el.id}
-                      data-x={el.x}
-                      data-y={el.y}
-                      className={`slide-element slide-image ${isSelected ? "selected" : ""}${editorFadeClass(el)}`}
-                      {...editorFadeAttrs(el)}
-                      style={posStyle}
-                      onMouseDown={(e) => onElementMouseDown(e, el.id)}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <FadeOnClickMark element={el} />
-                      <img
-                        src={marpMediaSrc(el.src, deck.marpAssets)}
-                        alt={el.alt || "Slide asset"}
-                        draggable={false}
-                      />
-                      {isSelected && !readOnly && !marpOpen && !deck.marp ? renderHandles(el.id) : null}
-                    </div>
-                  );
-                }
-
-                if (el.type === "shape") {
-                  const border = el.stroke
-                    ? `${el.strokeWidth || 1}px solid ${el.stroke}`
-                    : "none";
-                  const rad =
-                    el.shapeType === "ellipse"
-                      ? "50%"
-                      : el.shapeType === "roundRect"
-                        ? "12px"
-                        : "0px";
-
-                  return (
-                    <div
-                      key={el.id}
-                      data-element-id={el.id}
-                      data-x={el.x}
-                      data-y={el.y}
-                      className={`slide-element slide-shape ${isSelected ? "selected" : ""}${editorFadeClass(el)}`}
-                      {...editorFadeAttrs(el)}
-                      style={{
-                        ...posStyle,
-                        backgroundColor: el.fill || "#e2e8f0",
-                        border,
-                        borderRadius:
-                          el.radius && deck.marpFit
-                            ? `calc(${el.radius} / ${deck.width || 960} * 100cqw)`
-                            : rad,
-                      }}
-                      onMouseDown={(e) => onElementMouseDown(e, el.id)}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <FadeOnClickMark element={el} />
-                      {isSelected && !readOnly && !marpOpen && !deck.marp ? renderHandles(el.id) : null}
-                    </div>
-                  );
-                }
-
-                if (el.type === "table" && el.rows) {
-                  return (
-                    <div
-                      key={el.id}
-                      data-element-id={el.id}
-                      data-x={el.x}
-                      data-y={el.y}
-                      className={`slide-element slide-table ${isSelected ? "selected" : ""}${editorFadeClass(el)}`}
-                      {...editorFadeAttrs(el)}
-                      style={{
-                        ...posStyle,
-                        ...(deck.marpFit && el.fontSize
-                          ? { fontSize: `calc(${el.fontSize} / ${deck.width || 960} * 100cqw)` }
-                          : {}),
-                      }}
-                      onMouseDown={(e) => onElementMouseDown(e, el.id)}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <FadeOnClickMark element={el} />
-                      <table>
-                        <tbody>
-                          {el.rows.map((row, rIdx) => (
-                            <tr key={rIdx}>
-                              {row.map((cell, cIdx) => (
-                                <td
-                                  key={cIdx}
-                                  className={
-                                    tableCell?.id === el.id &&
-                                    tableCell.row === rIdx &&
-                                    tableCell.col === cIdx
-                                      ? "slide-cell-selected"
-                                      : undefined
-                                  }
-                                  style={{
-                                    fontWeight: el.cellMarks?.[rIdx]?.[cIdx]?.bold ? 700 : undefined,
-                                    fontStyle: el.cellMarks?.[rIdx]?.[cIdx]?.italic ? "italic" : undefined,
-                                  }}
-                                  onMouseDown={(event) => {
-                                    event.stopPropagation();
-                                    onElementMouseDown(event, el.id);
-                                    setTableCell({ id: el.id, row: rIdx, col: cIdx });
-                                  }}
-                                >
-                                  {cell.includes("`")
-                                    ? cell.split(/(`[^`]+`)/g).map((part, partIndex) =>
-                                        part.startsWith("`") && part.endsWith("`") && part.length > 2 ? (
-                                          <code key={partIndex}>{part.slice(1, -1)}</code>
-                                        ) : (
-                                          <span key={partIndex}>{part}</span>
-                                        ),
-                                      )
-                                    : cell}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      {isSelected && !readOnly && !marpOpen && !deck.marp ? renderHandles(el.id) : null}
-                    </div>
-                  );
-                }
-
-                if ((el.type === "audio" || el.type === "video") && el.src) {
-                  return (
-                    <div
-                      key={el.id}
-                      data-element-id={el.id}
-                      data-x={el.x}
-                      data-y={el.y}
-                      data-media={el.type}
-                      className={`slide-element slide-${el.type} ${isSelected ? "selected" : ""}${editorFadeClass(el)}`}
-                      {...editorFadeAttrs(el)}
-                      style={posStyle}
-                      onMouseDown={(e) => {
-                        if ((e.target as HTMLElement).closest?.(".slide-media-play")) return;
-                        e.preventDefault();
-                        onElementMouseDown(e, el.id);
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <FadeOnClickMark element={el} />
-                      <SlideMediaControls element={el} />
-                      {isSelected && !readOnly && !marpOpen && !deck.marp ? renderHandles(el.id) : null}
-                    </div>
-                  );
-                }
-
-                return null;
-              })}
-              {deck.slideNumbers ? (
-                <SlideNumber n={currentSlideIndex + 1} />
+              {showBackdrop ? (
+                <MarpBackdrop
+                  pages={marpPages}
+                  index={currentSlideIndex}
+                  live={liveLines}
+                  onPainted={setPainted}
+                />
               ) : null}
+              <SlideFace
+                deck={deck}
+                slide={shownSlide}
+                index={currentSlideIndex}
+                hooks={canvasHooks}
+              />
               {slideComments.marks}
             </div>
+            )}
           </div>
           {deck.marp && marpOpen ? (
+            <MarpSplitHandle split={marpSplit} onSplit={setMarpSplit} />
+          ) : null}
+          {deck.marp && marpOpen ? (
             <aside className="marp-pane" aria-label="Markdown">
-              {marpError ? <p className="marp-error">{marpError}</p> : null}
-              {marpWarnings.map((warning) => (
-                <p className="marp-warning" key={warning}>
-                  {warning}
-                </p>
-              ))}
-              {activeSlide && marpSlideNotice(activeSlide) ? (
-                <p className="marp-notice">{marpSlideNotice(activeSlide)}</p>
-              ) : null}
-              <textarea
-                className="marp-textarea"
-                aria-label="Presentation markdown"
+              {marpInvalid
+                ? null
+                : marpWarnings.map((warning) => (
+                    <p className="marp-warning" key={warning}>
+                      {warning}
+                    </p>
+                  ))}
+              <MarpTextarea
+                source={deck.marpSource ?? deckToMarp(deck)}
                 readOnly={readOnly}
-                spellCheck={false}
-                value={marpText}
-                onFocus={() => {
-                  marpFocused.current = true;
-                }}
-                onBlur={() => {
-                  marpFocused.current = false;
-                  if (marpError) return;
-                  setMarpText(deckToMarp(deckRef.current));
-                  setMarpWarnings([]);
-                }}
-                onChange={(e) => onMarpChange(e.target.value)}
+                invalid={!!marpInvalid}
+                onCommit={onMarpChange}
+                areaRef={marpAreaRef}
+                draftRef={marpDraft}
               />
             </aside>
           ) : null}
@@ -3530,7 +3288,7 @@ export default function Slides({
             {showNotes ? (
               <textarea
                 className="notes-textarea"
-                readOnly={readOnly}
+                readOnly={readOnly || !!marpInvalid}
                 placeholder="Click to add speaker notes"
                 value={activeSlide?.notes || ""}
                 onChange={(e) =>
@@ -3647,7 +3405,7 @@ export default function Slides({
           tabIndex={-1}
         >
           <div
-            key={presentSlideIndex}
+            key={marpShow && !showMotionClass ? "marp" : presentSlideIndex}
             className={`presenter-slide-box show-slide${showMotionClass}`}
             style={{
               backgroundColor:
@@ -3662,14 +3420,33 @@ export default function Slides({
             }}
             onClick={() => moveShowRef.current("next")}
           >
-            <SlideMasterLayer
-              deck={deck}
-              font={(size) => `calc(${size} / ${deck.width || 960} * 100cqw)`}
-            />
-            {renderShowElements(presentSlide, true)}
-            {deck.slideNumbers ? (
-              <SlideNumber n={presentSlideIndex + 1} />
-            ) : null}
+            {(marpShow
+              ? [presentSlideIndex - 1, presentSlideIndex, presentSlideIndex + 1]
+              : [presentSlideIndex]
+            )
+              .filter((n) => n >= 0 && n < deck.slideOrder.length)
+              .map((n) =>
+                n === presentSlideIndex ? (
+                  <SlideStill
+                    key={deck.slideOrder[n] ?? n}
+                    deck={deck}
+                    slide={presentSlide}
+                    index={n}
+                    pages={marpPages}
+                    hooks={audienceHooks(presentSlide)}
+                    interactive
+                  />
+                ) : (
+                  <SlideStill
+                    key={deck.slideOrder[n]}
+                    deck={deck}
+                    slide={deck.slides[deck.slideOrder[n]]}
+                    index={n}
+                    pages={marpPages}
+                    className="slide-still-waiting"
+                  />
+                ),
+              )}
             {blankScreen ? (
               <div
                 className="presenter-blank"
@@ -3704,11 +3481,13 @@ export default function Slides({
                       {slideHeading(nextPresentSlide) ||
                         `Slide ${presentSlideIndex + 2}`}
                     </span>
-                    <PresenterNextSlide deck={deck} slide={nextPresentSlide}>
-                      {renderShowElements(nextPresentSlide, false)}
-                      {deck.slideNumbers ? (
-                        <SlideNumber n={presentSlideIndex + 2} />
-                      ) : null}
+                    <PresenterNextSlide deck={deck}>
+                      <SlideStill
+                        deck={deck}
+                        slide={nextPresentSlide}
+                        index={presentSlideIndex + 1}
+                        pages={marpPages}
+                      />
                     </PresenterNextSlide>
                   </>
                 ) : (

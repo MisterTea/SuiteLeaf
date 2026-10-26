@@ -5,7 +5,8 @@
   min-height: 0;
 }
 .slide-stage-row > .slide-stage-viewport {
-  flex: 1;
+  flex: 1 1 calc(var(--marp-split, 0.5) * 100%);
+  box-sizing: border-box;
   min-width: 0;
 }
 
@@ -234,6 +235,12 @@
   .slide-stage-row {
     flex-direction: column;
   }
+  .slide-stage-row > .slide-stage-viewport {
+    flex: 1 1 50%;
+  }
+  .marp-split-handle {
+    display: none;
+  }
   .slide-comment-dock {
     width: auto;
     max-height: 220px;
@@ -242,7 +249,8 @@
   }
   .marp-pane {
     width: auto;
-    flex-basis: 220px;
+    min-width: 0;
+    flex: 0 0 220px;
     border-left: 0;
     border-top: 1px solid var(--border);
   }

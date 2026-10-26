@@ -74,17 +74,6 @@ export function slideIsMarpClean(slide: Slide): boolean {
   );
 }
 
-/** What the markdown pane says about a slide it cannot fully describe. */
-export function marpSlideNotice(slide: Slide): string | null {
-  if (slideIsMarpClean(slide)) return null;
-  const hasSlots = slide.elements.some(
-    (el) => el.type === "text" && el.placeholder !== undefined,
-  );
-  return hasSlots
-    ? "Markdown is editing this slide's text and keeping its other objects."
-    : "This slide's objects stay where they were placed. Markdown does not list them.";
-}
-
 /** A new presentation whose slides are a single column or two columns. */
 export function createMarpFile(title = "Untitled presentation"): SlideFile {
   const file = createFile("slide", title) as SlideFile;
@@ -93,7 +82,18 @@ export function createMarpFile(title = "Untitled presentation"): SlideFile {
   slide.id = id;
   file.content.marp = true;
   file.content.slides = { [id]: slide };
+  const heading = title.replace(/\s+/g, " ").trim() || "Untitled presentation";
+  const source = `---\nmarp: true\n---\n\n# ${heading}\n`;
+  const parsed = marpToDeck(source, file.content, { marp: true });
+  if (!("error" in parsed)) file.content = parsed.deck;
+  file.content.marpSource = source;
+  file.content.marpFit = false;
   return file;
+}
+
+/** A bar, pill, or logo the layout draws from the theme. It is not in the markdown. */
+export function isMarpChrome(el: SlideElement): boolean {
+  return (el.type === "shape" && !el.marpHtml) || (el.type === "image" && !el.marpLines && el.src === "beam-ut-logo");
 }
 
 /** The layout title stays put. Other text and pictures can be reordered around it. */
@@ -123,7 +123,8 @@ function writeRuns(el: SlideElement, runs: TextRun[]) {
   const italic = meaningful.length > 0 && meaningful.every((run) => run.italic);
   const underline = meaningful.length > 0 && meaningful.every((run) => run.underline);
   const uniform = meaningful.every(
-    (run) => !!run.bold === bold && !!run.italic === italic && !!run.underline === underline,
+    (run) =>
+      !!run.bold === bold && !!run.italic === italic && !!run.underline === underline && !run.color,
   );
   el.content = content;
   if (uniform) {
@@ -140,6 +141,25 @@ function writeRuns(el: SlideElement, runs: TextRun[]) {
     delete el.italic;
     delete el.underline;
   }
+}
+
+/**
+ * A box drawn from the same markdown lines as before keeps its id, so the
+ * selection and review comments stay on it after the slide is laid out again.
+ */
+export function keepElementIds(previous: SlideElement[], next: SlideElement[]): SlideElement[] {
+  const ids = new Map<string, string>();
+  for (const el of previous) {
+    const key = el.marpLines ? `${el.type}:${el.marpLines[0]}` : null;
+    if (key && !ids.has(key)) ids.set(key, el.id);
+  }
+  return next.map((el) => {
+    const key = el.marpLines ? `${el.type}:${el.marpLines[0]}` : null;
+    const id = key ? ids.get(key) : undefined;
+    if (!id) return el;
+    ids.delete(key!);
+    return { ...el, id };
+  });
 }
 
 function sameTextStyle(a: SlideElement, b: SlideElement) {
@@ -160,6 +180,7 @@ export function mergeConsecutiveText(elements: SlideElement[]): SlideElement[] {
       merged.push(el);
       continue;
     }
+    const rows = textRows(prev) + textRows(el);
     const indent = Math.max(0, el.x - prev.x);
     const spaces =
       indent > (prev.fontSize || 20) * 0.75
@@ -178,12 +199,25 @@ export function mergeConsecutiveText(elements: SlideElement[]): SlideElement[] {
     prev.y = Math.min(prev.y, el.y);
     prev.width = rightEdge - prev.x;
     prev.height = bottom - prev.y;
+    if (prev.marpLines && el.marpLines)
+      prev.marpLines = [
+        Math.min(prev.marpLines[0], el.marpLines[0]),
+        Math.max(prev.marpLines[1], el.marpLines[1]),
+      ];
+    else delete prev.marpLines;
     writeRuns(prev, [...left, ...right]);
-    const lines = (prev.content ?? "").split("\n").length;
     const font = prev.fontSize || 20;
-    if (lines > 1) prev.lineHeight = Math.round((prev.height / (lines * font)) * 100) / 100;
+    if (rows > 1)
+      prev.lineHeight = Math.min(4, Math.round((prev.height / (rows * font)) * 100) / 100);
   }
   return merged;
+}
+
+/** Rows a text box shows, counting the ones its words wrap onto. */
+function textRows(el: SlideElement) {
+  const lines = (el.content ?? "").split("\n").length;
+  const row = (el.fontSize || 20) * (el.lineHeight || 1.4);
+  return Math.max(lines, Math.round(el.height / row));
 }
 
 function canMergeText(a: SlideElement, b: SlideElement) {
@@ -324,9 +358,9 @@ export function reorderFittedMarpItem(
   point: { x: number; y: number },
 ): Slide | null {
   const dragged = slide.elements.find((el) => el.id === elementId);
-  if (!dragged || isMarpTitle(dragged) || dragged.type === "shape") return null;
+  if (!dragged || isMarpTitle(dragged) || isMarpChrome(dragged)) return null;
   const items = slide.elements
-    .filter((el) => !isMarpTitle(el) && el.type !== "shape")
+    .filter((el) => !isMarpTitle(el) && !isMarpChrome(el))
     .sort(byReadingOrder);
   const rest = items.filter((el) => el.id !== elementId);
   let index = rest.length;
@@ -345,7 +379,7 @@ export function reorderFittedMarpItem(
     height: el.height,
   }));
   const placed = next.map((el, i) => ({ ...el, ...slots[i] }));
-  const fixed = slide.elements.filter((el) => isMarpTitle(el) || el.type === "shape");
+  const fixed = slide.elements.filter((el) => isMarpTitle(el) || isMarpChrome(el));
   return { ...slide, elements: [...fixed, ...placed] };
 }
 
@@ -545,17 +579,16 @@ function writeMarpSlide(slide: Slide, width = 960): string {
   return lines.join("\n");
 }
 
-function themeLines(theme?: SlideTheme): string[] {
-  const lines = ["marp: true"];
-  if (!theme) return lines;
+/** The `theme:` lines of the front matter: a built-in name, or the colors and fonts. */
+export function themeFrontLines(theme?: SlideTheme): string[] {
+  if (!theme) return [];
   const builtin = DECK_THEMES.find((item) => sameTheme(item, theme));
-  if (builtin) {
-    lines.push(`theme: ${builtin.id}`);
-    return lines;
-  }
-  lines.push("theme:");
-  for (const key of THEME_FIELDS) lines.push(`  ${key}: ${quote(theme[key])}`);
-  return lines;
+  if (builtin) return [`theme: ${builtin.id}`];
+  return ["theme:", ...THEME_FIELDS.map((key) => `  ${key}: ${quote(theme[key])}`)];
+}
+
+function themeLines(theme?: SlideTheme): string[] {
+  return ["marp: true", ...themeFrontLines(theme)];
 }
 
 /** The deck as MARP markdown. Coordinates and fonts stay on the slide. */
@@ -584,15 +617,21 @@ function looksLikeFrontMatter(block: string) {
   return sawKey;
 }
 
-function parseThemeBlock(raw: string): { theme: ThemeInput; error?: string } {
+function parseThemeBlock(raw: string): {
+  theme: ThemeInput;
+  paginate?: boolean;
+  error?: string;
+} {
   const lines = raw.split("\n");
   let theme: ThemeInput = { kind: "absent" };
+  let paginate: boolean | undefined;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (!line.trim()) continue;
     const match = /^([A-Za-z][\w-]*)\s*:\s*(.*)$/.exec(line.trim());
     if (!match)
       return { theme, error: `The header line "${line.trim()}" could not be read.` };
+    if (match[1] === "paginate") paginate = unquote(match[2]) === "true";
     if (match[1] !== "theme") continue;
     if (match[2].trim()) {
       theme = { kind: "name", name: unquote(match[2]) };
@@ -613,12 +652,13 @@ function parseThemeBlock(raw: string): { theme: ThemeInput; error?: string } {
       return { theme, error: "The theme in the header is empty." };
     theme = { kind: "object", fields };
   }
-  return { theme };
+  return { theme, paginate };
 }
 
 function parseFront(markdown: string): {
   body: string;
   theme: ThemeInput;
+  paginate?: boolean;
   error?: string;
 } {
   const text = markdown.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n");
@@ -640,7 +680,7 @@ function parseFront(markdown: string): {
   if (rest.startsWith("\n")) rest = rest.slice(1);
   const parsed = parseThemeBlock(raw);
   if (parsed.error) return { body: rest, theme: { kind: "absent" }, error: parsed.error };
-  return { body: rest, theme: parsed.theme };
+  return { body: rest, theme: parsed.theme, paginate: parsed.paginate };
 }
 
 function slug(name: string) {
@@ -702,6 +742,45 @@ function parseColor(value: string) {
   return `#${full.toLowerCase()}`;
 }
 
+const MARP_DIRECTIVES = new Set([
+  "author",
+  "backgroundcolor",
+  "backgroundimage",
+  "backgroundposition",
+  "backgroundrepeat",
+  "backgroundsize",
+  "class",
+  "color",
+  "description",
+  "footer",
+  "header",
+  "headingdivider",
+  "image",
+  "keywords",
+  "lang",
+  "marp",
+  "math",
+  "paginate",
+  "size",
+  "style",
+  "theme",
+  "title",
+  "transition",
+  "url",
+]);
+
+/** A comment MARP reads as settings rather than speaker notes. */
+export function isMarpDirective(text: string): boolean {
+  const lines = text.split("\n").filter((line) => line.trim());
+  return (
+    lines.length > 0 &&
+    lines.every((line) => {
+      const key = /^\s*_?([A-Za-z]+)\s*:/.exec(line)?.[1];
+      return !!key && MARP_DIRECTIVES.has(key.toLowerCase());
+    })
+  );
+}
+
 function readDirectives(directives: string[]): {
   layout?: Layout;
   pinned?: string;
@@ -711,7 +790,7 @@ function readDirectives(directives: string[]): {
   let layout: Layout | undefined;
   let pinned: string | undefined;
   let freeform = false;
-  for (const directive of directives) {
+  for (const directive of directives.flatMap((text) => text.split("\n"))) {
     if (directive.trim() === "_freeform") {
       freeform = true;
       continue;
@@ -841,7 +920,7 @@ function parseChunk(
   const withoutComments = chunk.replace(/<!--([\s\S]*?)-->/g, (_full, inner: string) => {
     const text = String(inner).replace(/^\n|\n$/g, "").trim();
     if (!text) return "";
-    if (text.startsWith("_")) directives.push(text);
+    if (text.startsWith("_") || isMarpDirective(text)) directives.push(text);
     else noteBlocks.push(text);
     return "";
   });
@@ -858,6 +937,10 @@ function parseChunk(
   });
   if (images.length)
     warnings.push(`Slide ${slideNumber}: an image in the markdown was left out.`);
+  body = body.replace(
+    /<div\b[^>]*display:\s*grid[^>]*>\s*([\s\S]*)<\/div>/i,
+    (_full, inner: string) => inner,
+  );
   const divs: string[] = [];
   body = body.replace(/<div\b[^>]*>\s*([\s\S]*?)\s*<\/div>/gi, (_full, inner: string) => {
     divs.push(String(inner).trim());
@@ -1188,6 +1271,7 @@ export function marpToDeck(
   let next: Presentation = {
     ...deck,
     marp: asMarp ? true : deck.marp,
+    ...(asMarp ? { slideNumbers: front.paginate === true ? true : undefined } : {}),
     theme: resolved.theme,
     slideOrder,
     slides: Object.fromEntries(built.map((slide) => [slide.id, slide])),
