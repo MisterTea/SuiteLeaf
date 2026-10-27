@@ -192,7 +192,7 @@ async function wrappedWorkbook() {
     `<c r="${ref}" s="${style}" t="inlineStr"><is><t>${text}</t></is></c>`;
   z.file(
     "xl/worksheets/sheet1.xml",
-    `${xmlHeader}<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cols><col min="2" max="2" width="18" customWidth="1"/></cols><sheetData><row r="1">${cell("A1", "Name")}${cell("B1", "Description")}</row><row r="2" ht="90" customHeight="1">${cell("A2", "Food")}${cell("B2", "Eatz too much and quikly becomes very tired", 1)}</row><row r="3">${cell("A3", "Robot")}${cell("B3", "Robots that can only operate in manuall mode", 1)}</row></sheetData></worksheet>`,
+    `${xmlHeader}<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cols><col min="2" max="2" width="18" customWidth="1"/></cols><sheetData><row r="1">${cell("A1", "Name")}${cell("B1", "Description")}</row><row r="2" ht="90" customHeight="1">${cell("A2", "Food")}${cell("B2", "Eatz too much and quikly becomes very tired", 1)}</row><row r="3">${cell("A3", "Robot")}${cell("B3", "Robotz can only work by hand when the power is out and the lights in the whole workshop are off", 1)}</row></sheetData></worksheet>`,
   );
   z.file(
     "xl/worksheets/sheet2.xml",
