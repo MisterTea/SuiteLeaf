@@ -21,7 +21,7 @@ function decisionsSheet() {
     2: { 0: { v: "Visit", t: 1 }, 1: { v: "Ask Kwame tomorrow", t: 1 } },
     // The human scene types this into B4 before the right-click. The assistant starts from that cell.
     3: { 1: { v: "Please recieve the keys", t: 1 } },
-    4: { 0: { v: "Speaker", t: 1 }, 1: { v: "Nkrumah spoke", t: 1 } },
+    4: { 0: { v: "Speaker", t: 1 }, 1: { v: "Danquah spoke", t: 1 } },
     5: { 0: { v: "Copies", t: 1 }, 1: { v: "seperate the copies", t: 1 } },
   };
   (sheet as { columnData: Record<number, { w: number }> }).columnData = {
@@ -38,7 +38,7 @@ function handoverDoc() {
     content: [
       {
         type: "paragraph",
-        content: [{ type: "text", text: "Kwame asked Nkrumah to seperate the keys." }],
+        content: [{ type: "text", text: "Kwame asked Danquah to seperate the keys." }],
       },
     ],
   };
@@ -151,7 +151,7 @@ test("63-right-click-a-misspelling-ai", async ({ page }) => {
       { timeout: 15000 },
     )
     .toBe(
-      "We will receive the grant | Ask Kwame tomorrow | Please receive the keys | Nkrumah spoke | seperate the copies",
+      "We will receive the grant | Ask Kwame tomorrow | Please receive the keys | Danquah spoke | seperate the copies",
     );
 
   const sheetId = sheet!.content.workbook.sheetOrder[0];

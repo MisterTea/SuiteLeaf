@@ -2651,7 +2651,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       name: "check_spelling",
       label: "Check spelling",
       description:
-        "Check the document's spelling and open the spelling panel. Returns each unknown word with suggestions. Then call fix_spelling with no arguments to correct every typo (bold and other formatting stay). A name with no suggestion, such as Nkrumah, is added with add_to_dictionary and is not replaced.",
+        "Check the document's spelling and open the spelling panel. Returns each unknown word with suggestions. Then call fix_spelling with no arguments to correct every typo (bold and other formatting stay). A name with no suggestion, such as Danquah, is added with add_to_dictionary and is not replaced.",
       parameters: Type.Object({}),
       target: () => toolsMenu(),
       async execute() {
@@ -2740,7 +2740,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       name: "fix_grammar",
       label: "Fix grammar",
       description:
-        "List every grammar issue and apply its suggestion, keeping bold and other formatting. Call it with no arguments. It changes “the movement were” to “the movement was” (were → was), “its the reason” to “it's the reason” (its → it's), and “they was ready” to “they were ready” (was → were). It does not change spelling, so Nkrumah and movment stay as written. Do not use find_and_replace for grammar.",
+        "List every grammar issue and apply its suggestion, keeping bold and other formatting. Call it with no arguments. It changes “the movement were” to “the movement was” (were → was), “its the reason” to “it's the reason” (its → it's), and “they was ready” to “they were ready” (was → were). It does not change spelling, so Danquah and movment stay as written. Do not use find_and_replace for grammar.",
       parameters: Type.Object({}),
       target: () => toolsMenu(),
       async execute() {
@@ -2765,14 +2765,14 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         const left = grammarRanges(editor.state.doc, readProofing(proofingJson(editor)).ignoredGrammar);
         return `Fixed ${issues.length} grammar issue(s), keeping formatting: ${listed.join("; ")}. ${
           left.length ? `${left.length} grammar issue(s) remain.` : "No grammar issues are left."
-        } Spelling was not changed: Nkrumah and movment stay as written. Bold stays bold.`;
+        } Spelling was not changed: Danquah and movment stay as written. Bold stays bold.`;
       },
     }),
     tool({
       name: "add_to_dictionary",
       label: "Add to dictionary",
       description:
-        "Add a name to the personal dictionary so spelling stops flagging it, for example Nkrumah. The word is not changed in the document. Do not add a typo; correct typos with fix_spelling.",
+        "Add a name to the personal dictionary so spelling stops flagging it, for example Danquah. The word is not changed in the document. Do not add a typo; correct typos with fix_spelling.",
       parameters: Type.Object({
         word: Type.String({ description: "The name to stop flagging, as it appears in the document." }),
       }),

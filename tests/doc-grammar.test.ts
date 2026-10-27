@@ -45,7 +45,7 @@ describe("grammar", () => {
     expect(grammarIssues(paragraph("if it were true")).map((issue) => issue.text)).toEqual([]);
     expect(grammarIssues(paragraph("the people were ready")).map((issue) => issue.text)).toEqual([]);
     expect(grammarIssues(paragraph("this was the day")).map((issue) => issue.text)).toEqual([]);
-    expect(grammarIssues(paragraph("Nkrumah was ready and Nkrumah were there")).map((issue) => issue.text)).toEqual([]);
+    expect(grammarIssues(paragraph("Danquah was ready and Danquah were there")).map((issue) => issue.text)).toEqual([]);
     expect(grammarIssues(paragraph("Its the reason")).map((issue) => issue.suggestion)).toEqual(["It's"]);
   });
 
@@ -77,8 +77,8 @@ describe("grammar", () => {
       ["its", "it's"],
       ["was", "were"],
     ]);
-    expect(grammarIssues(essay).some((issue) => /nkrumah|movment/i.test(issue.text))).toBe(false);
-    expect(misspelledWords(essay)).toEqual(["movment", "Nkrumah"]);
+    expect(grammarIssues(essay).some((issue) => /danquah|movment/i.test(issue.text))).toBe(false);
+    expect(misspelledWords(essay)).toEqual(["movment", "Danquah"]);
   });
 
   it("flags articles, pronouns, and common mix-ups", () => {

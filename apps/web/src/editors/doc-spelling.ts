@@ -165,6 +165,32 @@ for (const word of contractions) dictionary.add(word);
 
 const normalize = (word: string) => word.toLowerCase().replace(/’/g, "'");
 
+/**
+ * The en_US Hunspell dictionary, derived from SCOWL, for real words outside the
+ * common-word list such as elf, zombie, and melee. It loads after the editor
+ * opens; until then only the common words are known.
+ */
+let hunspell: { correct: (word: string) => boolean } | null = null;
+let loadingHunspell: Promise<void> | null = null;
+
+export function loadFullDictionary(): Promise<void> {
+  loadingHunspell ??= Promise.all([
+    import("nspell"),
+    import("dictionary-en-files/index.aff?raw"),
+    import("dictionary-en-files/index.dic?raw"),
+  ])
+    .then(([{ default: nspell }, aff, dic]) => {
+      hunspell = nspell(aff.default, dic.default);
+      if (typeof window !== "undefined") window.dispatchEvent(new Event(SPELLING_CHANGED_EVENT));
+    })
+    .catch(() => {
+      loadingHunspell = null;
+    });
+  return loadingHunspell;
+}
+
+if (typeof window !== "undefined") void loadFullDictionary();
+
 function inDictionary(word: string): boolean {
   const value = normalize(word);
   if (dictionary.has(value)) return true;
@@ -176,7 +202,8 @@ function inDictionary(word: string): boolean {
     const parts = value.split("-").filter(Boolean);
     if (parts.length > 1 && parts.every((part) => dictionary.has(part))) return true;
   }
-  return false;
+  // Hunspell knows which words are names, so it reads the word as written.
+  return !!hunspell?.correct(word.replace(/’/g, "'"));
 }
 
 export function isMisspelling(
@@ -189,7 +216,7 @@ export function isMisspelling(
   if (personal.flagged.some((item) => sameWord(item, value))) return true;
   if (personal.added.some((item) => sameWord(item, value))) return false;
   if (value.length < 2 || /\d/.test(value)) return false;
-  return !inDictionary(value);
+  return !inDictionary(word);
 }
 
 const WORD = /[A-Za-z]+(?:['’-][A-Za-z]+)*/g;

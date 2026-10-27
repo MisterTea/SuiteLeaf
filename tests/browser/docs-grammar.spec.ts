@@ -41,8 +41,8 @@ test("grammar underlines a different way from spelling and leaves formatting alo
   const spelling = page.locator(".spelling-misspelling");
   await expect(grammar).toHaveCount(3);
   await expect(spelling.filter({ hasText: "movment" })).toBeVisible();
-  await expect(spelling.filter({ hasText: "Nkrumah" })).toHaveCount(1);
-  await expect(grammar.filter({ hasText: "Nkrumah" })).toHaveCount(0);
+  await expect(spelling.filter({ hasText: "Danquah" })).toHaveCount(1);
+  await expect(grammar.filter({ hasText: "Danquah" })).toHaveCount(0);
   const grammarStyle = await grammar.first().evaluate((el) => getComputedStyle(el).textDecorationStyle);
   const spellingStyle = await spelling.first().evaluate((el) => getComputedStyle(el).textDecorationStyle);
   expect(grammarStyle).toBe("dotted");
@@ -93,7 +93,7 @@ test("ignored grammar comes back, stays in the file, and still runs offline", as
   const leaks: string[] = [];
   page.on("request", (request) => {
     const body = `${request.url()}\n${request.postData() ?? ""}`;
-    if (/they was|movment|Nkrumah/i.test(body)) leaks.push(request.url());
+    if (/they was|movment|Danquah/i.test(body)) leaks.push(request.url());
   });
   await page.goto("/");
   await page.getByRole("button", { name: "New document" }).click();

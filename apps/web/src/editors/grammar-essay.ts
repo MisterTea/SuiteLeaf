@@ -2,11 +2,11 @@ import type { JsonNode } from "@suiteleaf/core";
 import { independenceEssayContent } from "./independence-essay";
 
 const LEAD_FROM =
-  "The people of Ghana wanted independence and the movement grew as Nkrumah spoke and Nkrumah wrote and Nkrumah led a fair government for the country.".split(
+  "The people of Ghana wanted independence and the movement grew as Danquah spoke and Danquah wrote and Danquah led a fair government for the country.".split(
     " ",
   );
 const LEAD_TO =
-  "The people of Ghana wanted independence and the movment sat near the movement were strong as Nkrumah spoke and its the reason they was ready.".split(
+  "The people of Ghana wanted independence and the movment sat near the movement were strong as Danquah spoke and its the reason they was ready.".split(
     " ",
   );
 
@@ -25,7 +25,7 @@ function wordNodes(node: JsonNode, out: JsonNode[]) {
 
 /**
  * The independence essay, same word count, with the grammar story's sentences
- * in the lead and the known typos corrected. "movment" and "Nkrumah" stay
+ * in the lead and the known typos corrected. "movment" and "Danquah" stay
  * spelling issues. Bold, italic, and a link sit on words the grammar pass
  * must not touch.
  */

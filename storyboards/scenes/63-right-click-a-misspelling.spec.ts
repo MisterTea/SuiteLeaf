@@ -11,7 +11,7 @@ function decisionsSheet() {
     0: { 0: { v: "Decision", t: 1 }, 1: { v: "Note", t: 1 } },
     1: { 0: { v: "Grant", t: 1 }, 1: { v: "We will receive the grant", t: 1 } },
     2: { 0: { v: "Visit", t: 1 }, 1: { v: "Ask Kwame tomorrow", t: 1 } },
-    4: { 0: { v: "Speaker", t: 1 }, 1: { v: "Nkrumah spoke", t: 1 } },
+    4: { 0: { v: "Speaker", t: 1 }, 1: { v: "Danquah spoke", t: 1 } },
     5: { 0: { v: "Copies", t: 1 }, 1: { v: "seperate the copies", t: 1 } },
   };
   (sheet as { columnData: Record<number, { w: number }> }).columnData = {
@@ -28,7 +28,7 @@ function handoverDoc() {
     content: [
       {
         type: "paragraph",
-        content: [{ type: "text", text: "Kwame asked Nkrumah to seperate the keys." }],
+        content: [{ type: "text", text: "Kwame asked Danquah to seperate the keys." }],
       },
     ],
   };
@@ -100,13 +100,13 @@ test("63-right-click-a-misspelling", async ({ page }) => {
   await beat(page, 800);
   await docMenu.getByRole("menuitem", { name: "Add to dictionary" }).click();
   await expect(kwame).toHaveCount(0);
-  await expect(page.locator(".spelling-misspelling", { hasText: "Nkrumah" })).toBeVisible();
+  await expect(page.locator(".spelling-misspelling", { hasText: "Danquah" })).toBeVisible();
   await beat(page, 1000);
 
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Decisions", exact: true }).click();
   await expect(page.getByLabel("Spreadsheet grid")).toHaveAttribute("aria-busy", "false");
-  await expect(page.locator(".sheet-spell-mark[data-spell-word='Nkrumah']")).toBeVisible();
+  await expect(page.locator(".sheet-spell-mark[data-spell-word='Danquah']")).toBeVisible();
   await expect(page.locator(".sheet-spell-mark[data-spell-word='Kwame']")).toHaveCount(0);
   await caption(page, "He types the next row. After he leaves the cell, only recieve is underlined.");
   await selectCells(page, "B4");
@@ -147,11 +147,11 @@ test("63-right-click-a-misspelling", async ({ page }) => {
   await expect(recieve).toHaveCount(0);
   await beat(page, 900);
 
-  await caption(page, "Nkrumah is a name. Spelling no longer stops on that cell.");
-  const name = page.locator(".sheet-spell-hit[data-spell-word='Nkrumah']");
+  await caption(page, "Danquah is a name. Spelling no longer stops on that cell.");
+  const name = page.locator(".sheet-spell-hit[data-spell-word='Danquah']");
   await rightClick(page, name);
   await beat(page, 700);
-  await spellMenu(page, "Nkrumah").getByRole("menuitem", { name: "Add to dictionary" }).click();
+  await spellMenu(page, "Danquah").getByRole("menuitem", { name: "Add to dictionary" }).click();
   await expect(name).toHaveCount(0);
   await beat(page, 700);
   await page.getByRole("button", { name: "Tools", exact: true }).click();
@@ -159,7 +159,7 @@ test("63-right-click-a-misspelling", async ({ page }) => {
   await page.getByRole("menuitem", { name: "Spelling", exact: true }).click();
   const spelling = page.getByRole("dialog", { name: "Spelling" });
   await expect(spelling).toContainText("seperate → separate");
-  await expect(spelling).not.toContainText("Nkrumah");
+  await expect(spelling).not.toContainText("Danquah");
   await beat(page, 1200);
   await spelling.getByRole("button", { name: "Close spelling" }).click();
 
@@ -176,15 +176,15 @@ test("63-right-click-a-misspelling", async ({ page }) => {
   );
   await beat(page, 1000);
 
-  await caption(page, "Nkrumah is not flagged in the document. seperate still is.");
+  await caption(page, "Danquah is not flagged in the document. seperate still is.");
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Handover", exact: true }).click();
-  await expect(page.locator(".spelling-misspelling", { hasText: "Nkrumah" })).toHaveCount(0);
+  await expect(page.locator(".spelling-misspelling", { hasText: "Danquah" })).toHaveCount(0);
   await expect(page.locator(".spelling-misspelling", { hasText: "Kwame" })).toHaveCount(0);
   await expect(page.locator(".spelling-misspelling", { hasText: "seperate" })).toBeVisible();
   await beat(page, 1400);
 
-  await caption(page, "He reopens Decisions. receive is saved, and Nkrumah is not underlined.");
+  await caption(page, "He reopens Decisions. receive is saved, and Danquah is not underlined.");
   await expect(page.getByRole("status")).toContainText("Saved");
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Decisions", exact: true }).click();

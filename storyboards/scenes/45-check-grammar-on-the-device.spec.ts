@@ -79,7 +79,7 @@ test("45-check-grammar-on-the-device", async ({ page }) => {
   const leaks: string[] = [];
   page.on("request", (request) => {
     const body = `${request.url()}\n${request.postData() ?? ""}`;
-    if (/movment|Nkrumah|movement were|its the reason|they was/i.test(body)) leaks.push(request.url());
+    if (/movment|Danquah|movement were|its the reason|they was/i.test(body)) leaks.push(request.url());
   });
   await seedEssay(page);
   await caption(page, "Amara opens the essay. The word count is still here, on this computer.");
@@ -115,11 +115,11 @@ test("45-check-grammar-on-the-device", async ({ page }) => {
   await expect(page.locator(".document-content a")).toHaveText("Ghana");
   await beat(page, 900);
 
-  await caption(page, "Nkrumah is a name. The red line is spelling. Grammar leaves it alone.");
-  const name = page.locator(".spelling-misspelling", { hasText: "Nkrumah" });
+  await caption(page, "Danquah is a name. The red line is spelling. Grammar leaves it alone.");
+  const name = page.locator(".spelling-misspelling", { hasText: "Danquah" });
   await name.scrollIntoViewIfNeeded();
   await expect(name).toHaveCount(1);
-  await expect(page.locator(".grammar-issue", { hasText: "Nkrumah" })).toHaveCount(0);
+  await expect(page.locator(".grammar-issue", { hasText: "Danquah" })).toHaveCount(0);
   await beat(page, 1400);
 
   await caption(page, "Grammar steps through grammar only. Enter fixes “they was”. Spelling still has “movment”.");
