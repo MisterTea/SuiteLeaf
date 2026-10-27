@@ -148,8 +148,8 @@ test("34-count-words-and-check-spelling", async ({ page }) => {
   await expect(page.getByText("the movement grew")).toBeVisible();
   await beat(page, 800);
 
-  await caption(page, "Nkrumah is a name, not a typo. Adding it clears every underline at once.");
-  const names = page.locator(".spelling-misspelling", { hasText: "Nkrumah" });
+  await caption(page, "Danquah is a name, not a typo. Adding it clears every underline at once.");
+  const names = page.locator(".spelling-misspelling", { hasText: "Danquah" });
   await expect(names).toHaveCount(3);
   await names.first().scrollIntoViewIfNeeded();
   await names.first().click({ button: "right" });
@@ -185,7 +185,7 @@ test("34-count-words-and-check-spelling", async ({ page }) => {
   await beat(page, 400);
   await page.getByRole("menuitem", { name: "Personal dictionary" }).click();
   const dictionary = page.getByRole("dialog", { name: "Personal dictionary" });
-  await expect(dictionary.locator("li", { hasText: "Nkrumah" })).toBeVisible();
+  await expect(dictionary.locator("li", { hasText: "Danquah" })).toBeVisible();
   await expect(dictionary.locator("li", { hasText: "teh" })).toBeVisible();
   await beat(page, 1200);
   await dictionary.locator("li", { hasText: "teh" }).getByRole("button", { name: "Remove" }).click();
@@ -200,7 +200,7 @@ test("34-count-words-and-check-spelling", async ({ page }) => {
   await expect(page.locator(".word-count")).toHaveText("1,488 words (excludes References)");
   await caption(
     page,
-    "No unknown words left. Nkrumah stays in her dictionary. Nothing was sent off this computer.",
+    "No unknown words left. Danquah stays in her dictionary. Nothing was sent off this computer.",
     2200,
   );
 });

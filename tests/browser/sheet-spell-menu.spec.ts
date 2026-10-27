@@ -19,7 +19,7 @@ function decisionsSheet() {
     1: { 0: { v: "Grant", t: 1 }, 1: { v: "We will receive the grant", t: 1 } },
     2: { 0: { v: "Visit", t: 1 }, 1: { v: "Ask Kwame tomorrow", t: 1 } },
     3: { 0: { v: "Keys", t: 1 }, 1: { v: "Please recieve the keys", t: 1 } },
-    4: { 0: { v: "Speaker", t: 1 }, 1: { v: "Nkrumah spoke", t: 1 } },
+    4: { 0: { v: "Speaker", t: 1 }, 1: { v: "Danquah spoke", t: 1 } },
     5: { 0: { v: "Copies", t: 1 }, 1: { v: "seperate the copies", t: 1 } },
   };
   (sheet as { columnData: Record<number, { w: number }> }).columnData = {
@@ -36,7 +36,7 @@ function handoverDoc() {
     content: [
       {
         type: "paragraph",
-        content: [{ type: "text", text: "Kwame asked Nkrumah to seperate the keys." }],
+        content: [{ type: "text", text: "Kwame asked Danquah to seperate the keys." }],
       },
     ],
   };
@@ -93,19 +93,19 @@ test("right-clicking a sheet misspelling suggests, replaces, ignores, and shares
   await seed(page);
   await page.getByRole("link", { name: "Handover", exact: true }).click();
   const doc = page.getByRole("textbox", { name: "Document content" });
-  await expect(doc).toContainText("Kwame asked Nkrumah");
+  await expect(doc).toContainText("Kwame asked Danquah");
   const kwame = page.locator(".spelling-misspelling", { hasText: "Kwame" });
   await expect(kwame).toBeVisible();
   await kwame.click({ button: "right" });
   await page.getByRole("menuitem", { name: "Add to dictionary" }).click();
   await expect(kwame).toHaveCount(0);
-  await expect(page.locator(".spelling-misspelling", { hasText: "Nkrumah" })).toBeVisible();
+  await expect(page.locator(".spelling-misspelling", { hasText: "Danquah" })).toBeVisible();
 
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Decisions", exact: true }).click();
   await expect(page.getByLabel("Spreadsheet grid")).toHaveAttribute("aria-busy", "false");
   const recieve = page.locator(".sheet-spell-hit[data-spell-word='recieve']");
-  const name = page.locator(".sheet-spell-hit[data-spell-word='Nkrumah']");
+  const name = page.locator(".sheet-spell-hit[data-spell-word='Danquah']");
   const seperate = page.locator(".sheet-spell-hit[data-spell-word='seperate']");
   await expect(recieve).toBeVisible();
   await expect(name).toBeVisible();
@@ -159,15 +159,15 @@ test("right-clicking a sheet misspelling suggests, replaces, ignores, and shares
   expect(await activeValue(page, "B4")).toBe("Please receive the keys");
 
   await rightClick(page, name);
-  await spellMenu(page, "Nkrumah").getByRole("menuitem", { name: "Add to dictionary" }).click();
+  await spellMenu(page, "Danquah").getByRole("menuitem", { name: "Add to dictionary" }).click();
   await expect(name).toHaveCount(0);
   const taught = await page.evaluate((key) => localStorage.getItem(key), PERSONAL_DICTIONARY_KEY);
-  expect(JSON.parse(taught ?? "{}").added).toEqual(expect.arrayContaining(["Kwame", "Nkrumah"]));
+  expect(JSON.parse(taught ?? "{}").added).toEqual(expect.arrayContaining(["Kwame", "Danquah"]));
 
   await page.getByRole("button", { name: "Tools", exact: true }).click();
   await page.getByRole("menuitem", { name: "Spelling", exact: true }).click();
   await expect(spelling).toContainText("seperate → separate");
-  await expect(spelling).not.toContainText("Nkrumah");
+  await expect(spelling).not.toContainText("Danquah");
   await spelling.getByRole("button", { name: "Close spelling" }).click();
 
   await rightClick(page, seperate);
@@ -179,8 +179,8 @@ test("right-clicking a sheet misspelling suggests, replaces, ignores, and shares
 
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Handover", exact: true }).click();
-  await expect(doc).toContainText("Nkrumah");
-  await expect(page.locator(".spelling-misspelling", { hasText: "Nkrumah" })).toHaveCount(0);
+  await expect(doc).toContainText("Danquah");
+  await expect(page.locator(".spelling-misspelling", { hasText: "Danquah" })).toHaveCount(0);
   await expect(page.locator(".spelling-misspelling", { hasText: "Kwame" })).toHaveCount(0);
   await expect(page.locator(".spelling-misspelling", { hasText: "seperate" })).toBeVisible();
 
@@ -188,12 +188,12 @@ test("right-clicking a sheet misspelling suggests, replaces, ignores, and shares
   await page.getByRole("link", { name: "Decisions", exact: true }).click();
   await expect(page.getByLabel("Spreadsheet grid")).toHaveAttribute("aria-busy", "false");
   expect(await activeValue(page, "B4")).toBe("Please receive the keys");
-  await expect(page.locator(".sheet-spell-mark[data-spell-word='Nkrumah']")).toHaveCount(0);
+  await expect(page.locator(".sheet-spell-mark[data-spell-word='Danquah']")).toHaveCount(0);
   await expect(page.locator(".sheet-spell-mark[data-spell-word='recieve']")).toHaveCount(0);
   await expect(page.locator(".sheet-spell-mark[data-spell-word='seperate']")).toHaveCount(0);
   const saved = await download(page);
   const sheetId = saved.content.workbook.sheetOrder[0];
   expect(saved.content.workbook.sheets[sheetId].cellData[3][1].v).toBe("Please receive the keys");
-  expect(saved.content.workbook.sheets[sheetId].cellData[4][1].v).toBe("Nkrumah spoke");
+  expect(saved.content.workbook.sheets[sheetId].cellData[4][1].v).toBe("Danquah spoke");
   expect(saved.content.workbook.sheets[sheetId].cellData[5][1].v).toBe("seperate the copies");
 });

@@ -10,7 +10,7 @@ async function seed(page: Page) {
   grid.cellData = {
     0: { 0: { v: "Decision", t: 1 }, 1: { v: "Note", t: 1 } },
     1: { 0: { v: "Grant", t: 1 }, 1: { v: "We will recieve the grant", t: 1 } },
-    2: { 0: { v: "Speaker", t: 1 }, 1: { v: "Nkrumah spoke", t: 1 } },
+    2: { 0: { v: "Speaker", t: 1 }, 1: { v: "Danquah spoke", t: 1 } },
   };
   (grid as { columnData: Record<number, { w: number }> }).columnData = {
     0: { w: 120 },
@@ -96,14 +96,14 @@ test("54-spell-a-sheet-and-a-deck", async ({ page, context }) => {
   const leaks: string[] = [];
   page.on("request", (request) => {
     const body = `${request.url()}\n${request.postData() ?? ""}`;
-    if (/recieve|Nkrumah/i.test(body)) leaks.push(request.url());
+    if (/recieve|Danquah/i.test(body)) leaks.push(request.url());
   });
   await seed(page);
   await caption(page, "Sam opens Decisions. “recieve” is underlined in the cell.");
   await page.getByRole("link", { name: "Decisions", exact: true }).click();
   await expect(page.getByLabel("Spreadsheet grid")).toHaveAttribute("aria-busy", "false");
   const recieve = page.locator(".sheet-spell-mark[data-spell-word='recieve']");
-  const name = page.locator(".sheet-spell-mark[data-spell-word='Nkrumah']");
+  const name = page.locator(".sheet-spell-mark[data-spell-word='Danquah']");
   await expect(recieve).toBeVisible();
   await expect(name).toBeVisible();
   await beat(page, 1400);
@@ -117,8 +117,8 @@ test("54-spell-a-sheet-and-a-deck", async ({ page, context }) => {
   await expect(recieve).toHaveCount(0);
   await beat(page, 1200);
 
-  await caption(page, "Nkrumah is a name. Adding it uses the same dictionary as Docs.");
-  await expect(spelling).toContainText("Nkrumah spoke");
+  await caption(page, "Danquah is a name. Adding it uses the same dictionary as Docs.");
+  await expect(spelling).toContainText("Danquah spoke");
   await beat(page, 800);
   await spelling.getByRole("button", { name: "Add to dictionary" }).click();
   await expect(name).toHaveCount(0);
@@ -174,7 +174,7 @@ test("54-spell-a-sheet-and-a-deck", async ({ page, context }) => {
   await expect(body).toHaveValue("receive the keys");
   await offlineSlide.getByRole("button", { name: "Done" }).click();
 
-  await caption(page, "He reopens both files. “receive” is saved, and Nkrumah is not flagged.");
+  await caption(page, "He reopens both files. “receive” is saved, and Danquah is not flagged.");
   await expect(page.getByRole("status")).toContainText("Saved");
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Decisions", exact: true }).click();

@@ -26,7 +26,7 @@ function decisionsSheet() {
   sheet.cellData = {
     0: { 0: { v: "Decision", t: 1 }, 1: { v: "Note", t: 1 } },
     1: { 0: { v: "Grant", t: 1 }, 1: { v: "We will recieve the grant", t: 1 } },
-    2: { 0: { v: "Speaker", t: 1 }, 1: { v: "Nkrumah spoke", t: 1 } },
+    2: { 0: { v: "Speaker", t: 1 }, 1: { v: "Danquah spoke", t: 1 } },
   };
   (sheet as { columnData: Record<number, { w: number }> }).columnData = {
     0: { w: 120 },
@@ -74,12 +74,12 @@ test("sheet spelling replaces one word, shares the Docs dictionary, and works of
   const leaks: string[] = [];
   page.on("request", (request) => {
     const body = `${request.url()}\n${request.postData() ?? ""}`;
-    if (/recieve|Nkrumah|receive the grant/i.test(body)) leaks.push(request.url());
+    if (/recieve|Danquah|receive the grant/i.test(body)) leaks.push(request.url());
   });
   await openNative(page, "Decisions.slsheet", decisionsSheet());
   await expect(page.getByLabel("Spreadsheet grid")).toHaveAttribute("aria-busy", "false");
   const recieve = page.locator(".sheet-spell-mark[data-spell-word='recieve']");
-  const name = page.locator(".sheet-spell-mark[data-spell-word='Nkrumah']");
+  const name = page.locator(".sheet-spell-mark[data-spell-word='Danquah']");
   await expect(recieve).toBeVisible();
   await expect(name).toBeVisible();
   await expect(recieve).toHaveAttribute("data-spell-cell", "B2");
@@ -92,7 +92,7 @@ test("sheet spelling replaces one word, shares the Docs dictionary, and works of
   await expect(spelling.getByRole("button", { name: "receive", exact: true })).toBeVisible();
   await expect(page.locator(".sheet-host input.univer-size-full")).toHaveValue("B2");
   await spelling.getByRole("button", { name: "receive", exact: true }).click();
-  await expect(spelling).toContainText("Nkrumah");
+  await expect(spelling).toContainText("Danquah");
   await expect(recieve).toHaveCount(0);
   await spelling.getByRole("button", { name: "Add to dictionary" }).click();
   await expect(name).toHaveCount(0);
@@ -103,13 +103,13 @@ test("sheet spelling replaces one word, shares the Docs dictionary, and works of
     (key) => localStorage.getItem(key),
     PERSONAL_DICTIONARY_KEY,
   );
-  expect(JSON.parse(dictionary ?? "{}").added).toContain("Nkrumah");
+  expect(JSON.parse(dictionary ?? "{}").added).toContain("Danquah");
   await expect(page.getByRole("status")).toContainText("Saved");
   const saved = await download(page);
   const id = saved.content.workbook.sheetOrder[0];
   const cells = saved.content.workbook.sheets[id].cellData;
   expect(cells[1][1].v).toBe("We will receive the grant");
-  expect(cells[2][1].v).toBe("Nkrumah spoke");
+  expect(cells[2][1].v).toBe("Danquah spoke");
   await context.setOffline(false);
   expect(leaks).toEqual([]);
 
@@ -122,11 +122,11 @@ test("sheet spelling replaces one word, shares the Docs dictionary, and works of
 test("a name added in Docs is not flagged in a sheet", async ({ page }) => {
   await page.goto("/");
   await page.evaluate((key) => {
-    localStorage.setItem(key, JSON.stringify({ added: ["Nkrumah"], flagged: [] }));
+    localStorage.setItem(key, JSON.stringify({ added: ["Danquah"], flagged: [] }));
   }, PERSONAL_DICTIONARY_KEY);
   await openNative(page, "Decisions.slsheet", decisionsSheet());
   await expect(page.getByLabel("Spreadsheet grid")).toHaveAttribute("aria-busy", "false");
-  await expect(page.locator(".sheet-spell-mark[data-spell-word='Nkrumah']")).toHaveCount(0);
+  await expect(page.locator(".sheet-spell-mark[data-spell-word='Danquah']")).toHaveCount(0);
   await expect(page.locator(".sheet-spell-mark[data-spell-word='recieve']")).toBeVisible();
 });
 

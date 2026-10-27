@@ -6,7 +6,7 @@ import { askAgent, beat, caption, describeRun, expect, test } from "../harness";
 const editorOf = (page: Page) => page.getByRole("textbox", { name: "Document content" });
 
 const PROMPT =
-  "Check the grammar in this essay and fix every grammar issue with the grammar tool, not find and replace. Change “the movement were” so it says “the movement was”, change “its the reason” so it says “it's the reason”, and change “they was ready” so it says “they were ready”. Keep the bold formatting on movement. Leave the spelling of Nkrumah and movment unchanged.";
+  "Check the grammar in this essay and fix every grammar issue with the grammar tool, not find and replace. Change “the movement were” so it says “the movement was”, change “its the reason” so it says “it's the reason”, and change “they was ready” so it says “they were ready”. Keep the bold formatting on movement. Leave the spelling of Danquah and movment unchanged.";
 
 /** The same Independence essay the human storyboard opens. */
 async function seedEssay(page: Page) {
@@ -59,11 +59,11 @@ test("45-check-grammar-on-the-device-ai", async ({ page }) => {
   await expect(editor, why).toContainText("movment");
   await expect(page.locator(".document-content strong"), why).toHaveText("movement");
   await expect(page.locator(".document-content em"), why).toHaveText("strong");
-  await expect(editor, why).toContainText("as Nkrumah spoke");
-  await expect(page.locator(".spelling-misspelling", { hasText: "Nkrumah" }), why).toHaveCount(1);
+  await expect(editor, why).toContainText("as Danquah spoke");
+  await expect(page.locator(".spelling-misspelling", { hasText: "Danquah" }), why).toHaveCount(1);
   await expect(page.locator(".spelling-misspelling", { hasText: "movment" }), why).toBeVisible();
 
-  await caption(page, "The three grammar mistakes are fixed. Bold and Nkrumah stay.", 2000);
+  await caption(page, "The three grammar mistakes are fixed. Bold and Danquah stay.", 2000);
   await page.getByRole("button", { name: "Close assistant" }).click();
   await beat(page, 600);
 });

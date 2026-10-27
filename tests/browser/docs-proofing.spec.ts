@@ -72,7 +72,7 @@ test("spelling keeps formatting, stays on device, and the dictionary can be undo
   const leaks: string[] = [];
   page.on("request", (request) => {
     const body = `${request.url()}\n${request.postData() ?? ""}`;
-    if (/seperate|movment|Nkrumah|recieve/i.test(body)) leaks.push(request.url());
+    if (/seperate|movment|Danquah|recieve/i.test(body)) leaks.push(request.url());
   });
   await page.goto("/");
   await page.getByRole("button", { name: "New document" }).click();

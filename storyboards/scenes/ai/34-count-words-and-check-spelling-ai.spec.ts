@@ -6,7 +6,7 @@ import { askAgent, beat, caption, describeRun, expect, test } from "../harness";
 const editorOf = (page: Page) => page.getByRole("textbox", { name: "Document content" });
 
 const PROMPT =
-  "The word limit for this essay leaves out the References section. Stop counting words at the References heading, leave footnotes uncounted, and save that choice in the file. Then check spelling and fix every real typo, including recieve to receive, movment to movement where it appears, and teh to the. Keep the bold formatting on separate. Add Nkrumah to the personal dictionary so it is not flagged, and do not change the spelling of Nkrumah.";
+  "The word limit for this essay leaves out the References section. Stop counting words at the References heading, leave footnotes uncounted, and save that choice in the file. Then check spelling and fix every real typo, including recieve to receive, movment to movement where it appears, and teh to the. Keep the bold formatting on separate. Add Danquah to the personal dictionary so it is not flagged, and do not change the spelling of Danquah.";
 
 /** The same Independence essay the human storyboard opens. */
 async function seedEssay(page: Page) {
@@ -69,7 +69,7 @@ test("34-count-words-and-check-spelling-ai", async ({ page }) => {
   await expect(editor, why).toContainText("receive");
   await expect(editor, why).toContainText("the movement grew");
   await expect(editor, why).toContainText("still said the");
-  const names = await editor.evaluate((root) => root.textContent?.match(/Nkrumah/g)?.length ?? 0);
+  const names = await editor.evaluate((root) => root.textContent?.match(/Danquah/g)?.length ?? 0);
   expect(names, why).toBe(3);
   const bold = await editor.locator("strong").allTextContents();
   expect(bold.some((text) => text.trim() === "separate"), why).toBe(true);
@@ -83,11 +83,11 @@ test("34-count-words-and-check-spelling-ai", async ({ page }) => {
     };
     return { added: raw.added ?? [], flagged: raw.flagged ?? [] };
   });
-  expect(dictionary.added.some((word) => word.toLowerCase() === "nkrumah"), why).toBe(true);
+  expect(dictionary.added.some((word) => word.toLowerCase() === "danquah"), why).toBe(true);
   expect(dictionary.added.some((word) => word.toLowerCase() === "teh"), why).toBe(false);
-  expect(dictionary.flagged.some((word) => word.toLowerCase() === "nkrumah"), why).toBe(false);
+  expect(dictionary.flagged.some((word) => word.toLowerCase() === "danquah"), why).toBe(false);
 
-  await caption(page, "The count stops at References, the typos are fixed, and Nkrumah is in her dictionary.", 2000);
+  await caption(page, "The count stops at References, the typos are fixed, and Danquah is in her dictionary.", 2000);
   await page.getByRole("button", { name: "Close assistant" }).click();
   await expect(page.getByRole("status"), why).toContainText("Saved");
   await page.getByRole("button", { name: "Back to files" }).click();

@@ -4,7 +4,7 @@
 
 ## Who and why
 
-Amara is finishing a 1,500-word history essay. The limit excludes the reference list, and she needs to know how long her introduction is on its own. She types fast, and her essay is full of names the dictionary doesn't know ("Nkrumah", "Ghana's"). She wants to fix real typos quickly without wading through false alarms, and without the checker forgetting her choices.
+Amara is finishing a 1,500-word history essay. The limit excludes the reference list, and she needs to know how long her introduction is on its own. She types fast, and her essay is full of names the dictionary doesn't know ("Danquah", "Ghana's"). She wants to fix real typos quickly without wading through false alarms, and without the checker forgetting her choices.
 
 ## Inspired by
 
@@ -22,9 +22,9 @@ Amara is finishing a 1,500-word history essay. The limit excludes the reference 
 3. **Word count details.** She opens Tools › Word count (Cmd/Ctrl+Shift+C). A dialog lists words, characters, characters without spaces, paragraphs, and pages, for the selection and for the whole document.
 4. **Exclude the references.** In the dialog she chooses "Stop counting at heading: References". The document total drops to 1,488. She leaves "Count footnotes" unticked. The status bar reads "1,488 words (excludes References)". She closes the essay and opens it again; the exclusion is still there.
 5. **Spelling as she types.** She retypes "movement" as "movment". It is underlined on this computer. Right-clicking shows "movement" first, then "Add to dictionary" and "Ignore". Clicking "movement" fixes it.
-6. **Teach it names.** She right-clicks "Nkrumah" and chooses Add to dictionary. Every other "Nkrumah" in the essay loses its underline.
+6. **Teach it names.** She right-clicks "Danquah" and chooses Add to dictionary. Every other "Danquah" in the essay loses its underline.
 7. **Check the whole essay.** Tools › Spelling opens a panel that steps through issues one by one. After the first Enter it shows "2 of 5 · recieve → receive", with **Change**, **Ignore**, and **Add to dictionary**. Enter keeps going, and the bold on "separate" stays.
-8. **Change her mind.** On the last issue she adds "teh" by mistake. Tools › Personal dictionary lists "Nkrumah" and "teh". She removes "teh", it is underlined again, and she corrects it to "the".
+8. **Change her mind.** On the last issue she adds "teh" by mistake. Tools › Personal dictionary lists "Danquah" and "teh". She removes "teh", it is underlined again, and she corrects it to "the".
 9. **Offline.** The status bar still reads "1,488 words (excludes References)", nothing unknown is left, and none of the text left the computer.
 
 ## Google Workspace benchmark
@@ -53,7 +53,7 @@ Known pain points:
 ## Success looks like
 
 - The essay reads "1,488 words (excludes References)" after it is closed and opened again, and the introduction's length was checked from a selection.
-- The essay has no unknown words left, "Nkrumah" is in the personal dictionary, and "teh" isn't. "separate" is still bold.
+- The essay has no unknown words left, "Danquah" is in the personal dictionary, and "teh" isn't. "separate" is still bold.
 
 ## Result
 

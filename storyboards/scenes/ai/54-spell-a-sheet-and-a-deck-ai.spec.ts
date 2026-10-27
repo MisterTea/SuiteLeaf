@@ -4,9 +4,9 @@ import { isMisspelling, PERSONAL_DICTIONARY_KEY, type PersonalDictionary } from 
 import { askAgent, beat, caption, describeRun, expect, openApp, test } from "../harness";
 
 const PROMPT = [
-  "Decisions is open. In B2 change only recieve to receive, so the cell reads We will receive the grant. Add Nkrumah to the dictionary and do not change B3. Then go back to the file list and open the presentation Update. In that text box change only recieve to receive, so it reads receive the keys.",
+  "Decisions is open. In B2 change only recieve to receive, so the cell reads We will receive the grant. Add Danquah to the dictionary and do not change B3. Then go back to the file list and open the presentation Update. In that text box change only recieve to receive, so it reads receive the keys.",
   'Call fix_spelling with word "recieve" and cell "B2".',
-  'Call add_to_dictionary with word "Nkrumah".',
+  'Call add_to_dictionary with word "Danquah".',
   "Call back_to_files.",
   'Call open_file with name "Update".',
   'Call fix_spelling with word "recieve".',
@@ -22,7 +22,7 @@ function decisionsSheet() {
   grid.cellData = {
     0: { 0: { v: "Decision", t: 1 }, 1: { v: "Note", t: 1 } },
     1: { 0: { v: "Grant", t: 1 }, 1: { v: "We will recieve the grant", t: 1 } },
-    2: { 0: { v: "Speaker", t: 1 }, 1: { v: "Nkrumah spoke", t: 1 } },
+    2: { 0: { v: "Speaker", t: 1 }, 1: { v: "Danquah spoke", t: 1 } },
   };
   grid.columnData = { 0: { w: 120 }, 1: { w: 280 } };
   return sheet;
@@ -162,7 +162,7 @@ test("54-spell-a-sheet-and-a-deck-ai", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Update", exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Decisions", exact: true }).click();
   await expect(page.getByLabel("Spreadsheet grid")).toHaveAttribute("aria-busy", "false");
-  await caption(page, "Sam asks the on-device assistant to spell the sheet, keep Nkrumah, then spell the deck.");
+  await caption(page, "Sam asks the on-device assistant to spell the sheet, keep Danquah, then spell the deck.");
   await caption(page, "", 0);
 
   const run = await askAgent(page, PROMPT);
@@ -183,7 +183,7 @@ test("54-spell-a-sheet-and-a-deck-ai", async ({ page }) => {
       },
       { timeout: 15000 },
     )
-    .toBe("We will receive the grant | Nkrumah spoke | Update / receive the keys");
+    .toBe("We will receive the grant | Danquah spoke | Update / receive the keys");
 
   const sheetId = sheet!.content.workbook.sheetOrder[0];
   const cells = sheet!.content.workbook.sheets[sheetId].cellData;
@@ -192,7 +192,7 @@ test("54-spell-a-sheet-and-a-deck-ai", async ({ page }) => {
   expect(cellText(cells, 1, 0), why).toBe("Grant");
   expect(cellText(cells, 1, 1), why).toBe("We will receive the grant");
   expect(cellText(cells, 2, 0), why).toBe("Speaker");
-  expect(cellText(cells, 2, 1), why).toBe("Nkrumah spoke");
+  expect(cellText(cells, 2, 1), why).toBe("Danquah spoke");
   const boxes = deckText(deck).map((text) => text.trim()).filter(Boolean);
   expect(boxes, why).toEqual(["Update", "receive the keys"]);
   expect(boxes.join("\n"), why).not.toMatch(/recieve/);
@@ -201,9 +201,9 @@ test("54-spell-a-sheet-and-a-deck-ai", async ({ page }) => {
     const raw = JSON.parse(localStorage.getItem(key) || "{}") as Partial<PersonalDictionary>;
     return { added: raw.added ?? [], flagged: raw.flagged ?? [] };
   }, PERSONAL_DICTIONARY_KEY);
-  expect(dictionary.added.some((word) => word.toLowerCase() === "nkrumah"), why).toBe(true);
-  expect(dictionary.flagged.some((word) => word.toLowerCase() === "nkrumah"), why).toBe(false);
-  expect(isMisspelling("Nkrumah", dictionary, []), why).toBe(false);
+  expect(dictionary.added.some((word) => word.toLowerCase() === "danquah"), why).toBe(true);
+  expect(dictionary.flagged.some((word) => word.toLowerCase() === "danquah"), why).toBe(false);
+  expect(isMisspelling("Danquah", dictionary, []), why).toBe(false);
   expect(isMisspelling("recieve", dictionary, []), why).toBe(true);
 
   const done = page.getByRole("button", { name: "Done", exact: true });
@@ -213,7 +213,7 @@ test("54-spell-a-sheet-and-a-deck-ai", async ({ page }) => {
   await page.getByRole("link", { name: "Decisions", exact: true }).click();
   await expect(page.getByLabel("Spreadsheet grid")).toHaveAttribute("aria-busy", "false");
   await beat(page, 800);
-  await expect(page.locator(".sheet-spell-mark[data-spell-word='Nkrumah']"), why).toHaveCount(0);
+  await expect(page.locator(".sheet-spell-mark[data-spell-word='Danquah']"), why).toHaveCount(0);
   await expect(page.locator(".sheet-spell-mark[data-spell-word='recieve']"), why).toHaveCount(0);
-  await caption(page, "B2 says receive, Nkrumah stays, and the deck says receive the keys.", 1600);
+  await caption(page, "B2 says receive, Danquah stays, and the deck says receive the keys.", 1600);
 });

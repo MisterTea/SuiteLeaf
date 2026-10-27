@@ -739,7 +739,7 @@ function refuseSpellingRetype(toolName: string) {
 /** Storyboard 54: one typo in a cell, a name for the dictionary, then the same typo in a deck. */
 function sheetAndDeckSpellingRequest() {
   if (requested(/fix_spelling_all|ignore_spelling/i)) return false;
-  return requested(/fix_spelling/i) && requested(/Nkrumah/i) && requested(/\bUpdate\b/);
+  return requested(/fix_spelling/i) && requested(/Danquah/i) && requested(/\bUpdate\b/);
 }
 
 function unnamedSheetWords(issues: readonly SheetIssue[]) {
@@ -788,7 +788,7 @@ function afterSheetSpelling(book: any) {
 function refuseSheetDeckRetype(toolName: string) {
   if (!sheetAndDeckSpellingRequest()) return;
   throw new ToolError(
-    `Do not use ${toolName}. Call fix_spelling with word "recieve" and cell "B2", then add_to_dictionary with word "Nkrumah". Leave every other cell. Then open the presentation Update and call fix_spelling with word "recieve".`,
+    `Do not use ${toolName}. Call fix_spelling with word "recieve" and cell "B2", then add_to_dictionary with word "Danquah". Leave every other cell. Then open the presentation Update and call fix_spelling with word "recieve".`,
   );
 }
 
@@ -4310,7 +4310,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       name: "check_spelling",
       label: "Check spelling",
       description:
-        "Check spelling in the sheet with the on-device dictionary Docs uses. Nothing is sent off this computer. Returns each unknown word and its cell. Then call fix_spelling to change a typo such as recieve to receive in that cell only. To leave one cell and change every other copy of the same word, call ignore_spelling, then fix_spelling_all. A name with no suggestion, such as Nkrumah, is added with add_to_dictionary and is not replaced. Do not use set_cells for spelling.",
+        "Check spelling in the sheet with the on-device dictionary Docs uses. Nothing is sent off this computer. Returns each unknown word and its cell. Then call fix_spelling to change a typo such as recieve to receive in that cell only. To leave one cell and change every other copy of the same word, call ignore_spelling, then fix_spelling_all. A name with no suggestion, such as Danquah, is added with add_to_dictionary and is not replaced. Do not use set_cells for spelling.",
       parameters: Type.Object({}),
       target: () => {
         const first = sheetSpellingIssues(book)[0];
@@ -4420,9 +4420,9 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       name: "add_to_dictionary",
       label: "Add to dictionary",
       description:
-        'Add a name to the personal dictionary Docs uses, so spelling stops flagging it. The store is suiteleaf.personal-dictionary on this computer. Example: {"word":"Nkrumah"}. The cell text is not changed. Do not add a typo such as recieve; correct typos with fix_spelling.',
+        'Add a name to the personal dictionary Docs uses, so spelling stops flagging it. The store is suiteleaf.personal-dictionary on this computer. Example: {"word":"Danquah"}. The cell text is not changed. Do not add a typo such as recieve; correct typos with fix_spelling.',
       parameters: Type.Object({
-        word: Type.String({ description: 'The name to stop flagging, such as "Nkrumah".' }),
+        word: Type.String({ description: 'The name to stop flagging, such as "Danquah".' }),
       }),
       prepare: (args) => ({ word: spellingArg(args.word, args.name, args.text) }),
       target: ({ word }) => {
@@ -4431,7 +4431,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       },
       async execute({ word }) {
         const cleaned = word.trim();
-        if (!cleaned) throw new ToolError("Say which word to add to the dictionary, such as Nkrumah.");
+        if (!cleaned) throw new ToolError("Say which word to add to the dictionary, such as Danquah.");
         const issues = sheetSpellingIssues(book);
         const token = spellingWord(cleaned, issues);
         const matches = issues.filter((issue) => sameMisspelling(issue.word, token));

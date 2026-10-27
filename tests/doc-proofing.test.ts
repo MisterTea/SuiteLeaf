@@ -136,16 +136,16 @@ describe("spelling", () => {
   it("clears a name after it is added and brings a removed or un-ignored word back", () => {
     const doc = independenceEssayContent();
     expect(misspelledWords(doc)).toEqual([
-      "Nkrumah",
-      "Nkrumah",
-      "Nkrumah",
+      "Danquah",
+      "Danquah",
+      "Danquah",
       "seperate",
       "recieve",
       "occured",
       "definately",
       "teh",
     ]);
-    const taught = addToPersonalDictionary(none, "Nkrumah");
+    const taught = addToPersonalDictionary(none, "Danquah");
     expect(misspelledWords(doc, taught)).toEqual([
       "seperate",
       "recieve",
@@ -160,6 +160,6 @@ describe("spelling", () => {
       "definately",
     ]);
     expect(isMisspelling("teh", taught, [])).toBe(true);
-    expect(isMisspelling("Nkrumah", { added: [], flagged: [] }, [])).toBe(true);
+    expect(isMisspelling("Danquah", { added: [], flagged: [] }, [])).toBe(true);
   });
 });

@@ -46,11 +46,11 @@ describe("grid spelling", () => {
   });
 
   it("uses the Docs dictionary, including names added there", () => {
-    expect(misspellingsInText("Nkrumah spoke", none, []).map((hit) => hit.word)).toEqual([
-      "Nkrumah",
+    expect(misspellingsInText("Danquah spoke", none, []).map((hit) => hit.word)).toEqual([
+      "Danquah",
     ]);
-    const taught = addToPersonalDictionary(none, "Nkrumah");
-    expect(misspellingsInText("Nkrumah spoke", taught, [])).toEqual([]);
+    const taught = addToPersonalDictionary(none, "Danquah");
+    expect(misspellingsInText("Danquah spoke", taught, [])).toEqual([]);
     expect(misspellingsInText("We will recieve the grant", taught, []).map((hit) => hit.word)).toEqual([
       "recieve",
     ]);
@@ -71,7 +71,7 @@ describe("grid spelling", () => {
               getRange: () => ({ startRow: 1, startColumn: 1 }),
               getCellDatas: () => [
                 [{ v: "We will recieve the grant" }, { v: "recieve", f: '="recieve"' }],
-                [{ v: "Nkrumah spoke" }, null],
+                [{ v: "Danquah spoke" }, null],
               ],
             }),
           },
