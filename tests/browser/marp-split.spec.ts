@@ -194,6 +194,108 @@ test("underline and color chosen on the slide are written as HTML and drawn afte
   await expect(markdown).toHaveValue(styled.replace("(https://example.com).", "(https://example.com).!"));
 });
 
+test("a bullet that wraps keeps MARP's hanging indent while it is being typed in", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const item =
+    "This bullet is long enough that it has to wrap onto a second line, and then it keeps going onto a third line";
+  const { canvas } = await openDeck(page, `---\nmarp: true\n---\n\n# Plan\n\n- ${item}\n- Short\n`);
+  await expect(canvas).toHaveClass(/marp-painted/);
+
+  /** Left edge of each line of the first item's words, skipping its bullet, in page pixels. */
+  const lineStarts = (root: Element, offset: { x: number; scale: number }) => {
+    const doc = root.ownerDocument;
+    const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const lines = new Map<number, number>();
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const text = node.textContent ?? "";
+      for (let i = 0; i < text.length; i++) {
+        if (text[i] === "\n" && lines.size) return [...lines.entries()].sort((a, b) => a[0] - b[0]).map(([, left]) => left);
+        if (!/\S/.test(text[i]) || text[i] === "•") continue;
+        const range = doc.createRange();
+        range.setStart(node, i);
+        range.setEnd(node, i + 1);
+        const rect = range.getBoundingClientRect();
+        const top = Math.round(rect.top / 4);
+        lines.set(top, Math.min(lines.get(top) ?? Infinity, offset.x + rect.left * offset.scale));
+      }
+    }
+    return [...lines.entries()].sort((a, b) => a[0] - b[0]).map(([, left]) => left);
+  };
+
+  const drawn = await page
+    .locator(".slide-canvas .marp-backdrop[data-state=shown]")
+    .evaluate((frame, source) => {
+      const iframe = frame as HTMLIFrameElement;
+      const li = [...iframe.contentDocument!.querySelectorAll("li")].find((el) =>
+        el.textContent?.includes("keeps going"),
+      )!;
+      const outer = iframe.getBoundingClientRect();
+      const measure = new Function(`return (${source})`)() as typeof lineStarts;
+      return measure(li, { x: outer.x, scale: outer.width / iframe.offsetWidth });
+    }, lineStarts.toString());
+  expect(drawn.length).toBeGreaterThanOrEqual(2);
+
+  const box = canvas.locator("[data-element-id]").filter({ hasText: "keeps going" });
+  await expect(box.locator("textarea")).toHaveCount(0);
+  await box.click();
+  const editor = box.locator("[contenteditable='true']");
+  await expect(editor).toBeFocused();
+  const typed = await editor.evaluate(
+    (root, source) => (new Function(`return (${source})`)() as typeof lineStarts)(root, { x: 0, scale: 1 }),
+    lineStarts.toString(),
+  );
+  expect(typed).toHaveLength(drawn.length);
+  for (const [i, left] of typed.entries()) expect(Math.abs(left - drawn[i])).toBeLessThan(2);
+});
+
+test("choosing a box scrolls the markdown to it, and the slide follows the markdown caret", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const slides = Array.from({ length: 12 }, (_, i) => `# Slide ${i + 1}\n\nBody ${i + 1} has a few words.\n`);
+  const source = `---\nmarp: true\n---\n\n${slides.join("\n---\n\n")}`;
+  const { canvas, markdown } = await openDeck(page, source);
+  const active = page.locator(".thumbnail-row.active");
+  const lineOf = (text: string) => source.slice(0, source.indexOf(text)).split("\n").length - 1;
+  const view = () =>
+    markdown.evaluate((area: HTMLTextAreaElement) => ({
+      top: area.scrollTop,
+      height: area.clientHeight,
+      line: parseFloat(getComputedStyle(area).lineHeight),
+      pad: parseFloat(getComputedStyle(area).paddingTop),
+      caret: area.selectionStart,
+    }));
+  const shows = async (line: number) => {
+    const now = await view();
+    const y = now.pad + line * now.line;
+    return y >= now.top && y + now.line <= now.top + now.height;
+  };
+  expect(await shows(lineOf("Body 11 has"))).toBe(false);
+
+  await page.getByRole("option", { name: /^Slide 11:/ }).click();
+  await canvas.locator("[data-element-id]").filter({ hasText: "Body 11 has" }).click();
+  await expect.poll(() => shows(lineOf("Body 11 has"))).toBe(true);
+  expect((await view()).caret).toBe(source.indexOf("Body 11 has"));
+  await expect(markdown).not.toBeFocused();
+
+  await markdown.evaluate((area: HTMLTextAreaElement) => (area.scrollTop = 0));
+  const start = await view();
+  await markdown.click({ position: { x: 40, y: start.pad + (lineOf("Body 3 has") + 0.5) * start.line } });
+  await expect(active).toHaveAttribute("aria-label", /^Slide 3:/);
+  for (let i = 0; i < lineOf("# Slide 4") - lineOf("Body 3 has"); i++) await page.keyboard.press("ArrowDown");
+  await expect(active).toHaveAttribute("aria-label", /^Slide 4:/);
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("ArrowUp");
+  await expect(active).toHaveAttribute("aria-label", /^Slide 4:/);
+  await page.keyboard.press("ArrowUp");
+  await expect(active).toHaveAttribute("aria-label", /^Slide 3:/);
+  await page.keyboard.press("PageDown");
+  await expect(active).not.toHaveAttribute("aria-label", /^Slide 3:/);
+  const paged = await view();
+  expect(paged.caret).toBeGreaterThan(source.indexOf("Body 3 has"));
+  expect(await shows(source.slice(0, paged.caret).split("\n").length - 1)).toBe(true);
+  await page.keyboard.press("PageUp");
+  await expect(active).toHaveAttribute("aria-label", /^Slide 3:/);
+});
+
 const RAW = `---
 marp: true
 ---

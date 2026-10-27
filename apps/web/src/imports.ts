@@ -12,6 +12,7 @@ import {
   type SheetFile,
 } from "@suiteleaf/core";
 import { buildMarpFile, dataUriFor } from "./editors/slide-marp-import";
+import { importDrawing } from "./editors/drawing-format";
 
 export const maxDelimitedCells = 200000;
 /** A parsed CSV/TSV file awaiting the person's import choices. */
@@ -134,7 +135,9 @@ export async function importFile(
     }
     return buildMarpFile(title, text, pictures);
   }
+  const drawing = importDrawing(file.name, text);
+  if (drawing) return drawing;
   throw new Error(
-    "Supported formats: SuiteLeaf (.sldoc, .slsheet, .slslides, .suiteleaf), Word, Excel, PowerPoint, OpenDocument, RTF, Markdown (.md), HTML, text, CSV, and TSV.",
+    "Supported formats: SuiteLeaf (.sldoc, .slsheet, .slslides, .sldraw, .suiteleaf), Word, Excel, PowerPoint, OpenDocument, RTF, Markdown (.md), HTML, text, CSV, TSV, SVG, Mermaid (.mmd, .mermaid), and Graphviz (.gv).",
   );
 }

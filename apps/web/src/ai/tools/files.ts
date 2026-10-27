@@ -20,7 +20,7 @@ const safe = <T>(f: () => T) => {
 };
 
 export const IMPORT_ACCEPT =
-  ".sldoc,.slsheet,.slslides,.suiteleaf,.docx,.docm,.dotx,.dotm,.doc,.dot,.xlsx,.xlsm,.xlsb,.xltx,.xls,.pptx,.ppt,.ppsx,.pptm,.potx,.ppsm,.odt,.ott,.fodt,.ods,.fods,.odp,.fodp,.rtf,.md,.markdown,.html,.htm,.txt,.csv,.tsv";
+  ".sldoc,.slsheet,.slslides,.sldraw,.suiteleaf,.svg,.mmd,.mermaid,.gv,.docx,.docm,.dotx,.dotm,.doc,.dot,.xlsx,.xlsm,.xlsb,.xltx,.xls,.pptx,.ppt,.ppsx,.pptm,.potx,.ppsm,.odt,.ott,.fodt,.ods,.fods,.odp,.fodp,.rtf,.md,.markdown,.html,.htm,.txt,.csv,.tsv";
 
 type Kind = SuiteFile["kind"];
 const KINDS: Record<string, Kind> = {
@@ -31,12 +31,14 @@ const KINDS: Record<string, Kind> = {
   presentation: "slide",
   slides: "slide",
   slide: "slide",
+  drawing: "drawing",
 };
 const NAMES: Record<Kind, string> = {
   doc: "document",
   sheet: "spreadsheet",
   slide: "presentation",
   form: "form",
+  drawing: "drawing",
 };
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -126,7 +128,7 @@ const joinTitles = (records: FileRecord[]) => records.map((r) => `"${r.file.titl
 
 export function findRecord(records: FileRecord[], name: string, kind?: Kind) {
   const pool = kind ? records.filter((r) => r.file.kind === kind) : records;
-  const n = name.trim().toLowerCase().replace(/\.(sldoc|slsheet|slslides)$/, "");
+  const n = name.trim().toLowerCase().replace(/\.(sldoc|slsheet|slslides|sldraw)$/, "");
   const match =
     pool.find((r) => r.file.title.toLowerCase() === n) ??
     pool.find((r) => r.file.title.toLowerCase().includes(n)) ??

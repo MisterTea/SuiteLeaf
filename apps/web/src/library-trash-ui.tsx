@@ -14,6 +14,7 @@ import type { DragEvent } from "react";
 import { Link } from "react-router-dom";
 import type { FileRecord } from "@suiteleaf/core";
 import { formatModified } from "./drive/status";
+import { DrawingIcon } from "./drawing-home";
 import {
   moveToTrashTitle,
   trashStatus,
@@ -63,6 +64,8 @@ export function FileLibraryRow({
               <Sheet size={21} />
             ) : record.file.kind === "form" ? (
               <ClipboardList size={21} />
+            ) : record.file.kind === "drawing" ? (
+              <DrawingIcon size={21} />
             ) : (
               <Presentation size={21} />
             )}

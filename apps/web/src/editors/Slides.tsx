@@ -1,5 +1,7 @@
 import { SlidePrintDeck, useSlidePrint } from "./slide-print";
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -7,6 +9,10 @@ import {
   useState,
   type ChangeEvent,
 } from "react";
+import { heightForNewShape, isSvgDataUri, svgDataUri, svgFromDataUri } from "./svg-data";
+import { marpMediaSrc } from "./slide-marp-import";
+
+const EmbeddedDrawing = lazy(() => import("./drawing-embed"));
 import {
   Play,
   Plus,
@@ -70,6 +76,7 @@ import { useAgentHost } from "../ai/host";
 import { slideSnapshot, slideSpellingReview, slideTools, type SlidesAgentContext } from "../ai/tools/slides";
 import {
   DeckHistory,
+  arrowsTaken,
   canDeleteSlides,
   canMove,
   centeredTextBox,
@@ -159,12 +166,12 @@ import {
 } from "./slide-marp";
 import { deckToHtml } from "./slide-html";
 import { fitMarpDeck, MARP_FIT_REVISION } from "./slide-marp-fit";
-import { marpProblem } from "./slide-marp-source";
+import { marpLineStart, marpProblem, marpSlideAtLine } from "./slide-marp-source";
 import { deckFromMarkdown, keepUnchangedParts, syncMarpSource, withMarpLayout } from "./slide-marp-sync";
 import { MarpBackdrop, useMarpPages } from "./slide-marp-backdrop";
 import { SlideFace, SlideStill, type SlideBoxProps, type SlideFaceHooks } from "./slide-surface";
 import { MarpSplitHandle, useMarpSplit } from "./slide-marp-split";
-import { MarpTextarea, type MarpDraft } from "./slide-marp-textarea";
+import { MarpTextarea, scrollMarkdownTo, type MarpDraft } from "./slide-marp-textarea";
 import { continueList, listShortcut } from "./slide-list";
 
 type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
@@ -193,6 +200,11 @@ export default function Slides({
   const [selectedElementId, setSelectedElementId] = useState<string | null>(
     null,
   );
+  /**
+   * The SVG picture open in Drawing and what it was when it opened. In a MARP
+   * deck, `asset` is the file the markdown names, which Drawing edits instead.
+   */
+  const [svgEdit, setSvgEdit] = useState<{ id: string; svg: string; asset: string | null } | null>(null);
   const [tableCell, setTableCell] = useState<{
     id: string;
     row: number;
@@ -499,7 +511,7 @@ export default function Slides({
   });
   const {
     openComposer: openSlideComment,
-    openPanel: openSlideCommentPanel,
+    togglePanel: toggleSlideCommentPanel,
     openResolved: openSlideResolved,
   } = slideComments;
 
@@ -664,6 +676,28 @@ export default function Slides({
       const lineHeight = parseFloat(getComputedStyle(area).lineHeight) || 19;
       area.scrollTop = Math.max(0, lines[0] * lineHeight - area.clientHeight / 3);
     });
+  };
+
+  // Choosing a box on the slide shows where it is written, without leaving the slide.
+  useEffect(() => {
+    if (!deck.marp || !marpOpen || !selectedElementId) return;
+    const lines = deckRef.current.slides[activeRef.current]?.elements.find(
+      (el) => el.id === selectedElementId,
+    )?.marpLines;
+    const area = marpAreaRef.current;
+    if (!lines || !area || document.activeElement === area) return;
+    const at = marpLineStart(area.value, lines[0]);
+    area.setSelectionRange(at, at);
+    scrollMarkdownTo(area, at);
+  }, [deck.marp, marpOpen, selectedElementId]);
+
+  /** The slide follows the caret in the markdown. */
+  const followMarkdownCaret = (text: string, line: number) => {
+    const order = deckRef.current.slideOrder;
+    const id = order[Math.min(marpSlideAtLine(text, line), order.length - 1)];
+    if (!id || id === activeRef.current) return;
+    anchorRef.current = id;
+    applySelection(id, [id], null);
   };
 
   const onMarpChange = (text: string) => {
@@ -1233,6 +1267,15 @@ export default function Slides({
     applySelection(result.newIds[0], result.newIds, null);
   };
 
+  const stepSlide = (where: "next" | "prev") => {
+    const order = deckRef.current.slideOrder;
+    const to = order.indexOf(activeRef.current) + (where === "next" ? 1 : -1);
+    if (to < 0 || to >= order.length) return;
+    const nextId = order[to];
+    anchorRef.current = nextId;
+    applySelection(nextId, [nextId], null);
+  };
+
   const runCommand = (command: SlideCommand) => {
     switch (command.type) {
       case "undo":
@@ -1275,6 +1318,9 @@ export default function Slides({
         break;
       case "move":
         moveSlides(command.where);
+        break;
+      case "go":
+        stepSlide(command.where);
         break;
     }
   };
@@ -1371,7 +1417,7 @@ export default function Slides({
     if (!el || readOnlyRef.current) return;
     if (
       el.type === "text" &&
-      (el.math || el.preformatted || hasTextRuns(el) || el.content?.includes("$")) &&
+      (el.math || el.preformatted || el.hang || hasTextRuns(el) || el.content?.includes("$")) &&
       deckRef.current.marp
     ) {
       editingRef.current = elementId;
@@ -1814,7 +1860,7 @@ export default function Slides({
           commitRef.current({ ...prev, slideNumbers: true });
         },
         insertComment: () => openSlideComment(),
-        openComments: () => openSlideCommentPanel(),
+        toggleComments: () => toggleSlideCommentPanel(),
         openResolved: () => openSlideResolved(),
         fadeOnClick: () => api.current.fadeOnClick(),
         fadeOnClickReason: () => api.current.fadeOnClickReason(),
@@ -1833,7 +1879,7 @@ export default function Slides({
     activeSlideId,
     beginShow,
     openSlideComment,
-    openSlideCommentPanel,
+    toggleSlideCommentPanel,
     openSlideResolved,
   ]);
 
@@ -1855,9 +1901,17 @@ export default function Slides({
         }
         return;
       }
-      const command = commandFromKey(e, typingContext(e.target));
+      const elementId = selectedElementRef.current;
+      const elementSelected =
+        !!elementId &&
+        !!deckRef.current.slides[activeRef.current]?.elements.some(
+          (el) => el.id === elementId,
+        );
+      const command = commandFromKey(e, typingContext(e.target), elementSelected);
       if (!command) return;
-      if (readOnlyRef.current && command.type !== "copy") {
+      if (command.type === "go" && (e.defaultPrevented || arrowsTaken(e.target)))
+        return;
+      if (readOnlyRef.current && command.type !== "copy" && command.type !== "go") {
         e.preventDefault();
         return;
       }
@@ -2132,9 +2186,12 @@ export default function Slides({
     </div>
   );
 
-  /** The editor's words: the box being typed in, and plain text, which is typed into directly. */
+  /**
+   * The editor's words: the box being typed in, and plain text, which is typed into directly.
+   * A textarea cannot hang each list item's marker, so list items never use one.
+   */
   const editorText = (el: SlideElement) =>
-    editingId === el.id || hasTextRuns(el) ? (
+    editingId === el.id || hasTextRuns(el) || el.hang ? (
         <SlideTextBody
           content={el.content}
           runs={el.runs}
@@ -2281,6 +2338,26 @@ export default function Slides({
           setEditingId(el.id);
           selectedElementRef.current = el.id;
           setSelectedElementId(el.id);
+        };
+      }
+      const shown = el.type === "image" ? marpMediaSrc(el.src, deck.marpAssets) : undefined;
+      if (isSvgDataUri(shown)) {
+        const asset = !deck.marp
+          ? null
+          : el.src && el.src !== shown
+            ? el.src
+            : (Object.entries(deck.marpAssets ?? {}).find(([, uri]) => uri === shown)?.[0] ?? null);
+        props.title = `Double-click to edit ${asset ?? "this picture"} in Drawing`;
+        props.onDoubleClick = (e) => {
+          e.stopPropagation();
+          const svg = svgFromDataUri(shown);
+          if (svg === null) onError("This picture's SVG could not be read.");
+          else setSvgEdit({ id: el.id, svg, asset });
+        };
+      } else if (el.type === "image" && deck.marp && /\.svg$/i.test(el.src ?? "")) {
+        props.onDoubleClick = (e) => {
+          e.stopPropagation();
+          onError(`${el.src} did not come in with the deck. Import the deck's folder to bring it in, then try again.`);
         };
       }
       if (el.type === "audio" || el.type === "video")
@@ -3057,12 +3134,7 @@ export default function Slides({
                 applySelection(next.activeId, next.selected, null);
                 return;
               }
-              const idx = order.indexOf(activeRef.current);
-              const to = e.key === "ArrowUp" ? idx - 1 : idx + 1;
-              if (to < 0 || to >= order.length) return;
-              const nextId = order[to];
-              anchorRef.current = nextId;
-              applySelection(nextId, [nextId], null);
+              stepSlide(e.key === "ArrowUp" ? "prev" : "next");
             }}
           >
             {deck.slideOrder.map((id, index) => {
@@ -3268,6 +3340,7 @@ export default function Slides({
                 onCommit={onMarpChange}
                 areaRef={marpAreaRef}
                 draftRef={marpDraft}
+                onCaretLine={followMarkdownCaret}
               />
             </aside>
           ) : null}
@@ -3605,6 +3678,39 @@ export default function Slides({
       ) : null}
       {handoutsOpen ? (
         <SlideHandouts deck={deck} onClose={() => setHandoutsOpen(false)} />
+      ) : null}
+      {svgEdit ? (
+        <Suspense fallback={null}>
+          <EmbeddedDrawing
+            svg={svgEdit.svg}
+            name={svgEdit.asset ?? undefined}
+            parentTitle={file.title}
+            readOnly={readOnly}
+            onClose={(svg) => {
+              setSvgEdit(null);
+              if (svg === null) return;
+              const { asset } = svgEdit;
+              if (asset) {
+                // The markdown keeps naming the same file; every picture of it changes.
+                const current = deckRef.current;
+                if (!current.marpAssets?.[asset])
+                  return onError(`${asset} was removed while it was open in Drawing.`);
+                commitRef.current({
+                  ...current,
+                  marpAssets: { ...current.marpAssets, [asset]: svgDataUri(svg) },
+                });
+                return;
+              }
+              const picture = deckRef.current.slides[activeRef.current]?.elements.find(
+                (el) => el.id === svgEdit.id,
+              );
+              if (!picture) return onError("The picture was removed while it was open in Drawing.");
+              // A MARP deck lays its pictures out from the markdown.
+              const height = deckRef.current.marp ? null : heightForNewShape(picture.width, svgEdit.svg, svg);
+              updateElement(svgEdit.id, { src: svgDataUri(svg), ...(height ? { height } : {}) });
+            }}
+          />
+        </Suspense>
       ) : null}
     </div>
   );

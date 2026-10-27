@@ -178,3 +178,15 @@ it("embeds local Markdown pictures and safely imports into the source folder its
     serializeFile(original),
   );
 });
+
+it("imports SVG, Mermaid, and Graphviz files as drawings that keep their source", async () => {
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="4" height="4"/></svg>\n';
+  await writeFile(join(source, "logo.svg"), svg);
+  await writeFile(join(source, "flow.mmd"), "flowchart LR\n  a --> b\n");
+  await writeFile(join(source, "graph.gv"), "digraph { a -> b }\n");
+  expect(await importDirectory(source, output)).toEqual({ imported: 3, skipped: 0, failed: 0 });
+  const opened = async (name: string) => parseNamedFile(name, await readFile(join(output, name), "utf8"));
+  expect((await opened("logo.sldraw")).content).toEqual({ format: "svg", source: svg });
+  expect((await opened("flow.sldraw")).content).toMatchObject({ format: "mermaid" });
+  expect((await opened("graph.sldraw")).content).toEqual({ format: "graphviz", source: "digraph { a -> b }\n" });
+});

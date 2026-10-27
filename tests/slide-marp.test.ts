@@ -559,6 +559,33 @@ Thoughtful slide design
     expect(slideElementSchema.safeParse(merged).success).toBe(true);
   });
 
+  it("joins list items into one box only when one hanging indent fits them all", () => {
+    const item = (id: string, y: number, x = 48, hang: number | undefined = 9): SlideElement => ({
+      id,
+      type: "text",
+      x,
+      y,
+      width: 400,
+      height: 36,
+      content: hang ? `• Item ${id}` : `Paragraph ${id}`,
+      fontSize: 20,
+      color: "#141414",
+      align: "left",
+      ...(hang ? { hang } : {}),
+    });
+    const merged = mergeConsecutiveText([
+      item("a", 140),
+      item("b", 184),
+      item("nested", 228, 80),
+      item("after", 272),
+      item("ten", 316, 44, 13),
+      item("words", 360, 48, undefined),
+    ]);
+    expect(merged.map((el) => el.id)).toEqual(["a", "nested", "after", "ten", "words"]);
+    expect(merged[0]).toMatchObject({ content: "• Item a\n• Item b", hang: 9 });
+    expect(slideElementSchema.safeParse(merged[0]).success).toBe(true);
+  });
+
   it("drags an item from the left column into the right, and folds it back", () => {
     const slide = newSlide("two-column");
     slide.elements[0].content = "Title";

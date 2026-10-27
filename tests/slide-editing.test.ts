@@ -189,6 +189,20 @@ describe("slide rearranging", () => {
     expect(commandFromKey(key("z", { meta: true }), "notes")).toEqual({ type: "undo" });
   });
 
+  it("changes slides with Right and Left only when nothing on the slide is selected", () => {
+    expect(commandFromKey(key("ArrowRight"), "none")).toEqual({ type: "go", where: "next" });
+    expect(commandFromKey(key("ArrowLeft", { repeat: true }), "none")).toEqual({
+      type: "go",
+      where: "prev",
+    });
+    expect(commandFromKey(key("ArrowRight"), "none", true)).toBeNull();
+    expect(commandFromKey(key("ArrowRight", { shift: true }), "none")).toBeNull();
+    expect(commandFromKey(key("ArrowLeft", { meta: true }), "none")).toBeNull();
+    expect(commandFromKey(key("ArrowRight"), "slide-text")).toBeNull();
+    expect(commandFromKey(key("ArrowRight"), "notes")).toBeNull();
+    expect(commandFromKey(key("ArrowRight"), "other")).toBeNull();
+  });
+
   it("returns to the exact starting deck after 10 mixed edits are undone", () => {
     const start = deck(["Results", "Chart", "Appendix"]);
     const history = new DeckHistory(start);

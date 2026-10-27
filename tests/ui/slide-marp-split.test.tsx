@@ -203,6 +203,44 @@ describe("MARP side-by-side editing", () => {
     expect(row().style.getPropertyValue("--marp-split")).toBe("");
   });
 
+  it("puts the markdown caret on the first character of the box chosen on the slide", async () => {
+    open();
+    await laidOut();
+    fireEvent.mouseDown(box("Ship the")!);
+    fireEvent.mouseUp(window);
+    await waitFor(() => expect(markdown().selectionStart).toBe(SOURCE.indexOf("Ship the")));
+    expect(document.activeElement).not.toBe(markdown());
+
+    fireEvent.click(screen.getByRole("option", { name: /^Slide 2:/ }));
+    await waitFor(() => expect(box("Hiring")).toBeDefined());
+    fireEvent.mouseDown(box("Hiring")!);
+    fireEvent.mouseUp(window);
+    await waitFor(() => expect(markdown().selectionStart).toBe(SOURCE.indexOf("- Hiring")));
+  });
+
+  it("shows the slide the markdown caret moves onto", async () => {
+    open();
+    await laidOut();
+    const active = () => document.querySelector(".thumbnail-row.active")?.getAttribute("aria-label");
+    const caretTo = (text: string, how: "click" | "key" = "key") => {
+      const area = markdown();
+      if (how === "click") fireEvent.mouseDown(area);
+      act(() => area.focus());
+      area.setSelectionRange(SOURCE.indexOf(text), SOURCE.indexOf(text));
+      if (how === "click") fireEvent.mouseUp(area);
+      else fireEvent.keyUp(area, { key: "ArrowDown" });
+    };
+    expect(active()).toMatch(/^Slide 1:/);
+    caretTo("- Budget", "click");
+    expect(active()).toMatch(/^Slide 2:/);
+    caretTo("---\n\n# Risks");
+    expect(active()).toMatch(/^Slide 2:/);
+    caretTo("Ship the");
+    expect(active()).toMatch(/^Slide 1:/);
+    caretTo("marp: true");
+    expect(active()).toMatch(/^Slide 1:/);
+  });
+
   it("lets the slides follow the markdown once typing pauses, or at once when it loses focus", async () => {
     const { onChange } = open();
     await laidOut();

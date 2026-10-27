@@ -17,7 +17,8 @@ export type LibraryFilter =
   | "doc"
   | "sheet"
   | "slide"
-  | "form";
+  | "form"
+  | "drawing";
 
 export function trashRecord(record: FileRecord, now = new Date()): FileRecord {
   return { ...record, trashedAt: now.toISOString() };
@@ -81,6 +82,8 @@ export function viewHeading(filter: LibraryFilter): string {
       return "Presentations";
     case "form":
       return "Forms";
+    case "drawing":
+      return "Drawings";
   }
 }
 
@@ -99,7 +102,11 @@ export function visibleRecords(
   const forms = options?.forms !== false;
   const listed = forms ? alive : alive.filter((r) => r.file.kind !== "form");
   const kind =
-    filter === "doc" || filter === "sheet" || filter === "slide" || filter === "form"
+    filter === "doc" ||
+    filter === "sheet" ||
+    filter === "slide" ||
+    filter === "form" ||
+    filter === "drawing"
       ? filter
       : null;
   const typed = kind ? listed.filter((r) => r.file.kind === kind) : listed;

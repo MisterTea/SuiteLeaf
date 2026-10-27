@@ -187,6 +187,32 @@ export function mapMarpSource(source: string): MarpSourceMap {
   return map;
 }
 
+/** The slide a line of the markdown is on. A slide's `---` starts it, and the front matter belongs to the first. */
+export function marpSlideAtLine(source: string, line: number): number {
+  const { slides } = mapMarpSource(source);
+  const index = slides.findIndex((slide) => line < slide.lines[1]);
+  return index < 0 ? Math.max(0, slides.length - 1) : index;
+}
+
+/** Where the first character of a line is, after its indentation. */
+export function marpLineStart(source: string, line: number): number {
+  let at = 0;
+  for (let i = 0; i < line; i++) {
+    const next = source.indexOf("\n", at);
+    if (next < 0) return source.length;
+    at = next + 1;
+  }
+  while (source[at] === " " || source[at] === "\t") at++;
+  return at;
+}
+
+/** The line, counted from 0, that a character offset is on. */
+export function lineAt(source: string, offset: number): number {
+  let line = 0;
+  for (let at = source.indexOf("\n"); at >= 0 && at < offset; at = source.indexOf("\n", at + 1)) line++;
+  return line;
+}
+
 function withoutCode(line: string) {
   return line.replace(/`[^`]*`/g, "");
 }

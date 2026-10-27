@@ -15,7 +15,7 @@ import {
   textAfterChangeAll,
   withIgnoredCell,
   withoutIgnoredCells,
-  wordBand,
+  wordOnLine,
   type Box,
   type SheetIssue,
 } from "../apps/web/src/editors/grid-spelling";
@@ -116,12 +116,30 @@ describe("grid spelling", () => {
     expect(collectSlideIssues(deck, none, []).map((issue) => issue.word)).toEqual(["recieve"]);
   });
 
-  it("places the underline under the misspelled word", () => {
+  it("places the underline under the misspelled word, on the line it wraps onto", () => {
     const measure = (value: string) => value.length * 8;
-    expect(wordBand("We will recieve the grant", 8, 15, measure, "left", 240, 2)).toEqual({
-      x: 2 + 8 * 8,
-      width: 7 * 8,
-    });
+    const line = (text: string) => ({ text, width: measure(text), height: 15, baseline: 12 });
+    const cell = {
+      width: 244,
+      height: 21,
+      padLeft: 2,
+      padRight: 2,
+      padTop: 0,
+      padBottom: 2,
+      align: "left" as const,
+      vAlign: "bottom" as const,
+    };
+    const text = "We will recieve the grant";
+    expect(wordOnLine(text, 8, 15, [line(text)], measure, cell)).toEqual({ x: 2 + 8 * 8, y: 4 + 12, width: 7 * 8 });
+
+    const wrapped = "Eats too much and quikly becomes tired";
+    const lines = [line("Eats too much and "), line("quikly becomes tired")];
+    const tall = { ...cell, height: 60 };
+    expect(wordOnLine(wrapped, 18, 24, lines, measure, tall)).toEqual({ x: 2, y: 60 - 2 - 15 + 12, width: 48 });
+    expect(wordOnLine(wrapped, 0, 4, lines, measure, tall)).toEqual({ x: 2, y: 60 - 2 - 30 + 12, width: 32 });
+    expect(wordOnLine(wrapped, 0, 4, lines, measure, cell)).toBeNull();
+    expect(wordOnLine(wrapped, 18, 24, lines, measure, { ...tall, vAlign: "top" })?.y).toBe(15 + 12);
+    expect(wordOnLine(wrapped, 18, 24, lines, measure, { ...tall, align: "center" })?.x).toBe(2 + (240 - 160) / 2);
   });
 
   it("places the right-click menu beside the cell without covering the word", () => {

@@ -334,7 +334,7 @@ export function formatShortcut(spec: string, mac: boolean) {
 
 export type ShortcutRow = { label: string; shortcut: string; group: string };
 
-export function extraShortcuts(kind: "doc" | "sheet" | "slide" | "form", mac: boolean): ShortcutRow[] {
+export function extraShortcuts(kind: "doc" | "sheet" | "slide" | "form" | "drawing", mac: boolean): ShortcutRow[] {
   const common: ShortcutRow[] = [
     { label: "Save", shortcut: "Mod+S", group: "Files" },
     { label: "Search the menus", shortcut: "Alt+/", group: "Navigation" },
@@ -401,7 +401,7 @@ export function groupShortcuts(rows: ShortcutRow[]) {
  */
 export function appHandlesShortcut(
   spec: string | undefined,
-  kind: "doc" | "sheet" | "slide" | "form",
+  kind: "doc" | "sheet" | "slide" | "form" | "drawing",
   pending: boolean,
 ) {
   if (!spec || pending) return false;

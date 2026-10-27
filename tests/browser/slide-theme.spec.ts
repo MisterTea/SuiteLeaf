@@ -144,3 +144,35 @@ test("a theme restyles free text, and reduced motion cuts transitions", async ({
   await page.waitForTimeout(150);
   await expect(page.locator(".presenter-slide-box")).not.toHaveClass(/deck-motion/);
 });
+
+test("the theme and transition drawers and the comment pane follow the dark theme", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto("/");
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
+    name: "Theme check.slslides",
+    mimeType: "application/json",
+    buffer: Buffer.from(deck()),
+  });
+  await expect(page.getByLabel("File title")).toHaveValue("Theme check");
+  const dark = (target: import("@playwright/test").Locator) =>
+    target.evaluate((el) => {
+      const [r, g, b] = getComputedStyle(el).backgroundColor.match(/\d+/g)!.map(Number);
+      return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 < 0.3;
+    });
+
+  await page.getByRole("button", { name: "Theme", exact: true }).click();
+  const drawer = page.getByRole("complementary", { name: "Theme" });
+  expect(await dark(drawer)).toBe(true);
+  const meadow = drawer.getByRole("button", { name: "Meadow", exact: true });
+  expect(await dark(meadow)).toBe(true);
+  await meadow.click();
+  expect(await dark(page.getByLabel("Heading font"))).toBe(true);
+
+  await page.getByRole("button", { name: "Slide", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Transition", exact: true }).click();
+  const fade = page.getByRole("complementary", { name: "Transition" }).getByRole("button", { name: "Fade", exact: true });
+  expect(await dark(fade)).toBe(true);
+
+  await page.locator(".header-right-tools").getByRole("button", { name: "Comments", exact: true }).click();
+  expect(await dark(page.getByRole("complementary", { name: "Slide comments" }))).toBe(true);
+});

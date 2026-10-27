@@ -29,6 +29,10 @@ fileAssociations:
     name: SuiteLeaf Presentation
     mimeType: application/vnd.suiteleaf.slides+json
     role: Editor
+  - ext: sldraw
+    name: SuiteLeaf Drawing
+    mimeType: application/vnd.suiteleaf.drawing+json
+    role: Editor
   - ext: suiteleaf
     name: SuiteLeaf File (legacy)
     role: Editor

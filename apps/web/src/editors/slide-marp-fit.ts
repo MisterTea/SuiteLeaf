@@ -9,7 +9,7 @@ import { isHtmlOnly, mapMarpSource, type LineRange } from "./slide-marp-source";
 
 const LOGO_KEY = "beam-ut-logo";
 /** Bump when measured boxes should be placed again on decks saved with an older fit. */
-export const MARP_FIT_REVISION = 4;
+export const MARP_FIT_REVISION = 5;
 const SOURCE = `[${SOURCE_LINES}]`;
 const BLOCKS = new Set([
   "H1",
@@ -274,6 +274,16 @@ function measureSection(
       height: round(rect.height * scaleY),
     };
   };
+  /** How wide `text` is in the item's own font, in slide units. */
+  const markerWidth = (item: HTMLElement, text: string) => {
+    const probe = item.ownerDocument.createElement("span");
+    probe.textContent = text;
+    probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre;font-weight:inherit";
+    item.appendChild(probe);
+    const width = probe.getBoundingClientRect().width * scaleX;
+    probe.remove();
+    return width;
+  };
 
   const addImage = (img: HTMLImageElement) => {
     const frame = box(img);
@@ -310,10 +320,13 @@ function measureSection(
       }
       const style = getComputedStyle(item);
       const fontSize = parseFloat(style.fontSize) * scaleX * fittedScale(item) || 20;
-      // The marker sits about one em left of the item, outside its box.
-      frame.x = Math.max(0, round(frame.x - fontSize));
-      frame.width = round(frame.width + fontSize);
       const marker: TextRun = { text: ordered ? `${index + 1}. ` : "• " };
+      // The marker hangs outside the item, ending where its words begin.
+      const measured = round(markerWidth(item, marker.text));
+      const hang = measured > 0 && measured <= frame.x ? measured : 0;
+      const shift = hang || fontSize;
+      frame.x = Math.max(0, round(frame.x - shift));
+      frame.width = round(frame.width + shift);
       const styled = collapse([marker, ...runsIn(item)]);
       styled.content = tidyLines(styled.content, false);
       const linePx = parseFloat(style.lineHeight);
@@ -331,6 +344,7 @@ function measureSection(
         themeOverride: true,
         ...(lines ? { marpLines: lines } : {}),
         ...(lineHeight ? { lineHeight } : {}),
+        ...(hang ? { hang } : {}),
         ...(styled.bold ? { bold: true } : {}),
         ...(styled.italic ? { italic: true } : {}),
         ...(styled.underline ? { underline: true } : {}),

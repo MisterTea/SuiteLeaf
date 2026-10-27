@@ -2,6 +2,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -121,6 +122,36 @@ export function MenuSearchPill() {
   );
 }
 
+/** Space between the Menus button and the search, and from the window's edges. */
+const SEARCH_GAP = 4;
+const SEARCH_MARGIN = 16;
+
+/**
+ * Where the menu search opens: its top-left just below the Menus button, kept
+ * inside the window. Null when no Menus button is on screen.
+ */
+export function menuSearchPlace(
+  pill: { left: number; bottom: number } | null,
+  view: { width: number },
+  width: number,
+): { top: number; left: number } | null {
+  if (!pill) return null;
+  const right = view.width - width - SEARCH_MARGIN;
+  return {
+    top: pill.bottom + SEARCH_GAP,
+    left: Math.max(SEARCH_MARGIN, Math.min(pill.left, right)),
+  };
+}
+
+function visibleMenuPill() {
+  const pills = document.querySelectorAll<HTMLElement>(".menu-search-pill");
+  for (const pill of pills) {
+    const rect = pill.getBoundingClientRect();
+    if (rect.width && rect.height) return rect;
+  }
+  return null;
+}
+
 function menuTriggers() {
   return [
     ...document.querySelectorAll<HTMLButtonElement>(".file-menu > .menu-trigger"),
@@ -161,7 +192,7 @@ export function CommandPalette({
   kind,
   children,
 }: {
-  kind: "doc" | "sheet" | "slide" | "form";
+  kind: "doc" | "sheet" | "slide" | "form" | "drawing";
   children: ReactNode;
 }) {
   const entries = useRef(new Map<symbol, () => CommandSnapshot>());
@@ -277,6 +308,23 @@ export function CommandPalette({
     if (mode === "shortcuts") shortcutInput.current?.focus();
   }, [mode]);
 
+  const searchBox = useRef<HTMLDivElement>(null);
+  const [searchPlace, setSearchPlace] = useState<{ top: number; left: number } | null>(null);
+  useLayoutEffect(() => {
+    if (mode !== "search") return;
+    const measure = () =>
+      setSearchPlace(
+        menuSearchPlace(
+          visibleMenuPill(),
+          { width: window.innerWidth },
+          searchBox.current?.offsetWidth ?? 0,
+        ),
+      );
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [mode]);
+
   // Commands such as Freeze become available as the editor finishes opening.
   useEffect(() => {
     if (mode !== "search") return;
@@ -289,6 +337,8 @@ export function CommandPalette({
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const keyEvent: KeyEvent = event;
+      // A layer over the editor, such as Drawing opened on a picture, has its own shortcuts.
+      if (document.querySelector("[data-own-shortcuts]")) return;
       if (eventMatchesShortcut("Mod+/", keyEvent, mac)) {
         event.preventDefault();
         event.stopPropagation();
@@ -434,9 +484,11 @@ export function CommandPalette({
         ) : null}
         {mode === "search" ? (
           <div
+            ref={searchBox}
             className="command-search"
             role="dialog"
             aria-label="Search the menus"
+            style={searchPlace ?? undefined}
           >
             <input
               ref={searchInput}

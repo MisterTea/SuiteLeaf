@@ -115,7 +115,7 @@ export function driveTools(ctx: DriveAgentContext): SuiteTool[] {
     const n = name.toLowerCase();
     const item =
       items.find((i) => i.name.toLowerCase() === n) ??
-      items.find((i) => i.name.toLowerCase().replace(/\.(sldoc|slsheet|slslides)$/, "") === n) ??
+      items.find((i) => i.name.toLowerCase().replace(/\.(sldoc|slsheet|slslides|sldraw)$/, "") === n) ??
       items.find((i) => i.name.toLowerCase().includes(n));
     if (!item)
       throw new ToolError(`Nothing called "${name}" in ${control().path.join(" › ")}. Here: ${items.map(describeItem).join(", ") || "nothing"}.`);
@@ -222,7 +222,13 @@ export function driveTools(ctx: DriveAgentContext): SuiteTool[] {
         const item = find(name);
         if (item.kind === "folder") throw new ToolError(`"${item.name}" is a folder; use open_folder.`);
         await ctx.open(item);
-        const kind = /\.slsheet$/.test(item.name) ? "sheet" : /\.slslides$/.test(item.name) ? "slide" : "doc";
+        const kind = /\.slsheet$/.test(item.name)
+          ? "sheet"
+          : /\.slslides$/.test(item.name)
+            ? "slide"
+            : /\.sldraw$/.test(item.name)
+              ? "drawing"
+              : "doc";
         await waitForHost(kind);
         return `Opened "${item.name}".\n${currentSnapshot()}`;
       },
@@ -292,7 +298,7 @@ export function conflictTools(ctx: {
         if (choice === "save_copy") {
           const original = ctx.title();
           await ctx.saveCopy();
-          const name = copy_name?.trim().replace(/\.(sldoc|slsheet|slslides)$/i, "");
+          const name = copy_name?.trim().replace(/\.(sldoc|slsheet|slslides|sldraw)$/i, "");
           if (name && name !== original) {
             const input = document.querySelector<HTMLInputElement>(".workspace-header input");
             await moveCursor(input, "Name the copy");

@@ -7,7 +7,10 @@ import {
   mapMarpSource,
   markdownText,
   markdownUnits,
+  lineAt,
+  marpLineStart,
   marpProblem,
+  marpSlideAtLine,
   normalizeMarp,
 } from "../apps/web/src/editors/slide-marp-source";
 import { isMarpDirective, marpToDeck } from "../apps/web/src/editors/slide-marp";
@@ -46,6 +49,24 @@ describe("MARP source map", () => {
       { lines: [16, 17], text: "_class: lead", directive: true },
       { lines: [17, 18], text: "Speaker notes", directive: false },
     ]);
+  });
+
+  it("finds the slide a markdown line is on, counting each slide's rule as its start", () => {
+    const source = ["---", "marp: true", "---", "", "# One", "", "```", "---", "```", "---", "# Two", "", "- Item"].join(
+      "\n",
+    );
+    const slides = [...source.split("\n").keys()].map((line) => marpSlideAtLine(source, line));
+    expect(slides).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1]);
+    expect(marpSlideAtLine(source, 40)).toBe(1);
+  });
+
+  it("finds a line's first character and the line an offset is on", () => {
+    const source = "# Title\n\n  - Indented item\n\tTabbed";
+    expect(marpLineStart(source, 0)).toBe(0);
+    expect(source.slice(marpLineStart(source, 2))).toBe("- Indented item\n\tTabbed");
+    expect(source.slice(marpLineStart(source, 3))).toBe("Tabbed");
+    expect(marpLineStart(source, 9)).toBe(source.length);
+    expect([0, 7, 8, 9, 26, source.length].map((offset) => lineAt(source, offset))).toEqual([0, 0, 1, 2, 2, 3]);
   });
 
   it("has one slide for a deck without front matter or rules", () => {

@@ -17,7 +17,8 @@ export type SlideCommand =
   | { type: "bold" }
   | { type: "italic" }
   | { type: "underline" }
-  | { type: "move"; where: MoveWhere };
+  | { type: "move"; where: MoveWhere }
+  | { type: "go"; where: "next" | "prev" };
 
 /** Where the key event landed. Title and other fields keep their own keys. */
 export type TypingContext = "none" | "slide-text" | "notes" | "other";
@@ -33,11 +34,13 @@ type KeyEvent = {
 
 /**
  * Slides shortcuts. Move-to-start and move-to-end use Cmd/Ctrl+Shift+Arrow,
- * which does not need the Fn key on a Mac (unlike Home and End).
+ * which does not need the Fn key on a Mac (unlike Home and End). Left and
+ * Right change slides only while no object on the slide is selected.
  */
 export function commandFromKey(
   e: KeyEvent,
   typing: TypingContext,
+  elementSelected = false,
 ): SlideCommand | null {
   if (e.altKey || typing === "other") return null;
   const mod = e.metaKey || e.ctrlKey;
@@ -66,6 +69,13 @@ export function commandFromKey(
           : "down";
     return { type: "move", where };
   }
+  if (
+    (e.key === "ArrowRight" || e.key === "ArrowLeft") &&
+    !mod &&
+    !e.shiftKey &&
+    !elementSelected
+  )
+    return { type: "go", where: e.key === "ArrowRight" ? "next" : "prev" };
   if ((e.key === "Delete" || e.key === "Backspace") && !mod && !e.repeat)
     return { type: "delete" };
   return null;
@@ -83,6 +93,16 @@ export function typingContext(target: EventTarget | null): TypingContext {
   )
     return "other";
   return "none";
+}
+
+/** Menus, tabs, and dialogs move their own focus with the arrow keys. */
+export function arrowsTaken(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    !!target.closest(
+      '[role="menu"], [role="menubar"], [role="tablist"], [role="radiogroup"], [role="slider"], [role="separator"], [role="dialog"]',
+    )
+  );
 }
 
 const sameOrder = (a: string[], b: string[]) =>

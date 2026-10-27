@@ -12,9 +12,9 @@ export function clampMarpSplit(split: number, rowWidth: number) {
   return Math.min(1 - min, Math.max(min, split));
 }
 
-function storedSplit() {
+function storedSplit(key: string) {
   try {
-    const value = Number(localStorage.getItem(STORAGE_KEY));
+    const value = Number(localStorage.getItem(key));
     return value > 0 && value < 1 ? value : EVEN_MARP_SPLIT;
   } catch {
     return EVEN_MARP_SPLIT;
@@ -22,17 +22,17 @@ function storedSplit() {
 }
 
 /** The slide's share of the row beside the markdown, remembered in this browser once a move ends. */
-export function useMarpSplit() {
-  const [split, setSplit] = useState(storedSplit);
+export function useMarpSplit(key = STORAGE_KEY) {
+  const [split, setSplit] = useState(() => storedSplit(key));
   const update = useCallback((next: number, done: boolean) => {
     setSplit(next);
     if (!done) return;
     try {
-      localStorage.setItem(STORAGE_KEY, String(Math.round(next * 1000) / 1000));
+      localStorage.setItem(key, String(Math.round(next * 1000) / 1000));
     } catch {
       // The split still applies until the page closes.
     }
-  }, []);
+  }, [key]);
   return [split, update] as const;
 }
 
@@ -44,9 +44,12 @@ export function useMarpSplit() {
 export function MarpSplitHandle({
   split,
   onSplit,
+  panes = ["Slide", "markdown"],
 }: {
   split: number;
   onSplit: (split: number, done: boolean) => void;
+  /** What the panes on either side are called, left first. */
+  panes?: [string, string];
 }) {
   const drag = useRef<{ left: number; width: number } | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -69,11 +72,11 @@ export function MarpSplitHandle({
       className={`marp-split-handle${dragging ? " dragging" : ""}`}
       role="separator"
       aria-orientation="vertical"
-      aria-label="Resize the slide and markdown panes"
+      aria-label={`Resize the ${panes[0].toLowerCase()} and ${panes[1].toLowerCase()} panes`}
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={percent}
-      aria-valuetext={`Slide ${percent}%, markdown ${100 - percent}%`}
+      aria-valuetext={`${panes[0]} ${percent}%, ${panes[1]} ${100 - percent}%`}
       tabIndex={0}
       onPointerDown={(event) => {
         if (event.button !== 0) return;

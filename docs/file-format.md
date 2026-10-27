@@ -8,6 +8,7 @@ SuiteLeaf files are UTF-8 JSON. Each kind of file has its own extension and MIME
 | Spreadsheet | `.slsheet` | `application/vnd.suiteleaf.sheet+json` |
 | Presentation | `.slslides` | `application/vnd.suiteleaf.slides+json` |
 | Form | `.slform` | `application/vnd.suiteleaf.form+json` |
+| Drawing | `.sldraw` | `application/vnd.suiteleaf.drawing+json` |
 
 Files saved by earlier versions use `.suiteleaf` and may hold any kind. SuiteLeaf still opens them, and saving through **Save As** or **Download** writes the per-kind extension.
 
@@ -41,6 +42,7 @@ While several people edit the same file, the live updates stay in the node's CRD
 - **`sheet`**: `{ workbook, images?, charts, pivots }`. `workbook` is a Univer workbook snapshot with `sheetOrder` and `sheets` keyed by worksheet ID; cells live in `cellData[row][column]` as `{ v, f, t, s }`. Charts and pivots refer to worksheets by ID.
 - **`slide`**: `{ id, width, height, slideOrder, slides }`. Each slide has `elements` (text, shape, image, or table) positioned in presentation pixels, plus optional `background`, `layout`, and `notes`.
 - **`form`**: `{ questions, responses }`. A question has `id`, `prompt`, `kind` (`text` or `choice`), `required`, and optional `choices`. A response has `id`, `at`, and `answers` keyed by question id. The questions and the answers are the same file.
+- **`drawing`**: `{ format, source }`. `format` is `svg`, `mermaid`, or `graphviz`, and `source` is the drawing's own text, up to 5,000,000 characters, kept exactly as written. Opening an `.svg`, `.mmd` or `.mermaid`, or `.gv` file makes a drawing of that format; **Export** writes the source back out with its own extension, or the drawing as SVG or PNG. Edits made on the canvas change only the attributes, label, or statement they touch, so the rest of the source keeps its formatting.
 
 ## Validation rules
 

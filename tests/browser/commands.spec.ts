@@ -61,3 +61,31 @@ test("command search runs strikethrough and explains commands that cannot run", 
   await page.getByRole("menuitem", { name: "Freeze" }).click();
   await expect(page.getByRole("menuitemcheckbox", { name: "1 row" })).toBeChecked();
 });
+
+test("the menu search opens with its top-left just below the Menus button", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const opensBelow = async () => {
+    const pill = page.getByRole("button", { name: "Menus", exact: true });
+    await pill.click();
+    const search = page.getByRole("dialog", { name: "Search the menus" });
+    await expect(search).toBeVisible();
+    const [button, box] = [(await pill.boundingBox())!, (await search.boundingBox())!];
+    expect(Math.abs(box.x - button.x)).toBeLessThan(1);
+    expect(box.y - (button.y + button.height)).toBeGreaterThanOrEqual(0);
+    expect(box.y - (button.y + button.height)).toBeLessThan(8);
+    await page.keyboard.press("Escape");
+    await expect(search).toBeHidden();
+  };
+  for (const kind of ["New document", "New spreadsheet", "New presentation"]) {
+    await page.goto("/");
+    await page.getByRole("button", { name: kind }).click();
+    await page.getByRole("button", { name: "Menus", exact: true }).waitFor();
+    await opensBelow();
+  }
+
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.getByRole("button", { name: "Menus", exact: true }).click();
+  const box = (await page.getByRole("dialog", { name: "Search the menus" }).boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(390);
+});

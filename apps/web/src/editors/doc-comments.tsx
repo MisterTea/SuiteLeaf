@@ -21,6 +21,7 @@ import {
 import { getSession } from "../node-client";
 import { mentionReader } from "./doc-mentions";
 import { MentionField, MentionText, type MentionFieldHandle } from "./doc-mention-field";
+import { SidePane } from "../ui";
 
 const MARK = "comment";
 const syncMeta = "suiteleafCommentSync";
@@ -229,7 +230,7 @@ export function DocComments({
   editor: Editor;
   stageRef: RefObject<HTMLElement | null>;
   onGutter: (open: boolean) => void;
-  bind: (api: { insert: () => void; openPanel: () => void }) => void;
+  bind: (api: { insert: () => void; togglePanel: () => void }) => void;
 }) {
   const gutter = useRef<HTMLElement>(null);
   const nameInput = useRef<HTMLInputElement>(null);
@@ -264,7 +265,7 @@ export function DocComments({
   // The add button floats over the selection. Reserving the margin before
   // the pointer is released moves the page under the drag and selects too much.
   const showGutter =
-    panel || composing || threads.some((thread) => thread.messages.length);
+    !!hint || composing || (!panel && threads.some((thread) => thread.messages.length));
 
   useEffect(() => onGutter(showGutter), [onGutter, showGutter]);
 
@@ -478,7 +479,11 @@ export function DocComments({
 
   bind({
     insert: () => start(),
-    openPanel: () => {
+    togglePanel: () => {
+      if (panel) {
+        setPanel(false);
+        return;
+      }
       setPanel(true);
       const open = threadsIn(editor.state.doc).some(
         (thread) => thread.messages.length && !thread.resolved,
@@ -660,67 +665,7 @@ export function DocComments({
       hidden={!showGutter}
     >
       {hint ? <p className="doc-comment-hint">{hint}</p> : null}
-      {panel ? (
-        <div className="doc-comment-panel">
-          <div className="doc-comment-panel-head">
-            <h2>Comments</h2>
-            <button type="button" onClick={() => setPanel(false)}>
-              Close
-            </button>
-          </div>
-          <div className="doc-comment-tabs" role="tablist" aria-label="Comment filters">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === "open"}
-              onClick={() => setTab("open")}
-            >
-              Open
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === "resolved"}
-              onClick={() => setTab("resolved")}
-            >
-              Resolved
-            </button>
-          </div>
-          {listed.length ? (
-            listed.map((thread) => (
-              <article
-                key={thread.id}
-                className={`doc-comment-panel-card${forYou === thread.id ? " is-for-you" : ""}`}
-                data-for-you={forYou === thread.id ? "true" : undefined}
-              >
-                {forYou === thread.id ? <p className="doc-mention-flag">For you</p> : null}
-                <button
-                  type="button"
-                  className="doc-comment-jump"
-                  onClick={() => jump(thread.id)}
-                >
-                  {thread.orphaned ? "Original text deleted" : thread.quote}
-                </button>
-                {thread.messages.map((message) => (
-                  <Message key={message.id} message={message} />
-                ))}
-                {thread.resolved ? (
-                  <p className="doc-comment-resolved">
-                    Resolved{thread.resolvedBy ? ` by ${thread.resolvedBy}` : ""}
-                    <button type="button" onClick={() => reopen(thread.id)}>
-                      Reopen
-                    </button>
-                  </p>
-                ) : null}
-              </article>
-            ))
-          ) : (
-            <p className="doc-comment-empty">
-              {tab === "resolved" ? "No resolved comments." : "No open comments."}
-            </p>
-          )}
-        </div>
-      ) : (
+      {panel ? null : (
         <>
           {composing ? (
             <form
@@ -846,6 +791,69 @@ export function DocComments({
         </>
       )}
     </aside>
+    {panel ? (
+      <SidePane
+        title="Comments"
+        label="All comments"
+        closeLabel="Close comments"
+        className="doc-comment-panel"
+        onClose={() => setPanel(false)}
+      >
+        <div className="doc-comment-tabs" role="tablist" aria-label="Comment filters">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "open"}
+            onClick={() => setTab("open")}
+          >
+            Open
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "resolved"}
+            onClick={() => setTab("resolved")}
+          >
+            Resolved
+          </button>
+        </div>
+        <div className="side-pane-body">
+          {listed.length ? (
+            listed.map((thread) => (
+              <article
+                key={thread.id}
+                className={`doc-comment-panel-card${forYou === thread.id ? " is-for-you" : ""}`}
+                data-for-you={forYou === thread.id ? "true" : undefined}
+              >
+                {forYou === thread.id ? <p className="doc-mention-flag">For you</p> : null}
+                <button
+                  type="button"
+                  className="doc-comment-jump"
+                  onClick={() => jump(thread.id)}
+                >
+                  {thread.orphaned ? "Original text deleted" : thread.quote}
+                </button>
+                {thread.messages.map((message) => (
+                  <Message key={message.id} message={message} />
+                ))}
+                {thread.resolved ? (
+                  <p className="doc-comment-resolved">
+                    Resolved{thread.resolvedBy ? ` by ${thread.resolvedBy}` : ""}
+                    <button type="button" onClick={() => reopen(thread.id)}>
+                      Reopen
+                    </button>
+                  </p>
+                ) : null}
+              </article>
+            ))
+          ) : (
+            <p className="doc-comment-empty">
+              {tab === "resolved" ? "No resolved comments." : "No open comments."}
+            </p>
+          )}
+        </div>
+      </SidePane>
+    ) : null}
     </>
   );
 }

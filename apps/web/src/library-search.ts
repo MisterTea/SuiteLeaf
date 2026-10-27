@@ -59,6 +59,8 @@ function collect(file: SuiteFile): string[] {
       }
       if (slide.notes) parts.push(slide.notes, " ");
     }
+  } else if (file.kind === "drawing") {
+    parts.push(file.content.source, " ");
   } else {
     for (const question of file.content.questions)
       parts.push(

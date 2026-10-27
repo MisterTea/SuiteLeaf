@@ -1,5 +1,5 @@
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
-import { Check } from "lucide-react";
+import { Check, X } from "lucide-react";
 import {
   createContext,
   Fragment,
@@ -10,8 +10,52 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import { isUnimplemented, pendingReason } from "./commands";
 import { useRegisterCommand } from "./command-palette";
+
+/** Where a side pane opens: beside the editor and its toolbar, as version history does. */
+export const SidePaneSlot = createContext<HTMLElement | null>(null);
+
+/**
+ * A pane at the right of the editor with a title and a close button. It stays
+ * part of the editor that draws it, and shows in place when there is no slot.
+ */
+export function SidePane({
+  title,
+  subtitle,
+  label,
+  closeLabel,
+  className = "",
+  onClose,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  /** Name of the pane for assistive technology. */
+  label: string;
+  closeLabel: string;
+  className?: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const slot = useContext(SidePaneSlot);
+  const pane = (
+    <aside className={`side-pane ${className}`} aria-label={label}>
+      <header className="side-pane-header">
+        <div>
+          <h2>{title}</h2>
+          {subtitle ? <p>{subtitle}</p> : null}
+        </div>
+        <button type="button" aria-label={closeLabel} title={closeLabel} onClick={onClose}>
+          <X size={18} />
+        </button>
+      </header>
+      {children}
+    </aside>
+  );
+  return slot ? createPortal(pane, slot) : pane;
+}
 const AfterClose = createContext<{ current: (() => void) | null } | null>(null);
 const MenuPath = createContext<string[]>([]);
 /** Renders menu children only to register commands, with no popup. */
@@ -374,7 +418,8 @@ export type EditorActions = {
     insertSectionBreak?: () => void;
     toggleWidowControl?: () => void;
     insertComment?: () => void;
-    openComments?: () => void;
+    /** The header's comment button: opens the comment list, or closes it if open. */
+    toggleComments?: () => void;
     insertTableOfContents: (pageNumbers?: boolean) => void;
     insertFootnote: () => void;
     insertEndnote: () => void;
@@ -514,7 +559,8 @@ export type EditorActions = {
     toggleSlideNumbers?: () => void;
     recordSlideshow?: () => void;
     insertComment?: () => void;
-    openComments?: () => void;
+    /** The header's comment button: opens the comment list, or closes it if open. */
+    toggleComments?: () => void;
     openResolved?: () => void;
     /** Insert › Animation › Fade in on click, for the selected object. */
     fadeOnClick?: () => void;

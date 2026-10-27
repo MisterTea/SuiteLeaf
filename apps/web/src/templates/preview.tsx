@@ -185,6 +185,13 @@ export function TemplatePreview({
         <SheetPreview file={file} />
       ) : file.kind === "slide" ? (
         <SlidePreview file={file} width={compact ? 112 : 760} />
+      ) : file.kind === "drawing" ? (
+        <pre
+          className="drawing-template-preview"
+          style={{ margin: 0, padding: 8, overflow: "hidden", font: "10px/1.35 ui-monospace, monospace" }}
+        >
+          {file.content.source.slice(0, 600)}
+        </pre>
       ) : (
         <ul className="form-template-preview">
           {file.content.questions.map((q) => (

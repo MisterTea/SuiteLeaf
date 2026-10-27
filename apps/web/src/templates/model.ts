@@ -72,6 +72,7 @@ export const kindLabel: Record<SuiteFile["kind"], string> = {
   sheet: "Spreadsheet",
   slide: "Presentation",
   form: "Form",
+  drawing: "Drawing",
 };
 
 export const groupLabel: Record<SuiteFile["kind"], string> = {
@@ -79,4 +80,5 @@ export const groupLabel: Record<SuiteFile["kind"], string> = {
   sheet: "Spreadsheets",
   slide: "Presentations",
   form: "Forms",
+  drawing: "Drawings",
 };

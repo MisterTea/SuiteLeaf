@@ -149,6 +149,7 @@ export function SlideFace({
                 backgroundColor: el.fill || "transparent",
                 ["--spell-caret" as string]: el.color || "#1e293b",
                 ["--marp-pad" as string]: fitted && el.padLeft ? units(el.padLeft) : "0px",
+                ["--marp-hang" as string]: fitted && el.hang ? units(el.hang) : "0px",
               }}
             >
               {hooks.before?.(el)}
