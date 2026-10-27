@@ -2651,7 +2651,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       name: "check_spelling",
       label: "Check spelling",
       description:
-        "Check the document's spelling and open the spelling panel. Returns each unknown word with suggestions. Then call fix_spelling with no arguments to correct every typo (bold and other formatting stay). A name with no suggestion, such as Danquah, is added with add_to_dictionary and is not replaced.",
+        "Check the document's spelling and open the spelling panel. Returns each unknown word with suggestions. Then call fix_spelling with no arguments to correct every typo (bold and other formatting stay). A real word with no suggestion, such as kente, is added with add_to_dictionary and is not replaced. Names and acronyms are never flagged.",
       parameters: Type.Object({}),
       target: () => toolsMenu(),
       async execute() {
@@ -2664,7 +2664,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         if (!words.size) return "No spelling mistakes found.";
         const lines = [...words].map(([w, count]) => {
           const suggestions = spellingSuggestions(w);
-          return `"${w}" (${count}×): ${suggestions.length ? suggestions.join(", ") : "no suggestions — a name; add it with add_to_dictionary and do not replace it"}`;
+          return `"${w}" (${count}×): ${suggestions.length ? suggestions.join(", ") : "no suggestions — a real word the dictionary does not know; add it with add_to_dictionary and do not replace it"}`;
         });
         return `${lines.join("\n")}\nCall fix_spelling with no arguments to correct every typo that has a suggestion. Bold stays bold. Add each name with add_to_dictionary.`;
       },
@@ -2673,7 +2673,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       name: "fix_spelling",
       label: "Fix spelling",
       description:
-        "Correct misspellings and keep bold and other formatting. Call it with no arguments to fix every typo that has a suggestion; names with no suggestion are left unchanged. Or pass word and correction to fix that one word. movment becomes movement, recieve becomes receive, and teh becomes the when those typos are present.",
+        "Correct misspellings and keep bold and other formatting. Call it with no arguments to fix every typo that has a suggestion; words with no suggestion are left unchanged. Or pass word and correction to fix that one word. movment becomes movement, recieve becomes receive, and teh becomes the when those typos are present.",
       parameters: Type.Object({
         word: Type.Optional(Type.String({ description: "One misspelled word. Leave this out to correct every typo that has a suggestion." })),
         correction: Type.Optional(Type.String({ description: "What to replace that word with. Leave this out to use the spelling suggestion." })),
@@ -2701,7 +2701,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
               : `"${requested}" is not in the document, so nothing was changed.`;
           }
           if (!spellingSuggestions(ranges[0].word).length)
-            return `"${ranges[0].word}" has no spelling suggestion, so it was not changed. It looks like a name: add it with add_to_dictionary. Do not replace it.`;
+            return `"${ranges[0].word}" has no spelling suggestion, so it was not changed. It looks like a real word the dictionary does not know: add it with add_to_dictionary. Do not replace it.`;
         }
         const fixes: string[] = [];
         for (const group of groupMisspellings(liveRanges())) {
@@ -2740,7 +2740,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       name: "fix_grammar",
       label: "Fix grammar",
       description:
-        "List every grammar issue and apply its suggestion, keeping bold and other formatting. Call it with no arguments. It changes “the movement were” to “the movement was” (were → was), “its the reason” to “it's the reason” (its → it's), and “they was ready” to “they were ready” (was → were). It does not change spelling, so Danquah and movment stay as written. Do not use find_and_replace for grammar.",
+        "List every grammar issue and apply its suggestion, keeping bold and other formatting. Call it with no arguments. It changes “the movement were” to “the movement was” (were → was), “its the reason” to “it's the reason” (its → it's), and “they was ready” to “they were ready” (was → were). It does not change spelling, so movment stays as written. Do not use find_and_replace for grammar.",
       parameters: Type.Object({}),
       target: () => toolsMenu(),
       async execute() {
@@ -2765,16 +2765,16 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         const left = grammarRanges(editor.state.doc, readProofing(proofingJson(editor)).ignoredGrammar);
         return `Fixed ${issues.length} grammar issue(s), keeping formatting: ${listed.join("; ")}. ${
           left.length ? `${left.length} grammar issue(s) remain.` : "No grammar issues are left."
-        } Spelling was not changed: Danquah and movment stay as written. Bold stays bold.`;
+        } Spelling was not changed: movment stays as written. Bold stays bold.`;
       },
     }),
     tool({
       name: "add_to_dictionary",
       label: "Add to dictionary",
       description:
-        "Add a name to the personal dictionary so spelling stops flagging it, for example Danquah. The word is not changed in the document. Do not add a typo; correct typos with fix_spelling.",
+        "Add a real word the dictionary does not know, for example kente, to the personal dictionary so spelling stops flagging it. Names and acronyms are never flagged. The word is not changed in the document. Do not add a typo; correct typos with fix_spelling.",
       parameters: Type.Object({
-        word: Type.String({ description: "The name to stop flagging, as it appears in the document." }),
+        word: Type.String({ description: "The word to stop flagging, as it appears in the document." }),
       }),
       target: () => toolsMenu(),
       async execute({ word }) {

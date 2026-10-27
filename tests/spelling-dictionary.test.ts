@@ -17,8 +17,13 @@ describe("full spelling dictionary", () => {
   });
 
   it("still flags misspellings, including ones common on the web", () => {
-    for (const word of ["recieve", "teh", "quikly", "manuall", "Robotz", "movment"])
+    for (const word of ["recieve", "teh", "quikly", "manuall", "robotz", "movment"])
       expect(isMisspelling(word, none, []), word).toBe(true);
+  });
+
+  it("takes a capitalized word inside a sentence to be a name", () => {
+    expect(isMisspelling("Robotz", none, [])).toBe(false);
+    expect(isMisspelling("Danquah", none, [])).toBe(false);
   });
 
   it("accepts names only with their capital", () => {
@@ -26,7 +31,6 @@ describe("full spelling dictionary", () => {
     expect(isMisspelling("NAZIS", none, [])).toBe(false);
     expect(isMisspelling("Zanzibar", none, [])).toBe(false);
     expect(isMisspelling("Nkrumah", none, [])).toBe(false);
-    expect(isMisspelling("Danquah", none, [])).toBe(true);
     expect(isMisspelling("zanzibar", none, [])).toBe(true);
   });
 

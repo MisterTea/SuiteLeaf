@@ -26,7 +26,7 @@ function decisionsSheet() {
   sheet.cellData = {
     0: { 0: { v: "Decision", t: 1 }, 1: { v: "Note", t: 1 } },
     1: { 0: { v: "Grant", t: 1 }, 1: { v: "We will recieve the grant", t: 1 } },
-    2: { 0: { v: "Speaker", t: 1 }, 1: { v: "Danquah spoke", t: 1 } },
+    2: { 0: { v: "Cook", t: 1 }, 1: { v: "Danquah cooked kenkey", t: 1 } },
   };
   (sheet as { columnData: Record<number, { w: number }> }).columnData = {
     0: { w: 120 },
@@ -74,14 +74,15 @@ test("sheet spelling replaces one word, shares the Docs dictionary, and works of
   const leaks: string[] = [];
   page.on("request", (request) => {
     const body = `${request.url()}\n${request.postData() ?? ""}`;
-    if (/recieve|Danquah|receive the grant/i.test(body)) leaks.push(request.url());
+    if (/recieve|kenkey|receive the grant/i.test(body)) leaks.push(request.url());
   });
   await openNative(page, "Decisions.slsheet", decisionsSheet());
   await expect(page.getByLabel("Spreadsheet grid")).toHaveAttribute("aria-busy", "false");
   const recieve = page.locator(".sheet-spell-mark[data-spell-word='recieve']");
-  const name = page.locator(".sheet-spell-mark[data-spell-word='Danquah']");
+  const kenkey = page.locator(".sheet-spell-mark[data-spell-word='kenkey']");
   await expect(recieve).toBeVisible();
-  await expect(name).toBeVisible();
+  await expect(kenkey).toBeVisible();
+  await expect(page.locator(".sheet-spell-mark[data-spell-word='Danquah']")).toHaveCount(0);
   await expect(recieve).toHaveAttribute("data-spell-cell", "B2");
 
   await context.setOffline(true);
@@ -92,10 +93,10 @@ test("sheet spelling replaces one word, shares the Docs dictionary, and works of
   await expect(spelling.getByRole("button", { name: "receive", exact: true })).toBeVisible();
   await expect(page.locator(".sheet-host input.univer-size-full")).toHaveValue("B2");
   await spelling.getByRole("button", { name: "receive", exact: true }).click();
-  await expect(spelling).toContainText("Danquah");
+  await expect(spelling).toContainText("kenkey");
   await expect(recieve).toHaveCount(0);
   await spelling.getByRole("button", { name: "Add to dictionary" }).click();
-  await expect(name).toHaveCount(0);
+  await expect(kenkey).toHaveCount(0);
   await expect(spelling).toContainText("Spelling check finished");
   await spelling.getByRole("button", { name: "Done" }).click();
 
@@ -103,13 +104,13 @@ test("sheet spelling replaces one word, shares the Docs dictionary, and works of
     (key) => localStorage.getItem(key),
     PERSONAL_DICTIONARY_KEY,
   );
-  expect(JSON.parse(dictionary ?? "{}").added).toContain("Danquah");
+  expect(JSON.parse(dictionary ?? "{}").added).toContain("kenkey");
   await expect(page.getByRole("status")).toContainText("Saved");
   const saved = await download(page);
   const id = saved.content.workbook.sheetOrder[0];
   const cells = saved.content.workbook.sheets[id].cellData;
   expect(cells[1][1].v).toBe("We will receive the grant");
-  expect(cells[2][1].v).toBe("Danquah spoke");
+  expect(cells[2][1].v).toBe("Danquah cooked kenkey");
   await context.setOffline(false);
   expect(leaks).toEqual([]);
 
@@ -119,14 +120,14 @@ test("sheet spelling replaces one word, shares the Docs dictionary, and works of
   await expect(page.locator(".sheet-spell-mark")).toHaveCount(0);
 });
 
-test("a name added in Docs is not flagged in a sheet", async ({ page }) => {
+test("a word added in Docs is not flagged in a sheet", async ({ page }) => {
   await page.goto("/");
   await page.evaluate((key) => {
-    localStorage.setItem(key, JSON.stringify({ added: ["Danquah"], flagged: [] }));
+    localStorage.setItem(key, JSON.stringify({ added: ["kenkey"], flagged: [] }));
   }, PERSONAL_DICTIONARY_KEY);
   await openNative(page, "Decisions.slsheet", decisionsSheet());
   await expect(page.getByLabel("Spreadsheet grid")).toHaveAttribute("aria-busy", "false");
-  await expect(page.locator(".sheet-spell-mark[data-spell-word='Danquah']")).toHaveCount(0);
+  await expect(page.locator(".sheet-spell-mark[data-spell-word='kenkey']")).toHaveCount(0);
   await expect(page.locator(".sheet-spell-mark[data-spell-word='recieve']")).toBeVisible();
 });
 
@@ -192,7 +193,7 @@ async function wrappedWorkbook() {
     `<c r="${ref}" s="${style}" t="inlineStr"><is><t>${text}</t></is></c>`;
   z.file(
     "xl/worksheets/sheet1.xml",
-    `${xmlHeader}<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cols><col min="2" max="2" width="18" customWidth="1"/></cols><sheetData><row r="1">${cell("A1", "Name")}${cell("B1", "Description")}</row><row r="2" ht="90" customHeight="1">${cell("A2", "Food")}${cell("B2", "Eatz too much and quikly becomes very tired", 1)}</row><row r="3">${cell("A3", "Robot")}${cell("B3", "Robotz can only work by hand when the power is out and the lights in the whole workshop are off", 1)}</row></sheetData></worksheet>`,
+    `${xmlHeader}<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cols><col min="2" max="2" width="18" customWidth="1"/></cols><sheetData><row r="1">${cell("A1", "Name")}${cell("B1", "Description")}</row><row r="2" ht="90" customHeight="1">${cell("A2", "Food")}${cell("B2", "eatz too much and quikly becomes very tired", 1)}</row><row r="3">${cell("A3", "Robot")}${cell("B3", "Robotz can only work by hand when the power is out and the lights in the whole workshop are off", 1)}</row></sheetData></worksheet>`,
   );
   z.file(
     "xl/worksheets/sheet2.xml",
@@ -217,8 +218,8 @@ test("sheet underlines sit under wrapped words and follow the sheet on screen", 
         return { word: mark.dataset.spellWord, cell: mark.dataset.spellCell, left: box.left, top: box.top };
       }),
     );
-  await expect.poll(async () => (await marks()).map((mark) => mark.word).sort()).toEqual(["Eatz", "quikly"]);
-  const [first, second] = ["Eatz", "quikly"].map((word) => marks().then((all) => all.find((mark) => mark.word === word)!));
+  await expect.poll(async () => (await marks()).map((mark) => mark.word).sort()).toEqual(["eatz", "quikly"]);
+  const [first, second] = ["eatz", "quikly"].map((word) => marks().then((all) => all.find((mark) => mark.word === word)!));
   const [eatz, quikly] = [await first, await second];
   expect(Math.abs(quikly.left - eatz.left)).toBeLessThan(1.5);
   expect(quikly.top - eatz.top).toBeGreaterThan(10);

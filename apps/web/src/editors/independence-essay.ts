@@ -69,7 +69,7 @@ function prose(words: string[]): JsonNode[] {
 
 const introduction = [...takeWords(313), "this", "ends", "the", "introduction."];
 const lead =
-  "The people of Ghana wanted independence and the movement grew as Danquah spoke and Danquah wrote and Danquah led a fair government for the country.".split(
+  "The people of Ghana wanted independence and the movement grew as Danquah spoke and people made kente and many bought kente across the whole country.".split(
     " ",
   );
 const mistakes =

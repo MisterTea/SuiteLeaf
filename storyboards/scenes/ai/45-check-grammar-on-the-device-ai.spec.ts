@@ -60,7 +60,7 @@ test("45-check-grammar-on-the-device-ai", async ({ page }) => {
   await expect(page.locator(".document-content strong"), why).toHaveText("movement");
   await expect(page.locator(".document-content em"), why).toHaveText("strong");
   await expect(editor, why).toContainText("as Danquah spoke");
-  await expect(page.locator(".spelling-misspelling", { hasText: "Danquah" }), why).toHaveCount(1);
+  await expect(page.locator(".spelling-misspelling", { hasText: "Danquah" }), why).toHaveCount(0);
   await expect(page.locator(".spelling-misspelling", { hasText: "movment" }), why).toBeVisible();
 
   await caption(page, "The three grammar mistakes are fixed. Bold and Danquah stay.", 2000);

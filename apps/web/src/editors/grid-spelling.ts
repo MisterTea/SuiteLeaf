@@ -41,7 +41,9 @@ export function misspellingsInText(
   personal: PersonalDictionary,
   ignored: readonly string[],
 ) {
-  return spellingTokens(text).filter((token) => isMisspelling(token.word, personal, ignored));
+  return spellingTokens(text)
+    .filter((token) => isMisspelling(token.word, personal, ignored, token.sentenceStart))
+    .map(({ word, from, to }) => ({ word, from, to }));
 }
 
 export function replaceWordAt(text: string, from: number, to: number, replacement: string) {

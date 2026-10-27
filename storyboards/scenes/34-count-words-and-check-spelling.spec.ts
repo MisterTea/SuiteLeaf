@@ -148,13 +148,14 @@ test("34-count-words-and-check-spelling", async ({ page }) => {
   await expect(page.getByText("the movement grew")).toBeVisible();
   await beat(page, 800);
 
-  await caption(page, "Danquah is a name, not a typo. Adding it clears every underline at once.");
-  const names = page.locator(".spelling-misspelling", { hasText: "Danquah" });
-  await expect(names).toHaveCount(3);
-  await names.first().scrollIntoViewIfNeeded();
-  await names.first().click({ button: "right" });
+  await caption(page, "Danquah is a name, so it is never underlined. kente is a real word. Adding it clears both underlines.");
+  await expect(page.locator(".spelling-misspelling", { hasText: "Danquah" })).toHaveCount(0);
+  const kente = page.locator(".spelling-misspelling", { hasText: "kente" });
+  await expect(kente).toHaveCount(2);
+  await kente.first().scrollIntoViewIfNeeded();
+  await kente.first().click({ button: "right" });
   await page.getByRole("menuitem", { name: "Add to dictionary" }).click();
-  await expect(names).toHaveCount(0);
+  await expect(kente).toHaveCount(0);
   await beat(page, 1000);
 
   await caption(page, "Spelling steps through the essay. Enter accepts the suggestion, and bold stays bold.");
@@ -185,7 +186,7 @@ test("34-count-words-and-check-spelling", async ({ page }) => {
   await beat(page, 400);
   await page.getByRole("menuitem", { name: "Personal dictionary" }).click();
   const dictionary = page.getByRole("dialog", { name: "Personal dictionary" });
-  await expect(dictionary.locator("li", { hasText: "Danquah" })).toBeVisible();
+  await expect(dictionary.locator("li", { hasText: "kente" })).toBeVisible();
   await expect(dictionary.locator("li", { hasText: "teh" })).toBeVisible();
   await beat(page, 1200);
   await dictionary.locator("li", { hasText: "teh" }).getByRole("button", { name: "Remove" }).click();
@@ -200,7 +201,7 @@ test("34-count-words-and-check-spelling", async ({ page }) => {
   await expect(page.locator(".word-count")).toHaveText("1,488 words (excludes References)");
   await caption(
     page,
-    "No unknown words left. Danquah stays in her dictionary. Nothing was sent off this computer.",
+    "No unknown words left. kente stays in her dictionary. Nothing was sent off this computer.",
     2200,
   );
 });

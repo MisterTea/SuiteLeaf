@@ -798,7 +798,7 @@ function slideSpellingIssues(deck: Deck): SlideIssue[] {
 /** The same one-prompt sheet-and-deck spelling task, once the presentation is open. */
 function sheetAndDeckSpellingRequest() {
   if (requested(/fix_spelling_all|ignore_spelling/i)) return false;
-  return requested(/fix_spelling/i) && requested(/Danquah/i) && requested(/\bUpdate\b/);
+  return requested(/fix_spelling/i) && requested(/kenkey/i) && requested(/\bUpdate\b/);
 }
 
 function refuseSlideSpellingRetype() {
@@ -819,8 +819,8 @@ export function slideSpellingReview(ctx: SlidesAgentContext): string[] {
       `${describeSlideSpelling(typos)} Call fix_spelling with word "${typos[0].word}". Only that word changes. Do not use set_slide_text.`,
     );
   const dictionary = readPersonalDictionary();
-  if (!dictionary.added.some((word) => word.toLowerCase() === "danquah"))
-    notes.push('Call add_to_dictionary with word "Danquah". Do not change the text.');
+  if (!dictionary.added.some((word) => word.toLowerCase() === "kenkey"))
+    notes.push('Call add_to_dictionary with word "kenkey". Do not change the text.');
   return notes;
 }
 
@@ -834,7 +834,7 @@ function describeSlideSpelling(issues: readonly SlideIssue[]) {
         : "";
       return suggestions.length
         ? `${issue.label} "${issue.word}" → ${suggestions[0]} (the box reads "${issue.text}"). Call fix_spelling with word "${issue.word}". Only that word changes, so the box reads "${fixed}".`
-        : `${issue.label} "${issue.word}" (the box reads "${issue.text}"): no suggestions — a name. Call add_to_dictionary with word "${issue.word}". Do not replace it.`;
+        : `${issue.label} "${issue.word}" (the box reads "${issue.text}"): no suggestions — a real word the dictionary does not know. Call add_to_dictionary with word "${issue.word}". Do not replace it.`;
     })
     .join("\n");
 }
@@ -1964,7 +1964,7 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
       name: "check_spelling",
       label: "Check spelling",
       description:
-        "Check spelling in text boxes with the on-device dictionary Docs uses. Nothing is sent off this computer. Speaker notes are not checked. Then call fix_spelling to change a typo such as recieve to receive inside that box only. A name with no suggestion, such as Danquah, is added with add_to_dictionary and is not replaced. Do not use set_slide_text for spelling.",
+        "Check spelling in text boxes with the on-device dictionary Docs uses. Nothing is sent off this computer. Speaker notes are not checked. Then call fix_spelling to change a typo such as recieve to receive inside that box only. A real word with no suggestion, such as kenkey, is added with add_to_dictionary and is not replaced. Names and acronyms are never flagged. Do not use set_slide_text for spelling.",
       parameters: Type.Object({}),
       target: () => canvas(),
       execute() {
@@ -1977,7 +1977,7 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
       name: "fix_spelling",
       label: "Fix spelling",
       description:
-        'Replace one misspelled word inside a text box and leave the other words. Example: {"word":"recieve"} changes a box that reads "recieve the keys" into "receive the keys". It does not rewrite the sentence. A name with no suggestion is not changed: add it with add_to_dictionary. Do not use set_slide_text.',
+        'Replace one misspelled word inside a text box and leave the other words. Example: {"word":"recieve"} changes a box that reads "recieve the keys" into "receive the keys". It does not rewrite the sentence. A real word with no suggestion is not changed: add it with add_to_dictionary. Do not use set_slide_text.',
       parameters: Type.Object({
         word: Type.Optional(Type.String({ description: 'The misspelled word only, such as "recieve". Not the whole text box.' })),
         correction: Type.Optional(Type.String({ description: "Ignored unless it is the suggestion. The suggestion replaces the word." })),
@@ -2000,7 +2000,7 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
         if (requested && !chosen.length)
           return `"${requested}" is not a misspelling in this presentation, so nothing was changed.\n${describeSlideSpelling(issues)}`;
         if (requested && chosen.length && !spellingSuggestions(chosen[0].word).length)
-          return `"${chosen[0].word}" has no spelling suggestion, so it was not changed. It looks like a name: add it with add_to_dictionary. Do not replace it. The box still reads "${chosen[0].text}".`;
+          return `"${chosen[0].word}" has no spelling suggestion, so it was not changed. It looks like a real word the dictionary does not know: add it with add_to_dictionary. Do not replace it. The box still reads "${chosen[0].text}".`;
         let deck = started;
         const notes: string[] = [];
         const done = new Set<string>();
@@ -2047,15 +2047,15 @@ export function slideTools(ctx: SlidesAgentContext): SuiteTool[] {
       name: "add_to_dictionary",
       label: "Add to dictionary",
       description:
-        'Add a name to the personal dictionary Docs uses, so spelling stops flagging it. The store is suiteleaf.personal-dictionary on this computer. Example: {"word":"Danquah"}. The text box is not changed. Do not add a typo such as recieve; correct typos with fix_spelling.',
+        'Add a real word the dictionary does not know to the personal dictionary Docs uses, so spelling stops flagging it. Names and acronyms are never flagged. The store is suiteleaf.personal-dictionary on this computer. Example: {"word":"kenkey"}. The text box is not changed. Do not add a typo such as recieve; correct typos with fix_spelling.',
       parameters: Type.Object({
-        word: Type.String({ description: 'The name to stop flagging, such as "Danquah".' }),
+        word: Type.String({ description: 'The word to stop flagging, such as "kenkey".' }),
       }),
       prepare: (args) => ({ word: spellingArg(args.word, args.name, args.text) }),
       target: () => canvas(),
       async execute({ word }) {
         const cleaned = word.trim();
-        if (!cleaned) throw new ToolError("Say which word to add to the dictionary, such as Danquah.");
+        if (!cleaned) throw new ToolError("Say which word to add to the dictionary, such as kenkey.");
         const issues = slideSpellingIssues(ctx.deck());
         const token = spellingWord(cleaned, issues);
         const matches = issues.filter((issue) => sameMisspelling(issue.word, token));

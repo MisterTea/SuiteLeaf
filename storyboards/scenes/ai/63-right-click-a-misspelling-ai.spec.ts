@@ -4,8 +4,8 @@ import { isMisspelling, PERSONAL_DICTIONARY_KEY, type PersonalDictionary } from 
 import { askAgent, beat, caption, describeRun, expect, openApp, selectCells, test } from "../harness";
 
 const PROMPT = [
-  "Decisions is open. Add Kwame to the shared dictionary so Kwame is not flagged. In B4 change only recieve so the cell reads Please receive the keys. Leave every other cell as it is. Stay in Decisions.",
-  'Call add_to_dictionary with word "Kwame".',
+  "Decisions is open. Add kenkey to the shared dictionary so kenkey is not flagged. In B4 change only recieve so the cell reads Please receive the keys. Leave every other cell as it is. Stay in Decisions.",
+  'Call add_to_dictionary with word "kenkey".',
   'Call fix_spelling with word "recieve" and cell "B4".',
   "Stop. Do not use set_cells.",
 ].join(" ");
@@ -18,10 +18,10 @@ function decisionsSheet() {
   sheet.cellData = {
     0: { 0: { v: "Decision", t: 1 }, 1: { v: "Note", t: 1 } },
     1: { 0: { v: "Grant", t: 1 }, 1: { v: "We will receive the grant", t: 1 } },
-    2: { 0: { v: "Visit", t: 1 }, 1: { v: "Ask Kwame tomorrow", t: 1 } },
+    2: { 0: { v: "Visit", t: 1 }, 1: { v: "Ask Kwame for kenkey tomorrow", t: 1 } },
     // The human scene types this into B4 before the right-click. The assistant starts from that cell.
     3: { 1: { v: "Please recieve the keys", t: 1 } },
-    4: { 0: { v: "Speaker", t: 1 }, 1: { v: "Danquah spoke", t: 1 } },
+    4: { 0: { v: "Cook", t: 1 }, 1: { v: "Danquah cooked fufu", t: 1 } },
     5: { 0: { v: "Copies", t: 1 }, 1: { v: "seperate the copies", t: 1 } },
   };
   (sheet as { columnData: Record<number, { w: number }> }).columnData = {
@@ -38,7 +38,7 @@ function handoverDoc() {
     content: [
       {
         type: "paragraph",
-        content: [{ type: "text", text: "Kwame asked Danquah to seperate the keys." }],
+        content: [{ type: "text", text: "Kwame asked Danquah to seperate the kenkey from the fufu." }],
       },
     ],
   };
@@ -117,14 +117,14 @@ function cellText(cells: Record<string, Record<string, SavedCell>> | undefined, 
 
 test("63-right-click-a-misspelling-ai", async ({ page }) => {
   await seed(page);
-  await caption(page, "Kwame is underlined in Decisions, and B4 says recieve.");
+  await caption(page, "kenkey is underlined in Decisions, and B4 says recieve.");
   await page.getByRole("link", { name: "Decisions", exact: true }).click();
   const grid = page.getByLabel("Spreadsheet grid");
   await expect(grid).toHaveAttribute("aria-busy", "false");
-  await expect(page.locator(".sheet-spell-mark[data-spell-word='Kwame']")).toBeVisible();
+  await expect(page.locator(".sheet-spell-mark[data-spell-word='kenkey']")).toBeVisible();
   await expect(page.locator(".sheet-spell-hit[data-spell-word='recieve']")).toBeVisible();
   await expect(page.locator(".sheet-spell-mark[data-spell-word='seperate']")).toBeVisible();
-  await caption(page, "He asks the on-device assistant to add Kwame and fix only recieve in B4.", 1600);
+  await caption(page, "He asks the on-device assistant to add kenkey and fix only recieve in B4.", 1600);
   await caption(page, "", 0);
 
   const run = await askAgent(page, PROMPT);
@@ -151,7 +151,7 @@ test("63-right-click-a-misspelling-ai", async ({ page }) => {
       { timeout: 15000 },
     )
     .toBe(
-      "We will receive the grant | Ask Kwame tomorrow | Please receive the keys | Danquah spoke | seperate the copies",
+      "We will receive the grant | Ask Kwame for kenkey tomorrow | Please receive the keys | Danquah cooked fufu | seperate the copies",
     );
 
   const sheetId = sheet!.content.workbook.sheetOrder[0];
@@ -171,14 +171,14 @@ test("63-right-click-a-misspelling-ai", async ({ page }) => {
   }, PERSONAL_DICTIONARY_KEY);
   expect(dictionary.added.some((word) => word.toLowerCase() === "kwame"), why).toBe(true);
   expect(dictionary.flagged.some((word) => word.toLowerCase() === "kwame"), why).toBe(false);
-  expect(isMisspelling("Kwame", dictionary, []), why).toBe(false);
+  expect(isMisspelling("kenkey", dictionary, []), why).toBe(false);
   expect(dictionary.added.some((word) => word.toLowerCase() === "seperate"), why).toBe(false);
 
   const done = page.getByRole("button", { name: "Done", exact: true });
   if (await done.isVisible().catch(() => false)) await done.click();
   await page.getByRole("button", { name: "Close assistant" }).click();
   await expect(page.getByRole("status")).toContainText("Saved");
-  await expect(page.locator(".sheet-spell-mark[data-spell-word='Kwame']"), why).toHaveCount(0);
+  await expect(page.locator(".sheet-spell-mark[data-spell-word='kenkey']"), why).toHaveCount(0);
   await expect(page.locator(".sheet-spell-mark[data-spell-word='recieve']"), why).toHaveCount(0);
   await expect(page.locator(".sheet-spell-mark[data-spell-word='seperate']")).toBeVisible();
   await selectCells(page, "B4");
@@ -186,7 +186,7 @@ test("63-right-click-a-misspelling-ai", async ({ page }) => {
 
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Handover", exact: true }).click();
-  await expect(page.locator(".spelling-misspelling", { hasText: "Kwame" })).toHaveCount(0);
+  await expect(page.locator(".spelling-misspelling", { hasText: "kenkey" })).toHaveCount(0);
   await expect(page.locator(".spelling-misspelling", { hasText: "seperate" })).toBeVisible();
   await beat(page, 800);
 
@@ -195,7 +195,7 @@ test("63-right-click-a-misspelling-ai", async ({ page }) => {
   await expect(grid).toHaveAttribute("aria-busy", "false");
   await selectCells(page, "B4");
   await expect(grid).toHaveAttribute("data-active-value", "Please receive the keys");
-  await expect(page.locator(".sheet-spell-mark[data-spell-word='Kwame']")).toHaveCount(0);
+  await expect(page.locator(".sheet-spell-mark[data-spell-word='kenkey']")).toHaveCount(0);
   await beat(page, 800);
-  await caption(page, "B4 says Please receive the keys. Kwame is not flagged.", 1600);
+  await caption(page, "B4 says Please receive the keys. kenkey is not flagged.", 1600);
 });

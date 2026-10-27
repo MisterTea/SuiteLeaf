@@ -45,12 +45,11 @@ describe("grid spelling", () => {
     expect(suggestionsFor("recieve")[0]).toBe("receive");
   });
 
-  it("uses the Docs dictionary, including names added there", () => {
-    expect(misspellingsInText("Danquah spoke", none, []).map((hit) => hit.word)).toEqual([
-      "Danquah",
-    ]);
-    const taught = addToPersonalDictionary(none, "Danquah");
-    expect(misspellingsInText("Danquah spoke", taught, [])).toEqual([]);
+  it("uses the Docs dictionary, including words added there", () => {
+    expect(misspellingsInText("Danquah spoke", none, [])).toEqual([]);
+    expect(misspellingsInText("We ate kenkey", none, []).map((hit) => hit.word)).toEqual(["kenkey"]);
+    const taught = addToPersonalDictionary(none, "kenkey");
+    expect(misspellingsInText("We ate kenkey", taught, [])).toEqual([]);
     expect(misspellingsInText("We will recieve the grant", taught, []).map((hit) => hit.word)).toEqual([
       "recieve",
     ]);
@@ -71,7 +70,7 @@ describe("grid spelling", () => {
               getRange: () => ({ startRow: 1, startColumn: 1 }),
               getCellDatas: () => [
                 [{ v: "We will recieve the grant" }, { v: "recieve", f: '="recieve"' }],
-                [{ v: "Danquah spoke" }, null],
+                [{ v: "We ate kenkey" }, null],
               ],
             }),
           },

@@ -206,20 +206,58 @@ function inDictionary(word: string): boolean {
   return !!hunspell?.correct(word.replace(/’/g, "'"));
 }
 
+/** How many of the most common words a capitalized first word is compared with. */
+const COMMON_WORDS = 1000;
+
+/** One letter added, dropped, changed, or swapped from a very common word, as "Teh" is from "the". */
+function slipOfCommonWord(word: string) {
+  const target = normalize(word).replace(/'/g, "");
+  return [...edits(target)].some((item) => (rank.get(item) ?? Infinity) < COMMON_WORDS);
+}
+
+/**
+ * Whether to underline a word. A capitalized word is taken to be a name, and
+ * a word with capitals after its first letter an acronym or a brand, such as
+ * SUNY or VMWare. The first word of a sentence is capitalized anyway, so it is
+ * underlined only when it is a slip of a common word.
+ */
 export function isMisspelling(
   word: string,
   personal: PersonalDictionary,
   ignored: readonly string[],
+  sentenceStart = false,
 ) {
   const value = normalize(word);
   if (ignored.some((item) => sameWord(item, value))) return false;
   if (personal.flagged.some((item) => sameWord(item, value))) return true;
   if (personal.added.some((item) => sameWord(item, value))) return false;
   if (value.length < 2 || /\d/.test(value)) return false;
+  if (/[A-Z]/.test(word)) {
+    if (!sentenceStart || /[A-Z]/.test(word.slice(1))) return false;
+    return !inDictionary(word) && slipOfCommonWord(word);
+  }
   return !inDictionary(word);
 }
 
 const WORD = /[A-Za-z]+(?:['’-][A-Za-z]+)*/g;
+/** Email addresses, URLs of any scheme, bare web addresses, and file names, whose parts are not words. */
+const ADDRESS =
+  /\bmailto:[^\s<>"]+|[\w.+-]+@[\w-]+(?:\.[\w-]+)+|\b(?:[a-z][a-z0-9+.-]*:\/\/|www\.)[^\s<>"]+|\b[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[a-z]{2,24}\b(?:\/[^\s<>"]*)?/g;
+/** Marks the place of a picture or other object inside a line of text. */
+const OBJECT = "\ufffc";
+
+/** Nothing but space, opening quotes, or brackets since the start of the text, a line, or a sentence. */
+function startsSentence(text: string, from: number) {
+  for (let at = from - 1; at >= 0; at--) {
+    const ch = text[at];
+    if (ch === "\n") return true;
+    if (/[\s"'“‘(\[]/.test(ch)) continue;
+    return /[.!?…:;]/.test(ch);
+  }
+  return true;
+}
+
+export type SpellingToken = { word: string; from: number; to: number; sentenceStart: boolean };
 
 /**
  * The caret is at the end of this word and the word is not yet followed by a
@@ -233,12 +271,37 @@ export function isTypingWord(to: number, caret: number | null, next?: string) {
   return !next;
 }
 
-export function spellingTokens(text: string): { word: string; from: number; to: number }[] {
-  return [...text.matchAll(WORD)].map((match) => {
-    const from = match.index ?? 0;
-    return { word: match[0], from, to: from + match[0].length };
+/** The words to check, leaving out addresses and letters joined to digits, such as jgmath2000. */
+export function spellingTokens(text: string): SpellingToken[] {
+  const addresses = [...text.matchAll(ADDRESS)].map((match) => [match.index, match.index + match[0].length]);
+  return [...text.matchAll(WORD)].flatMap((match) => {
+    const from = match.index;
+    const to = from + match[0].length;
+    if (addresses.some(([start, end]) => from < end && to > start)) return [];
+    if (/[\d_]/.test(text[from - 1] ?? "") || /[\d_]/.test(text[to] ?? "")) return [];
+    return [{ word: match[0], from, to, sentenceStart: startsSentence(text, from) }];
   });
 }
+
+/**
+ * A text block's words as one string, so a word split by bold or a link is
+ * read whole. Objects keep their size; a line break is a newline. `ignored`
+ * holds the stretches marked to skip.
+ */
+function blockText(block: ProseNode) {
+  let text = "";
+  const ignored: [number, number][] = [];
+  block.forEach((child) => {
+    const start = text.length;
+    if (child.isText) text += child.text ?? "";
+    else text += child.type.name === "hardBreak" ? "\n" : OBJECT.repeat(child.nodeSize);
+    if (child.marks.some((mark) => mark.type.name === SPELLING_IGNORE_MARK)) ignored.push([start, text.length]);
+  });
+  return { text, ignored };
+}
+
+const overlaps = (ranges: [number, number][], from: number, to: number) =>
+  ranges.some(([start, end]) => from < end && to > start);
 const LETTERS = "abcdefghijklmnopqrstuvwxyz";
 
 function edits(word: string) {
@@ -311,14 +374,14 @@ export function misspelledRanges(
 ): SpellingRange[] {
   const ranges: SpellingRange[] = [];
   doc.descendants((node, pos) => {
-    if (!node.isText || !node.text || node.marks.some((mark) => mark.type.name === SPELLING_IGNORE_MARK))
-      return;
-    for (const match of node.text.matchAll(WORD)) {
-      const word = match[0];
-      if (!isMisspelling(word, personal, ignored)) continue;
-      const from = pos + (match.index ?? 0);
-      ranges.push({ from, to: from + word.length, word });
+    if (!node.isTextblock) return true;
+    const block = blockText(node);
+    for (const token of spellingTokens(block.text)) {
+      if (overlaps(block.ignored, token.from, token.to)) continue;
+      if (!isMisspelling(token.word, personal, ignored, token.sentenceStart)) continue;
+      ranges.push({ from: pos + 1 + token.from, to: pos + 1 + token.to, word: token.word });
     }
+    return false;
   });
   return ranges;
 }
@@ -330,12 +393,21 @@ export function misspelledWords(
 ) {
   const words: string[] = [];
   const walk = (node: JsonNode) => {
-    if (node.text && !node.marks?.some((mark) => mark.type === SPELLING_IGNORE_MARK)) {
-      for (const match of node.text.matchAll(WORD)) {
-        if (isMisspelling(match[0], personal, ignored)) words.push(match[0]);
-      }
+    const children = node.content ?? [];
+    if (!children.some((child) => child.type === "text")) {
+      children.forEach(walk);
+      return;
     }
-    for (const child of node.content ?? []) walk(child);
+    let text = "";
+    const skip: [number, number][] = [];
+    for (const child of children) {
+      const start = text.length;
+      text += child.type === "text" ? (child.text ?? "") : child.type === "hardBreak" ? "\n" : OBJECT;
+      if (child.marks?.some((mark) => mark.type === SPELLING_IGNORE_MARK)) skip.push([start, text.length]);
+    }
+    for (const token of spellingTokens(text))
+      if (!overlaps(skip, token.from, token.to) && isMisspelling(token.word, personal, ignored, token.sentenceStart))
+        words.push(token.word);
   };
   walk(doc);
   return words;
@@ -359,24 +431,18 @@ export function spellingHit(
   if (!coords) return null;
   const $pos = view.state.doc.resolve(coords.pos);
   if (!$pos.parent.isTextblock) return null;
-  const text = $pos.parent.textContent;
+  const { text } = blockText($pos.parent);
   const offset = coords.pos - $pos.start();
   const ignored = readProofing(view.state.doc.toJSON() as JsonNode).ignored;
-  let found: RegExpExecArray | null = null;
-  for (const match of text.matchAll(WORD)) {
-    const start = match.index ?? 0;
-    const end = start + match[0].length;
-    if (offset >= start && offset <= end) found = match;
-  }
-  if (!found || !isMisspelling(found[0], personal, ignored)) return null;
-  const start = found.index ?? 0;
-  const from = $pos.start() + start;
-  const to = from + found[0].length;
+  const found = spellingTokens(text).find((token) => offset >= token.from && offset <= token.to);
+  if (!found || !isMisspelling(found.word, personal, ignored, found.sentenceStart)) return null;
+  const from = $pos.start() + found.from;
+  const to = from + found.word.length;
   return {
     from,
     to,
-    word: found[0],
-    suggestions: spellingSuggestions(found[0]),
+    word: found.word,
+    suggestions: spellingSuggestions(found.word),
     x: event.clientX,
     y: event.clientY,
     kept: view.state.doc.resolve(from).marks().some((mark) => mark.type.name === SPELLING_IGNORE_MARK),

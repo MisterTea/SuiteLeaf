@@ -115,10 +115,9 @@ test("45-check-grammar-on-the-device", async ({ page }) => {
   await expect(page.locator(".document-content a")).toHaveText("Ghana");
   await beat(page, 900);
 
-  await caption(page, "Danquah is a name. The red line is spelling. Grammar leaves it alone.");
-  const name = page.locator(".spelling-misspelling", { hasText: "Danquah" });
-  await name.scrollIntoViewIfNeeded();
-  await expect(name).toHaveCount(1);
+  await caption(page, "Danquah is a name. Neither spelling nor grammar underlines it.");
+  await page.getByText("as Danquah spoke").scrollIntoViewIfNeeded();
+  await expect(page.locator(".spelling-misspelling", { hasText: "Danquah" })).toHaveCount(0);
   await expect(page.locator(".grammar-issue", { hasText: "Danquah" })).toHaveCount(0);
   await beat(page, 1400);
 

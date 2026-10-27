@@ -736,10 +736,10 @@ function refuseSpellingRetype(toolName: string) {
   );
 }
 
-/** Storyboard 54: one typo in a cell, a name for the dictionary, then the same typo in a deck. */
+/** Storyboard 54: one typo in a cell, a word for the dictionary, then the same typo in a deck. */
 function sheetAndDeckSpellingRequest() {
   if (requested(/fix_spelling_all|ignore_spelling/i)) return false;
-  return requested(/fix_spelling/i) && requested(/Danquah/i) && requested(/\bUpdate\b/);
+  return requested(/fix_spelling/i) && requested(/kenkey/i) && requested(/\bUpdate\b/);
 }
 
 function unnamedSheetWords(issues: readonly SheetIssue[]) {
@@ -788,19 +788,19 @@ function afterSheetSpelling(book: any) {
 function refuseSheetDeckRetype(toolName: string) {
   if (!sheetAndDeckSpellingRequest()) return;
   throw new ToolError(
-    `Do not use ${toolName}. Call fix_spelling with word "recieve" and cell "B2", then add_to_dictionary with word "Danquah". Leave every other cell. Then open the presentation Update and call fix_spelling with word "recieve".`,
+    `Do not use ${toolName}. Call fix_spelling with word "recieve" and cell "B2", then add_to_dictionary with word "kenkey". Leave every other cell. Then open the presentation Update and call fix_spelling with word "recieve".`,
   );
 }
 
 /**
- * Storyboard 63: add one name to the shared dictionary, then change one
+ * Storyboard 63: add one word to the shared dictionary, then change one
  * misspelled word in one cell. Change-all and the sheet-and-deck spell stay
  * on their own tools.
  */
 function oneCellSpellingRequest() {
   if (requested(/fix_spelling_all|ignore_spelling/i)) return false;
   if (sheetAndDeckSpellingRequest()) return false;
-  return requested(/add_to_dictionary/i) && requested(/\bKwame\b/) && requested(/fix_spelling/i) && requested(/\brecieve\b/);
+  return requested(/add_to_dictionary/i) && requested(/\bkenkey\b/) && requested(/fix_spelling/i) && requested(/\brecieve\b/);
 }
 
 function oneCellSpellingCell() {
@@ -810,8 +810,8 @@ function oneCellSpellingCell() {
   return quoted?.[1]?.replace(/\$/g, "") ?? "B4";
 }
 
-function kwameInDictionary() {
-  return readPersonalDictionary().added.some((word) => sameMisspelling(word, "Kwame"));
+function kenkeyInDictionary() {
+  return readPersonalDictionary().added.some((word) => sameMisspelling(word, "kenkey"));
 }
 
 function oneCellRecieve(book: any) {
@@ -819,23 +819,23 @@ function oneCellRecieve(book: any) {
   return sheetSpellingIssues(book).find((issue) => issueInCell(issue, cell) && sameMisspelling(issue.word, "recieve"));
 }
 
-/** What is still left when one prompt adds Kwame and fixes one recieve. */
+/** What is still left when one prompt adds kenkey and fixes one recieve. */
 function oneCellFollowUp(book: any) {
   const cell = oneCellSpellingCell();
-  if (!kwameInDictionary())
-    return 'Call add_to_dictionary with word "Kwame". Do not change that cell. Do not use set_cells.';
+  if (!kenkeyInDictionary())
+    return 'Call add_to_dictionary with word "kenkey". Do not change that cell. Do not use set_cells.';
   const typo = oneCellRecieve(book);
   if (typo)
     return `Call fix_spelling with word "recieve" and cell "${cell}". Only that word changes, so the cell reads "Please receive the keys". Leave every other cell. Do not use set_cells.`;
-  return `Kwame is in the personal dictionary and is not flagged. ${cell} reads "Please receive the keys". Stop. Do not change any other cell.`;
+  return `kenkey is in the personal dictionary and is not flagged. ${cell} reads "Please receive the keys". Stop. Do not change any other cell.`;
 }
 
 function oneCellSpellingNotes(book: any): string[] {
   if (!oneCellSpellingRequest()) return [];
   const cell = oneCellSpellingCell();
   const notes: string[] = [];
-  if (!kwameInDictionary())
-    notes.push('Kwame is still flagged. Call add_to_dictionary with word "Kwame". Do not change that cell. Do not use set_cells.');
+  if (!kenkeyInDictionary())
+    notes.push('kenkey is still flagged. Call add_to_dictionary with word "kenkey". Do not change that cell. Do not use set_cells.');
   const typo = oneCellRecieve(book);
   if (typo)
     notes.push(
@@ -851,7 +851,7 @@ function refuseOneCellDetour(toolName: string) {
   if (!oneCellSpellingRequest() || ONE_CELL_ALLOWED.has(toolName)) return;
   const cell = oneCellSpellingCell();
   throw new ToolError(
-    `Do not use ${toolName}. Call add_to_dictionary with word "Kwame". Call fix_spelling with word "recieve" and cell "${cell}". Only that word changes, so the cell reads "Please receive the keys". Leave every other cell. Then stop.`,
+    `Do not use ${toolName}. Call add_to_dictionary with word "kenkey". Call fix_spelling with word "recieve" and cell "${cell}". Only that word changes, so the cell reads "Please receive the keys". Leave every other cell. Then stop.`,
   );
 }
 
@@ -2226,7 +2226,7 @@ function rememberIgnoredCell(book: any, cell: string, word: string, fileIdAlso =
       : `${cell || "That cell"} does not contain "${word || "a misspelling"}", so nothing was ignored.`;
   }
   if (!spellingSuggestions(chosen.word).length)
-    return `"${chosen.word}" in ${chosen.label} has no spelling suggestion, so it was not ignored. It looks like a name: add it with add_to_dictionary. The cell still reads "${chosen.text}".`;
+    return `"${chosen.word}" in ${chosen.label} has no spelling suggestion, so it was not ignored. It looks like a real word the dictionary does not know: add it with add_to_dictionary. The cell still reads "${chosen.text}".`;
   const fileIds = [...new Set([spellingFileId(book), fileIdAlso].filter((id) => id))];
   if (!fileIds.length) return "This sheet has no id, so the ignore was not saved. The cell was not changed.";
   const record = {
@@ -2276,12 +2276,12 @@ function describeSheetSpelling(issues: readonly SheetIssue[]) {
       const suggestions = spellingSuggestions(issue.word);
       return suggestions.length
         ? `${issue.label} "${issue.word}" → ${suggestions[0]} (the cell reads "${issue.text}"). Call fix_spelling with word "${issue.word}" and cell "${issue.label}". Only that word changes.`
-        : `${issue.label} "${issue.word}" (the cell reads "${issue.text}"): no suggestions — a name. Call add_to_dictionary with word "${issue.word}". Do not replace it.`;
+        : `${issue.label} "${issue.word}" (the cell reads "${issue.text}"): no suggestions — a real word the dictionary does not know. Call add_to_dictionary with word "${issue.word}". Do not replace it.`;
     })
     .join("\n");
 }
 
-/** One suggestion per flagged word. A name with no suggestion is left for add_to_dictionary. */
+/** One suggestion per flagged word. A real word with no suggestion is left for add_to_dictionary. */
 function correctSheetIssues(book: any, pick: (issues: SheetIssue[]) => SheetIssue[]) {
   const notes: string[] = [];
   const done = new Set<string>();
@@ -4310,7 +4310,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       name: "check_spelling",
       label: "Check spelling",
       description:
-        "Check spelling in the sheet with the on-device dictionary Docs uses. Nothing is sent off this computer. Returns each unknown word and its cell. Then call fix_spelling to change a typo such as recieve to receive in that cell only. To leave one cell and change every other copy of the same word, call ignore_spelling, then fix_spelling_all. A name with no suggestion, such as Danquah, is added with add_to_dictionary and is not replaced. Do not use set_cells for spelling.",
+        "Check spelling in the sheet with the on-device dictionary Docs uses. Nothing is sent off this computer. Returns each unknown word and its cell. Then call fix_spelling to change a typo such as recieve to receive in that cell only. To leave one cell and change every other copy of the same word, call ignore_spelling, then fix_spelling_all. A real word with no suggestion, such as kenkey, is added with add_to_dictionary and is not replaced. Names and acronyms are never flagged. Do not use set_cells for spelling.",
       parameters: Type.Object({}),
       target: () => {
         const first = sheetSpellingIssues(book)[0];
@@ -4331,7 +4331,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       name: "fix_spelling",
       label: "Fix spelling",
       description:
-        'Replace one misspelled word inside one cell and leave every other word and every other cell. Example: {"word":"recieve","cell":"B2"} changes only recieve to receive in B2. To change that word in every cell except ones marked ignored, call fix_spelling_all. A name with no suggestion is not changed: add it with add_to_dictionary. Do not use set_cells. Do not pass the whole sentence as the new cell.',
+        'Replace one misspelled word inside one cell and leave every other word and every other cell. Example: {"word":"recieve","cell":"B2"} changes only recieve to receive in B2. To change that word in every cell except ones marked ignored, call fix_spelling_all. A real word with no suggestion is not changed: add it with add_to_dictionary. Do not use set_cells. Do not pass the whole sentence as the new cell.',
       parameters: Type.Object({
         word: Type.Optional(Type.String({ description: 'The misspelled word only, such as "recieve". Not the whole cell.' })),
         cell: Type.Optional(Type.String({ description: 'The cell to change, such as "B2". Other cells stay as they are.' })),
@@ -4389,7 +4389,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
           return `"${wanted}" is not a misspelling in this sheet, so nothing was changed.\n${describeSheetSpelling(issues)}`;
         }
         if (wanted && chosen.length && !spellingSuggestions(chosen[0].word).length)
-          return `"${chosen[0].word}" in ${chosen[0].label} has no spelling suggestion, so it was not changed. It looks like a name: add it with add_to_dictionary. Do not replace it. The cell still reads "${chosen[0].text}".`;
+          return `"${chosen[0].word}" in ${chosen[0].label} has no spelling suggestion, so it was not changed. It looks like a real word the dictionary does not know: add it with add_to_dictionary. Do not replace it. The cell still reads "${chosen[0].text}".`;
         const notes = correctSheetIssues(book, pick);
         ctx.persist();
         await ctx.settle();
@@ -4420,9 +4420,9 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       name: "add_to_dictionary",
       label: "Add to dictionary",
       description:
-        'Add a name to the personal dictionary Docs uses, so spelling stops flagging it. The store is suiteleaf.personal-dictionary on this computer. Example: {"word":"Danquah"}. The cell text is not changed. Do not add a typo such as recieve; correct typos with fix_spelling.',
+        'Add a real word the dictionary does not know to the personal dictionary Docs uses, so spelling stops flagging it. Names and acronyms are never flagged. The store is suiteleaf.personal-dictionary on this computer. Example: {"word":"kenkey"}. The cell text is not changed. Do not add a typo such as recieve; correct typos with fix_spelling.',
       parameters: Type.Object({
-        word: Type.String({ description: 'The name to stop flagging, such as "Danquah".' }),
+        word: Type.String({ description: 'The word to stop flagging, such as "kenkey".' }),
       }),
       prepare: (args) => ({ word: spellingArg(args.word, args.name, args.text) }),
       target: ({ word }) => {
@@ -4431,7 +4431,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       },
       async execute({ word }) {
         const cleaned = word.trim();
-        if (!cleaned) throw new ToolError("Say which word to add to the dictionary, such as Danquah.");
+        if (!cleaned) throw new ToolError("Say which word to add to the dictionary, such as kenkey.");
         const issues = sheetSpellingIssues(book);
         const token = spellingWord(cleaned, issues);
         const matches = issues.filter((issue) => sameMisspelling(issue.word, token));
@@ -4520,7 +4520,7 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
         const sample = issues.find((issue) => sameMisspelling(issue.word, typo));
         const suggestion = sample ? spellingSuggestions(sample.word)[0] : "";
         if (!suggestion)
-          return `"${typo}" has no spelling suggestion, so it was not changed. It looks like a name: add it with add_to_dictionary. Do not replace it. Stop.`;
+          return `"${typo}" has no spelling suggestion, so it was not changed. It looks like a real word the dictionary does not know: add it with add_to_dictionary. Do not replace it. Stop.`;
         const ignored = [...new Set([spellingFileId(book), fileAlso].filter(Boolean))].flatMap((id) => readIgnoredCells(id));
         const cells = changeAllCells(issues, typo).filter(
           (cell) => !cellIsIgnored(ignored, { sheetId: cell.sheetId, row: cell.row, column: cell.column, word: typo }),
@@ -4780,7 +4780,7 @@ export function sheetSnapshot(ctx: SheetsAgentContext) {
 
       filterSummary(s),
       oneCellSpellingRequest()
-        ? `Spelling: add "Kwame" with add_to_dictionary. Change only "recieve" in ${oneCellSpellingCell()} with fix_spelling, so that cell reads "Please receive the keys". Leave every other cell. Do not use set_cells.`
+        ? `Spelling: add "kenkey" with add_to_dictionary. Change only "recieve" in ${oneCellSpellingCell()} with fix_spelling, so that cell reads "Please receive the keys". Leave every other cell. Do not use set_cells.`
         : "",
       definedNames(ctx.book).length
         ? `Named ranges: ${definedNames(ctx.book)

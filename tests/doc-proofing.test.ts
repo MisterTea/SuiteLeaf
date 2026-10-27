@@ -133,33 +133,14 @@ describe("spelling", () => {
     expect(isMisspelling("colonies", none, [])).toBe(false);
   });
 
-  it("clears a name after it is added and brings a removed or un-ignored word back", () => {
+  it("leaves the essay's names alone, clears a word after it is added, and brings an un-ignored word back", () => {
     const doc = independenceEssayContent();
-    expect(misspelledWords(doc)).toEqual([
-      "Danquah",
-      "Danquah",
-      "Danquah",
-      "seperate",
-      "recieve",
-      "occured",
-      "definately",
-      "teh",
-    ]);
-    const taught = addToPersonalDictionary(none, "Danquah");
-    expect(misspelledWords(doc, taught)).toEqual([
-      "seperate",
-      "recieve",
-      "occured",
-      "definately",
-      "teh",
-    ]);
-    expect(misspelledWords(doc, taught, ["teh"])).toEqual([
-      "seperate",
-      "recieve",
-      "occured",
-      "definately",
-    ]);
+    expect(misspelledWords(doc)).toEqual(["kente", "kente", "seperate", "recieve", "occured", "definately", "teh"]);
+    const taught = addToPersonalDictionary(none, "kente");
+    expect(misspelledWords(doc, taught)).toEqual(["seperate", "recieve", "occured", "definately", "teh"]);
+    expect(misspelledWords(doc, taught, ["teh"])).toEqual(["seperate", "recieve", "occured", "definately"]);
     expect(isMisspelling("teh", taught, [])).toBe(true);
-    expect(isMisspelling("Danquah", { added: [], flagged: [] }, [])).toBe(true);
+    expect(isMisspelling("kente", none, [])).toBe(true);
+    expect(isMisspelling("Danquah", none, [])).toBe(false);
   });
 });

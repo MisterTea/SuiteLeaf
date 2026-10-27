@@ -78,7 +78,7 @@ describe("grammar", () => {
       ["was", "were"],
     ]);
     expect(grammarIssues(essay).some((issue) => /danquah|movment/i.test(issue.text))).toBe(false);
-    expect(misspelledWords(essay)).toEqual(["movment", "Danquah"]);
+    expect(misspelledWords(essay)).toEqual(["movment"]);
   });
 
   it("flags articles, pronouns, and common mix-ups", () => {
