@@ -16,7 +16,8 @@ import Highlight from "@tiptap/extension-highlight";
 import TextAlign from "@tiptap/extension-text-align";
 import { croppableImage } from "./doc-image-crop";
 import { inlineImage } from "./doc-image-inline";
-import { heightForNewShape, isSvgDataUri, svgDataUri, svgFromDataUri } from "./svg-data";
+import { svgDataUri } from "./svg-data";
+import { docPictureChange, docPictureToEdit, type DocPictureEdit } from "./svg-picture-edit";
 import { TableKit } from "@tiptap/extension-table";
 import Superscript from "@tiptap/extension-superscript";
 import Subscript from "@tiptap/extension-subscript";
@@ -354,7 +355,7 @@ export default function Docs({
   const [drawingOpen, setDrawingOpen] = useState(false);
   const [drawingScene, setDrawingScene] = useState<string | null>(null);
   /** The SVG picture open in Drawing: where it was, its source, and its SVG when it opened. */
-  const [svgEdit, setSvgEdit] = useState<{ pos: number; src: string; svg: string } | null>(null);
+  const [svgEdit, setSvgEdit] = useState<DocPictureEdit | null>(null);
   const [sectionOpen, setSectionOpen] = useState(false);
   const [sections, setSections] = useState<DocSection[]>([]);
 
@@ -631,12 +632,9 @@ export default function Docs({
         return true;
       },
       handleDoubleClickOn: (_view, _pos, node, nodePos, _event, direct) => {
-        if (!direct || (node.type.name !== "image" && node.type.name !== "inlineImage")) return false;
-        const src = node.attrs.src;
-        const svg = isSvgDataUri(src) ? svgFromDataUri(src) : null;
-        if (svg === null) return false;
-        setSvgEdit({ pos: nodePos, src, svg });
-        return true;
+        const edit = direct ? docPictureToEdit(node, nodePos) : null;
+        if (edit) setSvgEdit(edit);
+        return !!edit;
       },
       // Internal "#anchor" links scroll to the heading that owns that slug.
       handleDOMEvents: {
@@ -2665,25 +2663,9 @@ export default function Docs({
             onClose={(svg) => {
               setSvgEdit(null);
               if (svg === null || !editor || readOnlyRef.current) return;
-              const doc = editor.state.doc;
-              let pos = doc.nodeAt(svgEdit.pos)?.attrs.src === svgEdit.src ? svgEdit.pos : -1;
-              // Someone else's edit may have moved the picture while it was open.
-              if (pos < 0)
-                doc.descendants((node, at) => {
-                  if (pos < 0 && node.attrs.src === svgEdit.src) pos = at;
-                  return pos < 0;
-                });
-              const node = pos < 0 ? null : doc.nodeAt(pos);
-              if (!node) return onError("The picture was removed while it was open in Drawing.");
-              const width = Number(node.attrs.width);
-              const height = node.attrs.height ? heightForNewShape(width, svgEdit.svg, svg) : null;
-              editor.view.dispatch(
-                editor.state.tr.setNodeMarkup(pos, undefined, {
-                  ...node.attrs,
-                  src: svgDataUri(svg),
-                  ...(height ? { height } : {}),
-                }),
-              );
+              const change = docPictureChange(editor.state.doc, svgEdit, svg);
+              if (!change) return onError("The picture was removed while it was open in Drawing.");
+              editor.view.dispatch(editor.state.tr.setNodeMarkup(change.pos, undefined, change.attrs));
             }}
           />
         </Suspense>

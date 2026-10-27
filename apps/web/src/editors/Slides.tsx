@@ -9,8 +9,7 @@ import {
   useState,
   type ChangeEvent,
 } from "react";
-import { heightForNewShape, isSvgDataUri, svgDataUri, svgFromDataUri } from "./svg-data";
-import { marpMediaSrc } from "./slide-marp-import";
+import { applySlidePictureEdit, slidePictureToEdit, type SlidePictureEdit } from "./svg-picture-edit";
 
 const EmbeddedDrawing = lazy(() => import("./drawing-embed"));
 import {
@@ -200,11 +199,7 @@ export default function Slides({
   const [selectedElementId, setSelectedElementId] = useState<string | null>(
     null,
   );
-  /**
-   * The SVG picture open in Drawing and what it was when it opened. In a MARP
-   * deck, `asset` is the file the markdown names, which Drawing edits instead.
-   */
-  const [svgEdit, setSvgEdit] = useState<{ id: string; svg: string; asset: string | null } | null>(null);
+  const [svgEdit, setSvgEdit] = useState<SlidePictureEdit | null>(null);
   const [tableCell, setTableCell] = useState<{
     id: string;
     row: number;
@@ -2340,24 +2335,18 @@ export default function Slides({
           setSelectedElementId(el.id);
         };
       }
-      const shown = el.type === "image" ? marpMediaSrc(el.src, deck.marpAssets) : undefined;
-      if (isSvgDataUri(shown)) {
-        const asset = !deck.marp
-          ? null
-          : el.src && el.src !== shown
-            ? el.src
-            : (Object.entries(deck.marpAssets ?? {}).find(([, uri]) => uri === shown)?.[0] ?? null);
-        props.title = `Double-click to edit ${asset ?? "this picture"} in Drawing`;
+      const svgPicture = slidePictureToEdit(deck, activeRef.current, el);
+      if (svgPicture) {
+        if ("edit" in svgPicture)
+          props.title = `Double-click to edit ${svgPicture.edit.asset ?? "this picture"} in Drawing`;
         props.onDoubleClick = (e) => {
           e.stopPropagation();
-          const svg = svgFromDataUri(shown);
-          if (svg === null) onError("This picture's SVG could not be read.");
-          else setSvgEdit({ id: el.id, svg, asset });
-        };
-      } else if (el.type === "image" && deck.marp && /\.svg$/i.test(el.src ?? "")) {
-        props.onDoubleClick = (e) => {
-          e.stopPropagation();
-          onError(`${el.src} did not come in with the deck. Import the deck's folder to bring it in, then try again.`);
+          if ("edit" in svgPicture) setSvgEdit(svgPicture.edit);
+          else if ("missing" in svgPicture)
+            onError(
+              `${svgPicture.missing} did not come in with the deck. Import the deck's folder to bring it in, then try again.`,
+            );
+          else onError("This picture's SVG could not be read.");
         };
       }
       if (el.type === "audio" || el.type === "video")
@@ -3688,26 +3677,10 @@ export default function Slides({
             readOnly={readOnly}
             onClose={(svg) => {
               setSvgEdit(null);
-              if (svg === null) return;
-              const { asset } = svgEdit;
-              if (asset) {
-                // The markdown keeps naming the same file; every picture of it changes.
-                const current = deckRef.current;
-                if (!current.marpAssets?.[asset])
-                  return onError(`${asset} was removed while it was open in Drawing.`);
-                commitRef.current({
-                  ...current,
-                  marpAssets: { ...current.marpAssets, [asset]: svgDataUri(svg) },
-                });
-                return;
-              }
-              const picture = deckRef.current.slides[activeRef.current]?.elements.find(
-                (el) => el.id === svgEdit.id,
-              );
-              if (!picture) return onError("The picture was removed while it was open in Drawing.");
-              // A MARP deck lays its pictures out from the markdown.
-              const height = deckRef.current.marp ? null : heightForNewShape(picture.width, svgEdit.svg, svg);
-              updateElement(svgEdit.id, { src: svgDataUri(svg), ...(height ? { height } : {}) });
+              if (svg === null || readOnlyRef.current) return;
+              const applied = applySlidePictureEdit(deckRef.current, svgEdit, svg);
+              if ("error" in applied) onError(applied.error);
+              else commitRef.current(applied.deck);
             }}
           />
         </Suspense>
