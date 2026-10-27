@@ -35,7 +35,7 @@ export const tool = <P extends TSchema>(def: SuiteTool<P>): SuiteTool => def as 
 /** Thrown by tools for mistakes the model can fix (bad arguments, wrong place). */
 export class ToolError extends Error {}
 
-export type AppKind = "home" | "doc" | "sheet" | "slide" | "form";
+export type AppKind = "home" | "doc" | "sheet" | "slide" | "form" | "drawing";
 
 /** One screen of the app that offers tools: home, or an open editor. */
 export interface AgentHost {

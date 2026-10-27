@@ -6,13 +6,14 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
-import { MessageSquare, X } from "lucide-react";
+import { MessageSquare } from "lucide-react";
 import type {
   Presentation,
   SlideCommentMessage,
   SlideCommentThread,
 } from "@suiteleaf/core";
 import { isMacPlatform } from "../commands";
+import { SidePane } from "../ui";
 import {
   currentAuthor,
   localName,
@@ -91,6 +92,7 @@ export function useSlideComments({
 }): {
   openComposer: () => void;
   openPanel: (tab?: "open" | "resolved") => void;
+  togglePanel: () => void;
   openResolved: () => void;
   marks: ReactNode;
   dock: ReactNode;
@@ -165,6 +167,12 @@ export function useSlideComments({
     setMode({ type: "list", tab });
   }, []);
   const openResolved = useCallback(() => openPanel("resolved"), [openPanel]);
+  const togglePanel = useCallback(() => {
+    setNotice("");
+    setMode((current) =>
+      current.type === "list" ? { type: "closed" } : { type: "list", tab: "open" },
+    );
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -343,18 +351,18 @@ export function useSlideComments({
                   ),
             )}`;
     dock = (
-      <aside className="slide-comment-dock" aria-label="Slide comments">
-        <header>
-          <div>
-            <h2>{title}</h2>
-            {mode.type === "compose" || mode.type === "thread" ? (
-              <p>Beside the slide, not in the speaker notes.</p>
-            ) : null}
-          </div>
-          <button type="button" aria-label="Close comments" onClick={close}>
-            <X size={16} />
-          </button>
-        </header>
+      <SidePane
+        title={title}
+        subtitle={
+          mode.type === "compose" || mode.type === "thread"
+            ? "Beside the slide, not in the speaker notes."
+            : undefined
+        }
+        label="Slide comments"
+        closeLabel="Close comments"
+        className="slide-comment-dock"
+        onClose={close}
+      >
         {mode.type === "list" ? (
           <div className="slide-comment-tabs" role="tablist">
             {(["open", "resolved"] as const).map((tab) => (
@@ -477,13 +485,14 @@ export function useSlideComments({
             />
           ) : null}
         </div>
-      </aside>
+      </SidePane>
     );
   }
 
   return {
     openComposer,
     openPanel,
+    togglePanel,
     openResolved,
     marks,
     dock,

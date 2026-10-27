@@ -25,7 +25,41 @@ export {
   type SlideDiffFrame,
   type SlideTextRun,
 } from "./slide-diff";
-export type Kind = "doc" | "sheet" | "slide" | "form";
+export type Kind = "doc" | "sheet" | "slide" | "form" | "drawing";
+/** The text a drawing is kept as: an SVG picture, a Mermaid diagram, or a Graphviz graph. */
+export const DRAWING_FORMATS = ["svg", "mermaid", "graphviz"] as const;
+export type DrawingFormat = (typeof DRAWING_FORMATS)[number];
+export const DRAWING_SOURCE_CHARS = 5_000_000;
+export const drawingContentSchema = z.object({
+  format: z.enum(DRAWING_FORMATS),
+  source: z.string().max(DRAWING_SOURCE_CHARS),
+});
+export type DrawingContent = z.infer<typeof drawingContentSchema>;
+/** What a new drawing of each kind starts with. */
+export const DRAWING_STARTERS: Record<DrawingFormat, string> = {
+  svg: `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400">
+  <rect x="80" y="80" width="200" height="120" rx="12" fill="#e8f0fe" stroke="#1a73e8" stroke-width="2"/>
+  <ellipse cx="460" cy="260" rx="100" ry="60" fill="#fef7e0" stroke="#f9ab00" stroke-width="2"/>
+  <text x="180" y="146" font-family="sans-serif" font-size="20" text-anchor="middle" fill="#202124">Hello</text>
+</svg>
+`,
+  mermaid: `flowchart TD
+    A[Start] --> B{Is it working?}
+    B -->|Yes| C[Ship it]
+    B -->|No| D[Fix it]
+    D --> B
+`,
+  graphviz: `digraph G {
+    rankdir=LR;
+    node [shape=box, style=rounded];
+    start [label="Start"];
+    build [label="Build"];
+    ship [label="Ship"];
+    start -> build;
+    build -> ship;
+}
+`,
+};
 export type JsonNode = {
   type: string;
   text?: string;
@@ -165,6 +199,11 @@ export const slideElementSchema = z.object({
   lineHeight: z.number().positive().max(4).optional(),
   /** Left inset, in slide units, so a heading can sit inside its bar. */
   padLeft: z.number().nonnegative().max(400).optional(),
+  /**
+   * Width of a list item's marker, in slide units. Each line starts with its
+   * marker, and the lines a long item wraps onto start this far in, under its words.
+   */
+  hang: z.number().nonnegative().max(200).optional(),
   /** Corner radius for a rounded rectangle, in slide units. */
   radius: z.number().nonnegative().max(200).optional(),
   /** Keep the line breaks of a code block. */
@@ -647,12 +686,19 @@ export const fileSchema = z.discriminatedUnion("kind", [
         });
       }),
   }),
+  z.object({
+    ...meta,
+    ...historyFields,
+    kind: z.literal("drawing"),
+    content: drawingContentSchema,
+  }),
 ]);
 export type SuiteFile = z.infer<typeof fileSchema>;
 export type DocFile = Extract<SuiteFile, { kind: "doc" }>;
 export type SheetFile = Extract<SuiteFile, { kind: "sheet" }>;
 export type SlideFile = Extract<SuiteFile, { kind: "slide" }>;
 export type FormFile = Extract<SuiteFile, { kind: "form" }>;
+export type DrawingFile = Extract<SuiteFile, { kind: "drawing" }>;
 export {
   VERSION_PAUSE_MS,
   VERSION_PAUSE_KEY,
@@ -735,10 +781,10 @@ function validateTree(n: JsonNode, depth = 0) {
   if (depth > 100) throw new Error("Document is nested too deeply.");
   if (
     (n.type === "image" || n.type === "inlineImage") &&
-    !/^data:image\/(png|jpeg|gif|webp);base64,/i.test(String(n.attrs?.src))
+    !/^data:image\/(png|jpeg|gif|webp|svg\+xml);base64,/i.test(String(n.attrs?.src))
   )
     throw new Error(
-      "Native images must be embedded PNG, JPEG, GIF, or WebP data.",
+      "Native images must be embedded PNG, JPEG, GIF, WebP, or SVG data.",
     );
   for (const m of n.marks ?? [])
     if (m.type === "link" && !safeLink(String(m.attrs?.href)))
@@ -751,12 +797,14 @@ const nativeExtensions = {
   sheet: "slsheet",
   slide: "slslides",
   form: "slform",
+  drawing: "sldraw",
 } as const satisfies Record<Kind, string>;
 const nativeMimes = {
   doc: "application/vnd.suiteleaf.doc+json",
   sheet: "application/vnd.suiteleaf.sheet+json",
   slide: "application/vnd.suiteleaf.slides+json",
   form: "application/vnd.suiteleaf.form+json",
+  drawing: "application/vnd.suiteleaf.drawing+json",
 } as const satisfies Record<Kind, string>;
 export const NATIVE_EXTENSIONS = [
   ...Object.values(nativeExtensions),
@@ -889,7 +937,9 @@ export function createFile(
       ? "Untitled spreadsheet"
       : kind === "form"
         ? "Untitled form"
-        : "Untitled presentation",
+        : kind === "drawing"
+          ? "Untitled drawing"
+          : "Untitled presentation",
 ): SuiteFile {
   const id = crypto.randomUUID(),
     now = new Date().toISOString();
@@ -958,6 +1008,12 @@ export function createFile(
   }
   if (kind === "form")
     return { ...base, kind, content: { questions: [], responses: [] } };
+  if (kind === "drawing")
+    return {
+      ...base,
+      kind,
+      content: { format: "svg", source: DRAWING_STARTERS.svg },
+    };
   const sheetId = crypto.randomUUID();
   return {
     ...base,

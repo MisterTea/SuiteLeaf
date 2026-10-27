@@ -202,3 +202,36 @@ test("local corpus: large workbook remains editable in the browser", async ({
   });
   expect(errors).toEqual([]);
 });
+test("the import notes are readable in dark mode and can be closed", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto("/");
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
+    name: "Imported budget.xlsx",
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    buffer: Buffer.from(await excelFixture()),
+  });
+  const notes = page.getByRole("region", { name: "Import notes" });
+  await expect(notes).toContainText("XLSX");
+  await notes.locator("summary").click();
+  const contrast = await notes.evaluate((root) => {
+    const luminance = (color: string) => {
+      const [r, g, b] = color
+        .match(/\d+(\.\d+)?/g)!
+        .slice(0, 3)
+        .map((n) => {
+          const c = Number(n) / 255;
+          return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+        });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const text = root.querySelector("details li, details p")!;
+    const [light, dark] = [luminance(getComputedStyle(text).color), luminance(getComputedStyle(root).backgroundColor)].sort(
+      (a, b) => b - a,
+    );
+    return { ratio: (light + 0.05) / (dark + 0.05), background: luminance(getComputedStyle(root).backgroundColor) };
+  });
+  expect(contrast.background).toBeLessThan(0.1);
+  expect(contrast.ratio).toBeGreaterThan(4.5);
+  await notes.getByRole("button", { name: "Close import notes" }).click();
+  await expect(notes).toHaveCount(0);
+});

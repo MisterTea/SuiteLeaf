@@ -23588,6 +23588,14 @@ SOFTWARE.
 
 ---
 
+## @viz-js/viz 3.31.0
+
+License: MIT
+
+Viz.js is a WebAssembly build of Graphviz (https://graphviz.org), which is distributed under the Eclipse Public License 1.0. The Graphviz source is available at https://gitlab.com/graphviz/graphviz.
+
+---
+
 ## @wendellhu/redi 1.1.3
 
 License: MIT

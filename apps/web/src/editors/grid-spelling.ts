@@ -159,23 +159,63 @@ export function suggestionsFor(word: string) {
   return spellingSuggestions(word);
 }
 
-/** Where a word sits inside a cell, in pixels from the cell's left edge. */
-export function wordBand(
+/** One line of a cell's text as the grid lays it out. */
+export type TextLine = { text: string; width: number; height: number; baseline: number };
+
+export type CellLayout = {
+  width: number;
+  height: number;
+  padLeft: number;
+  padRight: number;
+  padTop: number;
+  padBottom: number;
+  align: "left" | "center" | "right";
+  vAlign: "top" | "middle" | "bottom";
+};
+
+/**
+ * Where a word sits inside a cell, on its own line as the grid draws it: `x`
+ * from the cell's left edge and `y` down to the line's baseline. Null when the
+ * row is too short to show that line whole.
+ */
+export function wordOnLine(
   text: string,
   from: number,
   to: number,
+  lines: readonly TextLine[],
   measure: (value: string) => number,
-  align: "left" | "center" | "right",
-  contentWidth: number,
-  padLeft: number,
-) {
-  const prefix = measure(text.slice(0, from));
-  const width = Math.max(8, measure(text.slice(from, to)));
-  const full = measure(text);
-  let origin = padLeft;
-  if (align === "center") origin = padLeft + Math.max(0, (contentWidth - full) / 2);
-  if (align === "right") origin = padLeft + Math.max(0, contentWidth - full);
-  return { x: origin + prefix, width };
+  cell: CellLayout,
+): { x: number; y: number; width: number } | null {
+  const contentWidth = Math.max(0, cell.width - cell.padLeft - cell.padRight);
+  const contentHeight = Math.max(0, cell.height - cell.padTop - cell.padBottom);
+  const total = lines.reduce((sum, line) => sum + line.height, 0);
+  let lineTop =
+    cell.vAlign === "top" ? 0 : cell.vAlign === "middle" ? (contentHeight - total) / 2 : contentHeight - total;
+  let cursor = 0;
+  for (const line of lines) {
+    const start = line.text ? text.indexOf(line.text, cursor) : cursor;
+    const at = start < 0 ? cursor : start;
+    const end = at + line.text.length;
+    cursor = end;
+    if (from >= at && from < end) {
+      const top = cell.padTop + lineTop;
+      const baseline = top + line.baseline;
+      if (top < -2 || baseline > cell.height) return null;
+      const lineX =
+        cell.align === "center"
+          ? (contentWidth - line.width) / 2
+          : cell.align === "right"
+            ? contentWidth - line.width
+            : 0;
+      return {
+        x: cell.padLeft + lineX + measure(line.text.slice(0, from - at)),
+        y: baseline,
+        width: Math.max(8, measure(text.slice(from, Math.min(to, end)))),
+      };
+    }
+    lineTop += line.height;
+  }
+  return null;
 }
 
 export type Box = { left: number; top: number; width: number; height: number };

@@ -116,3 +116,26 @@ test("slide comments stay on the object and out of the speaker notes", async ({
   expect(chart?.comments?.[0].elementId).toBe("chart");
   expect(JSON.stringify(chart?.notes)).not.toContain("September numbers");
 });
+
+test("the comment pane opens beside the toolbar like version history, and its × closes it", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await openDeck(page);
+  const button = page.locator(".header-right-tools").getByRole("button", { name: "Comments", exact: true });
+  await button.click();
+  const pane = page.getByRole("complementary", { name: "Slide comments" });
+  await expect(pane).toBeVisible();
+  const toolbar = (await page.getByRole("toolbar", { name: "Slides toolbar" }).boundingBox())!;
+  const box = (await pane.boundingBox())!;
+  expect(box.x + box.width).toBeCloseTo(1280, 0);
+  expect(box.y).toBeLessThanOrEqual(toolbar.y);
+  expect(toolbar.x + toolbar.width).toBeLessThanOrEqual(box.x + 1);
+  await pane.getByRole("button", { name: "Close comments" }).click();
+  await expect(pane).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Version history", exact: true }).click();
+  const history = (await page.getByRole("complementary", { name: "Version history" }).boundingBox())!;
+  expect(Math.abs(history.y - box.y)).toBeLessThan(1);
+  expect(Math.abs(history.height - box.height)).toBeLessThan(1);
+});

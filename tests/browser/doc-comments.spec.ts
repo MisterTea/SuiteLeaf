@@ -119,3 +119,20 @@ test("document comments post from the keyboard and stay linked to the text", asy
   await expect(page.locator(".doc-comment-panel")).toContainText("Original text deleted");
   await expect(page.locator(".doc-comment-panel")).toContainText("Jordan");
 });
+
+test("the document's comment list opens beside the toolbar, and its × closes it", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "New document" }).click();
+  await page.getByRole("textbox", { name: "Document content" }).click();
+  await page.getByRole("button", { name: "Comments", exact: true }).click();
+  const pane = page.getByRole("complementary", { name: "All comments" });
+  await expect(pane).toBeVisible();
+  const toolbar = (await page.getByRole("toolbar", { name: "Document formatting" }).boundingBox())!;
+  const box = (await pane.boundingBox())!;
+  expect(box.x + box.width).toBeCloseTo(1280, 0);
+  expect(box.y).toBeLessThanOrEqual(toolbar.y);
+  expect(toolbar.x + toolbar.width).toBeLessThanOrEqual(box.x + 1);
+  await pane.getByRole("button", { name: "Close comments" }).click();
+  await expect(pane).toHaveCount(0);
+});

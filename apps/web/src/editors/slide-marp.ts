@@ -225,6 +225,9 @@ function canMergeText(a: SlideElement, b: SlideElement) {
   if (a.preformatted || b.preformatted || a.math || b.math || a.fill || b.fill) return false;
   if (isMarpTitle(a) || isMarpTitle(b)) return false;
   if (!sameTextStyle(a, b)) return false;
+  // One box has one hanging indent, so list items join only at the same depth and marker width.
+  if ((a.hang ?? 0) !== (b.hang ?? 0)) return false;
+  if (a.hang && Math.abs(a.x - b.x) > 1) return false;
   const overlap =
     Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
   if (overlap < Math.min(a.width, b.width) * 0.45) return false;

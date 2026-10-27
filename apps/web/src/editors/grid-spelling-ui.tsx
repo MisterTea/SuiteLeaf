@@ -1,4 +1,5 @@
 import { IUndoRedoService } from "@univerjs/core";
+import { DEFAULT_PADDING_DATA, DocSimpleSkeleton, FontCache } from "@univerjs/engine-render";
 import { X } from "lucide-react";
 import {
   Fragment,
@@ -35,11 +36,13 @@ import {
   withIgnored,
   withIgnoredCell,
   withoutIgnoredCells,
-  wordBand,
+  wordOnLine,
   writeIgnoredCells,
   writeIgnoredWords,
   type Box,
+  type CellLayout,
   type ChangeAllCell,
+  type TextLine,
   type SheetIssue,
   type SlideIssue,
   type SpellHit,
@@ -259,35 +262,68 @@ function viewportRect(sheet: any, row: number, column: number): Rect | null {
   return { ...cell, left: cell.left - scrollX, top: cell.top - scrollY };
 }
 
-const measureCanvas = typeof document === "undefined" ? null : document.createElement("canvas");
+type CellStyle = {
+  fs?: number;
+  ff?: string;
+  it?: number;
+  bl?: number;
+  ht?: number;
+  vt?: number;
+  tb?: number;
+  pd?: { t?: number; b?: number; l?: number; r?: number };
+};
 
-function measureWith(font: string) {
-  const context = measureCanvas?.getContext("2d");
-  if (!context) return () => 0;
-  context.font = font;
-  return (value: string) => context.measureText(value).width;
-}
+/** Univer's alignment and wrap numbers: 2 is center and middle, 3 is right, bottom, and wrap. */
+const WRAP = 3;
+const TOP = 1;
+const MIDDLE = 2;
 
-function cellFont(sheet: any, row: number, column: number) {
-  let style: { fs?: number; ff?: string; it?: number; bl?: number; ht?: number; pd?: { l?: number; r?: number } } = {};
+/**
+ * The cell's font, padding, alignment, and lines, read the way the grid paints
+ * them. The painted font cache wins over the stored style when it has the cell.
+ */
+function cellLayout(sheet: any, row: number, column: number, text: string, rect: Rect) {
+  let style: CellStyle = {};
   try {
     style = sheet.getRange(row, column, 1, 1).getCellStyleData?.() ?? {};
   } catch {
     style = {};
   }
+  let painted: { fontString?: string; wrapStrategy?: number; verticalAlign?: number; horizontalAlign?: number; resolvedHorizontalAlign?: number } | null = null;
+  try {
+    painted = sheet.getSkeleton?.()?.getFont?.(row, column) ?? null;
+  } catch {
+    painted = null;
+  }
   const size = typeof style.fs === "number" && style.fs > 0 ? style.fs : 11;
   const family = typeof style.ff === "string" && style.ff ? style.ff : "Arial";
   const italic = style.it === 1 ? "italic" : "normal";
   const weight = style.bl === 1 ? "bold" : "normal";
-  const align = style.ht === 2 ? "center" : style.ht === 3 ? "right" : "left";
-  const padLeft = typeof style.pd?.l === "number" ? style.pd.l : 2;
-  const padRight = typeof style.pd?.r === "number" ? style.pd.r : 2;
-  return {
-    font: `${italic} ${weight} ${size}pt ${family}`,
-    align,
-    padLeft,
-    padRight,
-  } as const;
+  const font = painted?.fontString || `${italic} ${weight} ${size}pt ${family}`;
+  const ht = painted?.resolvedHorizontalAlign ?? painted?.horizontalAlign ?? style.ht;
+  const vt = painted?.verticalAlign ?? style.vt;
+  const wrap = (painted?.wrapStrategy ?? style.tb) === WRAP;
+  const cell: CellLayout = {
+    width: rect.width,
+    height: rect.height,
+    padLeft: style.pd?.l ?? DEFAULT_PADDING_DATA.l,
+    padRight: style.pd?.r ?? DEFAULT_PADDING_DATA.r,
+    padTop: style.pd?.t ?? DEFAULT_PADDING_DATA.t,
+    padBottom: style.pd?.b ?? DEFAULT_PADDING_DATA.b,
+    align: ht === 2 ? "center" : ht === 3 ? "right" : "left",
+    vAlign: vt === TOP ? "top" : vt === MIDDLE ? "middle" : "bottom",
+  };
+  const contentWidth = Math.max(0, cell.width - cell.padLeft - cell.padRight);
+  const contentHeight = Math.max(0, cell.height - cell.padTop - cell.padBottom);
+  const lines: TextLine[] = new DocSimpleSkeleton(
+    text,
+    font,
+    wrap,
+    contentWidth,
+    cell.vAlign === "top" ? contentHeight : Infinity,
+  ).calculate();
+  const measure = (value: string) => FontCache.getMeasureText(value, font).width;
+  return { cell, lines, measure };
 }
 
 type Mark = {
@@ -325,18 +361,11 @@ function placeMarks(workbook: any, host: HTMLElement, issues: SheetIssue[]): Mar
     if (issue.sheetId !== sheet.getSheetId()) continue;
     const rect = viewportRect(sheet, issue.row, issue.column);
     if (!rect) continue;
-    const font = cellFont(sheet, issue.row, issue.column);
-    const band = wordBand(
-      issue.text,
-      issue.from,
-      issue.to,
-      measureWith(font.font),
-      font.align,
-      Math.max(0, rect.width - font.padLeft - font.padRight),
-      font.padLeft,
-    );
+    const layout = cellLayout(sheet, issue.row, issue.column, issue.text, rect);
+    const band = wordOnLine(issue.text, issue.from, issue.to, layout.lines, layout.measure, layout.cell);
+    if (!band) continue;
     const left = box.left + rect.left + band.x;
-    const top = box.top + rect.top + rect.height - 5;
+    const top = box.top + rect.top + band.y;
     if (left + band.width < box.left + 40 || left > box.right) continue;
     if (top < box.top + 16 || top > box.bottom) continue;
     const cellLeft = Math.max(box.left, box.left + rect.left);
@@ -795,8 +824,11 @@ export function SheetSpelling({
     host?.addEventListener("wheel", update, { passive: true });
     host?.addEventListener("scroll", update, true);
     window.addEventListener("resize", update);
+    // Switching sheets, zooming, and resizing rows or columns all move the words.
+    const commands = bookRef.current?.onCommandExecuted?.(update);
     return () => {
       cancelAnimationFrame(frame);
+      commands?.dispose?.();
       host?.removeEventListener("wheel", update);
       host?.removeEventListener("scroll", update, true);
       window.removeEventListener("resize", update);

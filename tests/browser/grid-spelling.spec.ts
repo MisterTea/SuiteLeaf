@@ -159,3 +159,71 @@ test("slide spelling replaces one word and keeps the rest of the box", async ({ 
   await context.setOffline(false);
   expect(leaks).toEqual([]);
 });
+
+const xmlHeader = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+
+/** Two sheets. The first wraps long notes in column B; row 2 is tall, row 3 is not. */
+async function wrappedWorkbook() {
+  const { default: JSZip } = await import("jszip");
+  const z = new JSZip();
+  const sheetPart = (n: number) =>
+    `<Override PartName="/xl/worksheets/sheet${n}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`;
+  z.file(
+    "[Content_Types].xml",
+    `${xmlHeader}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${sheetPart(1)}${sheetPart(2)}<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`,
+  );
+  z.file(
+    "_rels/.rels",
+    `${xmlHeader}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+  );
+  z.file(
+    "xl/workbook.xml",
+    `${xmlHeader}<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Units" sheetId="1" r:id="s1"/><sheet name="Goods" sheetId="2" r:id="s2"/></sheets></workbook>`,
+  );
+  z.file(
+    "xl/_rels/workbook.xml.rels",
+    `${xmlHeader}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="s1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="s2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="styles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
+  );
+  z.file(
+    "xl/styles.xml",
+    `${xmlHeader}<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="1"><font><name val="Arial"/><sz val="10"/></font></fonts><fills count="1"><fill><patternFill patternType="none"/></fill></fills><borders count="1"><border/></borders><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/><xf numFmtId="0" fontId="0" fillId="0" borderId="0" applyAlignment="1"><alignment wrapText="1"/></xf></cellXfs></styleSheet>`,
+  );
+  const cell = (ref: string, text: string, style = 0) =>
+    `<c r="${ref}" s="${style}" t="inlineStr"><is><t>${text}</t></is></c>`;
+  z.file(
+    "xl/worksheets/sheet1.xml",
+    `${xmlHeader}<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cols><col min="2" max="2" width="18" customWidth="1"/></cols><sheetData><row r="1">${cell("A1", "Name")}${cell("B1", "Description")}</row><row r="2" ht="90" customHeight="1">${cell("A2", "Food")}${cell("B2", "Eatz too much and quikly becomes very tired", 1)}</row><row r="3">${cell("A3", "Robot")}${cell("B3", "Robots that can only operate in manuall mode", 1)}</row></sheetData></worksheet>`,
+  );
+  z.file(
+    "xl/worksheets/sheet2.xml",
+    `${xmlHeader}<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1">${cell("A1", "Name")}</row><row r="2">${cell("A2", "Fod")}</row></sheetData></worksheet>`,
+  );
+  return z.generateAsync({ type: "uint8array" });
+}
+
+test("sheet underlines sit under wrapped words and follow the sheet on screen", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
+    name: "Game data.xlsx",
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    buffer: Buffer.from(await wrappedWorkbook()),
+  });
+  await page.locator('[data-sheet-ready="true"]').waitFor({ timeout: 40000 });
+  const marks = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>(".sheet-spell-mark")].map((mark) => {
+        const box = mark.getBoundingClientRect();
+        return { word: mark.dataset.spellWord, cell: mark.dataset.spellCell, left: box.left, top: box.top };
+      }),
+    );
+  await expect.poll(async () => (await marks()).map((mark) => mark.word).sort()).toEqual(["Eatz", "quikly"]);
+  const [first, second] = ["Eatz", "quikly"].map((word) => marks().then((all) => all.find((mark) => mark.word === word)!));
+  const [eatz, quikly] = [await first, await second];
+  expect(Math.abs(quikly.left - eatz.left)).toBeLessThan(1.5);
+  expect(quikly.top - eatz.top).toBeGreaterThan(10);
+  expect(quikly.top - eatz.top).toBeLessThan(22);
+
+  await page.getByText("Goods", { exact: true }).click();
+  await expect.poll(async () => (await marks()).map((mark) => mark.cell)).toEqual(["Goods!A2"]);
+});

@@ -10,7 +10,7 @@ import {
   type IpcMainInvokeEvent,
 } from "electron";
 import { join, resolve, extname, sep, basename, dirname, relative } from "node:path";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { mkdirSync } from "node:fs";
 import { convertOffice } from "./office-converter";
 import { runImportCommand } from "./import-cli";
@@ -32,6 +32,7 @@ import { FileStore, atomicWrite, driveLink } from "./store";
 import { localDataDirectory, migrateLocalData } from "./local-data";
 import { DocumentsDirectory } from "./documents-directory";
 import { buildMarpFile, dataUriFor, marpAssetPaths } from "../../web/src/editors/slide-marp-import";
+import { DRAWING_IMPORT_EXTENSIONS, importDrawing } from "../../web/src/editors/drawing-format";
 import { registerAi } from "./ai";
 // Test runs need their own Electron profile and single-instance lock as well as registry.
 if (process.env.SUITELEAF_TEST_DATA) {
@@ -145,6 +146,7 @@ async function openFile() {
           ...NATIVE_EXTENSIONS,
           "md",
           "markdown",
+          ...DRAWING_IMPORT_EXTENSIONS,
           "docx",
           "docm",
           "dotx",
@@ -194,6 +196,11 @@ async function openFile() {
     }
     const title = basename(path, ext).slice(0, 200) || "Imported file";
     return store.save({ file: buildMarpFile(title, text, assets) });
+  }
+  if (DRAWING_IMPORT_EXTENSIONS.includes(ext.slice(1))) {
+    if ((await stat(path)).size > 50 * 1024 * 1024)
+      throw new Error("Choose a file smaller than 50 MB.");
+    return store.save({ file: importDrawing(basename(path), await readFile(path, "utf8"))! });
   }
   const officeExtensions = new Set([
     ".docx",
@@ -347,6 +354,14 @@ function buildMenu() {
           {
             label: "New MARP presentation",
             click: () => send("new-marp"),
+          },
+          {
+            label: "New drawing",
+            submenu: [
+              { label: "SVG", click: () => send("new-drawing-svg") },
+              { label: "Mermaid", click: () => send("new-drawing-mermaid") },
+              { label: "Graphviz", click: () => send("new-drawing-graphviz") },
+            ],
           },
           {
             label: "Open…",

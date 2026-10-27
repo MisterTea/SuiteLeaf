@@ -37,6 +37,10 @@ import {
   dataUriFor,
   marpAssetPaths,
 } from "../../web/src/editors/slide-marp-import";
+import {
+  DRAWING_IMPORT_EXTENSIONS,
+  importDrawing,
+} from "../../web/src/editors/drawing-format";
 
 export type OfficeConverter = (
   bytes: Uint8Array,
@@ -72,6 +76,8 @@ async function convert(
   if (office) return convertOffice(bytes, extension, name);
   const text = bytes.toString("utf8");
   if (native) return parseNamedFile(name, text);
+  const drawing = importDrawing(name, text);
+  if (drawing) return drawing;
   const title = basename(path, extname(path)).slice(0, 200) || "Imported file";
   if (extension === "csv" || extension === "tsv") {
     const parsed = parseDelimited(text, extension === "tsv" ? "\t" : "");
@@ -168,7 +174,8 @@ export async function importDirectory(
         isOfficeExtension(extension) ||
         ["txt", "csv", "tsv", "html", "htm", "md", "markdown"].includes(
           extension,
-        );
+        ) ||
+        DRAWING_IMPORT_EXTENSIONS.includes(extension);
       if (!supported || (root === output && isNativeName(entry.name))) {
         result.skipped++;
         options.onFile?.({ source: path, status: "skipped" });

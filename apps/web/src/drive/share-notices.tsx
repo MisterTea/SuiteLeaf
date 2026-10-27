@@ -6,7 +6,7 @@ import { accessLabel } from "./roles";
 export function sharedFileTitle(name: string): string {
   const slash = Math.max(name.lastIndexOf("/"), name.lastIndexOf("\\"));
   const base = slash >= 0 ? name.slice(slash + 1) : name;
-  const title = base.replace(/\.(sldoc|slsheet|slslides)$/i, "");
+  const title = base.replace(/\.(sldoc|slsheet|slslides|sldraw)$/i, "");
   return title || base;
 }
 

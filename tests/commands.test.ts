@@ -181,3 +181,13 @@ describe("shortcut labels", () => {
     expect(isUnimplemented(() => "kept")).toBe(false);
   });
 });
+
+describe("menu search placement", () => {
+  it("opens just below the Menus button, kept inside the window", async () => {
+    const { menuSearchPlace } = await import("../apps/web/src/command-palette");
+    expect(menuSearchPlace({ left: 20, bottom: 80 }, { width: 1280 }, 460)).toEqual({ top: 84, left: 20 });
+    expect(menuSearchPlace({ left: 1000, bottom: 80 }, { width: 1280 }, 460)).toEqual({ top: 84, left: 804 });
+    expect(menuSearchPlace({ left: 4, bottom: 80 }, { width: 390 }, 358)).toEqual({ top: 84, left: 16 });
+    expect(menuSearchPlace(null, { width: 1280 }, 460)).toBeNull();
+  });
+});

@@ -1,5 +1,7 @@
 import {
   Fragment,
+  lazy,
+  Suspense,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -14,6 +16,7 @@ import Highlight from "@tiptap/extension-highlight";
 import TextAlign from "@tiptap/extension-text-align";
 import { croppableImage } from "./doc-image-crop";
 import { inlineImage } from "./doc-image-inline";
+import { heightForNewShape, isSvgDataUri, svgDataUri, svgFromDataUri } from "./svg-data";
 import { TableKit } from "@tiptap/extension-table";
 import Superscript from "@tiptap/extension-superscript";
 import Subscript from "@tiptap/extension-subscript";
@@ -246,6 +249,8 @@ export function importHTML(html: string): JsonNode {
   return generateJSON(container.innerHTML, extensions) as JsonNode;
 }
 
+const EmbeddedDrawing = lazy(() => import("./drawing-embed"));
+
 export default function Docs({
   file,
   onChange,
@@ -307,7 +312,7 @@ export default function Docs({
   } | null>(null);
   const openLink = useRef(() => {});
   const insertComment = useRef(() => {});
-  const openComments = useRef(() => {});
+  const toggleComments = useRef(() => {});
   const [commentGutter, setCommentGutter] = useState(false);
   const [citationsOpen, setCitationsOpen] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(() =>
@@ -348,6 +353,8 @@ export default function Docs({
   );
   const [drawingOpen, setDrawingOpen] = useState(false);
   const [drawingScene, setDrawingScene] = useState<string | null>(null);
+  /** The SVG picture open in Drawing: where it was, its source, and its SVG when it opened. */
+  const [svgEdit, setSvgEdit] = useState<{ pos: number; src: string; svg: string } | null>(null);
   const [sectionOpen, setSectionOpen] = useState(false);
   const [sections, setSections] = useState<DocSection[]>([]);
 
@@ -621,6 +628,14 @@ export default function Docs({
           return true;
         }
         editor?.commands.insertContent(content);
+        return true;
+      },
+      handleDoubleClickOn: (_view, _pos, node, nodePos, _event, direct) => {
+        if (!direct || (node.type.name !== "image" && node.type.name !== "inlineImage")) return false;
+        const src = node.attrs.src;
+        const svg = isSvgDataUri(src) ? svgFromDataUri(src) : null;
+        if (svg === null) return false;
+        setSvgEdit({ pos: nodePos, src, svg });
         return true;
       },
       // Internal "#anchor" links scroll to the heading that owns that slug.
@@ -952,20 +967,23 @@ export default function Docs({
 
   const insertImage = async (f?: File, rememberName = false) => {
     if (!f) return;
+    const svg = f.type === "image/svg+xml" || (!f.type && /\.svg$/i.test(f.name));
     if (
-      !/^image\/(png|jpeg|gif|webp)$/.test(f.type) ||
+      (!svg && !/^image\/(png|jpeg|gif|webp)$/.test(f.type)) ||
       f.size > 5 * 1024 * 1024
     ) {
-      onError("Choose a PNG, JPEG, GIF, or WebP image smaller than 5 MB.");
+      onError("Choose a PNG, JPEG, GIF, WebP, or SVG image smaller than 5 MB.");
       return;
     }
     try {
-      const src = await new Promise<string>((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => resolve(String(r.result));
-        r.onerror = reject;
-        r.readAsDataURL(f);
-      });
+      const src = svg
+        ? svgDataUri(await f.text())
+        : await new Promise<string>((resolve, reject) => {
+            const r = new FileReader();
+            r.onload = () => resolve(String(r.result));
+            r.onerror = reject;
+            r.readAsDataURL(f);
+          });
       editor
         ?.chain()
         .focus()
@@ -1155,7 +1173,7 @@ export default function Docs({
           editor.chain().focus().updateAttributes("paragraph", { widowControl: on ? null : true }).run();
         },
         insertComment: () => insertComment.current(),
-        openComments: () => openComments.current(),
+        toggleComments: () => toggleComments.current(),
         insertTableOfContents: (pageNumbers = true) =>
           editor.chain().focus().insertTableOfContents(pageNumbers).run(),
         insertFootnote: () => editor.chain().focus().insertFootnote().run(),
@@ -2625,7 +2643,7 @@ export default function Docs({
           onGutter={setCommentGutter}
           bind={(api) => {
             insertComment.current = api.insert;
-            openComments.current = api.openPanel;
+            toggleComments.current = api.togglePanel;
           }}
         />
         <SuggestionRail />
@@ -2638,6 +2656,38 @@ export default function Docs({
       </div>
       {proofing.ui}
       {grammar.ui}
+      {svgEdit ? (
+        <Suspense fallback={null}>
+          <EmbeddedDrawing
+            svg={svgEdit.svg}
+            parentTitle={file.title}
+            readOnly={!!readOnly}
+            onClose={(svg) => {
+              setSvgEdit(null);
+              if (svg === null || !editor || readOnlyRef.current) return;
+              const doc = editor.state.doc;
+              let pos = doc.nodeAt(svgEdit.pos)?.attrs.src === svgEdit.src ? svgEdit.pos : -1;
+              // Someone else's edit may have moved the picture while it was open.
+              if (pos < 0)
+                doc.descendants((node, at) => {
+                  if (pos < 0 && node.attrs.src === svgEdit.src) pos = at;
+                  return pos < 0;
+                });
+              const node = pos < 0 ? null : doc.nodeAt(pos);
+              if (!node) return onError("The picture was removed while it was open in Drawing.");
+              const width = Number(node.attrs.width);
+              const height = node.attrs.height ? heightForNewShape(width, svgEdit.svg, svg) : null;
+              editor.view.dispatch(
+                editor.state.tr.setNodeMarkup(pos, undefined, {
+                  ...node.attrs,
+                  src: svgDataUri(svg),
+                  ...(height ? { height } : {}),
+                }),
+              );
+            }}
+          />
+        </Suspense>
+      ) : null}
       {drawingOpen ? (
         <DrawingDialog
           scene={drawingScene}
@@ -2726,7 +2776,7 @@ export default function Docs({
         ref={imageInput}
         type="file"
         hidden
-        accept="image/png,image/jpeg,image/gif,image/webp"
+        accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml,.svg"
         onChange={(e) => {
           void insertImage(e.target.files?.[0]);
           e.target.value = "";

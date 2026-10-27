@@ -10,7 +10,7 @@ export const VERSION_SNAPSHOT_CAP = 50;
 /** An edit op larger than this is stored as a marker, not the payload. */
 export const OP_BYTE_CAP = 32 * 1024;
 
-export type FileKind = "doc" | "sheet" | "slide" | "form";
+export type FileKind = "doc" | "sheet" | "slide" | "form" | "drawing";
 export type Collaborator = { id: string; name: string };
 export type RegionUnit = "paragraph" | "cell" | "slide" | "comment";
 
@@ -102,6 +102,7 @@ function blankContent(kind: FileKind): unknown {
   if (kind === "sheet")
     return { workbook: { id: "", sheetOrder: ["s"], sheets: { s: { id: "s", name: "Sheet", rowCount: 1, columnCount: 1, cellData: {} } } }, charts: [], pivots: [] };
   if (kind === "form") return { questions: [], responses: [] };
+  if (kind === "drawing") return { format: "svg", source: "" };
   return { id: "", width: 1, height: 1, slideOrder: ["s"], slides: { s: { id: "s", elements: [] } } };
 }
 
@@ -407,7 +408,9 @@ export function summarizeChange(
         ? slideBody(before.content, after.content)
         : kind === "form"
           ? formBody(before.content, after.content)
-          : docBody(before.content, after.content);
+          : kind === "drawing"
+            ? drawingBody(before.content, after.content)
+            : docBody(before.content, after.content);
   const fallback =
     kind === "sheet"
       ? "Edited the spreadsheet"
@@ -415,7 +418,9 @@ export function summarizeChange(
         ? "Edited the presentation"
         : kind === "form"
           ? "Edited the form"
-          : "Edited a paragraph";
+          : kind === "drawing"
+            ? "Edited the drawing"
+            : "Edited a paragraph";
   return joinClauses(title, body, fallback);
 }
 
@@ -423,7 +428,27 @@ function formBody(before: unknown, after: unknown): string | null {
   return JSON.stringify(before) === JSON.stringify(after) ? null : "Edited the form";
 }
 
+function drawingSource(content: unknown): string {
+  return (content as { source?: string } | null)?.source ?? "";
+}
+
+function changedDrawingLines(before: unknown, after: unknown): number[] {
+  const from = drawingSource(before).split("\n");
+  const to = drawingSource(after).split("\n");
+  const lines: number[] = [];
+  for (let line = 0; line < Math.max(from.length, to.length); line += 1)
+    if (from[line] !== to[line]) lines.push(line);
+  return lines;
+}
+
+function drawingBody(before: unknown, after: unknown): string | null {
+  const changed = changedDrawingLines(before, after).length;
+  if (!changed) return null;
+  return changed === 1 ? "Edited a line of the drawing" : `Edited ${changed} lines of the drawing`;
+}
+
 function excerptOf(kind: FileKind, content: unknown): string {
+  if (kind === "drawing") return drawingSource(content);
   if (kind === "form") {
     const questions = (content as { questions?: { prompt?: string }[] } | null)?.questions ?? [];
     return questions.map((question) => question.prompt ?? "").join("\n");
@@ -469,7 +494,9 @@ export function summaryPrompt(kind: FileKind, before: string, after: string): st
         ? "presentation"
         : kind === "form"
           ? "form"
-          : "document";
+          : kind === "drawing"
+            ? "drawing"
+            : "document";
   return [
     "<|im_start|>system\n",
     "You describe what changed in one short sentence a person can scan. No list and no preamble.\n",
@@ -495,6 +522,8 @@ export function changedRegions(kind: FileKind, before: unknown, after: unknown):
     return JSON.stringify(before) === JSON.stringify(after)
       ? []
       : [{ unit: "paragraph", key: "0" }];
+  if (kind === "drawing")
+    return changedDrawingLines(before, after).map((line) => ({ unit: "paragraph", key: String(line) }));
   if (kind === "sheet") {
     const left = cellEntries(before);
     const right = cellEntries(after);

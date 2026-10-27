@@ -89,7 +89,8 @@ import {
   preferredMarkdown,
 } from "./editors/slide-marp-import";
 import { loadMarpBundle, marpBundlePaths, missingMarpTheme } from "./editors/slide-marp-bundle";
-import { createMarpFile } from "./editors/slide-marp";
+import { DrawingIcon, NewDrawingCard, drawingAction, drawingFromAction, newFile, type NewKind } from "./drawing-home";
+import { drawingExports } from "./editors/drawing-format";
 import { CsvImportDialog } from "./csv-import";
 import type { DelimitedOptions } from "./csv";
 import { SameFileDialog, openNotices } from "./same-file";
@@ -98,6 +99,7 @@ import {
   Menu,
   MenuCheckItem,
   MenuItem,
+  SidePaneSlot,
   SubMenu,
   TableMenuItems,
   type EditorActions,
@@ -212,7 +214,8 @@ import {
 const Docs = lazy(() => import("./editors/Docs")),
   Sheets = lazy(() => import("./editors/Sheets")),
   Slides = lazy(() => import("./editors/Slides")),
-  Forms = lazy(() => import("./editors/Form"));
+  Forms = lazy(() => import("./editors/Form")),
+  Drawing = lazy(() => import("./editors/Drawing"));
 function message(e: unknown) {
   return e instanceof Error ? e.message : String(e);
 }
@@ -703,7 +706,7 @@ function ImportButton({
         hidden
         type="file"
         ref={input}
-        accept=".sldoc,.slsheet,.slslides,.suiteleaf,.docx,.docm,.dotx,.dotm,.doc,.dot,.xlsx,.xlsm,.xlsb,.xltx,.xls,.pptx,.ppt,.ppsx,.pptm,.potx,.ppsm,.odt,.ott,.fodt,.ods,.fods,.odp,.fodp,.rtf,.md,.markdown,.html,.htm,.txt,.csv,.tsv"
+        accept=".sldoc,.slsheet,.slslides,.sldraw,.suiteleaf,.svg,.mmd,.mermaid,.gv,.docx,.docm,.dotx,.dotm,.doc,.dot,.xlsx,.xlsm,.xlsb,.xltx,.xls,.pptx,.ppt,.ppsx,.pptm,.potx,.ppsm,.odt,.ott,.fodt,.ods,.fods,.odp,.fodp,.rtf,.md,.markdown,.html,.htm,.txt,.csv,.tsv"
         onChange={async (e) => {
           const f = e.target.files?.[0];
           e.target.value = "";
@@ -803,7 +806,7 @@ function NewCards({
   onCreate,
   folder,
 }: {
-  onCreate: (kind: SuiteFile["kind"] | "marp") => void;
+  onCreate: (kind: NewKind) => void;
   /** The SuiteDrive folder new files go in, when it isn't the top level. */
   folder?: string;
 }) {
@@ -850,6 +853,7 @@ function NewCards({
         </span>
         <Plus size={22} />
       </button>
+      <NewDrawingCard onCreate={onCreate} where={where} />
       {formsEnabled ? (
       <button className="new-card" onClick={() => onCreate("form")}>
         <span className="app-icon form">
@@ -1018,8 +1022,8 @@ function LocalHome() {
     navigate(`/file/${id}`);
   };
   const make = useCallback(
-    (kind: SuiteFile["kind"] | "marp") =>
-      void open({ file: kind === "marp" ? createMarpFile() : createFile(kind) }).catch((e) =>
+    (kind: NewKind) =>
+      void open({ file: newFile(kind) }).catch((e) =>
         setError(message(e)),
       ),
     [open],
@@ -1031,6 +1035,8 @@ function LocalHome() {
       if (action === "new-slide") make("slide");
       if (action === "new-marp") make("marp");
       if (action === "new-form" && formsEnabled) make("form");
+      const drawing = drawingFromAction(action);
+      if (drawing) make(drawing);
       if (action === "connect-server") setConnecting(true);
       if (action === "open")
         void storage
@@ -1325,6 +1331,13 @@ function LocalHome() {
           >
             <Presentation size={18} />
             Presentations
+          </button>
+          <button
+            className={filter === "drawing" ? "selected" : ""}
+            onClick={() => setFilter("drawing")}
+          >
+            <DrawingIcon size={18} />
+            Drawings
           </button>
           {formsEnabled ? (
           <button
@@ -1779,9 +1792,9 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
   const sync = useServerSync(serverUrl);
   const summary = syncSummary(sync);
   const make = useCallback(
-    (kind: SuiteFile["kind"] | "marp") =>
+    (kind: NewKind) =>
       void createInDrive(
-        kind === "marp" ? createMarpFile() : createFile(kind),
+        newFile(kind),
         folder.current,
         navigate,
       ).catch((e) => setError(message(e))),
@@ -1794,6 +1807,8 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
       if (action === "new-slide") make("slide");
       if (action === "new-marp") make("marp");
       if (action === "new-form" && formsEnabled) make("form");
+      const drawing = drawingFromAction(action);
+      if (drawing) make(drawing);
     },
     [make],
   );
@@ -1925,6 +1940,9 @@ function Workspace() {
     /** Folder of the open SuiteDrive file. `null` is the top of My Drive. */
     driveParentId = useRef<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  /** The file whose import notes were closed. Opening another file brings them back. */
+  const [importNotesClosed, setImportNotesClosed] = useState<string | null>(null);
+  const [sidePaneSlot, setSidePaneSlot] = useState<HTMLElement | null>(null);
   const [menusOpen, setMenusOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
   const menuBar = useRef<HTMLDivElement>(null);
@@ -2667,21 +2685,22 @@ function Workspace() {
           action === "new-sheet" ||
           action === "new-slide" ||
           action === "new-marp" ||
+          drawingFromAction(action) ||
           (action === "new-form" && formsEnabled)
         ) {
           await save();
-          const file =
-            action === "new-marp"
-              ? createMarpFile()
-              : createFile(
-                  action === "new-doc"
-                    ? "doc"
-                    : action === "new-sheet"
-                      ? "sheet"
-                      : action === "new-form"
-                        ? "form"
-                        : "slide",
-                );
+          const file = newFile(
+            drawingFromAction(action) ??
+              (action === "new-marp"
+                ? "marp"
+                : action === "new-doc"
+                  ? "doc"
+                  : action === "new-sheet"
+                    ? "sheet"
+                    : action === "new-form"
+                      ? "form"
+                      : "slide"),
+          );
           if (cluster)
             await createInDrive(file, driveParentId.current, navigate);
           else navigate(`/file/${(await storage.save({ file })).file.id}`);
@@ -2993,7 +3012,7 @@ function Workspace() {
       kind: file?.kind ?? "doc",
       place: () =>
         file
-          ? `${file.kind === "doc" ? "Document" : file.kind === "sheet" ? "Spreadsheet" : file.kind === "slide" ? "Presentation" : "Form"} “${file.title}”`
+          ? `${file.kind === "doc" ? "Document" : file.kind === "sheet" ? "Spreadsheet" : file.kind === "slide" ? "Presentation" : file.kind === "drawing" ? "Drawing" : "Form"} “${file.title}”`
           : "",
       snapshot: () =>
         ctx
@@ -3072,6 +3091,8 @@ function Workspace() {
           <span className={`file-icon ${f.kind}`}>
             {f.kind === "form" ? (
               <ClipboardList size={22} color="#7b1fa2" aria-hidden="true" />
+            ) : f.kind === "drawing" ? (
+              <DrawingIcon size={22} />
             ) : f.kind === "doc" ? (
               <svg
                 width="24"
@@ -3248,6 +3269,15 @@ function Workspace() {
                   <MenuItem onSelect={() => void doAction("new-marp")}>
                     MARP presentation
                   </MenuItem>
+                  <MenuItem onSelect={() => void doAction(drawingAction("svg"))}>
+                    SVG drawing
+                  </MenuItem>
+                  <MenuItem onSelect={() => void doAction(drawingAction("mermaid"))}>
+                    Mermaid diagram
+                  </MenuItem>
+                  <MenuItem onSelect={() => void doAction(drawingAction("graphviz"))}>
+                    Graphviz graph
+                  </MenuItem>
                   {formsEnabled ? (
                   <MenuItem onSelect={() => void doAction("new-form")}>
                     Form
@@ -3318,7 +3348,9 @@ function Workspace() {
                     ? ["xlsx", "csv", "tsv"]
                     : f.kind === "form"
                       ? []
-                      : f.kind === "slide" && f.content.marp
+                      : f.kind === "drawing"
+                        ? drawingExports(f.content.format)
+                        : f.kind === "slide" && f.content.marp
                         ? ["md", "txt", "html"]
                         : f.kind === "slide"
                           ? ["pptx", "txt", "html"]
@@ -4732,7 +4764,7 @@ function Workspace() {
               title="Comments"
               aria-label="Comments"
               onClick={() => {
-                actions.current?.docActions?.openComments?.();
+                actions.current?.docActions?.toggleComments?.();
                 if (f.kind === "sheet") {
                   // Opening and the header event both toggle the panel, so only one runs.
                   const open = actions.current?.sheetActions?.openComments;
@@ -4742,7 +4774,7 @@ function Workspace() {
                       new Event("suiteleaf:open-sheet-comments"),
                     );
                 }
-                actions.current?.slideActions?.openComments?.();
+                actions.current?.slideActions?.toggleComments?.();
               }}
             >
               <MessageSquare size={18} />
@@ -4942,8 +4974,9 @@ function Workspace() {
             }
           />
         ) : null}
-        {f.importInfo ? (
-          <details className="import-notes">
+        {f.importInfo && importNotesClosed !== id ? (
+          <div className="import-notes" role="region" aria-label="Import notes">
+          <details>
             <summary>
               Imported {f.importInfo.sourceFormat.toUpperCase()}:{" "}
               {f.importInfo.sourceName}
@@ -4966,6 +4999,16 @@ function Workspace() {
               </p>
             )}
           </details>
+          <button
+            type="button"
+            className="import-notes-close"
+            aria-label="Close import notes"
+            title="Close import notes"
+            onClick={() => setImportNotesClosed(id ?? null)}
+          >
+            <X size={14} />
+          </button>
+          </div>
         ) : null}
         <div
           className={`editor-and-history${historyOpen ? " history-open" : ""}`}
@@ -4996,6 +5039,7 @@ function Workspace() {
               inert={historyPreview ? true : undefined}
             >
               <ErrorBoundary>
+                <SidePaneSlot.Provider value={sidePaneSlot}>
                 <Suspense
                   fallback={
                     <div className="loading">
@@ -5006,7 +5050,9 @@ function Workspace() {
                           ? "spreadsheet"
                           : f.kind === "form"
                             ? "form"
-                            : "presentation"}{" "}
+                            : f.kind === "drawing"
+                              ? "drawing"
+                              : "presentation"}{" "}
                       editor…
                     </div>
                   }
@@ -5048,6 +5094,15 @@ function Workspace() {
                       onActions={onActions}
                       onError={setError}
                     />
+                  ) : f.kind === "drawing" ? (
+                    <Drawing
+                      key={`${id}:${editorEpoch}`}
+                      file={f}
+                      readOnly={!canEdit}
+                      onChange={update}
+                      onActions={onActions}
+                      onError={setError}
+                    />
                   ) : f.kind === "form" && !formsEnabled ? (
                     <p className="loading">Forms are turned off in this build.</p>
                   ) : f.kind === "form" ? (
@@ -5072,9 +5127,15 @@ function Workspace() {
                     />
                   )}
                 </Suspense>
+                </SidePaneSlot.Provider>
               </ErrorBoundary>
             </div>
           </div>
+          <div
+            className="side-pane-slot"
+            ref={setSidePaneSlot}
+            inert={historyPreview ? true : undefined}
+          />
           {historyOpen ? (
             <VersionHistory
               record={record}

@@ -37,8 +37,8 @@
 }
 
 .slides-toolbar .theme-toggle[aria-pressed="true"] {
-  background: #d3e3fd;
-  color: #041e49;
+  background: var(--toolbar-active);
+  color: var(--toolbar-active-text);
 }
 
 .theme-override-bar {
@@ -71,7 +71,8 @@
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  background: #fff;
+  background: var(--surface);
+  color: var(--text-primary);
   border-left: 1px solid var(--border);
   min-height: 0;
 }
@@ -114,7 +115,8 @@
 }
 .theme-card {
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--surface);
+  color: var(--text-primary);
   border-radius: 8px;
   padding: 6px;
   text-align: left;
@@ -125,11 +127,11 @@
 }
 .theme-card:hover,
 .theme-card:focus-visible {
-  border-color: #1a73e8;
+  border-color: var(--google-blue);
 }
 .theme-card[aria-pressed="true"] {
-  border-color: #1a73e8;
-  box-shadow: 0 0 0 1px #1a73e8;
+  border-color: var(--google-blue);
+  box-shadow: 0 0 0 1px var(--google-blue);
 }
 .theme-card-slide {
   position: relative;
@@ -208,9 +210,9 @@
 }
 .theme-save-open {
   width: 100%;
-  border: 1px solid #1a73e8;
-  background: #e8f0fe;
-  color: #041e49;
+  border: 1px solid var(--google-blue);
+  background: var(--toolbar-active);
+  color: var(--toolbar-active-text);
   border-radius: 8px;
   padding: 8px 10px;
   font-size: 13px;
@@ -223,7 +225,7 @@
 }
 .theme-save-open:focus-visible,
 .theme-save-actions button:focus-visible {
-  outline: 2px solid #1a73e8;
+  outline: 2px solid var(--google-blue);
   outline-offset: 1px;
 }
 .theme-save-actions {
@@ -234,7 +236,8 @@
   flex: 1;
   min-height: 36px;
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--surface);
+  color: var(--text-primary);
   border-radius: 8px;
   font-size: 13px;
   cursor: pointer;
@@ -250,7 +253,7 @@
 }
 .theme-library-error {
   margin: 0;
-  color: #c5221f;
+  color: var(--google-red);
   font-size: 12px;
 }
 .theme-customize {
@@ -284,7 +287,7 @@
   padding: 6px 8px;
   font-size: 13px;
   color: var(--text-primary);
-  background: #fff;
+  background: var(--input-bg);
 }
 .theme-accent-row input[type="text"] {
   flex: 1;
@@ -299,7 +302,8 @@
 .transition-scope button,
 .transition-actions button {
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--surface);
+  color: var(--text-primary);
   border-radius: 8px;
   padding: 8px 10px;
   font-size: 13px;
@@ -309,9 +313,9 @@
 }
 .transition-types button[aria-pressed="true"],
 .transition-scope button[aria-pressed="true"] {
-  border-color: #1a73e8;
-  background: #e8f0fe;
-  color: #041e49;
+  border-color: var(--google-blue);
+  background: var(--toolbar-active);
+  color: var(--toolbar-active-text);
 }
 .transition-scope {
   display: flex;
@@ -338,7 +342,7 @@
 .transition-status {
   margin: 0;
   font-size: 13px;
-  color: #137333;
+  color: var(--google-green);
 }
 .thumbnail-row.grouped {
   box-shadow: inset 0 0 0 2px #1a73e8;

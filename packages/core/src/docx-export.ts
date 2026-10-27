@@ -949,29 +949,31 @@ export async function exportDocx(
       ? combineExportSections(file.sections)
       : structuredClone(file.content),
   );
-  const pngFromWebp = async (src: string): Promise<string> => {
-    if (!src.startsWith("data:image/webp")) return src;
+  // Word takes neither WebP nor SVG without a fallback, so both go in as PNG.
+  const pngForWord = async (src: string): Promise<string> => {
+    if (!/^data:image\/(webp|svg\+xml)/i.test(src)) return src;
     if (typeof document === "undefined")
       throw new Error(
-        "WebP images need the browser image converter for DOCX export.",
+        "WebP and SVG images need the browser image converter for DOCX export.",
       );
     const img = document.createElement("img");
     img.src = src;
     await img.decode();
     const canvas = document.createElement("canvas");
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
+    // An SVG without a width and height has no size of its own.
+    canvas.width = img.naturalWidth || 300;
+    canvas.height = img.naturalHeight || 150;
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Could not convert the image for DOCX export.");
-    ctx.drawImage(img, 0, 0);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     return canvas.toDataURL("image/png");
   };
   const prepareImages = async (node: JsonNode): Promise<void> => {
     if (
       (node.type === "image" || node.type === "inlineImage") &&
-      String(node.attrs?.src).startsWith("data:image/webp")
+      /^data:image\/(webp|svg\+xml)/i.test(String(node.attrs?.src))
     )
-      node.attrs = { ...node.attrs, src: await pngFromWebp(String(node.attrs?.src)) };
+      node.attrs = { ...node.attrs, src: await pngForWord(String(node.attrs?.src)) };
     await Promise.all((node.content ?? []).map(prepareImages));
   };
   await prepareImages(content);
@@ -979,7 +981,7 @@ export async function exportDocx(
   if (pageSettings && typeof pageSettings === "object") {
     const images = pageSettings as Record<string, unknown>;
     for (const key of ["headerImage", "footerImage", "firstHeaderImage", "firstFooterImage"]) {
-      if (typeof images[key] === "string") images[key] = await pngFromWebp(images[key]);
+      if (typeof images[key] === "string") images[key] = await pngForWord(images[key]);
     }
   }
   const notes = noteIndex(content);

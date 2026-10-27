@@ -1,0 +1,33 @@
+.drawing {
+  color: #00796b;
+  background: #e0f2f1;
+}
+.file-icon.drawing {
+  color: #ffffff;
+  background: #00897b;
+}
+.new-drawing-card {
+  display: flex;
+  align-items: center;
+}
+.new-drawing-card:hover {
+  background: var(--card-bg);
+}
+.new-drawing-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.new-drawing-choices button {
+  padding: 4px 10px;
+  border-radius: 14px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+:root.dark-theme .drawing,
+:root[data-theme="dark"] .drawing {
+  color: #80cbc4;
+  background: color-mix(in srgb, #00897b 22%, transparent);
+}
