@@ -1,6 +1,6 @@
 import { deflate } from "pako";
 import { vectorEmf } from "./emf-vector";
-import { rasterEmf } from "./excel-images";
+import { rasterEmf } from "./emf-raster";
 
 const base64 = (bytes: Uint8Array) => {
   let text = "";
@@ -269,7 +269,7 @@ function lzwDecode(source: Uint8Array, expected: number): Uint8Array | undefined
 /** A browser-paintable data URL. Uncompressed TIFF and bitmap EMF become PNG. */
 export function paintableImage(
   bytes: Uint8Array,
-  mime: string | undefined,
+  mime: string | null | undefined,
 ): string | undefined {
   if (!mime) return;
   if (mime === "image/tiff") {

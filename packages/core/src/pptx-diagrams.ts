@@ -44,15 +44,6 @@ function resolveZipPath(basePath: string, relativePath: string): string {
   return parts.join("/");
 }
 
-function relsOf(xml: string): { type: string; target: string }[] {
-  return [...xml.matchAll(/<Relationship\b([^>]*)\/?>/g)].flatMap((match) => {
-    const tag = attrs(match[1]);
-    return tag.Target
-      ? [{ type: tag.Type || "", target: tag.Target }]
-      : [];
-  });
-}
-
 function boxOf(xfrm: string, metrics: Metrics, dx = 0, dy = 0) {
   const off = attrs(/<(?:a|p):off\b([^>]*)\/?>/.exec(xfrm)?.[1] || "");
   const ext = attrs(/<(?:a|p):ext\b([^>]*)\/?>/.exec(xfrm)?.[1] || "");

@@ -42,7 +42,7 @@ function rgbToHsl(r: number, g: number, b: number) {
   if (max === min) return { h: 0, s: 0, l };
   const d = max - min;
   const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-  let h =
+  const h =
     max === R ? (G - B) / d + (G < B ? 6 : 0) : max === G ? (B - R) / d + 2 : (R - G) / d + 4;
   return { h: h * 60, s, l };
 }

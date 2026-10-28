@@ -3,7 +3,6 @@ import { expect, it } from "vitest";
 import JSZip from "jszip";
 import { parsePowerPoint } from "../packages/core/src/pptx";
 import { lineFrame } from "../packages/core/src/pptx-geometry";
-import { vectorEmf } from "../packages/core/src/emf-vector";
 import { blipOpacity, duotoneSvg, paintableImage, tiffToPngDataUrl } from "../packages/core/src/pptx-pictures";
 
 function uncompressedTiff(

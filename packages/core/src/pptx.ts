@@ -1500,7 +1500,11 @@ async function parseZipPptx(
         const mediaFile = zip.file(mediaZipPath);
         if (!mediaFile) continue;
         const imgBytes = await mediaFile.async("uint8array");
-        const src = recolor(paintableImage(imgBytes, detectImageMime(imgBytes)), picXml);
+        const mime = detectImageMime(imgBytes);
+        // An EMF the browser cannot paint keeps its bytes so export writes the same picture.
+        const src =
+          recolor(paintableImage(imgBytes, mime), picXml) ??
+          (mime === "image/emf" ? `data:image/emf;base64,${uint8ToBase64(imgBytes)}` : undefined);
         if (!src) continue;
         const nativeFrame =
           blipMatch === blips[0] ? nativeOleFrame(slideXml, picXml) : undefined;

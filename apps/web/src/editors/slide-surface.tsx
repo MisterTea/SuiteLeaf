@@ -7,6 +7,7 @@ import {
   type CSSProperties,
   type HTMLAttributes,
   type ReactNode,
+  type SVGProps,
   type TdHTMLAttributes,
 } from "react";
 import { fontKerning, lineFrame, slidePointScale, type Presentation, type Slide, type SlideElement } from "@suiteleaf/core";
@@ -239,7 +240,7 @@ export function SlideFace({
               {hooks.before?.(el)}
               <img
                 src={marpMediaSrc(el.src, deck.marpAssets)}
-                alt={el.alt || "Slide asset"}
+                alt={el.src.startsWith("data:image/emf") ? "" : el.alt || "Slide asset"}
                 draggable={false}
                 style={{ ...(fitted ? {} : { objectFit: "fill" }), ...crop }}
               />
@@ -272,7 +273,7 @@ export function SlideFace({
           return (
             <svg
               key={el.id}
-              {...view.props}
+              {...(view.props as SVGProps<SVGSVGElement>)}
               className={`slide-element slide-shape slide-line${extra}`}
               style={{
                 ...posStyle,
