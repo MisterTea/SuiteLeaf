@@ -1,5 +1,9 @@
 import type { JsonNode } from "./index";
 import { bodyEdgeInsets, resolveEdgePx } from "./header-edge";
+import { fontKerning, kerningThreshold } from "./kerning";
+
+/** Body text size in documents. Kerning follows it; headings do not change it. */
+export const BODY_POINTS = 11;
 export {
   bodyEdgeInsets,
   edgeDistanceError,
@@ -102,6 +106,8 @@ export type PageSettings = {
   footerFromEdge: number;
   /** A short phrase drawn behind the text. Empty means no watermark. */
   watermark: string;
+  /** Kern text at or above this point size, as Word's w:kern. 0 never kerns. */
+  kern: number;
   /** The font body text gets, from an imported document. Empty means Arial. */
   font: string;
 };
@@ -156,6 +162,7 @@ export const defaultPageSettings: PageSettings = {
   headerFromEdge: MARGIN_DEFAULT_PX,
   footerFromEdge: MARGIN_DEFAULT_PX,
   watermark: "",
+  kern: 0,
   font: "",
 };
 const pageText = (value: unknown) =>
@@ -237,6 +244,7 @@ export function documentPageSettings(content: JsonNode): PageSettings {
     oddHeader: pageText(a?.oddHeader),
     oddFooter: pageText(a?.oddFooter),
     watermark: watermarkText(a?.watermark),
+    kern: kerningThreshold(a?.kern),
     font: bodyFont(a?.font),
   };
 }
@@ -1087,7 +1095,7 @@ main { position: relative; z-index: 1; }`
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title>
 <style>
-body { position: relative; max-width: ${width / 96}in; margin: 0 auto; padding: ${padding}; box-sizing: border-box; font: 11pt/1.5 ${bodyFontFamily(settings.font)}; }
+body { position: relative; max-width: ${width / 96}in; margin: 0 auto; padding: ${padding}; box-sizing: border-box; font: 11pt/1.5 ${bodyFontFamily(settings.font)}; font-kerning: ${fontKerning(settings.kern, BODY_POINTS)}; }
 .page-header, .page-footer, .section-header, .section-footer { color: #555; font-size: 10pt; line-height: 16px; white-space: pre-wrap; }
 .page-header { position: absolute; top: ${layout.headerFromEdge / 96}in; left: ${settings.marginLeft / 96}in; right: ${settings.marginRight / 96}in; margin: 0; }
 .page-footer { position: absolute; bottom: ${layout.footerFromEdge / 96}in; left: ${settings.marginLeft / 96}in; right: ${settings.marginRight / 96}in; margin: 0; }

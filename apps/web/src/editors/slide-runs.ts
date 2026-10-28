@@ -1,4 +1,4 @@
-import type { SlideElement, TextRun } from "@suiteleaf/core";
+import { fontKerning, type SlideElement, type TextRun } from "@suiteleaf/core";
 
 /**
  * Per-word styles live on runs. The box itself stays on the theme: a bold or
@@ -18,7 +18,11 @@ export function cleanRun(run: TextRun): TextRun {
   if (run.italic) next.italic = true;
   if (run.underline) next.underline = true;
   if (run.color) next.color = run.color;
+  if (run.highlight) next.highlight = run.highlight;
   if (run.fontSize) next.fontSize = run.fontSize;
+  if (run.caps) next.caps = run.caps;
+  if (run.baseline) next.baseline = run.baseline;
+  if (run.font) next.font = run.font;
   if (run.paragraphBreak) next.paragraphBreak = true;
   return next;
 }
@@ -29,7 +33,11 @@ function sameStyle(a: TextRun, b: TextRun): boolean {
     !!a.italic === !!b.italic &&
     !!a.underline === !!b.underline &&
     (a.color ?? "") === (b.color ?? "") &&
+    (a.highlight ?? "") === (b.highlight ?? "") &&
     a.fontSize === b.fontSize &&
+    a.caps === b.caps &&
+    a.baseline === b.baseline &&
+    (a.font ?? "") === (b.font ?? "") &&
     !a.paragraphBreak &&
     !b.paragraphBreak
   );
@@ -100,7 +108,10 @@ export function hasTextRuns(el: { runs?: TextRun[] }): boolean {
       run.italic ||
       run.underline ||
       run.color ||
+      run.highlight ||
       run.fontSize ||
+      run.caps ||
+      run.baseline ||
       run.paragraphBreak,
   );
 }
@@ -126,7 +137,8 @@ export function normalizeColor(value: string): string | undefined {
   return `#${channel(rgb[1])}${channel(rgb[2])}${channel(rgb[3])}`;
 }
 
-export function runsToHtml(runs: readonly TextRun[]): string {
+/** `kern` is the box's kerning size; a run with its own size is judged on that. */
+export function runsToHtml(runs: readonly TextRun[], kern?: number): string {
   return runs
     .map((run) => {
       const styles: string[] = [];
@@ -148,9 +160,28 @@ export function runsToHtml(runs: readonly TextRun[]): string {
         styles.push(`color:${color}`);
         data.push(`data-color="${color}"`);
       }
+      const highlight = run.highlight ? normalizeColor(run.highlight) : undefined;
+      if (highlight) {
+        styles.push(`background-color:${highlight}`);
+        data.push(`data-highlight="${highlight}"`);
+      }
       if (run.fontSize) {
-        styles.push(`font-size:${run.fontSize}px`);
+        styles.push(`font-size:calc(${run.fontSize} * var(--slide-pt, 1) * 1px)`);
+        if (kern) styles.push(`font-kerning:${fontKerning(kern, run.fontSize)}`);
         data.push(`data-font-size="${run.fontSize}"`);
+      }
+      if (run.caps === "all") styles.push("text-transform:uppercase");
+      if (run.caps === "small") styles.push("font-variant-caps:small-caps");
+      if (run.baseline) {
+        styles.push(`vertical-align:${run.baseline / 100}em`);
+        data.push(`data-baseline="${run.baseline}"`);
+      }
+      if (run.font) {
+        const family = run.font.replace(/["\\<>]/g, "");
+        styles.push(
+          `font-family:${/[\s,]/.test(family) ? `"${family}"` : family}`,
+        );
+        data.push(`data-font="${family}"`);
       }
       if (run.paragraphBreak) data.push('data-paragraph-break="1"');
       const style = styles.length ? ` style="${styles.join(";")}"` : "";
@@ -167,9 +198,10 @@ export function textInnerHtml(el: {
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
+  kern?: number;
 }): string {
   if (!hasTextRuns(el)) return escapeHtml(el.content ?? "");
-  return runsToHtml(runsOf(el));
+  return runsToHtml(runsOf(el), el.kern);
 }
 
 export function formatRange(

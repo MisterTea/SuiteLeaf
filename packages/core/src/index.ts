@@ -3,6 +3,7 @@ import { z } from "zod";
 
 export { diffDocuments, type DocDiff } from "./doc-diff";
 export { cloneJson, sameJson } from "./json-data";
+export { fontKerning, kerningThreshold } from "./kerning";
 export {
   applyParagraphRestore,
   compareParagraphs,
@@ -167,8 +168,21 @@ export const textRunSchema = z.object({
   italic: z.boolean().optional(),
   underline: z.boolean().optional(),
   color: z.string().max(40).optional(),
+  /** DrawingML highlight, painted behind the glyphs. */
+  highlight: z.string().max(40).optional(),
   fontSize: z.number().positive().optional(),
+  /** DrawingML cap. `all` is capitals; `small` is small capitals. */
+  caps: z.enum(["small", "all"]).optional(),
+  /**
+   * DrawingML baseline shift, in percent of the font size. Positive raises a
+   * superscript; negative lowers a subscript.
+   */
+  baseline: z.number().min(-1000).max(1000).optional(),
+  /** Symbol-font bullets, such as Wingdings, keep the typeface of that marker. */
+  font: z.string().max(80).optional(),
   paragraphBreak: z.boolean().optional(),
+  /** DrawingML kern, in points. PowerPoint import moves it to the box. */
+  kern: z.number().min(0).max(4000).optional(),
 });
 export type TextRun = z.infer<typeof textRunSchema>;
 export const slideElementSchema = z.object({
@@ -189,6 +203,8 @@ export const slideElementSchema = z.object({
    * so existing boxes and older files keep their normal size.
    */
   autofit: z.boolean().optional(),
+  /** Kern text at or above this point size, as PowerPoint does. Absent never kerns. */
+  kern: z.number().min(0).max(4000).optional(),
   fontFamily: z.string().optional(),
   bold: z.boolean().optional(),
   italic: z.boolean().optional(),
@@ -198,12 +214,17 @@ export const slideElementSchema = z.object({
   /** Unitless line height. A fitted MARP box uses the theme's line height. */
   lineHeight: z.number().positive().max(4).optional(),
   /** Left inset, in slide units, so a heading can sit inside its bar. */
-  padLeft: z.number().nonnegative().max(400).optional(),
+  padLeft: z.number().nonnegative().max(20000).optional(),
+  /** Right text inset, in slide units. Absent uses the left inset. */
+  padRight: z.number().nonnegative().max(20000).optional(),
+  /** Bottom text inset, in slide units. Absent uses the top inset. */
+  padBottom: z.number().nonnegative().max(20000).optional(),
   /**
    * Width of a list item's marker, in slide units. Each line starts with its
    * marker, and the lines a long item wraps onto start this far in, under its words.
+   * A hanging indent can be most of a poster column, so the cap matches other insets.
    */
-  hang: z.number().nonnegative().max(200).optional(),
+  hang: z.number().nonnegative().max(20000).optional(),
   /** Corner radius for a rounded rectangle, in slide units. */
   radius: z.number().nonnegative().max(200).optional(),
   /** Keep the line breaks of a code block. */
@@ -219,6 +240,22 @@ export const slideElementSchema = z.object({
   fill: z.string().optional(),
   stroke: z.string().optional(),
   strokeWidth: z.number().optional(),
+  /** Vertical alignment inside a text box. Absent means top, as older boxes do. */
+  valign: z.enum(["top", "middle", "bottom"]).optional(),
+  /** Top text inset, in slide units. Absent keeps the editor's padding. */
+  inset: z.number().nonnegative().max(20000).optional(),
+  /** Mirror a line or arrow across its box. */
+  flipH: z.boolean().optional(),
+  flipV: z.boolean().optional(),
+  /** DrawingML wrap="none": keep each paragraph on one line. */
+  nowrap: z.boolean().optional(),
+  /** Percent of the source picture hidden on each edge (DrawingML srcRect). */
+  cropLeft: z.number().min(0).max(100).optional(),
+  cropTop: z.number().min(0).max(100).optional(),
+  cropRight: z.number().min(0).max(100).optional(),
+  cropBottom: z.number().min(0).max(100).optional(),
+  /** Picture opacity from DrawingML alphaModFix. 1 is omitted. */
+  opacity: z.number().min(0).max(1).optional(),
   /**
    * Display lettering. The letter fill is `color` and the outline is `stroke`,
    * so both survive save. Absent on ordinary text boxes and older files.
@@ -285,13 +322,23 @@ export const slideElementSchema = z.object({
   poster: z.string().optional(),
   alt: z.string().optional(),
   rows: z.array(z.array(z.string())).optional(),
-  /** Bold and italic for each slide-table cell, aligned with `rows`. */
+  /** Column widths as fractions of the table, aligned with the grid. */
+  colWidths: z.array(z.number().positive()).max(64).optional(),
+  /** Row heights as fractions of the table. */
+  rowHeights: z.array(z.number().nonnegative()).max(80).optional(),
+  /** Formatting for each slide-table cell, aligned with `rows`. */
   cellMarks: z
     .array(
       z.array(
         z.object({
           bold: z.boolean().optional(),
           italic: z.boolean().optional(),
+          fill: z.string().optional(),
+          color: z.string().optional(),
+          fontSize: z.number().positive().optional(),
+          align: z.enum(["left", "center", "right", "justify"]).optional(),
+          colSpan: z.number().int().positive().optional(),
+          border: z.string().optional(),
         }),
       ),
     )
@@ -341,6 +388,8 @@ export const slideSchema = z.object({
   transition: slideTransitionSchema.optional(),
   /** Office animation timeline, written back when the deck is saved as PowerPoint. */
   timing: z.string().max(100_000).optional(),
+  /** Hidden in a PowerPoint slideshow. PDF export skips the slide. */
+  hidden: z.boolean().optional(),
 });
 export type Slide = z.infer<typeof slideSchema>;
 export const slideThemeSchema = z.object({
@@ -354,13 +403,29 @@ export const slideThemeSchema = z.object({
   bodyFont: z.string().min(1).max(80),
 });
 export type SlideTheme = z.infer<typeof slideThemeSchema>;
+/** A face extracted from a PPTX `ppt/fonts` part, as a data URL the renderer can load. */
+export const embeddedFontSchema = z.object({
+  family: z.string().min(1).max(80),
+  style: z.enum(["normal", "italic"]),
+  weight: z.union([z.literal(400), z.literal(700)]),
+  data: z.string().min(30).max(12_000_000),
+});
+export type EmbeddedFont = z.infer<typeof embeddedFontSchema>;
 export const presentationSchema = z.object({
   id: z.string(),
   width: z.number().positive(),
   height: z.number().positive(),
+  /**
+   * Slide size in PDF points. Drawing coordinates stay on `width` and `height`.
+   * Absent on older decks, which were authored in that same coordinate space.
+   */
+  pointWidth: z.number().positive().optional(),
+  pointHeight: z.number().positive().optional(),
   slideOrder: z.array(z.string()),
   slides: z.record(z.string(), slideSchema),
   theme: slideThemeSchema.optional(),
+  /** Fonts that were embedded in the PowerPoint file. The renderer loads these by family name. */
+  fonts: z.array(embeddedFontSchema).max(16).optional(),
   /** Objects and a background drawn behind every slide. */
   master: z
     .object({
@@ -1056,6 +1121,7 @@ export function duplicateFile(
   return copy;
 }
 export { parsePowerPoint } from "./pptx";
+export { lineFrame, slidePointScale } from "./pptx-geometry";
 export function filename(title: string, extension = "suiteleaf") {
   return `${
     title

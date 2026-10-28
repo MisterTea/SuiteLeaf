@@ -2,13 +2,18 @@ on run argv
  set sourcePath to item 1 of argv
  set outputPath to item 2 of argv
  set sourceFile to (POSIX file sourcePath) as alias
+ set resolvedSource to POSIX path of sourceFile
+ if resolvedSource ends with "/" then set resolvedSource to text 1 thru -2 of resolvedSource
+ set AppleScript's text item delimiters to "/"
+ set sourceName to last text item of sourcePath
+ set AppleScript's text item delimiters to ""
  set outputHFS to (POSIX file outputPath) as text
  with timeout of 1800 seconds
   -- Leftover staged decks keep their Export As PDF windows and eventually block close.
   my closeNativeInputExcept(sourcePath)
   tell application "Microsoft PowerPoint"
    set oldNames to full name of every presentation
-   if oldNames contains sourcePath then error "Source is already open; preserve existing presentation: " & sourcePath
+   if oldNames contains sourcePath or oldNames contains resolvedSource then error "Source is already open; preserve existing presentation: " & sourcePath
    try
     with timeout of 180 seconds
      open sourceFile
@@ -20,7 +25,8 @@ on run argv
    set chosen to 0
    repeat with attempt from 1 to 120
     repeat with i from 1 to count of presentations
-     if full name of presentation i is sourcePath then set chosen to i
+     set pname to full name of presentation i as text
+     if pname is sourcePath or pname is resolvedSource or pname ends with sourceName then set chosen to i
     end repeat
     if chosen > 0 then exit repeat
     delay 0.5

@@ -84,6 +84,7 @@ export function rasterEmf(bytes: Uint8Array): string | undefined {
     const t = u(o),
       size = u(o + 4);
     if (size < 8 || o + size > bytes.length) return;
+    if (t === 14) break;
     if (t === 81) {
       if (
         size < 80 ||
@@ -102,7 +103,7 @@ export function rasterEmf(bytes: Uint8Array): string | undefined {
         depth = v.getUint16(info + 14, true);
       if (
         u(info + 16) !== 0 ||
-        depth !== 24 ||
+        (depth !== 24 && depth !== 32) ||
         bw < 1 ||
         bh === 0 ||
         bw * Math.abs(bh) > 16000000
@@ -112,25 +113,36 @@ export function rasterEmf(bytes: Uint8Array): string | undefined {
         dy = i(o + 28) - top,
         dw = i(o + 72),
         dh = i(o + 76),
-        stride = Math.ceil((bw * 3) / 4) * 4;
+        samples = depth === 32 ? 4 : 3,
+        stride = Math.ceil((bw * samples) / 4) * 4,
+        sh = Math.abs(bh),
+        dhAbs = Math.abs(dh);
+      // BI_RGB stores 32-bit pixels with an unused high byte, not alpha.
+      // StretchDIBits may scale the source into a slightly different frame.
       if (
-        dw !== bw ||
-        Math.abs(dh) !== Math.abs(bh) ||
-        bits + stride * Math.abs(bh) > o + size
+        dw < 1 ||
+        dhAbs < 1 ||
+        dw > 20000 ||
+        dhAbs > 20000 ||
+        bits + stride * sh > o + size
       )
         return;
-      for (let y = 0; y < Math.abs(bh); y++)
-        for (let x = 0; x < bw; x++) {
+      for (let y = 0; y < dhAbs; y++) {
+        const sy = Math.min(sh - 1, Math.floor((y * sh) / dhAbs));
+        const srcY = bh > 0 ? sh - 1 - sy : sy;
+        for (let x = 0; x < dw; x++) {
+          const sx = Math.min(bw - 1, Math.floor((x * bw) / dw));
           const tx = dx + x,
             ty = dy + y;
           if (tx < 0 || ty < 0 || tx >= w || ty >= h) continue;
-          const p = bits + (bh > 0 ? bh - 1 - y : y) * stride + x * 3,
+          const p = bits + srcY * stride + sx * samples,
             d = (ty * w + tx) * 4;
           pixels[d] = bytes[p + 2];
           pixels[d + 1] = bytes[p + 1];
           pixels[d + 2] = bytes[p];
           pixels[d + 3] = 255;
         }
+      }
       bitmaps++;
     } else if (
       ![

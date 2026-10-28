@@ -37,7 +37,10 @@ export default defineConfig({
     build: {
       outDir: resolve(import.meta.dirname, "out/renderer"),
       rollupOptions: {
-        input: resolve(import.meta.dirname, "../web/index.html"),
+        input: {
+          index: resolve(import.meta.dirname, "../web/index.html"),
+          "pdf-export": resolve(import.meta.dirname, "../web/pdf-export.html"),
+        },
       },
       chunkSizeWarningLimit: 4000,
     },

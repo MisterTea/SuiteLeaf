@@ -1,3 +1,10 @@
+.slide-text[data-nowrap] .element-editor,
+.slide-text[data-nowrap] .slide-text-face {
+  white-space: pre;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
 .element-editor {
   width: 100%;
   height: 100%;

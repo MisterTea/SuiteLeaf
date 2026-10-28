@@ -87,13 +87,17 @@ def main():
  logdir=r/'audit/native-pdf';logdir.mkdir(exist_ok=True);lock=open(Path('/tmp')/'suiteleaf-powerpoint-pdf.lock','a');fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
  runlog=logdir/'manifest.jsonl';completed=0;errors=0;consecutive=0
  timed={}
+ resume_after=0
  if (logdir/'run.log').exists():
   for line in (logdir/'run.log').read_text(errors='replace').splitlines():
    if not line.startswith('{'):continue
    try:rec=json.loads(line)
    except json.JSONDecodeError:continue
    if '-1712' in rec.get('error',''):timed[rec.get('index')]=timed.get(rec.get('index'),0)+1
+   idx=rec.get('index')
+   if isinstance(idx,int) and idx>resume_after:resume_after=idx
  skip_timeouts={i for i,c in timed.items() if c>=3}
+ if resume_after:print(json.dumps({'status':'resume','after':resume_after}),flush=True)
  grant=subprocess.Popen(['osascript',str(script.with_name('powerpoint-grant-access.applescript'))])
  def stop_grant():
   grant.terminate()
@@ -101,6 +105,7 @@ def main():
   except Exception:grant.kill()
  atexit.register(stop_grant)
  for n,e in enumerate(entries,1):
+  if n<=resume_after:continue
   batch=(n-1)//10+1
   if not a.first_batch<=batch<=a.last_batch:continue
   original=r/'files'/e['path']; kind='export' if a.exported else 'source'

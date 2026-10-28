@@ -78,7 +78,7 @@ test("slide text scales with the slide and controls hide until the mouse moves",
   await page.getByRole("button", { name: "Slideshow", exact: true }).click();
   const show = page.locator(".presenter-overlay");
   await expect(show).toBeVisible();
-  // The title slide's heading is 44pt on a 960-wide deck, drawn at 0.95x as in the editor,
+  // The title slide's heading is 44pt on a 960-wide deck, drawn at that point size,
   // then the whole drawing is scaled to the screen.
   const ratio = await page.evaluate(() => {
     const box = document.querySelector(".presenter-slide-box")!;
@@ -89,7 +89,7 @@ test("slide text scales with the slide and controls hide until the mouse moves",
       box.getBoundingClientRect().width
     );
   });
-  expect(Math.abs(ratio / ((44 * 0.95) / 960) - 1)).toBeLessThan(0.02);
+  expect(Math.abs(ratio / (44 / 960) - 1)).toBeLessThan(0.02);
 
   const controls = show.locator(".presenter-controls");
   await expect(controls).toHaveClass(/hidden/, { timeout: 5000 });

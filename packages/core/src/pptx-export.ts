@@ -8,6 +8,8 @@ import { nativeLayerMarker, stampImageLayers } from "./pptx-image-layers";
 import type { SlideElement, SlideFile, TextRun } from "./index";
 import { stampSlideMotion } from "./slide-motion";
 import { stampSvgAlternatives, svgFallbackMarker } from "./pptx-svg";
+import { kerningThreshold } from "./kerning";
+import { kernMarker, stampKerning } from "./pptx-kerning";
 import { officeFont } from "./office-fonts";
 
 const PX_PER_INCH = 96;
@@ -152,6 +154,7 @@ export async function exportPptx(file: SlideFile): Promise<Uint8Array> {
             bold: run.bold ?? el.bold,
             italic: run.italic ?? el.italic,
             fontSize: run.fontSize ?? el.fontSize,
+            ...(run.font ? { fontFace: officeFont(run.font) } : {}),
             breakLine: run.paragraphBreak,
             underline:
               (run.underline ?? el.underline)
@@ -162,6 +165,7 @@ export async function exportPptx(file: SlideFile): Promise<Uint8Array> {
         })),
         {
           ...place,
+          ...(kerningThreshold(el.kern) ? { objectName: kernMarker(el.id) } : {}),
           fontSize: el.fontSize || 18,
           fontFace: officeFont(el.fontFamily || "Arial"),
           align: el.align || "left",
@@ -182,7 +186,10 @@ export async function exportPptx(file: SlideFile): Promise<Uint8Array> {
     .map((id) => deck.slides[id])
     .filter((slide) => slide != null);
   const exported = await stampImageLayers(
-    await stampSvgAlternatives(await stampSlideMotion(bytes, slides), slides),
+    await stampSvgAlternatives(
+      await stampKerning(await stampSlideMotion(bytes, slides), slides),
+      slides,
+    ),
     slides,
   );
   const typed = slides.some((slide) =>

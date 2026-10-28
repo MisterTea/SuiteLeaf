@@ -13,6 +13,7 @@ import {
 } from "@suiteleaf/core";
 import { buildMarpFile, dataUriFor } from "./editors/slide-marp-import";
 import { importDrawing } from "./editors/drawing-format";
+import { PPTX_INPUT_LIMIT } from "@suiteleaf/core/office";
 
 export const maxDelimitedCells = 200000;
 /** A parsed CSV/TSV file awaiting the person's import choices. */
@@ -66,8 +67,19 @@ export async function importFile(
       "rtf",
     ].includes(ext ?? "")
   ) {
-    if (file.size > 120 * 1024 * 1024)
-      throw new Error("Office imports are limited to 120 MB.");
+    const presentation = [
+      "pptx",
+      "ppt",
+      "ppsx",
+      "pptm",
+      "potx",
+      "ppsm",
+    ].includes(ext ?? "");
+    const limit = presentation ? PPTX_INPUT_LIMIT : 120 * 1024 * 1024;
+    if (file.size > limit)
+      throw new Error(
+        `Office imports are limited to ${Math.round(limit / (1024 * 1024))} MB.`,
+      );
     const { importOfficeFile } = await import("./office-import");
     return importOfficeFile(file);
   }

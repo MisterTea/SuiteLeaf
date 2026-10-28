@@ -1109,7 +1109,13 @@ export async function exportDocx(
     ...(Object.keys(endnotes).length ? { endnotes } : {}),
     styles: {
       default: {
-        document: { run: { font: settings.font ? officeFont(settings.font) : "Arial", size: 22 } },
+        document: {
+          run: {
+            font: settings.font ? officeFont(settings.font) : "Arial",
+            size: 22,
+            ...(settings.kern ? { kern: Math.round(settings.kern * 2) } : {}),
+          },
+        },
       },
     },
     numbering: {

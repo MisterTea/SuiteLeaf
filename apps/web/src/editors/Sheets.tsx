@@ -12,6 +12,7 @@ import {
 } from "@univerjs/presets";
 import { ICommandService } from "@univerjs/core";
 import { IRenderManagerService } from "@univerjs/engine-render";
+import { stopSheetKerning } from "../sheet-kerning";
 import { SetRangeValuesCommand } from "@univerjs/sheets";
 import { SheetDataValidationModel } from "@univerjs/sheets-data-validation";
 import { SheetsNoteModel } from "@univerjs/sheets-note";
@@ -1043,6 +1044,7 @@ export default function Sheets({
         stopFormulaLock();
         window.removeEventListener("suiteleaf:open-sheet-comments", openFromHeader);
       };
+      stopSheetKerning();
       const { univer, univerAPI } = createUniver({
         // The light palette's dark tokens stay dark under univer-dark. The dark
         // palette's gray-900 is near white, which left black text inverted to

@@ -5,16 +5,27 @@ import {
   ipcMain,
   Menu,
   protocol,
-  net,
   shell,
   type IpcMainInvokeEvent,
 } from "electron";
-import { join, resolve, extname, sep, basename, dirname, relative } from "node:path";
+import {
+  join,
+  resolve,
+  extname,
+  sep,
+  basename,
+  dirname,
+  relative,
+} from "node:path";
 import { readFile, stat } from "node:fs/promises";
 import { mkdirSync } from "node:fs";
 import { convertOffice } from "./office-converter";
+import { PPTX_INPUT_LIMIT } from "@suiteleaf/core/office";
+import { isPowerPointExtension } from "@suiteleaf/core/open-office";
 import { runImportCommand } from "./import-cli";
-import { pathToFileURL } from "node:url";
+import { cliUsage, ConvertStopped, runConvertCommand } from "./convert-cli";
+import { openPdfExportWindow } from "./pdf-export-host";
+import { registerAppProtocol } from "./app-protocol";
 import {
   applyLibraryMarks,
   extensionFor,
@@ -31,8 +42,15 @@ import {
 import { FileStore, atomicWrite, driveLink } from "./store";
 import { localDataDirectory, migrateLocalData } from "./local-data";
 import { DocumentsDirectory } from "./documents-directory";
-import { buildMarpFile, dataUriFor, marpAssetPaths } from "../../web/src/editors/slide-marp-import";
-import { DRAWING_IMPORT_EXTENSIONS, importDrawing } from "../../web/src/editors/drawing-format";
+import {
+  buildMarpFile,
+  dataUriFor,
+  marpAssetPaths,
+} from "../../web/src/editors/slide-marp-import";
+import {
+  DRAWING_IMPORT_EXTENSIONS,
+  importDrawing,
+} from "../../web/src/editors/drawing-format";
 import { registerAi } from "./ai";
 // Test runs need their own Electron profile and single-instance lock as well as registry.
 if (process.env.SUITELEAF_TEST_DATA) {
@@ -51,11 +69,13 @@ let window: BrowserWindow | null = null,
   dirty = false;
 const localDirectory = process.env.SUITELEAF_TEST_DATA ?? localDataDirectory();
 const settingsPath = () =>
-  process.env.SUITELEAF_SETTINGS ??
-  join(localDirectory, "settings.json");
+  process.env.SUITELEAF_SETTINGS ?? join(localDirectory, "settings.json");
 let documentsDirectory: string;
 let documentsWatcher: DocumentsDirectory;
-async function readSettings(): Promise<{ mode?: unknown; documentsDirectory?: unknown }> {
+async function readSettings(): Promise<{
+  mode?: unknown;
+  documentsDirectory?: unknown;
+}> {
   try {
     return JSON.parse(await readFile(settingsPath(), "utf8"));
   } catch {
@@ -114,7 +134,6 @@ function authWindow(startUrl: string): Promise<string | null> {
     void child.loadURL(start.toString());
   });
 }
-const root = resolve(import.meta.dirname, "../renderer");
 function authorize(event: IpcMainInvokeEvent) {
   if (
     event.sender !== window?.webContents ||
@@ -133,7 +152,11 @@ const checked = (r: FileRecord): FileRecord =>
     {
       file: parseFile(JSON.stringify(r.file)),
       drive: driveLink(r.drive),
-      fingerprint: typeof r.fingerprint === "string" && /^[a-f0-9]{64}$/.test(r.fingerprint) ? r.fingerprint : undefined,
+      fingerprint:
+        typeof r.fingerprint === "string" &&
+        /^[a-f0-9]{64}$/.test(r.fingerprint)
+          ? r.fingerprint
+          : undefined,
     },
     readLibraryMarks(r),
   );
@@ -200,7 +223,9 @@ async function openFile() {
   if (DRAWING_IMPORT_EXTENSIONS.includes(ext.slice(1))) {
     if ((await stat(path)).size > 50 * 1024 * 1024)
       throw new Error("Choose a file smaller than 50 MB.");
-    return store.save({ file: importDrawing(basename(path), await readFile(path, "utf8"))! });
+    return store.save({
+      file: importDrawing(basename(path), await readFile(path, "utf8"))!,
+    });
   }
   const officeExtensions = new Set([
     ".docx",
@@ -231,8 +256,13 @@ async function openFile() {
   ]);
   if (!officeExtensions.has(ext)) return store.openPath(path);
   const bytes = await readFile(path);
-  if (bytes.length > 120 * 1024 * 1024)
-    throw new Error("Office imports are limited to 120 MB.");
+  const limit = isPowerPointExtension(ext.slice(1))
+    ? PPTX_INPUT_LIMIT
+    : 120 * 1024 * 1024;
+  if (bytes.length > limit)
+    throw new Error(
+      `Office imports are limited to ${Math.round(limit / (1024 * 1024))} MB.`,
+    );
   const file = await convertOffice(bytes, ext.slice(1), basename(path));
   return store.save({ file });
 }
@@ -331,7 +361,14 @@ function buildMenu() {
     Menu.buildFromTemplate([
       {
         label: "SuiteLeaf",
-        submenu: [{ role: "about" }, ...(mode.kind === "single" ? [{ label: "Settings…", click: () => send("settings") }] : []), { type: "separator" }, { role: "quit" }],
+        submenu: [
+          { role: "about" },
+          ...(mode.kind === "single"
+            ? [{ label: "Settings…", click: () => send("settings") }]
+            : []),
+          { type: "separator" },
+          { role: "quit" },
+        ],
       },
       {
         label: "File",
@@ -427,22 +464,62 @@ function buildMenu() {
   );
 }
 const commandArgs = process.argv.slice(app.isPackaged ? 1 : 2);
-if (commandArgs[0] === "import" || commandArgs[0] === "--help" || commandArgs[0] === "-h") {
-  // Run independently of an open GUI. Its directory watcher indexes the output;
-  // the importer never races the GUI's private registry file.
+const command = commandArgs[0];
+if (
+  command === "import" ||
+  command === "convert" ||
+  command === "--help" ||
+  command === "-h"
+) {
+  // Run independently of an open GUI. Import's directory watcher indexes its
+  // output; convert never writes the document library or SuiteDrive.
   void (async () => {
-    if (!process.env.SUITELEAF_TEST_DATA) await migrateLocalData(app.getPath("userData"), localDirectory);
+    const log = (message: string) => console.log(message);
+    const error = (message: string) => console.error(message);
+    if (command === "--help" || command === "-h") {
+      log(cliUsage);
+      app.exit(0);
+      return;
+    }
+    if (command === "convert") {
+      const code = await runConvertCommand(commandArgs.slice(1), {
+        convertOffice,
+        openRenderer: async () => {
+          try {
+            return await openPdfExportWindow();
+          } catch (cause) {
+            throw new ConvertStopped(
+              cause instanceof Error ? cause.message : String(cause),
+            );
+          }
+        },
+        log,
+        error,
+      });
+      app.exit(code);
+      return;
+    }
+    if (!process.env.SUITELEAF_TEST_DATA)
+      await migrateLocalData(app.getPath("userData"), localDirectory);
     const configured = (await readSettings()).documentsDirectory;
-    const defaultDirectory = typeof configured === "string" && configured
-      ? resolve(configured)
-      : join(process.env.SUITELEAF_TEST_DATA ?? app.getPath("documents"), "SuiteLeaf");
-    const code = await runImportCommand(commandArgs[0] === "import" ? commandArgs.slice(1) : ["--help"], {
-      defaultDirectory, convertOffice,
-      log: (message) => console.log(message),
-      error: (message) => console.error(message),
+    const defaultDirectory =
+      typeof configured === "string" && configured
+        ? resolve(configured)
+        : join(
+            process.env.SUITELEAF_TEST_DATA ?? app.getPath("documents"),
+            "SuiteLeaf",
+          );
+    const code = await runImportCommand(commandArgs.slice(1), {
+      defaultDirectory,
+      convertOffice,
+      log,
+      error,
     });
     app.exit(code);
-  })().catch((error) => { console.error(error); app.exit(2); });
+  })().catch((error) => {
+    console.error(error);
+    app.exit(2);
+  });
 } else if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on("second-instance", () => {
@@ -451,43 +528,55 @@ else {
   });
   void app.whenReady().then(async () => {
     if (hideWindows) app.dock?.hide();
-    if (!process.env.SUITELEAF_TEST_DATA) await migrateLocalData(app.getPath("userData"), localDirectory);
+    if (!process.env.SUITELEAF_TEST_DATA)
+      await migrateLocalData(app.getPath("userData"), localDirectory);
     store = new FileStore(localDirectory);
     await store.init();
     const saved = appModeSchema.safeParse((await readSettings()).mode);
     if (saved.success) mode = saved.data;
     const configured = (await readSettings()).documentsDirectory;
-    documentsDirectory = typeof configured === "string" && configured
-      ? resolve(configured)
-      : join(process.env.SUITELEAF_TEST_DATA ?? app.getPath("documents"), "SuiteLeaf");
-    documentsWatcher = new DocumentsDirectory(store, () => window?.webContents.send("files:changed"));
+    documentsDirectory =
+      typeof configured === "string" && configured
+        ? resolve(configured)
+        : join(
+            process.env.SUITELEAF_TEST_DATA ?? app.getPath("documents"),
+            "SuiteLeaf",
+          );
+    documentsWatcher = new DocumentsDirectory(store, () =>
+      window?.webContents.send("files:changed"),
+    );
     if (mode.kind === "single") {
-      try { await documentsWatcher.set(documentsDirectory); }
-      catch { /* Settings can choose another folder if this one is unavailable. */ }
+      try {
+        await documentsWatcher.set(documentsDirectory);
+      } catch {
+        /* Settings can choose another folder if this one is unavailable. */
+      }
     }
-    app.on("will-quit", () => { documentsWatcher.close(); store.close(); });
-    protocol.handle("suiteleaf", (request) => {
-      const url = new URL(request.url);
-      const path = resolve(root, `.${decodeURIComponent(url.pathname)}`);
-      if (
-        url.hostname !== "app" ||
-        (!path.startsWith(root + sep) && path !== root)
-      )
-        return new Response("Not found", { status: 404 });
-      return net.fetch(pathToFileURL(path).toString());
+    app.on("will-quit", () => {
+      documentsWatcher.close();
+      store.close();
     });
+    registerAppProtocol();
     register("documents:get", () => documentsDirectory);
     register("documents:choose", async () => {
-      if (mode.kind !== "single") throw new Error("Document folders are available in single-user mode.");
+      if (mode.kind !== "single")
+        throw new Error("Document folders are available in single-user mode.");
       const result = await dialog.showOpenDialog(window!, {
-        title: "Document directory", defaultPath: documentsDirectory,
+        title: "Document directory",
+        defaultPath: documentsDirectory,
         properties: ["openDirectory", "createDirectory"],
       });
       if (result.canceled || !result.filePaths[0]) return null;
       const next = resolve(result.filePaths[0]);
       await documentsWatcher.set(next);
       try {
-        await atomicWrite(settingsPath(), JSON.stringify({ ...(await readSettings()), documentsDirectory: next }));
+        await atomicWrite(
+          settingsPath(),
+          JSON.stringify({
+            ...(await readSettings()),
+            documentsDirectory: next,
+          }),
+        );
       } catch (error) {
         await documentsWatcher.set(documentsDirectory);
         throw error;
@@ -497,35 +586,62 @@ else {
     });
     /** A "/"-separated folder path from the app, resolved inside the documents folder. */
     const documentsFolder = (folder: unknown) => {
-      if (mode.kind !== "single") throw new Error("Folders are available in single-user mode.");
+      if (mode.kind !== "single")
+        throw new Error("Folders are available in single-user mode.");
       if (typeof folder !== "string") throw new Error("Invalid folder.");
       const parts = folder.split("/").filter(Boolean);
-      if (parts.some((part) => part === "." || part === ".." || part.startsWith(".") || part.includes("\\")))
+      if (
+        parts.some(
+          (part) =>
+            part === "." ||
+            part === ".." ||
+            part.startsWith(".") ||
+            part.includes("\\"),
+        )
+      )
         throw new Error("Invalid folder.");
       return join(documentsDirectory, ...parts);
     };
     const folderName = (name: unknown) => {
       const trimmed = typeof name === "string" ? name.trim() : "";
-      if (!trimmed || trimmed === "." || trimmed === ".." || trimmed.length > 120)
+      if (
+        !trimmed ||
+        trimmed === "." ||
+        trimmed === ".." ||
+        trimmed.length > 120
+      )
         throw new Error("Choose a folder name.");
-      if (trimmed.startsWith(".")) throw new Error("Folder names cannot start with a dot.");
-      if (/[/\\:\0]/.test(trimmed)) throw new Error("Folder names cannot contain / \\ or :.");
+      if (trimmed.startsWith("."))
+        throw new Error("Folder names cannot start with a dot.");
+      if (/[/\\:\0]/.test(trimmed))
+        throw new Error("Folder names cannot contain / \\ or :.");
       return trimmed;
     };
-    const relativeFolder = (path: string) => relative(documentsDirectory, path).split(sep).join("/");
-    register("folders:list", () => (mode.kind === "single" ? store.folderPaths(documentsDirectory) : []));
+    const relativeFolder = (path: string) =>
+      relative(documentsDirectory, path).split(sep).join("/");
+    register("folders:list", () =>
+      mode.kind === "single" ? store.folderPaths(documentsDirectory) : [],
+    );
     register("folders:create", async (parent, name) =>
-      relativeFolder(await store.createFolder(documentsFolder(parent), folderName(name))),
+      relativeFolder(
+        await store.createFolder(documentsFolder(parent), folderName(name)),
+      ),
     );
     register("folders:rename", async (folder, name) => {
       const path = documentsFolder(folder);
-      if (path === documentsDirectory) throw new Error("Choose a folder to rename.");
-      return relativeFolder(await store.moveFolder(path, dirname(path), folderName(name)));
+      if (path === documentsDirectory)
+        throw new Error("Choose a folder to rename.");
+      return relativeFolder(
+        await store.moveFolder(path, dirname(path), folderName(name)),
+      );
     });
     register("folders:move", async (folder, parent) => {
       const path = documentsFolder(folder);
-      if (path === documentsDirectory) throw new Error("Choose a folder to move.");
-      return relativeFolder(await store.moveFolder(path, documentsFolder(parent)));
+      if (path === documentsDirectory)
+        throw new Error("Choose a folder to move.");
+      return relativeFolder(
+        await store.moveFolder(path, documentsFolder(parent)),
+      );
     });
     register("files:move", (id, folder) => {
       if (typeof id !== "string") throw new Error("Invalid file ID.");
@@ -546,7 +662,10 @@ else {
       const r = checked(input);
       const ext = extensionFor(r.file.kind);
       const result = await dialog.showSaveDialog(window!, {
-        defaultPath: mode.kind === "single" ? join(documentsDirectory, nativeFilename(r.file)) : nativeFilename(r.file),
+        defaultPath:
+          mode.kind === "single"
+            ? join(documentsDirectory, nativeFilename(r.file))
+            : nativeFilename(r.file),
         filters: [{ name: "SuiteLeaf file", extensions: [ext] }],
       });
       if (result.canceled || !result.filePath) return null;

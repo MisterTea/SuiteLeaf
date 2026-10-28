@@ -11,9 +11,12 @@ const bridge: DesktopBridge = {
   },
   reload: (id) => ipcRenderer.invoke("files:reload", id),
   listFolders: () => ipcRenderer.invoke("folders:list"),
-  createFolder: (parent, name) => ipcRenderer.invoke("folders:create", parent, name),
-  renameFolder: (folder, name) => ipcRenderer.invoke("folders:rename", folder, name),
-  moveFolder: (folder, parent) => ipcRenderer.invoke("folders:move", folder, parent),
+  createFolder: (parent, name) =>
+    ipcRenderer.invoke("folders:create", parent, name),
+  renameFolder: (folder, name) =>
+    ipcRenderer.invoke("folders:rename", folder, name),
+  moveFolder: (folder, parent) =>
+    ipcRenderer.invoke("folders:move", folder, parent),
   moveFile: (id, folder) => ipcRenderer.invoke("files:move", id, folder),
   list: () => ipcRenderer.invoke("files:list"),
   get: (id) => ipcRenderer.invoke("files:get", id),
@@ -38,9 +41,14 @@ const bridge: DesktopBridge = {
     chatTemplate: () => ipcRenderer.invoke("ai:template"),
     generate: (request, onEvent) => {
       const id = crypto.randomUUID();
-      const listener = (_event: unknown, eventId: string, event: AiGenerateEvent) => {
+      const listener = (
+        _event: unknown,
+        eventId: string,
+        event: AiGenerateEvent,
+      ) => {
         if (eventId !== id) return;
-        if (event.type !== "text") ipcRenderer.removeListener("ai:event", listener);
+        if (event.type !== "text")
+          ipcRenderer.removeListener("ai:event", listener);
         onEvent(event);
       };
       ipcRenderer.on("ai:event", listener);
@@ -55,3 +63,23 @@ const bridge: DesktopBridge = {
   },
 };
 contextBridge.exposeInMainWorld("suiteleaf", bridge);
+let pdfFile: ((json: string) => void) | undefined;
+let pdfAnnounced = false;
+ipcRenderer.on("pdf:file", (_event, json: unknown) => {
+  if (typeof json === "string") pdfFile?.(json);
+});
+contextBridge.exposeInMainWorld("suiteleafPdf", {
+  listen(callback: (json: string) => void) {
+    pdfFile = callback;
+    if (!pdfAnnounced) {
+      pdfAnnounced = true;
+      ipcRenderer.send("pdf:listening");
+    }
+  },
+  ready() {
+    ipcRenderer.send("pdf:ready");
+  },
+  fail(message: string) {
+    ipcRenderer.send("pdf:fail", String(message).slice(0, 500));
+  },
+});

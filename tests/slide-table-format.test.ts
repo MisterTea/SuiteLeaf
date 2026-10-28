@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SlideElement } from "../packages/core/src";
-import { toggleSlideCellMark } from "../apps/web/src/editors/slide-table-format";
+import { slideCellPaint, toggleSlideCellMark } from "../apps/web/src/editors/slide-table-format";
 
 const table: SlideElement = {
   id: "t",
@@ -24,5 +24,32 @@ describe("slide table marks", () => {
     expect(both?.cellMarks?.[0]?.[0]).toEqual({ bold: true, italic: true });
     const cleared = toggleSlideCellMark({ ...table, ...both }, 0, 0, "bold");
     expect(cleared?.cellMarks?.[0]?.[0]).toEqual({ italic: true });
+  });
+
+  it("paints imported fills and drops the editor grid", () => {
+    expect(
+      slideCellPaint(
+        { fill: "#00B0F0", color: "#ffffff", fontSize: 18, align: "center", bold: true, border: "#ffffff" },
+        true,
+      ),
+    ).toMatchObject({
+      background: "#00B0F0",
+      color: "#ffffff",
+      fontWeight: 700,
+      textAlign: "center",
+      border: "calc(1px * var(--slide-pt, 1)) solid #ffffff",
+    });
+    expect(slideCellPaint({ fill: "#ff9999" }, true).border).toBe("none");
+    expect(slideCellPaint(undefined, false)).toEqual({
+      fontWeight: undefined,
+      fontStyle: undefined,
+      background: undefined,
+      color: undefined,
+      fontSize: undefined,
+      textAlign: undefined,
+      lineHeight: undefined,
+      whiteSpace: undefined,
+      border: undefined,
+    });
   });
 });

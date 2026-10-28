@@ -3,7 +3,7 @@ import { createPortal, flushSync } from "react-dom";
 import type { Presentation } from "@suiteleaf/core";
 import { prepareMarpDocument } from "./slide-marp-runtime";
 import { renderMarpPages } from "./slide-marp-render";
-import { SlideStill, slideBackground } from "./slide-surface";
+import { SlideStill, slideBackground, slideBackgroundPaint } from "./slide-surface";
 
 /** Mount the full deck before both native browser printing and app print commands. */
 export function useSlidePrint(
@@ -132,8 +132,10 @@ export function SlidePrintDeck({
       document.body,
     );
   }
-  const width = deck.width || 960,
-    height = deck.height || 540;
+  const drawW = deck.width || 960,
+    drawH = deck.height || 540;
+  const width = deck.pointWidth || drawW,
+    height = deck.pointHeight || drawH;
   // Presentation dimensions become PDF points; container units scale all slide content.
   const cssWidth = (width * 4) / 3,
     cssHeight = (height * 4) / 3;
@@ -144,8 +146,15 @@ export function SlidePrintDeck({
       style={{ width: cssWidth }}
     >
       <style>{`@page { size: ${width}pt ${height}pt; margin: 0; }
-      @media print { .slides-print-page { width: ${cssWidth}px !important; height: ${cssHeight}px !important; } }`}</style>
-      {deck.slideOrder.map((id, index) => {
+      @media print {
+        .slides-print-page { width: ${cssWidth}px !important; height: ${cssHeight}px !important; }
+        /* Transform scale leaves a blank margin when the drawing is larger than the page. */
+        .slides-print-deck .slide-still > .slide-surface {
+          zoom: var(--slide-fit, 1);
+          transform: translate(var(--slide-fit-x, 0px), var(--slide-fit-y, 0px)) !important;
+        }
+      }`}</style>
+      {deck.slideOrder.filter((id) => deck.slides[id] && !deck.slides[id].hidden).map((id, index) => {
         const slide = deck.slides[id];
         if (!slide) return null;
         return (
@@ -156,7 +165,7 @@ export function SlidePrintDeck({
             style={{
               width: cssWidth,
               height: cssHeight,
-              backgroundColor: slideBackground(deck, slide),
+              ...slideBackgroundPaint(slideBackground(deck, slide)),
             }}
           >
             <SlideStill deck={deck} slide={slide} index={index} />

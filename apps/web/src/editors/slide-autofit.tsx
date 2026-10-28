@@ -41,6 +41,7 @@ export function autofitSignature(el: {
   width: number;
   height: number;
   align?: string;
+  nowrap?: boolean;
 }): string {
   return JSON.stringify([
     el.content ?? "",
@@ -52,6 +53,7 @@ export function autofitSignature(el: {
     el.width,
     el.height,
     el.align ?? "",
+    !!el.nowrap,
   ]);
 }
 
@@ -92,7 +94,10 @@ export function AutofitBox({
       const previous = node.style.fontSize;
       const fits = (px: number) => {
         node.style.fontSize = `${px}px`;
-        return node.scrollHeight <= node.clientHeight + 1;
+        return (
+          node.scrollHeight <= node.clientHeight + 1 &&
+          node.scrollWidth <= node.clientWidth + 1
+        );
       };
       const next = autofitFontSize(fits, natural);
       node.style.fontSize = previous;
