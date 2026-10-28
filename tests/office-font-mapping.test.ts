@@ -17,6 +17,8 @@ describe("Office font names", () => {
     expect(suiteLeafFont("Calibri Light")).toBe("SuiteLeaf Willow Light");
     expect(suiteLeafFont("Aptos SemiBold")).toBe("SuiteLeaf Elm SemiBold");
     expect(suiteLeafFont("ＭＳ ゴシック")).toBe("SuiteLeaf Bamboo");
+    expect(suiteLeafFont("Courier New")).toBe("SuiteLeaf Longan");
+    expect(officeFont("SuiteLeaf Durian")).toBe("Georgia");
     expect(officeFont("SuiteLeaf Willow")).toBe("Calibri");
     expect(officeFont("SuiteLeaf Elm SemiBold")).toBe("Aptos SemiBold");
     expect(suiteLeafFont("Some Brand Font")).toBe("Some Brand Font");

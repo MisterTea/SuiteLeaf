@@ -222,10 +222,10 @@ def _install(results, office_dir, root, out):
     for family, rs in by_family.items():
         name = "LICENSE-" + family.replace(" ", "-") + ".txt"
         (out / name).write_text(license_text(family, rs, root))
+    mapping_path.write_text(json.dumps(mapping, indent=2, ensure_ascii=False) + "\n")
     write_css(office_dir, out)
     # Cedar and Linden used to share one file; each family now has its own.
     (out / "LICENSE-SuiteLeaf-Cedar-Linden.txt").unlink(missing_ok=True)
-    mapping_path.write_text(json.dumps(mapping, indent=2, ensure_ascii=False) + "\n")
 
 
 def font_names(font, *ids):
@@ -264,11 +264,13 @@ def write_css(office_dir, out):
         files.setdefault(TTFont(path, lazy=True)["name"].getDebugName(4), path.name)
     rules, seen = [], set()
     to_suiteleaf, to_office = {}, {}
-    for office_file in sorted(os.listdir(office_dir)):
-        if not office_file.lower().endswith((".ttf", ".otf", ".ttc")):
+    # Faces whose reference comes with the operating system name it by absolute path in the catalog.
+    elsewhere = sorted({face["office"] for spec in suiteleaf_families.CATALOG["families"].values()
+                        for face in spec["faces"] if os.path.isabs(face["office"]) and os.path.exists(face["office"])})
+    for path in [os.path.join(office_dir, f) for f in sorted(os.listdir(office_dir))] + elsewhere:
+        if not path.lower().endswith((".ttf", ".otf", ".ttc")):
             continue
-        path = os.path.join(office_dir, office_file)
-        for office in TTCollection(path).fonts if office_file.lower().endswith(".ttc") else [TTFont(path, lazy=True)]:
+        for office in TTCollection(path).fonts if path.lower().endswith(".ttc") else [TTFont(path, lazy=True)]:
             target = mapping.get(office["name"].getDebugName(4))
             if target not in files:
                 continue

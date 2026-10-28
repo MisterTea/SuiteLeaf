@@ -33,6 +33,16 @@ describe("Office font faces", () => {
     );
   });
 
+  it("draws every font the Docs picker offers with a SuiteLeaf face, including ones Windows supplies", () => {
+    for (const [name, file] of [
+      ["Arial", "suiteleaf-aspen-regular.woff2"],
+      ["Georgia", "suiteleaf-durian-regular.woff2"],
+      ["Times New Roman", "suiteleaf-maple-regular.woff2"],
+      ["Courier New", "suiteleaf-longan-regular.woff2"],
+    ])
+      expect(faces.find((face) => face.family === name && face.weight === 400 && face.style === "normal")?.file, name).toBe(file);
+  });
+
   it("names faces the way documents do, including localized and typographic family names", () => {
     const families = new Set(faces.map((face) => face.family));
     for (const name of ["Times New Roman", "Aptos", "Aptos SemiBold", "Consolas", "ＭＳ ゴシック", "바탕", "Wingdings"])

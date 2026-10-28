@@ -7,6 +7,7 @@ lacks come from a few close donors, then from whatever covers the rest. Every so
 is pinned by URL and SHA-256.
 
     python scripts/fonts/suiteleaf_plan.py --gfonts DIR cjk
+    python scripts/fonts/suiteleaf_plan.py --gfonts DIR system   # SYSTEM_FAMILIES, measured against those copies
     python scripts/fonts/suiteleaf_plan.py --gfonts DIR repair WORK/results.json   # donors for what a build lacks
 
 DIR is a checkout of github.com/google/fonts at the commit in suiteleaf_sources.GF.
@@ -33,6 +34,18 @@ from suiteleaf_shaping import text_chars, worker_count
 HERE = Path(__file__).parent
 CATALOG = HERE / "suiteleaf_catalog.json"
 OFFICE = "/Applications/Microsoft Word.app/Contents/Resources/DFonts"
+# Word documents also use fonts that come with Windows rather than Office. Mac Office leaves some to
+# macOS, and OneNote ships two Windows UI families; those copies are the reference for these families.
+MACOS = "/System/Library/Fonts/Supplemental"
+ONENOTE = "/Applications/Microsoft OneNote.app/Contents/Resources/DFonts"
+SYSTEM_FAMILIES = {
+    "Courier New": [f"{MACOS}/Courier New{s}.ttf" for s in ("", " Bold", " Italic", " Bold Italic")],
+    "Georgia": [f"{MACOS}/Georgia{s}.ttf" for s in ("", " Bold", " Italic", " Bold Italic")],
+    "Impact": [f"{MACOS}/Impact.ttf"],
+    "Microsoft Sans Serif": [f"{MACOS}/Microsoft Sans Serif.ttf"],
+    "Leelawadee UI": [f"{ONENOTE}/{f}" for f in ("Leelawui.ttf", "Leelauib.ttf", "leeluisl.ttf")],
+    "Nirmala UI": [f"{ONENOTE}/{f}" for f in ("Nirmala.ttf", "Nirmalab.ttf", "Nirmalas.ttf")],
+}
 GF_URL = suiteleaf_sources.GF.rsplit("ofl/", 1)[0]
 # Families of the hand-written list in suiteleaf_families.py, and the Office families they cover.
 TAKEN = ["Ironwood", "Acorn", "Cedar", "Linden", "Teak", "Sprig", "Willow", "Aspen", "Juniper", "Maple"]
@@ -205,10 +218,22 @@ def office_families(office_dir):
     return fams
 
 
+def system_families():
+    """SYSTEM_FAMILIES in office_families' form; each file is an absolute path."""
+    fams = {}
+    for family, paths in SYSTEM_FAMILIES.items():
+        for path in paths:
+            n = TTFont(path, lazy=True)["name"]
+            fams.setdefault(family, []).append((path, 0, n.getDebugName(17) or n.getDebugName(2)))
+    return fams
+
+
 def office_face(office_dir, work, file, index):
-    out = Path(work) / f"office-{file}-{index}.ttf"
+    """`file` is in office_dir, or an absolute path."""
+    path = os.path.join(office_dir, file)
+    out = Path(work) / f"office-{Path(file).name}-{index}.ttf"
     if not out.exists():
-        (TTCollection(f"{office_dir}/{file}").fonts[index] if file.lower().endswith(".ttc") else TTFont(f"{office_dir}/{file}")).save(out)
+        (TTCollection(path).fonts[index] if file.lower().endswith(".ttc") else TTFont(path)).save(out)
     return str(out)
 
 
@@ -237,6 +262,8 @@ def sample(script, cmap):
         return [ord(c) for c in COMMON_HANT if ord(c) in cmap][:300]
     if script == "extb":
         return [c for c in range(0x20000, 0x2A6E0, 97) if c in cmap][:300]
+    if script == "latn":
+        return [c for c in range(0x21, 0x7F) if c in cmap]
     return [ord(c) for c in COMMON_HAN if ord(c) in cmap][:300]
 
 
@@ -307,12 +334,13 @@ def donor_pool(office, base_cmap, corpus, weight, italic, scores):
 
 # --- Planning -------------------------------------------------------------------------
 
-def plan(args, groups):
-    """groups: [(group name, office family names, script)]; adds a catalog family per group."""
+def plan(args, groups, fams=None):
+    """groups: [(group name, office family names, script)]; adds a catalog family per group.
+    fams: the Office faces of each family, by default those in args.office."""
     catalog = json.loads(CATALOG.read_text())
     taken = set(catalog["families"]) | {f"SuiteLeaf {t}" for t in TAKEN} | set(NAMES.values())
     trees = [t for t in TREES if f"SuiteLeaf {t}" not in taken]
-    fams = office_families(args.office)
+    fams = fams or office_families(args.office)
     corpus = [c for c in scan_corpus(args.gfonts, args.work) if usable(c)]
     cands_all = [c for c in corpus if usable(c)] + local_candidates(args.work)
     log(f"{len(corpus)} Google Fonts faces")
@@ -325,8 +353,8 @@ def plan(args, groups):
                 cps = sample(script, set(office.getBestCmap() or {}))
                 weight = office["OS/2"].usWeightClass
                 italic = bool(office["head"].macStyle & 2)
-                cands = [c for c in cands_all if not c[4] and abs(c[3] - weight) <= 250
-                         and sum(x in c[5] for x in cps) >= 0.9 * len(cps)]
+                near = [c for c in cands_all if abs(c[3] - weight) <= 250 and sum(x in c[5] for x in cps) >= 0.9 * len(cps)]
+                cands = [c for c in near if c[4] == italic] or [c for c in near if not c[4]]
                 key = (group, oname, file, index)
                 faces.append((key, opath, style, weight, italic))
                 requests[key] = (opath, cps, cands)
@@ -364,6 +392,7 @@ def plan(args, groups):
         sources, licenses, credits = [], [], set()
         for key, opath, style, weight, italic in rows:
             path, coords = chosen[key]
+            upright = not next(c[4] for c in requests[key][2] if (c[0], c[1]) == (path, coords))
             cache, lic, entries = resolve(args.gfonts, path)
             sources += entries
             licenses += [x for x in lic if x not in licenses]
@@ -374,7 +403,7 @@ def plan(args, groups):
             face_style = style if len(spec["office_families"]) == 1 else f"{key[1][len(os.path.commonprefix(spec['office_families'])):].strip()} {style}".strip()
             face = {"office": key[2], "index": key[3], "source": cache, "coords": dict(coords) if coords else None,
                     "style": face_style if face_style not in ("Roman", "Normal") else "Regular",
-                    "options": {"fit": True, **({"slant": round(-TTFont(opath)["post"].italicAngle or 12, 1)} if italic else {})},
+                    "options": {"fit": True, **({"slant": round(-TTFont(opath)["post"].italicAngle or 12, 1)} if italic and upright else {})},
                     "donors": []}
             for p, co, name in donors:
                 dcache, dentries, _ = gf_source(args.gfonts, p)
@@ -479,7 +508,7 @@ def cjk_groups(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("tier", choices=["cjk", "repair"])
+    parser.add_argument("tier", choices=["cjk", "system", "repair"])
     parser.add_argument("results", nargs="?", help="results.json of a build, for repair")
     parser.add_argument("--gfonts", required=True, help="Checkout of github.com/google/fonts")
     parser.add_argument("--office", default=OFFICE)
@@ -488,6 +517,11 @@ if __name__ == "__main__":
     Path(args.work).mkdir(parents=True, exist_ok=True)
     if args.tier == "repair":
         repair(args, args.results)
+        sys.exit()
+    if args.tier == "system":
+        catalog = json.loads(CATALOG.read_text())
+        planned = {f for spec in catalog["families"].values() for f in spec.get("office_families", [])}
+        plan(args, [(name, [name], "latn") for name in SYSTEM_FAMILIES if name not in planned], system_families())
         sys.exit()
     groups = cjk_groups(args)
     log(f"{len(groups)} groups: {[g[0] for g in groups]}")

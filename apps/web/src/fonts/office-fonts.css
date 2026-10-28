@@ -5317,3 +5317,151 @@
   font-display: block;
   unicode-range: U+0-10FF, U+1200-2E7F, U+4DC0-4DFF, U+A000-A95F, U+A980-ABFF, U+D800-F8FF, U+FB00-FE2F, U+FE50-FEFF, U+FFF0-1F1FF, U+1F300-1FFFF, U+40000-10FFFF;
 }
+@font-face {
+  font-family: "Courier New";
+  src: url("./suiteleaf-longan-bold-italic.woff2") format("woff2");
+  font-weight: 700;
+  font-style: italic;
+  font-display: block;
+}
+@font-face {
+  font-family: "SuiteLeaf Longan";
+  src: url("./suiteleaf-longan-bold-italic.woff2") format("woff2");
+  font-weight: 700;
+  font-style: italic;
+  font-display: block;
+}
+@font-face {
+  font-family: "Courier New";
+  src: url("./suiteleaf-longan-bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "SuiteLeaf Longan";
+  src: url("./suiteleaf-longan-bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "Courier New";
+  src: url("./suiteleaf-longan-italic.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: block;
+}
+@font-face {
+  font-family: "SuiteLeaf Longan";
+  src: url("./suiteleaf-longan-italic.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: block;
+}
+@font-face {
+  font-family: "Courier New";
+  src: url("./suiteleaf-longan-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "SuiteLeaf Longan";
+  src: url("./suiteleaf-longan-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "Georgia";
+  src: url("./suiteleaf-durian-bold-italic.woff2") format("woff2");
+  font-weight: 700;
+  font-style: italic;
+  font-display: block;
+  unicode-range: U+0-10FF, U+1200-2E7F, U+4DC0-4DFF, U+A000-A95F, U+A980-ABFF, U+D800-F8FF, U+FB00-FE2F, U+FE50-FEFF, U+FFF0-1F1FF, U+1F300-1FFFF, U+40000-10FFFF;
+}
+@font-face {
+  font-family: "SuiteLeaf Durian";
+  src: url("./suiteleaf-durian-bold-italic.woff2") format("woff2");
+  font-weight: 700;
+  font-style: italic;
+  font-display: block;
+  unicode-range: U+0-10FF, U+1200-2E7F, U+4DC0-4DFF, U+A000-A95F, U+A980-ABFF, U+D800-F8FF, U+FB00-FE2F, U+FE50-FEFF, U+FFF0-1F1FF, U+1F300-1FFFF, U+40000-10FFFF;
+}
+@font-face {
+  font-family: "Georgia";
+  src: url("./suiteleaf-durian-bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+  unicode-range: U+0-10FF, U+1200-2E7F, U+4DC0-4DFF, U+A000-A95F, U+A980-ABFF, U+D800-F8FF, U+FB00-FE2F, U+FE50-FEFF, U+FFF0-1F1FF, U+1F300-1FFFF, U+40000-10FFFF;
+}
+@font-face {
+  font-family: "SuiteLeaf Durian";
+  src: url("./suiteleaf-durian-bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+  unicode-range: U+0-10FF, U+1200-2E7F, U+4DC0-4DFF, U+A000-A95F, U+A980-ABFF, U+D800-F8FF, U+FB00-FE2F, U+FE50-FEFF, U+FFF0-1F1FF, U+1F300-1FFFF, U+40000-10FFFF;
+}
+@font-face {
+  font-family: "Georgia";
+  src: url("./suiteleaf-durian-italic.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: block;
+  unicode-range: U+0-10FF, U+1200-2E7F, U+4DC0-4DFF, U+A000-A95F, U+A980-ABFF, U+D800-F8FF, U+FB00-FE2F, U+FE50-FEFF, U+FFF0-1F1FF, U+1F300-1FFFF, U+40000-10FFFF;
+}
+@font-face {
+  font-family: "SuiteLeaf Durian";
+  src: url("./suiteleaf-durian-italic.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: block;
+  unicode-range: U+0-10FF, U+1200-2E7F, U+4DC0-4DFF, U+A000-A95F, U+A980-ABFF, U+D800-F8FF, U+FB00-FE2F, U+FE50-FEFF, U+FFF0-1F1FF, U+1F300-1FFFF, U+40000-10FFFF;
+}
+@font-face {
+  font-family: "Georgia";
+  src: url("./suiteleaf-durian-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+  unicode-range: U+0-10FF, U+1200-2E7F, U+4DC0-4DFF, U+A000-A95F, U+A980-ABFF, U+D800-F8FF, U+FB00-FE2F, U+FE50-FEFF, U+FFF0-1F1FF, U+1F300-1FFFF, U+40000-10FFFF;
+}
+@font-face {
+  font-family: "SuiteLeaf Durian";
+  src: url("./suiteleaf-durian-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+  unicode-range: U+0-10FF, U+1200-2E7F, U+4DC0-4DFF, U+A000-A95F, U+A980-ABFF, U+D800-F8FF, U+FB00-FE2F, U+FE50-FEFF, U+FFF0-1F1FF, U+1F300-1FFFF, U+40000-10FFFF;
+}
+@font-face {
+  font-family: "Impact";
+  src: url("./suiteleaf-jackfruit-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "SuiteLeaf Jackfruit";
+  src: url("./suiteleaf-jackfruit-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "Microsoft Sans Serif";
+  src: url("./suiteleaf-breadfruit-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "SuiteLeaf Breadfruit";
+  src: url("./suiteleaf-breadfruit-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
