@@ -74,7 +74,8 @@ test("dragging a shape moves it in the source, and editing the source moves it o
   const was = (await circle.boundingBox())!;
   await source.fill(PICTURE.replace('cx="300"', 'cx="200"'));
   await source.blur();
-  await expect.poll(async () => (await circle.boundingBox())!.x).toBeLessThan(was.x - 20);
+  // The canvas redraws from the new source, so the circle can be briefly absent.
+  await expect.poll(async () => (await circle.boundingBox())?.x ?? Infinity).toBeLessThan(was.x - 20);
 });
 
 test("a Mermaid flowchart's nodes can be renamed on the canvas, and clicking one finds it in the source", async ({
