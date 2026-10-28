@@ -463,7 +463,10 @@ function buildMenu() {
     ]),
   );
 }
-const commandArgs = process.argv.slice(app.isPackaged ? 1 : 2);
+// Linux without a root-owned chrome-sandbox needs --no-sandbox; Chromium reads it anywhere on the line.
+const commandArgs = process.argv
+  .slice(app.isPackaged ? 1 : 2)
+  .filter((arg) => arg !== "--no-sandbox");
 const command = commandArgs[0];
 if (
   command === "import" ||

@@ -47,17 +47,18 @@ test("convert writes a PDF and does not add the presentation to the library", as
     const packaged = process.env.SUITELEAF_PACKAGED_EXECUTABLE;
     const electron =
       packaged ?? (createRequire(import.meta.url)("electron") as string);
-    const args = packaged
-      ? ["convert", source, "--to", "pdf", "--output", output]
-      : [
-          resolve("apps/desktop/out/main/index.js"),
-          "convert",
-          source,
-          "--to",
-          "pdf",
-          "--output",
-          output,
-        ];
+    // As Playwright does for Electron: CI's chrome-sandbox is not owned by root.
+    const sandbox = process.platform === "linux" ? ["--no-sandbox"] : [];
+    const args = [
+      ...(packaged ? [] : [resolve("apps/desktop/out/main/index.js")]),
+      ...sandbox,
+      "convert",
+      source,
+      "--to",
+      "pdf",
+      "--output",
+      output,
+    ];
     const env = { ...process.env, SUITELEAF_TEST_DATA: library };
     delete env.ELECTRON_RUN_AS_NODE;
     let stdout = "",
