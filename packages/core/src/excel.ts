@@ -7,6 +7,7 @@ import { readWorksheetOutline } from "./excel-outline";
 import { readExcelImages } from "./excel-images";
 import { readBinaryExcelLayout } from "./excel-binary-metadata";
 import { readBinaryLineCharts } from "./excel-binary-charts";
+import { suiteLeafFont } from "./office-fonts";
 import {
   createFile,
   chartSchema,
@@ -406,7 +407,7 @@ async function styleTable(zip: JSZip): Promise<Record<string, any>> {
     }
   }
   const f = zip.file("xl/styles.xml");
-  if (!f) return { styles: {}, normalFont: { family: "Calibri", size: 11 } };
+  if (!f) return { styles: {}, normalFont: { family: suiteLeafFont("Calibri"), size: 11 } };
   const s = parseXml(await f.async("string"), "xl/styles.xml").styleSheet;
   const fonts = array<any>(s?.fonts?.font),
     fills = array<any>(s?.fills?.fill),
@@ -433,7 +434,7 @@ async function styleTable(zip: JSZip): Promise<Record<string, any>> {
       fill = fills[+xf["@_fillId"]],
       border = borders[+xf["@_borderId"]];
     if (font) {
-      if (font.name?.["@_val"]) style.ff = font.name["@_val"];
+      if (font.name?.["@_val"]) style.ff = suiteLeafFont(font.name["@_val"]);
       if (font.sz?.["@_val"]) style.fs = +font.sz["@_val"];
       if (
         font.b !== undefined &&
@@ -520,7 +521,7 @@ async function styleTable(zip: JSZip): Promise<Record<string, any>> {
   return {
     styles: out,
     normalFont: {
-      family: normalFont?.name?.["@_val"] ?? "Calibri",
+      family: suiteLeafFont(normalFont?.name?.["@_val"] ?? "Calibri"),
       size: Number(normalFont?.sz?.["@_val"]) || 11,
     },
   };

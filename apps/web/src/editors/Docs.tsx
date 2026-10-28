@@ -123,6 +123,7 @@ import { DocShape } from "./doc-shape";
 import { useAgentHost } from "../ai/host";
 import { docBeforeTool, docReview, docSnapshot, docTools as docAgentTools, type DocsAgentContext } from "../ai/tools/docs";
 import {
+  bodyFontFamily,
   bodyEdgeInsets,
   documentHtml,
   documentPageSettings,
@@ -2605,6 +2606,7 @@ export default function Docs({
               {
                 "--page-width": `${dimensions.width}px`,
                 "--page-height": `${dimensions.height}px`,
+                "--doc-font": bodyFontFamily(shownSettings.font),
                 "--page-margin": `${shownSettings.marginTop}px`,
                 "--page-margin-top": `${shownSettings.marginTop}px`,
                 "--page-margin-right": `${shownSettings.marginRight}px`,

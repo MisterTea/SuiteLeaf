@@ -102,6 +102,8 @@ export type PageSettings = {
   footerFromEdge: number;
   /** A short phrase drawn behind the text. Empty means no watermark. */
   watermark: string;
+  /** The font body text gets, from an imported document. Empty means Arial. */
+  font: string;
 };
 /** Long enough for a word or a short phrase, not a sentence. */
 export const WATERMARK_LIMIT = 40;
@@ -109,6 +111,14 @@ export const WATERMARK_LIMIT = 40;
 export function watermarkText(value: unknown): string {
   if (typeof value !== "string") return "";
   return value.replace(/\s+/g, " ").trim().slice(0, WATERMARK_LIMIT);
+}
+/** A font family name, without the quotes and separators CSS would read as a list. */
+export function bodyFont(value: unknown): string {
+  return typeof value === "string" ? value.replace(/["'\\,;{}<>]/g, "").trim().slice(0, 80) : "";
+}
+/** The CSS font-family list for body text. */
+export function bodyFontFamily(font: string): string {
+  return font ? `"${font}", Arial, sans-serif` : "Arial, sans-serif";
 }
 export const defaultPageSettings: PageSettings = {
   size: "letter",
@@ -146,6 +156,7 @@ export const defaultPageSettings: PageSettings = {
   headerFromEdge: MARGIN_DEFAULT_PX,
   footerFromEdge: MARGIN_DEFAULT_PX,
   watermark: "",
+  font: "",
 };
 const pageText = (value: unknown) =>
   typeof value === "string" ? value.slice(0, 500) : "";
@@ -226,6 +237,7 @@ export function documentPageSettings(content: JsonNode): PageSettings {
     oddHeader: pageText(a?.oddHeader),
     oddFooter: pageText(a?.oddFooter),
     watermark: watermarkText(a?.watermark),
+    font: bodyFont(a?.font),
   };
 }
 export type PageNumberSide =
@@ -1075,7 +1087,7 @@ main { position: relative; z-index: 1; }`
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title>
 <style>
-body { position: relative; max-width: ${width / 96}in; margin: 0 auto; padding: ${padding}; box-sizing: border-box; font: 11pt/1.5 Arial, sans-serif; }
+body { position: relative; max-width: ${width / 96}in; margin: 0 auto; padding: ${padding}; box-sizing: border-box; font: 11pt/1.5 ${bodyFontFamily(settings.font)}; }
 .page-header, .page-footer, .section-header, .section-footer { color: #555; font-size: 10pt; line-height: 16px; white-space: pre-wrap; }
 .page-header { position: absolute; top: ${layout.headerFromEdge / 96}in; left: ${settings.marginLeft / 96}in; right: ${settings.marginRight / 96}in; margin: 0; }
 .page-footer { position: absolute; bottom: ${layout.footerFromEdge / 96}in; left: ${settings.marginLeft / 96}in; right: ${settings.marginRight / 96}in; margin: 0; }

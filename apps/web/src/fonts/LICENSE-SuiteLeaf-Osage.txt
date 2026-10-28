@@ -1,0 +1,102 @@
+SuiteLeaf Osage is built from Ume P Gothic C5 Look update time of this file., Author: HORAI Wataru. License: This font is a free software. Unlimited permission is granted to use, copy, and distribute it, with or without modification, either commercially and noncommercially. THIS FONT IS PROVIDED "AS IS" WITHOUT WARRANTY.
+
+SuiteLeaf changed it so text lays out exactly as in MS PGothic: outlines were scaled to that font's
+units per em and moved sideways to center them in their advance; advance widths, kerning, glyph classes,
+and line metrics were set from that font's layout. Where that font joins letters into a ligature, a
+ligature glyph was made from this font's own letters, moved closer together. No outline shape was
+otherwise changed.
+
+Arabic and Hebrew text lays out close to, but not exactly as, MS PGothic: this font
+chooses contextual forms and ligatures differently there, so lines can be slightly wider or narrower.
+
+Characters the source font lacks were filled with glyphs from these fonts, scaled and centered
+the same way (counts are across it). Each keeps its own license, reproduced below; all are
+compatible with the license of the whole font.
+
+- 1031 glyphs from Chocolate Classical Sans (OFL-1.1). Copyright 2024 The Chocolate Classical Sans Project Authors (https://github.com/MoonlitOwen/ChocolateSans)
+- 6 glyphs from Google Sans (OFL-1.1). Copyright 2025 The Google Sans Project Authors (https://github.com/googlefonts/googlesans)
+- 58 glyphs from Gothic A1 (OFL-1.1). (C) Copyright HanYang I&C Co.,Ltd. All rights reserved.
+- 1 glyph from Noto Emoji (OFL-1.1). Copyright 2013 Google LLC
+
+The build scripts are in scripts/fonts/ of the SuiteLeaf repository.
+
+The font is distributed under the SIL Open Font License 1.1 (the source's own license is also below), below.
+
+----------------------------------------------------------------------------
+
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: Umefont
+Upstream-Contact: Wataru Horai <horaiwataru _at_ gmail.com>
+Source: https://osdn.net/projects/ume-font/releases/
+
+Files: ume-*.ttf
+Copyright: 2004-2017, Wataru Hourai <horaiwataru _at_ users dot sourceforge dot jp>
+           2008, 2009 GlyphWiki Project
+License: UmeFont
+
+License: UmeFont
+ ---------------------------------------------------------------------------
+ 梅フォントのライセンス (日本語 UTF-8)  (UmeFont license (In Japanese UTF-8))
+ ---------------------------------------------------------------------------
+ .
+ 本ライセンスは以下の梅フォントに共通のライセンスです。
+ .
+  * 梅ゴシック
+  * 梅ゴシックC4
+  * 梅ゴシックS4
+  * 梅ゴシックO5
+  * 梅ゴシックC5
+  * 梅ゴシックS5
+  * 梅Pゴシック
+  * 梅PゴシックC4
+  * 梅PゴシックS4
+  * 梅PゴシックO5
+  * 梅PゴシックC5
+  * 梅PゴシックS5
+  * 梅UIゴシック
+  * 梅UIゴシックO5
+  * 梅明朝
+  * 梅明朝S3
+  * 梅P明朝
+  * 梅P明朝S3
+ .
+ これらのフォントはフリー（自由な）ソフトウエアです。
+ あらゆる改変の有無に関わらず、また商業的な利用であっても、自由にご利用、
+ 複製、再配布することができますが、全て無保証とさせていただきます。 
+ .
+ ---------------------------------------------------------------------------
+    UmeFont license (In English)
+ ---------------------------------------------------------------------------
+ .
+ This is common license of the UmeFont family. UmeFont family provides the
+ following fonts:
+ .
+  * Ume Gothic
+  * Ume Gothic C4
+  * Ume Gothic S4
+  * Ume Gothic O5
+  * Ume Gothic C5
+  * Ume Gothic S5
+  * Ume P Gothic
+  * Ume P Gothic C4
+  * Ume P Gothic S4
+  * Ume P Gothic O5
+  * Ume P Gothic C5
+  * Ume P Gothic S5
+  * Ume UI Gothic
+  * Ume UI Gothic O5
+  * Ume Mincho
+  * Ume Mincho S3
+  * Ume P Mincho
+  * Ume P Mincho S3
+ .
+ These fonts are free software.
+ Unlimited permission is granted to use, copy, and distribute it,
+ with or without modification, either commercially and noncommercially.
+ THESE FONTS ARE PROVIDED "AS IS" WITHOUT WARRANTY.
+
+Files: debian/*
+Copyright: 2004-2019, Hideki Yamane (Debian-JP) <henrich@debian.or.jp>
+License: GPL-3
+ On Debian systems the full text of the GNU General Public License Version 3
+ can be found in the `/usr/share/common-licenses/GPL-3' file.

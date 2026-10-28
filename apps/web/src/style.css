@@ -1,4 +1,5 @@
 @import "./excel-fonts.css";
+@import "./fonts/office-fonts.css";
 @import "./editors/slide-theme.css";
 
 :root {
@@ -1808,7 +1809,7 @@ a {
   outline: 0;
   font-size: 11pt;
   line-height: 1.333333;
-  font-family: Arial, sans-serif;
+  font-family: var(--doc-font, Arial, sans-serif);
   color: #000000;
   box-sizing: border-box;
   word-break: break-word;

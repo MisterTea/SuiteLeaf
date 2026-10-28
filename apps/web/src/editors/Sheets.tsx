@@ -853,6 +853,8 @@ function callWhenMounted<T>(ref: { current: T | null }, run: (value: T) => void)
   }, 50);
 }
 
+const SHEET_FONTS = ["Arial", "Roboto", "Calibri", "Times New Roman", "Courier New", "Georgia"];
+
 export default function Sheets({
   file,
   onChange,
@@ -3264,12 +3266,12 @@ export default function Sheets({
           value={fontFamily}
           onChange={(e) => handleFontFamily(e.target.value)}
         >
-          <option value="Arial">Arial</option>
-          <option value="Roboto">Roboto</option>
-          <option value="Calibri">Calibri</option>
-          <option value="Times New Roman">Times New Roman</option>
-          <option value="Courier New">Courier New</option>
-          <option value="Georgia">Georgia</option>
+          {!SHEET_FONTS.includes(fontFamily) ? <option value={fontFamily}>{fontFamily}</option> : null}
+          {SHEET_FONTS.map((font) => (
+            <option key={font} value={font}>
+              {font}
+            </option>
+          ))}
         </select>
 
         <span className="toolbar-divider" />

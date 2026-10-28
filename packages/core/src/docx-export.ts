@@ -56,6 +56,7 @@ import {
   type PageSettings,
 } from "./document-layout";
 import { docxWatermarkParagraph } from "./doc-watermark";
+import { officeFont } from "./office-fonts";
 import { pagePxToTwips } from "./word-page-margins";
 import {
   planDocxComments,
@@ -359,7 +360,7 @@ function runs(
       if (m.type === "textStyle") {
         opts.font =
           typeof m.attrs?.fontFamily === "string"
-            ? m.attrs.fontFamily
+            ? officeFont(m.attrs.fontFamily)
             : undefined;
         opts.color = color(m.attrs?.color);
         const size = parseFloat(String(m.attrs?.fontSize));
@@ -1106,7 +1107,11 @@ export async function exportDocx(
       : {}),
     ...(Object.keys(footnotes).length ? { footnotes } : {}),
     ...(Object.keys(endnotes).length ? { endnotes } : {}),
-    styles: { default: { document: { run: { font: "Arial", size: 22 } } } },
+    styles: {
+      default: {
+        document: { run: { font: settings.font ? officeFont(settings.font) : "Arial", size: 22 } },
+      },
+    },
     numbering: {
       config: [
         {

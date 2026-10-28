@@ -37,6 +37,7 @@ import {
 import { applyImportedDrawings } from "./image-extent";
 import { rejoinSplitPictures, settleWordPictures } from "./image-inline";
 import { layoutNote } from "./image-wrap";
+import { wordDefaultFont } from "./word-fonts";
 import {
   letterheadDistanceNote,
   letterheadDistancePatch,
@@ -1874,8 +1875,11 @@ export async function importDocx(
       furniture?.settings.oddHeader,
   );
   if (distanceNote && letterheadWords) warnings.push(distanceNote);
+  const stylesXml = (await zip.file("word/styles.xml")?.async("string")) ?? "";
+  const font = wordDefaultFont(stylesXml, (await zip.file("word/theme/theme1.xml")?.async("string")) ?? "");
   if (
     pageMargins ||
+    font ||
     distances ||
     letterhead.header ||
     letterhead.footer ||
@@ -1889,6 +1893,7 @@ export async function importDocx(
         pageSettings: {
           ...(previous && typeof previous === "object" ? previous : {}),
           ...(pageMargins ?? {}),
+          ...(font ? { font } : {}),
           ...(distances ?? {}),
           ...(!furniture && letterhead.header ? { header: letterhead.header } : {}),
           ...(!furniture && letterhead.footer ? { footer: letterhead.footer } : {}),

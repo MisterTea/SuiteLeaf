@@ -2695,6 +2695,10 @@ export default function Slides({
                     )
                   }
                 >
+                  {selectedElement.fontFamily &&
+                  ![...THEME_FONTS, "Roboto", "Helvetica"].includes(selectedElement.fontFamily) ? (
+                    <option value={selectedElement.fontFamily}>{selectedElement.fontFamily}</option>
+                  ) : null}
                   {THEME_FONTS.map((font) => (
                     <option key={font} value={font}>
                       {font}

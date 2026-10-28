@@ -9,6 +9,7 @@ import {
 } from "./index";
 import { readClickAnimations, readSlideMotion } from "./slide-motion";
 import { gatherNativeDrawing } from "./pptx-native-objects";
+import { suiteLeafFont } from "./office-fonts";
 
 function xmlCharacter(code: number, fallback: string): string {
   return Number.isInteger(code) &&
@@ -365,14 +366,15 @@ async function parseZipPptx(
     const themePart = masterPart
       ? await readRelatedPart(masterPart.path, masterPart.rels, "theme")
       : undefined;
+    // Office font names become the installed families that lay text out the same way.
     const themeFont = (name: string | undefined) => {
-      if (name !== "+mj-lt" && name !== "+mn-lt") return name;
+      if (name !== "+mj-lt" && name !== "+mn-lt") return suiteLeafFont(name);
       const kind = name === "+mj-lt" ? "majorFont" : "minorFont";
       const section =
         new RegExp(`<a:${kind}\\b[\\s\\S]*?<\\/a:${kind}>`).exec(
           themePart?.xml || "",
         )?.[0] || "";
-      return /<a:latin\b[^>]*typeface="([^"]+)"/.exec(section)?.[1];
+      return suiteLeafFont(/<a:latin\b[^>]*typeface="([^"]+)"/.exec(section)?.[1]);
     };
     const layers = [masterPart, layoutPart].filter(
       (part): part is NonNullable<typeof part> => Boolean(part),

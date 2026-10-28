@@ -5,6 +5,7 @@ import { applyWorksheetOutline } from "./excel-outline";
 import { excelErrorStyle } from "./excel-validation";
 import { columnName, type SheetFile } from "./index";
 import { cellHyperlink } from "./sheet-links";
+import { officeFont } from "./office-fonts";
 
 type Data = Record<string, any>;
 const esc = (v: unknown) =>
@@ -98,7 +99,7 @@ function excelWidths(s: Data) {
   };
 }
 function font(s: Data) {
-  return `<font><sz val="${Number(s.fs) || 11}"/><name val="${esc(s.ff || "Arial")}"/>${s.bl ? "<b/>" : ""}${s.it ? "<i/>" : ""}${s.ul?.s ? "<u/>" : ""}${s.st?.s ? "<strike/>" : ""}${s.cl ? `<color rgb="${rgb(s.cl.rgb)}"/>` : ""}</font>`;
+  return `<font><sz val="${Number(s.fs) || 11}"/><name val="${esc(officeFont(s.ff || "Arial"))}"/>${s.bl ? "<b/>" : ""}${s.it ? "<i/>" : ""}${s.ul?.s ? "<u/>" : ""}${s.st?.s ? "<strike/>" : ""}${s.cl ? `<color rgb="${rgb(s.cl.rgb)}"/>` : ""}</font>`;
 }
 function fill(s: Data) {
   return `<fill><patternFill patternType="${s.bg ? "solid" : "none"}">${s.bg ? `<fgColor rgb="${rgb(s.bg.rgb)}"/><bgColor indexed="64"/>` : ""}</patternFill></fill>`;

@@ -8,6 +8,7 @@ import { nativeLayerMarker, stampImageLayers } from "./pptx-image-layers";
 import type { SlideElement, SlideFile, TextRun } from "./index";
 import { stampSlideMotion } from "./slide-motion";
 import { stampSvgAlternatives, svgFallbackMarker } from "./pptx-svg";
+import { officeFont } from "./office-fonts";
 
 const PX_PER_INCH = 96;
 
@@ -127,7 +128,7 @@ export async function exportPptx(file: SlideFile): Promise<Uint8Array> {
           ),
           {
             ...place,
-            fontFace: el.fontFamily || "Arial",
+            fontFace: officeFont(el.fontFamily || "Arial"),
             fontSize: el.fontSize || 14,
           },
         );
@@ -162,7 +163,7 @@ export async function exportPptx(file: SlideFile): Promise<Uint8Array> {
         {
           ...place,
           fontSize: el.fontSize || 18,
-          fontFace: el.fontFamily || "Arial",
+          fontFace: officeFont(el.fontFamily || "Arial"),
           align: el.align || "left",
           bullet: el.bullet ? { indent: 10 } : undefined,
           valign: "top",
