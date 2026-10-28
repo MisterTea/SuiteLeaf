@@ -562,7 +562,7 @@ export const SlideStill = memo(function SlideStill({
         {drawn && near ? (
           <MarpBackdrop pages={pages} index={index} live={null} plain onPainted={setPainted} />
         ) : null}
-        <SlideFace deck={deck} slide={slide} index={index} hooks={hooks} still />
+        <SlideFace deck={deck} slide={slide} index={index} hooks={hooks} still={!interactive} />
         {children}
       </div>
     </div>
