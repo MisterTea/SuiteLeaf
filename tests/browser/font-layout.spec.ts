@@ -27,7 +27,7 @@ for (let part = 0; part < PARTS; part++) {
       const ctx = document.createElement("canvas").getContext("2d")!;
       if (!("fontKerning" in ctx)) return ["canvas has no fontKerning"];
       const out: string[] = [];
-      // A canvas pixel per font unit, or a whole number of units where Firefox caps the size at 2000px.
+      // A canvas pixel per font unit, or a power of two of them where Firefox caps the size at 2000px.
       // An engine may bound ink by outline points or by the curves, and on Linux it rounds the box
       // outward, to a 64th of the em or 32 pixels.
       const near = (got: number[], want: number[] | null, scale: number, grain: number) =>
@@ -37,7 +37,8 @@ for (let part = 0; part < PARTS; part++) {
           return outward >= -scale && outward <= grain + scale;
         });
       for (const face of mine) {
-        const scale = Math.ceil(face.upem / 2000);
+        // A whole number of pixels: Firefox rounds a fractional size.
+        const scale = 2 ** Math.max(0, Math.ceil(Math.log2(face.upem / 2000)));
         const grain = Math.max(face.upem / 64, 32 * scale);
         const font = `${face.style} ${face.weight} ${face.upem / scale}px "${face.family}"`;
         await document.fonts.load(font, face.texts.map(([text]) => text).join(""));
