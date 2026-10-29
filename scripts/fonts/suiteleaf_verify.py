@@ -190,11 +190,10 @@ def sanitizes(path):
     return ots.sanitize(str(path), "/dev/null", capture_output=True).returncode == 0
 
 
-def blank_glyphs(office, path):
-    """Characters the Office face draws but this font leaves empty."""
+def blank_glyphs(office, path, script=None):
+    """Characters the Office face draws but this font leaves empty; for a symbol face, its symbol codes."""
     from fontTools.pens.boundsPen import BoundsPen
     font = TTFont(path)
-    ocmap, cmap = office.getBestCmap() or {}, font.getBestCmap() or {}
     ogs, gs = office.getGlyphSet(), font.getGlyphSet()
 
     def inked(glyphs, name):
@@ -202,6 +201,11 @@ def blank_glyphs(office, path):
         glyphs[name].draw(pen)
         return pen.bounds is not None
 
+    if script == "symbol":
+        symbol = lambda f: next((dict(t.cmap) for t in f["cmap"].tables if (t.platformID, t.platEncID) == (3, 0)), {})
+        ocmap, cmap = symbol(office), symbol(font)
+        return [c for c in sorted(ocmap) if inked(ogs, ocmap[c]) and (c not in cmap or not inked(gs, cmap[c]))]
+    ocmap, cmap = office.getBestCmap() or {}, font.getBestCmap() or {}
     # Shaping hides format characters and other default ignorables, so only visible characters count.
     ignorable = lambda c: (0x180B <= c <= 0x180F or 0xFE00 <= c <= 0xFE0F or 0xE0100 <= c <= 0xE01EF
                            or c in (0x034F, 0x115F, 0x1160, 0x3164, 0xFFA0))
@@ -238,7 +242,7 @@ def check(office_path, path, script, approximate=(), omit=()):
     texts = [t for t in texts if not any(char_script(ord(ch)) in approximate for ch in t)]
     lay = layout(office_path, path, script, approximate)
     bad = text_check(office_path, path, texts)
-    blank = blank_glyphs(office, path)
+    blank = blank_glyphs(office, path, script)
     ok = lay["exact"] and not bad and not missing and not blank and sanitizes(path)
     result = {"ok": ok, "layout": lay, "texts": len(texts), "texts_different": bad[:5], "missing": len(missing),
               "blank": len(blank)}

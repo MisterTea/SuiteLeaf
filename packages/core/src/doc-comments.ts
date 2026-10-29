@@ -1,6 +1,7 @@
 import JSZip from "jszip";
 import { commentIdToParaId } from "docx";
 import type { JsonNode } from "./index";
+import { isSymbolFont, symbolCode } from "./symbol-fonts";
 
 /**
  * A person named in a comment. Stored beside the sentence, not inside `text`,
@@ -241,7 +242,7 @@ export function commentAnchorText(documentXml: string) {
   const anchors = new Map<string, string>();
   const open = new Map<string, string>();
   const token =
-    /<w:commentRangeStart\b([^>]*)\/?>|<w:commentRangeEnd\b([^>]*)\/?>|<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
+    /<w:commentRangeStart\b([^>]*)\/?>|<w:commentRangeEnd\b([^>]*)\/?>|<w:t\b[^>]*>([\s\S]*?)<\/w:t>|<w:sym\b([^>]*)\/>/g;
   for (const match of documentXml.matchAll(token)) {
     if (match[1] !== undefined) {
       const id = attr(match[1], "w:id");
@@ -256,7 +257,14 @@ export function commentAnchorText(documentXml: string) {
       }
       continue;
     }
-    const text = decodeXml(match[3] ?? "");
+    // A symbol font's `w:sym` is its code in the imported text (markWordSymbols).
+    const font = match[4] !== undefined ? attr(match[4], "w:font") : undefined;
+    const text =
+      match[4] !== undefined
+        ? isSymbolFont(font)
+          ? symbolCode(attr(match[4], "w:char"))
+          : ""
+        : decodeXml(match[3] ?? "");
     for (const id of open.keys()) open.set(id, (open.get(id) ?? "") + text);
   }
   return anchors;

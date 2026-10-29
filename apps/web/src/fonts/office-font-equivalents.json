@@ -7,7 +7,7 @@
   "Arial Bold": "SuiteLeaf Aspen Bold",
   "Arial Italic": "SuiteLeaf Aspen Italic",
   "Arial Bold Italic": "SuiteLeaf Aspen Bold Italic",
-  "Symbol": "Symbol Neu",
+  "Symbol": "SuiteLeaf Thistle",
   "MS Gothic": "SuiteLeaf Bamboo",
   "ＭＳ ゴシック": "SuiteLeaf Bamboo",
   "MS Mincho": "SuiteLeaf Hinoki",
@@ -321,5 +321,9 @@
   "Courier New Italic": "SuiteLeaf Longan Italic",
   "Courier New Bold Italic": "SuiteLeaf Longan Bold Italic",
   "Gabriola": "SuiteLeaf Cherry",
-  "Segoe Script Bold": "SuiteLeaf Elder Bold"
+  "Segoe Script Bold": "SuiteLeaf Elder Bold",
+  "Marlett": "SuiteLeaf Nettle",
+  "Bookshelf Symbol 7": "SuiteLeaf Sorrel",
+  "MS Reference Specialty": "SuiteLeaf Tansy",
+  "MT Extra": "SuiteLeaf Yarrow"
 }

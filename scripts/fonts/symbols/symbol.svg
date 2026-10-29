@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SuiteLeaf drawings for Symbol: the pieces tall parentheses, brackets, braces, and integrals are built
+     of, the radical's extension, and the fraction slash. Units are font units (2048 per em), y down from
+     the ascent (2059); the pieces run from y = 162 to 2225 and join above and below. -->
+<svg xmlns="http://www.w3.org/2000/svg">
+  <symbol id="uF060" viewBox="0 0 1024 2509"><rect x="986" y="190" width="1016" height="75"/></symbol>
+  <symbol id="uF0A4" viewBox="0 0 342 2509"><path fill="none" stroke="black" stroke-width="64" d="M-309 2090L651 698"/></symbol>
+  <!-- Left parenthesis: top, extension, bottom -->
+  <symbol id="uF0E6" viewBox="0 0 786 2509"><path fill="none" stroke="black" stroke-width="97" d="M131.5 2225V1250C131.5 700 460 320 860 178"/></symbol>
+  <symbol id="uF0E7" viewBox="0 0 786 2509"><rect x="83" y="162" width="97" height="2063"/></symbol>
+  <symbol id="uF0E8" viewBox="0 0 786 2509"><path fill="none" stroke="black" stroke-width="97" d="M131.5 162V1137C131.5 1687 460 2067 860 2209"/></symbol>
+  <!-- Left bracket: top, extension, bottom -->
+  <symbol id="uF0E9" viewBox="0 0 786 2509"><rect x="0" y="162" width="97" height="2063"/><rect x="0" y="162" width="703" height="97"/></symbol>
+  <symbol id="uF0EA" viewBox="0 0 786 2509"><rect x="0" y="162" width="97" height="2063"/></symbol>
+  <symbol id="uF0EB" viewBox="0 0 786 2509"><rect x="0" y="162" width="97" height="2063"/><rect x="0" y="2128" width="703" height="97"/></symbol>
+  <!-- Left brace: top, middle, bottom, extension -->
+  <symbol id="uF0EC" viewBox="0 0 1012 2509"><path fill="none" stroke="black" stroke-width="97" d="M468.5 2226V620C468.5 340 640 200 900 186"/></symbol>
+  <symbol id="uF0ED" viewBox="0 0 1012 2509"><path fill="none" stroke="black" stroke-width="97" d="M469.5 162V860C469.5 1080 320 1180 40 1193C320 1206 469.5 1306 469.5 1526V2225"/></symbol>
+  <symbol id="uF0EE" viewBox="0 0 1012 2509"><path fill="none" stroke="black" stroke-width="97" d="M468.5 162V1768C468.5 2048 640 2188 900 2202"/></symbol>
+  <symbol id="uF0EF" viewBox="0 0 1012 2509"><rect x="420" y="162" width="97" height="2063"/></symbol>
+  <!-- Integral: top, extension, bottom -->
+  <symbol id="uF0F3" viewBox="0 0 1405 2509">
+    <path fill="none" stroke="black" stroke-width="150" d="M764 2226V760C764 380 900 220 1160 230"/><circle cx="1340" cy="330" r="120"/>
+  </symbol>
+  <symbol id="uF0F4" viewBox="0 0 1405 2509"><rect x="678" y="72" width="172" height="2169"/></symbol>
+  <symbol id="uF0F5" viewBox="0 0 1405 2509">
+    <path fill="none" stroke="black" stroke-width="150" d="M764 163V1629C764 2009 628 2169 368 2159"/><circle cx="188" cy="2059" r="120"/>
+  </symbol>
+  <!-- Right parenthesis: top, extension, bottom -->
+  <symbol id="uF0F6" viewBox="0 0 786 2509"><path fill="none" stroke="black" stroke-width="97" d="M653.5 2225V1250C653.5 700 325 320 -75 178"/></symbol>
+  <symbol id="uF0F7" viewBox="0 0 786 2509"><rect x="605" y="162" width="97" height="2063"/></symbol>
+  <symbol id="uF0F8" viewBox="0 0 786 2509"><path fill="none" stroke="black" stroke-width="97" d="M653.5 162V1137C653.5 1687 325 2067 -75 2209"/></symbol>
+  <!-- Right bracket: top, extension, bottom -->
+  <symbol id="uF0F9" viewBox="0 0 786 2509"><rect x="641" y="162" width="97" height="2063"/><rect x="35" y="162" width="703" height="97"/></symbol>
+  <symbol id="uF0FA" viewBox="0 0 786 2509"><rect x="641" y="162" width="97" height="2063"/></symbol>
+  <symbol id="uF0FB" viewBox="0 0 786 2509"><rect x="641" y="162" width="97" height="2063"/><rect x="35" y="2128" width="703" height="97"/></symbol>
+  <!-- Right brace: top, middle, bottom -->
+  <symbol id="uF0FC" viewBox="0 0 1012 2509"><path fill="none" stroke="black" stroke-width="97" d="M469.5 2226V620C469.5 340 298 200 38 186"/></symbol>
+  <symbol id="uF0FD" viewBox="0 0 1012 2509"><path fill="none" stroke="black" stroke-width="97" d="M468.5 162V860C468.5 1080 618 1180 898 1193C618 1206 468.5 1306 468.5 1526V2225"/></symbol>
+  <symbol id="uF0FE" viewBox="0 0 1012 2509"><path fill="none" stroke="black" stroke-width="97" d="M469.5 162V1768C469.5 2048 298 2188 38 2202"/></symbol>
+</svg>

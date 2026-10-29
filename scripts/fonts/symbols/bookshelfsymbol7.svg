@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SuiteLeaf drawings for the Bookshelf Symbol 7 codes Unicode has no character for: pitch-accent and
+     tone marks, pitch contours, and circled ideographs. Units are font units (256 per em), y down from
+     the ascent (220). -->
+<svg xmlns="http://www.w3.org/2000/svg">
+  <!-- A rule with an acute, with a grave -->
+  <symbol id="uF05E" viewBox="0 0 256 256"><rect x="34" y="120" width="186" height="17"/><polygon points="148,35 172,35 128,108 108,108"/></symbol>
+  <symbol id="uF05F" viewBox="0 0 256 256"><rect x="35" y="120" width="186" height="17"/><polygon points="84,35 108,35 148,108 128,108"/></symbol>
+  <!-- A wave with an acute, with a grave -->
+  <symbol id="uF060" viewBox="0 0 256 256">
+    <path fill="none" stroke="black" stroke-width="22" d="M36 140C56 116 80 112 112 128C144 144 176 148 216 116"/>
+    <polygon points="146,20 172,20 124,86 104,86"/>
+  </symbol>
+  <symbol id="uF061" viewBox="0 0 256 256">
+    <path fill="none" stroke="black" stroke-width="22" d="M36 140C56 116 80 112 112 128C144 144 176 148 216 116"/>
+    <polygon points="82,20 108,20 150,86 130,86"/>
+  </symbol>
+  <!-- Three dots with an acute -->
+  <symbol id="uF062" viewBox="0 0 256 256">
+    <rect x="35" y="117" width="22" height="22"/><rect x="117" y="117" width="22" height="22"/><rect x="198" y="117" width="22" height="22"/>
+    <polygon points="150,35 176,35 130,110 110,110"/>
+  </symbol>
+  <!-- An arc over a dot, under a dot -->
+  <symbol id="uF064" viewBox="0 0 256 256"><path d="M19 95Q128 -71 236 95Q128 -21 19 95Z"/><rect x="116" y="44" width="23" height="23"/></symbol>
+  <symbol id="uF065" viewBox="0 0 256 256"><path d="M19 160Q128 326 236 160Q128 276 19 160Z"/><rect x="116" y="184" width="23" height="23"/></symbol>
+  <!-- A looped flourish -->
+  <symbol id="uF068" viewBox="0 0 256 256">
+    <path fill="none" stroke="black" stroke-width="11" stroke-linecap="round"
+          d="M34 112C30 84 66 74 84 92C100 108 80 132 62 118C46 104 66 70 98 72C124 74 128 104 110 108C92 112 96 80 120 60C142 42 178 34 182 62C186 88 158 92 160 116C162 150 200 176 208 228"/>
+  </symbol>
+  <!-- A cross with square ends -->
+  <symbol id="uF069" viewBox="0 0 256 256">
+    <path fill="none" stroke="black" stroke-width="14" d="M60 58L197 196M197 58L60 196"/>
+    <rect x="44" y="42" width="34" height="34"/><rect x="179" y="42" width="34" height="34"/>
+    <rect x="44" y="178" width="34" height="34"/><rect x="179" y="178" width="34" height="34"/>
+  </symbol>
+  <!-- Two asterisks over one -->
+  <symbol id="uF076" viewBox="0 0 256 256">
+    <g fill="none" stroke="black" stroke-width="15">
+      <path d="M66 12V114M22 37.5L110 88.5M22 88.5L110 37.5"/>
+      <path d="M189 12V114M145 37.5L233 88.5M145 88.5L233 37.5"/>
+      <path d="M127.5 141V243M83.5 166.5L171.5 217.5M83.5 217.5L171.5 166.5"/>
+    </g>
+  </symbol>
+  <!-- A corner: a rule and a stem below the line -->
+  <symbol id="uF071" viewBox="0 0 256 256"><polygon points="0,122 143,122 143,255 113,255 113,140 0,140"/></symbol>
+  <!-- A hooked bowl -->
+  <symbol id="uF08F" viewBox="0 0 256 256">
+    <path fill="none" stroke="black" stroke-width="30" d="M98 54C110 74 132 88 176 90C122 96 100 122 100 150C100 188 134 208 186 208"/>
+  </symbol>
+  <!-- Two rules with a dot above right and below left -->
+  <symbol id="uF06C" viewBox="0 0 256 256">
+    <rect x="37" y="91" width="181" height="17"/><rect x="37" y="144" width="181" height="17"/>
+    <rect x="158" y="37" width="27" height="28"/><rect x="62" y="191" width="27" height="28"/>
+  </symbol>
+  <!-- A dashed rule -->
+  <symbol id="uF073" viewBox="0 0 256 256">
+    <rect x="16" y="122" width="38" height="11"/><rect x="77" y="122" width="38" height="11"/>
+    <rect x="139" y="122" width="38" height="11"/><rect x="201" y="122" width="38" height="11"/>
+  </symbol>
+  <!-- A brace over the line, ends down -->
+  <symbol id="uF07B" viewBox="0 0 256 256">
+    <path fill="none" stroke="black" stroke-width="14" d="M24 227V202C24 192 30 190 40 190H108C120 190 128 184 128 176C128 184 136 190 148 190H216C226 190 234 192 234 202V227"/>
+  </symbol>
+  <!-- Circled ideographs: bad, good -->
+  <symbol id="uF07C" viewBox="0 0 256 256">
+    <circle fill="none" stroke="black" stroke-width="10" cx="129" cy="128" r="118"/>
+    <text font-family="Noto Sans JP Bold" font-size="170" text-anchor="middle" x="129" y="188">&#x60AA;</text>
+  </symbol>
+  <symbol id="uF07D" viewBox="0 0 256 256">
+    <circle fill="none" stroke="black" stroke-width="10" cx="129" cy="128" r="118"/>
+    <text font-family="Noto Sans JP Bold" font-size="170" text-anchor="middle" x="129" y="188">&#x5584;</text>
+  </symbol>
+  <!-- Pitch contours: a rise and a fall, a rise, dip, and fall -->
+  <symbol id="uF080" viewBox="0 0 256 256">
+    <path fill="none" stroke="black" stroke-width="12" stroke-linecap="round" d="M74 84C80 52 88 28 98 32C114 40 130 150 162 200C178 224 196 232 212 232"/>
+  </symbol>
+  <symbol id="uF081" viewBox="0 0 256 256">
+    <path fill="none" stroke="black" stroke-width="12" stroke-linecap="round" d="M30 74C38 46 52 28 64 44C74 58 80 60 90 40C100 24 112 34 120 52C140 98 150 180 180 212C198 230 220 232 238 232"/>
+  </symbol>
+</svg>

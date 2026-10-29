@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 
 // Layout HarfBuzz gives each SuiteLeaf face (scripts/fonts/suiteleaf_browser_fixture.py): the fonts are
 // built and checked against Office with HarfBuzz, so the browser must lay them out as HarfBuzz does.
-type Measure = [advance: number, control: number[] | null, ink: number[] | null];
+type Measure = [advance: number, control: number[] | null, ink: number[] | null, hinted?: number[]];
 type Face = {
   file: string;
   family: string;
@@ -28,8 +28,9 @@ for (let part = 0; part < PARTS; part++) {
       if (!("fontKerning" in ctx)) return ["canvas has no fontKerning"];
       const out: string[] = [];
       // A canvas pixel per font unit, or a power of two of them where Firefox caps the size at 2000px.
-      // An engine may bound ink by outline points or by the curves, and on Linux it rounds the box
-      // outward, to a 64th of the em or 32 pixels.
+      // An engine may bound ink by outline points or by the curves, or (Firefox on Linux) by the
+      // outline after FreeType's light hinting; on Linux it rounds the box outward, to a 64th of the em
+      // or 32 pixels.
       const near = (got: number[], want: number[] | null, scale: number, grain: number) =>
         want !== null &&
         got.every((v, i) => {
@@ -53,14 +54,14 @@ for (let part = 0; part < PARTS; part++) {
         const grain = Math.max(face.upem / 64, 32 * scale);
         ctx.font = fontAt(face.upem / scale);
         for (const [text, ...modes] of face.texts) {
-          modes.forEach(([advance, control, ink], m) => {
+          modes.forEach(([advance, control, ink, hinted], m) => {
             ctx.fontKerning = m === 0 ? "normal" : "none";
             const t = ctx.measureText(text);
             const width = t.width * scale;
             const box = [-t.actualBoundingBoxLeft, -t.actualBoundingBoxDescent, t.actualBoundingBoxRight, t.actualBoundingBoxAscent]
               .map((v) => v * scale);
             const blank = control === null;
-            if (Math.abs(width - advance) > scale || (!blank && !near(box, control, scale, grain) && !near(box, ink, scale, grain))) {
+            if (Math.abs(width - advance) > scale || (!blank && ![control, ink, hinted ?? null].some((want) => near(box, want, scale, grain)))) {
               const codes = [...text].map((c) => c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")).join(" ");
               out.push(`${face.file} ${m === 0 ? "kerned" : "unkerned"} ${codes}: advance ${width.toFixed(1)} for ${advance}, ` +
                 `box ${box.map((v) => Math.round(v)).join(",")} for ${control?.join(",")}`);

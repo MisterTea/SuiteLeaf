@@ -23,11 +23,16 @@ BASES = {
     "SuiteLeaf Teak": ("Laksaman from fonts-tlwg 0.7.4, Copyright 2010-2011 Software Industry Promotion Agency (SIPA) "
                        "and 2014-2026 Theppitak Karoonboonyanan", "TH SarabunPSK", ["tlwg/copyright", "licenses/GPL-2.0.txt"],
                        "GNU GPL 2.0 or later with font exception"),
-    "SuiteLeaf Sprig": ("glyphs from the Noto symbol fonts", "Wingdings", [], "SIL Open Font License 1.1"),
-    "SuiteLeaf Fern": ("glyphs from the Noto symbol fonts", "Webdings", [], "SIL Open Font License 1.1"),
-    "SuiteLeaf Bramble": ("glyphs from the Noto symbol fonts", "Wingdings 2", [], "SIL Open Font License 1.1"),
-    "SuiteLeaf Briar": ("glyphs from the Noto symbol fonts", "Wingdings 3", [], "SIL Open Font License 1.1"),
-    "SuiteLeaf Clover": ("glyphs from the Noto symbol fonts", "Monotype Sorts", [], "SIL Open Font License 1.1"),
+    "SuiteLeaf Sprig": ("symbol glyphs", "Wingdings", [], "SIL Open Font License 1.1"),
+    "SuiteLeaf Fern": ("symbol glyphs", "Webdings", [], "SIL Open Font License 1.1"),
+    "SuiteLeaf Bramble": ("symbol glyphs", "Wingdings 2", [], "SIL Open Font License 1.1"),
+    "SuiteLeaf Briar": ("symbol glyphs", "Wingdings 3", [], "SIL Open Font License 1.1"),
+    "SuiteLeaf Clover": ("symbol glyphs", "Monotype Sorts", [], "SIL Open Font License 1.1"),
+    "SuiteLeaf Thistle": ("symbol glyphs", "Symbol", [], "SIL Open Font License 1.1"),
+    "SuiteLeaf Nettle": ("symbol glyphs", "Marlett", [], "SIL Open Font License 1.1"),
+    "SuiteLeaf Sorrel": ("symbol glyphs", "Bookshelf Symbol 7", [], "SIL Open Font License 1.1"),
+    "SuiteLeaf Tansy": ("symbol glyphs", "MS Reference Specialty", [], "SIL Open Font License 1.1"),
+    "SuiteLeaf Yarrow": ("symbol glyphs", "MT Extra", [], "SIL Open Font License 1.1"),
     "SuiteLeaf Willow": ("Carlito, Copyright 2013 The Carlito Project Authors", "Calibri", ["gf/carlito/OFL.txt"],
                          "SIL Open Font License 1.1"),
     "SuiteLeaf Aspen": ("Arimo, Copyright 2020 The Arimo Project Authors", "Arial", ["gf/arimo/OFL.txt"], "SIL Open Font License 1.1"),
@@ -97,10 +102,12 @@ def license_text(family, results, root):
             donors[(name, lic, notice)] += count
     styles = "its styles" if len(results) > 1 else "it"
     if family in SYMBOL_FAMILIES:
-        lines = [f"{family} is built from glyphs of the Noto symbol fonts, laid out exactly as in {office_family}:",
-                 "each glyph was scaled to the height of the matching symbol and centered in its advance; advance",
-                 "widths, character codes, and line metrics were set from that font's layout. No outline shape was",
-                 "otherwise changed.", "", "Glyphs used:", ""]
+        lines = [f"{family} draws each symbol of {office_family} with the glyph of an open font that matches it best,",
+                 "or, where no open font has the symbol, with a drawing made for SuiteLeaf (scripts/fonts/symbols/).",
+                 "Each glyph was scaled to the height of the matching symbol and centered in its advance; advance widths,",
+                 f"character codes, and line metrics were set from {office_family}'s layout. No outline shape was otherwise",
+                 "changed. Each glyph keeps the license of the font it comes from, reproduced below; SuiteLeaf's drawings",
+                 "are under the SIL Open Font License 1.1.", "", "Glyphs used:", ""]
     else:
         lines = [f"{family} is built from {base.rstrip('.')}.", "",
                  f"SuiteLeaf changed it so text lays out exactly as in {office_family}: outlines were scaled to that font's",
@@ -117,8 +124,15 @@ def license_text(family, results, root):
             lines += ["", "Characters the source font lacks were filled with glyphs from these fonts, scaled and centered",
                       f"the same way (counts are across {styles}). Each keeps its own license, reproduced below; all are",
                       "compatible with the license of the whole font.", ""]
+    symbol_files = {}
+    if family in SYMBOL_FAMILIES:
+        import suiteleaf_symbols
+        symbol_files = {notice: suiteleaf_symbols.LICENSE_FILES.get(notice, []) for _, _, notice in donors}
     for (name, lic, notice), count in sorted(donors.items()):
-        source = ofl_notice(root, notice) if notice else DONOR_NOTICES.get(name, "")
+        if symbol_files.get(notice):
+            source = suiteleaf_symbols.NOTICES.get(notice, "")
+        else:
+            source = ofl_notice(root, notice) if notice else DONOR_NOTICES.get(name, "")
         lines.append(f"- {count} glyph{'' if count == 1 else 's'} from {name} ({lic}). {source}")
     lines += ["", "The build scripts are in scripts/fonts/ of the SuiteLeaf repository.", "",
               f"The font is distributed under the {base_license}, below."]
@@ -130,7 +144,7 @@ def license_text(family, results, root):
         ofl = (root / "gf/notosanssymbols2/OFL.txt").read_text()
         lines += ["This Font Software" + ofl.split("This Font Software", 1)[1].rstrip(), ""]
     for (name, lic, notice) in sorted(donors):
-        for f in DONOR_TEXTS.get(name, []):
+        for f in symbol_files.get(notice) or DONOR_TEXTS.get(name, []):
             if f not in included:
                 lines += ["-" * 76, "", f"{name}:", "", read_license(root, f), ""]
                 included.add(f)
@@ -174,7 +188,8 @@ def _stage(args):
     Returns None when nothing worth installing is left."""
     r, staged = args
     font = TTFont(r["path"])
-    if subset(font) < MIN_CHARS:
+    # A symbol face has no CJK to omit, and may map only symbol codes, which subsetting would drop.
+    if r["script"] != "symbol" and subset(font) < MIN_CHARS:
         return None
     font.flavor = "woff2"
     font.save(staged)
@@ -256,6 +271,10 @@ def unicode_range(omit):
     return ", ".join(parts)
 
 
+# Families earlier builds put in documents, drawn and written back as the face that replaced them.
+RETIRED = {"Symbol Neu": "SuiteLeaf Thistle"}
+
+
 def write_css(office_dir, out):
     """office-fonts.css: an @font-face for each mapped Office face, under its Office family names, so text
     set in an Office font is drawn with the installed equivalent."""
@@ -290,7 +309,10 @@ def write_css(office_dir, out):
                 to_suiteleaf.setdefault(name, our_typographic)
             to_office.setdefault(our_legacy, office_legacy)
             to_office.setdefault(our_typographic, office["name"].getDebugName(16) or office_legacy)
-            for family in font_names(office, 1, 16) + [our_legacy, our_typographic]:
+            retired = [old for old, new in RETIRED.items() if new == our_legacy]
+            for old in retired:
+                to_office.setdefault(old, office_legacy)
+            for family in font_names(office, 1, 16) + [our_legacy, our_typographic] + retired:
                 key = (family, weight, style)
                 if key in seen:
                     continue

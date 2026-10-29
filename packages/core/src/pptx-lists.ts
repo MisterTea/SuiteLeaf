@@ -1,9 +1,9 @@
-/** Wingdings, Webdings, and Symbol store a byte, not the Unicode glyph they paint. */
+import { isSymbolFont } from "./symbol-fonts";
+
+/** Wingdings, Webdings, Symbol, and the other symbol fonts store a byte, not the Unicode glyph they paint. */
 export function symbolBulletFont(typeface: string | undefined): string | undefined {
   const name = typeface?.trim();
-  if (!name) return;
-  if (/^wingdings( [23])?$/i.test(name)) return name;
-  if (/^webdings$/i.test(name) || /^symbol$/i.test(name)) return name;
+  return isSymbolFont(name) ? name : undefined;
 }
 
 /** `buSzPct` is thousandths of a percent. 100000 leaves the paragraph size alone. */

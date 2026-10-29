@@ -178,7 +178,7 @@ export const textRunSchema = z.object({
    * superscript; negative lowers a subscript.
    */
   baseline: z.number().min(-1000).max(1000).optional(),
-  /** Symbol-font bullets, such as Wingdings, keep the typeface of that marker. */
+  /** Symbol-font text and bullets, such as Wingdings, keep that typeface (as its SuiteLeaf face). */
   font: z.string().max(80).optional(),
   paragraphBreak: z.boolean().optional(),
   /** DrawingML kern, in points. PowerPoint import moves it to the box. */

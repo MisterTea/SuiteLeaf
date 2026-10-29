@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SuiteLeaf drawings for the Wingdings codes no open font draws. Units are font units (2048 per em),
+     y down from the ascent (1841). -->
+<svg xmlns="http://www.w3.org/2000/svg">
+  <!-- A trackball on its cable -->
+  <symbol id="uF039" viewBox="0 0 2208 2273">
+    <path fill="none" stroke="black" stroke-width="90" stroke-linecap="round" d="M120 780C120 640 300 640 300 800C300 1000 240 1200 420 1260C560 1300 640 1160 760 1240"/>
+    <path fill="none" stroke="black" stroke-width="70" d="M900 1800V1200C900 860 1140 640 1460 640C1780 640 2000 860 2000 1200V1800Z"/>
+    <circle fill="none" stroke="black" stroke-width="60" cx="1450" cy="1240" r="420"/>
+    <circle cx="1450" cy="1240" r="240"/>
+  </symbol>
+  <!-- A window of four panes -->
+  <symbol id="uF0FF" viewBox="0 0 2119 2273">
+    <path fill-rule="evenodd" d="M100 305H2018V1841H100Z M240 445V1003H989V445Z M1129 445V1003H1878V445Z M240 1143V1701H989V1143Z M1129 1143V1701H1878V1143Z"/>
+  </symbol>
+</svg>
