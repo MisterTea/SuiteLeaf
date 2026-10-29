@@ -6,6 +6,7 @@ import {
   SlidePrintDeck,
   useSlidePrint,
 } from "../../apps/web/src/editors/slide-print";
+import { croppedPictureStyle } from "../../apps/web/src/editors/slide-surface";
 vi.mock("../../apps/web/src/editors/themes/beam_ut.css?raw", () => ({
   default: "/* @theme beam_ut */",
 }));
@@ -38,10 +39,35 @@ it("prints every slide in deck order with its background and page number", () =>
     pages.map((page) => page.querySelector(".slide-number")?.textContent),
   ).toEqual(["1", "2"]);
   expect(pages[1].style.backgroundColor).toBe("rgb(255, 0, 0)");
+  file.content.slides.a.hidden = true;
+  view.rerender(<SlidePrintDeck active deck={file.content} />);
+  expect(
+    [...document.querySelectorAll(".slides-print-page")].map(
+      (page) => page.querySelector(".slide-text")?.textContent,
+    ),
+  ).toEqual(["Second"]);
   view.rerender(
     <SlidePrintDeck active={false} deck={file.content} />,
   );
   expect(document.querySelector(".slides-print-deck")).toBeNull();
+});
+it("offsets a picture crop with top, which follows the box height", () => {
+  const style = croppedPictureStyle({
+    id: "pic",
+    type: "image",
+    x: 0,
+    y: 0,
+    width: 100,
+    height: 40,
+    cropLeft: 8.931,
+    cropTop: 30.048,
+    cropRight: 9.259,
+    cropBottom: 24.141,
+  });
+  const scaleY = 1 / (1 - 0.30048 - 0.24141);
+  expect(parseFloat(style?.top || "")).toBeCloseTo(-0.30048 * scaleY * 100, 6);
+  expect(parseFloat(style?.height || "")).toBeCloseTo(scaleY * 100, 6);
+  expect(style).not.toHaveProperty("marginTop");
 });
 it("prepares the deck for native beforeprint and releases it afterprint", () => {
   const { result } = renderHook(() => useSlidePrint("Deck", vi.fn()));

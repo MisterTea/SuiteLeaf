@@ -27,7 +27,7 @@ it("inherits placeholder geometry, alignment and font defaults while preserving 
     height: 100,
     align: "center",
     fontSize: 24,
-    fontFamily: "Calibri",
+    fontFamily: "SuiteLeaf Willow",
     content: "Overview\n\nAuthors",
   });
   expect(el.runs?.filter((r) => r.text.trim()).map((r) => r.fontSize)).toEqual([

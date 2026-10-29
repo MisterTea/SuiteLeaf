@@ -83,26 +83,58 @@ describe("inherited PowerPoint artwork", () => {
     expect(media.length).toBeGreaterThan(0);
     expect(await output.file(media[0])!.async("nodebuffer")).toEqual(image);
   });
-  it("retains non-placeholder layout artwork while omitting inherited placeholders", async () => {
+  it("hides layout artwork when the slide hides background graphics", async () => {
     const parsed = await fixture({
       hiddenMaster: true,
       localBackground: true,
       layoutArtwork: true,
     });
     const slide = parsed.content.slides[parsed.content.slideOrder[0]];
-    expect(slide.elements).toHaveLength(1);
-    expect(slide.elements[0]).toMatchObject({
-      type: "image",
-      x: 100,
-      y: 200,
-      width: 300,
-      height: 100,
-    });
+    expect(slide.background?.color).toBe("#FF0000");
+    expect(slide.elements).toHaveLength(0);
   });
   it("honors a nearer solid background and hidden master artwork", async () => {
     const parsed = await fixture({ hiddenMaster: true, localBackground: true });
     const slide = parsed.content.slides[parsed.content.slideOrder[0]];
     expect(slide.background?.color).toBe("#FF0000");
     expect(slide.elements).toHaveLength(0);
+  });
+  it("keeps a later layout shape above a picture and scales a grouped picture", async () => {
+    const zip = new JSZip();
+    zip.file(
+      "ppt/presentation.xml",
+      '<p:presentation><p:sldSz cx="9144000" cy="6858000"/></p:presentation>',
+    );
+    zip.file(
+      "ppt/slides/slide1.xml",
+      `<p:sld><p:cSld><p:spTree/></p:cSld></p:sld>`,
+    );
+    zip.file(
+      "ppt/slides/_rels/slide1.xml.rels",
+      `<Relationships>${relation("layout", "slideLayout", "../slideLayouts/slideLayout1.xml")}</Relationships>`,
+    );
+    const card = `<p:sp><p:nvSpPr><p:cNvPr id="7" name="Card"/></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="FFFFFF"><a:alpha val="50000"/></a:srgbClr></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr></p:sp>`;
+    const grouped = `<p:grpSp><p:nvGrpSpPr><p:cNvPr id="8"/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="914400" y="0"/><a:ext cx="914400" cy="914400"/><a:chOff x="0" y="0"/><a:chExt cx="1828800" cy="1828800"/></a:xfrm></p:grpSpPr><p:pic><p:nvPicPr><p:cNvPr id="9"/></p:nvPicPr><p:blipFill><a:blip r:embed="image"/></p:blipFill><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1828800" cy="1828800"/></a:xfrm></p:spPr></p:pic></p:grpSp>`;
+    zip.file(
+      "ppt/slideLayouts/slideLayout1.xml",
+      `<p:sldLayout><p:cSld><p:spTree>${picture}${card}${grouped}</p:spTree></p:cSld></p:sldLayout>`,
+    );
+    zip.file(
+      "ppt/slideLayouts/_rels/slideLayout1.xml.rels",
+      `<Relationships>${relation("master", "slideMaster", "../slideMasters/slideMaster1.xml")}${relation("image", "image", "../media/background.png")}</Relationships>`,
+    );
+    zip.file(
+      "ppt/slideMasters/slideMaster1.xml",
+      `<p:sldMaster><p:cSld><p:spTree/></p:cSld></p:sldMaster>`,
+    );
+    zip.file("ppt/media/background.png", image);
+    const parsed = await parsePowerPoint(
+      await zip.generateAsync({ type: "nodebuffer" }),
+      "layered.pptx",
+    );
+    const slide = parsed.content.slides[parsed.content.slideOrder[0]];
+    expect(slide.elements.map((el) => el.type)).toEqual(["image", "shape", "image"]);
+    expect(slide.elements[1]?.fill).toBe("rgba(255, 255, 255, 0.5)");
+    expect(slide.elements[2]).toMatchObject({ x: 96, y: 0, width: 96, height: 96 });
   });
 });

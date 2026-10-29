@@ -63,7 +63,7 @@ it("retains Excel character widths, Normal font, implicit style, and point row d
   expect(sheet.defaultStyle).toBe("excel-0");
   expect(sheet.custom).toMatchObject({
     excelLayout: {
-      normalFont: { family: "Arial", size: 12 },
+      normalFont: { family: "SuiteLeaf Aspen", size: 12 },
       baseColumnWidthChars: 9,
       defaultColumnWidthChars: 10.5,
       columnWidths: { "0": 24, "1": 12 },
@@ -98,8 +98,8 @@ it("resolves the Normal style's font independently of cell style zero", async ()
   const sheet =
     file.content.workbook.sheets[file.content.workbook.sheetOrder[0]];
   expect(sheet.custom!.excelLayout.normalFont).toEqual({
-    family: "Calibri",
+    family: "SuiteLeaf Willow",
     size: 11,
   });
-  expect(file.content.workbook.styles!["excel-0"].ff).toBe("Arial");
+  expect(file.content.workbook.styles!["excel-0"].ff).toBe("SuiteLeaf Aspen");
 });

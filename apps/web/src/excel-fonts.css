@@ -1,48 +1,7 @@
-/* Carlito is OFL-licensed and metrically compatible with Calibri. Keep installed
-   Calibri when available, and avoid a serif substitution on other machines. */
-@font-face {
-  font-family: "Calibri";
-  src:
-    local("Calibri"),
-    url("@fontsource/carlito/files/carlito-latin-400-normal.woff2")
-      format("woff2");
-  font-style: normal;
-  font-weight: 400;
-  font-display: block;
-}
-@font-face {
-  font-family: "Calibri";
-  src:
-    local("Calibri Bold"),
-    url("@fontsource/carlito/files/carlito-latin-700-normal.woff2")
-      format("woff2");
-  font-style: normal;
-  font-weight: 700;
-  font-display: block;
-}
-@font-face {
-  font-family: "Calibri";
-  src:
-    local("Calibri Italic"),
-    url("@fontsource/carlito/files/carlito-latin-400-italic.woff2")
-      format("woff2");
-  font-style: italic;
-  font-weight: 400;
-  font-display: block;
-}
-@font-face {
-  font-family: "Calibri";
-  src:
-    local("Calibri Bold Italic"),
-    url("@fontsource/carlito/files/carlito-latin-700-italic.woff2")
-      format("woff2");
-  font-style: italic;
-  font-weight: 700;
-  font-display: block;
-}
-
-/* Legacy Japanese Windows faces need a proportional Gothic fallback on macOS.
-   Otherwise canvas defaults to serif glyphs and wrapped task text is clipped. */
+/* Legacy Japanese Windows faces need a proportional Gothic fallback on macOS for Japanese characters,
+   which the SuiteLeaf face in fonts/office-fonts.css leaves out. Otherwise canvas defaults to serif
+   glyphs and wrapped task text is clipped. This file loads first so those faces only take what the
+   SuiteLeaf face's unicode-range does not cover. */
 @font-face {
   font-family: "ＭＳ Ｐゴシック";
   src:

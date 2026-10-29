@@ -15,8 +15,8 @@ export function convertOffice(
     });
     const timer = setTimeout(() => {
       void worker.terminate();
-      reject(new Error("Office import exceeded two minutes."));
-    }, 120000);
+      reject(new Error("Office import exceeded five minutes."));
+    }, 300000);
     worker.once("message", (result) => {
       clearTimeout(timer);
       void worker.terminate();

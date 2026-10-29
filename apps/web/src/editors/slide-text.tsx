@@ -18,6 +18,7 @@ export function runStyle(run: TextRun, baseFontSize?: number): CSSProperties {
     fontStyle: run.italic ? "italic" : "normal",
     textDecoration: run.underline ? "underline" : "none",
     ...(run.color ? { color: run.color } : {}),
+    ...(run.highlight ? { backgroundColor: run.highlight } : {}),
     ...(run.fontSize
       ? {
           fontSize: baseFontSize
@@ -25,6 +26,10 @@ export function runStyle(run: TextRun, baseFontSize?: number): CSSProperties {
             : `${run.fontSize}px`,
         }
       : {}),
+    ...(run.caps === "all" ? { textTransform: "uppercase" as const } : {}),
+    ...(run.caps === "small" ? { fontVariantCaps: "small-caps" as const } : {}),
+    ...(run.baseline ? { verticalAlign: `${run.baseline / 100}em` } : {}),
+    ...(run.font ? { fontFamily: run.font } : {}),
   };
 }
 
@@ -73,7 +78,7 @@ export function RunSpans({
 type StyleAttr = Partial<
   Pick<
     TextRun,
-    "bold" | "italic" | "underline" | "color" | "fontSize" | "paragraphBreak"
+    "bold" | "italic" | "underline" | "color" | "highlight" | "fontSize" | "font" | "paragraphBreak" | "baseline"
   >
 >;
 
@@ -85,9 +90,13 @@ function styleFrom(el: HTMLElement): StyleAttr {
     next.italic = true;
   if (el.dataset.underline === "1" || el.tagName === "U") next.underline = true;
   if (el.dataset.color) next.color = el.dataset.color;
+  if (el.dataset.highlight) next.highlight = el.dataset.highlight;
   if (el.dataset.fontSize && Number(el.dataset.fontSize) > 0)
     next.fontSize = Number(el.dataset.fontSize);
   if (el.dataset.paragraphBreak === "1") next.paragraphBreak = true;
+  if (el.dataset.baseline && Number(el.dataset.baseline))
+    next.baseline = Number(el.dataset.baseline);
+  if (el.dataset.font) next.font = el.dataset.font;
   return next;
 }
 
@@ -177,6 +186,7 @@ export function SlideTextBody({
   bold,
   italic,
   underline,
+  kern,
   placeholder,
   editing,
   onText,
@@ -187,6 +197,7 @@ export function SlideTextBody({
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
+  kern?: number;
   placeholder?: string;
   editing: boolean;
   onText: (runs: TextRun[], opts?: { bullet?: boolean }) => void;
@@ -213,10 +224,10 @@ export function SlideTextBody({
       editing && document.activeElement === node
         ? selectionOffsets(node)
         : null;
-    node.innerHTML = runsToHtml(expected);
+    node.innerHTML = runsToHtml(expected, kern);
     node.dataset.empty = plainText(expected) ? "false" : "true";
     if (sel) restoreSelection(node, sel.start, sel.end);
-  }, [signature, editing, content, runs, bold, italic, underline]);
+  }, [signature, editing, content, runs, bold, italic, underline, kern]);
 
   useLayoutEffect(() => {
     if (!editing) return;
@@ -306,7 +317,7 @@ export function SlideTextBody({
           next.to,
           next.replacement,
         );
-        node.innerHTML = runsToHtml(runs);
+        node.innerHTML = runsToHtml(runs, kern);
         node.dataset.empty = plainText(runs) ? "false" : "true";
         restoreSelection(node, next.caret, next.caret);
         onTextRef.current(runs);
@@ -326,7 +337,7 @@ export function SlideTextBody({
               next.to,
               next.replacement,
             );
-            node.innerHTML = runsToHtml(runs);
+            node.innerHTML = runsToHtml(runs, kern);
             node.dataset.empty = plainText(runs) ? "false" : "true";
             restoreSelection(node, next.caret, next.caret);
             onTextRef.current(runs, next.bullet ? { bullet: true } : undefined);

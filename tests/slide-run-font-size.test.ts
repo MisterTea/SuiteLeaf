@@ -18,5 +18,15 @@ describe("imported slide font sizes", () => {
     expect(hasTextRuns({ runs })).toBe(true);
     expect(runStyle(runs[1], 24).fontSize).toBe("0.75em");
     expect(runsToHtml(runs)).toContain('data-font-size="18"');
+    const bullet = [{ text: "Ø ", font: "Wingdings", fontSize: 28.6 }, { text: "Next" }];
+    expect(mergeRuns(bullet)).toEqual(bullet);
+    expect(runsToHtml(bullet)).toContain('font-family:Wingdings');
+    expect(runsToHtml(bullet)).toContain('data-font="Wingdings"');
+    expect(runStyle(bullet[0]).fontFamily).toBe("Wingdings");
+    const marked = [{ text: "arXiv", highlight: "#ffff00" }];
+    expect(cleanRun(marked[0])).toEqual(marked[0]);
+    expect(hasTextRuns({ runs: marked })).toBe(true);
+    expect(runsToHtml(marked)).toContain("background-color:#ffff00");
+    expect(runStyle(marked[0]).backgroundColor).toBe("#ffff00");
   });
 });

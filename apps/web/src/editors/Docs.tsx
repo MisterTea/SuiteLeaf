@@ -24,7 +24,7 @@ import Subscript from "@tiptap/extension-subscript";
 import { Extension, findParentNode } from "@tiptap/core";
 import { ySyncPlugin, prosemirrorJSONToYXmlFragment } from "y-prosemirror";
 import type * as Y from "yjs";
-import { blockTexts, syncParagraphTexts } from "@suiteleaf/core";
+import { blockTexts, fontKerning, kernFeature, syncParagraphTexts } from "@suiteleaf/core";
 import { CellSelection } from "@tiptap/pm/tables";
 import CharacterCount from "@tiptap/extension-character-count";
 import DOMPurify from "dompurify";
@@ -123,6 +123,8 @@ import { DocShape } from "./doc-shape";
 import { useAgentHost } from "../ai/host";
 import { docBeforeTool, docReview, docSnapshot, docTools as docAgentTools, type DocsAgentContext } from "../ai/tools/docs";
 import {
+  BODY_POINTS,
+  bodyFontFamily,
   bodyEdgeInsets,
   documentHtml,
   documentPageSettings,
@@ -2605,6 +2607,9 @@ export default function Docs({
               {
                 "--page-width": `${dimensions.width}px`,
                 "--page-height": `${dimensions.height}px`,
+                "--doc-kerning": fontKerning(shownSettings.kern, BODY_POINTS),
+                "--doc-kern-feature": kernFeature(shownSettings.kern, BODY_POINTS),
+                "--doc-font": bodyFontFamily(shownSettings.font),
                 "--page-margin": `${shownSettings.marginTop}px`,
                 "--page-margin-top": `${shownSettings.marginTop}px`,
                 "--page-margin-right": `${shownSettings.marginRight}px`,

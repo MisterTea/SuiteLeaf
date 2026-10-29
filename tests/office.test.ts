@@ -540,7 +540,7 @@ describe("editable Office imports", () => {
     expect(cells["4"]["0"]!.v).toBe("=literal");
     expect(cells["4"]["0"]!.f).toBeUndefined();
     expect((w.styles as any)["excel-0"]).toMatchObject({
-      ff: "Arial",
+      ff: "SuiteLeaf Aspen",
       bl: 1,
       bg: { rgb: "#CCEEAA" },
       pd: { l: 4, r: 4 },

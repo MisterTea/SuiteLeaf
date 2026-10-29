@@ -41,6 +41,10 @@ export function isOfficeExtension(extension: string): boolean {
   return (OFFICE_OPEN_EXTENSIONS as readonly string[]).includes(extension);
 }
 
+export function isPowerPointExtension(extension: string): boolean {
+  return POWERPOINT.has(extension.toLowerCase());
+}
+
 function titled(file: SuiteFile, format: string, name: string): SuiteFile {
   if (!file.importInfo) return file;
   file.importInfo = {
@@ -68,10 +72,15 @@ export async function openOfficeFile(
     return titled(imported.file, extension, name);
   }
   if (POWERPOINT.has(extension))
-    return titled(await parsePowerPoint(bytes, name.replace(/\.[^.]+$/, "")), extension, name);
+    return titled(
+      await parsePowerPoint(bytes, name.replace(/\.[^.]+$/, "")),
+      extension,
+      name,
+    );
   if (extension === "doc" || extension === "dot")
     return importBinaryDoc(bytes, extension, name);
-  if (foreignKind(extension)) return (await importForeign(bytes, extension, name)).file;
+  if (foreignKind(extension))
+    return (await importForeign(bytes, extension, name)).file;
   throw new Error(`SuiteLeaf cannot open .${extension} files.`);
 }
 

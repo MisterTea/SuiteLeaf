@@ -5,6 +5,8 @@ import { parseFile, type SuiteFile } from "./index";
 import { importDocx } from "./word";
 import { importXlsx, normalizeBinaryExcel } from "./excel";
 export const OFFICE_INPUT_LIMIT = 120 * 1024 * 1024;
+/** Presentations carry embedded media, so they can be larger than a document. */
+export const PPTX_INPUT_LIMIT = 512 * 1024 * 1024;
 export const OFFICE_EXPANDED_LIMIT = 1024 * 1024 * 1024;
 export type OfficeFormat = "docx" | "xlsx" | "xls" | "xlsm" | "xlsb" | "xltx";
 export type OfficeReport = {

@@ -23,6 +23,17 @@ describe("published app updates", () => {
     expect(paths).not.toContain("./assets/index-empty.js");
   });
 
+  it("leaves fonts to be cached when a page first uses them", () => {
+    const paths = precachePaths([
+      { fileName: "assets/suiteleaf-willow-regular-abc.woff2", type: "asset" },
+      { fileName: "assets/app.css", type: "asset" },
+    ]);
+    expect(paths).toContain("./assets/app.css");
+    expect(paths).not.toContain("./assets/suiteleaf-willow-regular-abc.woff2");
+    const source = serviceWorkerSource("abc123", paths);
+    expect(source).toContain("pathname.endsWith('.woff2'))void cache.put(event.request,fresh.clone())");
+  });
+
   it("replaces a cached copy and reloads tabs that still have it open", () => {
     const source = serviceWorkerSource("abc123", ["./"]);
     expect(source).toContain("CACHE=PREFIX+'-abc123'");

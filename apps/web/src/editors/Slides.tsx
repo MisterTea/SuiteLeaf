@@ -50,6 +50,7 @@ import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import {
   filename,
   slideOp,
+  slidePointScale,
   type SlideFile,
   type Slide,
   type SlideElement,
@@ -2193,6 +2194,7 @@ export default function Slides({
           bold={el.bold}
           italic={el.italic}
           underline={el.underline}
+          kern={el.kern}
           placeholder={el.placeholder}
           editing={editingId === el.id && !readOnly}
           onText={(runs, opts) =>
@@ -2695,6 +2697,10 @@ export default function Slides({
                     )
                   }
                 >
+                  {selectedElement.fontFamily &&
+                  ![...THEME_FONTS, "Roboto", "Helvetica"].includes(selectedElement.fontFamily) ? (
+                    <option value={selectedElement.fontFamily}>{selectedElement.fontFamily}</option>
+                  ) : null}
                   {THEME_FONTS.map((font) => (
                     <option key={font} value={font}>
                       {font}
@@ -3290,6 +3296,7 @@ export default function Slides({
                   "#ffffff",
                 aspectRatio: `${deck.width || 960} / ${deck.height || 540}`,
                 ["--deck-motion" as string]: `${canvasMotion?.ms ?? 0}ms`,
+                ["--slide-pt" as string]: String(slidePointScale(deck.width, deck.pointWidth)),
               }}
             >
               {showBackdrop ? (

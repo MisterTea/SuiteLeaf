@@ -9,6 +9,50 @@ import {
 } from "./index";
 import { readClickAnimations, readSlideMotion } from "./slide-motion";
 import { gatherNativeDrawing } from "./pptx-native-objects";
+import {
+  drawingPose,
+  fittedLabelSize,
+  groupFillXml,
+  inheritedLabels,
+  inheritedShapes,
+  insideFallback,
+  placeholderShape,
+  placedBox,
+  presetTextBox,
+  shapeArtwork,
+  shapeIsHidden,
+  withInheritedFill,
+} from "./pptx-geometry";
+import { normAutofitFactors } from "./pptx-autofit";
+import { moveKerningToBoxes, runKern } from "./pptx-kerning";
+import { diagramElements } from "./pptx-diagrams";
+import { readEmbeddedFonts } from "./pptx-fonts";
+import { bulletPointSize, formatAutoNum, symbolBulletFont } from "./pptx-lists";
+import { suiteLeafFont } from "./office-fonts";
+import {
+  cellMarkUsed,
+  explicitTableCell,
+  mergeTableCell,
+  tableCellContinues,
+  tableFractions,
+  tableStyleAt,
+  tableStyleBorder,
+  tableStyleById,
+  tableStyleFlags,
+} from "./pptx-table";
+import { blipOpacity, duotoneSvg, paintableImage, sourceCrop } from "./pptx-pictures";
+import {
+  backgroundBlip,
+  backgroundCss,
+  defaultSlideNumberBox,
+  duotoneColors,
+  paintColor,
+  schemeColors,
+  themePaint,
+} from "./pptx-theme";
+
+/** Video and audio larger than this stay as a poster so a deck of clips can still be drawn. */
+const INLINE_MEDIA_LIMIT = 8 * 1024 * 1024;
 
 function xmlCharacter(code: number, fallback: string): string {
   return Number.isInteger(code) &&
@@ -296,6 +340,8 @@ async function parseZipPptx(
   const out = createFile("slide", defaultTitle) as SlideFile;
   out.content.width = width;
   out.content.height = height;
+  out.content.pointWidth = (emuWidth / 914400) * 72;
+  out.content.pointHeight = (emuHeight / 914400) * 72;
 
   if (slidePaths.length === 0) {
     return out;
@@ -303,6 +349,9 @@ async function parseZipPptx(
 
   const slides: Record<string, Slide> = {};
   const slideOrder: string[] = [];
+  const tableStylesXml = zip.file("ppt/tableStyles.xml")
+    ? await zip.file("ppt/tableStyles.xml")!.async("string")
+    : "";
 
   for (let idx = 0; idx < slidePaths.length; idx++) {
     const slidePath = slidePaths[idx];
@@ -365,14 +414,15 @@ async function parseZipPptx(
     const themePart = masterPart
       ? await readRelatedPart(masterPart.path, masterPart.rels, "theme")
       : undefined;
+    // Office font names become the installed families that lay text out the same way.
     const themeFont = (name: string | undefined) => {
-      if (name !== "+mj-lt" && name !== "+mn-lt") return name;
+      if (name !== "+mj-lt" && name !== "+mn-lt") return suiteLeafFont(name);
       const kind = name === "+mj-lt" ? "majorFont" : "minorFont";
       const section =
         new RegExp(`<a:${kind}\\b[\\s\\S]*?<\\/a:${kind}>`).exec(
           themePart?.xml || "",
         )?.[0] || "";
-      return /<a:latin\b[^>]*typeface="([^"]+)"/.exec(section)?.[1];
+      return suiteLeafFont(/<a:latin\b[^>]*typeface="([^"]+)"/.exec(section)?.[1]);
     };
     const layers = [masterPart, layoutPart].filter(
       (part): part is NonNullable<typeof part> => Boolean(part),
@@ -385,11 +435,85 @@ async function parseZipPptx(
     const bgXml = backgroundPart
       ? (/<p:bg\b[\s\S]*?<\/p:bg>/.exec(backgroundPart.xml)?.[0] ?? "")
       : "";
-    const bgColorMatch = /<a:srgbClr\s+val="([0-9a-fA-F]{6})"/.exec(bgXml);
-    const bgColor = bgColorMatch ? `#${bgColorMatch[1]}` : undefined;
+    const colorMap = masterPart?.xml;
+    const recolor = (src: string | undefined, xml: string) => {
+      if (!src) return;
+      const stops = duotoneColors(
+        xml,
+        schemeColors(themePart?.xml || "", colorMap),
+      );
+      return stops ? duotoneSvg(src, stops[0], stops[1]) : src;
+    };
+    const bgColor = backgroundCss(themePart?.xml, bgXml, colorMap);
 
-    // Helper to extract transform
-    const parseTransform = (xmlChunk: string) => {
+    const slideGroups = (() => {
+      const groups: {
+        childStart: number;
+        end: number;
+        ox: number;
+        oy: number;
+        cx: number;
+        cy: number;
+        chx: number;
+        chy: number;
+        chcx: number;
+        chcy: number;
+      }[] = [];
+      const stack: number[] = [];
+      const marker = /<p:grpSp\b|<\/p:grpSp>/g;
+      let found: RegExpExecArray | null;
+      while ((found = marker.exec(slideXml))) {
+        if (found[0] === "</p:grpSp>") {
+          const start = stack.pop();
+          if (start == null) continue;
+          const body = slideXml.slice(start, found.index);
+          const pr = /<p:grpSpPr\b[\s\S]*?<\/p:grpSpPr>/.exec(body)?.[0] ?? "";
+          const num = (tag: string, attr: string) =>
+            Number(
+              new RegExp(`<a:${tag}\\b[^>]*\\b${attr}="(-?\\d+)"`).exec(pr)?.[1] ??
+                0,
+            );
+          const prAt = body.indexOf("</p:grpSpPr>");
+          groups.push({
+            childStart: prAt < 0 ? start : start + prAt,
+            end: found.index,
+            ox: num("off", "x"),
+            oy: num("off", "y"),
+            cx: num("ext", "cx") || 1,
+            cy: num("ext", "cy") || 1,
+            chx: num("chOff", "x"),
+            chy: num("chOff", "y"),
+            chcx: num("chExt", "cx") || 1,
+            chcy: num("chExt", "cy") || 1,
+          });
+        } else stack.push(found.index);
+      }
+      return groups;
+    })();
+    const mapGrouped = (
+      emuX: number,
+      emuY: number,
+      emuW: number,
+      emuH: number,
+      at: number,
+    ) => {
+      const chain = slideGroups
+        .filter((group) => at >= group.childStart && at < group.end)
+        .sort((a, b) => b.childStart - a.childStart);
+      for (const group of chain) {
+        const sx = group.cx / group.chcx;
+        const sy = group.cy / group.chcy;
+        emuX = group.ox + (emuX - group.chx) * sx;
+        emuY = group.oy + (emuY - group.chy) * sy;
+        emuW *= sx;
+        emuH *= sy;
+      }
+      return { emuX, emuY, emuW, emuH };
+    };
+
+    // Helper to extract transform. `at` is the shape's index in the slide XML
+    // when its own xfrm is in a group's child coordinate space.
+    const parseTransform = (xmlChunk: string, at?: number, ownLength?: number) => {
       const xfrmMatch = /<(?:a|p):xfrm\b[\s\S]*?<\/(?:a|p):xfrm>/.exec(
         xmlChunk,
       );
@@ -403,10 +527,20 @@ async function parseZipPptx(
         if (offMatch && extMatch) {
           const offAttrs = parseXmlAttrs(offMatch[1]);
           const extAttrs = parseXmlAttrs(extMatch[1]);
-          const emuX = parseInt(offAttrs.x, 10) || 0;
-          const emuY = parseInt(offAttrs.y, 10) || 0;
-          const emuW = parseInt(extAttrs.cx, 10) || 1;
-          const emuH = parseInt(extAttrs.cy, 10) || 1;
+          let emuX = parseInt(offAttrs.x, 10) || 0;
+          let emuY = parseInt(offAttrs.y, 10) || 0;
+          const readEmu = (value: string | undefined) => {
+            const parsed = parseInt(value ?? "", 10);
+            return Number.isFinite(parsed) ? parsed : 1;
+          };
+          let emuW = readEmu(extAttrs.cx);
+          let emuH = readEmu(extAttrs.cy);
+          if (
+            at != null &&
+            (ownLength == null || xfrmMatch.index < ownLength)
+          ) {
+            ({ emuX, emuY, emuW, emuH } = mapGrouped(emuX, emuY, emuW, emuH, at));
+          }
 
           x = (emuX / emuWidth) * width;
           y = (emuY / emuHeight) * height;
@@ -428,6 +562,7 @@ async function parseZipPptx(
       part: typeof ownPart,
       xml: string,
       background = false,
+      boxOverride?: { x: number; y: number; width: number; height: number },
     ) => {
       const blip = /<a:blip\b([^>]*)\/?>/.exec(xml);
       if (!blip) return;
@@ -437,43 +572,108 @@ async function parseZipPptx(
       const image = zip.file(resolveZipPath(part.path, rel.target));
       if (!image) return;
       const bytes = await image.async("uint8array");
-      const mime = detectImageMime(bytes);
-      if (!mime) return;
+      const src = recolor(paintableImage(bytes, detectImageMime(bytes)), xml);
+      if (!src) return;
       const nativeFrame = nativeOleFrame(part.xml, xml);
       const nativeDrawing = nativeFrame
         ? await gatherNativeDrawing(zip, part.path, nativeFrame)
         : undefined;
+      const box = background
+        ? { x: 0, y: 0, width, height }
+        : boxOverride || parseTransform(nativeFrame || xml);
+      if (!(box.width > 0 && box.height > 0)) return;
       elements.push({
         id: crypto.randomUUID(),
         type: "image",
-        ...(background ? { x: 0, y: 0, width, height } : parseTransform(nativeFrame || xml)),
-        src: `data:${mime};base64,${uint8ToBase64(bytes)}`,
+        ...box,
+        src,
         alt: background ? "Slide background" : "Inherited slide artwork",
+        ...sourceCrop(xml),
+        ...blipOpacity(xml),
         ...(nativeDrawing ? { nativeDrawing } : {}),
       });
     };
     if (backgroundPart && bgXml) {
       await addInheritedImage(backgroundPart, bgXml, true);
+      const themeBg = backgroundBlip(themePart?.xml, bgXml, colorMap);
+      const themeRel = themeBg && themePart?.rels[themeBg.embed];
+      const themeFile = themeRel
+        ? zip.file(resolveZipPath(themePart.path, themeRel.target))
+        : null;
+      if (themeFile && themeBg) {
+        const bytes = await themeFile.async("uint8array");
+        let src = paintableImage(bytes, detectImageMime(bytes));
+        if (src && themeBg.duotone)
+          src = duotoneSvg(src, themeBg.duotone[0], themeBg.duotone[1]);
+        if (src)
+          elements.push({
+            id: crypto.randomUUID(),
+            type: "image",
+            x: 0,
+            y: 0,
+            width,
+            height,
+            src,
+            alt: "Slide background",
+          });
+      }
     }
-    const showMasterShapes =
-      !/<p:sld\b[^>]*showMasterSp="(?:0|false)"/.test(slideXml) &&
-      !(
+    // showMasterSp on the slide hides layout shapes (PowerPoint's "hide
+    // background graphics"). The same flag on a layout hides only the master.
+    const hideLayoutShapes = /<p:sld\b[^>]*\bshowMasterSp="(?:0|false)"/.test(
+      slideXml,
+    );
+    const hideMasterShapes =
+      hideLayoutShapes ||
+      Boolean(
         layoutPart &&
-        /<p:sldLayout\b[^>]*showMasterSp="(?:0|false)"/.test(layoutPart.xml)
+          /<p:sldLayout\b[^>]*\bshowMasterSp="(?:0|false)"/.test(layoutPart.xml),
       );
+    const metrics = { width, height, emuWidth, emuHeight };
     for (const part of layers) {
-      if (part === masterPart && !showMasterShapes) continue;
+      if (part === layoutPart && hideLayoutShapes) continue;
+      if (part === masterPart && hideMasterShapes) continue;
+      const pieces: { at: number; draw: () => Promise<void> }[] = [];
+      for (const shape of inheritedShapes(
+        part.xml,
+        themePart?.xml,
+        metrics,
+        colorMap,
+      )) {
+        pieces.push({
+          at: shape.at,
+          draw: async () => {
+            elements.push({ id: crypto.randomUUID(), ...shape.element });
+          },
+        });
+      }
       for (const match of part.xml.matchAll(
         /<p:pic\b[\s\S]*?<\/p:pic>|<p:sp\b[\s\S]*?<\/p:sp>/g,
       )) {
         // Placeholder content is supplied by the slide, rather than inherited.
-        if (/<p:ph\b/.test(match[0])) continue;
-        await addInheritedImage(part, match[0]);
+        if (shapeIsHidden(match[0])) continue;
+        if (/<p:ph\b/.test(match[0]) || !/<a:blip\b/.test(match[0])) continue;
+        const at = match.index ?? 0;
+        const xml = match[0];
+        const box = placedBox(part.xml, at, xml, metrics);
+        if (!box) continue;
+        pieces.push({
+          at,
+          draw: () => addInheritedImage(part, xml, false, box),
+        });
       }
+      pieces.sort((a, b) => a.at - b.at);
+      for (const piece of pieces) await piece.draw();
     }
 
+    const scheme = schemeColors(themePart?.xml || "", colorMap);
+
     // Helper to extract text from a txBody
-    const parseTextBody = (txBodyXml: string, inherited: string[] = []) => {
+    const parseTextBody = (
+      txBodyXml: string,
+      inherited: string[] = [],
+      defaults?: { color?: string; link?: string },
+    ) => {
       const paragraphs: {
         text: string;
         runs: TextRun[];
@@ -485,7 +685,11 @@ async function parseZipPptx(
         align?: "left" | "center" | "right" | "justify";
         color?: string;
         font?: string;
+        lineHeight?: number;
+        hang?: number;
+        listMargin?: number;
       }[] = [];
+      const autoCounters = new Map<string, { startAt?: number; next: number }>();
       const pRx = /<a:p\b[^>]*?(?:\/>|>[\s\S]*?<\/a:p>)/g;
       let pMatch: RegExpExecArray | null;
 
@@ -524,13 +728,38 @@ async function parseZipPptx(
             parseXmlAttrs(/^<[^>]+/.exec(xml)?.[0] || ""),
           ),
         );
-        const defaultColor = defaultRunParts
-          .flatMap((xml) =>
-            [...xml.matchAll(/<a:srgbClr\s+val="([0-9a-fA-F]{6})"/g)].map(
-              (m) => `#${m[1]}`,
-            ),
+        const colorOf = (xml: string) =>
+          paintColor(
+            /<a:defRPr\b[^>]*?(?:\/>|>[\s\S]*?<\/a:defRPr>)/.exec(xml)?.[0] ||
+              "",
+            scheme,
+          );
+        const inheritedColor = inherited
+          .map(
+            (xml) =>
+              colorOf(
+                new RegExp(
+                  `<a:lvl${level}pPr\\b[^>]*(?:\\/>|>[\\s\\S]*?<\\/a:lvl${level}pPr>)`,
+                ).exec(xml)?.[0] || "",
+              ) || "",
           )
+          .filter((color) => color)
           .at(-1);
+        const ownList =
+          /<a:lstStyle\b[\s\S]*?<\/a:lstStyle>/.exec(txBodyXml)?.[0] || "";
+        const ownColor = [
+          colorOf(
+            new RegExp(
+              `<a:lvl${level}pPr\\b[^>]*(?:\\/>|>[\\s\\S]*?<\\/a:lvl${level}pPr>)`,
+            ).exec(ownList)?.[0] || "",
+          ),
+          colorOf(pPrMatch?.[0] || ""),
+        ]
+          .filter((color): color is string => Boolean(color))
+          .at(-1);
+        // The shape's own list colour, then its fontRef, then the master style.
+        // otherStyle's tx1 must not cover a light fontRef on a coloured shape.
+        const defaultColor = ownColor || defaults?.color || inheritedColor;
         const defaultFont = defaultRunParts
           .flatMap((xml) =>
             [...xml.matchAll(/<a:latin\s+typeface="([^"]+)"/g)].map(
@@ -547,6 +776,9 @@ async function parseZipPptx(
             .filter((xml) => /<a:bu(?:None|Char|AutoNum)\b/.test(xml))
             .at(-1) || "";
         const hasBullet = /<a:buChar\b|<a:buAutoNum\b/.test(bulletStyle);
+        const bulletChar = /<a:buChar\b[^>]*\bchar="([^"]*)"/.exec(bulletStyle)?.[1];
+        const spacing = styleParts.join("");
+        const linePct = /<a:lnSpc>\s*<a:spcPct\b[^>]*\bval="(\d+)"/.exec(spacing);
 
         let pText = "";
         const textRuns: TextRun[] = [];
@@ -577,8 +809,12 @@ async function parseZipPptx(
             underline: false,
           };
           const tMatch = /<a:t\b[^>]*>([\s\S]*?)<\/a:t>/.exec(rXml);
-          if (tMatch) {
-            const t = decodeXmlEntities(tMatch[1]).replace(/\r\n?/g, "\n");
+          const slideField =
+            /^<a:fld\b/.test(rXml) && /type="slidenum"/.test(rXml);
+          if (tMatch || slideField) {
+            const t = slideField
+              ? String(idx + 1)
+              : decodeXmlEntities(tMatch?.[1] || "").replace(/\r\n?/g, "\n");
             pText += t;
             run.text = t;
           }
@@ -601,21 +837,110 @@ async function parseZipPptx(
                 run.fontSize = szPt;
               }
             }
+            if (rAttrs.cap === "small" || rAttrs.cap === "all") run.caps = rAttrs.cap;
+            const kern = runKern(rAttrs.kern);
+            if (kern !== undefined) run.kern = kern;
+            if (rAttrs.baseline) {
+              const shift = Number(rAttrs.baseline) / 1000;
+              if (shift) run.baseline = Math.max(-1000, Math.min(1000, shift));
+            }
             const latinMatch = /<a:latin\s+typeface="([^"]+)"/.exec(rXml);
             if (latinMatch) fontFamily = themeFont(latinMatch[1]);
-            const clrMatch = /<a:srgbClr\s+val="([0-9a-fA-F]{6})"/.exec(rXml);
-            if (clrMatch) {
-              run.color = `#${clrMatch[1]}`;
+            const highlightXml =
+              /<a:highlight\b[\s\S]*?<\/a:highlight>/.exec(rXml)?.[0] || "";
+            const colorXml = highlightXml ? rXml.replace(highlightXml, "") : rXml;
+            const resolved = paintColor(colorXml, scheme);
+            if (highlightXml) {
+              const painted = paintColor(highlightXml, scheme);
+              if (painted) run.highlight = painted;
+            }
+            if (resolved) {
+              run.color = resolved;
               if (!fontColor) fontColor = run.color;
             } else if (defaultColor) run.color = defaultColor;
+            else if (defaults?.color) run.color = defaults.color;
+            if (/<a:hlinkClick\b/.test(rXml) && rAttrs.u !== "none") {
+              run.underline = true;
+              isUnderline = true;
+              if (defaults?.link && !resolved) {
+                run.color = defaults.link;
+                if (!fontColor || fontColor === defaults.color)
+                  fontColor = defaults.link;
+              }
+            }
           }
           if (run.text) textRuns.push(run);
         }
+        const rightTab = /<a:tab\b[^>]*\balgn="r"/.test(pPrMatch?.[0] || "");
+        if (rightTab && /^\t[^\t]*$/.test(pText)) {
+          align = "right";
+          pText = pText.slice(1);
+          const tabbed = textRuns.find((run) => run.text.startsWith("\t"));
+          if (tabbed) tabbed.text = tabbed.text.replace(/^\t/, "");
+        }
+        const autoTag = /<a:buAutoNum\b([^>]*)\/?>/.exec(bulletStyle);
+        if (pText && !autoTag) {
+          for (const key of autoCounters.keys()) {
+            if (key.startsWith(`${level}:`)) autoCounters.delete(key);
+          }
+        }
+        if (autoTag && pText) {
+          const attrs = parseXmlAttrs(autoTag[1]);
+          const kind = attrs.type || "arabicPeriod";
+          const startAt = attrs.startAt ? Number(attrs.startAt) : undefined;
+          const key = `${level}:${kind}`;
+          let sequence = autoCounters.get(key);
+          if (
+            !sequence ||
+            (startAt !== undefined && startAt !== sequence.startAt)
+          ) {
+            sequence = {
+              startAt,
+              next: startAt && startAt > 0 ? startAt : 1,
+            };
+            autoCounters.set(key, sequence);
+          }
+          const marker = `${formatAutoNum(kind, sequence.next)} `;
+          sequence.next += 1;
+          pText = marker + pText;
+          const first = textRuns.find((run) => run.text && run.text !== "\n");
+          if (first) first.text = marker + first.text;
+        }
+        if (bulletChar && pText) {
+          const marker = `${decodeXmlEntities(bulletChar)} `;
+          pText = marker + pText;
+          const symbol = suiteLeafFont(symbolBulletFont(
+            /<a:buFont\b[^>]*\btypeface="([^"]*)"/.exec(bulletStyle)?.[1],
+          ));
+          const bulletSize = bulletPointSize(
+            fontSize,
+            /<a:buSzPct\b[^>]*\bval="(\d+)"/.exec(bulletStyle)?.[1],
+          );
+          const bulletColor = paintColor(
+            /<a:buClr\b[\s\S]*?<\/a:buClr>/.exec(bulletStyle)?.[0] || "",
+            scheme,
+          );
+          const first = textRuns.find((run) => run.text && run.text !== "\n");
+          if (symbol || bulletSize || bulletColor) {
+            const bulletRun: TextRun = {
+              text: marker,
+              ...(symbol ? { font: symbol } : {}),
+              ...(bulletSize ? { fontSize: bulletSize } : {}),
+              ...(bulletColor ? { color: bulletColor } : {}),
+            };
+            const at = first ? textRuns.indexOf(first) : textRuns.length;
+            textRuns.splice(at, 0, bulletRun);
+          } else if (first) first.text = marker + first.text;
+        }
 
         {
+          const indent = Number(pAttrs.indent || 0);
+          const margin = Number(pAttrs.marL || 0);
+          const px = (emu: number) => (emu / emuWidth) * width;
+          const hang = indent < 0 ? px(-indent) : undefined;
           paragraphs.push({
             text: pText,
-            runs: textRuns,
+            runs: textRuns.filter((run) => run.text),
             bullet: hasBullet,
             bold: isBold,
             italic: isItalic,
@@ -624,11 +949,83 @@ async function parseZipPptx(
             align,
             color: fontColor,
             font: fontFamily,
+            ...(hang ? { hang } : {}),
+            ...(hang && margin + indent > 0 ? { listMargin: px(margin + indent) } : {}),
+            ...(linePct
+              ? { lineHeight: Math.min(4, Math.max(0.5, Number(linePct[1]) / 100000)) }
+              : {}),
           });
+        }
+      }
+      const fit = normAutofitFactors(txBodyXml);
+      if (fit.font !== 1 || fit.line !== 1) {
+        for (const paragraph of paragraphs) {
+          if (paragraph.size) paragraph.size *= fit.font;
+          if (fit.line !== 1) {
+            const base = paragraph.lineHeight ?? 1;
+            paragraph.lineHeight = Math.min(4, Math.max(0.5, base * fit.line));
+          }
+          for (const run of paragraph.runs) {
+            if (run.fontSize) run.fontSize *= fit.font;
+          }
         }
       }
       return paragraphs;
     };
+
+    for (const part of layers) {
+      if (part === layoutPart && hideLayoutShapes) continue;
+      if (part === masterPart && hideMasterShapes) continue;
+      for (const label of inheritedLabels(part.xml, metrics)) {
+        const paragraphs = parseTextBody(label.txBody);
+        if (!paragraphs.some((paragraph) => paragraph.text.trim())) continue;
+        const first = paragraphs[0];
+        const content = paragraphs.map((paragraph) => paragraph.text).join("\n");
+        const declared = first?.size || 18;
+        const fontSize = fittedLabelSize(
+          content,
+          declared,
+          label.width,
+          label.height,
+          !!label.nowrap,
+        );
+        const scale = declared > 0 ? fontSize / declared : 1;
+        elements.push({
+          id: crypto.randomUUID(),
+          type: "text",
+          x: label.x,
+          y: label.y,
+          width: label.width,
+          height: label.height,
+          content,
+          runs: paragraphs.flatMap((paragraph, index) => [
+            ...(index ? [{ text: "\n", paragraphBreak: true as const }] : []),
+            ...paragraph.runs.map((run) =>
+              scale < 0.999 && run.fontSize
+                ? { ...run, fontSize: run.fontSize * scale }
+                : run,
+            ),
+          ]),
+          bold: first?.bold,
+          italic: first?.italic,
+          ...(first?.underline ? { underline: true } : {}),
+          fontSize,
+          fontFamily: first?.font || "Arial",
+          color: first?.color || "#1e293b",
+          align: first?.align || "left",
+          bullet: paragraphs.some((paragraph) => paragraph.bullet),
+          ...(label.valign ? { valign: label.valign } : {}),
+          ...(label.inset != null ? { inset: label.inset } : {}),
+          ...(label.padLeft != null ? { padLeft: label.padLeft } : {}),
+          ...(label.padRight != null ? { padRight: label.padRight } : {}),
+          ...(label.padBottom != null ? { padBottom: label.padBottom } : {}),
+          lineHeight: first?.lineHeight ?? 1,
+          ...(label.nowrap ? { nowrap: true } : {}),
+          ...(label.autofit ? { autofit: true } : {}),
+          ...(label.rotation ? { rotation: label.rotation } : {}),
+        });
+      }
+    }
 
     // A picture painted on the group itself sits behind the shapes in that group.
     const grpPrRx = /<p:grpSpPr\b[\s\S]*?<\/p:grpSpPr>/g;
@@ -644,9 +1041,9 @@ async function parseZipPptx(
         );
         if (!mediaFile) continue;
         const imgBytes = await mediaFile.async("uint8array");
-        const mime = detectImageMime(imgBytes);
-        if (!mime) continue;
+        const src = recolor(paintableImage(imgBytes, detectImageMime(imgBytes)), grpPr);
         const { x, y, width: w, height: h } = parseTransform(grpPr);
+        if (!src || !(w > 0 && h > 0)) continue;
         elements.push({
           id: crypto.randomUUID(),
           type: "image",
@@ -654,17 +1051,35 @@ async function parseZipPptx(
           y,
           width: w,
           height: h,
-          src: `data:${mime};base64,${uint8ToBase64(imgBytes)}`,
+          src,
           alt: "Slide image",
+          ...sourceCrop(grpPr),
+          ...blipOpacity(grpPr),
         });
       }
     }
 
     // 3. Parse Shapes (<p:sp>)
+    const hfShown = (xml: string | undefined, name: string) => {
+      const tag = xml ? /<p:hf\b([^>]*)\/?>/.exec(xml) : undefined;
+      if (!tag) return undefined;
+      const value = parseXmlAttrs(tag[1])[name];
+      if (value == null) return undefined;
+      return value !== "0" && value !== "false";
+    };
+    // A slide flag wins, then the layout, then the master. Absent means show.
+    const slideNumberShown =
+      hfShown(slideXml, "sldNum") ??
+      hfShown(layoutPart?.xml, "sldNum") ??
+      hfShown(masterPart?.xml, "sldNum");
+    const hideSlideNumber = slideNumberShown === false;
+    let sawSlideNumber = false;
     const spRx = /<p:sp\b[\s\S]*?<\/p:sp>/g;
     let spMatch: RegExpExecArray | null;
     while ((spMatch = spRx.exec(slideXml)) !== null) {
+      if (insideFallback(slideXml, spMatch.index ?? 0)) continue;
       const spXml = spMatch[0];
+      if (shapeIsHidden(spXml)) continue;
       const phMatch = /<p:ph\b([^>]*)\/?>/.exec(spXml);
       let phType = "";
       if (phMatch) {
@@ -710,57 +1125,166 @@ async function parseZipPptx(
         y,
         width: w,
         height: h,
-      } = parseTransform(spXml + layoutPlaceholder + masterPlaceholder);
+      } = parseTransform(
+        spXml + layoutPlaceholder + masterPlaceholder,
+        spMatch.index,
+        spXml.length,
+      );
 
-      // Check fill color
-      let fillColor: string | undefined = undefined;
-      const fillMatch =
-        /<a:solidFill\b[\s\S]*?<a:srgbClr\s+val="([0-9a-fA-F]{6})"/.exec(spPr);
-      if (fillMatch) fillColor = `#${fillMatch[1]}`;
+      const groupFill = /<a:grpFill\b/.test(spXml)
+        ? groupFillXml(slideXml, spMatch.index ?? 0)
+        : "";
+      const filled = withInheritedFill(
+        spXml,
+        layoutPlaceholder,
+        masterPlaceholder,
+      );
+      const paint = themePaint(
+        themePart?.xml,
+        groupFill ? filled.replace(/<a:grpFill\b[^>]*\/>/, groupFill) : filled,
+        colorMap,
+      );
+      const fillColor = paint.fill;
+      const bodyAttrs: Record<string, string> = {};
+      for (const source of [masterPlaceholder, layoutPlaceholder, spXml]) {
+        const tag = /<a:bodyPr\b([^>]*)\/?>/.exec(source || "");
+        if (tag) Object.assign(bodyAttrs, parseXmlAttrs(tag[1]));
+      }
+      const hasBody = [masterPlaceholder, layoutPlaceholder, spXml].some((source) =>
+        /<a:bodyPr\b/.test(source || ""),
+      );
+      const valign =
+        bodyAttrs.anchor === "ctr"
+          ? "middle"
+          : bodyAttrs.anchor === "b"
+            ? "bottom"
+            : undefined;
+      const insetDefault = (name: string) =>
+        name === "tIns" || name === "bIns" ? 45720 : 91440;
+      const insetOf = (name: string) =>
+        ((Number(bodyAttrs[name] ?? insetDefault(name)) || 0) / emuWidth) * width;
+      const pad = hasBody
+        ? {
+            t: insetOf("tIns"),
+            r: insetOf("rIns"),
+            b: insetOf("bIns"),
+            l: insetOf("lIns"),
+          }
+        : undefined;
+      const positioned = /<(?:a|p):off\b/.test(
+        spXml + layoutPlaceholder + masterPlaceholder,
+      );
+      const at =
+        phType === "sldNum" && !positioned
+          ? defaultSlideNumberBox(width, height)
+          : { x, y, width: w, height: h };
+      let painted = false;
+      const art =
+        fillColor || paint.stroke
+          ? shapeArtwork(
+              filled,
+              paint,
+              { x: at.x, y: at.y, width: at.width, height: at.height },
+              { width, emuWidth },
+            )
+          : undefined;
+      if (art) {
+        rememberShape(spXml);
+        elements.push({ id: crypto.randomUUID(), ...art });
+        painted = true;
+      }
 
       let addedText = false;
+      const wantsNumber = phType === "sldNum" && !hideSlideNumber;
       if (txBodyMatch) {
-        const paragraphs = parseTextBody(txBodyMatch[0], [
-          masterStyle,
-          masterPlaceholder,
-          layoutPlaceholder,
-        ]);
-        if (paragraphs.some((paragraph) => paragraph.text.trim())) {
-          const fullText = paragraphs.map((p) => p.text).join("\n");
+        const paragraphs = parseTextBody(
+          txBodyMatch[0],
+          [masterStyle, masterPlaceholder, layoutPlaceholder],
+          { color: paint.fontColor, link: paint.linkColor },
+        );
+        if (
+          paragraphs.some((paragraph) => paragraph.text.trim()) ||
+          wantsNumber
+        ) {
+          // A slide-number field is already the page number. Keep the date and
+          // other runs that share its placeholder instead of dropping them.
+          const synthesized =
+            wantsNumber && paragraphs.every((paragraph) => !paragraph.text.trim());
+          const fullText = synthesized
+            ? String(idx + 1)
+            : paragraphs.map((p) => p.text).join("\n");
+          if (wantsNumber) sawSlideNumber = true;
           if (
             !slideTitle &&
             (phType === "title" ||
               phType === "ctrTitle" ||
-              (idx === 0 && y < height * 0.35))
+              (idx === 0 && at.y < height * 0.35))
           ) {
             slideTitle = fullText;
           }
 
           const first = paragraphs[0];
+          const textual = paragraphs.filter((paragraph) => paragraph.text.trim());
+          const listed = textual.filter((paragraph) => paragraph.hang);
+          const hang =
+            listed.length === textual.length &&
+            listed.length > 0 &&
+            listed.every((paragraph) => paragraph.hang === listed[0].hang)
+              ? listed[0].hang
+              : undefined;
+          const listMargin = hang ? listed[0].listMargin || 0 : 0;
           rememberShape(spXml);
+          // A flipped shape mirrors its outline. PowerPoint keeps the letters upright.
+          const { rotation } = drawingPose(spXml);
+          const pose = rotation ? { rotation } : {};
+          const fit = normAutofitFactors(txBodyMatch[0]);
+          const textAt = presetTextBox(spXml, at) ?? at;
+          const declared =
+            first?.size ||
+            (phType === "title" || phType === "ctrTitle"
+              ? 36
+              : wantsNumber
+                ? 12
+                : 18);
           elements.push({
             id: crypto.randomUUID(),
             type: "text",
-            x,
-            y,
-            width: w,
-            height: h,
+            x: textAt.x,
+            y: textAt.y,
+            width: textAt.width,
+            height: textAt.height,
+            ...pose,
             content: fullText,
-            runs: paragraphs.flatMap((paragraph, index) => [
-              ...(index ? [{ text: "\n", paragraphBreak: true }] : []),
-              ...paragraph.runs,
-            ]),
-            bold: first.bold,
-            italic: first.italic,
-            ...(first.underline ? { underline: true } : {}),
-            fontSize:
-              first.size ||
-              (phType === "title" || phType === "ctrTitle" ? 36 : 18),
-            fontFamily: first.font || "Arial",
-            color: first.color || "#1e293b",
-            align: first.align || "left",
+            runs: synthesized
+              ? [{ text: fullText }]
+              : paragraphs.flatMap((paragraph, index) => [
+                  ...(index ? [{ text: "\n", paragraphBreak: true }] : []),
+                  ...paragraph.runs,
+                ]),
+            bold: first?.bold,
+            italic: first?.italic,
+            ...(first?.underline ? { underline: true } : {}),
+            fontSize: first?.size ? declared : declared * fit.font,
+            fontFamily: first?.font || "Arial",
+            color: first?.color || paint.fontColor || "#1e293b",
+            align: first?.align || (wantsNumber ? "right" : "left"),
             bullet: paragraphs.some((p) => p.bullet),
-            fill: fillColor,
+            ...(!painted && fillColor ? { fill: fillColor } : {}),
+            ...(valign ? { valign } : {}),
+            ...(pad
+              ? {
+                  inset: pad.t,
+                  padLeft: pad.l + listMargin,
+                  ...(pad.r !== pad.l ? { padRight: pad.r } : {}),
+                  ...(pad.b !== pad.t ? { padBottom: pad.b } : {}),
+                }
+              : listMargin
+                ? { padLeft: listMargin }
+                : {}),
+            ...(hang ? { hang } : {}),
+            lineHeight: first?.lineHeight ?? fit.line,
+            ...(bodyAttrs.wrap === "none" ? { nowrap: true } : {}),
+            ...(/<a:spAutoFit\b/.test(txBodyMatch[0]) ? { autofit: true } : {}),
           });
           addedText = true;
         }
@@ -778,27 +1302,31 @@ async function parseZipPptx(
           const mediaFile = zip.file(mediaZipPath);
           if (mediaFile) {
             const imgBytes = await mediaFile.async("uint8array");
-            const mime = detectImageMime(imgBytes);
-            if (mime) {
-              const b64 = uint8ToBase64(imgBytes);
-              elements.push({
-                id: crypto.randomUUID(),
-                type: "image",
-                x,
-                y,
-                width: w,
-                height: h,
-                src: `data:${mime};base64,${b64}`,
-                alt: "Shape image fill",
-              });
+            const src = recolor(paintableImage(imgBytes, detectImageMime(imgBytes)), spPr);
+            if (src) {
               blipHandled = true;
+              if (w > 0 && h > 0)
+                elements.push({
+                  id: crypto.randomUUID(),
+                  type: "image",
+                  x,
+                  y,
+                  width: w,
+                  height: h,
+                  src,
+                  alt: "Shape image fill",
+                  ...sourceCrop(spPr),
+                  ...blipOpacity(spPr),
+                });
             }
           }
         }
       }
 
-      if (!addedText && !blipHandled) {
-        // If it's a visible shape without text
+      const fillHost = spPr.replace(/<a:ln\b[\s\S]*?<\/a:ln>/g, "");
+      const invisible = /<a:noFill\b/.test(fillHost);
+      // A shape with no fill and no style is empty. Do not invent a grey box.
+      if (!addedText && !blipHandled && !painted && !invisible && fillColor) {
         const geomMatch = /<a:prstGeom\s+prst="([^"]+)"/.exec(spXml);
         if (geomMatch || fillColor) {
           rememberShape(spXml);
@@ -819,9 +1347,72 @@ async function parseZipPptx(
             width: w,
             height: h,
             shapeType,
-            fill: fillColor || "#e2e8f0",
+            fill: fillColor,
           });
         }
+      }
+    }
+
+    const seenConnectors = new Set<string>();
+    for (const match of slideXml.matchAll(/<p:cxnSp\b[\s\S]*?<\/p:cxnSp>/g)) {
+      const xml = match[0];
+      if (shapeIsHidden(xml)) continue;
+      const id = parseXmlAttrs(/<p:cNvPr\b([^>]*)/.exec(xml)?.[1] || "").id;
+      if (id && seenConnectors.has(id)) continue;
+      if (id) seenConnectors.add(id);
+      const paint = themePaint(themePart?.xml, xml, colorMap);
+      if (!paint.stroke && !paint.fill) continue;
+      const pos = parseTransform(xml, match.index, xml.length);
+      const xfrm = parseXmlAttrs(/<(?:a|p):xfrm\b([^>]*)>/.exec(xml)?.[1] || "");
+      const arrow = /<a:(?:head|tail)End\b[^>]*\btype="(?!none)[^"]*"/.test(xml);
+      rememberShape(xml);
+      elements.push({
+        id: crypto.randomUUID(),
+        type: "shape",
+        ...pos,
+        shapeType: arrow ? "arrow" : "line",
+        fill: "transparent",
+        stroke: paint.stroke || "#1e293b",
+        strokeWidth: paint.strokeEmu ? (paint.strokeEmu / emuWidth) * width : 1,
+        ...(xfrm.flipH === "1" || xfrm.flipH === "true" ? { flipH: true } : {}),
+        ...(xfrm.flipV === "1" || xfrm.flipV === "true" ? { flipV: true } : {}),
+      });
+    }
+    if (!hideSlideNumber && !sawSlideNumber) {
+      const numberShape = (xml?: string) =>
+        xml
+          ? [...xml.matchAll(/<p:sp\b[\s\S]*?<\/p:sp>/g)]
+              .map((item) => item[0])
+              .find((shape) => /<p:ph\b[^>]*\btype="sldNum"/.test(shape))
+          : undefined;
+      const numberIndex = (shape: string | undefined) =>
+        shape
+          ? (parseXmlAttrs(/<p:ph\b([^>]*)\/?>/.exec(shape)?.[1] || "").idx ?? "0")
+          : undefined;
+      const layoutNumber = numberShape(layoutPart?.xml);
+      const masterNumber = numberShape(masterPart?.xml);
+      // A layout that omits the slide-number placeholder hides the master's.
+      const inherited = layoutNumber
+        ? /<(?:a|p):off\b/.test(layoutNumber)
+          ? layoutNumber
+          : numberIndex(masterNumber) === numberIndex(layoutNumber)
+            ? masterNumber
+            : undefined
+        : undefined;
+      if (inherited && /<(?:a|p):off\b/.test(inherited)) {
+        const at = parseTransform(inherited);
+        elements.push({
+          id: crypto.randomUUID(),
+          type: "text",
+          ...at,
+          content: String(idx + 1),
+          runs: [{ text: String(idx + 1) }],
+          fontSize: 12,
+          fontFamily: "Arial",
+          color: paintColor(inherited, scheme) || "#1e293b",
+          align: "right",
+          lineHeight: 1,
+        });
       }
     }
 
@@ -830,6 +1421,7 @@ async function parseZipPptx(
     let picMatch: RegExpExecArray | null;
     while ((picMatch = picRx.exec(slideXml)) !== null) {
       const picXml = picMatch[0];
+      if (shapeIsHidden(picXml)) continue;
       // Embedded clips use a picture container whose blip is its poster frame.
       const mediaTag = /<a:(videoFile|audioFile)\b([^>]*)\/?>/.exec(picXml);
       if (mediaTag) {
@@ -870,12 +1462,18 @@ async function parseZipPptx(
             if (posterMime)
               poster = `data:${posterMime};base64,${uint8ToBase64(bytes)}`;
           }
+          const mediaBytes = await media.async("uint8array");
+          const src =
+            mediaBytes.byteLength <= INLINE_MEDIA_LIMIT
+              ? `data:${mime};base64,${uint8ToBase64(mediaBytes)}`
+              : undefined;
+          if (!src && !poster) continue;
           rememberShape(picXml);
           elements.push({
             id: crypto.randomUUID(),
             type,
-            ...parseTransform(picXml),
-            src: `data:${mime};base64,${uint8ToBase64(await media.async("uint8array"))}`,
+            ...parseTransform(picXml, picMatch.index, picXml.length),
+            ...(src ? { src } : {}),
             alt: target.split("/").pop(),
             ...(poster ? { poster } : {}),
           });
@@ -903,8 +1501,11 @@ async function parseZipPptx(
         if (!mediaFile) continue;
         const imgBytes = await mediaFile.async("uint8array");
         const mime = detectImageMime(imgBytes);
-        if (!mime) continue;
-        const b64 = uint8ToBase64(imgBytes);
+        // An EMF the browser cannot paint keeps its bytes so export writes the same picture.
+        const src =
+          recolor(paintableImage(imgBytes, mime), picXml) ??
+          (mime === "image/emf" ? `data:image/emf;base64,${uint8ToBase64(imgBytes)}` : undefined);
+        if (!src) continue;
         const nativeFrame =
           blipMatch === blips[0] ? nativeOleFrame(slideXml, picXml) : undefined;
         const nativeDrawing = nativeFrame
@@ -970,7 +1571,17 @@ async function parseZipPptx(
             };
           }
         }
-        const { x, y, width: w, height: h } = parseTransform(nativeFrame || picXml);
+        const layoutHost = placeholderShape(layoutPart?.xml, picXml);
+        const masterHost = placeholderShape(masterPart?.xml, picXml);
+        const hosted = (xml: string) => (/<(?:a|p):off\b/.test(xml) ? xml : "");
+        const host = /<(?:a|p):off\b/.test(picXml)
+          ? ""
+          : hosted(layoutHost) || hosted(masterHost) || layoutHost || masterHost;
+        const frame = host ? picXml + host : picXml;
+        const { x, y, width: w, height: h } = nativeFrame
+          ? parseTransform(nativeFrame)
+          : parseTransform(frame, picMatch.index, picXml.length);
+        if (!(w > 0 && h > 0)) continue;
         rememberShape(picXml);
         elements.push({
           id: crypto.randomUUID(),
@@ -979,8 +1590,11 @@ async function parseZipPptx(
           y,
           width: w,
           height: h,
-          src: `data:${mime};base64,${b64}`,
+          ...drawingPose(nativeFrame || frame),
+          src,
           alt: "Slide image",
+          ...sourceCrop(picXml),
+          ...blipOpacity(picXml),
           ...(svgSrc ? { svgSrc } : {}),
           ...(nativeDrawing ? { nativeDrawing } : {}),
           ...(imageLayer ? { imageLayer } : {}),
@@ -991,15 +1605,34 @@ async function parseZipPptx(
     // 5. Parse Tables (<a:tbl>)
     const tblRx = /<p:graphicFrame\b[\s\S]*?<\/p:graphicFrame>/g;
     let gfMatch: RegExpExecArray | null;
+    let diagramIndex = 0;
     while ((gfMatch = tblRx.exec(slideXml)) !== null) {
       const gfXml = gfMatch[0];
+      if (/<dgm:relIds\b/.test(gfXml)) {
+        rememberShape(gfXml);
+        const drawn = await diagramElements(
+          zip,
+          slidePath,
+          slideRels,
+          gfXml,
+          diagramIndex,
+          metrics,
+          themePart?.xml,
+          colorMap,
+          parseTextBody,
+        );
+        diagramIndex += 1;
+        for (const element of drawn)
+          elements.push({ id: crypto.randomUUID(), ...element });
+        continue;
+      }
       if (/<c:chart\b/.test(gfXml)) {
         rememberShape(gfXml);
         elements.push({
           id: crypto.randomUUID(),
           type: "shape",
           shapeType: "rect",
-          ...parseTransform(gfXml),
+          ...parseTransform(gfXml, gfMatch.index, gfXml.length),
           alt: "Native PowerPoint chart",
           nativeDrawing: await gatherNativeDrawing(zip, slidePath, gfXml),
         });
@@ -1008,12 +1641,12 @@ async function parseZipPptx(
       const tblMatch = /<a:tbl\b[\s\S]*?<\/a:tbl>/.exec(gfXml);
       if (tblMatch) {
         const tbl = tblMatch[0];
-        const frame = parseTransform(gfXml);
+        const frame = parseTransform(gfXml, gfMatch.index, gfXml.length);
         const cols = [...tbl.matchAll(/<a:gridCol\b[^>]*\bw="(\d+)"/g)].map(
           (match) => Number(match[1]),
         );
         const rows: string[][] = [];
-        const cellMarks: { bold?: boolean; italic?: boolean }[][] = [];
+        const cellMarks: ReturnType<typeof explicitTableCell>[][] = [];
         const pictures: {
           xEmu: number;
           yEmu: number;
@@ -1022,13 +1655,14 @@ async function parseZipPptx(
           src: string;
         }[] = [];
         let yEmu = 0;
+        const rowEmu: number[] = [];
         const trRx = /<a:tr\b[\s\S]*?<\/a:tr>/g;
         let trMatch: RegExpExecArray | null;
         while ((trMatch = trRx.exec(tbl)) !== null) {
           const rowXml = trMatch[0];
           const rowH = Number(/<a:tr\b[^>]*\bh="(\d+)"/.exec(rowXml)?.[1] ?? 0);
           const row: string[] = [];
-          const marks: { bold?: boolean; italic?: boolean }[] = [];
+          const marks: ReturnType<typeof explicitTableCell>[] = [];
           let xEmu = 0;
           let col = 0;
           const tcRx = /<a:tc\b[\s\S]*?<\/a:tc>/g;
@@ -1039,6 +1673,11 @@ async function parseZipPptx(
             const wEmu = cols
               .slice(col, col + span)
               .reduce((sum, width) => sum + width, 0);
+            if (tableCellContinues(cell)) {
+              xEmu += wEmu;
+              col += span;
+              continue;
+            }
             const tcPr = /<a:tcPr\b[\s\S]*?<\/a:tcPr>/.exec(cell)?.[0] ?? "";
             for (const blipMatch of tcPr.matchAll(/<a:blip\b([^>]*)\/?>/g)) {
               const blipAttrs = parseXmlAttrs(blipMatch[1]);
@@ -1049,32 +1688,55 @@ async function parseZipPptx(
               );
               if (!mediaFile) continue;
               const imgBytes = await mediaFile.async("uint8array");
-              const mime = detectImageMime(imgBytes);
-              if (!mime) continue;
+              const src = recolor(paintableImage(imgBytes, detectImageMime(imgBytes)), cell);
+              if (!src) continue;
               pictures.push({
                 xEmu,
                 yEmu,
                 wEmu,
                 hEmu: rowH,
-                src: `data:${mime};base64,${uint8ToBase64(imgBytes)}`,
+                src,
               });
             }
             const cellTx = parseTextBody(cell);
             row.push(cellTx.map((p) => p.text).join("\n"));
-            const mark: { bold?: boolean; italic?: boolean } = {};
-            if (cellTx.some((paragraph) => paragraph.bold)) mark.bold = true;
-            if (cellTx.some((paragraph) => paragraph.italic))
-              mark.italic = true;
-            marks.push(mark);
+            marks.push(
+              explicitTableCell(cell, cellTx, (xml) => paintColor(xml, scheme)),
+            );
             xEmu += wEmu;
             col += span;
           }
           if (row.length > 0) {
             rows.push(row);
             cellMarks.push(marks);
+            rowEmu.push(rowH);
           }
           yEmu += rowH;
         }
+        const styleId =
+          /<a:tableStyleId>([^<]*)<\/a:tableStyleId>/.exec(tbl)?.[1] ?? "";
+        const styleXml = tableStyleById(tableStylesXml, styleId);
+        const flags = tableStyleFlags(tbl);
+        const paint = (xml: string) => paintColor(xml, scheme);
+        const border = styleXml ? tableStyleBorder(styleXml, paint) : undefined;
+        const styledMarks = cellMarks.map((tableRow, rowIndex) => {
+          let grid = 0;
+          return tableRow.map((cell) => {
+            const styled = styleXml
+              ? tableStyleAt(
+                  styleXml,
+                  flags,
+                  rowIndex,
+                  grid,
+                  rows.length,
+                  cols.length || grid + (cell.colSpan ?? 1),
+                  paint,
+                )
+              : undefined;
+            grid += cell.colSpan ?? 1;
+            return mergeTableCell(cell, styled, border);
+          });
+        });
         const tableW = cols.reduce((sum, width) => sum + width, 0) || 1;
         const tableH = yEmu || 1;
         for (const picture of pictures) {
@@ -1096,9 +1758,12 @@ async function parseZipPptx(
           });
         }
         if (rows.length > 0) {
-          const hasMarks = cellMarks.some((tableRow) =>
-            tableRow.some((cell) => cell.bold || cell.italic),
+          const hasMarks = styledMarks.some((tableRow) =>
+            tableRow.some((cell) => cellMarkUsed(cell)),
           );
+          const colWidths = tableFractions(cols);
+          const rowHeights = tableFractions(rowEmu);
+          const minorFont = themeFont("+mn-lt");
           rememberShape(gfXml);
           elements.push({
             id: crypto.randomUUID(),
@@ -1108,7 +1773,10 @@ async function parseZipPptx(
             width: frame.width,
             height: frame.height,
             rows,
-            ...(hasMarks ? { cellMarks } : {}),
+            ...(minorFont ? { fontFamily: minorFont } : {}),
+            ...(colWidths ? { colWidths } : {}),
+            ...(rowHeights ? { rowHeights } : {}),
+            ...(hasMarks ? { cellMarks: styledMarks } : {}),
           });
         }
       }
@@ -1171,6 +1839,8 @@ async function parseZipPptx(
       elements.length,
       ...ordered.map(({ element }) => element),
     );
+    moveKerningToBoxes(elements);
+    const hidden = /<p:sld\b[^>]*\bshow="(?:0|false)"/.test(slideXml);
     slides[slideId] = {
       id: slideId,
       title: slideTitle || `Slide ${idx + 1}`,
@@ -1178,6 +1848,7 @@ async function parseZipPptx(
       layout,
       elements,
       notes: notes.trim(),
+      ...(hidden ? { hidden: true } : {}),
       ...(motion.transition ? { transition: motion.transition } : {}),
       ...(mapped === 0 && motion.timing ? { timing: motion.timing } : {}),
     };
@@ -1186,6 +1857,8 @@ async function parseZipPptx(
 
   out.content.slides = slides;
   out.content.slideOrder = slideOrder;
+  const fonts = await readEmbeddedFonts(zip);
+  if (fonts.length) out.content.fonts = fonts;
   return out;
 }
 

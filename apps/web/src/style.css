@@ -1,4 +1,5 @@
 @import "./excel-fonts.css";
+@import "./fonts/office-fonts.css";
 @import "./editors/slide-theme.css";
 
 :root {
@@ -1801,14 +1802,18 @@ a {
   height: fit-content;
   flex-shrink: 1;
   box-sizing: border-box;
+  font-kerning: var(--doc-kerning, none);
+  font-feature-settings: var(--doc-kern-feature, "kern" 0);
 }
 .document-content {
   padding: 72px 96px;
   min-height: 1056px;
   outline: 0;
   font-size: 11pt;
+  font-kerning: var(--doc-kerning, none);
+  font-feature-settings: var(--doc-kern-feature, "kern" 0);
   line-height: 1.333333;
-  font-family: Arial, sans-serif;
+  font-family: var(--doc-font, Arial, sans-serif);
   color: #000000;
   box-sizing: border-box;
   word-break: break-word;
@@ -5314,6 +5319,40 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   overflow: hidden;
   overflow-wrap: break-word;
 }
+/* PowerPoint draws text past the box unless the body asks to clip it. */
+.slides-print-deck .slide-text .slide-text-face,
+.slides-print-deck .slide-text .element-editor {
+  overflow: visible;
+}
+.slide-text .element-textarea {
+  padding: var(--slide-inset, 4px)
+    var(--slide-pad-r, var(--slide-pad-l, var(--slide-inset, 4px)))
+    var(--slide-pad-b, var(--slide-inset, 4px))
+    var(--slide-pad-l, var(--slide-inset, 4px));
+}
+.slide-text .element-editor,
+.slide-text .slide-text-face {
+  text-indent: var(--slide-hang, 0px) hanging each-line;
+}
+.slide-text[data-valign="middle"],
+.slide-text[data-valign="bottom"] {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.slide-text[data-valign="bottom"] {
+  justify-content: flex-end;
+}
+.slide-text[data-valign="middle"] .element-textarea,
+.slide-text[data-valign="bottom"] .element-textarea {
+  height: auto;
+}
+.slide-video-still img,
+.slide-video-still video {
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
 .element-textarea::placeholder {
   color: currentColor;
   opacity: 0.5;
@@ -5366,6 +5405,9 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   border-color: #1a73e8;
   box-shadow: 0 0 0 1px #1a73e8;
   outline: none;
+}
+.slide-element.slide-image {
+  overflow: hidden;
 }
 .slide-element img {
   width: 100%;
@@ -5450,9 +5492,9 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   border-collapse: collapse;
 }
 .slide-table td {
-  border: 1px solid #94a3b8;
-  padding: 4px 8px;
-  font-size: 14px;
+  border: calc(1px * var(--slide-pt, 1)) solid #94a3b8;
+  padding: calc(4px * var(--slide-pt, 1)) calc(8px * var(--slide-pt, 1));
+  font-size: calc(14px * var(--slide-pt, 1));
 }
 .slide-surface.marp-fit .slide-table {
   font-family: Helvetica, Arial, sans-serif;
@@ -6873,6 +6915,17 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 }
 .notice + .welcome {
   margin-top: 36px;
+}
+.font-engine-notice {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  z-index: 1000;
+  width: max-content;
+  max-width: min(640px, calc(100vw - 32px));
+  margin: 0;
+  transform: translateX(-50%);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
 }
 .sign-in-ended {
   margin: 0 0 14px;
@@ -10423,7 +10476,7 @@ body.agent-open .sign-in-screen {
   position: absolute;
   left: -100000px;
   top: 0;
-  visibility: hidden;
+  opacity: 0;
   pointer-events: none;
 }
 .slides-print-page {
@@ -10447,7 +10500,7 @@ body.agent-open .sign-in-screen {
   body > .slides-print-deck {
     display: block !important;
     position: static;
-    visibility: visible;
+    opacity: 1;
   }
   .slides-print-deck .slides-print-page {
     overflow: hidden;
@@ -10458,5 +10511,9 @@ body.agent-open .sign-in-screen {
   .slides-print-deck .slides-print-page:last-child {
     break-after: auto;
     page-break-after: auto;
+  }
+  .slides-print-deck .slide-media-name,
+  .slides-print-deck .slide-media-play {
+    display: none !important;
   }
 }

@@ -117,7 +117,7 @@ npm run package:desktop
 
 Outputs appear in `apps/desktop/release/`: macOS DMG/ZIP, Windows NSIS, and Linux AppImage/DEB. CI has an operating-system matrix for all three. On macOS the app is signed ad hoc, and a local package also replaces `/Applications/SuiteLeaf.app` with the new build; set `SUITELEAF_SKIP_INSTALL=1` to leave it alone (CI never installs). Notarization with a Developer ID, Windows signing, automatic updates, and publishing are not configured. Run `npm run build:desktop` again before packaging source changes.
 
-The desktop executable includes a directory importer:
+The desktop executable includes a directory importer and a PowerPoint-to-PDF converter:
 
 ```sh
 # Linux (installed executable, or substitute the AppImage path)
@@ -138,6 +138,22 @@ On Windows, run `SuiteLeaf.exe import C:\path\to\source` from the installation d
 The importer runs without opening a window and scans subfolders for Office, OpenDocument, RTF, native SuiteLeaf, Markdown, HTML, text, CSV, TSV, SVG, Mermaid (`.mmd`, `.mermaid`), and Graphviz (`.gv`) files. Output defaults to the **Document directory** in Settings (`~/Documents/SuiteLeaf` initially). Subfolder structure is preserved; source files stay untouched, and naming collisions receive numbered suffixes. Markdown imports produce MARP presentations with available local pictures embedded. SVG, Mermaid, and Graphviz imports produce drawings that keep the source exactly as written. CSV/TSV imports use the same automatic type and header detection as the app. Hidden files, symlinks, and unsupported formats are skipped. Importing again creates additional copies.
 
 Saved output appears in the desktop library through its directory watcher or the next startup scan. An explicit `--output` folder appears there when it is the selected document directory. The command reports totals and individual failures, continuing with remaining files. Exit status is **0** on success, **1** when individual files fail, and **2** for invalid arguments or an inaccessible source directory.
+
+To turn PowerPoint files into PDFs without adding them to the document library or SuiteDrive:
+
+```sh
+# One file. The PDF is written beside the presentation.
+suiteleaf convert deck.pptx --to pdf
+
+# A folder of presentations. Subfolders are preserved; other files are skipped.
+suiteleaf convert /path/to/decks --to pdf --output /path/to/pdfs
+
+suiteleaf convert --help
+```
+
+On macOS, use `/Applications/SuiteLeaf.app/Contents/MacOS/SuiteLeaf convert …`. In a source checkout, build the desktop app and run `npx electron apps/desktop/out/main/index.js convert deck.pptx --to pdf`.
+
+`convert` imports each `.pptx`, `.ppt`, `.ppsx`, `.pptm`, `.potx`, or `.ppsm` file the same way Open does, then exports a PDF the same way Print / Save as PDF does. Only the PDF is written. Sources stay unchanged, and an existing PDF keeps its name while the new file gets a numbered suffix. Exit status matches `import`.
 
 ## Development and checks
 

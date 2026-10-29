@@ -7,16 +7,19 @@ import {
   type CSSProperties,
   type HTMLAttributes,
   type ReactNode,
+  type SVGProps,
   type TdHTMLAttributes,
 } from "react";
-import type { Presentation, Slide, SlideElement } from "@suiteleaf/core";
+import { fontKerning, kernFeature, lineFrame, slidePointScale, type Presentation, type Slide, type SlideElement } from "@suiteleaf/core";
 import { AutofitBox, autofitSignature } from "./slide-autofit";
 import { MarpBackdrop, type MarpPages } from "./slide-marp-backdrop";
 import { marpMediaSrc } from "./slide-marp-import";
 import { MarpCode, MarpMath, MarpRichText } from "./slide-marp-math";
 import { SlideMasterLayer } from "./slide-master-ui";
 import { SlideMediaControls } from "./slide-media";
+import { loadEmbeddedFonts } from "./slide-fonts";
 import { hasTextRuns } from "./slide-runs";
+import { slideCellPaint } from "./slide-table-format";
 import { boxFont, SlideTextBody } from "./slide-text";
 import { wordArtProps } from "./slide-word-art";
 
@@ -30,6 +33,23 @@ export function isFittedDeck(deck: Presentation) {
 
 export function slideBackground(deck: Presentation, slide: Slide | undefined) {
   return slide?.background?.color || deck.master?.background?.color || "#ffffff";
+}
+
+/** Solid colours use background-color. Gradients need the background shorthand. */
+export function slideBackgroundPaint(color: string): CSSProperties {
+  return color.includes("gradient(")
+    ? { background: color }
+    : { backgroundColor: color };
+}
+
+function placedPose(el: SlideElement): CSSProperties {
+  const line =
+    el.type === "shape" && (el.shapeType === "line" || el.shapeType === "arrow");
+  const parts: string[] = [];
+  if (el.rotation) parts.push(`rotate(${el.rotation}deg)`);
+  if (!line && el.flipH) parts.push("scaleX(-1)");
+  if (!line && el.flipV) parts.push("scaleY(-1)");
+  return parts.length ? { transform: parts.join(" ") } : {};
 }
 
 /** Painted on the slide, not stored in a text box, so editing the title leaves it. */
@@ -74,12 +94,37 @@ function DrawnWords({ el }: { el: SlideElement }) {
         bold={el.bold}
         italic={el.italic}
         underline={el.underline}
+        kern={el.kern}
         editing={false}
         onText={noop}
         onCaret={noop}
       />
     );
   return <div className="element-textarea slide-text-face">{el.content}</div>;
+}
+
+/**
+ * Scale the picture so the uncropped region fills the box.
+ * Vertical offset uses `top`, because a percentage margin is relative to width.
+ */
+export function croppedPictureStyle(el: SlideElement): CSSProperties | undefined {
+  const left = (el.cropLeft ?? 0) / 100;
+  const top = (el.cropTop ?? 0) / 100;
+  const right = (el.cropRight ?? 0) / 100;
+  const bottom = (el.cropBottom ?? 0) / 100;
+  if (left + right <= 0 && top + bottom <= 0) return;
+  if (left + right >= 1 || top + bottom >= 1) return;
+  const scaleX = 1 / (1 - left - right);
+  const scaleY = 1 / (1 - top - bottom);
+  return {
+    position: "absolute",
+    width: `${scaleX * 100}%`,
+    height: `${scaleY * 100}%`,
+    left: `${-left * scaleX * 100}%`,
+    top: `${-top * scaleY * 100}%`,
+    maxWidth: "none",
+    objectFit: "fill",
+  };
 }
 
 function cellText(cell: string) {
@@ -99,11 +144,14 @@ export function SlideFace({
   slide,
   index,
   hooks = {},
+  still = false,
 }: {
   deck: Presentation;
   slide: Slide | undefined;
   index: number;
   hooks?: SlideFaceHooks;
+  /** Print, thumbnails, and handouts draw media as a still picture. */
+  still?: boolean;
 }) {
   const w = deck.width || 960;
   const h = deck.height || 540;
@@ -111,7 +159,7 @@ export function SlideFace({
   const units = (n: number) => `calc(${n} / ${w} * 100cqw)`;
   return (
     <>
-      <SlideMasterLayer deck={deck} font={(size) => `${size * 0.95}px`} />
+      <SlideMasterLayer deck={deck} font={(size) => `calc(${size} * var(--slide-pt, 1) * 1px)`} />
       {slide?.elements.map((el) => {
         const view = hooks.box?.(el) ?? {};
         const extra = view.className ?? "";
@@ -121,11 +169,12 @@ export function SlideFace({
           top: `${(el.y / h) * 100}%`,
           width: `${(el.width / w) * 100}%`,
           height: `${(el.height / h) * 100}%`,
+          ...placedPose(el),
         };
 
         if (el.type === "text") {
           const art = wordArtProps(el);
-          const normalPx = (el.fontSize || 20) * 0.95;
+          const normalPx = (el.fontSize || 20) * slidePointScale(deck.width, deck.pointWidth);
           return (
             <AutofitBox
               key={el.id}
@@ -133,14 +182,19 @@ export function SlideFace({
               normalPx={normalPx}
               signature={autofitSignature(el)}
               data-word-art={el.wordArt}
+              data-nowrap={el.nowrap ? "true" : undefined}
               data-autofit={el.autofit && !el.wordArt ? "on" : undefined}
               {...view.props}
               className={`slide-element slide-text${extra}${art.className}`}
               style={{
                 ...posStyle,
                 ...art.style,
-                fontSize: fitted ? units(el.fontSize || 20) : `${normalPx}px`,
+                fontSize: fitted
+                  ? units(el.fontSize || 20)
+                  : `calc(${el.fontSize || 20} * var(--slide-pt, 1) * 1px)`,
                 ...boxFont(el),
+                fontKerning: fontKerning(el.kern, el.fontSize || 20),
+                fontFeatureSettings: kernFeature(el.kern, el.fontSize || 20),
                 fontFamily: el.fontFamily || "Arial",
                 color: el.color || "#1e293b",
                 textAlign: el.align || "left",
@@ -150,7 +204,17 @@ export function SlideFace({
                 ["--spell-caret" as string]: el.color || "#1e293b",
                 ["--marp-pad" as string]: fitted && el.padLeft ? units(el.padLeft) : "0px",
                 ["--marp-hang" as string]: fitted && el.hang ? units(el.hang) : "0px",
+                ["--slide-inset" as string]:
+                  el.inset != null ? `${el.inset}px` : undefined,
+                ["--slide-pad-r" as string]:
+                  el.padRight != null ? `${el.padRight}px` : undefined,
+                ["--slide-pad-b" as string]:
+                  el.padBottom != null ? `${el.padBottom}px` : undefined,
+                ["--slide-pad-l" as string]:
+                  el.padLeft != null ? `${el.padLeft}px` : undefined,
+                ["--slide-hang" as string]: el.hang ? `${el.hang}px` : undefined,
               }}
+              data-valign={el.valign && el.valign !== "top" ? el.valign : undefined}
             >
               {hooks.before?.(el)}
               {hooks.text?.(el) ?? <DrawnWords el={el} />}
@@ -160,18 +224,26 @@ export function SlideFace({
         }
 
         if (el.type === "image" && el.src) {
+          const crop = croppedPictureStyle(el);
           return (
             <div
               key={el.id}
               {...view.props}
               className={`slide-element slide-image${extra}`}
-              style={posStyle}
+              style={{
+                ...posStyle,
+                ...(crop ? { overflow: "hidden" } : {}),
+                ...(el.opacity != null && el.opacity < 1
+                  ? { opacity: el.opacity }
+                  : {}),
+              }}
             >
               {hooks.before?.(el)}
               <img
                 src={marpMediaSrc(el.src, deck.marpAssets)}
-                alt={el.alt || "Slide asset"}
+                alt={el.src.startsWith("data:image/emf") ? "" : el.alt || "Slide asset"}
                 draggable={false}
+                style={{ ...(fitted ? {} : { objectFit: "fill" }), ...crop }}
               />
               {hooks.after?.(el)}
             </div>
@@ -191,6 +263,58 @@ export function SlideFace({
           );
         }
 
+        if (el.type === "shape" && (el.shapeType === "line" || el.shapeType === "arrow")) {
+          const frame = lineFrame(el);
+          const x1 = el.flipH ? 100 : 0;
+          const y1 = el.flipV ? 100 : 0;
+          const x2 = el.flipH ? 0 : 100;
+          const y2 = el.flipV ? 0 : 100;
+          const color = el.stroke || "#1e293b";
+          const marker = `arrow-${el.id.replace(/[^A-Za-z0-9_-]/g, "")}`;
+          return (
+            <svg
+              key={el.id}
+              {...(view.props as SVGProps<SVGSVGElement>)}
+              className={`slide-element slide-shape slide-line${extra}`}
+              style={{
+                ...posStyle,
+                left: `${(frame.x / w) * 100}%`,
+                top: `${(frame.y / h) * 100}%`,
+                width: `${(frame.width / w) * 100}%`,
+                height: `${(frame.height / h) * 100}%`,
+                overflow: "visible",
+              }}
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+            >
+              {el.shapeType === "arrow" ? (
+                <defs>
+                  <marker
+                    id={marker}
+                    markerWidth="8"
+                    markerHeight="8"
+                    refX="7"
+                    refY="4"
+                    orient="auto"
+                  >
+                    <path d="M0,0 L8,4 L0,8 Z" fill={color} />
+                  </marker>
+                </defs>
+              ) : null}
+              <line
+                x1={x1}
+                y1={y1}
+                x2={x2}
+                y2={y2}
+                stroke={color}
+                strokeWidth={el.strokeWidth || 1}
+                vectorEffect="non-scaling-stroke"
+                markerEnd={el.shapeType === "arrow" ? `url(#${marker})` : undefined}
+              />
+            </svg>
+          );
+        }
+
         if (el.type === "shape") {
           const border = el.stroke ? `${el.strokeWidth || 1}px solid ${el.stroke}` : "none";
           const rad =
@@ -202,7 +326,7 @@ export function SlideFace({
               className={`slide-element slide-shape${extra}`}
               style={{
                 ...posStyle,
-                backgroundColor: el.fill || "#e2e8f0",
+                background: el.fill || "#e2e8f0",
                 border,
                 borderRadius: el.radius && fitted ? units(el.radius) : rad,
               }}
@@ -214,6 +338,9 @@ export function SlideFace({
         }
 
         if (el.type === "table" && el.rows) {
+          const hideDefaultRules = !!el.cellMarks?.some((tableRow) =>
+            tableRow.some((cell) => cell.fill || cell.border),
+          );
           return (
             <div
               key={el.id}
@@ -221,24 +348,40 @@ export function SlideFace({
               className={`slide-element slide-table${extra}`}
               style={{
                 ...posStyle,
+                fontFamily: el.fontFamily,
                 ...(fitted && el.fontSize ? { fontSize: units(el.fontSize) } : {}),
               }}
             >
               {hooks.before?.(el)}
-              <table>
+              <table style={el.colWidths ? { tableLayout: "fixed" } : undefined}>
+                {el.colWidths ? (
+                  <colgroup>
+                    {el.colWidths.map((fraction, index) => (
+                      <col key={index} style={{ width: `${fraction * 100}%` }} />
+                    ))}
+                  </colgroup>
+                ) : null}
                 <tbody>
                   {el.rows.map((row, rIdx) => (
-                    <tr key={rIdx}>
+                    <tr
+                      key={rIdx}
+                      style={
+                        el.rowHeights?.[rIdx]
+                          ? { height: `${el.rowHeights[rIdx] * 100}%` }
+                          : undefined
+                      }
+                    >
                       {row.map((cell, cIdx) => {
                         const cellProps = hooks.cell?.(el, rIdx, cIdx) ?? {};
+                        const mark = el.cellMarks?.[rIdx]?.[cIdx];
                         return (
                           <td
                             key={cIdx}
                             {...cellProps}
+                            colSpan={mark?.colSpan}
                             style={{
                               ...cellProps.style,
-                              fontWeight: el.cellMarks?.[rIdx]?.[cIdx]?.bold ? 700 : undefined,
-                              fontStyle: el.cellMarks?.[rIdx]?.[cIdx]?.italic ? "italic" : undefined,
+                              ...slideCellPaint(mark, hideDefaultRules),
                             }}
                           >
                             {cellText(cell)}
@@ -254,7 +397,24 @@ export function SlideFace({
           );
         }
 
-        if ((el.type === "audio" || el.type === "video") && el.src) {
+        if ((el.type === "audio" || el.type === "video") && (el.src || el.poster)) {
+          if (still && el.type === "video") {
+            return (
+              <div
+                key={el.id}
+                data-media={el.type}
+                {...view.props}
+                className={`slide-element slide-video slide-video-still${extra}`}
+                style={posStyle}
+              >
+                {el.poster ? (
+                  <img src={el.poster} alt={el.alt || "Video"} draggable={false} />
+                ) : (
+                  <video src={el.src} preload="auto" playsInline />
+                )}
+              </div>
+            );
+          }
           return (
             <div
               key={el.id}
@@ -348,6 +508,10 @@ export const SlideStill = memo(function SlideStill({
   const drawn = !!deck.marp && !!pages;
 
   useLayoutEffect(() => {
+    void loadEmbeddedFonts(deck.fonts);
+  }, [deck.fonts]);
+
+  useLayoutEffect(() => {
     const box = holder.current;
     if (!box) return;
     const measure = () => {
@@ -389,13 +553,17 @@ export const SlideStill = memo(function SlideStill({
           width,
           height,
           transform: `translate(${fit.x}px, ${fit.y}px) scale(${fit.scale})`,
-          backgroundColor: slideBackground(deck, slide),
+          ["--slide-fit" as string]: String(fit.scale),
+          ["--slide-fit-x" as string]: `${fit.x}px`,
+          ["--slide-fit-y" as string]: `${fit.y}px`,
+          ["--slide-pt" as string]: String(slidePointScale(deck.width, deck.pointWidth)),
+          ...slideBackgroundPaint(slideBackground(deck, slide)),
         }}
       >
         {drawn && near ? (
           <MarpBackdrop pages={pages} index={index} live={null} plain onPainted={setPainted} />
         ) : null}
-        <SlideFace deck={deck} slide={slide} index={index} hooks={hooks} />
+        <SlideFace deck={deck} slide={slide} index={index} hooks={hooks} still={!interactive} />
         {children}
       </div>
     </div>
