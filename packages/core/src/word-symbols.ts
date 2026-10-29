@@ -55,10 +55,14 @@ export async function markMammothSymbols(zip: JSZip): Promise<(() => void) & { c
   return Object.assign(unmark, { changed: originals.size > 0 });
 }
 
-/** Mammoth's HTML with the marked symbol text as spans in the SuiteLeaf face. */
+/**
+ * Mammoth's HTML with the marked symbol text as spans in the SuiteLeaf face. Marks naming another font
+ * are a document's own text, and stay as they are.
+ */
 export function symbolSpans(html: string): string {
   return html.replace(
     new RegExp(`${FONT_MARK}([^${TEXT_MARK}${FONT_MARK}<]+)${TEXT_MARK}([^${FONT_MARK}<]*)${FONT_MARK}`, "g"),
-    (_, font: string, text: string) => `<span data-font="${suiteLeafFont(font).replace(/"/g, "&quot;")}">${text}</span>`,
+    (whole, font: string, text: string) =>
+      isSymbolFont(font) ? `<span data-font="${suiteLeafFont(font).replace(/"/g, "&quot;")}">${text}</span>` : whole,
   );
 }

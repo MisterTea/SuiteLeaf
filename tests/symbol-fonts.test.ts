@@ -54,6 +54,7 @@ describe("symbol fonts", () => {
     expect(xml).toContain("<w:t>plain</w:t>");
     const html = symbolSpans(`<p>${xml.match(/<w:t\b[^>]*>([^<]*)<\/w:t>/g)!.map((t) => t.replace(/<[^>]+>/g, "")).join("")}</p>`);
     expect(html).toBe('<p><span data-font="SuiteLeaf Sprig">\uF04A</span><span data-font="SuiteLeaf Thistle">p</span>plain</p>');
+    expect(symbolSpans("<p>\u2063Comic Sans\u2064x\u2063</p>")).toBe("<p>\u2063Comic Sans\u2064x\u2063</p>");
   });
 
   it("imports Word symbol text in the SuiteLeaf face and writes the Office font back", async () => {
