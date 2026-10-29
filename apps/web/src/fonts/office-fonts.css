@@ -611,6 +611,20 @@
   font-display: block;
 }
 @font-face {
+  font-family: "Bookshelf Symbol 7";
+  src: url("./suiteleaf-sorrel-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "SuiteLeaf Sorrel";
+  src: url("./suiteleaf-sorrel-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
   font-family: "Braggadocio";
   src: url("./suiteleaf-ash-regular.woff2") format("woff2");
   font-weight: 400;
@@ -2618,6 +2632,20 @@
   unicode-range: U+0-10FF, U+1200-2E7F, U+4DC0-4DFF, U+A000-A95F, U+A980-ABFF, U+D800-F8FF, U+FB00-FE2F, U+FE50-FEFF, U+FFF0-1F1FF, U+1F300-1FFFF, U+40000-10FFFF;
 }
 @font-face {
+  font-family: "MS Reference Specialty";
+  src: url("./suiteleaf-tansy-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "SuiteLeaf Tansy";
+  src: url("./suiteleaf-tansy-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
   font-family: "微軟正黑體";
   src: url("./suiteleaf-buna-regular.woff2") format("woff2");
   font-weight: 400;
@@ -2664,6 +2692,34 @@
   font-style: normal;
   font-display: block;
   unicode-range: U+0-10FF, U+1200-2E7F, U+4DC0-4DFF, U+A000-A95F, U+A980-ABFF, U+D800-F8FF, U+FB00-FE2F, U+FE50-FEFF, U+FFF0-1F1FF, U+1F300-1FFFF, U+40000-10FFFF;
+}
+@font-face {
+  font-family: "MT Extra";
+  src: url("./suiteleaf-yarrow-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "SuiteLeaf Yarrow";
+  src: url("./suiteleaf-yarrow-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "Marlett";
+  src: url("./suiteleaf-nettle-regular.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "SuiteLeaf Nettle";
+  src: url("./suiteleaf-nettle-regular.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: block;
 }
 @font-face {
   font-family: "Matura MT Script Capitals";
@@ -5043,14 +5099,14 @@
 }
 @font-face {
   font-family: "Symbol";
-  src: url("./symbol-neu-400-normal.woff2") format("woff2");
+  src: url("./suiteleaf-thistle-regular.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: block;
 }
 @font-face {
-  font-family: "Symbol Neu";
-  src: url("./symbol-neu-400-normal.woff2") format("woff2");
+  font-family: "SuiteLeaf Thistle";
+  src: url("./suiteleaf-thistle-regular.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: block;

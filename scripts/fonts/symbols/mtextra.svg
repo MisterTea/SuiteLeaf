@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SuiteLeaf drawings for the MT Extra codes Unicode has no character for: the pieces equations build
+     braces, brackets, and wide accents from. Units are font units (1000 per em), y down from the ascent
+     (898); the math axis of the brace pieces is at y = 898, their rule 54 thick. -->
+<svg xmlns="http://www.w3.org/2000/svg">
+  <!-- Under-brace: left end, middle, right end, extension -->
+  <symbol id="uF031" viewBox="0 0 1001 1211"><path fill="none" stroke="black" stroke-width="54" d="M27 687C27 820 80 898 230 898H1001"/></symbol>
+  <symbol id="uF032" viewBox="0 0 1020 1211"><path fill="none" stroke="black" stroke-width="54" d="M0 898H330C430 898 510 950 510 1085C510 950 590 898 690 898H1020"/></symbol>
+  <symbol id="uF033" viewBox="0 0 996 1211"><path fill="none" stroke="black" stroke-width="54" d="M0 898H766C916 898 969 820 969 687"/></symbol>
+  <symbol id="uF034" viewBox="0 0 1001 1211"><rect x="0" y="871" width="1015" height="54"/></symbol>
+  <symbol id="uF035" viewBox="0 0 596 1211"><rect x="0" y="871" width="596" height="54"/></symbol>
+  <!-- Over-brace: left end, middle, right end -->
+  <symbol id="uF036" viewBox="0 0 1001 1211"><path fill="none" stroke="black" stroke-width="54" d="M27 1082C27 970 80 898 230 898H1001"/></symbol>
+  <symbol id="uF037" viewBox="0 0 1020 1211"><path fill="none" stroke="black" stroke-width="54" d="M0 898H330C430 898 510 846 510 711C510 846 590 898 690 898H1020"/></symbol>
+  <symbol id="uF038" viewBox="0 0 996 1211"><path fill="none" stroke="black" stroke-width="54" d="M0 898H766C916 898 969 970 969 1082"/></symbol>
+  <!-- A wide tilde -->
+  <symbol id="uF03A" viewBox="0 0 549 1211"><path fill="none" stroke="black" stroke-width="52" d="M40 662C120 584 196 594 273 638C350 682 426 692 506 614"/></symbol>
+  <!-- Corners of brackets that turn along the axis -->
+  <symbol id="uF045" viewBox="0 0 650 1211"><path fill="none" stroke="black" stroke-width="54" d="M27 585V898H650"/></symbol>
+  <symbol id="uF046" viewBox="0 0 650 1211"><path fill="none" stroke="black" stroke-width="54" d="M0 898H623V585"/></symbol>
+  <symbol id="uF047" viewBox="0 0 650 1211"><path fill="none" stroke="black" stroke-width="54" d="M28 1211V898H651"/></symbol>
+  <symbol id="uF048" viewBox="0 0 650 1211"><path fill="none" stroke="black" stroke-width="54" d="M1 898H624V1211"/></symbol>
+  <!-- A black diamond with a question mark: a symbol that is missing -->
+  <symbol id="uF06E" viewBox="0 0 756 1211">
+    <polygon points="378,212 732,566 378,920 24,566"/>
+    <text fill="white" font-family="Arimo Bold" font-size="520" text-anchor="middle" x="378" y="752">?</text>
+  </symbol>
+  <!-- Arrows and harpoons over a letter -->
+  <symbol id="uF071" viewBox="0 0 410 1211"><path fill="none" stroke="black" stroke-width="36" d="M410 898H20M20 898L110 952"/></symbol>
+  <symbol id="uF072" viewBox="0 0 410 1211"><path fill="none" stroke="black" stroke-width="36" d="M0 898H390M300 842L390 898L300 954"/></symbol>
+  <symbol id="uF073" viewBox="0 0 410 1211"><path fill="none" stroke="black" stroke-width="36" d="M410 898H20M110 842L20 898L110 954"/></symbol>
+  <symbol id="uF074" viewBox="0 0 410 1211"><path fill="none" stroke="black" stroke-width="36" d="M20 898H390M300 842L390 898L300 954M110 842L20 898L110 954"/></symbol>
+  <symbol id="uF075" viewBox="0 0 410 1211"><rect x="0" y="880" width="410" height="36"/></symbol>
+  <symbol id="uF076" viewBox="0 0 410 1211"><path fill="none" stroke="black" stroke-width="36" d="M0 898H390M390 898L300 844"/></symbol>
+  <symbol id="uF077" viewBox="0 0 410 1211"><path fill="none" stroke="black" stroke-width="36" d="M410 898H20M20 898L110 844"/></symbol>
+  <symbol id="uF078" viewBox="0 0 410 1211"><path fill="none" stroke="black" stroke-width="36" d="M0 898H390M390 898L300 952"/></symbol>
+  <!-- Braces and brackets under and over: ends up with a cusp down, open bracket, ends down with a cusp up -->
+  <symbol id="uF07B" viewBox="0 0 856 1211"><path fill="none" stroke="black" stroke-width="54" d="M27 729C27 810 62 880 150 880H330C385 880 428 920 428 1041C428 920 471 880 526 880H706C794 880 829 810 829 729"/></symbol>
+  <symbol id="uF07C" viewBox="0 0 830 1211"><path fill="none" stroke="black" stroke-width="54" d="M27 585V898H803V585"/></symbol>
+  <symbol id="uF07D" viewBox="0 0 856 1211"><path fill="none" stroke="black" stroke-width="54" d="M27 1067C27 986 62 916 150 916H330C385 916 428 876 428 755C428 876 471 916 526 916H706C794 916 829 986 829 1067"/></symbol>
+  <symbol id="uF07E" viewBox="0 0 830 1211"><path fill="none" stroke="black" stroke-width="54" d="M27 1211V898H803V1211"/></symbol>
+  <!-- Double brackets: left top, middle, bottom; right top, middle, bottom -->
+  <symbol id="uF0A9" viewBox="0 0 446 1211"><rect x="86" y="224" width="54" height="726"/><rect x="222" y="224" width="54" height="726"/><rect x="86" y="224" width="326" height="54"/></symbol>
+  <symbol id="uF0AA" viewBox="0 0 446 1211"><rect x="86" y="339" width="54" height="600"/><rect x="222" y="339" width="54" height="600"/></symbol>
+  <symbol id="uF0AB" viewBox="0 0 446 1211"><rect x="86" y="327" width="54" height="726"/><rect x="222" y="327" width="54" height="726"/><rect x="86" y="999" width="326" height="54"/></symbol>
+  <symbol id="uF0AC" viewBox="0 0 446 1211"><rect x="170" y="224" width="54" height="726"/><rect x="306" y="224" width="54" height="726"/><rect x="34" y="224" width="326" height="54"/></symbol>
+  <symbol id="uF0AD" viewBox="0 0 446 1211"><rect x="170" y="339" width="54" height="600"/><rect x="306" y="339" width="54" height="600"/></symbol>
+  <symbol id="uF0AE" viewBox="0 0 446 1211"><rect x="170" y="327" width="54" height="726"/><rect x="306" y="327" width="54" height="726"/><rect x="34" y="999" width="326" height="54"/></symbol>
+  <!-- Wide tildes -->
+  <symbol id="uF0B0" viewBox="0 0 554 1211"><path fill="none" stroke="black" stroke-width="36" d="M15 344C110 262 196 266 277 309C358 352 444 356 539 274"/></symbol>
+  <symbol id="uF0B1" viewBox="0 0 998 1211"><path fill="none" stroke="black" stroke-width="40" d="M18 346C190 236 340 250 499 303C658 356 808 370 980 260"/></symbol>
+  <symbol id="uF0B2" viewBox="0 0 1444 1211"><path fill="none" stroke="black" stroke-width="40" d="M18 346C260 234 490 248 721 302C952 356 1182 370 1424 258"/></symbol>
+  <!-- Wide hats, thick at the peak -->
+  <symbol id="uF0B5" viewBox="0 0 632 1211"><path d="M11 391L316 209L621 391H592L316 258L40 391Z"/></symbol>
+  <symbol id="uF0B6" viewBox="0 0 1102 1211"><path d="M11 391L551 194L1091 391H1056L551 246L46 391Z"/></symbol>
+  <symbol id="uF0B7" viewBox="0 0 1569 1211"><path d="M11 391L785 193L1558 391H1518L785 243L51 391Z"/></symbol>
+  <!-- Wide arcs over, thick in the middle -->
+  <symbol id="uF0BA" viewBox="0 0 777 1211"><path d="M0 391Q390 79 780 391Q390 160 0 391Z"/></symbol>
+  <symbol id="uF0BB" viewBox="0 0 1145 1211"><path d="M-1 391Q574 3 1149 391Q574 125 -1 391Z"/></symbol>
+  <symbol id="uF0BC" viewBox="0 0 1513 1211"><path d="M-2 391Q758 3 1518 391Q758 125 -2 391Z"/></symbol>
+  <!-- A hat built of pieces: whole, left, right, middle -->
+  <symbol id="uF0C0" viewBox="0 0 780 1211"><path fill="none" stroke="black" stroke-width="54" d="M20 391L160 228H620L760 391"/></symbol>
+  <symbol id="uF0C1" viewBox="0 0 390 1211"><path fill="none" stroke="black" stroke-width="54" d="M20 391L160 228H390"/></symbol>
+  <symbol id="uF0C2" viewBox="0 0 390 1211"><path fill="none" stroke="black" stroke-width="54" d="M0 228H230L370 391"/></symbol>
+  <symbol id="uF0C3" viewBox="0 0 368 1211"><rect x="0" y="201" width="368" height="54"/></symbol>
+  <!-- A circle and ellipses -->
+  <symbol id="uF0D1" viewBox="0 0 400 1211"><circle fill="none" stroke="black" stroke-width="20" cx="200" cy="488" r="190"/></symbol>
+  <symbol id="uF0D2" viewBox="0 0 672 1211"><ellipse fill="none" stroke="black" stroke-width="20" cx="336" cy="488" rx="326" ry="210"/></symbol>
+  <symbol id="uF0D3" viewBox="0 0 948 1211"><ellipse fill="none" stroke="black" stroke-width="20" cx="474" cy="488" rx="464" ry="230"/></symbol>
+  <symbol id="uF0D5" viewBox="0 0 859 1211"><ellipse fill="none" stroke="black" stroke-width="20" cx="429.5" cy="488" rx="419.5" ry="220"/></symbol>
+  <symbol id="uF0D6" viewBox="0 0 1315 1211"><ellipse fill="none" stroke="black" stroke-width="20" cx="657.5" cy="488" rx="647.5" ry="250"/></symbol>
+</svg>

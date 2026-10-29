@@ -29,6 +29,7 @@ import { diagramElements } from "./pptx-diagrams";
 import { readEmbeddedFonts } from "./pptx-fonts";
 import { bulletPointSize, formatAutoNum, symbolBulletFont } from "./pptx-lists";
 import { suiteLeafFont } from "./office-fonts";
+import { isSymbolFont, splitSymbolRun } from "./symbol-fonts";
 import {
   cellMarkUsed,
   explicitTableCell,
@@ -808,6 +809,8 @@ async function parseZipPptx(
             italic: false,
             underline: false,
           };
+          // The a:sym face of a run's private-use characters, which the rest of its text is not in.
+          let symbolChars: string | undefined;
           const tMatch = /<a:t\b[^>]*>([\s\S]*?)<\/a:t>/.exec(rXml);
           const slideField =
             /^<a:fld\b/.test(rXml) && /type="slidenum"/.test(rXml);
@@ -815,6 +818,12 @@ async function parseZipPptx(
             const t = slideField
               ? String(idx + 1)
               : decodeXmlEntities(tMatch?.[1] || "").replace(/\r\n?/g, "\n");
+            // Symbol fonts draw codes, not Unicode: the text keeps them, in the SuiteLeaf face. `a:sym`
+            // names the face of the run's private-use characters only.
+            const latinFace = /<a:latin\s+typeface="([^"]+)"/.exec(rXml)?.[1];
+            const symFace = /<a:sym\b[^>]*\btypeface="([^"]+)"/.exec(rXml)?.[1];
+            if (isSymbolFont(latinFace)) run.font = suiteLeafFont(latinFace);
+            else if (isSymbolFont(symFace) && /[\uF000-\uF0FF]/.test(t)) symbolChars = suiteLeafFont(symFace);
             pText += t;
             run.text = t;
           }
@@ -845,7 +854,8 @@ async function parseZipPptx(
               if (shift) run.baseline = Math.max(-1000, Math.min(1000, shift));
             }
             const latinMatch = /<a:latin\s+typeface="([^"]+)"/.exec(rXml);
-            if (latinMatch) fontFamily = themeFont(latinMatch[1]);
+            if (latinMatch && !isSymbolFont(latinMatch[1]))
+              fontFamily = themeFont(latinMatch[1]);
             const highlightXml =
               /<a:highlight\b[\s\S]*?<\/a:highlight>/.exec(rXml)?.[0] || "";
             const colorXml = highlightXml ? rXml.replace(highlightXml, "") : rXml;
@@ -869,7 +879,7 @@ async function parseZipPptx(
               }
             }
           }
-          if (run.text) textRuns.push(run);
+          if (run.text) textRuns.push(...(symbolChars ? splitSymbolRun(run, symbolChars) : [run]));
         }
         const rightTab = /<a:tab\b[^>]*\balgn="r"/.test(pPrMatch?.[0] || "");
         if (rightTab && /^\t[^\t]*$/.test(pText)) {

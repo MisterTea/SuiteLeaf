@@ -39,6 +39,8 @@ import { rejoinSplitPictures, settleWordPictures } from "./image-inline";
 import { layoutNote } from "./image-wrap";
 import { wordKerning } from "./word-kerning";
 import { wordDefaultFont } from "./word-fonts";
+import { isSymbolFont, symbolCode } from "./symbol-fonts";
+import { markWordSymbols, symbolSpans } from "./word-symbols";
 import {
   letterheadDistanceNote,
   letterheadDistancePatch,
@@ -152,6 +154,9 @@ export function htmlToDocument(
       const next = [...marks];
       if (markType && !next.some((m) => m.type === markType))
         next.push({ type: markType });
+      // Symbol-font text, in its SuiteLeaf face (symbolSpans).
+      if (tag === "span" && e.attribs["data-font"])
+        next.push({ type: "textStyle", attrs: { fontFamily: e.attribs["data-font"] } });
       const href = tag === "a" ? (e.attribs.href ?? "") : "";
       if (href && safeLink(href))
         next.push({
@@ -436,11 +441,15 @@ function indentFromParagraph(nodes: any[]): WordIndentAttrs | null {
  * Body paragraphs in document order, with the special indent from `w:ind`.
  * Null means the XML could not be read as paragraphs.
  */
-/** The same dingbat mapping Mammoth uses, so a symbol is the character beside it. */
+/**
+ * A `w:sym` character: a symbol font's code, as the import keeps it (markWordSymbols), else the
+ * same dingbat mapping Mammoth uses, so a symbol is the character beside it.
+ */
 function wordSymbol(attrs: Record<string, string> | undefined): string {
   const font = attrs?.["@_w:font"] ?? attrs?.["@_font"] ?? "";
   const char = attrs?.["@_w:char"] ?? attrs?.["@_char"] ?? "";
   if (!font || !char) return "";
+  if (isSymbolFont(font)) return symbolCode(char);
   const mapped = dingbatHex(font, char) ?? (/^F0..$/i.test(char) ? dingbatHex(font, char.slice(2)) : undefined);
   return mapped?.string ?? "";
 }
@@ -1625,10 +1634,12 @@ export async function importDocx(
   for (const entry of Object.values(zip.files)) {
     if (entry.dir || !/^word\/.+\.xml$/i.test(entry.name)) continue;
     const value = await entry.async("string");
-    const lifted = joinHiddenParagraphMarks(
-      withoutHiddenRuns(
-        liftBlocksOutOfWordText(
-          unwrapWordRuby(unwrapWordContentControls(withDefaultUnderline(value))),
+    const lifted = markWordSymbols(
+      joinHiddenParagraphMarks(
+        withoutHiddenRuns(
+          liftBlocksOutOfWordText(
+            unwrapWordRuby(unwrapWordContentControls(withDefaultUnderline(value))),
+          ),
         ),
       ),
     );
@@ -1683,7 +1694,7 @@ export async function importDocx(
         }),
       },
     );
-    html = result.value.replace(/<p class="divider">[\s\S]*?<\/p>/g, "<hr />");
+    html = symbolSpans(result.value).replace(/<p class="divider">[\s\S]*?<\/p>/g, "<hr />");
     if (isCoverPage) {
       html = html.replace(/(<h1\b[^>]*>[\s\S]*?<\/h1>)/g, (m) => m + "<hr />");
     }

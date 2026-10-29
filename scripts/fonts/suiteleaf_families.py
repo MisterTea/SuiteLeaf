@@ -43,12 +43,17 @@ FACES = [
     ("Consolai.ttf", 0, "dmca/DMCAsansserif-v0900-400-i.ttf", None, "SuiteLeaf Juniper", "Italic", False),
     ("Consolaz.ttf", 0, "dmca/DMCAsansserif-v0900-700-i.ttf", None, "SuiteLeaf Juniper", "Bold Italic", False),
 ]
-# (Office file, dingbat-to-unicode table, family, style)
+# (Office file, its codes' characters: a dingbat-to-unicode table or symbols/NAME.json, family, style)
 SYMBOL_FACES = [("Wingdings.ttf", "WINGDINGS", "SuiteLeaf Sprig", "Regular"),
                 ("webdings.ttf", "WEBDINGS", "SuiteLeaf Fern", "Regular"),
                 ("Wingdings 2.ttf", "WINGDINGS 2", "SuiteLeaf Bramble", "Regular"),
                 ("Wingdings 3.ttf", "WINGDINGS 3", "SuiteLeaf Briar", "Regular"),
-                ("MonotypeSorts.ttf", "ZAPF DINGBATS", "SuiteLeaf Clover", "Regular")]
+                ("MonotypeSorts.ttf", "ZAPF DINGBATS", "SuiteLeaf Clover", "Regular"),
+                ("symbol.ttf", "SYMBOL", "SuiteLeaf Thistle", "Regular"),
+                ("Marlett.ttf", "marlett", "SuiteLeaf Nettle", "Regular"),
+                ("Bookshelf Symbol 7.ttf", "bookshelfsymbol7", "SuiteLeaf Sorrel", "Regular"),
+                ("MS Reference Specialty.ttf", "msreferencespecialty", "SuiteLeaf Tansy", "Regular"),
+                ("MTEXTRA.ttf", "mtextra", "SuiteLeaf Yarrow", "Regular")]
 
 
 def zapf_dingbats():

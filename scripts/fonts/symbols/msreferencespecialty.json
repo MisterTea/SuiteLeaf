@@ -1,0 +1,17 @@
+{
+  "_": "MS Reference Specialty codes that stand for a Unicode character or a plain string; fractions, vectors, long division, and placeholders are drawn in refspecialty.svg.",
+  "_fonts": [
+    "Arimo",
+    "Liberation Sans",
+    "Noto Sans",
+    "DejaVu Sans",
+    "FreeSans",
+    "TeX Gyre Heros"
+  ],
+  "F025": "⊾",
+  "F038": "—",
+  "F039": "═",
+  "F045": "⧈",
+  "F06D": ".00",
+  "F06E": ".5"
+}

@@ -1805,21 +1805,17 @@ def dingbat_tables():
 
 
 def build_symbol(args):
-    """A symbol font from scratch: OFL Noto glyphs at the Office face's codes, widths, and line metrics."""
+    """A symbol font from scratch, at the Office face's codes, widths, and line metrics: each symbol the
+    best-matching glyph of the open fonts we have, or our own drawing (suiteleaf_symbols)."""
     from fontTools.fontBuilder import FontBuilder
+    import suiteleaf_svg
+    import suiteleaf_symbols
     office_dir, work, (office_file, table, family, style) = args
     office_path = os.path.join(office_dir, office_file)
     office = TTFont(office_path)
     symbol = next(t for t in office["cmap"].tables if t.platformID == 3 and t.platEncID == 0)
     codes = dict(symbol.cmap)
-    dmap = zapf_dingbats() if table == "ZAPF DINGBATS" else {int(k): v for k, v in dingbat_tables()[table].items()}
-    if table == "WINGDINGS":
-        dmap.setdefault(0xFF, 0x229E)  # the Windows logo has no Unicode character; squared plus is closest
-    target = {code: dmap.get(code & 0xFF) for code in codes}
-    ogs = office.getGlyphSet()
-    inked = [c for c in codes if fill.bounds(ogs, codes[c])]
-    donors = [dict(gf_donor(src, *d), map=target) for d in NOTO_SYMBOLS]
-    picks = fill.choose(fill.Office(office_path), [c for c in inked if target.get(c)], donors, "symbol", POOL, worker_count())
+    picks = suiteleaf_symbols.choose(suiteleaf_symbols.Office(office_path), table, suiteleaf_symbols.drawings_name(office_file))
 
     names = {code: f"sl.code{code:04X}" for code in sorted(codes)}
     order = [".notdef"] + list(names.values())
@@ -1829,14 +1825,18 @@ def build_symbol(args):
     for code, name in names.items():
         pick = picks.get(code)
         pen = TTGlyphPen(None)
-        if pick:
-            donor = fill.donor_font(*pick["donor"]["font"])
-            rec = DecomposingRecordingPen(donor[1])
-            donor[1][pick["glyph"]].draw(rec)
-            rec.replay(TransformPen(Cu2QuPen(pen, max_err=0.5, reverse_direction=False), pick["transform"]))
-            d = pick["donor"]
+        if pick and pick[0] == "svg":
+            pen = None
+            glyphs[name] = suiteleaf_svg.glyph(pick[1], office["hhea"].ascent)
+            used[suiteleaf_symbols.OUR_DRAWINGS] += 1
+        elif pick:
+            _, d, drawable, transform, _ = pick
+            rec = DecomposingRecordingPen(fill.donor_font(*d["font"])[1])
+            drawable.draw(rec)
+            rec.replay(TransformPen(Cu2QuPen(pen, max_err=0.5, reverse_direction=False), transform))
             used[(d["name"], d["license"], d["notice"])] += 1
-        glyphs[name] = pen.glyph()
+        if pen is not None:
+            glyphs[name] = pen.glyph()
         metrics[name] = (office["hmtx"][codes[code]][0], 0)
     fb = FontBuilder(office["head"].unitsPerEm, isTTF=True)
     fb.setupGlyphOrder(order)
@@ -1865,15 +1865,15 @@ def build_symbol(args):
     for t in cmap.tables:
         t.cmap = {c: by_glyph[g] for c, g in t.cmap.items() if g in by_glyph}
     font["cmap"] = cmap
-    name_font(font, family, style, "Glyphs from the Noto fonts, Copyright The Noto Project Authors. Built by SuiteLeaf: "
-                                   "scaled and positioned to another font's layout.")
-    font["name"].setName("This Font Software is licensed under the SIL Open Font License, Version 1.1.", 13, 3, 1, 0x409)
+    name_font(font, family, style, "Glyphs from open fonts (credited in the license file) and drawings by SuiteLeaf. "
+                                   "Built by SuiteLeaf: scaled and positioned to another font's layout.")
+    font["name"].setName("Each glyph keeps the license of the font it comes from; SuiteLeaf's own drawings are under "
+                         "the SIL Open Font License, Version 1.1. See the license file that comes with the font.", 13, 3, 1, 0x409)
     font["name"].setName("https://openfontlicense.org", 14, 3, 1, 0x409)
     path = Path(work) / f"{family.replace(' ', '')}-{style.replace(' ', '')}.ttf"
     font.save(path)
     return {"office": office_file, "office_path": office_path, "family": family, "style": style, "path": str(path),
-            "script": "symbol", "donors": [list(k) + [v] for k, v in used.items()],
-            "unfilled": [hex(c) for c in inked if c not in picks]}
+            "script": "symbol", "donors": [list(k) + [v] for k, v in used.items()]}
 
 
 def _run(args):

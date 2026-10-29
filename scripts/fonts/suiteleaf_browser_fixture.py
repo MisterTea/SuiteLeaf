@@ -10,6 +10,7 @@ with one and two accents.
 import io
 import json
 import random
+import zlib
 import re
 from pathlib import Path
 
@@ -89,7 +90,7 @@ def texts_for(ttf, font, chars, seed):
 
 def fixture():
     out = []
-    for n, (file, (family, weight, style)) in enumerate(sorted(faces().items())):
+    for file, (family, weight, style) in sorted(faces().items()):
         ttf = TTFont(OUT / file)
         ttf.flavor = None
         data = io.BytesIO()
@@ -99,7 +100,8 @@ def fixture():
         chars = set(latin_chars(ttf.getBestCmap() or {}))
         glyphs = ttf.getGlyphSet()
         rows = []
-        for text in texts_for(ttf, font, chars, n):
+        # Seeded by the file's name, so adding a face leaves the others' texts as they were.
+        for text in texts_for(ttf, font, chars, zlib.crc32(file.encode())):
             rows.append([text] + [list(layout(font, glyphs, text, kern)) for kern in (True, False)])
         # A symbol face (Monotype Sorts) has no Latin text to draw.
         if rows:
