@@ -6,20 +6,19 @@ and line metrics were set from that font's layout. Where that font joins letters
 ligature glyph was made from this font's own letters, moved closer together. No outline shape was
 otherwise changed.
 
+Arabic and Hebrew text lays out close to, but not exactly as, Franklin Gothic Cond: this font
+chooses contextual forms and ligatures differently there, so lines can be slightly wider or narrower.
+
 Characters the source font lacks were filled with glyphs from these fonts, scaled and centered
 the same way (counts are across its styles). Each keeps its own license, reproduced below; all are
 compatible with the license of the whole font.
 
-- 9 glyphs from Archivo Narrow (OFL-1.1). Copyright 2019 The Archivo Narrow Project Authors (https://github.com/Omnibus-Type/ArchivoNarrow)
-- 5 glyphs from Do Hyeon (OFL-1.1). Copyright 2018 The Do Hyeon Project Authors
-- 9 glyphs from Freeman (OFL-1.1). Copyright 2023 The Freeman Project Authors (https://github.com/rfuenzalida/Freeman)
-- 54 glyphs from Murecho (OFL-1.1). Copyright 2021 The Murecho Project Authors (https://github.com/positype/Murecho-Project)
-- 48 glyphs from Noto Sans HK (OFL-1.1). Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'
-- 47 glyphs from Noto Sans Math (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/math)
-- 3 glyphs from Noto Sans Symbols (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
-- 3 glyphs from Noto Sans Symbols 2 (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
-- 2 glyphs from Reddit Sans Condensed (OFL-1.1). Reddit Sans
-Copyright © 2020-23, Reddit, Inc. (https://github.com/reddit/redditsans)
+- 5 glyphs from Archivo Narrow (OFL-1.1). Copyright 2019 The Archivo Narrow Project Authors (https://github.com/Omnibus-Type/ArchivoNarrow)
+- 4 glyphs from Do Hyeon (OFL-1.1). Copyright 2018 The Do Hyeon Project Authors
+- 76 glyphs from Murecho (OFL-1.1). Copyright 2021 The Murecho Project Authors (https://github.com/positype/Murecho-Project)
+- 42 glyphs from Noto Sans HK (OFL-1.1). Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'
+- 51 glyphs from Noto Sans Math (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/math)
+- 2 glyphs from Noto Sans Symbols (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
 
 The build scripts are in scripts/fonts/ of the SuiteLeaf repository.
 

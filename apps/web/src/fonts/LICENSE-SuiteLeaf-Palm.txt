@@ -13,29 +13,25 @@ Characters the source font lacks were filled with glyphs from these fonts, scale
 the same way (counts are across its styles). Each keeps its own license, reproduced below; all are
 compatible with the license of the whole font.
 
-- 9 glyphs from Cardo (OFL-1.1). Copyright (c) 2002-2011, David J. Perry (hospes02@scholarsfonts.net)
-- 45 glyphs from Chiron Sung HK (OFL-1.1). Copyright 2025 The Chiron Sung HK Project Authors (https://github.com/chiron-fonts/chiron-sung-hk).
-- 31 glyphs from Google Sans (OFL-1.1). Copyright 2025 The Google Sans Project Authors (https://github.com/googlefonts/googlesans)
-- 10 glyphs from Libertinus Serif (OFL-1.1). Copyright 2025 The Libertinus Keyboard Project Authors (https://github.com/googlefonts/libertinus)
+- 8 glyphs from Cardo (OFL-1.1). Copyright (c) 2002-2011, David J. Perry (hospes02@scholarsfonts.net)
+- 35 glyphs from Chiron Sung HK (OFL-1.1). Copyright 2025 The Chiron Sung HK Project Authors (https://github.com/chiron-fonts/chiron-sung-hk).
+- 41 glyphs from Google Sans (OFL-1.1). Copyright 2025 The Google Sans Project Authors (https://github.com/googlefonts/googlesans)
+- 11 glyphs from Libertinus Serif (OFL-1.1). Copyright 2025 The Libertinus Keyboard Project Authors (https://github.com/googlefonts/libertinus)
 Copyright 2025 The Libertinus Math Project Authors (https://github.com/googlefonts/libertinus)
 Copyright 2025 The Libertinus Mono Project Authors (https://github.com/googlefonts/libertinus)
 Copyright 2025 The Libertinus Sans Project Authors (https://github.com/googlefonts/libertinus)
 Copyright 2025 The Libertinus Serif Project Authors (https://github.com/googlefonts/libertinus)
 Copyright 2025 The Libertinus Serif Display Project Authors (https://github.com/googlefonts/libertinus)
 Copyright 2025 The Libertinus Serif Initials Project Authors (https://github.com/googlefonts/libertinus)
-- 7 glyphs from Libertinus Serif Display (OFL-1.1). Copyright 2025 The Libertinus Serif Display Project Authors (https://github.com/googlefonts/libertinus)
-- 4 glyphs from Merriweather (OFL-1.1). Copyright 2020 The Merriweather Project Authors (https://github.com/EbenSorkin/Merriweather4) with Reserved Font Name "Merriweather".
+- 6 glyphs from Libertinus Serif Display (OFL-1.1). Copyright 2025 The Libertinus Serif Display Project Authors (https://github.com/googlefonts/libertinus)
 - 2 glyphs from Noto Kufi Arabic (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/arabic)
-- 41 glyphs from Noto Sans Math (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/math)
-- 5 glyphs from Noto Sans Symbols (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
+- 92 glyphs from Noto Sans Math (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/math)
+- 1 glyph from Noto Sans Symbols (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
 - 10 glyphs from Noto Sans Symbols 2 (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
-- 29 glyphs from Noto Serif (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
-- 4 glyphs from Overpass (OFL-1.1). Copyright 2021 The Overpass Project Authors (https://github.com/RedHatOfficial/Overpass)
-- 1 glyph from PT Serif (OFL-1.1). Copyright (c) 2010, ParaType Ltd. (http://www.paratype.com/public),
-with Reserved Font Names "PT Sans", "PT Serif" and "ParaType".
-- 51 glyphs from STIX Two Math (OFL-1.1). Copyright 2001-2021 The STIX Fonts Project Authors (https://github.com/stipub/stixfonts), with Reserved Font Name "TM Math". STIX Fonts™ is a trademark of The Institute of Electrical and Electronics Engineers, Inc.
-- 4 glyphs from STIX Two Text (OFL-1.1). Copyright 2001-2021 The STIX Fonts Project Authors (https://github.com/stipub/stixfonts), with Reserved Font Name "TM Math". STIX Fonts™ is a trademark of The Institute of Electrical and Electronics Engineers, Inc.
-- 155 glyphs from Tinos (OFL-1.1). Copyright 2026 The Tinos Project Authors (https://github.com/googlefonts/tinos)
+- 46 glyphs from Noto Serif (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
+- 7 glyphs from Overpass (OFL-1.1). Copyright 2021 The Overpass Project Authors (https://github.com/RedHatOfficial/Overpass)
+- 61 glyphs from STIX Two Math (OFL-1.1). Copyright 2001-2021 The STIX Fonts Project Authors (https://github.com/stipub/stixfonts), with Reserved Font Name "TM Math". STIX Fonts™ is a trademark of The Institute of Electrical and Electronics Engineers, Inc.
+- 88 glyphs from Tinos (OFL-1.1). Copyright 2026 The Tinos Project Authors (https://github.com/googlefonts/tinos)
 
 The build scripts are in scripts/fonts/ of the SuiteLeaf repository.
 

@@ -13,8 +13,8 @@ Characters the source font lacks were filled with glyphs from these fonts, scale
 the same way (counts are across it). Each keeps its own license, reproduced below; all are
 compatible with the license of the whole font.
 
-- 248 glyphs from LXGW WenKai Mono TC (OFL-1.1). Copyright 2024 The LXGW WenKai Project Authors (https://github.com/lxgw/LxgwWenkaiTC)
-- 329 glyphs from WDXL Lubrifont JP N (OFL-1.1). Copyright 2025 The WDXL Lubrifont Project Authors (https://github.com/NightFurySL2001/WD-XL-font)
+- 153 glyphs from LXGW WenKai Mono TC (OFL-1.1). Copyright 2024 The LXGW WenKai Project Authors (https://github.com/lxgw/LxgwWenkaiTC)
+- 424 glyphs from WDXL Lubrifont JP N (OFL-1.1). Copyright 2025 The WDXL Lubrifont Project Authors (https://github.com/NightFurySL2001/WD-XL-font)
 Copyright 2018-2020 The ZCOOL QingKe HuangYou Project Authors (https://www.github.com/googlefonts/zcool-qingke-huangyou)
 
 The build scripts are in scripts/fonts/ of the SuiteLeaf repository.

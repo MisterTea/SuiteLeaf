@@ -6,15 +6,17 @@ and line metrics were set from that font's layout. Where that font joins letters
 ligature glyph was made from this font's own letters, moved closer together. No outline shape was
 otherwise changed.
 
+Arabic and Hebrew text lays out close to, but not exactly as, Onyx: this font
+chooses contextual forms and ligatures differently there, so lines can be slightly wider or narrower.
+
 Characters the source font lacks were filled with glyphs from these fonts, scaled and centered
 the same way (counts are across it). Each keeps its own license, reproduced below; all are
 compatible with the license of the whole font.
 
-- 11 glyphs from Bahianita (OFL-1.1). Copyright 2018 The Bahianita Project Authors (https://github.com/Omnibus-Type/Bahiana/Bahianita)
-- 4 glyphs from League Gothic (OFL-1.1). Copyright 2010 The League Gothic Project Authors (https://github.com/theleagueof/league-gothic)
-- 5 glyphs from Noto Sans Math (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/math)
+- 12 glyphs from Bahianita (OFL-1.1). Copyright 2018 The Bahianita Project Authors (https://github.com/Omnibus-Type/Bahiana/Bahianita)
+- 7 glyphs from League Gothic (OFL-1.1). Copyright 2010 The League Gothic Project Authors (https://github.com/theleagueof/league-gothic)
+- 2 glyphs from Noto Sans Math (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/math)
 - 1 glyph from Noto Sans Symbols (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
-- 1 glyph from Noto Sans Symbols 2 (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
 
 The build scripts are in scripts/fonts/ of the SuiteLeaf repository.
 

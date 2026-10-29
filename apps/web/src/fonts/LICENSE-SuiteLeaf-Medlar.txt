@@ -17,11 +17,11 @@ compatible with the license of the whole font.
 - 17 glyphs from Chiron GoRound TC (OFL-1.1). Copyright 2025 The Chiron GoRound TC Project Authors (https://github.com/chiron-fonts/chiron-go-round-tc)
 - 1 glyph from Gothic A1 (OFL-1.1). (C) Copyright HanYang I&C Co.,Ltd. All rights reserved.
 - 21 glyphs from Inter Tight (OFL-1.1). Copyright 2022 The Inter Project Authors (https://github.com/rsms/inter-tight)
-- 30 glyphs from Istok Web (OFL-1.1). Copyright (c) 2008-2012, 2014, Andrey V. Panov (panov@canopus.iacp.dvo.ru),
+- 29 glyphs from Istok Web (OFL-1.1). Copyright (c) 2008-2012, 2014, Andrey V. Panov (panov@canopus.iacp.dvo.ru),
 with Reserved Font Name Istok.
 - 9 glyphs from Lato (OFL-1.1). Copyright (c) 2010-2014 by tyPoland Lukasz Dziedzic (team@latofonts.com) with Reserved Font Name "Lato"
 - 4 glyphs from M PLUS 1p (OFL-1.1). Copyright 2016 The M+ Project Authors.
-- 87 glyphs from Noto Sans (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
+- 84 glyphs from Noto Sans (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
 - 8 glyphs from Noto Sans Math (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/math)
 - 8 glyphs from Pontano Sans (OFL-1.1). Copyright 2012 The Pontano Sans Project Authors (https://github.com/googlefonts/PontanoSansFont)
 - 6 glyphs from Roboto Flex (OFL-1.1). Copyright 2017 The Roboto Flex Project Authors (https://github.com/TypeNetwork/Roboto-Flex)

@@ -13,36 +13,23 @@ Characters the source font lacks were filled with glyphs from these fonts, scale
 the same way (counts are across its styles). Each keeps its own license, reproduced below; all are
 compatible with the license of the whole font.
 
-- 37 glyphs from Andika (OFL-1.1). Copyright (c) 2004-2022 SIL International  (http://www.sil.org/)
-with Reserved Font Names "Andika" and "SIL".
-- 375 glyphs from Arimo (OFL-1.1). Copyright 2026 The Arimo Project Authors (https://github.com/googlefonts/arimo)
-- 18 glyphs from Cardo (OFL-1.1). Copyright (c) 2002-2011, David J. Perry (hospes02@scholarsfonts.net)
-- 2 glyphs from Caudex (OFL-1.1). Copyright (c) 2011, Hjort Nidudsson (http://caudex.sf.net),
+- 167 glyphs from Arimo (OFL-1.1). Copyright 2026 The Arimo Project Authors (https://github.com/googlefonts/arimo)
+- 11 glyphs from Cardo (OFL-1.1). Copyright (c) 2002-2011, David J. Perry (hospes02@scholarsfonts.net)
+- 1 glyph from Caudex (OFL-1.1). Copyright (c) 2011, Hjort Nidudsson (http://caudex.sf.net),
 with Reserved Font Name Caudex.
-- 194 glyphs from Charis SIL (OFL-1.1). Copyright (c) 1997-2022 SIL International (http://www.sil.org/)
+- 683 glyphs from Charis SIL (OFL-1.1). Copyright (c) 1997-2022 SIL International (http://www.sil.org/)
 with Reserved Font Names "Charis" and "SIL".
-- 13 glyphs from EB Garamond (OFL-1.1). Copyright 2017 The EB Garamond Project Authors (https://github.com/octaviopardo/EBGaramond12)
-- 52 glyphs from Gentium Book Plus (OFL-1.1). Copyright (c) 2003-2022 SIL International (http://www.sil.org/),
+- 513 glyphs from EB Garamond (OFL-1.1). Copyright 2017 The EB Garamond Project Authors (https://github.com/octaviopardo/EBGaramond12)
+- 77 glyphs from Gentium Book Plus (OFL-1.1). Copyright (c) 2003-2022 SIL International (http://www.sil.org/),
 with Reserved Font Names "Gentium" and "SIL".
-- 19 glyphs from Gentium Plus (OFL-1.1). Copyright (c) 2003-2022 SIL International (http://www.sil.org/),
-with Reserved Font Names "Gentium" and "SIL".
-- 126 glyphs from Google Sans (OFL-1.1). Copyright 2025 The Google Sans Project Authors (https://github.com/googlefonts/googlesans)
-- 38 glyphs from Inter (OFL-1.1). Copyright 2020 The Inter Project Authors (https://github.com/rsms/inter)
-- 10 glyphs from Inter Tight (OFL-1.1). Copyright 2022 The Inter Project Authors (https://github.com/rsms/inter-tight)
-- 24 glyphs from Libertinus Math (OFL-1.1). Copyright 2025 The Libertinus Keyboard Project Authors (https://github.com/googlefonts/libertinus)
-Copyright 2025 The Libertinus Math Project Authors (https://github.com/googlefonts/libertinus)
-Copyright 2025 The Libertinus Mono Project Authors (https://github.com/googlefonts/libertinus)
-Copyright 2025 The Libertinus Sans Project Authors (https://github.com/googlefonts/libertinus)
-Copyright 2025 The Libertinus Serif Project Authors (https://github.com/googlefonts/libertinus)
-Copyright 2025 The Libertinus Serif Display Project Authors (https://github.com/googlefonts/libertinus)
-Copyright 2025 The Libertinus Serif Initials Project Authors (https://github.com/googlefonts/libertinus)
-- 1363 glyphs from Noto Naskh Arabic (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/arabic)
-- 73 glyphs from Noto Sans (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
-- 115 glyphs from Noto Sans Display (OFL-1.1). Copyright 2012 Google Inc. All Rights Reserved.
+- 328 glyphs from Google Sans (OFL-1.1). Copyright 2025 The Google Sans Project Authors (https://github.com/googlefonts/googlesans)
+- 12 glyphs from Inter (OFL-1.1). Copyright 2020 The Inter Project Authors (https://github.com/rsms/inter)
+- 4 glyphs from Inter Tight (OFL-1.1). Copyright 2022 The Inter Project Authors (https://github.com/rsms/inter-tight)
+- 1361 glyphs from Noto Naskh Arabic (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/arabic)
+- 32 glyphs from Noto Sans Display (OFL-1.1). Copyright 2012 Google Inc. All Rights Reserved.
 - 8 glyphs from Noto Sans Symbols (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
-- 1056 glyphs from Noto Serif (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
-- 279 glyphs from Noto Serif Armenian (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/armenian)
-- 62 glyphs from Noto Serif Display (OFL-1.1). Copyright 2012 Google Inc. All Rights Reserved.
+- 562 glyphs from Noto Serif (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
+- 97 glyphs from Noto Serif Armenian (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/armenian)
 
 The build scripts are in scripts/fonts/ of the SuiteLeaf repository.
 

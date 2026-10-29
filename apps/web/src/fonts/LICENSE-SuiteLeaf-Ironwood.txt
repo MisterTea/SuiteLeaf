@@ -10,18 +10,11 @@ Characters the source font lacks were filled with glyphs from these fonts, scale
 the same way (counts are across it). Each keeps its own license, reproduced below; all are
 compatible with the license of the whole font.
 
-- 67 glyphs from Akt (OFL-1.1). Copyright 2024 The Akt Project Authors (https://github.com/dimgrenev/akt)
-- 4 glyphs from Alegreya Sans (OFL-1.1). Copyright 2013 The Alegreya Sans Project Authors (https://github.com/huertatipografica/Alegreya-Sans)
+- 174 glyphs from Akt (OFL-1.1). Copyright 2024 The Akt Project Authors (https://github.com/dimgrenev/akt)
 - 2 glyphs from Chiron Hei HK (OFL-1.1). Copyright 2025 The Chiron Hei HK Project Authors (https://github.com/chiron-fonts/chiron-hei-hk).
-- 47 glyphs from DejaVu (Bitstream Vera and DejaVu license (permissive)). Copyright Bitstream, Inc. (Bitstream Vera) and the DejaVu authors
-- 95 glyphs from Golos Text (OFL-1.1). Copyright 2019 The Golos Text Project Authors (https://github.com/googlefonts/golos-text)
-- 1 glyph from Gothic A1 (OFL-1.1). (C) Copyright HanYang I&C Co.,Ltd. All rights reserved.
-- 1 glyph from JetBrains Mono (OFL-1.1). Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
-- 5 glyphs from Lato (OFL-1.1). Copyright (c) 2010-2014 by tyPoland Lukasz Dziedzic (team@latofonts.com) with Reserved Font Name "Lato"
-- 3 glyphs from Noto Sans Mono (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
-- 1 glyph from Noto Serif HK (OFL-1.1). Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'
-- 1 glyph from Overpass (OFL-1.1). Copyright 2021 The Overpass Project Authors (https://github.com/RedHatOfficial/Overpass)
-- 14 glyphs from Source Code Pro (OFL-1.1). Copyright 2010, 2012 Adobe Systems Incorporated (http://www.adobe.com/), with Reserved Font Name 'Source'. All Rights Reserved. Source is a trademark of Adobe Systems Incorporated in the United States and/or other countries.
+- 7 glyphs from DejaVu (Bitstream Vera and DejaVu license (permissive)). Copyright Bitstream, Inc. (Bitstream Vera) and the DejaVu authors
+- 3 glyphs from Gothic A1 (OFL-1.1). (C) Copyright HanYang I&C Co.,Ltd. All rights reserved.
+- 55 glyphs from Noto Sans Mono (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
 
 The build scripts are in scripts/fonts/ of the SuiteLeaf repository.
 

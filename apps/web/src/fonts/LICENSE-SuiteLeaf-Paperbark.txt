@@ -13,11 +13,11 @@ Characters the source font lacks were filled with glyphs from these fonts, scale
 the same way (counts are across its styles). Each keeps its own license, reproduced below; all are
 compatible with the license of the whole font.
 
-- 4 glyphs from Noto Sans Math (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/math)
-- 12 glyphs from Noto Serif (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
-- 11 glyphs from Nuosu SIL (OFL-1.1). Copyright (c) 1999-2022 SIL International (http://www.sil.org)
+- 3 glyphs from Noto Sans Math (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/math)
+- 20 glyphs from Noto Serif (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
+- 6 glyphs from Nuosu SIL (OFL-1.1). Copyright (c) 1999-2022 SIL International (http://www.sil.org)
 with Reserved Font Names "Nuosu" and "SIL".
-- 7 glyphs from Tai Heritage Pro (OFL-1.1). Copyright (c) 1995-2017, SIL International (www.sil.org)
+- 3 glyphs from Tai Heritage Pro (OFL-1.1). Copyright (c) 1995-2017, SIL International (www.sil.org)
 with Reserved Font Name "Heritage".
 
 The build scripts are in scripts/fonts/ of the SuiteLeaf repository.

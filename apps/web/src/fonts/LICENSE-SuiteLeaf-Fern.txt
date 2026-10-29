@@ -5,10 +5,10 @@ otherwise changed.
 
 Glyphs used:
 
-- 21 glyphs from Noto Emoji (OFL-1.1). Copyright 2013 Google LLC
-- 3 glyphs from Noto Sans Math (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/math)
+- 16 glyphs from Noto Emoji (OFL-1.1). Copyright 2013 Google LLC
+- 2 glyphs from Noto Sans Math (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/math)
 - 3 glyphs from Noto Sans Symbols (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
-- 195 glyphs from Noto Sans Symbols 2 (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
+- 201 glyphs from Noto Sans Symbols 2 (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
 
 The build scripts are in scripts/fonts/ of the SuiteLeaf repository.
 

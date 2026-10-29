@@ -16,8 +16,7 @@ the same way (counts are across it). Each keeps its own license, reproduced belo
 compatible with the license of the whole font.
 
 - 1 glyph from Noto Sans (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
-- 1 glyph from Noto Sans Math (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/math)
-- 1 glyph from Noto Sans Symbols (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
+- 2 glyphs from Noto Sans Math (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/math)
 - 35 glyphs from Noto Sans Symbols 2 (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
 
 The build scripts are in scripts/fonts/ of the SuiteLeaf repository.

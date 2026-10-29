@@ -10,8 +10,7 @@ Characters the source font lacks were filled with glyphs from these fonts, scale
 the same way (counts are across it). Each keeps its own license, reproduced below; all are
 compatible with the license of the whole font.
 
-- 3 glyphs from DejaVu (Bitstream Vera and DejaVu license (permissive)). Copyright Bitstream, Inc. (Bitstream Vera) and the DejaVu authors
-- 2 glyphs from TeX Gyre DejaVu Math (GUST Font License). Copyright B. Jackowski, P. Strzelczyk, and P. Pianowski (GUST e-foundry), from DejaVu
+- 5 glyphs from DejaVu (Bitstream Vera and DejaVu license (permissive)). Copyright Bitstream, Inc. (Bitstream Vera) and the DejaVu authors
 
 The build scripts are in scripts/fonts/ of the SuiteLeaf repository.
 

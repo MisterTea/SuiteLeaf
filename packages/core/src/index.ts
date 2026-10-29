@@ -3,7 +3,7 @@ import { z } from "zod";
 
 export { diffDocuments, type DocDiff } from "./doc-diff";
 export { cloneJson, sameJson } from "./json-data";
-export { fontKerning, kerningThreshold } from "./kerning";
+export { fontKerning, kernFeature, kerningThreshold } from "./kerning";
 export {
   applyParagraphRestore,
   compareParagraphs,

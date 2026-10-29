@@ -14,11 +14,11 @@ the same way (counts are across its styles). Each keeps its own license, reprodu
 compatible with the license of the whole font.
 
 - 801 glyphs from Arimo (OFL-1.1). Copyright 2026 The Arimo Project Authors (https://github.com/googlefonts/arimo)
-- 106 glyphs from Charis SIL (OFL-1.1). Copyright (c) 1997-2022 SIL International (http://www.sil.org/)
+- 701 glyphs from Charis SIL (OFL-1.1). Copyright (c) 1997-2022 SIL International (http://www.sil.org/)
 with Reserved Font Names "Charis" and "SIL".
 - 179 glyphs from Iosevka Charon (OFL-1.1). Copyright 2025, the Iosevka Project authors (https://github.com/be5invis/Iosevka)
 - 2003 glyphs from Noto Sans Arabic UI (OFL-1.1). Copyright 2012 Google Inc. All Rights Reserved.
-- 2159 glyphs from Noto Sans Display (OFL-1.1). Copyright 2012 Google Inc. All Rights Reserved.
+- 1558 glyphs from Noto Sans Display (OFL-1.1). Copyright 2012 Google Inc. All Rights Reserved.
 - 2 glyphs from Noto Sans Mono (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
 - 282 glyphs from notosanslisu (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/lisu)
 

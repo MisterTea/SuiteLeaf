@@ -224,6 +224,9 @@ def _install(results, office_dir, root, out):
         (out / name).write_text(license_text(family, rs, root))
     mapping_path.write_text(json.dumps(mapping, indent=2, ensure_ascii=False) + "\n")
     write_css(office_dir, out)
+    import suiteleaf_browser_fixture as browser_fixture
+    if Path(out).resolve() == browser_fixture.OUT.resolve():
+        browser_fixture.write()
     # Cedar and Linden used to share one file; each family now has its own.
     (out / "LICENSE-SuiteLeaf-Cedar-Linden.txt").unlink(missing_ok=True)
 

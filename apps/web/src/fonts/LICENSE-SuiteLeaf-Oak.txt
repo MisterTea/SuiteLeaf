@@ -13,23 +13,20 @@ Characters the source font lacks were filled with glyphs from these fonts, scale
 the same way (counts are across its styles). Each keeps its own license, reproduced below; all are
 compatible with the license of the whole font.
 
-- 26 glyphs from Arimo (OFL-1.1). Copyright 2026 The Arimo Project Authors (https://github.com/googlefonts/arimo)
-- 5 glyphs from Chiron Hei HK (OFL-1.1). Copyright 2025 The Chiron Hei HK Project Authors (https://github.com/chiron-fonts/chiron-hei-hk).
-- 8 glyphs from Chocolate Classical Sans (OFL-1.1). Copyright 2024 The Chocolate Classical Sans Project Authors (https://github.com/MoonlitOwen/ChocolateSans)
-- 20 glyphs from Geist (OFL-1.1). Copyright 2024 The Geist Project Authors (https://github.com/vercel/geist-font.git)
-- 36 glyphs from Google Sans (OFL-1.1). Copyright 2025 The Google Sans Project Authors (https://github.com/googlefonts/googlesans)
+- 23 glyphs from Arimo (OFL-1.1). Copyright 2026 The Arimo Project Authors (https://github.com/googlefonts/arimo)
+- 1 glyph from Chiron Hei HK (OFL-1.1). Copyright 2025 The Chiron Hei HK Project Authors (https://github.com/chiron-fonts/chiron-hei-hk).
+- 3 glyphs from Chocolate Classical Sans (OFL-1.1). Copyright 2024 The Chocolate Classical Sans Project Authors (https://github.com/MoonlitOwen/ChocolateSans)
+- 9 glyphs from Geist (OFL-1.1). Copyright 2024 The Geist Project Authors (https://github.com/vercel/geist-font.git)
+- 74 glyphs from Google Sans (OFL-1.1). Copyright 2025 The Google Sans Project Authors (https://github.com/googlefonts/googlesans)
 - 51 glyphs from Gothic A1 (OFL-1.1). (C) Copyright HanYang I&C Co.,Ltd. All rights reserved.
-- 8 glyphs from IBM Plex Sans Condensed (OFL-1.1). Copyright © 2017 IBM Corp. with Reserved Font Name "Plex"
-- 5 glyphs from Inter Tight (OFL-1.1). Copyright 2022 The Inter Project Authors (https://github.com/rsms/inter-tight)
-- 6 glyphs from Noto Sans (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
+- 5 glyphs from Noto Sans (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
 - 14 glyphs from Noto Sans Coptic (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/coptic)
-- 55 glyphs from Noto Sans Math (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/math)
-- 44 glyphs from Noto Sans Symbols (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
-- 20 glyphs from Noto Sans Symbols 2 (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
-- 4 glyphs from Open Sans (OFL-1.1). Copyright 2020 The Open Sans Project Authors (https://github.com/googlefonts/opensans)
-- 75 glyphs from Overpass (OFL-1.1). Copyright 2021 The Overpass Project Authors (https://github.com/RedHatOfficial/Overpass)
-- 6 glyphs from Sofia Sans Semi Condensed (OFL-1.1). Copyright 2019 The Sofia Sans Project Authors (https://github.com/lettersoup/Sofia-Sans)
-- 9 glyphs from Source Sans 3 (OFL-1.1). Copyright 2010-2020 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'. All Rights Reserved. Source is a trademark of Adobe in the United States and/or other countries.
+- 47 glyphs from Noto Sans Math (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/math)
+- 37 glyphs from Noto Sans Symbols (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
+- 16 glyphs from Noto Sans Symbols 2 (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
+- 102 glyphs from Overpass (OFL-1.1). Copyright 2021 The Overpass Project Authors (https://github.com/RedHatOfficial/Overpass)
+- 2 glyphs from Sofia Sans Semi Condensed (OFL-1.1). Copyright 2019 The Sofia Sans Project Authors (https://github.com/lettersoup/Sofia-Sans)
+- 8 glyphs from Source Sans 3 (OFL-1.1). Copyright 2010-2020 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'. All Rights Reserved. Source is a trademark of Adobe in the United States and/or other countries.
 
 The build scripts are in scripts/fonts/ of the SuiteLeaf repository.
 

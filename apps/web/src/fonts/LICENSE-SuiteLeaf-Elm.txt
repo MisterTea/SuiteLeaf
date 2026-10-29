@@ -13,33 +13,26 @@ Characters the source font lacks were filled with glyphs from these fonts, scale
 the same way (counts are across its styles). Each keeps its own license, reproduced below; all are
 compatible with the license of the whole font.
 
-- 2108 glyphs from Arimo (OFL-1.1). Copyright 2026 The Arimo Project Authors (https://github.com/googlefonts/arimo)
-- 30 glyphs from Commissioner (OFL-1.1). Copyright 2019 The Commissioner Project Authors (https://github.com/kosbarts/Commissioner)
+- 200 glyphs from Arimo (OFL-1.1). Copyright 2026 The Arimo Project Authors (https://github.com/googlefonts/arimo)
+- 4 glyphs from Commissioner (OFL-1.1). Copyright 2019 The Commissioner Project Authors (https://github.com/kosbarts/Commissioner)
 - 2 glyphs from DM Sans (OFL-1.1). Copyright 2014 The DM Sans Project Authors (https://github.com/googlefonts/dm-fonts)
-- 9 glyphs from Geologica (OFL-1.1). Copyright 2020 The Geologisk Project Authors (https://github.com/monokromskriftforlag/geologisk)
-- 131 glyphs from Google Sans (OFL-1.1). Copyright 2025 The Google Sans Project Authors (https://github.com/googlefonts/googlesans)
-- 334 glyphs from Gothic A1 (OFL-1.1). (C) Copyright HanYang I&C Co.,Ltd. All rights reserved.
-- 802 glyphs from Inter (OFL-1.1). Copyright 2020 The Inter Project Authors (https://github.com/rsms/inter)
-- 389 glyphs from Inter Tight (OFL-1.1). Copyright 2022 The Inter Project Authors (https://github.com/rsms/inter-tight)
-- 418 glyphs from Lato (OFL-1.1). Copyright (c) 2010-2014 by tyPoland Lukasz Dziedzic (team@latofonts.com) with Reserved Font Name "Lato"
+- 282 glyphs from Geologica (OFL-1.1). Copyright 2020 The Geologisk Project Authors (https://github.com/monokromskriftforlag/geologisk)
+- 147 glyphs from Google Sans (OFL-1.1). Copyright 2025 The Google Sans Project Authors (https://github.com/googlefonts/googlesans)
+- 26 glyphs from Google Sans Flex (OFL-1.1). Copyright 2015 The Google Sans Flex Authors (https://github.com/googlefonts/googlesans-flex)
+- 70 glyphs from Gothic A1 (OFL-1.1). (C) Copyright HanYang I&C Co.,Ltd. All rights reserved.
+- 6 glyphs from Inter (OFL-1.1). Copyright 2020 The Inter Project Authors (https://github.com/rsms/inter)
+- 18 glyphs from Inter Tight (OFL-1.1). Copyright 2022 The Inter Project Authors (https://github.com/rsms/inter-tight)
+- 116 glyphs from Lato (OFL-1.1). Copyright (c) 2010-2014 by tyPoland Lukasz Dziedzic (team@latofonts.com) with Reserved Font Name "Lato"
 - 2 glyphs from Noto Kufi Arabic (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/arabic)
-- 1828 glyphs from Noto Sans (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
+- 5203 glyphs from Noto Sans (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
 - 14 glyphs from Noto Sans Coptic (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/coptic)
-- 141 glyphs from Noto Sans Math (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/math)
-- 6 glyphs from Noto Sans SC (OFL-1.1). Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'
-- 59 glyphs from Noto Sans Symbols (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
+- 121 glyphs from Noto Sans Math (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/math)
+- 2 glyphs from Noto Sans SC (OFL-1.1). Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'
+- 67 glyphs from Noto Sans Symbols (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
 - 62 glyphs from Noto Sans Symbols 2 (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
-- 6 glyphs from Onest (OFL-1.1). Copyright 2021 The Onest Project Authors (https://github.com/googlefonts/onest)
-- 4 glyphs from Open Sans (OFL-1.1). Copyright 2020 The Open Sans Project Authors (https://github.com/googlefonts/opensans)
-- 20 glyphs from Pliant (OFL-1.1). Copyright 2025 The Pliant Project Authors (https://github.com/TheJonassss/Pliant)
-- 2 glyphs from Rethink Sans (OFL-1.1). Copyright 2022 The Rethink Sans Project Authors (https://github.com/hans-thiessen/Rethink-Sans)
-- 18 glyphs from Roboto Flex (OFL-1.1). Copyright 2017 The Roboto Flex Project Authors (https://github.com/TypeNetwork/Roboto-Flex)
-- 5 glyphs from SN Pro (OFL-1.1). Copyright 2024 The SN Pro Project Authors (https://github.com/supernotes/sn-pro)
-- 1 glyph from Sarala (OFL-1.1). Copyright 2015 by Andres Torresi. All rights reserved.
-- 1 glyph from Scoutie Sans (OFL-1.1). Copyright 2026 The Scoutie Sans Project Authors (https://github.com/sursly/scoutie)
-- 19 glyphs from Source Sans 3 (OFL-1.1). Copyright 2010-2020 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'. All Rights Reserved. Source is a trademark of Adobe in the United States and/or other countries.
-- 2 glyphs from Wix Madefor Text (OFL-1.1). Copyright 2023 The Wix Madefor Project Authors (https://github.com/wix/wixmadefor)
-- 19 glyphs from Zalando Sans (OFL-1.1). Copyright 2025 The Zalando Sans Project Authors (https://github.com/zalando/sans), with Reserved Font Name “Zalando”
+- 1 glyph from SN Pro (OFL-1.1). Copyright 2024 The SN Pro Project Authors (https://github.com/supernotes/sn-pro)
+- 8 glyphs from Source Sans 3 (OFL-1.1). Copyright 2010-2020 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'. All Rights Reserved. Source is a trademark of Adobe in the United States and/or other countries.
+- 69 glyphs from Zalando Sans (OFL-1.1). Copyright 2025 The Zalando Sans Project Authors (https://github.com/zalando/sans), with Reserved Font Name “Zalando”
 
 The build scripts are in scripts/fonts/ of the SuiteLeaf repository.
 

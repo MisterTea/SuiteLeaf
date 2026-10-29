@@ -13,8 +13,8 @@ Characters the source font lacks were filled with glyphs from these fonts, scale
 the same way (counts are across it). Each keeps its own license, reproduced below; all are
 compatible with the license of the whole font.
 
-- 458 glyphs from LXGW WenKai Mono TC (OFL-1.1). Copyright 2024 The LXGW WenKai Project Authors (https://github.com/lxgw/LxgwWenkaiTC)
-- 119 glyphs from Noto Sans (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
+- 425 glyphs from LXGW WenKai Mono TC (OFL-1.1). Copyright 2024 The LXGW WenKai Project Authors (https://github.com/lxgw/LxgwWenkaiTC)
+- 152 glyphs from Noto Sans (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
 
 The build scripts are in scripts/fonts/ of the SuiteLeaf repository.
 

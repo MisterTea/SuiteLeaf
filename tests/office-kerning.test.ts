@@ -1,6 +1,6 @@
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
-import { createFile, fontKerning, kerningThreshold, type DocFile, type SlideElement } from "../packages/core/src";
+import { createFile, fontKerning, kernFeature, kerningThreshold, type DocFile, type SlideElement } from "../packages/core/src";
 import { documentHtml, documentPageSettings } from "../packages/core/src/document-layout";
 import { exportDocx } from "../packages/core/src/docx-export";
 import { importOffice } from "../packages/core/src/office";
@@ -21,6 +21,12 @@ describe("kerning threshold", () => {
     expect(fontKerning(12, 11.5)).toBe("none");
     expect(fontKerning(0, 40)).toBe("none");
     expect(fontKerning(undefined, 40)).toBe("none");
+  });
+
+  it("turns the kern feature off wherever text is not kerned", () => {
+    expect(kernFeature(12, 12)).toBe("normal");
+    expect(kernFeature(12, 11.5)).toBe('"kern" 0');
+    expect(kernFeature(undefined, 40)).toBe('"kern" 0');
   });
 
   it("stores only finite positive sizes", () => {

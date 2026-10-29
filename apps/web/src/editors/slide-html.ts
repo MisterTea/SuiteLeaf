@@ -1,4 +1,4 @@
-import { fontKerning, type Presentation } from "@suiteleaf/core";
+import { fontKerning, kernFeature, type Presentation } from "@suiteleaf/core";
 import { marpMediaSrc } from "./slide-marp-import";
 import { escapeHtml, hasTextRuns, textInnerHtml } from "./slide-runs";
 
@@ -25,7 +25,7 @@ export function deckToHtml(deck: Presentation, title: string): string {
               el.wordArt && el.stroke
                 ? `-webkit-text-stroke:${el.strokeWidth || 2}px ${el.stroke};paint-order:stroke fill;-webkit-text-fill-color:currentColor;`
                 : "";
-            const style = `${pos} font-size: ${(el.fontSize || 20) * 1.5}px; font-weight: ${weight}; font-style: ${hasTextRuns(el) ? "normal" : el.italic ? "italic" : "normal"}; color: ${el.color || "#1e293b"}; text-align: ${el.align || "left"}; white-space: pre-wrap; word-break: break-word; font-kerning: ${fontKerning(el.kern, el.fontSize || 20)}; font-family: ${family};${outline}`;
+            const style = `${pos} font-size: ${(el.fontSize || 20) * 1.5}px; font-weight: ${weight}; font-style: ${hasTextRuns(el) ? "normal" : el.italic ? "italic" : "normal"}; color: ${el.color || "#1e293b"}; text-align: ${el.align || "left"}; white-space: pre-wrap; word-break: break-word; font-kerning: ${fontKerning(el.kern, el.fontSize || 20)}; font-feature-settings: ${kernFeature(el.kern, el.fontSize || 20)}; font-family: ${family};${outline}`;
             return `<div style="${style}">${textInnerHtml(el)}</div>`;
           }
           if (el.type === "image" && el.src) {

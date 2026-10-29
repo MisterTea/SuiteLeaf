@@ -24,7 +24,7 @@ import Subscript from "@tiptap/extension-subscript";
 import { Extension, findParentNode } from "@tiptap/core";
 import { ySyncPlugin, prosemirrorJSONToYXmlFragment } from "y-prosemirror";
 import type * as Y from "yjs";
-import { blockTexts, fontKerning, syncParagraphTexts } from "@suiteleaf/core";
+import { blockTexts, fontKerning, kernFeature, syncParagraphTexts } from "@suiteleaf/core";
 import { CellSelection } from "@tiptap/pm/tables";
 import CharacterCount from "@tiptap/extension-character-count";
 import DOMPurify from "dompurify";
@@ -2608,6 +2608,7 @@ export default function Docs({
                 "--page-width": `${dimensions.width}px`,
                 "--page-height": `${dimensions.height}px`,
                 "--doc-kerning": fontKerning(shownSettings.kern, BODY_POINTS),
+                "--doc-kern-feature": kernFeature(shownSettings.kern, BODY_POINTS),
                 "--doc-font": bodyFontFamily(shownSettings.font),
                 "--page-margin": `${shownSettings.marginTop}px`,
                 "--page-margin-top": `${shownSettings.marginTop}px`,

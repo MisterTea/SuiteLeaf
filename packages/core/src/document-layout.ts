@@ -1,6 +1,6 @@
 import type { JsonNode } from "./index";
 import { bodyEdgeInsets, resolveEdgePx } from "./header-edge";
-import { fontKerning, kerningThreshold } from "./kerning";
+import { fontKerning, kernFeature, kerningThreshold } from "./kerning";
 
 /** Body text size in documents. Kerning follows it; headings do not change it. */
 export const BODY_POINTS = 11;
@@ -1095,7 +1095,7 @@ main { position: relative; z-index: 1; }`
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title>
 <style>
-body { position: relative; max-width: ${width / 96}in; margin: 0 auto; padding: ${padding}; box-sizing: border-box; font: 11pt/1.5 ${bodyFontFamily(settings.font)}; font-kerning: ${fontKerning(settings.kern, BODY_POINTS)}; }
+body { position: relative; max-width: ${width / 96}in; margin: 0 auto; padding: ${padding}; box-sizing: border-box; font: 11pt/1.5 ${bodyFontFamily(settings.font)}; font-kerning: ${fontKerning(settings.kern, BODY_POINTS)}; font-feature-settings: ${kernFeature(settings.kern, BODY_POINTS)}; }
 .page-header, .page-footer, .section-header, .section-footer { color: #555; font-size: 10pt; line-height: 16px; white-space: pre-wrap; }
 .page-header { position: absolute; top: ${layout.headerFromEdge / 96}in; left: ${settings.marginLeft / 96}in; right: ${settings.marginRight / 96}in; margin: 0; }
 .page-footer { position: absolute; bottom: ${layout.footerFromEdge / 96}in; left: ${settings.marginLeft / 96}in; right: ${settings.marginRight / 96}in; margin: 0; }

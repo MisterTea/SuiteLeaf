@@ -13,10 +13,10 @@ Characters the source font lacks were filled with glyphs from these fonts, scale
 the same way (counts are across its styles). Each keeps its own license, reproduced below; all are
 compatible with the license of the whole font.
 
-- 2 glyphs from 42dot Sans (OFL-1.1). ﻿Copyright 2024 The 42dot Sans Project Authors (https://github.com/42dot/42dot-Sans).
-- 6 glyphs from Chiron Hei HK (OFL-1.1). Copyright 2025 The Chiron Hei HK Project Authors (https://github.com/chiron-fonts/chiron-hei-hk).
-- 17 glyphs from Gothic A1 (OFL-1.1). (C) Copyright HanYang I&C Co.,Ltd. All rights reserved.
-- 31 glyphs from Noto Sans (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
+- 1 glyph from 42dot Sans (OFL-1.1). ﻿Copyright 2024 The 42dot Sans Project Authors (https://github.com/42dot/42dot-Sans).
+- 18 glyphs from Chiron Hei HK (OFL-1.1). Copyright 2025 The Chiron Hei HK Project Authors (https://github.com/chiron-fonts/chiron-hei-hk).
+- 27 glyphs from Gothic A1 (OFL-1.1). (C) Copyright HanYang I&C Co.,Ltd. All rights reserved.
+- 10 glyphs from Noto Sans (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
 
 The build scripts are in scripts/fonts/ of the SuiteLeaf repository.
 

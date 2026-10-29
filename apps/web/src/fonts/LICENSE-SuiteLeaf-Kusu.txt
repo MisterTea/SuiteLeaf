@@ -13,11 +13,11 @@ Characters the source font lacks were filled with glyphs from these fonts, scale
 the same way (counts are across it). Each keeps its own license, reproduced below; all are
 compatible with the license of the whole font.
 
-- 228 glyphs from Chiron Hei HK (OFL-1.1). Copyright 2025 The Chiron Hei HK Project Authors (https://github.com/chiron-fonts/chiron-hei-hk).
-- 84 glyphs from IBM Plex Sans JP (OFL-1.1). Copyright © 2017 IBM Corp. with Reserved Font Name "Plex"
-- 32 glyphs from Noto Sans (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
-- 207 glyphs from Noto Sans JP (OFL-1.1). Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'
-- 246 glyphs from RocknRoll One (OFL-1.1). Copyright 2020 The RocknRoll Project Authors (https://github.com/fontworks-fonts/RocknRoll)
+- 163 glyphs from Chiron Hei HK (OFL-1.1). Copyright 2025 The Chiron Hei HK Project Authors (https://github.com/chiron-fonts/chiron-hei-hk).
+- 1 glyph from IBM Plex Sans JP (OFL-1.1). Copyright © 2017 IBM Corp. with Reserved Font Name "Plex"
+- 27 glyphs from Noto Sans (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
+- 200 glyphs from Noto Sans JP (OFL-1.1). Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'
+- 406 glyphs from RocknRoll One (OFL-1.1). Copyright 2020 The RocknRoll Project Authors (https://github.com/fontworks-fonts/RocknRoll)
 
 The build scripts are in scripts/fonts/ of the SuiteLeaf repository.
 

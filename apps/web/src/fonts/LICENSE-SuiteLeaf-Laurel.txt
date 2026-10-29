@@ -13,11 +13,10 @@ Characters the source font lacks were filled with glyphs from these fonts, scale
 the same way (counts are across its styles). Each keeps its own license, reproduced below; all are
 compatible with the license of the whole font.
 
-- 1 glyph from Ancizar Sans (OFL-1.1). Copyright 2014 The Ancizar Sans Project Authors (https://github.com/UNAL-OMD/UNAL-Ancizar)
 - 2 glyphs from Asap Sharp (OFL-1.1). Copyright 2026 The Asap Sharp Project Authors (https://github.com/Omnibus-Type/Asap_Sharp)
 - 2 glyphs from Noto Sans (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
 - 4 glyphs from Noto Sans Symbols 2 (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
-- 79 glyphs from Noto Serif (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
+- 76 glyphs from Noto Serif (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
 
 The build scripts are in scripts/fonts/ of the SuiteLeaf repository.
 

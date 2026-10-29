@@ -6,13 +6,16 @@ and line metrics were set from that font's layout. Where that font joins letters
 ligature glyph was made from this font's own letters, moved closer together. No outline shape was
 otherwise changed.
 
+Arabic and Hebrew text lays out close to, but not exactly as, Lucida Handwriting: this font
+chooses contextual forms and ligatures differently there, so lines can be slightly wider or narrower.
+
 Characters the source font lacks were filled with glyphs from these fonts, scaled and centered
 the same way (counts are across it). Each keeps its own license, reproduced below; all are
 compatible with the license of the whole font.
 
 - 9 glyphs from Noto Sans Math (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/math)
-- 1 glyph from Noto Serif (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
-- 7 glyphs from Rasa (OFL-1.1). Copyright 2015 The Yrsa-Rasa Project Authors (https://github.com/rosettatype/yrsa-rasa/)
+- 2 glyphs from Noto Serif (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
+- 6 glyphs from Rasa (OFL-1.1). Copyright 2015 The Yrsa-Rasa Project Authors (https://github.com/rosettatype/yrsa-rasa/)
 
 The build scripts are in scripts/fonts/ of the SuiteLeaf repository.
 

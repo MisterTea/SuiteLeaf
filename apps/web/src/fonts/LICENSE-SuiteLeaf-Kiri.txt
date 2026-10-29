@@ -15,8 +15,8 @@ compatible with the license of the whole font.
 
 - 28 glyphs from BIZ UDMincho (OFL-1.1). Copyright 2022 The BIZ UDMincho Project Authors (https://github.com/googlefonts/morisawa-biz-ud-mincho)
 - 2 glyphs from Chiron Sung HK (OFL-1.1). Copyright 2025 The Chiron Sung HK Project Authors (https://github.com/chiron-fonts/chiron-sung-hk).
-- 126 glyphs from LXGW WenKai Mono TC (OFL-1.1). Copyright 2024 The LXGW WenKai Project Authors (https://github.com/lxgw/LxgwWenkaiTC)
-- 20 glyphs from Noto Sans (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
+- 129 glyphs from LXGW WenKai Mono TC (OFL-1.1). Copyright 2024 The LXGW WenKai Project Authors (https://github.com/lxgw/LxgwWenkaiTC)
+- 17 glyphs from Noto Sans (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
 
 The build scripts are in scripts/fonts/ of the SuiteLeaf repository.
 

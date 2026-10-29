@@ -6,16 +6,19 @@ and line metrics were set from that font's layout. Where that font joins letters
 ligature glyph was made from this font's own letters, moved closer together. No outline shape was
 otherwise changed.
 
+Arabic and Hebrew text lays out close to, but not exactly as, Engravers: this font
+chooses contextual forms and ligatures differently there, so lines can be slightly wider or narrower.
+
 Characters the source font lacks were filled with glyphs from these fonts, scaled and centered
 the same way (counts are across its styles). Each keeps its own license, reproduced below; all are
 compatible with the license of the whole font.
 
-- 7 glyphs from Chonburi (OFL-1.1). Copyright (c) 2015, Cadson Demak (info@cadsondemak.com)
-- 4 glyphs from Genos (OFL-1.1). Copyright 2011 The Genos Project Authors (https://github.com/googlefonts/genos)
-- 15 glyphs from Noto Sans Math (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/math)
-- 1 glyph from Noto Sans Symbols 2 (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
-- 5 glyphs from Noto Serif (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
-- 4 glyphs from Rozha One (OFL-1.1). Copyright (c) 2014, Indian Type Foundry (info@indiantypefoundry.com).
+- 12 glyphs from Chonburi (OFL-1.1). Copyright (c) 2015, Cadson Demak (info@cadsondemak.com)
+- 2 glyphs from Genos (OFL-1.1). Copyright 2011 The Genos Project Authors (https://github.com/googlefonts/genos)
+- 16 glyphs from Noto Sans Math (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/math)
+- 3 glyphs from Noto Sans Symbols 2 (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
+- 1 glyph from Noto Serif (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
+- 2 glyphs from Rozha One (OFL-1.1). Copyright (c) 2014, Indian Type Foundry (info@indiantypefoundry.com).
 
 The build scripts are in scripts/fonts/ of the SuiteLeaf repository.
 

@@ -6,6 +6,9 @@ and line metrics were set from that font's layout. Where that font joins letters
 ligature glyph was made from this font's own letters, moved closer together. No outline shape was
 otherwise changed.
 
+Arabic and Hebrew text lays out close to, but not exactly as, Lucida Blackletter: this font
+chooses contextual forms and ligatures differently there, so lines can be slightly wider or narrower.
+
 The build scripts are in scripts/fonts/ of the SuiteLeaf repository.
 
 The font is distributed under the SIL Open Font License 1.1, below.

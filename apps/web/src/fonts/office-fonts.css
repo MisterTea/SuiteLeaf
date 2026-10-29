@@ -1764,6 +1764,20 @@
   font-display: block;
 }
 @font-face {
+  font-family: "Gabriola";
+  src: url("./suiteleaf-cherry-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "SuiteLeaf Cherry";
+  src: url("./suiteleaf-cherry-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
   font-family: "Gill Sans MT";
   src: url("./suiteleaf-plum-bold-italic.woff2") format("woff2");
   font-weight: 700;
@@ -3117,6 +3131,20 @@
 @font-face {
   font-family: "SuiteLeaf Bay";
   src: url("./suiteleaf-bay-bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "Segoe Script";
+  src: url("./suiteleaf-elder-bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "SuiteLeaf Elder";
+  src: url("./suiteleaf-elder-bold.woff2") format("woff2");
   font-weight: 700;
   font-style: normal;
   font-display: block;

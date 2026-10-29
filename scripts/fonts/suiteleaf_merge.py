@@ -27,6 +27,14 @@ SCRIPTS = {"ARABIC": "arab", "HEBREW": "hebr"}
 LAYOUT = ["ccmp", "locl", "isol", "init", "medi", "fina", "rlig", "liga", "calt", "rclt", "mark", "mkmk", "curs"]
 
 
+def set_units(font, upem):
+    """Lay the scaled outlines out at `upem` units. Browsers draw CFF outlines by the font matrix, not by
+    the head units HarfBuzz uses, so the matrix must say the same."""
+    font["head"].unitsPerEm = upem
+    if "CFF " in font:
+        font["CFF "].cff.topDictIndex[0].FontMatrix = [1 / upem, 0, 0, 1 / upem, 0, 0]
+
+
 def keep_glyph_names(font):
     """Store glyph names (post format 2); SuiteLeaf's spacing rules refer to glyphs by name."""
     post = font["post"]
@@ -82,7 +90,7 @@ def prepare(path, coords, cps, office, out_upem, prefix):
     sub.populate(unicodes=[c for c in cps if c in font.getBestCmap()])
     sub.subset(font)
     scale_upem(font, round(out_upem * s))
-    font["head"].unitsPerEm = out_upem
+    set_units(font, out_upem)
     # Rename every glyph before merging so names never collide with the base font.
     buf = io.BytesIO()
     keep_glyph_names(font)
@@ -112,6 +120,10 @@ def merge(base, donor):
 
 def _shift_lookup_refs(table, offset):
     """Chaining lookups point at other lookups by index; move those indices by `offset`."""
+    _remap_lookup_refs(table, lambda i: i + offset)
+
+
+def _remap_lookup_refs(table, new_index):
     seen = set()
 
     def visit(obj):
@@ -121,7 +133,7 @@ def _shift_lookup_refs(table, offset):
         for key, value in vars(obj).items():
             if key.endswith("LookupRecord") and isinstance(value, list):
                 for rec in value:
-                    rec.LookupListIndex += offset
+                    rec.LookupListIndex = new_index(rec.LookupListIndex)
             elif isinstance(value, list):
                 for item in value:
                     visit(item)
@@ -130,6 +142,74 @@ def _shift_lookup_refs(table, offset):
 
     for lookup in table.LookupList.Lookup:
         visit(lookup)
+
+
+def graft_by_script(font, layout):
+    """Add another table's lookups to the font's, each script's to that script only: a face with lookups
+    for each script (Segoe Script kerns Latin, Greek and Cyrillic apart) must not apply them all at once.
+    The font's own lookups for a feature stay in it for every script."""
+    tag = layout.tableTag
+    src = copy.deepcopy(layout.table)
+    if tag not in font:
+        font[tag] = newTable(tag)
+        font[tag].table = src
+        return
+    dst = font[tag].table
+    offset = len(dst.LookupList.Lookup)
+    _shift_lookup_refs(src, offset)
+    dst.LookupList.Lookup += src.LookupList.Lookup
+    dst.LookupList.LookupCount = len(dst.LookupList.Lookup)
+    scripts = {sr.ScriptTag: sr.Script for sr in src.ScriptList.ScriptRecord}
+    records = dst.FeatureList.FeatureRecord
+    have = {sr.ScriptTag for sr in dst.ScriptList.ScriptRecord}
+    default = next((sr.Script for sr in dst.ScriptList.ScriptRecord if sr.ScriptTag == "DFLT"), None)
+    for script_tag in sorted(set(scripts) - have):
+        new = otTables.ScriptRecord()
+        new.ScriptTag = script_tag
+        new.Script = copy.deepcopy(default) if default else otTables.Script()
+        new.Script.LangSysRecord = []
+        new.Script.LangSysCount = 0
+        dst.ScriptList.ScriptRecord.append(new)
+    dst.ScriptList.ScriptRecord.sort(key=lambda sr: sr.ScriptTag)
+    dst.ScriptList.ScriptCount = len(dst.ScriptList.ScriptRecord)
+    for sr in dst.ScriptList.ScriptRecord:
+        script = scripts.get(sr.ScriptTag) or scripts.get("DFLT") or scripts.get("latn")
+        if script is None or script.DefaultLangSys is None:
+            continue
+        wanted = {}
+        for i in script.DefaultLangSys.FeatureIndex:
+            fr = src.FeatureList.FeatureRecord[i]
+            wanted.setdefault(fr.FeatureTag, set()).update(j + offset for j in fr.Feature.LookupListIndex)
+        langsystems = [sr.Script.DefaultLangSys] + [lr.LangSys for lr in sr.Script.LangSysRecord]
+        for ls in (ls for ls in langsystems if ls is not None):
+            for feature_tag, lookups in sorted(wanted.items()):
+                existing = [k for k in ls.FeatureIndex if records[k].FeatureTag == feature_tag]
+                ours = {j for k in existing for j in records[k].Feature.LookupListIndex}
+                fr = otTables.FeatureRecord()
+                fr.FeatureTag = feature_tag
+                fr.Feature = otTables.Feature()
+                fr.Feature.FeatureParams = None
+                fr.Feature.LookupListIndex = sorted(ours | lookups)
+                fr.Feature.LookupCount = len(fr.Feature.LookupListIndex)
+                records.append(fr)
+                ls.FeatureIndex = [k for k in ls.FeatureIndex if k not in existing] + [len(records) - 1]
+                ls.FeatureCount = len(ls.FeatureIndex)
+    dst.FeatureList.FeatureCount = len(records)
+
+
+def lookups_first(table, feature_tags):
+    """Move the lookups of features in `feature_tags` ahead of the others, keeping each group's order:
+    HarfBuzz applies lookups in list order, whatever their features."""
+    lookups = table.LookupList.Lookup
+    first = {i for fr in table.FeatureList.FeatureRecord if fr.FeatureTag in feature_tags for i in fr.Feature.LookupListIndex}
+    order = sorted(range(len(lookups)), key=lambda i: (i not in first, i))
+    if order == list(range(len(lookups))):
+        return
+    new = {old: n for n, old in enumerate(order)}
+    _remap_lookup_refs(table, new.__getitem__)
+    table.LookupList.Lookup = [lookups[i] for i in order]
+    for fr in table.FeatureList.FeatureRecord:
+        fr.Feature.LookupListIndex = sorted(new[i] for i in fr.Feature.LookupListIndex)
 
 
 def promote_extensions(table, tag):

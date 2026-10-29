@@ -13,20 +13,18 @@ Characters the source font lacks were filled with glyphs from these fonts, scale
 the same way (counts are across its styles). Each keeps its own license, reproduced below; all are
 compatible with the license of the whole font.
 
-- 3 glyphs from Charis SIL (OFL-1.1). Copyright (c) 1997-2022 SIL International (http://www.sil.org/)
-with Reserved Font Names "Charis" and "SIL".
-- 84 glyphs from Chiron Sung HK (OFL-1.1). Copyright 2025 The Chiron Sung HK Project Authors (https://github.com/chiron-fonts/chiron-sung-hk).
-- 27 glyphs from Libertinus Serif (OFL-1.1). Copyright 2025 The Libertinus Keyboard Project Authors (https://github.com/googlefonts/libertinus)
+- 65 glyphs from Chiron Sung HK (OFL-1.1). Copyright 2025 The Chiron Sung HK Project Authors (https://github.com/chiron-fonts/chiron-sung-hk).
+- 41 glyphs from Libertinus Serif (OFL-1.1). Copyright 2025 The Libertinus Keyboard Project Authors (https://github.com/googlefonts/libertinus)
 Copyright 2025 The Libertinus Math Project Authors (https://github.com/googlefonts/libertinus)
 Copyright 2025 The Libertinus Mono Project Authors (https://github.com/googlefonts/libertinus)
 Copyright 2025 The Libertinus Sans Project Authors (https://github.com/googlefonts/libertinus)
 Copyright 2025 The Libertinus Serif Project Authors (https://github.com/googlefonts/libertinus)
 Copyright 2025 The Libertinus Serif Display Project Authors (https://github.com/googlefonts/libertinus)
 Copyright 2025 The Libertinus Serif Initials Project Authors (https://github.com/googlefonts/libertinus)
-- 84 glyphs from Noto Sans Symbols (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
-- 40 glyphs from Noto Serif (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
-- 2 glyphs from Spectral (OFL-1.1). Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral)
-- 4 glyphs from Spectral SC (OFL-1.1). Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral)
+- 83 glyphs from Noto Sans Symbols (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
+- 51 glyphs from Noto Serif (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
+- 3 glyphs from Spectral (OFL-1.1). Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral)
+- 1 glyph from Spectral SC (OFL-1.1). Copyright 2017 The Spectral Project Authors (https://github.com/productiontype/Spectral)
 
 The build scripts are in scripts/fonts/ of the SuiteLeaf repository.
 

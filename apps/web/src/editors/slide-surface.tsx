@@ -10,7 +10,7 @@ import {
   type SVGProps,
   type TdHTMLAttributes,
 } from "react";
-import { fontKerning, lineFrame, slidePointScale, type Presentation, type Slide, type SlideElement } from "@suiteleaf/core";
+import { fontKerning, kernFeature, lineFrame, slidePointScale, type Presentation, type Slide, type SlideElement } from "@suiteleaf/core";
 import { AutofitBox, autofitSignature } from "./slide-autofit";
 import { MarpBackdrop, type MarpPages } from "./slide-marp-backdrop";
 import { marpMediaSrc } from "./slide-marp-import";
@@ -194,6 +194,7 @@ export function SlideFace({
                   : `calc(${el.fontSize || 20} * var(--slide-pt, 1) * 1px)`,
                 ...boxFont(el),
                 fontKerning: fontKerning(el.kern, el.fontSize || 20),
+                fontFeatureSettings: kernFeature(el.kern, el.fontSize || 20),
                 fontFamily: el.fontFamily || "Arial",
                 color: el.color || "#1e293b",
                 textAlign: el.align || "left",

@@ -13,8 +13,8 @@ Characters the source font lacks were filled with glyphs from these fonts, scale
 the same way (counts are across it). Each keeps its own license, reproduced below; all are
 compatible with the license of the whole font.
 
-- 504 glyphs from LXGW WenKai Mono TC (OFL-1.1). Copyright 2024 The LXGW WenKai Project Authors (https://github.com/lxgw/LxgwWenkaiTC)
-- 20990 glyphs from Noto Serif SC (OFL-1.1). Copyright 2012 Google Inc. All Rights Reserved.
+- 10089 glyphs from LXGW WenKai Mono TC (OFL-1.1). Copyright 2024 The LXGW WenKai Project Authors (https://github.com/lxgw/LxgwWenkaiTC)
+- 11405 glyphs from Noto Serif SC (OFL-1.1). Copyright 2012 Google Inc. All Rights Reserved.
 
 The build scripts are in scripts/fonts/ of the SuiteLeaf repository.
 

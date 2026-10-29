@@ -14,7 +14,7 @@ the same way (counts are across it). Each keeps its own license, reproduced belo
 compatible with the license of the whole font.
 
 - 83 glyphs from Arimo (OFL-1.1). Copyright 2026 The Arimo Project Authors (https://github.com/googlefonts/arimo)
-- 12594 glyphs from Chiron Sung HK (OFL-1.1). Copyright 2025 The Chiron Sung HK Project Authors (https://github.com/chiron-fonts/chiron-sung-hk).
+- 12593 glyphs from Chiron Sung HK (OFL-1.1). Copyright 2025 The Chiron Sung HK Project Authors (https://github.com/chiron-fonts/chiron-sung-hk).
 - 105 glyphs from WDXL Lubrifont SC (OFL-1.1). Copyright 2025 The WDXL Lubrifont Project Authors (https://github.com/NightFurySL2001/WD-XL-font)
 Copyright 2018-2020 The ZCOOL QingKe HuangYou Project Authors (https://www.github.com/googlefonts/zcool-qingke-huangyou)
 

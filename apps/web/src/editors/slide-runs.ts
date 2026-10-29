@@ -1,4 +1,4 @@
-import { fontKerning, type SlideElement, type TextRun } from "@suiteleaf/core";
+import { fontKerning, kernFeature, type SlideElement, type TextRun } from "@suiteleaf/core";
 
 /**
  * Per-word styles live on runs. The box itself stays on the theme: a bold or
@@ -167,7 +167,7 @@ export function runsToHtml(runs: readonly TextRun[], kern?: number): string {
       }
       if (run.fontSize) {
         styles.push(`font-size:calc(${run.fontSize} * var(--slide-pt, 1) * 1px)`);
-        if (kern) styles.push(`font-kerning:${fontKerning(kern, run.fontSize)}`);
+        if (kern) styles.push(`font-kerning:${fontKerning(kern, run.fontSize)}`, `font-feature-settings:${kernFeature(kern, run.fontSize)}`);
         data.push(`data-font-size="${run.fontSize}"`);
       }
       if (run.caps === "all") styles.push("text-transform:uppercase");

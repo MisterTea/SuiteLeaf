@@ -13,14 +13,14 @@ Characters the source font lacks were filled with glyphs from these fonts, scale
 the same way (counts are across its styles). Each keeps its own license, reproduced below; all are
 compatible with the license of the whole font.
 
-- 3714 glyphs from BIZ UDMincho (OFL-1.1). Copyright 2022 The BIZ UDMincho Project Authors (https://github.com/googlefonts/morisawa-biz-ud-mincho)
-- 4610 glyphs from Chocolate Classical Sans (OFL-1.1). Copyright 2024 The Chocolate Classical Sans Project Authors (https://github.com/MoonlitOwen/ChocolateSans)
+- 3712 glyphs from BIZ UDMincho (OFL-1.1). Copyright 2022 The BIZ UDMincho Project Authors (https://github.com/googlefonts/morisawa-biz-ud-mincho)
+- 4606 glyphs from Chocolate Classical Sans (OFL-1.1). Copyright 2024 The Chocolate Classical Sans Project Authors (https://github.com/MoonlitOwen/ChocolateSans)
 - 157 glyphs from Google Sans (OFL-1.1). Copyright 2025 The Google Sans Project Authors (https://github.com/googlefonts/googlesans)
 - 508 glyphs from IBM Plex Sans JP (OFL-1.1). Copyright © 2017 IBM Corp. with Reserved Font Name "Plex"
 - 60 glyphs from Kiwi Maru (OFL-1.1). Copyright 2020 The Kiwi Maru Project Authors (https://github.com/Kiwi-KawagotoKajiru/Kiwi-Maru)
-- 12883 glyphs from LXGW WenKai Mono TC (OFL-1.1). Copyright 2024 The LXGW WenKai Project Authors (https://github.com/lxgw/LxgwWenkaiTC)
-- 240 glyphs from M PLUS 1p (OFL-1.1). Copyright 2016 The M+ Project Authors.
-- 11532 glyphs from Noto Sans JP (OFL-1.1). Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'
+- 12890 glyphs from LXGW WenKai Mono TC (OFL-1.1). Copyright 2024 The LXGW WenKai Project Authors (https://github.com/lxgw/LxgwWenkaiTC)
+- 238 glyphs from M PLUS 1p (OFL-1.1). Copyright 2016 The M+ Project Authors.
+- 11533 glyphs from Noto Sans JP (OFL-1.1). Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'
 
 The build scripts are in scripts/fonts/ of the SuiteLeaf repository.
 

@@ -9599,7 +9599,8 @@
      },
      "style": "Bold",
      "options": {
-      "fit": true
+      "fit": true,
+      "port": ["clig", "liga", "calt", "kern"]
      },
      "donors": [
       [

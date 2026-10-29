@@ -13,12 +13,13 @@ Characters the source font lacks were filled with glyphs from these fonts, scale
 the same way (counts are across it). Each keeps its own license, reproduced below; all are
 compatible with the license of the whole font.
 
-- 10 glyphs from Castoro (OFL-1.1). Copyright 2020 The Castoro Project Authors (https://github.com/TiroTypeworks/Castoro)
-- 1 glyph from Donegal One (OFL-1.1). Copyright (c) 2012 by Sorkin Type Co (www.sorkintype.com), with Reserved Font Name 'Donegal'
+- 7 glyphs from Buenard (OFL-1.1). Copyright 2011-2025 The Buenard Project Authors (https://github.com/googlefonts/buenard)
+- 12 glyphs from Castoro (OFL-1.1). Copyright 2020 The Castoro Project Authors (https://github.com/TiroTypeworks/Castoro)
+- 137 glyphs from Donegal One (OFL-1.1). Copyright (c) 2012 by Sorkin Type Co (www.sorkintype.com), with Reserved Font Name 'Donegal'
 
 Donegal is a trademark of Sorkin Type Co.
-- 11 glyphs from Noto Serif (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
-- 158 glyphs from Vollkorn (OFL-1.1). Copyright 2017 The Vollkorn Project Authors (https://github.com/FAlthausen/Vollkorn-Typeface)
+- 6 glyphs from Noto Serif (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
+- 18 glyphs from Vollkorn (OFL-1.1). Copyright 2017 The Vollkorn Project Authors (https://github.com/FAlthausen/Vollkorn-Typeface)
 
 The build scripts are in scripts/fonts/ of the SuiteLeaf repository.
 

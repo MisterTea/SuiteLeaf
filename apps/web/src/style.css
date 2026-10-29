@@ -1803,6 +1803,7 @@ a {
   flex-shrink: 1;
   box-sizing: border-box;
   font-kerning: var(--doc-kerning, none);
+  font-feature-settings: var(--doc-kern-feature, "kern" 0);
 }
 .document-content {
   padding: 72px 96px;
@@ -1810,6 +1811,7 @@ a {
   outline: 0;
   font-size: 11pt;
   font-kerning: var(--doc-kerning, none);
+  font-feature-settings: var(--doc-kern-feature, "kern" 0);
   line-height: 1.333333;
   font-family: var(--doc-font, Arial, sans-serif);
   color: #000000;
@@ -6913,6 +6915,17 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 }
 .notice + .welcome {
   margin-top: 36px;
+}
+.font-engine-notice {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  z-index: 1000;
+  width: max-content;
+  max-width: min(640px, calc(100vw - 32px));
+  margin: 0;
+  transform: translateX(-50%);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
 }
 .sign-in-ended {
   margin: 0 0 14px;

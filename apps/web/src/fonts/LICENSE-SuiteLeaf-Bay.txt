@@ -6,17 +6,19 @@ and line metrics were set from that font's layout. Where that font joins letters
 ligature glyph was made from this font's own letters, moved closer together. No outline shape was
 otherwise changed.
 
+Arabic and Hebrew text lays out close to, but not exactly as, Segoe Print: this font
+chooses contextual forms and ligatures differently there, so lines can be slightly wider or narrower.
+
 Characters the source font lacks were filled with glyphs from these fonts, scaled and centered
 the same way (counts are across it). Each keeps its own license, reproduced below; all are
 compatible with the license of the whole font.
 
-- 61 glyphs from Chiron GoRound TC (OFL-1.1). Copyright 2025 The Chiron GoRound TC Project Authors (https://github.com/chiron-fonts/chiron-go-round-tc)
-- 2 glyphs from Comic Relief (OFL-1.1). Copyright 2013 The Comic Relief Project Authors (https://github.com/loudifier/Comic-Relief)
-- 1 glyph from K2D (OFL-1.1). Copyright 2018 The K2D Project Authors (https://github.com/cadsondemak/K2D)
-- 22 glyphs from Noto Sans Math (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/math)
-- 1 glyph from Noto Sans Symbols 2 (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
-- 5 glyphs from Noto Serif (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
-- 19 glyphs from Overpass (OFL-1.1). Copyright 2021 The Overpass Project Authors (https://github.com/RedHatOfficial/Overpass)
+- 51 glyphs from Chiron GoRound TC (OFL-1.1). Copyright 2025 The Chiron GoRound TC Project Authors (https://github.com/chiron-fonts/chiron-go-round-tc)
+- 20 glyphs from Comic Relief (OFL-1.1). Copyright 2013 The Comic Relief Project Authors (https://github.com/loudifier/Comic-Relief)
+- 6 glyphs from Noto Sans Math (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/math)
+- 1 glyph from Noto Sans Symbols (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
+- 3 glyphs from Noto Serif (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
+- 30 glyphs from Overpass (OFL-1.1). Copyright 2021 The Overpass Project Authors (https://github.com/RedHatOfficial/Overpass)
 
 The build scripts are in scripts/fonts/ of the SuiteLeaf repository.
 

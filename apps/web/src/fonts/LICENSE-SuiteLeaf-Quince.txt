@@ -13,21 +13,21 @@ Characters the source font lacks were filled with glyphs from these fonts, scale
 the same way (counts are across its styles). Each keeps its own license, reproduced below; all are
 compatible with the license of the whole font.
 
-- 892 glyphs from Arimo (OFL-1.1). Copyright 2026 The Arimo Project Authors (https://github.com/googlefonts/arimo)
-- 1 glyph from Asap Sharp (OFL-1.1). Copyright 2026 The Asap Sharp Project Authors (https://github.com/Omnibus-Type/Asap_Sharp)
-- 288 glyphs from Google Sans (OFL-1.1). Copyright 2025 The Google Sans Project Authors (https://github.com/googlefonts/googlesans)
-- 2504 glyphs from Noto Sans (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
-- 1319 glyphs from Noto Sans Arabic (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/arabic)
-- 90 glyphs from Noto Sans Armenian (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/armenian)
+- 113 glyphs from Arimo (OFL-1.1). Copyright 2026 The Arimo Project Authors (https://github.com/googlefonts/arimo)
+- 50 glyphs from Asap Sharp (OFL-1.1). Copyright 2026 The Asap Sharp Project Authors (https://github.com/Omnibus-Type/Asap_Sharp)
+- 313 glyphs from Google Sans (OFL-1.1). Copyright 2025 The Google Sans Project Authors (https://github.com/googlefonts/googlesans)
+- 3133 glyphs from Noto Sans (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
+- 1317 glyphs from Noto Sans Arabic (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/arabic)
+- 4 glyphs from Noto Sans Armenian (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/armenian)
 - 18 glyphs from Noto Sans Coptic (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/coptic)
-- 53 glyphs from Noto Sans HK (OFL-1.1). Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'
+- 99 glyphs from Noto Sans HK (OFL-1.1). Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'
 - 266 glyphs from Noto Sans Hebrew (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/hebrew)
-- 38 glyphs from Noto Sans Math (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/math)
-- 91 glyphs from Noto Sans Symbols (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
-- 11 glyphs from Noto Sans Symbols 2 (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
+- 34 glyphs from Noto Sans Math (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/math)
+- 35 glyphs from Noto Sans Symbols (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
+- 26 glyphs from Noto Sans Symbols 2 (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
 - 2 glyphs from Noto Sans Thaana (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/thaana)
-- 4 glyphs from Sarabun (OFL-1.1). Copyright 2018 The Sarabun Project Authors (https://github.com/cadsondemak/Sarabun)
-- 5 glyphs from Vazirmatn (OFL-1.1). Copyright 2015 The Vazirmatn Project Authors (https://github.com/rastikerdar/vazirmatn)
+- 152 glyphs from Sarabun (OFL-1.1). Copyright 2018 The Sarabun Project Authors (https://github.com/cadsondemak/Sarabun)
+- 20 glyphs from Vazirmatn (OFL-1.1). Copyright 2015 The Vazirmatn Project Authors (https://github.com/rastikerdar/vazirmatn)
 
 The build scripts are in scripts/fonts/ of the SuiteLeaf repository.
 

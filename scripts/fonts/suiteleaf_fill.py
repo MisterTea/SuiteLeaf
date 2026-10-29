@@ -289,7 +289,10 @@ def add_blank(font, name, advance):
 
 
 def canonical_alias(cp, cmap):
-    """A character whose canonical decomposition is a single other character the font has."""
+    """A character whose canonical decomposition is a single other character the font has, or a soft
+    hyphen, which shows as a hyphen at a line end."""
+    if cp == 0xAD:
+        return cmap.get(0x2D)
     d = unicodedata.decomposition(chr(cp))
     if d and not d.startswith("<") and " " not in d:
         target = int(d, 16)

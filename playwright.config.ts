@@ -16,6 +16,12 @@ export default defineConfig({
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
     {
+      // Firefox shapes with HarfBuzz too; the fonts must lay out there as in Chromium.
+      name: "firefox",
+      testMatch: /font-layout\.spec\.ts$/,
+      use: { ...devices["Desktop Firefox"] },
+    },
+    {
       // Same specs as desktop, only the ones that already branch on a narrow
       // window. Storyboards use this same 390×844 Pixel 7 surface.
       name: "mobile",

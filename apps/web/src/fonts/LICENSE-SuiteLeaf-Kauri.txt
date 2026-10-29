@@ -6,12 +6,15 @@ and line metrics were set from that font's layout. Where that font joins letters
 ligature glyph was made from this font's own letters, moved closer together. No outline shape was
 otherwise changed.
 
+Arabic and Hebrew text lays out close to, but not exactly as, Microsoft Yi Baiti: this font
+chooses contextual forms and ligatures differently there, so lines can be slightly wider or narrower.
+
 Characters the source font lacks were filled with glyphs from these fonts, scaled and centered
 the same way (counts are across it). Each keeps its own license, reproduced below; all are
 compatible with the license of the whole font.
 
-- 34 glyphs from Chiron GoRound TC (OFL-1.1). Copyright 2025 The Chiron GoRound TC Project Authors (https://github.com/chiron-fonts/chiron-go-round-tc)
-- 2 glyphs from Gothic A1 (OFL-1.1). (C) Copyright HanYang I&C Co.,Ltd. All rights reserved.
+- 35 glyphs from Chiron GoRound TC (OFL-1.1). Copyright 2025 The Chiron GoRound TC Project Authors (https://github.com/chiron-fonts/chiron-go-round-tc)
+- 1 glyph from Gothic A1 (OFL-1.1). (C) Copyright HanYang I&C Co.,Ltd. All rights reserved.
 - 1 glyph from Noto Sans Math (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/math)
 
 The build scripts are in scripts/fonts/ of the SuiteLeaf repository.
