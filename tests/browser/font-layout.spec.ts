@@ -37,16 +37,21 @@ for (let part = 0; part < PARTS; part++) {
           return outward >= -scale && outward <= grain + scale;
         });
       for (const face of mine) {
-        // A whole number of pixels: Firefox rounds a fractional size.
-        const scale = 2 ** Math.max(0, Math.ceil(Math.log2(face.upem / 2000)));
-        const grain = Math.max(face.upem / 64, 32 * scale);
-        const font = `${face.style} ${face.weight} ${face.upem / scale}px "${face.family}"`;
-        await document.fonts.load(font, face.texts.map(([text]) => text).join(""));
-        if (!document.fonts.check(font)) {
+        const fontAt = (px: number) => `${face.style} ${face.weight} ${px}px "${face.family}"`;
+        await document.fonts.load(fontAt(face.upem), face.texts.map(([text]) => text).join(""));
+        if (!document.fonts.check(fontAt(face.upem))) {
           out.push(`${face.file}: not loaded`);
           continue;
         }
-        ctx.font = font;
+        // Where a full-size face measures short of twice its half size, the size was capped: a power
+        // of two smaller is a whole number of pixels (Firefox rounds a fractional size). Elsewhere the
+        // full size, since Chromium on Linux rounds each glyph's advance to a pixel.
+        const [sample] = face.texts[0];
+        const widthAt = (px: number) => ((ctx.font = fontAt(px)), ctx.measureText(sample).width);
+        const capped = Math.abs(widthAt(face.upem) / widthAt(face.upem / 2) - 2) > 0.01;
+        const scale = capped ? 2 ** Math.max(1, Math.ceil(Math.log2(face.upem / 2000))) : 1;
+        const grain = Math.max(face.upem / 64, 32 * scale);
+        ctx.font = fontAt(face.upem / scale);
         for (const [text, ...modes] of face.texts) {
           modes.forEach(([advance, control, ink], m) => {
             ctx.fontKerning = m === 0 ? "normal" : "none";
