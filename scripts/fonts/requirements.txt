@@ -4,3 +4,4 @@ numpy>=2.0
 pillow>=11.0
 opentype-sanitizer>=9.2
 skia-pathops>=0.9
+freetype-py>=2.5

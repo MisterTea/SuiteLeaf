@@ -9,11 +9,13 @@ with one and two accents.
 """
 import io
 import json
+import math
 import random
 import zlib
 import re
 from pathlib import Path
 
+import freetype
 import uharfbuzz as hb
 from fontTools.pens.boundsPen import BoundsPen, ControlBoundsPen
 from fontTools.ttLib import TTFont
@@ -50,8 +52,31 @@ def advance(font, text):
     return sum(p.x_advance for p in shaped(font, text, True).glyph_positions)
 
 
-def layout(font, glyphs, text, kern):
-    """(advance, control box, ink box) of the shaped text, in font units; boxes are None for blank text."""
+def firefox_pixels(upem):
+    """The size Firefox draws a face at for the test: its units per em, halved until it is at most 2000px."""
+    return upem if upem <= 2000 else upem / 2 ** max(1, math.ceil(math.log2(upem / 2000)))
+
+
+def hinted_box(face, upem, buf):
+    """The ink box FreeType's light hinting (Linux's default, which Firefox uses there) gives the shaped
+    text, in font units: it moves nearly flat tops and bottoms onto one height."""
+    px = firefox_pixels(upem)
+    face.set_char_size(0, round(px * 64))
+    x, box = 0, None
+    for info, p in zip(buf.glyph_infos, buf.glyph_positions):
+        face.load_glyph(info.codepoint, freetype.FT_LOAD_TARGET_LIGHT | freetype.FT_LOAD_NO_BITMAP)
+        if face.glyph.outline.n_points:
+            c = face.glyph.outline.get_cbox()
+            k = upem / px / 64
+            b = (x + p.x_offset + c.xMin * k, p.y_offset + c.yMin * k, x + p.x_offset + c.xMax * k, p.y_offset + c.yMax * k)
+            box = b if box is None else (min(box[0], b[0]), min(box[1], b[1]), max(box[2], b[2]), max(box[3], b[3]))
+        x += p.x_advance
+    return None if box is None else [round(v) for v in box]
+
+
+def layout(font, glyphs, text, kern, face=None):
+    """(advance, control box, ink box[, hinted box]) of the shaped text, in font units; boxes are None for
+    blank text, and the hinted box (hinted_box) is there only where it differs from the ink box."""
     buf = shaped(font, text, kern)
     x, boxes = 0, {ControlBoundsPen: None, BoundsPen: None}
     for info, p in zip(buf.glyph_infos, buf.glyph_positions):
@@ -64,7 +89,9 @@ def layout(font, glyphs, text, kern):
                 boxes[kind] = b if box is None else (min(box[0], b[0]), min(box[1], b[1]), max(box[2], b[2]), max(box[3], b[3]))
         x += p.x_advance
     round_box = lambda b: None if b is None else [round(v) for v in b]
-    return x, round_box(boxes[ControlBoundsPen]), round_box(boxes[BoundsPen])
+    out = [x, round_box(boxes[ControlBoundsPen]), round_box(boxes[BoundsPen])]
+    hinted = hinted_box(face, font.face.upem, buf) if face is not None else None
+    return out + [hinted] if hinted is not None and hinted != out[2] else out
 
 
 def texts_for(ttf, font, chars, seed):
@@ -97,12 +124,13 @@ def fixture():
         ttf.save(data)
         ttf = TTFont(io.BytesIO(data.getvalue()))
         font = hb.Font(hb.Face(hb.Blob(data.getvalue())))
+        face = freetype.Face(io.BytesIO(data.getvalue()))
         chars = set(latin_chars(ttf.getBestCmap() or {}))
         glyphs = ttf.getGlyphSet()
         rows = []
         # Seeded by the file's name, so adding a face leaves the others' texts as they were.
         for text in texts_for(ttf, font, chars, zlib.crc32(file.encode())):
-            rows.append([text] + [list(layout(font, glyphs, text, kern)) for kern in (True, False)])
+            rows.append([text] + [layout(font, glyphs, text, kern, face) for kern in (True, False)])
         # A symbol face (Monotype Sorts) has no Latin text to draw.
         if rows:
             out.append({"file": file, "family": family, "weight": weight, "style": style,
