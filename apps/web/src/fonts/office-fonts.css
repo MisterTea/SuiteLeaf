@@ -5112,6 +5112,13 @@
   font-display: block;
 }
 @font-face {
+  font-family: "Symbol Neu";
+  src: url("./suiteleaf-thistle-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
   font-family: "Tahoma";
   src: url("./suiteleaf-quince-regular.woff2") format("woff2");
   font-weight: 400;

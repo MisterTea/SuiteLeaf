@@ -414,4 +414,5 @@ export const SUITELEAF_TO_OFFICE: Record<string, string> = {
   "SuiteLeaf Yarrow": "MT Extra",
   "SuiteLeaf Yew": "Perpetua Titling MT",
   "SuiteLeaf Yew Light": "Perpetua Titling MT",
+  "Symbol Neu": "Symbol",
 };

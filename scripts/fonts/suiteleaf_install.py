@@ -271,6 +271,10 @@ def unicode_range(omit):
     return ", ".join(parts)
 
 
+# Families earlier builds put in documents, drawn and written back as the face that replaced them.
+RETIRED = {"Symbol Neu": "SuiteLeaf Thistle"}
+
+
 def write_css(office_dir, out):
     """office-fonts.css: an @font-face for each mapped Office face, under its Office family names, so text
     set in an Office font is drawn with the installed equivalent."""
@@ -305,7 +309,10 @@ def write_css(office_dir, out):
                 to_suiteleaf.setdefault(name, our_typographic)
             to_office.setdefault(our_legacy, office_legacy)
             to_office.setdefault(our_typographic, office["name"].getDebugName(16) or office_legacy)
-            for family in font_names(office, 1, 16) + [our_legacy, our_typographic]:
+            retired = [old for old, new in RETIRED.items() if new == our_legacy]
+            for old in retired:
+                to_office.setdefault(old, office_legacy)
+            for family in font_names(office, 1, 16) + [our_legacy, our_typographic] + retired:
                 key = (family, weight, style)
                 if key in seen:
                     continue

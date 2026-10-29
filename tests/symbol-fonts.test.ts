@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createFile, type DocFile, type JsonNode, type SheetFile } from "../packages/core/src";
 import { exportDocx } from "../packages/core/src/docx-export";
 import { importOffice } from "../packages/core/src/office";
+import { officeFont } from "../packages/core/src/office-fonts";
 import { parsePowerPoint } from "../packages/core/src/pptx";
 import { exportPptx } from "../packages/core/src/pptx-export";
 import { symbolBulletFont } from "../packages/core/src/pptx-lists";
@@ -43,6 +44,7 @@ describe("symbol fonts", () => {
     expect(symbolCode("zz")).toBe("");
     expect(symbolBulletFont("MS Reference Specialty")).toBe("MS Reference Specialty");
     expect(symbolBulletFont("Arial")).toBeUndefined();
+    expect(officeFont("Symbol Neu")).toBe("Symbol");
   });
 
   it("marks symbol-font Word text and turns the marks into SuiteLeaf spans", () => {

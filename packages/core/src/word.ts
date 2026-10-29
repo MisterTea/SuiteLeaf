@@ -1649,7 +1649,7 @@ export async function importDocx(
   if (await relocateEscapingPictures(zip)) packageChanged = true;
   try {
     const unmark = await markMammothSymbols(zip);
-    const input =
+    const repack =
       unmark.changed ||
       features.includes("strict-ooxml") ||
       modified ||
@@ -1658,10 +1658,13 @@ export async function importDocx(
       cited.changed ||
       extracted.equations.length ||
       boxed.boxes.length ||
-      packageChanged
-        ? await zip.generateAsync({ type: "uint8array" })
-        : bytes;
-    unmark();
+      packageChanged;
+    let input = bytes;
+    try {
+      if (repack) input = await zip.generateAsync({ type: "uint8array" });
+    } finally {
+      unmark();
+    }
     const result = await mammoth.convertToHtml(
       { arrayBuffer: input.slice().buffer },
       {
