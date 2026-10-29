@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
-import type { Presentation } from "@suiteleaf/core";
+import { sameJson, type Presentation } from "@suiteleaf/core";
 import { prepareMarpDocument } from "./slide-marp-runtime";
 import { renderMarpPages } from "./slide-marp-render";
 import { SlideStill, slideBackground, slideBackgroundPaint } from "./slide-surface";
@@ -75,9 +75,12 @@ export function SlidePrintDeck({
   active: boolean;
   deck: Presentation;
 }) {
+  // An equal deck keeps its pages: each render makes new documents, which reload every frame.
+  const [shown, setShown] = useState(deck);
+  if (shown !== deck && !sameJson(shown, deck)) setShown(deck);
   const marpRender = useMemo(
-    () => (active ? renderMarpPages(deck) : null),
-    [active, deck],
+    () => (active ? renderMarpPages(shown) : null),
+    [active, shown],
   );
   useEffect(() => () => marpRender?.dispose(), [marpRender]);
   const marpPages = marpRender?.pages;
@@ -100,6 +103,8 @@ export function SlidePrintDeck({
             style={{ width: page.width, height: page.height }}
           >
             <iframe
+              // A new document gets a new frame, so no frame says it loaded one it has not prepared.
+              key={page.document}
               title={`Print slide ${index + 1}`}
               sandbox="allow-same-origin allow-scripts"
               srcDoc={page.document}
@@ -107,6 +112,11 @@ export function SlidePrintDeck({
                 const frame = event.currentTarget;
                 const doc = frame.contentDocument;
                 if (!doc) return;
+                // A frame moved in the page reloads its document: what was prepared is gone with it.
+                doc.defaultView?.addEventListener("pagehide", () => {
+                  delete frame.dataset.loaded;
+                  delete frame.dataset.renderError;
+                });
                 void prepareMarpDocument(doc).then(
                   () => {
                     if (frame.contentDocument === doc)

@@ -104,6 +104,8 @@ A[Input] --> B[Output]</div>
 `),
     });
   await page.locator(".slide-canvas").first().waitFor();
+  // The editor fits the imported deck to its slides first, which changes what prints.
+  await expect(page.locator(".slide-canvas").first()).not.toHaveAttribute("aria-busy", "true");
   await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
   await page.emulateMedia({ media: "print" });
   await page.waitForFunction(() => {
