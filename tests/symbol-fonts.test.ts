@@ -12,8 +12,9 @@ import { exportXlsx } from "../packages/core/src/xlsx-export";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
-async function docx(body: string): Promise<Uint8Array> {
+async function docx(body: string, parts: Record<string, string> = {}): Promise<Uint8Array> {
   const zip = new JSZip();
+  for (const [name, xml] of Object.entries(parts)) zip.file(name, xml);
   zip.file(
     "[Content_Types].xml",
     `<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`,
@@ -71,6 +72,29 @@ describe("symbol fonts", () => {
     expect(xml).toMatch(/w:ascii="Wingdings"[\s\S]*?\uF028/);
     expect(xml).toMatch(/w:ascii="Symbol"[\s\S]*?>a</);
     expect(xml).not.toContain("SuiteLeaf");
+  });
+
+  it("keeps the marks out of Word headers, comments, and their anchors", async () => {
+    const symbols = `<w:r><w:sym w:font="Wingdings" w:char="F028"/></w:r><w:r><w:rPr><w:rFonts w:ascii="Symbol" w:hAnsi="Symbol"/></w:rPr><w:t>a</w:t></w:r>`;
+    const bytes = await docx(
+      `<w:p><w:commentRangeStart w:id="0"/><w:r><w:t xml:space="preserve">Call </w:t></w:r>${symbols}<w:commentRangeEnd w:id="0"/><w:r><w:commentReference w:id="0"/></w:r></w:p>` +
+        `<w:sectPr xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:headerReference w:type="default" r:id="rIdH"/></w:sectPr>`,
+      {
+        "word/_rels/document.xml.rels": `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdH" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/><Relationship Id="rIdC" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/></Relationships>`,
+        "word/header1.xml": `<?xml version="1.0" encoding="UTF-8"?><w:hdr xmlns:w="${W}"><w:p><w:r><w:t xml:space="preserve">Phone </w:t></w:r>${symbols}</w:p></w:hdr>`,
+        "word/comments.xml": `<?xml version="1.0" encoding="UTF-8"?><w:comments xmlns:w="${W}"><w:comment w:id="0" w:author="Ana"><w:p><w:r><w:t xml:space="preserve">Look </w:t></w:r>${symbols}</w:p></w:comment></w:comments>`,
+      },
+    );
+    const { file } = await importOffice(bytes, "docx", "furniture.docx");
+    const saved = JSON.stringify(file.content);
+    expect(saved).not.toMatch(/[\u2063\u2064]|Wingdings/);
+    expect(saved).toContain("Phone ");
+    expect(saved).toContain("Look ");
+    const nodes = textNodes((file as DocFile).content as JsonNode);
+    expect(nodes.map((node) => node.text).join("")).toBe("Call \uF028a");
+    expect(nodes.filter((node) => node.marks?.some((mark) => mark.type === "comment")).map((node) => node.text).join("")).toBe(
+      "Call \uF028a",
+    );
   });
 
   it("imports PowerPoint symbol runs in the SuiteLeaf face and writes the Office font back", async () => {

@@ -1,3 +1,4 @@
+import type JSZip from "jszip";
 import { suiteLeafFont } from "./office-fonts";
 import { isSymbolFont, symbolCode } from "./symbol-fonts";
 
@@ -29,6 +30,29 @@ export function markWordSymbols(xml: string): string {
         text && !text.startsWith(FONT_MARK) ? `${open}${marked(font!, text)}${close}` : `${open}${text}${close}`,
       );
     });
+}
+
+// The parts Mammoth converts. Headers, footers, and comments are read as plain text, and the readers after
+// Mammoth (comment anchors, indents) count characters, so none of them may see the marks.
+const MAMMOTH_PARTS = ["word/document.xml", "word/footnotes.xml", "word/endnotes.xml"];
+
+/**
+ * Marks the symbol text of the parts Mammoth converts. Call the result, once Mammoth's input is made, to
+ * put the parts back; `changed` says whether any part was marked.
+ */
+export async function markMammothSymbols(zip: JSZip): Promise<(() => void) & { changed: boolean }> {
+  const originals = new Map<string, string>();
+  for (const name of MAMMOTH_PARTS) {
+    const xml = await zip.file(name)?.async("string");
+    const marked = xml && markWordSymbols(xml);
+    if (!xml || marked === xml) continue;
+    originals.set(name, xml);
+    zip.file(name, marked!);
+  }
+  const unmark = () => {
+    for (const [name, xml] of originals) zip.file(name, xml);
+  };
+  return Object.assign(unmark, { changed: originals.size > 0 });
 }
 
 /** Mammoth's HTML with the marked symbol text as spans in the SuiteLeaf face. */

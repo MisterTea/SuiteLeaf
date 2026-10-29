@@ -40,7 +40,7 @@ import { layoutNote } from "./image-wrap";
 import { wordKerning } from "./word-kerning";
 import { wordDefaultFont } from "./word-fonts";
 import { isSymbolFont, symbolCode } from "./symbol-fonts";
-import { markWordSymbols, symbolSpans } from "./word-symbols";
+import { markMammothSymbols, symbolSpans } from "./word-symbols";
 import {
   letterheadDistanceNote,
   letterheadDistancePatch,
@@ -1634,12 +1634,10 @@ export async function importDocx(
   for (const entry of Object.values(zip.files)) {
     if (entry.dir || !/^word\/.+\.xml$/i.test(entry.name)) continue;
     const value = await entry.async("string");
-    const lifted = markWordSymbols(
-      joinHiddenParagraphMarks(
-        withoutHiddenRuns(
-          liftBlocksOutOfWordText(
-            unwrapWordRuby(unwrapWordContentControls(withDefaultUnderline(value))),
-          ),
+    const lifted = joinHiddenParagraphMarks(
+      withoutHiddenRuns(
+        liftBlocksOutOfWordText(
+          unwrapWordRuby(unwrapWordContentControls(withDefaultUnderline(value))),
         ),
       ),
     );
@@ -1650,7 +1648,9 @@ export async function importDocx(
   }
   if (await relocateEscapingPictures(zip)) packageChanged = true;
   try {
+    const unmark = await markMammothSymbols(zip);
     const input =
+      unmark.changed ||
       features.includes("strict-ooxml") ||
       modified ||
       annotated !== updatedXml ||
@@ -1661,6 +1661,7 @@ export async function importDocx(
       packageChanged
         ? await zip.generateAsync({ type: "uint8array" })
         : bytes;
+    unmark();
     const result = await mammoth.convertToHtml(
       { arrayBuffer: input.slice().buffer },
       {

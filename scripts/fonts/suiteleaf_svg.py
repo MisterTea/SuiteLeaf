@@ -271,6 +271,21 @@ def render(symbol, ascent):
     return pathops.simplify(ink, clockwise=True)
 
 
+def text_families(symbol):
+    """The TEXT_FONTS families the symbol's text is set in, whose outlines its glyph copies."""
+    out = set()
+
+    def walk(el, style):
+        style = _style(el, style)
+        if el.tag.replace(NS, "") == "text":
+            out.add(style.get("font-family", "Arimo").strip("'\""))
+        for child in el:
+            walk(child, style)
+
+    walk(symbol, {})
+    return out
+
+
 def glyph(symbol, ascent):
     """A TrueType glyph of the symbol."""
     pen = TTGlyphPen(None)

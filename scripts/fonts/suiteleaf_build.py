@@ -1829,6 +1829,8 @@ def build_symbol(args):
             pen = None
             glyphs[name] = suiteleaf_svg.glyph(pick[1], office["hhea"].ascent)
             used[suiteleaf_symbols.OUR_DRAWINGS] += 1
+            for credit in suiteleaf_symbols.text_credits(pick[1]):
+                used[credit] += 1
         elif pick:
             _, d, drawable, transform, _ = pick
             rec = DecomposingRecordingPen(fill.donor_font(*d["font"])[1])

@@ -1,9 +1,9 @@
 """Glyphs for the Office symbol fonts: the best match in the open fonts we have, else our own drawing.
 
-Each Office code that stands for a Unicode character is looked up in every font of the font cache;
-the candidate whose glyph, scaled into the Office glyph's
-box, overlaps it best wins if it overlaps it well enough (MATCH). A code no font matches is drawn from
-symbols/NAME.svg (suiteleaf_svg); the build fails on a code neither covers.
+Each Office code that stands for a Unicode character is looked up in every font of the font cache whose
+license lets its glyphs into an OFL font (OFL_COMPATIBLE); the candidate whose glyph, scaled into the Office
+glyph's box, overlaps it best wins (choose). Our drawings in symbols/NAME.svg (suiteleaf_svg) take the codes
+they draw; the build fails on a code neither covers.
 """
 import json
 import os
@@ -15,9 +15,7 @@ from fontTools.ttLib import TTFont, TTCollection
 import suiteleaf_fill as fill
 import suiteleaf_sources
 
-# A donor glyph overlapping the Office glyph at least this well is the same symbol.
-MATCH = 0.7
-# The license of each folder of the font cache; every font in it may give glyphs.
+# The license of each folder of the font cache.
 LICENSES = {
     "dejavu": "Bitstream Vera and DejaVu license (permissive)",
     "liberation": "OFL-1.1",
@@ -37,6 +35,10 @@ LICENSES = {
 }
 # Google Fonts folders are OFL-1.1, but for these.
 GF_LICENSES = {"tinos": "Apache-2.0", "arimo": "Apache-2.0", "cousine": "Apache-2.0"}
+# The symbol faces are under the OFL, which must cover the whole font: glyphs come only from fonts whose
+# license allows that (not the GPL, AGPL, or GUST licenses, or a license we have not read).
+OFL_COMPATIBLE = {"OFL-1.1", "Apache-2.0", "CC0-1.0", "Bitstream Vera and DejaVu license (permissive)",
+                  "Umefont license (permissive)", "GPL-2.0-or-later with font exception, or OFL-1.1"}
 # License texts in the font cache for donors from folders without an OFL.txt, and their copyright lines.
 LICENSE_FILES = {
     "dejavu": ["dejavu/LICENSE"], "liberation": ["liberation/LICENSE"], "libertinus": ["libertinus/OFL.txt"],
@@ -194,8 +196,8 @@ def _score(office, code, gs, gname):
 
 # Families of plain, general-purpose design: a glyph of theirs is taken over a better-overlapping one of
 # a display face (whose ÷ may be a flourish) unless that one overlaps clearly better.
-PLAIN = ("Noto Sans", "Noto Serif", "Noto Emoji", "Noto Music", "DejaVu", "FreeSerif", "FreeSans", "FreeMono",
-         "Liberation", "Arimo", "Tinos", "Cousine", "Libertinus", "TeX Gyre", "Jigmo", "STIX")
+PLAIN = ("Noto Sans", "Noto Serif", "Noto Emoji", "Noto Music", "DejaVu", "Liberation", "Arimo", "Tinos", "Cousine",
+         "Libertinus", "Linux Libertine", "Jigmo", "STIX")
 DISPLAY_MARGIN = 0.1
 
 
@@ -226,7 +228,7 @@ def best_matches(office, codes, cache=suiteleaf_sources.DEFAULT_CACHE, prefer=PL
             else:
                 texts.append((code, text))
     for (path, idx, license), todo in singles.items():
-        if blank(path, idx, str(cache)):
+        if license not in OFL_COMPATIBLE or blank(path, idx, str(cache)):
             continue
         full = str(Path(cache) / path)
         try:
@@ -246,7 +248,7 @@ def best_matches(office, codes, cache=suiteleaf_sources.DEFAULT_CACHE, prefer=PL
             have = set(chars.get(ord(ch), []))
             fonts = have if fonts is None else fonts & have
         for path, idx, license in sorted(fonts or ()):
-            if blank(path, idx, str(cache)):
+            if license not in OFL_COMPATIBLE or blank(path, idx, str(cache)):
                 continue
             drawing = text_drawing(str(Path(cache) / path), idx, text)
             if drawing is None:
@@ -260,6 +262,17 @@ def best_matches(office, codes, cache=suiteleaf_sources.DEFAULT_CACHE, prefer=PL
 
 # How the build credits glyphs drawn in symbols/*.svg: (name, license, notice).
 OUR_DRAWINGS = ("SuiteLeaf drawings", "OFL-1.1", "")
+
+
+def text_credits(symbol):
+    """How the build credits the fonts a drawing's text copies outlines from: [(name, license, notice)]."""
+    import suiteleaf_svg
+    out = []
+    for family in sorted(suiteleaf_svg.text_families(symbol)):
+        path = suiteleaf_svg.TEXT_FONTS[family][0]
+        folder = path.split("/")[1]
+        out.append((family_name(path, 0), GF_LICENSES.get(folder, "OFL-1.1"), folder))
+    return out
 
 
 def drawings_name(office_file):
