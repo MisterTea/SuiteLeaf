@@ -88,14 +88,23 @@ def main():
  runlog=logdir/'manifest.jsonl';completed=0;errors=0;consecutive=0
  timed={}
  resume_after=0
- if (logdir/'run.log').exists():
-  for line in (logdir/'run.log').read_text(errors='replace').splitlines():
-   if not line.startswith('{'):continue
-   try:rec=json.loads(line)
-   except json.JSONDecodeError:continue
-   if '-1712' in rec.get('error',''):timed[rec.get('index')]=timed.get(rec.get('index'),0)+1
-   idx=rec.get('index')
-   if isinstance(idx,int) and idx>resume_after:resume_after=idx
+ try:
+  if (logdir/'run.log').exists():
+   for line in (logdir/'run.log').read_text(errors='replace').splitlines():
+    if not line.startswith('{'):continue
+    try:rec=json.loads(line)
+    except json.JSONDecodeError:continue
+    if '-1712' in rec.get('error',''):timed[rec.get('index')]=timed.get(rec.get('index'),0)+1
+    idx=rec.get('index')
+    if isinstance(idx,int) and idx>resume_after:resume_after=idx
+ except OSError:
+  pass
+ try:
+  saved=json.loads((logdir/'progress.json').read_text())
+  idx=saved.get('last_index')
+  if isinstance(idx,int) and idx>resume_after:resume_after=idx
+ except (OSError,json.JSONDecodeError):
+  pass
  skip_timeouts={i for i,c in timed.items() if c>=3}
  if resume_after:print(json.dumps({'status':'resume','after':resume_after}),flush=True)
  grant=subprocess.Popen(['osascript',str(script.with_name('powerpoint-grant-access.applescript'))])

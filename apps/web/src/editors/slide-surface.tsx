@@ -107,6 +107,15 @@ function DrawnWords({ el }: { el: SlideElement }) {
  * Scale the picture so the uncropped region fills the box.
  * Vertical offset uses `top`, because a percentage margin is relative to width.
  */
+/** Feather every side by the DrawingML soft-edge radius. */
+export function softEdgeMask(px: number): string {
+  const feather = `min(${px}px, 49%)`;
+  return [
+    `linear-gradient(to right, transparent, #000 ${feather}, #000 calc(100% - ${feather}), transparent)`,
+    `linear-gradient(to bottom, transparent, #000 ${feather}, #000 calc(100% - ${feather}), transparent)`,
+  ].join(", ");
+}
+
 export function croppedPictureStyle(el: SlideElement): CSSProperties | undefined {
   const left = (el.cropLeft ?? 0) / 100;
   const top = (el.cropTop ?? 0) / 100;
@@ -136,6 +145,31 @@ function cellText(cell: string) {
       <span key={index}>{part}</span>
     ),
   );
+}
+
+function cellBody(
+  cell: string,
+  lines: { margin?: number; hang?: number }[] | undefined,
+) {
+  if (!lines?.some((line) => line.margin || line.hang)) return cellText(cell);
+  return cell.split("\n").map((part, index) => {
+    const line = lines[index];
+    const hang = line?.hang ?? 0;
+    const inset = (line?.margin ?? 0) + hang;
+    return (
+      <span
+        key={index}
+        style={{
+          display: "block",
+          margin: 0,
+          paddingLeft: inset ? `${inset}px` : undefined,
+          textIndent: hang ? `${-hang}px hanging each-line` : undefined,
+        }}
+      >
+        {part ? cellText(part) : "\u00a0"}
+      </span>
+    );
+  });
 }
 
 /** The slide's master, elements, and number, as the editor draws them. */
@@ -205,14 +239,15 @@ export function SlideFace({
                 ["--marp-pad" as string]: fitted && el.padLeft ? units(el.padLeft) : "0px",
                 ["--marp-hang" as string]: fitted && el.hang ? units(el.hang) : "0px",
                 ["--slide-inset" as string]:
-                  el.inset != null ? `${el.inset}px` : undefined,
+                  el.inset != null ? `calc(${el.inset}px * var(--canvas-fit, 1))` : undefined,
                 ["--slide-pad-r" as string]:
-                  el.padRight != null ? `${el.padRight}px` : undefined,
+                  el.padRight != null ? `calc(${el.padRight}px * var(--canvas-fit, 1))` : undefined,
                 ["--slide-pad-b" as string]:
-                  el.padBottom != null ? `${el.padBottom}px` : undefined,
+                  el.padBottom != null ? `calc(${el.padBottom}px * var(--canvas-fit, 1))` : undefined,
                 ["--slide-pad-l" as string]:
-                  el.padLeft != null ? `${el.padLeft}px` : undefined,
-                ["--slide-hang" as string]: el.hang ? `${el.hang}px` : undefined,
+                  el.padLeft != null ? `calc(${el.padLeft}px * var(--canvas-fit, 1))` : undefined,
+                ["--slide-hang" as string]:
+                  el.hang ? `calc(${el.hang}px * var(--canvas-fit, 1))` : undefined,
               }}
               data-valign={el.valign && el.valign !== "top" ? el.valign : undefined}
             >
@@ -225,6 +260,7 @@ export function SlideFace({
 
         if (el.type === "image" && el.src) {
           const crop = croppedPictureStyle(el);
+          const feather = el.softEdge ? softEdgeMask(el.softEdge) : undefined;
           return (
             <div
               key={el.id}
@@ -235,6 +271,14 @@ export function SlideFace({
                 ...(crop ? { overflow: "hidden" } : {}),
                 ...(el.opacity != null && el.opacity < 1
                   ? { opacity: el.opacity }
+                  : {}),
+                ...(feather
+                  ? {
+                      WebkitMaskImage: feather,
+                      maskImage: feather,
+                      WebkitMaskComposite: "source-in",
+                      maskComposite: "intersect",
+                    }
                   : {}),
               }}
             >
@@ -339,7 +383,15 @@ export function SlideFace({
 
         if (el.type === "table" && el.rows) {
           const hideDefaultRules = !!el.cellMarks?.some((tableRow) =>
-            tableRow.some((cell) => cell.fill || cell.border),
+            tableRow.some(
+              (cell) =>
+                cell.fill ||
+                cell.border ||
+                cell.borderTop ||
+                cell.borderRight ||
+                cell.borderBottom ||
+                cell.borderLeft,
+            ),
           );
           return (
             <div
@@ -384,7 +436,7 @@ export function SlideFace({
                               ...slideCellPaint(mark, hideDefaultRules),
                             }}
                           >
-                            {cellText(cell)}
+                            {cellBody(cell, mark?.lines)}
                           </td>
                         );
                       })}
@@ -398,7 +450,7 @@ export function SlideFace({
         }
 
         if ((el.type === "audio" || el.type === "video") && (el.src || el.poster)) {
-          if (still && el.type === "video") {
+          if (still && (el.type === "video" || el.poster)) {
             return (
               <div
                 key={el.id}
@@ -408,7 +460,7 @@ export function SlideFace({
                 style={posStyle}
               >
                 {el.poster ? (
-                  <img src={el.poster} alt={el.alt || "Video"} draggable={false} />
+                  <img src={el.poster} alt={el.alt || (el.type === "audio" ? "Audio" : "Video")} draggable={false} />
                 ) : (
                   <video src={el.src} preload="auto" playsInline />
                 )}

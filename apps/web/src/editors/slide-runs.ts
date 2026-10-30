@@ -24,6 +24,12 @@ export function cleanRun(run: TextRun): TextRun {
   if (run.baseline) next.baseline = run.baseline;
   if (run.font) next.font = run.font;
   if (run.paragraphBreak) next.paragraphBreak = true;
+  if (run.paraMargin) next.paraMargin = run.paraMargin;
+  if (run.paraHang) next.paraHang = run.paraHang;
+  if (run.spaceBefore) next.spaceBefore = run.spaceBefore;
+  if (run.paraAlign) next.paraAlign = run.paraAlign;
+  if (run.unbroken) next.unbroken = true;
+  if (run.tracking) next.tracking = run.tracking;
   return next;
 }
 
@@ -38,6 +44,12 @@ function sameStyle(a: TextRun, b: TextRun): boolean {
     a.caps === b.caps &&
     a.baseline === b.baseline &&
     (a.font ?? "") === (b.font ?? "") &&
+    (a.paraMargin ?? 0) === (b.paraMargin ?? 0) &&
+    (a.paraHang ?? 0) === (b.paraHang ?? 0) &&
+    (a.spaceBefore ?? 0) === (b.spaceBefore ?? 0) &&
+    (a.paraAlign ?? "") === (b.paraAlign ?? "") &&
+    !!a.unbroken === !!b.unbroken &&
+    (a.tracking ?? 0) === (b.tracking ?? 0) &&
     !a.paragraphBreak &&
     !b.paragraphBreak
   );
@@ -112,7 +124,12 @@ export function hasTextRuns(el: { runs?: TextRun[] }): boolean {
       run.fontSize ||
       run.caps ||
       run.baseline ||
-      run.paragraphBreak,
+      run.paragraphBreak ||
+      run.paraMargin ||
+      run.paraHang ||
+      run.spaceBefore ||
+      run.paraAlign ||
+      run.unbroken,
   );
 }
 
@@ -137,10 +154,7 @@ export function normalizeColor(value: string): string | undefined {
   return `#${channel(rgb[1])}${channel(rgb[2])}${channel(rgb[3])}`;
 }
 
-/** `kern` is the box's kerning size; a run with its own size is judged on that. */
-export function runsToHtml(runs: readonly TextRun[], kern?: number): string {
-  return runs
-    .map((run) => {
+function runSpan(run: TextRun, kern?: number): string {
       const styles: string[] = [];
       const data: string[] = [];
       if (run.bold) {
@@ -176,17 +190,73 @@ export function runsToHtml(runs: readonly TextRun[], kern?: number): string {
         styles.push(`vertical-align:${run.baseline / 100}em`);
         data.push(`data-baseline="${run.baseline}"`);
       }
+      if (run.tracking) {
+        styles.push(`letter-spacing:calc(${run.tracking} * var(--slide-pt, 1) * 1px)`);
+        data.push(`data-tracking="${run.tracking}"`);
+      }
       if (run.font) {
-        const family = run.font.replace(/["\\<>]/g, "");
-        styles.push(
-          `font-family:${/[\s,]/.test(family) ? `"${family}"` : family}`,
-        );
+        const family = run.font.replace(/["'\\<>]/g, "");
+        // Single quotes: the style attribute is already double-quoted.
+        styles.push(`font-family:'${family}'`);
         data.push(`data-font="${family}"`);
       }
       if (run.paragraphBreak) data.push('data-paragraph-break="1"');
       const style = styles.length ? ` style="${styles.join(";")}"` : "";
       const attrs = data.length ? ` ${data.join(" ")}` : "";
-      return `<span${attrs}${style}>${escapeHtml(run.text)}</span>`;
+      // latinLnBrk="0" does not break after a hyphen. A word joiner is zero width.
+      const text = run.unbroken ? run.text.replace(/-(?=\S)/g, "-\u2060") : run.text;
+      return `<span${attrs}${style}>${escapeHtml(text)}</span>`;
+}
+
+function paragraphStyle(run: TextRun | undefined, empty = false): string {
+  if (!run) return "display:block;margin:0";
+  const rules = ["display:block", "margin:0"];
+  if (run.paraMargin) rules.push(`padding-left:${run.paraMargin}px`);
+  if (run.paraHang) rules.push(`text-indent:${run.paraHang}px hanging each-line`);
+  if (run.spaceBefore) rules.push(`margin-top:${run.spaceBefore}px`);
+  if (run.paraAlign) rules.push(`text-align:${run.paraAlign}`);
+  // An empty block has no line box, so a blank paragraph would vanish.
+  if (empty) rules.push("min-height:1lh");
+  return rules.join(";");
+}
+
+function paragraphAttrs(run: TextRun | undefined): string {
+  if (!run) return "";
+  const data = ["data-slide-para=\"1\""];
+  if (run.paraMargin) data.push(`data-para-margin="${run.paraMargin}"`);
+  if (run.paraHang) data.push(`data-para-hang="${run.paraHang}"`);
+  if (run.spaceBefore) data.push(`data-space-before="${run.spaceBefore}"`);
+  if (run.paraAlign) data.push(`data-para-align="${run.paraAlign}"`);
+  return ` ${data.join(" ")}`;
+}
+
+/** `kern` is the box's kerning size; a run with its own size is judged on that. */
+export function runsToHtml(runs: readonly TextRun[], kern?: number): string {
+  const leveled = runs.some(
+    (run) => run.paraMargin || run.paraHang || run.spaceBefore || run.paraAlign,
+  );
+  if (!leveled) return runs.map((run) => runSpan(run, kern)).join("");
+  const paragraphs: TextRun[][] = [];
+  const marks: TextRun[] = [];
+  for (const run of runs) {
+    if (run.paragraphBreak && run.text === "\n") {
+      paragraphs.push([]);
+      marks.push(run);
+      continue;
+    }
+    if (!paragraphs.length) {
+      paragraphs.push([]);
+      marks.push(run);
+    }
+    paragraphs[paragraphs.length - 1].push(run);
+  }
+  return paragraphs
+    .map((paragraph, index) => {
+      const mark = marks[index];
+      const inner = paragraph
+        .map((run) => runSpan({ ...run, paraMargin: undefined, paraHang: undefined, spaceBefore: undefined, paraAlign: undefined }, kern))
+        .join("");
+      return `<span class="slide-para"${paragraphAttrs(mark)} style="${paragraphStyle(mark, inner.length === 0)}">${inner}</span>`;
     })
     .join("");
 }

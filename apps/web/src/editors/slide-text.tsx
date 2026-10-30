@@ -101,12 +101,30 @@ function styleFrom(el: HTMLElement): StyleAttr {
 }
 
 /** Read the editor DOM back into runs. Typing stays inside the span it started in. */
+function paragraphMetrics(el: HTMLElement): Partial<TextRun> {
+  const next: Partial<TextRun> = {};
+  const margin = Number(el.dataset.paraMargin);
+  const hang = Number(el.dataset.paraHang);
+  const before = Number(el.dataset.spaceBefore);
+  if (margin) next.paraMargin = margin;
+  if (hang) next.paraHang = hang;
+  if (before) next.spaceBefore = before;
+  const align = el.dataset.paraAlign;
+  if (align === "left" || align === "center" || align === "right" || align === "justify")
+    next.paraAlign = align;
+  return next;
+}
+
 export function runsFromDom(root: HTMLElement): TextRun[] {
   const runs: TextRun[] = [];
+  let stamp: Partial<TextRun> | null = null;
   const walk = (node: Node, style: StyleAttr) => {
     if (node.nodeType === Node.TEXT_NODE) {
       const text = (node.textContent ?? "").replace(/\u00a0/g, " ");
-      if (text) runs.push(cleanRun({ ...style, text }));
+      if (text) {
+        runs.push(cleanRun({ ...style, ...stamp, text }));
+        stamp = null;
+      }
       return;
     }
     if (!(node instanceof HTMLElement)) return;
@@ -115,9 +133,15 @@ export function runsFromDom(root: HTMLElement): TextRun[] {
       return;
     }
     const next = { ...style, ...styleFrom(node) };
-    const block = node.tagName === "DIV" || node.tagName === "P";
-    if (block && runs.length && !runs[runs.length - 1]?.text.endsWith("\n"))
-      runs.push({ text: "\n" });
+    const para = node.dataset.slidePara === "1";
+    const block = node.tagName === "DIV" || node.tagName === "P" || para;
+    if (block && runs.length && !runs[runs.length - 1]?.text.endsWith("\n")) {
+      runs.push(
+        para
+          ? cleanRun({ text: "\n", paragraphBreak: true, ...paragraphMetrics(node) })
+          : { text: "\n" },
+      );
+    } else if (para && !runs.length) stamp = paragraphMetrics(node);
     for (const child of node.childNodes) walk(child, next);
   };
   for (const child of root.childNodes) walk(child, {});

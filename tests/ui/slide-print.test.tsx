@@ -51,6 +51,29 @@ it("prints every slide in deck order with its background and page number", () =>
   );
   expect(document.querySelector(".slides-print-deck")).toBeNull();
 });
+it("prints an audio clip as its poster instead of a blank control", () => {
+  const file = createFile("slide");
+  if (file.kind !== "slide") throw new Error("Expected slides");
+  const slide = file.content.slides[file.content.slideOrder[0]];
+  slide.elements = [
+    {
+      id: "clip",
+      type: "audio",
+      x: 400,
+      y: 200,
+      width: 48,
+      height: 48,
+      src: "data:audio/mpeg;base64,AAA",
+      poster: "data:image/png;base64,AAAA",
+      alt: "Narration",
+    },
+  ];
+  render(<SlidePrintDeck active deck={file.content} />);
+  const still = document.querySelector(".slide-video-still img");
+  expect(still?.getAttribute("src")).toBe("data:image/png;base64,AAAA");
+  expect(document.querySelector(".slide-audio")).toBeNull();
+  expect(document.querySelector(".slide-media-play")).toBeNull();
+});
 it("offsets a picture crop with top, which follows the box height", () => {
   const style = croppedPictureStyle({
     id: "pic",
@@ -189,4 +212,27 @@ it("releases embedded asset URLs after the print surface closes", () => {
   );
   view.unmount();
   expect(revoke).toHaveBeenCalledWith("blob:print-image");
+});
+
+it("feathers a picture on every side when the slide stores a soft edge", () => {
+  const file = createFile("slide");
+  if (file.kind !== "slide") throw new Error("Expected slides");
+  const id = file.content.slideOrder[0];
+  file.content.slides[id].elements = [
+    {
+      id: "photo",
+      type: "image",
+      x: 0,
+      y: 0,
+      width: 400,
+      height: 300,
+      src: "data:image/png;base64,aaaa",
+      softEdge: 50,
+    },
+  ];
+  render(<SlidePrintDeck active deck={file.content} />);
+  const picture = document.querySelector<HTMLElement>(".slide-image");
+  expect(picture?.style.maskImage).toContain("linear-gradient");
+  expect(picture?.style.maskImage).toContain("min(50px, 49%)");
+  expect(picture?.style.maskComposite).toBe("intersect");
 });

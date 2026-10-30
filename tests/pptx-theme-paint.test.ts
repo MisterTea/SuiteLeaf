@@ -1,7 +1,15 @@
 import { expect, it } from "vitest";
 import JSZip from "jszip";
 import { parsePowerPoint } from "../packages/core/src/pptx";
-import { applyColorMods, backgroundBlip } from "../packages/core/src/pptx-theme";
+import {
+  applyColorMods,
+  applyThemeOverride,
+  backgroundBlip,
+  backgroundCss,
+  schemeColors,
+  svgFillMarkup,
+  themePaint,
+} from "../packages/core/src/pptx-theme";
 
 const theme = `<?xml version="1.0"?>
 <a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:themeElements>
@@ -27,7 +35,58 @@ const theme = `<?xml version="1.0"?>
 </a:fmtScheme></a:themeElements></a:theme>`;
 
 it("lightens a theme colour with DrawingML tint", () => {
-  expect(applyColorMods("#E73037", '<a:tint val="50000"/>')).toBe("#f3989b");
+  // Tint mixes in linear light, so a 50% tint is lighter than an sRGB byte mix.
+  expect(applyColorMods("#E73037", '<a:tint val="50000"/>')).toBe("#f3bebf");
+});
+
+it("lightens black theme backgrounds the way PowerPoint does", () => {
+  const stop = applyColorMods(
+    "#000000",
+    '<a:tint val="93000"/><a:satMod val="150000"/><a:shade val="98000"/><a:lumMod val="102000"/>',
+  );
+  expect(stop).toBe("#4b4b4b");
+});
+
+it("paints a circle path gradient from its fill-to corner", () => {
+  const css = backgroundCss(
+    undefined,
+    `<p:bg><p:bgPr><a:gradFill><a:gsLst>
+      <a:gs pos="18000"><a:srgbClr val="fafafa"/></a:gs>
+      <a:gs pos="100000"><a:srgbClr val="d6d6d6"/></a:gs>
+    </a:gsLst><a:path path="circle"><a:fillToRect l="100000" t="100000"/></a:path></a:gradFill></p:bgPr></p:bg>`,
+  );
+  expect(css).toBe(
+    "radial-gradient(circle at 100% 100%, #fafafa 18%, #d6d6d6 100%)",
+  );
+  expect(svgFillMarkup(css!).defs).toContain("<radialGradient");
+});
+
+it("applies hue and saturation offsets", () => {
+  expect(
+    applyColorMods(
+      "#F5C201",
+      '<a:hueOff val="7012249"/><a:satOff val="-41263"/><a:lumOff val="1570"/>',
+    ),
+  ).toBe("#35c9a2");
+});
+
+it("paints a pattern fill instead of the style's solid colour", () => {
+  const paint = themePaint(
+    `<a:theme><a:themeElements><a:clrScheme>
+      <a:dk1><a:srgbClr val="000000"/></a:dk1><a:lt1><a:srgbClr val="FFFFFF"/></a:lt1>
+      <a:accent2><a:srgbClr val="F5C201"/></a:accent2>
+    </a:clrScheme><a:fontScheme><a:majorFont/><a:minorFont/></a:fontScheme>
+    <a:fmtScheme><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:fillStyleLst>
+    <a:lnStyleLst/><a:bgFillStyleLst/></a:fmtScheme></a:themeElements></a:theme>`,
+    `<p:sp><p:spPr><a:prstGeom prst="ellipse"><a:avLst/></a:prstGeom>
+      <a:pattFill prst="pct90"><a:fgClr><a:schemeClr val="accent2"><a:hueOff val="7012249"/><a:satOff val="-41263"/><a:lumOff val="1570"/></a:schemeClr></a:fgClr>
+      <a:bgClr><a:schemeClr val="lt1"/></a:bgClr></a:pattFill></p:spPr>
+      <p:style><a:fillRef idx="1"><a:schemeClr val="dk1"/></a:fillRef></p:style></p:sp>`,
+  );
+  expect(paint.fill).toContain("data:image/svg+xml");
+  expect(paint.fill).toContain("var(--slide-pt");
+  expect(decodeURIComponent(paint.fill || "")).toContain("#35c9a2");
+  expect(paint.fill).not.toContain("#000000");
 });
 
 it("paints theme fills, hyperlinks, connectors, and layout slide numbers", async () => {
@@ -97,6 +156,45 @@ it("paints theme fills, hyperlinks, connectors, and layout slide numbers", async
     fill: "transparent",
   });
   expect(number?.align).toBe("right");
+});
+
+it("keeps a hyperlink colour when the list style turns underline off", async () => {
+  const zip = new JSZip();
+  zip.file("ppt/theme/theme1.xml", theme);
+  zip.file(
+    "ppt/slides/slide1.xml",
+    `<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><p:cSld><p:spTree>
+      <p:sp><p:nvSpPr><p:cNvPr id="2" name="Link"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+        <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="2000000" cy="400000"/></a:xfrm></p:spPr>
+        <p:txBody><a:bodyPr/><a:p><a:r><a:rPr sz="2000"><a:hlinkClick r:id="h"/></a:rPr><a:t>Principles</a:t></a:r></a:p></p:txBody>
+      </p:sp>
+    </p:spTree></p:cSld></p:sld>`,
+  );
+  zip.file(
+    "ppt/slides/_rels/slide1.xml.rels",
+    `<Relationships><Relationship Id="l" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/><Relationship Id="h" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="http://example.com" TargetMode="External"/></Relationships>`,
+  );
+  zip.file(
+    "ppt/slideLayouts/slideLayout1.xml",
+    `<p:sldLayout><p:cSld><p:spTree/></p:cSld></p:sldLayout>`,
+  );
+  zip.file(
+    "ppt/slideLayouts/_rels/slideLayout1.xml.rels",
+    `<Relationships><Relationship Id="m" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/></Relationships>`,
+  );
+  zip.file(
+    "ppt/slideMasters/slideMaster1.xml",
+    `<p:sldMaster><p:cSld><p:spTree/></p:cSld><p:txStyles><p:otherStyle><a:lvl1pPr><a:defRPr u="none"/></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>`,
+  );
+  zip.file(
+    "ppt/slideMasters/_rels/slideMaster1.xml.rels",
+    `<Relationships><Relationship Id="t" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="../theme/theme1.xml"/></Relationships>`,
+  );
+  const parsed = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+  const link = parsed.content.slides[parsed.content.slideOrder[0]].elements.find(
+    (el) => el.content === "Principles",
+  );
+  expect(link?.runs?.[0]).toMatchObject({ color: "#005c83", underline: true });
 });
 
 it("inherits a placeholder's bottom anchor when the slide body is empty", async () => {
@@ -402,4 +500,35 @@ it("lets a shape fontRef beat the master otherStyle text colour", async () => {
   );
   expect(label?.color?.toLowerCase()).toBe("#ffffff");
   expect(label?.runs?.[0]?.color?.toLowerCase()).toBe("#ffffff");
+});
+
+it("paints a slide theme override instead of the master accent", async () => {
+  const override = `<a:themeOverride><a:clrScheme name="Slide"><a:dk1><a:srgbClr val="000000"/></a:dk1><a:lt1><a:srgbClr val="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="000000"/></a:dk2><a:lt2><a:srgbClr val="808080"/></a:lt2><a:accent1><a:srgbClr val="99CCFF"/></a:accent1><a:accent2><a:srgbClr val="CCCCFF"/></a:accent2><a:accent3><a:srgbClr val="FFFFFF"/></a:accent3><a:accent4><a:srgbClr val="000000"/></a:accent4><a:accent5><a:srgbClr val="CAE2FF"/></a:accent5><a:accent6><a:srgbClr val="B9B9E7"/></a:accent6><a:hlink><a:srgbClr val="3333CC"/></a:hlink><a:folHlink><a:srgbClr val="AF67FF"/></a:folHlink></a:clrScheme></a:themeOverride>`;
+  expect(schemeColors(applyThemeOverride(theme, override)).accent2).toBe("#ccccff");
+  const zip = new JSZip();
+  zip.file("ppt/theme/theme1.xml", theme);
+  zip.file("ppt/theme/themeOverride1.xml", override);
+  zip.file(
+    "ppt/slides/slide1.xml",
+    `<p:sld><p:cSld><p:spTree><p:sp><p:nvSpPr><p:cNvPr id="2"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="4000000" cy="800000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:schemeClr val="accent2"/></a:solidFill></p:spPr></p:sp></p:spTree></p:cSld></p:sld>`,
+  );
+  zip.file(
+    "ppt/slides/_rels/slide1.xml.rels",
+    `<Relationships><Relationship Id="l" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/><Relationship Id="o" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/themeOverride" Target="../theme/themeOverride1.xml"/></Relationships>`,
+  );
+  zip.file("ppt/slideLayouts/slideLayout1.xml", `<p:sldLayout/>`);
+  zip.file(
+    "ppt/slideLayouts/_rels/slideLayout1.xml.rels",
+    `<Relationships><Relationship Id="m" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/></Relationships>`,
+  );
+  zip.file("ppt/slideMasters/slideMaster1.xml", `<p:sldMaster><p:cSld><p:spTree/></p:cSld></p:sldMaster>`);
+  zip.file(
+    "ppt/slideMasters/_rels/slideMaster1.xml.rels",
+    `<Relationships><Relationship Id="t" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="../theme/theme1.xml"/></Relationships>`,
+  );
+  const parsed = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+  const box = parsed.content.slides[parsed.content.slideOrder[0]].elements.find(
+    (el) => el.type === "shape",
+  );
+  expect(box?.fill?.toLowerCase()).toBe("#ccccff");
 });

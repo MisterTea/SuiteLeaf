@@ -50,6 +50,11 @@ function png(width: number, height: number, pixels: Uint8Array) {
   }
   return "data:image/png;base64," + base64(out);
 }
+
+/** PNG data URL for straight RGBA pixels, top row first. */
+export function encodeRgbaPng(width: number, height: number, pixels: Uint8Array) {
+  return png(width, height, pixels);
+}
 /** Static raster EMF appearances: no scripts, external resources, or ActiveX execution. */
 export function rasterEmf(bytes: Uint8Array): string | undefined {
   const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength),

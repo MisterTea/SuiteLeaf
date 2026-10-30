@@ -2,7 +2,7 @@ import type { SlideElement } from "./index";
 import { presetTextBox, presetVector } from "./pptx-preset-geometry";
 
 export { presetTextBox };
-import { themePaint, type ShapePaint } from "./pptx-theme";
+import { svgFillMarkup, themePaint, type ShapePaint } from "./pptx-theme";
 
 /** How many drawing pixels equal one point on this slide. Standard 960pt decks stay at 1. */
 export function slidePointScale(width?: number, pointWidth?: number) {
@@ -324,7 +324,8 @@ function svgData(
   evenOdd = false,
 ) {
   const rule = evenOdd ? ` fill-rule="evenodd"` : "";
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}"><path${rule} d="${d}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"/></svg>`;
+  const painted = svgFillMarkup(fill);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}">${painted.defs}<path${rule} d="${d}" fill="${painted.value}" stroke="${stroke}" stroke-width="${strokeWidth}"/></svg>`;
   const bytes = new TextEncoder().encode(svg);
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -392,6 +393,15 @@ export function shapeArtwork(
   const emuH = Number(ext.cy) || box.height || 1;
   const custom = /<a:custGeom\b/.test(xml) ? customPath(xml) : undefined;
   const d = custom?.d || (geom ? presetPath(geom, xml, custom?.w || emuW, custom?.h || emuH) : undefined);
+  // Path units are the shape's own EMUs. A group may scale that space, but
+  // a:ln w stays in slide EMUs. Passing the raw width pads the viewBox by
+  // thousands of local units and paints the preset across the slide.
+  const shapeEmu =
+    slide.width > 0 && box.width > 0
+      ? (box.width / slide.width) * slide.emuWidth
+      : emuW;
+  const presetStroke =
+    paint.strokeEmu && shapeEmu > 0 ? (paint.strokeEmu * emuW) / shapeEmu : 0;
   const vector =
     d || !geom
       ? undefined
@@ -402,7 +412,7 @@ export function shapeArtwork(
           emuH,
           paint.fill || "none",
           paint.stroke || "none",
-          paint.strokeEmu || 0,
+          presetStroke,
         );
   if (vector) {
     const scaleX = box.width / emuW;
@@ -441,14 +451,19 @@ export function shapeArtwork(
       ...(rotation ? { rotation } : {}),
     };
   }
-  const strokeWidth = paint.strokeEmu || 0;
+  const viewW = custom?.w || emuW;
+  const viewH = custom?.h || emuH;
+  // The box is already in slide space, including a group's scale. Path
+  // coordinates are often a local drawing, so an unscaled EMU stroke floods it.
+  const strokeWidth =
+    paint.strokeEmu && shapeEmu > 0 ? (paint.strokeEmu * viewW) / shapeEmu : 0;
   return {
     type: "image",
     ...box,
     src: svgData(
       d,
-      custom?.w || emuW,
-      custom?.h || emuH,
+      viewW,
+      viewH,
       paint.fill || "none",
       paint.stroke || "none",
       strokeWidth,
@@ -485,30 +500,44 @@ export function lineFrame(box: {
   return { x, y, width, height };
 }
 
+/** Date, footer, and slide number are one each. Layouts often renumber their idx. */
+const SINGLE_PLACEHOLDERS = new Set(["dt", "ftr", "sldNum", "hdr"]);
+
+function placeholderIdentity(tag: string): { idx: string; type: string } | undefined {
+  const parsed = attrs(tag);
+  return { idx: parsed.idx || "0", type: parsed.type || "body" };
+}
+
+function samePlaceholderType(got: string, want: string) {
+  return (
+    got === want ||
+    (["title", "ctrTitle"].includes(got) && ["title", "ctrTitle"].includes(want))
+  );
+}
+
 /** Layout or master shape that supplies a placeholder's missing transform. */
 export function placeholderShape(partXml: string | undefined, shapeXml: string): string {
   if (!partXml) return "";
   const ph = /<p:ph\b([^>]*)\/?>/.exec(shapeXml);
   if (!ph) return "";
-  const want = attrs(ph[1]);
-  const wantIdx = want.idx || "0";
-  const wantType = want.type || "body";
+  const want = placeholderIdentity(ph[1]);
+  if (!want) return "";
   const shapes = [
     ...partXml.matchAll(/<p:(sp|pic)\b[\s\S]*?<\/p:\1>/g),
   ].map((match) => match[0]);
+  const typed = shapes.filter((candidate) => {
+    const tag = /<p:ph\b([^>]*)\/?>/.exec(candidate);
+    if (!tag) return false;
+    const got = placeholderIdentity(tag[1]);
+    return !!got && samePlaceholderType(got.type, want.type);
+  });
   return (
-    shapes.find((candidate) => {
+    typed.find((candidate) => {
       const tag = /<p:ph\b([^>]*)\/?>/.exec(candidate);
-      if (!tag) return false;
-      const got = attrs(tag[1]);
-      const type = got.type || "body";
-      const sameIdx = (got.idx || "0") === wantIdx;
-      const sameType =
-        type === wantType ||
-        (["title", "ctrTitle"].includes(type) &&
-          ["title", "ctrTitle"].includes(wantType));
-      return sameIdx && sameType;
-    }) || ""
+      const got = tag ? placeholderIdentity(tag[1]) : undefined;
+      return got?.idx === want.idx;
+    }) ||
+    (SINGLE_PLACEHOLDERS.has(want.type) && typed.length === 1 ? typed[0] : "")
   );
 }
 

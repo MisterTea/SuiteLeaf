@@ -236,11 +236,27 @@ test.describe("Desktop & Mobile End-to-End Responsive Suite", () => {
     await expect(canvas).toBeVisible();
     const canvasBox = (await canvas.boundingBox())!;
 
+    const title = page.locator(".slide-canvas .slide-text").first();
+    const fontSize = await title.evaluate((el) =>
+      parseFloat(getComputedStyle(el).fontSize),
+    );
+    const scaled = 44 * (canvasBox.width / 960);
+    expect(fontSize).toBeGreaterThan(scaled * 0.85);
+    expect(fontSize).toBeLessThan(scaled * 1.15);
+
     if (isMobile) {
-      // Sidebar takes compact rail
-      expect(sidebarBox.width).toBeLessThanOrEqual(75);
-      // Canvas gets primary screen space
-      expect(canvasBox.width).toBeGreaterThanOrEqual(viewport.width * 0.6);
+      // Thumbnails sit under the slide, across the screen.
+      expect(sidebarBox.y).toBeGreaterThan(canvasBox.y + canvasBox.height - 1);
+      expect(sidebarBox.width).toBeGreaterThan(viewport.width * 0.9);
+      expect(sidebarBox.height).toBeLessThan(viewport.height * 0.4);
+      expect(canvasBox.width).toBeGreaterThan(viewport.width * 0.7);
+
+      const tools = page.locator(".header-right-tools");
+      const toolsBox = (await tools.boundingBox())!;
+      const titleInput = page.getByRole("textbox", { name: "File title" });
+      const titleBox = (await titleInput.boundingBox())!;
+      expect(toolsBox.x).toBeLessThan(16);
+      expect(toolsBox.y).toBeGreaterThan(titleBox.y + titleBox.height - 1);
     }
 
     // Canvas fits inside the viewport

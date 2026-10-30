@@ -137,4 +137,37 @@ describe("inherited PowerPoint artwork", () => {
     expect(slide.elements[1]?.fill).toBe("rgba(255, 255, 255, 0.5)");
     expect(slide.elements[2]).toMatchObject({ x: 96, y: 0, width: 96, height: 96 });
   });
+
+  it("keeps a layout picture's rotation", async () => {
+    const zip = new JSZip();
+    zip.file(
+      "ppt/presentation.xml",
+      '<p:presentation><p:sldSz cx="9144000" cy="6858000"/></p:presentation>',
+    );
+    zip.file("ppt/slides/slide1.xml", `<p:sld><p:cSld><p:spTree/></p:cSld></p:sld>`);
+    zip.file(
+      "ppt/slides/_rels/slide1.xml.rels",
+      `<Relationships>${relation("layout", "slideLayout", "../slideLayouts/slideLayout1.xml")}</Relationships>`,
+    );
+    const turned = picture.replace(
+      "<a:xfrm>",
+      '<a:xfrm rot="10800000">',
+    );
+    zip.file(
+      "ppt/slideLayouts/slideLayout1.xml",
+      `<p:sldLayout><p:cSld><p:spTree>${turned}</p:spTree></p:cSld></p:sldLayout>`,
+    );
+    zip.file(
+      "ppt/slideLayouts/_rels/slideLayout1.xml.rels",
+      `<Relationships>${relation("master", "slideMaster", "../slideMasters/slideMaster1.xml")}${relation("image", "image", "../media/background.png")}</Relationships>`,
+    );
+    zip.file(
+      "ppt/slideMasters/slideMaster1.xml",
+      `<p:sldMaster><p:cSld><p:spTree/></p:cSld></p:sldMaster>`,
+    );
+    zip.file("ppt/media/background.png", image);
+    const parsed = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+    const photo = parsed.content.slides[parsed.content.slideOrder[0]].elements[0];
+    expect(photo?.rotation).toBe(180);
+  });
 });

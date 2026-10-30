@@ -571,6 +571,7 @@ export default function Slides({
   // Drag thumbnails to reorder. `over` is the gap (0..n) the group would land in.
   const [slideDrag, setSlideDrag] = useState<{
     ids: string[];
+    startX: number;
     startY: number;
     over: number | null;
   } | null>(null);
@@ -709,21 +710,28 @@ export default function Slides({
   };
 
   useEffect(() => {
-    const gapAt = (y: number) => {
+    const filmstrip = () =>
+      !!thumbnailsRef.current &&
+      getComputedStyle(thumbnailsRef.current).flexDirection === "row";
+    const gapAt = (point: number, horizontal: boolean) => {
       const rows = [
         ...(thumbnailsRef.current?.querySelectorAll(".thumbnail-row") ?? []),
       ];
       const i = rows.findIndex((row) => {
         const r = row.getBoundingClientRect();
-        return y < r.top + r.height / 2;
+        return horizontal
+          ? point < r.left + r.width / 2
+          : point < r.top + r.height / 2;
       });
       return i === -1 ? rows.length : i;
     };
     const onMove = (e: MouseEvent) => {
       const drag = dragRef.current;
       if (!drag) return;
-      if (drag.over === null && Math.abs(e.clientY - drag.startY) < 6) return;
-      const over = gapAt(e.clientY);
+      const horizontal = filmstrip();
+      const delta = horizontal ? e.clientX - drag.startX : e.clientY - drag.startY;
+      if (drag.over === null && Math.abs(delta) < 6) return;
+      const over = gapAt(horizontal ? e.clientX : e.clientY, horizontal);
       if (over === drag.over) return;
       const next = { ...drag, over };
       dragRef.current = next;
@@ -760,7 +768,7 @@ export default function Slides({
   useEffect(() => {
     thumbnailsRef.current
       ?.querySelector(`[data-slide-id="${activeSlideId}"]`)
-      ?.scrollIntoView({ block: "nearest" });
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [activeSlideId, deck.slideOrder]);
 
   const applyLayoutToSlide = (layout: Layout) => {
@@ -3115,7 +3123,15 @@ export default function Slides({
             aria-multiselectable="true"
             tabIndex={0}
             onKeyDown={(e) => {
-              if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+              const horizontal =
+                getComputedStyle(e.currentTarget).flexDirection === "row";
+              const key =
+                horizontal && e.key === "ArrowLeft"
+                  ? "ArrowUp"
+                  : horizontal && e.key === "ArrowRight"
+                    ? "ArrowDown"
+                    : e.key;
+              if (key !== "ArrowUp" && key !== "ArrowDown") return;
               if (e.metaKey || e.ctrlKey || e.altKey) return;
               e.preventDefault();
               const order = deck.slideOrder;
@@ -3124,12 +3140,12 @@ export default function Slides({
                   order,
                   anchorRef.current,
                   activeRef.current,
-                  e.key === "ArrowUp" ? "up" : "down",
+                  key === "ArrowUp" ? "up" : "down",
                 );
                 applySelection(next.activeId, next.selected, null);
                 return;
               }
-              stepSlide(e.key === "ArrowUp" ? "prev" : "next");
+              stepSlide(key === "ArrowUp" ? "prev" : "next");
             }}
           >
             {deck.slideOrder.map((id, index) => {
@@ -3170,7 +3186,7 @@ export default function Slides({
                       anchorRef.current = id;
                       applySelection(id, [id], null);
                     }
-                    const next = { ids, startY: e.clientY, over: null };
+                    const next = { ids, startX: e.clientX, startY: e.clientY, over: null };
                     dragRef.current = next;
                     setSlideDrag(next);
                   }}
@@ -3296,24 +3312,27 @@ export default function Slides({
                   "#ffffff",
                 aspectRatio: `${deck.width || 960} / ${deck.height || 540}`,
                 ["--deck-motion" as string]: `${canvasMotion?.ms ?? 0}ms`,
-                ["--slide-pt" as string]: String(slidePointScale(deck.width, deck.pointWidth)),
+                ["--slide-pt-base" as string]: String(slidePointScale(deck.width, deck.pointWidth)),
+                ["--slide-draw" as string]: `${deck.width || 960}px`,
               }}
             >
-              {showBackdrop ? (
-                <MarpBackdrop
-                  pages={marpPages}
+              <div className="slide-canvas-fit">
+                {showBackdrop ? (
+                  <MarpBackdrop
+                    pages={marpPages}
+                    index={currentSlideIndex}
+                    live={liveLines}
+                    onPainted={setPainted}
+                  />
+                ) : null}
+                <SlideFace
+                  deck={deck}
+                  slide={shownSlide}
                   index={currentSlideIndex}
-                  live={liveLines}
-                  onPainted={setPainted}
+                  hooks={canvasHooks}
                 />
-              ) : null}
-              <SlideFace
-                deck={deck}
-                slide={shownSlide}
-                index={currentSlideIndex}
-                hooks={canvasHooks}
-              />
-              {slideComments.marks}
+                {slideComments.marks}
+              </div>
             </div>
             )}
           </div>

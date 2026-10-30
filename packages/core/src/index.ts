@@ -1,5 +1,8 @@
 import { nativeDrawingSchema } from "./pptx-native-objects";
+import { packSharedMedia, unpackSharedMedia } from "./shared-media";
 import { z } from "zod";
+
+export { packSharedMedia, unpackSharedMedia };
 
 export { diffDocuments, type DocDiff } from "./doc-diff";
 export { cloneJson, sameJson } from "./json-data";
@@ -181,8 +184,23 @@ export const textRunSchema = z.object({
   /** Symbol-font text and bullets, such as Wingdings, keep that typeface (as its SuiteLeaf face). */
   font: z.string().max(80).optional(),
   paragraphBreak: z.boolean().optional(),
+  /**
+   * Left edge of this paragraph's first line, in slide units.
+   * Set when list levels in one box do not share a margin.
+   */
+  paraMargin: z.number().nonnegative().max(20000).optional(),
+  /** Hanging marker width for this paragraph, in slide units. */
+  paraHang: z.number().nonnegative().max(20000).optional(),
+  /** Space before this paragraph, in slide units. */
+  spaceBefore: z.number().nonnegative().max(2000).optional(),
+  /** This paragraph's alignment when one box mixes left, center, right, or justify. */
+  paraAlign: z.enum(["left", "center", "right", "justify"]).optional(),
   /** DrawingML kern, in points. PowerPoint import moves it to the box. */
   kern: z.number().min(0).max(4000).optional(),
+  /** DrawingML spc, in points. Negative tracking pulls glyphs together. */
+  tracking: z.number().min(-4000).max(4000).optional(),
+  /** DrawingML latinLnBrk="0": keep a hyphenated word on one line. */
+  unbroken: z.boolean().optional(),
 });
 export type TextRun = z.infer<typeof textRunSchema>;
 export const slideElementSchema = z.object({
@@ -283,6 +301,8 @@ export const slideElementSchema = z.object({
   animationOrder: z.number().int().nonnegative().optional(),
   nativeDrawing: nativeDrawingSchema.optional(),
   src: z.string().optional(),
+  /** DrawingML softEdge radius, in slide units, feathered on every side. */
+  softEdge: z.number().positive().max(2000).optional(),
   /** Authored vector artwork retained alongside the raster fallback in src. */
   svgSrc: z
     .string()
@@ -339,6 +359,24 @@ export const slideElementSchema = z.object({
           align: z.enum(["left", "center", "right", "justify"]).optional(),
           colSpan: z.number().int().positive().optional(),
           border: z.string().optional(),
+          borderTop: z.object({ color: z.string(), width: z.number().positive().max(20).optional() }).optional(),
+          borderRight: z.object({ color: z.string(), width: z.number().positive().max(20).optional() }).optional(),
+          borderBottom: z.object({ color: z.string(), width: z.number().positive().max(20).optional() }).optional(),
+          borderLeft: z.object({ color: z.string(), width: z.number().positive().max(20).optional() }).optional(),
+          padTop: z.number().nonnegative().max(200).optional(),
+          padRight: z.number().nonnegative().max(200).optional(),
+          padBottom: z.number().nonnegative().max(200).optional(),
+          padLeft: z.number().nonnegative().max(200).optional(),
+          valign: z.enum(["top", "middle", "bottom"]).optional(),
+          lines: z
+            .array(
+              z.object({
+                margin: z.number().nonnegative().max(20000).optional(),
+                hang: z.number().nonnegative().max(20000).optional(),
+              }),
+            )
+            .max(400)
+            .optional(),
         }),
       ),
     )
@@ -903,10 +941,14 @@ export function utf8LongerThan(text: string, limit: number): boolean {
   if (text.length > limit) return true;
   return new TextEncoder().encode(text).length > limit;
 }
+/** Editable native JSON. Presentations embed media, so this sits above the old 200 MB cap. */
+export const NATIVE_FILE_LIMIT = 1024 * 1024 * 1024;
 export function parseFile(text: string, expectedKind?: Kind | null): SuiteFile {
-  if (utf8LongerThan(text, 200 * 1024 * 1024))
-    throw new Error("Native files must be smaller than 200 MB.");
-  const raw = JSON.parse(text);
+  if (utf8LongerThan(text, NATIVE_FILE_LIMIT))
+    throw new Error(
+      `Native files must be smaller than ${NATIVE_FILE_LIMIT / (1024 * 1024)} MB.`,
+    );
+  const raw = unpackSharedMedia(JSON.parse(text));
   if (raw.version !== 1)
     throw new Error("This SuiteLeaf file version is not supported.");
   const file = fileSchema.parse(raw);
@@ -988,11 +1030,23 @@ export function parseFile(text: string, expectedKind?: Kind | null): SuiteFile {
   return file;
 }
 export function serializeFile(file: SuiteFile): string {
-  const parsed = parseFile(JSON.stringify(file));
+  let text: string;
+  try {
+    text = JSON.stringify(file);
+  } catch (error) {
+    if (!(error instanceof RangeError)) throw error;
+    text = JSON.stringify(packSharedMedia(file));
+  }
+  const parsed = parseFile(text);
   const copy = { ...parsed };
   if (!copy.edits?.length) delete copy.edits;
   if (!copy.versions?.length) delete copy.versions;
-  return JSON.stringify(copy);
+  try {
+    return JSON.stringify(copy);
+  } catch (error) {
+    if (!(error instanceof RangeError)) throw error;
+    return JSON.stringify(packSharedMedia(copy));
+  }
 }
 export function createFile(
   kind: Kind,

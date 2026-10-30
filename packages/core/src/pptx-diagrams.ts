@@ -1,5 +1,6 @@
 import type JSZip from "jszip";
 import type { SlideElement, TextRun } from "./index";
+import { paintableImage } from "./pptx-pictures";
 import { shapeArtwork, shapeIsHidden } from "./pptx-geometry";
 import { themePaint } from "./pptx-theme";
 
@@ -76,6 +77,36 @@ function asSlideShape(dspXml: string, dx: number, dy: number): string {
     .replace(/<\/dsp:/g, "</p:");
 }
 
+function sniffMime(buf: Uint8Array): string | undefined {
+  if (buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47)
+    return "image/png";
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
+  if (buf.length >= 6 && buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return "image/gif";
+  if (
+    buf.length >= 12 &&
+    buf[0] === 0x52 &&
+    buf[1] === 0x49 &&
+    buf[2] === 0x46 &&
+    buf[3] === 0x46
+  )
+    return "image/webp";
+  return;
+}
+
+/** Diagram drawings keep picture relationships beside the drawing part. */
+async function drawingTargets(zip: Zip, drawingPath: string) {
+  const slash = drawingPath.lastIndexOf("/");
+  const rels = `${drawingPath.slice(0, slash)}/_rels/${drawingPath.slice(slash + 1)}.rels`;
+  const xml = await zip.file(rels)?.async("string");
+  const targets: Record<string, string> = {};
+  if (!xml) return targets;
+  for (const match of xml.matchAll(/<Relationship\b([^>]*)\/?>/g)) {
+    const tag = attrs(match[1]);
+    if (tag.Id && tag.Target) targets[tag.Id] = tag.Target;
+  }
+  return targets;
+}
+
 /**
  * SmartArt saved with a diagram drawing. The drawing is the picture PowerPoint
  * paints; an empty drawing has no shapes to place.
@@ -109,6 +140,7 @@ export async function diagramElements(
   const frameOff = attrs(/<(?:a|p):off\b([^>]*)\/?>/.exec(frameXfrm)?.[1] || "");
   const dx = Number(frameOff.x) || 0;
   const dy = Number(frameOff.y) || 0;
+  const pictureRels = await drawingTargets(zip, drawingPath);
   const elements: Omit<SlideElement, "id">[] = [];
   for (const match of drawing.matchAll(/<dsp:sp\b[\s\S]*?<\/dsp:sp>/g)) {
     const xml = asSlideShape(match[0], dx, dy);
@@ -118,8 +150,23 @@ export async function diagramElements(
     const box = boxOf(shapeXfrm, metrics);
     if (!box) continue;
     const paint = themePaint(themeXml, xml, mapXml);
+    const blip = /<a:blipFill\b[\s\S]*?<\/a:blipFill>/.exec(xml)?.[0] ?? "";
+    const embed = /\br:embed="([^"]+)"/.exec(blip)?.[1];
+    const picture = embed ? pictureRels[embed] : undefined;
+    let paintedPicture = false;
+    if (picture) {
+      const bytes = await zip
+        .file(resolveZipPath(drawingPath, picture))
+        ?.async("uint8array");
+      const src = bytes ? paintableImage(bytes, sniffMime(bytes)) : undefined;
+      // The style fillRef is often black. The blip is the shape's real fill.
+      if (src) {
+        elements.push({ type: "image", ...box, src, alt: "Diagram picture" });
+        paintedPicture = true;
+      }
+    }
     const art =
-      paint.fill || paint.stroke
+      !paintedPicture && (paint.fill || paint.stroke)
         ? shapeArtwork(xml, paint, box, metrics)
         : undefined;
     if (art) elements.push({ ...art, alt: "Diagram shape" });

@@ -1,6 +1,7 @@
-import { deflate } from "pako";
+import { deflate, inflate } from "pako";
 import { vectorEmf } from "./emf-vector";
 import { rasterEmf } from "./emf-raster";
+import { vectorWmf } from "./wmf-vector";
 
 const base64 = (bytes: Uint8Array) => {
   let text = "";
@@ -284,6 +285,10 @@ export function paintableImage(
     // Chromium cannot paint image/emf, so the alt text would show up on the page.
     return undefined;
   }
+  if (mime === "image/wmf") {
+    const svg = vectorWmf(bytes);
+    if (svg) return svg;
+  }
   return `data:${mime};base64,${base64(bytes)}`;
 }
 
@@ -300,6 +305,34 @@ export function duotoneSvg(src: string, dark: string, light: string): string {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" preserveAspectRatio="none"><filter id="${id}" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0 0 0 1 0"/><feComponentTransfer><feFuncR type="table" tableValues="${num(r0)} ${num(r1)}"/><feFuncG type="table" tableValues="${num(g0)} ${num(g1)}"/><feFuncB type="table" tableValues="${num(b0)} ${num(b1)}"/></feComponentTransfer></filter><image href="${src}" width="100%" height="100%" preserveAspectRatio="none" filter="url(#${id})"/></svg>`;
   const bytes = new TextEncoder().encode(svg);
   return `data:image/svg+xml;base64,${base64(bytes)}`;
+}
+
+/**
+ * DrawingML fillRect offsets, in fractions of the shape box (100000 = 100%).
+ * A negative edge lets the picture hang outside the box so the slide crops it.
+ */
+export function stretchFill<T extends { x: number; y: number; width: number; height: number }>(
+  xml: string,
+  box: T,
+): T {
+  const tag = /<a:fillRect\b([^>]*?)(?:\/>|>)/.exec(xml);
+  if (!tag) return box;
+  const attrs: Record<string, string> = {};
+  for (const match of tag[1].matchAll(/([A-Za-z0-9]+)="([^"]*)"/g))
+    attrs[match[1]] = match[2];
+  const edge = (name: string) => {
+    const value = Number(attrs[name] ?? 0);
+    return Number.isFinite(value) ? value / 100000 : 0;
+  };
+  const l = edge("l");
+  const t = edge("t");
+  const r = edge("r");
+  const b = edge("b");
+  if (!l && !t && !r && !b) return box;
+  const width = box.width * (1 - l - r);
+  const height = box.height * (1 - t - b);
+  if (!(width > 0) || !(height > 0)) return box;
+  return { ...box, x: box.x + l * box.width, y: box.y + t * box.height, width, height };
 }
 
 /** DrawingML srcRect, in percent of the source picture (100000 = 100%). */
@@ -335,6 +368,256 @@ export function sourceCrop(xml: string):
     Object.entries(crop).filter((entry) => entry[1] > 0),
   );
   return Object.keys(present).length ? present : undefined;
+}
+
+function dataUrlBytes(src: string): { mime: string; bytes: Uint8Array } | undefined {
+  const match = /^data:([^;,]+);base64,([\s\S]+)$/.exec(src);
+  if (!match) return;
+  const bin = atob(match[2].replace(/\s/g, ""));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return { mime: match[1], bytes };
+}
+
+/** 8-bit RGB or RGBA PNG pixels, unfiltered. */
+function decodePng(bytes: Uint8Array):
+  | { width: number; height: number; pixels: Uint8Array }
+  | undefined {
+  if (bytes.length < 8 || bytes[0] !== 137 || bytes[1] !== 80) return;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let offset = 8;
+  let width = 0;
+  let height = 0;
+  let depth = 0;
+  let color = 0;
+  let interlace = 0;
+  const idat: Uint8Array[] = [];
+  while (offset + 8 <= bytes.length) {
+    const length = view.getUint32(offset);
+    const type = String.fromCharCode(
+      bytes[offset + 4],
+      bytes[offset + 5],
+      bytes[offset + 6],
+      bytes[offset + 7],
+    );
+    const data = bytes.subarray(offset + 8, offset + 8 + length);
+    if (type === "IHDR") {
+      width = view.getUint32(offset + 8);
+      height = view.getUint32(offset + 12);
+      depth = bytes[offset + 16];
+      color = bytes[offset + 17];
+      interlace = bytes[offset + 20];
+    } else if (type === "IDAT") idat.push(data);
+    else if (type === "IEND") break;
+    offset += 12 + length;
+  }
+  if (depth !== 8 || (color !== 2 && color !== 6) || !(width > 0 && height > 0))
+    return;
+  const bpp = color === 6 ? 4 : 3;
+  const packed = new Uint8Array(idat.reduce((sum, part) => sum + part.length, 0));
+  let at = 0;
+  for (const part of idat) {
+    packed.set(part, at);
+    at += part.length;
+  }
+  let scan: Uint8Array;
+  try {
+    scan = inflate(packed);
+  } catch {
+    return;
+  }
+  const paeth = (left: number, up: number, ul: number) => {
+    const p = left + up - ul;
+    const pa = Math.abs(p - left);
+    const pb = Math.abs(p - up);
+    const pc = Math.abs(p - ul);
+    if (pa <= pb && pa <= pc) return left;
+    return pb <= pc ? up : ul;
+  };
+  const unfilter = (rows: number, rowStride: number, srcAt: { n: number }) => {
+    const raw = new Uint8Array(rows * rowStride);
+    for (let y = 0; y < rows; y++) {
+      if (srcAt.n >= scan.length) return;
+      const filter = scan[srcAt.n++];
+      const row = y * rowStride;
+      for (let x = 0; x < rowStride; x++) {
+        if (srcAt.n >= scan.length) return;
+        const left = x >= bpp ? raw[row + x - bpp] : 0;
+        const up = y ? raw[row - rowStride + x] : 0;
+        const ul = y && x >= bpp ? raw[row - rowStride + x - bpp] : 0;
+        const sample = scan[srcAt.n++];
+        const add =
+          filter === 0
+            ? 0
+            : filter === 1
+              ? left
+              : filter === 2
+                ? up
+                : filter === 3
+                  ? (left + up) >> 1
+                  : filter === 4
+                    ? paeth(left, up, ul)
+                    : -1;
+        if (add < 0) return;
+        raw[row + x] = (sample + add) & 255;
+      }
+    }
+    return raw;
+  };
+  const srcAt = { n: 0 };
+  let raw: Uint8Array | undefined;
+  if (interlace === 0) {
+    raw = unfilter(height, width * bpp, srcAt);
+  } else if (interlace === 1) {
+    raw = new Uint8Array(height * width * bpp);
+    const passes: [number, number, number, number][] = [
+      [0, 0, 8, 8],
+      [4, 0, 8, 8],
+      [0, 4, 4, 8],
+      [2, 0, 4, 4],
+      [0, 2, 2, 4],
+      [1, 0, 2, 2],
+      [0, 1, 1, 2],
+    ];
+    for (const [x0, y0, dx, dy] of passes) {
+      let passW = 0;
+      let passH = 0;
+      for (let x = x0; x < width; x += dx) passW++;
+      for (let y = y0; y < height; y += dy) passH++;
+      if (!passW || !passH) continue;
+      const pass = unfilter(passH, passW * bpp, srcAt);
+      if (!pass) return;
+      let row = 0;
+      for (let y = y0; y < height; y += dy, row++) {
+        let col = 0;
+        for (let x = x0; x < width; x += dx, col++) {
+          const from = (row * passW + col) * bpp;
+          const to = (y * width + x) * bpp;
+          raw.set(pass.subarray(from, from + bpp), to);
+        }
+      }
+    }
+  }
+  if (!raw) return;
+  const pixels = new Uint8Array(width * height * 4);
+  for (let i = 0, p = 0; i < raw.length; i += bpp, p += 4) {
+    pixels[p] = raw[i];
+    pixels[p + 1] = raw[i + 1];
+    pixels[p + 2] = raw[i + 2];
+    pixels[p + 3] = bpp === 4 ? raw[i + 3] : 255;
+  }
+  return { width, height, pixels };
+}
+
+function srgbChannels(xml: string): [number, number, number] | undefined {
+  const hex = /<a:srgbClr\b[^>]*\bval="([0-9A-Fa-f]{6})"/.exec(xml)?.[1];
+  if (!hex) return;
+  return [0, 2, 4].map((at) => parseInt(hex.slice(at, at + 2), 16)) as [
+    number,
+    number,
+    number,
+  ];
+}
+
+/** DrawingML clrChange replaces one exact sRGB colour, including a transparent key. */
+export function colorChangeDataUrl(src: string, xml: string): string | undefined {
+  const block = /<a:clrChange\b[\s\S]*?<\/a:clrChange>/.exec(xml)?.[0];
+  if (!block || !src.startsWith("data:image/png")) return;
+  const fromXml = /<a:clrFrom\b[\s\S]*?<\/a:clrFrom>/.exec(block)?.[0] ?? "";
+  const toXml = /<a:clrTo\b[\s\S]*?<\/a:clrTo>/.exec(block)?.[0] ?? "";
+  const from = srgbChannels(fromXml);
+  const to = srgbChannels(toXml);
+  if (!from || !to) return;
+  const alphaAttr = /<a:alpha\b[^>]*\bval="(\d+)"/.exec(toXml)?.[1];
+  const alpha = alphaAttr ? Math.round((Number(alphaAttr) / 100000) * 255) : 255;
+  const decoded = dataUrlBytes(src);
+  const png = decoded ? decodePng(decoded.bytes) : undefined;
+  if (!png) return;
+  const [fr, fg, fb] = from;
+  const [tr, tg, tb] = to;
+  for (let i = 0; i < png.pixels.length; i += 4) {
+    if (
+      png.pixels[i] === fr &&
+      png.pixels[i + 1] === fg &&
+      png.pixels[i + 2] === fb
+    ) {
+      png.pixels[i] = tr;
+      png.pixels[i + 1] = tg;
+      png.pixels[i + 2] = tb;
+      png.pixels[i + 3] = alpha;
+    }
+  }
+  return pngDataUrl(png.width, png.height, png.pixels);
+}
+
+/**
+ * PowerPoint turns a picture with the shape rotation and ignores JPEG EXIF.
+ * A browser would apply that EXIF as well, so a rotated photo turns twice.
+ * The stored pixels stay as they are; only the orientation tag is cleared.
+ */
+export function jpegWithoutOrientation(bytes: Uint8Array): Uint8Array {
+  const mark = [0x45, 0x78, 0x69, 0x66, 0, 0];
+  let at = -1;
+  for (let i = 0; i + mark.length < bytes.length && i < 65536; i++) {
+    if (mark.every((byte, index) => bytes[i + index] === byte)) {
+      at = i + mark.length;
+      break;
+    }
+  }
+  if (at < 0 || at + 8 > bytes.length) return bytes;
+  const little = bytes[at] === 0x49 && bytes[at + 1] === 0x49;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const u16 = (offset: number) =>
+    view.getUint16(at + offset, little);
+  const u32 = (offset: number) =>
+    view.getUint32(at + offset, little);
+  const ifd = u32(4);
+  if (ifd + 2 > bytes.length - at) return bytes;
+  const count = u16(ifd);
+  for (let i = 0; i < count; i++) {
+    const entry = ifd + 2 + i * 12;
+    if (at + entry + 12 > bytes.length) return bytes;
+    if (u16(entry) !== 274 || u16(entry + 2) !== 3) continue;
+    const copy = new Uint8Array(bytes);
+    new DataView(copy.buffer).setUint16(at + entry + 8, 1, little);
+    return copy;
+  }
+  return bytes;
+}
+
+/** DrawingML brightness and contrast, as fractions from -1 to 1. */
+export function blipLuminance(
+  xml: string,
+): { bright: number; contrast: number } | undefined {
+  const tag = /<a:lum\b([^>]*)\/?>/.exec(xml);
+  if (!tag) return;
+  const attr = (name: string) => Number(new RegExp(`${name}="(-?\\d+)"`).exec(tag[1])?.[1] ?? 0) / 100000;
+  const bright = attr("bright");
+  const contrast = attr("contrast");
+  if (!bright && !contrast) return;
+  return { bright, contrast };
+}
+
+/**
+ * Office lifts a picture off gray with contrast around the midpoint, then brightness.
+ * Positive contrast stretches away from 0.5; the result is clamped by the SVG filter.
+ */
+export function luminanceSvg(src: string, bright: number, contrast: number): string {
+  const span = contrast >= 0 ? 1 / Math.max(1e-3, 1 - Math.min(0.999, contrast)) : 1 + contrast;
+  const slope = span;
+  const intercept = 0.5 * (1 - span) + bright;
+  const num = (n: number) => String(Math.round(n * 10000) / 10000);
+  const id = `l${Math.random().toString(36).slice(2, 10)}`;
+  const channel = `<feFuncR type="linear" slope="${num(slope)}" intercept="${num(intercept)}"/><feFuncG type="linear" slope="${num(slope)}" intercept="${num(intercept)}"/><feFuncB type="linear" slope="${num(slope)}" intercept="${num(intercept)}"/>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" preserveAspectRatio="none"><filter id="${id}" color-interpolation-filters="sRGB"><feComponentTransfer>${channel}</feComponentTransfer></filter><image href="${src}" width="100%" height="100%" preserveAspectRatio="none" filter="url(#${id})"/></svg>`;
+  const bytes = new TextEncoder().encode(svg);
+  return `data:image/svg+xml;base64,${base64(bytes)}`;
+}
+
+export function applyBlipLuminance(src: string | undefined, xml: string): string | undefined {
+  if (!src) return src;
+  const lum = blipLuminance(xml);
+  return lum ? luminanceSvg(src, lum.bright, lum.contrast) : src;
 }
 
 /** DrawingML alphaModFix, as a 0–1 opacity. Full strength is omitted. */

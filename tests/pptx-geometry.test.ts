@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
 import { presentationSchema } from "../packages/core/src/index";
+import { symbolFontChar } from "../packages/core/src/pptx-lists";
 import { parsePowerPoint } from "../packages/core/src/pptx";
 import { backgroundCss, duotoneColors } from "../packages/core/src/pptx-theme";
 import { groupFillXml, slidePointScale, shapeArtwork } from "../packages/core/src/pptx-geometry";
+import { svgFillMarkup } from "../packages/core/src/pptx-theme";
 import { presetTextBox, presetVector } from "../packages/core/src/pptx-preset-geometry";
 import type { ShapePaint } from "../packages/core/src/pptx-theme";
 
@@ -122,6 +124,24 @@ describe("PowerPoint geometry", () => {
     expect(parsed.content.pointWidth).toBeCloseTo(960, 3);
     expect(parsed.content.pointHeight).toBeCloseTo(540, 3);
     expect(slidePointScale(960, 2381)).toBeCloseTo(960 / 2381, 5);
+  });
+
+  it("paints a slide color-map override that turns bg1 black", async () => {
+    const parsed = await deck(
+      `<p:sld><p:cSld><p:bg><p:bgRef idx="1001"><a:schemeClr val="bg1"/></p:bgRef></p:bg><p:spTree>
+        <p:sp><p:nvSpPr><p:cNvPr id="2"/><p:nvPr/></p:nvSpPr>
+          <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1000000" cy="400000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+            <a:solidFill><a:schemeClr val="tx1"/></a:solidFill></p:spPr>
+          <p:txBody><a:bodyPr/><a:p><a:r><a:rPr sz="1800"><a:solidFill><a:schemeClr val="tx1"/></a:solidFill></a:rPr><a:t>Dark</a:t></a:r></a:p></p:txBody>
+        </p:sp>
+      </p:spTree></p:cSld><p:clrMapOvr><a:overrideClrMapping bg1="dk1" tx1="lt1" bg2="dk2" tx2="lt2"/></p:clrMapOvr></p:sld>`,
+      `<p:sldLayout><p:cSld><p:spTree/></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>`,
+      `<p:sldMaster><p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2"/><p:cSld><p:bg><p:bgRef idx="1001"><a:schemeClr val="bg1"/></p:bgRef></p:bg><p:spTree/></p:cSld></p:sldMaster>`,
+    );
+    const slide = parsed.content.slides[parsed.content.slideOrder[0]];
+    expect(slide.background?.color?.toLowerCase()).toBe("#000000");
+    const text = slide.elements.find((el) => el.content === "Dark");
+    expect(text?.color?.toLowerCase()).toBe("#ffffff");
   });
 
   it("uses the theme background fill a bgRef points at", () => {
@@ -339,6 +359,54 @@ describe("PowerPoint geometry", () => {
     expect(svg(bend?.src)).not.toContain('fill="#');
   });
 
+  it("scales a custom curve stroke into the path viewBox", async () => {
+    const parsed = await deck(
+      `<p:sld><p:cSld><p:spTree>
+        <p:sp><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="2667000" cy="965200"/></a:xfrm>
+          <a:custGeom><a:pathLst><a:path w="1680" h="608">
+            <a:moveTo><a:pt x="1680" y="160"/></a:moveTo>
+            <a:cubicBezTo><a:pt x="800" y="0"/><a:pt x="400" y="608"/><a:pt x="0" y="400"/></a:cubicBezTo>
+          </a:path></a:pathLst></a:custGeom>
+          <a:noFill/><a:ln w="127000"><a:solidFill><a:srgbClr val="000066"/></a:solidFill></a:ln>
+        </p:spPr></p:sp>
+      </p:spTree></p:cSld></p:sld>`,
+      `<p:sldLayout><p:cSld><p:spTree/></p:cSld></p:sldLayout>`,
+    );
+    const curve = parsed.content.slides[parsed.content.slideOrder[0]].elements.find(
+      (el) => el.alt === "Slide shape",
+    );
+    const markup = svg(curve?.src);
+    expect(markup).toContain('fill="none"');
+    expect(markup).toContain('stroke="#000066"');
+    const width = Number(/stroke-width="([^"]+)"/.exec(markup)?.[1]);
+    expect(width).toBeGreaterThan(70);
+    expect(width).toBeLessThan(90);
+  });
+
+  it("scales a grouped curve stroke by the group's slide size", async () => {
+    const parsed = await deck(
+      `<p:sld><p:cSld><p:spTree>
+        <p:grpSp><p:nvGrpSpPr><p:cNvPr id="8"/></p:nvGrpSpPr>
+          <p:grpSpPr><a:xfrm><a:off x="1181100" y="4724400"/><a:ext cx="4724400" cy="1854200"/><a:chOff x="744" y="2976"/><a:chExt cx="2976" cy="1168"/></a:xfrm></p:grpSpPr>
+          <p:sp><p:spPr><a:xfrm><a:off x="744" y="2976"/><a:ext cx="2976" cy="1168"/></a:xfrm>
+            <a:custGeom><a:pathLst><a:path w="2976" h="1168">
+              <a:moveTo><a:pt x="0" y="1168"/></a:moveTo>
+              <a:cubicBezTo><a:pt x="800" y="400"/><a:pt x="2000" y="100"/><a:pt x="2976" y="200"/></a:cubicBezTo>
+            </a:path></a:pathLst></a:custGeom>
+            <a:noFill/><a:ln w="127000"><a:solidFill><a:srgbClr val="CC0000"/></a:solidFill></a:ln>
+          </p:spPr></p:sp>
+        </p:grpSp>
+      </p:spTree></p:cSld></p:sld>`,
+      `<p:sldLayout><p:cSld><p:spTree/></p:cSld></p:sldLayout>`,
+    );
+    const curve = parsed.content.slides[parsed.content.slideOrder[0]].elements.find(
+      (el) => el.alt === "Slide shape",
+    );
+    const width = Number(/stroke-width="([^"]+)"/.exec(svg(curve?.src))?.[1]);
+    expect(width).toBeGreaterThan(70);
+    expect(width).toBeLessThan(90);
+  });
+
   it("paints a child that inherits its group's fill", async () => {
     const parsed = await deck(
       `<p:sld><p:cSld><p:spTree>
@@ -361,6 +429,23 @@ describe("PowerPoint geometry", () => {
     expect(svg(land?.src)).toContain('fill="#0070C0"');
     const slide = `<p:grpSp><p:grpSpPr><a:solidFill><a:srgbClr val="0070C0"/></a:solidFill></p:grpSpPr><p:sp>child</p:sp></p:grpSp>`;
     expect(groupFillXml(slide, slide.indexOf("child"))).toContain("0070C0");
+  });
+
+  it("rotates a pie wedge about the shape center", () => {
+    const box = { x: 40, y: 30, width: 160, height: 150 };
+    const art = shapeArtwork(
+      `<p:sp><p:spPr><a:xfrm rot="10379217"><a:off x="0" y="0"/><a:ext cx="2123110" cy="2114565"/></a:xfrm>
+        <a:prstGeom prst="pie"><a:avLst><a:gd name="adj1" fmla="val 3691650"/><a:gd name="adj2" fmla="val 14119269"/></a:avLst></a:prstGeom>
+        <a:solidFill><a:srgbClr val="FFFFFF"><a:alpha val="65000"/></a:srgbClr></a:solidFill></p:spPr></p:sp>`,
+      { fill: "rgba(255,255,255,0.65)" },
+      box,
+      { width: 960, emuWidth: 12192000 },
+    );
+    expect(art?.type).toBe("image");
+    expect(art!.x + art!.width / 2).toBeCloseTo(box.x + box.width / 2, 3);
+    expect(art!.y + art!.height / 2).toBeCloseTo(box.y + box.height / 2, 3);
+    expect(art?.rotation).toBeCloseTo(10379217 / 60000, 3);
+    expect(svg(art?.src)).toContain("A ");
   });
 
   it("insets cloud-callout text and draws the callout bubbles", () => {
@@ -472,5 +557,163 @@ describe("PowerPoint geometry", () => {
     const hung = slide.elements.find((el) => el.content === "Wide hang");
     expect(hung?.hang).toBeCloseTo((4000000 / 12192000) * 960, 3);
     expect(() => presentationSchema.parse(parsed.content)).not.toThrow();
+  });
+
+  it("keeps Symbol font codes in the SuiteLeaf face drawn the same way", async () => {
+    const parsed = await deck(
+      `<p:sld><p:cSld><p:spTree>
+        <p:sp><p:nvSpPr><p:cNvPr id="2"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+          <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="4000000" cy="800000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>
+          <p:txBody><a:bodyPr/><a:p>
+            <a:r><a:rPr sz="1800"><a:latin typeface="Symbol"/></a:rPr><a:t>m</a:t></a:r>
+            <a:r><a:rPr sz="1800"><a:latin typeface="Tahoma"/><a:sym typeface="Symbol"/></a:rPr><a:t>\uF0B1</a:t></a:r>
+          </a:p></p:txBody>
+        </p:sp>
+      </p:spTree></p:cSld></p:sld>`,
+      `<p:sldLayout><p:cSld><p:spTree/></p:cSld></p:sldLayout>`,
+    );
+    const slide = parsed.content.slides[parsed.content.slideOrder[0]];
+    const text = slide.elements.find((el) => el.type === "text");
+    expect(text?.content).toBe("m\uF0B1");
+    expect(text?.runs?.map((run) => [run.text, run.font])).toEqual([
+      ["m", "SuiteLeaf Thistle"],
+      ["\uF0B1", "SuiteLeaf Thistle"],
+    ]);
+    // The box keeps the text font; only the symbol runs are in the symbol face.
+    expect(text?.fontFamily).not.toBe("SuiteLeaf Thistle");
+  });
+
+  it("paints a preset gradient as SVG instead of a black CSS fill", () => {
+    const fill = "linear-gradient(45deg, rgba(10, 20, 30, 0.06) 0%, #0070c0 100%)";
+    const markup = svgFillMarkup(fill);
+    expect(markup.value).toBe("url(#sl-fill)");
+    expect(markup.defs).toContain("stop-opacity=\"0.06\"");
+    expect(markup.defs).toContain("stop-color=\"#0070c0\"");
+    const art = shapeArtwork(
+      `<p:sp><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="5904656" cy="1872208"/></a:xfrm><a:prstGeom prst="snip2DiagRect"><a:avLst/></a:prstGeom></p:spPr></p:sp>`,
+      { fill, stroke: "#1f4e79", strokeEmu: 12700 },
+      { x: 10, y: 20, width: 400, height: 120 },
+      { width: 960, emuWidth: 12192000 },
+    );
+    expect(art?.type).toBe("image");
+    const svg = Buffer.from(String(art?.src).split(",")[1] || "", "base64").toString("utf8");
+    expect(svg).toContain("<linearGradient");
+    expect(svg).not.toContain("linear-gradient(");
+  });
+
+  it("keeps a deeper list level further right than its parent", async () => {
+    const parsed = await deck(
+      `<p:sld><p:cSld><p:spTree>
+        <p:sp><p:nvSpPr><p:cNvPr id="3"/><p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr>
+          <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="8000000" cy="4000000"/></a:xfrm></p:spPr>
+          <p:txBody><a:bodyPr/><a:p><a:r><a:rPr sz="1800"/><a:t>Parent</a:t></a:r></a:p>
+            <a:p><a:pPr lvl="1"/><a:r><a:rPr sz="1800"/><a:t>Child</a:t></a:r></a:p></p:txBody>
+        </p:sp>
+      </p:spTree></p:cSld></p:sld>`,
+      `<p:sldLayout><p:cSld><p:spTree>
+        <p:sp><p:nvSpPr><p:cNvPr id="2"/><p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr>
+          <p:txBody><a:bodyPr/><a:lstStyle>
+            <a:lvl1pPr marL="200000" indent="-100000"><a:buFont typeface="Arial"/><a:buChar char="•"/></a:lvl1pPr>
+            <a:lvl2pPr marL="500000" indent="-100000"><a:spcBef><a:spcPts val="400"/></a:spcBef><a:buFont typeface="Arial"/><a:buChar char="○"/></a:lvl2pPr>
+          </a:lstStyle></p:txBody>
+        </p:sp>
+      </p:spTree></p:cSld></p:sldLayout>`,
+    );
+    const list = parsed.content.slides[parsed.content.slideOrder[0]].elements.find((el) =>
+      el.content?.includes("Child"),
+    );
+    const px = (emu: number) => (emu / 12192000) * 960;
+    expect(list?.hang).toBeUndefined();
+    expect(list?.runs?.[0]).toMatchObject({
+      text: "• Parent",
+      paraMargin: px(100000),
+      paraHang: px(100000),
+    });
+    expect(list?.runs?.find((run) => run.paragraphBreak)).toMatchObject({
+      paraMargin: px(400000),
+      paraHang: px(100000),
+      spaceBefore: (4 / 72) * (960 / (12192000 / 914400)),
+    });
+    expect(() => presentationSchema.parse(parsed.content)).not.toThrow();
+  });
+
+  it("places a footer from the master when the layout uses another index", async () => {
+    const parsed = await deck(
+      `<p:sld><p:cSld><p:spTree>
+        <p:sp><p:nvSpPr><p:cNvPr id="4" name="Footer"/><p:nvPr><p:ph type="ftr" idx="11"/></p:nvPr></p:nvSpPr>
+          <p:txBody><a:bodyPr/><a:p><a:r><a:rPr sz="1200"/><a:t>Grenoble</a:t></a:r></a:p></p:txBody>
+        </p:sp>
+        <p:sp><p:nvSpPr><p:cNvPr id="5"/><p:nvPr/></p:nvSpPr>
+          <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="2000000" cy="400000"/></a:xfrm></p:spPr>
+          <p:txBody><a:bodyPr/><a:p><a:pPr><a:buFont typeface="Wingdings"/><a:buChar char="&#xF06E;"/></a:pPr>
+            <a:r><a:rPr sz="1800"/><a:t>Shell</a:t></a:r></a:p></p:txBody>
+        </p:sp>
+      </p:spTree></p:cSld></p:sld>`,
+      `<p:sldLayout><p:cSld><p:spTree>
+        <p:sp><p:nvSpPr><p:cNvPr id="4"/><p:nvPr><p:ph type="ftr" idx="11"/></p:nvPr></p:nvSpPr>
+          <p:txBody><a:bodyPr/><a:p><a:endParaRPr/></a:p></p:txBody>
+        </p:sp>
+      </p:spTree></p:cSld></p:sldLayout>`,
+      `<p:sldMaster><p:cSld><p:spTree>
+        <p:sp><p:nvSpPr><p:cNvPr id="6"/><p:nvPr><p:ph type="ftr" sz="quarter" idx="3"/></p:nvPr></p:nvSpPr>
+          <p:spPr><a:xfrm><a:off x="2843808" y="6356350"/><a:ext cx="3756248" cy="274320"/></a:xfrm></p:spPr>
+          <p:txBody><a:bodyPr/><a:p><a:endParaRPr/></a:p></p:txBody>
+        </p:sp>
+      </p:spTree></p:cSld></p:sldMaster>`,
+    );
+    const slide = parsed.content.slides[parsed.content.slideOrder[0]];
+    const footer = slide.elements.find((el) => el.content === "Grenoble");
+    expect(footer?.y).toBeCloseTo((6356350 / 6858000) * 540, 3);
+    expect(footer?.x).toBeCloseTo((2843808 / 12192000) * 960, 3);
+    expect(symbolFontChar("\uF06E")).toBe("n");
+    const bullet = slide.elements.find((el) => el.content?.includes("Shell"));
+    expect(bullet?.runs?.[0]).toMatchObject({ text: "n ", font: "SuiteLeaf Sprig" });
+    expect(() => presentationSchema.parse(parsed.content)).not.toThrow();
+  });
+
+  it("keeps a picture soft edge in slide units", async () => {
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+      "base64",
+    );
+    const parsed = await deck(
+      `<p:sld><p:cSld><p:spTree>
+        <p:pic><p:nvPicPr><p:cNvPr id="4" name="Photo"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>
+          <p:blipFill><a:blip r:embed="rId2"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>
+          <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="4000000" cy="3000000"/></a:xfrm>
+            <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+            <a:effectLst><a:softEdge rad="635000"/></a:effectLst>
+          </p:spPr>
+        </p:pic>
+      </p:spTree></p:cSld></p:sld>`,
+      `<p:sldLayout><p:cSld><p:spTree/></p:cSld></p:sldLayout>`,
+      undefined,
+      {
+        slideRels: relation("rId2", "image", "../media/photo.png"),
+        files: { "ppt/media/photo.png": png },
+      },
+    );
+    const photo = parsed.content.slides[parsed.content.slideOrder[0]].elements.find(
+      (el) => el.type === "image",
+    );
+    expect(photo?.softEdge).toBeCloseTo((635000 / 12192000) * 960, 3);
+  });
+
+  it("scales a grouped preset stroke into the shape's own coordinates", () => {
+    const art = shapeArtwork(
+      `<p:sp><p:spPr><a:xfrm><a:off x="576" y="2256"/><a:ext cx="192" cy="912"/></a:xfrm>
+        <a:prstGeom prst="rightBrace"><a:avLst/></a:prstGeom>
+        <a:noFill/><a:ln w="28575"><a:solidFill><a:srgbClr val="009900"/></a:solidFill></a:ln></p:spPr></p:sp>`,
+      { stroke: "#009900", strokeEmu: 28575 },
+      { x: 72, y: 282, width: 32, height: 152 },
+      { width: 960, emuWidth: 9144000 },
+    );
+    expect(art?.type).toBe("image");
+    expect(art!.width).toBeLessThan(80);
+    expect(art!.height).toBeLessThan(200);
+    const svgText = svg(art?.src);
+    const width = Number(/stroke="#009900" stroke-width="([0-9.]+)"/.exec(svgText)?.[1]);
+    expect(width).toBeGreaterThan(0);
+    expect(width).toBeLessThan(40);
   });
 });

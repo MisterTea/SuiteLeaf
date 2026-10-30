@@ -40,6 +40,25 @@ describe("slide table marks", () => {
       border: "calc(1px * var(--slide-pt, 1)) solid #ffffff",
     });
     expect(slideCellPaint({ fill: "#ff9999" }, true).border).toBe("none");
+    expect(
+      slideCellPaint(
+        {
+          borderTop: { color: "#111111", width: 1.5 },
+          borderBottom: { color: "#111111", width: 1 },
+          padTop: 0.6,
+          padRight: 7.2,
+          valign: "middle",
+        },
+        true,
+      ),
+    ).toMatchObject({
+      border: "none",
+      borderTop: "calc(1.5 * var(--slide-pt, 1) * 1px) solid #111111",
+      borderBottom: "calc(1 * var(--slide-pt, 1) * 1px) solid #111111",
+      paddingTop: "calc(0.6 * var(--slide-pt, 1) * 1px)",
+      paddingRight: "calc(7.2 * var(--slide-pt, 1) * 1px)",
+      verticalAlign: "middle",
+    });
     expect(slideCellPaint(undefined, false)).toEqual({
       fontWeight: undefined,
       fontStyle: undefined,
@@ -48,8 +67,17 @@ describe("slide table marks", () => {
       fontSize: undefined,
       textAlign: undefined,
       lineHeight: undefined,
-      whiteSpace: undefined,
+      whiteSpace: "pre-wrap",
+      verticalAlign: undefined,
+      paddingTop: undefined,
+      paddingRight: undefined,
+      paddingBottom: undefined,
+      paddingLeft: undefined,
       border: undefined,
+      borderTop: undefined,
+      borderRight: undefined,
+      borderBottom: undefined,
+      borderLeft: undefined,
     });
   });
 });

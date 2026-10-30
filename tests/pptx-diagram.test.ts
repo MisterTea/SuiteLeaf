@@ -88,4 +88,52 @@ describe("PowerPoint diagrams and highlights", () => {
     expect(quote?.runs?.[0]?.highlight?.toLowerCase()).toBe("#ffff00");
     expect(quote?.runs?.[0]?.color?.toLowerCase()).not.toBe("#ffff00");
   });
+
+  it("paints a SmartArt blip fill instead of the black style fill", async () => {
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+      "base64",
+    );
+    const picture = `<dsp:drawing xmlns:dsp="http://schemas.microsoft.com/office/drawing/2008/diagram" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><dsp:spTree><dsp:nvGrpSpPr><dsp:cNvPr id="0" name=""/></dsp:nvGrpSpPr><dsp:grpSpPr/><dsp:sp><dsp:nvSpPr><dsp:cNvPr id="0" name=""/></dsp:nvSpPr><dsp:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="457200"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="rId1"/></a:blipFill><a:ln><a:noFill/></a:ln></dsp:spPr><dsp:style><a:lnRef idx="0"><a:scrgbClr r="0" g="0" b="0"/></a:lnRef><a:fillRef idx="1"><a:scrgbClr r="0" g="0" b="0"/></a:fillRef><a:effectRef idx="0"><a:scrgbClr r="0" g="0" b="0"/></a:effectRef><a:fontRef idx="minor"/></dsp:style></dsp:sp></dsp:spTree></dsp:drawing>`;
+    const zip = new JSZip();
+    zip.file(
+      "ppt/presentation.xml",
+      '<p:presentation><p:sldSz cx="9144000" cy="6858000"/><p:sldIdLst><p:sldId id="256" r:id="rId1"/></p:sldIdLst></p:presentation>',
+    );
+    zip.file(
+      "ppt/_rels/presentation.xml.rels",
+      '<Relationships><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide1.xml"/></Relationships>',
+    );
+    zip.file(
+      "ppt/slides/slide1.xml",
+      `<p:sld><p:cSld><p:spTree><p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="4" name="Diagram"/></p:nvGraphicFramePr><p:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="457200"/></p:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/diagram"><dgm:relIds xmlns:dgm="http://schemas.openxmlformats.org/drawingml/2006/diagram" r:dm="rId3" r:lo="rId4" r:qs="rId5" r:cs="rId6"/></a:graphicData></a:graphic></p:graphicFrame></p:spTree></p:cSld></p:sld>`,
+    );
+    zip.file(
+      "ppt/slides/_rels/slide1.xml.rels",
+      `<Relationships><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/><Relationship Id="rId7" Type="http://schemas.microsoft.com/office/2007/relationships/diagramDrawing" Target="../diagrams/drawing1.xml"/></Relationships>`,
+    );
+    zip.file("ppt/diagrams/drawing1.xml", picture);
+    zip.file(
+      "ppt/diagrams/_rels/drawing1.xml.rels",
+      '<Relationships><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/board.png"/></Relationships>',
+    );
+    zip.file("ppt/media/board.png", png);
+    zip.file("ppt/slideLayouts/slideLayout1.xml", "<p:sldLayout><p:cSld><p:spTree/></p:cSld></p:sldLayout>");
+    zip.file(
+      "ppt/slideLayouts/_rels/slideLayout1.xml.rels",
+      '<Relationships><Relationship Id="m" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/></Relationships>',
+    );
+    zip.file("ppt/slideMasters/slideMaster1.xml", "<p:sldMaster><p:cSld><p:spTree/></p:cSld></p:sldMaster>");
+    zip.file(
+      "ppt/slideMasters/_rels/slideMaster1.xml.rels",
+      '<Relationships><Relationship Id="t" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="../theme/theme1.xml"/></Relationships>',
+    );
+    zip.file("ppt/theme/theme1.xml", theme);
+    const parsed = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }), "board.pptx");
+    const slide = parsed.content.slides[parsed.content.slideOrder[0]];
+    const pictureEl = slide.elements.find((el) => el.alt === "Diagram picture");
+    expect(pictureEl).toMatchObject({ type: "image", x: 0, y: 0 });
+    expect(pictureEl?.src?.startsWith("data:image/png;base64,")).toBe(true);
+    expect(slide.elements.some((el) => el.fill === "#000000")).toBe(false);
+  });
 });

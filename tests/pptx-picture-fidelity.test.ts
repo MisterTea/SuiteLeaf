@@ -1,9 +1,20 @@
 import { inflate } from "pako";
+import { crc32, deflateSync } from "node:zlib";
 import { expect, it } from "vitest";
 import JSZip from "jszip";
 import { parsePowerPoint } from "../packages/core/src/pptx";
 import { lineFrame } from "../packages/core/src/pptx-geometry";
-import { blipOpacity, duotoneSvg, paintableImage, tiffToPngDataUrl } from "../packages/core/src/pptx-pictures";
+import {
+  blipOpacity,
+  colorChangeDataUrl,
+  duotoneSvg,
+  applyBlipLuminance,
+  blipLuminance,
+  jpegWithoutOrientation,
+  paintableImage,
+  stretchFill,
+  tiffToPngDataUrl,
+} from "../packages/core/src/pptx-pictures";
 
 function uncompressedTiff(
   pixels: Uint8Array,
@@ -323,6 +334,70 @@ it("draws a vector EMF as SVG instead of a broken image", () => {
   expect(svg).toContain("L9 9");
 });
 
+it("paints a translucent EMF alpha blend inside the vector drawing", () => {
+  const header = new Uint8Array(108);
+  const view = new DataView(header.buffer);
+  view.setUint32(0, 1, true);
+  view.setUint32(4, 108, true);
+  view.setInt32(16, 1, true);
+  view.setInt32(20, 1, true);
+  view.setUint32(40, 0x464d4520, true);
+  const record = new Uint8Array(172);
+  const rec = new DataView(record.buffer);
+  const u32 = (offset: number, value: number) => rec.setUint32(offset, value, true);
+  u32(0, 114);
+  u32(4, 172);
+  u32(24, 0);
+  u32(28, 0);
+  u32(32, 2);
+  u32(36, 2);
+  record[42] = 255;
+  record[43] = 1;
+  u32(84, 108);
+  u32(88, 52);
+  u32(92, 160);
+  u32(96, 4);
+  u32(100, 1);
+  u32(104, 1);
+  u32(108, 40);
+  u32(112, 1);
+  rec.setInt32(116, 1, true);
+  rec.setUint16(120, 1, true);
+  rec.setUint16(122, 32, true);
+  u32(124, 3);
+  u32(148, 0x00ff0000);
+  u32(152, 0x0000ff00);
+  u32(156, 0x000000ff);
+  record[160] = 0;
+  record[161] = 0;
+  record[162] = 64;
+  record[163] = 128;
+  const eof = new Uint8Array(8);
+  new DataView(eof.buffer).setUint32(0, 14, true);
+  new DataView(eof.buffer).setUint32(4, 8, true);
+  const window = new Uint8Array(16);
+  const win = new DataView(window.buffer);
+  win.setUint32(0, 9, true);
+  win.setUint32(4, 16, true);
+  win.setInt32(8, 2, true);
+  win.setInt32(12, 2, true);
+  const viewport = new Uint8Array(16);
+  viewport.set(window);
+  new DataView(viewport.buffer).setUint32(0, 11, true);
+  const bytes = new Uint8Array(108 + 16 + 16 + 172 + 8);
+  bytes.set(header, 0);
+  bytes.set(window, 108);
+  bytes.set(viewport, 124);
+  bytes.set(record, 140);
+  bytes.set(eof, 312);
+  const src = paintableImage(bytes, "image/emf");
+  expect(src).toMatch(/^data:image\/svg\+xml;base64,/);
+  const svg = Buffer.from(src!.split(",")[1], "base64").toString("utf8");
+  const href = /href="(data:image\/png;base64,[^"]+)"/.exec(svg)?.[1];
+  expect(pngPixel(href!, 0, 0)).toEqual([128, 0, 0, 128]);
+  expect(svg).toContain('width="2"');
+});
+
 it("drops an EMF the browser cannot paint", () => {
   const bytes = new Uint8Array(128);
   const view = new DataView(bytes.buffer);
@@ -380,4 +455,105 @@ it("uses the master box when a picture placeholder layout has no transform", asy
   );
   expect(picture?.y).toBeGreaterThan(100);
   expect(picture?.height).toBeGreaterThan(300);
+});
+
+it("punches out only the exact keyed picture colour", () => {
+  const raw = Buffer.from([
+    0, 0xf9, 0xf9, 0xf9, 0xf0, 0xf0, 0xf0, 0xff, 0x00, 0x00,
+  ]);
+  const chunk = (type: string, data: Buffer) => {
+    const body = Buffer.concat([Buffer.from(type), data]);
+    const out = Buffer.alloc(body.length + 8);
+    out.writeUInt32BE(data.length, 0);
+    body.copy(out, 4);
+    out.writeUInt32BE(crc32(body), body.length + 4);
+    return out;
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(3, 0);
+  header.writeUInt32BE(1, 4);
+  header.set([8, 2, 0, 0, 0], 8);
+  const png = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", header),
+    chunk("IDAT", deflateSync(raw)),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
+  const src = `data:image/png;base64,${png.toString("base64")}`;
+  const xml = `<a:clrChange><a:clrFrom><a:srgbClr val="F9F9F9"/></a:clrFrom><a:clrTo><a:srgbClr val="F9F9F9"><a:alpha val="0"/></a:srgbClr></a:clrTo></a:clrChange>`;
+  const changed = colorChangeDataUrl(src, xml);
+  expect(changed?.startsWith("data:image/png;base64,")).toBe(true);
+  const out = Buffer.from(changed!.split(",")[1], "base64");
+  let inflated = Buffer.alloc(0);
+  let offset = 8;
+  while (offset + 8 <= out.length) {
+    const length = out.readUInt32BE(offset);
+    const type = out.subarray(offset + 4, offset + 8).toString();
+    const data = out.subarray(offset + 8, offset + 8 + length);
+    if (type === "IDAT") inflated = Buffer.concat([inflated, data]);
+    offset += 12 + length;
+  }
+  const pixels = inflate(inflated);
+  expect([...pixels.subarray(1, 5)]).toEqual([0xf9, 0xf9, 0xf9, 0]);
+  expect([...pixels.subarray(5, 9)]).toEqual([0xf0, 0xf0, 0xf0, 255]);
+  expect([...pixels.subarray(9, 13)]).toEqual([0xff, 0, 0, 255]);
+});
+
+it("keys an interlaced PNG the same way", () => {
+  const src =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAAEFsT2yAAAAGklEQVR4nGP4+fPnf4YPHz78Z/jPwAAi/gMAfUQLthPXNzIAAAAASUVORK5CYII=";
+  const xml = `<a:clrChange><a:clrFrom><a:srgbClr val="F9F9F9"/></a:clrFrom><a:clrTo><a:srgbClr val="F9F9F9"><a:alpha val="0"/></a:srgbClr></a:clrTo></a:clrChange>`;
+  const changed = colorChangeDataUrl(src, xml)!;
+  const out = Buffer.from(changed.split(",")[1], "base64");
+  let inflated = Buffer.alloc(0);
+  let offset = 8;
+  while (offset + 8 <= out.length) {
+    const length = out.readUInt32BE(offset);
+    const type = out.subarray(offset + 4, offset + 8).toString();
+    const data = out.subarray(offset + 8, offset + 8 + length);
+    if (type === "IDAT") inflated = Buffer.concat([inflated, data]);
+    offset += 12 + length;
+  }
+  const pixels = inflate(inflated);
+  expect([...pixels.subarray(1, 5)]).toEqual([0xf9, 0xf9, 0xf9, 0]);
+  expect([...pixels.subarray(5, 9)]).toEqual([240, 240, 240, 255]);
+  expect([...pixels.subarray(10, 14)]).toEqual([255, 0, 0, 255]);
+  expect([...pixels.subarray(14, 18)]).toEqual([0, 255, 0, 255]);
+});
+
+it("clears a JPEG orientation tag so a rotated picture is not turned twice", () => {
+  const bytes = Uint8Array.from([
+    0xff, 0xd8, 0xff, 0xe1, 0x00, 0x26,
+    0x45, 0x78, 0x69, 0x66, 0x00, 0x00,
+    0x49, 0x49, 0x2a, 0x00, 0x08, 0x00, 0x00, 0x00,
+    0x01, 0x00,
+    0x12, 0x01, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00,
+    0xff, 0xd9,
+  ]);
+  const cleared = jpegWithoutOrientation(bytes);
+  expect(bytes[30]).toBe(6);
+  expect(cleared[30]).toBe(1);
+  expect(cleared[0]).toBe(0xff);
+  expect(jpegWithoutOrientation(Uint8Array.from([0xff, 0xd8, 0xff, 0xd9]))).toHaveLength(4);
+});
+
+it("stretches a picture's gray with DrawingML contrast", () => {
+  const xml = `<a:blip r:embed="rId3"><a:lum bright="-5000" contrast="55000"/></a:blip>`;
+  expect(blipLuminance(xml)).toEqual({ bright: -0.05, contrast: 0.55 });
+  const painted = applyBlipLuminance("data:image/png;base64,AAAA", xml)!;
+  const svg = Buffer.from(painted.split(",")[1], "base64").toString("utf8");
+  expect(svg).toContain('slope="2.2222"');
+  expect(svg).toContain('intercept="-0.6611"');
+  expect(applyBlipLuminance("data:image/png;base64,AAAA", "<a:blip/>")).toBe(
+    "data:image/png;base64,AAAA",
+  );
+});
+
+it("lets a negative fillRect hang a background picture off the slide", () => {
+  const box = { x: 0, y: 0, width: 960, height: 540 };
+  expect(stretchFill(`<a:stretch><a:fillRect/></a:stretch>`, box)).toEqual(box);
+  expect(
+    stretchFill(`<a:stretch><a:fillRect l="-43000" r="-43000"/></a:stretch>`, box),
+  ).toEqual({ x: -412.8, y: 0, width: 1785.6, height: 540 });
 });

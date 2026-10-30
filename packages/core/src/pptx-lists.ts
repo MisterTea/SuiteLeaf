@@ -1,5 +1,21 @@
 import { isSymbolFont } from "./symbol-fonts";
 
+/**
+ * Wingdings stores the painted glyph at the symbol byte (U+006E for a square).
+ * PowerPoint also writes that byte in the private-use page, which PDF fonts skip.
+ */
+export function symbolFontChar(text: string): string {
+  let out = "";
+  for (const ch of text) {
+    const code = ch.codePointAt(0) ?? 0;
+    out +=
+      code >= 0xf000 && code <= 0xf0ff
+        ? String.fromCharCode(code - 0xf000)
+        : ch;
+  }
+  return out;
+}
+
 /** Wingdings, Webdings, Symbol, and the other symbol fonts store a byte, not the Unicode glyph they paint. */
 export function symbolBulletFont(typeface: string | undefined): string | undefined {
   const name = typeface?.trim();
@@ -78,4 +94,89 @@ export function formatAutoNum(kind: string, n: number): string {
     default:
       return `${n}.`;
   }
+}
+
+type ListRun = {
+  text: string;
+  paragraphBreak?: boolean;
+  paraMargin?: number;
+  paraHang?: number;
+  spaceBefore?: number;
+  paraAlign?: "left" | "center" | "right" | "justify";
+};
+
+/**
+ * One box can hang only when every paragraph shares that marker.
+ * Different list levels keep their own left edge on the runs.
+ */
+export function layoutListRuns<T extends ListRun>(
+  paragraphs: {
+    text: string;
+    runs: T[];
+    hang?: number;
+    listMargin?: number;
+    spaceBefore?: number;
+    align?: "left" | "center" | "right" | "justify";
+  }[],
+): { hang?: number; listMargin: number; runs: T[] } {
+  const textual = paragraphs.filter((paragraph) => paragraph.text.trim());
+  const same = (
+    a: { hang?: number; listMargin?: number; spaceBefore?: number },
+    b: { hang?: number; listMargin?: number; spaceBefore?: number },
+  ) =>
+    (a.hang || 0) === (b.hang || 0) &&
+    (a.listMargin || 0) === (b.listMargin || 0) &&
+    (a.spaceBefore || 0) === (b.spaceBefore || 0);
+  const head = textual[0];
+  const varied = !!head && textual.some((paragraph) => !same(paragraph, head));
+  const shared = !varied && !!head?.hang && !(head.spaceBefore || 0);
+  const alignOf = (paragraph: { align?: "left" | "center" | "right" | "justify" }) =>
+    paragraph.align || "left";
+  const baseAlign = alignOf(paragraphs[0] ?? {});
+  const alignVaries = paragraphs.some(
+    (paragraph) => paragraph.text.trim() && alignOf(paragraph) !== baseAlign,
+  );
+  const perParagraph =
+    varied ||
+    alignVaries ||
+    textual.some((paragraph) => (paragraph.spaceBefore || 0) > 0) ||
+    (!shared && textual.some((paragraph) => (paragraph.listMargin || 0) > 0));
+  const extras = (paragraph: {
+    hang?: number;
+    listMargin?: number;
+    spaceBefore?: number;
+    align?: "left" | "center" | "right" | "justify";
+  }) => {
+    if (!perParagraph) return {};
+    return {
+      ...(paragraph.listMargin ? { paraMargin: paragraph.listMargin } : {}),
+      ...(paragraph.hang ? { paraHang: paragraph.hang } : {}),
+      ...(paragraph.spaceBefore ? { spaceBefore: paragraph.spaceBefore } : {}),
+      ...(alignVaries && alignOf(paragraph) !== baseAlign
+        ? { paraAlign: alignOf(paragraph) }
+        : {}),
+    };
+  };
+  const runs: T[] = [];
+  paragraphs.forEach((paragraph, index) => {
+    if (index) {
+      runs.push({
+        text: "\n",
+        paragraphBreak: true,
+        ...extras(paragraph),
+      } as T);
+    }
+    paragraph.runs.forEach((run, runIndex) => {
+      runs.push(
+        index === 0 && runIndex === 0
+          ? ({ ...run, ...extras(paragraph) } as T)
+          : run,
+      );
+    });
+  });
+  return {
+    ...(shared && head?.hang ? { hang: head.hang } : {}),
+    listMargin: shared ? head?.listMargin || 0 : 0,
+    runs,
+  };
 }

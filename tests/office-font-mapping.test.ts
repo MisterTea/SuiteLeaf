@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
 import { createFile, type DocFile, type SlideFile } from "../packages/core/src/index";
 import { importOffice } from "../packages/core/src/office";
-import { officeFont, suiteLeafFont } from "../packages/core/src/office-fonts";
+import { officeFont, officeSingleSpacing, suiteLeafFont } from "../packages/core/src/office-fonts";
 import { wordDefaultFont } from "../packages/core/src/word-fonts";
 import { bodyFontFamily, documentPageSettings } from "../packages/core/src/document-layout";
 import { exportDocx } from "../packages/core/src/docx-export";
@@ -24,6 +24,12 @@ describe("Office font names", () => {
     expect(suiteLeafFont("Some Brand Font")).toBe("Some Brand Font");
     expect(officeFont("Roboto")).toBe("Roboto");
     expect(suiteLeafFont(undefined)).toBeUndefined();
+    expect(officeSingleSpacing("Calibri")).toBeCloseTo(1.2207, 4);
+    expect(officeSingleSpacing("SuiteLeaf Willow")).toBeCloseTo(1.2207, 4);
+    expect(officeSingleSpacing("Calibri Light")).toBeCloseTo(1.2207, 4);
+    expect(officeSingleSpacing("Arial")).toBeCloseTo(1.1172, 4);
+    expect(officeSingleSpacing("TU Delft-UltraLight")).toBe(1);
+    expect(officeSingleSpacing(undefined)).toBe(1);
   });
 
   it("finds a Word document's body font in the Normal style, the defaults, or the theme", () => {
@@ -80,5 +86,6 @@ describe("Office font names", () => {
     const deck = (await parsePowerPoint(bytes)).content;
     const text = deck.slides[deck.slideOrder[0]].elements.find((el) => el.content === "Title");
     expect(text?.fontFamily).toBe("SuiteLeaf Willow");
+    expect(text?.lineHeight).toBeCloseTo(1.2207, 4);
   });
 });

@@ -3,6 +3,7 @@ import {
   type PresetDef,
   type PresetToken,
 } from "./pptx-preset-data";
+import { svgFillMarkup } from "./pptx-theme";
 
 type Box = { x: number; y: number; width: number; height: number };
 
@@ -267,21 +268,31 @@ export function presetVector(
   }
   if (!commands.length || !Number.isFinite(minX)) return undefined;
   const pad = strokeWidth > 0 ? strokeWidth / 2 : 0;
-  minX -= pad;
-  minY -= pad;
-  maxX += pad;
-  maxY += pad;
-  const width = Math.max(1, maxX - minX);
-  const height = Math.max(1, maxY - minY);
+  // The slide painter rotates the image about its own center. DrawingML
+  // rotates about the shape box, so a pie wedge or a callout tail has to
+  // keep that center even when the ink does not fill the box.
+  const halfW = Math.max(w / 2 - minX, maxX - w / 2) + pad;
+  const halfH = Math.max(h / 2 - minY, maxY - h / 2) + pad;
+  const originX = w / 2 - halfW;
+  const originY = h / 2 - halfH;
+  const width = Math.max(1, halfW * 2);
+  const height = Math.max(1, halfH * 2);
+  const painted = svgFillMarkup(fill);
   const body = commands
     .map((path) => {
-      const pathFill = path.fill ? fill : "none";
+      const pathFill = path.fill ? painted.value : "none";
       const pathStroke = path.stroke ? stroke : "none";
       const widthAttr = path.stroke && strokeWidth > 0 ? strokeWidth : 0;
-      return `<path d="${path.d}" fill="${pathFill}" stroke="${pathStroke}" stroke-width="${round(widthAttr)}" stroke-linejoin="round" stroke-linecap="round" transform="translate(${round(-minX)} ${round(-minY)})"/>`;
+      return `<path d="${path.d}" fill="${pathFill}" stroke="${pathStroke}" stroke-width="${round(widthAttr)}" stroke-linejoin="round" stroke-linecap="round" transform="translate(${round(-originX)} ${round(-originY)})"/>`;
     })
     .join("");
-  return { src: svgData(body, width, height), minX, minY, width, height };
+  return {
+    src: svgData(painted.defs + body, width, height),
+    minX: originX,
+    minY: originY,
+    width,
+    height,
+  };
 }
 
 /**

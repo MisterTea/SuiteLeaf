@@ -24,25 +24,44 @@ import {
   withInheritedFill,
 } from "./pptx-geometry";
 import { normAutofitFactors } from "./pptx-autofit";
-import { moveKerningToBoxes, runKern } from "./pptx-kerning";
+import { retainSharedData } from "./shared-media";
+import { exactLineFactor, moveKerningToBoxes, runKern, runTracking } from "./pptx-kerning";
 import { diagramElements } from "./pptx-diagrams";
 import { readEmbeddedFonts } from "./pptx-fonts";
-import { bulletPointSize, formatAutoNum, symbolBulletFont } from "./pptx-lists";
-import { suiteLeafFont } from "./office-fonts";
+import {
+  bulletPointSize,
+  formatAutoNum,
+  layoutListRuns,
+  symbolBulletFont,
+  symbolFontChar,
+} from "./pptx-lists";
+import { officeSingleSpacing, suiteLeafFont } from "./office-fonts";
 import { isSymbolFont, splitSymbolRun } from "./symbol-fonts";
 import {
+  builtinTableStyle,
   cellMarkUsed,
   explicitTableCell,
+  tableLineLayout,
   mergeTableCell,
   tableCellContinues,
   tableFractions,
   tableStyleAt,
-  tableStyleBorder,
   tableStyleById,
+  tableStyleEdges,
   tableStyleFlags,
 } from "./pptx-table";
-import { blipOpacity, duotoneSvg, paintableImage, sourceCrop } from "./pptx-pictures";
 import {
+  blipOpacity,
+  colorChangeDataUrl,
+  duotoneSvg,
+  applyBlipLuminance,
+  jpegWithoutOrientation,
+  paintableImage,
+  sourceCrop,
+  stretchFill,
+} from "./pptx-pictures";
+import {
+  applyThemeOverride,
   backgroundBlip,
   backgroundCss,
   defaultSlideNumberBox,
@@ -338,6 +357,8 @@ async function parseZipPptx(
     slidePaths.push(...allFiles);
   }
 
+  const defaultTextStyle =
+    /<p:defaultTextStyle\b[\s\S]*?<\/p:defaultTextStyle>/.exec(presXml)?.[0] || "";
   const out = createFile("slide", defaultTitle) as SlideFile;
   out.content.width = width;
   out.content.height = height;
@@ -350,6 +371,7 @@ async function parseZipPptx(
 
   const slides: Record<string, Slide> = {};
   const slideOrder: string[] = [];
+  const sharedMedia = new Map<string, string>();
   const tableStylesXml = zip.file("ppt/tableStyles.xml")
     ? await zip.file("ppt/tableStyles.xml")!.async("string")
     : "";
@@ -415,6 +437,13 @@ async function parseZipPptx(
     const themePart = masterPart
       ? await readRelatedPart(masterPart.path, masterPart.rels, "theme")
       : undefined;
+    const themeOverride =
+      (await readRelatedPart(slidePath, slideRels, "themeOverride")) ||
+      (layoutPart
+        ? await readRelatedPart(layoutPart.path, layoutPart.rels, "themeOverride")
+        : undefined);
+    if (themePart && themeOverride)
+      themePart.xml = applyThemeOverride(themePart.xml, themeOverride.xml);
     // Office font names become the installed families that lay text out the same way.
     const themeFont = (name: string | undefined) => {
       if (name !== "+mj-lt" && name !== "+mn-lt") return suiteLeafFont(name);
@@ -436,14 +465,19 @@ async function parseZipPptx(
     const bgXml = backgroundPart
       ? (/<p:bg\b[\s\S]*?<\/p:bg>/.exec(backgroundPart.xml)?.[0] ?? "")
       : "";
-    const colorMap = masterPart?.xml;
+    // A slide can swap bg1/tx1 without changing the master. masterClrMapping keeps the master map.
+    const colorMap =
+      /<a:overrideClrMapping\b[^>]*\/?>/.exec(slideXml)?.[0] ||
+      /<a:overrideClrMapping\b[^>]*\/?>/.exec(layoutPart?.xml || "")?.[0] ||
+      masterPart?.xml;
     const recolor = (src: string | undefined, xml: string) => {
       if (!src) return;
+      const keyed = colorChangeDataUrl(src, xml) ?? src;
       const stops = duotoneColors(
         xml,
         schemeColors(themePart?.xml || "", colorMap),
       );
-      return stops ? duotoneSvg(src, stops[0], stops[1]) : src;
+      return stops ? duotoneSvg(keyed, stops[0], stops[1]) : keyed;
     };
     const bgColor = backgroundCss(themePart?.xml, bgXml, colorMap);
 
@@ -559,6 +593,12 @@ async function parseZipPptx(
         (match) =>
           /<p:oleObj\b/.test(match[0]) && match[0].includes(pictureXml),
       )?.[0];
+    const softEdgeOf = (xml: string) => {
+      const rad = Number(/<a:softEdge\b[^>]*\brad="(\d+)"/.exec(xml)?.[1]);
+      if (!(rad > 0)) return {};
+      const px = (rad / emuWidth) * width;
+      return px > 0.5 ? { softEdge: px } : {};
+    };
     const addInheritedImage = async (
       part: typeof ownPart,
       xml: string,
@@ -573,22 +613,30 @@ async function parseZipPptx(
       const image = zip.file(resolveZipPath(part.path, rel.target));
       if (!image) return;
       const bytes = await image.async("uint8array");
-      const src = recolor(paintableImage(bytes, detectImageMime(bytes)), xml);
+      const src = recolor(
+        applyBlipLuminance(paintableImage(bytes, detectImageMime(bytes)), xml),
+        xml,
+      );
       if (!src) return;
       const nativeFrame = nativeOleFrame(part.xml, xml);
       const nativeDrawing = nativeFrame
         ? await gatherNativeDrawing(zip, part.path, nativeFrame)
         : undefined;
-      const box = background
-        ? { x: 0, y: 0, width, height }
-        : boxOverride || parseTransform(nativeFrame || xml);
+      const box = stretchFill(
+        xml,
+        background
+          ? { x: 0, y: 0, width, height }
+          : boxOverride || parseTransform(nativeFrame || xml),
+      );
       if (!(box.width > 0 && box.height > 0)) return;
       elements.push({
         id: crypto.randomUUID(),
         type: "image",
         ...box,
+        ...drawingPose(xml),
         src,
         alt: background ? "Slide background" : "Inherited slide artwork",
+        ...softEdgeOf(xml),
         ...sourceCrop(xml),
         ...blipOpacity(xml),
         ...(nativeDrawing ? { nativeDrawing } : {}),
@@ -689,6 +737,9 @@ async function parseZipPptx(
         lineHeight?: number;
         hang?: number;
         listMargin?: number;
+        spaceBefore?: number;
+        /** Absolute `a:spcPts` spacing; skip the single-spacing grid. */
+        exactLine?: boolean;
       }[] = [];
       const autoCounters = new Map<string, { startAt?: number; next: number }>();
       const pRx = /<a:p\b[^>]*?(?:\/>|>[\s\S]*?<\/a:p>)/g;
@@ -702,6 +753,7 @@ async function parseZipPptx(
         const ownParagraphAttrs = pPrMatch ? parseXmlAttrs(pPrMatch[1]) : {};
         const level = Number(ownParagraphAttrs.lvl || 0) + 1;
         const styleParts = [
+          defaultTextStyle,
           ...inherited,
           /<a:lstStyle\b[\s\S]*?<\/a:lstStyle>/.exec(txBodyXml)?.[0] || "",
         ].map(
@@ -778,8 +830,10 @@ async function parseZipPptx(
             .at(-1) || "";
         const hasBullet = /<a:buChar\b|<a:buAutoNum\b/.test(bulletStyle);
         const bulletChar = /<a:buChar\b[^>]*\bchar="([^"]*)"/.exec(bulletStyle)?.[1];
+        const keepWords = pAttrs.latinLnBrk === "0" || pAttrs.latinLnBrk === "false";
         const spacing = styleParts.join("");
         const linePct = /<a:lnSpc>\s*<a:spcPct\b[^>]*\bval="(\d+)"/.exec(spacing);
+        const linePts = /<a:lnSpc>\s*<a:spcPts\b[^>]*\bval="(\d+)"/.exec(spacing);
 
         let pText = "";
         const textRuns: TextRun[] = [];
@@ -789,6 +843,9 @@ async function parseZipPptx(
         let fontSize: number | undefined = defaultRunAttrs.sz
           ? Number(defaultRunAttrs.sz) / 100
           : undefined;
+        // A list default must not keep the box larger than a run that sets sz.
+        // The box font is the CSS strut, so a 24pt default clips 10pt lines.
+        let sizedRun = false;
         let fontColor: string | undefined = defaultColor;
         let fontFamily: string | undefined = themeFont(defaultFont);
 
@@ -815,13 +872,13 @@ async function parseZipPptx(
           const slideField =
             /^<a:fld\b/.test(rXml) && /type="slidenum"/.test(rXml);
           if (tMatch || slideField) {
+            const latinFace = /<a:latin\s+typeface="([^"]+)"/.exec(rXml)?.[1];
+            const symFace = /<a:sym\b[^>]*\btypeface="([^"]+)"/.exec(rXml)?.[1];
             const t = slideField
               ? String(idx + 1)
               : decodeXmlEntities(tMatch?.[1] || "").replace(/\r\n?/g, "\n");
             // Symbol fonts draw codes, not Unicode: the text keeps them, in the SuiteLeaf face. `a:sym`
             // names the face of the run's private-use characters only.
-            const latinFace = /<a:latin\s+typeface="([^"]+)"/.exec(rXml)?.[1];
-            const symFace = /<a:sym\b[^>]*\btypeface="([^"]+)"/.exec(rXml)?.[1];
             if (isSymbolFont(latinFace)) run.font = suiteLeafFont(latinFace);
             else if (isSymbolFont(symFace) && /[\uF000-\uF0FF]/.test(t)) symbolChars = suiteLeafFont(symFace);
             pText += t;
@@ -829,9 +886,12 @@ async function parseZipPptx(
           }
           const rPrMatch = /<a:rPr\b([^>]*)>/.exec(rXml);
           {
+            // List styles often set u="none". That must not hide a hyperlink;
+            // only the run's own underline="none" turns the link style off.
+            const ownAttrs = rPrMatch ? parseXmlAttrs(rPrMatch[1]) : {};
             const rAttrs = {
               ...defaultRunAttrs,
-              ...(rPrMatch ? parseXmlAttrs(rPrMatch[1]) : {}),
+              ...ownAttrs,
             };
             if (rAttrs.b === "1" || rAttrs.b === "true") isBold = true;
             run.bold = rAttrs.b === "1" || rAttrs.b === "true";
@@ -839,16 +899,23 @@ async function parseZipPptx(
             run.underline = Boolean(rAttrs.u && rAttrs.u !== "none");
             if (rAttrs.i === "1" || rAttrs.i === "true") isItalic = true;
             if (rAttrs.u && rAttrs.u !== "none") isUnderline = true;
-            if (rAttrs.sz) {
-              const szPt = parseInt(rAttrs.sz, 10) / 100;
+            const ownSz = rPrMatch ? parseXmlAttrs(rPrMatch[1]).sz : undefined;
+            const szSource = ownSz || rAttrs.sz;
+            if (szSource) {
+              const szPt = parseInt(szSource, 10) / 100;
               if (szPt > 0 && szPt < 400) {
-                if (fontSize === undefined) fontSize = szPt;
                 run.fontSize = szPt;
+                if (ownSz && !sizedRun) {
+                  fontSize = szPt;
+                  sizedRun = true;
+                } else if (fontSize === undefined) fontSize = szPt;
               }
             }
             if (rAttrs.cap === "small" || rAttrs.cap === "all") run.caps = rAttrs.cap;
             const kern = runKern(rAttrs.kern);
             if (kern !== undefined) run.kern = kern;
+            const tracking = runTracking(rAttrs.spc);
+            if (tracking !== undefined) run.tracking = tracking;
             if (rAttrs.baseline) {
               const shift = Number(rAttrs.baseline) / 1000;
               if (shift) run.baseline = Math.max(-1000, Math.min(1000, shift));
@@ -869,9 +936,11 @@ async function parseZipPptx(
               if (!fontColor) fontColor = run.color;
             } else if (defaultColor) run.color = defaultColor;
             else if (defaults?.color) run.color = defaults.color;
-            if (/<a:hlinkClick\b/.test(rXml) && rAttrs.u !== "none") {
-              run.underline = true;
-              isUnderline = true;
+            if (/<a:hlinkClick\b/.test(rXml)) {
+              if (ownAttrs.u !== "none") {
+                run.underline = true;
+                isUnderline = true;
+              }
               if (defaults?.link && !resolved) {
                 run.color = defaults.link;
                 if (!fontColor || fontColor === defaults.color)
@@ -879,6 +948,7 @@ async function parseZipPptx(
               }
             }
           }
+          if (keepWords && run.text && run.text !== "\n") run.unbroken = true;
           if (run.text) textRuns.push(...(symbolChars ? splitSymbolRun(run, symbolChars) : [run]));
         }
         const rightTab = /<a:tab\b[^>]*\balgn="r"/.test(pPrMatch?.[0] || "");
@@ -917,11 +987,13 @@ async function parseZipPptx(
           if (first) first.text = marker + first.text;
         }
         if (bulletChar && pText) {
-          const marker = `${decodeXmlEntities(bulletChar)} `;
-          pText = marker + pText;
-          const symbol = suiteLeafFont(symbolBulletFont(
+          const symbolFace = symbolBulletFont(
             /<a:buFont\b[^>]*\btypeface="([^"]*)"/.exec(bulletStyle)?.[1],
-          ));
+          );
+          const rawBullet = decodeXmlEntities(bulletChar);
+          const marker = `${symbolFace ? symbolFontChar(rawBullet) : rawBullet} `;
+          pText = marker + pText;
+          const symbol = suiteLeafFont(symbolFace);
           const bulletSize = bulletPointSize(
             fontSize,
             /<a:buSzPct\b[^>]*\bval="(\d+)"/.exec(bulletStyle)?.[1],
@@ -948,6 +1020,13 @@ async function parseZipPptx(
           const margin = Number(pAttrs.marL || 0);
           const px = (emu: number) => (emu / emuWidth) * width;
           const hang = indent < 0 ? px(-indent) : undefined;
+          const firstLine = margin + Math.min(0, indent);
+          const beforePts = /<a:spcBef>\s*<a:spcPts\b[^>]*\bval="(\d+)"/.exec(
+            spacing,
+          );
+          const spaceBefore = beforePts
+            ? ((Number(beforePts[1]) / 100) / 72) * (width / (emuWidth / 914400))
+            : undefined;
           paragraphs.push({
             text: pText,
             runs: textRuns.filter((run) => run.text),
@@ -960,10 +1039,16 @@ async function parseZipPptx(
             color: fontColor,
             font: fontFamily,
             ...(hang ? { hang } : {}),
-            ...(hang && margin + indent > 0 ? { listMargin: px(margin + indent) } : {}),
-            ...(linePct
-              ? { lineHeight: Math.min(4, Math.max(0.5, Number(linePct[1]) / 100000)) }
-              : {}),
+            ...(firstLine > 0 ? { listMargin: px(firstLine) } : {}),
+            ...(spaceBefore ? { spaceBefore } : {}),
+            ...(linePts && exactLineFactor(linePts[1], fontSize || 18)
+              ? {
+                  lineHeight: exactLineFactor(linePts[1], fontSize || 18),
+                  exactLine: true,
+                }
+              : linePct
+                ? { lineHeight: Math.min(4, Math.max(0.5, Number(linePct[1]) / 100000)) }
+                : {}),
           });
         }
       }
@@ -1029,7 +1114,7 @@ async function parseZipPptx(
           ...(label.padLeft != null ? { padLeft: label.padLeft } : {}),
           ...(label.padRight != null ? { padRight: label.padRight } : {}),
           ...(label.padBottom != null ? { padBottom: label.padBottom } : {}),
-          lineHeight: first?.lineHeight ?? 1,
+          lineHeight: officeSingleSpacing(first?.font || "Arial") * (first?.lineHeight ?? 1),
           ...(label.nowrap ? { nowrap: true } : {}),
           ...(label.autofit ? { autofit: true } : {}),
           ...(label.rotation ? { rotation: label.rotation } : {}),
@@ -1051,8 +1136,11 @@ async function parseZipPptx(
         );
         if (!mediaFile) continue;
         const imgBytes = await mediaFile.async("uint8array");
-        const src = recolor(paintableImage(imgBytes, detectImageMime(imgBytes)), grpPr);
-        const { x, y, width: w, height: h } = parseTransform(grpPr);
+        const src = recolor(
+          applyBlipLuminance(paintableImage(imgBytes, detectImageMime(imgBytes)), grpPr),
+          grpPr,
+        );
+        const { x, y, width: w, height: h } = stretchFill(grpPr, parseTransform(grpPr));
         if (!src || !(w > 0 && h > 0)) continue;
         elements.push({
           id: crypto.randomUUID(),
@@ -1063,6 +1151,7 @@ async function parseZipPptx(
           height: h,
           src,
           alt: "Slide image",
+          ...softEdgeOf(grpPr),
           ...sourceCrop(grpPr),
           ...blipOpacity(grpPr),
         });
@@ -1096,38 +1185,21 @@ async function parseZipPptx(
         phType = parseXmlAttrs(phMatch[1]).type || "body";
       }
 
-      const placeholderAttrs = phMatch ? parseXmlAttrs(phMatch[1]) : undefined;
-      const inheritedPlaceholder = (xml: string | undefined) => {
-        if (!xml || !placeholderAttrs) return "";
-        const shapes = [...xml.matchAll(/<p:sp\b[\s\S]*?<\/p:sp>/g)].map(
-          (m) => m[0],
-        );
-        const sameType = (candidate: string) => {
-          const ph = /<p:ph\b([^>]*)\/?>/.exec(candidate);
-          if (!ph) return false;
-          const attrs = parseXmlAttrs(ph[1]);
-          return (
-            (attrs.idx || "0") === (placeholderAttrs.idx || "0") &&
-            ((attrs.type || "body") === phType ||
-              [attrs.type, phType].every(
-                (t) => t === "title" || t === "ctrTitle",
-              ))
-          );
-        };
-        return shapes.find(sameType) || "";
-      };
-      const layoutPlaceholder = inheritedPlaceholder(layoutPart?.xml);
-      const masterPlaceholder = inheritedPlaceholder(masterPart?.xml);
+      const layoutPlaceholder = placeholderShape(layoutPart?.xml, spXml);
+      const masterPlaceholder = placeholderShape(masterPart?.xml, spXml);
       const masterStyleKind =
         phType === "title" || phType === "ctrTitle"
           ? "titleStyle"
           : phType === "body"
             ? "bodyStyle"
             : "otherStyle";
-      const masterStyle =
-        new RegExp(
-          `<p:${masterStyleKind}\\b[\\s\\S]*?<\\/p:${masterStyleKind}>`,
-        ).exec(masterPart?.xml || "")?.[0] || "";
+      // otherStyle belongs to footer-style placeholders. A free text box uses
+      // p:defaultTextStyle, which is already the base of parseTextBody.
+      const masterStyle = phMatch
+        ? new RegExp(
+            `<p:${masterStyleKind}\\b[\\s\\S]*?<\\/p:${masterStyleKind}>`,
+          ).exec(masterPart?.xml || "")?.[0] || ""
+        : "";
       const txBodyMatch = /<p:txBody\b[\s\S]*?<\/p:txBody>/.exec(spXml);
       const spPr = /<p:spPr\b[\s\S]*?<\/p:spPr>/.exec(spXml)?.[0] ?? "";
       const {
@@ -1234,15 +1306,9 @@ async function parseZipPptx(
           }
 
           const first = paragraphs[0];
-          const textual = paragraphs.filter((paragraph) => paragraph.text.trim());
-          const listed = textual.filter((paragraph) => paragraph.hang);
-          const hang =
-            listed.length === textual.length &&
-            listed.length > 0 &&
-            listed.every((paragraph) => paragraph.hang === listed[0].hang)
-              ? listed[0].hang
-              : undefined;
-          const listMargin = hang ? listed[0].listMargin || 0 : 0;
+          const laid = layoutListRuns(paragraphs);
+          const hang = laid.hang;
+          const listMargin = laid.listMargin;
           rememberShape(spXml);
           // A flipped shape mirrors its outline. PowerPoint keeps the letters upright.
           const { rotation } = drawingPose(spXml);
@@ -1265,12 +1331,7 @@ async function parseZipPptx(
             height: textAt.height,
             ...pose,
             content: fullText,
-            runs: synthesized
-              ? [{ text: fullText }]
-              : paragraphs.flatMap((paragraph, index) => [
-                  ...(index ? [{ text: "\n", paragraphBreak: true }] : []),
-                  ...paragraph.runs,
-                ]),
+            runs: synthesized ? [{ text: fullText }] : laid.runs,
             bold: first?.bold,
             italic: first?.italic,
             ...(first?.underline ? { underline: true } : {}),
@@ -1292,7 +1353,9 @@ async function parseZipPptx(
                 ? { padLeft: listMargin }
                 : {}),
             ...(hang ? { hang } : {}),
-            lineHeight: first?.lineHeight ?? fit.line,
+            lineHeight: first?.exactLine
+              ? first.lineHeight
+              : officeSingleSpacing(first?.font || "Arial") * (first?.lineHeight ?? fit.line),
             ...(bodyAttrs.wrap === "none" ? { nowrap: true } : {}),
             ...(/<a:spAutoFit\b/.test(txBodyMatch[0]) ? { autofit: true } : {}),
           });
@@ -1312,19 +1375,24 @@ async function parseZipPptx(
           const mediaFile = zip.file(mediaZipPath);
           if (mediaFile) {
             const imgBytes = await mediaFile.async("uint8array");
-            const src = recolor(paintableImage(imgBytes, detectImageMime(imgBytes)), spPr);
+            const src = recolor(
+              applyBlipLuminance(paintableImage(imgBytes, detectImageMime(imgBytes)), spPr),
+              spPr,
+            );
             if (src) {
               blipHandled = true;
-              if (w > 0 && h > 0)
+              const filled = stretchFill(spPr, { x, y, width: w, height: h });
+              if (filled.width > 0 && filled.height > 0)
                 elements.push({
                   id: crypto.randomUUID(),
                   type: "image",
-                  x,
-                  y,
-                  width: w,
-                  height: h,
+                  x: filled.x,
+                  y: filled.y,
+                  width: filled.width,
+                  height: filled.height,
                   src,
                   alt: "Shape image fill",
+                  ...softEdgeOf(spPr),
                   ...sourceCrop(spPr),
                   ...blipOpacity(spPr),
                 });
@@ -1421,7 +1489,7 @@ async function parseZipPptx(
           fontFamily: "Arial",
           color: paintColor(inherited, scheme) || "#1e293b",
           align: "right",
-          lineHeight: 1,
+          lineHeight: officeSingleSpacing("Arial"),
         });
       }
     }
@@ -1511,9 +1579,15 @@ async function parseZipPptx(
         if (!mediaFile) continue;
         const imgBytes = await mediaFile.async("uint8array");
         const mime = detectImageMime(imgBytes);
+        // A rotated JPEG keeps its pixels. Clearing EXIF stops the browser
+        // applying that turn again on top of the shape rotation.
+        const pictureBytes =
+          mime === "image/jpeg" && drawingPose(picXml).rotation
+            ? jpegWithoutOrientation(imgBytes)
+            : imgBytes;
         // An EMF the browser cannot paint keeps its bytes so export writes the same picture.
         const src =
-          recolor(paintableImage(imgBytes, mime), picXml) ??
+          recolor(applyBlipLuminance(paintableImage(pictureBytes, mime), picXml), picXml) ??
           (mime === "image/emf" ? `data:image/emf;base64,${uint8ToBase64(imgBytes)}` : undefined);
         if (!src) continue;
         const nativeFrame =
@@ -1588,9 +1662,12 @@ async function parseZipPptx(
           ? ""
           : hosted(layoutHost) || hosted(masterHost) || layoutHost || masterHost;
         const frame = host ? picXml + host : picXml;
-        const { x, y, width: w, height: h } = nativeFrame
-          ? parseTransform(nativeFrame)
-          : parseTransform(frame, picMatch.index, picXml.length);
+        const { x, y, width: w, height: h } = stretchFill(
+          picXml,
+          nativeFrame
+            ? parseTransform(nativeFrame)
+            : parseTransform(frame, picMatch.index, picXml.length),
+        );
         if (!(w > 0 && h > 0)) continue;
         rememberShape(picXml);
         elements.push({
@@ -1601,6 +1678,7 @@ async function parseZipPptx(
           width: w,
           height: h,
           ...drawingPose(nativeFrame || frame),
+          ...softEdgeOf(picXml),
           src,
           alt: "Slide image",
           ...sourceCrop(picXml),
@@ -1698,7 +1776,10 @@ async function parseZipPptx(
               );
               if (!mediaFile) continue;
               const imgBytes = await mediaFile.async("uint8array");
-              const src = recolor(paintableImage(imgBytes, detectImageMime(imgBytes)), cell);
+              const src = recolor(
+                applyBlipLuminance(paintableImage(imgBytes, detectImageMime(imgBytes)), cell),
+                cell,
+              );
               if (!src) continue;
               pictures.push({
                 xEmu,
@@ -1710,9 +1791,12 @@ async function parseZipPptx(
             }
             const cellTx = parseTextBody(cell);
             row.push(cellTx.map((p) => p.text).join("\n"));
-            marks.push(
-              explicitTableCell(cell, cellTx, (xml) => paintColor(xml, scheme)),
+            const laid = explicitTableCell(cell, cellTx, (xml) =>
+              paintColor(xml, scheme),
             );
+            const lines = tableLineLayout(cellTx);
+            if (lines) laid.lines = lines;
+            marks.push(laid);
             xEmu += wEmu;
             col += span;
           }
@@ -1725,13 +1809,14 @@ async function parseZipPptx(
         }
         const styleId =
           /<a:tableStyleId>([^<]*)<\/a:tableStyleId>/.exec(tbl)?.[1] ?? "";
-        const styleXml = tableStyleById(tableStylesXml, styleId);
+        const styleXml =
+          tableStyleById(tableStylesXml, styleId) ?? builtinTableStyle(styleId);
         const flags = tableStyleFlags(tbl);
         const paint = (xml: string) => paintColor(xml, scheme);
-        const border = styleXml ? tableStyleBorder(styleXml, paint) : undefined;
         const styledMarks = cellMarks.map((tableRow, rowIndex) => {
           let grid = 0;
           return tableRow.map((cell) => {
+            const colCount = cols.length || grid + (cell.colSpan ?? 1);
             const styled = styleXml
               ? tableStyleAt(
                   styleXml,
@@ -1739,16 +1824,34 @@ async function parseZipPptx(
                   rowIndex,
                   grid,
                   rows.length,
-                  cols.length || grid + (cell.colSpan ?? 1),
+                  colCount,
+                  paint,
+                )
+              : undefined;
+            const edges = styleXml
+              ? tableStyleEdges(
+                  styleXml,
+                  flags,
+                  rowIndex,
+                  grid,
+                  rows.length,
+                  colCount,
                   paint,
                 )
               : undefined;
             grid += cell.colSpan ?? 1;
-            return mergeTableCell(cell, styled, border);
+            return mergeTableCell(cell, styled, undefined, edges);
           });
         });
         const tableW = cols.reduce((sum, width) => sum + width, 0) || 1;
-        const tableH = yEmu || 1;
+        // Fractions are of the frame. Dividing by the row sum stretches every
+        // line when the frame is taller than the rows.
+        const frameCy = Number(
+          /<(?:a|p):ext\b[^>]*\bcy="(\d+)"/.exec(
+            /<(?:a|p):xfrm\b[\s\S]*?<\/(?:a|p):xfrm>/.exec(gfXml)?.[0] ?? "",
+          )?.[1] ?? 0,
+        );
+        const tableH = frameCy > 0 ? frameCy : yEmu || 1;
         for (const picture of pictures) {
           elements.push({
             id: crypto.randomUUID(),
@@ -1772,7 +1875,8 @@ async function parseZipPptx(
             tableRow.some((cell) => cellMarkUsed(cell)),
           );
           const colWidths = tableFractions(cols);
-          const rowHeights = tableFractions(rowEmu);
+          const rowHeights =
+            tableH > 0 ? rowEmu.map((height) => height / tableH) : undefined;
           const minorFont = themeFont("+mn-lt");
           rememberShape(gfXml);
           elements.push({
@@ -1850,6 +1954,7 @@ async function parseZipPptx(
       ...ordered.map(({ element }) => element),
     );
     moveKerningToBoxes(elements);
+    retainSharedData(elements, sharedMedia);
     const hidden = /<p:sld\b[^>]*\bshow="(?:0|false)"/.test(slideXml);
     slides[slideId] = {
       id: slideId,

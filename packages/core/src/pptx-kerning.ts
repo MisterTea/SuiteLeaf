@@ -9,6 +9,24 @@ export function runKern(value: string | undefined): number | undefined {
   return Number.isFinite(points) && points >= 0 ? Math.min(points, 4000) : undefined;
 }
 
+/** DrawingML `spc` is hundredths of a point of extra space between glyphs. */
+export function runTracking(value: string | undefined): number | undefined {
+  if (value === undefined || value === "") return undefined;
+  const points = Number(value) / 100;
+  if (!Number.isFinite(points) || points === 0) return undefined;
+  return Math.max(-4000, Math.min(4000, points));
+}
+
+/**
+ * `a:spcPts` line spacing is an absolute height. The CSS factor is that height
+ * divided by the font size, and it is not the single-spacing grid.
+ */
+export function exactLineFactor(spcPts: string, fontPt: number): number | undefined {
+  const points = Number(spcPts) / 100;
+  if (!Number.isFinite(points) || !(fontPt > 0) || !(points > 0)) return undefined;
+  return Math.min(4, points / fontPt);
+}
+
 /**
  * A box keeps one kerning size, so editing a word cannot lose it. It comes
  * from the first run with text; the runs themselves do not store it.

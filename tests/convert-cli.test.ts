@@ -11,6 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFile, type SlideFile } from "../packages/core/src";
+import { OFFICE_CONVERTER_HEAP_MB } from "../apps/desktop/src/office-converter";
 import { exportPptx } from "../packages/core/src/pptx-export";
 import { openOfficeFile } from "../packages/core/src/open-office";
 import {
@@ -220,4 +221,8 @@ it("rejects a missing source without opening the PDF page", async () => {
     }),
   ).toBe(1);
   expect(openRenderer).not.toHaveBeenCalled();
+});
+
+it("gives the office converter enough heap for a photo-heavy deck", () => {
+  expect(OFFICE_CONVERTER_HEAP_MB).toBeGreaterThanOrEqual(4096);
 });

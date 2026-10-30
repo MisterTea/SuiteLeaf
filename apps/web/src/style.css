@@ -4144,11 +4144,13 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
     flex-shrink: 0;
   }
   .workspace-header > .header-right-tools {
-    grid-column: 4;
+    grid-column: 1 / -1;
     grid-row: 4;
+    justify-content: flex-start;
     align-self: stretch;
     gap: 0;
     margin: 2px 0 0;
+    padding-left: 2px;
     padding-right: 2px;
     background: var(--toolbar-bg);
     border-top: 1px solid var(--border);
@@ -5212,6 +5214,15 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
     0 4px 8px 3px rgba(60, 64, 67, 0.15);
   overflow: visible;
   user-select: none;
+  /* Descendants size type with cqw. The canvas itself cannot, so the fit layer does. */
+  container-type: inline-size;
+}
+.slide-canvas-fit {
+  position: absolute;
+  inset: 0;
+  /* Length ratio as a number: tan(atan2(opposite, adjacent)) = canvas width / design width. */
+  --canvas-fit: tan(atan2(100cqw, var(--slide-draw, 960px)));
+  --slide-pt: calc(var(--slide-pt-base, 1) * var(--canvas-fit));
 }
 .slide-number {
   position: absolute;
@@ -5230,6 +5241,15 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
 }
 .slide-surface .slide-number {
   font-size: 18px;
+}
+.slide-canvas .slide-number {
+  font-size: calc(18px * var(--canvas-fit, 1));
+}
+.slide-canvas .slide-text .element-textarea {
+  padding: var(--slide-inset, calc(4px * var(--canvas-fit, 1)))
+    var(--slide-pad-r, var(--slide-pad-l, var(--slide-inset, calc(4px * var(--canvas-fit, 1)))))
+    var(--slide-pad-b, var(--slide-inset, calc(4px * var(--canvas-fit, 1))))
+    var(--slide-pad-l, var(--slide-inset, calc(4px * var(--canvas-fit, 1))));
 }
 .slide-element {
   position: absolute;
@@ -5495,6 +5515,8 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
   border: calc(1px * var(--slide-pt, 1)) solid #94a3b8;
   padding: calc(4px * var(--slide-pt, 1)) calc(8px * var(--slide-pt, 1));
   font-size: calc(14px * var(--slide-pt, 1));
+  white-space: pre-wrap;
+  vertical-align: top;
 }
 .slide-surface.marp-fit .slide-table {
   font-family: Helvetica, Arial, sans-serif;
@@ -5729,35 +5751,93 @@ div.univer-rounded-l.univer-border-r-0.univer-h-\[18px\] {
     flex-wrap: wrap;
     justify-content: center;
   }
+  .slides-main {
+    flex-direction: column;
+  }
+  .slides-canvas-stage {
+    order: 0;
+    min-height: 0;
+  }
   .slides-sidebar {
-    width: 68px;
+    order: 1;
+    width: 100%;
+    height: auto;
+    flex-shrink: 0;
+    flex-direction: row;
+    align-items: stretch;
+    border-right: 0;
+    border-top: 1px solid var(--border);
+    overflow: hidden;
     padding: 0;
   }
   .slides-sidebar-header span:first-child,
-  .slides-sidebar-footer span,
-  .add-slide-sidebar-btn span {
+  .slides-sidebar-footer span {
     display: none;
   }
   .slides-sidebar-header {
-    padding: 6px 4px;
+    flex: 0 0 auto;
+    flex-direction: column;
     justify-content: center;
+    border-bottom: 0;
+    border-right: 1px solid var(--border);
+    padding: 4px;
+  }
+  .sidebar-slide-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
   }
   .slides-sidebar-footer {
-    padding: 6px 4px;
+    flex: 0 0 auto;
+    border-top: 0;
+    border-left: 1px solid var(--border);
+    padding: 6px;
     justify-content: center;
   }
   .add-slide-sidebar-btn {
     padding: 6px 8px;
+    font-size: 0;
+    gap: 0;
   }
   .thumbnails-list {
-    padding: 8px 4px;
+    flex-direction: row;
+    align-items: center;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 8px;
     gap: 8px;
   }
   .thumbnail-num {
-    display: none;
+    display: block;
+    width: auto;
+    text-align: center;
   }
   .thumbnail-row {
+    flex: 0 0 auto;
+    flex-direction: column;
+    width: 96px;
+    gap: 2px;
     padding: 2px;
+  }
+  .thumbnail-card {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    flex: none;
+  }
+  .thumbnail-row.drop-before::before,
+  .thumbnail-row.drop-after::after {
+    top: 16px;
+    bottom: 4px;
+    width: 4px;
+    height: auto;
+    left: auto;
+    right: auto;
+  }
+  .thumbnail-row.drop-before::before {
+    left: -6px;
+  }
+  .thumbnail-row.drop-after::after {
+    right: -6px;
   }
   .slide-stage-viewport {
     padding: 12px 8px;
@@ -10515,5 +10595,10 @@ body.agent-open .sign-in-screen {
   .slides-print-deck .slide-media-name,
   .slides-print-deck .slide-media-play {
     display: none !important;
+  }
+  .slides-print-deck .slide-audio {
+    background: transparent !important;
+    border: 0 !important;
+    padding: 0 !important;
   }
 }

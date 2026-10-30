@@ -155,6 +155,29 @@ describe("per-word slide formatting", () => {
     expect(saved.content).toBe(line);
     expect(saved.runs?.find((run) => run.text === "fair")?.bold).toBe(true);
     expect(saved.runs?.find((run) => run.text === "community")?.color).toBe("#95d5b2");
+    expect(textInnerHtml({
+      runs: [
+        { text: "• Parent", paraMargin: 8, paraHang: 6 },
+        { text: "\n", paragraphBreak: true, paraMargin: 24, paraHang: 6, spaceBefore: 4 },
+        { text: "○ Child" },
+      ],
+    })).toContain('padding-left:24px');
+    expect(textInnerHtml({
+      runs: [
+        { text: "Left" },
+        { text: "\n", paragraphBreak: true },
+        { text: "\n", paragraphBreak: true, paraAlign: "center" },
+        { text: "Callout" },
+      ],
+    })).toContain('text-align:center');
+    expect(textInnerHtml({
+      runs: [
+        { text: "Left" },
+        { text: "\n", paragraphBreak: true },
+        { text: "\n", paragraphBreak: true, paraAlign: "center" },
+        { text: "Callout" },
+      ],
+    })).toContain("min-height:1lh");
     expect(textInnerHtml(saved)).toContain('data-bold="1"');
     expect(textInnerHtml(saved)).toContain("data-color=\"#95d5b2\"");
     expect(runsOf(saved).map((run) => run.text).join("")).toBe(line);

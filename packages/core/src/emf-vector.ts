@@ -1,3 +1,5 @@
+import { encodeRgbaPng } from "./emf-raster";
+
 /**
  * Vector EMF drawings as SVG. Chromium does not paint image/emf, and a
  * StretchDIBits-only raster drops pens, brushes, and outlined text.
@@ -72,6 +74,96 @@ function penStyle(style: number, width: number): Pen {
     cap: end === 0x100 ? "square" : end === 0x200 ? "butt" : "round",
     join: join === 0x1000 ? "bevel" : join === 0x2000 ? "miter" : "round",
   };
+}
+
+function maskShift(mask: number) {
+  let shift = 0;
+  let bits = mask >>> 0;
+  if (!bits) return 0;
+  while ((bits & 1) === 0) {
+    bits >>>= 1;
+    shift += 1;
+  }
+  return shift;
+}
+
+function channel(word: number, mask: number, shift: number) {
+  if (!mask) return 0;
+  const width = 32 - Math.clz32(mask >>> shift);
+  const value = (word & mask) >>> shift;
+  return width >= 8 ? value >>> (width - 8) : value << (8 - width);
+}
+
+/**
+ * EMR_ALPHABLEND. GDI stores AC_SRC_ALPHA pixels premultiplied, so the PNG
+ * is straight alpha and the browser can composite the translucent map.
+ */
+function alphaBlendImage(
+  bytes: Uint8Array,
+  view: DataView,
+  offset: number,
+  mapPoint: (x: number, y: number) => readonly [number, number],
+): string | undefined {
+  const u = (at: number) => view.getUint32(at, true);
+  const i = (at: number) => view.getInt32(at, true);
+  const xDest = i(offset + 24);
+  const yDest = i(offset + 28);
+  const cxDest = i(offset + 32);
+  const cyDest = i(offset + 36);
+  const alphaFormat = bytes[offset + 43];
+  const offBmi = u(offset + 84);
+  const cbBmi = u(offset + 88);
+  const offBits = u(offset + 92);
+  const cbBits = u(offset + 96);
+  if (offBmi < 108 || cbBmi < 40 || offBits < offBmi + cbBmi) return;
+  const info = offset + offBmi;
+  const bits = offset + offBits;
+  if (bits + cbBits > offset + u(offset + 4)) return;
+  const bw = i(info + 4);
+  const bh = i(info + 8);
+  const depth = view.getUint16(info + 14, true);
+  const comp = u(info + 16);
+  if (depth !== 32 || (comp !== 0 && comp !== 3) || bw < 1 || bh === 0) return;
+  const sh = Math.abs(bh);
+  if (bw > 8000 || sh > 8000) return;
+  const stride = bw * 4;
+  if (bits + stride * sh > bytes.length) return;
+  const rMask = comp === 3 ? u(info + 40) : 0x00ff0000;
+  const gMask = comp === 3 ? u(info + 44) : 0x0000ff00;
+  const bMask = comp === 3 ? u(info + 48) : 0x000000ff;
+  const aMask =
+    comp === 3 && cbBmi >= 56
+      ? u(info + 52)
+      : ((~(rMask | gMask | bMask) >>> 0) || 0xff000000);
+  const rs = maskShift(rMask);
+  const gs = maskShift(gMask);
+  const bs = maskShift(bMask);
+  const as = maskShift(aMask);
+  const pixels = new Uint8Array(bw * sh * 4);
+  for (let y = 0; y < sh; y++) {
+    const srcY = bh > 0 ? sh - 1 - y : y;
+    for (let x = 0; x < bw; x++) {
+      const word = u(bits + srcY * stride + x * 4);
+      const a = aMask ? channel(word, aMask, as) : 255;
+      let r = channel(word, rMask, rs);
+      let g = channel(word, gMask, gs);
+      let b = channel(word, bMask, bs);
+      if (alphaFormat === 1 && a > 0 && a < 255) {
+        r = Math.min(255, Math.round((r * 255) / a));
+        g = Math.min(255, Math.round((g * 255) / a));
+        b = Math.min(255, Math.round((b * 255) / a));
+      }
+      const d = (y * bw + x) * 4;
+      pixels[d] = r;
+      pixels[d + 1] = g;
+      pixels[d + 2] = b;
+      pixels[d + 3] = a;
+    }
+  }
+  const [x0, y0] = mapPoint(xDest, yDest);
+  const [x1, y1] = mapPoint(xDest + cxDest, yDest + cyDest);
+  const href = encodeRgbaPng(bw, sh, pixels);
+  return `<image href="${href}" x="${num(Math.min(x0, x1))}" y="${num(Math.min(y0, y1))}" width="${num(Math.abs(x1 - x0))}" height="${num(Math.abs(y1 - y0))}" preserveAspectRatio="none"/>`;
 }
 
 /** SVG data URL for a path-based EMF, or undefined when the file is not one. */
@@ -288,6 +380,9 @@ export function vectorEmf(bytes: Uint8Array): string | undefined {
         currentY = pts[n + 2][1];
       }
       if (!inPath) emit("stroke");
+    } else if (type === 114 && size >= 108) {
+      const image = alphaBlendImage(bytes, view, offset, mapPoint);
+      if (image) shapes.push(image);
     } else if (type === 86 || type === 3) {
       const wide = type === 3;
       const count = u(offset + 24);

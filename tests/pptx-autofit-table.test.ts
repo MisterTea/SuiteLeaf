@@ -3,11 +3,16 @@ import JSZip from "jszip";
 import { parsePowerPoint } from "../packages/core/src/pptx";
 import { normAutofitFactors } from "../packages/core/src/pptx-autofit";
 import {
+  builtinTableStyle,
+  explicitTableCell,
   mergeTableCell,
+  tableLineLayout,
   tableStyleAt,
   tableStyleById,
+  tableStyleEdges,
   tableStyleFlags,
 } from "../packages/core/src/pptx-table";
+import { officeSingleSpacing } from "../packages/core/src/office-fonts";
 import { paintColor, schemeColors } from "../packages/core/src/pptx-theme";
 
 it("scales stored normAutofit font and line spacing", async () => {
@@ -32,7 +37,7 @@ it("scales stored normAutofit font and line spacing", async () => {
   const file = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
   const [fitted, half] = file.content.slides[file.content.slideOrder[0]].elements;
   expect(fitted.fontSize).toBeCloseTo(20.625);
-  expect(fitted.lineHeight).toBeCloseTo(0.8);
+  expect(fitted.lineHeight).toBeCloseTo(0.8 * officeSingleSpacing("Arial"), 4);
   expect(fitted.runs?.[0]?.fontSize).toBeCloseTo(20.625);
   expect(half.fontSize).toBeCloseTo(9);
 });
@@ -153,4 +158,113 @@ it("keeps a collapsed table row at zero height", async () => {
   expect(table?.rows?.[0]).toEqual(["Hidden", "Row"]);
   expect(table?.rowHeights?.[0]).toBe(0);
   expect(table?.rowHeights?.[1]).toBeCloseTo(1);
+});
+
+it("paints a built-in Light Style 1 when the package has no style body", async () => {
+  const scheme = schemeColors(theme);
+  const paint = (xml: string) => paintColor(xml, scheme);
+  const style = builtinTableStyle("{9D7B26C5-4107-4FEC-AEDC-1716B250A1EF}");
+  expect(style).toBeTruthy();
+  const flags = tableStyleFlags('<a:tblPr firstRow="1" firstCol="1" bandRow="1">');
+  const headerEdges = tableStyleEdges(style!, flags, 0, 1, 4, 3, paint);
+  const band = tableStyleAt(style!, flags, 1, 1, 4, 3, paint);
+  const plain = tableStyleAt(style!, flags, 2, 1, 4, 3, paint);
+  expect(headerEdges?.borderTop?.color).toBe("#000000");
+  expect(headerEdges?.borderBottom?.width).toBe(1);
+  expect(headerEdges?.borderLeft).toBeUndefined();
+  expect(band.fill).toBe("rgba(0, 0, 0, 0.2)");
+  expect(band.bold).toBeUndefined();
+  expect(plain.fill).toBeUndefined();
+  expect(tableStyleAt(style!, flags, 1, 0, 4, 3, paint).bold).toBe(true);
+
+  const zip = new JSZip();
+  zip.file("ppt/theme/theme1.xml", theme);
+  zip.file(
+    "ppt/tableStyles.xml",
+    `<a:tblStyleLst def="{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}"/>`,
+  );
+  zip.file("ppt/slideMasters/slideMaster1.xml", "<p:sldMaster/>");
+  zip.file(
+    "ppt/slideMasters/_rels/slideMaster1.xml.rels",
+    `<Relationships><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="../theme/theme1.xml"/></Relationships>`,
+  );
+  zip.file("ppt/slideLayouts/slideLayout1.xml", "<p:sldLayout/>");
+  zip.file(
+    "ppt/slideLayouts/_rels/slideLayout1.xml.rels",
+    `<Relationships><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/></Relationships>`,
+  );
+  zip.file(
+    "ppt/slides/_rels/slide1.xml.rels",
+    `<Relationships><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/></Relationships>`,
+  );
+  zip.file(
+    "ppt/slides/slide1.xml",
+    `<p:sld><p:spTree><p:graphicFrame><p:xfrm><a:off x="0" y="0"/><a:ext cx="4000000" cy="1000000"/></p:xfrm>
+      <a:graphic><a:graphicData><a:tbl><a:tblPr firstRow="1" bandRow="1"><a:tableStyleId>{9D7B26C5-4107-4FEC-AEDC-1716B250A1EF}</a:tableStyleId></a:tblPr>
+      <a:tblGrid><a:gridCol w="2000"/><a:gridCol w="2000"/></a:tblGrid>
+      <a:tr h="400000"><a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr sz="1100"/><a:t>Model</a:t></a:r></a:p></a:txBody>
+        <a:tcPr marL="7647" marR="91770" marT="7647" marB="7647" anchor="ctr"><a:lnL><a:noFill/></a:lnL><a:lnT w="19050"><a:solidFill><a:srgbClr val="000000"/></a:solidFill></a:lnT></a:tcPr></a:tc>
+        <a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr sz="1100"/><a:t>One</a:t></a:r></a:p></a:txBody><a:tcPr anchor="ctr"/></a:tc></a:tr>
+      <a:tr h="400000"><a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr sz="1100"/><a:t>SNIP</a:t></a:r></a:p></a:txBody><a:tcPr/></a:tc>
+        <a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr sz="1100"/><a:t>1.2</a:t></a:r></a:p></a:txBody><a:tcPr/></a:tc></a:tr>
+      </a:tbl></a:graphicData></a:graphic></p:graphicFrame></p:spTree></p:sld>`,
+  );
+  const file = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+  const table = file.content.slides[file.content.slideOrder[0]].elements.find(
+    (element) => element.type === "table",
+  );
+  expect(table?.cellMarks?.[0]?.[0]).toMatchObject({
+    bold: true,
+    fontSize: 11,
+    padLeft: 7647 / 12700,
+    valign: "middle",
+    borderTop: { color: "#000000", width: 1.5 },
+  });
+  expect(table?.cellMarks?.[0]?.[0]?.borderLeft).toBeUndefined();
+  expect(table?.cellMarks?.[0]?.[1]?.borderBottom?.color).toBe("#000000");
+  expect(table?.cellMarks?.[1]?.[1]?.fill).toBe("rgba(0, 0, 0, 0.2)");
+  expect(table?.cellMarks?.[1]?.[1]?.border).toBeUndefined();
+  expect(table?.rowHeights?.[0]).toBeCloseTo(0.4);
+  expect(table?.rowHeights?.[1]).toBeCloseTo(0.4);
+});
+
+it("keeps a later run size, top alignment, and nested list insets in a cell", async () => {
+  const zip = new JSZip();
+  zip.file(
+    "ppt/slides/slide1.xml",
+    `<p:sld><p:spTree><p:graphicFrame><p:xfrm><a:off x="0" y="0"/><a:ext cx="4000000" cy="1000000"/></p:xfrm>
+      <a:graphic><a:graphicData><a:tbl><a:tblGrid><a:gridCol w="4000000"/></a:tblGrid>
+      <a:tr h="1000000"><a:tc><a:txBody><a:bodyPr/><a:lstStyle/>
+        <a:p><a:pPr marL="182563" indent="-182563"><a:buFont typeface="Arial"/><a:buChar char="•"/></a:pPr>
+          <a:r><a:rPr><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:rPr><a:t>Parent</a:t></a:r></a:p>
+        <a:p><a:pPr marL="639763" indent="-182563"><a:buFont typeface="Arial"/><a:buChar char="•"/></a:pPr>
+          <a:r><a:rPr sz="1800"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:rPr><a:t>Child</a:t></a:r></a:p>
+      </a:txBody><a:tcPr/></a:tc></a:tr></a:tbl></a:graphicData></a:graphic></p:graphicFrame></p:spTree></p:sld>`,
+  );
+  const file = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+  const table = file.content.slides[file.content.slideOrder[0]].elements.find(
+    (element) => element.type === "table",
+  );
+  expect(table?.rows?.[0]?.[0]).toBe("• Parent\n• Child");
+  expect(table?.cellMarks?.[0]?.[0]).toMatchObject({
+    fontSize: 18,
+    color: "#FFFFFF",
+    valign: "top",
+    padLeft: 7.2,
+    padTop: 3.6,
+  });
+  const lines = table?.cellMarks?.[0]?.[0]?.lines;
+  expect(lines?.[0]?.hang).toBeGreaterThan(0);
+  expect(lines?.[1]?.margin).toBeGreaterThan(lines?.[0]?.margin ?? 0);
+  expect(tableLineLayout([{ hang: 12 }, { listMargin: 36, hang: 12 }])).toEqual([
+    { hang: 12 },
+    { margin: 36, hang: 12 },
+  ]);
+  expect(
+    explicitTableCell(
+      "<a:tc><a:tcPr/></a:tc>",
+      [{ size: 14 }],
+      () => undefined,
+    ).valign,
+  ).toBe("top");
 });

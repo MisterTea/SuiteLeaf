@@ -1,11 +1,30 @@
 import type { CSSProperties } from "react";
 import type { SlideElement } from "@suiteleaf/core";
 
+function ruleCss(
+  rule: { color: string; width?: number } | undefined,
+): string | undefined {
+  if (!rule) return;
+  const width = rule.width ?? 1;
+  return `calc(${width} * var(--slide-pt, 1) * 1px) solid ${rule.color}`;
+}
+
+function padCss(points: number | undefined): string | undefined {
+  if (points == null) return;
+  return `calc(${points} * var(--slide-pt, 1) * 1px)`;
+}
+
 /** Paint imported cell fill, type size, and rules. Editor tables keep the default grid. */
 export function slideCellPaint(
   mark: NonNullable<SlideElement["cellMarks"]>[number][number] | undefined,
   hideDefaultRules: boolean,
 ): CSSProperties {
+  const edged = !!(
+    mark?.borderTop ||
+    mark?.borderRight ||
+    mark?.borderBottom ||
+    mark?.borderLeft
+  );
   return {
     fontWeight: mark?.bold ? 700 : undefined,
     fontStyle: mark?.italic ? "italic" : undefined,
@@ -16,12 +35,30 @@ export function slideCellPaint(
       : undefined,
     textAlign: mark?.align,
     lineHeight: mark?.fontSize ? 1 : undefined,
-    whiteSpace: mark?.fontSize ? "pre-wrap" : undefined,
-    border: mark?.border
-      ? `calc(1px * var(--slide-pt, 1)) solid ${mark.border}`
-      : hideDefaultRules
-        ? "none"
-        : undefined,
+    whiteSpace: "pre-wrap",
+    verticalAlign:
+      mark?.valign === "middle"
+        ? "middle"
+        : mark?.valign === "bottom"
+          ? "bottom"
+          : mark?.valign === "top"
+            ? "top"
+            : undefined,
+    paddingTop: padCss(mark?.padTop),
+    paddingRight: padCss(mark?.padRight),
+    paddingBottom: padCss(mark?.padBottom),
+    paddingLeft: padCss(mark?.padLeft),
+    border: edged
+      ? "none"
+      : mark?.border
+        ? `calc(1px * var(--slide-pt, 1)) solid ${mark.border}`
+        : hideDefaultRules
+          ? "none"
+          : undefined,
+    borderTop: ruleCss(mark?.borderTop),
+    borderRight: ruleCss(mark?.borderRight),
+    borderBottom: ruleCss(mark?.borderBottom),
+    borderLeft: ruleCss(mark?.borderLeft),
   };
 }
 

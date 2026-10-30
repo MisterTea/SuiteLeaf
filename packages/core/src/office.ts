@@ -1,7 +1,7 @@
 import JSZip from "jszip";
 import * as CFB from "cfb";
 import { XMLParser, XMLValidator } from "fast-xml-parser";
-import { parseFile, type SuiteFile } from "./index";
+import { NATIVE_FILE_LIMIT, parseFile, type SuiteFile } from "./index";
 import { importDocx } from "./word";
 import { importXlsx, normalizeBinaryExcel } from "./excel";
 export const OFFICE_INPUT_LIMIT = 120 * 1024 * 1024;
@@ -241,10 +241,10 @@ export async function importOffice(
   try {
     result.file = parseFile(JSON.stringify(result.file));
   } catch (e) {
-    if (e instanceof Error && e.message.includes("200 MB"))
+    if (e instanceof Error && e.message.includes("Native files must be smaller"))
       throw new OfficeImportError(
         "native-limit",
-        "The converted workbook exceeds the 200 MB editable native-file limit.",
+        `The converted workbook exceeds the ${NATIVE_FILE_LIMIT / (1024 * 1024)} MB editable native-file limit.`,
       );
     throw e;
   }

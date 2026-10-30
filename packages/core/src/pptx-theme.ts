@@ -18,6 +18,20 @@ function clampByte(n: number) {
   return Math.max(0, Math.min(255, Math.round(n)));
 }
 
+/** DrawingML tint and shade mix in linear light. sRGB bytes stay too dark. */
+function srgbToLinear(channel: number) {
+  const c = channel / 255;
+  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+}
+
+function linearToSrgb(channel: number) {
+  const c =
+    channel <= 0.0031308
+      ? 12.92 * channel
+      : 1.055 * channel ** (1 / 2.4) - 0.055;
+  return clampByte(c * 255);
+}
+
 function hexToRgb(hex: string): [number, number, number] {
   const h = hex.replace("#", "");
   return [
@@ -67,31 +81,49 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   return [(rgb[0] + m) * 255, (rgb[1] + m) * 255, (rgb[2] + m) * 255];
 }
 
-/** Apply DrawingML tint, shade, satMod, lumMod, and lumOff in document order. */
+/** Apply DrawingML colour modifiers in document order. hueOff is in 60,000ths of a degree. */
 export function applyColorMods(hex: string, elementXml: string): string {
   let [r, g, b] = hexToRgb(hex);
   const mods = elementXml.matchAll(
-    /<a:(tint|shade|satMod|lumMod|lumOff)\b[^>]*\bval="(-?\d+)"/g,
+    /<a:(tint|shade|satMod|lumMod|lumOff|hueOff|satOff)\b[^>]*\bval="(-?\d+)"/g,
   );
   for (const mod of mods) {
-    const val = Number(mod[2]) / 100000;
+    const val = Number(mod[2]) / (mod[1] === "hueOff" ? 60000 : 100000);
     if (mod[1] === "tint") {
-      r = r * val + 255 * (1 - val);
-      g = g * val + 255 * (1 - val);
-      b = b * val + 255 * (1 - val);
+      r = linearToSrgb(srgbToLinear(r) * val + (1 - val));
+      g = linearToSrgb(srgbToLinear(g) * val + (1 - val));
+      b = linearToSrgb(srgbToLinear(b) * val + (1 - val));
     } else if (mod[1] === "shade") {
-      r *= val;
-      g *= val;
-      b *= val;
+      r = linearToSrgb(srgbToLinear(r) * val);
+      g = linearToSrgb(srgbToLinear(g) * val);
+      b = linearToSrgb(srgbToLinear(b) * val);
     } else {
       const hsl = rgbToHsl(r, g, b);
       if (mod[1] === "satMod") hsl.s = Math.min(1, Math.max(0, hsl.s * val));
+      if (mod[1] === "satOff") hsl.s = Math.min(1, Math.max(0, hsl.s + val));
       if (mod[1] === "lumMod") hsl.l = Math.min(1, Math.max(0, hsl.l * val));
       if (mod[1] === "lumOff") hsl.l = Math.min(1, Math.max(0, hsl.l + val));
+      if (mod[1] === "hueOff") hsl.h += val;
       [r, g, b] = hslToRgb(hsl.h, hsl.s, hsl.l);
     }
   }
   return rgbToHex(r, g, b);
+}
+
+/**
+ * A slide themeOverride replaces the master's color, font, or format scheme.
+ * PowerPoint paints the override; the master theme stays in the package.
+ */
+export function applyThemeOverride(themeXml: string, overrideXml?: string) {
+  if (!themeXml || !overrideXml) return themeXml;
+  let xml = themeXml;
+  for (const tag of ["clrScheme", "fontScheme", "fmtScheme"]) {
+    const next = new RegExp(`<a:${tag}\\b[\\s\\S]*?<\\/a:${tag}>`).exec(overrideXml)?.[0];
+    if (!next) continue;
+    const current = new RegExp(`<a:${tag}\\b[\\s\\S]*?<\\/a:${tag}>`);
+    xml = current.test(xml) ? xml.replace(current, next) : xml;
+  }
+  return xml;
 }
 
 export function schemeColors(themeXml: string, mapXml?: string): Record<string, string> {
@@ -113,8 +145,9 @@ export function schemeColors(themeXml: string, mapXml?: string): Record<string, 
     "",
   );
   const map =
-    (mapXml && /<(?:p|a):clrMap\b([^>]*)\/?>/.exec(mapXml)?.[1]) ||
-    /<(?:p|a):clrMap\b([^>]*)\/?>/.exec(themeMaps)?.[1] ||
+    (mapXml &&
+      /<(?:p|a):(?:overrideClrMapping|clrMap)\b([^>]*)\/?>/.exec(mapXml)?.[1]) ||
+    /<(?:p|a):(?:overrideClrMapping|clrMap)\b([^>]*)\/?>/.exec(themeMaps)?.[1] ||
     "";
   const mapped = (name: string, fallback: string) => {
     const target = new RegExp(`\\b${name}="([A-Za-z0-9]+)"`).exec(map)?.[1] || fallback;
@@ -176,12 +209,58 @@ function taggedBlocks(listXml: string, tags: string) {
   ].map((match) => match[0]);
 }
 
+/**
+ * 8×8 preset tiles. A 0 is the background colour. Percentage patterns are the
+ * sparse dots PowerPoint paints, one cell per point inside an 8pt tile.
+ */
+const PATTERN_BITS: Record<string, string[]> = {
+  pct5: ["10000000", "00000000", "00000000", "00000000", "00001000", "00000000", "00000000", "00000000"],
+  pct10: ["10000000", "00000000", "00001000", "00000000", "10000000", "00000000", "00001000", "00000000"],
+  pct20: ["10001000", "00000000", "00100010", "00000000", "10001000", "00000000", "00100010", "00000000"],
+  pct25: ["10001000", "00000000", "00100010", "00000000", "10001000", "00000000", "00100010", "00000000"],
+  pct30: ["10001000", "00000000", "00100010", "00010000", "01000100", "00000010", "10001000", "00100000"],
+  pct40: ["10001000", "00100010", "10001000", "00000000", "01000100", "00010001", "01000100", "00000000"],
+  pct50: ["10101010", "01010101", "10101010", "01010101", "10101010", "01010101", "10101010", "01010101"],
+  pct60: ["01110111", "11011101", "01110111", "11111111", "10111011", "11101110", "10111011", "11111111"],
+  pct70: ["01110111", "11111111", "11011101", "11101111", "10111011", "11111101", "01110111", "11011111"],
+  pct75: ["01110111", "11111111", "11011101", "11111111", "01110111", "11111111", "11011101", "11111111"],
+  pct80: ["01110111", "11111111", "11011101", "11111111", "01110111", "11111111", "11011101", "11111111"],
+  pct90: ["01111111", "11111111", "11111111", "11111111", "11111111", "11111111", "11111111", "11111111"],
+};
+
+/** A DrawingML pattern fill as a tiled SVG background, in 8pt cells. */
+export function patternFillCss(
+  fillXml: string,
+  scheme: Record<string, string>,
+  phClr: string,
+): string | undefined {
+  const patt = /<a:pattFill\b([^>]*)>([\s\S]*?)<\/a:pattFill>/.exec(fillXml);
+  if (!patt) return undefined;
+  const preset = /\bprst="([^"]+)"/.exec(patt[1])?.[1] || "pct50";
+  const fgXml = /<a:fgClr\b[\s\S]*?<\/a:fgClr>/.exec(patt[2])?.[0] || "";
+  const bgXml = /<a:bgClr\b[\s\S]*?<\/a:bgClr>/.exec(patt[2])?.[0] || "";
+  const fg = paintColor(fgXml, scheme, phClr) || "#000000";
+  const bg = paintColor(bgXml, scheme, phClr) || "#ffffff";
+  const bits = PATTERN_BITS[preset] ?? PATTERN_BITS.pct50;
+  const holes: string[] = [];
+  bits.forEach((row, y) => {
+    [...row].forEach((cell, x) => {
+      if (cell === "0") holes.push(`<rect x="${x}" y="${y}" width="1" height="1" fill="${bg}"/>`);
+    });
+  });
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 8 8"><rect width="8" height="8" fill="${fg}"/>${holes.join("")}</svg>`;
+  const tile = "calc(8 * var(--slide-pt, 1) * 1px)";
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") 0 0 / ${tile} ${tile} repeat`;
+}
+
 function fillCss(
   fillXml: string,
   scheme: Record<string, string>,
   phClr: string,
 ): string | undefined {
   if (/<a:noFill\b/.test(fillXml)) return undefined;
+  const pattern = patternFillCss(fillXml, scheme, phClr);
+  if (pattern) return pattern;
   if (/<a:solidFill\b/.test(fillXml)) return paintColor(fillXml, scheme, phClr);
   const gradient = /<a:gradFill\b[\s\S]*?<\/a:gradFill>/.exec(fillXml)?.[0];
   if (!gradient) return undefined;
@@ -189,13 +268,86 @@ function fillCss(
     ...gradient.matchAll(/<a:gs\b[^>]*\bpos="(\d+)"[^>]*>([\s\S]*?)<\/a:gs>/g),
   ];
   if (!stops.length) return paintColor(gradient, scheme, phClr);
-  const ang = Number(/<a:lin\b[^>]*\bang="(\d+)"/.exec(gradient)?.[1] ?? 0) / 60000;
-  const cssAngle = (((ang + 90) % 360) + 360) % 360;
   const parts = stops.map((stop) => {
     const color = paintColor(stop[2], scheme, phClr) || phClr;
     return `${color} ${Number(stop[1]) / 1000}%`;
   });
+  const path = /<a:path\b[^>]*\bpath="([^"]+)"/.exec(gradient)?.[1];
+  if (path === "circle" || path === "rect" || path === "shape") {
+    const focus = fillToCenter(gradient);
+    const shape = path === "circle" ? "circle" : "ellipse";
+    return `radial-gradient(${shape} at ${focus.x}% ${focus.y}%, ${parts.join(", ")})`;
+  }
+  const ang = Number(/<a:lin\b[^>]*\bang="(\d+)"/.exec(gradient)?.[1] ?? 0) / 60000;
+  const cssAngle = (((ang + 90) % 360) + 360) % 360;
   return `linear-gradient(${cssAngle}deg, ${parts.join(", ")})`;
+}
+
+/** Center of a path gradient's fill-to rectangle, as CSS percentages. */
+function fillToCenter(gradient: string): { x: number; y: number } {
+  const tag = /<a:fillToRect\b([^>]*)\/?>/.exec(gradient)?.[1] ?? "";
+  const edge = (name: string) => {
+    const raw = new RegExp(`\\b${name}="(-?\\d+)"`).exec(tag)?.[1];
+    return raw == null ? 0 : Number(raw) / 1000;
+  };
+  const left = edge("l");
+  const top = edge("t");
+  const right = edge("r");
+  const bottom = edge("b");
+  return { x: (left + (100 - right)) / 2, y: (top + (100 - bottom)) / 2 };
+}
+
+function gradientStops(list: string): string | undefined {
+  const stops = [
+    ...list.matchAll(
+      /(rgba?\([^)]*\)|#[0-9a-fA-F]{3,8}|[a-zA-Z]+)\s+([\d.]+)%/g,
+    ),
+  ];
+  if (!stops.length) return;
+  return stops
+    .map((stop) => {
+      const rgba = /^rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)$/.exec(
+        stop[1],
+      );
+      const color = rgba ? `rgb(${rgba[1]}, ${rgba[2]}, ${rgba[3]})` : stop[1];
+      const opacity = rgba ? ` stop-opacity="${rgba[4]}"` : "";
+      return `<stop offset="${stop[2]}%" stop-color="${color}"${opacity}/>`;
+    })
+    .join("");
+}
+
+/**
+ * SVG cannot use a CSS gradient as a paint. Turn that string into a gradient
+ * element; solid colours stay in the fill attribute.
+ */
+export function svgFillMarkup(fill: string): { defs: string; value: string } {
+  const radial =
+    /^radial-gradient\(\s*(circle|ellipse) at ([\d.]+)% ([\d.]+)%\s*,\s*([\s\S]+)\)$/.exec(
+      fill.trim(),
+    );
+  if (radial) {
+    const stops = gradientStops(radial[4]);
+    if (!stops) return { defs: "", value: fill };
+    const radius = radial[1] === "circle" ? "141.42%" : "70.71%";
+    return {
+      defs: `<defs><radialGradient id="sl-fill" cx="${radial[2]}%" cy="${radial[3]}%" r="${radius}" fx="${radial[2]}%" fy="${radial[3]}%">${stops}</radialGradient></defs>`,
+      value: "url(#sl-fill)",
+    };
+  }
+  const gradient = /^linear-gradient\(\s*([-\d.]+)deg\s*,\s*([\s\S]+)\)$/.exec(
+    fill.trim(),
+  );
+  if (!gradient) return { defs: "", value: fill };
+  const rad = (Number(gradient[1]) * Math.PI) / 180;
+  const dx = Math.sin(rad);
+  const dy = -Math.cos(rad);
+  const pct = (n: number) => `${((0.5 + n) * 100).toFixed(2)}%`;
+  const stopXml = gradientStops(gradient[2]);
+  if (!stopXml) return { defs: "", value: fill };
+  return {
+    defs: `<defs><linearGradient id="sl-fill" gradientUnits="objectBoundingBox" x1="${pct(-dx / 2)}" y1="${pct(-dy / 2)}" x2="${pct(dx / 2)}" y2="${pct(dy / 2)}">${stopXml}</linearGradient></defs>`,
+    value: "url(#sl-fill)",
+  };
 }
 
 /**
@@ -328,7 +480,7 @@ export function themePaint(
   let fill: string | undefined;
   let fillChosen = false;
   if (/<a:noFill\b/.test(fillHost)) fillChosen = true;
-  else if (/<a:(?:solidFill|gradFill)\b/.test(fillHost)) {
+  else if (/<a:(?:solidFill|gradFill|pattFill)\b/.test(fillHost)) {
     fill = fillCss(fillHost, scheme, "#000000");
     fillChosen = true;
   }

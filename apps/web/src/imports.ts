@@ -13,6 +13,7 @@ import {
 } from "@suiteleaf/core";
 import { buildMarpFile, dataUriFor } from "./editors/slide-marp-import";
 import { importDrawing } from "./editors/drawing-format";
+import { NATIVE_FILE_LIMIT } from "@suiteleaf/core";
 import { PPTX_INPUT_LIMIT } from "@suiteleaf/core/office";
 
 export const maxDelimitedCells = 200000;
@@ -84,10 +85,10 @@ export async function importFile(
     return importOfficeFile(file);
   }
   const native = isNativeName(file.name);
-  if (file.size > (native ? 200 : 50) * 1024 * 1024)
+  if (file.size > (native ? NATIVE_FILE_LIMIT : 50 * 1024 * 1024))
     throw new Error(
       native
-        ? "Choose a native file smaller than 200 MB."
+        ? `Choose a native file smaller than ${NATIVE_FILE_LIMIT / (1024 * 1024)} MB.`
         : "Choose a file smaller than 50 MB.",
     );
   const text = await file.text();
