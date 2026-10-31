@@ -1,4 +1,8 @@
 import { AI_MODELS, type AiBridge, type AiGenerateEvent, type AiGenerateRequest, type AiModelId, type AiStatus } from "@suiteleaf/core/ai";
+import { isDemo } from "../mode";
+import { accessToken } from "../node-client";
+import { openAiCompletionModel } from "./openai-completions";
+import { knownModel, onAiPreferencesChanged, readAiPreferences, readModelName } from "./preferences";
 import { wllamaModel } from "./wllama-model";
 
 /** The on-device model, wherever it runs. */
@@ -20,8 +24,14 @@ export function modelHost() {
 
 /** The model the browser runs. FrogNano is the default; "gemma-4-e4b" selects Gemma 4 E4B. */
 export function selectedModel(): AiModelId {
-  const chosen = localStorage.getItem("suiteleaf.ai.model");
-  return chosen && chosen in AI_MODELS ? (chosen as AiModelId) : "frognano-4b";
+  return knownModel();
+}
+
+/** Which chat format to render. A remote model keeps the name the user typed. Serverless mode runs FrogNano or Gemma in the page. */
+export function formatModelId(): string {
+  if (isDemo) return selectedModel() === "gemma-4-e4b" ? "gemma-4-e4b" : "frognano-4b";
+  if (readAiPreferences().place === "remote") return readModelName();
+  return localModel().status().modelId ?? selectedModel();
 }
 
 /** Force a browser device ("webnn-gpu", "webgpu", "wasm"); otherwise WebNN, then WebGPU. */
@@ -54,7 +64,17 @@ function electronModel(bridge: AiBridge): LocalModel {
     status: hub.get,
     onStatus: hub.on,
     load: async () => {
-      const status = await bridge.load();
+      const name = readModelName();
+      if (!(name in AI_MODELS)) {
+        const error: AiStatus = {
+          state: "error",
+          backend: "llama.cpp",
+          message: "This computer can run frognano-4b, gemma-4-e4b, or muse-glimmer-30b.",
+        };
+        hub.set(error);
+        return error;
+      }
+      const status = await bridge.load(name as AiModelId);
       hub.set(status);
       return status;
     },
@@ -211,11 +231,82 @@ function workerModel(): LocalModel {
   };
 }
 
+/** The cluster server the app is connected to, when it is in cluster mode. */
+let serverUrl: string | undefined;
+const runtimeListeners = new Set<() => void>();
+
+export function setAiRuntime(next: { serverUrl?: string }) {
+  const url = next.serverUrl?.replace(/\/+$/, "") || undefined;
+  if (url === serverUrl) return;
+  serverUrl = url;
+  forgetModel();
+  runtimeListeners.forEach((listener) => listener());
+}
+
+export function onAiRuntimeChanged(listener: () => void) {
+  runtimeListeners.add(listener);
+  return () => void runtimeListeners.delete(listener);
+}
+
+export function aiServerUrl() {
+  return serverUrl;
+}
+
 let instance: LocalModel | undefined;
-export function localModel(): LocalModel {
-  if (instance) return instance;
-  if (window.suiteleaf?.ai) return (instance = electronModel(window.suiteleaf.ai));
+let stamp = "";
+
+function modelStamp() {
+  if (isDemo) return "demo";
+  const prefs = readAiPreferences();
+  return [prefs.place, prefs.endpoint, prefs.apiKey, prefs.model, serverUrl ?? "", window.suiteleaf?.ai ? "desktop" : ""].join("\n");
+}
+
+function forgetModel() {
+  instance = undefined;
+  stamp = "";
+}
+
+onAiPreferencesChanged(forgetModel);
+
+function unavailable(message: string): LocalModel {
+  const status: AiStatus = { state: "error", message };
+  return {
+    status: () => status,
+    onStatus: () => () => {},
+    load: async () => status,
+    generate(_request, onEvent) {
+      onEvent({ type: "error", message });
+      return () => {};
+    },
+  };
+}
+
+function browserModel() {
   // FrogNano's ONNX WebGPU kernels hung the GPU. The browser runs its GGUF
-  // through llama.cpp instead. Gemma stays on the ONNX worker.
-  return (instance = selectedModel() === "frognano-4b" ? wllamaModel() : workerModel());
+  // through llama.cpp instead. Gemma stays on the ONNX worker. Muse Glimmer is
+  // not loaded in the page; a saved choice of it still runs FrogNano here.
+  return selectedModel() === "gemma-4-e4b" ? workerModel() : wllamaModel();
+}
+
+function createModel(): LocalModel {
+  if (isDemo) return browserModel();
+  const prefs = readAiPreferences();
+  if (prefs.place === "remote")
+    return openAiCompletionModel({ endpoint: prefs.endpoint, model: prefs.model, apiKey: prefs.apiKey || undefined });
+  if (serverUrl)
+    return openAiCompletionModel({
+      endpoint: `${serverUrl}/api/ai/v1`,
+      model: prefs.model,
+      authorization: () => accessToken().catch(() => undefined),
+      prepare: true,
+    });
+  if (window.suiteleaf?.ai) return electronModel(window.suiteleaf.ai);
+  return unavailable("Connect to a SuiteLeaf server, or choose an OpenAI-compatible endpoint.");
+}
+
+export function localModel(): LocalModel {
+  const next = modelStamp();
+  if (instance && stamp === next) return instance;
+  stamp = next;
+  return (instance = createModel());
 }

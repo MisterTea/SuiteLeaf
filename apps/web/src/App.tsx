@@ -896,8 +896,8 @@ function Home() {
 }
 /** The documents folder the home screen showed last, so returning from a file reopens it. */
 let lastLocalFolder = "";
-/** Single-node mode: files on this computer (or, for the web app, in this
- * browser's storage). */
+/** Serverless mode and single-node mode: files in this browser, or on this
+ * computer when the desktop app is running. */
 function LocalHome() {
   const navigate = useNavigate();
   const { locked, demo } = useMode();

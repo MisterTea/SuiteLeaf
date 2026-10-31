@@ -6,7 +6,7 @@ export interface ResolvedMode {
   mode: AppMode;
   /** The mode comes from how the app is delivered and cannot be switched. */
   locked: boolean;
-  /** The public demo: single-node mode with files kept in browser storage. */
+  /** Serverless mode: the public demo. Files stay in this browser, and the mode cannot be switched. */
   demo: boolean;
 }
 

@@ -19,7 +19,7 @@
     "build:web": "npm run build -w @suiteleaf/web",
     "build:desktop": "npm run build -w @suiteleaf/desktop",
     "package:desktop": "npm run package -w @suiteleaf/desktop",
-    "typecheck": "tsc --noEmit -p apps/web && tsc --noEmit -p apps/desktop && tsc --noEmit -p packages/core && tsc --noEmit -p services/auth",
+    "typecheck": "tsc --noEmit -p apps/web && tsc --noEmit -p apps/desktop && tsc --noEmit -p packages/core && tsc --noEmit -p services/auth && tsc --noEmit -p services/ai",
     "lint": "eslint .",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
@@ -33,6 +33,7 @@
     "format": "prettier --write apps/*/src packages/*/src services/*/src services/*/test tests",
     "test:office-corpus": "node scripts/verify-office-imports.mjs",
     "build:auth": "npm run build -w @suiteleaf/auth",
+    "build:ai": "npm run build -w @suiteleaf/ai",
     "build:node": "cargo build --release -p suiteleaf-node",
     "test:rust": "cargo test --workspace",
     "storyboards": "playwright test --config playwright.storyboards.config.ts"

@@ -7,6 +7,7 @@ import {
   backgroundBlip,
   backgroundCss,
   schemeColors,
+  straightGradientBackground,
   svgFillMarkup,
   themePaint,
 } from "../packages/core/src/pptx-theme";
@@ -59,6 +60,16 @@ it("paints a circle path gradient from its fill-to corner", () => {
     "radial-gradient(circle at 100% 100%, #fafafa 18%, #d6d6d6 100%)",
   );
   expect(svgFillMarkup(css!).defs).toContain("<radialGradient");
+});
+
+it("paints a transparent gradient as straight-alpha SVG", () => {
+  const css = "linear-gradient(180deg, #3789de 0%, rgba(255, 255, 255, 0) 100%)";
+  const painted = straightGradientBackground(css);
+  expect(painted).toContain("data:image/svg+xml,");
+  const svg = decodeURIComponent(painted!.slice(painted!.indexOf(",") + 1).split('"')[0]);
+  expect(svg).toContain('stop-opacity="0"');
+  expect(svg).toContain("stop-color=\"rgb(255, 255, 255)\"");
+  expect(straightGradientBackground("linear-gradient(180deg, #3789de 0%, #ffffff 100%)")).toBeUndefined();
 });
 
 it("applies hue and saturation offsets", () => {

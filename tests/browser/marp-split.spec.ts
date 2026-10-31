@@ -93,10 +93,15 @@ test("dragging the border between the slide and its markdown resizes both, and t
 
 test("stacks the markdown under the slide in a narrow window", async ({ page }) => {
   await page.setViewportSize({ width: 640, height: 900 });
-  const { canvas, markdown } = await openDeck(page);
-  const slide = (await canvas.boundingBox())!;
+  const { markdown } = await openDeck(page);
+  // The canvas keeps its 16:9 box and can stick out of the scrolling stage by a
+  // couple of pixels. The panes are what stack.
+  const stage = (await page.locator(".slide-stage-viewport").boundingBox())!;
+  const pane = (await page.locator(".marp-pane").boundingBox())!;
   const code = (await markdown.boundingBox())!;
-  expect(code.y).toBeGreaterThanOrEqual(slide.y + slide.height - 1);
+  expect(pane.y).toBeGreaterThanOrEqual(stage.y + stage.height - 1);
+  expect(code.y).toBeGreaterThanOrEqual(pane.y - 1);
+  expect(code.y + Math.min(code.height, 80)).toBeLessThanOrEqual(pane.y + pane.height + 1);
   expect(code.width).toBeGreaterThan(400);
 });
 

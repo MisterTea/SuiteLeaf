@@ -393,6 +393,32 @@ describe("office export round trip", () => {
     expect(classifyRoundTrip(reader, replaced, replaced).some((diff) => diff.feature === "import.text")).toBe(
       true,
     );
+    const listed = emptyDigest();
+    listed.texts = [
+      "A. Changing how we publish B. Reducing scope",
+      "a) Beratung b) Datenmanagementplan",
+      "Provide tools v Building relationships",
+      "Final proposal o Template follows",
+      "• Practice – Protocol stays",
+    ];
+    const source = emptyDigest();
+    source.texts = [
+      "Changing how we publish Reducing scope",
+      "Beratung Datenmanagementplan",
+      "Provide tools Building relationships",
+      "Final proposal Template follows",
+      "Practice – Protocol stays",
+    ];
+    expect(classifyRoundTrip(source, listed, listed)).toEqual([]);
+    const droppedLetter = emptyDigest();
+    droppedLetter.texts = ["section A vehicles stay"];
+    const withoutLetter = emptyDigest();
+    withoutLetter.texts = ["section vehicles stay"];
+    expect(
+      classifyRoundTrip(droppedLetter, withoutLetter, withoutLetter).some(
+        (diff) => diff.feature === "import.text",
+      ),
+    ).toBe(true);
   });
 
   it("keeps underline when Word omits the underline value", async () => {

@@ -5,6 +5,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./ai": "./src/ai.ts",
+    "./gguf-download": "./src/gguf-download.ts",
     "./office": "./src/office.ts",
     "./docx-export": "./src/docx-export.ts",
     "./linked-chart": "./src/linked-chart.ts",

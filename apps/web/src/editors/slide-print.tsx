@@ -5,6 +5,22 @@ import { prepareMarpDocument } from "./slide-marp-runtime";
 import { renderMarpPages } from "./slide-marp-render";
 import { SlideStill, slideBackground, slideBackgroundPaint } from "./slide-surface";
 
+/**
+ * The print page and the slide surface both paint the background. A second
+ * copy of a transparent gradient stacks and stays dark. Opaque fills are
+ * unchanged by a second coat, so only those stay on the page itself.
+ */
+export function printPageBackground(slideColor: string, masterColor?: string) {
+  if (!slideColor.includes("rgba(")) return slideColor;
+  if (
+    masterColor &&
+    !masterColor.includes("gradient(") &&
+    !masterColor.includes("rgba(")
+  )
+    return masterColor;
+  return "#ffffff";
+}
+
 /** Mount the full deck before both native browser printing and app print commands. */
 export function useSlidePrint(
   title: string,
@@ -175,7 +191,12 @@ export function SlidePrintDeck({
             style={{
               width: cssWidth,
               height: cssHeight,
-              ...slideBackgroundPaint(slideBackground(deck, slide)),
+              ...slideBackgroundPaint(
+                printPageBackground(
+                  slideBackground(deck, slide),
+                  deck.master?.background?.color,
+                ),
+              ),
             }}
           >
             <SlideStill deck={deck} slide={slide} index={index} />

@@ -12,15 +12,19 @@ import {
   blipLuminance,
   jpegWithoutOrientation,
   paintableImage,
+  pictureClip,
+  sourceCrop,
   stretchFill,
   tiffToPngDataUrl,
 } from "../packages/core/src/pptx-pictures";
+import { croppedPictureStyle } from "../apps/web/src/editors/slide-surface";
 
 function uncompressedTiff(
   pixels: Uint8Array,
   width: number,
   height: number,
   little = false,
+  photometric = 2,
 ) {
   const samples = 4;
   const header = 8;
@@ -43,7 +47,7 @@ function uncompressedTiff(
     [257, 3, 1, height],
     [258, 3, samples, bps],
     [259, 3, 1, 1],
-    [262, 3, 1, 2],
+    [262, 3, 1, photometric],
     [273, 4, 1, strip],
     [277, 3, 1, samples],
     [278, 3, 1, height],
@@ -83,6 +87,13 @@ function pngPixel(dataUrl: string, x: number, y: number) {
   const pixel = (y * (width * 4 + 1) + 1) + x * 4;
   return [...inflated.subarray(pixel, pixel + 4)];
 }
+
+it("turns CMYK TIFF ink into RGB", () => {
+  const pixels = new Uint8Array([0, 255, 255, 0, 0, 0, 0, 255]);
+  const png = tiffToPngDataUrl(uncompressedTiff(pixels, 2, 1, false, 5));
+  expect(pngPixel(png!, 0, 0)).toEqual([255, 0, 0, 255]);
+  expect(pngPixel(png!, 1, 0)).toEqual([0, 0, 0, 255]);
+});
 
 it("turns an uncompressed TIFF into the same PNG pixels", () => {
   const pixels = new Uint8Array([10, 20, 30, 255, 1, 2, 3, 128]);
@@ -548,6 +559,68 @@ it("stretches a picture's gray with DrawingML contrast", () => {
   expect(applyBlipLuminance("data:image/png;base64,AAAA", "<a:blip/>")).toBe(
     "data:image/png;base64,AAAA",
   );
+});
+
+it("letterboxes a picture when srcRect outsets the photo", () => {
+  const crop = sourceCrop('<a:srcRect l="-75656" r="-75656"/>');
+  expect(crop).toEqual({ cropLeft: -75.656, cropRight: -75.656 });
+  const style = croppedPictureStyle({
+    id: "photo",
+    type: "image",
+    x: 0,
+    y: 0,
+    width: 200,
+    height: 100,
+    ...crop,
+  });
+  expect(parseFloat(String(style?.width))).toBeCloseTo(39.791, 2);
+  expect(parseFloat(String(style?.left))).toBeCloseTo(30.105, 2);
+  expect(style?.top).toBe("0%");
+  expect(style?.clipPath).toBeUndefined();
+  const tight = croppedPictureStyle({
+    id: "photo",
+    type: "image",
+    x: 0,
+    y: 0,
+    width: 200,
+    height: 100,
+    cropLeft: 12.199,
+    cropRight: 39.048,
+  });
+  expect(tight?.clipPath).toBe("inset(0% 39.048% 0% 12.199%)");
+  expect(sourceCrop('<a:srcRect l="11103" r="10021"/>')).toEqual({
+    cropLeft: 11.103,
+    cropRight: 10.021,
+  });
+});
+
+it("clips a picture to a parallelogram and a flowchart input", () => {
+  const parallelogram = `<a:prstGeom prst="parallelogram"><a:avLst><a:gd name="adj" fmla="val 36005"/></a:avLst></a:prstGeom>`;
+  const path = pictureClip(parallelogram, 960, 540)?.clipPath;
+  expect(path).toBe("M 194.427 0 L 960 0 L 765.573 540 L 0 540 Z");
+  expect(pictureClip(`<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>`, 100, 40)).toBeUndefined();
+  expect(
+    pictureClip(
+      `<a:prstGeom prst="roundRect"><a:avLst><a:gd name="adj" fmla="val 0"/></a:avLst></a:prstGeom>`,
+      100,
+      40,
+    ),
+  ).toBeUndefined();
+  const flow = pictureClip(
+    `<a:prstGeom prst="flowChartInputOutput"><a:avLst/></a:prstGeom>`,
+    500,
+    200,
+  )?.clipPath;
+  expect(flow).toContain("M 0 200");
+  expect(flow).toContain("L 100 0");
+  expect(flow).toContain("L 400 200");
+  const diag = pictureClip(
+    `<a:prstGeom prst="round2DiagRect"><a:avLst><a:gd name="adj1" fmla="val 2550"/><a:gd name="adj2" fmla="val 0"/></a:avLst></a:prstGeom>`,
+    400,
+    200,
+  )?.clipPath;
+  expect(diag).toContain("M 5.1 0");
+  expect(diag).toContain("A 5.1 5.1 0 0 1 394.9 200");
 });
 
 it("lets a negative fillRect hang a background picture off the slide", () => {

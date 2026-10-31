@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { createFile } from "../../packages/core/src";
 import {
   SlidePrintDeck,
+  printPageBackground,
   useSlidePrint,
 } from "../../apps/web/src/editors/slide-print";
 import { croppedPictureStyle } from "../../apps/web/src/editors/slide-surface";
@@ -14,6 +15,12 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
+it("does not stack a transparent gradient on the print page", () => {
+  const fade = "linear-gradient(180deg, #3789de 0%, rgba(255, 255, 255, 0) 100%)";
+  expect(printPageBackground(fade, "#ffffff")).toBe("#ffffff");
+  expect(printPageBackground("#112233")).toBe("#112233");
+});
+
 it("prints every slide in deck order with its background and page number", () => {
   const file = createFile("slide");
   if (file.kind !== "slide") throw new Error("Expected slides");

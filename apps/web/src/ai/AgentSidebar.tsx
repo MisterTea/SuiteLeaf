@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useLocation } from "react-router-dom";
 import { ArrowUp, Check, CircleAlert, FileUp, Loader2, RotateCcw, ShieldQuestion, Sparkles, Square, Undo2, X } from "lucide-react";
-import { agentSession, currentFormat, type TranscriptItem } from "./agent";
+import { agentSession, type TranscriptItem } from "./agent";
+import { AssistantSettings, assistantLabel, assistantWhere } from "./assistant-settings";
+import { setAiRuntime } from "./backend";
+import { useMode } from "../mode";
 import { cursorStore } from "./cursor";
 import { cancelFileRequest, fileRequestStore } from "./file-request";
 import { approvalStore, cancelApproval } from "./guard";
@@ -9,8 +12,8 @@ import { agentIsActing, documentContextLabel, onHostsChanged } from "./host";
 import { clearTodos, todoStore } from "./todo";
 import { PARSE_ERROR } from "./model-stream";
 
-/** What the panel calls the assistant: the short name of the model it runs ("Gemma", "FrogNano"). */
-const assistantName = () => currentFormat().info.short;
+/** What the panel calls the assistant: FrogNano, Gemma, or the model name the user typed. */
+const assistantName = () => assistantLabel();
 
 let open = sessionStorage.getItem("suiteleaf.ai.open") === "1";
 const openListeners = new Set<() => void>();
@@ -239,6 +242,7 @@ function rate(tokens: number, ms: number) {
 }
 
 export function AgentSidebar() {
+  const { demo, mode } = useMode();
   const place = useSyncExternalStore(onHostsChanged, documentContextLabel);
   const session = useSession();
   const [text, setText] = useState("");
@@ -274,7 +278,8 @@ export function AgentSidebar() {
           <h2>Assistant</h2>
           <small className="agent-context">{place}</small>
           <small>
-            {currentFormat().info.name} · on this device{backend ? ` · ${backend}` : ""}
+            {assistantName()} · {assistantWhere(demo, mode.kind === "cluster")}
+            {demo && backend ? ` · ${backend}` : ""}
           </small>
         </div>
         <button type="button" aria-label="New conversation" title="New conversation" onClick={() => session.reset()} disabled={busy}>
@@ -284,6 +289,7 @@ export function AgentSidebar() {
           <X size={16} />
         </button>
       </header>
+      <AssistantSettings />
       {model.state === "loading" ? (
         <div className="agent-loading" role="status">
           <span>{model.message ?? "Loading the model…"}</span>
@@ -310,7 +316,17 @@ export function AgentSidebar() {
               <li>“Total each column and chart Budget vs Actual”</li>
               <li>“Add a slide titled Next steps”</li>
             </ul>
-            <p className="agent-note">{assistantName()} runs entirely on this device. It can make mistakes; check its work.</p>
+            <p className="agent-note">
+              {assistantName()}{" "}
+              {demo
+                ? "runs in this browser."
+                : assistantWhere(demo, mode.kind === "cluster") === "on this computer"
+                  ? "runs on this computer."
+                  : assistantWhere(demo, mode.kind === "cluster") === "on the server"
+                    ? "runs on the SuiteLeaf server."
+                    : `runs at ${assistantWhere(demo, mode.kind === "cluster")}.`}{" "}
+              It can make mistakes; check its work.
+            </p>
           </div>
         ) : (
           session.items.map((item, i) => <Item key={i} item={item} />)
@@ -395,6 +411,9 @@ export function AgentCursor() {
 
 /** Mounted once at the app root: the panel (when open) and the pointer. */
 export function AgentLayer() {
+  const { mode } = useMode();
+  // The mode is known before this tree mounts, and switching modes reloads the page.
+  setAiRuntime({ serverUrl: mode.kind === "cluster" ? mode.serverUrl : undefined });
   const isOpen = usePanelOpen();
   const { pathname } = useLocation();
   const fileKey = /^\/file\/([^/]+)/.exec(pathname)?.[1] ?? "";

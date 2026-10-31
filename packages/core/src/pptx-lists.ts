@@ -96,6 +96,29 @@ export function formatAutoNum(kind: string, n: number): string {
   }
 }
 
+/**
+ * PowerPoint stacks space after one paragraph onto space before the next.
+ * The first and last paragraphs keep their outer space only when the body
+ * sets spcFirstLastPara.
+ */
+export function foldParagraphGaps<T extends { spaceBefore?: number; spaceAfter?: number }>(
+  paragraphs: T[],
+  edges: boolean,
+): Array<Omit<T, "spaceAfter">> {
+  let previousAfter = 0;
+  return paragraphs.map((paragraph, index) => {
+    const before = paragraph.spaceBefore || 0;
+    const after = paragraph.spaceAfter || 0;
+    const leading = index === 0 ? (edges ? before : 0) : previousAfter + before;
+    previousAfter = after;
+    const rest = { ...paragraph };
+    delete rest.spaceAfter;
+    if (leading) rest.spaceBefore = leading;
+    else delete rest.spaceBefore;
+    return rest;
+  });
+}
+
 type ListRun = {
   text: string;
   paragraphBreak?: boolean;

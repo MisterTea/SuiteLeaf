@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import JSZip from "jszip";
+import { officeSingleSpacing } from "../packages/core/src/office-fonts";
 import { parsePowerPoint } from "../packages/core/src/pptx";
 import { exportPptx } from "../packages/core/src/pptx-export";
 
@@ -77,4 +78,50 @@ it("tightens glyphs with defRPr spc and uses exact spcPts line spacing", async (
   expect(title?.align).toBe("right");
   expect(title?.runs?.[0]?.tracking).toBe(-3);
   expect(title?.lineHeight).toBeCloseTo(96 / 88, 5);
+});
+
+it("stacks paragraph space after onto the next paragraph's space before", async () => {
+  const zip = new JSZip();
+  zip.file(
+    "ppt/presentation.xml",
+    `<p:presentation><p:defaultTextStyle><a:lvl1pPr><a:spcBef><a:spcPts val="0"/></a:spcBef><a:spcAft><a:spcPts val="0"/></a:spcAft></a:lvl1pPr></p:defaultTextStyle></p:presentation>`,
+  );
+  zip.file(
+    "ppt/slides/slide1.xml",
+    `<p:sld><p:cSld><p:spTree><p:sp><p:nvSpPr><p:cNvPr id="2"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="4000000" cy="2000000"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:spcBef><a:spcPts val="1200"/></a:spcBef><a:spcAft><a:spcPts val="600"/></a:spcAft></a:pPr><a:r><a:rPr sz="1800"/><a:t>One</a:t></a:r></a:p><a:p><a:pPr><a:spcBef><a:spcPts val="1200"/></a:spcBef><a:spcAft><a:spcPts val="600"/></a:spcAft></a:pPr><a:r><a:rPr sz="1800"/><a:t>Two</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`,
+  );
+  const parsed = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+  const box = parsed.content.slides[parsed.content.slideOrder[0]].elements[0];
+  const inch = parsed.content.width / (parsed.content.pointWidth / 72);
+  expect(box?.runs?.[0]?.spaceBefore).toBeUndefined();
+  expect(box?.runs?.find((run) => run.paragraphBreak)?.spaceBefore).toBeCloseTo((18 / 72) * inch, 5);
+});
+
+it("lets a paragraph line-spacing multiple replace the list style", async () => {
+  const zip = new JSZip();
+  zip.file(
+    "ppt/presentation.xml",
+    `<p:presentation><p:defaultTextStyle><a:lvl1pPr><a:lnSpc><a:spcPct val="100000"/></a:lnSpc><a:defRPr sz="1800"><a:latin typeface="Arial"/></a:defRPr></a:lvl1pPr></p:defaultTextStyle></p:presentation>`,
+  );
+  zip.file(
+    "ppt/slides/slide1.xml",
+    `<p:sld><p:cSld><p:spTree><p:sp><p:nvSpPr><p:cNvPr id="2"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="4000000" cy="800000"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:lstStyle><a:lvl1pPr><a:lnSpc><a:spcPts val="2400"/></a:lnSpc></a:lvl1pPr></a:lstStyle><a:p><a:pPr><a:lnSpc><a:spcPct val="200000"/></a:lnSpc></a:pPr><a:r><a:rPr sz="3400"><a:latin typeface="Arial"/></a:rPr><a:t>http://example.test</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`,
+  );
+  const parsed = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+  const line = parsed.content.slides[parsed.content.slideOrder[0]].elements[0];
+  expect(line?.lineHeight).toBeCloseTo(officeSingleSpacing("Arial") * 2, 5);
+});
+
+it("keeps a run outline separate from the glyph fill", async () => {
+  const zip = new JSZip();
+  zip.file(
+    "ppt/slides/slide1.xml",
+    `<p:sld><p:cSld><p:spTree><p:sp><p:nvSpPr><p:cNvPr id="2"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="4000000" cy="800000"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr sz="13800" b="1"><a:ln w="12700"><a:solidFill><a:srgbClr val="0000FF"/></a:solidFill></a:ln><a:solidFill><a:srgbClr val="FF0000"/></a:solidFill></a:rPr><a:t>DA</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`,
+  );
+  const parsed = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+  const run = parsed.content.slides[parsed.content.slideOrder[0]].elements[0]?.runs?.[0];
+  expect(run?.text).toBe("DA");
+  expect(run?.color).toBe("#FF0000");
+  expect(run?.stroke).toBe("#0000FF");
+  expect(run?.strokeWidth).toBe(1);
 });

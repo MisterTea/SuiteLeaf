@@ -1,4 +1,7 @@
 import { encodeRgbaPng } from "./emf-raster";
+import { suiteLeafFont } from "./office-fonts";
+import { symbolFontChar } from "./pptx-lists";
+import { isSymbolFont } from "./symbol-fonts";
 
 /**
  * Vector EMF drawings as SVG. Chromium does not paint image/emf, and a
@@ -21,7 +24,56 @@ type Pen = {
   join: string;
 };
 type Brush = { kind: "brush"; color?: string };
-type GdiObject = Pen | Brush;
+type Font = {
+  kind: "font";
+  size: number;
+  family: string;
+  weight: number;
+  italic: boolean;
+};
+type Xform = {
+  m11: number;
+  m12: number;
+  m21: number;
+  m22: number;
+  dx: number;
+  dy: number;
+};
+type GdiObject = Pen | Brush | Font;
+
+function identityXform(): Xform {
+  return { m11: 1, m12: 0, m21: 0, m22: 1, dx: 0, dy: 0 };
+}
+
+function readXform(view: DataView, offset: number): Xform {
+  return {
+    m11: view.getFloat32(offset, true),
+    m12: view.getFloat32(offset + 4, true),
+    m21: view.getFloat32(offset + 8, true),
+    m22: view.getFloat32(offset + 12, true),
+    dx: view.getFloat32(offset + 16, true),
+    dy: view.getFloat32(offset + 20, true),
+  };
+}
+
+/** Column-vector product. `a` is applied after `b`. */
+function multiplyXform(a: Xform, b: Xform): Xform {
+  return {
+    m11: a.m11 * b.m11 + a.m21 * b.m12,
+    m12: a.m12 * b.m11 + a.m22 * b.m12,
+    m21: a.m11 * b.m21 + a.m21 * b.m22,
+    m22: a.m12 * b.m21 + a.m22 * b.m22,
+    dx: a.m11 * b.dx + a.m21 * b.dy + a.dx,
+    dy: a.m12 * b.dx + a.m22 * b.dy + a.dy,
+  };
+}
+
+function xmlText(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
 
 function cssColor(color: number) {
   const hex = (color & 0xffffff).toString(16).padStart(6, "0");
@@ -203,19 +255,32 @@ export function vectorEmf(bytes: Uint8Array): string | undefined {
     join: "round",
   };
   let brush: Brush = { kind: "brush", color: "#ffffff" };
+  let font: Font = { kind: "font", size: 16, family: "Arial", weight: 400, italic: false };
+  let world = identityXform();
+  let textColor = "#000000";
+  let textAlign = 0;
   const objects = new Map<number, GdiObject>();
   const defs: string[] = [];
   const shapes: string[] = [];
   let clip: string | undefined;
   let clipId = 0;
+  const saved: { id: number; state: ReturnType<typeof snapshot> }[] = [];
+  let dcSerial = 0;
 
   const mapPoint = (x: number, y: number) => {
+    const pageX = world.m11 * x + world.m21 * y + world.dx;
+    const pageY = world.m12 * x + world.m22 * y + world.dy;
     const sx = viewportExtX / (windowExtX || 1);
     const sy = viewportExtY / (windowExtY || 1);
     return [
-      (x - windowOrgX) * sx + viewportOrgX - boundsLeft,
-      (y - windowOrgY) * sy + viewportOrgY - boundsTop,
+      (pageX - windowOrgX) * sx + viewportOrgX - boundsLeft,
+      (pageY - windowOrgY) * sy + viewportOrgY - boundsTop,
     ] as const;
+  };
+  const axisScale = (m1: number, m2: number) => {
+    const vx = Math.abs(viewportExtX / (windowExtX || 1));
+    const vy = Math.abs(viewportExtY / (windowExtY || 1));
+    return Math.hypot(m1 * vx, m2 * vy);
   };
   const command = (op: string, x: number, y: number) => {
     const [px, py] = mapPoint(x, y);
@@ -245,9 +310,8 @@ export function vectorEmf(bytes: Uint8Array): string | undefined {
   };
   const strokeWidth = () => {
     if (!pen.geometric) return Math.max(pen.width, 0.25);
-    const sx = Math.abs(viewportExtX / (windowExtX || 1));
-    const sy = Math.abs(viewportExtY / (windowExtY || 1));
-    return Math.max(pen.width * Math.max(sx, sy), 0.25);
+    const scale = Math.max(axisScale(world.m11, world.m12), axisScale(world.m21, world.m22));
+    return Math.max(pen.width * scale, 0.25);
   };
   const emit = (mode: "fill" | "stroke" | "both") => {
     if (!path) return;
@@ -284,7 +348,88 @@ export function vectorEmf(bytes: Uint8Array): string | undefined {
     const object = handle & 0x80000000 ? stock(handle) : objects.get(handle);
     if (!object) return;
     if (object.kind === "pen") pen = object;
-    else brush = object;
+    else if (object.kind === "brush") brush = object;
+    else font = object;
+  };
+  function snapshot() {
+    return {
+      world: { ...world },
+      pen: { ...pen },
+      brush: { ...brush },
+      font: { ...font },
+      textColor,
+      textAlign,
+      windowOrgX,
+      windowOrgY,
+      windowExtX,
+      windowExtY,
+      viewportOrgX,
+      viewportOrgY,
+      viewportExtX,
+      viewportExtY,
+      clip,
+      currentX,
+      currentY,
+      fillRule,
+    };
+  }
+  const restore = (state: ReturnType<typeof snapshot>) => {
+    world = state.world;
+    pen = state.pen;
+    brush = state.brush;
+    font = state.font;
+    textColor = state.textColor;
+    textAlign = state.textAlign;
+    windowOrgX = state.windowOrgX;
+    windowOrgY = state.windowOrgY;
+    windowExtX = state.windowExtX;
+    windowExtY = state.windowExtY;
+    viewportOrgX = state.viewportOrgX;
+    viewportOrgY = state.viewportOrgY;
+    viewportExtX = state.viewportExtX;
+    viewportExtY = state.viewportExtY;
+    clip = state.clip;
+    currentX = state.currentX;
+    currentY = state.currentY;
+    fillRule = state.fillRule;
+  };
+  const emitText = (offset: number, size: number) => {
+    if (size < 76) return;
+    const refX = i(offset + 36);
+    const refY = i(offset + 40);
+    const count = u(offset + 44);
+    const offString = u(offset + 48);
+    const offDx = u(offset + 72);
+    if (count < 1 || count > 8000 || offString + count * 2 > size) return;
+    let chars = "";
+    for (let n = 0; n < count; n++) {
+      const code = view.getUint16(offset + offString + n * 2, true);
+      if (code) chars += String.fromCodePoint(code);
+    }
+    if (!chars) return;
+    // Symbol fonts store the glyph at the byte. Private-use copies are skipped by PDF fonts.
+    const shown = isSymbolFont(font.family) ? symbolFontChar(chars) : chars;
+    const [x, y] = mapPoint(refX, refY);
+    const sizePx = Math.max(Math.abs(font.size) * axisScale(world.m21, world.m22), 1);
+    const horizontal = textAlign & 6;
+    const vertical = textAlign & 24;
+    const anchor = horizontal === 6 ? "middle" : horizontal === 2 ? "end" : "start";
+    const baseline =
+      vertical === 0 ? y + sizePx * 0.8 : vertical === 8 ? y - sizePx * 0.2 : y;
+    let textLength = "";
+    if (offDx > 0 && offDx + count * 4 <= size) {
+      let advance = 0;
+      for (let n = 0; n < count; n++) advance += i(offset + offDx + n * 4);
+      if (advance > 0)
+        textLength = ` textLength="${num(advance * axisScale(world.m11, world.m12))}" lengthAdjust="spacing"`;
+    }
+    const family = suiteLeafFont(font.family).replace(/["<>&]/g, "");
+    const quoted = /[\s']/.test(family) ? `'${family}'` : family;
+    const weight = font.weight >= 600 ? ' font-weight="700"' : "";
+    const italic = font.italic ? ' font-style="italic"' : "";
+    shapes.push(
+      `<text x="${num(x)}" y="${num(baseline)}" fill="${textColor}" font-family="${quoted}" font-size="${num(sizePx)}" text-anchor="${anchor}"${weight}${italic}${textLength}>${xmlText(shown)}</text>`,
+    );
   };
 
   for (let offset = u(4); offset + 8 <= bytes.length; ) {
@@ -304,6 +449,27 @@ export function vectorEmf(bytes: Uint8Array): string | undefined {
     } else if (type === 12) {
       viewportOrgX = i(offset + 8);
       viewportOrgY = i(offset + 12);
+    } else if (type === 22 && size >= 12) {
+      textAlign = u(offset + 8);
+    } else if (type === 24 && size >= 12) {
+      textColor = cssColor(u(offset + 8));
+    } else if (type === 33) {
+      saved.push({ id: ++dcSerial, state: snapshot() });
+    } else if (type === 34 && size >= 12) {
+      const rel = i(offset + 8);
+      const index =
+        rel < 0 ? saved.length + rel : saved.findIndex((item) => item.id === rel);
+      if (index >= 0 && index < saved.length) {
+        restore(saved[index].state);
+        saved.splice(index);
+      }
+    } else if (type === 35 && size >= 32) {
+      world = readXform(view, offset + 8);
+    } else if (type === 36 && size >= 36) {
+      const mode = u(offset + 32);
+      if (mode === 1) world = identityXform();
+      else if (mode === 2) world = multiplyXform(readXform(view, offset + 8), world);
+      else if (mode === 3) world = multiplyXform(world, readXform(view, offset + 8));
     } else if (type === 19) {
       fillRule = u(offset + 8) === 2 ? "nonzero" : "evenodd";
     } else if (type === 27) {
@@ -353,6 +519,24 @@ export function vectorEmf(bytes: Uint8Array): string | undefined {
       const object = penStyle(style, width);
       object.color = (style & 0xf) === 5 ? undefined : cssColor(u(offset + 40));
       objects.set(u(offset + 8), object);
+    } else if (type === 82 && size >= 104) {
+      const height = i(offset + 12);
+      const weight = i(offset + 28);
+      let face = "";
+      for (let n = 0; n < 32; n++) {
+        const code = view.getUint16(offset + 40 + n * 2, true);
+        if (!code) break;
+        face += String.fromCharCode(code);
+      }
+      objects.set(u(offset + 8), {
+        kind: "font",
+        size: height === 0 ? 16 : height,
+        family: face || "Arial",
+        weight: weight > 0 ? weight : 400,
+        italic: bytes[offset + 32] !== 0,
+      });
+    } else if (type === 84) {
+      emitText(offset, size);
     } else if (type === 87 || type === 89 || type === 4 || type === 6) {
       const wide = type === 4 || type === 6;
       const count = u(offset + 24);

@@ -16,7 +16,7 @@ use tower_http::{
     services::{ServeDir, ServeFile},
 };
 
-use crate::{auth::Auth, collab::Rooms, config::Config};
+use crate::{ai_local::LocalAi, auth::Auth, collab::Rooms, config::Config};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -26,6 +26,7 @@ pub struct AppState {
     pub auth: Auth,
     pub drive: Arc<Drive>,
     pub rooms: Rooms,
+    pub local: LocalAi,
 }
 
 impl FromRef<AppState> for Auth {
@@ -150,7 +151,8 @@ pub fn router(state: AppState) -> Router {
         .route("/sign-up/{token}", get(sign_up_shell))
         .with_state(state.clone())
         .merge(crate::drive_api::router(state.clone()))
-        .merge(crate::admin_api::router(state))
+        .merge(crate::admin_api::router(state.clone()))
+        .merge(crate::ai_api::router(state))
         .merge(
             Router::new()
                 .route("/api/auth/{*rest}", any(crate::auth::proxy))

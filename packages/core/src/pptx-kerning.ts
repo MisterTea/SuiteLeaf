@@ -27,6 +27,43 @@ export function exactLineFactor(spcPts: string, fontPt: number): number | undefi
   return Math.min(4, points / fontPt);
 }
 
+export type LineSpacing =
+  | { kind: "pct"; value: number }
+  | { kind: "pts"; value: string };
+
+/** Hundredths of a point on the last `a:spcBef` or `a:spcAft`. Zero still wins. */
+export function lastSpacingPoints(
+  xml: string,
+  tag: "spcBef" | "spcAft",
+): number | undefined {
+  const matches = [
+    ...xml.matchAll(
+      new RegExp(`<a:${tag}>\\s*<a:spcPts\\b[^>]*\\bval="(\\d+)"`, "g"),
+    ),
+  ];
+  const last = matches.at(-1);
+  if (!last) return;
+  const points = Number(last[1]) / 100;
+  if (!Number.isFinite(points) || points < 0) return;
+  return points;
+}
+
+/**
+ * Line spacing cascades like the rest of a paragraph: the last `a:lnSpc`
+ * wins. A list style of 100% must not cover the paragraph's own multiple.
+ */
+export function lastLineSpacing(xml: string): LineSpacing | undefined {
+  const matches = [
+    ...xml.matchAll(/<a:lnSpc>\s*<a:(spcPct|spcPts)\b[^>]*\bval="(\d+)"/g),
+  ];
+  const last = matches.at(-1);
+  if (!last) return;
+  if (last[1] === "spcPts") return { kind: "pts", value: last[2] };
+  const pct = Number(last[2]) / 100000;
+  if (!Number.isFinite(pct)) return;
+  return { kind: "pct", value: Math.min(4, Math.max(0.5, pct)) };
+}
+
 /**
  * A box keeps one kerning size, so editing a word cannot lose it. It comes
  * from the first run with text; the runs themselves do not store it.

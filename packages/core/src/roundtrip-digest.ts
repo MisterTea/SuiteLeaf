@@ -68,6 +68,37 @@ function listLabel(prefix: string): boolean {
   return /^\S+ (\d+|[A-Za-z])([.)](\d+|[A-Za-z]))*[.)]?$/.test(body);
 }
 
+/**
+ * A marker painted before a paragraph. PowerPoint stores it as a bullet or
+ * number, and the slide model writes that marker in front of the words.
+ */
+function listMarker(token: string): boolean {
+  if ([...token].length === 1) return true;
+  if (/^\(\d+\)$/.test(token)) return true;
+  return /^(\d+|[A-Za-z])([.)](\d+|[A-Za-z]))*[.)]$/.test(token);
+}
+
+function withoutListMarkers(value: string): string {
+  return norm(
+    value
+      .split(" ")
+      .filter((token) => !listMarker(token))
+      .join(" "),
+  );
+}
+
+/** The same words, with bullets or numbers inserted on the copy that has them. */
+function sameWithMarkers(need: string, have: string): boolean {
+  const want = norm(need).split(" ").filter(Boolean);
+  const got = norm(have).split(" ").filter(Boolean);
+  let index = 0;
+  for (const token of got) {
+    if (index < want.length && token === want[index]) index += 1;
+    else if (!listMarker(token)) return false;
+  }
+  return index === want.length;
+}
+
 function missingCount(need: string[], have: string[], substringAt = 4): number {
   const bagHave = bag(have);
   const leftovers: string[] = [];
@@ -77,6 +108,8 @@ function missingCount(need: string[], have: string[], substringAt = 4): number {
   }
   const hay = have.map(norm).filter((text) => text.length >= 2);
   const foldedHay = hay.map(foldSpace);
+  const plainHay = hay.map(withoutListMarkers);
+  const plainFolded = plainHay.map(foldSpace);
   let count = 0;
   for (const text of leftovers) {
     const folded = foldSpace(text);
@@ -95,6 +128,21 @@ function missingCount(need: string[], have: string[], substringAt = 4): number {
           item.endsWith(text) &&
           listLabel(item.slice(0, item.length - text.length)),
       )
+    )
+      continue;
+    if (hay.some((item) => sameWithMarkers(text, item))) continue;
+    if (
+      plainHay.some((item, index) => {
+        if (item.length < 2) return false;
+        if (text.length >= substringAt && (item.includes(text) || text.includes(item))) return true;
+        const foldedItem = plainFolded[index];
+        if (foldedItem === folded && folded.length >= 1) return true;
+        return (
+          folded.length >= substringAt &&
+          !!foldedItem &&
+          (foldedItem.includes(folded) || folded.includes(foldedItem))
+        );
+      })
     )
       continue;
     count += 1;

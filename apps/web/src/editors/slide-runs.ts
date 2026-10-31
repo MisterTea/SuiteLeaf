@@ -19,6 +19,8 @@ export function cleanRun(run: TextRun): TextRun {
   if (run.underline) next.underline = true;
   if (run.color) next.color = run.color;
   if (run.highlight) next.highlight = run.highlight;
+  if (run.stroke) next.stroke = run.stroke;
+  if (run.strokeWidth) next.strokeWidth = run.strokeWidth;
   if (run.fontSize) next.fontSize = run.fontSize;
   if (run.caps) next.caps = run.caps;
   if (run.baseline) next.baseline = run.baseline;
@@ -40,6 +42,8 @@ function sameStyle(a: TextRun, b: TextRun): boolean {
     !!a.underline === !!b.underline &&
     (a.color ?? "") === (b.color ?? "") &&
     (a.highlight ?? "") === (b.highlight ?? "") &&
+    (a.stroke ?? "") === (b.stroke ?? "") &&
+    (a.strokeWidth ?? 0) === (b.strokeWidth ?? 0) &&
     a.fontSize === b.fontSize &&
     a.caps === b.caps &&
     a.baseline === b.baseline &&
@@ -121,6 +125,8 @@ export function hasTextRuns(el: { runs?: TextRun[] }): boolean {
       run.underline ||
       run.color ||
       run.highlight ||
+      run.stroke ||
+      run.strokeWidth ||
       run.fontSize ||
       run.caps ||
       run.baseline ||
@@ -169,7 +175,8 @@ function runSpan(run: TextRun, kern?: number): string {
         styles.push("text-decoration:underline");
         data.push('data-underline="1"');
       }
-      const color = run.color ? normalizeColor(run.color) : undefined;
+      const color =
+        run.color === "transparent" ? "transparent" : run.color ? normalizeColor(run.color) : undefined;
       if (color) {
         styles.push(`color:${color}`);
         data.push(`data-color="${color}"`);
@@ -178,6 +185,15 @@ function runSpan(run: TextRun, kern?: number): string {
       if (highlight) {
         styles.push(`background-color:${highlight}`);
         data.push(`data-highlight="${highlight}"`);
+      }
+      const stroke = run.stroke ? normalizeColor(run.stroke) : undefined;
+      if (stroke && run.strokeWidth) {
+        styles.push(
+          `-webkit-text-stroke:calc(${run.strokeWidth} * var(--slide-pt, 1) * 1px) ${stroke}`,
+          "paint-order:stroke fill",
+          "-webkit-text-fill-color:currentColor",
+        );
+        data.push(`data-stroke="${stroke}"`, `data-stroke-width="${run.strokeWidth}"`);
       }
       if (run.fontSize) {
         styles.push(`font-size:calc(${run.fontSize} * var(--slide-pt, 1) * 1px)`);
@@ -203,9 +219,20 @@ function runSpan(run: TextRun, kern?: number): string {
       if (run.paragraphBreak) data.push('data-paragraph-break="1"');
       const style = styles.length ? ` style="${styles.join(";")}"` : "";
       const attrs = data.length ? ` ${data.join(" ")}` : "";
-      // latinLnBrk="0" does not break after a hyphen. A word joiner is zero width.
-      const text = run.unbroken ? run.text.replace(/-(?=\S)/g, "-\u2060") : run.text;
+      // latinLnBrk="0" keeps a short hyphenated word together. A word joiner is
+      // zero width. A URL or other token that cannot fit a line still breaks
+      // at the hyphen, which is where PowerPoint breaks it.
+      const text = run.unbroken ? keepShortHyphenatedWords(run.text) : run.text;
       return `<span${attrs}${style}>${escapeHtml(text)}</span>`;
+}
+
+/** Glue hyphens inside a short word. Leave a long token or a path breakable. */
+export function keepShortHyphenatedWords(text: string): string {
+  return text.replace(/[^\s]+/g, (token) => {
+    if (!token.includes("-")) return token;
+    if (token.length > 32 || token.includes("/") || token.includes("\\")) return token;
+    return token.replace(/-(?=\S)/g, "-\u2060");
+  });
 }
 
 function paragraphStyle(run: TextRun | undefined, empty = false): string {

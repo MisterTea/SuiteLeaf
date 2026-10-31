@@ -1,11 +1,5 @@
-// Electron utility process that runs the on-device model (a Gemma 4 E4B or
-// FrogNano GGUF, chosen by SUITELEAF_MODEL_PATH) with llama.cpp (Metal on
-// macOS) so loading and generating never block the main process or window.
-import { createWriteStream } from "node:fs";
-import { mkdir, rename, stat } from "node:fs/promises";
-import { dirname } from "node:path";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
+// Electron utility process that runs a built-in GGUF with llama.cpp (Metal on
+// macOS). The file is downloaded the first time that model is asked for.
 import type {
   Llama,
   LlamaContext,
@@ -13,23 +7,22 @@ import type {
   LlamaModel,
   Token,
 } from "node-llama-cpp";
-import { AI_MODELS, FROG_GGUF_URL, modelIdForFile, type AiGenerateRequest, type AiStatus } from "@suiteleaf/core/ai";
-
-const MODEL_URL = FROG_GGUF_URL;
+import { AI_MODELS, type AiGenerateRequest, type AiModelId, type AiStatus } from "@suiteleaf/core/ai";
+import { ensureGguf, ggufPath } from "@suiteleaf/core/gguf-download";
 
 type Inbound =
-  | { type: "load" }
+  | { type: "load"; modelId?: AiModelId }
   | { type: "template"; id: string }
   | { type: "generate"; id: string; request: AiGenerateRequest }
   | { type: "abort"; id: string };
 
 const port = process.parentPort;
-const modelPath = process.env.SUITELEAF_MODEL_PATH!;
-const quant = /-(Q\d[\w]*)\.gguf$/i.exec(modelPath ?? "")?.[1] ?? "GGUF";
-const modelId = modelIdForFile(modelPath ?? "");
-const contextSize = Number(process.env.SUITELEAF_MODEL_CONTEXT ?? AI_MODELS[modelId].contextSize);
-const name = AI_MODELS[modelId].name;
-let status: AiStatus = { state: "idle", backend: "llama.cpp", modelId, model: `${name} (${quant})` };
+const modelsDir = process.env.SUITELEAF_MODELS_DIR || "models";
+const override = process.env.SUITELEAF_MODEL_PATH || undefined;
+let status: AiStatus = { state: "idle", backend: "llama.cpp" };
+let requestedId: AiModelId | undefined;
+let loadedId: AiModelId | undefined;
+let contextSize = 0;
 let llama: Llama | undefined;
 let model: LlamaModel | undefined;
 let context: LlamaContext | undefined;
@@ -43,58 +36,70 @@ function setStatus(next: Partial<AiStatus>) {
   port.postMessage({ type: "status", status });
 }
 
-async function download() {
-  try {
-    await stat(modelPath);
-    return;
-  } catch {
-    /* not downloaded yet */
-  }
-  await mkdir(dirname(modelPath), { recursive: true });
-  const response = await fetch(MODEL_URL);
-  if (!response.ok || !response.body)
-    throw new Error(`Could not download the model (${response.status}).`);
-  const total = Number(response.headers.get("content-length") ?? 0);
-  let received = 0;
-  const body = Readable.fromWeb(response.body as never);
-  body.on("data", (chunk: Buffer) => {
-    received += chunk.length;
-    if (total) setStatus({ progress: (received / total) * 0.8, message: `Downloading ${name}` });
-  });
-  await pipeline(body, createWriteStream(`${modelPath}.part`));
-  await rename(`${modelPath}.part`, modelPath);
+function knownId(id: string | undefined): AiModelId {
+  if (id && id in AI_MODELS) return id as AiModelId;
+  return requestedId ?? "frognano-4b";
 }
 
-async function load() {
-  if (status.state === "ready") return;
-  loading ??= (async () => {
-    const started = performance.now();
-    setStatus({ state: "loading", progress: 0, message: `Preparing ${name}` });
-    try {
-      await download();
-      const { getLlama } = await import("node-llama-cpp");
-      llama = await getLlama();
-      setStatus({ message: `Loading ${name}`, progress: 0.8 });
-      model = await llama.loadModel({
-        modelPath,
-        onLoadProgress: (p) => setStatus({ progress: 0.8 + p * 0.2 }),
-      });
-      // A full sliding-window cache lets each agent turn reuse the whole
-      // shared prompt prefix instead of only the last window.
-      context = await model.createContext({ contextSize, swaFullCache: true });
-      sequence = context.getSequence();
-      setStatus({
-        state: "ready",
-        progress: 1,
-        message: `${llama.gpu || "cpu"} · context ${contextSize}`,
-        loadMs: Math.round(performance.now() - started),
-      });
-    } catch (error) {
-      loading = undefined;
-      setStatus({ state: "error", message: String((error as Error).message ?? error) });
-    }
-  })();
-  await loading;
+async function unload() {
+  sequence = undefined;
+  await context?.dispose().catch(() => {});
+  await model?.dispose().catch(() => {});
+  context = undefined;
+  model = undefined;
+}
+
+async function load(modelId?: AiModelId) {
+  const id = knownId(modelId);
+  requestedId = id;
+  const run = (loading ?? Promise.resolve()).then(() => loadOne(id));
+  loading = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  await run;
+}
+
+async function loadOne(id: AiModelId) {
+  if (status.state === "ready" && loadedId === id && model) return;
+  const info = AI_MODELS[id];
+  const target = ggufPath(id, modelsDir, override);
+  contextSize = Number(process.env.SUITELEAF_MODEL_CONTEXT ?? info.contextSize);
+  const quant = /-(Q\d[\w]*)\.gguf$/i.exec(target.filePath)?.[1] ?? "GGUF";
+  const started = performance.now();
+  loadedId = undefined;
+  setStatus({ state: "loading", modelId: id, model: `${info.name} (${quant})`, progress: 0, message: `Preparing ${info.name}` });
+  try {
+    if (model) await unload();
+    await ensureGguf({
+      filePath: target.filePath,
+      url: target.url,
+      download: target.download,
+      onProgress: (received, total) => {
+        if (total) setStatus({ progress: (received / total) * 0.8, message: `Downloading ${info.name}` });
+      },
+    });
+    const { getLlama } = await import("node-llama-cpp");
+    llama = llama ?? (await getLlama());
+    setStatus({ message: `Loading ${info.name}`, progress: 0.8 });
+    model = await llama.loadModel({
+      modelPath: target.filePath,
+      onLoadProgress: (p) => setStatus({ progress: 0.8 + p * 0.2 }),
+    });
+    // A full sliding-window cache lets each agent turn reuse the whole
+    // shared prompt prefix instead of only the last window.
+    context = await model.createContext({ contextSize, swaFullCache: true });
+    sequence = context.getSequence();
+    loadedId = id;
+    setStatus({
+      state: "ready",
+      progress: 1,
+      message: `${llama.gpu || "cpu"} · context ${contextSize}`,
+      loadMs: Math.round(performance.now() - started),
+    });
+  } catch (error) {
+    setStatus({ state: "error", message: String((error as Error).message ?? error) });
+  }
 }
 
 async function generate(id: string, request: AiGenerateRequest) {
@@ -166,7 +171,7 @@ async function generate(id: string, request: AiGenerateRequest) {
 }
 
 port.on("message", ({ data }: { data: Inbound }) => {
-  if (data.type === "load") void load();
+  if (data.type === "load") void load(data.modelId);
   else if (data.type === "template")
     void load().then(() =>
       port.postMessage({

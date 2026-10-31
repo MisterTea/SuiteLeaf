@@ -1,6 +1,7 @@
 import { deflate, inflate } from "pako";
 import { vectorEmf } from "./emf-vector";
 import { rasterEmf } from "./emf-raster";
+import { geometryClipPath } from "./pptx-geometry";
 import { vectorWmf } from "./wmf-vector";
 
 const base64 = (bytes: Uint8Array) => {
@@ -132,7 +133,8 @@ export function tiffToPngDataUrl(bytes: Uint8Array): string | undefined {
   const planar = one(284) ?? 1;
   const orientation = one(274) ?? 1;
   const predictor = one(317) ?? 1;
-  const associatedAlpha = samples === 4 && one(338) === 1;
+  const cmyk = photometric === 5 && samples === 4;
+  const associatedAlpha = !cmyk && samples === 4 && one(338) === 1;
   const bits = many(258);
   if (
     !width ||
@@ -144,7 +146,7 @@ export function tiffToPngDataUrl(bytes: Uint8Array): string | undefined {
     return;
   if (
     (compression !== 1 && compression !== 5) ||
-    photometric !== 2 ||
+    (photometric !== 2 && !cmyk) ||
     planar !== 1 ||
     orientation !== 1 ||
     (predictor !== 1 && predictor !== 2) ||
@@ -188,6 +190,16 @@ export function tiffToPngDataUrl(bytes: Uint8Array): string | undefined {
       for (let x = 0; x < width; x++) {
         const from = source + x * samples;
         const to = target + x * 4;
+        if (cmyk) {
+          const scale = (ink: number, black: number) =>
+            Math.round(255 * (1 - ink / 255) * (1 - black / 255));
+          const black = packed[from + 3];
+          pixels[to] = scale(packed[from], black);
+          pixels[to + 1] = scale(packed[from + 1], black);
+          pixels[to + 2] = scale(packed[from + 2], black);
+          pixels[to + 3] = 255;
+          continue;
+        }
         let red = packed[from];
         let green = packed[from + 1];
         let blue = packed[from + 2];
@@ -335,7 +347,11 @@ export function stretchFill<T extends { x: number; y: number; width: number; hei
   return { ...box, x: box.x + l * box.width, y: box.y + t * box.height, width, height };
 }
 
-/** DrawingML srcRect, in percent of the source picture (100000 = 100%). */
+/**
+ * DrawingML srcRect, in percent of the source picture (100000 = 100%).
+ * A positive edge hides that side of the picture. A negative edge outsets it,
+ * so the picture sits inside the shape and the rest of the box stays empty.
+ */
 export function sourceCrop(xml: string):
   | {
       cropLeft?: number;
@@ -351,7 +367,8 @@ export function sourceCrop(xml: string):
     attrs[match[1]] = match[2];
   const percent = (name: string) => {
     const value = Number(attrs[name] ?? 0) / 1000;
-    return value > 0 ? Math.min(100, value) : 0;
+    if (!Number.isFinite(value) || value === 0) return 0;
+    return value > 0 ? Math.min(100, value) : Math.max(-5000, value);
   };
   const crop = {
     cropLeft: percent("l"),
@@ -365,9 +382,19 @@ export function sourceCrop(xml: string):
   )
     return;
   const present = Object.fromEntries(
-    Object.entries(crop).filter((entry) => entry[1] > 0),
+    Object.entries(crop).filter((entry) => entry[1] !== 0),
   );
   return Object.keys(present).length ? present : undefined;
+}
+
+/** Clip a picture to its preset outline. A plain rectangle stays unclipped. */
+export function pictureClip(
+  xml: string,
+  width: number,
+  height: number,
+): { clipPath: string } | undefined {
+  const clipPath = geometryClipPath(xml, width, height);
+  return clipPath ? { clipPath } : undefined;
 }
 
 function dataUrlBytes(src: string): { mime: string; bytes: Uint8Array } | undefined {

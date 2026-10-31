@@ -26,6 +26,8 @@ pub struct Config {
     pub cors_origins: Vec<String>,
     pub sync_interval_secs: u64,
     pub auth: AuthConfig,
+    /// Where this node runs the assistant when a client asks for it on the server.
+    pub ai: AiConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -45,6 +47,30 @@ pub struct AuthConfig {
     pub env: BTreeMap<String, String>,
 }
 
+/// The assistant's model, when a client runs it on this node.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct AiConfig {
+    /// OpenAI-compatible base URL, such as `http://127.0.0.1:8080/v1`.
+    /// When set, prompts are forwarded there. When unset, this node downloads
+    /// the built-in model on first use and runs it.
+    pub upstream: Option<String>,
+    /// Bearer token for `upstream`. `SUITELEAF_AI_API_KEY` overrides it.
+    pub api_key: Option<String>,
+    /// Command that starts the local model runner. Used when `upstream` is unset.
+    pub command: Vec<String>,
+}
+
+impl Default for AiConfig {
+    fn default() -> Self {
+        Self {
+            upstream: None,
+            api_key: None,
+            command: vec!["node".into(), "services/ai/dist/server.mjs".into()],
+        }
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Config {
@@ -59,6 +85,7 @@ impl Default for Config {
             cors_origins: vec!["suiteleaf://app".into()],
             sync_interval_secs: 30,
             auth: AuthConfig::default(),
+            ai: AiConfig::default(),
         }
     }
 }
@@ -94,5 +121,23 @@ impl Config {
             .unwrap_or_else(|| format!("http://{}", self.http_addr))
             .trim_end_matches('/')
             .to_owned()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Config;
+
+    #[test]
+    fn a_node_without_an_upstream_runs_the_local_model() {
+        let config = Config::default();
+        assert!(config.ai.upstream.is_none());
+        assert!(
+            config
+                .ai
+                .command
+                .iter()
+                .any(|part| part.contains("services/ai"))
+        );
     }
 }

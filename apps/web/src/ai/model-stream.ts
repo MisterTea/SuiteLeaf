@@ -44,7 +44,7 @@ export const gemmaModel = (backend: string) => localModelDescriptor(gemmaFormat.
 
 /** Length of the longest suffix of `text` that could start one of `markers`. */
 function heldBack(text: string, markers: string[]) {
-  for (let n = Math.min(text.length, 18); n > 0; n--) {
+  for (let n = Math.min(text.length, 48); n > 0; n--) {
     const tail = text.slice(-n);
     if (markers.some((m) => m.startsWith(tail))) return n;
   }
@@ -185,6 +185,14 @@ export function createLocalStreamFn(model: LocalModel, options: LocalStreamOptio
     const pump = (final: boolean) => {
       for (;;) {
         if (mode === "text") {
+          if (format.leadingSkip) {
+            const skip = format.leadingSkip(raw.slice(done), final);
+            if (skip < 0) return;
+            if (skip > 0) {
+              done += skip;
+              continue;
+            }
+          }
           // Models sometimes start a reply with a call but leave out its opening marker.
           if (!output.content.some((c) => c.type === "text")) {
             const rest = raw.slice(done).trimStart();

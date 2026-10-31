@@ -1,13 +1,16 @@
 # Architecture
 
-A React renderer is shared by Vite’s static build and electron-vite’s renderer build. It runs in one of two modes, resolved at startup by [`apps/web/src/mode.ts`](../apps/web/src/mode.ts):
+A React renderer is shared by Vite’s static build and electron-vite’s renderer build. It runs in one of three modes, resolved at startup by [`apps/web/src/mode.ts`](../apps/web/src/mode.ts):
 
-| Mode | Storage | How it is chosen |
-| --- | --- | --- |
-| Single-node (default) | Desktop: files on disk. Web: browser storage. | Default for the desktop app and static web builds. The GitHub Pages demo is built with `VITE_SUITELEAF_DEMO=1`, which locks it here. |
-| Cluster | SuiteDrive on a SuiteLeaf server, with a local offline cache. | Automatic when a server serves the web app. Otherwise **Connect to a server**, saved in the desktop settings file or browser storage. |
+| Mode | Storage | On-device assistant | How it is chosen |
+| --- | --- | --- | --- |
+| Serverless | This browser | In the page, on WebGPU | The GitHub Pages demo, built with `VITE_SUITELEAF_DEMO=1`. Locked. |
+| Single-node | Files on disk, with the library index in SQLite | On this computer (llama.cpp), or an OpenAI-compatible endpoint. FrogNano by default. | The desktop app, until **Connect to a server**. |
+| Cluster | SuiteDrive on a SuiteLeaf server, with a local offline cache | On the SuiteLeaf server, or an OpenAI-compatible endpoint. FrogNano by default. | Automatic when a server serves the web app. Otherwise **Connect to a server**, saved in the desktop settings file or browser storage. |
 
-Single-node mode needs no backend and shows no account or SuiteDrive UI. In cluster mode every route sits behind sign-in, the home screen lists SuiteDrive, and New, Open, and Save as work in SuiteDrive; see [Nodes, SuiteDB, auth, and SuiteDrive](#nodes-suitedb-auth-and-suitedrive). Hash routing supports arbitrary static hosts and the desktop `suiteleaf://app/` protocol. The home screen loads file metadata; editor modules are loaded only when a document or spreadsheet opens.
+Serverless mode and single-node mode need no backend and show no account or SuiteDrive UI. Outside serverless mode the assistant settings choose a SuiteLeaf server or an OpenAI-compatible `/v1/completions` endpoint, and the model name. FrogNano is the default. On this computer, the desktop app downloads the selected built-in model the first time you ask, if that GGUF is not already on disk, and runs it. A cluster client asks the server. The server does the same download when `ai.upstream` is unset, and forwards the prompt to `ai.upstream` when it is set. A statically hosted web app that is not the demo can connect to a server. In cluster mode every route sits behind sign-in, the home screen lists SuiteDrive, and New, Open, and Save as work in SuiteDrive; see [Nodes, SuiteDB, auth, and SuiteDrive](#nodes-suitedb-auth-and-suitedrive). Hash routing supports arbitrary static hosts and the desktop `suiteleaf://app/` protocol. The home screen loads file metadata; editor modules are loaded only when a document or spreadsheet opens.
+
+The persisted value is still `single` or `cluster`. Serverless mode is that `single` value with the demo build's lock (`demo: true` in `ResolvedMode`). Single-node mode is `single` inside the desktop app, where `window.suiteleaf` is present.
 
 ## Portable files
 

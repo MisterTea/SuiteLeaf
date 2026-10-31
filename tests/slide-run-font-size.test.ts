@@ -39,5 +39,13 @@ describe("imported slide font sizes", () => {
     const html = runsToHtml([{ text: "data-sharing agreement", unbroken: true }]);
     expect(html).toContain("data-\u2060sharing");
     expect(runsToHtml([{ text: "data-sharing" }])).not.toContain("\u2060");
+    const url = runsToHtml([
+      {
+        text: "http://tiedonhinta.fi/en/2018/04/04/finnish-researchers-are-calling-for-improved-transparency",
+        unbroken: true,
+      },
+    ]);
+    expect(url).not.toContain("\u2060");
+    expect(url).toContain("calling-for-improved");
   });
 });

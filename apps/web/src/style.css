@@ -9855,6 +9855,39 @@ body.agent-open .gdocs-modal-overlay {
 .agent-header button:hover {
   background: var(--surface-hover);
 }
+.agent-setup {
+  border-bottom: 1px solid var(--border);
+  padding: 4px 16px 10px;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+.agent-setup summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+.agent-setup fieldset {
+  border: 0;
+  margin: 8px 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.agent-setup label {
+  display: grid;
+  gap: 4px;
+}
+.agent-setup input[type="radio"] {
+  margin-right: 6px;
+}
+.agent-setup input:not([type="radio"]) {
+  width: 100%;
+  box-sizing: border-box;
+}
+.agent-setup p {
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
 .agent-loading {
   display: grid;
   gap: 6px;

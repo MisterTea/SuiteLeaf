@@ -10,7 +10,7 @@ import {
   type SVGProps,
   type TdHTMLAttributes,
 } from "react";
-import { fontKerning, kernFeature, lineFrame, slidePointScale, type Presentation, type Slide, type SlideElement } from "@suiteleaf/core";
+import { fontKerning, kernFeature, lineFrame, slidePointScale, straightGradientBackground, type Presentation, type Slide, type SlideElement } from "@suiteleaf/core";
 import { AutofitBox, autofitSignature } from "./slide-autofit";
 import { MarpBackdrop, type MarpPages } from "./slide-marp-backdrop";
 import { marpMediaSrc } from "./slide-marp-import";
@@ -37,6 +37,8 @@ export function slideBackground(deck: Presentation, slide: Slide | undefined) {
 
 /** Solid colours use background-color. Gradients need the background shorthand. */
 export function slideBackgroundPaint(color: string): CSSProperties {
+  const straight = straightGradientBackground(color);
+  if (straight) return { background: straight };
   return color.includes("gradient(")
     ? { background: color }
     : { backgroundColor: color };
@@ -121,10 +123,13 @@ export function croppedPictureStyle(el: SlideElement): CSSProperties | undefined
   const top = (el.cropTop ?? 0) / 100;
   const right = (el.cropRight ?? 0) / 100;
   const bottom = (el.cropBottom ?? 0) / 100;
-  if (left + right <= 0 && top + bottom <= 0) return;
+  if (!left && !top && !right && !bottom) return;
   if (left + right >= 1 || top + bottom >= 1) return;
   const scaleX = 1 / (1 - left - right);
   const scaleY = 1 / (1 - top - bottom);
+  // Print zoom does not clip the box, so the photo clips itself to srcRect.
+  const spills = left > 0 || top > 0 || right > 0 || bottom > 0;
+  const inset = (value: number) => (value > 0 ? value : 0);
   return {
     position: "absolute",
     width: `${scaleX * 100}%`,
@@ -133,6 +138,11 @@ export function croppedPictureStyle(el: SlideElement): CSSProperties | undefined
     top: `${-top * scaleY * 100}%`,
     maxWidth: "none",
     objectFit: "fill",
+    ...(spills
+      ? {
+          clipPath: `inset(${inset(el.cropTop ?? 0)}% ${inset(el.cropRight ?? 0)}% ${inset(el.cropBottom ?? 0)}% ${inset(el.cropLeft ?? 0)}%)`,
+        }
+      : {}),
   };
 }
 
@@ -261,6 +271,57 @@ export function SlideFace({
         if (el.type === "image" && el.src) {
           const crop = croppedPictureStyle(el);
           const feather = el.softEdge ? softEdgeMask(el.softEdge) : undefined;
+          if (el.clipPath) {
+            const left = (el.cropLeft ?? 0) / 100;
+            const top = (el.cropTop ?? 0) / 100;
+            const right = (el.cropRight ?? 0) / 100;
+            const bottom = (el.cropBottom ?? 0) / 100;
+            const spanX = 1 - left - right;
+            const spanY = 1 - top - bottom;
+            const scaleX = spanX > 0 ? 1 / spanX : 1;
+            const scaleY = spanY > 0 ? 1 / spanY : 1;
+            const clipId = `pic-${el.id.replace(/[^A-Za-z0-9_-]/g, "")}`;
+            return (
+              <div
+                key={el.id}
+                {...view.props}
+                className={`slide-element slide-image${extra}`}
+                style={{
+                  ...posStyle,
+                  ...(el.opacity != null && el.opacity < 1 ? { opacity: el.opacity } : {}),
+                  ...(feather
+                    ? {
+                        WebkitMaskImage: feather,
+                        maskImage: feather,
+                        WebkitMaskComposite: "source-in",
+                        maskComposite: "intersect",
+                      }
+                    : {}),
+                }}
+              >
+                {hooks.before?.(el)}
+                <svg
+                  viewBox={`0 0 ${el.width} ${el.height}`}
+                  preserveAspectRatio="none"
+                  style={{ display: "block", width: "100%", height: "100%" }}
+                >
+                  <clipPath id={clipId} clipRule="evenodd">
+                    <path d={el.clipPath} />
+                  </clipPath>
+                  <image
+                    href={marpMediaSrc(el.src, deck.marpAssets)}
+                    x={-left * scaleX * el.width}
+                    y={-top * scaleY * el.height}
+                    width={scaleX * el.width}
+                    height={scaleY * el.height}
+                    preserveAspectRatio="none"
+                    clipPath={`url(#${clipId})`}
+                  />
+                </svg>
+                {hooks.after?.(el)}
+              </div>
+            );
+          }
           return (
             <div
               key={el.id}
@@ -363,6 +424,7 @@ export function SlideFace({
           const border = el.stroke ? `${el.strokeWidth || 1}px solid ${el.stroke}` : "none";
           const rad =
             el.shapeType === "ellipse" ? "50%" : el.shapeType === "roundRect" ? "12px" : "0px";
+          const straight = el.fill ? straightGradientBackground(el.fill) : undefined;
           return (
             <div
               key={el.id}
@@ -370,7 +432,7 @@ export function SlideFace({
               className={`slide-element slide-shape${extra}`}
               style={{
                 ...posStyle,
-                background: el.fill || "#e2e8f0",
+                background: straight || el.fill || "#e2e8f0",
                 border,
                 borderRadius: el.radius && fitted ? units(el.radius) : rad,
               }}
@@ -405,7 +467,12 @@ export function SlideFace({
               }}
             >
               {hooks.before?.(el)}
-              <table style={el.colWidths ? { tableLayout: "fixed" } : undefined}>
+              <table
+                style={{
+                  ...(el.colWidths ? { tableLayout: "fixed" } : {}),
+                  ...(el.rtl ? { direction: "rtl" } : {}),
+                }}
+              >
                 {el.colWidths ? (
                   <colgroup>
                     {el.colWidths.map((fraction, index) => (

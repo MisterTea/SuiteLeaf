@@ -351,6 +351,20 @@ export function svgFillMarkup(fill: string): { defs: string; value: string } {
 }
 
 /**
+ * CSS linear-gradient interpolates premultiplied alpha, so a fade to
+ * transparent white stays saturated for most of the box. An SVG stop-opacity
+ * gradient interpolates the colour and the alpha separately, which is how
+ * DrawingML composites the same stops.
+ */
+export function straightGradientBackground(fill: string): string | undefined {
+  if (!fill.includes("rgba(")) return undefined;
+  const painted = svgFillMarkup(fill);
+  if (!painted.defs || !painted.value.startsWith("url(#")) return undefined;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" viewBox="0 0 100 100">${painted.defs}<rect width="100" height="100" fill="${painted.value}"/></svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") center / 100% 100% no-repeat`;
+}
+
+/**
  * A theme background reference that paints a picture, including duotone stops.
  * Gradient and solid references stay with `backgroundCss`.
  */

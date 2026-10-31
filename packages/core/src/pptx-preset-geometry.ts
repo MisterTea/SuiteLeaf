@@ -135,6 +135,20 @@ function covers(start: number, sweep: number, angle: number) {
   return rel >= 360 + sweep - 1e-4;
 }
 
+/**
+ * DrawingML arcTo angles are polar (atan2 of the point), not the ellipse
+ * parameter. A wide oval callout is pinched into a sliver if cos/sin use the
+ * polar angle directly.
+ */
+function ellipticalParameter(angle: number, wr: number, hr: number) {
+  const aw = Math.abs(wr);
+  const ah = Math.abs(hr);
+  if (!(aw > 0) || !(ah > 0)) return angle;
+  const tau = Math.PI * 2;
+  const offset = Math.atan2(aw * Math.sin(angle), ah * Math.cos(angle)) - angle;
+  return angle + offset - tau * Math.round(offset / tau);
+}
+
 /** DrawingML arcTo, with y increasing downward and positive sweep clockwise. */
 function arcCommand(
   x: number,
@@ -145,33 +159,38 @@ function arcCommand(
   sw: number,
   include: (px: number, py: number) => void,
 ): { d: string; x: number; y: number } {
-  const start = st / 60000;
-  const sweep = sw / 60000;
-  const rad = (deg: number) => (deg * Math.PI) / 180;
-  const cx = x - wr * Math.cos(rad(start));
-  const cy = y - hr * Math.sin(rad(start));
-  const end = start + sweep;
-  const ex = cx + wr * Math.cos(rad(end));
-  const ey = cy + hr * Math.sin(rad(end));
+  const start = (st / 60000) * (Math.PI / 180);
+  const sweep = (sw / 60000) * (Math.PI / 180);
+  const theta0 = ellipticalParameter(start, wr, hr);
+  const theta1 = ellipticalParameter(start + sweep, wr, hr);
+  const cx = x - wr * Math.cos(theta0);
+  const cy = y - hr * Math.sin(theta0);
+  const at = (polar: number) => {
+    const theta = ellipticalParameter((polar * Math.PI) / 180, wr, hr);
+    return { x: cx + wr * Math.cos(theta), y: cy + hr * Math.sin(theta) };
+  };
+  const ex = cx + wr * Math.cos(theta1);
+  const ey = cy + hr * Math.sin(theta1);
   include(x, y);
   include(ex, ey);
+  const startDeg = st / 60000;
+  const sweepDeg = sw / 60000;
   for (const angle of [0, 90, 180, 270]) {
-    if (!covers(start, sweep, angle)) continue;
-    include(cx + wr * Math.cos(rad(angle)), cy + hr * Math.sin(rad(angle)));
+    if (!covers(startDeg, sweepDeg, angle)) continue;
+    const hit = at(angle);
+    include(hit.x, hit.y);
   }
-  const sweepFlag = sweep >= 0 ? 1 : 0;
-  if (Math.abs(sweep) >= 359.999) {
-    const mid = start + (sweep >= 0 ? 180 : -180);
-    const mx = cx + wr * Math.cos(rad(mid));
-    const my = cy + hr * Math.sin(rad(mid));
-    include(mx, my);
+  const sweepFlag = sweepDeg >= 0 ? 1 : 0;
+  if (Math.abs(sweepDeg) >= 359.999) {
+    const mid = at(startDeg + (sweepDeg >= 0 ? 180 : -180));
+    include(mid.x, mid.y);
     return {
-      d: `A ${round(Math.abs(wr))} ${round(Math.abs(hr))} 0 1 ${sweepFlag} ${round(mx)} ${round(my)} A ${round(Math.abs(wr))} ${round(Math.abs(hr))} 0 1 ${sweepFlag} ${round(ex)} ${round(ey)}`,
+      d: `A ${round(Math.abs(wr))} ${round(Math.abs(hr))} 0 1 ${sweepFlag} ${round(mid.x)} ${round(mid.y)} A ${round(Math.abs(wr))} ${round(Math.abs(hr))} 0 1 ${sweepFlag} ${round(ex)} ${round(ey)}`,
       x: ex,
       y: ey,
     };
   }
-  const large = Math.abs(sweep) > 180 ? 1 : 0;
+  const large = Math.abs(sweepDeg) > 180 ? 1 : 0;
   return {
     d: `A ${round(Math.abs(wr))} ${round(Math.abs(hr))} 0 ${large} ${sweepFlag} ${round(ex)} ${round(ey)}`,
     x: ex,
@@ -179,27 +198,68 @@ function arcCommand(
   };
 }
 
+/** PDF shadings overflow when a gradient path is still in raw EMUs. */
+const SVG_VIEW_LIMIT = 1024;
+
+function scalePathData(d: string, scale: number) {
+  const tokens = d.trim().split(/\s+/);
+  const out: string[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (token === "A" || token === "a") {
+      const rx = Number(tokens[++i]) * scale;
+      const ry = Number(tokens[++i]) * scale;
+      const rot = tokens[++i];
+      const large = tokens[++i];
+      const sweep = tokens[++i];
+      const x = Number(tokens[++i]) * scale;
+      const y = Number(tokens[++i]) * scale;
+      out.push(token, round(rx), round(ry), rot, large, sweep, round(x), round(y));
+      continue;
+    }
+    out.push(/^-?\d/.test(token) ? round(Number(token) * scale) : token);
+  }
+  return out.join(" ");
+}
+
+export function compactDrawing(body: string, width: number, height: number) {
+  const span = Math.max(width, height);
+  // Solid strokes already print at EMU scale. A gradient shading in that
+  // space becomes a singular PDF matrix, so only those drawings are refit.
+  if (!(span > SVG_VIEW_LIMIT) || !/<(?:linear|radial)Gradient\b/.test(body))
+    return { body, width, height };
+  const scale = SVG_VIEW_LIMIT / span;
+  const drawing = body
+    .replace(/d="([^"]*)"/g, (_, d) => `d="${scalePathData(d, scale)}"`)
+    .replace(
+      /stroke-width="([^"]+)"/g,
+      (_, w) => `stroke-width="${round(Number(w) * scale)}"`,
+    )
+    .replace(
+      /transform="translate\(([^ )]+) ([^ )]+)\)"/g,
+      (_, x, y) =>
+        `transform="translate(${round(Number(x) * scale)} ${round(Number(y) * scale)})"`,
+    );
+  return { body: drawing, width: width * scale, height: height * scale };
+}
+
 function svgData(paths: string, width: number, height: number) {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${round(width)} ${round(height)}">${paths}</svg>`;
+  const fitted = compactDrawing(paths, width, height);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${round(fitted.width)} ${round(fitted.height)}">${fitted.body}</svg>`;
   const bytes = new TextEncoder().encode(svg);
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return `data:image/svg+xml;base64,${btoa(binary)}`;
 }
 
-/**
- * Paint an ECMA-376 preset, including callout tails that stick out of the box.
- * Coordinates are the shape's EMU width and height. Unknown presets return nothing.
- */
-export function presetVector(
+type PresetCommand = { d: string; fill: boolean; stroke: boolean };
+
+function presetCommands(
   name: string,
   xml: string,
   w: number,
   h: number,
-  fill: string,
-  stroke: string,
-  strokeWidth: number,
-): PresetVector | undefined {
+): { commands: PresetCommand[]; minX: number; minY: number; maxX: number; maxY: number } | undefined {
   const def = presetGeometry[name];
   if (!def || !(w > 0) || !(h > 0)) return undefined;
   const guides = evaluate(def, xml, w, h);
@@ -214,7 +274,7 @@ export function presetVector(
     maxX = Math.max(maxX, x);
     maxY = Math.max(maxY, y);
   };
-  const commands: { d: string; fill: boolean; stroke: boolean }[] = [];
+  const commands: PresetCommand[] = [];
   for (const path of def.paths) {
     const sx = path.w ? w / path.w : 1;
     const sy = path.h ? h / path.h : 1;
@@ -267,6 +327,25 @@ export function presetVector(
     if (d.trim()) commands.push({ d: d.trim(), fill: path.fill, stroke: path.stroke });
   }
   if (!commands.length || !Number.isFinite(minX)) return undefined;
+  return { commands, minX, minY, maxX, maxY };
+}
+
+/**
+ * Paint an ECMA-376 preset, including callout tails that stick out of the box.
+ * Coordinates are the shape's EMU width and height. Unknown presets return nothing.
+ */
+export function presetVector(
+  name: string,
+  xml: string,
+  w: number,
+  h: number,
+  fill: string,
+  stroke: string,
+  strokeWidth: number,
+): PresetVector | undefined {
+  const drawn = presetCommands(name, xml, w, h);
+  if (!drawn) return undefined;
+  const { commands, minX, minY, maxX, maxY } = drawn;
   const pad = strokeWidth > 0 ? strokeWidth / 2 : 0;
   // The slide painter rotates the image about its own center. DrawingML
   // rotates about the shape box, so a pie wedge or a callout tail has to
@@ -293,6 +372,30 @@ export function presetVector(
     width,
     height,
   };
+}
+
+/**
+ * Filled outline of a picture's preset, in the same units as `width` and `height`.
+ * Rectangles and a roundRect with no radius return nothing so the photo stays a box.
+ */
+export function presetFillPath(
+  xml: string,
+  width: number,
+  height: number,
+): string | undefined {
+  const name = /<a:prstGeom\b[^>]*\bprst="([^"]+)"/.exec(xml)?.[1];
+  if (!name || name === "rect" || name === "flowChartProcess") return undefined;
+  if (name === "roundRect") {
+    const explicit = shapeAdjusts(xml);
+    const adj = "adj" in explicit ? explicit.adj : presetGeometry.roundRect?.adj?.adj ?? 0;
+    if (!adj) return undefined;
+  }
+  const drawn = presetCommands(name, xml, width, height);
+  if (!drawn) return undefined;
+  const fill = drawn.commands.filter((command) => command.fill).map((command) => command.d);
+  if (!fill.length) return undefined;
+  const d = fill.join(" ");
+  return d.length > 20000 ? undefined : d;
 }
 
 /**

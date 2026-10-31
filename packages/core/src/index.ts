@@ -173,6 +173,10 @@ export const textRunSchema = z.object({
   color: z.string().max(40).optional(),
   /** DrawingML highlight, painted behind the glyphs. */
   highlight: z.string().max(40).optional(),
+  /** DrawingML run outline. The glyph fill stays `color`. */
+  stroke: z.string().max(40).optional(),
+  /** Run outline width, in points. */
+  strokeWidth: z.number().positive().max(200).optional(),
   fontSize: z.number().positive().optional(),
   /** DrawingML cap. `all` is capitals; `small` is small capitals. */
   caps: z.enum(["small", "all"]).optional(),
@@ -265,13 +269,20 @@ export const slideElementSchema = z.object({
   /** Mirror a line or arrow across its box. */
   flipH: z.boolean().optional(),
   flipV: z.boolean().optional(),
+  /** DrawingML tblPr rtl: the first column is the rightmost one. */
+  rtl: z.boolean().optional(),
   /** DrawingML wrap="none": keep each paragraph on one line. */
   nowrap: z.boolean().optional(),
-  /** Percent of the source picture hidden on each edge (DrawingML srcRect). */
-  cropLeft: z.number().min(0).max(100).optional(),
-  cropTop: z.number().min(0).max(100).optional(),
-  cropRight: z.number().min(0).max(100).optional(),
-  cropBottom: z.number().min(0).max(100).optional(),
+  /**
+   * DrawingML srcRect, in percent of the source picture.
+   * Positive hides that edge. Negative insets the picture inside the box.
+   */
+  cropLeft: z.number().min(-5000).max(100).optional(),
+  cropTop: z.number().min(-5000).max(100).optional(),
+  cropRight: z.number().min(-5000).max(100).optional(),
+  cropBottom: z.number().min(-5000).max(100).optional(),
+  /** SVG path, in the element's own box, that clips a picture to its preset. */
+  clipPath: z.string().max(20000).optional(),
   /** Picture opacity from DrawingML alphaModFix. 1 is omitted. */
   opacity: z.number().min(0).max(1).optional(),
   /**
@@ -1176,6 +1187,7 @@ export function duplicateFile(
 }
 export { parsePowerPoint } from "./pptx";
 export { lineFrame, slidePointScale } from "./pptx-geometry";
+export { straightGradientBackground } from "./pptx-theme";
 export function filename(title: string, extension = "suiteleaf") {
   return `${
     title
@@ -1282,7 +1294,11 @@ export interface DesktopBridge {
   authWindow?(startUrl: string): Promise<string | null>;
 }
 /**
- * `single`: files live on this device; no accounts, no shared storage.
+ * `single`: not connected to a server. In the desktop app this is single-node
+ * mode (files on disk, assistant in the desktop process). The public demo is
+ * serverless mode: the same `single` value, locked by `VITE_SUITELEAF_DEMO`, with
+ * files in the browser and the assistant on WebGPU. A static web app is
+ * `single` until it connects, and uses that same browser storage and assistant.
  * `cluster`: the app is a client of a SuiteLeaf server; people sign in and
  * files live in SuiteDrive, replicated across the cluster's servers.
  */

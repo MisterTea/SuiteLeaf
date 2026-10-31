@@ -178,6 +178,9 @@ describe("per-word slide formatting", () => {
         { text: "Callout" },
       ],
     })).toContain("min-height:1lh");
+    expect(textInnerHtml({
+      runs: [{ text: "DA", color: "#ff0000", stroke: "#0000ff", strokeWidth: 1 }],
+    })).toContain("-webkit-text-stroke:");
     expect(textInnerHtml(saved)).toContain('data-bold="1"');
     expect(textInnerHtml(saved)).toContain("data-color=\"#95d5b2\"");
     expect(runsOf(saved).map((run) => run.text).join("")).toBe(line);

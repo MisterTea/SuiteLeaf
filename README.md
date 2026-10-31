@@ -2,12 +2,13 @@
 
 An open source workspace for documents and spreadsheets, written in React and TypeScript. Run the same editors as a static website or an Electron desktop application. Apache-2.0 licensed, with permissive production dependencies and no required account or paid editor service.
 
-SuiteLeaf runs in one of two modes:
+SuiteLeaf runs in one of three modes:
 
-- **Single-node mode (default).** Like LibreOffice or desktop Office: you read and write files on your own computer. There are no accounts, no shared storage, and nothing to sign in to. The desktop app saves to files on disk. The web app, including the [online demo](https://mistertea.github.io/SuiteLeaf/), saves in this browser's storage.
+- **Serverless mode.** The [online demo](https://mistertea.github.io/SuiteLeaf/). Files stay in this browser. The on-device assistant runs in the page on WebGPU. The demo build (`VITE_SUITELEAF_DEMO=1`) locks this mode: there is no account and no way to connect to a server.
+- **Single-node mode.** The desktop app, until you connect to a server. Like LibreOffice or desktop Office: you read and write files on your own computer. There are no accounts, no shared storage, and nothing to sign in to. The assistant runs on this computer through llama.cpp. The first time you ask, SuiteLeaf downloads the selected model if it is not already on this computer. FrogNano is the default, unless you choose another model or an OpenAI-compatible endpoint in the assistant settings.
 - **Cluster mode.** Like Microsoft 365 or Google Workspace: people sign in, and files live in SuiteDrive, a shared drive for all users. A cluster is one or more self-hosted SuiteLeaf servers that keep a fully synced copy of every account and file. The web and desktop apps are clients that connect to one server.
 
-The web app is in cluster mode when a SuiteLeaf server serves it. The desktop app and a statically hosted web app start in single-node mode, and **Connect to a server** switches them to cluster mode. The online demo is always in single-node mode.
+The web app is in cluster mode when a SuiteLeaf server serves it. The desktop app starts in single-node mode, and **Connect to a server** switches it to cluster mode. Outside serverless mode, the assistant settings choose whether the assistant runs on the SuiteLeaf server (on this computer, in the desktop app) or at an OpenAI-compatible endpoint, and which model it uses. FrogNano is the default. A desktop app or a server without its own model endpoint downloads that model on the first request when the file is not already there. A statically hosted web app can connect to a server the same way. The online demo stays in serverless mode, with the assistant running in the page.
 
 ## Run locally
 
@@ -44,8 +45,8 @@ Native SuiteLeaf files are JSON with a distinct extension per kind: `.sldoc` for
 
 ## Saving and portability
 
-In single-node mode, the website autosaves locally in the browser using localForage (IndexedDB with fallback) on the current browser/device and origin. **Download** saves a portable `.sldoc`, `.slsheet`, `.slslides`, or `.sldraw` copy; **Open / import** restores it. A second tab cannot edit a file already open in another tab. Browser data is local: download copies before clearing site data or moving between devices.
-An online demo is hosted via GitHub Pages at https://mistertea.github.io/SuiteLeaf/. It is built with `VITE_SUITELEAF_DEMO=1`, which locks it to single-node mode with browser storage.
+In serverless mode, and in a statically hosted web app before it connects to a server, the website autosaves locally in the browser using localForage (IndexedDB with fallback) on the current browser/device and origin. **Download** saves a portable `.sldoc`, `.slsheet`, `.slslides`, or `.sldraw` copy; **Open / import** restores it. A second tab cannot edit a file already open in another tab. Browser data is local: download copies before clearing site data or moving between devices.
+The online demo is hosted via GitHub Pages at https://mistertea.github.io/SuiteLeaf/. It is built with `VITE_SUITELEAF_DEMO=1`, which locks it to serverless mode.
 
 Electron starts new files as recovery drafts. After **Save As**, changes autosave to that regular file. File writes are serialized and replaced atomically. If another program changes the file, SuiteLeaf keeps a recovery draft and offers **Reload saved** or **Save As** instead of overwriting the external change. Removing a desktop recent-file entry also removes its recovery draft; the saved file stays on disk. The local registry and recovery drafts live in `~/.config/suiteleaf/library.sqlite`; settings live beside it in `settings.json`. Existing JSON registry data and settings are migrated automatically, preserving the originals. The SQLite database stays local when the document directory is a cloud-synced folder.
 
@@ -91,6 +92,7 @@ cargo run -p suiteleaf-node -- run --data-dir node-b --http 127.0.0.1:8788 \
 | `web_root` | A built web app to serve. |
 | `cors_origins` | Other origins that may call the API, such as `suiteleaf://app` or a separately hosted web build. |
 | `[auth]` | The sidecar `command`, an external sidecar `url`, a shared `secret`, and extra sidecar `env`. |
+| `[ai]` | Optional `upstream`, an OpenAI-compatible base URL (`http://127.0.0.1:8080/v1`). When it is unset, the first assistant request downloads the selected built-in model into `data_dir/models` and runs it (`command` defaults to `node services/ai/dist/server.mjs`). Optional `api_key` is sent to `upstream`. `SUITELEAF_AI_UPSTREAM` and `SUITELEAF_AI_API_KEY` override the upstream settings. |
 
 To enable social sign-in, set these in the node's environment and register `<public_url>/api/auth/callback/<provider>` (`google`, `github`, or `nextcloud`) as the redirect URI with each provider.
 
@@ -184,9 +186,10 @@ The repository uses npm workspaces and a Cargo workspace:
 - `apps/desktop` is the Electron main/preload wrapper.
 - `packages/core` contains the file schema and platform contracts.
 - `services/auth` is the better-auth sidecar.
+- `services/ai` downloads and runs a built-in model for a node that has no `ai.upstream`. Build it with `npm run build:ai`.
 - `crates/` holds the node: `suiteleaf-net`, `suitedb`, `suitedrive`, and `suiteleaf-node`.
 
-`npm test` includes better-auth's adapter test suite, run against a real node. `tests/browser/suitedrive.spec.ts` starts two nodes and checks saving, cross-node opening, and conflict handling in the browser. Both need `cargo build -p suiteleaf-node` and `npm run build:auth` first. Heavy editors load independently. See [architecture](docs/architecture.md) and [reference workflow coverage](docs/workflows.md).
+`npm test` includes better-auth's adapter test suite, run against a real node. `tests/browser/suitedrive.spec.ts` starts two nodes and checks saving, cross-node opening, and conflict handling in the browser. Both need `cargo build -p suiteleaf-node` and `npm run build:auth` first. A node that runs the assistant itself also needs `npm run build:ai`. Heavy editors load independently. See [architecture](docs/architecture.md) and [reference workflow coverage](docs/workflows.md).
 
 ## Dependencies and references
 

@@ -1,6 +1,6 @@
 import { app, ipcMain, utilityProcess, type UtilityProcess, type WebContents } from "electron";
 import { join } from "node:path";
-import { FROG_GGUF_FILE, modelIdForFile, type AiGenerateRequest, type AiStatus } from "@suiteleaf/core/ai";
+import { AI_MODELS, modelIdForFile, type AiGenerateRequest, type AiModelId, type AiStatus } from "@suiteleaf/core/ai";
 
 let host: UtilityProcess | undefined;
 let status: AiStatus = { state: "idle", backend: "llama.cpp" };
@@ -8,15 +8,14 @@ const statusWaiters: ((s: AiStatus) => void)[] = [];
 const templates = new Map<string, (template: string) => void>();
 const generations = new Map<string, WebContents>();
 
-export const modelPath = () =>
-  process.env.SUITELEAF_MODEL_PATH ??
-  join(app.getPath("userData"), "models", FROG_GGUF_FILE);
-
 function start(owner: () => WebContents | undefined) {
   if (host) return host;
   host = utilityProcess.fork(join(import.meta.dirname, "ai-host.js"), [], {
     serviceName: "SuiteLeaf model host",
-    env: { ...process.env, SUITELEAF_MODEL_PATH: modelPath() },
+    env: {
+      ...process.env,
+      SUITELEAF_MODELS_DIR: process.env.SUITELEAF_MODELS_DIR || join(app.getPath("userData"), "models"),
+    },
     stdio: "inherit",
   });
   host.on("message", (message) => {
@@ -68,12 +67,13 @@ export function registerAi(
   owner: () => WebContents | undefined,
   isOwner: (sender: WebContents) => boolean,
 ) {
-  status = { ...status, modelId: modelIdForFile(modelPath()) };
+  if (process.env.SUITELEAF_MODEL_PATH) status = { ...status, modelId: modelIdForFile(process.env.SUITELEAF_MODEL_PATH) };
   register("ai:status", () => status);
-  register("ai:load", () => {
-    if (status.state === "ready") return status;
+  register("ai:load", (modelId?: unknown) => {
+    const id = typeof modelId === "string" && modelId in AI_MODELS ? (modelId as AiModelId) : undefined;
+    if (status.state === "ready" && (!id || status.modelId === id)) return status;
     const waiting = new Promise<AiStatus>((done) => statusWaiters.push(done));
-    start(owner).postMessage({ type: "load" });
+    start(owner).postMessage({ type: "load", modelId: id });
     return waiting;
   });
   register("ai:template", () => {

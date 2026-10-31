@@ -94,6 +94,7 @@ function runBold(cellXml: string): { set: boolean; bold: boolean } {
 export function explicitTableCell(
   cellXml: string,
   paragraphs: {
+    text?: string;
     bold?: boolean;
     italic?: boolean;
     size?: number;
@@ -111,10 +112,14 @@ export function explicitTableCell(
   const fillXml = cellFillXml(cellXml);
   const fill = fillXml ? paint(fillXml) : undefined;
   if (fill) mark.fill = fill;
+  // An empty paragraph still inherits the default text style. The words live
+  // in a later paragraph, and that is the colour and size PowerPoint draws.
+  const written = paragraphs.filter((paragraph) => paragraph.text?.trim());
+  const ranked = written.length ? written : paragraphs;
   const first =
-    paragraphs.find((paragraph) => paragraph.color || paragraph.size) ??
-    paragraphs[0];
-  const sized = paragraphs.find((paragraph) => paragraph.size && paragraph.size > 0);
+    ranked.find((paragraph) => paragraph.color || paragraph.size) ??
+    ranked[0];
+  const sized = ranked.find((paragraph) => paragraph.size && paragraph.size > 0);
   if (first?.color) mark.color = first.color;
   if (sized?.size) mark.fontSize = sized.size;
   if (first?.align && first.align !== "left") mark.align = first.align;

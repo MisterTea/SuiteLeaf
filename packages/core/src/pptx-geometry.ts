@@ -1,5 +1,5 @@
 import type { SlideElement } from "./index";
-import { presetTextBox, presetVector } from "./pptx-preset-geometry";
+import { compactDrawing, presetFillPath, presetTextBox, presetVector } from "./pptx-preset-geometry";
 
 export { presetTextBox };
 import { svgFillMarkup, themePaint, type ShapePaint } from "./pptx-theme";
@@ -207,7 +207,9 @@ function presetPath(name: string, xml: string, w: number, h: number): string | u
   }
   const starPoints = /^star(\d+)$/.exec(name);
   if (starPoints) return starPath(Number(starPoints[1]), xml, w, h);
+  if (name === "roundRect") return roundRectPath(xml, w, h);
   if (name === "round2SameRect") return round2SameRectPath(xml, w, h);
+  if (name === "round2DiagRect") return round2DiagRectPath(xml, w, h);
   if (name === "mathMultiply") return mathMultiplyPath(xml, w, h);
   return undefined;
 }
@@ -261,6 +263,50 @@ function starPath(points: number, xml: string, w: number, h: number): string | u
     verts.push(at(angle, 1), at(angle + step / 2, adj));
   }
   return `M ${verts[0]} L ${verts.slice(1).join(" L ")} Z`;
+}
+
+/** Rounded rectangle. adj is the corner radius as a fraction of the short side. */
+function roundRectPath(xml: string, w: number, h: number): string | undefined {
+  const ss = Math.min(w, h) || 1;
+  const radius = (ss * pin(guide(xml, "adj", 16667), 50000)) / 100000;
+  if (!(radius > 0.5)) return undefined;
+  return [
+    `M ${radius} 0`,
+    `L ${w - radius} 0`,
+    `A ${radius} ${radius} 0 0 1 ${w} ${radius}`,
+    `L ${w} ${h - radius}`,
+    `A ${radius} ${radius} 0 0 1 ${w - radius} ${h}`,
+    `L ${radius} ${h}`,
+    `A ${radius} ${radius} 0 0 1 0 ${h - radius}`,
+    `L 0 ${radius}`,
+    `A ${radius} ${radius} 0 0 1 ${radius} 0`,
+    "Z",
+  ].join(" ");
+}
+
+/**
+ * Opposite corners. adj1 rounds the top-left and bottom-right;
+ * adj2 rounds the top-right and bottom-left.
+ */
+function round2DiagRectPath(xml: string, w: number, h: number): string | undefined {
+  const ss = Math.min(w, h) || 1;
+  const x1 = (ss * pin(guide(xml, "adj1", 16667), 50000)) / 100000;
+  const y1 = (ss * pin(guide(xml, "adj2", 0), 50000)) / 100000;
+  if (!(x1 > 0.5) && !(y1 > 0.5)) return undefined;
+  const arc = (radius: number, x: number, y: number) =>
+    radius > 0.5 ? `A ${radius} ${radius} 0 0 1 ${x} ${y}` : `L ${x} ${y}`;
+  return [
+    `M ${x1} 0`,
+    `L ${Math.max(x1, w - y1)} 0`,
+    arc(y1, w, y1),
+    `L ${w} ${Math.max(y1, h - x1)}`,
+    arc(x1, w - x1, h),
+    `L ${y1} ${h}`,
+    arc(y1, 0, h - y1),
+    `L 0 ${x1}`,
+    arc(x1, x1, 0),
+    "Z",
+  ].join(" ");
 }
 
 /** Two corners on the top, and two on the bottom, rounded by adj1 and adj2. */
@@ -325,7 +371,12 @@ function svgData(
 ) {
   const rule = evenOdd ? ` fill-rule="evenodd"` : "";
   const painted = svgFillMarkup(fill);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}">${painted.defs}<path${rule} d="${d}" fill="${painted.value}" stroke="${stroke}" stroke-width="${strokeWidth}"/></svg>`;
+  const fitted = compactDrawing(
+    `${painted.defs}<path${rule} d="${d}" fill="${painted.value}" stroke="${stroke}" stroke-width="${strokeWidth}"/>`,
+    w,
+    h,
+  );
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${fitted.width} ${fitted.height}">${fitted.body}</svg>`;
   const bytes = new TextEncoder().encode(svg);
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -347,6 +398,22 @@ function simpleKind(
  * A DrawingML shape as a slide rectangle, ellipse, line, or SVG outline.
  * The box is already in slide units. Absent when the shape has nothing to paint.
  */
+/** Clip a picture to its preset. A rectangle, or a roundRect with no radius, stays a box. */
+export function geometryClipPath(
+  xml: string,
+  w: number,
+  h: number,
+): string | undefined {
+  const name = /<a:prstGeom\b[^>]*\bprst="([^"]+)"/.exec(xml)?.[1];
+  if (!name || name === "rect" || name === "flowChartProcess" || !(w > 0) || !(h > 0))
+    return undefined;
+  if (name === "roundRect" && guide(xml, "adj", 16667) === 0) return undefined;
+  const local = presetPath(name, xml, w, h);
+  const d = local || presetFillPath(xml, w, h);
+  if (!d || d.length > 20000) return undefined;
+  return d;
+}
+
 export function shapeArtwork(
   xml: string,
   paint: ShapePaint,
@@ -691,6 +758,70 @@ export function withInheritedFill(
   if (/<p:spPr\b/.test(shapeXml))
     return shapeXml.replace(/<p:spPr\b([^>]*)>/, `<p:spPr$1>${fill}`);
   return `<p:spPr>${fill}</p:spPr>${shapeXml}`;
+}
+
+function stopColor(token: string) {
+  const hex = /^#([0-9a-fA-F]{6})$/.exec(token);
+  if (hex) {
+    return [
+      parseInt(hex[1].slice(0, 2), 16),
+      parseInt(hex[1].slice(2, 4), 16),
+      parseInt(hex[1].slice(4, 6), 16),
+      1,
+    ];
+  }
+  const rgba = /^rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)$/.exec(token);
+  if (!rgba) return undefined;
+  return [Number(rgba[1]), Number(rgba[2]), Number(rgba[3]), Number(rgba[4])];
+}
+
+/** Scheme colours and the sRGB copy of the same stop can differ by a byte. */
+function sameGradient(a: string, b: string) {
+  const angle = (fill: string) => Number(/([-\d.]+)deg/.exec(fill)?.[1] ?? NaN);
+  if (Math.abs(angle(a) - angle(b)) > 0.05) return false;
+  const stops = (fill: string) =>
+    [...fill.matchAll(/(#[0-9a-fA-F]{6}|rgba\([^)]*\))\s+([\d.]+)%/g)].map((match) => ({
+      color: stopColor(match[1]),
+      pos: Number(match[2]),
+    }));
+  const left = stops(a);
+  const right = stops(b);
+  if (!left.length || left.length !== right.length) return false;
+  return left.every((stop, index) => {
+    const other = right[index];
+    if (!stop.color || !other.color || Math.abs(stop.pos - other.pos) > 0.5) return false;
+    return stop.color.every((channel, channelIndex) => {
+      const limit = channelIndex === 3 ? 0.02 : 2;
+      return Math.abs(channel - other.color![channelIndex]) <= limit;
+    });
+  });
+}
+
+/**
+ * Google Slides writes the slide background a second time as a full-width
+ * rectangle. Painting that rectangle on top of `p:bg` stacks the fade.
+ */
+export function repeatsSlideBackground(
+  element: {
+    type?: string;
+    shapeType?: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    fill?: string;
+  },
+  background: string | undefined,
+  slide: { width: number; height: number },
+) {
+  if (!background || !background.includes("gradient(")) return false;
+  if (element.type !== "shape" || (element.shapeType && element.shapeType !== "rect"))
+    return false;
+  if (!element.fill || !sameGradient(element.fill, background)) return false;
+  if (element.x > 1 || element.y > 1) return false;
+  if (element.width < slide.width * 0.95) return false;
+  if (element.height < slide.height * 0.5) return false;
+  return true;
 }
 
 /** Non-placeholder shapes on a layout or master, in document order. */

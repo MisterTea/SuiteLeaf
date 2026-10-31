@@ -4,7 +4,7 @@ import { presentationSchema } from "../packages/core/src/index";
 import { symbolFontChar } from "../packages/core/src/pptx-lists";
 import { parsePowerPoint } from "../packages/core/src/pptx";
 import { backgroundCss, duotoneColors } from "../packages/core/src/pptx-theme";
-import { groupFillXml, slidePointScale, shapeArtwork } from "../packages/core/src/pptx-geometry";
+import { groupFillXml, repeatsSlideBackground, slidePointScale, shapeArtwork } from "../packages/core/src/pptx-geometry";
 import { svgFillMarkup } from "../packages/core/src/pptx-theme";
 import { presetTextBox, presetVector } from "../packages/core/src/pptx-preset-geometry";
 import type { ShapePaint } from "../packages/core/src/pptx-theme";
@@ -429,6 +429,82 @@ describe("PowerPoint geometry", () => {
     expect(svg(land?.src)).toContain('fill="#0070C0"');
     const slide = `<p:grpSp><p:grpSpPr><a:solidFill><a:srgbClr val="0070C0"/></a:solidFill></p:grpSpPr><p:sp>child</p:sp></p:grpSp>`;
     expect(groupFillXml(slide, slide.indexOf("child"))).toContain("0070C0");
+  });
+
+  it("keeps an oval callout on the ellipse", () => {
+    const w = 400;
+    const h = 200;
+    const drawn = presetVector(
+      "wedgeEllipseCallout",
+      `<a:prstGeom prst="wedgeEllipseCallout"><a:avLst/></a:prstGeom>`,
+      w,
+      h,
+      "#78bcd0",
+      "#245a78",
+      20,
+    );
+    const path = svg(drawn?.src);
+    const arc = /A [\d.]+ [\d.]+ 0 \d \d ([\d.-]+) ([\d.-]+)/.exec(path);
+    expect(arc).toBeTruthy();
+    const ex = Number(arc?.[1]);
+    const ey = Number(arc?.[2]);
+    const nx = (ex - w / 2) / (w / 2);
+    const ny = (ey - h / 2) / (h / 2);
+    expect(nx * nx + ny * ny).toBeCloseTo(1, 2);
+    expect(path).toContain('fill="#78bcd0"');
+    const large = presetVector(
+      "wedgeEllipseCallout",
+      `<a:prstGeom prst="wedgeEllipseCallout"><a:avLst/></a:prstGeom>`,
+      4_000_000,
+      2_000_000,
+      "linear-gradient(0deg, #69c1ec 0%, #bbe5ff 100%)",
+      "#245a78",
+      9525,
+    );
+    const view = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(svg(large?.src));
+    expect(Number(view?.[1])).toBeLessThanOrEqual(1024);
+    expect(Number(view?.[2])).toBeLessThanOrEqual(1024);
+  });
+
+  it("does not stack a layout rectangle that repeats the slide gradient", () => {
+    const background = "linear-gradient(180deg, #3789de 0%, rgba(255, 255, 255, 0) 100%)";
+    const slide = { width: 960, height: 540 };
+    expect(
+      repeatsSlideBackground(
+        { type: "shape", shapeType: "rect", x: 0, y: 0, width: 960, height: 447, fill: background },
+        background,
+        slide,
+      ),
+    ).toBe(true);
+    expect(
+      repeatsSlideBackground(
+        { type: "shape", shapeType: "rect", x: 0, y: 0, width: 200, height: 80, fill: background },
+        background,
+        slide,
+      ),
+    ).toBe(false);
+    expect(
+      repeatsSlideBackground(
+        {
+          type: "shape",
+          shapeType: "rect",
+          x: 0,
+          y: 0,
+          width: 960,
+          height: 447,
+          fill: "linear-gradient(180.0002deg, #3789DE 0%, rgba(255, 255, 255, 0) 100%)",
+        },
+        "linear-gradient(180.0002deg, #3889de 0%, rgba(255, 255, 255, 0) 100%)",
+        slide,
+      ),
+    ).toBe(true);
+    expect(
+      repeatsSlideBackground(
+        { type: "shape", shapeType: "rect", x: 0, y: 0, width: 960, height: 447, fill: "#ffffff" },
+        background,
+        slide,
+      ),
+    ).toBe(false);
   });
 
   it("rotates a pie wedge about the shape center", () => {

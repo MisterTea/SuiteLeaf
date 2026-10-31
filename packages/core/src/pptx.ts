@@ -16,6 +16,7 @@ import {
   inheritedLabels,
   inheritedShapes,
   insideFallback,
+  repeatsSlideBackground,
   placeholderShape,
   placedBox,
   presetTextBox,
@@ -25,12 +26,22 @@ import {
 } from "./pptx-geometry";
 import { normAutofitFactors } from "./pptx-autofit";
 import { retainSharedData } from "./shared-media";
-import { exactLineFactor, moveKerningToBoxes, runKern, runTracking } from "./pptx-kerning";
+import {
+  exactLineFactor,
+  lastLineSpacing,
+  lastSpacingPoints,
+  moveKerningToBoxes,
+  runKern,
+  runTracking,
+} from "./pptx-kerning";
 import { diagramElements } from "./pptx-diagrams";
+import { vmlOleImageRels } from "./pptx-ole-vml";
+import { hidesTitleSpecialPlaceholders } from "./pptx-title-placeholders";
 import { readEmbeddedFonts } from "./pptx-fonts";
 import {
   bulletPointSize,
   formatAutoNum,
+  foldParagraphGaps,
   layoutListRuns,
   symbolBulletFont,
   symbolFontChar,
@@ -57,6 +68,7 @@ import {
   applyBlipLuminance,
   jpegWithoutOrientation,
   paintableImage,
+  pictureClip,
   sourceCrop,
   stretchFill,
 } from "./pptx-pictures";
@@ -70,6 +82,7 @@ import {
   schemeColors,
   themePaint,
 } from "./pptx-theme";
+import { runPaint } from "./pptx-run-paint";
 
 /** Video and audio larger than this stay as a poster so a deck of clips can still be drawn. */
 const INLINE_MEDIA_LIMIT = 8 * 1024 * 1024;
@@ -638,6 +651,7 @@ async function parseZipPptx(
         alt: background ? "Slide background" : "Inherited slide artwork",
         ...softEdgeOf(xml),
         ...sourceCrop(xml),
+        ...pictureClip(xml, box.width, box.height),
         ...blipOpacity(xml),
         ...(nativeDrawing ? { nativeDrawing } : {}),
       });
@@ -692,6 +706,8 @@ async function parseZipPptx(
         pieces.push({
           at: shape.at,
           draw: async () => {
+            if (repeatsSlideBackground(shape.element, bgColor, { width, height }))
+              return;
             elements.push({ id: crypto.randomUUID(), ...shape.element });
           },
         });
@@ -738,6 +754,7 @@ async function parseZipPptx(
         hang?: number;
         listMargin?: number;
         spaceBefore?: number;
+        spaceAfter?: number;
         /** Absolute `a:spcPts` spacing; skip the single-spacing grid. */
         exactLine?: boolean;
       }[] = [];
@@ -832,8 +849,7 @@ async function parseZipPptx(
         const bulletChar = /<a:buChar\b[^>]*\bchar="([^"]*)"/.exec(bulletStyle)?.[1];
         const keepWords = pAttrs.latinLnBrk === "0" || pAttrs.latinLnBrk === "false";
         const spacing = styleParts.join("");
-        const linePct = /<a:lnSpc>\s*<a:spcPct\b[^>]*\bval="(\d+)"/.exec(spacing);
-        const linePts = /<a:lnSpc>\s*<a:spcPts\b[^>]*\bval="(\d+)"/.exec(spacing);
+        const line = lastLineSpacing(spacing);
 
         let pText = "";
         const textRuns: TextRun[] = [];
@@ -923,17 +939,19 @@ async function parseZipPptx(
             const latinMatch = /<a:latin\s+typeface="([^"]+)"/.exec(rXml);
             if (latinMatch && !isSymbolFont(latinMatch[1]))
               fontFamily = themeFont(latinMatch[1]);
-            const highlightXml =
-              /<a:highlight\b[\s\S]*?<\/a:highlight>/.exec(rXml)?.[0] || "";
-            const colorXml = highlightXml ? rXml.replace(highlightXml, "") : rXml;
-            const resolved = paintColor(colorXml, scheme);
-            if (highlightXml) {
-              const painted = paintColor(highlightXml, scheme);
-              if (painted) run.highlight = painted;
+            const painted = runPaint(rXml, scheme);
+            const resolved =
+              painted.color && painted.color !== "transparent"
+                ? painted.color
+                : undefined;
+            if (painted.highlight) run.highlight = painted.highlight;
+            if (painted.stroke && painted.strokeWidth) {
+              run.stroke = painted.stroke;
+              run.strokeWidth = painted.strokeWidth;
             }
-            if (resolved) {
-              run.color = resolved;
-              if (!fontColor) fontColor = run.color;
+            if (painted.color) {
+              run.color = painted.color;
+              if (resolved && !fontColor) fontColor = resolved;
             } else if (defaultColor) run.color = defaultColor;
             else if (defaults?.color) run.color = defaults.color;
             if (/<a:hlinkClick\b/.test(rXml)) {
@@ -1021,12 +1039,12 @@ async function parseZipPptx(
           const px = (emu: number) => (emu / emuWidth) * width;
           const hang = indent < 0 ? px(-indent) : undefined;
           const firstLine = margin + Math.min(0, indent);
-          const beforePts = /<a:spcBef>\s*<a:spcPts\b[^>]*\bval="(\d+)"/.exec(
-            spacing,
-          );
-          const spaceBefore = beforePts
-            ? ((Number(beforePts[1]) / 100) / 72) * (width / (emuWidth / 914400))
-            : undefined;
+          const slidePoints = (points: number | undefined) =>
+            points
+              ? (points / 72) * (width / (emuWidth / 914400))
+              : undefined;
+          const spaceBefore = slidePoints(lastSpacingPoints(spacing, "spcBef"));
+          const spaceAfter = slidePoints(lastSpacingPoints(spacing, "spcAft"));
           paragraphs.push({
             text: pText,
             runs: textRuns.filter((run) => run.text),
@@ -1041,13 +1059,14 @@ async function parseZipPptx(
             ...(hang ? { hang } : {}),
             ...(firstLine > 0 ? { listMargin: px(firstLine) } : {}),
             ...(spaceBefore ? { spaceBefore } : {}),
-            ...(linePts && exactLineFactor(linePts[1], fontSize || 18)
+            ...(spaceAfter ? { spaceAfter } : {}),
+            ...(line?.kind === "pts" && exactLineFactor(line.value, fontSize || 18)
               ? {
-                  lineHeight: exactLineFactor(linePts[1], fontSize || 18),
+                  lineHeight: exactLineFactor(line.value, fontSize || 18),
                   exactLine: true,
                 }
-              : linePct
-                ? { lineHeight: Math.min(4, Math.max(0.5, Number(linePct[1]) / 100000)) }
+              : line?.kind === "pct"
+                ? { lineHeight: line.value }
                 : {}),
           });
         }
@@ -1065,7 +1084,10 @@ async function parseZipPptx(
           }
         }
       }
-      return paragraphs;
+      return foldParagraphGaps(
+        paragraphs,
+        /<a:bodyPr\b[^>]*\bspcFirstLastPara="(?:1|true)"/.test(txBodyXml),
+      );
     };
 
     for (const part of layers) {
@@ -1153,6 +1175,7 @@ async function parseZipPptx(
           alt: "Slide image",
           ...softEdgeOf(grpPr),
           ...sourceCrop(grpPr),
+          ...pictureClip(grpPr, w, h),
           ...blipOpacity(grpPr),
         });
       }
@@ -1171,7 +1194,15 @@ async function parseZipPptx(
       hfShown(slideXml, "sldNum") ??
       hfShown(layoutPart?.xml, "sldNum") ??
       hfShown(masterPart?.xml, "sldNum");
-    const hideSlideNumber = slideNumberShown === false;
+    const hideTitleChrome = hidesTitleSpecialPlaceholders(
+      presXml,
+      layoutPart?.xml,
+    );
+    // A slide or layout flag that names sldNum wins. Otherwise a title layout
+    // drops the date, footer, and slide number when the presentation says so.
+    const hideSlideNumber =
+      slideNumberShown === false ||
+      (slideNumberShown !== true && hideTitleChrome);
     let sawSlideNumber = false;
     const spRx = /<p:sp\b[\s\S]*?<\/p:sp>/g;
     let spMatch: RegExpExecArray | null;
@@ -1394,6 +1425,7 @@ async function parseZipPptx(
                   alt: "Shape image fill",
                   ...softEdgeOf(spPr),
                   ...sourceCrop(spPr),
+                  ...pictureClip(spPr, filled.width, filled.height),
                   ...blipOpacity(spPr),
                 });
             }
@@ -1682,6 +1714,7 @@ async function parseZipPptx(
           src,
           alt: "Slide image",
           ...sourceCrop(picXml),
+          ...pictureClip(picXml, w, h),
           ...blipOpacity(picXml),
           ...(svgSrc ? { svgSrc } : {}),
           ...(nativeDrawing ? { nativeDrawing } : {}),
@@ -1691,6 +1724,19 @@ async function parseZipPptx(
     }
 
     // 5. Parse Tables (<a:tbl>)
+    const vmlPart = await readRelatedPart(slidePath, slideRels, "vmlDrawing");
+    const vmlPreviews = new Map<string, string>();
+    if (vmlPart) {
+      for (const item of vmlOleImageRels(vmlPart.xml)) {
+        const relation = vmlPart.rels[item.relId];
+        if (!relation) continue;
+        const file = zip.file(resolveZipPath(vmlPart.path, relation.target));
+        if (!file) continue;
+        const bytes = await file.async("uint8array");
+        const src = paintableImage(bytes, detectImageMime(bytes));
+        if (src) vmlPreviews.set(item.spid, src);
+      }
+    }
     const tblRx = /<p:graphicFrame\b[\s\S]*?<\/p:graphicFrame>/g;
     let gfMatch: RegExpExecArray | null;
     let diagramIndex = 0;
@@ -1891,6 +1937,24 @@ async function parseZipPptx(
             ...(colWidths ? { colWidths } : {}),
             ...(rowHeights ? { rowHeights } : {}),
             ...(hasMarks ? { cellMarks: styledMarks } : {}),
+            ...(/\brtl="(?:1|true)"/.test(/<a:tblPr\b[^>]*>/.exec(tbl)?.[0] ?? "")
+              ? { rtl: true }
+              : {}),
+          });
+        }
+      }
+      const oleSpid = /<p:oleObj\b[^>]*\bspid="([^"]+)"/.exec(gfXml)?.[1];
+      if (oleSpid && vmlPreviews && !/<p:pic\b/.test(gfXml)) {
+        const preview = vmlPreviews.get(oleSpid);
+        if (preview) {
+          rememberShape(gfXml);
+          elements.push({
+            id: crypto.randomUUID(),
+            type: "image",
+            ...parseTransform(gfXml, gfMatch.index, gfXml.length),
+            src: preview,
+            alt: "OLE preview",
+            nativeDrawing: await gatherNativeDrawing(zip, slidePath, gfXml),
           });
         }
       }

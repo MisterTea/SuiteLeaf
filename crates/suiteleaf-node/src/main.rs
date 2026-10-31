@@ -1,4 +1,6 @@
 mod admin_api;
+mod ai_api;
+mod ai_local;
 mod auth;
 mod collab;
 mod config;
@@ -122,6 +124,18 @@ impl RunArgs {
         }
         if let Some(i) = self.sync_interval {
             config.sync_interval_secs = i;
+        }
+        if let Ok(upstream) = std::env::var("SUITELEAF_AI_UPSTREAM") {
+            let upstream = upstream.trim();
+            if !upstream.is_empty() {
+                config.ai.upstream = Some(upstream.to_owned());
+            }
+        }
+        if let Ok(key) = std::env::var("SUITELEAF_AI_API_KEY") {
+            let key = key.trim();
+            if !key.is_empty() {
+                config.ai.api_key = Some(key.to_owned());
+            }
         }
         Ok(config)
     }
@@ -248,6 +262,7 @@ async fn run(config: Config, init: bool, internal_token: Option<String>) -> Resu
         auth,
         drive: drive.clone(),
         rooms: crate::collab::Rooms::new(db.clone(), drive.clone()),
+        local: crate::ai_local::LocalAi::new(),
     };
     let app = http::router(state.clone());
     let rooms = state.rooms.clone();

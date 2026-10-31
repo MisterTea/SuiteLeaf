@@ -1,9 +1,10 @@
 import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AiStatus } from "@suiteleaf/core/ai";
-import { localModel, selectedModel } from "./backend";
+import { formatModelId, localModel, onAiRuntimeChanged } from "./backend";
 import { formatFor } from "./chat-format";
 import { hideCursor, showCursor } from "./cursor";
 import { PARSE_ERROR, createLocalStreamFn, localModelDescriptor, type GenerationStats } from "./model-stream";
+import { onAiPreferencesChanged } from "./preferences";
 import { cancelApproval, currentRequest, startRequest, takeCheckpoint, type Checkpoint, type FileChange } from "./guard";
 import { activeHost, currentReview, currentSnapshot, currentSuiteTools, registerToolEverywhere, toAgentTool, toolScreen } from "./host";
 import { clearTodos, formatTodos, multiPart, openTodos, todoStore, todoTool } from "./todo";
@@ -26,8 +27,8 @@ const FROG_PROMPT = `
 - download_file downloads or saves the SuiteLeaf file. Use export_document, export_spreadsheet or export_presentation only when the user named that format, such as Excel, CSV, Word, a web page, or plain text.
 - Leave the screen as the user asked to see it. If they asked for just their documents, your last show_files stays on documents.`;
 
-/** The chat format of the model the backend runs (the desktop app reports it; the browser uses the chosen one). */
-export const currentFormat = () => formatFor(localModel().status().modelId ?? selectedModel());
+/** The chat format of the model that will answer. */
+export const currentFormat = () => formatFor(formatModelId());
 
 /** localStorage["suiteleaf.ai.thinkingBudget"]: thinking tokens per reply (0 for no limit); otherwise the model's default. */
 function thinkingBudgetSetting() {
@@ -205,11 +206,24 @@ class AgentSession {
   /** Tool results rewritten for the model (tools called from the wrong screen), by call id. */
   private explained = new Map<string, string>();
 
+  private unwatch?: () => void;
+
   constructor() {
-    localModel().onStatus((status) => {
+    this.watchModel();
+    onAiPreferencesChanged(() => this.watchModel());
+    onAiRuntimeChanged(() => this.watchModel());
+  }
+
+  /** Follow whichever model the current settings point at. */
+  private watchModel() {
+    this.unwatch?.();
+    const model = localModel();
+    this.model = model.status();
+    this.unwatch = model.onStatus((status) => {
       this.model = status;
       this.emit();
     });
+    this.emit();
   }
 
   subscribe = (listener: () => void) => {
@@ -245,23 +259,24 @@ class AgentSession {
         model: localModelDescriptor(currentFormat().info, this.model.backend ?? "local"),
         tools: currentSuiteTools().map(toAgentTool),
       },
-      streamFn: createLocalStreamFn(localModel(), {
-        format: currentFormat,
-        thinkingBudget: thinkingBudgetSetting(),
-        onStats: this.onStats,
-        onRaw: (prompt, output) => {
-          this.raws = [...this.raws.slice(-199), output];
-          if (localStorage.getItem("suiteleaf.ai.capture")) this.prompts = [...this.prompts.slice(-199), prompt];
-          if (localStorage.getItem("suiteleaf.ai.debug"))
-            console.debug("[suiteleaf-ai] prompt\n" + prompt + "\n[suiteleaf-ai] output\n" + output);
-        },
-        onDraft: (body, toolName) => {
-          const name = body && toolName;
-          if (!name && !this.draft) return;
-          this.draft = name ? { label: currentSuiteTools().find((t) => t.name === name)?.label ?? name, chars: body.length } : undefined;
-          this.emit();
-        },
-      }),
+      streamFn: (model, context, options) =>
+        createLocalStreamFn(localModel(), {
+          format: currentFormat,
+          thinkingBudget: thinkingBudgetSetting(),
+          onStats: this.onStats,
+          onRaw: (prompt, output) => {
+            this.raws = [...this.raws.slice(-199), output];
+            if (localStorage.getItem("suiteleaf.ai.capture")) this.prompts = [...this.prompts.slice(-199), prompt];
+            if (localStorage.getItem("suiteleaf.ai.debug"))
+              console.debug("[suiteleaf-ai] prompt\n" + prompt + "\n[suiteleaf-ai] output\n" + output);
+          },
+          onDraft: (body, toolName) => {
+            const name = body && toolName;
+            if (!name && !this.draft) return;
+            this.draft = name ? { label: currentSuiteTools().find((t) => t.name === name)?.label ?? name, chars: body.length } : undefined;
+            this.emit();
+          },
+        })(model, context, options),
       toolExecution: "sequential",
       // Retried empty replies leave the transcript, so the retry samples the
       // same (cached) prompt again.
