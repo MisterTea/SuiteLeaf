@@ -193,7 +193,10 @@ impl Rooms {
     }
 
     fn apply_update(&self, update: LiveUpdate<'_>) -> anyhow::Result<bool> {
-        if update.role == Role::Commenter && update.unit != "comment" {
+        // Editors and owners change the document. Commenters and responders
+        // may record a comment. A viewer, or a comment passed off as an edit,
+        // is ignored.
+        if !may_apply(update.role, update.unit) {
             return Ok(false);
         }
         let mut live = self.live.lock().expect("rooms");
@@ -257,7 +260,33 @@ impl Rooms {
             kicked.push(user.clone());
             self.maybe_compact(&item, &user, now)?;
         }
+        // Presence is replicated. Another node can delete the idle rows
+        // first, and this node is the only one with the Yjs document.
+        self.compact_abandoned(now)?;
         Ok(kicked)
+    }
+
+    fn compact_abandoned(&self, now: i64) -> anyhow::Result<()> {
+        let pending: Vec<(String, String)> = {
+            let live = self.live.lock().expect("rooms");
+            live.iter()
+                .filter(|(_, room)| room.mode == "multiuser")
+                .map(|(item, room)| {
+                    let author = room
+                        .touches
+                        .last()
+                        .map(|touch| touch.user_id.clone())
+                        .unwrap_or_else(|| "local".into());
+                    (item.clone(), author)
+                })
+                .collect()
+        };
+        for (item, author) in pending {
+            if self.writers(&item)?.is_empty() {
+                self.maybe_compact(&item, &author, now)?;
+            }
+        }
+        Ok(())
     }
 
     fn maybe_compact(&self, item: &str, author: &str, now: i64) -> anyhow::Result<()> {
@@ -402,6 +431,13 @@ fn text_col(row: &std::collections::BTreeMap<String, DbValue>, key: &str) -> Opt
 
 fn int_col(row: &std::collections::BTreeMap<String, DbValue>, key: &str) -> i64 {
     row.get(key).and_then(as_int).unwrap_or(0)
+}
+
+fn may_apply(role: Role, unit: &str) -> bool {
+    if role >= Role::Editor {
+        return true;
+    }
+    role >= Role::Commenter && unit == "comment"
 }
 
 fn role_name(role: Role) -> &'static str {
@@ -823,5 +859,203 @@ mod tests {
         });
         rx.recv_timeout(Duration::from_secs(5))
             .expect("joining a room locked the room map twice");
+    }
+
+    #[test]
+    fn a_viewer_or_commenter_cannot_change_the_live_document() {
+        use crate::{auth::AuthUser, schema::node_schema};
+
+        fn labeled(name: &str, text: &str) -> Vec<u8> {
+            use yrs::Text;
+
+            let doc = Doc::new();
+            let root = doc.get_or_insert_text(name);
+            let before = doc.transact().state_vector();
+            root.insert(&mut doc.transact_mut(), 0, text);
+            doc.transact().encode_state_as_update_v1(&before)
+        }
+        fn push(rooms: &Rooms, role: Role, unit: &str, bytes: &[u8]) -> bool {
+            rooms
+                .apply_update(LiveUpdate {
+                    item: "file",
+                    user_id: "person",
+                    name: "Person",
+                    role,
+                    bytes,
+                    unit,
+                    key: "0",
+                    at: "2026-10-30T18:00:00.000Z",
+                })
+                .unwrap()
+        }
+        fn root(rooms: &Rooms, name: &str) -> String {
+            let live = rooms.live.lock().expect("rooms");
+            let room = live.get("file").expect("room");
+            let txn = room.doc.transact();
+            txn.get_text(name)
+                .map(|text| text.get_string(&txn))
+                .unwrap_or_default()
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let db = Arc::new(
+            Db::open_in_memory(
+                suiteleaf_net::identity::ed25519::Keypair::generate(),
+                node_schema(None).unwrap(),
+            )
+            .unwrap(),
+        );
+        let drive = Drive::open(db.clone(), &dir.path().join("blobs")).unwrap();
+        let rooms = Rooms::new(db, drive);
+        let editor = AuthUser {
+            id: "maya".into(),
+            email: None,
+            name: Some("Maya".into()),
+            role: None,
+        };
+        let sam = AuthUser {
+            id: "sam".into(),
+            email: None,
+            name: Some("Sam".into()),
+            role: None,
+        };
+        rooms.join("file", &editor, Role::Editor, 1).unwrap();
+        let shared = rooms.join("file", &sam, Role::Editor, 2).unwrap();
+        assert_eq!(shared.mode, "multiuser");
+
+        assert!(push(
+            &rooms,
+            Role::Editor,
+            "paragraph",
+            &labeled("editorNote", "from an editor")
+        ));
+        assert!(!push(
+            &rooms,
+            Role::Viewer,
+            "paragraph",
+            &labeled("viewerNote", "from a viewer")
+        ));
+        assert!(!push(
+            &rooms,
+            Role::Commenter,
+            "paragraph",
+            &labeled("bodyNote", "from a commenter")
+        ));
+        assert!(!push(
+            &rooms,
+            Role::Responder,
+            "cell",
+            &labeled("sheetNote", "from a responder")
+        ));
+        assert!(push(
+            &rooms,
+            Role::Commenter,
+            "comment",
+            &labeled("commentNote", "from a comment")
+        ));
+        assert_eq!(root(&rooms, "editorNote"), "from an editor");
+        assert_eq!(root(&rooms, "commentNote"), "from a comment");
+        assert!(root(&rooms, "viewerNote").is_empty());
+        assert!(root(&rooms, "bodyNote").is_empty());
+        assert!(root(&rooms, "sheetNote").is_empty());
+    }
+
+    #[test]
+    fn an_abandoned_room_is_compacted_when_a_peer_already_cleared_presence() {
+        use crate::{auth::AuthUser, schema::node_schema};
+        use suitedrive::Principal;
+        use yrs::{Array, TextPrelim, Transact};
+
+        let dir = tempfile::tempdir().unwrap();
+        let db = Arc::new(
+            Db::open_in_memory(
+                suiteleaf_net::identity::ed25519::Keypair::generate(),
+                node_schema(None).unwrap(),
+            )
+            .unwrap(),
+        );
+        let drive = Drive::open(db.clone(), &dir.path().join("blobs")).unwrap();
+        let file = br#"{"format":"suiteleaf","version":1,"id":"f","kind":"doc","title":"Notes","createdAt":"2026-10-30T18:00:00.000Z","updatedAt":"2026-10-30T18:00:00.000Z","content":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"North bed"}]},{"type":"paragraph","content":[{"type":"text","text":"South bed"}]}]}}"#;
+        let who = Principal {
+            id: "maya".into(),
+            admin: false,
+        };
+        let item = drive
+            .create(&who, None, "Notes.sldoc", "file", Some("application/json"))
+            .unwrap();
+        drive
+            .write(&who, &item.id, None, Some("application/json"), file)
+            .unwrap();
+        drive
+            .share(&who, &item.id, "user", "sam", Some(Role::Editor))
+            .unwrap();
+        let rooms = Rooms::new(db, drive.clone());
+        let maya = AuthUser {
+            id: "maya".into(),
+            email: None,
+            name: Some("Maya".into()),
+            role: None,
+        };
+        let sam = AuthUser {
+            id: "sam".into(),
+            email: None,
+            name: Some("Sam".into()),
+            role: None,
+        };
+        rooms.join(&item.id, &maya, Role::Editor, 1).unwrap();
+        assert_eq!(
+            rooms.join(&item.id, &sam, Role::Editor, 2).unwrap().mode,
+            "multiuser"
+        );
+        let doc = Doc::new();
+        let paragraphs = doc.get_or_insert_array("paragraphs");
+        let before = doc.transact().state_vector();
+        {
+            let mut txn = doc.transact_mut();
+            for text in ["Tomatoes are in", "Beans are staked"] {
+                let index = paragraphs.len(&txn);
+                paragraphs.insert(&mut txn, index, TextPrelim::new(text));
+            }
+        }
+        let update = doc.transact().encode_state_as_update_v1(&before);
+        assert!(
+            rooms
+                .apply_update(LiveUpdate {
+                    item: &item.id,
+                    user_id: "maya",
+                    name: "Maya",
+                    role: Role::Editor,
+                    bytes: &update,
+                    unit: "paragraph",
+                    key: "0",
+                    at: "2026-10-30T18:05:00.000Z",
+                })
+                .unwrap()
+        );
+        let live_texts = {
+            let live = rooms.live.lock().expect("rooms");
+            paragraph_texts(&live.get(&item.id).expect("room").doc)
+        };
+        assert_eq!(
+            live_texts,
+            vec![
+                "Tomatoes are in".to_string(),
+                "Beans are staked".to_string()
+            ]
+        );
+        rooms
+            .db
+            .transact(|tx| {
+                tx.delete("drive_presence", &presence_id(&item.id, "maya"))?;
+                tx.delete("drive_presence", &presence_id(&item.id, "sam"))?;
+                Ok(())
+            })
+            .unwrap();
+        assert!(rooms.writers(&item.id).unwrap().is_empty());
+        rooms.kick(10_000, 1).unwrap();
+        let (_item, bytes) = drive.read(&who, &item.id, None).unwrap();
+        let saved = String::from_utf8(bytes).unwrap();
+        assert!(saved.contains("Tomatoes are in"), "{saved}");
+        assert!(saved.contains("Beans are staked"), "{saved}");
     }
 }

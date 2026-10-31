@@ -267,7 +267,14 @@ async fn run(config: Config, init: bool, internal_token: Option<String>) -> Resu
     let app = http::router(state.clone());
     let rooms = state.rooms.clone();
     tokio::spawn(async move {
-        let mut tick = tokio::time::interval(Duration::from_secs(30));
+        // SUITELEAF_KICK_EVERY_MS lets a test compact an idle room without
+        // waiting half a minute. Production keeps the 30 second sweep.
+        let every_ms = std::env::var("SUITELEAF_KICK_EVERY_MS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .filter(|ms| *ms >= 50)
+            .unwrap_or(30_000);
+        let mut tick = tokio::time::interval(Duration::from_millis(every_ms));
         let pause = std::env::var("SUITELEAF_IDLE_MS")
             .ok()
             .and_then(|value| value.parse().ok())
