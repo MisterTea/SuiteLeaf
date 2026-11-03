@@ -1,13 +1,16 @@
 import type { SheetFile } from "@suiteleaf/core";
-import type { LinkedChartAttrs } from "@suiteleaf/core/linked-chart";
+import { withheldChartText, type LinkedChartAttrs } from "@suiteleaf/core/linked-chart";
 
 export {
   chartCaption,
+  chartForViewer,
+  chartProvenance,
   chartPlainLines,
   linkedChartAttrs,
   linkedChartDom,
   linkedChartHtml,
   missingSpreadsheetText,
+  withheldChartText,
   type LinkedChartAttrs,
 } from "@suiteleaf/core/linked-chart";
 
@@ -171,14 +174,20 @@ export function chartFromSheet(file: SheetFile): SheetChart {
  * Re-read a spreadsheet into a chart. A missing file keeps the last bars and
  * marks the chart missing. A file with no data rows keeps the last bars too.
  */
+function recordedSnapshot(now: string, previous: string): string {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(now) ? now : previous;
+}
+
 export function applyChartUpdate(
   current: LinkedChartAttrs,
   sheet: SheetFile | null,
+  now = "",
 ): { attrs: LinkedChartAttrs; error?: string } {
   const kept: LinkedChartAttrs = {
     ...current,
     labels: [...current.labels],
     values: [...current.values],
+    snapshotAt: current.snapshotAt || "",
   };
   if (!sheet) return { attrs: { ...kept, missing: true } };
   const read = chartFromSheet(sheet);
@@ -190,6 +199,48 @@ export function applyChartUpdate(
       labels: read.labels,
       values: read.values,
       missing: false,
+      snapshotAt: recordedSnapshot(now, kept.snapshotAt),
+      withheld: false,
     },
   };
+}
+
+/**
+ * Hold a chart update until it is accepted. The open chart is not replaced.
+ * A viewer who cannot open the source gets no new bars. The notice does not
+ * include labels or values.
+ */
+export function stageChartUpdate(
+  current: LinkedChartAttrs,
+  sheet: SheetFile | null,
+  now = "",
+  allowed = true,
+): { chart: LinkedChartAttrs; proposal: LinkedChartAttrs | null; notice: string } {
+  const chart: LinkedChartAttrs = {
+    ...current,
+    labels: [...current.labels],
+    values: [...current.values],
+  };
+  if (!allowed) return { chart, proposal: null, notice: withheldChartText };
+  const result = applyChartUpdate(current, sheet, now);
+  const proposal = result.attrs;
+  const same =
+    proposal.sourceTitle === chart.sourceTitle &&
+    proposal.missing === chart.missing &&
+    proposal.snapshotAt === chart.snapshotAt &&
+    proposal.labels.join("\0") === chart.labels.join("\0") &&
+    proposal.values.join(",") === chart.values.join(",");
+  if (same) return { chart, proposal: null, notice: result.error ?? "" };
+  return { chart, proposal, notice: "A newer copy is waiting. The chart was not changed." };
+}
+
+/** Accept uses the proposal. Reject keeps the chart that was already open. */
+export function finishChartUpdate(
+  staged: { chart: LinkedChartAttrs; proposal: LinkedChartAttrs | null },
+  accepted: boolean,
+): LinkedChartAttrs {
+  if (accepted && staged.proposal) {
+    return { ...staged.proposal, labels: [...staged.proposal.labels], values: [...staged.proposal.values] };
+  }
+  return { ...staged.chart, labels: [...staged.chart.labels], values: [...staged.chart.values] };
 }

@@ -45,6 +45,11 @@ import {
 } from "docx";
 import JSZip from "jszip";
 import type { DocFile, JsonNode } from "./index";
+import { documentProperties } from "./doc-properties";
+import { paragraphStyles, styledDocument, wordParagraphStyles, wordStyleId } from "./doc-styles";
+import { refreshReport } from "./doc-contents";
+import { refreshIndex } from "./doc-index";
+import { captionPagesForExport, headingPagesForExport } from "./caption-pages";
 import { docxParagraphIndent } from "./paragraph-indent";
 import { asEquation, type EqNode } from "./equations";
 import {
@@ -76,8 +81,10 @@ import { croppedFrame, docxImageCrop, imageCrop } from "./image-crop";
 import { imageWrap } from "./image-wrap";
 import {
   chartCaption,
-  linkedChartAttrs,
+  chartForViewer,
+  chartProvenance,
   missingSpreadsheetText,
+  withheldChartText,
 } from "./linked-chart";
 
 const color = (v: unknown) =>
@@ -404,10 +411,13 @@ function columnSegments(
 }
 /** Source name, then one row per bar. A missing sheet keeps the last numbers. */
 function linkedChartBlocks(node: JsonNode): (Paragraph | Table)[] {
-  const chart = linkedChartAttrs(node.attrs);
+  const chart = chartForViewer(node.attrs, node.attrs?.viewerAllowed !== false);
   const written: (Paragraph | Table)[] = [
     new Paragraph({
       children: [new TextRun(chartCaption(chart.sourceTitle))],
+    }),
+    new Paragraph({
+      children: [new TextRun(chartProvenance(chart.sourceTitle, chart.snapshotAt))],
     }),
   ];
   if (chart.labels.length)
@@ -429,6 +439,8 @@ function linkedChartBlocks(node: JsonNode): (Paragraph | Table)[] {
         ),
       }),
     );
+  if (chart.withheld)
+    written.push(new Paragraph({ children: [new TextRun(withheldChartText)] }));
   if (chart.missing)
     written.push(
       new Paragraph({ children: [new TextRun(missingSpreadsheetText)] }),
@@ -449,10 +461,13 @@ function blocks(
       return blocks(n.content ?? [], plan, notes, library, list);
     if (n.type === "bibliography")
       return [new Paragraph({ children: [new TextRun("SLBIBFIELD")] })];
+    if (n.type === "figureList" || n.type === "index")
+      return blocks(n.content ?? [], plan, notes, library, list);
     if (n.type === "tableOfContents") {
       const max = Number(n.attrs?.maxLevel) === 1 ? "1-1" : "1-3";
       const pageNumbers = n.attrs?.pageNumbers !== false;
       return [
+        ...blocks(n.content ?? [], plan, notes, library, list),
         new TableOfContents("Contents", {
           hyperlink: true,
           headingStyleRange: max,
@@ -528,10 +543,12 @@ function blocks(
       Number.isFinite(stop) && stop > 0 && stop <= 22
         ? [{ type: TabStopType.LEFT, position: Math.round(stop * 1440) }]
         : undefined;
+    const namedStyle = n.type === "paragraph" ? wordStyleId(n.attrs?.styleId) : undefined;
     return [
       new Paragraph({
         children,
         tabStops,
+        ...(namedStyle ? { style: namedStyle } : {}),
         alignment: alignment(n.attrs?.textAlign),
         ...(spacing ? { spacing } : {}),
         ...(indent ? { indent } : {}),
@@ -943,12 +960,25 @@ function sectionPieces(
 export async function exportDocx(
   file: Pick<DocFile, "title" | "content"> & {
     sections?: DocxExportSection[];
+    properties?: { author?: string; subject?: string; keywords?: string[] };
   },
 ): Promise<Uint8Array> {
-  const content = embedSuggestionMarkers(
-    file.sections?.length
-      ? combineExportSections(file.sections)
-      : structuredClone(file.content),
+  const source = file.sections?.length
+    ? combineExportSections(file.sections)
+    : structuredClone(file.content);
+  const storedPages = (source as { attrs?: { pageSettings?: unknown } }).attrs?.pageSettings;
+  const indexed =
+    storedPages && typeof storedPages === "object" && !Array.isArray(storedPages)
+      ? refreshIndex(source as { content?: [] }, documentPageSettings(source as never))
+      : refreshIndex(source as { content?: [] });
+  const content = styledDocument(
+    embedSuggestionMarkers(
+      refreshReport(
+        indexed as { content?: [] },
+        captionPagesForExport(indexed as { attrs?: { pageSettings?: unknown }; content?: [] }),
+        headingPagesForExport(indexed as { attrs?: { pageSettings?: unknown }; content?: [] }),
+      ),
+    ),
   );
   // Word takes neither WebP nor SVG without a fallback, so both go in as PNG.
   const pngForWord = async (src: string): Promise<string> => {
@@ -1099,9 +1129,15 @@ export async function exportDocx(
       children: part.children,
     };
   });
+  const properties = documentProperties(file);
   const doc = new Document({
     title: file.title,
-    creator: "SuiteLeaf",
+    creator: properties?.author || "SuiteLeaf",
+    ...(properties ? { subject: properties.subject, keywords: properties.keywords.join(", ") } : {}),
+    ...(properties?.description ? { description: properties.description } : {}),
+    ...(properties?.category
+      ? { customProperties: [{ name: "Category", value: properties.category }] }
+      : {}),
     ...(settings.differentOddEven
       ? { evenAndOddHeaderAndFooters: true }
       : {}),
@@ -1117,6 +1153,7 @@ export async function exportDocx(
           },
         },
       },
+      paragraphStyles: wordParagraphStyles(paragraphStyles(content)),
     },
     numbering: {
       config: [

@@ -17,6 +17,11 @@ import { NATIVE_FILE_LIMIT } from "@suiteleaf/core";
 import { PPTX_INPUT_LIMIT } from "@suiteleaf/core/office";
 
 export const maxDelimitedCells = 200000;
+
+/** One imported file opens. A batch stays on the current page. */
+export function opensImportedFile(count: number): boolean {
+  return count === 1;
+}
 /** A parsed CSV/TSV file awaiting the person's import choices. */
 export interface DelimitedDraft {
   name: string;
@@ -37,7 +42,12 @@ export async function importFile(
   file: File,
   review?: ReviewDelimited,
   assets?: ImportAssets,
+  control?: { saved?: SuiteFile | null; shouldStop?: () => boolean },
 ): Promise<SuiteFile | null> {
+  if (control?.shouldStop?.()) {
+    if (control.saved) return control.saved;
+    throw new Error("Import cancelled. The original file is unchanged.");
+  }
   const ext = file.name.split(".").pop()?.toLowerCase();
   if (
     [
@@ -82,7 +92,7 @@ export async function importFile(
         `Office imports are limited to ${Math.round(limit / (1024 * 1024))} MB.`,
       );
     const { importOfficeFile } = await import("./office-import");
-    return importOfficeFile(file);
+    return importOfficeFile(file, control);
   }
   const native = isNativeName(file.name);
   if (file.size > (native ? NATIVE_FILE_LIMIT : 50 * 1024 * 1024))
@@ -92,6 +102,10 @@ export async function importFile(
         : "Choose a file smaller than 50 MB.",
     );
   const text = await file.text();
+  if (control?.shouldStop?.()) {
+    if (control.saved) return control.saved;
+    throw new Error("Import cancelled. The original file is unchanged.");
+  }
   if (native) return parseNamedFile(file.name, text);
   const title =
     file.name.replace(/\.[^.]+$/, "").slice(0, 200) || "Imported file";

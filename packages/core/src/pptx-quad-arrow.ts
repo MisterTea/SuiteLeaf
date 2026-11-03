@@ -1,0 +1,66 @@
+import type { PresetDef } from "./pptx-preset-data";
+
+/**
+ * ECMA-376 quadArrow: four heads on one shaft. An unknown preset would
+ * otherwise fill the shape box, so the cross paints as a rectangle.
+ */
+export const quadArrowPreset: PresetDef = {
+  adj: { adj1: 22500, adj2: 22500, adj3: 22500 },
+  guides: [
+    ["a2", "pin", 0, "adj2", 50000],
+    ["maxAdj1", "*/", "a2", 2, 1],
+    ["a1", "pin", 0, "adj1", "maxAdj1"],
+    ["q1", "+-", 100000, 0, "maxAdj1"],
+    ["maxAdj3", "*/", "q1", 1, 2],
+    ["a3", "pin", 0, "adj3", "maxAdj3"],
+    ["x1", "*/", "ss", "a3", 100000],
+    ["dx2", "*/", "ss", "a2", 100000],
+    ["x2", "+-", "hc", 0, "dx2"],
+    ["x5", "+-", "hc", "dx2", 0],
+    ["dx3", "*/", "ss", "a1", 200000],
+    ["x3", "+-", "hc", 0, "dx3"],
+    ["x4", "+-", "hc", "dx3", 0],
+    ["x6", "+-", "r", 0, "x1"],
+    ["y2", "+-", "vc", 0, "dx2"],
+    ["y5", "+-", "vc", "dx2", 0],
+    ["y3", "+-", "vc", 0, "dx3"],
+    ["y4", "+-", "vc", "dx3", 0],
+    ["y6", "+-", "b", 0, "x1"],
+    ["il", "*/", "dx3", "x1", "dx2"],
+    ["ir", "+-", "r", 0, "il"],
+  ],
+  rect: ["il", "y3", "ir", "y4"],
+  paths: [
+    {
+      fill: true,
+      stroke: true,
+      cmds: [
+        ["M", "l", "vc"],
+        ["L", "x1", "y2"],
+        ["L", "x1", "y3"],
+        ["L", "x3", "y3"],
+        ["L", "x3", "x1"],
+        ["L", "x2", "x1"],
+        ["L", "hc", "t"],
+        ["L", "x5", "x1"],
+        ["L", "x4", "x1"],
+        ["L", "x4", "y3"],
+        ["L", "x6", "y3"],
+        ["L", "x6", "y2"],
+        ["L", "r", "vc"],
+        ["L", "x6", "y5"],
+        ["L", "x6", "y4"],
+        ["L", "x4", "y4"],
+        ["L", "x4", "y6"],
+        ["L", "x5", "y6"],
+        ["L", "hc", "b"],
+        ["L", "x2", "y6"],
+        ["L", "x3", "y6"],
+        ["L", "x3", "y4"],
+        ["L", "x1", "y4"],
+        ["L", "x1", "y5"],
+        ["Z"],
+      ],
+    },
+  ],
+};

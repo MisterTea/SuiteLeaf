@@ -11,6 +11,7 @@ export const TRASH_TOAST_MS = 10_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type LibraryFilter =
+  | "recent"
   | "all"
   | "starred"
   | "trash"
@@ -66,8 +67,75 @@ export function trashStatus(record: FileRecord, now = new Date()): string {
   return `${when} · ${forever}`;
 }
 
+/** How many files Recents keeps. Older activity stays in All files. */
+export const RECENT_LIMIT = 30;
+
+/** When this file was last opened or saved, whichever is later. */
+export function recentAt(record: FileRecord, openedAt?: string): number {
+  const updated = Date.parse(record.file.updatedAt);
+  const opened = openedAt ? Date.parse(openedAt) : Number.NaN;
+  return Math.max(
+    Number.isFinite(updated) ? updated : 0,
+    Number.isFinite(opened) ? opened : 0,
+  );
+}
+
+/**
+ * Files someone opened or changed, newest first. Trash is left out.
+ * `opened` maps a file id to the last time it was read.
+ */
+export function recentRecords(
+  records: FileRecord[],
+  opened: Record<string, string> = {},
+  limit = RECENT_LIMIT,
+): FileRecord[] {
+  return records
+    .filter((record) => !record.trashedAt && !isTrashExpired(record))
+    .sort((a, b) => {
+      const byTime = recentAt(b, opened[b.file.id]) - recentAt(a, opened[a.file.id]);
+      if (byTime) return byTime;
+      return a.file.title.localeCompare(b.file.title, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
+    })
+    .slice(0, limit);
+}
+
+const OPENED_KEY = "suiteleaf:opened";
+
+/** Last time each file was opened in this app, by file id. */
+export function readOpened(): Record<string, string> {
+  if (typeof localStorage === "undefined") return {};
+  try {
+    const raw = JSON.parse(localStorage.getItem(OPENED_KEY) ?? "{}") as unknown;
+    if (!raw || typeof raw !== "object") return {};
+    const opened: Record<string, string> = {};
+    for (const [id, at] of Object.entries(raw)) {
+      if (typeof at === "string" && Number.isFinite(Date.parse(at))) opened[id] = at;
+    }
+    return opened;
+  } catch {
+    return {};
+  }
+}
+
+/** Remember that this file was read. The native file is not rewritten. */
+export function rememberOpened(id: string, at = new Date().toISOString()): Record<string, string> {
+  const opened = { ...readOpened(), [id]: at };
+  const kept = Object.entries(opened)
+    .sort((a, b) => Date.parse(b[1]) - Date.parse(a[1]))
+    .slice(0, 100);
+  const next = Object.fromEntries(kept);
+  if (typeof localStorage !== "undefined")
+    localStorage.setItem(OPENED_KEY, JSON.stringify(next));
+  return next;
+}
+
 export function viewHeading(filter: LibraryFilter): string {
   switch (filter) {
+    case "recent":
+      return "Recents";
     case "all":
       return "Your files";
     case "starred":
@@ -96,11 +164,12 @@ export function visibleRecords(
   filter: LibraryFilter,
   query: string,
   now = new Date(),
-  options?: { forms?: boolean },
+  options?: { forms?: boolean; opened?: Record<string, string> },
 ): FileRecord[] {
   const alive = records.filter((r) => !isTrashExpired(r, now));
   const forms = options?.forms !== false;
   const listed = forms ? alive : alive.filter((r) => r.file.kind !== "form");
+  if (filter === "recent") return recentRecords(listed, options?.opened, RECENT_LIMIT);
   const kind =
     filter === "doc" ||
     filter === "sheet" ||

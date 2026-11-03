@@ -71,8 +71,9 @@ via **Open / import**; on desktop, **Save As** then let edits autosave.
   already open elsewhere (Browser Web Locks).
 - Desktop: writes are serialized and replaced **atomically** (temp sibling →
   fsync → rename). If another program changes the file, SuiteLeaf keeps a
-  recovery draft and offers **Reload saved** / **Save As** instead of
-  overwriting. Removing a recent-file entry also removes its draft; the saved
+  recovery draft of the open edits and leaves the file on disk as that program
+  wrote it. **Reload saved** / **Save As** are the ways to resolve the two
+  copies. SuiteLeaf does not overwrite the outside change. Removing a recent-file entry also removes its draft; the saved
   file stays on disk. Recovery data lives under `library/library.json`.
 
 ## W5. Exports
@@ -82,6 +83,8 @@ spreadsheets; **File → Print / Save as PDF**.
 - Document exports produce HTML or plain text. Spreadsheet exports carry the
   active worksheet's **calculated values**; formula-looking text gets a
   protective apostrophe. Spreadsheet printing is limited to 10,000 cells.
+  A chart on the printed sheet is named by its title and type. The print text
+  does not include series colors or cell values.
 - On desktop with no printer, **Print** opens a PDF save dialog and generates
   the PDF directly.
 
@@ -103,6 +106,7 @@ never silent truncation):**
 - Spreadsheet imports: up to **10,000,000** stored cells and **100 MB** of cell
 text; **CSV ranges up to 200,000 cells**.
 - HTML imports sanitize executable content and accept embedded images only.
+- A delimited file that cannot be read says `That delimited file could not be read.` The notice does not include a cell from the file.
 - Delimited imports preview delimiter+rows, retain the header row, infer ordinary
   numbers/booleans, and keep formulas, leading-zero identifiers, and
   high-precision numbers as text.
@@ -148,7 +152,7 @@ clipboard, row/column operations, freeze, sort, filter, find/replace.
 **Tutorial:** select a range **with headers** → **Insert chart** → move/resize
 on the grid → edit/remove via **Data → Charts & pivots**.
 **Expected behavior:**
-- Column/bar, line, pie, and scatter charts render **calculated source values**
+- Column/bar, line, area, pie, scatter, stacked, combo, waterfall, and histogram charts render **calculated source values**. Radar charts are absent.
   (via Recharts, using `getRawValues()` so currency formatting doesn't turn
   numbers into strings).
 - New charts are placed **below existing table rows** using actual pixel heights

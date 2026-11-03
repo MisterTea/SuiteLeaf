@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use axum::{
     Json, Router,
-    extract::{FromRef, State},
-    http::{HeaderName, HeaderValue, Method, StatusCode, header},
+    extract::{FromRef, Path, State},
+    http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, header},
     response::{IntoResponse, Response},
-    routing::{any, get},
+    routing::{any, delete, get, post},
 };
 use serde_json::json;
 use suitedb::Db;
@@ -16,7 +16,12 @@ use tower_http::{
     services::{ServeDir, ServeFile},
 };
 
-use crate::{ai_local::LocalAi, auth::Auth, collab::Rooms, config::Config};
+use crate::{
+    ai_local::LocalAi,
+    auth::{Auth, RequireUser},
+    collab::Rooms,
+    config::Config,
+};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -76,7 +81,10 @@ async fn info(State(state): State<AppState>) -> Json<serde_json::Value> {
         "publicUrl": state.config.public_url(),
         "listen": listen,
         "peers": peers,
-        "auth": { "enabled": state.auth.sidecar().is_some() },
+        "auth": {
+            "enabled": state.auth.sidecar().is_some(),
+            "idleSecs": state.auth.idle_secs(),
+        },
         "suitedb": { "schema": state.db.schema().version, "ops": ops, "pending": pending, "heads": heads },
         "suitedrive": { "replicating": wanted },
     }))
@@ -142,12 +150,130 @@ async fn sign_up_shell(State(state): State<AppState>) -> Response {
         .into_response()
 }
 
+async fn emergency(State(state): State<AppState>, Json(body): Json<serde_json::Value>) -> Response {
+    let user_id = body
+        .get("userId")
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
+    let code = body
+        .get("code")
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
+    let reason = body
+        .get("reason")
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
+    if user_id.is_empty() || code.is_empty() || reason.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "emergency sign-in needs a person, a code, and a reason"})),
+        )
+            .into_response();
+    }
+    match state.auth.emergency_sign_in(user_id, code, reason) {
+        Ok(session) => Json(json!({
+            "userId": session.user.id,
+            "token": session.token,
+        }))
+        .into_response(),
+        Err(error) => (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+fn bearer(headers: &HeaderMap) -> String {
+    headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .unwrap_or("")
+        .to_owned()
+}
+
+async fn sessions(
+    State(state): State<AppState>,
+    RequireUser(user): RequireUser,
+    headers: HeaderMap,
+) -> Response {
+    match state.auth.list_sessions(&user.id, &bearer(&headers)) {
+        Ok(rows) => Json(rows).into_response(),
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+async fn rotate_session(
+    State(state): State<AppState>,
+    RequireUser(user): RequireUser,
+    Path(id): Path<String>,
+) -> Response {
+    match state.auth.rotate_session(&user.id, &id) {
+        Ok(Some(token)) => Json(json!({ "token": token })).into_response(),
+        Ok(None) => StatusCode::NOT_FOUND.into_response(),
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+async fn lost_device(
+    State(state): State<AppState>,
+    RequireUser(user): RequireUser,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
+    let device = body
+        .get("device")
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
+    match state.auth.revoke_lost_device(&user.id, device) {
+        Ok(ended) => Json(json!({ "ended": ended })).into_response(),
+        Err(error) => {
+            let message = error.to_string();
+            if message == "Name the device to sign out." {
+                (StatusCode::BAD_REQUEST, Json(json!({ "error": message }))).into_response()
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR.into_response()
+            }
+        }
+    }
+}
+
+async fn reauth_session(
+    State(state): State<AppState>,
+    RequireUser(user): RequireUser,
+    Path(id): Path<String>,
+) -> Response {
+    match state.auth.require_reauth(&user.id, &id) {
+        Ok(true) => Json(json!({ "reauth": true })).into_response(),
+        Ok(false) => StatusCode::NOT_FOUND.into_response(),
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+async fn end_session(
+    State(state): State<AppState>,
+    RequireUser(user): RequireUser,
+    Path(id): Path<String>,
+) -> Response {
+    match state.auth.revoke_session(&user.id, &id) {
+        Ok(true) => Json(json!({ "ok": true })).into_response(),
+        Ok(false) => StatusCode::NOT_FOUND.into_response(),
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
 pub fn router(state: AppState) -> Router {
     let auth = state.auth.clone();
     let config = state.config.clone();
     let api = Router::new()
         .route("/healthz", get(health))
         .route("/api/node/info", get(info))
+        .route("/api/node/emergency", post(emergency))
+        .route("/api/node/sessions", get(sessions))
+        .route("/api/node/sessions/lost-device", post(lost_device))
+        .route("/api/node/sessions/{id}", delete(end_session))
+        .route("/api/node/sessions/{id}/rotate", post(rotate_session))
+        .route("/api/node/sessions/{id}/reauth", post(reauth_session))
         .route("/sign-up/{token}", get(sign_up_shell))
         .with_state(state.clone())
         .merge(crate::drive_api::router(state.clone()))

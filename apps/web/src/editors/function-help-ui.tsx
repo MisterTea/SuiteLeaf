@@ -282,6 +282,7 @@ export function useSheetFunctions({
   injectorRef,
   persist,
   notify,
+  formulaNote,
 }: {
   ready: boolean;
   hostRef: RefObject<HTMLDivElement | null>;
@@ -290,6 +291,7 @@ export function useSheetFunctions({
   injectorRef: RefObject<any>;
   persist: () => void;
   notify: (message: string) => void;
+  formulaNote?: (formula: string) => string;
 }): {
   insertFunction: (name: string) => void;
   autoSum: () => void;
@@ -507,15 +509,21 @@ export function useSheetFunctions({
   const help = call ? helpFor(call.name, info) : null;
   const action = side === "right" ? "Insert to the right" : "Insert below";
 
+  const tableLine = edit && formulaNote ? formulaNote(edit.text) : "";
   const panel =
-    help && bar
+    bar && (help || tableLine)
       ? createPortal(
-          <HelpBody
-            help={help}
-            argIndex={call?.argIndex ?? 0}
-            collapsed={collapsed}
-            onToggle={toggleCollapsed}
-          />,
+          <>
+            {tableLine ? <p role="status">{tableLine}</p> : null}
+            {help ? (
+              <HelpBody
+                help={help}
+                argIndex={call?.argIndex ?? 0}
+                collapsed={collapsed}
+                onToggle={toggleCollapsed}
+              />
+            ) : null}
+          </>,
           bar,
         )
       : null;

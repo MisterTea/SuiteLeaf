@@ -45,6 +45,9 @@ pub struct AuthConfig {
     pub secret: Option<String>,
     /// Extra environment for the sidecar, such as OAuth client IDs.
     pub env: BTreeMap<String, String>,
+    /// Reject a session that has not been updated for this many seconds.
+    /// Absent means only `expiresAt` ends the session.
+    pub idle_secs: Option<u64>,
 }
 
 /// The assistant's model, when a client runs it on this node.
@@ -99,6 +102,7 @@ impl Default for AuthConfig {
             schema: None,
             secret: None,
             env: BTreeMap::new(),
+            idle_secs: None,
         }
     }
 }

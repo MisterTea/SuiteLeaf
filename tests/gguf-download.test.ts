@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { AI_MODELS, FROG_GGUF_URL } from "@suiteleaf/core/ai";
-import { ensureGguf, ggufPath } from "@suiteleaf/core/gguf-download";
+import { ensureGguf, ggufPath, removeCachedModel } from "@suiteleaf/core/gguf-download";
 
 const dirs: string[] = [];
 afterEach(async () => {
@@ -53,6 +53,39 @@ it("downloads a missing model and leaves a file that is already there", async ()
   expect(calls).toBe(1);
 });
 
+it("does not send a hugging face token to another site", async () => {
+  const previous = process.env.HF_TOKEN;
+  process.env.HF_TOKEN = "secret-value";
+  const dir = await mkdtemp(join(tmpdir(), "suiteleaf-gguf-"));
+  dirs.push(dir);
+  try {
+    let authorization: string | null = "unset";
+    const fetchImpl = async (_url: string | URL | Request, init?: RequestInit) => {
+      authorization = new Headers(init?.headers).get("authorization");
+      return new Response(new Uint8Array([1]), { headers: { "content-length": "1" } });
+    };
+    await ensureGguf({
+      filePath: join(dir, "model.gguf"),
+      url: "https://example.test/model.gguf",
+      fetchImpl,
+    });
+    expect(authorization).toBeNull();
+    let hosted: string | null = null;
+    await ensureGguf({
+      filePath: join(dir, "hosted.gguf"),
+      url: "https://huggingface.co/suiteleaf/model.gguf",
+      fetchImpl: async (_url, init) => {
+        hosted = new Headers(init?.headers).get("authorization");
+        return new Response(new Uint8Array([1]), { headers: { "content-length": "1" } });
+      },
+    });
+    expect(hosted).toBe("Bearer secret-value");
+  } finally {
+    if (previous === undefined) delete process.env.HF_TOKEN;
+    else process.env.HF_TOKEN = previous;
+  }
+});
+
 it("does not replace a missing custom quant with the default download", async () => {
   const dir = await mkdtemp(join(tmpdir(), "suiteleaf-gguf-"));
   dirs.push(dir);
@@ -64,4 +97,23 @@ it("does not replace a missing custom quant with the default download", async ()
   await expect(ensureGguf({ filePath, url: "https://example.test/q4.gguf", download: false, fetchImpl: async () => new Response() })).resolves.toBe(
     "cached",
   );
+});
+
+it("removes a downloaded model and leaves a document", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "suiteleaf-gguf-"));
+  dirs.push(dir);
+  const model = join(dir, "secret-value.gguf");
+  const document = join(dir, "secret-value.sldoc");
+  await writeFile(model, "weights");
+  await writeFile(document, "Beds");
+  const removed = await removeCachedModel(dir, "secret-value.gguf");
+  expect(removed).toBe("That model was removed.");
+  expect(removed).not.toContain("secret-value");
+  await expect(readFile(model)).rejects.toThrow();
+  expect(await readFile(document, "utf8")).toBe("Beds");
+  const kept = await removeCachedModel(dir, "../secret-value.sldoc");
+  expect(kept).toBe("That file is not a downloaded model.");
+  expect(kept).not.toContain("secret-value");
+  expect(await readFile(document, "utf8")).toBe("Beds");
+  expect(await removeCachedModel(dir, "secret-value.gguf")).toBe("That model is not on this computer.");
 });

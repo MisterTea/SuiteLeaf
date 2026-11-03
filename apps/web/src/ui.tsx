@@ -421,6 +421,7 @@ export type EditorActions = {
     /** The header's comment button: opens the comment list, or closes it if open. */
     toggleComments?: () => void;
     insertTableOfContents: (pageNumbers?: boolean) => void;
+    insertFigureList?: (kind?: "figure" | "table") => void;
     insertFootnote: () => void;
     insertEndnote: () => void;
     insertEquation: () => void;
@@ -431,6 +432,7 @@ export type EditorActions = {
     openIgnoredGrammar: () => void;
     openDictionary: () => void;
     openCitations: () => void;
+    openNamedStyles?: () => void;
     clearFormatting: () => void;
     /** Format › Update Normal text to match. */
     updateNormalText: () => void;

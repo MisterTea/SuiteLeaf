@@ -1,4 +1,5 @@
 import { nativeDrawingSchema } from "./pptx-native-objects";
+import { savedQuerySchema } from "./sheet-query";
 import { packSharedMedia, unpackSharedMedia } from "./shared-media";
 import { z } from "zod";
 
@@ -7,6 +8,9 @@ export { packSharedMedia, unpackSharedMedia };
 export { diffDocuments, type DocDiff } from "./doc-diff";
 export { cloneJson, sameJson } from "./json-data";
 export { fontKerning, kernFeature, kerningThreshold } from "./kerning";
+export { officeSingleSpacing, paintFontFamily, suiteLeafFont } from "./office-fonts";
+export { lineMarkerEnds, readLineEnd, type LineEndType, type LineMarker } from "./pptx-line-ends";
+export { dashMultipliers } from "./pptx-line-dash";
 export {
   applyParagraphRestore,
   compareParagraphs,
@@ -98,7 +102,7 @@ export type SourceRange = z.infer<typeof rangeSchema>;
 export const chartSchema = z.object({
   id: z.string(),
   title: z.string(),
-  type: z.enum(["bar", "line", "pie", "scatter"]),
+  type: z.enum(["bar", "line", "pie", "scatter", "waterfall", "histogram", "area", "combo", "stacked"]),
   source: rangeSchema,
   sheetId: z.string(),
   x: z.number(),
@@ -158,18 +162,64 @@ export const pivotSchema = z.object({
   rows: z.array(z.number().int().nonnegative()),
   columns: z.array(z.number().int().nonnegative()),
   value: z.number().int().nonnegative(),
-  aggregate: z.enum(["SUM", "COUNT", "AVERAGE", "MIN", "MAX"]),
+  aggregate: z.enum(["SUM", "COUNT", "AVERAGE", "MIN", "MAX", "PERCENT"]),
+  /** A field computed from each source number before the totals. The source cells stay as they were. */
+  calculated: z
+    .object({
+      name: z.string().min(1).max(40),
+      op: z.enum(["multiply", "add", "divide"]),
+      amount: z.number().finite(),
+    })
+    .optional(),
+  /** Each source row becomes left minus right before the totals. The source cells stay as they were. */
+  difference: z
+    .object({
+      name: z.string().min(1).max(40),
+      left: z.number().int().nonnegative(),
+      right: z.number().int().nonnegative(),
+    })
+    .optional(),
+  /** Extra summaries of the same rows. The first summary stays in `value` and `aggregate`. */
+  measures: z
+    .array(
+      z.object({
+        value: z.number().int().nonnegative(),
+        aggregate: z.enum(["SUM", "COUNT", "AVERAGE", "MIN", "MAX", "PERCENT"]),
+      }),
+    )
+    .max(4)
+    .optional(),
   filterColumn: z.number().int().optional(),
   filterValue: z.string().optional(),
+  /** Group an ISO date column by year or month before the totals are built. */
+  dateColumn: z.number().int().nonnegative().optional(),
+  dateGroup: z.enum(["year", "month", "quarter"]).optional(),
+  /** Keep rows whose slicer cell is one of these values. An empty list keeps every row. */
+  slicerColumn: z.number().int().nonnegative().optional(),
+  slicerValues: z.array(z.string().max(80)).max(40).optional(),
+  /** Order of the row labels. Absent means labels ascending. Value order needs one row field. */
+  sort: z
+    .object({
+      by: z.enum(["label", "value"]),
+      direction: z.enum(["asc", "desc"]),
+    })
+    .optional(),
   invalid: z.boolean().optional(),
 });
 export type PivotDefinition = z.infer<typeof pivotSchema>;
+/** One glyph group inside a stacked Office math fraction. */
+const mathPieceSchema = z.object({
+  text: z.string().max(2000),
+  script: z.enum(["sub", "sup"]).optional(),
+});
 /** One slice of a text box. Unset bold, italic, underline, and colour follow the box. */
 export const textRunSchema = z.object({
   text: z.string(),
   bold: z.boolean().optional(),
   italic: z.boolean().optional(),
   underline: z.boolean().optional(),
+  /** DrawingML strike="sngStrike" or dblStrike. */
+  strike: z.boolean().optional(),
   color: z.string().max(40).optional(),
   /** DrawingML highlight, painted behind the glyphs. */
   highlight: z.string().max(40).optional(),
@@ -177,6 +227,31 @@ export const textRunSchema = z.object({
   stroke: z.string().max(40).optional(),
   /** Run outline width, in points. */
   strokeWidth: z.number().positive().max(200).optional(),
+  /**
+   * DrawingML outerShdw. Offsets and blur are points.
+   * Positive x is to the right; positive y is down.
+   */
+  shadow: z
+    .object({
+      x: z.number().min(-500).max(500),
+      y: z.number().min(-500).max(500),
+      blur: z.number().min(0).max(500),
+      color: z.string().max(40),
+    })
+    .optional(),
+  /** CSS gradient painted through the glyphs when the run fill is a gradFill. */
+  gradient: z.string().max(2000).optional(),
+  /**
+   * DrawingML reflection under the paragraph. Alphas are 0–1 and endPos is the
+   * fraction of the text block the mirror occupies.
+   */
+  reflection: z
+    .object({
+      startAlpha: z.number().min(0).max(1),
+      endAlpha: z.number().min(0).max(1),
+      endPos: z.number().min(0).max(1),
+    })
+    .optional(),
   fontSize: z.number().positive().optional(),
   /** DrawingML cap. `all` is capitals; `small` is small capitals. */
   caps: z.enum(["small", "all"]).optional(),
@@ -185,8 +260,15 @@ export const textRunSchema = z.object({
    * superscript; negative lowers a subscript.
    */
   baseline: z.number().min(-1000).max(1000).optional(),
+  /**
+   * The run omitted `sz`. PowerPoint still paints that baseline shift at 65%
+   * of the inherited size; the percent stays relative to the inherited size.
+   */
+  scriptScale: z.boolean().optional(),
   /** Symbol-font text and bullets, such as Wingdings, keep that typeface (as its SuiteLeaf face). */
   font: z.string().max(80).optional(),
+  /** DrawingML picture bullet (`buBlip`). The marker text stays for editing; the image is what paints. */
+  bulletSrc: z.string().max(700_000).optional(),
   paragraphBreak: z.boolean().optional(),
   /**
    * Left edge of this paragraph's first line, in slide units.
@@ -195,16 +277,49 @@ export const textRunSchema = z.object({
   paraMargin: z.number().nonnegative().max(20000).optional(),
   /** Hanging marker width for this paragraph, in slide units. */
   paraHang: z.number().nonnegative().max(20000).optional(),
+  /** Positive first-line indent, in slide units. The other lines stay at `paraMargin`. */
+  paraFirst: z.number().nonnegative().max(20000).optional(),
+  /** Default tab interval, in points. PowerPoint's is one inch. */
+  paraTab: z.number().positive().max(2000).optional(),
+  /** Explicit tab stops, in points from the paragraph's left edge. */
+  paraTabs: z
+    .array(
+      z.object({
+        pos: z.number().nonnegative().max(20000),
+        align: z.enum(["l", "ctr", "r", "dec"]),
+      }),
+    )
+    .max(40)
+    .optional(),
   /** Space before this paragraph, in slide units. */
   spaceBefore: z.number().nonnegative().max(2000).optional(),
   /** This paragraph's alignment when one box mixes left, center, right, or justify. */
   paraAlign: z.enum(["left", "center", "right", "justify"]).optional(),
+  /**
+   * CSS line-height for this paragraph when one box mixes spacing.
+   * The box line-height stays the first paragraph's.
+   */
+  paraLine: z.number().positive().max(4).optional(),
   /** DrawingML kern, in points. PowerPoint import moves it to the box. */
   kern: z.number().min(0).max(4000).optional(),
   /** DrawingML spc, in points. Negative tracking pulls glyphs together. */
   tracking: z.number().min(-4000).max(4000).optional(),
   /** DrawingML latinLnBrk="0": keep a hyphenated word on one line. */
   unbroken: z.boolean().optional(),
+  /** A web or mail address from the PowerPoint run. */
+  href: z.string().max(2000).optional(),
+  /**
+   * Office math fraction. `text` stays the linear reading; the painter stacks
+   * `num` over `den`.
+   */
+  fraction: z
+    .object({
+      num: z.array(mathPieceSchema).max(80),
+      den: z.array(mathPieceSchema).max(80),
+      /** False for a limit under or over an operator. A fraction keeps the bar. */
+      bar: z.boolean().optional(),
+    })
+    .optional(),
 });
 export type TextRun = z.infer<typeof textRunSchema>;
 export const slideElementSchema = z.object({
@@ -214,6 +329,10 @@ export const slideElementSchema = z.object({
   y: z.number(),
   width: z.number().nonnegative(),
   height: z.number().nonnegative(),
+  /** A locked object stays where it is. Text can still change. */
+  locked: z.boolean().optional(),
+  /** Boxes that share this id move together. */
+  groupId: z.string().min(1).max(80).optional(),
   rotation: z.number().optional(),
   content: z.string().optional(),
   /** Per-word styles. The plain `content` string stays in sync with these runs. */
@@ -247,8 +366,8 @@ export const slideElementSchema = z.object({
    * A hanging indent can be most of a poster column, so the cap matches other insets.
    */
   hang: z.number().nonnegative().max(20000).optional(),
-  /** Corner radius for a rounded rectangle, in slide units. */
-  radius: z.number().nonnegative().max(200).optional(),
+  /** Corner radius for a rounded rectangle, in slide units. A pill is half the short side. */
+  radius: z.number().nonnegative().max(20000).optional(),
   /** Keep the line breaks of a code block. */
   preformatted: z.boolean().optional(),
   /** Language of a code block, used to color it until the box is edited. */
@@ -262,17 +381,66 @@ export const slideElementSchema = z.object({
   fill: z.string().optional(),
   stroke: z.string().optional(),
   strokeWidth: z.number().optional(),
+  /**
+   * DrawingML prstDash. `dashed` and `dotted` are the CSS names for `dash` and
+   * `dot`. The other names keep the preset, such as `sysDot` or `lgDash`.
+   */
+  strokeStyle: z
+    .enum([
+      "dashed",
+      "dotted",
+      "sysDash",
+      "sysDot",
+      "sysDashDot",
+      "sysDashDotDot",
+      "lgDash",
+      "dashDot",
+      "lgDashDot",
+      "lgDashDotDot",
+    ])
+    .optional(),
+  /** DrawingML outer shadow on the whole object. Offsets and blur are points. */
+  shadow: z
+    .object({
+      x: z.number().min(-500).max(500),
+      y: z.number().min(-500).max(500),
+      blur: z.number().min(0).max(500),
+      color: z.string().max(80),
+    })
+    .optional(),
   /** Vertical alignment inside a text box. Absent means top, as older boxes do. */
   valign: z.enum(["top", "middle", "bottom"]).optional(),
+  /**
+   * DrawingML bodyPr vert. `up` is vert270 (bottom to top); `down` is vert.
+   * The box stays put; only the text runs along it.
+   * `upright` is wordArtVert: letters stay upright and stack top to bottom.
+   */
+  textFlow: z.enum(["up", "down", "upright"]).optional(),
   /** Top text inset, in slide units. Absent keeps the editor's padding. */
   inset: z.number().nonnegative().max(20000).optional(),
   /** Mirror a line or arrow across its box. */
   flipH: z.boolean().optional(),
   flipV: z.boolean().optional(),
+  /**
+   * DrawingML headEnd, at the line's start. An oval is a dot. A triangle,
+   * arrow, or stealth is an arrowhead. Older arrows omit this.
+   */
+  lineHead: z.enum(["triangle", "arrow", "stealth", "diamond", "oval"]).optional(),
+  /** DrawingML tailEnd, at the line's end. */
+  lineTail: z.enum(["triangle", "arrow", "stealth", "diamond", "oval"]).optional(),
+  /** Non-default head size. Medium is omitted. */
+  lineHeadSize: z.enum(["sm", "lg"]).optional(),
+  /** Non-default tail size. Medium is omitted. */
+  lineTailSize: z.enum(["sm", "lg"]).optional(),
   /** DrawingML tblPr rtl: the first column is the rightmost one. */
   rtl: z.boolean().optional(),
   /** DrawingML wrap="none": keep each paragraph on one line. */
   nowrap: z.boolean().optional(),
+  /**
+   * WordArt textPlain. The letters stretch to this box; the stored font size
+   * is the size before that stretch.
+   */
+  stretchText: z.boolean().optional(),
   /**
    * DrawingML srcRect, in percent of the source picture.
    * Positive hides that edge. Negative insets the picture inside the box.
@@ -285,6 +453,19 @@ export const slideElementSchema = z.object({
   clipPath: z.string().max(20000).optional(),
   /** Picture opacity from DrawingML alphaModFix. 1 is omitted. */
   opacity: z.number().min(0).max(1).optional(),
+  /**
+   * DrawingML tile fill. Width and height are one repeat, in slide units.
+   * x and y place the origin inside this element.
+   */
+  tile: z
+    .object({
+      width: z.number().positive().max(100000),
+      height: z.number().positive().max(100000),
+      x: z.number().min(-100000).max(100000),
+      y: z.number().min(-100000).max(100000),
+      flip: z.enum(["x", "y", "xy"]).optional(),
+    })
+    .optional(),
   /**
    * Display lettering. The letter fill is `color` and the outline is `stroke`,
    * so both survive save. Absent on ordinary text boxes and older files.
@@ -310,6 +491,32 @@ export const slideElementSchema = z.object({
     .optional(),
   /** Click sequence. Objects that share an order appear on the same click. */
   animationOrder: z.number().int().nonnegative().optional(),
+  /** `with` shares the previous click. `after` starts when that entrance finishes. */
+  animationTrigger: z.enum(["click", "with", "after"]).optional(),
+  /**
+   * Paragraphs of this text box that wait for a click. Indexes match the
+   * paragraphs PowerPoint numbered, starting at 0. The box itself stays put.
+   */
+  paragraphBuilds: z
+    .array(
+      z.object({
+        start: z.number().int().nonnegative().max(500),
+        end: z.number().int().nonnegative().max(500),
+        order: z.number().int().nonnegative(),
+        trigger: z.enum(["click", "with", "after"]).optional(),
+      }),
+    )
+    .max(200)
+    .optional(),
+  /** A later click hides this object. It is visible until that click. */
+  animationExit: z
+    .object({
+      order: z.number().int().nonnegative(),
+      trigger: z.enum(["click", "with", "after"]).optional(),
+    })
+    .optional(),
+  /** Entrance length in milliseconds. Playback clamps this to 0–5000. */
+  animationDuration: z.number().optional(),
   nativeDrawing: nativeDrawingSchema.optional(),
   src: z.string().optional(),
   /** DrawingML softEdge radius, in slide units, feathered on every side. */
@@ -352,6 +559,12 @@ export const slideElementSchema = z.object({
   /** Embedded still frame shown before a clip plays. */
   poster: z.string().optional(),
   alt: z.string().optional(),
+  /** A web or mail address for a picture, from the PowerPoint shape. */
+  href: z.string().max(2000).optional(),
+  /** When true, the object is not read and does not need alternative text. */
+  decorative: z.boolean().optional(),
+  /** Spoken words for a sound or a video. This is not the media file. */
+  caption: z.string().max(500).optional(),
   rows: z.array(z.array(z.string())).optional(),
   /** Column widths as fractions of the table, aligned with the grid. */
   colWidths: z.array(z.number().positive()).max(64).optional(),
@@ -366,9 +579,11 @@ export const slideElementSchema = z.object({
           italic: z.boolean().optional(),
           fill: z.string().optional(),
           color: z.string().optional(),
+          font: z.string().max(80).optional(),
           fontSize: z.number().positive().optional(),
           align: z.enum(["left", "center", "right", "justify"]).optional(),
           colSpan: z.number().int().positive().optional(),
+          rowSpan: z.number().int().positive().optional(),
           border: z.string().optional(),
           borderTop: z.object({ color: z.string(), width: z.number().positive().max(20).optional() }).optional(),
           borderRight: z.object({ color: z.string(), width: z.number().positive().max(20).optional() }).optional(),
@@ -384,6 +599,53 @@ export const slideElementSchema = z.object({
               z.object({
                 margin: z.number().nonnegative().max(20000).optional(),
                 hang: z.number().nonnegative().max(20000).optional(),
+                first: z.number().nonnegative().max(20000).optional(),
+                tabs: z
+                  .array(
+                    z.object({
+                      pos: z.number().nonnegative().max(20000),
+                      align: z.enum(["l", "ctr", "r", "dec"]),
+                    }),
+                  )
+                  .max(40)
+                  .optional(),
+              }),
+            )
+            .max(400)
+            .optional(),
+          /** Default tab interval for this cell, in points. */
+          tabSize: z.number().positive().max(2000).optional(),
+          /** Symbol font, subscript, or a second colour inside one cell. */
+          runs: z
+            .array(
+              z.object({
+                text: z.string(),
+                color: z.string().max(40).optional(),
+                font: z.string().max(80).optional(),
+                fontSize: z.number().positive().optional(),
+                bulletSrc: z.string().max(700_000).optional(),
+                baseline: z.number().min(-1000).max(1000).optional(),
+                bold: z.boolean().optional(),
+                paragraphBreak: z.boolean().optional(),
+                paraMargin: z.number().nonnegative().max(20000).optional(),
+                paraHang: z.number().nonnegative().max(20000).optional(),
+                paraFirst: z.number().nonnegative().max(20000).optional(),
+                paraTab: z.number().positive().max(2000).optional(),
+                paraTabs: z
+                  .array(
+                    z.object({
+                      pos: z.number().nonnegative().max(20000),
+                      align: z.enum(["l", "ctr", "r", "dec"]),
+                    }),
+                  )
+                  .max(40)
+                  .optional(),
+                fraction: z
+                  .object({
+                    num: z.array(mathPieceSchema).max(80),
+                    den: z.array(mathPieceSchema).max(80),
+                  })
+                  .optional(),
               }),
             )
             .max(400)
@@ -432,9 +694,16 @@ export const slideSchema = z.object({
     .enum(["title", "title-body", "section", "two-column", "blank"])
     .optional(),
   elements: z.array(slideElementSchema),
+  /**
+   * Object ids in reading order. Absent means the element list is the order.
+   * An id that is not on the slide is kept here and reported as missing.
+   */
+  readingOrder: z.array(z.string().min(1).max(200)).max(400).optional(),
   notes: z.string().optional(),
   comments: z.array(slideCommentThreadSchema).max(40).optional(),
   transition: slideTransitionSchema.optional(),
+  /** Whole seconds before the slideshow moves on. Absent means the slide waits. */
+  advanceSeconds: z.number().int().min(0).max(3600).optional(),
   /** Office animation timeline, written back when the deck is saved as PowerPoint. */
   timing: z.string().max(100_000).optional(),
   /** Hidden in a PowerPoint slideshow. PDF export skips the slide. */
@@ -473,6 +742,7 @@ export const presentationSchema = z.object({
   slideOrder: z.array(z.string()),
   slides: z.record(z.string(), slideSchema),
   theme: slideThemeSchema.optional(),
+  proofingLanguage: z.enum(["en", "es", "fr", "de", "ar", "he"]).optional(),
   /** Fonts that were embedded in the PowerPoint file. The renderer loads these by family name. */
   fonts: z.array(embeddedFontSchema).max(16).optional(),
   /** Objects and a background drawn behind every slide. */
@@ -706,6 +976,15 @@ export const fileSchema = z.discriminatedUnion("kind", [
     ...historyFields,
     kind: z.literal("doc"),
     content: node,
+    properties: z
+      .object({
+        author: z.string().max(200),
+        subject: z.string().max(200),
+        keywords: z.array(z.string().max(80)).max(20),
+        description: z.string().max(2000).optional(),
+        category: z.string().max(200).optional(),
+      })
+      .optional(),
     /** Name of the first tab. Missing means Document. */
     tabTitle: z.string().min(1).max(80).optional(),
     /** Tabs after the first, in order. Missing or empty means there are no extra tabs. */
@@ -722,6 +1001,7 @@ export const fileSchema = z.discriminatedUnion("kind", [
           sheets: z.record(z.string(), worksheetSchema),
         })
         .passthrough(),
+      proofingLanguage: z.enum(["en", "es", "fr", "de", "ar", "he"]).optional(),
       images: z
         .array(
           z.object({
@@ -750,6 +1030,20 @@ export const fileSchema = z.discriminatedUnion("kind", [
         .optional(),
       charts: z.array(chartSchema),
       pivots: z.array(pivotSchema),
+      queries: z.array(savedQuerySchema).max(20).optional(),
+      tables: z
+        .array(
+          z.object({
+            name: z.string().min(1).max(80),
+            sheetId: z.string(),
+            headerRow: z.number().int().nonnegative(),
+            startColumn: z.number().int().nonnegative(),
+            endColumn: z.number().int().nonnegative(),
+            endRow: z.number().int().nonnegative(),
+          }),
+        )
+        .max(40)
+        .optional(),
       /** Paper layout. Independent of a frozen row on screen. */
       print: z
         .object({
@@ -844,7 +1138,12 @@ export {
   connectDocs,
   editParagraph,
   paragraphTexts,
+  paragraphsAsDocument,
+  prosemirrorJson,
+  commentThreadsFromRoom,
+  roomAlreadyHasText,
   seedParagraphs,
+  syncCommentThreads,
   syncParagraphTexts,
   type CollabJoin,
   type CollabRole,
@@ -857,6 +1156,74 @@ export function safeLink(url: string): boolean {
  * A bare web address gets https:// and a bare email address gets mailto:;
  * anything else must already pass `safeLink`. Docs and Sheets share this.
  */
+export { checkDocument, contentPosition, nodeAtPath, type A11yFinding, type A11yRule } from "./a11y-check";
+export { checkSheetGrid, formulaErrorNotes, type FormulaErrorFinding, type SheetA11yFinding, type SheetA11yGrid } from "./sheet-a11y";
+export { inspectSheetCost, volatileFormulaAddresses, type SheetCostInput, type SheetCostReport, type SheetCostStop } from "./sheet-cost";
+export {
+  INTERACTIVE_CELL_LIMIT,
+  LARGE_CELL_LIMIT,
+  capacityDecision,
+  countStoredCells,
+  phasesBlockedByCapacity,
+  startWorkbookWork,
+  type CapacityDecision,
+} from "./sheet-capacity";
+export { auditFormula, cellAddress, nextFormulaError, type FormulaAudit } from "./sheet-audit";
+export { evaluationTrace, type EvaluationTrace } from "./sheet-trace";
+export { cellsToRecalculate, recalculateDirty, structuredSource, type Invalidation, type Recalculation, type StructuredSource } from "./sheet-invalidation";
+export { recalculateAcrossSheets, type CrossRecalculation, type NamedCells } from "./sheet-cross-calc";
+export { excelChartElement, waterfallBarLabel, waterfallRows, waterfallSkipText, waterfallSteps, type WaterfallResult, type WaterfallStep } from "./waterfall";
+export { histogramBins, histogramColumn, histogramSkipText, type HistogramBin, type HistogramResult } from "./histogram";
+export { assignComboAxes, chartSummary, seriesFromHeaders, type ChartSummaryInput } from "./chart-summary";
+export { queryDocument, remapQuery, reviewQuerySchema, schemaNoteText, refreshDatabaseQuery, refreshGridQuery, refreshIsDue, refreshQuery, refreshRemoteQuery, runScheduledRefresh, sourceUrlProblem, tableFromGrid, writeQueryOutput, type QueryDocument, type QueryGrid, type QueryPlacement, type QueryRow, type QueryRun, type QuerySchedule, type QueryStep } from "./sheet-query";
+export { localTableBlocked, localTableValues, refreshLocalQuery, rowsFromCsv, rowsFromJson } from "./sheet-query-local";
+export { goalSeek, goalSeekAsync, seekProgressText, writeGoalSeek, type GoalSeekInput, type GoalSeekResult } from "./goal-seek";
+export { solve, solveAsync, writeSolver, type SolverResult, type SolverVariable } from "./solver";
+export { drillGroupRows, drillPivot, groupedKey, pivotSliceFromForm, slicePivot, type PivotSlice } from "./pivot-slicer";
+export { pivotSortChoice, pivotSortFromForm, type PivotSort } from "./pivot-sort";
+export { deleteTableCells, deleteTableRows, editsFromRangeValues, expandStructuredFormula, extendTablesForEdits, growSources, growTable, insertTableCells, insertTableRows, shrinkTable, structuredFormulaNote, tableAfterStructure, tableColumn, tableOutline, tableRangeLabel, type SheetTable, type TableCellEdit, type TableRange } from "./sheet-table";
+export { benchmarkRegression, expensiveFormulas, formulaRefs, importKeepingSaved, runCancellable, slowestPhaseNote, type BenchmarkRecord, type FormulaCost } from "./sheet-benchmark";
+export {
+  applyCharacterStyles,
+  characterStyleList,
+  applyStyleFormats,
+  captionReference,
+  captionWarnings,
+  effectiveFormat,
+  importCharacterStyles,
+  importParagraphStyles,
+  numberCaptions,
+  paragraphStyles,
+  refreshCaptions,
+  refreshHeadingRefs,
+  styledDocument,
+  assignParagraphStyle,
+  stylePatchFromMarks,
+  updateNamedStyle,
+  type Caption,
+  type CharacterStyle,
+  type StyleDef,
+} from "./doc-styles";
+export { documentProperties, undoDocument, type DocumentProperties } from "./doc-properties";
+export { refreshContents, refreshReport } from "./doc-contents";
+export { applyMaster, contrastRatio, editSlideObject, mediaCaptionNotes, mediaPictureNotes, moveReadingOrder, readingOrder, slideAccessNotes, slideAccessWrites, slideChecks, slideObjectLines, tableFieldRows, tableFieldText, titleTextColor, type SlidePiece, type TitleColorBox } from "./slide-access";
+export { alignObjectToSlide, alignSelection, alignSlideObjects, distributeSlideObjects, groupSlideObjects, nudgeSlideObject, nudgeSlideSelection, orderSlideObjects, placeSlideGroup, placeSlideObject, readSlideGeometry, snapSlideBox, ungroupSlideObjects, type AlignEdge, type NudgeDirection, type SlideBox, type SlideGeometry, type SlideSnap } from "./slide-align";
+export { mergeDocumentBlocks, type BlockMerge, type KeptVersions } from "./conflict-merge";
+export {
+  COST_CATEGORIES,
+  SOFTWARE_EDITION,
+  SUPPORTED_FEATURES,
+  cancelHostedService,
+  hostedHold,
+  applyExpansion,
+  declineEffect,
+  expansionWarning,
+  storageBudgetNotice,
+  featuresOn,
+  type UsageChoice,
+  localEditingRequiresBilling,
+  type CostCategory,
+} from "./packaging";
 export function linkTarget(input: string): string | null {
   const url = input.trim();
   if (!url || /\s/.test(url)) return null;
@@ -1025,9 +1392,11 @@ export function parseFile(text: string, expectedKind?: Kind | null): SuiteFile {
         if (
           el.type === "video" &&
           el.src &&
-          !/^data:video\/(mp4|webm);base64,/i.test(el.src)
+          !/^data:video\/(mp4|webm|quicktime|mpeg);base64,/i.test(el.src)
         )
-          throw new Error("Native video must be embedded MP4 or WebM data.");
+          throw new Error(
+            "Native video must be embedded MP4, WebM, QuickTime, or MPEG data.",
+          );
       }
     }
   } else if (file.kind === "form") {
@@ -1187,7 +1556,9 @@ export function duplicateFile(
 }
 export { parsePowerPoint } from "./pptx";
 export { lineFrame, slidePointScale } from "./pptx-geometry";
-export { straightGradientBackground } from "./pptx-theme";
+export { paragraphTabStops, tabAdvance, type TabStop } from "./pptx-tab-stops";
+export { plainWordArt, wordArtFill, wordArtFrame, type GlyphInk } from "./pptx-word-art";
+export { officeGradient, straightGradientBackground, svgFillMarkup } from "./pptx-theme";
 export function filename(title: string, extension = "suiteleaf") {
   return `${
     title
@@ -1342,3 +1713,5 @@ export function parseRange(a1: string, sheetId: string): SourceRange {
     throw new Error("Choose an ordered range of at most 200,000 cells.");
   return r;
 }
+
+export { departureChecklist, type DepartureItem } from "./capabilities/departure";

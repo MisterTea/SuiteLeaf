@@ -295,6 +295,29 @@ proptest! {
     }
 }
 
+#[test]
+fn replication_lag_counts_ops_and_leaves_out_payloads() {
+    let db = replica();
+    db.transact(|tx| {
+        tx.upsert(
+            "t",
+            "r",
+            [("a", text("secret body")), ("b", Value::Integer(1))],
+        )
+    })
+    .unwrap();
+    db.set_cursor("peer-a", db.epoch(), 0).unwrap();
+    db.set_cursor("peer-b", "other-epoch", 9).unwrap();
+    let lag = db.replication_lag().unwrap();
+    let same = lag.iter().find(|row| row.peer == "peer-a").unwrap();
+    let other = lag.iter().find(|row| row.peer == "peer-b").unwrap();
+    assert!(same.same_epoch);
+    assert!(same.behind >= 1);
+    assert!(!other.same_epoch);
+    assert_eq!(other.behind, same.behind);
+    assert!(!format!("{lag:?}").contains("secret"));
+}
+
 fn shuffle<T>(items: &mut [T], seed: u64) {
     let mut seed = seed | 1;
     for i in (1..items.len()).rev() {

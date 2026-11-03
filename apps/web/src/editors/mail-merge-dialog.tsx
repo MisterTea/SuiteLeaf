@@ -9,14 +9,20 @@ import {
 import { drive, getSession } from "../node-client";
 import { storage } from "../storage";
 import {
-  mergeLetters,
+  letterTitle,
+  mergeBatch,
+  mergePdfBatch,
+  mergeLocale,
+  mergeIssueText,
   mergeSheetChoices,
-  mergedDocumentTitle,
-  missingColumnMessage,
+  nameColumn,
   sheetTable,
   spreadsheetChoices,
   type MergeSheet,
 } from "./mail-merge";
+import { readProofing } from "./doc-word-count";
+import { addressFromRow, placeEnvelope, placeLabels, type PlacedAddress } from "./mail-labels";
+import { EnvelopePreview, LabelSheetPreview } from "./mail-label-preview";
 import "./mail-merge.css";
 
 function problem(error: unknown): string {
@@ -54,12 +60,18 @@ export function MailMergeDialog({
   template: () => JsonNode;
   sourceTitle: string;
   onClose: () => void;
-  onCreate: (file: DocFile) => Promise<void>;
+  onCreate: (files: DocFile[]) => Promise<void>;
 }) {
   const [sheets, setSheets] = useState<MergeSheet[] | null>(null);
   const [pick, setPick] = useState("");
   const [error, setError] = useState("");
   const [merging, setMerging] = useState(false);
+  const [output, setOutput] = useState<"letters" | "labels" | "envelopes" | "pdf">("letters");
+  const [pdfNote, setPdfNote] = useState("");
+  const [labels, setLabels] = useState<PlacedAddress[] | null>(null);
+  const [envelope, setEnvelope] = useState<{ returnAddress: PlacedAddress; recipient: PlacedAddress } | null>(
+    null,
+  );
 
   useEffect(() => {
     let cancel = false;
@@ -95,17 +107,100 @@ export function MailMergeDialog({
     setError("");
     try {
       const table = sheetTable(await workbookOf(sheet));
-      const result = mergeLetters(template(), table.headers, table.rows);
-      if (!result.ok) {
-        setError(missingColumnMessage(result.missing));
+      const addresses = table.rows
+        .filter((row) => row.some((cell) => cell.trim() !== ""))
+        .map((row) => addressFromRow(table.headers, row));
+      if (output === "labels") {
+        const placed = placeLabels(addresses);
+        if (!placed.ok) {
+          setError(placed.message);
+          setLabels(null);
+        } else {
+          setLabels(placed.placed);
+          setEnvelope(null);
+        }
         setMerging(false);
         return;
       }
-      const created = createFile(
-        "doc",
-        mergedDocumentTitle(sourceTitle),
-      ) as DocFile;
-      created.content = result.content;
+      if (output === "pdf") {
+        const batch = mergePdfBatch(
+          template(),
+          table.headers,
+          table.rows,
+          nameColumn(table.headers),
+          mergeLocale(readProofing(template()).language),
+        );
+        if (!batch.ok) {
+          setError(mergeIssueText(batch.issues));
+          setPdfNote("");
+          setMerging(false);
+          return;
+        }
+        if (!batch.files.length) {
+          setError("That spreadsheet has no rows to merge.");
+          setPdfNote("");
+          setMerging(false);
+          return;
+        }
+        let saved = true;
+        try {
+          for (const file of batch.files) {
+            const blob = new Blob([file.pdf], { type: "application/pdf" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = `${file.name}.pdf`;
+            link.click();
+            URL.revokeObjectURL(url);
+          }
+        } catch {
+          saved = false;
+        }
+        const names = batch.files.map((file) => `${file.name}.pdf`).join(" and ");
+        setPdfNote(
+          saved
+            ? `Prepared ${names}. Nothing is mailed. This is not a print of the page.`
+            : `Prepared ${names}. They were not saved. Nothing is mailed. This is not a print of the page.`,
+        );
+        setLabels(null);
+        setEnvelope(null);
+        setMerging(false);
+        return;
+      }
+      if (output === "envelopes") {
+        const placed = placeEnvelope([sourceTitle], addresses[0] ?? []);
+        if (!placed.ok) {
+          setError(placed.message);
+          setEnvelope(null);
+        } else {
+          setEnvelope({ returnAddress: placed.returnAddress, recipient: placed.recipient });
+          setLabels(null);
+        }
+        setMerging(false);
+        return;
+      }
+      const batch = mergeBatch(
+        template(),
+        table.headers,
+        table.rows,
+        nameColumn(table.headers),
+        mergeLocale(readProofing(template()).language),
+      );
+      if (!batch.ok) {
+        setError(mergeIssueText(batch.issues));
+        setMerging(false);
+        return;
+      }
+      if (!batch.letters.length) {
+        setError("That spreadsheet has no rows to merge.");
+        setMerging(false);
+        return;
+      }
+      const created = batch.letters.map((letter) => {
+        const file = createFile("doc", letterTitle(sourceTitle, letter.name)) as DocFile;
+        file.content = letter.content;
+        return file;
+      });
       await onCreate(created);
       onClose();
     } catch (reason) {
@@ -141,8 +236,40 @@ export function MailMergeDialog({
         </div>
         <div className="dialog-body">
           <p className="merge-note">
-            Each row becomes a letter on its own page. Nothing is emailed.
+            Each row becomes its own document, named from a Name column when there is one. Nothing is emailed.
+            {" {{#Plot}}...{{/Plot}}"} is kept only when Plot has text. {"{{#Plot == North}}...{{/Plot}}"} is kept when Plot is North. {"{{#each Crop}}{{.}}{{/each}}"} repeats
+            each part of Crop, separated by semicolons. A blank part is skipped.
           </p>
+          <fieldset className="merge-sheets">
+            <legend>Output</legend>
+            <div className="merge-sheet-list" role="radiogroup" aria-label="Output">
+              {(
+                [
+                  ["letters", "Letters"],
+                  ["pdf", "PDF"],
+                  ["labels", "Labels"],
+                  ["envelopes", "Envelopes"],
+                ] as const
+              ).map(([value, label]) => (
+                <label key={value}>
+                  <input
+                    type="radio"
+                    name="merge-output"
+                    value={value}
+                    checked={output === value}
+                    onChange={() => {
+                      setOutput(value);
+                      setLabels(null);
+                      setEnvelope(null);
+                      setPdfNote("");
+                      setError("");
+                    }}
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
           {sheets === null ? (
             <p className="merge-empty">Looking for spreadsheets…</p>
           ) : sheets.length === 0 ? (
@@ -183,6 +310,15 @@ export function MailMergeDialog({
               {error}
             </p>
           ) : null}
+          {pdfNote ? (
+            <p className="merge-note" role="status">
+              {pdfNote}
+            </p>
+          ) : null}
+          {labels ? <LabelSheetPreview placed={labels} /> : null}
+          {envelope ? (
+            <EnvelopePreview returnAddress={envelope.returnAddress} recipient={envelope.recipient} />
+          ) : null}
         </div>
         <div className="dialog-footer">
           <button type="button" className="dialog-text-btn" onClick={onClose}>
@@ -194,7 +330,15 @@ export function MailMergeDialog({
             disabled={!pick || merging || sheets === null}
             onClick={() => void merge()}
           >
-            {merging ? "Merging…" : "Merge"}
+            {merging
+              ? "Merging…"
+              : output === "labels"
+                ? "Place on labels"
+                : output === "envelopes"
+                  ? "Place on envelope"
+                  : output === "pdf"
+                    ? "Write PDFs"
+                    : "Merge"}
           </button>
         </div>
       </div>

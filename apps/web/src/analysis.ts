@@ -5,7 +5,15 @@ export function pivotResult(
   values: CellValue[][],
   config: Pick<
     PivotDefinition,
-    "rows" | "columns" | "value" | "aggregate" | "filterColumn" | "filterValue"
+    | "rows"
+    | "columns"
+    | "value"
+    | "aggregate"
+    | "filterColumn"
+    | "filterValue"
+    | "calculated"
+    | "difference"
+    | "sort"
   >,
 ): CellValue[][] {
   if (values.length < 2)
@@ -34,18 +42,60 @@ export function pivotResult(
     );
   const keys = dims.map((i) => `c${i}`),
     value = `c${config.value}`;
+  const difference = config.difference;
+  if (difference) {
+    const { left, right } = difference;
+    if (
+      !Number.isInteger(left) ||
+      !Number.isInteger(right) ||
+      left < 0 ||
+      right < 0 ||
+      left >= headers.length ||
+      right >= headers.length ||
+      left === right
+    ) {
+      throw new Error("Choose two columns for the calculated field.");
+    }
+    for (const record of records) {
+      const leftValue = record[`c${left}`];
+      const rightValue = record[`c${right}`];
+      record[value] =
+        typeof leftValue === "number" &&
+        Number.isFinite(leftValue) &&
+        typeof rightValue === "number" &&
+        Number.isFinite(rightValue)
+          ? leftValue - rightValue
+          : "";
+    }
+  }
   if (config.aggregate === "COUNT")
     records = records.filter((r) => r[value] !== "" && r[value] !== null);
   if (config.aggregate !== "COUNT")
     records = records.filter(
       (r) => typeof r[value] === "number" && Number.isFinite(r[value]),
     );
+  const calculated = config.calculated;
+  if (calculated && Number.isFinite(calculated.amount)) {
+    for (const record of records) {
+      const current = record[value];
+      if (typeof current !== "number" || !Number.isFinite(current)) continue;
+      record[value] =
+        calculated.op === "multiply"
+          ? current * calculated.amount
+          : calculated.op === "divide"
+            ? calculated.amount === 0
+              ? current
+              : current / calculated.amount
+            : current + calculated.amount;
+    }
+  }
   if (!records.length)
     return [[...config.rows.map((i) => headers[i]), "No matching data"]];
+  const percent = config.aggregate === "PERCENT";
   const op =
     config.aggregate === "COUNT"
       ? aq.op.count()
-      : config.aggregate === "SUM"
+      : config.aggregate === "SUM" || percent
         ? aq.op.sum(value)
         : config.aggregate === "AVERAGE"
           ? aq.op.mean(value)
@@ -87,8 +137,21 @@ export function pivotResult(
     }
     return 0;
   };
-  const cols = [...new Set(grouped.map(colKey))].sort(byKey),
-    rows = [...new Set(grouped.map(rowKey))].sort(byKey);
+  const cols = [...new Set(grouped.map(colKey))].sort(byKey);
+  let rows = [...new Set(grouped.map(rowKey))].sort(byKey);
+  const sort = config.sort;
+  if (sort && (sort.by !== "value" || config.rows.length < 2)) {
+    const dir = sort.direction === "desc" ? -1 : 1;
+    rows = [...rows].sort((a, b) => {
+      if (sort.by === "value") {
+        const left = Number(rowTotals.get(a));
+        const right = Number(rowTotals.get(b));
+        const delta = (Number.isFinite(left) ? left : 0) - (Number.isFinite(right) ? right : 0);
+        if (delta) return delta * dir;
+      }
+      return byKey(a, b) * (sort.by === "label" ? dir : 1);
+    });
+  }
   const lookup = new Map(
     grouped.map((r) => [`${rowKey(r)}|${colKey(r)}`, r.result]),
   );
@@ -96,19 +159,53 @@ export function pivotResult(
   const labels = cols.map((c) =>
     split
       ? (JSON.parse(c) as CellValue[]).join(" / ")
-      : `${config.aggregate} ${headers[config.value]}`,
+      : `${config.aggregate} ${config.calculated?.name.trim() || config.difference?.name.trim() || headers[config.value]}`,
   );
-  return [
+  const detail = (r: string): CellValue[] => [
+    ...(JSON.parse(r) as CellValue[]),
+    ...cols.map((c) => lookup.get(`${r}|${c}`) ?? null),
+    ...(split ? [rowTotals.get(r) ?? null] : []),
+  ];
+  const body: CellValue[][] = [];
+  if (config.rows.length < 2) body.push(...rows.map(detail));
+  else {
+    const firstOf = (r: string) =>
+      JSON.stringify([(JSON.parse(r) as CellValue[])[0]]);
+    const subLookup = new Map(
+      rollup([`c${config.rows[0]}`, ...config.columns.map((i) => `c${i}`)]).map(
+        (r) => [`${JSON.stringify([r[`c${config.rows[0]}`]])}|${colKey(r)}`, r.result],
+      ),
+    );
+    const subTotals = new Map(
+      rollup([`c${config.rows[0]}`]).map((r) => [
+        JSON.stringify([r[`c${config.rows[0]}`]]),
+        r.result,
+      ]),
+    );
+    let index = 0;
+    while (index < rows.length) {
+      const group = firstOf(rows[index]);
+      while (index < rows.length && firstOf(rows[index]) === group) {
+        body.push(detail(rows[index]));
+        index += 1;
+      }
+      const label = (JSON.parse(group) as CellValue[])[0];
+      body.push([
+        label,
+        "Subtotal",
+        ...config.rows.slice(2).map(() => null),
+        ...cols.map((c) => subLookup.get(`${group}|${c}`) ?? null),
+        ...(split ? [subTotals.get(group) ?? null] : []),
+      ]);
+    }
+  }
+  const grid: CellValue[][] = [
     [
       ...config.rows.map((i) => headers[i]),
       ...labels,
       ...(split ? [GRAND_TOTAL] : []),
     ],
-    ...rows.map((r) => [
-      ...(JSON.parse(r) as CellValue[]),
-      ...cols.map((c) => lookup.get(`${r}|${c}`) ?? null),
-      ...(split ? [rowTotals.get(r) ?? null] : []),
-    ]),
+    ...body,
     [
       GRAND_TOTAL,
       ...config.rows.slice(1).map(() => null),
@@ -116,8 +213,65 @@ export function pivotResult(
       ...(split ? [total] : []),
     ],
   ];
+  if (!percent) return grid;
+  const whole = typeof total === "number" && Number.isFinite(total) ? total : 0;
+  if (whole === 0) throw new Error("The total is zero.");
+  const labelCount = config.rows.length;
+  return grid.map((row, rowIndex) =>
+    row.map((cell, columnIndex) => {
+      if (rowIndex === 0 || columnIndex < labelCount) return cell;
+      if (typeof cell !== "number" || !Number.isFinite(cell)) return cell;
+      return (cell / whole) * 100;
+    }),
+  );
 }
 export const GRAND_TOTAL = "Grand Total";
+
+type Measure = {
+  value: number;
+  aggregate: PivotDefinition["aggregate"];
+};
+
+/**
+ * One column per summary. A second summary is another aggregate of the same
+ * rows. Column splits stay on a single summary. The source grid is not changed.
+ */
+export function pivotMeasures(
+  values: CellValue[][],
+  base: Pick<
+    PivotDefinition,
+    "rows" | "columns" | "filterColumn" | "filterValue" | "calculated"
+  >,
+  measures: readonly Measure[],
+): CellValue[][] {
+  if (!measures.length) throw new Error("Choose a value to summarize.");
+  if (measures.length === 1 || base.columns.length) {
+    return pivotResult(values, {
+      ...base,
+      value: measures[0].value,
+      aggregate: measures[0].aggregate,
+    });
+  }
+  const tables = measures.map((measure) =>
+    pivotResult(values, {
+      ...base,
+      columns: [],
+      value: measure.value,
+      aggregate: measure.aggregate,
+    }),
+  );
+  const rowCount = base.rows.length;
+  const keyOf = (row: CellValue[]) => JSON.stringify(row.slice(0, rowCount));
+  const extras = tables.slice(1).map((table) => ({
+    header: table[0][table[0].length - 1],
+    byKey: new Map(table.slice(1).map((row) => [keyOf(row), row[row.length - 1]])),
+  }));
+  return tables[0].map((row, index) =>
+    index === 0
+      ? [...row, ...extras.map((extra) => extra.header)]
+      : [...row, ...extras.map((extra) => extra.byKey.get(keyOf(row)) ?? null)],
+  );
+}
 /** Univer cell data keyed by row then column; `null` clears a cell. */
 export type PivotCells = Record<
   number,

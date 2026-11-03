@@ -1,7 +1,9 @@
+import { useState } from "react";
 import type { Presentation, Slide } from "@suiteleaf/core";
 import {
   SLIDE_ANIMATION_CHOICES,
   animationLabel,
+  animationPreview,
   animationRows,
   reorderAnimation,
 } from "./slide-fade-in";
@@ -22,6 +24,9 @@ export function AnimationPane({
   onSelect: (elementId: string) => void;
 }) {
   const rows = animationRows(slide);
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const preview = rows.find((row) => row.id === previewId);
+  const motion = preview ? animationPreview(preview) : null;
   return (
     <aside className="slide-side-panel" aria-label="Animation pane">
       <header>
@@ -32,7 +37,7 @@ export function AnimationPane({
       </header>
       <div className="slide-side-scroll">
         <p className="slide-side-note">
-          Click order for this slide. Objects that share a number appear together.
+          Click order for this slide. Objects that share a number appear together. An object marked after starts when the previous entrance finishes.
         </p>
         {rows.length === 0 ? (
           <p className="slide-side-note">No animations yet. Select an object, then Insert › Animation.</p>
@@ -41,9 +46,16 @@ export function AnimationPane({
             {rows.map((row, index) => (
               <li key={row.id}>
                 <button type="button" onClick={() => onSelect(row.id)}>
-                  {index + 1}. {row.label}
+                  {row.click}. {row.label}
                 </button>
-                <span>{animationLabel(row.kind)}</span>
+                <span>
+                  {animationLabel(row.kind)}
+                  {row.trigger === "after" ? " after previous" : row.trigger === "with" ? " with previous" : ""}
+                  {` · ${row.ms} ms`}
+                </span>
+                <button type="button" aria-label={`Preview ${row.label}`} onClick={() => setPreviewId(row.id)}>
+                  Preview
+                </button>
                 <button
                   type="button"
                   aria-label={`Move ${row.label} earlier`}
@@ -70,6 +82,15 @@ export function AnimationPane({
             ))}
           </ol>
         )}
+        {motion && preview ? (
+          <p className="slide-side-note">
+            <span
+              data-preview={preview.id}
+              className={motion.className}
+              style={{ animationDuration: `${motion.durationMs}ms` }}
+            />
+          </p>
+        ) : null}
         <p className="slide-side-note">
           {SLIDE_ANIMATION_CHOICES.map((choice) => choice.label).join(", ")}
         </p>

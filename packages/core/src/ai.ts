@@ -54,6 +54,8 @@ export interface AiBridge {
     onEvent: (event: AiGenerateEvent) => void,
   ): () => void;
   onStatus(callback: (status: AiStatus) => void): () => void;
+  /** Delete one downloaded model file. The sentence does not name the file. */
+  removeDownloaded?(fileName: string): Promise<string>;
 }
 
 export const GEMMA_STOP = ["<turn|>", "<|tool_response>", "<eos>"];

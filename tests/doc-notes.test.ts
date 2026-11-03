@@ -12,7 +12,7 @@ import {
 import JSZip from "jszip";
 import { createFile, type JsonNode } from "../packages/core/src";
 import { exportDocx } from "../packages/core/src/docx-export";
-import { notesImportSummary } from "../packages/core/src/doc-notes";
+import { notesImportSummary, toRoman } from "../packages/core/src/doc-notes";
 import { documentText } from "../packages/core/src/word";
 import { importOffice } from "../packages/core/src/office";
 
@@ -40,6 +40,15 @@ function walk(node: JsonNode, out: JsonNode[] = []): JsonNode[] {
 }
 
 describe("table of contents, footnotes and endnotes", () => {
+  it("writes an endnote number in roman without a runaway label", () => {
+    expect(toRoman(1)).toBe("i");
+    expect(toRoman(4)).toBe("iv");
+    expect(toRoman(4000)).toBe("4000");
+    expect(toRoman(Number.POSITIVE_INFINITY)).toBe("");
+    expect(toRoman(Number.NaN)).toBe("");
+    expect(toRoman(100_001)).toBe("");
+  });
+
   it("keeps digits immediately after note references as literal text", async () => {
     const file = createFile("doc", "Adjacent digits");
     if (file.kind !== "doc") throw new Error("Expected a document");

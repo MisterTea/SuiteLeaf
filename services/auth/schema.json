@@ -216,6 +216,10 @@
         {
           "name": "activeOrganizationId",
           "type": "text"
+        },
+        {
+          "name": "reauthAt",
+          "type": "text"
         }
       ],
       "unique": ["token"],

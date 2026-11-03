@@ -3,11 +3,13 @@ import { useLocation } from "react-router-dom";
 import { ArrowUp, Check, CircleAlert, FileUp, Loader2, RotateCcw, ShieldQuestion, Sparkles, Square, Undo2, X } from "lucide-react";
 import { agentSession, type TranscriptItem } from "./agent";
 import { AssistantSettings, assistantLabel, assistantWhere } from "./assistant-settings";
+import { onAiPreferencesChanged, readAiPreferences, writeAiPreferences } from "./preferences";
 import { setAiRuntime } from "./backend";
 import { useMode } from "../mode";
 import { cursorStore } from "./cursor";
 import { cancelFileRequest, fileRequestStore } from "./file-request";
 import { approvalStore, cancelApproval } from "./guard";
+import { HeldEditsPrompt } from "./held-edits";
 import { agentIsActing, documentContextLabel, onHostsChanged } from "./host";
 import { clearTodos, todoStore } from "./todo";
 import { PARSE_ERROR } from "./model-stream";
@@ -52,8 +54,9 @@ const useSession = () => {
   return agentSession;
 };
 
-/** Toolbar button that opens the AI panel. */
+/** Toolbar button that opens the AI panel. The first click turns the assistant on. */
 export function AiButton() {
+  const prefs = useSyncExternalStore(onAiPreferencesChanged, readAiPreferences);
   const isOpen = usePanelOpen();
   return (
     <button
@@ -62,7 +65,10 @@ export function AiButton() {
       aria-label="AI assistant"
       aria-pressed={isOpen}
       title={`Ask ${assistantName()}, the on-device assistant`}
-      onClick={() => panel.set(!isOpen)}
+      onClick={() => {
+        if (!prefs.enabled) writeAiPreferences({ enabled: true });
+        panel.set(prefs.enabled ? !isOpen : true);
+      }}
     >
       <Sparkles size={16} />
       <span>AI</span>
@@ -157,6 +163,12 @@ function Changes({ item }: { item: Extract<TranscriptItem, { kind: "changes" }> 
         {item.changes.map((c, i) => (
           <li key={i}>
             {CHANGE_WORDS[c.kind]} “{c.title}”{c.drive ? " (SuiteDrive)" : ""}
+            {c.preview?.removed.map((line, index) => (
+              <div key={`r${index}`}>Remove “{line}”</div>
+            ))}
+            {c.preview?.added.map((line, index) => (
+              <div key={`a${index}`}>Add “{line}”</div>
+            ))}
           </li>
         ))}
       </ul>
@@ -346,6 +358,7 @@ export function AgentSidebar() {
       </div>
       <Checklist />
       <ApprovalPrompt />
+      <HeldEditsPrompt />
       <FilePrompt />
       <form
         className="agent-composer"
@@ -412,6 +425,7 @@ export function AgentCursor() {
 /** Mounted once at the app root: the panel (when open) and the pointer. */
 export function AgentLayer() {
   const { mode } = useMode();
+  const prefs = useSyncExternalStore(onAiPreferencesChanged, readAiPreferences);
   // The mode is known before this tree mounts, and switching modes reloads the page.
   setAiRuntime({ serverUrl: mode.kind === "cluster" ? mode.serverUrl : undefined });
   const isOpen = usePanelOpen();
@@ -429,7 +443,11 @@ export function AgentLayer() {
     if (agentIsActing()) return;
     dismissAgent();
   }, [fileKey]);
-  useEffect(() => void agentSession.resume(), []);
+  useEffect(() => {
+    if (!prefs.enabled) return;
+    void agentSession.resume();
+  }, [prefs.enabled]);
+  if (!prefs.enabled) return null;
   return (
     <>
       {isOpen ? <AgentSidebar /> : null}

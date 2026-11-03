@@ -79,6 +79,8 @@ export function SlideDesignPanel({
   onApplyAll,
   onPlay,
   status,
+  advanceSeconds,
+  onAdvance,
 }: {
   mode: "theme" | "transition";
   onClose: () => void;
@@ -101,6 +103,8 @@ export function SlideDesignPanel({
   onApplyAll: () => void;
   onPlay: () => void;
   status: string;
+  advanceSeconds?: number;
+  onAdvance?: (seconds: number | null) => void;
 }) {
   return (
     <aside className="slide-side-panel" aria-label={mode === "theme" ? "Theme" : "Transition"}>
@@ -286,6 +290,25 @@ export function SlideDesignPanel({
                 onChange={(e) => onDuration(Number(e.target.value))}
               />
             </label>
+            {onAdvance ? (
+              <label className="theme-field">
+                Advance after seconds
+                <input
+                  aria-label="Advance after seconds"
+                  inputMode="numeric"
+                  value={advanceSeconds && advanceSeconds > 0 ? String(advanceSeconds) : ""}
+                  onChange={(event) => {
+                    const text = event.target.value.trim();
+                    if (!text) {
+                      onAdvance(null);
+                      return;
+                    }
+                    const seconds = Number(text);
+                    if (Number.isInteger(seconds) && seconds >= 1 && seconds <= 3600) onAdvance(seconds);
+                  }}
+                />
+              </label>
+            ) : null}
             <div className="transition-actions">
               <button type="button" className="primary" onClick={onApplyAll}>
                 Apply to all slides

@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { AI_MODELS } from "@suiteleaf/core/ai";
 import { useMode } from "../mode";
 import { completionsUrl } from "./openai-completions";
@@ -30,6 +30,60 @@ export function assistantLabel(): string {
   return name in AI_MODELS ? AI_MODELS[name as keyof typeof AI_MODELS].short : name;
 }
 
+const REMOVAL = new Set([
+  "That model was removed.",
+  "That model is not on this computer.",
+  "That file is not a downloaded model.",
+  "That model was not removed.",
+]);
+
+/** Remove the selected built-in model file. The status does not name the file. */
+export function RemoveDownloadedModel({
+  fileName,
+  onRemove,
+}: {
+  fileName: string;
+  onRemove: (fileName: string) => Promise<string>;
+}) {
+  const [note, setNote] = useState("");
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          if (!fileName) {
+            setNote("That file is not a downloaded model.");
+            return;
+          }
+          void onRemove(fileName)
+            .then((sentence) => {
+              setNote(REMOVAL.has(sentence) ? sentence : "That model was not removed.");
+            })
+            .catch(() => setNote("That model was not removed."));
+        }}
+      >
+        Remove downloaded model
+      </button>
+      {note ? <p role="status">{note}</p> : null}
+    </>
+  );
+}
+
+/** Turns the assistant on or off without opening a prompt. */
+export function AssistantOptIn() {
+  const prefs = useAiPreferences();
+  return (
+    <label className="assistant-opt-in">
+      <input
+        type="checkbox"
+        checked={prefs.enabled}
+        onChange={(event) => writeAiPreferences({ enabled: event.target.checked })}
+      />
+      Assistant
+    </label>
+  );
+}
+
 /** Serverless mode keeps the in-page model and does not offer this choice. */
 export function AssistantSettings() {
   const { demo, mode } = useMode();
@@ -46,6 +100,15 @@ export function AssistantSettings() {
   return (
     <details className="agent-setup">
       <summary>Assistant settings</summary>
+      <label className="agent-review">
+        <input
+          type="checkbox"
+          aria-label="Hold edits until Accept"
+          checked={prefs.reviewEdits}
+          onChange={(event) => writeAiPreferences({ reviewEdits: event.target.checked })}
+        />
+        Hold edits until Accept
+      </label>
       <fieldset>
         <legend>Where the assistant runs</legend>
         <label>
@@ -66,6 +129,17 @@ export function AssistantSettings() {
           />
           OpenAI-compatible endpoint
         </label>
+        {prefs.place === "remote" ? (
+          <label>
+            <input
+              type="checkbox"
+              aria-label="Send the open document"
+              checked={prefs.sendDocument}
+              onChange={(event) => writeAiPreferences({ sendDocument: event.target.checked })}
+            />
+            Send the open document to this endpoint
+          </label>
+        ) : null}
       </fieldset>
       <label>
         Model
@@ -111,6 +185,12 @@ export function AssistantSettings() {
         </>
       ) : null}
       <p>{hint}</p>
+      {window.suiteleaf?.ai?.removeDownloaded ? (
+        <RemoveDownloadedModel
+          fileName={prefs.model in AI_MODELS ? AI_MODELS[prefs.model as keyof typeof AI_MODELS].gguf.file : ""}
+          onRemove={(fileName) => window.suiteleaf!.ai!.removeDownloaded!(fileName)}
+        />
+      ) : null}
     </details>
   );
 }

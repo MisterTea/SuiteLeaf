@@ -1,3 +1,4 @@
+import { importKeepingSaved } from "./sheet-benchmark";
 import { importBinaryDoc } from "./doc-binary";
 import { importForeign, foreignKind } from "./foreign-import";
 import { parseFile, type SuiteFile } from "./index";
@@ -60,7 +61,7 @@ export async function openOfficeFile(
   input: ArrayBuffer | Uint8Array,
   format: string,
   name: string,
-  options: { password?: string } = {},
+  options: { password?: string; saved?: SuiteFile; shouldStop?: () => boolean } = {},
 ): Promise<SuiteFile> {
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   const extension = format.toLowerCase();
@@ -68,8 +69,19 @@ export async function openOfficeFile(
     const officeFormat = (
       WORD_XML.has(extension) ? "docx" : extension
     ) as OfficeFormat;
-    const imported = await importOffice(bytes, officeFormat, name, options);
-    return titled(imported.file, extension, name);
+    const load = async () => {
+      const imported = await importOffice(bytes, officeFormat, name, options);
+      return titled(imported.file, extension, name);
+    };
+    if (SHEET_XML.has(extension) && options.saved) {
+      const kept = await importKeepingSaved({
+        saved: options.saved,
+        shouldStop: options.shouldStop,
+        load,
+      });
+      return kept.workbook;
+    }
+    return load();
   }
   if (POWERPOINT.has(extension))
     return titled(

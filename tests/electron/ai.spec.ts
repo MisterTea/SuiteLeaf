@@ -29,6 +29,8 @@ test("the assistant writes a document with Gemma in the main process", async () 
   });
   try {
     const page = await app.firstWindow();
+    await page.evaluate(() => localStorage.setItem("suiteleaf.ai.enabled", "1"));
+    await page.reload();
     await page.getByRole("button", { name: "AI assistant" }).click();
     const box = page.getByRole("textbox", { name: "Ask the assistant" });
     await box.fill("Create a new document called Packing list with the heading 'Packing list' and bullets for tent, stove and water.");

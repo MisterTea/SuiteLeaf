@@ -104,6 +104,32 @@ it("draws a placeable metafile chart as SVG", () => {
   expect(paintableImage(bytes, "image/wmf")).toMatch(/^data:image\/svg\+xml;base64,/);
 });
 
+it("fills a polypolygon and keeps the winding rule", () => {
+  const bytes = metafile([
+    windowExt,
+    record(0x0106, [2, 0]),
+    record(0x02fc, [0, 0, 255, 0, 0, 0, 0, 0]),
+    record(0x012d, [0, 0]),
+    record(0x0538, [
+      2, 0,
+      4, 0,
+      3, 0,
+      ...i16(0), ...i16(0),
+      ...i16(10), ...i16(0),
+      ...i16(10), ...i16(10),
+      ...i16(0), ...i16(10),
+      ...i16(2), ...i16(2),
+      ...i16(4), ...i16(2),
+      ...i16(3), ...i16(6),
+    ]),
+  ]);
+  const svg = svgOf(bytes);
+  expect(svg).toContain('fill="#ff0000"');
+  expect(svg).toContain('fill-rule="nonzero"');
+  expect(svg).toContain("M0 0L10 0L10 10L0 10Z");
+  expect(svg).toContain("M2 2L4 2L3 6Z");
+});
+
 it("keeps an undrawable metafile as image/wmf", () => {
   const bytes = metafile([]);
   expect(vectorWmf(bytes)).toBeUndefined();
@@ -211,4 +237,115 @@ it("decodes a Hangul face name and fills a null-brush shape without a pen", () =
   expect(svg).toContain('fill="#008000"');
   expect(svg).not.toContain('fill="#008000" stroke=');
   void bytes;
+});
+
+it("paints a DIB stretch blit as the metafile picture", () => {
+  const width = 2;
+  const height = 2;
+  const header = [
+    40, 0, 0, 0,
+    width, 0, 0, 0,
+    height, 0, 0, 0,
+    1, 0,
+    24, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
+  ];
+  // Bottom-up rows: first stored row is the bottom (blue), then red on top.
+  const pixels = [
+    255, 0, 0, 255, 0, 0, 0, 0,
+    0, 0, 255, 0, 0, 255, 0, 0,
+  ];
+  const blit = record(0x0b41, [
+    0x20, 0x00, 0xcc, 0x00,
+    ...i16(height),
+    ...i16(width),
+    ...i16(0),
+    ...i16(0),
+    ...i16(10),
+    ...i16(20),
+    ...i16(0),
+    ...i16(0),
+    ...header,
+    ...pixels,
+  ]);
+  const svg = svgOf(metafile([windowExt, blit]));
+  expect(svg).toContain("<image ");
+  expect(svg).toContain('width="20"');
+  expect(svg).toContain('height="10"');
+  const href = /href="(data:image\/png;base64,[^"]+)"/.exec(svg)?.[1];
+  expect(href).toBeTruthy();
+  const png = Buffer.from(href!.split(",")[1], "base64");
+  expect(png.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+  expect(png.readUInt32BE(16)).toBe(2);
+  expect(png.readUInt32BE(20)).toBe(2);
+
+  const cropped = record(0x0b41, [
+    0x20, 0x00, 0xcc, 0x00,
+    ...i16(1),
+    ...i16(1),
+    ...i16(1),
+    ...i16(1),
+    ...i16(10),
+    ...i16(20),
+    ...i16(0),
+    ...i16(0),
+    ...header,
+    ...pixels,
+  ]);
+  const crop = svgOf(metafile([windowExt, cropped]));
+  const cropHref = /href="(data:image\/png;base64,[^"]+)"/.exec(crop)?.[1];
+  const cropPng = Buffer.from(cropHref!.split(",")[1], "base64");
+  expect(cropPng.readUInt32BE(16)).toBe(1);
+  expect(cropPng.readUInt32BE(20)).toBe(1);
+});
+
+it("paints a StretchDIBits metafile as the picture", () => {
+  const width = 2;
+  const height = 2;
+  const header = [
+    40, 0, 0, 0,
+    width, 0, 0, 0,
+    height, 0, 0, 0,
+    1, 0,
+    24, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
+  ];
+  const pixels = [
+    255, 0, 0, 255, 0, 0, 0, 0,
+    0, 0, 255, 0, 0, 255, 0, 0,
+  ];
+  const blit = record(0x0f43, [
+    0x20, 0x00, 0xcc, 0x00,
+    0, 0,
+    ...i16(height),
+    ...i16(width),
+    ...i16(0),
+    ...i16(0),
+    ...i16(8),
+    ...i16(12),
+    ...i16(1),
+    ...i16(2),
+    ...header,
+    ...pixels,
+  ]);
+  const svg = svgOf(metafile([windowExt, blit]));
+  expect(svg).toContain("<image ");
+  expect(svg).toContain('x="2"');
+  expect(svg).toContain('y="1"');
+  expect(svg).toContain('width="12"');
+  expect(svg).toContain('height="8"');
+  const href = /href="(data:image\/png;base64,[^"]+)"/.exec(svg)?.[1];
+  const png = Buffer.from(href!.split(",")[1], "base64");
+  expect(png.readUInt32BE(16)).toBe(2);
+  expect(png.readUInt32BE(20)).toBe(2);
 });

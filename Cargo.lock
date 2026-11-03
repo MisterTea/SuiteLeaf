@@ -782,6 +782,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78c8292055d1c1df0cce5d180393dc8cce0abec0a7102adb6c7b1eef6016d60a"
 dependencies = [
  "generic-array",
+ "rand_core 0.6.4",
  "typenum",
 ]
 
@@ -3987,9 +3988,11 @@ dependencies = [
  "anyhow",
  "async-trait",
  "blake3",
+ "chacha20poly1305",
  "ciborium",
  "hex",
  "libp2p-identity",
+ "rand 0.8.8",
  "serde",
  "serde_bytes",
  "serde_json",

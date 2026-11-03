@@ -182,6 +182,7 @@ test("81-put-a-picture-behind-the-text-ai", async ({ page }) => {
   );
   expect(originalSrc).toMatch(/^data:image\/png;base64,/);
 
+  await page.addInitScript(() => localStorage.setItem("suiteleaf.ai.enabled", "1"));
   await page.goto("/");
   await page.getByRole("button", { name: "New document" }).waitFor();
   await page.locator("input[type=file]").setInputFiles({

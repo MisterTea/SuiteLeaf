@@ -2,12 +2,16 @@ import { Node, type Editor } from "@tiptap/core";
 import type { Node as ProseNode } from "@tiptap/pm/model";
 import { storage } from "../storage";
 import {
-  applyChartUpdate,
+  finishChartUpdate,
+  stageChartUpdate,
   barWidthPercent,
   chartCaption,
+  chartForViewer,
+  chartProvenance,
   linkedChartAttrs,
   linkedChartDom,
   missingSpreadsheetText,
+  withheldChartText,
   sheetFromLibrary,
   updateChartName,
   type LinkedChartAttrs,
@@ -34,6 +38,7 @@ function paintChart(
   dom.dataset.labels = JSON.stringify(attrs.labels);
   dom.dataset.values = JSON.stringify(attrs.values);
   dom.dataset.missing = attrs.missing ? "true" : "false";
+  dom.dataset.snapshotAt = attrs.snapshotAt;
   dom.setAttribute("role", "group");
   dom.setAttribute(
     "aria-label",
@@ -66,6 +71,9 @@ function paintChart(
   const source = document.createElement("p");
   source.className = "linked-chart-source";
   source.textContent = chartCaption(attrs.sourceTitle);
+  const provenance = document.createElement("p");
+  provenance.className = "linked-chart-provenance";
+  provenance.textContent = chartProvenance(attrs.sourceTitle, attrs.snapshotAt);
 
   const button = document.createElement("button");
   button.type = "button";
@@ -85,7 +93,14 @@ function paintChart(
     onUpdate(event.currentTarget);
   });
 
-  dom.replaceChildren(rows, source);
+  if (attrs.withheld) {
+    const note = document.createElement("p");
+    note.className = "linked-chart-withheld";
+    note.textContent = withheldChartText;
+    dom.replaceChildren(source, provenance, note);
+    return;
+  }
+  dom.replaceChildren(rows, source, provenance);
   if (attrs.missing) {
     const missing = document.createElement("p");
     missing.className = "linked-chart-missing";
@@ -138,6 +153,8 @@ export const LinkedChart = Node.create({
       labels: { default: null, rendered: false },
       values: { default: null, rendered: false },
       missing: { default: false },
+      viewerAllowed: { default: true },
+      snapshotAt: { default: "" },
     };
   },
 
@@ -162,6 +179,8 @@ export const LinkedChart = Node.create({
             labels,
             values,
             missing: element.dataset.missing === "true",
+            viewerAllowed: element.dataset.withheld !== "true",
+            snapshotAt: element.dataset.snapshotAt ?? "",
           };
         },
       },
@@ -169,7 +188,7 @@ export const LinkedChart = Node.create({
   },
 
   renderHTML({ node }) {
-    return linkedChartDom(node.attrs);
+    return linkedChartDom(node.attrs, node.attrs.viewerAllowed !== false);
   },
 
   addNodeView() {
@@ -185,6 +204,7 @@ export const LinkedChart = Node.create({
         if (typeof pos !== "number") return;
         const before = view.state.doc.nodeAt(pos);
         if (!before || before.type.name !== "linkedChart") return;
+        if (before.attrs.viewerAllowed === false) return;
         const attrs = linkedChartAttrs(before.attrs);
         button.disabled = true;
         void (async () => {
@@ -207,26 +227,60 @@ export const LinkedChart = Node.create({
           const nodeNow = view.state.doc.nodeAt(posNow);
           if (!nodeNow || nodeNow.type.name !== "linkedChart") return;
           const latest = linkedChartAttrs(nodeNow.attrs);
-          const result = applyChartUpdate(latest, sheetFromLibrary(record));
-          if (JSON.stringify(result.attrs) === JSON.stringify(latest)) {
-            if (button.isConnected) button.disabled = !view.editable;
-            if (result.error && button.isConnected) {
+          const staged = stageChartUpdate(
+            latest,
+            sheetFromLibrary(record),
+            new Date().toISOString(),
+            nodeNow.attrs.viewerAllowed !== false,
+          );
+          if (button.isConnected) button.disabled = !view.editable;
+          if (!staged.proposal) {
+            if (staged.notice && button.isConnected) {
               const notice = document.createElement("p");
               notice.className = "linked-chart-notice";
               notice.setAttribute("role", "alert");
-              notice.textContent = result.error;
+              notice.textContent = staged.notice;
               button.before(notice);
             }
             return;
           }
-          view.dispatch(
-            view.state.tr.setNodeMarkup(posNow, undefined, result.attrs),
-          );
+          if (!button.isConnected) return;
+          button.parentElement?.querySelector(".linked-chart-prompt")?.remove();
+          const prompt = document.createElement("p");
+          prompt.className = "linked-chart-notice linked-chart-prompt";
+          prompt.setAttribute("role", "status");
+          prompt.textContent = staged.notice;
+          const accept = document.createElement("button");
+          accept.type = "button";
+          accept.textContent = "Accept update";
+          const reject = document.createElement("button");
+          reject.type = "button";
+          reject.textContent = "Reject update";
+          const clear = () => prompt.remove();
+          accept.addEventListener("click", () => {
+            const posAccept = getPos();
+            if (typeof posAccept !== "number") return;
+            view.dispatch(
+              view.state.tr.setNodeMarkup(posAccept, undefined, finishChartUpdate(staged, true)),
+            );
+            clear();
+          });
+          reject.addEventListener("click", () => {
+            finishChartUpdate(staged, false);
+            clear();
+          });
+          prompt.append(accept, reject);
+          button.before(prompt);
         })();
       };
 
       const render = () => {
-        paintChart(dom, linkedChartAttrs(current.attrs), view.editable, refresh);
+        paintChart(
+          dom,
+          chartForViewer(current.attrs, current.attrs.viewerAllowed !== false),
+          view.editable,
+          refresh,
+        );
       };
       render();
 

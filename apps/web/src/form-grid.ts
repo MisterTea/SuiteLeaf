@@ -13,7 +13,10 @@ function parsedGrid(value: string): Record<string, string> | null {
     const selected: Record<string, string> = {};
     for (const [row, column] of Object.entries(parsed as Record<string, unknown>)) {
       if (typeof column !== "string") return null;
-      selected[row] = column;
+      const rowName = row.trim();
+      const columnName = column.trim();
+      if (!rowName || !columnName) continue;
+      selected[rowName] = columnName;
     }
     return selected;
   } catch {

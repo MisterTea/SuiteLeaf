@@ -2,6 +2,7 @@ import { AI_MODELS, type AiBridge, type AiGenerateEvent, type AiGenerateRequest,
 import { isDemo } from "../mode";
 import { accessToken } from "../node-client";
 import { openAiCompletionModel } from "./openai-completions";
+import { assistantBlock, orgAssistantLimit } from "./policy";
 import { knownModel, onAiPreferencesChanged, readAiPreferences, readModelName } from "./preferences";
 import { wllamaModel } from "./wllama-model";
 
@@ -288,17 +289,39 @@ function browserModel() {
   return selectedModel() === "gemma-4-e4b" ? workerModel() : wllamaModel();
 }
 
+function orgPolicyRaw(): unknown {
+  try {
+    const raw = localStorage.getItem("suiteleaf.ai.orgPolicy");
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
 function createModel(): LocalModel {
-  if (isDemo) return browserModel();
   const prefs = readAiPreferences();
+  const orgRaw = orgPolicyRaw();
+  const blocked = assistantBlock(prefs, isDemo, orgRaw, prefs.endpoint);
+  if (blocked) return unavailable(blocked);
+  if (isDemo) return browserModel();
+  const maxTokens = orgAssistantLimit(orgRaw) ?? undefined;
   if (prefs.place === "remote")
-    return openAiCompletionModel({ endpoint: prefs.endpoint, model: prefs.model, apiKey: prefs.apiKey || undefined });
+    return openAiCompletionModel({
+      endpoint: prefs.endpoint,
+      model: prefs.model,
+      apiKey: prefs.apiKey || undefined,
+      localOnly: prefs.localOnly,
+      maxTokens,
+      sendDocument: prefs.sendDocument === true,
+    });
   if (serverUrl)
     return openAiCompletionModel({
       endpoint: `${serverUrl}/api/ai/v1`,
       model: prefs.model,
       authorization: () => accessToken().catch(() => undefined),
       prepare: true,
+      localOnly: prefs.localOnly,
+      maxTokens,
     });
   if (window.suiteleaf?.ai) return electronModel(window.suiteleaf.ai);
   return unavailable("Connect to a SuiteLeaf server, or choose an OpenAI-compatible endpoint.");

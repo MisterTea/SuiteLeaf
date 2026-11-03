@@ -94,7 +94,7 @@ function field(
 }
 
 /**
- * Uncompressed 8-bit RGB or RGBA TIFF as a PNG data URL.
+ * Uncompressed or packed 8-bit RGB, RGBA, or grayscale TIFF as a PNG data URL.
  * Chromium does not paint `image/tiff`, so the picture would otherwise be blank.
  */
 export function tiffToPngDataUrl(bytes: Uint8Array): string | undefined {
@@ -134,6 +134,14 @@ export function tiffToPngDataUrl(bytes: Uint8Array): string | undefined {
   const orientation = one(274) ?? 1;
   const predictor = one(317) ?? 1;
   const cmyk = photometric === 5 && samples === 4;
+  const palette = many(320);
+  const indexed =
+    photometric === 3 &&
+    samples === 1 &&
+    !!palette &&
+    palette.length >= 768;
+  const grayscale =
+    (photometric === 0 || photometric === 1) && samples === 1 && !indexed;
   const associatedAlpha = !cmyk && samples === 4 && one(338) === 1;
   const bits = many(258);
   if (
@@ -141,16 +149,16 @@ export function tiffToPngDataUrl(bytes: Uint8Array): string | undefined {
     !height ||
     width > 16000000 ||
     height > 16000000 ||
-    width * height > 16000000
+    width * height > 32_000_000
   )
     return;
   if (
-    (compression !== 1 && compression !== 5) ||
-    (photometric !== 2 && !cmyk) ||
+    (compression !== 1 && compression !== 5 && compression !== 32773) ||
+    (photometric !== 2 && !cmyk && !indexed && !grayscale) ||
     planar !== 1 ||
     orientation !== 1 ||
     (predictor !== 1 && predictor !== 2) ||
-    (samples !== 3 && samples !== 4) ||
+    (samples !== 3 && samples !== 4 && !indexed && !grayscale) ||
     !bits ||
     bits.length !== samples ||
     bits.some((value) => value !== 8)
@@ -172,9 +180,11 @@ export function tiffToPngDataUrl(bytes: Uint8Array): string | undefined {
     const decoded =
       compression === 5
         ? lzwDecode(bytes.subarray(offset, offset + count), need)
-        : count >= need
-          ? bytes.subarray(offset, offset + need)
-          : undefined;
+        : compression === 32773
+          ? packBitsDecode(bytes.subarray(offset, offset + count), need)
+          : count >= need
+            ? bytes.subarray(offset, offset + need)
+            : undefined;
     const packed = predictor === 2 && decoded ? decoded.slice() : decoded;
     if (!packed || packed.length < need) return;
     if (predictor === 2) {
@@ -200,6 +210,24 @@ export function tiffToPngDataUrl(bytes: Uint8Array): string | undefined {
           pixels[to + 3] = 255;
           continue;
         }
+        if (indexed && palette) {
+          const index = packed[from];
+          const tone = (channel: number) =>
+            (palette[channel * 256 + index] >> 8) & 255;
+          pixels[to] = tone(0);
+          pixels[to + 1] = tone(1);
+          pixels[to + 2] = tone(2);
+          pixels[to + 3] = 255;
+          continue;
+        }
+        if (grayscale) {
+          const tone = photometric === 0 ? 255 - packed[from] : packed[from];
+          pixels[to] = tone;
+          pixels[to + 1] = tone;
+          pixels[to + 2] = tone;
+          pixels[to + 3] = 255;
+          continue;
+        }
         let red = packed[from];
         let green = packed[from + 1];
         let blue = packed[from + 2];
@@ -219,6 +247,32 @@ export function tiffToPngDataUrl(bytes: Uint8Array): string | undefined {
   }
   if (row !== height) return;
   return pngDataUrl(width, height, pixels);
+}
+
+/** TIFF PackBits. A header below 128 copies the next bytes; above 128 repeats one. */
+function packBitsDecode(source: Uint8Array, expected: number): Uint8Array | undefined {
+  const out = new Uint8Array(expected);
+  let outLen = 0;
+  let index = 0;
+  while (index < source.length && outLen < expected) {
+    const header = source[index];
+    index += 1;
+    if (header === 128) continue;
+    if (header < 128) {
+      const length = header + 1;
+      if (index + length > source.length || outLen + length > expected) return;
+      out.set(source.subarray(index, index + length), outLen);
+      index += length;
+      outLen += length;
+    } else {
+      const length = 257 - header;
+      if (index >= source.length || outLen + length > expected) return;
+      out.fill(source[index], outLen, outLen + length);
+      index += 1;
+      outLen += length;
+    }
+  }
+  return outLen === expected ? out : undefined;
 }
 
 /** TIFF LZW (MSB first). The table grows to 12-bit codes and clears on 256. */
@@ -406,7 +460,7 @@ function dataUrlBytes(src: string): { mime: string; bytes: Uint8Array } | undefi
   return { mime: match[1], bytes };
 }
 
-/** 8-bit RGB or RGBA PNG pixels, unfiltered. */
+/** 8-bit RGB, RGBA, or indexed PNG pixels, unfiltered. */
 function decodePng(bytes: Uint8Array):
   | { width: number; height: number; pixels: Uint8Array }
   | undefined {
@@ -418,6 +472,8 @@ function decodePng(bytes: Uint8Array):
   let depth = 0;
   let color = 0;
   let interlace = 0;
+  let palette: Uint8Array | undefined;
+  let transparency: Uint8Array | undefined;
   const idat: Uint8Array[] = [];
   while (offset + 8 <= bytes.length) {
     const length = view.getUint32(offset);
@@ -434,13 +490,24 @@ function decodePng(bytes: Uint8Array):
       depth = bytes[offset + 16];
       color = bytes[offset + 17];
       interlace = bytes[offset + 20];
-    } else if (type === "IDAT") idat.push(data);
+    } else if (type === "PLTE") palette = new Uint8Array(data);
+    else if (type === "tRNS") transparency = new Uint8Array(data);
+    else if (type === "IDAT") idat.push(data);
     else if (type === "IEND") break;
     offset += 12 + length;
   }
-  if (depth !== 8 || (color !== 2 && color !== 6) || !(width > 0 && height > 0))
+  // Indexed pictures use a palette. Colour keys such as clrChange address the
+  // expanded sRGB entry, so those rows have to be expanded before the key.
+  const indexed = color === 3;
+  const direct = color === 2 || color === 6;
+  const indexedDepth =
+    indexed && (depth === 1 || depth === 2 || depth === 4 || depth === 8);
+  if ((!(direct && depth === 8) && !indexedDepth) || !(width > 0 && height > 0))
     return;
-  const bpp = color === 6 ? 4 : 3;
+  if (indexed && (!palette || palette.length < 3)) return;
+  const bpp = indexed ? 1 : color === 6 ? 4 : 3;
+  const rowStride =
+    indexed && depth < 8 ? Math.ceil((width * depth) / 8) : width * bpp;
   const packed = new Uint8Array(idat.reduce((sum, part) => sum + part.length, 0));
   let at = 0;
   for (const part of idat) {
@@ -494,8 +561,8 @@ function decodePng(bytes: Uint8Array):
   const srcAt = { n: 0 };
   let raw: Uint8Array | undefined;
   if (interlace === 0) {
-    raw = unfilter(height, width * bpp, srcAt);
-  } else if (interlace === 1) {
+    raw = unfilter(height, rowStride, srcAt);
+  } else if (interlace === 1 && depth === 8) {
     raw = new Uint8Array(height * width * bpp);
     const passes: [number, number, number, number][] = [
       [0, 0, 8, 8],
@@ -526,12 +593,34 @@ function decodePng(bytes: Uint8Array):
     }
   }
   if (!raw) return;
+  const bitmap = raw;
   const pixels = new Uint8Array(width * height * 4);
-  for (let i = 0, p = 0; i < raw.length; i += bpp, p += 4) {
-    pixels[p] = raw[i];
-    pixels[p + 1] = raw[i + 1];
-    pixels[p + 2] = raw[i + 2];
-    pixels[p + 3] = bpp === 4 ? raw[i + 3] : 255;
+  if (indexed && palette) {
+    const sample = (x: number, y: number) => {
+      if (depth === 8) return bitmap[y * width + x];
+      const bit = x * depth;
+      const byte = bitmap[y * rowStride + (bit >> 3)];
+      return (byte >> (8 - depth - (bit & 7))) & ((1 << depth) - 1);
+    };
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const index = sample(x, y);
+        const at = index * 3;
+        const p = (y * width + x) * 4;
+        pixels[p] = palette[at] ?? 0;
+        pixels[p + 1] = palette[at + 1] ?? 0;
+        pixels[p + 2] = palette[at + 2] ?? 0;
+        pixels[p + 3] =
+          transparency && index < transparency.length ? transparency[index] : 255;
+      }
+    }
+    return { width, height, pixels };
+  }
+  for (let i = 0, p = 0; i < bitmap.length; i += bpp, p += 4) {
+    pixels[p] = bitmap[i];
+    pixels[p + 1] = bitmap[i + 1];
+    pixels[p + 2] = bitmap[i + 2];
+    pixels[p + 3] = bpp === 4 ? bitmap[i + 3] : 255;
   }
   return { width, height, pixels };
 }
@@ -546,10 +635,24 @@ function srgbChannels(xml: string): [number, number, number] | undefined {
   ];
 }
 
+/**
+ * Exact colour key for a JPEG or other picture Chromium can paint.
+ * PNG bytes are rewritten in place. Other formats get an sRGB filter that
+ * drops that one colour, which is how PowerPoint's transparent colour works.
+ */
+function colorKeySvg(src: string, from: [number, number, number]): string {
+  const table = (channel: number) =>
+    Array.from({ length: 256 }, (_, index) => (index === channel ? "1" : "0")).join(" ");
+  const id = `k${Math.random().toString(36).slice(2, 10)}`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" preserveAspectRatio="none"><filter id="${id}" color-interpolation-filters="sRGB"><feComponentTransfer in="SourceGraphic" result="mask"><feFuncR type="discrete" tableValues="${table(from[0])}"/><feFuncG type="discrete" tableValues="${table(from[1])}"/><feFuncB type="discrete" tableValues="${table(from[2])}"/></feComponentTransfer><feColorMatrix in="mask" result="rch" values="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 1 0"/><feColorMatrix in="mask" result="gch" values="0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 1 0"/><feComposite in="rch" in2="gch" operator="arithmetic" k1="1" k2="0" k3="0" k4="0" result="rg"/><feColorMatrix in="mask" result="bch" values="0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 1 0"/><feComposite in="rg" in2="bch" operator="arithmetic" k1="1" k2="0" k3="0" k4="0" result="hit"/><feColorMatrix in="hit" result="keep" values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 -1 0 0 0 1"/><feComposite in="SourceGraphic" in2="keep" operator="in"/></filter><image href="${src}" width="100%" height="100%" preserveAspectRatio="none" filter="url(#${id})"/></svg>`;
+  const bytes = new TextEncoder().encode(svg);
+  return `data:image/svg+xml;base64,${base64(bytes)}`;
+}
+
 /** DrawingML clrChange replaces one exact sRGB colour, including a transparent key. */
 export function colorChangeDataUrl(src: string, xml: string): string | undefined {
   const block = /<a:clrChange\b[\s\S]*?<\/a:clrChange>/.exec(xml)?.[0];
-  if (!block || !src.startsWith("data:image/png")) return;
+  if (!block || !src.startsWith("data:image/")) return;
   const fromXml = /<a:clrFrom\b[\s\S]*?<\/a:clrFrom>/.exec(block)?.[0] ?? "";
   const toXml = /<a:clrTo\b[\s\S]*?<\/a:clrTo>/.exec(block)?.[0] ?? "";
   const from = srgbChannels(fromXml);
@@ -557,9 +660,11 @@ export function colorChangeDataUrl(src: string, xml: string): string | undefined
   if (!from || !to) return;
   const alphaAttr = /<a:alpha\b[^>]*\bval="(\d+)"/.exec(toXml)?.[1];
   const alpha = alphaAttr ? Math.round((Number(alphaAttr) / 100000) * 255) : 255;
+  if (!src.startsWith("data:image/png")) return alpha === 0 ? colorKeySvg(src, from) : undefined;
   const decoded = dataUrlBytes(src);
   const png = decoded ? decodePng(decoded.bytes) : undefined;
-  if (!png) return;
+  // A palette or other PNG this decoder cannot expand still loses that one colour.
+  if (!png) return alpha === 0 ? colorKeySvg(src, from) : undefined;
   const [fr, fg, fb] = from;
   const [tr, tg, tb] = to;
   for (let i = 0; i < png.pixels.length; i += 4) {
@@ -632,19 +737,73 @@ export function blipLuminance(
 export function luminanceSvg(src: string, bright: number, contrast: number): string {
   const span = contrast >= 0 ? 1 / Math.max(1e-3, 1 - Math.min(0.999, contrast)) : 1 + contrast;
   const slope = span;
-  const intercept = 0.5 * (1 - span) + bright;
+  const around = 0.5 * (1 - span);
+  let outSlope = slope;
+  let intercept = around + bright;
+  // Adding a large brightness after contrast clamps every pixel to white or
+  // black, so a tiled texture disappears. Blend toward that colour instead,
+  // which keeps the grain the way the brightness slider does.
+  if (bright > 0 && intercept >= 1) {
+    const keep = 1 - Math.min(1, bright);
+    outSlope = slope * keep;
+    intercept = around * keep + Math.min(1, bright);
+  } else if (bright < 0 && intercept + slope <= 0) {
+    const keep = 1 + Math.max(-1, bright);
+    outSlope = slope * keep;
+    intercept = around * keep;
+  }
   const num = (n: number) => String(Math.round(n * 10000) / 10000);
   const id = `l${Math.random().toString(36).slice(2, 10)}`;
-  const channel = `<feFuncR type="linear" slope="${num(slope)}" intercept="${num(intercept)}"/><feFuncG type="linear" slope="${num(slope)}" intercept="${num(intercept)}"/><feFuncB type="linear" slope="${num(slope)}" intercept="${num(intercept)}"/>`;
+  const channel = `<feFuncR type="linear" slope="${num(outSlope)}" intercept="${num(intercept)}"/><feFuncG type="linear" slope="${num(outSlope)}" intercept="${num(intercept)}"/><feFuncB type="linear" slope="${num(outSlope)}" intercept="${num(intercept)}"/>`;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" preserveAspectRatio="none"><filter id="${id}" color-interpolation-filters="sRGB"><feComponentTransfer>${channel}</feComponentTransfer></filter><image href="${src}" width="100%" height="100%" preserveAspectRatio="none" filter="url(#${id})"/></svg>`;
   const bytes = new TextEncoder().encode(svg);
   return `data:image/svg+xml;base64,${base64(bytes)}`;
 }
 
+/**
+ * DrawingML bi-level threshold, as a 0–1 luminance.
+ * Pixels at or above it become white; pixels below it become black.
+ * A missing thresh is Office's 50% default.
+ */
+export function blipBiLevel(xml: string): number | undefined {
+  const tag = /<a:biLevel\b([^>]*)\/?>/.exec(xml);
+  if (!tag) return;
+  const raw = /thresh="([^"]*)"/.exec(tag[1])?.[1];
+  const thresh = (raw == null || raw === "" ? 50000 : Number(raw)) / 100000;
+  if (!Number.isFinite(thresh)) return;
+  return Math.min(1, Math.max(0, thresh));
+}
+
+/**
+ * PowerPoint's black-and-white picture effect. Luminance uses the same
+ * Rec. 709 weights as duotone, and the alpha channel stays untouched.
+ */
+export function biLevelSvg(src: string, thresh: number): string {
+  const steps = 256;
+  const values = Array.from({ length: steps }, (_, index) =>
+    index / steps >= thresh ? "1" : "0",
+  ).join(" ");
+  const id = `b${Math.random().toString(36).slice(2, 10)}`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" preserveAspectRatio="none"><filter id="${id}" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0 0 0 1 0"/><feComponentTransfer><feFuncR type="discrete" tableValues="${values}"/><feFuncG type="discrete" tableValues="${values}"/><feFuncB type="discrete" tableValues="${values}"/></feComponentTransfer></filter><image href="${src}" width="100%" height="100%" preserveAspectRatio="none" filter="url(#${id})"/></svg>`;
+  const bytes = new TextEncoder().encode(svg);
+  return `data:image/svg+xml;base64,${base64(bytes)}`;
+}
+
+/** Brightness, contrast, and black-and-white, in the order the blip stores them. */
 export function applyBlipLuminance(src: string | undefined, xml: string): string | undefined {
   if (!src) return src;
-  const lum = blipLuminance(xml);
-  return lum ? luminanceSvg(src, lum.bright, lum.contrast) : src;
+  let out = src;
+  for (const match of xml.matchAll(/<a:(?:lum|biLevel)\b[^>]*\/?>/g)) {
+    const tag = match[0];
+    if (tag.startsWith("<a:biLevel")) {
+      const thresh = blipBiLevel(tag);
+      if (thresh != null) out = biLevelSvg(out, thresh);
+      continue;
+    }
+    const lum = blipLuminance(tag);
+    if (lum) out = luminanceSvg(out, lum.bright, lum.contrast);
+  }
+  return out;
 }
 
 /** DrawingML alphaModFix, as a 0–1 opacity. Full strength is omitted. */
@@ -654,4 +813,187 @@ export function blipOpacity(xml: string): { opacity: number } | undefined {
   const opacity = Number(amt[1]) / 100000;
   if (!(opacity > 0 && opacity < 1)) return;
   return { opacity };
+}
+
+/**
+ * A quarter-turned picture whose pixels already match the upright frame
+ * (a metafile saved in display orientation) is placed in that frame.
+ * A picture whose pixels match the pre-rotation box keeps its rotation.
+ */
+export function uprightQuarterTurn<
+  T extends {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    rotation?: number;
+  },
+>(box: T, src: string): T {
+  const rotation = box.rotation;
+  if (!rotation || !(box.width > 0) || !(box.height > 0)) return box;
+  const turns = ((rotation % 360) + 360) % 360;
+  if (Math.abs(turns - 90) > 0.5 && Math.abs(turns - 270) > 0.5) return box;
+  const prefix = "data:image/svg+xml;base64,";
+  if (!src.startsWith(prefix)) return box;
+  const payload = src.slice(prefix.length, prefix.length + 180);
+  let head = "";
+  try {
+    head = atob(payload);
+  } catch {
+    return box;
+  }
+  const width = Number(/\bwidth="([\d.]+)"/.exec(head)?.[1]);
+  const height = Number(/\bheight="([\d.]+)"/.exec(head)?.[1]);
+  if (!(width > 0) || !(height > 0)) return box;
+  const aspect = width / height;
+  const local = box.width / box.height;
+  const swapped = box.height / box.width;
+  const gap = (target: number) => Math.abs(Math.log(aspect / target));
+  if (!(gap(swapped) + 0.05 < gap(local))) return box;
+  const frameW = box.height;
+  const frameH = box.width;
+  const centerX = box.x + box.width / 2;
+  const centerY = box.y + box.height / 2;
+  return {
+    ...box,
+    x: centerX - frameW / 2,
+    y: centerY - frameH / 2,
+    width: frameW,
+    height: frameH,
+    rotation: undefined,
+  };
+}
+
+/** JFIF dots per inch. DrawingML uses this when blipFill dpi is missing or 0. */
+export function imageDpi(bytes: Uint8Array): { x: number; y: number } | undefined {
+  if (bytes.length < 20 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return;
+  let at = 2;
+  while (at + 16 < bytes.length && bytes[at] === 0xff) {
+    const marker = bytes[at + 1];
+    if (marker === 0xd8 || marker === 0x01) {
+      at += 2;
+      continue;
+    }
+    const length = (bytes[at + 2] << 8) | bytes[at + 3];
+    if (length < 2) return;
+    const jfif = marker === 0xe0 && bytes[at + 4] === 0x4a && bytes[at + 7] === 0x46 && bytes[at + 11] === 1;
+    if (jfif) {
+      const x = (bytes[at + 12] << 8) | bytes[at + 13];
+      const y = (bytes[at + 14] << 8) | bytes[at + 15];
+      if (x > 0 && y > 0) return { x, y };
+    }
+    if (marker === 0xda) return;
+    at += 2 + length;
+  }
+  return;
+}
+
+/** Pixel size of a PNG, GIF, or JPEG. DrawingML tile scale is relative to this. */
+export function rasterPixels(
+  bytes: Uint8Array,
+): { width: number; height: number } | undefined {
+  if (bytes.length >= 24 && bytes[0] === 0x89 && bytes[1] === 0x50) {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const width = view.getUint32(16);
+    const height = view.getUint32(20);
+    if (width > 0 && height > 0) return { width, height };
+  }
+  if (bytes.length >= 10 && bytes[0] === 0x47 && bytes[1] === 0x49) {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const width = view.getUint16(6, true);
+    const height = view.getUint16(8, true);
+    if (width > 0 && height > 0) return { width, height };
+  }
+  if (bytes[0] !== 0xff || bytes[1] !== 0xd8) return;
+  let at = 2;
+  while (at + 8 < bytes.length) {
+    if (bytes[at] !== 0xff) return;
+    const marker = bytes[at + 1];
+    if (marker === 0xd8 || marker === 0x01) {
+      at += 2;
+      continue;
+    }
+    if (marker === 0xd9) return;
+    const length = (bytes[at + 2] << 8) | bytes[at + 3];
+    if (length < 2) return;
+    if (marker >= 0xc0 && marker <= 0xc3 && at + 8 < bytes.length) {
+      const height = (bytes[at + 5] << 8) | bytes[at + 6];
+      const width = (bytes[at + 7] << 8) | bytes[at + 8];
+      if (width > 0 && height > 0) return { width, height };
+    }
+    at += 2 + length;
+  }
+  return;
+}
+
+export type PictureTile = {
+  width: number;
+  height: number;
+  x: number;
+  y: number;
+  flip?: "x" | "y" | "xy";
+};
+
+/**
+ * DrawingML `a:tile` in slide units. The picture repeats at its stored DPI
+ * and scale. Alignment pins one point of a tile to the same point of the shape,
+ * then `tx`/`ty` shift that origin. A missing tile is a stretch, not a repeat.
+ */
+export function pictureTile(
+  xml: string,
+  bytes: Uint8Array,
+  box: { width: number; height: number },
+  slide: { width: number; emuWidth: number },
+): PictureTile | undefined {
+  const tag = /<a:tile\b([^>]*)\/?>/.exec(xml);
+  if (!tag || !(box.width > 0) || !(box.height > 0) || !(slide.emuWidth > 0))
+    return;
+  const pixels = rasterPixels(bytes);
+  if (!pixels) return;
+  const attrs: Record<string, string> = {};
+  for (const match of tag[1].matchAll(/([A-Za-z]+)="([^"]*)"/g))
+    attrs[match[1]] = match[2];
+  const dpiAttr = Number(/<a:blipFill\b[^>]*\bdpi="(\d+)"/.exec(xml)?.[1] ?? 0);
+  const stored = dpiAttr > 0 ? undefined : imageDpi(bytes);
+  const dpiX = dpiAttr > 0 ? dpiAttr : stored?.x || 96;
+  const dpiY = dpiAttr > 0 ? dpiAttr : stored?.y || 96;
+  const percent = (name: string) => {
+    const value = Number(attrs[name] ?? 100000);
+    return Number.isFinite(value) && value > 0 ? value / 100000 : 1;
+  };
+  const toSlide = (emu: number) => (emu / slide.emuWidth) * slide.width;
+  const tileW = toSlide((pixels.width / dpiX) * 914400 * percent("sx"));
+  const tileH = toSlide((pixels.height / dpiY) * 914400 * percent("sy"));
+  if (!(tileW > 0) || !(tileH > 0)) return;
+  const shift = (name: string) => {
+    const value = Number(attrs[name] ?? 0);
+    return Number.isFinite(value) ? toSlide(value) : 0;
+  };
+  const align = attrs.algn || "tl";
+  const horizontal =
+    align === "tr" || align === "r" || align === "br"
+      ? 1
+      : align === "t" || align === "ctr" || align === "b"
+        ? 0.5
+        : 0;
+  const vertical =
+    align === "bl" || align === "b" || align === "br"
+      ? 1
+      : align === "l" || align === "ctr" || align === "r"
+        ? 0.5
+        : 0;
+  const flip = attrs.flip === "x" || attrs.flip === "y" || attrs.flip === "xy" ? attrs.flip : undefined;
+  return {
+    width: tileW,
+    height: tileH,
+    x: horizontal * (box.width - tileW) + shift("tx"),
+    y: vertical * (box.height - tileH) + shift("ty"),
+    ...(flip ? { flip } : {}),
+  };
+}
+
+/** Picture blip fill. A tile inside p:spPr belongs to the shape, not the photo. */
+export function pictureTileSource(xml: string): string {
+  const own = xml.replace(/<p:spPr\b[\s\S]*?<\/p:spPr>/g, "");
+  return /<(?:a|p):blipFill\b/.test(own) ? own : xml;
 }

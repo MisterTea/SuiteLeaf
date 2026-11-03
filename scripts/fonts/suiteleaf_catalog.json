@@ -2256,7 +2256,7 @@
     "Arial Narrow"
    ],
    "base": {
-    "credit": "NimbusSansNarrow-BoldOblique 1.00, (URW)++,Copyright 2014 by (URW)++ Design & Development; NimbusSansNarrow-Oblique 1.00, (URW)++,Copyright 2014 by (URW)++ Design & Development",
+    "credit": "NimbusSansNarrow-Regular 1.00, NimbusSansNarrow-Bold 1.00, NimbusSansNarrow-BoldOblique 1.00, and NimbusSansNarrow-Oblique 1.00, (URW)++,Copyright 2014 by (URW)++ Design & Development",
     "files": [
      "urw/LICENSE",
      "urw/COPYING"

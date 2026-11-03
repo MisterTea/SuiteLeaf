@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import type { SlideElement } from "@suiteleaf/core";
+import { officeSingleSpacing, type SlideElement } from "@suiteleaf/core";
 
 function ruleCss(
   rule: { color: string; width?: number } | undefined,
@@ -14,6 +14,58 @@ function padCss(points: number | undefined): string | undefined {
   return `calc(${points} * var(--slide-pt, 1) * 1px)`;
 }
 
+/**
+ * A table row's stored height, in the slide's container width.
+ * A percentage of the table is an indefinite height, so the row collapses to
+ * its text and an empty row sits on a different grid than PowerPoint.
+ */
+export function tableRowHeightCss(
+  fraction: number,
+  tableHeight: number,
+  slideWidth: number,
+): string {
+  if (!(fraction > 0) || !(tableHeight > 0) || !(slideWidth > 0)) return "0px";
+  return `calc(${fraction * tableHeight} / ${slideWidth} * 100cqw)`;
+}
+
+/**
+ * Keep the row on that height. In-flow text would grow the row; the clip is
+ * taken out of flow so a wrapped cell cannot steal space from the next row.
+ * The stored height includes the rule. A content box would paint the border
+ * outside that height and push every following row down by a pixel.
+ */
+export function tableCellLayout(
+  rowHeight: string | undefined,
+  spansRows: boolean,
+  painted: CSSProperties,
+): { td: CSSProperties; clip?: CSSProperties } {
+  if (!rowHeight) return { td: painted };
+  const { paddingTop, paddingRight, paddingBottom, paddingLeft, verticalAlign, ...rest } =
+    painted;
+  return {
+    td: {
+      ...rest,
+      padding: 0,
+      position: "relative",
+      boxSizing: "border-box",
+      ...(spansRows ? {} : { height: rowHeight }),
+    },
+    clip: {
+      position: "absolute",
+      inset: 0,
+      overflow: "hidden",
+      display: "flex",
+      flexDirection: "column",
+      justifyContent:
+        verticalAlign === "middle" ? "center" : verticalAlign === "bottom" ? "flex-end" : "flex-start",
+      paddingTop,
+      paddingRight,
+      paddingBottom,
+      paddingLeft,
+    },
+  };
+}
+
 /** Paint imported cell fill, type size, and rules. Editor tables keep the default grid. */
 export function slideCellPaint(
   mark: NonNullable<SlideElement["cellMarks"]>[number][number] | undefined,
@@ -26,6 +78,7 @@ export function slideCellPaint(
     mark?.borderLeft
   );
   return {
+    fontFamily: mark?.font,
     fontWeight: mark?.bold ? 700 : undefined,
     fontStyle: mark?.italic ? "italic" : undefined,
     background: mark?.fill,
@@ -34,7 +87,8 @@ export function slideCellPaint(
       ? `calc(${mark.fontSize} * var(--slide-pt, 1) * 1px)`
       : undefined,
     textAlign: mark?.align,
-    lineHeight: mark?.fontSize ? 1 : undefined,
+    // A stored row is one Windows line grid tall, not one em.
+    lineHeight: mark?.fontSize ? officeSingleSpacing(mark.font || "Calibri") : undefined,
     whiteSpace: "pre-wrap",
     verticalAlign:
       mark?.valign === "middle"

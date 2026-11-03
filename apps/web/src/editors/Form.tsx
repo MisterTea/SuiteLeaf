@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { EditorActions } from "../ui";
 import type { FormFile } from "@suiteleaf/core";
+import { listedChoice, choiceAnswerError } from "../form-choice";
 import { canonicalGridAnswer, filledLabels, gridAnswerError } from "../form-grid";
+import { appendFormResponse } from "../form-submit";
 import { GridAnswer, GridAnswerLines } from "../form-grid-view";
 
 type Question = FormFile["content"]["questions"][number];
@@ -145,6 +147,17 @@ export default function FormEditor({
           setError(message);
           return;
         }
+      } else if (question.kind === "choice") {
+        const message = choiceAnswerError(
+          prompt,
+          question.required,
+          question.choices,
+          draft[question.id] ?? "",
+        );
+        if (message) {
+          setError(message);
+          return;
+        }
       } else if (question.required && !(draft[question.id] ?? "").trim()) {
         setError(`${prompt} is required`);
         return;
@@ -159,17 +172,20 @@ export default function FormEditor({
           draft[question.id] ?? "",
         );
         if (value) answers[question.id] = value;
+      } else if (question.kind === "choice") {
+        const value = listedChoice(question.choices, draft[question.id] ?? "");
+        if (value) answers[question.id] = value;
       } else {
         const value = (draft[question.id] ?? "").trim();
         if (value) answers[question.id] = value;
       }
     }
-    const nextResponses = [
-      ...responsesRef.current,
-      { id: crypto.randomUUID(), at: new Date().toISOString(), answers },
-    ];
-    setResponsesState(nextResponses);
-    write({ questions, responses: nextResponses });
+    const nextResponse = { id: crypto.randomUUID(), at: new Date().toISOString(), answers };
+    const stored = respondOnly
+      ? appendFormResponse({ ...file.content, responses: responsesRef.current }, nextResponse)
+      : { questions, responses: [...responsesRef.current, nextResponse] };
+    setResponsesState(stored.responses);
+    write(stored);
     setDraft({});
     setError("");
     setView("respond");

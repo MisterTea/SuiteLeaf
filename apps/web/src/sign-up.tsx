@@ -5,6 +5,7 @@ import {
   type PublicForm,
   type PublicQuestion,
 } from "./node-client";
+import { choiceAnswerError } from "./form-choice";
 import { canonicalGridAnswer, filledLabels, gridAnswerError } from "./form-grid";
 import { GridAnswer } from "./form-grid-view";
 
@@ -22,14 +23,10 @@ function questionError(question: PublicQuestion, value: string): string | null {
       value,
     );
   }
-  if (question.required && !answer) return `${prompt} is required`;
-  if (
-    question.kind === "choice" &&
-    answer &&
-    !(question.choices ?? []).includes(answer)
-  ) {
-    return `${prompt} must be one of the choices`;
+  if (question.kind === "choice") {
+    return choiceAnswerError(prompt, question.required, question.choices, value);
   }
+  if (question.required && !answer) return `${prompt} is required`;
   if (question.kind === "rating" && answer && !RATING_SCORES.includes(answer)) {
     return `${prompt} must be a rating from 1 to 5`;
   }

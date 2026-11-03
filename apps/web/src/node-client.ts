@@ -13,6 +13,8 @@ import {
   type FileRecord,
   type SuiteFile,
 } from "@suiteleaf/core";
+import type { AccessExplanation } from "./drive/access-explanation";
+import { decideClientSession, idleSecsFromInfo, sessionTimes } from "./session-policy";
 
 export interface NodeUser {
   id: string;
@@ -27,6 +29,12 @@ export interface NodeSession {
   url: string;
   token: string;
   user: NodeUser;
+  /** Absolute end from the sign-in payload, when it includes one. */
+  expiresAt?: string;
+  /** Last activity from the sign-in payload, when it includes one. */
+  updatedAt?: string;
+  /** Organization idle limit in seconds from `/api/node/info`. */
+  idleSecs?: number;
 }
 export interface DriveVersion {
   id: string;
@@ -117,6 +125,8 @@ export interface DriveComment {
 export interface FilePresence {
   name: string;
   editing: boolean;
+  /** The last beat is quiet, and this person is still listed. */
+  idle?: boolean;
 }
 export interface ItemAccess {
   grants: AccessGrant[];
@@ -193,7 +203,20 @@ let jwtCache: { token: string; expires: number } | null = null;
 /** Why the last session ended, so the sign-in page can say so. */
 let ended: "signed-out" | "expired" | null = null;
 
-export function getSession() {
+export function getSession(now = new Date().toISOString()) {
+  if (!session) return null;
+  if (session.expiresAt !== undefined || session.idleSecs !== undefined) {
+    const decision = decideClientSession({
+      expiresAt: session.expiresAt,
+      updatedAt: session.updatedAt,
+      now,
+      idleSecs: session.idleSecs,
+    });
+    if (decision !== "accept") {
+      setSession(null, "expired");
+      return null;
+    }
+  }
   return session;
 }
 export function sessionEndReason() {
@@ -241,8 +264,7 @@ export async function signIn(
     ? await client.signIn.email({ email: identifier, password })
     : await client.signIn.username({ username: identifier, password });
   if (error || !data?.token) throw failure(error);
-  setSession({ url, token: data.token, user: data.user });
-  return session!;
+  return startSession(url, data.token, data.user, data);
 }
 
 export async function signUp(
@@ -254,8 +276,7 @@ export async function signUp(
     username: details.username || undefined,
   });
   if (error || !data?.token) throw failure(error);
-  setSession({ url, token: data.token, user: data.user });
-  return session!;
+  return startSession(url, data.token, data.user, data);
 }
 
 /** Exchange the one-time token from a social sign-in hand-off. */
@@ -264,7 +285,23 @@ export async function completeHandoff(url: string, oneTimeToken: string) {
     token: oneTimeToken,
   });
   if (error || !data?.session) throw failure(error);
-  setSession({ url, token: data.session.token, user: data.user });
+  return startSession(url, data.session.token, data.user, data);
+}
+
+async function startSession(
+  url: string,
+  token: string,
+  user: NodeUser,
+  data: unknown,
+): Promise<NodeSession> {
+  let info: unknown = null;
+  try {
+    const response = await fetch(`${url}/api/node/info`);
+    info = response.ok ? await response.json() : null;
+  } catch {
+    info = null;
+  }
+  setSession({ url, token, user, ...sessionTimes(data), idleSecs: idleSecsFromInfo(info) });
   return session!;
 }
 
@@ -341,7 +378,7 @@ async function bearer(current: NodeSession): Promise<string> {
   }
 }
 
-async function api(path: string, init: RequestInit = {}): Promise<Response> {
+export async function api(path: string, init: RequestInit = {}): Promise<Response> {
   const current = requireSession();
   const headers = new Headers(init.headers);
   headers.set("authorization", `Bearer ${await bearer(current)}`);
@@ -367,7 +404,7 @@ async function api(path: string, init: RequestInit = {}): Promise<Response> {
   return response;
 }
 
-const json = (body: unknown): RequestInit => ({
+export const json = (body: unknown): RequestInit => ({
   headers: { "content-type": "application/json" },
   body: JSON.stringify(body),
 });
@@ -447,6 +484,11 @@ export const drive = {
   async access(id: string): Promise<ItemAccess> {
     return (
       await api(`/api/drive/items/${encodeURIComponent(id)}/access`)
+    ).json();
+  },
+  async explanation(id: string): Promise<AccessExplanation> {
+    return (
+      await api(`/api/drive/items/${encodeURIComponent(id)}/explanation`)
     ).json();
   },
   async share(
@@ -789,7 +831,30 @@ export interface AdminGroupDetail {
   loopPresent: boolean;
 }
 
+export type ReplicationPeer = {
+  peer: string;
+  sameEpoch: boolean;
+  behind: number;
+};
+
 export const adminApi = {
+  async replication(): Promise<{ pending: number; peers: ReplicationPeer[] }> {
+    return (await api("/api/admin/replication")).json();
+  },
+  async backup(): Promise<{
+    configured: boolean;
+    readable?: boolean;
+    recordedAt?: string;
+    contentCount?: number;
+    drilledAt?: string;
+    elapsedMs?: number | null;
+    restoreTested?: boolean;
+  }> {
+    return (await api("/api/admin/backup")).json();
+  },
+  async organizationExport(): Promise<unknown> {
+    return (await api("/api/admin/export")).json();
+  },
   async users(query = "", group = ""): Promise<AdminUser[]> {
     const params = new URLSearchParams();
     if (query) params.set("q", query);
@@ -878,6 +943,14 @@ export const adminApi = {
       await api(`/api/admin/groups/${encodeURIComponent(groupId)}/members`, {
         method: "POST",
         ...json({ memberType, memberId }),
+      })
+    ).json();
+  },
+  async memberPlan(groupId: string, memberId: string, adding: boolean) {
+    return (
+      await api(`/api/admin/groups/${encodeURIComponent(groupId)}/member-plan`, {
+        method: "POST",
+        ...json({ memberId, adding }),
       })
     ).json();
   },

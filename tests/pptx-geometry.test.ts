@@ -108,6 +108,7 @@ describe("PowerPoint geometry", () => {
     const slide = parsed.content.slides[parsed.content.slideOrder[0]];
     const pictures = slide.elements.filter((el) => el.type === "image");
     expect(pictures).toHaveLength(2);
+    expect(svg(pictures[0].src)).toContain('preserveAspectRatio="none"');
     expect(svg(pictures[0].src)).toContain('fill="rgba(144, 194, 38, 0.3)"');
     expect(svg(pictures[0].src)).toContain("M 0 0 L 3000000 0 L 0 6858000 Z");
     expect(pictures[0].width).toBeCloseTo((3000000 / 12192000) * 960, 3);
@@ -124,6 +125,26 @@ describe("PowerPoint geometry", () => {
     expect(parsed.content.pointWidth).toBeCloseTo(960, 3);
     expect(parsed.content.pointHeight).toBeCloseTo(540, 3);
     expect(slidePointScale(960, 2381)).toBeCloseTo(960 / 2381, 5);
+  });
+
+  it("paints a placeholder style fill behind its text", async () => {
+    const parsed = await deck(
+      `<p:sld><p:cSld><p:spTree>
+        <p:sp><p:nvSpPr><p:cNvPr id="2" name="Title"/><p:cNvSpPr/><p:nvPr><p:ph type="ctrTitle"/></p:nvPr></p:nvSpPr>
+          <p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr/><a:t>Services</a:t></a:r></a:p></p:txBody>
+        </p:sp>
+      </p:spTree></p:cSld></p:sld>`,
+      `<p:sldLayout><p:cSld><p:spTree>
+        <p:sp><p:nvSpPr><p:cNvPr id="2" name="Title"/><p:cNvSpPr/><p:nvPr><p:ph type="ctrTitle"/></p:nvPr></p:nvSpPr>
+          <p:spPr><a:xfrm><a:off x="0" y="3000000"/><a:ext cx="8000000" cy="2000000"/></a:xfrm></p:spPr>
+          <p:style><a:fillRef idx="1"><a:schemeClr val="accent4"/></a:fillRef></p:style>
+        </p:sp>
+      </p:spTree></p:cSld></p:sldLayout>`,
+    );
+    const slide = parsed.content.slides[parsed.content.slideOrder[0]];
+    const bar = slide.elements.find((el) => el.type === "shape");
+    expect(bar?.fill).toBe("#e76618");
+    expect(slide.elements.some((el) => el.content === "Services")).toBe(true);
   });
 
   it("paints a slide color-map override that turns bg1 black", async () => {
@@ -189,6 +210,9 @@ describe("PowerPoint geometry", () => {
       "diamond",
       "rightArrow",
       "leftArrow",
+      "curvedLeftArrow",
+      "curvedRightArrow",
+      "bentUpArrow",
       "upDownArrow",
       "donut",
       "cube",
@@ -196,6 +220,13 @@ describe("PowerPoint geometry", () => {
       "star7",
       "round2SameRect",
       "mathMultiply",
+      "funnel",
+      "leftRightArrowCallout",
+      "leftArrowCallout", "rightArrowCallout", "upArrowCallout", "downArrowCallout", "bentArrow", "quadArrow",
+      "swooshArrow",
+      "curvedUpArrow",
+      "curvedDownArrow",
+      "uturnArrow",
     ]) {
       const art = shape(name);
       expect(art?.type, name).toBe("image");
@@ -204,6 +235,20 @@ describe("PowerPoint geometry", () => {
     expect(svg(shape("star7")?.src).match(/L /g)?.length).toBeGreaterThan(8);
     expect(svg(shape("round2SameRect")?.src)).toContain("A ");
     expect(svg(shape("mathMultiply")?.src).match(/Z/g)?.length).toBe(2);
+    expect(svg(shape("funnel")?.src)).toContain("A ");
+    expect(svg(shape("leftRightArrowCallout")?.src).match(/L /g)?.length).toBeGreaterThan(10);
+    expect(svg(shape("bentArrow")?.src)).toContain("A ");
+    const calloutText = presetTextBox(
+      `<p:sp><a:prstGeom prst="rightArrowCallout"><a:avLst/></a:prstGeom></p:sp>`,
+      { x: 0, y: 0, width: 200, height: 80 },
+    );
+    expect(calloutText && calloutText.width).toBeLessThan(160);
+    const swoosh = svg(shape("swooshArrow")?.src);
+    expect(swoosh).toContain("Q ");
+    expect(swoosh).toContain("M 0 1000000");
+    expect(swoosh).not.toContain("M 0 0 L 2000000 0");
+    expect(svg(shape("curvedUpArrow")?.src)).toContain("A ");
+    expect(svg(shape("uturnArrow")?.src)).toContain("A ");
     const turned = shapeArtwork(
       `<p:sp><p:spPr><a:xfrm rot="5400000"><a:off x="0" y="0"/><a:ext cx="674797" cy="6598750"/></a:xfrm><a:prstGeom prst="round2SameRect"><a:avLst/></a:prstGeom></p:spPr></p:sp>`,
       paint,
@@ -218,6 +263,14 @@ describe("PowerPoint geometry", () => {
       slide,
     );
     expect(unknown).toMatchObject({ type: "shape", shapeType: "rect", rotation: 90 });
+    const skewed = shapeArtwork(
+      `<p:sp><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="2000000" cy="1000000"/></a:xfrm><a:prstGeom prst="parallelogram"><a:avLst><a:gd fmla="val 79312" name="adj"/></a:avLst></a:prstGeom></p:spPr></p:sp>`,
+      paint,
+      box,
+      slide,
+    );
+    expect(svg(skewed?.src)).toContain("M 39.66 0");
+    expect(svg(skewed?.src)).toContain('stroke-width="0.75"');
     expect(svg(shape("donut")?.src)).toContain("evenodd");
     const line = shapeArtwork(
       `<p:cxnSp><p:spPr><a:xfrm rot="5400000" flipH="1"><a:off x="0" y="0"/><a:ext cx="1000" cy="1000"/></a:xfrm><a:prstGeom prst="straightConnector1"><a:avLst/></a:prstGeom><a:ln w="9525"><a:tailEnd type="triangle"/></a:ln></p:spPr></p:cxnSp>`,
@@ -226,6 +279,36 @@ describe("PowerPoint geometry", () => {
       slide,
     );
     expect(line).toMatchObject({ type: "shape", shapeType: "arrow", flipH: true, rotation: 90 });
+  });
+
+  it("keeps a roundRect corner radius from the adjust, including fmla before name", () => {
+    const paint: ShapePaint = { fill: "#92D050" };
+    const box = { x: 10, y: 20, width: 200, height: 80 };
+    const slide = { width: 960, emuWidth: 12192000 };
+    const art = (av: string) =>
+      shapeArtwork(
+        `<p:sp><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="2000000" cy="800000"/></a:xfrm><a:prstGeom prst="roundRect"><a:avLst>${av}</a:avLst></a:prstGeom><a:solidFill><a:srgbClr val="92D050"/></a:solidFill></p:spPr></p:sp>`,
+        paint,
+        box,
+        slide,
+      );
+    expect(art(`<a:gd name="adj" fmla="val 50000"/>`)).toMatchObject({
+      type: "shape",
+      shapeType: "roundRect",
+      radius: 40,
+    });
+    expect(art(`<a:gd fmla="val 50000" name="adj"/>`)).toMatchObject({ radius: 40 });
+    expect(art("")).toMatchObject({ shapeType: "roundRect", radius: (80 * 16667) / 100000 });
+    expect(art(`<a:gd name="adj" fmla="val 0"/>`)).toMatchObject({ shapeType: "rect" });
+    expect(art(`<a:gd name="adj" fmla="val 0"/>`)?.radius).toBeUndefined();
+    const diag = shapeArtwork(
+      `<p:sp><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="2000000" cy="800000"/></a:xfrm><a:prstGeom prst="round2DiagRect"><a:avLst><a:gd name="adj1" fmla="val 16667"/><a:gd name="adj2" fmla="val 0"/></a:avLst></a:prstGeom></p:spPr></p:sp>`,
+      paint,
+      box,
+      slide,
+    );
+    expect(diag?.type).toBe("image");
+    expect(svg(diag?.src)).toContain("A ");
   });
 
   it("places a picture placeholder on its layout frame and skips an unfilled text box", async () => {
@@ -383,6 +466,39 @@ describe("PowerPoint geometry", () => {
     expect(width).toBeLessThan(90);
   });
 
+  it("leaves a custom path unfilled when the path declines the shape fill", async () => {
+    const parsed = await deck(
+      `<p:sld><p:cSld><p:spTree>
+        <p:sp><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="2000000" cy="1000000"/></a:xfrm>
+          <a:custGeom><a:pathLst>
+            <a:path w="200" h="100" fill="none" stroke="1">
+              <a:moveTo><a:pt x="20" y="0"/></a:moveTo>
+              <a:lnTo><a:pt x="0" y="20"/></a:lnTo>
+              <a:lnTo><a:pt x="0" y="80"/></a:lnTo>
+              <a:lnTo><a:pt x="180" y="100"/></a:lnTo>
+            </a:path>
+            <a:path w="200" h="100" stroke="0">
+              <a:moveTo><a:pt x="0" y="0"/></a:moveTo>
+              <a:lnTo><a:pt x="40" y="0"/></a:lnTo>
+              <a:lnTo><a:pt x="0" y="40"/></a:lnTo>
+              <a:close/>
+            </a:path>
+          </a:pathLst></a:custGeom>
+          <a:solidFill><a:srgbClr val="5E2028"/></a:solidFill>
+          <a:ln w="19050"><a:solidFill><a:srgbClr val="000000"/></a:solidFill><a:prstDash val="dot"/></a:ln>
+        </p:spPr></p:sp>
+      </p:spTree></p:cSld></p:sld>`,
+      `<p:sldLayout><p:cSld><p:spTree/></p:cSld></p:sldLayout>`,
+    );
+    const markup = svg(
+      parsed.content.slides[parsed.content.slideOrder[0]].elements.find((el) => el.alt === "Slide shape")?.src,
+    );
+    expect(markup).toContain('d="M 20 0 L 0 20 L 0 80 L 180 100" fill="none"');
+    expect(markup).toContain('d="M 0 0 L 40 0 L 0 40 Z" fill="#5E2028"');
+    expect(markup).not.toContain('d="M 20 0 L 0 20 L 0 80 L 180 100" fill="#5E2028"');
+    expect(markup).toContain("stroke-dasharray");
+  });
+
   it("scales a grouped curve stroke by the group's slide size", async () => {
     const parsed = await deck(
       `<p:sld><p:cSld><p:spTree>
@@ -452,6 +568,19 @@ describe("PowerPoint geometry", () => {
     const ny = (ey - h / 2) / (h / 2);
     expect(nx * nx + ny * ny).toBeCloseTo(1, 2);
     expect(path).toContain('fill="#78bcd0"');
+    const sized = presetVector(
+      "wedgeEllipseCallout",
+      `<a:prstGeom prst="wedgeEllipseCallout"><a:avLst/></a:prstGeom>`,
+      4_000_000,
+      2_000_000,
+      "#78bcd0",
+      "none",
+      0,
+      { x: 200 / 4_000_000, y: 100 / 2_000_000 },
+    );
+    const sizedSvg = svg(sized?.src);
+    expect(sizedSvg).toContain('width="200"');
+    expect(sizedSvg).toContain('height="125"');
     const large = presetVector(
       "wedgeEllipseCallout",
       `<a:prstGeom prst="wedgeEllipseCallout"><a:avLst/></a:prstGeom>`,
@@ -524,6 +653,25 @@ describe("PowerPoint geometry", () => {
     expect(svg(art?.src)).toContain("A ");
   });
 
+  it("paints a pie wedge as a quarter disk with the apex at the bottom-right", () => {
+    const xml = `<p:sp><p:spPr><a:prstGeom prst="pieWedge"><a:avLst/></a:prstGeom>
+      <a:solidFill><a:srgbClr val="CCFF99"/></a:solidFill></p:spPr></p:sp>`;
+    const drawn = presetVector("pieWedge", xml, 200, 200, "#CCFF99", "none", 0);
+    const path = svg(drawn?.src);
+    expect(path).toContain("M 0 200");
+    expect(path).toContain("A 200 200");
+    expect(path).toContain("L 200 200");
+    expect(path).not.toContain("M 0 0");
+    const box = { x: 10, y: 20, width: 100, height: 100 };
+    const text = presetTextBox(xml, box);
+    expect(text && text.x).toBeGreaterThan(box.x + 20);
+    expect(text && text.y).toBeGreaterThan(box.y + 20);
+    expect(text && text.x + text.width).toBeCloseTo(box.x + box.width, 3);
+    const art = shapeArtwork(xml, { fill: "#CCFF99" }, box, { width: 960, emuWidth: 9144000 });
+    expect(art?.type).toBe("image");
+    expect(art?.shapeType).toBeUndefined();
+  });
+
   it("insets cloud-callout text and draws the callout bubbles", () => {
     const xml = `<p:sp><a:prstGeom prst="cloudCallout"><a:avLst><a:gd name="adj1" fmla="val 0"/><a:gd name="adj2" fmla="val 150000"/></a:avLst></a:prstGeom></p:sp>`;
     const box = { x: 10, y: 20, width: 200, height: 120 };
@@ -546,6 +694,21 @@ describe("PowerPoint geometry", () => {
     );
     expect(svg(curve?.src)).toContain("C ");
     expect(svg(curve?.src)).toContain('fill="none"');
+  });
+
+  it("paints a triangle at the end of a stroked arc", () => {
+    const drawn = presetVector(
+      "arc",
+      `<a:prstGeom prst="arc"><a:avLst><a:gd name="adj1" fmla="val 16200000"/><a:gd name="adj2" fmla="val 3080415"/></a:avLst></a:prstGeom><a:ln><a:tailEnd type="triangle" w="med" len="med"/></a:ln>`,
+      954156,
+      817924,
+      "none",
+      "#ff0000",
+      57150,
+    );
+    const xml = svg(drawn?.src);
+    expect(xml).toContain('fill="#ff0000"');
+    expect(xml).toMatch(/<path d="M [^"]*Z" fill="#ff0000"/);
   });
 
   it("measures a frame from the transform when an extension list comes first", () => {
@@ -604,6 +767,50 @@ describe("PowerPoint geometry", () => {
     expect(slide.elements.some((el) => el.fill?.toLowerCase() === "#000000")).toBe(false);
     expect(slide.elements.some((el) => el.content === "1")).toBe(false);
     expect(slide.elements.some((el) => el.fill === "rgba(192, 0, 0, 0.7)")).toBe(true);
+  });
+
+  it("omits shapes inside a hidden group on the slide and the master", async () => {
+    const parsed = await deck(
+      `<p:sld><p:cSld><p:spTree>
+        <p:grpSp><p:nvGrpSpPr><p:cNvPr id="1" name="Grid" hidden="1"/></p:nvGrpSpPr>
+          <p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="9144000" cy="400000"/><a:chOff x="0" y="0"/><a:chExt cx="9144000" cy="400000"/></a:xfrm></p:grpSpPr>
+          <p:sp><p:nvSpPr><p:cNvPr id="2" name="Band"/></p:nvSpPr>
+            <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="9144000" cy="400000"/></a:xfrm>
+              <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+              <a:solidFill><a:srgbClr val="9EBA2E"><a:alpha val="50000"/></a:srgbClr></a:solidFill></p:spPr>
+            <p:txBody><a:bodyPr/><a:p><a:r><a:t>Hidden band</a:t></a:r></a:p></p:txBody>
+          </p:sp>
+        </p:grpSp>
+        <p:sp><p:nvSpPr><p:cNvPr id="3" name="Footer"/></p:nvSpPr>
+          <p:spPr><a:xfrm><a:off x="0" y="6400000"/><a:ext cx="9144000" cy="400000"/></a:xfrm>
+            <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+            <a:solidFill><a:srgbClr val="0C2577"/></a:solidFill></p:spPr>
+        </p:sp>
+      </p:spTree></p:cSld></p:sld>`,
+      `<p:sldLayout><p:cSld><p:spTree/></p:cSld></p:sldLayout>`,
+      `<p:sldMaster><p:cSld><p:spTree>
+        <p:grpSp><p:nvGrpSpPr><p:cNvPr id="4" name="Master grid" hidden="1"/></p:nvGrpSpPr>
+          <p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="100" cy="100"/><a:chOff x="0" y="0"/><a:chExt cx="100" cy="100"/></a:xfrm></p:grpSpPr>
+          <p:sp><p:nvSpPr><p:cNvPr id="5" name="Master band"/></p:nvSpPr>
+            <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="9144000" cy="300000"/></a:xfrm>
+              <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+              <a:solidFill><a:srgbClr val="FF00AA"/></a:solidFill></p:spPr>
+          </p:sp>
+        </p:grpSp>
+        <p:sp><p:nvSpPr><p:cNvPr id="6" name="Shown master"/></p:nvSpPr>
+          <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="9144000" cy="200000"/></a:xfrm>
+            <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+            <a:solidFill><a:srgbClr val="112233"/></a:solidFill></p:spPr>
+        </p:sp>
+      </p:spTree></p:cSld></p:sldMaster>`,
+    );
+    const slide = parsed.content.slides[parsed.content.slideOrder[0]];
+    const fills = slide.elements.map((el) => (el.fill || "").toLowerCase());
+    expect(fills.some((fill) => fill.includes("9eba2e") || fill.includes("158, 186, 46"))).toBe(false);
+    expect(fills.some((fill) => fill.includes("ff00aa"))).toBe(false);
+    expect(slide.elements.some((el) => el.content?.includes("Hidden band"))).toBe(false);
+    expect(fills).toContain("#0c2577");
+    expect(fills).toContain("#112233");
   });
 
   it("keeps flipped shape text upright and accepts a wide hanging indent", async () => {
@@ -758,6 +965,7 @@ describe("PowerPoint geometry", () => {
           <p:blipFill><a:blip r:embed="rId2"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>
           <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="4000000" cy="3000000"/></a:xfrm>
             <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+            <a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill>
             <a:effectLst><a:softEdge rad="635000"/></a:effectLst>
           </p:spPr>
         </p:pic>
@@ -773,6 +981,11 @@ describe("PowerPoint geometry", () => {
       (el) => el.type === "image",
     );
     expect(photo?.softEdge).toBeCloseTo((635000 / 12192000) * 960, 3);
+    const glow = parsed.content.slides[parsed.content.slideOrder[0]].elements.find(
+      (el) => el.type === "shape",
+    );
+    expect(glow?.fill?.toLowerCase()).toBe("#ffffff");
+    expect(glow?.softEdge).toBeCloseTo(photo!.softEdge!, 3);
   });
 
   it("scales a grouped preset stroke into the shape's own coordinates", () => {
@@ -792,4 +1005,19 @@ describe("PowerPoint geometry", () => {
     expect(width).toBeGreaterThan(0);
     expect(width).toBeLessThan(40);
   });
+});
+
+it("keeps vert270 text running upward inside its box", async () => {
+  const zip = new JSZip();
+  zip.file(
+    "ppt/slides/slide1.xml",
+    `<p:sld><p:cSld><p:spTree><p:sp><p:nvSpPr><p:cNvPr id="2" name="Axis"/><p:cNvSpPr txBox="1"/></p:nvSpPr>
+<p:spPr><a:xfrm><a:off x="100000" y="200000"/><a:ext cx="400000" cy="700000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr>
+<p:txBody><a:bodyPr vert="vert270" wrap="square"/><a:p><a:r><a:t>Risk</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`,
+  );
+  const parsed = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+  const label = parsed.content.slides[parsed.content.slideOrder[0]].elements.find(
+    (el) => el.content === "Risk",
+  );
+  expect(label?.textFlow).toBe("up");
 });

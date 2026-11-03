@@ -1,0 +1,26 @@
+.remote-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-right: -2px;
+  background: #1d6b4f;
+  position: relative;
+  vertical-align: text-bottom;
+}
+
+.remote-caret::after {
+  content: attr(data-caret);
+  position: absolute;
+  left: 0;
+  top: -1.15em;
+  padding: 0 4px;
+  background: #1d6b4f;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.remote-caret-range {
+  background: rgb(29 107 79 / 18%);
+}

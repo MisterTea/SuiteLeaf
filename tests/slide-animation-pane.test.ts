@@ -41,4 +41,50 @@ describe("animation pane", () => {
       "Click to add title",
     ]);
   });
+
+  it("uses the same click for a shared order and for after previous", () => {
+    const file = createFile("slide", "Pitch");
+    if (file.kind !== "slide") throw new Error("expected slides");
+    const slideId = file.content.slideOrder[0]!;
+    file.content.slides[slideId]!.elements = [
+      {
+        id: "title",
+        type: "text",
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 40,
+        content: "Welcome",
+        animation: "fade-on-click",
+        animationOrder: 1,
+      },
+      {
+        id: "photo",
+        type: "text",
+        x: 0,
+        y: 80,
+        width: 100,
+        height: 40,
+        content: "Photo",
+        animation: "fly-on-click",
+        animationOrder: 2,
+        animationTrigger: "after",
+      },
+      {
+        id: "note",
+        type: "text",
+        x: 0,
+        y: 160,
+        width: 100,
+        height: 40,
+        content: "secret-value",
+      },
+    ];
+    const rows = animationRows(file.content.slides[slideId]);
+    expect(rows.map((row) => [row.label, row.click, row.trigger])).toEqual([
+      ["Welcome", 1, "click"],
+      ["Photo", 1, "after"],
+    ]);
+    expect(JSON.stringify(rows)).not.toContain("secret-value");
+  });
 });

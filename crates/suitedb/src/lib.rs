@@ -208,6 +208,14 @@ struct Inner {
     clock: Clock,
 }
 
+/// A peer's distance from this node's latest op. No document bytes.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct PeerLag {
+    pub peer: String,
+    pub same_epoch: bool,
+    pub behind: u64,
+}
+
 pub struct Db {
     inner: Mutex<Inner>,
     key: ed25519::Keypair,
@@ -660,6 +668,61 @@ impl Db {
             .conn
             .query_row("SELECT COUNT(*) FROM _pending", [], |r| r.get::<_, i64>(0))?
             as u64)
+    }
+
+    /// How far each known peer is behind this node's op log.
+    /// The result has counts and peer ids, not op payloads.
+    pub fn replication_lag(&self) -> Result<Vec<PeerLag>> {
+        let inner = self.lock();
+        let tip = inner
+            .conn
+            .query_row("SELECT COALESCE(MAX(seq), 0) FROM _ops", [], |row| {
+                row.get::<_, i64>(0)
+            })? as u64;
+        let mut stmt = inner
+            .conn
+            .prepare("SELECT peer, epoch, cursor FROM _peers ORDER BY peer")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)? as u64,
+            ))
+        })?;
+        let mut peers = Vec::new();
+        for row in rows {
+            let (peer, epoch, cursor) = row?;
+            let same_epoch = epoch == self.epoch;
+            peers.push(PeerLag {
+                peer,
+                same_epoch,
+                behind: if same_epoch {
+                    tip.saturating_sub(cursor)
+                } else {
+                    tip
+                },
+            });
+        }
+        Ok(peers)
+    }
+
+    /// Copy a consistent snapshot to `dest`. Uses SQLite's backup API, so a
+    /// database still in WAL mode is not copied as a half-written file.
+    /// The live database is not replaced. `dest` is created or overwritten.
+    pub fn checkpoint_copy(&self, dest: &Path) -> Result<()> {
+        if let Some(parent) = dest.parent() {
+            if !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent).map_err(|error| {
+                    Error::Invalid(format!("create {}: {error}", parent.display()))
+                })?;
+            }
+        }
+        let inner = self.lock();
+        let _ = inner.conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+        let mut dst = Connection::open(dest)?;
+        let backup = rusqlite::backup::Backup::new(&inner.conn, &mut dst)?;
+        backup.run_to_completion(64, std::time::Duration::from_millis(10), None)?;
+        Ok(())
     }
 
     /// Run read-only queries. Writes must go through [`Db::transact`].

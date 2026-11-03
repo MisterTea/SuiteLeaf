@@ -1,5 +1,19 @@
 import type { SlideElement } from "./index";
+import { composeRotation, mapThroughGroups, readGroups } from "./pptx-group-xform";
+import { guideCustomPath } from "./pptx-custom-geometry";
 import { compactDrawing, presetFillPath, presetTextBox, presetVector } from "./pptx-preset-geometry";
+import { roundRectCornerRadius } from "./pptx-round-rect";
+import { cssStrokeStyle, strokeDashArray } from "./pptx-line-dash";
+import {
+  collapsedStrokeDirection,
+  diagonalStrokeDirection,
+  freeformArrowMarkup,
+  lineStrokeStyle,
+  scalePathAxes,
+  readLineEnd,
+  readLineEndSize,
+} from "./pptx-line-ends";
+import { plainWordArt } from "./pptx-word-art";
 
 export { presetTextBox };
 import { svgFillMarkup, themePaint, type ShapePaint } from "./pptx-theme";
@@ -11,7 +25,7 @@ export function slidePointScale(width?: number, pointWidth?: number) {
   return draw / points;
 }
 
-type Box = { x: number; y: number; width: number; height: number };
+type Box = { x: number; y: number; width: number; height: number; rotation?: number; flipH?: boolean; flipV?: boolean };
 type Metrics = {
   width: number;
   height: number;
@@ -29,52 +43,6 @@ function attrs(tag: string): Record<string, string> {
   return out;
 }
 
-function groupsOf(partXml: string) {
-  const groups: {
-    childStart: number;
-    end: number;
-    ox: number;
-    oy: number;
-    cx: number;
-    cy: number;
-    chx: number;
-    chy: number;
-    chcx: number;
-    chcy: number;
-    pr: string;
-  }[] = [];
-  const stack: number[] = [];
-  const marker = /<p:grpSp\b|<\/p:grpSp>/g;
-  let found: RegExpExecArray | null;
-  while ((found = marker.exec(partXml))) {
-    if (found[0] !== "</p:grpSp>") {
-      stack.push(found.index);
-      continue;
-    }
-    const start = stack.pop();
-    if (start == null) continue;
-    const body = partXml.slice(start, found.index);
-    const pr = /<p:grpSpPr\b[\s\S]*?<\/p:grpSpPr>/.exec(body)?.[0] ?? "";
-    const num = (tag: string, name: string) =>
-      Number(new RegExp(`<a:${tag}\\b[^>]*\\b${name}="(-?\\d+)"`).exec(pr)?.[1] ?? 0);
-    const prAt = body.indexOf("</p:grpSpPr>");
-    groups.push({
-      childStart: prAt < 0 ? start : start + prAt,
-      end: found.index,
-      ox: num("off", "x"),
-      oy: num("off", "y"),
-      cx: num("ext", "cx") || 1,
-      cy: num("ext", "cy") || 1,
-      chx: num("chOff", "x"),
-      chy: num("chOff", "y"),
-      chcx: num("chExt", "cx") || 1,
-      chcy: num("chExt", "cy") || 1,
-      pr,
-    });
-  }
-  return groups;
-}
-
 function mapGrouped(
   partXml: string,
   at: number,
@@ -83,18 +51,7 @@ function mapGrouped(
   emuW: number,
   emuH: number,
 ) {
-  const chain = groupsOf(partXml)
-    .filter((group) => at >= group.childStart && at < group.end)
-    .sort((a, b) => b.childStart - a.childStart);
-  for (const group of chain) {
-    const sx = group.cx / group.chcx;
-    const sy = group.cy / group.chcy;
-    emuX = group.ox + (emuX - group.chx) * sx;
-    emuY = group.oy + (emuY - group.chy) * sy;
-    emuW *= sx;
-    emuH *= sy;
-  }
-  return { emuX, emuY, emuW, emuH };
+  return mapThroughGroups(readGroups(partXml), at, emuX, emuY, emuW, emuH);
 }
 
 /**
@@ -102,7 +59,7 @@ function mapGrouped(
  * its own fill wins. A group that only forwards `grpFill` is skipped.
  */
 export function groupFillXml(partXml: string, at: number): string {
-  const chain = groupsOf(partXml)
+  const chain = readGroups(partXml)
     .filter((group) => at >= group.childStart && at < group.end)
     .sort((a, b) => b.childStart - a.childStart);
   for (const group of chain) {
@@ -140,14 +97,21 @@ export function placedBox(
     y: (mapped.emuY / metrics.emuHeight) * metrics.height,
     width: Math.max(0, (mapped.emuW / metrics.emuWidth) * metrics.width),
     height: Math.max(0, (mapped.emuH / metrics.emuHeight) * metrics.height),
+    ...(mapped.rotation ? { rotation: mapped.rotation } : {}),
+    ...(mapped.flipH ? { flipH: true } : {}),
+    ...(mapped.flipV ? { flipV: true } : {}),
   };
 }
 
 function guide(xml: string, name: string, fallback: number) {
-  const raw = new RegExp(`<a:gd\\b[^>]*\\bname="${name}"[^>]*\\bfmla="val (-?\\d+)"`).exec(
-    xml,
-  )?.[1];
-  return raw == null ? fallback : Number(raw);
+  // Google writes fmla before name. Either order is the same adjust.
+  for (const tag of xml.matchAll(/<a:gd\b([^>]*)\/?>/g)) {
+    const attrs = tag[1];
+    if (/\bname="([^"]+)"/.exec(attrs)?.[1] !== name) continue;
+    const raw = /\bfmla="val (-?\d+(?:\.\d+)?)"/.exec(attrs)?.[1];
+    if (raw != null) return Number(raw);
+  }
+  return fallback;
 }
 
 function pin(value: number, max: number) {
@@ -178,8 +142,9 @@ function presetPath(name: string, xml: string, w: number, h: number): string | u
     return `M 0 0 L ${neck} 0 L ${w} ${h / 2} L ${neck} ${h} L 0 ${h} L ${dx} ${h / 2} Z`;
   }
   if (name === "rightArrow" || name === "leftArrow") {
-    const head = (ss * pin(guide(xml, "adj1", 50000), (100000 * w) / ss)) / 100000;
-    const shaft = (h * pin(guide(xml, "adj2", 50000), 100000)) / 100000;
+    // adj1 is the shaft thickness; adj2 is the head length (ECMA-376).
+    const shaft = (h * pin(guide(xml, "adj1", 50000), 100000)) / 100000;
+    const head = (ss * pin(guide(xml, "adj2", 50000), (100000 * w) / ss)) / 100000;
     const inset = Math.max(0, (h - shaft) / 2);
     const neck = Math.max(0, w - head);
     const right = `M 0 ${inset} L ${neck} ${inset} L ${neck} 0 L ${w} ${h / 2} L ${neck} ${h} L ${neck} ${h - inset} L 0 ${h - inset} Z`;
@@ -194,12 +159,11 @@ function presetPath(name: string, xml: string, w: number, h: number): string | u
     return `M ${w / 2} 0 L ${w} ${head} L ${w - inset} ${head} L ${w - inset} ${h - head} L ${w} ${h - head} L ${w / 2} ${h} L 0 ${h - head} L ${inset} ${h - head} L ${inset} ${head} L 0 ${head} Z`;
   }
   if (name === "donut") {
-    const inner = ((Math.min(w, h) / 2) * pin(guide(xml, "adj", 25000), 50000)) / 100000;
-    const rx = w / 2;
-    const ry = h / 2;
-    const cx = rx;
-    const cy = ry;
-    return `M ${cx - rx} ${cy} A ${rx} ${ry} 0 1 0 ${cx + rx} ${cy} A ${rx} ${ry} 0 1 0 ${cx - rx} ${cy} Z M ${cx - inner} ${cy} A ${inner} ${inner} 0 1 1 ${cx + inner} ${cy} A ${inner} ${inner} 0 1 1 ${cx - inner} ${cy} Z`;
+    const rx = w / 2, ry = h / 2;
+    const thick = (ss * pin(guide(xml, "adj", 25000), 50000)) / 100000;
+    const irx = Math.max(0, rx - thick), iry = Math.max(0, ry - thick);
+    const hole = irx > 0 && iry > 0 ? ` M ${rx - irx} ${ry} A ${irx} ${iry} 0 1 1 ${rx + irx} ${ry} A ${irx} ${iry} 0 1 1 ${rx - irx} ${ry} Z` : "";
+    return `M 0 ${ry} A ${rx} ${ry} 0 1 0 ${w} ${ry} A ${rx} ${ry} 0 1 0 0 ${ry} Z${hole}`;
   }
   if (name === "cube") {
     const d = ss * 0.2;
@@ -211,7 +175,57 @@ function presetPath(name: string, xml: string, w: number, h: number): string | u
   if (name === "round2SameRect") return round2SameRectPath(xml, w, h);
   if (name === "round2DiagRect") return round2DiagRectPath(xml, w, h);
   if (name === "mathMultiply") return mathMultiplyPath(xml, w, h);
+  if (name === "curvedLeftArrow" || name === "curvedRightArrow")
+    return curvedSideArrowPath(xml, w, h, name === "curvedRightArrow");
+  if (name === "bentUpArrow") return bentUpArrowPath(xml, w, h);
   return undefined;
+}
+
+/**
+ * A curved arrow whose head is on the left (or the right). The shaft is a
+ * thick arc, so a rotated copy is a hook rather than the shape's rectangle.
+ */
+function curvedSideArrowPath(xml: string, w: number, h: number, right: boolean): string {
+  const ss = Math.min(w, h) || 1;
+  const thick = (ss * pin(guide(xml, "adj1", 25000), 100000)) / 100000;
+  const head = (ss * pin(guide(xml, "adj2", 50000), (100000 * w) / ss)) / 100000;
+  const headH = Math.max(thick * 2, (h * pin(guide(xml, "adj3", 25000), 80000)) / 100000);
+  const neck = Math.min(Math.max(head, thick), w * 0.62);
+  const mid = h / 2;
+  const mouth = Math.max(thick / 2, 1);
+  const x = (value: number) => (right ? w - value : value);
+  return [
+    `M ${x(0)} ${mid}`,
+    `L ${x(neck)} ${mid - headH / 2}`,
+    `L ${x(neck)} ${mid - mouth}`,
+    `C ${x(w)} ${mid - mouth} ${x(w)} ${mid + mouth} ${x(neck)} ${mid + mouth}`,
+    `L ${x(neck)} ${mid + headH / 2}`,
+    "Z",
+  ].join(" ");
+}
+
+/** An arrow that runs along the bottom and turns up. */
+function bentUpArrowPath(xml: string, w: number, h: number): string {
+  const ss = Math.min(w, h) || 1;
+  const thick = Math.max(1, (ss * pin(guide(xml, "adj1", 25000), 50000)) / 100000);
+  const head = Math.max(thick * 2, (ss * pin(guide(xml, "adj2", 25000), 50000)) / 100000);
+  const rise = Math.min(h - thick, Math.max(head, (h * pin(guide(xml, "adj3", 25000), 100000)) / 100000));
+  const xL = Math.max(0, w - thick * 2.4);
+  const xR = w;
+  const mid = (xL + xR) / 2;
+  const yHead = Math.max(0, h - rise);
+  return [
+    `M 0 ${h}`,
+    `L 0 ${h - thick}`,
+    `L ${xL} ${h - thick}`,
+    `L ${xL} ${yHead + head * 0.55}`,
+    `L ${xL - thick * 0.7} ${yHead + head * 0.55}`,
+    `L ${mid} ${yHead}`,
+    `L ${xR} ${yHead + head * 0.55}`,
+    `L ${xR - thick * 0.15} ${yHead + head * 0.55}`,
+    `L ${xR - thick * 0.15} ${h}`,
+    "Z",
+  ].join(" ");
 }
 
 /** A thick X. Each arm is a band; the viewBox clips the ends to the box. */
@@ -330,20 +344,33 @@ function round2SameRectPath(xml: string, w: number, h: number): string {
   ].join(" ");
 }
 
-function customPath(xml: string): { d: string; w: number; h: number } | undefined {
+function customPath(
+  xml: string,
+  shapeW = 0,
+  shapeH = 0,
+): { d: string; w: number; h: number; fillD: string; pen: boolean } | undefined {
   const paths = [...xml.matchAll(/<a:path\b([^>]*)>([\s\S]*?)<\/a:path>/g)];
   if (!paths.length) return undefined;
+  // Edited freeforms keep the preset's guide formulas and arcTo corners.
+  // Numeric lnTo paths stay on the direct reader below.
+  const guided = paths.some(
+    (path) =>
+      /<a:arcTo\b/.test(path[2] || "") ||
+      /<a:pt\b[^>]*\b(?:x|y)="(?!-?\d+(?:\.\d+)?")/.test(path[2] || ""),
+  );
+  if (guided) return guideCustomPath(xml, shapeW, shapeH);
   let w = 1;
   let h = 1;
-  const commands: string[] = [];
+  const stroke: string[] = [];
+  const fill: string[] = [];
   for (const path of paths) {
     const size = attrs(path[1]);
     w = Number(size.w) || w;
     h = Number(size.h) || h;
-    const body = path[2];
+    const commands: string[] = [];
     const token = /<a:(moveTo|lnTo|cubicBezTo|quadBezTo|close)\b[^>]*?(?:\/>|>([\s\S]*?)<\/a:\1>)/g;
     let step: RegExpExecArray | null;
-    while ((step = token.exec(body))) {
+    while ((step = token.exec(path[2]))) {
       if (step[1] === "close") {
         commands.push("Z");
         continue;
@@ -351,13 +378,18 @@ function customPath(xml: string): { d: string; w: number; h: number } | undefine
       const points = [...(step[2] || "").matchAll(/<a:pt\b[^>]*\bx="(-?\d+(?:\.\d+)?)"[^>]*\by="(-?\d+(?:\.\d+)?)"/g)];
       const letter = step[1] === "moveTo" ? "M" : step[1] === "lnTo" ? "L" : step[1] === "quadBezTo" ? "Q" : "C";
       if (!points.length) continue;
-      commands.push(
-        `${letter} ${points.map((point) => `${point[1]} ${point[2]}`).join(" ")}`,
-      );
+      commands.push(`${letter} ${points.map((point) => `${point[1]} ${point[2]}`).join(" ")}`);
     }
+    if (!commands.length) continue;
+    const piece = commands.join(" ");
+    // A path may decline the shape fill or the pen. fill="none" is an outline.
+    if (size.fill !== "none") fill.push(piece);
+    if (size.stroke !== "0" && size.stroke !== "false") stroke.push(piece);
   }
-  if (!commands.length) return undefined;
-  return { d: commands.join(" "), w, h };
+  const fillD = fill.join(" ");
+  const strokeD = stroke.join(" ");
+  if (!fillD && !strokeD) return undefined;
+  return { d: strokeD || fillD, w, h, fillD, pen: stroke.length > 0 };
 }
 
 function svgData(
@@ -368,15 +400,73 @@ function svgData(
   stroke: string,
   strokeWidth: number,
   evenOdd = false,
+  dash?: string,
+  fillD?: string,
+  ends?: {
+    head?: string;
+    tail?: string;
+    headSize?: "sm" | "lg";
+    tailSize?: "sm" | "lg";
+    cap?: string;
+    join?: string;
+    miterLimit?: number;
+    boxW?: number;
+    boxH?: number;
+    strokePt?: number;
+  },
 ) {
   const rule = evenOdd ? ` fill-rule="evenodd"` : "";
-  const painted = svgFillMarkup(fill);
-  const fitted = compactDrawing(
-    `${painted.defs}<path${rule} d="${d}" fill="${painted.value}" stroke="${stroke}" stroke-width="${strokeWidth}"/>`,
-    w,
-    h,
-  );
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${fitted.width} ${fitted.height}">${fitted.body}</svg>`;
+  const painted = svgFillMarkup(fillD === "" ? "none" : fill);
+  const boxW = ends?.boxW || 0;
+  const boxH = ends?.boxH || 0;
+  if (boxW > 0 && boxH > 0 && w > 0 && h > 0) {
+    const sx = boxW / w;
+    const sy = boxH / h;
+    // A square path stretched into a tall box makes the pen thick one way
+    // and thin the other. Draw it in the box instead.
+    if (Math.abs(sx - sy) > sx * 0.02) {
+      d = scalePathAxes(d, sx, sy);
+      if (fillD) fillD = scalePathAxes(fillD, sx, sy);
+      if (dash) dash = dash.split(/\s+/).map((part) => String(Math.round(Number(part) * sx * 100) / 100)).join(" ");
+      strokeWidth = ends?.strokePt || strokeWidth * sx;
+      w = boxW;
+      h = boxH;
+    }
+  }
+  const dashAttr = dash ? ` stroke-dasharray="${dash}"` : "";
+  const arrows =
+    ends?.head || ends?.tail
+      ? freeformArrowMarkup({
+          d,
+          viewW: w,
+          viewH: h,
+          boxW: ends.boxW || 0,
+          boxH: ends.boxH || 0,
+          strokePt: ends.strokePt || 0,
+          head: ends.head,
+          tail: ends.tail,
+          headSize: ends.headSize,
+          tailSize: ends.tailSize,
+          fill: stroke,
+        })
+      : "";
+  const cap = ends?.cap ?? "butt";
+  const join = ends?.join ?? "miter";
+  const miter = ends?.miterLimit ?? 8;
+  const edge = ` stroke-linejoin="${join}" stroke-linecap="${cap}" stroke-miterlimit="${miter}"`;
+  const split = fillD !== undefined && fillD !== d;
+  const body = split
+    ? `${fillD ? `<path${rule} d="${fillD}" fill="${painted.value}" stroke="none"/>` : ""}<path${rule} d="${d}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}"${dashAttr}${edge}/>${arrows}`
+    : `<path${rule} d="${d}" fill="${painted.value}" stroke="${stroke}" stroke-width="${strokeWidth}"${dashAttr}${edge}/>${arrows}`;
+  const fitted = compactDrawing(`${painted.defs}${body}`, w, h);
+  // DrawingML stretches path units to the shape box. The default meet
+  // alignment letterboxes a square path inside a tall or wide box.
+  // Without width and height, Chromium rasterizes the SVG at 300×150 and a
+  // short arrow disappears when that bitmap is squeezed into the shape.
+  const rasterW = ends?.boxW && ends.boxW > 0 ? ends.boxW : fitted.width <= 2000 ? fitted.width : 0;
+  const rasterH = ends?.boxH && ends.boxH > 0 ? ends.boxH : fitted.height <= 2000 ? fitted.height : 0;
+  const dim = rasterW && rasterH ? ` width="${rasterW}" height="${rasterH}"` : "";
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg"${dim} preserveAspectRatio="none" viewBox="0 0 ${fitted.width} ${fitted.height}">${fitted.body}</svg>`;
   const bytes = new TextEncoder().encode(svg);
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -388,7 +478,7 @@ function simpleKind(
 ): "rect" | "roundRect" | "ellipse" | "line" | "arrow" | undefined {
   if (!geom) return undefined;
   if (geom === "line" || geom.startsWith("straightConnector")) return "line";
-  if (geom === "roundRect" || geom === "round2DiagRect") return "roundRect";
+  if (geom === "roundRect") return "roundRect";
   if (geom === "ellipse" || geom === "circle") return "ellipse";
   if (geom === "rect" || geom === "flowChartProcess") return "rect";
   return undefined;
@@ -407,6 +497,11 @@ export function geometryClipPath(
   const name = /<a:prstGeom\b[^>]*\bprst="([^"]+)"/.exec(xml)?.[1];
   if (!name || name === "rect" || name === "flowChartProcess" || !(w > 0) || !(h > 0))
     return undefined;
+  if (name === "ellipse" || name === "circle") {
+    const rx = w / 2;
+    const ry = h / 2;
+    return `M ${rx} 0 A ${rx} ${ry} 0 1 1 ${rx} ${h} A ${rx} ${ry} 0 1 1 ${rx} 0 Z`;
+  }
   if (name === "roundRect" && guide(xml, "adj", 16667) === 0) return undefined;
   const local = presetPath(name, xml, w, h);
   const d = local || presetFillPath(xml, w, h);
@@ -424,19 +519,43 @@ export function shapeArtwork(
   const xfrm = attrs(/<(?:a|p):xfrm\b([^>]*)>/.exec(xml)?.[1] || "");
   const geom = /<a:prstGeom\s+prst="([^"]+)"/.exec(xml)?.[1];
   const arrow = /<a:(?:head|tail)End\b[^>]*\btype="(?!none)[^"]*"/.test(xml);
-  const rotation = Number(xfrm.rot) ? Number(xfrm.rot) / 60000 : undefined;
-  const flipH = xfrm.flipH === "1" || xfrm.flipH === "true";
-  const flipV = xfrm.flipV === "1" || xfrm.flipV === "true";
+  const ownTurn = Number(xfrm.rot) ? Number(xfrm.rot) / 60000 : undefined;
+  const rotation = composeRotation(box.rotation, ownTurn);
   const kind = simpleKind(geom);
   const customGeom = /<a:custGeom\b/.test(xml);
-  const line = kind === "line" || (!geom && !customGeom && arrow);
+  // A freeform whose box is only a point tall or wide is still a stroke.
+  // An SVG in that box has no pixels, so it becomes the line the pen draws.
+  const collapsed = collapsedStrokeDirection(xml, box);
+  const diagonal = collapsed ? undefined : diagonalStrokeDirection(xml);
+  let flipH = !!box.flipH !== (xfrm.flipH === "1" || xfrm.flipH === "true");
+  let flipV = !!box.flipV !== (xfrm.flipV === "1" || xfrm.flipV === "true");
+  if (collapsed?.axis === "h" && collapsed.flip) flipH = !flipH;
+  if (collapsed?.axis === "v" && collapsed.flip) flipV = !flipV;
+  if (diagonal?.flipH) flipH = !flipH;
+  if (diagonal?.flipV) flipV = !flipV;
+  const line = kind === "line" || (!geom && !customGeom && arrow) || !!collapsed || !!diagonal;
   const plain = !geom && !customGeom;
   if (line || kind || plain) {
-    const shapeType = line ? (arrow ? "arrow" : "line") : kind === "ellipse" || kind === "roundRect" ? kind : "rect";
+    const corner = geom === "roundRect" ? roundRectCornerRadius(xml, box.width, box.height) : undefined;
+    const shapeType = line
+      ? arrow
+        ? "arrow"
+        : "line"
+      : corner === 0
+        ? "rect"
+        : kind === "ellipse" || kind === "roundRect"
+          ? kind
+          : "rect";
+    const strokeStyle = cssStrokeStyle(paint.dash);
+    const lineHead = line ? readLineEnd(xml, "head") : undefined;
+    const lineTail = line ? readLineEnd(xml, "tail") : undefined;
+    const lineHeadSize = line ? readLineEndSize(xml, "head") : undefined;
+    const lineTailSize = line ? readLineEndSize(xml, "tail") : undefined;
     return {
       type: "shape",
       ...box,
       shapeType,
+      ...(corner ? { radius: corner } : {}),
       fill: line ? "transparent" : paint.fill || "transparent",
       ...(paint.stroke
         ? {
@@ -444,11 +563,16 @@ export function shapeArtwork(
             strokeWidth: paint.strokeEmu
               ? (paint.strokeEmu / slide.emuWidth) * slide.width
               : 1,
+            ...(strokeStyle ? { strokeStyle } : {}),
           }
         : {}),
-      ...(flipH ? { flipH: true } : {}),
-      ...(flipV ? { flipV: true } : {}),
-      ...(rotation ? { rotation } : {}),
+      ...(lineHead ? { lineHead } : {}),
+      ...(lineTail ? { lineTail } : {}),
+      ...(lineHeadSize ? { lineHeadSize } : {}),
+      ...(lineTailSize ? { lineTailSize } : {}),
+      ...(flipH ? { flipH: true } : box.flipH ? { flipH: undefined } : {}),
+      ...(flipV ? { flipV: true } : box.flipV ? { flipV: undefined } : {}),
+      ...(rotation ? { rotation } : { rotation: undefined }),
     };
   }
   // cNvPr/extLst also uses a:ext, and that node has no cx/cy. The transform's
@@ -458,7 +582,7 @@ export function shapeArtwork(
   const ext = attrs(/<(?:a|p):ext\b([^>]*)\/?>/.exec(xfrmBody)?.[1] || "");
   const emuW = Number(ext.cx) || box.width || 1;
   const emuH = Number(ext.cy) || box.height || 1;
-  const custom = /<a:custGeom\b/.test(xml) ? customPath(xml) : undefined;
+  const custom = /<a:custGeom\b/.test(xml) ? customPath(xml, emuW, emuH) : undefined;
   const d = custom?.d || (geom ? presetPath(geom, xml, custom?.w || emuW, custom?.h || emuH) : undefined);
   // Path units are the shape's own EMUs. A group may scale that space, but
   // a:ln w stays in slide EMUs. Passing the raw width pads the viewBox by
@@ -480,6 +604,7 @@ export function shapeArtwork(
           paint.fill || "none",
           paint.stroke || "none",
           presetStroke,
+          emuW > 0 && emuH > 0 ? { x: box.width / emuW, y: box.height / emuH } : undefined,
         );
   if (vector) {
     const scaleX = box.width / emuW;
@@ -492,9 +617,9 @@ export function shapeArtwork(
       height: Math.max(0, vector.height * scaleY),
       src: vector.src,
       alt: "Slide shape",
-      ...(flipH ? { flipH: true } : {}),
-      ...(flipV ? { flipV: true } : {}),
-      ...(rotation ? { rotation } : {}),
+      ...(flipH ? { flipH: true } : box.flipH ? { flipH: undefined } : {}),
+      ...(flipV ? { flipV: true } : box.flipV ? { flipV: undefined } : {}),
+      ...(rotation ? { rotation } : { rotation: undefined }),
     };
   }
   // An unlisted preset still occupies its box. Rotation is about that box's center,
@@ -513,15 +638,14 @@ export function shapeArtwork(
               : 1,
           }
         : {}),
-      ...(flipH ? { flipH: true } : {}),
-      ...(flipV ? { flipV: true } : {}),
-      ...(rotation ? { rotation } : {}),
+      ...(flipH ? { flipH: true } : box.flipH ? { flipH: undefined } : {}),
+      ...(flipV ? { flipV: true } : box.flipV ? { flipV: undefined } : {}),
+      ...(rotation ? { rotation } : { rotation: undefined }),
     };
   }
   const viewW = custom?.w || emuW;
   const viewH = custom?.h || emuH;
-  // The box is already in slide space, including a group's scale. Path
-  // coordinates are often a local drawing, so an unscaled EMU stroke floods it.
+  // The box is already in slide space. Path coordinates stay local, so an unscaled EMU stroke floods it.
   const strokeWidth =
     paint.strokeEmu && shapeEmu > 0 ? (paint.strokeEmu * viewW) / shapeEmu : 0;
   return {
@@ -532,14 +656,26 @@ export function shapeArtwork(
       viewW,
       viewH,
       paint.fill || "none",
-      paint.stroke || "none",
+      custom && !custom.pen ? "none" : paint.stroke || "none",
       strokeWidth,
       geom === "donut",
+      strokeDashArray(paint.dash, strokeWidth),
+      custom?.fillD,
+      {
+        head: readLineEnd(xml, "head"),
+        tail: readLineEnd(xml, "tail"),
+        headSize: readLineEndSize(xml, "head"),
+        tailSize: readLineEndSize(xml, "tail"),
+        ...lineStrokeStyle(xml),
+        boxW: box.width,
+        boxH: box.height,
+        strokePt: paint.strokeEmu ? (paint.strokeEmu / slide.emuWidth) * slide.width : 0,
+      },
     ),
     alt: "Slide shape",
-    ...(flipH ? { flipH: true } : {}),
-    ...(flipV ? { flipV: true } : {}),
-    ...(rotation ? { rotation } : {}),
+    ...(flipH ? { flipH: true } : box.flipH ? { flipH: undefined } : {}),
+    ...(flipV ? { flipV: true } : box.flipV ? { flipV: undefined } : {}),
+    ...(rotation ? { rotation } : { rotation: undefined }),
   };
 }
 
@@ -570,16 +706,24 @@ export function lineFrame(box: {
 /** Date, footer, and slide number are one each. Layouts often renumber their idx. */
 const SINGLE_PLACEHOLDERS = new Set(["dt", "ftr", "sldNum", "hdr"]);
 
+/** Some producers write idx="-1" as an unsigned 32-bit sentinel. It matches no layout. */
+function placeholderIdxUnset(idx: string) {
+  return idx === "4294967295" || idx === "-1";
+}
+
 function placeholderIdentity(tag: string): { idx: string; type: string } | undefined {
   const parsed = attrs(tag);
   return { idx: parsed.idx || "0", type: parsed.type || "body" };
 }
 
 function samePlaceholderType(got: string, want: string) {
-  return (
-    got === want ||
-    (["title", "ctrTitle"].includes(got) && ["title", "ctrTitle"].includes(want))
-  );
+  const family = (type: string) =>
+    type === "title" || type === "ctrTitle"
+      ? "title"
+      : type === "body" || type === "subTitle"
+        ? "body"
+        : type;
+  return got === want || family(got) === family(want);
 }
 
 /** Layout or master shape that supplies a placeholder's missing transform. */
@@ -598,14 +742,37 @@ export function placeholderShape(partXml: string | undefined, shapeXml: string):
     const got = placeholderIdentity(tag[1]);
     return !!got && samePlaceholderType(got.type, want.type);
   });
-  return (
-    typed.find((candidate) => {
-      const tag = /<p:ph\b([^>]*)\/?>/.exec(candidate);
-      const got = tag ? placeholderIdentity(tag[1]) : undefined;
-      return got?.idx === want.idx;
-    }) ||
-    (SINGLE_PLACEHOLDERS.has(want.type) && typed.length === 1 ? typed[0] : "")
-  );
+  const exact = typed.find((candidate) => {
+    const tag = /<p:ph\b([^>]*)\/?>/.exec(candidate);
+    const got = tag ? placeholderIdentity(tag[1]) : undefined;
+    return got?.idx === want.idx;
+  });
+  if (exact) return exact;
+  // A sentinel idx, or the one date/footer/number, still inherits the only shape of that type.
+  if (
+    typed.length === 1 &&
+    (placeholderIdxUnset(want.idx) || SINGLE_PLACEHOLDERS.has(want.type))
+  )
+    return typed[0];
+  return "";
+}
+
+/**
+ * Letters stay upright when a half turn is only there to cancel one flip.
+ * PowerPoint mirrors the outline. `flipV` plus 180°, or `flipH` plus 180°,
+ * is how a flipped title is stored, and the words still read left to right.
+ * Any other rotation is kept. A flip with no half turn does not turn the text.
+ */
+export function readableTextRotation(
+  rotation?: number,
+  flipH?: boolean,
+  flipV?: boolean,
+): number | undefined {
+  let turn = (((rotation || 0) % 360) + 360) % 360;
+  const oneFlip = !!flipH !== !!flipV;
+  if (oneFlip && Math.abs(turn - 180) < 0.05) turn = 0;
+  if (turn < 0.05 || turn > 359.95) return undefined;
+  return turn;
 }
 
 /** Rotation and flips from a DrawingML transform. Positive rotation is clockwise. */
@@ -639,7 +806,21 @@ export type InheritedLabel = {
   padBottom?: number;
   nowrap?: boolean;
   autofit?: boolean;
+  /** WordArt textPlain fills this box instead of using the stored point size. */
+  stretchText?: boolean;
+  textFlow?: "up" | "down" | "upright";
 };
+
+/** `vert270` reads upward. `vert` and `eaVert` are sideways, top to bottom. `wordArtVert` stacks upright letters. */
+export function verticalTextFlow(vert: string | undefined): "up" | "down" | "upright" | undefined {
+  return vert === "vert270"
+    ? "up"
+    : vert === "vert" || vert === "eaVert"
+      ? "down"
+      : vert === "wordArtVert"
+        ? "upright"
+        : undefined;
+}
 
 /**
  * A single-line label whose declared size does not fit its box.
@@ -669,42 +850,60 @@ export function inheritedLabels(
 ): InheritedLabel[] {
   const labels: InheritedLabel[] = [];
   for (const match of partXml.matchAll(/<p:sp\b[\s\S]*?<\/p:sp>/g)) {
-    if (shapeIsHidden(match[0]) || /<p:ph\b/.test(match[0])) continue;
+    if (
+      shapeIsHidden(match[0]) ||
+      insideHiddenGroup(partXml, match.index ?? 0) ||
+      /<p:ph\b/.test(match[0])
+    )
+      continue;
     const txBody = /<p:txBody\b[\s\S]*?<\/p:txBody>/.exec(match[0])?.[0];
     if (!txBody || !/<a:t\b[^>]*>[^<\s]/.test(txBody)) continue;
     const placed = placedBox(partXml, match.index ?? 0, match[0], metrics);
     if (!placed || !(placed.width > 0 && placed.height > 0)) continue;
     const box = presetTextBox(match[0], placed) ?? placed;
+    const pose = drawingPose(match[0]);
+    const rotation = composeRotation(
+      placed.rotation,
+      readableTextRotation(pose.rotation, pose.flipH, pose.flipV),
+    );
     const bodyAttrs = attrs(/<a:bodyPr\b([^>]*)\/?>/.exec(txBody)?.[1] || "");
     const hasBody = /<a:bodyPr\b/.test(txBody);
     const insetDefault = (name: string) =>
       name === "tIns" || name === "bIns" ? 45720 : 91440;
     const insetOf = (name: string) =>
-      ((Number(bodyAttrs[name] ?? insetDefault(name)) || 0) / metrics.emuWidth) *
+      (Math.max(0, Number(bodyAttrs[name] ?? insetDefault(name)) || 0) /
+        metrics.emuWidth) *
       metrics.width;
     const top = insetOf("tIns");
     const right = insetOf("rIns");
     const bottom = insetOf("bIns");
     const left = insetOf("lIns");
+    const textFlow = verticalTextFlow(bodyAttrs.vert);
+    const stretchText = plainWordArt(txBody);
     labels.push({
       txBody,
       ...box,
-      ...drawingPose(match[0]),
+      ...pose,
+      ...(rotation ? { rotation } : { rotation: undefined }),
       ...(bodyAttrs.anchor === "ctr"
         ? { valign: "middle" }
         : bodyAttrs.anchor === "b"
           ? { valign: "bottom" }
           : {}),
       ...(hasBody
-        ? {
-            inset: top,
-            padLeft: left,
-            ...(right !== left ? { padRight: right } : {}),
-            ...(bottom !== top ? { padBottom: bottom } : {}),
-          }
+        ? stretchText
+          ? { inset: 0, padLeft: 0, padRight: 0, padBottom: 0 }
+          : {
+              inset: top,
+              padLeft: left,
+              ...(right !== left ? { padRight: right } : {}),
+              ...(bottom !== top ? { padBottom: bottom } : {}),
+            }
         : {}),
-      ...(bodyAttrs.wrap === "none" ? { nowrap: true } : {}),
+      ...(bodyAttrs.wrap === "none" || stretchText ? { nowrap: true } : {}),
+      ...(stretchText ? { stretchText: true } : {}),
       ...(/<a:spAutoFit\b/.test(txBody) ? { autofit: true } : {}),
+      ...(textFlow ? { textFlow } : {}),
     });
   }
   return labels;
@@ -721,6 +920,27 @@ export function insideFallback(xml: string, index: number): boolean {
 /** `cNvPr hidden="1"` is omitted from the slideshow and from print. */
 export function shapeIsHidden(xml: string) {
   return /<p:cNvPr\b[^>]*\bhidden="(?:1|true)"/.test(xml);
+}
+
+/**
+ * A hidden group stays out of the slideshow, including every shape inside it.
+ * The flag sits on the group's own `cNvPr`, not on the children.
+ */
+export function insideHiddenGroup(xml: string, index: number): boolean {
+  const token = /<p:grpSp\b|<\/p:grpSp>/g;
+  const stack: boolean[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = token.exec(xml))) {
+    if (match.index >= index) break;
+    if (match[0].startsWith("</")) {
+      stack.pop();
+      continue;
+    }
+    const nvEnd = xml.indexOf("</p:nvGrpSpPr>", match.index);
+    const head = nvEnd > match.index ? xml.slice(match.index, nvEnd) : "";
+    stack.push(/<p:cNvPr\b[^>]*\bhidden="(?:1|true)"/.test(head));
+  }
+  return stack.some(Boolean);
 }
 
 function spPrOf(xml: string) {
@@ -752,12 +972,19 @@ export function withInheritedFill(
   const fill = inherited
     ? /<a:(solidFill|gradFill)\b[\s\S]*?<\/a:\1>/.exec(spPrOf(inherited))?.[0]
     : undefined;
-  if (!fill) return shapeXml;
-  if (/<p:spPr\b[^>]*\/>/.test(shapeXml))
-    return shapeXml.replace(/<p:spPr\b[^>]*\/>/, `<p:spPr>${fill}</p:spPr>`);
-  if (/<p:spPr\b/.test(shapeXml))
-    return shapeXml.replace(/<p:spPr\b([^>]*)>/, `<p:spPr$1>${fill}`);
-  return `<p:spPr>${fill}</p:spPr>${shapeXml}`;
+  if (fill) {
+    if (/<p:spPr\b[^>]*\/>/.test(shapeXml))
+      return shapeXml.replace(/<p:spPr\b[^>]*\/>/, `<p:spPr>${fill}</p:spPr>`);
+    if (/<p:spPr\b/.test(shapeXml))
+      return shapeXml.replace(/<p:spPr\b([^>]*)>/, `<p:spPr$1>${fill}`);
+    return `<p:spPr>${fill}</p:spPr>${shapeXml}`;
+  }
+  // A placeholder style fillRef is the box colour when spPr has no paint.
+  if (/<p:style\b/.test(shapeXml)) return shapeXml;
+  const style = [layoutXml, masterXml]
+    .map((xml) => /<p:style\b[\s\S]*?<\/p:style>/.exec(xml || "")?.[0])
+    .find(Boolean);
+  return style ? `${shapeXml}${style}` : shapeXml;
 }
 
 function stopColor(token: string) {
@@ -830,12 +1057,14 @@ export function inheritedShapes(
   themeXml: string | undefined,
   metrics: Metrics,
   mapXml?: string,
+  background?: string,
 ): { at: number; element: Omit<SlideElement, "id"> }[] {
   const drawn: { at: number; element: Omit<SlideElement, "id"> }[] = [];
   for (const match of partXml.matchAll(
     /<p:sp\b[\s\S]*?<\/p:sp>|<p:cxnSp\b[\s\S]*?<\/p:cxnSp>/g,
   )) {
-    if (shapeIsHidden(match[0])) continue;
+    if (shapeIsHidden(match[0]) || insideHiddenGroup(partXml, match.index ?? 0))
+      continue;
     if (/<p:ph\b/.test(match[0]) || /<a:blip\b/.test(match[0])) continue;
     const box = placedBox(partXml, match.index, match[0], metrics);
     if (!box) continue;
@@ -847,7 +1076,7 @@ export function inheritedShapes(
       : match[0];
     const art = shapeArtwork(
       paintXml,
-      themePaint(themeXml, paintXml, mapXml),
+      themePaint(themeXml, paintXml, mapXml, background),
       box,
       metrics,
     );

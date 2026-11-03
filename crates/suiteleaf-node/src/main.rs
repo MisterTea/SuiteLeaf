@@ -1,15 +1,23 @@
+mod access_explain;
 mod admin_api;
 mod ai_api;
 mod ai_local;
+mod assertion;
 mod auth;
+mod backup_status;
 mod collab;
+mod collab_rich;
 mod config;
 mod drive_api;
+mod emergency;
 mod http;
 mod internal;
 mod keys;
+mod org_export;
 mod replication;
 mod schema;
+mod session_list;
+mod session_policy;
 
 use std::{collections::HashSet, net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
 
@@ -212,6 +220,12 @@ async fn run(config: Config, init: bool, internal_token: Option<String>) -> Resu
         .then(|| config.allowlist.iter().copied().chain([peer_id]).collect());
     db.set_allowlist(allowlist.clone());
     let drive = Drive::open(db.clone(), &config.data_dir.join("blobs"))?;
+    if let Ok(raw) = std::env::var("SUITELEAF_STORAGE_BUDGET_BYTES") {
+        match Drive::storage_budget_from(&raw) {
+            Ok(budget) => drive.set_storage_budget(budget),
+            Err(error) => anyhow::bail!("{error}"),
+        }
+    }
     admin_api::ensure_an_admin(&db).context("choose an admin")?;
 
     let (net, events) = suiteleaf_net::start(NetConfig {
@@ -244,6 +258,10 @@ async fn run(config: Config, init: bool, internal_token: Option<String>) -> Resu
 
     let config = Arc::new(config);
     let auth = Auth::new(db.clone());
+    auth.set_idle_limit(config.auth.idle_secs.map(Duration::from_secs));
+    if let Ok(code) = std::env::var("SUITELEAF_EMERGENCY_CODE") {
+        auth.set_emergency_code(Some(code));
+    }
     if config.auth.enabled {
         match &config.auth.url {
             Some(url) => auth.set_sidecar(Some(url.trim_end_matches('/').to_owned())),
@@ -286,6 +304,7 @@ async fn run(config: Config, init: bool, internal_token: Option<String>) -> Resu
                 .map(|d| d.as_millis() as i64)
                 .unwrap_or(0);
             let _ = rooms.kick(now, pause);
+            let _ = rooms.catch_up_open_rooms();
         }
     });
     let listener = TcpListener::bind(config.http_addr)

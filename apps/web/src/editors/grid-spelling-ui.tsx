@@ -21,6 +21,7 @@ import {
   writePersonalDictionary,
   type PersonalDictionary,
 } from "./doc-spelling";
+import type { ProofingLanguage } from "./proofing-language";
 import {
   changeAllCells,
   changeAllValues,
@@ -724,6 +725,7 @@ export function SheetSpelling({
   fileId,
   ready,
   persist,
+  language = "en",
   ref,
 }: {
   bookRef: RefObject<any>;
@@ -732,6 +734,7 @@ export function SheetSpelling({
   fileId: string;
   ready: boolean;
   persist: () => void;
+  language?: ProofingLanguage;
   ref?: Ref<SpellingHandle>;
 }) {
   const personal = usePersonalDictionary();
@@ -774,10 +777,10 @@ export function SheetSpelling({
     // `tick` reruns the scan after a cell edit. The workbook object itself does not change.
     void tick;
     return withoutIgnoredCells(
-      collectSheetIssues(bookRef.current, personal, ignored),
+      collectSheetIssues(bookRef.current, personal, ignored, language),
       ignoredCells,
     );
-  }, [ready, personal, ignored, ignoredCells, tick, bookRef]);
+  }, [ready, personal, ignored, ignoredCells, tick, bookRef, language]);
   const marksRef = useRef(marks);
   marksRef.current = marks;
   const issuesRef = useRef(issues);
@@ -899,7 +902,7 @@ export function SheetSpelling({
     restart();
     setHadIssues(
       withoutIgnoredCells(
-        collectSheetIssues(bookRef.current, personalRef.current, ignoredRef.current),
+        collectSheetIssues(bookRef.current, personalRef.current, ignoredRef.current, language),
         ignoredCellsRef.current,
       ).length > 0,
     );
@@ -1036,15 +1039,17 @@ export function SlideSpellMirror({
   text,
   fileId,
   caret = null,
+  language = "en",
 }: {
   text: string;
   fileId: string;
   /** While this box is being edited, the word at the caret is not underlined. */
   caret?: number | null;
+  language?: ProofingLanguage;
 }) {
   const personal = usePersonalDictionary();
   const ignored = useIgnoredWords(fileId);
-  const hits = misspellingsInText(text, personal, ignored).filter(
+  const hits = misspellingsInText(text, personal, ignored, language).filter(
     (hit) => !isTypingWord(hit.to, caret, text[hit.to]),
   );
   if (!hits.length) return null;
@@ -1072,12 +1077,14 @@ export function SlideSpelling({
   fileId,
   onFocus,
   onReplace,
+  language = "en",
   ref,
 }: {
   deck: Parameters<typeof collectSlideIssues>[0];
   fileId: string;
   onFocus: (issue: SlideIssue) => void;
   onReplace: (issue: SlideIssue, replacement: string) => void;
+  language?: ProofingLanguage;
   ref?: Ref<SpellingHandle>;
 }) {
   const personal = usePersonalDictionary();
@@ -1085,8 +1092,8 @@ export function SlideSpelling({
   const [open, setOpen] = useState(false);
   const [hadIssues, setHadIssues] = useState(false);
   const issues = useMemo(
-    () => collectSlideIssues(deck, personal, ignored),
-    [deck, personal, ignored],
+    () => collectSlideIssues(deck, personal, ignored, language),
+    [deck, personal, ignored, language],
   );
   const { index, restart } = useSpellCursor(issues.length, open);
   const issue = open && issues.length ? issues[index] : null;
@@ -1109,7 +1116,7 @@ export function SlideSpelling({
   const openSession = () => {
     restart();
     setHadIssues(
-      collectSlideIssues(deckRef.current, personalRef.current, ignoredRef.current).length > 0,
+      collectSlideIssues(deckRef.current, personalRef.current, ignoredRef.current, language).length > 0,
     );
     setOpen(true);
   };

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SlideElement } from "../packages/core/src";
+import { officeSingleSpacing } from "../packages/core/src/office-fonts";
 import { slideCellPaint, toggleSlideCellMark } from "../apps/web/src/editors/slide-table-format";
 
 const table: SlideElement = {
@@ -59,7 +60,17 @@ describe("slide table marks", () => {
       paddingRight: "calc(7.2 * var(--slide-pt, 1) * 1px)",
       verticalAlign: "middle",
     });
+    expect(slideCellPaint({ font: "SuiteLeaf Pine", fontSize: 16 }, true).fontFamily).toBe(
+      "SuiteLeaf Pine",
+    );
+    expect(slideCellPaint({ fontSize: 18 }, true).lineHeight).toBe(
+      officeSingleSpacing("Calibri"),
+    );
+    expect(slideCellPaint({ font: "Arial", fontSize: 18 }, true).lineHeight).toBe(
+      officeSingleSpacing("Arial"),
+    );
     expect(slideCellPaint(undefined, false)).toEqual({
+      fontFamily: undefined,
       fontWeight: undefined,
       fontStyle: undefined,
       background: undefined,

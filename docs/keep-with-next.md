@@ -1,0 +1,9 @@
+# Keep with next
+
+A block marked keep-with-next stays with the following block when the two fit on an empty page and the page already in progress cannot hold both. On a page of 4 lines, a 3-line paragraph stays on page 1. A 1-line heading with keep-with-next and a 2-line paragraph move together to page 2. Without the mark, that heading stays on page 1 and the paragraph starts page 2.
+
+A heading and paragraph that already fit together stay on the same page. A pair that is taller than one page is not pushed ahead of a gap it cannot close.
+
+A section that contains the mark uses this layout for its page count. A short Beds heading and Paths paragraph still fill one page. A section with no mark keeps the previous page count. The screen still measures the document in the browser. A paragraph marked for widow control keeps at least two lines on each side of a page break. Five lines on a 4-line page put 3 lines on the first page and 2 on the next, instead of 4 and 1. Three lines with only one line of room start on the next page, instead of leaving one line behind. A one-line paragraph is unchanged. A Word export writes `widowControl` when the paragraph already has that attribute.
+
+A keep-with-next heading before a table uses the same rule. On a page of 4 lines, 3 lines of text stay on page 1. The heading and a two-row table start together on page 2. Without the mark, the heading stays on page 1 and the table starts on page 2. A heading with the mark and an 80-row table still counts the table. Widow control on text above a table keeps the paragraph together when one line of room would leave a single line behind. On a page of 4 lines, 3 earlier lines stay on page 1. A following 3-line paragraph starts on page 2 with the table. Without the mark, that paragraph starts on page 1 and the table starts on page 2. The document editor was not opened.

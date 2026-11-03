@@ -31,7 +31,7 @@ export type LineSpacing =
   | { kind: "pct"; value: number }
   | { kind: "pts"; value: string };
 
-/** Hundredths of a point on the last `a:spcBef` or `a:spcAft`. Zero still wins. */
+/** Hundredths of a point on the last `a:spcPts` gap. A later `a:spcPct` is not points. */
 export function lastSpacingPoints(
   xml: string,
   tag: "spcBef" | "spcAft",
@@ -46,6 +46,30 @@ export function lastSpacingPoints(
   const points = Number(last[1]) / 100;
   if (!Number.isFinite(points) || points < 0) return;
   return points;
+}
+
+/**
+ * The last `a:spcBef` or `a:spcAft` wins, whether it is points or a percentage
+ * of the font. `spcPct` is thousandths of a percent, so 10000 is 10% of the
+ * font, not a full line. A later percentage replaces an inherited point gap.
+ */
+export function paragraphGapPoints(
+  xml: string,
+  tag: "spcBef" | "spcAft",
+  fontPt: number,
+): number | undefined {
+  const matches = [
+    ...xml.matchAll(
+      new RegExp(`<a:${tag}>\\s*<a:(spcPts|spcPct)\\b[^>]*\\bval="(\\d+)"`, "g"),
+    ),
+  ];
+  const last = matches.at(-1);
+  if (!last) return;
+  const raw = Number(last[2]);
+  if (!Number.isFinite(raw) || raw < 0) return;
+  if (last[1] === "spcPts") return raw / 100;
+  if (!(fontPt > 0)) return 0;
+  return Math.min(fontPt * 10, (fontPt * raw) / 100000);
 }
 
 /**

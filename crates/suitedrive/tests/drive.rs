@@ -878,6 +878,21 @@ fn a_responder_can_append_a_form_response_but_cannot_change_the_questions() {
         n.drive.write(&sam, &file.id, None, None, &one),
         Err(DriveError::Forbidden)
     ));
+    let mut titled = serde_json::from_slice::<serde_json::Value>(&two).unwrap();
+    titled["title"] = serde_json::json!("secret-value");
+    if let Some(rows) = titled
+        .pointer_mut("/content/responses")
+        .and_then(|value| value.as_array_mut())
+    {
+        rows.push(serde_json::json!({ "id": "r3", "answers": { "name": "Ada" } }));
+    }
+    let titled_bytes = serde_json::to_vec(&titled).unwrap();
+    assert!(matches!(
+        n.drive.write(&sam, &file.id, None, None, &titled_bytes),
+        Err(DriveError::Forbidden)
+    ));
+    let (_, kept) = n.drive.read(&rosa, &file.id, None).unwrap();
+    assert!(!String::from_utf8(kept).unwrap().contains("secret-value"));
     assert!(matches!(
         n.drive.write(&sam, &file.id, None, None, &two),
         Err(DriveError::Forbidden)
@@ -1140,6 +1155,118 @@ fn a_sign_up_link_stores_a_rating() {
     assert_eq!(saved["content"]["responses"][0]["answers"]["name"], "Rosa");
     assert_eq!(saved["content"]["responses"][0]["answers"]["talk"], "4");
     assert_eq!(saved["content"]["responses"][0]["answers"]["plot"], "Large");
+}
+
+#[test]
+fn a_sign_up_link_stores_a_trimmed_choice_and_refuses_another_answer() {
+    let n = node();
+    let rosa = user("rosa");
+    let file = n
+        .drive
+        .create(
+            &rosa,
+            None,
+            "Plot size.slform",
+            "file",
+            Some("application/vnd.suiteleaf.form+json"),
+        )
+        .unwrap();
+    let seeded = serde_json::to_vec(&serde_json::json!({
+        "format": "suiteleaf",
+        "version": 1,
+        "id": "form-choice",
+        "title": "Plot size",
+        "kind": "form",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "content": {
+            "questions": [{
+                "id": "plot",
+                "prompt": "Plot size",
+                "kind": "choice",
+                "required": true,
+                "choices": [" Beds ", "Paths"]
+            }],
+            "responses": []
+        }
+    }))
+    .unwrap();
+    n.drive.write(&rosa, &file.id, None, None, &seeded).unwrap();
+    let token = n.drive.create_respond_link(&rosa, &file.id).unwrap();
+    let Err(DriveError::BadRequest(message)) = n
+        .drive
+        .submit_public_response(&token, &answer_map(&[("plot", "secret-value")]))
+    else {
+        panic!("expected the choice to be refused");
+    };
+    assert_eq!(message, "Plot size must be one of the choices");
+    assert!(!message.contains("secret-value"));
+    n.drive
+        .submit_public_response(&token, &answer_map(&[("plot", " Beds ")]))
+        .unwrap();
+    let (_, saved) = n.drive.read(&rosa, &file.id, None).unwrap();
+    let saved: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+    assert_eq!(saved["content"]["questions"][0]["choices"][0], " Beds ");
+    assert_eq!(saved["content"]["responses"][0]["answers"]["plot"], "Beds");
+    assert!(!saved.to_string().contains("secret-value"));
+}
+
+#[test]
+fn a_sign_up_link_stores_a_trimmed_grid_and_refuses_another_answer() {
+    let n = node();
+    let rosa = user("rosa");
+    let file = n
+        .drive
+        .create(
+            &rosa,
+            None,
+            "Day grid.slform",
+            "file",
+            Some("application/vnd.suiteleaf.form+json"),
+        )
+        .unwrap();
+    let seeded = serde_json::to_vec(&serde_json::json!({
+        "format": "suiteleaf",
+        "version": 1,
+        "id": "form-grid-trim",
+        "title": "Day grid",
+        "kind": "form",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "content": {
+            "questions": [{
+                "id": "days",
+                "prompt": "Which days?",
+                "kind": "grid",
+                "required": true,
+                "rows": [" Mon "],
+                "columns": [" Yes "]
+            }],
+            "responses": []
+        }
+    }))
+    .unwrap();
+    n.drive.write(&rosa, &file.id, None, None, &seeded).unwrap();
+    let token = n.drive.create_respond_link(&rosa, &file.id).unwrap();
+    let Err(DriveError::BadRequest(message)) = n.drive.submit_public_response(
+        &token,
+        &answer_map(&[("days", r#"{"Mon":"secret-value"}"#)]),
+    ) else {
+        panic!("expected the column to be refused");
+    };
+    assert_eq!(message, "Which days? must be one of the columns");
+    assert!(!message.contains("secret-value"));
+    n.drive
+        .submit_public_response(&token, &answer_map(&[("days", r#"{" Mon ":" Yes "}"#)]))
+        .unwrap();
+    let (_, saved) = n.drive.read(&rosa, &file.id, None).unwrap();
+    let saved: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+    assert_eq!(saved["content"]["questions"][0]["columns"][0], " Yes ");
+    assert_eq!(
+        saved["content"]["responses"][0]["answers"]["days"],
+        r#"{"Mon":"Yes"}"#
+    );
+    assert!(!saved.to_string().contains("secret-value"));
 }
 
 #[test]
@@ -1931,6 +2058,7 @@ fn presence_names_other_people_and_drops_stale_beats() {
         vec![Presence {
             name: "Jordan".into(),
             editing: false,
+            idle: false,
         }]
     );
 
@@ -1942,6 +2070,7 @@ fn presence_names_other_people_and_drops_stale_beats() {
         vec![Presence {
             name: "Jordan".into(),
             editing: false,
+            idle: false,
         }],
         "Sam does not see himself"
     );
@@ -1950,6 +2079,7 @@ fn presence_names_other_people_and_drops_stale_beats() {
         vec![Presence {
             name: "Sam Okafor".into(),
             editing: true,
+            idle: false,
         }]
     );
 
@@ -1961,6 +2091,7 @@ fn presence_names_other_people_and_drops_stale_beats() {
         vec![Presence {
             name: "Jordan".into(),
             editing: true,
+            idle: false,
         }]
     );
     assert!(
@@ -1980,10 +2111,12 @@ fn presence_names_other_people_and_drops_stale_beats() {
             Presence {
                 name: "Casey".into(),
                 editing: false,
+                idle: false,
             },
             Presence {
                 name: "Jordan".into(),
                 editing: true,
+                idle: false,
             },
         ]
     );
@@ -1991,6 +2124,26 @@ fn presence_names_other_people_and_drops_stale_beats() {
         n.drive.write(&casey, &file.id, None, None, b"changed"),
         Err(DriveError::Forbidden)
     ));
+
+    let quiet = now - Duration::from_secs(6);
+    n.drive
+        .report_presence(&jordan, &file.id, "Jordan", true, quiet)
+        .unwrap();
+    assert_eq!(
+        n.drive.presence(&sam, &file.id, now).unwrap(),
+        vec![
+            Presence {
+                name: "Casey".into(),
+                editing: false,
+                idle: false,
+            },
+            Presence {
+                name: "Jordan".into(),
+                editing: true,
+                idle: true,
+            },
+        ]
+    );
 
     let stale = now - (PRESENCE_TTL + Duration::from_secs(1));
     n.drive
@@ -2001,6 +2154,7 @@ fn presence_names_other_people_and_drops_stale_beats() {
         vec![Presence {
             name: "Casey".into(),
             editing: false,
+            idle: false,
         }],
         "a beat older than 15 seconds is absent"
     );
@@ -2147,4 +2301,140 @@ fn list_spreadsheets_offers_a_sheet_the_caller_has_not_opened() {
             .iter()
             .all(|hit| hit.id != roster.id)
     );
+}
+
+#[test]
+fn a_span_upload_keeps_the_first_part_until_the_file_is_complete() {
+    let n = node();
+    let ann = user("ann");
+    let file = n
+        .drive
+        .create(&ann, None, "Notes.sldoc", "file", None)
+        .unwrap();
+    let first = n
+        .drive
+        .write_span(&ann, &file.id, None, Some("text/plain"), 0, 10, b"Beds")
+        .unwrap();
+    assert!(first.is_none());
+    let gap = n.drive.write_span(
+        &ann,
+        &file.id,
+        None,
+        Some("text/plain"),
+        6,
+        10,
+        b"secret-value",
+    );
+    let message = gap.expect_err("gap").to_string();
+    assert_eq!(message, "That upload does not continue the saved part.");
+    assert!(!message.contains("secret-value"));
+    assert!(Drive::content_range("bytes secret-value").is_none());
+    assert_eq!(Drive::content_range("bytes 0-0/0"), Some((0, 0, 0)));
+    assert!(Drive::content_range("bytes 1-1/0").is_none());
+    let saved = n
+        .drive
+        .write_span(&ann, &file.id, None, Some("text/plain"), 4, 10, b" north")
+        .unwrap()
+        .expect("complete");
+    let (_item, bytes) = n.drive.read(&ann, &file.id, None).unwrap();
+    assert_eq!(bytes, b"Beds north");
+    assert!(saved.head_version_id.is_some());
+    let blank = n
+        .drive
+        .create(&ann, None, "Blank.sldoc", "file", None)
+        .unwrap();
+    let empty = n
+        .drive
+        .write_span(&ann, &blank.id, None, Some("text/plain"), 0, 0, b"")
+        .unwrap()
+        .expect("empty");
+    let (_blank, empty_bytes) = n.drive.read(&ann, &blank.id, None).unwrap();
+    assert!(empty_bytes.is_empty());
+    assert!(empty.head_version_id.is_some());
+}
+
+#[test]
+fn a_restart_keeps_the_accepted_part_of_an_upload() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Arc::new(
+        Db::open(
+            &dir.path().join("db.sqlite"),
+            ed25519::Keypair::generate(),
+            Schema {
+                version: 1,
+                tables: tables(),
+            },
+        )
+        .unwrap(),
+    );
+    let blobs = dir.path().join("blobs");
+    let ann = user("ann");
+    let file = {
+        let drive = Drive::open(db.clone(), &blobs).unwrap();
+        let file = drive
+            .create(&ann, None, "Notes.sldoc", "file", None)
+            .unwrap();
+        assert!(
+            drive
+                .write_span(&ann, &file.id, None, Some("text/plain"), 0, 10, b"Beds")
+                .unwrap()
+                .is_none()
+        );
+        file
+    };
+    let again = Drive::open(db, &blobs).unwrap();
+    let saved = again
+        .write_span(&ann, &file.id, None, Some("text/plain"), 4, 10, b" north")
+        .unwrap()
+        .expect("complete");
+    let (_item, bytes) = again.read(&ann, &file.id, None).unwrap();
+    assert_eq!(bytes, b"Beds north");
+    assert!(saved.head_version_id.is_some());
+    assert!(!blobs.join("partials").join(&file.id).exists());
+}
+
+#[test]
+fn a_storage_budget_refuses_a_file_that_does_not_fit() {
+    let n = node();
+    let rosa = user("rosa");
+    let file = n
+        .drive
+        .create(&rosa, None, "Notes.sldoc", "file", None)
+        .unwrap();
+    let bad = Drive::storage_budget_from("secret-value").unwrap_err();
+    let message = bad.to_string();
+    assert_eq!(
+        message,
+        "The storage budget is not a whole number of bytes."
+    );
+    assert!(!message.contains("secret-value"));
+    n.drive.set_storage_budget(Some(8));
+    let too_big = n
+        .drive
+        .write(&rosa, &file.id, None, None, b"keep this")
+        .unwrap_err();
+    assert!(matches!(too_big, DriveError::NoRoom));
+    assert_eq!(
+        too_big.to_string(),
+        "SuiteDrive does not have room for this file."
+    );
+    assert!(!too_big.to_string().contains("keep this"));
+    n.drive.write(&rosa, &file.id, None, None, b"beds").unwrap();
+    let (_item, bytes) = n.drive.read(&rosa, &file.id, None).unwrap();
+    assert_eq!(bytes, b"beds");
+    let later = n
+        .drive
+        .write(&rosa, &file.id, None, None, b"secret-value")
+        .unwrap_err();
+    assert!(matches!(later, DriveError::NoRoom));
+    assert!(!later.to_string().contains("secret-value"));
+    let (_item, bytes) = n.drive.read(&rosa, &file.id, None).unwrap();
+    assert_eq!(bytes, b"beds");
+    let span = n
+        .drive
+        .write_span(&rosa, &file.id, None, None, 0, 20, b"north")
+        .unwrap_err();
+    assert!(matches!(span, DriveError::NoRoom));
+    let (_item, bytes) = n.drive.read(&rosa, &file.id, None).unwrap();
+    assert_eq!(bytes, b"beds");
 }

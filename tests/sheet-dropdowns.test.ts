@@ -14,6 +14,7 @@ import {
   DROPDOWN_COLORS,
   allowedOptionsMessage,
   canonicalOption,
+  chipColorNote,
   chipTextColor,
   contrastRatio,
   dropdownTokens,
@@ -77,6 +78,10 @@ test("every chip color has readable text without a chosen text color", () => {
     expect(contrastRatio(color.value, text)).toBeGreaterThanOrEqual(4.5);
   }
   expect(chipTextColor("#111111")).toBe("#ffffff");
+  expect(contrastRatio("secret-value", "#111111")).toBeNull();
+  expect(chipColorNote("secret-value")).toBe("This chip color is not a hex color.");
+  expect(chipColorNote("#b7e1cd")).toBeNull();
+  expect(chipTextColor("secret-value")).toBe("#111111");
 });
 
 test("renaming an option is tracked by id and rewrites the old label", () => {

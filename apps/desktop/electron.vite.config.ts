@@ -29,8 +29,23 @@ export default defineConfig({
   renderer: {
     root: resolve(import.meta.dirname, "../web"),
     plugins: [react(), conditionalFormatDefaults()],
-    resolve: { alias: dictionaryAlias },
-    base: "./",
+    resolve: {
+      alias: [
+        {
+          find: /^@suiteleaf\/core\/(.+)$/,
+          replacement: `${resolve(import.meta.dirname, "../../packages/core/src")}/$1.ts`,
+        },
+        {
+          find: "@suiteleaf/core",
+          replacement: resolve(import.meta.dirname, "../../packages/core/src/index.ts"),
+        },
+        ...Object.entries(dictionaryAlias).map(([find, replacement]) => ({
+          find,
+          replacement,
+        })),
+      ],
+    },
+    // Dev stays on "/" so Vite can hot-replace the page. The production preset uses "./".
     worker: {
       format: "es",
     },

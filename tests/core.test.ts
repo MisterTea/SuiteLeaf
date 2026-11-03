@@ -12,12 +12,14 @@ import {
   mimeFor,
   kindFromName,
   parseNamedFile,
+  pivotSchema,
   type DocFile,
 } from "../packages/core/src";
 import {
   copySheetName,
   defaultValueField,
   pivotCells,
+  pivotMeasures,
   pivotResult,
   shiftRange,
   uniqueSheetName,
@@ -223,6 +225,30 @@ describe("analytics", () => {
       ["Grand Total", 80, 40, 120],
     ]);
   });
+  it("shows each row as a percent of the total", () => {
+    const rows = [
+      ["Team", "Revenue"],
+      ["North", 25],
+      ["South", 75],
+    ];
+    expect(
+      pivotResult(rows, { rows: [0], columns: [], value: 1, aggregate: "PERCENT" }),
+    ).toEqual([
+      ["Team", "PERCENT Revenue"],
+      ["North", 25],
+      ["South", 75],
+      ["Grand Total", 100],
+    ]);
+    expect(() =>
+      pivotResult(
+        [
+          ["Team", "Revenue"],
+          ["secret-value", 0],
+        ],
+        { rows: [0], columns: [], value: 1, aggregate: "PERCENT" },
+      ),
+    ).toThrow("The total is zero.");
+  });
   it("adds a Grand Total row, and a Grand Total column only when columns split the values", () => {
     expect(pivotResult(data, { ...c, columns: [] })).toEqual([
       ["Team", "SUM Revenue"],
@@ -337,6 +363,176 @@ describe("analytics", () => {
     expect(() => pivotResult(data, { ...c, columns: [0] })).toThrow();
     expect(() => pivotResult([], c)).toThrow();
   });
+  it("adds a subtotal for each outer row from the underlying records", () => {
+    const before = JSON.stringify(data);
+    const summed = pivotResult(data, { ...c, rows: [0, 1], columns: [] });
+    expect(JSON.stringify(data)).toBe(before);
+    expect(summed).toEqual([
+      ["Team", "Quarter", "SUM Revenue"],
+      ["North", "Q1", 30],
+      ["North", "Q2", 40],
+      ["North", "Subtotal", 70],
+      ["South", "Q1", 50],
+      ["South", "Subtotal", 50],
+      ["Grand Total", null, 120],
+    ]);
+    const averaged = pivotResult(data, {
+      ...c,
+      rows: [0, 1],
+      columns: [],
+      aggregate: "AVERAGE",
+    });
+    const north = averaged.find((row) => row[0] === "North" && row[1] === "Subtotal");
+    expect(north?.[2]).toBeCloseTo(70 / 3);
+    expect(averaged.at(-1)).toEqual(["Grand Total", null, 120 / 4]);
+  });
+  it("sums a fee calculated from each source number", () => {
+    const before = JSON.stringify(data);
+    expect(
+      pivotResult(data, {
+        ...c,
+        columns: [],
+        calculated: { name: "Fee", op: "multiply", amount: 0.1 },
+      }),
+    ).toEqual([
+      ["Team", "SUM Fee"],
+      ["North", 7],
+      ["South", 5],
+      ["Grand Total", 12],
+    ]);
+    expect(
+      pivotResult(data, {
+        ...c,
+        columns: [],
+        calculated: { name: "Plus", op: "add", amount: 1 },
+      }),
+    ).toEqual([
+      ["Team", "SUM Plus"],
+      ["North", 73],
+      ["South", 51],
+      ["Grand Total", 124],
+    ]);
+    expect(JSON.stringify(data)).toBe(before);
+    const saved = pivotSchema.parse({
+      id: "fees",
+      title: "Fees",
+      source: { sheetId: "s", startRow: 0, endRow: 4, startColumn: 0, endColumn: 2 },
+      targetSheetId: "p",
+      rows: [0],
+      columns: [],
+      value: 2,
+      aggregate: "SUM",
+      calculated: { name: "Fee", op: "multiply", amount: 0.1 },
+    });
+    expect(saved.calculated).toEqual({ name: "Fee", op: "multiply", amount: 0.1 });
+  });
+  it("divides each source number before the total", () => {
+    const before = JSON.stringify(data);
+    expect(
+      pivotResult(data, {
+        ...c,
+        columns: [],
+        calculated: { name: "Half", op: "divide", amount: 2 },
+      }),
+    ).toEqual([
+      ["Team", "SUM Half"],
+      ["North", 35],
+      ["South", 25],
+      ["Grand Total", 60],
+    ]);
+    expect(
+      pivotResult(data, {
+        ...c,
+        columns: [],
+        calculated: { name: "Half", op: "divide", amount: 0 },
+      }),
+    ).toEqual([
+      ["Team", "SUM Half"],
+      ["North", 70],
+      ["South", 50],
+      ["Grand Total", 120],
+    ]);
+    expect(JSON.stringify(data)).toBe(before);
+    expect(
+      pivotSchema.parse({
+        id: "fees",
+        title: "Fees",
+        source: { sheetId: "s", startRow: 0, endRow: 4, startColumn: 0, endColumn: 2 },
+        targetSheetId: "s",
+        rows: [0],
+        columns: [],
+        value: 2,
+        aggregate: "SUM",
+        calculated: { name: "Half", op: "divide", amount: 2 },
+      }).calculated?.op,
+    ).toBe("divide");
+  });
+  it("sums revenue minus cost and drops a row that is not a number", () => {
+    const rows = [
+      ["Team", "Revenue", "Cost"],
+      ["North", 10, 4],
+      ["North", 20, 5],
+      ["South", 50, "secret-value"],
+    ];
+    const before = JSON.stringify(rows);
+    expect(
+      pivotResult(rows, {
+        rows: [0],
+        columns: [],
+        value: 1,
+        aggregate: "SUM",
+        difference: { name: "Margin", left: 1, right: 2 },
+      }),
+    ).toEqual([
+      ["Team", "SUM Margin"],
+      ["North", 21],
+      ["Grand Total", 21],
+    ]);
+    expect(JSON.stringify(rows)).toBe(before);
+    expect(() =>
+      pivotResult(rows, {
+        rows: [0],
+        columns: [],
+        value: 1,
+        aggregate: "SUM",
+        difference: { name: "Margin", left: 1, right: 1 },
+      }),
+    ).toThrow("Choose two columns for the calculated field.");
+  });
+  it("adds a count beside the sum and leaves the source numbers", () => {
+    const before = JSON.stringify(data);
+    expect(
+      pivotMeasures(
+        data,
+        { rows: [0], columns: [] },
+        [
+          { value: 2, aggregate: "SUM" },
+          { value: 2, aggregate: "COUNT" },
+        ],
+      ),
+    ).toEqual([
+      ["Team", "SUM Revenue", "COUNT Revenue"],
+      ["North", 70, 3],
+      ["South", 50, 2],
+      ["Grand Total", 120, 5],
+    ]);
+    expect(JSON.stringify(data)).toBe(before);
+    const saved = pivotSchema.parse({
+      id: "fees",
+      title: "Fees",
+      source: { sheetId: "s", startRow: 0, endRow: 4, startColumn: 0, endColumn: 2 },
+      targetSheetId: "p",
+      rows: [0],
+      columns: [],
+      value: 2,
+      aggregate: "SUM",
+      measures: [
+        { value: 2, aggregate: "SUM" },
+        { value: 2, aggregate: "COUNT" },
+      ],
+    });
+    expect(saved.measures?.[1]?.aggregate).toBe("COUNT");
+  });
   it("tracks insertion, partial deletion, and complete deletion of source ranges", () => {
     const r = parseRange("B4:D8", "s");
     expect(rangeLabel(shiftRange(r, "row", 0, 2, false)!)).toBe("B6:D10");
@@ -362,7 +558,10 @@ describe("delimited imports", () => {
     expect(parseDelimited("a;b\n1;2").delimiter).toBe(";");
     expect(parseDelimited("a\tb\n1\t2").rows).toEqual([["a", "b"], ["1", "2"]]);
     expect(parseDelimited("a;b\n1;2", ",").rows).toEqual([["a;b"], ["1;2"]]);
-    expect(parseDelimited('a,"b\n1,2').error).toBeTruthy();
+    expect(parseDelimited('a,"b\n1,2').error).toBe("That delimited file could not be read.");
+    const broken = parseDelimited('a,"secret-value');
+    expect(broken.error).toBe("That delimited file could not be read.");
+    expect(broken.error).not.toContain("secret-value");
   });
   it("keeps every value of a code column as text, and the header out of the data", () => {
     const { rows } = parseDelimited(members);

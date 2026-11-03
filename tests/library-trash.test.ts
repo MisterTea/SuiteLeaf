@@ -13,7 +13,11 @@ import {
   trashRecord,
   trashStatus,
   trashViewNote,
+  recentAt,
+  recentRecords,
+  rememberOpened,
   visibleRecords,
+  viewHeading,
 } from "../apps/web/src/library-trash";
 
 const day = 24 * 60 * 60 * 1000;
@@ -69,6 +73,37 @@ it("searches Trash from All files and keeps stars sorted by the caller", () => {
   expect(titles("all", "ancient")).not.toContain("Ancient recipe");
   expect(titles("starred", "")).toEqual(["Medication times"]);
   expect(titles("trash", "")).toEqual(["Lasagne"]);
+});
+
+it("lists files someone opened or changed, newest first, and leaves Trash out", () => {
+  const older = createFile("doc", "Older notes");
+  older.updatedAt = "2026-04-01T00:00:00.000Z";
+  const newer = createFile("slide", "Newer deck");
+  newer.updatedAt = "2026-04-03T00:00:00.000Z";
+  const read = createFile("sheet", "Read yesterday");
+  read.updatedAt = "2026-03-01T00:00:00.000Z";
+  const binned = trashRecord(
+    { file: createFile("doc", "Gone") },
+    new Date("2026-04-02T00:00:00.000Z"),
+  );
+  const opened = { [read.id]: "2026-04-04T00:00:00.000Z" };
+  const titles = recentRecords(
+    [{ file: older }, { file: newer }, { file: read }, binned],
+    opened,
+  ).map((record) => record.file.title);
+  expect(titles).toEqual(["Read yesterday", "Newer deck", "Older notes"]);
+  expect(recentAt({ file: read }, opened[read.id])).toBe(Date.parse(opened[read.id]));
+  expect(viewHeading("recent")).toBe("Recents");
+  expect(
+    visibleRecords([{ file: older }, { file: newer }, binned], "recent", "", new Date("2026-04-05T00:00:00.000Z")).map(
+      (record) => record.file.title,
+    ),
+  ).toEqual(["Newer deck", "Older notes"]);
+});
+
+it("remembers an open without asking local storage to keep the native file", () => {
+  const opened = rememberOpened("file-1", "2026-04-04T12:00:00.000Z");
+  expect(opened["file-1"]).toBe("2026-04-04T12:00:00.000Z");
 });
 
 it("hides forms until the feature flag asks for them", () => {

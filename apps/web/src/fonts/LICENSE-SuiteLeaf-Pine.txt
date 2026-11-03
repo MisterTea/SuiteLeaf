@@ -1,4 +1,4 @@
-SuiteLeaf Pine is built from NimbusSansNarrow-BoldOblique 1.00, (URW)++,Copyright 2014 by (URW)++ Design & Development; NimbusSansNarrow-Oblique 1.00, (URW)++,Copyright 2014 by (URW)++ Design & Development.
+SuiteLeaf Pine is built from NimbusSansNarrow-Regular 1.00, NimbusSansNarrow-Bold 1.00, NimbusSansNarrow-BoldOblique 1.00, and NimbusSansNarrow-Oblique 1.00, (URW)++,Copyright 2014 by (URW)++ Design & Development.
 
 SuiteLeaf changed it so text lays out exactly as in Arial Narrow: outlines were scaled to that font's
 units per em and moved sideways to center them in their advance; advance widths, kerning, glyph classes,

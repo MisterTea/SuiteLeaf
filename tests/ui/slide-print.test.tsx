@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
 import { act, cleanup, render, renderHook } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { createFile } from "../../packages/core/src";
@@ -7,7 +8,7 @@ import {
   printPageBackground,
   useSlidePrint,
 } from "../../apps/web/src/editors/slide-print";
-import { croppedPictureStyle } from "../../apps/web/src/editors/slide-surface";
+import { croppedPictureStyle, intersectsSlide } from "../../apps/web/src/editors/slide-surface";
 vi.mock("../../apps/web/src/editors/themes/beam_ut.css?raw", () => ({
   default: "/* @theme beam_ut */",
 }));
@@ -15,6 +16,169 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
+it("clips a picture that hangs off the slide instead of omitting it from print", () => {
+  const file = createFile("slide");
+  if (file.kind !== "slide") throw new Error("Expected slides");
+  const slide = file.content.slides[file.content.slideOrder[0]];
+  const height = file.content.height || 540;
+  slide.elements = [
+    {
+      id: "hang",
+      type: "image",
+      x: 12,
+      y: -30,
+      width: 320,
+      height: 220,
+      src: "data:image/png;base64,AAAA",
+      alt: "Hanging photograph",
+      cropTop: 10,
+    },
+    {
+      id: "inside",
+      type: "image",
+      x: 40,
+      y: 40,
+      width: 80,
+      height: 60,
+      src: "data:image/png;base64,BBBB",
+    },
+  ];
+  render(<SlidePrintDeck active deck={file.content} />);
+  const images = [...document.querySelectorAll<HTMLElement>(".slides-print-deck .slide-image")];
+  expect(images).toHaveLength(2);
+  expect(images[0].style.top).toBe("0%");
+  expect(parseFloat(images[0].style.height)).toBeCloseTo(((220 - 30) / height) * 100, 4);
+  const photo = images[0].querySelector("img");
+  expect(photo?.getAttribute("alt")).toBe("Hanging photograph");
+  expect(photo?.style.clipPath.startsWith("inset(")).toBe(true);
+  expect(images[1].style.top).toBe(`${(40 / height) * 100}%`);
+});
+
+it("leaves a picture that hangs off the slide and drops a box parked fully outside it", () => {
+  expect(intersectsSlide({ x: -2, y: 10, width: 100, height: 40 }, 960, 720)).toBe(true);
+  expect(intersectsSlide({ x: 1066, y: 791, width: 4, height: 4 }, 960, 720)).toBe(false);
+  const file = createFile("slide");
+  if (file.kind !== "slide") throw new Error("Expected slides");
+  const slide = file.content.slides[file.content.slideOrder[0]];
+  slide.elements = [
+    { id: "on", type: "text", x: 40, y: 40, width: 200, height: 40, content: "On the slide" },
+    {
+      id: "parked",
+      type: "text",
+      x: 1066,
+      y: 791,
+      width: 4,
+      height: 4,
+      content: "To change footer",
+    },
+  ];
+  render(<SlidePrintDeck active deck={file.content} />);
+  expect(document.body.textContent).toContain("On the slide");
+  expect(document.body.textContent).not.toContain("To change footer");
+});
+
+it("keeps a section numeral whose box starts above the slide", () => {
+  const file = createFile("slide");
+  if (file.kind !== "slide") throw new Error("Expected slides");
+  const slide = file.content.slides[file.content.slideOrder[0]];
+  const height = file.content.height || 540;
+  slide.elements = [
+    {
+      id: "numeral",
+      type: "text",
+      x: 20,
+      y: -48,
+      width: 220,
+      height: 360,
+      content: "4",
+      fontSize: 200,
+    },
+  ];
+  render(<SlidePrintDeck active deck={file.content} />);
+  const box = document.querySelector<HTMLElement>(".slides-print-deck .slide-text");
+  expect(box?.textContent).toBe("4");
+  expect(box?.style.top).toBe("0%");
+  expect(box?.style.overflow).toBe("hidden");
+  expect(parseFloat(box?.style.height || "")).toBeCloseTo(((360 - 48) / height) * 100, 4);
+  const shift = box?.querySelector<HTMLElement>(".slide-text-shift");
+  expect(shift?.style.top).toBe(`${(-48 / (360 - 48)) * 100}%`);
+});
+
+it("stacks upright vertical text one letter per line", () => {
+  const file = createFile("slide");
+  if (file.kind !== "slide") throw new Error("Expected slides");
+  const slide = file.content.slides[file.content.slideOrder[0]];
+  slide.elements = [
+    {
+      id: "banner",
+      type: "text",
+      x: 80,
+      y: 40,
+      width: 48,
+      height: 280,
+      content: "IMPACTS",
+      fontSize: 32,
+      bold: true,
+      textFlow: "upright",
+    },
+  ];
+  render(<SlidePrintDeck active deck={file.content} />);
+  const box = document.querySelector<HTMLElement>(".slide-text");
+  expect(box?.style.writingMode).toBe("vertical-lr");
+  expect(box?.style.textOrientation).toBe("upright");
+  expect(box?.textContent).toBe("IMPACTS");
+});
+
+it("paints an opaque gradient ellipse with its own SVG gradient", () => {
+  const file = createFile("slide");
+  if (file.kind !== "slide") throw new Error("Expected slides");
+  const slide = file.content.slides[file.content.slideOrder[0]];
+  const fill = "linear-gradient(90deg, #69c1ec 0%, #bbe5ff 100%)";
+  slide.elements = [
+    {
+      id: "oval-a",
+      type: "shape",
+      shapeType: "ellipse",
+      x: 40,
+      y: 40,
+      width: 200,
+      height: 120,
+      fill,
+    },
+    {
+      id: "oval-b",
+      type: "shape",
+      shapeType: "ellipse",
+      x: 280,
+      y: 40,
+      width: 160,
+      height: 100,
+      fill: "linear-gradient(180deg, #f4b183 0%, #c65911 100%)",
+    },
+    {
+      id: "solid",
+      type: "shape",
+      shapeType: "ellipse",
+      x: 480,
+      y: 40,
+      width: 80,
+      height: 80,
+      fill: "#5b9bd5",
+    },
+  ];
+  render(<SlidePrintDeck active deck={file.content} />);
+  const ellipses = [...document.querySelectorAll("ellipse")];
+  expect(ellipses.map((node) => node.getAttribute("fill"))).toEqual([
+    "url(#slf-oval-a)",
+    "url(#slf-oval-b)",
+    "#5b9bd5",
+  ]);
+  const gradients = [...document.querySelectorAll("linearGradient")];
+  expect(gradients.map((node) => node.id)).toEqual(["slf-oval-a", "slf-oval-b"]);
+  expect(gradients[0].innerHTML).toContain("#69c1ec");
+  expect(document.body.innerHTML).not.toContain('fill="linear-gradient');
+});
+
 it("does not stack a transparent gradient on the print page", () => {
   const fade = "linear-gradient(180deg, #3789de 0%, rgba(255, 255, 255, 0) 100%)";
   expect(printPageBackground(fade, "#ffffff")).toBe("#ffffff");
@@ -80,6 +244,95 @@ it("prints an audio clip as its poster instead of a blank control", () => {
   expect(still?.getAttribute("src")).toBe("data:image/png;base64,AAAA");
   expect(document.querySelector(".slide-audio")).toBeNull();
   expect(document.querySelector(".slide-media-play")).toBeNull();
+});
+it("prints a cropped video poster without the player frame", () => {
+  const file = createFile("slide");
+  if (file.kind !== "slide") throw new Error("Expected slides");
+  const slide = file.content.slides[file.content.slideOrder[0]];
+  slide.elements = [
+    {
+      id: "clip",
+      type: "video",
+      x: 40,
+      y: 80,
+      width: 400,
+      height: 220,
+      src: "data:video/mp4;base64,AAA",
+      poster: "data:image/png;base64,AAAA",
+      alt: "Simulation",
+      cropLeft: 9.48,
+      cropTop: 3.97,
+      cropRight: 5.643,
+      cropBottom: 5.087,
+    },
+  ];
+  render(<SlidePrintDeck active deck={file.content} />);
+  const frameStyle = document.querySelector(".slide-video-still")?.getAttribute("style") || "";
+  expect(frameStyle).toMatch(/background:\s*transparent/);
+  expect(frameStyle).toMatch(/border-width:\s*0/);
+  expect(frameStyle).toMatch(/overflow:\s*hidden/);
+  const still = document.querySelector(".slide-video-still img");
+  expect(still?.getAttribute("src")).toBe("data:image/png;base64,AAAA");
+  const style = still?.getAttribute("style") || "";
+  expect(style).toMatch(/object-fit:\s*fill/);
+  expect(style).toMatch(/clip-path:\s*inset\(/);
+  expect(document.querySelector(".slide-media-play")).toBeNull();
+});
+it("prints a rotated video poster inside the turned frame", () => {
+  const file = createFile("slide");
+  if (file.kind !== "slide") throw new Error("Expected slides");
+  const slide = file.content.slides[file.content.slideOrder[0]];
+  slide.elements = [
+    {
+      id: "clip",
+      type: "video",
+      x: 400,
+      y: 80,
+      width: 320,
+      height: 180,
+      rotation: 90,
+      src: "data:video/mp4;base64,AAA",
+      poster: "data:image/png;base64,AAAA",
+      alt: "Wake rake",
+    },
+  ];
+  render(<SlidePrintDeck active deck={file.content} />);
+  expect(document.querySelector(".slide-video-still img")).toBeNull();
+  const image = document.querySelector(".slide-video-still image");
+  expect(image?.getAttribute("href")).toBe("data:image/png;base64,AAAA");
+  const turn = document.querySelector(".slide-video-still g")?.getAttribute("transform") || "";
+  expect(turn).toMatch(/^rotate\(90 /);
+  const frame = document.querySelector(".slide-video-still")?.getAttribute("style") || "";
+  expect(frame).toMatch(/overflow:\s*hidden/);
+  expect(frame).not.toMatch(/rotate\(90deg\)/);
+});
+it("prints a merged table header across the rows it covers", () => {
+  const file = createFile("slide");
+  if (file.kind !== "slide") throw new Error("Expected slides");
+  const slide = file.content.slides[file.content.slideOrder[0]];
+  slide.elements = [
+    {
+      id: "grid",
+      type: "table",
+      x: 40,
+      y: 40,
+      width: 400,
+      height: 120,
+      rows: [
+        ["Quantity", "Factor"],
+        ["Value"],
+      ],
+      cellMarks: [
+        [{ rowSpan: 2 }, {}],
+        [{}, ],
+      ],
+    },
+  ];
+  render(<SlidePrintDeck active deck={file.content} />);
+  const cells = [...document.querySelectorAll(".slide-table td")];
+  expect(cells.map((cell) => cell.textContent)).toEqual(["Quantity", "Factor", "Value"]);
+  expect(cells[0].getAttribute("rowspan")).toBe("2");
+  expect(cells[1].getAttribute("rowspan")).toBeNull();
 });
 it("offsets a picture crop with top, which follows the box height", () => {
   const style = croppedPictureStyle({
@@ -221,6 +474,77 @@ it("releases embedded asset URLs after the print surface closes", () => {
   expect(revoke).toHaveBeenCalledWith("blob:print-image");
 });
 
+it("wraps an unbroken table token inside the cell", () => {
+  const block = readFileSync("apps/web/src/style.css", "utf8").match(/\.slide-table td \{[^}]+\}/)?.[0];
+  expect(block).toContain("white-space: pre-wrap");
+  expect(block).toContain("overflow-wrap: anywhere");
+});
+
+it("paints a quarter-turned bar in the rotated frame instead of the tall box", () => {
+  const file = createFile("slide");
+  if (file.kind !== "slide") throw new Error("Expected slides");
+  const height = file.content.height || 540;
+  const id = file.content.slideOrder[0];
+  file.content.slides[id].elements = [
+    {
+      id: "bar",
+      type: "shape",
+      shapeType: "rect",
+      x: 400,
+      y: 20,
+      width: 40,
+      height: 900,
+      rotation: 90,
+      fill: "#76923c",
+    },
+  ];
+  render(<SlidePrintDeck active deck={file.content} />);
+  const shape = document.querySelector<HTMLElement>(".slide-shape");
+  expect(shape).toBeTruthy();
+  // Center (420, 470), quarter turn, 40px tall. The pre-turn top is 20.
+  expect(parseFloat(shape!.style.top)).toBeCloseTo((450 / height) * 100, 4);
+  expect(parseFloat(shape!.style.height)).toBeCloseTo((40 / height) * 100, 4);
+  expect(shape!.style.transform).toBe("");
+  const rect = shape!.querySelector("rect");
+  expect(rect?.getAttribute("fill")).toBe("#76923c");
+  expect(rect?.getAttribute("transform") ?? shape!.querySelector("g")?.getAttribute("transform")).toContain(
+    "rotate(90",
+  );
+});
+
+it("keeps a centered print face content-sized so flex can place it", () => {
+  const css = readFileSync("apps/web/src/style.css", "utf8");
+  const rule = css.match(
+    /\.slides-print-deck \.slide-text\[data-valign="middle"\] \.slide-text-face[\s\S]*?\}/,
+  )?.[0];
+  expect(rule).toContain("min-height: 0");
+  expect(rule).toContain("flex-shrink: 0");
+});
+
+it("feathers a filled shape on every side when the slide stores a soft edge", () => {
+  const file = createFile("slide");
+  if (file.kind !== "slide") throw new Error("Expected slides");
+  const id = file.content.slideOrder[0];
+  file.content.slides[id].elements = [
+    {
+      id: "glow",
+      type: "shape",
+      shapeType: "rect",
+      x: 0,
+      y: 0,
+      width: 200,
+      height: 120,
+      fill: "#ffffff",
+      softEdge: 40,
+    },
+  ];
+  render(<SlidePrintDeck active deck={file.content} />);
+  const shape = document.querySelector<HTMLElement>(".slide-shape");
+  expect(shape?.style.maskImage).toContain("linear-gradient");
+  expect(shape?.style.maskImage).toContain("min(40px, 49%)");
+  expect(shape?.style.maskComposite).toBe("intersect");
+});
+
 it("feathers a picture on every side when the slide stores a soft edge", () => {
   const file = createFile("slide");
   if (file.kind !== "slide") throw new Error("Expected slides");
@@ -242,4 +566,76 @@ it("feathers a picture on every side when the slide stores a soft edge", () => {
   expect(picture?.style.maskImage).toContain("linear-gradient");
   expect(picture?.style.maskImage).toContain("min(50px, 49%)");
   expect(picture?.style.maskComposite).toBe("intersect");
+});
+
+it("rotates a picture inside its clip frame so print keeps the photo", () => {
+  const file = createFile("slide");
+  if (file.kind !== "slide") throw new Error("Expected slides");
+  const id = file.content.slideOrder[0];
+  file.content.slides[id].elements = [
+    {
+      id: "photo",
+      type: "image",
+      x: 400,
+      y: 0,
+      width: 500,
+      height: 520,
+      rotation: 90,
+      cropLeft: 3,
+      cropRight: 20,
+      src: "data:image/jpeg;base64,aaaa",
+      alt: "Rotated photo",
+    },
+  ];
+  render(<SlidePrintDeck active deck={file.content} />);
+  const picture = document.querySelector<HTMLElement>(".slide-image");
+  expect(picture?.style.transform).toBe("");
+  expect(picture?.style.left).toBe(`${(390 / 960) * 100}%`);
+  expect(picture?.style.top).toBe(`${(10 / 540) * 100}%`);
+  expect(picture?.style.width).toBe(`${(520 / 960) * 100}%`);
+  expect(picture?.style.height).toBe(`${(500 / 540) * 100}%`);
+  expect(picture?.querySelector("svg")?.getAttribute("viewBox")).toBe("0 0 520 500");
+  const turned = picture?.querySelector("g");
+  expect(turned?.getAttribute("transform")).toBe("rotate(90 260 250)");
+  const shape = turned?.querySelector("svg");
+  expect(shape?.getAttribute("width")).toBe("500");
+  expect(shape?.getAttribute("height")).toBe("520");
+  expect(picture?.querySelector("image")?.getAttribute("href")).toContain("data:image/jpeg");
+});
+
+it("prints speaker notes under a visible slide and leaves a hidden slide out", () => {
+  const file = createFile("slide");
+  if (file.kind !== "slide") throw new Error("Expected slides");
+  const first = file.content.slides[file.content.slideOrder[0]];
+  file.content.slides = {
+    shown: {
+      ...first,
+      id: "shown",
+      notes: "Water <the> beds",
+      elements: [{ id: "title", type: "text", x: 0, y: 0, width: 10, height: 10, content: "North" }],
+    },
+    hidden: {
+      ...first,
+      id: "hidden",
+      hidden: true,
+      notes: "secret-value",
+      elements: [{ id: "secret", type: "text", x: 0, y: 0, width: 10, height: 10, content: "secret-value" }],
+    },
+  };
+  file.content.slideOrder = ["hidden", "shown"];
+  render(<SlidePrintDeck active deck={file.content} />);
+  const notes = [...document.querySelectorAll(".slides-print-notes")].map((node) => node.textContent);
+  expect(notes).toEqual(["Water <the> beds"]);
+  expect(document.body.textContent).not.toContain("secret-value");
+  expect(document.querySelector(".slides-print-notes")?.innerHTML).toBe("Water &lt;the&gt; beds");
+  const sheet = document.querySelector(".slides-print-sheet");
+  expect(sheet?.querySelector(".slides-print-page .slides-print-notes")).toBeNull();
+  expect(sheet?.querySelector(":scope > .slides-print-notes")?.textContent).toBe("Water <the> beds");
+  const css = readFileSync("apps/web/src/style.css", "utf8");
+  expect(css).toContain(".slides-print-deck .slides-print-sheet {\n    break-after: page;");
+  expect(css).toContain(".slides-print-deck .slides-print-page {\n    overflow: hidden;");
+  expect(css).toContain(".slides-print-deck .slides-print-notes {\n    /* A slide PDF is one page.");
+  expect(css).toContain("display: none !important;");
+  expect(file.content.slides.hidden.notes).toBe("secret-value");
+  expect(file.content.slides.shown.notes).toBe("Water <the> beds");
 });

@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
-import { CycleNotice, DocumentTrail } from "./admin-view";
+import { BackupFreshnessNote, CycleNotice, DocumentTrail, FailedUploadList, OrganizationExportButton, ReplicationLagNote, SyncHealthNote } from "./admin-view";
+import { download } from "../storage";
+import { syncHealth, uploadQueue } from "../upload-queue";
 import { useMode } from "../mode";
 import { useNodeSession } from "../drive/SignIn";
 import {
@@ -18,6 +20,19 @@ import {
   signInRows,
 } from "./admin-model";
 import "./admin.css";
+import { ExpansionNotice, FeatureMatrix } from "../packaging-view";
+import { ProviderCheck } from "./provider-check";
+import { DepartureNote } from "./departure-note";
+import { MemberPlanPreview, commitMember, memberPlanText, type MemberPlan } from "./member-plan";
+import {
+  SessionList,
+  endLostDevice,
+  endNodeSession,
+  nodeSessions,
+  requireNodeSession,
+  rotateNodeSession,
+  type VisibleSession,
+} from "../drive/session-list";
 
 function message(error: unknown) {
   return error instanceof Error ? error.message : String(error);
@@ -68,13 +83,110 @@ export function AdminScreen() {
   return <AdminApp />;
 }
 
-function AdminApp() {
+function OrganizationExport() {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const save = () => {
+    setBusy(true);
+    setError("");
+    void adminApi
+      .organizationExport()
+      .then((body) => {
+        download(
+          "suiteleaf-organization-export.json",
+          JSON.stringify(body),
+          "application/json",
+        );
+      })
+      .catch((reason) => setError(message(reason)))
+      .finally(() => setBusy(false));
+  };
+  return <OrganizationExportButton busy={busy} error={error} onExport={save} />;
+}
+
+function BackupStatus() {
+  const [report, setReport] = useState<{
+    configured: boolean;
+    readable?: boolean;
+    recordedAt?: string;
+    contentCount?: number;
+    drilledAt?: string;
+    elapsedMs?: number | null;
+    restoreTested?: boolean;
+  }>({ configured: false });
+  useEffect(() => {
+    let stop = false;
+    void adminApi.backup().then((next) => {
+      if (!stop) setReport(next);
+    }).catch(() => {
+      if (!stop) setReport({ configured: true, readable: false });
+    });
+    return () => {
+      stop = true;
+    };
+  }, []);
+  return <BackupFreshnessNote report={report} />;
+}
+
+function ReplicationStatus() {
+  const [pending, setPending] = useState(0);
+  const [peers, setPeers] = useState<{ peer: string; sameEpoch: boolean; behind: number }[]>([]);
+  const [problem, setProblem] = useState("");
+  useEffect(() => {
+    let stop = false;
+    const load = () => {
+      void adminApi
+        .replication()
+        .then((report) => {
+          if (stop) return;
+          setPending(report.pending);
+          setPeers(report.peers);
+          setProblem("");
+        })
+        .catch(() => {
+          if (!stop) setProblem("Replication status is unavailable.");
+        });
+    };
+    load();
+    const timer = setInterval(load, 2000);
+    return () => {
+      stop = true;
+      clearInterval(timer);
+    };
+  }, []);
+  if (problem) return <p className="admin-error">{problem}</p>;
+  return <ReplicationLagNote pending={pending} peers={peers} />;
+}
+
+function BrowserUploads() {
+  const [jobs, setJobs] = useState(() => uploadQueue.jobs());
+  useEffect(() => {
+    const timer = setInterval(() => setJobs(uploadQueue.jobs()), 2000);
+    return () => clearInterval(timer);
+  }, []);
+  return (
+    <>
+      <SyncHealthNote health={syncHealth(jobs, Date.now(), uploadQueue.lastSuccessAt())} />
+      <FailedUploadList
+        jobs={jobs}
+        onRetry={(itemId) => {
+          uploadQueue.release(itemId, Date.now());
+          setJobs(uploadQueue.jobs());
+        }}
+      />
+    </>
+  );
+}
+
+export function AdminApp() {
+  const session = useNodeSession();
   const [tab, setTab] = useState<"people" | "groups">("people");
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [groups, setGroups] = useState<AdminGroup[]>([]);
   const [personId, setPersonId] = useState<string | null>(null);
   const [groupId, setGroupId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [sessions, setSessions] = useState<VisibleSession[]>([]);
   const reload = async () => {
     const [nextUsers, nextGroups] = await Promise.all([
       adminApi.users(),
@@ -85,9 +197,35 @@ function AdminApp() {
   };
   useEffect(() => {
     void reload().catch((e) => setError(message(e)));
+    void nodeSessions()
+      .then(setSessions)
+      .catch(() => setSessions([]));
   }, []);
   return (
     <div className="admin-page">
+      <DepartureNote />
+      <SessionList
+        sessions={sessions}
+        activity={{ now: new Date().toISOString(), idleSecs: session?.idleSecs }}
+        onRotate={async (id) => {
+          await rotateNodeSession(id);
+        }}
+        onEnd={async (id) => {
+          await endNodeSession(id);
+          setSessions((current) => current.filter((session) => session.id !== id));
+        }}
+        onReauth={async (id) => {
+          await requireNodeSession(id);
+        }}
+        onLostDevice={async (device) => {
+          const ended = await endLostDevice(device);
+          if (ended > 0) {
+            const named = device.trim();
+            setSessions((current) => current.filter((item) => item.userAgent.trim() !== named));
+          }
+          return ended;
+        }}
+      />
       <header className="admin-bar">
         <h1>Admin</h1>
         <nav className="admin-tabs" aria-label="Admin">
@@ -115,6 +253,13 @@ function AdminApp() {
         <Link to="/">Back to files</Link>
       </header>
       <main className="admin-main">
+        <FeatureMatrix />
+        <ExpansionNotice />
+        <ProviderCheck />
+        <OrganizationExport />
+        <BackupStatus />
+        <ReplicationStatus />
+        <BrowserUploads />
         <CycleNotice message={error} />
         {tab === "people" ? (
           personId ? (
@@ -574,6 +719,8 @@ function GroupPage({
   const [detail, setDetail] = useState<AdminGroupDetail | null>(null);
   const [name, setName] = useState("");
   const [personId, setPersonId] = useState("");
+  const reviewed = useRef<MemberPlan | null>(null);
+  const groupReviewed = useRef<MemberPlan | null>(null);
   const [childId, setChildId] = useState("");
   const [error, setError] = useState("");
   const load = () =>
@@ -672,6 +819,22 @@ function GroupPage({
           >
             Add person
           </button>
+          <MemberPlanPreview
+            disabled={!personId}
+            onPreview={async () => {
+              const person = users.find((user) => user.id === personId);
+              const plan = (await adminApi.memberPlan(id, personId, true)) as MemberPlan;
+              reviewed.current = plan;
+              return memberPlanText(plan, person?.name || person?.email || "That person", true);
+            }}
+            onApply={async () => {
+              const plan = reviewed.current;
+              if (!plan) throw new Error("Review the access plan first.");
+              await commitMember(id, personId, true, plan.changes);
+              reviewed.current = null;
+              onChanged();
+            }}
+          />
         </div>
         <div className="admin-actions">
           <label>
@@ -698,6 +861,22 @@ function GroupPage({
           >
             Add group
           </button>
+          <MemberPlanPreview
+            disabled={!childId}
+            onPreview={async () => {
+              const group = groups.find((item) => item.id === childId);
+              const plan = (await adminApi.memberPlan(id, childId, true)) as MemberPlan;
+              groupReviewed.current = plan;
+              return memberPlanText(plan, group?.name || "That group", true);
+            }}
+            onApply={async () => {
+              const plan = groupReviewed.current;
+              if (!plan) throw new Error("Review the access plan first.");
+              await commitMember(id, childId, true, plan.changes);
+              groupReviewed.current = null;
+              onChanged();
+            }}
+          />
         </div>
       </section>
       <section className="admin-card">

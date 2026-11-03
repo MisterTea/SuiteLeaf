@@ -22,6 +22,8 @@ const TOKEN =
 
 /** Lower-case roman, matching Word's default endnote format and the importer's text check. */
 export function toRoman(n: number): string {
+  if (!Number.isInteger(n) || n < 1) return "";
+  if (n > 3999) return n <= 100_000 ? String(n) : "";
   const romans: [number, string][] = [
     [1000, "m"],
     [900, "cm"],
@@ -37,7 +39,7 @@ export function toRoman(n: number): string {
     [4, "iv"],
     [1, "i"],
   ];
-  let rest = Math.max(0, Math.floor(n));
+  let rest = n;
   let out = "";
   for (const [val, sym] of romans) {
     while (rest >= val) {
@@ -45,7 +47,7 @@ export function toRoman(n: number): string {
       rest -= val;
     }
   }
-  return out || String(n);
+  return out;
 }
 
 function decodeXml(value: string): string {

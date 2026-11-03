@@ -1,4 +1,8 @@
 import { SlidePrintDeck, useSlidePrint } from "./slide-print";
+import { formatElapsed, nextSlideTitle, showAdvanceDelay, showFrame, shownElapsedMs, slideTitleText } from "./presenter-display";
+import { slidePlainText } from "./slide-plain-text";
+import { audienceLines, openAudienceScreen } from "./audience-screen";
+import { SlideAccessPanel } from "./slide-access-notes";
 import {
   lazy,
   Suspense,
@@ -8,6 +12,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type ReactNode,
 } from "react";
 import { applySlidePictureEdit, slidePictureToEdit, type SlidePictureEdit } from "./svg-picture-edit";
 
@@ -40,6 +45,7 @@ import {
   Minus,
   StickyNote,
   Blend,
+  ListChecks,
   Palette,
   PaintBucket,
   Paintbrush,
@@ -48,9 +54,21 @@ import {
 } from "lucide-react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import {
+  alignSelection,
+  distributeSlideObjects,
+  groupSlideObjects,
+  orderSlideObjects,
+  placeSlideGroup,
+  nudgeSlideSelection,
+  placeSlideObject,
+  snapSlideBox,
+  ungroupSlideObjects,
   filename,
   slideOp,
+  type AlignEdge,
   slidePointScale,
+  titleTextColor,
+  slideAccessWrites,
   type SlideFile,
   type Slide,
   type SlideElement,
@@ -62,6 +80,7 @@ import { SlideHandouts } from "./slide-handouts";
 import { WordArtDialog } from "./slide-word-art";
 import { SlideMasterPanel } from "./slide-master-panel";
 import { AnimationPane } from "./slide-animation-pane";
+import { SlideGeometryPanel } from "./slide-geometry-panel";
 import { SlideshowRecorder } from "./slide-record";
 import { readMaster } from "./slide-master";
 import { Menu, MenuItem, Tool, type EditorActions } from "../ui";
@@ -136,19 +155,27 @@ import { SlideTextBody } from "./slide-text";
 import { useSlideThemeLibrary } from "./slide-theme-library";
 import { replaceSlideWord } from "./grid-spelling";
 import { SlideSpellMirror, SlideSpelling } from "./grid-spelling-ui";
+import { SheetLanguageField } from "./sheet-language";
+import { proofingLanguage } from "./proofing-language";
+import { animationSequence } from "@suiteleaf/core/slide-motion";
 import { useSlideComments } from "./slide-comments-ui";
 import { toggleSlideCellMark } from "./slide-table-format";
 import {
   applySlideAnimation,
   FADE_ON_CLICK,
+  animationEnterMs,
   audienceClass,
   audiencePhase,
   editorFadeAttrs,
   editorFadeClass,
+  clickSteps,
   fadeOnClickIds,
+  hiddenParagraphIndexes,
+  exitConcealed,
   fadeOnClickReason,
   type SlideAnimationKind,
   moveShowCursor,
+  shownSlideIndex,
   samePlace,
   startOfShow,
   type ShowCursor,
@@ -166,13 +193,15 @@ import {
 } from "./slide-marp";
 import { deckToHtml } from "./slide-html";
 import { fitMarpDeck, MARP_FIT_REVISION } from "./slide-marp-fit";
-import { marpLineStart, marpProblem, marpSlideAtLine } from "./slide-marp-source";
+import { marpLineStart, marpProblem, marpSlideAtLine, marpSlideScrollLine } from "./slide-marp-source";
 import { deckFromMarkdown, keepUnchangedParts, syncMarpSource, withMarpLayout } from "./slide-marp-sync";
 import { MarpBackdrop, useMarpPages } from "./slide-marp-backdrop";
 import { SlideFace, SlideStill, type SlideBoxProps, type SlideFaceHooks } from "./slide-surface";
 import { MarpSplitHandle, useMarpSplit } from "./slide-marp-split";
 import { MarpTextarea, scrollMarkdownTo, type MarpDraft } from "./slide-marp-textarea";
 import { continueList, listShortcut } from "./slide-list";
+import { slideAtAddress, presentationSlidePath } from "../slide-location";
+import { Link } from "react-router-dom";
 
 type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
@@ -183,6 +212,9 @@ export default function Slides({
   onActions,
   onError,
   readOnly = false,
+  fileId,
+  slideId,
+  onSlideUrl,
 }: {
   file: SlideFile;
   onChange: (content: SlideFile["content"], op?: unknown) => void;
@@ -190,13 +222,19 @@ export default function Slides({
   onError: (s: string) => void;
   /** Viewers can present, but not change slides or text. */
   readOnly?: boolean;
+  /** The open file, so each slide can be a link. */
+  fileId?: string;
+  /** The slide named in the address. A reload opens this slide. */
+  slideId?: string;
+  /** Keep the address on the slide that is showing. */
+  onSlideUrl?: (slideId: string) => void;
 }) {
   const [deck, setDeck] = useState<SlideFile["content"]>(() =>
     structuredClone(file.content),
   );
-  const [activeSlideId, setActiveSlideId] = useState<string>(
-    file.content.slideOrder[0] || "",
-  );
+  const openedAt = slideAtAddress(file.content.slideOrder, slideId);
+  const [activeSlideId, setActiveSlideId] = useState<string>(openedAt);
+  const [snapGuide, setSnapGuide] = useState<{ x: number | null; y: number | null } | null>(null);
   const [selectedElementId, setSelectedElementId] = useState<string | null>(
     null,
   );
@@ -216,9 +254,9 @@ export default function Slides({
     underline: boolean;
     color?: string;
   } | null>(null);
-  const [selectedSlideIds, setSelectedSlideIds] = useState<string[]>([
-    file.content.slideOrder[0] || "",
-  ]);
+  const [selectedSlideIds, setSelectedSlideIds] = useState<string[]>([openedAt]);
+  const onSlideUrlRef = useRef(onSlideUrl);
+  onSlideUrlRef.current = onSlideUrl;
   const [notice, setNotice] = useState<{ count: number } | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -236,9 +274,15 @@ export default function Slides({
   const presentSlideIndex = showCursor.slideIndex;
   const [showSpeakerNotes, setShowSpeakerNotes] = useState(false);
   const [blankScreen, setBlankScreen] = useState<string | null>(null);
+  const audiencePopup = useRef<Window | null>(null);
   const [showStartedAt, setShowStartedAt] = useState(0);
+  const [timerPaused, setTimerPaused] = useState(false);
+  const [frozenElapsedMs, setFrozenElapsedMs] = useState(0);
   const [clock, setClock] = useState(0);
-  const [panel, setPanel] = useState<"theme" | "transition" | "animation" | "master" | null>(null);
+  const [panel, setPanel] = useState<
+    "theme" | "transition" | "animation" | "master" | "language" | "geometry" | null
+  >(null);
+  const [accessOpen, setAccessOpen] = useState(false);
   const [recording, setRecording] = useState(false);
   const recorderRef = useRef<SlideshowRecorder | null>(null);
   const [marpOpen, setMarpOpen] = useState(() => !!file.content.marp);
@@ -285,6 +329,7 @@ export default function Slides({
   activeRef.current = activeSlideId;
   const selectedRef = useRef(selectedSlideIds);
   selectedRef.current = selectedSlideIds;
+  const selectedIdsRef = useRef<string[]>([]);
   const selectedElementRef = useRef(selectedElementId);
   selectedElementRef.current = selectedElementId;
   const editingRef = useRef(editingId);
@@ -341,6 +386,7 @@ export default function Slides({
     initX: number;
     initY: number;
     handle?: ResizeHandle;
+    group?: { id: string; x: number; y: number }[];
     initW?: number;
     initH?: number;
     reorder?: boolean;
@@ -379,7 +425,20 @@ export default function Slides({
         textRange.current = null;
       }
     }
+    if (activeId) onSlideUrlRef.current?.(activeId);
   };
+
+  // The address names the slide. A reload, the back button, or a thumbnail link follows it.
+  useEffect(() => {
+    const order = deckRef.current.slideOrder;
+    const fromUrl = slideId && order.includes(slideId) ? slideId : "";
+    if (fromUrl && fromUrl !== activeRef.current) {
+      anchorRef.current = fromUrl;
+      applySelection(fromUrl, [fromUrl], null);
+      return;
+    }
+    if (!fromUrl && activeRef.current) onSlideUrlRef.current?.(activeRef.current);
+  }, [slideId]);
 
   const typingOnCanvas = () => {
     if (editingRef.current) return true;
@@ -675,6 +734,22 @@ export default function Slides({
     });
   };
 
+  // Choosing a slide shows where it is written, unless the markdown caret is what moved the slide.
+  const shownMarkdownSlide = useRef(activeSlideId);
+  useEffect(() => {
+    if (shownMarkdownSlide.current === activeSlideId) return;
+    shownMarkdownSlide.current = activeSlideId;
+    if (!deck.marp || !marpOpen || selectedElementId) return;
+    const area = marpAreaRef.current;
+    if (!area || document.activeElement === area) return;
+    const index = deckRef.current.slideOrder.indexOf(activeSlideId);
+    const line = marpSlideScrollLine(area.value, index);
+    if (line === null) return;
+    const at = marpLineStart(area.value, line);
+    area.setSelectionRange(at, at);
+    scrollMarkdownTo(area, at);
+  }, [deck.marp, marpOpen, activeSlideId, selectedElementId]);
+
   // Choosing a box on the slide shows where it is written, without leaving the slide.
   useEffect(() => {
     if (!deck.marp || !marpOpen || !selectedElementId) return;
@@ -883,7 +958,7 @@ export default function Slides({
           [active.id]: {
             ...active,
             elements: active.elements.map((el) =>
-              el.id === elementId ? { ...el, ...partial } : el,
+              el.id === elementId ? placeSlideObject(el, partial) : el,
             ),
           },
         },
@@ -900,9 +975,83 @@ export default function Slides({
     [onChange],
   );
 
+  const groupSelected = () => {
+    const ids = selectedIdsRef.current;
+    const prev = deckRef.current;
+    const slide = activeDeckSlide(prev);
+    if (!slide || ids.length < 2) return;
+    const elements = groupSlideObjects(slide.elements, ids, `group-${crypto.randomUUID()}`);
+    commitRef.current({
+      ...prev,
+      slides: { ...prev.slides, [slide.id]: { ...slide, elements } },
+    });
+  };
+
+  const ungroupSelected = () => {
+    const prev = deckRef.current;
+    const slide = activeDeckSlide(prev);
+    const id = selectedElementRef.current;
+    if (!slide || !id) return;
+    const elements = ungroupSlideObjects(slide.elements, [id]);
+    commitRef.current({
+      ...prev,
+      slides: { ...prev.slides, [slide.id]: { ...slide, elements } },
+    });
+  };
+
+  const orderSelected = (direction: "forward" | "backward" | "front" | "back") => {
+    const prev = deckRef.current;
+    const slide = activeDeckSlide(prev);
+    const id = selectedElementRef.current;
+    if (!slide || !id) return;
+    const elements = orderSlideObjects(slide.elements, id, direction);
+    if (elements.every((element, index) => element.id === slide.elements[index]?.id)) return;
+    commitRef.current({
+      ...prev,
+      slides: { ...prev.slides, [slide.id]: { ...slide, elements } },
+    });
+  };
+
+  const toggleLock = () => {
+    const slide = activeDeckSlide(deckRef.current);
+    const element = slide?.elements.find((item) => item.id === selectedElementRef.current);
+    if (!element) return;
+    updateElement(element.id, { locked: !element.locked });
+  };
+
+  const alignSelected = (edge: AlignEdge) => {
+    const prev = deckRef.current;
+    const slide = activeDeckSlide(prev);
+    if (!slide) return;
+    const ids = selectedIdsRef.current.length
+      ? selectedIdsRef.current
+      : selectedElementRef.current
+        ? [selectedElementRef.current]
+        : [];
+    if (!ids.length) return;
+    const elements = alignSelection(slide.elements, ids, prev, edge);
+    commitRef.current({
+      ...prev,
+      slides: { ...prev.slides, [slide.id]: { ...slide, elements } },
+    });
+  };
+
+  const distributeSelected = (axis: "horizontal" | "vertical") => {
+    const prev = deckRef.current;
+    const slide = activeDeckSlide(prev);
+    const ids = selectedIdsRef.current;
+    if (!slide || ids.length < 3) return;
+    const elements = distributeSlideObjects(slide.elements, ids, axis);
+    commitRef.current({
+      ...prev,
+      slides: { ...prev.slides, [slide.id]: { ...slide, elements } },
+    });
+  };
+
   const selectElement = (id: string | null) => {
     selectedElementRef.current = id;
     setSelectedElementId(id);
+    selectedIdsRef.current = id ? [id] : [];
     if (id !== editingRef.current) {
       editingRef.current = null;
       setEditingId(null);
@@ -1326,6 +1475,18 @@ export default function Slides({
       case "go":
         stepSlide(command.where);
         break;
+      case "nudge": {
+        const prev = deckRef.current;
+        const slide = activeDeckSlide(prev);
+        const elementId = selectedElementRef.current;
+        if (!slide || !elementId) break;
+        const elements = nudgeSlideSelection(slide.elements, elementId, command.direction, command.step);
+        commitRef.current(
+          { ...prev, slides: { ...prev.slides, [slide.id]: { ...slide, elements } } },
+          "nudge",
+        );
+        break;
+      }
     }
   };
 
@@ -1409,6 +1570,14 @@ export default function Slides({
       ".element-textarea, .element-editor",
     );
     dragMoved.current = false;
+    if (e.shiftKey) {
+      const ids = selectedIdsRef.current.includes(elementId)
+        ? selectedIdsRef.current.filter((id) => id !== elementId)
+        : [...selectedIdsRef.current, elementId];
+      selectedIdsRef.current = ids.length ? ids : [elementId];
+    } else {
+      selectedIdsRef.current = [elementId];
+    }
     selectedElementRef.current = elementId;
     setSelectedElementId(elementId);
     setTableCell((current) => (current?.id === elementId ? current : null));
@@ -1418,7 +1587,7 @@ export default function Slides({
       textRange.current = null;
     }
     const el = activeSlide.elements.find((item) => item.id === elementId);
-    if (!el || readOnlyRef.current) return;
+    if (!el || readOnlyRef.current || el.locked) return;
     if (
       el.type === "text" &&
       (el.math || el.preformatted || el.hang || hasTextRuns(el) || el.content?.includes("$")) &&
@@ -1442,6 +1611,11 @@ export default function Slides({
     }
     if (marpOpenRef.current) return;
 
+    const group = el.groupId
+      ? activeSlide.elements
+          .filter((item) => item.groupId === el.groupId)
+          .map((item) => ({ id: item.id, x: item.x, y: item.y }))
+      : undefined;
     draggingRef.current = {
       elementId,
       startX: e.clientX,
@@ -1451,6 +1625,7 @@ export default function Slides({
       handle,
       initW: el.width,
       initH: el.height,
+      group,
     };
   };
 
@@ -1468,6 +1643,7 @@ export default function Slides({
         initH = 50,
         reorder,
         fitted,
+        group,
       } = draggingRef.current;
       if (Math.hypot(e.clientX - startX, e.clientY - startY) < 8) return;
       dragMoved.current = true;
@@ -1540,7 +1716,34 @@ export default function Slides({
       } else {
         const newX = Math.round(initX + dx);
         const newY = Math.round(initY + dy);
-        updateElement(elementId, { x: newX, y: newY }, { live: true });
+        const slide =
+          deckRef.current.slides[activeRef.current] ||
+          deckRef.current.slides[deckRef.current.slideOrder[0]];
+        const mates = new Set((group ?? []).map((item) => item.id));
+        const snapped = snapSlideBox(
+          { id: elementId, x: newX, y: newY, width: initW, height: initH },
+          (slide?.elements ?? []).filter((item) => !mates.has(item.id)),
+          deckRef.current,
+        );
+        setSnapGuide(
+          snapped.guideX === null && snapped.guideY === null
+            ? null
+            : { x: snapped.guideX, y: snapped.guideY },
+        );
+        if (slide && group && group.length > 1) {
+          const elements = placeSlideGroup(slide.elements, group, snapped.x - initX, snapped.y - initY);
+          const prev = deckRef.current;
+          const next = {
+            ...prev,
+            slides: { ...prev.slides, [slide.id]: { ...slide, elements } },
+          };
+          deckRef.current = next;
+          liveDirty.current = true;
+          setDeck(next);
+          onChangeRef.current(next, slideOp(prev, next));
+        } else {
+          updateElement(elementId, { x: snapped.x, y: snapped.y }, { live: true });
+        }
       }
     };
 
@@ -1551,6 +1754,7 @@ export default function Slides({
       }, 0);
       if (!draggingRef.current) return;
       draggingRef.current = null;
+      setSnapGuide(null);
       if (!liveDirty.current) return;
       liveDirty.current = false;
       const next = deckRef.current;
@@ -1575,31 +1779,7 @@ export default function Slides({
   }, [printDeck]);
 
   const exportTxt = async () => {
-    const lines: string[] = [];
-    lines.push(`Title: ${file.title}`);
-    lines.push(`Slides: ${deck.slideOrder.length}\n`);
-
-    deck.slideOrder.forEach((id, i) => {
-      const s = deck.slides[id];
-      if (!s) return;
-      const heading = s.elements
-        .find((el) => el.type === "text" && !el.wordArt && el.content?.trim())
-        ?.content?.trim()
-        .split("\n")[0];
-      lines.push(`--- Slide ${i + 1}: ${s.title || heading || "Untitled"} ---`);
-      for (const el of s.elements) {
-        if (el.type === "text" && el.content) lines.push(el.content);
-        if (el.type === "table" && el.rows) {
-          lines.push(el.rows.map((r) => r.join("\t")).join("\n"));
-        }
-        if ((el.type === "audio" || el.type === "video") && el.alt)
-          lines.push(`${el.type === "audio" ? "Audio" : "Video"}: ${el.alt}`);
-      }
-      if (s.notes) lines.push(`[Speaker notes: ${s.notes}]`);
-      lines.push("");
-    });
-
-    await exportText(filename(file.title, "txt"), lines.join("\n"));
+    await exportText(filename(file.title, "txt"), slidePlainText(file.title, deck.slideOrder, deck.slides));
   };
 
   const exportHtml = async () => {
@@ -1640,7 +1820,9 @@ export default function Slides({
 
   const beginShow = useCallback((fromIndex: number, withNotes?: boolean) => {
     marpDraft.current?.flush();
-    const next = startOfShow(fromIndex);
+    const order = deckRef.current.slideOrder;
+    const shown = (index: number) => deckRef.current.slides[order[index]]?.hidden !== true;
+    const next = startOfShow(shownSlideIndex(fromIndex, order.length, 1, shown) ?? fromIndex);
     showCursorRef.current = next;
     setShowCursor(next);
     if (withNotes !== undefined) setShowSpeakerNotes(withNotes);
@@ -1649,6 +1831,8 @@ export default function Slides({
     const now = Date.now();
     setShowStartedAt(now);
     setClock(now);
+    setTimerPaused(false);
+    setFrozenElapsedMs(0);
     setPresenting(true);
     // Browsers only allow fullscreen from inside the click or key press.
     const root = document.documentElement;
@@ -1670,12 +1854,15 @@ export default function Slides({
     setBlankScreen(null);
     const order = deckRef.current.slideOrder;
     const current = showCursorRef.current;
+    const shown = (index: number) => deckRef.current.slides[order[index]]?.hidden !== true;
     const next = moveShowCursor(
       current,
       where,
       (index) =>
         fadeOnClickIds(deckRef.current.slides[order[index]]?.elements ?? []),
       order.length,
+      (index) => clickSteps(deckRef.current.slides[order[index]]?.elements ?? []),
+      shown,
     );
     if (samePlace(current, next) && current.enteringId === next.enteringId)
       return;
@@ -1913,7 +2100,10 @@ export default function Slides({
         );
       const command = commandFromKey(e, typingContext(e.target), elementSelected);
       if (!command) return;
-      if (command.type === "go" && (e.defaultPrevented || arrowsTaken(e.target)))
+      if (
+        (command.type === "go" || command.type === "nudge") &&
+        (e.defaultPrevented || arrowsTaken(e.target))
+      )
         return;
       if (readOnlyRef.current && command.type !== "copy" && command.type !== "go") {
         e.preventDefault();
@@ -1976,6 +2166,19 @@ export default function Slides({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [presenting, activeSlideId, beginShow]);
+
+  useEffect(() => {
+    const slide = deckRef.current.slides[deckRef.current.slideOrder[presentSlideIndex]];
+    const wait = showAdvanceDelay({
+      presenting,
+      blank: blankScreen != null,
+      paused: timerPaused,
+      seconds: slide?.advanceSeconds,
+    });
+    if (wait == null) return;
+    const timer = window.setTimeout(() => moveShowRef.current("next"), wait);
+    return () => window.clearTimeout(timer);
+  }, [presenting, presentSlideIndex, showCursor.revealed, blankScreen, timerPaused]);
 
   // Keyboard navigation and auto-hiding controls for presentation mode
   useEffect(() => {
@@ -2109,49 +2312,85 @@ export default function Slides({
       master.background?.color,
     );
   }, [recording, presentSlide, deck]);
-  const nextPresentSlide = deck.slides[deck.slideOrder[presentSlideIndex + 1]];
+  const shownAt = (index: number) => deck.slides[deck.slideOrder[index]]?.hidden !== true;
+  const upcoming = shownSlideIndex(presentSlideIndex + 1, deck.slideOrder.length, 1, shownAt);
+  const nextPresentSlide = upcoming === null ? undefined : deck.slides[deck.slideOrder[upcoming]];
   const fadeIdsAt = (index: number) =>
     fadeOnClickIds(deck.slides[deck.slideOrder[index]]?.elements ?? []);
+  const stepsAt = (index: number) =>
+    clickSteps(deck.slides[deck.slideOrder[index]]?.elements ?? []);
   const cannotAdvance = samePlace(
     showCursor,
-    moveShowCursor(showCursor, "next", fadeIdsAt, deck.slideOrder.length),
+    moveShowCursor(showCursor, "next", fadeIdsAt, deck.slideOrder.length, stepsAt, shownAt),
   );
   const cannotRetreat = samePlace(
     showCursor,
-    moveShowCursor(showCursor, "prev", fadeIdsAt, deck.slideOrder.length),
+    moveShowCursor(showCursor, "prev", fadeIdsAt, deck.slideOrder.length, stepsAt, shownAt),
   );
   const fadeWaiting = showCursor.revealed < fadeIdsAt(presentSlideIndex).length;
-  const elapsedSeconds = Math.max(
-    0,
-    Math.floor((clock - showStartedAt) / 1000),
+  const elapsedSeconds = Math.floor(
+    shownElapsedMs(clock - showStartedAt, timerPaused, frozenElapsedMs) / 1000,
   );
-  const elapsedLabel = `${Math.floor(elapsedSeconds / 60)}:${String(
-    elapsedSeconds % 60,
-  ).padStart(2, "0")}`;
+  const elapsedLabel = formatElapsed(elapsedSeconds);
 
   /** The audience sees fade-on-click objects only once they are revealed. */
   const audienceHooks = (slide: Slide | undefined): SlideFaceHooks => {
-    const order = fadeOnClickIds(slide?.elements ?? []);
+    const sequence = animationSequence(slide?.elements ?? []);
+    const order = sequence.map((item) => item.id);
     return {
       box: (el) => {
-        const phase = audiencePhase(el, showCursor.revealed, order, showCursor.enteringId);
+        const phase = exitConcealed(el.id, sequence, showCursor.revealed)
+          ? "hidden"
+          : audiencePhase(el, showCursor.revealed, order, showCursor.enteringId);
         return {
           className: ` ${audienceClass(phase, el.animation)}`,
           props: {
             "data-element-id": el.id,
+            ...(phase === "entering" || phase === "after"
+              ? { style: { animationDuration: `${animationEnterMs(el.animationDuration)}ms` } }
+              : {}),
             ...(phase === "plain" ? {} : { "data-fade": phase === "hidden" ? "hidden" : "visible" }),
             ...(phase === "hidden" ? { "aria-hidden": true } : {}),
           },
         };
       },
+      before: (el) => {
+        const hidden = hiddenParagraphIndexes(el, sequence, showCursor.revealed);
+        if (!hidden.length) return undefined;
+        const css = hidden
+          .map(
+            (index) =>
+              `[data-element-id="${el.id}"] .slide-para[data-para-index="${index}"]{visibility:hidden}`,
+          )
+          .join("");
+        return <style>{css}</style>;
+      },
     };
   };
 
-  const slideHeading = (slide: Slide) =>
-    slide.elements
-      .find((el) => el.type === "text" && !el.wordArt && el.content?.trim())
-      ?.content?.trim()
-      .split("\n")[0];
+  const slideHeading = (slide: Slide) => slideTitleText(slide.elements, deck.master?.elements ?? []);
+  const frame = showFrame({
+    slideIndex: presentSlideIndex,
+    slideCount: deck.slideOrder.length,
+    notes: presentSlide?.notes ?? "",
+    nextTitle: nextSlideTitle(
+      upcoming,
+      nextPresentSlide ? slideHeading(nextPresentSlide) : undefined,
+    ),
+    elapsedMs: elapsedSeconds * 1000,
+    blank: Boolean(blankScreen),
+  });
+  useEffect(() => {
+    if (!presenting) return;
+    const popup = audiencePopup.current;
+    if (!popup || popup.closed) return;
+    const slide = deck.slides[deck.slideOrder[presentSlideIndex]];
+    openAudienceScreen(
+      popup,
+      frame.audience,
+      slide ? audienceLines(slide.elements, showCursor.revealed, deck.master?.elements ?? []) : [],
+    );
+  }, [presenting, presentSlideIndex, blankScreen, deck, showCursor.revealed]);
 
   const renderHandles = (elementId: string) => (
     <div className="selection-handles">
@@ -2203,6 +2442,9 @@ export default function Slides({
           italic={el.italic}
           underline={el.underline}
           kern={el.kern}
+          hang={el.hang}
+          fontFamily={el.fontFamily}
+          fontSize={el.fontSize}
           placeholder={el.placeholder}
           editing={editingId === el.id && !readOnly}
           onText={(runs, opts) =>
@@ -2226,6 +2468,7 @@ export default function Slides({
           <SlideSpellMirror
             text={el.content || ""}
             fileId={file.id}
+            language={proofingLanguage(deck.proofingLanguage)}
             caret={spellCaret?.id === el.id ? spellCaret.at : null}
           />
           <textarea
@@ -2331,6 +2574,7 @@ export default function Slides({
       };
       if (el.type === "text") {
         props.onMouseDown = (e) => {
+          if ((e.target as HTMLElement).closest?.("a[href]")) return;
           const inEditor = (e.target as HTMLElement).closest?.(".element-editor");
           if (editingRef.current === el.id && inEditor) return;
           onElementMouseDown(e, el.id);
@@ -2359,6 +2603,11 @@ export default function Slides({
           else onError("This picture's SVG could not be read.");
         };
       }
+      if (el.type === "image" && el.href)
+        props.onMouseDown = (e) => {
+          if ((e.target as HTMLElement).closest?.("a[href]")) return;
+          onElementMouseDown(e, el.id);
+        };
       if (el.type === "audio" || el.type === "video")
         props.onMouseDown = (e) => {
           if ((e.target as HTMLElement).closest?.(".slide-media-play")) return;
@@ -2486,6 +2735,50 @@ export default function Slides({
             <Palette size={16} className="narrow-only-icon" aria-hidden="true" />
             <span className="tool-words">Theme</span>
           </button>
+          <button
+            type="button"
+            className="menu-trigger theme-toggle"
+            aria-pressed={panel === "language"}
+            onClick={() => setPanel((open) => (open === "language" ? null : "language"))}
+          >
+            <span className="tool-words">Language</span>
+          </button>
+          <button
+            type="button"
+            className="menu-trigger theme-toggle"
+            aria-pressed={accessOpen}
+            onClick={() => setAccessOpen((open) => !open)}
+          >
+            <ListChecks size={16} className="narrow-only-icon" aria-hidden="true" />
+            <span className="tool-words">Accessibility</span>
+          </button>
+          <Menu
+            label="Align"
+            trigger={<span className="tool-words">Align</span>}
+          >
+            <MenuItem onSelect={() => alignSelected("left")}>Align left</MenuItem>
+            <MenuItem onSelect={() => alignSelected("center")}>Align center</MenuItem>
+            <MenuItem onSelect={() => alignSelected("right")}>Align right</MenuItem>
+            <MenuItem onSelect={() => alignSelected("top")}>Align top</MenuItem>
+            <MenuItem onSelect={() => alignSelected("middle")}>Align middle</MenuItem>
+            <MenuItem onSelect={() => alignSelected("bottom")}>Align bottom</MenuItem>
+            <MenuItem onSelect={() => distributeSelected("horizontal")}>Distribute horizontally</MenuItem>
+            <MenuItem onSelect={() => distributeSelected("vertical")}>Distribute vertically</MenuItem>
+            <MenuItem onSelect={toggleLock}>
+              {activeSlide.elements.find((item) => item.id === selectedElementId)?.locked
+                ? "Unlock"
+                : "Lock"}
+            </MenuItem>
+            <MenuItem onSelect={() => orderSelected("forward")}>Bring forward</MenuItem>
+            <MenuItem onSelect={() => orderSelected("backward")}>Send backward</MenuItem>
+            <MenuItem onSelect={() => orderSelected("front")}>Bring to front</MenuItem>
+            <MenuItem onSelect={() => orderSelected("back")}>Send to back</MenuItem>
+            <MenuItem onSelect={() => setPanel((open) => (open === "geometry" ? null : "geometry"))}>
+              Size and position
+            </MenuItem>
+            <MenuItem onSelect={groupSelected}>Group</MenuItem>
+            <MenuItem onSelect={ungroupSelected}>Ungroup</MenuItem>
+          </Menu>
           {deck.marp ? (
             <button
               type="button"
@@ -3070,6 +3363,40 @@ export default function Slides({
       ) : null}
 
       {/* Main Slides Editor Body */}
+      {accessOpen ? (
+        <SlideAccessPanel
+          elements={activeSlide?.elements ?? []}
+          order={activeSlide?.readingOrder}
+          title={activeSlide?.title ?? ""}
+          background={activeSlide?.background?.color ?? "#ffffff"}
+          textColor={titleTextColor(activeSlide?.elements ?? [], activeSlide?.title ?? "")}
+          texts={Object.fromEntries(
+            (activeSlide?.elements ?? [])
+              .filter((element) => element.type === "text")
+              .map((element) => [element.id, element.content ?? ""]),
+          )}
+          tables={Object.fromEntries(
+            (activeSlide?.elements ?? [])
+              .filter((element) => element.type === "table")
+              .map((element) => [element.id, element.rows ?? []]),
+          )}
+          onMove={(order) => updateSlide({ readingOrder: order })}
+          onEdit={(nextPieces, nextTexts) => {
+            for (const write of slideAccessWrites(activeSlide?.elements ?? [], nextPieces, nextTexts)) {
+              const id = write.id;
+              if ("alt" in write) {
+                updateElement(id, { alt: write.alt }, { coalesce: `access-${id}` });
+              } else if ("decorative" in write) {
+                updateElement(id, { decorative: write.decorative }, { coalesce: `access-${id}` });
+              } else if ("content" in write) {
+                updateElement(id, { content: write.content }, { coalesce: `access-${id}` });
+              } else {
+                updateElement(id, { rows: write.rows }, { coalesce: `access-${id}` });
+              }
+            }
+          }}
+        />
+      ) : null}
       <div className="slides-main">
         {/* Left Thumbnails Panel */}
         <aside className="slides-sidebar" aria-label="Slide thumbnails">
@@ -3165,66 +3492,17 @@ export default function Slides({
                     ? "drop-after"
                     : "";
 
-              return (
-                <div
-                  key={id}
-                  role="option"
-                  data-slide-id={id}
-                  aria-selected={isChosen}
-                  aria-label={`Slide ${index + 1}${slide?.transition && slide.transition.type !== "none" ? `, ${slide.transition.type} transition` : ""}${heading ? `: ${heading}` : ""}`}
-                  className={`thumbnail-row ${isChosen ? "selected" : ""} ${isActive ? "active" : ""} ${slideDrag?.over != null && slideDrag.ids.includes(id) ? "drag-source" : ""} ${dropClass}`}
-                  onMouseDown={(e) => {
-                    if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey)
-                      return;
-                    // Firefox starts a native drag unless the press is cancelled,
-                    // and then the thumbnail never lands in the new gap.
-                    e.preventDefault();
-                    const ids = selectedRef.current.includes(id)
-                      ? [...selectedRef.current]
-                      : [id];
-                    if (!selectedRef.current.includes(id)) {
-                      anchorRef.current = id;
-                      applySelection(id, [id], null);
-                    }
-                    const next = { ids, startX: e.clientX, startY: e.clientY, over: null };
-                    dragRef.current = next;
-                    setSlideDrag(next);
-                  }}
-                  onClick={(e) => {
-                    if (suppressThumbnailClick.current) return;
-                    thumbnailsRef.current?.focus();
-                    if (e.shiftKey) {
-                      const ids = rangeIds(deck.slideOrder, anchorRef.current, id);
-                      applySelection(id, ids, null);
-                      if (ids.length > 1) setTransitionScope("selected");
-                      return;
-                    }
-                    if (e.metaKey || e.ctrlKey) {
-                      const ids = toggleId(selectedRef.current, id);
-                      anchorRef.current = id;
-                      applySelection(
-                        ids.includes(id) ? id : ids[ids.length - 1],
-                        ids,
-                        null,
-                      );
-                      return;
-                    }
-                    anchorRef.current = id;
-                    applySelection(id, [id], null);
-                  }}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    if (readOnlyRef.current) return;
-                    if (!selectedRef.current.includes(id)) {
-                      anchorRef.current = id;
-                      applySelection(id, [id], null);
-                    }
-                    setContextMenu({
-                      x: Math.max(8, Math.min(e.clientX, window.innerWidth - 230)),
-                      y: Math.max(8, Math.min(e.clientY, window.innerHeight - 210)),
-                    });
-                  }}
-                >
+              const label = `Slide ${index + 1}${slide?.transition && slide.transition.type !== "none" ? `, ${slide.transition.type} transition` : ""}${heading ? `: ${heading}` : ""}`;
+              const rowProps = {
+                key: id,
+                role: "option" as const,
+                "data-slide-id": id,
+                "aria-selected": isChosen,
+                "aria-label": label,
+                className: `thumbnail-row ${isChosen ? "selected" : ""} ${isActive ? "active" : ""} ${slideDrag?.over != null && slideDrag.ids.includes(id) ? "drag-source" : ""} ${dropClass}`,
+              };
+              const body: ReactNode = (
+                <>
                   <span className="thumbnail-num">{index + 1}</span>
                   <div
                     className="thumbnail-card"
@@ -3248,6 +3526,72 @@ export default function Slides({
                       </span>
                     ) : null}
                   </div>
+                </>
+              );
+              const handlers = {
+                  onMouseDown: (e: React.MouseEvent) => {
+                    if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey)
+                      return;
+                    // Firefox starts a native drag unless the press is cancelled,
+                    // and then the thumbnail never lands in the new gap.
+                    e.preventDefault();
+                    const ids = selectedRef.current.includes(id)
+                      ? [...selectedRef.current]
+                      : [id];
+                    if (!selectedRef.current.includes(id)) {
+                      anchorRef.current = id;
+                      applySelection(id, [id], null);
+                    }
+                    const next = { ids, startX: e.clientX, startY: e.clientY, over: null };
+                    dragRef.current = next;
+                    setSlideDrag(next);
+                  },
+                  onClick: (e: React.MouseEvent) => {
+                    e.preventDefault();
+                    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || suppressThumbnailClick.current) {
+                      /* A modified click keeps the selection instead of opening the link. */
+                    }
+                    if (suppressThumbnailClick.current) return;
+                    thumbnailsRef.current?.focus();
+                    if (e.shiftKey) {
+                      const ids = rangeIds(deck.slideOrder, anchorRef.current, id);
+                      applySelection(id, ids, null);
+                      if (ids.length > 1) setTransitionScope("selected");
+                      return;
+                    }
+                    if (e.metaKey || e.ctrlKey) {
+                      const ids = toggleId(selectedRef.current, id);
+                      anchorRef.current = id;
+                      applySelection(
+                        ids.includes(id) ? id : ids[ids.length - 1],
+                        ids,
+                        null,
+                      );
+                      return;
+                    }
+                    anchorRef.current = id;
+                    applySelection(id, [id], null);
+                  },
+                  onContextMenu: (e: React.MouseEvent) => {
+                    e.preventDefault();
+                    if (readOnlyRef.current) return;
+                    if (!selectedRef.current.includes(id)) {
+                      anchorRef.current = id;
+                      applySelection(id, [id], null);
+                    }
+                    setContextMenu({
+                      x: Math.max(8, Math.min(e.clientX, window.innerWidth - 230)),
+                      y: Math.max(8, Math.min(e.clientY, window.innerHeight - 210)),
+                    });
+                  },
+              };
+              return fileId ? (
+                <Link {...rowProps} {...handlers} to={presentationSlidePath(fileId, id)}>
+                  {body}
+                </Link>
+              ) : (
+                <div {...rowProps} {...handlers}>
+                  {body}
                 </div>
               );
             })}
@@ -3332,6 +3676,18 @@ export default function Slides({
                   hooks={canvasHooks}
                 />
                 {slideComments.marks}
+                {snapGuide?.x != null ? (
+                  <div
+                    className="slide-snap-guide"
+                    style={{ left: `${(snapGuide.x / (deck.width || 960)) * 100}%` }}
+                  />
+                ) : null}
+                {snapGuide?.y != null ? (
+                  <div
+                    className="slide-snap-guide horizontal"
+                    style={{ top: `${(snapGuide.y / (deck.height || 540)) * 100}%` }}
+                  />
+                ) : null}
               </div>
             </div>
             )}
@@ -3389,6 +3745,19 @@ export default function Slides({
             ) : null}
           </div>
         </div>
+        {panel === "language" ? (
+          <SheetLanguageField
+            language={proofingLanguage(deck.proofingLanguage)}
+            onChange={(language) => applyDeck({ ...deckRef.current, proofingLanguage: language })}
+          />
+        ) : null}
+        {panel === "geometry" ? (
+          <SlideGeometryPanel
+            object={activeSlide?.elements.find((item) => item.id === selectedElementId) ?? null}
+            onPlace={(id, next) => updateElement(id, next)}
+            onClose={() => setPanel(null)}
+          />
+        ) : null}
         {panel === "animation" ? (
           <AnimationPane
             deck={deck}
@@ -3450,12 +3819,29 @@ export default function Slides({
             }}
             onPlay={playTransition}
             status={transitionStatus}
+            advanceSeconds={activeSlide?.advanceSeconds}
+            onAdvance={(seconds) => {
+              const ids = transitionTargets();
+              const slides = { ...deck.slides };
+              for (const id of ids) {
+                const slide = slides[id];
+                if (!slide) continue;
+                if (seconds == null) {
+                  const { advanceSeconds: _removed, ...rest } = slide;
+                  slides[id] = rest;
+                } else {
+                  slides[id] = { ...slide, advanceSeconds: seconds };
+                }
+              }
+              commit({ ...deck, slides });
+            }}
           />
         ) : null}
         <SlideSpelling
           ref={spellingRef}
           deck={deck}
           fileId={file.id}
+          language={proofingLanguage(deck.proofingLanguage)}
           onFocus={(issue) => applySelection(issue.slideId, [issue.slideId], issue.elementId)}
           onReplace={(issue, replacement) => {
             const next = replaceSlideWord(
@@ -3495,6 +3881,8 @@ export default function Slides({
           <div
             key={marpShow && !showMotionClass ? "marp" : presentSlideIndex}
             className={`presenter-slide-box show-slide${showMotionClass}`}
+            data-audience-slide={frame.audience.slideIndex}
+            data-audience-blank={frame.audience.blank ? "yes" : "no"}
             style={{
               backgroundColor:
                 presentSlide?.background?.color ||
@@ -3553,22 +3941,33 @@ export default function Slides({
                 >
                   {elapsedLabel}
                 </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (timerPaused) {
+                      setShowStartedAt(Date.now() - frozenElapsedMs);
+                      setClock(Date.now());
+                      setTimerPaused(false);
+                      return;
+                    }
+                    setFrozenElapsedMs(Math.max(0, clock - showStartedAt));
+                    setTimerPaused(true);
+                  }}
+                >
+                  {timerPaused ? "Resume timer" : "Pause timer"}
+                </button>
               </div>
               <div className="presenter-notes-text">
-                {presentSlide?.notes?.trim() || (
+                {frame.presenter.notes.trim() || (
                   <span className="presenter-notes-empty">
                     No speaker notes for this slide.
                   </span>
                 )}
               </div>
               <div className="presenter-next">
-                {nextPresentSlide ? (
+                {frame.presenter.nextTitle ? (
                   <>
-                    <span>
-                      Next:{" "}
-                      {slideHeading(nextPresentSlide) ||
-                        `Slide ${presentSlideIndex + 2}`}
-                    </span>
+                    <span>Next: {frame.presenter.nextTitle}</span>
                     <PresenterNextSlide deck={deck}>
                       <SlideStill
                         deck={deck}
@@ -3611,6 +4010,20 @@ export default function Slides({
             <span className="presenter-counter">
               Slide {presentSlideIndex + 1} of {deck.slideOrder.length}
             </span>
+            <button
+              type="button"
+              onClick={() => {
+                const popup = window.open("", "suiteleaf-audience");
+                audiencePopup.current = popup;
+                openAudienceScreen(
+                  popup,
+                  frame.audience,
+                  presentSlide ? audienceLines(presentSlide.elements, undefined, deck.master?.elements ?? []) : [],
+                );
+              }}
+            >
+              Audience screen
+            </button>
             <button
               type="button"
               onClick={() => moveShowRef.current("next")}

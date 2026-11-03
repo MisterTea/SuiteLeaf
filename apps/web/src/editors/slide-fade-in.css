@@ -43,6 +43,9 @@
 .show-object.zoom-on-click-enter {
   animation: zoom-in-on-click 0.6s ease both;
 }
+.show-object.animation-after-previous {
+  animation-delay: 0.6s;
+}
 @keyframes fade-in-on-click {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -63,8 +66,10 @@
   .show-object.fade-on-click-enter,
   .show-object.fly-on-click-enter,
   .show-object.wipe-on-click-enter,
-  .show-object.zoom-on-click-enter {
+  .show-object.zoom-on-click-enter,
+  .show-object.animation-after-previous {
     animation: none;
+    animation-delay: 0s;
     opacity: 1;
     transform: none;
     clip-path: none;

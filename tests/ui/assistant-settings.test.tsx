@@ -56,5 +56,18 @@ it("lets someone choose a remote endpoint and a model, starting from FrogNano", 
     place: "remote",
     model: "my-model",
     endpoint: "http://127.0.0.1:8080/v1",
+    sendDocument: false,
+    reviewEdits: false,
   });
+  expect(
+    (screen.getByRole("checkbox", { name: "Send the open document" }) as HTMLInputElement).checked,
+  ).toBe(false);
+  await user.click(screen.getByRole("checkbox", { name: "Send the open document" }));
+  expect(readAiPreferences().sendDocument).toBe(true);
+  expect(document.body.textContent).not.toContain("secret-value");
+  expect(
+    (screen.getByRole("checkbox", { name: "Hold edits until Accept" }) as HTMLInputElement).checked,
+  ).toBe(false);
+  await user.click(screen.getByRole("checkbox", { name: "Hold edits until Accept" }));
+  expect(readAiPreferences().reviewEdits).toBe(true);
 });

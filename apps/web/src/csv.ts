@@ -47,7 +47,7 @@ export function parseDelimited(text: string, delimiter = "") {
   return {
     rows: parsed.data,
     delimiter: parsed.meta.delimiter,
-    error: error?.message,
+    error: error ? "That delimited file could not be read." : undefined,
   };
 }
 

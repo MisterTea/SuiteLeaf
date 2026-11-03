@@ -86,16 +86,78 @@ export interface DirectoryListing {
   >;
 }
 
+const OFFICE_EXTENSIONS = new Set([
+  "docx",
+  "docm",
+  "dotx",
+  "dotm",
+  "doc",
+  "dot",
+  "xlsx",
+  "xlsm",
+  "xlsb",
+  "xltx",
+  "xls",
+  "pptx",
+  "ppt",
+  "ppsx",
+  "pptm",
+  "potx",
+  "ppsm",
+  "odt",
+  "ott",
+  "fodt",
+  "ods",
+  "fods",
+  "odp",
+  "fodp",
+  "rtf",
+]);
+
+function visiblePath(path: string): string[] | null {
+  const parts = path.replace(/\\/g, "/").split("/");
+  if (parts.some((part) => !part || part.startsWith(".") || part === "node_modules"))
+    return null;
+  return parts;
+}
+
 /** Markdown files in a chosen folder, shallowest first. Hidden and dependency folders are skipped. */
 export function markdownInFolder(files: { relativePath: string }[]): string[] {
   return files
     .map((file) => file.relativePath.replace(/\\/g, "/"))
     .filter((path) => {
-      const parts = path.split("/");
-      if (parts.some((part) => !part || part.startsWith(".") || part === "node_modules")) return false;
-      return /\.(md|markdown)$/i.test(parts[parts.length - 1] ?? "");
+      const parts = visiblePath(path);
+      return !!parts && /\.(md|markdown)$/i.test(parts[parts.length - 1] ?? "");
     })
     .sort((a, b) => a.split("/").length - b.split("/").length || a.localeCompare(b));
+}
+
+/** True when the markdown opens with a MARP header (`marp: true` between `---`). */
+export function hasMarpHeader(text: string): boolean {
+  const source = text.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n");
+  if (!source.startsWith("---")) return false;
+  const end = source.indexOf("\n---", 3);
+  const block = (end < 0 ? source.slice(3) : source.slice(3, end)).replace(/^\n/, "");
+  return block.split("\n").some((line) => /^marp\s*:\s*["']?true["']?\s*$/i.test(line.trim()));
+}
+
+/**
+ * Office files in a dropped folder, including the folder that was dropped.
+ * A markdown file means this is a MARP folder, so these are not imported instead.
+ */
+export function officeImportTargets<T extends { relativePath: string }>(
+  files: T[],
+): { file: T; folder: string }[] {
+  return files
+    .flatMap((file) => {
+      const parts = visiblePath(file.relativePath);
+      if (!parts) return [];
+      const name = parts[parts.length - 1] ?? "";
+      const ext = name.includes(".") ? name.split(".").pop()!.toLowerCase() : "";
+      if (!OFFICE_EXTENSIONS.has(ext)) return [];
+      return [{ file, folder: parts.slice(0, -1).join("/") }];
+    })
+    .sort((a, b) => a.file.relativePath.localeCompare(b.file.relativePath));
 }
 
 /**

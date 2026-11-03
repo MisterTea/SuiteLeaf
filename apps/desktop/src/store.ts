@@ -51,6 +51,27 @@ export async function atomicWrite(path: string, text: string | Uint8Array) {
 }
 const fingerprint = (text: string) =>
   createHash("sha256").update(text).digest("hex");
+/**
+ * A file that already lives on disk. Its body stays in that file.
+ * A recovery draft is the only copy, so the catalog keeps its body.
+ */
+function onDisk(record: FileRecord) {
+  return !!record.path && !record.recovery;
+}
+/** The library entry without the document body, history, or extra tabs. */
+function catalog(record: FileRecord): FileRecord {
+  if (!onDisk(record)) return record;
+  const file = { ...record.file } as FileRecord["file"] & {
+    edits?: unknown;
+    versions?: unknown;
+    tabs?: unknown;
+  };
+  delete (file as { content?: unknown }).content;
+  delete file.edits;
+  delete file.versions;
+  delete file.tabs;
+  return { ...record, file };
+}
 const exists = (path: string) => stat(path).then(() => true, () => false);
 /** `name` in `folder`, or "name (2).ext" and so on when that is taken. */
 async function freePath(folder: string, name: string) {
@@ -93,34 +114,30 @@ export class FileStore {
       .prepare("SELECT value FROM metadata WHERE key = 'initialized'")
       .get();
     try {
-      const raw = this.initialized
-        ? this.database
-            .prepare("SELECT record FROM records ORDER BY rowid")
-            .all()
-            .map((row) => JSON.parse(String(row.record)))
-        : JSON.parse(
-            await readFile(join(this.directory, "library.json"), "utf8"),
-          );
-      for (const r of raw) {
+      // One row at a time. Holding every document object at once exhausts the process.
+      let compact = false;
+      const take = (text: string) => {
         try {
-          const file = parseFile(JSON.stringify(r.file));
-          this.records.set(
-            file.id,
-            applyLibraryMarks(
-              {
-                file,
-                path: typeof r.path === "string" ? r.path : undefined,
-                fingerprint:
-                  typeof r.fingerprint === "string" ? r.fingerprint : undefined,
-                recovery: !!r.recovery,
-                drive: driveLink(r.drive),
-              },
-              readLibraryMarks(r),
-            ),
-          );
+          if (this.rememberStored(text)) compact = true;
         } catch {
           /* Ignore a corrupt individual recent entry. */
         }
+      };
+      if (this.initialized) {
+        for (const row of this.database
+          .prepare("SELECT record FROM records ORDER BY rowid")
+          .iterate())
+          take(String(row.record));
+      } else {
+        const legacy = JSON.parse(
+          await readFile(join(this.directory, "library.json"), "utf8"),
+        );
+        if (Array.isArray(legacy))
+          for (const row of legacy) take(JSON.stringify(row));
+      }
+      if (compact) {
+        await this.persist();
+        this.database.exec("VACUUM");
       }
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "ENOENT")
@@ -142,6 +159,44 @@ export class FileStore {
   }
   close() {
     this.database?.close();
+  }
+  /**
+   * Keep one stored library row. Returns true when an on-disk file's body
+   * was dropped so the catalog can be rewritten without it.
+   */
+  private rememberStored(text: string) {
+    const stored = JSON.parse(text) as {
+      file?: { id?: unknown; kind?: unknown; title?: unknown; content?: unknown };
+      path?: unknown;
+      fingerprint?: unknown;
+      recovery?: unknown;
+      drive?: unknown;
+    };
+    const fileValue = stored.file;
+    if (!fileValue || typeof fileValue !== "object") return false;
+    const hadBody = fileValue.content !== undefined;
+    const file =
+      hadBody
+        ? parseFile(JSON.stringify(fileValue))
+        : fileValue.id && fileValue.kind && fileValue.title
+          ? (fileValue as FileRecord["file"])
+          : null;
+    if (!file) return false;
+    const record = catalog(
+      applyLibraryMarks(
+        {
+          file,
+          path: typeof stored.path === "string" ? stored.path : undefined,
+          fingerprint:
+            typeof stored.fingerprint === "string" ? stored.fingerprint : undefined,
+          recovery: !!stored.recovery,
+          drive: driveLink(stored.drive),
+        },
+        readLibraryMarks(stored),
+      ),
+    );
+    this.records.set(file.id, record);
+    return hadBody && onDisk(record);
   }
   /** Folders under `root` from the last scan, as "/"-separated paths relative to it. */
   folderPaths(root: string) {
@@ -198,13 +253,29 @@ export class FileStore {
         await atomicWrite(path, text);
         next = { ...record, path, fingerprint: fingerprint(text), recovery: false };
       } else {
-        if (resolve(dirname(record.path)) === resolve(folder)) return structuredClone(record);
+        if (resolve(dirname(record.path)) === resolve(folder)) {
+          const text = await readFile(record.path, "utf8");
+          return structuredClone({
+            ...record,
+            file: parseFile(text),
+            fingerprint: fingerprint(text),
+          });
+        }
         const path = await freePath(folder, basename(record.path));
         await rename(record.path, path);
         next = { ...record, path };
       }
-      this.records.set(id, next);
+      const stored = catalog(next);
+      this.records.set(id, stored);
       await this.persist();
+      if (stored.path && !stored.recovery) {
+        const text = await readFile(stored.path, "utf8");
+        return structuredClone({
+          ...stored,
+          file: parseFile(text),
+          fingerprint: fingerprint(text),
+        });
+      }
       return structuredClone(next);
     });
   }
@@ -287,10 +358,7 @@ export class FileStore {
       const root = resolve(directory);
       const seen = new Set<string>();
       const dirs: string[] = [];
-      const found = new Map<
-        string,
-        { file: FileRecord["file"]; hash: string }
-      >();
+      const found = new Map<string, { id: string; hash: string }>();
       const visit = async (folder: string) => {
         for (const entry of await readdir(folder, { withFileTypes: true })) {
           if (entry.name.startsWith(".")) continue;
@@ -303,10 +371,8 @@ export class FileStore {
             seen.add(path);
             try {
               const text = await readFile(path, "utf8");
-              found.set(path, {
-                file: parseFile(text, kindFromName(path)),
-                hash: fingerprint(text),
-              });
+              const file = parseFile(text, kindFromName(path));
+              found.set(path, { id: file.id, hash: fingerprint(text) });
             } catch {
               // Partial cloud downloads and corrupt files are retried on the next scan.
             }
@@ -325,36 +391,50 @@ export class FileStore {
           (inFolder(record.path, root) &&
             (!seen.has(resolve(record.path)) ||
               (found.has(resolve(record.path)) &&
-                found.get(resolve(record.path))!.file.id !== id))) ||
+                found.get(resolve(record.path))!.id !== id))) ||
           (previousDirectory &&
             resolve(previousDirectory) !== root &&
             inFolder(record.path, previousDirectory))
         )
           this.records.delete(id);
       }
-      for (const [path, { file, hash }] of found) {
-        if (this.dismissed.get(path) === hash) continue;
-        const old = this.records.get(file.id);
+      for (const [path, item] of found) {
+        if (this.dismissed.get(path) === item.hash) continue;
+        const old = this.records.get(item.id);
         if (old?.recovery || old?.drive) continue;
         if (
           old?.path &&
           resolve(old.path) !== path &&
-          found.get(resolve(old.path))?.file.id === file.id
+          found.get(resolve(old.path))?.id === item.id
         )
           continue;
-        // Duplicate IDs with different contents must not replace a file elsewhere.
+        // The same id outside this folder, with different bytes, is left alone.
         if (
           old?.path &&
           resolve(old.path) !== path &&
           !inFolder(old.path, root) &&
+          old.fingerprint &&
+          old.fingerprint !== item.hash
+        )
+          continue;
+        const text = await readFile(path, "utf8");
+        const file = parseFile(text, kindFromName(path));
+        if (
+          old?.path &&
+          resolve(old.path) !== path &&
+          !inFolder(old.path, root) &&
+          !old.fingerprint &&
+          old.file.content !== undefined &&
           serializeFile(old.file) !== serializeFile(file)
         )
           continue;
         this.records.set(
           file.id,
-          applyLibraryMarks(
-            { file, path, fingerprint: hash, recovery: false },
-            readLibraryMarks(old ?? previous.get(file.id) ?? {}),
+          catalog(
+            applyLibraryMarks(
+              { file, path, fingerprint: item.hash, recovery: false },
+              readLibraryMarks(old ?? previous.get(file.id) ?? {}),
+            ),
           ),
         );
       }
@@ -387,14 +467,20 @@ export class FileStore {
   async get(id: string) {
     const record = this.records.get(id);
     if (!record) return;
-    const r = structuredClone(record);
-    if (r.path && !r.recovery) {
-      const text = await readFile(r.path, "utf8");
-      r.file = parseFile(text);
-      r.fingerprint = fingerprint(text);
-      this.records.set(id, r);
+    if (record.path && !record.recovery) {
+      const text = await readFile(record.path, "utf8");
+      const full = applyLibraryMarks(
+        {
+          ...record,
+          file: parseFile(text),
+          fingerprint: fingerprint(text),
+        },
+        readLibraryMarks(record),
+      );
+      this.records.set(id, catalog(full));
+      return structuredClone(full);
     }
-    return r;
+    return structuredClone(record);
   }
   async openPath(path: string) {
     return this.transaction(async () => {
@@ -406,12 +492,11 @@ export class FileStore {
         return structuredClone(existing);
       // A different version of this file is already in the library (a draft,
       // or saved elsewhere): return it unsaved, so the user chooses which to keep.
-      if (
-        existing &&
-        !existing.drive &&
-        existing.path !== full &&
-        serializeFile(existing.file) !== serializeFile(file)
-      )
+      const sameBytes = existing?.fingerprint
+        ? existing.fingerprint === fingerprint(text)
+        : existing?.file.content !== undefined &&
+          serializeFile(existing.file) === serializeFile(file);
+      if (existing && !existing.drive && existing.path !== full && !sameBytes)
         return structuredClone({
           file,
           path: full,
@@ -427,7 +512,7 @@ export class FileStore {
         },
         { starred: existing?.starred === true ? true : undefined },
       );
-      this.records.set(file.id, r);
+      this.records.set(file.id, catalog(r));
       await this.persist();
       await this.remember(full);
       return structuredClone(r);
@@ -442,7 +527,7 @@ export class FileStore {
       const marks = readLibraryMarks(input);
       const keep = (r: FileRecord) => {
         const next = applyLibraryMarks(r, marks);
-        this.records.set(file.id, next);
+        this.records.set(file.id, catalog(next));
         return next;
       };
       if (!old) {
@@ -492,7 +577,7 @@ export class FileStore {
         },
         readLibraryMarks(input),
       );
-      this.records.set(file.id, r);
+      this.records.set(file.id, catalog(r));
       await this.persist();
       await this.remember(full);
       return structuredClone(r);
@@ -513,7 +598,7 @@ export class FileStore {
         },
         readLibraryMarks(old),
       );
-      this.records.set(id, r);
+      this.records.set(id, catalog(r));
       await this.persist();
       return structuredClone(r);
     });

@@ -127,6 +127,29 @@ export function paintSlide(slide: Slide, theme: SlideTheme): Slide {
   };
 }
 
+/**
+ * Restyle an existing master with the theme. A hand-set font or colour stays.
+ * A deck with no master is left without one. The master passed in is not changed.
+ */
+export function brandMaster(
+  master: Presentation["master"],
+  theme: SlideTheme,
+): Presentation["master"] {
+  if (!master) return undefined;
+  return {
+    background: { color: theme.background },
+    elements: master.elements.map((el) => {
+      if (el.themeOverride || el.type !== "text") return el;
+      const role = textRole(el);
+      if (role === "heading")
+        return { ...el, fontFamily: theme.headingFont, color: theme.headingColor };
+      if (role === "body")
+        return { ...el, fontFamily: theme.bodyFont, color: theme.bodyColor };
+      return el;
+    }),
+  };
+}
+
 export function applyDeckTheme(
   deck: Presentation,
   theme: SlideTheme,
@@ -134,6 +157,7 @@ export function applyDeckTheme(
   return {
     ...deck,
     theme,
+    master: brandMaster(deck.master, theme),
     slides: Object.fromEntries(
       Object.entries(deck.slides).map(([id, slide]) => [
         id,
@@ -265,6 +289,8 @@ export function transitionMs(
   reducedMotion: boolean,
 ): number {
   if (!transition || transition.type === "none" || reducedMotion) return 0;
+  if (transition.office?.includes("<p:cut")) return 0;
+  if (!Number.isFinite(transition.duration)) return 0;
   return Math.round(Math.min(10, Math.max(0, transition.duration)) * 1000);
 }
 

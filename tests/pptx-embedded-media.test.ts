@@ -48,6 +48,109 @@ it("keeps editable embedded video bytes and its poster through native save and P
   expect(restoredElement.poster).toBe(element.poster);
 });
 
+it("turns a video poster with the picture rotation", async () => {
+  const clip = Buffer.from("synthetic mp4 bytes");
+  const poster = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  const zip = new JSZip();
+  zip.file(
+    "ppt/slides/slide1.xml",
+    `<p:sld><p:cSld><p:spTree><p:pic><p:nvPicPr><p:cNvPr id="7" name="rotRigClip"/><p:nvPr><a:videoFile r:link="v"/><p:extLst><p:ext><p14:media r:embed="v"/></p:ext></p:extLst></p:nvPr></p:nvPicPr><p:blipFill><a:blip r:embed="p"/></p:blipFill><p:spPr><a:xfrm rot="5400000" flipH="1"><a:off x="8376176" y="1385516"/><a:ext cx="4385207" cy="2466429"/></a:xfrm></p:spPr></p:pic></p:spTree></p:cSld></p:sld>`,
+  );
+  zip.file(
+    "ppt/slides/_rels/slide1.xml.rels",
+    '<Relationships><Relationship Id="v" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/video" Target="../media/clip.mp4"/><Relationship Id="p" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/poster.png"/></Relationships>',
+  );
+  zip.file("ppt/media/clip.mp4", clip);
+  zip.file("ppt/media/poster.png", poster);
+  const imported = await parsePowerPoint(
+    await zip.generateAsync({ type: "uint8array" }),
+  );
+  const element =
+    imported.content.slides[imported.content.slideOrder[0]].elements[0];
+  expect(element.type).toBe("video");
+  expect(element.rotation).toBe(90);
+  expect(element.flipH).toBe(true);
+  expect(element.width).toBeGreaterThan(element.height);
+});
+
+it("crops a video poster with its DrawingML source rectangle", async () => {
+  const clip = Buffer.from("synthetic mp4 bytes");
+  const poster = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  const zip = new JSZip();
+  zip.file(
+    "ppt/slides/slide1.xml",
+    `<p:sld><p:cSld><p:spTree><p:pic><p:nvPicPr><p:cNvPr id="2" name="clip"/><p:nvPr><a:videoFile r:link="v"/><p:extLst><p:ext><p14:media r:embed="v"/></p:ext></p:extLst></p:nvPr></p:nvPicPr><p:blipFill><a:blip r:embed="p"/><a:srcRect l="9480" t="3970" r="5643" b="5087"/></p:blipFill><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic></p:spTree></p:cSld></p:sld>`,
+  );
+  zip.file(
+    "ppt/slides/_rels/slide1.xml.rels",
+    '<Relationships><Relationship Id="v" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/video" Target="../media/clip.mp4"/><Relationship Id="p" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/poster.png"/></Relationships>',
+  );
+  zip.file("ppt/media/clip.mp4", clip);
+  zip.file("ppt/media/poster.png", poster);
+  const imported = await parsePowerPoint(
+    await zip.generateAsync({ type: "uint8array" }),
+  );
+  const element =
+    imported.content.slides[imported.content.slideOrder[0]].elements[0];
+  expect(element.type).toBe("video");
+  expect(element.cropLeft).toBeCloseTo(9.48);
+  expect(element.cropTop).toBeCloseTo(3.97);
+  expect(element.cropRight).toBeCloseTo(5.643);
+  expect(element.cropBottom).toBeCloseTo(5.087);
+});
+
+it("keeps a QuickTime clip that PowerPoint stores as .mov", async () => {
+  const clip = Buffer.from("synthetic mov bytes");
+  const poster = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  const zip = new JSZip();
+  zip.file(
+    "ppt/slides/slide1.xml",
+    `<p:sld><p:cSld><p:spTree><p:pic><p:nvPicPr><p:cNvPr id="2"/><p:nvPr><a:videoFile r:link="v"/><p:extLst><p:ext><p14:media r:embed="v"/></p:ext></p:extLst></p:nvPr></p:nvPicPr><p:blipFill><a:blip r:embed="p"/></p:blipFill><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm></p:spPr></p:pic></p:spTree></p:cSld></p:sld>`,
+  );
+  zip.file(
+    "ppt/slides/_rels/slide1.xml.rels",
+    '<Relationships><Relationship Id="v" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/video" Target="../media/clip.mov"/><Relationship Id="p" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/poster.png"/></Relationships>',
+  );
+  zip.file("ppt/media/clip.mov", clip);
+  zip.file("ppt/media/poster.png", poster);
+  const imported = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+  const element = imported.content.slides[imported.content.slideOrder[0]].elements[0];
+  expect(element.type).toBe("video");
+  expect(element.src).toBe(`data:video/quicktime;base64,${clip.toString("base64")}`);
+});
+
+it("keeps an MPEG clip PowerPoint stored as .mpg", async () => {
+  const clip = Buffer.from([0x00, 0x00, 0x01, 0xba, 0x21, 0x00, 0x01]);
+  const poster = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  const zip = new JSZip();
+  zip.file(
+    "ppt/slides/slide1.xml",
+    `<p:sld><p:cSld><p:spTree><p:pic><p:nvPicPr><p:cNvPr id="2"/><p:nvPr><a:videoFile r:link="v"/><p:extLst><p:ext><p14:media r:embed="v"/></p:ext></p:extLst></p:nvPr></p:nvPicPr><p:blipFill><a:blip r:embed="p"/></p:blipFill><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm></p:spPr></p:pic></p:spTree></p:cSld></p:sld>`,
+  );
+  zip.file(
+    "ppt/slides/_rels/slide1.xml.rels",
+    '<Relationships><Relationship Id="v" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/video" Target="../media/clip.mpg"/><Relationship Id="p" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/poster.png"/></Relationships>',
+  );
+  zip.file("ppt/media/clip.mpg", clip);
+  zip.file("ppt/media/poster.png", poster);
+  const imported = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+  const element = imported.content.slides[imported.content.slideOrder[0]].elements[0];
+  expect(element.type).toBe("video");
+  expect(element.src).toMatch(/^data:video\/(mp4|mpeg);base64,/);
+});
+
 it("preserves BMP pixels even when a producer names the picture .png", async () => {
   const bmp = Buffer.alloc(58);
   bmp.write("BM");

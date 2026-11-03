@@ -26,23 +26,28 @@ import {
 } from "./doc-change-all";
 import { ChangeAllDialog } from "./doc-change-all-dialog";
 import {
+  addLanguageWord,
   addToPersonalDictionary,
   flagWord,
   ignoreWord,
   misspelledRanges,
+  readLanguageDictionary,
   readPersonalDictionary,
   removePersonalWord,
   SPELLING_CHANGED_EVENT,
   spellingHighlight,
   spellingHit,
   spellingKey,
+  spellingSuggestionReason,
   spellingSuggestions,
   unignoreWord,
+  writeLanguageDictionary,
   writePersonalDictionary,
   type PersonalDictionary,
   type SpellingMenuHit,
   type SpellingRange,
 } from "./doc-spelling";
+import { PROOFING_LANGUAGES, checksEnglishSpelling, proofingLanguage, proofingTextDirection, spellingLanguageNote } from "./proofing-language";
 
 export type ProofingContext = (view: EditorView, event: Event) => boolean;
 
@@ -141,16 +146,20 @@ export function useDocProofing(
     },
   });
   const settings = snapshot?.settings ?? readProofing(null);
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    editor.view.dom.dir = proofingTextDirection(settings.language);
+  }, [editor, settings.language]);
   const ranges: SpellingRange[] =
     editor && !editor.isDestroyed
-      ? misspelledRanges(editor.state.doc, personal, settings.ignored)
+      ? misspelledRanges(editor.state.doc, personal, settings.ignored, settings.language)
       : [];
   const issue =
     dialog === "spelling" && session
       ? (ranges.find((range) => range.from >= session.after) ?? null)
       : null;
   const issueId = issue ? `${issue.from}:${issue.to}:${issue.word}` : "";
-  const suggestions = issue ? spellingSuggestions(issue.word) : [];
+  const suggestions = issue && checksEnglishSpelling(settings.language) ? spellingSuggestions(issue.word) : [];
   const issueRef = useRef(issue);
   issueRef.current = issue;
 
@@ -225,13 +234,11 @@ export function useDocProofing(
   }, []);
   const openSpelling = useCallback(() => {
     setMenu(null);
-    const ignored =
-      editor && !editor.isDestroyed
-        ? readProofing(editor.getJSON() as JsonNode).ignored
-        : [];
+    const proofing =
+      editor && !editor.isDestroyed ? readProofing(editor.getJSON() as JsonNode) : null;
     const found =
-      editor && !editor.isDestroyed
-        ? misspelledRanges(editor.state.doc, personalRef.current, ignored)
+      editor && !editor.isDestroyed && proofing
+        ? misspelledRanges(editor.state.doc, personalRef.current, proofing.ignored, proofing.language)
         : [];
     setSession({ total: found.length, step: 1, after: 0 });
     setDialog("spelling");
@@ -271,10 +278,10 @@ export function useDocProofing(
   };
   const openChangeAll = (word: string, replacement: string) => {
     if (!editor || !replacement.trim()) return;
-    const ignored = readProofing(editor.getJSON() as JsonNode).ignored;
+    const proofing = readProofing(editor.getJSON() as JsonNode);
     const copies = previewCopies(
       editor.state.doc,
-      copiesOf(editor.state.doc, word, personalRef.current, ignored),
+      copiesOf(editor.state.doc, word, personalRef.current, proofing.ignored, proofing.language),
       replacement,
     );
     if (!copies.length) return;
@@ -283,13 +290,13 @@ export function useDocProofing(
   };
   const confirmChangeAll = () => {
     if (!editor || !preview) return;
-    const ignored = readProofing(editor.getJSON() as JsonNode).ignored;
-    const ranges = copiesOf(editor.state.doc, preview.word, personalRef.current, ignored);
+    const proofing = readProofing(editor.getJSON() as JsonNode);
+    const ranges = copiesOf(editor.state.doc, preview.word, personalRef.current, proofing.ignored, proofing.language);
     if (ranges.length)
       editor.view.dispatch(changeAllTransaction(editor.state, ranges, preview.replacement));
     setPreview(null);
     if (dialog === "spelling") {
-      const found = misspelledRanges(editor.state.doc, personalRef.current, ignored);
+      const found = misspelledRanges(editor.state.doc, personalRef.current, proofing.ignored, proofing.language);
       setSession({ total: found.length, step: 1, after: 0 });
     }
   };
@@ -312,7 +319,10 @@ export function useDocProofing(
     advance(issue.to);
   };
   const addIssue = () => {
-    if (!issue) return;
+    if (!issue || !editor) return;
+    const language = readProofing(editor.getJSON() as JsonNode).language;
+    const remembered = addLanguageWord(readLanguageDictionary(), language, issue.word);
+    if (remembered.ok) writeLanguageDictionary(remembered.book);
     updatePersonal(addToPersonalDictionary(personal, issue.word));
     advance(issue.to);
   };
@@ -597,6 +607,37 @@ export function useDocProofing(
               <X size={18} />
             </button>
           </div>
+          <label className="word-count-stop">
+            Language
+            <select
+              aria-label="Proofing language"
+              value={settings.language}
+              onChange={(event) => {
+                const language = proofingLanguage(event.target.value);
+                updateSettings({ ...settings, language });
+                const found = editor
+                  ? misspelledRanges(editor.state.doc, personal, settings.ignored, language)
+                  : [];
+                setSession({ total: found.length, step: 1, after: 0 });
+              }}
+            >
+              {PROOFING_LANGUAGES.map((language) => (
+                <option key={language.id} value={language.id}>
+                  {language.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="word-count-hint">{spellingLanguageNote(settings.language)}</p>
+          <button
+            type="button"
+            disabled={!editor}
+            onClick={() => {
+              editor?.chain().focus().setMark("proofingLanguage", { language: settings.language }).run();
+            }}
+          >
+            Use this language for the selection
+          </button>
           {issue ? (
             <>
               <p className="spelling-progress">
@@ -628,6 +669,9 @@ export function useDocProofing(
               ) : (
                 <p className="word-count-hint">No suggestion. Type a correction, or add the word to your dictionary.</p>
               )}
+              {choice && suggestions.includes(choice) ? (
+                <p className="word-count-hint">{spellingSuggestionReason(issue.word, choice)}</p>
+              ) : null}
               <p className="word-count-hint">
                 Enter changes this copy. Change all lists every copy before it edits them.
               </p>
@@ -641,7 +685,7 @@ export function useDocProofing(
                   disabled={
                     !choice.trim() ||
                     !editor ||
-                    copiesOf(editor.state.doc, issue.word, personal, settings.ignored).length < 1
+                    copiesOf(editor.state.doc, issue.word, personal, settings.ignored, settings.language).length < 1
                   }
                   onClick={() => openChangeAll(issue.word, choice)}
                 >
@@ -670,7 +714,9 @@ export function useDocProofing(
               <p className="word-count-hint">
                 {session.total
                   ? "Nothing left to change. Remove a word from the personal dictionary if you want it underlined again."
-                  : "Every word is in the dictionary, ignored, or a name you added."}
+                  : checksEnglishSpelling(settings.language)
+                    ? "Every word is in the dictionary, ignored, or a name you added."
+                    : "Nothing was compared with the English dictionary."}
               </p>
               <div className="dialog-footer">
                 <button type="button" className="dialog-primary-btn" onClick={close} autoFocus>

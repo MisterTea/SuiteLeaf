@@ -195,7 +195,11 @@ describe("slide rearranging", () => {
       type: "go",
       where: "prev",
     });
-    expect(commandFromKey(key("ArrowRight"), "none", true)).toBeNull();
+    expect(commandFromKey(key("ArrowRight"), "none", true)).toEqual({
+      type: "nudge",
+      direction: "right",
+      step: 1,
+    });
     expect(commandFromKey(key("ArrowRight", { shift: true }), "none")).toBeNull();
     expect(commandFromKey(key("ArrowLeft", { meta: true }), "none")).toBeNull();
     expect(commandFromKey(key("ArrowRight"), "slide-text")).toBeNull();
@@ -289,5 +293,20 @@ describe("slide rearranging", () => {
     }
     expect(history.undo()?.slides[slideId].elements[0].content).toBe("Results");
     expect(history.canUndo).toBe(false);
+  });
+
+  it("nudges a selected object and still changes slides when nothing is selected", () => {
+    expect(commandFromKey(key("ArrowRight"), "none", true)).toEqual({
+      type: "nudge",
+      direction: "right",
+      step: 1,
+    });
+    expect(commandFromKey(key("ArrowUp", { shift: true }), "none", true)).toEqual({
+      type: "nudge",
+      direction: "up",
+      step: 10,
+    });
+    expect(commandFromKey(key("ArrowLeft"), "none", false)).toEqual({ type: "go", where: "prev" });
+    expect(commandFromKey(key("ArrowDown"), "slide-text", true)).toBeNull();
   });
 });

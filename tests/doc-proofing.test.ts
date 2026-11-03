@@ -13,6 +13,7 @@ import {
   flagWord,
   isMisspelling,
   misspelledWords,
+  spellingSuggestionReason,
   spellingSuggestions,
   type PersonalDictionary,
 } from "../apps/web/src/editors/doc-spelling";
@@ -131,6 +132,15 @@ describe("spelling", () => {
     expect(isMisspelling("were", flagWord(none, "were"), [])).toBe(true);
     expect(isMisspelling("Ghana's", none, [])).toBe(false);
     expect(isMisspelling("colonies", none, [])).toBe(false);
+  });
+
+  it("explains a suggestion without repeating the typed word", () => {
+    expect(spellingSuggestionReason("teh", "the")).toBe("Two letters are swapped.");
+    expect(spellingSuggestionReason("movment", "movement")).toBe("A letter is missing.");
+    expect(spellingSuggestionReason("recieve", "receive")).toBe("Two letters are swapped.");
+    expect(spellingSuggestionReason("cat", "cot")).toBe("One letter differs.");
+    expect(spellingSuggestionReason("secret-value", "secret")).toBe("Two changes are needed.");
+    expect(spellingSuggestionReason("secret-value", "secret")).not.toContain("secret");
   });
 
   it("leaves the essay's names alone, clears a word after it is added, and brings an un-ignored word back", () => {

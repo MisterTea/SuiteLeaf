@@ -38,6 +38,7 @@ const bridge: DesktopBridge = {
   ai: {
     status: () => ipcRenderer.invoke("ai:status"),
     load: (modelId) => ipcRenderer.invoke("ai:load", modelId),
+    removeDownloaded: (fileName) => ipcRenderer.invoke("ai:remove", fileName),
     chatTemplate: () => ipcRenderer.invoke("ai:template"),
     generate: (request, onEvent) => {
       const id = crypto.randomUUID();

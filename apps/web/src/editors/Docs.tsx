@@ -22,9 +22,31 @@ import { TableKit } from "@tiptap/extension-table";
 import Superscript from "@tiptap/extension-superscript";
 import Subscript from "@tiptap/extension-subscript";
 import { Extension, findParentNode } from "@tiptap/core";
-import { ySyncPlugin, prosemirrorJSONToYXmlFragment } from "y-prosemirror";
+import { UndoRedo } from "@tiptap/extensions";
+import {
+  ySyncPlugin,
+  yUndoPlugin,
+  undo as undoShared,
+  redo as redoShared,
+  prosemirrorJSONToYXmlFragment,
+} from "y-prosemirror";
+import { paintRemoteCarets, remoteCaretPlugin } from "../collab/caret-mark";
+import { commentSyncPlugin } from "./collab-comment-sync";
+import { undoWaitingEdit } from "../collab/waiting-undo";
+import type { RemoteCaret } from "../collab/selection";
+import "../collab/caret.css";
 import type * as Y from "yjs";
-import { blockTexts, fontKerning, kernFeature, syncParagraphTexts } from "@suiteleaf/core";
+import {
+  blockTexts,
+  contentPosition,
+  fontKerning,
+  kernFeature,
+  paragraphTexts,
+  paragraphsAsDocument,
+  roomAlreadyHasText,
+  syncCommentThreads,
+  syncParagraphTexts,
+} from "@suiteleaf/core";
 import { CellSelection } from "@tiptap/pm/tables";
 import CharacterCount from "@tiptap/extension-character-count";
 import DOMPurify from "dompurify";
@@ -55,6 +77,7 @@ import {
   Indent,
   Outdent,
   FileCog,
+  ListChecks,
   SeparatorHorizontal,
   EllipsisVertical,
   Check,
@@ -65,6 +88,15 @@ import {
 import {
   filename,
   safeLink,
+  styledDocument,
+  applyCharacterStyles,
+  characterStyleList,
+  importCharacterStyles,
+  importParagraphStyles,
+  assignParagraphStyle,
+  stylePatchFromMarks,
+  updateNamedStyle,
+  paragraphStyles,
   type DocFile,
   type JsonNode,
 } from "@suiteleaf/core";
@@ -113,8 +145,11 @@ import { TabCharacter, TabStops } from "./doc-tab-stops";
 import { ColorTool } from "./color-picker";
 import { Proofing } from "./doc-spelling";
 import { useDocProofing, type ProofingContext } from "./doc-proofing";
+import { NamedStylePanel } from "./named-style-panel";
 import { DocImageAlt } from "./doc-image-alt-ui";
 import { documentNotes } from "./doc-notes";
+import { IndexEntryPanel } from "./index-entry-panel";
+import { IndexMark } from "./index-mark";
 import { documentCitations } from "./doc-citations";
 import { DocCitations } from "./doc-citations-panel";
 import { Equation, EquationDialog } from "./doc-equations";
@@ -167,8 +202,10 @@ import { normalText } from "./doc-normal-text";
 import { MailMergeDialog } from "./mail-merge-dialog";
 import { InsertChartDialog } from "./doc-chart-dialog";
 import { LinkedChart } from "./doc-linked-chart";
+import { AccessNotes } from "./access-notes";
 import { DrawingDialog } from "./doc-drawing";
 import { SectionBreak, SectionBreakDialog, type DocSection } from "./doc-section-break";
+import { acceptUndoExtension } from "../ai/accept-undo";
 
 export const extensions: Extensions = [
   DocumentPagination,
@@ -179,6 +216,7 @@ export const extensions: Extensions = [
   ...documentNotes,
   ...documentCitations,
   StarterKit.configure({
+    undoRedo: false,
     link: { openOnClick: false, isAllowedUri: (url) => safeLink(url) },
   }),
   TextStyleKit,
@@ -199,6 +237,7 @@ export const extensions: Extensions = [
   ...commentExtensions,
   Suggestions,
   Proofing,
+  IndexMark,
   Grammar,
   Superscript,
   Subscript,
@@ -233,6 +272,7 @@ export const extensions: Extensions = [
       ];
     },
   }),
+  acceptUndoExtension,
 ];
 
 export function importHTML(html: string): JsonNode {
@@ -263,6 +303,8 @@ export default function Docs({
   readOnly = false,
   collabDoc = null,
   collabTouch,
+  onLocalSelection,
+  remoteCarets = [],
 }: {
   file: DocFile;
   onChange: (
@@ -271,13 +313,17 @@ export default function Docs({
   ) => void;
   onActions: (actions: EditorActions) => void;
   onError: (s: string) => void;
-  /** Save this document, then open `created` the way New document does. */
-  onCreateDocument: (created: DocFile) => Promise<void>;
+  /** Save this document, then open the new files the way New document does. */
+  onCreateDocument: (created: DocFile | DocFile[]) => Promise<void>;
   /** Viewers and commenters can read, but not change the document. */
   readOnly?: boolean;
   /** Set while another writer is in the file. Edits go through this Y.Doc. */
   collabDoc?: Y.Doc | null;
   collabTouch?: { current: { unit: string; key: string } };
+  /** Reports the caret while a shared room is open. The text is not included. */
+  onLocalSelection?: (anchor: number, head: number) => void;
+  /** Other people's carets. These marks do not change the document text. */
+  remoteCarets?: RemoteCaret[];
 }) {
   const changes = useRef(onChange);
   changes.current = onChange;
@@ -286,6 +332,8 @@ export default function Docs({
   const [mergeOpen, setMergeOpen] = useState(false);
   const [chartOpen, setChartOpen] = useState(false);
   const [findOpen, setFindOpen] = useState(false),
+    [indexOpen, setIndexOpen] = useState(false),
+    [notesOpen, setNotesOpen] = useState(false),
     [query, setQuery] = useState(""),
     [replacement, setReplacement] = useState("");
   const [matchCase, setMatchCase] = useState(false);
@@ -318,6 +366,7 @@ export default function Docs({
   const toggleComments = useRef(() => {});
   const [commentGutter, setCommentGutter] = useState(false);
   const [citationsOpen, setCitationsOpen] = useState(false);
+  const [stylesOpen, setStylesOpen] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(() =>
     window.innerWidth < 700 ? "Fit" : "100%",
   );
@@ -408,6 +457,8 @@ export default function Docs({
     }
   };
   const commitRef = useRef<(json: JsonNode) => void>(() => {});
+  const sharedUndo = useRef(false);
+  sharedUndo.current = !!collabDoc;
   commitRef.current = (json) => {
     if (ignoreEdits.current) return;
     writeBody(json);
@@ -423,14 +474,27 @@ export default function Docs({
             name: "yCollab",
             addProseMirrorPlugins() {
               const fragment = collabDoc.getXmlFragment("prosemirror");
-              if (fragment.length === 0)
-                prosemirrorJSONToYXmlFragment(this.editor.schema, file.content, fragment);
-              return [ySyncPlugin(fragment)];
+              if (fragment.length === 0) {
+                const source = roomAlreadyHasText(collabDoc)
+                  ? paragraphsAsDocument(paragraphTexts(collabDoc))
+                  : file.content;
+                prosemirrorJSONToYXmlFragment(this.editor.schema, source, fragment);
+                const threads = (source as { attrs?: { commentThreads?: unknown } }).attrs?.commentThreads;
+                if (Array.isArray(threads)) syncCommentThreads(collabDoc, threads);
+              }
+              return [ySyncPlugin(fragment), yUndoPlugin(), commentSyncPlugin(collabDoc), remoteCaretPlugin()];
+            },
+            addKeyboardShortcuts() {
+              return {
+                "Mod-z": () => undoShared(this.editor.state),
+                "Mod-y": () => redoShared(this.editor.state),
+                "Shift-Mod-z": () => redoShared(this.editor.state),
+              };
             },
           }),
         ]
-      : extensions,
-    content: file.content,
+      : [...extensions, UndoRedo],
+    content: styledDocument(file.content),
     editorProps: {
       attributes: {
         class: "document-content",
@@ -1042,6 +1106,14 @@ export default function Docs({
           content: resolveSuggestions(section.content, picked),
         }))
       : saved;
+    if (format === "pdf") {
+      const { documentPdf } = await import("@suiteleaf/core/doc-pdf");
+      return exportBinary(
+        filename(file.title, "pdf"),
+        documentPdf(sections[0].content),
+        "application/pdf",
+      );
+    }
     if (format === "docx") {
       const { exportDocx } = await import("@suiteleaf/core/docx-export");
       const labeled = saved.length > 1 || saved.some((section) => section.label);
@@ -1133,8 +1205,17 @@ export default function Docs({
       export: (format) => exportDocument(format),
       print: () => printDocument(file.title),
       docActions: {
-        undo: () => editor.commands.undo(),
-        redo: () => editor.commands.redo(),
+        undo: () => {
+          if (sharedUndo.current) {
+            if (undoShared(editor.state)) undoWaitingEdit();
+            return;
+          }
+          editor.commands.undo();
+        },
+        redo: () => {
+          if (sharedUndo.current) redoShared(editor.state);
+          else editor.commands.redo();
+        },
         openFind: () => setFindOpen(true),
         selectAll: () => editor.chain().focus().selectAll().run(),
         insertLink: () => openLink.current(),
@@ -1176,6 +1257,8 @@ export default function Docs({
         toggleComments: () => toggleComments.current(),
         insertTableOfContents: (pageNumbers = true) =>
           editor.chain().focus().insertTableOfContents(pageNumbers).run(),
+        insertFigureList: (kind = "figure") =>
+          editor.chain().focus().insertFigureList(kind).run(),
         insertFootnote: () => editor.chain().focus().insertFootnote().run(),
         insertEndnote: () => editor.chain().focus().insertEndnote().run(),
         insertEquation: () => {
@@ -1188,6 +1271,9 @@ export default function Docs({
         openIgnoredGrammar: grammar.openIgnoredGrammar,
         openDictionary: proofing.openDictionary,
         openCitations: () => setCitationsOpen(true),
+        openNamedStyles: () => {
+          if (!readOnlyRef.current) setStylesOpen(true);
+        },
         clearFormatting: () =>
           editor.chain().focus().unsetAllMarks().clearNodes().run(),
         updateNormalText: () =>
@@ -1318,15 +1404,19 @@ export default function Docs({
           : next,
       );
     };
-    const onSelection = () => read("selection");
+    const onSelection = () => {
+      read("selection");
+      onLocalSelection?.(editor.state.selection.anchor, editor.state.selection.head);
+    };
     const onDocument = () => read("document");
     editor.on("selectionUpdate", onSelection);
     editor.on("update", onDocument);
+    paintRemoteCarets(editor.view, remoteCarets);
     return () => {
       editor.off("selectionUpdate", onSelection);
       editor.off("update", onDocument);
     };
-  }, [editor]);
+  }, [editor, remoteCarets]);
 
   const jumpToHeading = (pos: number) => {
     if (!editor) return;
@@ -1637,13 +1727,31 @@ export default function Docs({
       <div className="toolbar docs-toolbar" role="toolbar" aria-label="Document formatting">
         <MenuSearchPill />
         <fieldset className="toolbar-edits" disabled={readOnly}>
-          <Tool label="Undo" onClick={() => editor.commands.undo()}>
+          <Tool
+            label="Undo"
+            onClick={() => {
+              if (sharedUndo.current) {
+                if (undoShared(editor.state)) undoWaitingEdit();
+                return;
+              }
+              editor.commands.undo();
+            }}
+          >
             <Undo2 size={16} />
           </Tool>
-          <Tool label="Redo" onClick={() => editor.commands.redo()}>
+          <Tool
+            label="Redo"
+            onClick={() => {
+              if (sharedUndo.current) redoShared(editor.state);
+              else editor.commands.redo();
+            }}
+          >
             <Redo2 size={16} />
           </Tool>
         </fieldset>
+        <Tool label="Accessibility notes" onClick={() => setNotesOpen((open) => !open)}>
+          <ListChecks size={16} />
+        </Tool>
         <Tool label="Print" onClick={() => printDocument(file.title)}>
           <Printer size={16} />
         </Tool>
@@ -1954,6 +2062,13 @@ export default function Docs({
           <Rows3 size={16} />
         </Tool>
         <Tool
+          label="Index entry"
+          disabled={readOnly}
+          onClick={() => setIndexOpen((open) => !open)}
+        >
+          <ListChecks size={16} />
+        </Tool>
+        <Tool
           label="Keep lines together"
           active={state?.keepLines}
           disabled={readOnly}
@@ -2092,6 +2207,19 @@ export default function Docs({
             </div>
           </form>
         </div>
+      ) : null}
+      {notesOpen ? (
+        <AccessNotes
+          doc={editor.getJSON() as JsonNode}
+          onSelect={(path) => {
+            const pos = contentPosition(editor.state.doc, path);
+            if (pos == null) return;
+            editor.chain().focus().setTextSelection(pos).run();
+          }}
+        />
+      ) : null}
+      {indexOpen && editor ? (
+        <IndexEntryPanel editor={editor} onClose={() => setIndexOpen(false)} />
       ) : null}
       {findOpen ? (
         <div className="gdocs-modal-overlay" onClick={closeFind}>
@@ -2657,6 +2785,43 @@ export default function Docs({
           readOnly={readOnly}
         />
       </div>
+      {stylesOpen && editor ? (
+        <NamedStylePanel
+          styles={paragraphStyles(editor.getJSON())}
+          onSize={(id, fontSize) => {
+            editor.commands.setContent(updateNamedStyle(editor.getJSON(), id, { fontSize }));
+          }}
+          onMatch={(id) => {
+            const selection = editor.state.selection;
+            if (selection.empty) return "Select the words to match.";
+            const patch = stylePatchFromMarks(
+              editor.state.doc.resolve(selection.from).marks().map((mark) => ({
+                type: mark.type.name,
+                attrs: mark.attrs,
+              })),
+            );
+            if ("error" in patch) return patch.error;
+            editor.commands.setContent(updateNamedStyle(editor.getJSON(), id, patch));
+            return "The style now matches the selection.";
+          }}
+          onApply={(id) => {
+            const index = editor.state.selection.$from.index(0);
+            editor.commands.setContent(assignParagraphStyle(editor.getJSON(), index, id));
+            return "That style was applied to this paragraph.";
+          }}
+          onImport={(template) => {
+            const withParagraphs = importParagraphStyles(editor.getJSON(), template);
+            editor.commands.setContent(importCharacterStyles(withParagraphs, template));
+          }}
+          characterStyles={characterStyleList(editor.getJSON())}
+          onApplyCharacter={(id) => {
+            editor.chain().focus().setMark("characterStyle", { style: id }).run();
+            const json = editor.getJSON();
+            editor.commands.setContent(applyCharacterStyles(json, characterStyleList(json)).doc);
+          }}
+          onClose={() => setStylesOpen(false)}
+        />
+      ) : null}
       {proofing.ui}
       {grammar.ui}
       {svgEdit ? (

@@ -1,4 +1,5 @@
 import type { Presentation, Slide } from "@suiteleaf/core";
+import { animationClicks, animationSequence } from "@suiteleaf/core/slide-motion";
 
 /** Hidden in the slideshow until the next click, then faded in. Visible while editing. */
 export const FADE_ON_CLICK = "fade-on-click" as const;
@@ -19,7 +20,12 @@ export function animationLabel(animation: string | undefined): string {
   return SLIDE_ANIMATION_CHOICES.find((choice) => choice.kind === animation)?.label ?? "On click";
 }
 
-type FadeElement = { id: string; animation?: string; animationOrder?: number };
+type FadeElement = {
+  id: string;
+  animation?: string;
+  animationOrder?: number;
+  animationTrigger?: string;
+};
 
 export function fadesOnClick(el: { animation?: string } | null | undefined): boolean {
   return !!el?.animation && CLICK_ANIMATIONS.has(el.animation);
@@ -27,14 +33,30 @@ export function fadesOnClick(el: { animation?: string } | null | undefined): boo
 
 /** Objects that wait for a click, in click order. */
 export function fadeOnClickIds(elements: readonly FadeElement[]): string[] {
-  return elements
-    .map((el, index) => ({ el, index }))
-    .filter(({ el }) => fadesOnClick(el))
-    .sort(
-      (a, b) =>
-        (a.el.animationOrder ?? a.index) - (b.el.animationOrder ?? b.index) || a.index - b.index,
-    )
-    .map(({ el }) => el.id);
+  return animationSequence(elements).map((item) => item.id);
+}
+
+/** How many objects each click reveals. Objects that share an order are one click. */
+export function clickSteps(elements: readonly FadeElement[]): number[] {
+  return animationClicks(elements).map((click) => click.ids.length);
+}
+
+function stepSize(revealed: number, steps: readonly number[]): number {
+  let at = 0;
+  for (const size of steps) {
+    if (at === revealed) return Math.max(1, size);
+    at += size;
+  }
+  return 1;
+}
+
+function stepBack(revealed: number, steps: readonly number[]): number {
+  let at = 0;
+  for (const size of steps) {
+    if (at + size >= revealed) return Math.max(1, revealed - at);
+    at += size;
+  }
+  return 1;
 }
 
 export type ShowCursor = {
@@ -63,11 +85,13 @@ export function nextCursor(
   cursor: ShowCursor,
   fadeIds: readonly string[],
   slideCount: number,
+  steps: readonly number[] = [],
 ): ShowCursor {
   if (cursor.revealed < fadeIds.length) {
+    const count = stepSize(cursor.revealed, steps);
     return {
       slideIndex: cursor.slideIndex,
-      revealed: cursor.revealed + 1,
+      revealed: Math.min(fadeIds.length, cursor.revealed + count),
       enteringId: fadeIds[cursor.revealed] ?? null,
     };
   }
@@ -81,9 +105,14 @@ export function nextCursor(
 export function prevCursor(
   cursor: ShowCursor,
   fadeIdsAt: (slideIndex: number) => readonly string[],
+  stepsAt: (slideIndex: number) => readonly number[] = () => [],
 ): ShowCursor {
   if (cursor.revealed > 0) {
-    return { ...cursor, revealed: cursor.revealed - 1, enteringId: null };
+    return {
+      ...cursor,
+      revealed: Math.max(0, cursor.revealed - stepBack(cursor.revealed, stepsAt(cursor.slideIndex))),
+      enteringId: null,
+    };
   }
   if (cursor.slideIndex > 0) {
     const slideIndex = cursor.slideIndex - 1;
@@ -96,26 +125,99 @@ export function prevCursor(
   return { ...cursor, enteringId: null };
 }
 
+/** The next index in `direction` that the slideshow should show. A hidden slide is skipped. */
+export function shownSlideIndex(
+  from: number,
+  count: number,
+  direction: 1 | -1,
+  shownAt: (index: number) => boolean,
+): number | null {
+  let next = from;
+  while (next >= 0 && next < count) {
+    if (shownAt(next)) return next;
+    next += direction;
+  }
+  return null;
+}
+
 export function moveShowCursor(
   cursor: ShowCursor,
   where: ShowMove,
   fadeIdsAt: (slideIndex: number) => readonly string[],
   slideCount: number,
+  stepsAt: (slideIndex: number) => readonly number[] = () => [],
+  shownAt: (index: number) => boolean = () => true,
 ): ShowCursor {
-  if (where === "home") return startOfShow(0);
+  if (where === "home") {
+    const slideIndex = shownSlideIndex(0, slideCount, 1, shownAt);
+    return startOfShow(slideIndex ?? cursor.slideIndex);
+  }
   if (where === "end") {
-    const slideIndex = Math.max(0, slideCount - 1);
+    const slideIndex = shownSlideIndex(slideCount - 1, slideCount, -1, shownAt);
+    if (slideIndex === null) return { ...cursor, enteringId: null };
     return {
       slideIndex,
       revealed: fadeIdsAt(slideIndex).length,
       enteringId: null,
     };
   }
-  if (where === "prev") return prevCursor(cursor, fadeIdsAt);
-  return nextCursor(cursor, fadeIdsAt(cursor.slideIndex), slideCount);
+  if (where === "prev") {
+    const back = prevCursor(cursor, fadeIdsAt, stepsAt);
+    if (back.slideIndex === cursor.slideIndex) return back;
+    const slideIndex = shownSlideIndex(back.slideIndex, slideCount, -1, shownAt);
+    if (slideIndex === null) return { ...cursor, enteringId: null };
+    if (slideIndex === back.slideIndex) return back;
+    return {
+      slideIndex,
+      revealed: fadeIdsAt(slideIndex).length,
+      enteringId: null,
+    };
+  }
+  const forward = nextCursor(cursor, fadeIdsAt(cursor.slideIndex), slideCount, stepsAt(cursor.slideIndex));
+  if (forward.slideIndex === cursor.slideIndex) return forward;
+  const slideIndex = shownSlideIndex(forward.slideIndex, slideCount, 1, shownAt);
+  if (slideIndex === null) return { ...cursor, enteringId: null };
+  return { slideIndex, revealed: 0, enteringId: null };
 }
 
-export type AudiencePhase = "plain" | "shown" | "entering" | "hidden";
+export type AudiencePhase = "plain" | "shown" | "entering" | "hidden" | "after";
+
+/**
+ * Paragraphs of a text box that have not reached their click yet.
+ * A paragraph with no build stays visible. Indexes start at 0.
+ */
+export function hiddenParagraphIndexes(
+  el: { id: string; paragraphBuilds?: readonly { start: number; end: number }[] },
+  sequence: readonly { id: string; paragraphs?: { start: number; end: number } }[],
+  revealed: number,
+): number[] {
+  if (!el.paragraphBuilds?.length) return [];
+  const shown = new Set<number>();
+  for (const item of sequence.slice(0, Math.max(0, revealed))) {
+    if (item.id !== el.id || !item.paragraphs) continue;
+    for (let index = item.paragraphs.start; index <= item.paragraphs.end; index += 1)
+      shown.add(index);
+  }
+  const hidden: number[] = [];
+  for (const build of el.paragraphBuilds) {
+    for (let index = build.start; index <= build.end; index += 1) {
+      if (!shown.has(index) && !hidden.includes(index)) hidden.push(index);
+    }
+  }
+  return hidden;
+}
+
+/** True once the click that hides this object has been reached. */
+export function exitConcealed(
+  id: string,
+  sequence: readonly { id: string; exit?: boolean }[],
+  revealed: number,
+): boolean {
+  for (let index = 0; index < sequence.length && index < revealed; index += 1) {
+    if (sequence[index].id === id && sequence[index].exit) return true;
+  }
+  return false;
+}
 
 /** How one object is drawn for the audience. Editing never uses this. */
 export function audiencePhase(
@@ -128,15 +230,36 @@ export function audiencePhase(
   const index = order.indexOf(el.id);
   if (index < 0 || index >= revealed) return "hidden";
   if (el.id === enteringId) return "entering";
+  if (el.animationTrigger === "after" && enteringId) {
+    const enterIndex = order.indexOf(enteringId);
+    if (enterIndex >= 0 && index > enterIndex) return "after";
+  }
   return "shown";
+}
+
+/** How long an entrance plays. A missing or unusable length is 600 milliseconds. */
+export function animationEnterMs(duration: number | undefined): number {
+  if (typeof duration !== "number" || !Number.isFinite(duration)) return 600;
+  return Math.min(5000, Math.max(0, Math.round(duration)));
+}
+
+/** The entrance class and length the slideshow uses for one pane preview. */
+export function animationPreview(row: {
+  kind: string;
+  ms: number;
+  trigger: "click" | "with" | "after";
+}): { className: string; durationMs: number } {
+  const phase = row.trigger === "after" ? "after" : "entering";
+  return { className: audienceClass(phase, row.kind), durationMs: row.ms };
 }
 
 export function audienceClass(phase: AudiencePhase, animation?: string): string {
   if (phase === "hidden") return "show-object fade-on-click-hidden";
   if (phase === "shown") return "show-object fade-on-click-shown";
-  if (phase === "entering") {
-    if (!animation || animation === FADE_ON_CLICK) return "show-object fade-on-click-enter";
-    return `show-object ${animation}-enter`;
+  if (phase === "entering" || phase === "after") {
+    const motion = !animation || animation === FADE_ON_CLICK ? "fade-on-click-enter" : `${animation}-enter`;
+    const wait = phase === "after" ? " animation-after-previous" : "";
+    return `show-object ${motion}${wait}`;
   }
   return "show-object";
 }
@@ -204,22 +327,32 @@ export type AnimationRow = {
   id: string;
   kind: SlideAnimationKind;
   order: number;
+  click: number;
+  trigger: "click" | "with" | "after";
   label: string;
+  /** The same entrance length the slideshow applies, in milliseconds. */
+  ms: number;
 };
 
-/** Click sequence for the animation pane, earliest first. */
+/** Click sequence for the animation pane, the same clicks the slideshow uses. */
 export function animationRows(slide: Slide | undefined): AnimationRow[] {
   if (!slide) return [];
-  return slide.elements
-    .map((el, index) => ({ el, index }))
-    .filter((item): item is { el: (typeof item)["el"]; index: number } => fadesOnClick(item.el))
-    .map(({ el, index }) => ({
-      id: el.id,
-      kind: (el.animation ?? FADE_ON_CLICK) as SlideAnimationKind,
-      order: el.animationOrder ?? index + 1,
-      label: (el.content?.trim() || el.placeholder || el.alt || el.type).slice(0, 48),
-    }))
-    .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label));
+  const clickOf = new Map<string, number>();
+  animationClicks(slide.elements).forEach((click, index) => {
+    for (const id of click.ids) clickOf.set(id, index + 1);
+  });
+  return animationSequence(slide.elements).map((item) => {
+    const el = slide.elements[item.index];
+    return {
+      id: item.id,
+      kind: item.kind,
+      order: item.order,
+      click: clickOf.get(item.id) ?? 1,
+      trigger: item.trigger,
+      label: (el?.content?.trim() || el?.placeholder || el?.alt || el?.type || item.id).slice(0, 48),
+      ms: animationEnterMs(el?.animationDuration),
+    };
+  });
 }
 
 /** Move one animation earlier (-1) or later (1) and renumber the click sequence. */

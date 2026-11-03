@@ -187,6 +187,13 @@ export function mapMarpSource(source: string): MarpSourceMap {
   return map;
 }
 
+/** The line to show for slide `index`: its `---`, or the first line after the front matter. */
+export function marpSlideScrollLine(source: string, index: number): number | null {
+  const slide = mapMarpSource(source).slides[index];
+  if (!slide) return null;
+  return slide.rule ?? slide.lines[0];
+}
+
 /** The slide a line of the markdown is on. A slide's `---` starts it, and the front matter belongs to the first. */
 export function marpSlideAtLine(source: string, line: number): number {
   const { slides } = mapMarpSource(source);

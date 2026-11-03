@@ -5,9 +5,11 @@ import { DOMSerializer, Node, Schema } from "@tiptap/pm/model";
 import { createFile, type JsonNode } from "../packages/core/src";
 import { exportDocx } from "../packages/core/src/docx-export";
 import {
+  chartProvenance,
   linkedChartDom,
   linkedChartHtml,
   missingSpreadsheetText,
+  withheldChartText,
 } from "../packages/core/src/linked-chart";
 import { documentPlainText } from "../apps/web/src/editors/doc-text";
 
@@ -177,5 +179,35 @@ describe("linked chart export", () => {
     expect(bare).not.toContain("40");
     expect(bare).not.toContain("Compost");
     expect(bare).not.toContain("15");
+  });
+
+  it("leaves the bars out of a snapshot when the viewer cannot open the source", async () => {
+    const hidden = {
+      type: "linkedChart",
+      attrs: {
+        ...fees,
+        values: [...fees.values],
+        viewerAllowed: false,
+        snapshotAt: "2026-10-31T18:00:00.000Z",
+      },
+    };
+    const plain = documentPlainText({ type: "doc", content: [hidden] });
+    expect(plain).toContain("From Plot fees");
+    expect(plain).toContain(chartProvenance("Plot fees", "2026-10-31T18:00:00.000Z"));
+    expect(plain).not.toContain("plot-fees");
+    expect(plain).toContain(withheldChartText);
+    expect(plain).not.toContain("Dues");
+    expect(plain).not.toContain("plot-fees");
+    expect(plain).not.toContain("40");
+    const file = createFile("doc", "October meeting");
+    if (file.kind !== "doc") throw new Error("expected a document");
+    file.content = { type: "doc", content: [hidden] } as typeof file.content;
+    const texts = await wordText(file);
+    expect(texts).toContain("From Plot fees");
+    expect(texts).toContain(chartProvenance("Plot fees", "2026-10-31T18:00:00.000Z"));
+    expect(texts).toContain(withheldChartText);
+    expect(texts).not.toContain("Dues");
+    expect(texts).not.toContain("plot-fees");
+    expect(texts.join("\n")).not.toMatch(/\b40\b/);
   });
 });

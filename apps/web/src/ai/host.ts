@@ -4,6 +4,9 @@ import type { Static, TSchema } from "@earendil-works/pi-ai";
 import { moveCursor, type Target } from "./cursor";
 import { requestApproval, requested } from "./guard";
 import { PARSE_ERROR } from "./model-stream";
+import { assistantBlock } from "./policy";
+import { readAiPreferences } from "./preferences";
+import { holdToolEdit, toolEditWaits } from "./tool-review";
 
 /** What a SuiteLeaf tool returns to the model. */
 export type ToolOutput = string | { text: string; details?: unknown };
@@ -216,13 +219,33 @@ export function toAgentTool(t: SuiteTool): AgentTool {
       return (t.prepare && args && typeof args === "object" ? t.prepare(args as Record<string, unknown>) : args) as never;
     },
     async execute(_id, params, signal) {
+      const stopped = {
+        content: [{ type: "text" as const, text: "The assistant stopped. This edit was not run." }],
+        details: undefined,
+      };
+      if (signal?.aborted) return stopped;
       return whileAgentActs(async () => {
+      const prefs = readAiPreferences();
+      let orgRaw: unknown = null;
+      try {
+        const raw = localStorage.getItem("suiteleaf.ai.orgPolicy");
+        orgRaw = raw ? JSON.parse(raw) : null;
+      } catch {
+        orgRaw = null;
+      }
+      const blocked = assistantBlock(prefs, false, orgRaw, prefs.endpoint);
+      if (blocked) throw new Error(blocked);
       // Screens rebuild their tools as their state changes (and calls in one
       // turn can change it): once the last change has rendered, run the tool
       // the screen offers now.
       await new Promise((r) => setTimeout(r, 50));
+      if (signal?.aborted) return stopped;
       const live = currentSuiteTools().find((x) => x.name === t.name);
       if (!live) throw new Error(`Tool ${t.name} not found`);
+      if (prefs.reviewEdits && toolEditWaits(live.name)) {
+        const notice = holdToolEdit(() => live.execute(params as never, signal));
+        return { content: [{ type: "text", text: notice }], details: undefined };
+      }
       let target: Target;
       try {
         target = await live.target?.(params as never);

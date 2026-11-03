@@ -353,6 +353,11 @@ export function storedLabel(
   return next;
 }
 
+function hexColor(value: string): string | null {
+  const match = /^#([0-9a-fA-F]{6})$/.exec(value.trim());
+  return match ? `#${match[1].toLowerCase()}` : null;
+}
+
 function channel(hex: string, start: number): number {
   const parsed = Number.parseInt(hex.slice(start, start + 2), 16);
   const value = parsed / 255;
@@ -367,16 +372,26 @@ function luminance(hex: string): number {
   );
 }
 
-export function contrastRatio(background: string, foreground: string): number {
-  const lighter = Math.max(luminance(background), luminance(foreground));
-  const darker = Math.min(luminance(background), luminance(foreground));
+export function contrastRatio(background: string, foreground: string): number | null {
+  const back = hexColor(background);
+  const fore = hexColor(foreground);
+  if (!back || !fore) return null;
+  const lighter = Math.max(luminance(back), luminance(fore));
+  const darker = Math.min(luminance(back), luminance(fore));
   return (lighter + 0.05) / (darker + 0.05);
+}
+
+/** A chip color this checker cannot read. The color itself is not repeated. */
+export function chipColorNote(background: string): string | null {
+  if (hexColor(background)) return null;
+  return "This chip color is not a hex color.";
 }
 
 /** Black or white, whichever clears 4.5:1 on this chip. Callers never pick a text color. */
 export function chipTextColor(background: string): "#111111" | "#ffffff" {
   const black = contrastRatio(background, "#111111");
   const white = contrastRatio(background, "#ffffff");
+  if (black === null || white === null) return "#111111";
   if (black >= 4.5 && white >= 4.5) return black >= white ? "#111111" : "#ffffff";
   if (black >= 4.5) return "#111111";
   if (white >= 4.5) return "#ffffff";

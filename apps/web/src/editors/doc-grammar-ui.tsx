@@ -234,6 +234,7 @@ export function useDocGrammar(
                   onChange={(event) => setDraft({ id: issueId, value: event.target.value })}
                 />
               </label>
+              <p className="word-count-hint">{issue.explanation}</p>
               <p className="word-count-hint">
                 Enter changes this word. Tab reaches Ignore. Spelling stays in Tools › Spelling,
                 and this check stays on this computer.

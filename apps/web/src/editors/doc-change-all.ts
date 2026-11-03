@@ -7,6 +7,7 @@ import {
   type PersonalDictionary,
   type SpellingRange,
 } from "./doc-spelling";
+import type { ProofingLanguage } from "./proofing-language";
 
 /** Keep a capital the writer already typed: "Recieve" → "Receive". */
 export function suggestionCase(source: string, replacement: string) {
@@ -26,8 +27,9 @@ export function copiesOf(
   word: string,
   personal: PersonalDictionary,
   ignored: readonly string[],
+  language: ProofingLanguage = "en",
 ) {
-  return misspelledRanges(doc, personal, ignored).filter((range) => sameWord(range.word, word));
+  return misspelledRanges(doc, personal, ignored, language).filter((range) => sameWord(range.word, word));
 }
 
 export type CopyPreview = SpellingRange & {

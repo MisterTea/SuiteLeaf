@@ -1,6 +1,7 @@
 import { app, ipcMain, utilityProcess, type UtilityProcess, type WebContents } from "electron";
 import { join } from "node:path";
 import { AI_MODELS, modelIdForFile, type AiGenerateRequest, type AiModelId, type AiStatus } from "@suiteleaf/core/ai";
+import { removeCachedModel } from "@suiteleaf/core/gguf-download";
 
 let host: UtilityProcess | undefined;
 let status: AiStatus = { state: "idle", backend: "llama.cpp" };
@@ -69,6 +70,13 @@ export function registerAi(
 ) {
   if (process.env.SUITELEAF_MODEL_PATH) status = { ...status, modelId: modelIdForFile(process.env.SUITELEAF_MODEL_PATH) };
   register("ai:status", () => status);
+  register("ai:remove", async (fileName?: unknown) => {
+    if (typeof fileName !== "string") return "That file is not a downloaded model.";
+    const directory = process.env.SUITELEAF_MODELS_DIR || join(app.getPath("userData"), "models");
+    const sentence = await removeCachedModel(directory, fileName);
+    if (fileName.endsWith(".gguf")) await removeCachedModel(directory, `${fileName}.part`);
+    return sentence;
+  });
   register("ai:load", (modelId?: unknown) => {
     const id = typeof modelId === "string" && modelId in AI_MODELS ? (modelId as AiModelId) : undefined;
     if (status.state === "ready" && (!id || status.modelId === id)) return status;

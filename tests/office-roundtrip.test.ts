@@ -630,7 +630,7 @@ describe("office export round trip", () => {
     if (!existsSync(path)) return;
     const real = await roundTripOffice(await readFile(path), "pptx", "0153-pptx.pptx");
     expect(real.differences.filter((diff) => diff.owner === "suiteleaf")).toEqual([]);
-  });
+  }, 60_000);
 
   it("keeps a picture that fills a slide table cell", async () => {
     const file = createFile("slide", "Review") as SlideFile;

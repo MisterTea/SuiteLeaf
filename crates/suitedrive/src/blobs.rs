@@ -83,6 +83,28 @@ impl BlobStore {
         self.root.join(&hex[..2]).join(&hex[2..])
     }
 
+    /// Bytes already stored, including manifests. A directory that is missing counts as zero.
+    pub fn stored_bytes(&self) -> Result<u64> {
+        fn walk(path: &Path, total: &mut u64) -> Result<()> {
+            if !path.exists() {
+                return Ok(());
+            }
+            for entry in fs::read_dir(path)? {
+                let entry = entry?;
+                let kind = entry.file_type()?;
+                if kind.is_dir() {
+                    walk(&entry.path(), total)?;
+                } else if kind.is_file() {
+                    *total = total.saturating_add(entry.metadata()?.len());
+                }
+            }
+            Ok(())
+        }
+        let mut total = 0;
+        walk(&self.root, &mut total)?;
+        Ok(total)
+    }
+
     pub fn has(&self, hash: &Hash) -> bool {
         self.path(hash).exists()
     }

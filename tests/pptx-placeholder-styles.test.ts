@@ -2,6 +2,35 @@ import { expect, it } from "vitest";
 import JSZip from "jszip";
 import { parsePowerPoint } from "../packages/core/src/pptx";
 import { exportPptx } from "../packages/core/src/pptx-export";
+it("paints a subtitle and a content placeholder with the body style, not the footer style", async () => {
+  const z = new JSZip();
+  const shape = (type: string, text: string) =>
+    `<p:sp><p:nvSpPr><p:nvPr><p:ph type="${type}"/></p:nvPr></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="457200"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr/><a:t>${text}</a:t></a:r></a:p></p:txBody></p:sp>`;
+  z.file(
+    "ppt/slides/slide1.xml",
+    `<p:sld><p:cSld><p:spTree>${shape("subTitle", "Overview")}${shape("obj", "Details")}${shape("ftr", "Foot")}</p:spTree></p:cSld></p:sld>`,
+  );
+  z.file(
+    "ppt/slides/_rels/slide1.xml.rels",
+    `<Relationships><Relationship Id="l" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/></Relationships>`,
+  );
+  z.file("ppt/slideLayouts/slideLayout1.xml", `<p:sldLayout><p:cSld><p:spTree/></p:cSld></p:sldLayout>`);
+  z.file(
+    "ppt/slideLayouts/_rels/slideLayout1.xml.rels",
+    `<Relationships><Relationship Id="m" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/></Relationships>`,
+  );
+  z.file(
+    "ppt/slideMasters/slideMaster1.xml",
+    `<p:sldMaster><p:cSld><p:spTree/></p:cSld><p:txStyles><p:bodyStyle><a:lvl1pPr><a:defRPr sz="1800"><a:solidFill><a:srgbClr val="747474"/></a:solidFill></a:defRPr></a:lvl1pPr></p:bodyStyle><p:otherStyle><a:lvl1pPr><a:defRPr sz="1200"><a:solidFill><a:srgbClr val="111111"/></a:solidFill></a:defRPr></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>`,
+  );
+  const parsed = await parsePowerPoint(await z.generateAsync({ type: "uint8array" }));
+  const texts = parsed.content.slides[parsed.content.slideOrder[0]].elements;
+  const colorOf = (content: string) => texts.find((el) => el.content === content)?.color;
+  expect(colorOf("Overview")).toBe("#747474");
+  expect(colorOf("Details")).toBe("#747474");
+  expect(colorOf("Foot")).toBe("#111111");
+});
+
 it("inherits placeholder geometry, alignment and font defaults while preserving smaller author runs", async () => {
   const z = new JSZip();
   z.file(
@@ -40,6 +69,36 @@ it("inherits placeholder geometry, alignment and font defaults while preserving 
   expect(xml).toContain('sz="1800"');
 });
 
+it("centers a body placeholder that sits on the layout subtitle", async () => {
+  const z = new JSZip();
+  z.file(
+    "ppt/slides/slide1.xml",
+    `<p:sld><p:cSld><p:spTree><p:sp><p:nvSpPr><p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="990600"/><a:ext cx="12192000" cy="1524000"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr sz="3600"/><a:t>Perceptrons and Logistic Regression</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`,
+  );
+  z.file(
+    "ppt/slides/_rels/slide1.xml.rels",
+    `<Relationships><Relationship Id="l" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/></Relationships>`,
+  );
+  z.file(
+    "ppt/slideLayouts/slideLayout1.xml",
+    `<p:sldLayout><p:cSld><p:spTree><p:sp><p:nvSpPr><p:nvPr><p:ph type="subTitle" idx="1"/></p:nvPr></p:nvSpPr><p:txBody><a:bodyPr/><a:lstStyle><a:lvl1pPr algn="ctr"><a:buNone/></a:lvl1pPr></a:lstStyle><a:p/></p:txBody></p:sp></p:spTree></p:cSld></p:sldLayout>`,
+  );
+  z.file(
+    "ppt/slideLayouts/_rels/slideLayout1.xml.rels",
+    `<Relationships><Relationship Id="m" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/></Relationships>`,
+  );
+  z.file(
+    "ppt/slideMasters/slideMaster1.xml",
+    `<p:sldMaster><p:cSld><p:spTree/></p:cSld><p:txStyles><p:bodyStyle><a:lvl1pPr><a:buFont typeface="Wingdings"/><a:buChar char="§"/><a:defRPr sz="1800"/></a:lvl1pPr></p:bodyStyle></p:txStyles></p:sldMaster>`,
+  );
+  const parsed = await parsePowerPoint(await z.generateAsync({ type: "uint8array" }));
+  const el = parsed.content.slides[parsed.content.slideOrder[0]].elements.find((item) =>
+    item.content?.includes("Perceptrons"),
+  );
+  expect(el?.align).toBe("center");
+  expect(el?.content).toBe("Perceptrons and Logistic Regression");
+});
+
 it("keeps a centered line inside a left-aligned body and a blank paragraph", async () => {
   const z = new JSZip();
   z.file(
@@ -75,4 +134,41 @@ it("uses an explicit run size for the box when every line overrides the list def
   expect(el.runs?.filter((run) => run.text.trim()).map((run) => run.fontSize)).toEqual([
     10, 10,
   ]);
+});
+
+it("does not let the presentation default bold a body style that leaves weight off", async () => {
+  const z = new JSZip();
+  z.file(
+    "ppt/presentation.xml",
+    `<p:presentation><p:defaultTextStyle><a:lvl1pPr><a:defRPr sz="2600" b="1" i="1"/></a:lvl1pPr></p:defaultTextStyle></p:presentation>`,
+  );
+  z.file(
+    "ppt/slides/slide1.xml",
+    `<p:sld><p:cSld><p:spTree><p:sp><p:nvSpPr><p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="4000000" cy="1000000"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr sz="2200"/><a:t>Plain </a:t></a:r><a:r><a:rPr sz="2200" b="1"/><a:t>Bold</a:t></a:r></a:p></p:txBody></p:sp><p:sp><p:nvSpPr><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="1200000"/><a:ext cx="4000000" cy="800000"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr sz="2200"/><a:t>Free</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`,
+  );
+  z.file(
+    "ppt/slides/_rels/slide1.xml.rels",
+    `<Relationships><Relationship Id="l" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/></Relationships>`,
+  );
+  z.file(
+    "ppt/slideLayouts/slideLayout1.xml",
+    `<p:sldLayout><p:cSld><p:spTree/></p:cSld></p:sldLayout>`,
+  );
+  z.file(
+    "ppt/slideLayouts/_rels/slideLayout1.xml.rels",
+    `<Relationships><Relationship Id="m" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/></Relationships>`,
+  );
+  z.file(
+    "ppt/slideMasters/slideMaster1.xml",
+    `<p:sldMaster><p:cSld><p:spTree/></p:cSld><p:txStyles><p:bodyStyle><a:lvl1pPr><a:defRPr sz="2400"><a:latin typeface="Arial"/></a:defRPr></a:lvl1pPr></p:bodyStyle><p:titleStyle><a:lvl1pPr><a:defRPr sz="2400" b="1"/></a:lvl1pPr></p:titleStyle></p:txStyles></p:sldMaster>`,
+  );
+  const parsed = await parsePowerPoint(await z.generateAsync({ type: "uint8array" }));
+  const texts = parsed.content.slides[parsed.content.slideOrder[0]].elements;
+  const body = texts.find((el) => el.content?.startsWith("Plain"));
+  const free = texts.find((el) => el.content === "Free");
+  expect(body?.runs?.find((run) => run.text.startsWith("Plain"))?.bold).toBe(false);
+  expect(body?.runs?.find((run) => run.text.startsWith("Plain"))?.italic).toBe(false);
+  expect(body?.runs?.find((run) => run.text === "Bold")?.bold).toBe(true);
+  expect(free?.runs?.[0]?.bold).toBe(true);
+  expect(free?.runs?.[0]?.italic).toBe(true);
 });

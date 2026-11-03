@@ -2,11 +2,46 @@ import { describe, expect, it } from "vitest";
 import { createFile, parseFile, serializeFile } from "@suiteleaf/core";
 import {
   canonicalGridAnswer,
+  filledLabels,
   formatGridAnswer,
   gridAnswerError,
 } from "../apps/web/src/form-grid";
+import { choiceAnswerError, listedChoice } from "../apps/web/src/form-choice";
+import { appendFormResponse, keepFormQuestions } from "../apps/web/src/form-submit";
 
 describe("forms", () => {
+  it("keeps the questions when a response includes another field", () => {
+    const questions = [{ id: "plot", prompt: "Plot" }];
+    const stored = keepFormQuestions(questions, [], {
+      id: "r2",
+      answers: { plot: "North", extra: "secret-value" },
+    });
+    expect(stored.questions).toEqual(questions);
+    expect(stored.responses).toEqual([{ id: "r2", answers: { plot: "North" } }]);
+    expect(JSON.stringify(stored)).not.toContain("secret-value");
+    expect(questions[0].prompt).toBe("Plot");
+  });
+
+  it("appends a response and keeps the other form fields", () => {
+    const content = {
+      title: "Beds",
+      questions: [{ id: "plot", prompt: "Plot" }],
+      responses: [{ id: "r1", answers: { plot: "North" } }],
+      note: "Water the beds",
+    };
+    const next = appendFormResponse(content, {
+      id: "r2",
+      answers: { plot: "West", extra: "secret-value" },
+    });
+    expect(next.title).toBe("Beds");
+    expect(next.note).toBe("Water the beds");
+    expect(next.questions).toEqual(content.questions);
+    expect(next.responses.map((response) => response.answers.plot)).toEqual(["North", "West"]);
+    expect(next.responses[1].answers).toEqual({ plot: "West" });
+    expect(JSON.stringify(next.responses)).not.toContain("secret-value");
+    expect(content.responses).toHaveLength(1);
+  });
+
   it("round-trips an empty form and keeps choice answers", () => {
     const file = createFile("form", "Plot sign-ups");
     expect(file.kind).toBe("form");
@@ -246,5 +281,40 @@ describe("forms", () => {
     expect(() => serializeFile(file)).toThrow();
     file.content.responses[0].answers.days = `${stored}${" ".repeat(40_000)}`;
     expect(() => serializeFile(file)).toThrow();
+  });
+
+  it("keeps a listed choice after trimming and refuses another answer", () => {
+    const choices = [" Beds ", "Paths"];
+    expect(listedChoice(choices, " Beds ")).toBe("Beds");
+    expect(listedChoice(choices, "secret-value")).toBeNull();
+    expect(choiceAnswerError("Plot size", true, choices, "secret-value")).toBe(
+      "Plot size must be one of the choices",
+    );
+    expect(choiceAnswerError("Plot size", true, choices, " Beds ")).toBeNull();
+    expect(choiceAnswerError("Plot size", true, choices, "secret-value")).not.toContain(
+      "secret-value",
+    );
+    expect(choices[0]).toBe(" Beds ");
+  });
+
+  it("keeps a listed grid column after trimming and refuses another answer", () => {
+    const rows = [" Mon "];
+    const columns = [" Yes "];
+    const value = JSON.stringify({ " Mon ": " Yes " });
+    expect(gridAnswerError("Which days?", true, filledLabels(rows), filledLabels(columns), value)).toBeNull();
+    expect(canonicalGridAnswer(filledLabels(rows), filledLabels(columns), value)).toBe(
+      JSON.stringify({ Mon: "Yes" }),
+    );
+    const refused = gridAnswerError(
+      "Which days?",
+      true,
+      filledLabels(rows),
+      filledLabels(columns),
+      JSON.stringify({ Mon: "secret-value" }),
+    );
+    expect(refused).toBe("Which days? must be one of the columns");
+    expect(refused).not.toContain("secret-value");
+    expect(rows[0]).toBe(" Mon ");
+    expect(columns[0]).toBe(" Yes ");
   });
 });

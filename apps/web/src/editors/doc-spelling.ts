@@ -3,8 +3,10 @@ import { Extension, Mark } from "@tiptap/core";
 import type { Node as ProseNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
+import { CharacterStyleMark } from "./character-style-mark";
 import { englishHeadwords } from "./english-words";
 import { readProofing, type ProofingSettings } from "./doc-word-count";
+import { PROOFING_LANGUAGES, checksEnglishSpelling, type ProofingLanguage } from "./proofing-language";
 
 export type PersonalDictionary = { added: string[]; flagged: string[] };
 
@@ -45,6 +47,34 @@ export const sameWord = (left: string, right: string) =>
 
 /** One occurrence the writer chose to keep. The same word stays wrong everywhere else. */
 export const SPELLING_IGNORE_MARK = "spellingIgnore";
+
+export const PROOFING_LANGUAGE_MARK = "proofingLanguage";
+
+const PROOFING_IDS = new Set<string>(PROOFING_LANGUAGES.map((item) => item.id));
+
+/** A language stored on a text range. An unknown value is left unset. */
+export function languageOnMarks(
+  marks: { type: string; attrs?: Record<string, unknown> | null }[] | undefined,
+): ProofingLanguage | undefined {
+  const mark = marks?.find((item) => item.type === PROOFING_LANGUAGE_MARK);
+  const value = mark?.attrs?.language;
+  return typeof value === "string" && PROOFING_IDS.has(value) ? (value as ProofingLanguage) : undefined;
+}
+
+export const ProofingLanguageMark = Mark.create({
+  name: PROOFING_LANGUAGE_MARK,
+  inclusive: false,
+  excludes: "",
+  addAttributes() {
+    return { language: { default: "en" } };
+  },
+  parseHTML() {
+    return [{ tag: "span[data-proofing-language]" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["span", { ...HTMLAttributes, "data-proofing-language": HTMLAttributes.language }, 0];
+  },
+});
 
 export const SpellingIgnoreMark = Mark.create({
   name: SPELLING_IGNORE_MARK,
@@ -221,16 +251,84 @@ function slipOfCommonWord(word: string) {
  * SUNY or VMWare. The first word of a sentence is capitalized anyway, so it is
  * underlined only when it is a slip of a common word.
  */
+export type LanguageDictionary = Partial<Record<ProofingLanguage, string[]>>;
+
+const LANGUAGE_DICTIONARY_KEY = "suiteleaf.language-dictionary";
+
+/** Words remembered for one language. Another language does not use that list. */
+export function addLanguageWord(
+  book: LanguageDictionary,
+  language: ProofingLanguage,
+  word: string,
+): { ok: boolean; book: LanguageDictionary; notice: string } {
+  const cleaned = word.trim();
+  if (!cleaned) return { ok: false, book, notice: "Name the word to remember." };
+  if (!new RegExp(`^${ONE_WORD.source}$`).test(cleaned) || cleaned.length > 40) {
+    return { ok: false, book, notice: "Remember one word." };
+  }
+  const current = book[language] ?? [];
+  if (current.some((item) => sameWord(item, cleaned))) {
+    return { ok: true, book, notice: "That word was already remembered." };
+  }
+  return {
+    ok: true,
+    book: { ...book, [language]: [...current, cleaned] },
+    notice: "That word was remembered.",
+  };
+}
+
+export function wordRemembered(
+  book: LanguageDictionary,
+  language: ProofingLanguage,
+  word: string,
+): boolean {
+  return (book[language] ?? []).some((item) => sameWord(item, word));
+}
+
+export function readLanguageDictionary(): LanguageDictionary {
+  try {
+    const raw = localStorage.getItem(LANGUAGE_DICTIONARY_KEY);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : null;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      if (raw) localStorage.removeItem(LANGUAGE_DICTIONARY_KEY);
+      return {};
+    }
+    const book: LanguageDictionary = {};
+    for (const language of PROOFING_LANGUAGES) {
+      const list = (parsed as Record<string, unknown>)[language.id];
+      if (!Array.isArray(list)) continue;
+      book[language.id] = list.filter(
+        (item): item is string => typeof item === "string" && item.trim().length > 0,
+      );
+    }
+    return book;
+  } catch {
+    return {};
+  }
+}
+
+export function writeLanguageDictionary(book: LanguageDictionary) {
+  try {
+    localStorage.setItem(LANGUAGE_DICTIONARY_KEY, JSON.stringify(book));
+  } catch {
+    /* private mode */
+  }
+}
+
 export function isMisspelling(
   word: string,
   personal: PersonalDictionary,
   ignored: readonly string[],
   sentenceStart = false,
+  language: ProofingLanguage = "en",
+  languageBook: LanguageDictionary = {},
 ) {
   const value = normalize(word);
   if (ignored.some((item) => sameWord(item, value))) return false;
   if (personal.flagged.some((item) => sameWord(item, value))) return true;
   if (personal.added.some((item) => sameWord(item, value))) return false;
+  if (wordRemembered(languageBook, language, value)) return false;
+  if (!checksEnglishSpelling(language)) return false;
   if (value.length < 2 || /\d/.test(value)) return false;
   if (/[A-Z]/.test(word)) {
     if (!sentenceStart || /[A-Z]/.test(word.slice(1))) return false;
@@ -239,7 +337,9 @@ export function isMisspelling(
   return !inDictionary(word);
 }
 
-const WORD = /[A-Za-z]+(?:['’-][A-Za-z]+)*/g;
+/** Latin, Arabic, or Hebrew letters. A hyphen joins Latin parts only. */
+const ONE_WORD = /(?:[A-Za-z]+(?:['’-][A-Za-z]+)*|[\u0621-\u064A]+|[\u05D0-\u05EA]+)/;
+const WORD = new RegExp(ONE_WORD.source, "g");
 /** Email addresses, URLs of any scheme, bare web addresses, and file names, whose parts are not words. */
 const ADDRESS =
   /\bmailto:[^\s<>"]+|[\w.+-]+@[\w-]+(?:\.[\w-]+)+|\b(?:[a-z][a-z0-9+.-]*:\/\/|www\.)[^\s<>"]+|\b[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[a-z]{2,24}\b(?:\/[^\s<>"]*)?/g;
@@ -288,16 +388,33 @@ export function spellingTokens(text: string): SpellingToken[] {
  * read whole. Objects keep their size; a line break is a newline. `ignored`
  * holds the stretches marked to skip.
  */
+type LanguageSpan = { from: number; to: number; language: ProofingLanguage };
+
+function languageFor(
+  spans: LanguageSpan[],
+  from: number,
+  to: number,
+  fallback: ProofingLanguage,
+): ProofingLanguage {
+  return spans.find((span) => from >= span.from && to <= span.to)?.language ?? fallback;
+}
+
 function blockText(block: ProseNode) {
   let text = "";
   const ignored: [number, number][] = [];
+  const languages: LanguageSpan[] = [];
   block.forEach((child) => {
     const start = text.length;
     if (child.isText) text += child.text ?? "";
     else text += child.type.name === "hardBreak" ? "\n" : OBJECT.repeat(child.nodeSize);
     if (child.marks.some((mark) => mark.type.name === SPELLING_IGNORE_MARK)) ignored.push([start, text.length]);
+    const named = child.marks.find((mark) => mark.type.name === PROOFING_LANGUAGE_MARK);
+    const value = named?.attrs.language;
+    if (typeof value === "string" && PROOFING_IDS.has(value)) {
+      languages.push({ from: start, to: text.length, language: value as ProofingLanguage });
+    }
   });
-  return { text, ignored };
+  return { text, ignored, languages };
 }
 
 const overlaps = (ranges: [number, number][], from: number, to: number) =>
@@ -365,12 +482,48 @@ export function spellingSuggestions(word: string, limit = 5) {
   return candidates.slice(0, limit).map((item) => item.word);
 }
 
+function oneLetterLonger(shorter: string, longer: string): boolean {
+  if (longer.length !== shorter.length + 1) return false;
+  let matched = 0;
+  let skipped = false;
+  for (const letter of longer) {
+    if (letter === shorter[matched]) matched += 1;
+    else if (skipped) return false;
+    else skipped = true;
+  }
+  return matched === shorter.length;
+}
+
+/** Why a suggestion was offered. The words themselves are not repeated. */
+export function spellingSuggestionReason(typed: string, suggestion: string): string {
+  const left = normalize(typed).replace(/'/g, "");
+  const right = normalize(suggestion).replace(/'/g, "");
+  if (!left || !right || left === right) return "That is the same spelling.";
+  if (left.length === right.length) {
+    let differences = 0;
+    for (let index = 0; index < left.length; index += 1) {
+      if (left[index] !== right[index]) differences += 1;
+    }
+    for (let index = 0; index < left.length - 1; index += 1) {
+      const swapped =
+        left.slice(0, index) + left[index + 1] + left[index] + left.slice(index + 2);
+      if (swapped === right) return "Two letters are swapped.";
+    }
+    if (differences === 1) return "One letter differs.";
+  }
+  if (oneLetterLonger(left, right)) return "A letter is missing.";
+  if (oneLetterLonger(right, left)) return "An extra letter is there.";
+  return "Two changes are needed.";
+}
+
 export type SpellingRange = { from: number; to: number; word: string };
 
 export function misspelledRanges(
   doc: ProseNode,
   personal: PersonalDictionary,
   ignored: readonly string[],
+  language: ProofingLanguage = "en",
+  languageBook: LanguageDictionary = {},
 ): SpellingRange[] {
   const ranges: SpellingRange[] = [];
   doc.descendants((node, pos) => {
@@ -378,7 +531,8 @@ export function misspelledRanges(
     const block = blockText(node);
     for (const token of spellingTokens(block.text)) {
       if (overlaps(block.ignored, token.from, token.to)) continue;
-      if (!isMisspelling(token.word, personal, ignored, token.sentenceStart)) continue;
+      const spoken = languageFor(block.languages, token.from, token.to, language);
+      if (!isMisspelling(token.word, personal, ignored, token.sentenceStart, spoken, languageBook)) continue;
       ranges.push({ from: pos + 1 + token.from, to: pos + 1 + token.to, word: token.word });
     }
     return false;
@@ -390,6 +544,8 @@ export function misspelledWords(
   doc: JsonNode,
   personal: PersonalDictionary = emptyDictionary(),
   ignored: readonly string[] = [],
+  language: ProofingLanguage = "en",
+  languageBook: LanguageDictionary = {},
 ) {
   const words: string[] = [];
   const walk = (node: JsonNode) => {
@@ -400,14 +556,19 @@ export function misspelledWords(
     }
     let text = "";
     const skip: [number, number][] = [];
+    const languages: LanguageSpan[] = [];
     for (const child of children) {
       const start = text.length;
       text += child.type === "text" ? (child.text ?? "") : child.type === "hardBreak" ? "\n" : OBJECT;
       if (child.marks?.some((mark) => mark.type === SPELLING_IGNORE_MARK)) skip.push([start, text.length]);
+      const spoken = languageOnMarks(child.marks);
+      if (spoken) languages.push({ from: start, to: text.length, language: spoken });
     }
-    for (const token of spellingTokens(text))
-      if (!overlaps(skip, token.from, token.to) && isMisspelling(token.word, personal, ignored, token.sentenceStart))
+    for (const token of spellingTokens(text)) {
+      const spoken = languageFor(languages, token.from, token.to, language);
+      if (!overlaps(skip, token.from, token.to) && isMisspelling(token.word, personal, ignored, token.sentenceStart, spoken, languageBook))
         words.push(token.word);
+    }
   };
   walk(doc);
   return words;
@@ -431,18 +592,20 @@ export function spellingHit(
   if (!coords) return null;
   const $pos = view.state.doc.resolve(coords.pos);
   if (!$pos.parent.isTextblock) return null;
-  const { text } = blockText($pos.parent);
+  const block = blockText($pos.parent);
   const offset = coords.pos - $pos.start();
-  const ignored = readProofing(view.state.doc.toJSON() as JsonNode).ignored;
-  const found = spellingTokens(text).find((token) => offset >= token.from && offset <= token.to);
-  if (!found || !isMisspelling(found.word, personal, ignored, found.sentenceStart)) return null;
+  const proofing = readProofing(view.state.doc.toJSON() as JsonNode);
+  const ignored = proofing.ignored;
+  const found = spellingTokens(block.text).find((token) => offset >= token.from && offset <= token.to);
+  const spoken = found ? languageFor(block.languages, found.from, found.to, proofing.language) : proofing.language;
+  if (!found || !isMisspelling(found.word, personal, ignored, found.sentenceStart, spoken, readLanguageDictionary())) return null;
   const from = $pos.start() + found.from;
   const to = from + found.word.length;
   return {
     from,
     to,
     word: found.word,
-    suggestions: spellingSuggestions(found.word),
+    suggestions: checksEnglishSpelling(spoken) ? spellingSuggestions(found.word) : [],
     x: event.clientX,
     y: event.clientY,
     kept: view.state.doc.resolve(from).marks().some((mark) => mark.type.name === SPELLING_IGNORE_MARK),
@@ -459,7 +622,7 @@ export function spellingHighlight(from: number, to: number) {
 export const Proofing = Extension.create({
   name: "proofing",
   addExtensions() {
-    return [SpellingIgnoreMark];
+    return [SpellingIgnoreMark, ProofingLanguageMark, CharacterStyleMark];
   },
   addGlobalAttributes() {
     return [
@@ -493,7 +656,13 @@ export const Proofing = Extension.create({
             const caret = state.selection.empty ? state.selection.from : null;
             return DecorationSet.create(
               state.doc,
-              misspelledRanges(state.doc, personal, settings.ignored)
+              misspelledRanges(
+                state.doc,
+                personal,
+                settings.ignored,
+                settings.language,
+                readLanguageDictionary(),
+              )
                 .filter((range) => {
                   const next = state.doc.textBetween(
                     range.to,

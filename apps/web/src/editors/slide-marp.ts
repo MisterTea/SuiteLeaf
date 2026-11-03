@@ -60,6 +60,7 @@ type ParsedSlide = {
   layout: Layout;
   slots: SlotSpec[];
   notes: string;
+  hidden?: boolean;
   pinnedColor?: string;
   /** Objects on this slide are placed by hand, so the markdown does not list them. */
   freeform?: boolean;
@@ -525,6 +526,7 @@ function writeSlide(slide: Slide): string {
   while (slots.length < count) slots.push("");
 
   const lines = [`<!-- _class: ${layout} -->`];
+  if (slide.hidden) lines.push("<!-- _hidden: true -->");
   if (!slideIsMarpClean(slide)) lines.push("<!-- _freeform -->");
   if (slide.background?.pinned && slide.background.color)
     lines.push(`<!-- _backgroundColor: ${slide.background.color} -->`);
@@ -566,6 +568,7 @@ function writeMarpSlide(slide: Slide, width = 960): string {
     .trim();
   const [left, right] = marpColumns(slide, width);
   const lines: string[] = [];
+  if (slide.hidden) lines.push("<!-- _hidden: true -->");
   if (title) lines.push(`# ${title}`);
   const blocks = (items: SlideElement[]) =>
     items.map(writeMarpItem).filter(Boolean).join("\n\n");
@@ -758,6 +761,7 @@ const MARP_DIRECTIVES = new Set([
   "footer",
   "header",
   "headingdivider",
+  "hidden",
   "image",
   "keywords",
   "lang",
@@ -788,11 +792,13 @@ function readDirectives(directives: string[]): {
   layout?: Layout;
   pinned?: string;
   freeform?: boolean;
+  hidden?: boolean;
   error?: string;
 } {
   let layout: Layout | undefined;
   let pinned: string | undefined;
   let freeform = false;
+  let hidden = false;
   for (const directive of directives.flatMap((text) => text.split("\n"))) {
     if (directive.trim() === "_freeform") {
       freeform = true;
@@ -818,8 +824,12 @@ function readDirectives(directives: string[]): {
         };
       pinned = color;
     } else if (name === "freeform") freeform = true;
+    else if (name === "hidden") {
+      if (value !== "true" && value !== "false") return { error: "Hidden must be true or false." };
+      hidden = value === "true";
+    }
   }
-  return { layout, pinned, freeform };
+  return { layout, pinned, freeform, hidden };
 }
 
 function piecesFrom(lines: string[]): Piece[] {
@@ -1016,6 +1026,7 @@ function parseChunk(
       layout,
       slots: slotsFor(layout, title ?? "", pieces, left, right, hadFence || hadDivs),
       notes: noteBlocks.at(-1) ?? "",
+      hidden: read.hidden,
       pinnedColor: read.pinned,
       freeform: read.freeform,
       images,
@@ -1107,6 +1118,7 @@ function buildSlide(
       id: previous.id,
       layout: previous.layout ?? parsed.layout,
       notes: parsed.notes,
+      hidden: parsed.hidden ? true : undefined,
       comments: previous.comments,
       transition: previous.transition,
     };
@@ -1143,6 +1155,7 @@ function buildSlide(
     id: previous?.id ?? painted.id,
     layout: parsed.layout,
     notes: parsed.notes,
+    hidden: parsed.hidden ? true : undefined,
     comments: previous?.comments,
     transition: previous?.transition,
   };

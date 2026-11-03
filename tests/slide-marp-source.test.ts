@@ -11,6 +11,7 @@ import {
   marpLineStart,
   marpProblem,
   marpSlideAtLine,
+  marpSlideScrollLine,
   normalizeMarp,
 } from "../apps/web/src/editors/slide-marp-source";
 import { isMarpDirective, marpToDeck } from "../apps/web/src/editors/slide-marp";
@@ -58,6 +59,10 @@ describe("MARP source map", () => {
     const slides = [...source.split("\n").keys()].map((line) => marpSlideAtLine(source, line));
     expect(slides).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1]);
     expect(marpSlideAtLine(source, 40)).toBe(1);
+    expect(marpSlideScrollLine(source, 0)).toBe(3);
+    expect(marpSlideScrollLine(source, 1)).toBe(9);
+    expect(source.split("\n")[marpSlideScrollLine(source, 1)!]).toBe("---");
+    expect(marpSlideScrollLine(source, 2)).toBeNull();
   });
 
   it("finds a line's first character and the line an offset is on", () => {

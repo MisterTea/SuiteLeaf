@@ -18,7 +18,8 @@ export type SlideCommand =
   | { type: "italic" }
   | { type: "underline" }
   | { type: "move"; where: MoveWhere }
-  | { type: "go"; where: "next" | "prev" };
+  | { type: "go"; where: "next" | "prev" }
+  | { type: "nudge"; direction: "left" | "right" | "up" | "down"; step: number };
 
 /** Where the key event landed. Title and other fields keep their own keys. */
 export type TypingContext = "none" | "slide-text" | "notes" | "other";
@@ -68,6 +69,15 @@ export function commandFromKey(
           ? "end"
           : "down";
     return { type: "move", where };
+  }
+  if (
+    elementSelected &&
+    !mod &&
+    (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown")
+  ) {
+    const direction =
+      e.key === "ArrowLeft" ? "left" : e.key === "ArrowRight" ? "right" : e.key === "ArrowUp" ? "up" : "down";
+    return { type: "nudge", direction, step: e.shiftKey ? 10 : 1 };
   }
   if (
     (e.key === "ArrowRight" || e.key === "ArrowLeft") &&
@@ -491,6 +501,7 @@ const AUDIO_MIME: Record<string, string> = {
 const VIDEO_MIME: Record<string, string> = {
   "video/mp4": "video/mp4",
   "video/webm": "video/webm",
+  "video/quicktime": "video/quicktime",
 };
 const AUDIO_EXT: Record<string, string> = {
   wav: "audio/wav",
@@ -499,10 +510,12 @@ const AUDIO_EXT: Record<string, string> = {
 };
 const VIDEO_EXT: Record<string, string> = {
   mp4: "video/mp4",
+  m4v: "video/mp4",
   webm: "video/webm",
+  mov: "video/quicktime",
 };
 
-/** WAV, MP3, or Ogg for audio. MP4 or WebM for video. Null when the file is neither. */
+/** WAV, MP3, or Ogg for audio. MP4, WebM, or QuickTime for video. Null when the file is neither. */
 export function mediaMime(
   file: { name: string; type: string },
   kind: "audio" | "video",

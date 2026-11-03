@@ -95,9 +95,39 @@ export type GrammarIssue = {
   suggestion: string;
   /** Phrase stored when the reader ignores the issue. */
   key: string;
+  /** Why this word was flagged. The sentence is not sent anywhere. */
+  explanation: string;
 };
 
-type Token = { text: string; from: number; to: number };
+/** A local reason for a one-word grammar change. */
+export function grammarExplanation(text: string, suggestion: string): string {
+  const from = text.toLowerCase();
+  const to = suggestion.toLowerCase();
+  if (to && from === `${to} ${to}`) return "This word is written twice.";
+  const rules: Record<string, string> = {
+    "a→an": "Use an before a vowel sound.",
+    "an→a": "Use a before a consonant sound.",
+    "its→it's": "It's means it is. Its shows possession.",
+    "your→you're": "You're means you are.",
+    "you're→your": "Your shows possession.",
+    "their→there": "There is a place or a filler subject. Their shows possession.",
+    "their→they're": "They're means they are.",
+    "there→their": "Their shows possession.",
+    "then→than": "Than compares. Then is for time.",
+    "of→have": "Could, should, would, might, and must take have.",
+    "was→were": "A plural subject takes were.",
+    "were→was": "A singular subject takes was.",
+    "i→i": "The pronoun I is capitalized.",
+    "don't→doesn't": "He, she, and it take doesn't.",
+    "doesn't→don't": "They, we, and you take don't.",
+    "is→am": "I takes am.",
+    "are→am": "I takes am.",
+    "are→is": "He, she, and it take is.",
+  };
+  return rules[`${from}→${to}`] ?? `Use ${suggestion} here.`;
+}
+
+type Token = { text: string; from: number; to: number; spaced: boolean };
 
 function cased(source: string, replacement: string) {
   if (source[0] && source[0] === source[0].toUpperCase() && source[0] !== source[0].toLowerCase())
@@ -129,13 +159,28 @@ export function withoutIgnoredGrammar(settings: ProofingSettings, entry: string)
 
 function issuesForTokens(tokens: Token[], ignored: readonly string[]): GrammarIssue[] {
   const issues: GrammarIssue[] = [];
-  const add = (issue: GrammarIssue) => {
-    if (!grammarIsIgnored(ignored, issue.key)) issues.push(issue);
+  const add = (issue: Omit<GrammarIssue, "explanation">) => {
+    const explained = { ...issue, explanation: grammarExplanation(issue.text, issue.suggestion) };
+    if (!grammarIsIgnored(ignored, explained.key)) issues.push(explained);
   };
   for (let index = 0; index < tokens.length; index++) {
     const token = tokens[index];
     const lower = token.text.toLowerCase();
     const previous = tokens[index - 1];
+    if (
+      previous &&
+      token.spaced &&
+      previous.text.toLowerCase() === lower
+    ) {
+      add({
+        from: previous.from,
+        to: token.to,
+        text: `${previous.text} ${token.text}`,
+        suggestion: previous.text,
+        key: `repeated ${lower}`,
+      });
+      continue;
+    }
     const before = tokens[index - 2];
     if (lower === "were" && previous) {
       const subject = previous.text.toLowerCase();
@@ -232,9 +277,16 @@ function issuesForTokens(tokens: Token[], ignored: readonly string[]): GrammarIs
 }
 
 function tokenize(text: string): Token[] {
-  return [...text.matchAll(WORD)].map((match) => {
+  return [...text.matchAll(WORD)].map((match, index, all) => {
     const start = match.index ?? 0;
-    return { text: match[0], from: start, to: start + match[0].length };
+    const prev = all[index - 1];
+    const prevEnd = prev ? (prev.index ?? 0) + prev[0].length : -1;
+    return {
+      text: match[0],
+      from: start,
+      to: start + match[0].length,
+      spaced: prevEnd >= 0 && text.slice(prevEnd, start) === " ",
+    };
   });
 }
 
@@ -272,13 +324,16 @@ function tokensInBlock(block: ProseNode, blockPos: number): Token[] {
     }
   });
   const tokens: Token[] = [];
+  let previousEnd = -1;
   for (const match of text.matchAll(WORD)) {
     const start = match.index ?? 0;
     const end = start + match[0].length - 1;
     let broken = posAt[start] < 0 || posAt[end] < 0;
     for (let index = start; index <= end && !broken; index++) broken = posAt[index] < 0;
+    const spaced = previousEnd >= 0 && text.slice(previousEnd, start) === " ";
+    previousEnd = start + match[0].length;
     if (broken) continue;
-    tokens.push({ text: match[0], from: posAt[start], to: posAt[end] + 1 });
+    tokens.push({ text: match[0], from: posAt[start], to: posAt[end] + 1, spaced });
   }
   return tokens;
 }

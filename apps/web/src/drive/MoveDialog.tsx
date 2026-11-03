@@ -1,12 +1,24 @@
 import { useEffect, useState } from "react";
 import { Check, Folder } from "lucide-react";
-import { drive, type DriveItem } from "../node-client";
+import { drive, type AccessGrant, type DriveItem } from "../node-client";
 import { DriveDialog } from "./drive-dialog";
+import { commitFolderMove, folderMovePreview, type FolderMovePreview, type MoveGrant } from "./folder-move-preview";
 import {
   MY_DRIVE,
   moveDestinations,
   type MoveDestination,
 } from "./folder-paths";
+
+/** Grants the preview can name. An expired row is not access. Ids stay off the note. */
+export function grantsForMovePreview(grants: readonly AccessGrant[]): MoveGrant[] {
+  return grants
+    .filter((grant) => grant.expired !== true)
+    .map((grant) => ({
+      principalId: grant.principalId,
+      name: (grant.name ?? "").replace(/\s+/g, " ").trim(),
+      inherited: grant.inheritedFrom != null,
+    }));
+}
 
 export interface MoveResult {
   item: DriveItem;
@@ -38,6 +50,8 @@ export function MoveDialog({
     { id: string; name: string; parentId: string | null }[] | null
   >(null);
   const [choice, setChoice] = useState<MoveDestination | null>(null);
+  const [preview, setPreview] = useState<FolderMovePreview | null>(null);
+  const [checking, setChecking] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -54,6 +68,39 @@ export function MoveDialog({
       alive = false;
     };
   }, []);
+  useEffect(() => {
+    if (!choice) {
+      setPreview(null);
+      setChecking(false);
+      return;
+    }
+    let alive = true;
+    setChecking(true);
+    setPreview(null);
+    void Promise.all([
+      drive.access(item.id),
+      choice.id ? drive.access(choice.id) : Promise.resolve({ grants: [] as AccessGrant[] }),
+    ])
+      .then(([current, next]) => {
+        if (!alive) return;
+        setPreview(
+          folderMovePreview({
+            current: grantsForMovePreview(current.grants),
+            nextFolder: grantsForMovePreview(next.grants),
+          }),
+        );
+        setChecking(false);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setPreview(null);
+        setChecking(false);
+        setError("The access plan could not be read.");
+      });
+    return () => {
+      alive = false;
+    };
+  }, [choice, item.id]);
   const destinations = folders
     ? moveDestinations(folders, item.parentId, {
         movingId: item.kind === "folder" ? item.id : undefined,
@@ -62,13 +109,36 @@ export function MoveDialog({
     : [];
 
   const submit = () => {
-    if (!choice || busy) return;
+    if (!choice || !preview || busy) return;
     setBusy(true);
     setError("");
     const previousParentId = item.parentId;
-    void drive
-      .update(item.id, { parentId: choice.id })
+    const destinationId = choice.id;
+    void Promise.all([
+      drive.access(item.id),
+      destinationId ? drive.access(destinationId) : Promise.resolve({ grants: [] as AccessGrant[] }),
+    ])
+      .then(([current, next]) => {
+        const decision = commitFolderMove({
+          stamp: preview.stamp,
+          current: grantsForMovePreview(current.grants),
+          nextFolder: grantsForMovePreview(next.grants),
+        });
+        if (!decision.ok) {
+          setBusy(false);
+          setError(decision.note);
+          setPreview(
+            folderMovePreview({
+              current: grantsForMovePreview(current.grants),
+              nextFolder: grantsForMovePreview(next.grants),
+            }),
+          );
+          return null;
+        }
+        return drive.update(item.id, { parentId: destinationId });
+      })
       .then((updated) => {
+        if (!updated) return;
         onMoved({
           item: updated,
           previousParentId,
@@ -87,13 +157,21 @@ export function MoveDialog({
     <DriveDialog
       title="Move"
       submitLabel="Move here"
-      canSubmit={!!choice && !busy}
+      canSubmit={!!choice && !!preview && !busy}
       onSubmit={submit}
       onClose={onClose}
     >
       <p className="dialog-note">
         {item.name} is in {currentName}.
       </p>
+      {checking ? <p className="dialog-note">Checking who would have access.</p> : null}
+      {preview ? (
+        <p className="dialog-note">
+          {preview.note}
+          {preview.gain.length > 0 ? ` ${preview.gain.join(", ")} would gain access.` : ""}
+          {preview.lose.length > 0 ? ` ${preview.lose.join(", ")} would lose access.` : ""}
+        </p>
+      ) : null}
       {error ? (
         <p className="dialog-error" role="alert">
           {error}

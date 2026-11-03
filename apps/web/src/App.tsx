@@ -1,4 +1,5 @@
 import { DocumentSettings, SettingsButton, SettingsPage } from "./document-settings";
+import { presentationSlidePath } from "./slide-location";
 import {
   lazy,
   Suspense,
@@ -76,16 +77,29 @@ import {
 } from "@suiteleaf/core";
 import { driveWatchDecision } from "./drive-watch";
 import { storage, SaveQueue, exportText } from "./storage";
+import { recordSaveStatus } from "./save-state";
+import { combineDocuments, keepBothDrawings, keepBothForms, keepBothSheets, keepBothSlides, keepSelectedCells, keptLocalCopy } from "./conflict-merge";
+import { ConflictCells } from "./conflict-cells";
+import { nextUploadSpan, retriesAutomatically, sameUploadBody, sendUploadSpans, uploadDelay, uploadQueue } from "./upload-queue";
+import { EditorFailedUploads, retryOtherDueUploads } from "./editor-failed-uploads";
 import { editorCollaborator } from "./collaborator";
 import { frogSummary } from "./ai/summarize";
+import { setAssistantAccessCheck, setAssistantFileRole } from "./ai/tool-permission";
 import { useDocumentRoom, mirrorLiveEdit } from "./collab/session";
-import { blockTexts, syncParagraphTexts, type RegionTouch } from "@suiteleaf/core";
+import { blockTexts, roomAlreadyHasText, syncParagraphTexts, type RegionTouch } from "@suiteleaf/core";
 import type * as Y from "yjs";
-import { importFile, type DelimitedDraft, type ImportAssets } from "./imports";
+import {
+  importFile,
+  opensImportedFile,
+  type DelimitedDraft,
+  type ImportAssets,
+} from "./imports";
 import {
   listRelativeFiles,
+  hasMarpHeader,
   markdownInFolder,
   normalizeFolderFiles,
+  officeImportTargets,
   preferredMarkdown,
 } from "./editors/slide-marp-import";
 import { loadMarpBundle, marpBundlePaths, missingMarpTheme } from "./editors/slide-marp-bundle";
@@ -123,6 +137,7 @@ import {
   type DriveRole,
   type FilePresence,
 } from "./node-client";
+import { uploadDriveSpan } from "./drive/upload-span";
 import {
   DriveBrowser,
   DriveDialog,
@@ -137,6 +152,7 @@ import {
 import { MoveDialog } from "./drive/MoveDialog";
 import { FileComments } from "./drive/file-comments";
 import { LastEdited } from "./drive/LastEdited";
+import { presenceLabel } from "./drive/presence-label";
 import { requestLastEditRefresh } from "./drive/last-edit";
 import { ShareDialog } from "./drive/ShareDialog";
 import { SignUpLinkDialog } from "./drive/SignUpLinkDialog";
@@ -157,6 +173,9 @@ import {
   trashViewNote,
   TRASH_TOAST_MS,
   viewHeading,
+  readOpened,
+  recentAt,
+  rememberOpened,
   visibleRecords,
   type LibraryFilter,
 } from "./library-trash";
@@ -480,11 +499,35 @@ function MarpPicturesDialog({
   );
 }
 
+/** Create each part of `directory` under `parent`. An existing folder is reused. */
+async function ensureDesktopFolder(parent: string, directory: string) {
+  const known = new Set((await window.suiteleaf?.listFolders?.()) ?? []);
+  let current = parent;
+  for (const part of directory.split("/").filter(Boolean)) {
+    const next = current ? `${current}/${part}` : part;
+    if (known.has(next)) {
+      current = next;
+      continue;
+    }
+    try {
+      current = (await window.suiteleaf?.createFolder?.(current, part)) ?? next;
+    } catch (error) {
+      if (!message(error).includes("already")) throw error;
+      current = next;
+    }
+    known.add(current);
+  }
+  return current;
+}
+
 function ImportButton({
   onImport,
   onError,
   filePicker = false,
   importer,
+  placeInFolder,
+  keepImported,
+  onBatchDone,
 }: {
   /** `name` is the chosen file's name when it came from the file picker. */
   onImport: (r: FileRecord, name?: string) => Promise<void>;
@@ -493,6 +536,15 @@ function ImportButton({
   filePicker?: boolean;
   /** Receives a function that imports a chosen file the same way the picker does. */
   importer?: RefObject<((f: File) => Promise<void>) | null>;
+  /**
+   * Save one converted Office file into `folder`, a path relative to the
+   * library folder that is open. The path includes the folder that was dropped.
+   */
+  placeInFolder?: (file: SuiteFile, folder: string) => Promise<FileRecord | void>;
+  /** Save one file from a batch without leaving the current page. */
+  keepImported?: (file: SuiteFile) => Promise<void>;
+  /** Called after a batch import that stayed on this page. */
+  onBatchDone?: () => void | Promise<void>;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
@@ -500,6 +552,7 @@ function ImportButton({
   const [menu, setMenu] = useState(false);
   const [dropOver, setDropOver] = useState(false);
   const [importing, setImporting] = useState(false);
+  const stopImport = useRef(false);
   const [deckChoice, setDeckChoice] = useState<{
     choices: string[];
     resolve: (path: string | null) => void;
@@ -514,29 +567,37 @@ function ImportButton({
     paths: string[];
     resolve: (choice: ImportAssets | "skip" | "cancel") => void;
   } | null>(null);
+  const importOne = async (f: File, open: boolean) => {
+    const ext = f.name.split(".").pop()?.toLowerCase();
+    let assets: ImportAssets | undefined;
+    if (ext === "md" || ext === "markdown") {
+      const markdown = await f.text();
+      const paths = marpBundlePaths(markdown);
+      if (paths.length) {
+        const choice = await new Promise<ImportAssets | "skip" | "cancel">(
+          (resolve) => setPictures({ markdown, name: f.name, paths, resolve }),
+        );
+        setPictures(null);
+        if (choice === "cancel") return;
+        if (choice !== "skip") assets = choice;
+      }
+    }
+    const file = await importFile(
+      f,
+      (draft) => new Promise((resolve) => setReview({ draft, resolve })),
+      assets,
+      { shouldStop: () => stopImport.current },
+    );
+    if (!file) return;
+    if (open) await onImport({ file }, f.name);
+    else if (keepImported) await keepImported(file);
+    else await onImport({ file }, f.name);
+  };
   const importChosen = async (f: File) => {
+    stopImport.current = false;
     setImporting(true);
     try {
-      const ext = f.name.split(".").pop()?.toLowerCase();
-      let assets: ImportAssets | undefined;
-      if (ext === "md" || ext === "markdown") {
-        const markdown = await f.text();
-        const paths = marpBundlePaths(markdown);
-        if (paths.length) {
-          const choice = await new Promise<ImportAssets | "skip" | "cancel">(
-            (resolve) => setPictures({ markdown, name: f.name, paths, resolve }),
-          );
-          setPictures(null);
-          if (choice === "cancel") return;
-          if (choice !== "skip") assets = choice;
-        }
-      }
-      const file = await importFile(
-        f,
-        (draft) => new Promise((resolve) => setReview({ draft, resolve })),
-        assets,
-      );
-      if (file) await onImport({ file }, f.name);
+      await importOne(f, true);
     } catch (e) {
       onError(message(e));
     } finally {
@@ -544,15 +605,47 @@ function ImportButton({
     }
   };
   if (importer) importer.current = importChosen;
-  const importFolder = async (raw: { relativePath: string; file: File }[], folderName = "") => {
+  const importFolder = async (
+    raw: { relativePath: string; file: File }[],
+    folderName = "",
+    openSingle = true,
+  ) => {
     const normalized = folderName ? { folderName, files: raw } : normalizeFolderFiles(raw);
     const choices = markdownInFolder(normalized.files);
-    if (!choices.length) throw new Error("That folder has no markdown file.");
-    let markdownPath = preferredMarkdown(choices, folderName || normalized.folderName);
+    const marpChoices: string[] = [];
+    for (const path of choices) {
+      const item = normalized.files.find((file) => file.relativePath === path);
+      if (item && hasMarpHeader(await item.file.text())) marpChoices.push(path);
+    }
+    if (!marpChoices.length) {
+      const office = officeImportTargets(raw);
+      if (!office.length) throw new Error("That folder has no markdown file.");
+      for (const item of office) {
+        if (stopImport.current)
+          throw new Error("Import cancelled. The original file is unchanged.");
+        const file = await importFile(
+          item.file.file,
+          (draft) => new Promise((resolve) => setReview({ draft, resolve })),
+          undefined,
+          { shouldStop: () => stopImport.current },
+        );
+        if (!file) continue;
+        const open = opensImportedFile(office.length) && openSingle;
+        if (placeInFolder) {
+          const placed = await placeInFolder(file, item.folder);
+          if (open) await onImport(placed ?? { file }, item.file.file.name);
+        } else if (open || !keepImported) await onImport({ file }, item.file.file.name);
+        else await keepImported(file);
+      }
+      return opensImportedFile(office.length) && openSingle;
+    }
+    let markdownPath = preferredMarkdown(marpChoices, folderName || normalized.folderName);
     if (!markdownPath) {
-      markdownPath = await new Promise<string | null>((resolve) => setDeckChoice({ choices, resolve }));
+      markdownPath = await new Promise<string | null>((resolve) =>
+        setDeckChoice({ choices: marpChoices, resolve }),
+      );
       setDeckChoice(null);
-      if (!markdownPath) return;
+      if (!markdownPath) return false;
     }
     const markdown = normalized.files.find((item) => item.relativePath === markdownPath);
     if (!markdown) throw new Error("That folder has no markdown file.");
@@ -562,8 +655,13 @@ function ImportButton({
       markdown.file,
       (draft) => new Promise((resolve) => setReview({ draft, resolve })),
       assets,
+      { shouldStop: () => stopImport.current },
     );
-    if (file) await onImport({ file }, markdown.file.name);
+    if (!file) return false;
+    if (openSingle) await onImport({ file }, markdown.file.name);
+    else if (keepImported) await keepImported(file);
+    else await onImport({ file }, markdown.file.name);
+    return openSingle || !keepImported;
   };
   const openFolder = () => {
     setMenu(false);
@@ -606,20 +704,34 @@ function ImportButton({
     const entries = [...event.dataTransfer.items]
       .map((item) => item.webkitGetAsEntry?.() ?? null)
       .filter((entry): entry is FileSystemEntry => !!entry);
+    setImporting(true);
+    let opened = false;
     try {
+      const loose: File[] = [];
+      const folders: { relativePath: string; file: File }[][] = [];
       if (entries.length) {
         for (const entry of entries) {
-          if (entry.isDirectory) await importFolder(await droppedEntries(entry));
+          if (entry.isDirectory) folders.push(await droppedEntries(entry));
           else {
             const [picked] = await droppedEntries(entry);
-            if (picked) await importChosen(picked.file);
+            if (picked) loose.push(picked.file);
           }
         }
-        return;
+      } else loose.push(...event.dataTransfer.files);
+      const open = opensImportedFile(loose.length + folders.length);
+      stopImport.current = false;
+      for (const file of loose) {
+        await importOne(file, open);
+        if (open) opened = true;
       }
-      for (const file of event.dataTransfer.files) await importChosen(file);
+      for (const folder of folders) {
+        if (await importFolder(folder, "", open)) opened = true;
+      }
     } catch (err) {
       onError(message(err));
+    } finally {
+      if (!opened) await onBatchDone?.();
+      setImporting(false);
     }
   };
   useEffect(() => {
@@ -664,6 +776,11 @@ function ImportButton({
           <Upload size={16} />
           {importing ? "Importing…" : "Import"}
         </button>
+        {importing ? (
+          <button type="button" onClick={() => { stopImport.current = true; }}>
+            Cancel import
+          </button>
+        ) : null}
         {menu ? (
           <div className="import-popover" role="dialog" aria-label="Import">
             <div
@@ -706,11 +823,26 @@ function ImportButton({
         hidden
         type="file"
         ref={input}
+        multiple
         accept=".sldoc,.slsheet,.slslides,.sldraw,.suiteleaf,.svg,.mmd,.mermaid,.gv,.docx,.docm,.dotx,.dotm,.doc,.dot,.xlsx,.xlsm,.xlsb,.xltx,.xls,.pptx,.ppt,.ppsx,.pptm,.potx,.ppsm,.odt,.ott,.fodt,.ods,.fods,.odp,.fodp,.rtf,.md,.markdown,.html,.htm,.txt,.csv,.tsv"
         onChange={async (e) => {
-          const f = e.target.files?.[0];
+          const files = [...(e.target.files ?? [])];
           e.target.value = "";
-          if (f) await importChosen(f);
+          if (!files.length) return;
+          if (opensImportedFile(files.length)) {
+            await importChosen(files[0]);
+            return;
+          }
+          stopImport.current = false;
+          setImporting(true);
+          try {
+            for (const file of files) await importOne(file, false);
+            await onBatchDone?.();
+          } catch (err) {
+            onError(message(err));
+          } finally {
+            setImporting(false);
+          }
         }}
       />
       <input
@@ -723,6 +855,7 @@ function ImportButton({
           const list = [...(e.target.files ?? [])];
           e.target.value = "";
           if (!list.length) return;
+          stopImport.current = false;
           setImporting(true);
           try {
             await importFolder(list.map((file) => ({ relativePath: file.webkitRelativePath || file.name, file })));
@@ -790,16 +923,27 @@ function ImportButton({
   );
 }
 /** Upload a new file to SuiteDrive, cache it locally, and open it. */
+async function keepCreated(
+  file: SuiteFile,
+  folderId: string | null,
+  cluster: boolean,
+) {
+  if (cluster) {
+    if (await storage.get(file.id)) file = duplicateFile(file, file.title);
+    const linked = await saveNewDriveFile(file, folderId, nativeFilename(file), {
+      fallbackToRoot: true,
+    });
+    return storage.save({ file, drive: linked });
+  }
+  return storage.save({ file });
+}
+
 async function createInDrive(
   file: SuiteFile,
   folderId: string | null,
   navigate: NavigateFunction,
 ) {
-  if (await storage.get(file.id)) file = duplicateFile(file, file.title);
-  const drive = await saveNewDriveFile(file, folderId, nativeFilename(file), {
-    fallbackToRoot: true,
-  });
-  const saved = await storage.save({ file, drive });
+  const saved = await keepCreated(file, folderId, true);
   navigate(`/file/${saved.file.id}`);
 }
 function NewCards({
@@ -906,6 +1050,7 @@ function LocalHome() {
     [query, setQuery] = useState(""),
     [error, setError] = useState(""),
     [filter, setFilter] = useState<LibraryFilter>("all"),
+    [opened, setOpened] = useState(readOpened),
     [sort, setSort] = useState<{ by: "name" | "edited"; desc: boolean }>({
       by: "edited",
       desc: true,
@@ -953,6 +1098,7 @@ function LocalHome() {
           if (expired.length)
             await Promise.all(expired.map((r) => storage.remove(r.file.id)));
           setRecords(local.filter((r) => !isTrashExpired(r, now)));
+          setOpened(readOpened());
           setFolders(nextFolders);
           setRoot(documents);
         })
@@ -1136,7 +1282,7 @@ function LocalHome() {
         : `${kindLabel} matching “${query.trim()}”`,
     kept = records.filter((r) => !r.trashedAt),
     trashed = records.filter((r) => r.trashedAt),
-    focused = searching || filter === "trash" || filter === "starred";
+    focused = searching || filter === "recent" || filter === "trash" || filter === "starred";
   const browsing = !!folders && filter === "all" && !searching;
   /** The open folder, or the nearest one left if it moved or was deleted outside SuiteLeaf. */
   const here = browsing ? existingFolder(folder, folders) : "";
@@ -1152,12 +1298,17 @@ function LocalHome() {
       await refresh();
     })().catch((e) => setError(message(e)));
   };
-  const shown = visibleRecords(records, filter, query, new Date(), { forms: formsEnabled })
+  const shown = visibleRecords(records, filter, query, new Date(), {
+    forms: formsEnabled,
+    opened,
+  })
     .flatMap((r) => {
       const hit = searchFile(r.file, query);
       return hit ? [{ r, snippet: hit.snippet }] : [];
     })
     .sort((a, b) => {
+      if (filter === "recent")
+        return recentAt(b.r, opened[b.r.file.id]) - recentAt(a.r, opened[a.r.file.id]);
       const order =
         sort.by === "name"
           ? a.r.file.title.localeCompare(b.r.file.title, undefined, {
@@ -1294,6 +1445,13 @@ function LocalHome() {
         <Logo />
         <div className="sidebar-links">
           <SettingsButton />
+          <button
+            className={filter === "recent" ? "selected" : ""}
+            onClick={() => setFilter("recent")}
+          >
+            <Clock size={18} />
+            Recents
+          </button>
           <button
             className={filter === "all" ? "selected" : ""}
             onClick={() => setFilter("all")}
@@ -1434,6 +1592,21 @@ function LocalHome() {
                 onImport={importRecord}
                 onError={setError}
                 importer={importer}
+                placeInFolder={
+                  window.suiteleaf?.createFolder && window.suiteleaf.moveFile
+                    ? async (file, folder) => {
+                        const target = await ensureDesktopFolder(here, folder);
+                        const saved = await storage.save({ file });
+                        return (await window.suiteleaf?.moveFile?.(saved.file.id, target)) ?? saved;
+                      }
+                    : undefined
+                }
+                keepImported={async (file) => {
+                  const saved = await storage.save({ file });
+                  if (window.suiteleaf?.moveFile)
+                    await window.suiteleaf.moveFile(saved.file.id, here);
+                }}
+                onBatchDone={() => refresh()}
               />
             )}
           </header>
@@ -1492,7 +1665,9 @@ function LocalHome() {
                     ? "Trash is empty"
                     : filter === "starred"
                       ? "No starred files"
-                      : `No ${kindLabel.toLowerCase()} yet`}
+                      : filter === "recent"
+                        ? "No recent files"
+                        : `No ${kindLabel.toLowerCase()} yet`}
               </h3>
               <p>
                 {browsing
@@ -1503,7 +1678,9 @@ function LocalHome() {
                     ? "Files you delete wait here for 30 days."
                     : filter === "starred"
                       ? "Star a file on its row, or beside its title, and it stays here."
-                      : "Files you create or import appear here."}
+                      : filter === "recent"
+                        ? "Files you open or change show up here."
+                        : "Files you create or import appear here."}
               </p>
             </div>
           ) : (
@@ -1783,6 +1960,7 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
   const navigate = useNavigate();
   const { locked } = useMode();
   const [error, setError] = useState("");
+  const [listed, setListed] = useState(0);
   const folder = useRef<string | null>(null);
   const [folderName, setFolderName] = useState<string>();
   const onFolderChange = useCallback((id: string | null, name: string) => {
@@ -1892,6 +2070,33 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
               filePicker
               onImport={(r) => createInDrive(r.file, folder.current, navigate)}
               onError={setError}
+              placeInFolder={async (file, directory) => {
+                let parentId = folder.current;
+                const known = await drive.listFolders();
+                for (const part of directory.split("/").filter(Boolean)) {
+                  const found = known.find(
+                    (item) => item.name === part && item.parentId === parentId,
+                  );
+                  if (found) {
+                    parentId = found.id;
+                    continue;
+                  }
+                  const created = await drive.create({
+                    name: part,
+                    parentId,
+                    kind: "folder",
+                  });
+                  known.push({
+                    id: created.id,
+                    name: created.name,
+                    parentId: created.parentId,
+                  });
+                  parentId = created.id;
+                }
+                return keepCreated(file, parentId, true);
+              }}
+              keepImported={(file) => keepCreated(file, folder.current, true)}
+              onBatchDone={() => setListed((n) => n + 1)}
             />
           </header>
           <DriveBrowser
@@ -1900,7 +2105,7 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
             control={driveControl}
             onFolderChange={onFolderChange}
             onOpen={(item) => openFromDrive(item, navigate)}
-            refreshKey={sync ? `${sync.heads}:${sync.replicating}` : undefined}
+            refreshKey={sync ? `${sync.heads}:${sync.replicating}:${listed}` : String(listed)}
           />
         </section>
         <footer className="home-footer">
@@ -1911,12 +2116,22 @@ function ClusterHome({ serverUrl }: { serverUrl: string }) {
   );
 }
 function Workspace() {
-  const { id } = useParams();
+  const { id, slideId } = useParams();
   const navigate = useNavigate();
+  const slideInUrl = useRef(slideId);
+  slideInUrl.current = slideId;
+  const showSlide = useCallback(
+    (slide: string) => {
+      if (!id || !slide || slideInUrl.current === slide) return;
+      navigate(presentationSlidePath(id, slide), { replace: true });
+    },
+    [id, navigate],
+  );
   const location = useLocation();
   const [record, setRecord] = useState<FileRecord>(),
     [error, setError] = useState(""),
     [status, setStatus] = useState("Opening…"),
+    [syncRemedy, setSyncRemedy] = useState<string | null>(null),
     [locked, setLocked] = useState(false),
     [templateDraft, setTemplateDraft] = useState<SuiteFile | null>(null);
   const [actionsReady, setActionsReady] = useState(false);
@@ -1932,6 +2147,8 @@ function Workspace() {
     driveQueue = useRef(driveQueueFor(id!)),
     driveTimer = useRef<ReturnType<typeof setTimeout>>(undefined),
     driveConflictRef = useRef<DriveItem | null>(null),
+    /** The last file body that matched SuiteDrive, used to combine later edits. */
+    agreedContent = useRef<SuiteFile | null>(null),
     /** True while this tab is uploading, so the remote poll ignores our own head. */
     driveSyncing = useRef(false),
     /** Bumped when a remote save replaces the open file, so a queued upload of the old bytes is dropped. */
@@ -1989,10 +2206,15 @@ function Workspace() {
   const canSave =
     canEdit || (driveRole === "responder" && record?.file.kind === "form");
   const collabTouch = useRef({ unit: "paragraph", key: "0" });
+  const sendSelection = useRef<(anchor: number, head: number) => void>(() => {});
+  const [remoteCarets, setRemoteCarets] = useState<{ name: string; anchor: number; head: number }[]>(
+    [],
+  );
   const collabLog = useRef<RegionTouch[]>([]);
   const collabBaseline = useRef<SuiteFile | null>(null);
   const describeRef = useRef<(id: string) => void>(() => {});
   const [collabDoc, setCollabDoc] = useState<Y.Doc | null>(null);
+  const [roomNotice, setRoomNotice] = useState<string | null>(null);
   const collabDocRef = useRef<Y.Doc | null>(null);
   collabDocRef.current = collabDoc;
   useDocumentRoom({
@@ -2000,9 +2222,16 @@ function Workspace() {
     role: driveRole,
     touch: collabTouch,
     log: collabLog,
+    sendSelection,
+    onCaret: (caret) => {
+      setRemoteCarets((current) => [...current.filter((item) => item.name !== caret.name), caret]);
+    },
+    onRecovery: setRoomNotice,
     onDoc: (doc) => {
-      if (doc && current.current?.file.kind === "doc") {
-        syncParagraphTexts(doc, blockTexts(current.current.file.content));
+      if (!doc) setRemoteCarets([]);
+      if (doc && current.current?.file.kind === "doc" && driveRole !== "viewer") {
+        if (!roomAlreadyHasText(doc))
+          syncParagraphTexts(doc, blockTexts(current.current.file.content));
         collabBaseline.current = structuredClone(current.current.file);
       }
       if (!doc) collabBaseline.current = null;
@@ -2049,6 +2278,18 @@ function Workspace() {
     driveConflictRef.current = item;
     setDriveConflictState(item);
   };
+  useEffect(() => {
+    const file = record?.file;
+    if (!file) {
+      agreedContent.current = null;
+      return;
+    }
+    if (!record.drive || driveConflict) return;
+    if (record.drive.syncedAt === file.updatedAt)
+      agreedContent.current = structuredClone(file);
+    else if (agreedContent.current && agreedContent.current.id !== file.id)
+      agreedContent.current = null;
+  }, [record, driveConflict]);
   const selectTitle = useRef(
     !!(location.state as { selectTitle?: boolean } | null)?.selectTitle,
   );
@@ -2085,12 +2326,21 @@ function Workspace() {
     if (!canSaveRef.current) return;
     if (!current.current?.drive || driveConflictRef.current) return;
     if (!getSession()) {
-      setStatus("Saved on this device · sign in to sync with SuiteDrive");
+      setStatus(
+        recordSaveStatus(current.current, { desktop: !!window.suiteleaf, signedIn: false }).label,
+      );
       return;
     }
     const at = version.current;
     const generation = driveGeneration.current;
     const snapshot = structuredClone(current.current.file);
+    const body = serializeFile(snapshot);
+    const pending = uploadQueue.enqueue(
+      current.current.drive.itemId,
+      snapshot.updatedAt,
+      body.length,
+      Date.now(),
+    );
     let uploaded = false;
     driveSyncing.current = true;
     try {
@@ -2098,25 +2348,82 @@ function Workspace() {
         if (driveGeneration.current !== generation || driveConflictRef.current)
           return;
         const base = current.current!.drive!;
-        const link = await uploadDriveFile(snapshot, base);
+        if (pending.attempts > 0) {
+          try {
+            const remote = await drive.read(base.itemId);
+            if (sameUploadBody(body, remote.text)) {
+              if (driveGeneration.current !== generation || driveConflictRef.current) return;
+              if (current.current!.drive?.itemId !== base.itemId) return;
+              current.current = {
+                ...current.current!,
+                drive: { ...base, versionId: remote.versionId, syncedAt: snapshot.updatedAt },
+              };
+              await storage.save(current.current);
+              uploadQueue.succeed(base.itemId, snapshot.updatedAt);
+              uploaded = true;
+              return;
+            }
+          } catch {
+            // The write below records the failure if SuiteDrive is still unreachable.
+          }
+        }
+        let link: Awaited<ReturnType<typeof uploadDriveFile>> | undefined;
+        const spans = await sendUploadSpans({
+          bytes: body.length,
+          sent: pending.sent ?? 0,
+          upload: async (span) => {
+            const result = await uploadDriveSpan(snapshot, base, span.start, span.end);
+            uploadQueue.acknowledge(base.itemId, snapshot.updatedAt, result.accepted);
+            if (result.done) link = result.link;
+            return { done: result.done, accepted: result.accepted };
+          },
+        });
+        if (!spans.done) return;
+        if (!link) return;
         if (driveGeneration.current !== generation || driveConflictRef.current)
           return;
         // Saving to a new SuiteDrive item may have relinked the file meanwhile.
         if (current.current!.drive?.itemId !== base.itemId) return;
         current.current = { ...current.current!, drive: link };
         await storage.save(current.current);
+        uploadQueue.succeed(base.itemId, snapshot.updatedAt);
         uploaded = true;
       });
-      if (uploaded && alive.current && version.current === at) {
-        setStatus("Saved to SuiteDrive");
+      if (uploaded && alive.current && version.current === at && current.current) {
+        setSyncRemedy(null);
+        setStatus(recordSaveStatus(current.current, { desktop: !!window.suiteleaf }).label);
         requestLastEditRefresh();
       }
     } catch (e) {
       if (e instanceof DriveConflict) {
         if (e.item.id !== current.current?.drive?.itemId) return;
         setDriveConflict(e.item);
-        setStatus("SuiteDrive has a newer version");
-      } else setStatus(`Saved on this device · ${message(e)}`);
+        setSyncRemedy(null);
+        if (current.current) {
+          uploadQueue.fail(current.current.drive!.itemId, snapshot.updatedAt, e, Date.now());
+          setStatus(recordSaveStatus(current.current, { desktop: !!window.suiteleaf, conflict: true }).label);
+        }
+      } else if (current.current?.drive) {
+        if (message(e) === "That upload does not continue the saved part.") {
+          uploadQueue.acknowledge(current.current.drive.itemId, snapshot.updatedAt, 0);
+        }
+        const failed = uploadQueue.fail(
+          current.current.drive.itemId,
+          snapshot.updatedAt,
+          e,
+          Date.now(),
+        );
+        setStatus(
+          recordSaveStatus(current.current, {
+            desktop: !!window.suiteleaf,
+            detail: failed.failure?.remedy ?? message(e),
+          }).label,
+        );
+        if (failed.failure && retriesAutomatically(failed.failure.kind) && alive.current) {
+          setSyncRemedy(failed.failure.remedy);
+          driveTimer.current = setTimeout(() => void syncDrive(), uploadDelay(failed.attempts - 1));
+        } else setSyncRemedy(null);
+      }
     } finally {
       driveSyncing.current = false;
     }
@@ -2168,15 +2475,13 @@ function Workspace() {
       }
       if (version.current === at) {
         setStatus(
-          current.current.drive
-            ? driveConflictRef.current
-              ? "SuiteDrive has a newer version"
-              : "Saving to SuiteDrive…"
-            : current.current.path
-              ? "Saved to file"
-              : window.suiteleaf
-                ? "Draft saved · choose Save As"
-                : "Saved on this device",
+          recordSaveStatus(current.current, {
+            desktop: !!window.suiteleaf,
+            conflict: !!driveConflictRef.current,
+            syncing: !!current.current.drive && !driveConflictRef.current,
+            signedIn: !!getSession(),
+            online: navigator.onLine,
+          }).label,
         );
         window.suiteleaf?.setDirty(false);
         setError((previous) =>
@@ -2185,16 +2490,35 @@ function Workspace() {
         saveError.current = "";
       }
     } catch (e) {
-      setStatus("Save failed");
+      setStatus(
+        recordSaveStatus(current.current ?? { file: { updatedAt: "" } }, {
+          desktop: !!window.suiteleaf,
+          failed: message(e),
+        }).label,
+      );
       saveError.current = message(e);
       setError(saveError.current);
       throw e;
     }
   }, [syncDrive]);
   useEffect(() => {
+    setAssistantAccessCheck(async () => {
+      const record = current.current;
+      if (!record) return "none";
+      if (!record.drive || !getSession()) return "local";
+      try {
+        return (await drive.get(record.drive.itemId)).role ?? "viewer";
+      } catch {
+        return "none";
+      }
+    });
+    return () => setAssistantAccessCheck(undefined);
+  }, []);
+  useEffect(() => {
     alive.current = true;
     setActionsReady(false);
     setDriveRole(null);
+    setAssistantFileRole("none");
     setShareOpen(false);
     setSignUpOpen(false);
     canEditRef.current = false;
@@ -2228,6 +2552,7 @@ function Workspace() {
         canSaveRef.current =
           canChange || (role === "responder" && r.file.kind === "form");
         setDriveRole(role);
+        setAssistantFileRole(role);
         if (canEditRef.current) {
           const opened = sealIfIdle(r.file, Date.now(), versionPauseMs(localStorage));
           if (opened.sealed) {
@@ -2237,23 +2562,26 @@ function Workspace() {
         }
         current.current = r;
         setRecord(r);
+        rememberOpened(r.file.id);
         if (canSaveRef.current && hasUnsyncedEdits(r)) {
-          setStatus("Saving to SuiteDrive…");
+          setStatus(
+            recordSaveStatus(r, { desktop: !!window.suiteleaf, syncing: true, signedIn: !!getSession() })
+              .label,
+          );
           void syncDrive();
           return;
         }
-        const saved = r.drive
-          ? "Saved to SuiteDrive"
-          : r.recovery
-            ? "Recovered draft · review and save"
-            : r.path
-              ? "Saved to file"
-              : window.suiteleaf
-                ? "Draft saved · choose Save As"
-                : "Saved on this device";
         const notice = openNotices.get(id!);
         openNotices.delete(id!);
-        setStatus(notice ? `${notice} · ${saved}` : saved);
+        const saved = r.recovery
+          ? "Recovered draft · review and save"
+          : recordSaveStatus(r, {
+              desktop: !!window.suiteleaf,
+              signedIn: !!getSession(),
+              online: navigator.onLine,
+              notice,
+            }).label;
+        setStatus(r.recovery && notice ? `${notice} · ${saved}` : saved);
       } catch (e) {
         if (!cancel) setError(message(e));
       }
@@ -2724,12 +3052,13 @@ function Workspace() {
     setDriveConflict(null);
     setRecord(current.current);
     setDriveDialog(null);
-    setStatus("Saved to SuiteDrive");
+    setStatus(recordSaveStatus(current.current, { desktop: !!window.suiteleaf, signedIn: true }).label);
     requestLastEditRefresh();
   };
   const reloadFromDrive = async () => {
     const conflict = driveConflictRef.current;
     if (!conflict || !current.current) return;
+    await storage.save({ file: keptLocalCopy(current.current.file) });
     const fresh = await openDriveFile(conflict);
     const file = { ...fresh.file, id: current.current.file.id } as SuiteFile;
     version.current = savedVersion.current = 0;
@@ -2755,7 +3084,63 @@ function Workspace() {
     };
     await storage.save(current.current);
     setRecord(current.current);
-    setStatus("Saved a copy to SuiteDrive");
+    setStatus(
+      recordSaveStatus(current.current, {
+        desktop: !!window.suiteleaf,
+        signedIn: true,
+        syncedLabel: "Saved a copy to SuiteDrive",
+      }).label,
+    );
+  };
+  const combineDriveChanges = async (
+    keepBoth = false,
+    cells?: readonly string[],
+  ): Promise<string | null> => {
+    const conflict = driveConflictRef.current;
+    const open = current.current;
+    const base = agreedContent.current;
+    if (!conflict || !open || !base || base.id !== open.file.id) {
+      const reason =
+        "These edits cannot be combined because the last synchronized copy is not on this device. Save a copy to keep both versions.";
+      setError(reason);
+      return reason;
+    }
+    const fresh = await openDriveFile(conflict);
+    const plan = cells
+      ? keepSelectedCells(open.file, fresh.file, cells)
+      : keepBoth && open.file.kind === "sheet" && fresh.file.kind === "sheet"
+        ? keepBothSheets(open.file, fresh.file)
+        : keepBoth && open.file.kind === "slide" && fresh.file.kind === "slide"
+          ? keepBothSlides(open.file, fresh.file)
+          : keepBoth && open.file.kind === "form" && fresh.file.kind === "form"
+            ? keepBothForms(open.file, fresh.file)
+            : keepBoth && open.file.kind === "drawing" && fresh.file.kind === "drawing"
+              ? keepBothDrawings(open.file, fresh.file)
+              : combineDocuments(base, open.file, fresh.file, { keepBoth });
+    if (!plan.merged || !fresh.drive) {
+      const reason = plan.reason ?? "These edits overlap, so they stay as two versions.";
+      setError(reason);
+      return reason;
+    }
+    await saveNewDriveFile(plan.localCopy, conflict.parentId, nativeFilename(plan.localCopy));
+    const merged = {
+      ...plan.merged,
+      id: open.file.id,
+      updatedAt: new Date().toISOString(),
+    } as SuiteFile;
+    current.current = {
+      ...open,
+      file: merged,
+      drive: { ...open.drive!, versionId: fresh.drive.versionId },
+    };
+    delete current.current.drive?.syncedAt;
+    version.current++;
+    setDriveConflict(null);
+    await storage.save(current.current);
+    setRecord({ ...current.current });
+    setEditorEpoch((epoch) => epoch + 1);
+    void syncDrive();
+    return null;
   };
   useEffect(() => {
     const unsub = window.suiteleaf?.onMenu((a) => void doAction(a));
@@ -2840,7 +3225,7 @@ function Workspace() {
     setEditorEpoch((epoch) => epoch + 1);
     setHistoryPreview(null);
     setHistoryOpen(false);
-    setStatus(next.drive ? "Saved to SuiteDrive" : "Saved on this device");
+    setStatus(recordSaveStatus(next, { desktop: !!window.suiteleaf, signedIn: !!getSession() }).label);
     void storage.save(next).catch((e) => setError(message(e)));
   };
   const applyRestoredRef = useRef(applyRestored);
@@ -3179,7 +3564,7 @@ function Workspace() {
                       }
                       key={`${index}:${person.name}`}
                     >
-                      {person.name} is {person.editing ? "editing" : "viewing"}
+                      {presenceLabel(person)}
                     </span>
                   ))}
                 </div>
@@ -3219,7 +3604,27 @@ function Workspace() {
               <span className="save-status" role="status">
                 {status.includes("Saved") ? <Check size={13} /> : null}
                 {status}
+                {syncRemedy ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const itemId = current.current?.drive?.itemId;
+                      if (itemId) uploadQueue.release(itemId, Date.now());
+                      setSyncRemedy(null);
+                      void syncDrive();
+                      void retryOtherDueUploads(itemId);
+                    }}
+                  >
+                    Retry sync
+                  </button>
+                ) : null}
               </span>
+              {roomNotice ? (
+                <span className="save-status" role="status">
+                  {roomNotice}
+                </span>
+              ) : null}
+              <EditorFailedUploads />
             </div>
             {record.drive ? (
               <FolderControls
@@ -3343,7 +3748,7 @@ function Workspace() {
                   </MenuItem>
                 ) : null}
                 {(f.kind === "doc"
-                  ? ["docx", "html", "txt"]
+                  ? ["docx", "pdf", "html", "txt"]
                   : f.kind === "sheet"
                     ? ["xlsx", "csv", "tsv"]
                     : f.kind === "form"
@@ -3574,6 +3979,23 @@ function Workspace() {
                       </MenuItem>
                     </SubMenu>
                     <MenuItem
+                      synonyms={["figure list", "list of figures", "table list"]}
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.docActions?.insertFigureList?.("figure")
+                      }
+                    >
+                      Figure list
+                    </MenuItem>
+                    <MenuItem
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.docActions?.insertFigureList?.("table")
+                      }
+                    >
+                      Table list
+                    </MenuItem>
+                    <MenuItem
                       shortcut="Cmd+Alt+F"
                       synonyms={["footnote", "footnotes", "insert footnote"]}
                       focusesTarget
@@ -3771,6 +4193,15 @@ function Workspace() {
                       }
                     >
                       Merge from a spreadsheet
+                    </MenuItem>
+                    <MenuItem
+                      synonyms={["styles", "named style", "paragraph style"]}
+                      focusesTarget
+                      onSelect={() =>
+                        actions.current?.docActions?.openNamedStyles?.()
+                      }
+                    >
+                      Named styles
                     </MenuItem>
                     <MenuItem
                       shortcut="Cmd+Shift+C"
@@ -4881,7 +5312,9 @@ function Workspace() {
               </strong>{" "}
               {savedWhen(driveConflict.updatedAt)} Your edits weren't uploaded
               and are safe on this device. Save them as a copy to keep both
-              versions, or reload the SuiteDrive version and discard your edits.
+              versions, combine them when they are in different parts of a
+              document, or reload the SuiteDrive version. Your edits stay on this
+              device as a separate file.
             </span>
             <span className="drive-conflict-actions">
               <button
@@ -4893,11 +5326,30 @@ function Workspace() {
                 Save as copy
               </button>
               <button
-                title="Discard your edits and open the newer SuiteDrive version"
+                title="Keep a copy of your edits, then save a document that includes both sides where they do not overlap"
+                onClick={() =>
+                  void combineDriveChanges().catch((e) => setError(message(e)))
+                }
+              >
+                Combine separate edits
+              </button>
+              <button
+                title="Keep a copy of your edits, then save a document that includes both versions of a part both sides changed"
+                onClick={() =>
+                  void combineDriveChanges(true).catch((e) => setError(message(e)))
+                }
+              >
+                Keep both parts
+              </button>
+              <ConflictCells
+                onTake={(addresses) => combineDriveChanges(false, addresses)}
+              />
+              <button
+                title="Keep your edits as a separate file on this device and open the newer SuiteDrive version here"
                 onClick={() => {
                   if (
                     window.confirm(
-                      "Discard your edits and open the newer version from SuiteDrive? Your edits will be lost.",
+                      "Open the SuiteDrive version in this file? Your edits will be kept on this device as a separate file.",
                     )
                   )
                     void reloadFromDrive().catch((e) => setError(message(e)));
@@ -5067,21 +5519,21 @@ function Workspace() {
                       readOnly={!canEdit}
                       collabDoc={collabDoc}
                       collabTouch={collabTouch}
+                      onLocalSelection={(anchor, head) => sendSelection.current(anchor, head)}
+                      remoteCarets={remoteCarets}
                       onChange={update}
                       onActions={onActions}
                       onError={setError}
                       onCreateDocument={async (created) => {
                         await save();
-                        if (cluster)
-                          await createInDrive(
-                            created,
-                            driveParentId.current,
-                            navigate,
-                          );
-                        else
-                          navigate(
-                            `/file/${(await storage.save({ file: created })).file.id}`,
-                          );
+                        const files = Array.isArray(created) ? created : [created];
+                        let last = "";
+                        for (const file of files) {
+                          last = (
+                            await keepCreated(file, driveParentId.current, !!cluster)
+                          ).file.id;
+                        }
+                        if (last) navigate(`/file/${last}`);
                       }}
                     />
                   ) : f.kind === "sheet" ? (
@@ -5120,6 +5572,9 @@ function Workspace() {
                     <Slides
                       key={`${id}:${editorEpoch}`}
                       file={f as SlideFile}
+                      fileId={id}
+                      slideId={slideId}
+                      onSlideUrl={showSlide}
                       readOnly={!canEdit}
                       onChange={update}
                       onActions={onActions}
@@ -5165,7 +5620,7 @@ function Workspace() {
                 setHistoryPreview(null);
                 setHistoryOpen(false);
                 setStatus(
-                  next.drive ? "Saved to SuiteDrive" : "Saved on this device",
+                  recordSaveStatus(next, { desktop: !!window.suiteleaf, signedIn: !!getSession() }).label,
                 );
                 void storage.save(next).catch((e) => setError(message(e)));
               }}
@@ -5293,7 +5748,7 @@ export default function App() {
             }
           />
           <Route
-            path="/file/:id"
+            path="/file/:id/:slideId?"
             element={
               <ClusterGate>
                 <FileRoute />

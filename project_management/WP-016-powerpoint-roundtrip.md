@@ -62,3 +62,7 @@ This does not make every imported object fully editable. Advanced authoring is W
 ## Research and related context
 
 Source IDs refer to [SOURCES.md](SOURCES.md): `S15`, `S19`. External complaints motivate requirements; they are not measured prevalence or proof of current competitor defects.
+
+# Progress
+
+2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-012"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.

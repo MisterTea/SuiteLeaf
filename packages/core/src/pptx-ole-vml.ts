@@ -1,17 +1,20 @@
-/** One OLE preview stored in the slide's VML drawing, keyed by `o:spid`. */
+/** One OLE preview stored in the slide's VML drawing, keyed by shape id. */
 export type VmlOlePreview = { spid: string; relId: string };
 
 /**
  * PowerPoint keeps the printable picture of an embedded OLE object in the
  * VML drawing, not in the graphic frame. `o:relid` is a relationship of that
- * VML part.
+ * VML part. Newer drawings set `o:spid`; older bitmap embeds put the same
+ * `_x0000_sN` id on the shape itself.
  */
 export function vmlOleImageRels(vmlXml: string): VmlOlePreview[] {
   const found: VmlOlePreview[] = [];
   for (const match of vmlXml.matchAll(/<v:shape\b[\s\S]*?<\/v:shape>/g)) {
     const shape = match[0];
-    const spid = /o:spid="([^"]+)"/.exec(shape)?.[1];
-    const relId = /<v:imagedata\b[^>]*\bo:relid="([^"]+)"/.exec(shape)?.[1];
+    const spid =
+      /o:spid=["']([^"']+)["']/.exec(shape)?.[1] ??
+      /\bid=["'](_x0000_s[^"']+)["']/.exec(shape)?.[1];
+    const relId = /<v:imagedata\b[^>]*\bo:relid=["']([^"']+)["']/.exec(shape)?.[1];
     if (spid && relId) found.push({ spid, relId });
   }
   return found;

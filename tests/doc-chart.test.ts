@@ -8,6 +8,8 @@ import {
 import { documentPlainText } from "../apps/web/src/editors/doc-text";
 import {
   applyChartUpdate,
+  finishChartUpdate,
+  stageChartUpdate,
   barWidthPercent,
   chartCaption,
   chartFromSheet,
@@ -51,6 +53,7 @@ const saved: LinkedChartAttrs = {
   labels: ["Dues", "Compost"],
   values: [40, 15],
   missing: false,
+  snapshotAt: "",
 };
 
 describe("chart a spreadsheet from a document", () => {
@@ -181,7 +184,11 @@ describe("chart a spreadsheet from a document", () => {
       2: { 0: { v: "Compost", t: 1 }, 1: { v: 25, t: 2 } },
     };
     file.title = "Plot fees renamed";
-    const next = applyChartUpdate({ ...saved, missing: true }, file);
+    const next = applyChartUpdate(
+      { ...saved, missing: true },
+      file,
+      "2026-10-31T18:00:00.000Z",
+    );
     expect(next).toEqual({
       attrs: {
         sourceId: "plot-fees",
@@ -189,9 +196,23 @@ describe("chart a spreadsheet from a document", () => {
         labels: ["Dues", "Compost"],
         values: [40, 25],
         missing: false,
+        snapshotAt: "2026-10-31T18:00:00.000Z",
+        withheld: false,
       },
     });
     expect(barWidthPercent(25, [40, 25])).toBe(62.5);
+  });
+
+  it("keeps the previous snapshot time when the clock value is not a time", () => {
+    const next = applyChartUpdate(
+      { ...saved, snapshotAt: "2026-10-30T00:00:00.000Z" },
+      fees(),
+      "secret-value",
+    );
+    expect(next.attrs.snapshotAt).toBe("2026-10-30T00:00:00.000Z");
+    expect(next.attrs.labels).toEqual(["Dues", "Compost"]);
+    expect(next.attrs.missing).toBe(false);
+    expect(JSON.stringify(next)).not.toContain("secret-value");
   });
 
   it("keeps the last bars when the sheet has no data rows", () => {
@@ -238,5 +259,29 @@ describe("chart a spreadsheet from a document", () => {
     expect(plain).toContain("Compost\t25");
     expect(plain).toContain("From Plot fees");
     expect(plain).toContain(missingSpreadsheetText);
+  });
+
+  it("holds a newer copy until it is accepted and hides bars the viewer cannot open", () => {
+    const file = fees();
+    const id = file.content.workbook.sheetOrder[0];
+    file.content.workbook.sheets[id].cellData = {
+      0: { 0: { v: "Fee", t: 1 }, 1: { v: "Amount", t: 1 } },
+      1: { 0: { v: "Dues", t: 1 }, 1: { v: 40, t: 2 } },
+      2: { 0: { v: "secret-value", t: 1 }, 1: { v: 25, t: 2 } },
+    };
+    const before = JSON.stringify(saved);
+    const staged = stageChartUpdate(saved, file, "2026-10-31T18:00:00.000Z", true);
+    expect(JSON.stringify(saved)).toBe(before);
+    expect(staged.chart).toEqual(saved);
+    expect(staged.notice).toBe("A newer copy is waiting. The chart was not changed.");
+    expect(staged.notice).not.toContain("secret-value");
+    expect(staged.proposal?.labels).toEqual(["Dues", "secret-value"]);
+    expect(finishChartUpdate(staged, false).labels).toEqual(["Dues", "Compost"]);
+    expect(finishChartUpdate(staged, true).labels).toEqual(["Dues", "secret-value"]);
+    const hidden = stageChartUpdate(saved, file, "2026-10-31T18:00:00.000Z", false);
+    expect(hidden.proposal).toBeNull();
+    expect(hidden.notice).toBe("You cannot view this spreadsheet. The bars are not included.");
+    expect(hidden.notice).not.toContain("secret-value");
+    expect(hidden.chart.values).toEqual([40, 15]);
   });
 });

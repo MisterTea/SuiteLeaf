@@ -428,6 +428,74 @@ impl Drive {
         Ok(false)
     }
 
+    /// People in this group, including people in a group it contains. A loop stops.
+    pub fn users_in_group(&self, group_id: &str) -> DriveResult<Vec<String>> {
+        let mut users = BTreeSet::new();
+        let mut stack = vec![group_id.to_owned()];
+        let mut seen = BTreeSet::new();
+        while let Some(group) = stack.pop() {
+            if !seen.insert(group.clone()) {
+                continue;
+            }
+            for row in self.db.query(
+                "SELECT memberId FROM directory_edge WHERE groupId = ?1 AND memberType = 'user'",
+                &[Value::Text(group.clone())],
+            )? {
+                if let Some(id) = text(&row, "memberId") {
+                    users.insert(id);
+                }
+            }
+            for child in self.child_groups(&group)? {
+                stack.push(child);
+            }
+        }
+        Ok(users.into_iter().collect())
+    }
+
+    /// Whether this person still belongs to `parent` if the edge from `parent` to `omitted` is ignored.
+    pub fn belongs_without_edge(
+        &self,
+        user_id: &str,
+        parent: &str,
+        omitted: &str,
+    ) -> DriveResult<bool> {
+        let mut direct = Vec::new();
+        for row in self.db.query(
+            "SELECT groupId FROM directory_edge WHERE memberType = 'user' AND memberId = ?1",
+            &[Value::Text(user_id.into())],
+        )? {
+            if let Some(id) = text(&row, "groupId") {
+                direct.push(id);
+            }
+        }
+        let mut all = BTreeSet::new();
+        let mut frontier = direct;
+        let mut guard = 0;
+        while !frontier.is_empty() && guard < 10_000 {
+            guard += 1;
+            let mut next = Vec::new();
+            for id in frontier {
+                if !all.insert(id.clone()) {
+                    continue;
+                }
+                for row in self.db.query(
+                    "SELECT groupId FROM directory_edge WHERE memberType = 'group' AND memberId = ?1",
+                    &[Value::Text(id.clone())],
+                )? {
+                    let Some(found) = text(&row, "groupId") else { continue };
+                    if found == parent && id == omitted {
+                        continue;
+                    }
+                    if !all.contains(&found) {
+                        next.push(found);
+                    }
+                }
+            }
+            frontier = next;
+        }
+        Ok(all.contains(parent))
+    }
+
     fn child_groups(&self, group_id: &str) -> DriveResult<Vec<String>> {
         Ok(self
             .db

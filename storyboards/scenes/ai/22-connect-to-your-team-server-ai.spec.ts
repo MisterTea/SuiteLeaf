@@ -63,6 +63,7 @@ test.describe("cluster mode", () => {
   test("22-connect-to-your-team-server-ai", async ({ page, baseURL }) => {
     const starting = startServer(undefined, [new URL(baseURL!).origin]);
     try {
+      await page.addInitScript(() => localStorage.setItem("suiteleaf.ai.enabled", "1"));
       await page.goto("/");
       await expect(page.getByText("A workspace waiting for you")).toBeVisible();
       await seedLocalFiles(page);

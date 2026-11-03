@@ -13,6 +13,27 @@ beforeEach(async () => {
 afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
+it("keeps an on-disk document body out of the catalog", async () => {
+  const file = createFile("doc", "Catalog");
+  const path = join(dir, "catalog.sldoc");
+  await store.saveAs({ file }, path);
+  const listed = (await store.list()).find((record) => record.file.id === file.id);
+  expect(listed?.file.title).toBe("Catalog");
+  expect(listed?.file.content).toBeUndefined();
+  expect((await store.get(file.id))?.file.content).toEqual(file.content);
+  const draft = createFile("doc", "Draft");
+  await store.save({ file: draft });
+  expect(
+    (await store.list()).find((record) => record.file.id === draft.id)?.file.content,
+  ).toEqual(draft.content);
+  const reopened = new FileStore(join(dir, "data"));
+  await reopened.init();
+  expect(
+    (await reopened.list()).find((record) => record.file.id === file.id)?.file.content,
+  ).toBeUndefined();
+  expect((await reopened.get(file.id))?.file.content).toEqual(file.content);
+  expect(JSON.parse(await readFile(path, "utf8")).content).toEqual(file.content);
+});
 it("autosaves regular files and reopens from a new store", async () => {
   const f = createFile("doc");
   const path = join(dir, "document.suiteleaf");
@@ -240,6 +261,13 @@ it("preserves recovery drafts and rejects stale editor saves after a directory r
   await store.syncFolder(docs);
   editor.file.title = "Unsaved local edit";
   await expect(store.save(editor)).rejects.toThrow("changed outside");
+  const outside = await readFile(path, "utf8");
+  expect(outside).toContain("Cloud edit");
+  expect(outside).not.toContain("Unsaved local edit");
+  expect((await store.list())[0]).toMatchObject({
+    recovery: true,
+    file: { title: "Unsaved local edit" },
+  });
   await rm(path);
   await store.syncFolder(docs);
   expect((await store.list())[0]).toMatchObject({

@@ -16,7 +16,7 @@ use axum::{
 use serde::Deserialize;
 use serde_json::{Value as JsonValue, json};
 use suitedb::{Db, Value};
-use suitedrive::{Drive, DriveError, Principal};
+use suitedrive::{Drive, DriveError, Principal, share_migration::AccessChange};
 
 use crate::{auth::AuthUser, drive_api::ApiError, http::AppState};
 
@@ -124,7 +124,7 @@ async fn blocking<T: Send + 'static>(
         .map_err(ApiError)
 }
 
-fn require_admin(user: &AuthUser) -> Option<Response> {
+pub(crate) fn require_admin(user: &AuthUser) -> Option<Response> {
     if user.is_admin() {
         None
     } else {
@@ -506,6 +506,13 @@ struct PasswordBody {
     password: String,
 }
 
+fn password_change_error(message: &str) -> &'static str {
+    match message {
+        "That person was not found." => "That person was not found.",
+        _ => "Could not set that password.",
+    }
+}
+
 async fn set_password(
     State(s): State<AppState>,
     crate::auth::RequireUser(actor): crate::auth::RequireUser,
@@ -538,6 +545,7 @@ async fn set_password(
         let message = response
             .get("message")
             .and_then(|v| v.as_str())
+            .map(password_change_error)
             .unwrap_or("Could not set that password.");
         return Ok((
             StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),
@@ -794,8 +802,114 @@ async fn remove_member(
     get_group(State(s), crate::auth::RequireUser(actor), Path(id)).await
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MemberPlanBody {
+    member_id: String,
+    adding: bool,
+}
+
+async fn preview_member(
+    State(s): State<AppState>,
+    crate::auth::RequireUser(actor): crate::auth::RequireUser,
+    Path(id): Path<String>,
+    Json(body): Json<MemberPlanBody>,
+) -> Result<Response, ApiError> {
+    if let Some(response) = require_admin(&actor) {
+        return Ok(response);
+    }
+    let group_id = id.clone();
+    let plan = blocking(&s.drive, move |d| {
+        d.plan_member(&group_id, &body.member_id, body.adding)
+    })
+    .await?;
+    Ok(Json(plan).into_response())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CommitMemberBody {
+    member_id: String,
+    adding: bool,
+    changes: Vec<AccessChange>,
+}
+
+async fn commit_member_route(
+    State(s): State<AppState>,
+    crate::auth::RequireUser(actor): crate::auth::RequireUser,
+    Path(id): Path<String>,
+    Json(body): Json<CommitMemberBody>,
+) -> Result<Response, ApiError> {
+    if let Some(response) = require_admin(&actor) {
+        return Ok(response);
+    }
+    let actor_id = actor.id.clone();
+    let group_id = id.clone();
+    let plan = blocking(&s.drive, move |d| {
+        d.commit_member(
+            &actor_id,
+            &group_id,
+            &body.member_id,
+            body.adding,
+            &body.changes,
+        )
+    })
+    .await?;
+    Ok(Json(plan).into_response())
+}
+
+async fn replication(
+    State(s): State<AppState>,
+    crate::auth::RequireUser(user): crate::auth::RequireUser,
+) -> Result<Response, ApiError> {
+    if let Some(response) = require_admin(&user) {
+        return Ok(response);
+    }
+    let db = s.db.clone();
+    let peers = tokio::task::spawn_blocking(move || db.replication_lag())
+        .await
+        .map_err(|error| ApiError(DriveError::Other(error.into())))?
+        .map_err(|error| ApiError(DriveError::Other(error.into())))?;
+    let pending =
+        s.db.pending_count()
+            .map_err(|error| ApiError(DriveError::Other(error.into())))?;
+    Ok(Json(json!({
+        "pending": pending,
+        "peers": peers
+            .iter()
+            .map(|row| json!({
+                "peer": row.peer,
+                "sameEpoch": row.same_epoch,
+                "behind": row.behind,
+            }))
+            .collect::<Vec<_>>(),
+    }))
+    .into_response())
+}
+
+async fn organization_export_route(
+    State(s): State<AppState>,
+    crate::auth::RequireUser(user): crate::auth::RequireUser,
+) -> Result<Response, ApiError> {
+    if let Some(response) = require_admin(&user) {
+        return Ok(response);
+    }
+    let db = s.db.clone();
+    let payload = tokio::task::spawn_blocking(move || crate::org_export::organization_export(&db))
+        .await
+        .map_err(|error| ApiError(DriveError::Other(error.into())))?
+        .map_err(ApiError)?;
+    Ok(Json(payload).into_response())
+}
+
 pub fn router(state: AppState) -> Router {
     Router::new()
+        .route("/api/admin/replication", get(replication))
+        .route(
+            "/api/admin/backup",
+            get(crate::backup_status::backup_status).post(crate::backup_status::backup_run),
+        )
+        .route("/api/admin/export", get(organization_export_route))
         .route("/api/admin/users", get(list_users).post(create_user))
         .route(
             "/api/admin/users/{id}",
@@ -822,6 +936,14 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/admin/groups/{id}/members",
             axum::routing::post(add_member).delete(remove_member),
+        )
+        .route(
+            "/api/admin/groups/{id}/member-plan",
+            axum::routing::post(preview_member),
+        )
+        .route(
+            "/api/admin/groups/{id}/member-commit",
+            axum::routing::post(commit_member_route),
         )
         .with_state(state)
 }
@@ -860,6 +982,17 @@ mod tests {
             )
         })
         .unwrap();
+    }
+
+    #[test]
+    fn a_password_change_error_does_not_repeat_the_password() {
+        let message = password_change_error("password secret-value was rejected");
+        assert_eq!(message, "Could not set that password.");
+        assert!(!message.contains("secret-value"));
+        assert_eq!(
+            password_change_error("That person was not found."),
+            "That person was not found."
+        );
     }
 
     #[test]

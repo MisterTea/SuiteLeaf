@@ -1,5 +1,5 @@
 import JSZip from "jszip";
-import type { Slide, SlideElement, SlideTransition } from "./index";
+import type { Slide, SlideTransition } from "./index";
 
 export const SLIDE_ANIMATIONS = [
   "fade-on-click",
@@ -15,10 +15,124 @@ export function isSlideAnimation(value: string | undefined): value is SlideAnima
   return (SLIDE_ANIMATIONS as readonly string[]).includes(value ?? "");
 }
 
+export type AnimationTrigger = "click" | "with" | "after";
+
+export type OrderedAnimation = {
+  id: string;
+  index: number;
+  kind: SlideAnimationKind;
+  order: number;
+  trigger: AnimationTrigger;
+  /** Set when this click reveals paragraphs of a text box, not the whole box. */
+  paragraphs?: { start: number; end: number };
+  /** Set when this click hides the object. */
+  exit?: boolean;
+};
+
+export type ParagraphBuild = {
+  start: number;
+  end: number;
+  order: number;
+  trigger?: AnimationTrigger;
+};
+
+export type ExitBuild = {
+  order: number;
+  trigger?: AnimationTrigger;
+};
+
+/**
+ * Click animations in the order a preview and a PowerPoint file both use.
+ * A missing order is the object's place on the slide, starting at 1.
+ * The input list is not changed.
+ */
+export function animationSequence(
+  elements: readonly {
+    id: string;
+    animation?: string;
+    animationOrder?: number;
+    animationTrigger?: string;
+    paragraphBuilds?: readonly ParagraphBuild[];
+    animationExit?: ExitBuild;
+  }[],
+): OrderedAnimation[] {
+  return elements
+    .flatMap((el, index) => {
+      const trigger: AnimationTrigger =
+        el.animationTrigger === "with" || el.animationTrigger === "after"
+          ? el.animationTrigger
+          : "click";
+      const items: OrderedAnimation[] = [];
+      if (isSlideAnimation(el.animation)) {
+        items.push({
+          id: el.id,
+          index,
+          kind: el.animation,
+          order: el.animationOrder ?? index + 1,
+          trigger,
+        });
+      }
+      for (const build of el.paragraphBuilds ?? []) {
+        items.push({
+          id: el.id,
+          index,
+          kind: "appear-on-click",
+          order: build.order,
+          trigger: build.trigger === "with" || build.trigger === "after" ? build.trigger : "click",
+          paragraphs: { start: build.start, end: build.end },
+        });
+      }
+      if (el.animationExit) {
+        const exitTrigger = el.animationExit.trigger;
+        items.push({
+          id: el.id,
+          index,
+          kind: "appear-on-click",
+          order: el.animationExit.order,
+          trigger: exitTrigger === "with" || exitTrigger === "after" ? exitTrigger : "click",
+          exit: true,
+        });
+      }
+      return items;
+    })
+    .sort(
+      (a, b) =>
+        a.order - b.order ||
+        a.index - b.index ||
+        (a.paragraphs?.start ?? -1) - (b.paragraphs?.start ?? -1),
+    );
+}
+
+/** One click per order. The same order, or a with/after trigger, stays on that click. */
+export function animationClicks(
+  elements: readonly {
+    id: string;
+    animation?: string;
+    animationOrder?: number;
+    animationTrigger?: string;
+  }[],
+): { ids: string[]; order: number }[] {
+  const clicks: { ids: string[]; order: number }[] = [];
+  for (const item of animationSequence(elements)) {
+    const last = clicks.at(-1);
+    const sameClick =
+      !!last &&
+      (last.order === item.order || item.trigger === "with" || item.trigger === "after");
+    if (last && sameClick) last.ids.push(item.id);
+    else clicks.push({ ids: [item.id], order: item.order });
+  }
+  return clicks;
+}
+
 export type ClickAnimation = {
   spid: string;
   kind: SlideAnimationKind;
   order: number;
+  trigger?: AnimationTrigger;
+  /** Paragraphs of a text box this click reveals. Absent when the whole shape appears. */
+  paragraph?: { start: number; end: number };
+  /** This click hides the shape instead of bringing it in. */
+  exit?: boolean;
 };
 
 const FILTER: Record<SlideAnimationKind, string> = {
@@ -46,6 +160,7 @@ export function readClickAnimations(xml: string): ClickAnimation[] {
   if (!timing) return [];
   const out: ClickAnimation[] = [];
   let order = 0;
+  let seenClick = false;
   for (const chunk of timing.split(/<p:par\b/)) {
     const spid = /<p:spTgt\b[^>]*\bspid="(\d+)"/.exec(chunk)?.[1];
     if (!spid) continue;
@@ -59,18 +174,169 @@ export function readClickAnimations(xml: string): ClickAnimation[] {
     const filter = /filter="([^"]+)"/.exec(chunk)?.[1] ?? "";
     if (!filter && !/<p:set\b/.test(chunk) && !/<p:animEffect\b/.test(chunk)) continue;
     const withPrevious = /nodeType="withEffect"/.test(chunk);
-    if (!withPrevious) order += 1;
-    if (out.some((item) => item.spid === spid)) continue;
-    out.push({ spid, kind: kindFromFilter(filter, chunk), order: Math.max(1, order) });
+    const afterPrevious = /nodeType="afterEffect"/.test(chunk);
+    const range = /<p:pRg\b([^>]*)\/?>/.exec(chunk)?.[1] ?? "";
+    const start = /(?:^|\s)st="(\d+)"/.exec(range)?.[1];
+    const end = /(?:^|\s)end="(\d+)"/.exec(range)?.[1];
+    const paragraph =
+      start != null && end != null
+        ? { start: Number(start), end: Number(end) }
+        : undefined;
+    const leaving =
+      /presetClass="exit"/.test(chunk) || /<p:strVal\b[^>]*\bval="hidden"/.test(chunk);
+    const identity = paragraph ? `${spid}:${paragraph.start}:${paragraph.end}` : leaving ? `${spid}:exit` : spid;
+    if (out.some((item) => {
+      const key = item.paragraph
+        ? `${item.spid}:${item.paragraph.start}:${item.paragraph.end}`
+        : item.exit
+          ? `${item.spid}:exit`
+          : item.spid;
+      return key === identity;
+    }))
+      continue;
+    if (!withPrevious && !afterPrevious) {
+      order += 1;
+      seenClick = true;
+    }
+    out.push({
+      spid,
+      kind: kindFromFilter(filter, chunk),
+      order: seenClick ? order : 0,
+      trigger: afterPrevious ? "after" : withPrevious ? "with" : "click",
+      ...(paragraph ? { paragraph } : {}),
+      ...(leaving ? { exit: true } : {}),
+    });
   }
   return out;
+}
+
+/**
+ * Nearest PowerPoint group first, for a shape drawn inside one or more groups.
+ * The group's own id is not listed. A shape with no group is absent.
+ */
+export function shapeGroupAncestors(xml: string): Map<string, string[]> {
+  const ancestors = new Map<string, string[]>();
+  const stack: Array<string | null> = [];
+  const token = /<p:grpSp\b|<\/p:grpSp>|<p:cNvPr\b[^>]*\bid="(\d+)"/g;
+  let match: RegExpExecArray | null;
+  while ((match = token.exec(xml)) !== null) {
+    if (match[0].startsWith("</")) {
+      stack.pop();
+      continue;
+    }
+    if (match[0].startsWith("<p:grpSp")) {
+      stack.push(null);
+      continue;
+    }
+    const id = match[1];
+    if (stack.length > 0 && stack[stack.length - 1] === null) {
+      stack[stack.length - 1] = id;
+      continue;
+    }
+    const chain = stack.filter((groupId): groupId is string => groupId != null).reverse();
+    if (chain.length) ancestors.set(id, chain);
+  }
+  return ancestors;
+}
+
+/**
+ * Puts each click entrance on the imported shape. A click aimed at a group
+ * lands on the shapes inside that group, unless a shape has its own entrance.
+ * Returns how many shapes received an entrance.
+ */
+export function assignClickAnimations(
+  xml: string,
+  elements: {
+    animation?: string;
+    animationOrder?: number;
+    animationTrigger?: string;
+    paragraphBuilds?: ParagraphBuild[];
+    animationExit?: ExitBuild;
+  }[],
+  shapeIndex: ReadonlyMap<string, number>,
+): number {
+  const clicks = readClickAnimations(xml);
+  const byShape = new Map(
+    clicks.filter((click) => !click.paragraph && !click.exit).map((click) => [click.spid, click]),
+  );
+  const ancestors = shapeGroupAncestors(xml);
+  let mapped = 0;
+  const apply = (spid: string, click: ClickAnimation) => {
+    const index = shapeIndex.get(spid);
+    const el = index == null ? undefined : elements[index];
+    if (!el) return;
+    // A with/after step before the first click plays as the slide arrives.
+    if (click.order === 0) return;
+    if (click.exit) {
+      if (el.animationExit) return;
+      el.animationExit = {
+        order: click.order,
+        ...(click.trigger === "with" || click.trigger === "after" ? { trigger: click.trigger } : {}),
+      };
+      mapped += 1;
+      return;
+    }
+    if (click.paragraph) {
+      el.paragraphBuilds = [
+        ...(el.paragraphBuilds ?? []),
+        {
+          start: click.paragraph.start,
+          end: click.paragraph.end,
+          order: click.order,
+          ...(click.trigger === "with" || click.trigger === "after"
+            ? { trigger: click.trigger }
+            : {}),
+        },
+      ];
+      mapped += 1;
+      return;
+    }
+    if (el.animation) return;
+    el.animation = click.kind;
+    el.animationOrder = click.order;
+    if (click.trigger === "with" || click.trigger === "after") el.animationTrigger = click.trigger;
+    mapped += 1;
+  };
+  for (const click of clicks) apply(click.spid, click);
+  for (const spid of shapeIndex.keys()) {
+    const index = shapeIndex.get(spid);
+    if (index == null || elements[index]?.animation || elements[index]?.paragraphBuilds?.length)
+      continue;
+    for (const groupId of ancestors.get(spid) ?? []) {
+      const click = byShape.get(groupId);
+      if (!click) continue;
+      apply(spid, click);
+      break;
+    }
+  }
+  const groupExits = new Map(
+    clicks.filter((click) => click.exit && !click.paragraph).map((click) => [click.spid, click]),
+  );
+  for (const spid of shapeIndex.keys()) {
+    const index = shapeIndex.get(spid);
+    const el = index == null ? undefined : elements[index];
+    if (!el || el.animationExit) continue;
+    for (const groupId of ancestors.get(spid) ?? []) {
+      const click = groupExits.get(groupId);
+      if (!click) continue;
+      apply(spid, click);
+      break;
+    }
+  }
+  return mapped;
 }
 
 function buildTiming(items: ClickAnimation[]): string {
   const clicks = items
     .map((item, index) => {
       const id = index * 2 + 3;
-      return `<p:par><p:cTn id="${id}" fill="hold" nodeType="clickEffect"><p:stCondLst><p:cond delay="indefinite"/></p:stCondLst><p:childTnLst><p:animEffect transition="in" filter="${FILTER[item.kind]}"><p:cBhvr><p:cTn id="${id + 1}" dur="500"/><p:tgtEl><p:spTgt spid="${item.spid}"/></p:tgtEl></p:cBhvr></p:animEffect></p:childTnLst></p:cTn></p:par>`;
+      const nodeType =
+        item.trigger === "after"
+          ? "afterEffect"
+          : item.trigger === "with" || (index > 0 && item.order === items[index - 1]?.order)
+            ? "withEffect"
+            : "clickEffect";
+      return `<p:par><p:cTn id="${id}" fill="hold" nodeType="${nodeType}"><p:stCondLst><p:cond delay="indefinite"/></p:stCondLst><p:childTnLst><p:animEffect transition="in" filter="${FILTER[item.kind]}"><p:cBhvr><p:cTn id="${id + 1}" dur="500"/><p:tgtEl><p:spTgt spid="${item.spid}"/></p:tgtEl></p:cBhvr></p:animEffect></p:childTnLst></p:cTn></p:par>`;
     })
     .join("");
   return `<p:timing><p:tnLst><p:par><p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot"><p:childTnLst><p:seq concurrent="1" nextAc="seek"><p:cTn id="2" dur="indefinite" nodeType="mainSeq"><p:childTnLst>${clicks}</p:childTnLst></p:cTn><p:prevCondLst><p:cond evt="onPrev" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:prevCondLst><p:nextCondLst><p:cond evt="onNext" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:nextCondLst></p:seq></p:childTnLst></p:cTn></p:par></p:tnLst></p:timing>`;
@@ -90,6 +356,7 @@ const SLIDE_PLAYBACK = new Set([
 ]);
 
 function playbackType(name: string): SlideTransition["type"] {
+  if (name === "cut") return "none";
   if (name === "push") return "push";
   if (SLIDE_PLAYBACK.has(name)) return "slide";
   return "fade";
@@ -133,9 +400,9 @@ export function readSlideMotion(xml: string): { transition?: SlideTransition; ti
 
 function transitionMarkup(slide: Slide): string {
   const transition = slide.transition;
-  if (!transition || transition.type === "none") return "";
-  if (transition.office && OFFICE_INNER.test(transition.office))
+  if (transition?.office && OFFICE_INNER.test(transition.office))
     return `<p:transition>${transition.office}</p:transition>`;
+  if (!transition || transition.type === "none") return "";
   const child =
     transition.type === "push"
       ? `<p:push dir="l"/>`
@@ -163,17 +430,15 @@ function contentShapeIds(xml: string): string[] {
 }
 
 function timingMarkup(slide: Slide, xml: string): string {
-  const animated = slide.elements
-    .map((el, index) => ({ el, index }))
-    .filter((item): item is { el: SlideElement; index: number } => isSlideAnimation(item.el.animation));
-  if (animated.length) {
+  const sequence = animationSequence(slide.elements);
+  if (sequence.length) {
     const ids = contentShapeIds(xml);
-    const pairs = animated.map((item, index) => ({
+    const pairs = sequence.map((item, index) => ({
       spid: ids.length === slide.elements.length ? ids[item.index] : String(1000 + index),
-      kind: item.el.animation as SlideAnimationKind,
-      order: item.el.animationOrder ?? item.index + 1,
+      kind: item.kind,
+      order: item.order,
+      trigger: item.trigger,
     }));
-    pairs.sort((a, b) => a.order - b.order || Number(a.spid) - Number(b.spid));
     return buildTiming(pairs);
   }
   return storedTiming(slide.timing);

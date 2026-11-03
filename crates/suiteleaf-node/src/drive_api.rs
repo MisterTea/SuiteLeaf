@@ -18,7 +18,7 @@ use serde::Deserialize;
 use serde_json::{Value as JsonValue, json};
 use std::collections::BTreeMap;
 use suitedb::{Db, Value};
-use suitedrive::{BlobTransport, Drive, DriveError, Item, Principal, Role, Version};
+use suitedrive::{BlobTransport, Drive, DriveError, Item, Principal, Role, Version, guest_role};
 use suiteleaf_net::{NetHandle, PeerId, Protocol};
 
 use crate::{
@@ -82,6 +82,11 @@ impl IntoResponse for ApiError {
             }
             DriveError::Unavailable => (
                 StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({ "error": message })),
+            )
+                .into_response(),
+            DriveError::NoRoom => (
+                StatusCode::PAYLOAD_TOO_LARGE,
                 Json(json!({ "error": message })),
             )
                 .into_response(),
@@ -385,6 +390,45 @@ async fn write_content(
         .and_then(|v| v.to_str().ok())
         .filter(|m| !m.is_empty())
         .map(str::to_owned);
+    if let Some(range) = headers.get(header::CONTENT_RANGE) {
+        let header_text = range.to_str().unwrap_or("");
+        let Some((start, end, total)) = Drive::content_range(header_text) else {
+            return Err(DriveError::BadRequest("The upload range cannot be read.".into()).into());
+        };
+        if total == 0 {
+            if start != 0 || end != 0 || !body.is_empty() {
+                return Err(DriveError::BadRequest(
+                    "That upload does not continue the saved part.".into(),
+                )
+                .into());
+            }
+        } else if body.len() != end - start + 1 {
+            return Err(DriveError::BadRequest(
+                "That upload does not continue the saved part.".into(),
+            )
+            .into());
+        }
+        let item = blocking(&s.drive, move |d| {
+            d.write_span(
+                &who,
+                &id,
+                if_match.as_deref(),
+                mime.as_deref(),
+                start,
+                total,
+                &body,
+            )
+        })
+        .await?;
+        let Some(item) = item else {
+            return Ok((StatusCode::ACCEPTED, Json(json!({ "accepted": end + 1 }))).into_response());
+        };
+        let mut response = Json(item_body(&s, &item).await?).into_response();
+        if let Some(tag) = etag(item.head_version_id.as_deref()) {
+            response.headers_mut().insert(header::ETAG, tag);
+        }
+        return Ok(response);
+    }
     let item = blocking(&s.drive, move |d| {
         d.write(&who, &id, if_match.as_deref(), mime.as_deref(), &body)
     })
@@ -639,6 +683,39 @@ struct ExpiryBody {
 
 fn user_principal() -> String {
     "user".into()
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GuestBody {
+    principal_id: String,
+    role: String,
+    expires_at: String,
+}
+
+async fn post_guest(
+    State(s): State<AppState>,
+    RequireUser(user): RequireUser,
+    Path(id): Path<String>,
+    Json(body): Json<GuestBody>,
+) -> ApiResult<Response> {
+    let role =
+        guest_role(&body.role).map_err(|message| DriveError::BadRequest(message.to_owned()))?;
+    let who = principal(&user);
+    blocking(&s.drive, move |d| {
+        d.share_guest(&who, &id, &body.principal_id, role, &body.expires_at)
+    })
+    .await?;
+    Ok(Json(json!({ "ok": true })).into_response())
+}
+
+async fn list_guests(
+    State(s): State<AppState>,
+    RequireUser(user): RequireUser,
+) -> ApiResult<Response> {
+    let who = principal(&user);
+    let guests = blocking(&s.drive, move |d| d.guest_review(&who)).await?;
+    Ok(Json(json!({ "guests": guests })).into_response())
 }
 
 async fn put_expiry(
@@ -990,8 +1067,18 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/drive/items/{id}/acl", get(get_acl).put(put_acl))
         .route("/api/drive/items/{id}/expiry", put(put_expiry))
+        .route("/api/drive/items/{id}/guest", post(post_guest))
+        .route("/api/drive/guests", get(list_guests))
         .route("/api/drive/items/{id}/owner", post(transfer_owner))
         .route("/api/drive/items/{id}/access", get(get_access))
+        .route(
+            "/api/drive/items/{id}/explanation",
+            get(crate::access_explain::explanation),
+        )
+        .route(
+            "/api/drive/items/{id}/move-preview",
+            post(crate::access_explain::move_preview),
+        )
         .route(
             "/api/drive/items/{id}/comments",
             get(list_comments).post(add_comment),

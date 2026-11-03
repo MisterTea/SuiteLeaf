@@ -2,6 +2,8 @@ import { Extension, Node, type Editor, type Extensions } from "@tiptap/core";
 import type { Node as ProseNode } from "@tiptap/pm/model";
 import { Plugin, TextSelection, type EditorState, type Transaction } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
+import { headingPageRestarts, pageBreakSpots, printedFromPhysical, type TocSpot } from "./doc-toc-pages";
+import { FigureList } from "./figure-list-node";
 
 const focusNote = "suiteleaf-focus-note";
 /** Footnotes taller than this continue on the next page, under a rule. */
@@ -10,12 +12,14 @@ const NOTE_BAND = 72;
 type Ref = { id: string; kind: string; label: string; pos: number };
 
 function toRoman(n: number): string {
+  if (!Number.isInteger(n) || n < 1) return "";
+  if (n > 3999) return n <= 100_000 ? String(n) : "";
   const romans: [number, string][] = [
     [1000, "m"], [900, "cm"], [500, "d"], [400, "cd"], [100, "c"],
     [90, "xc"], [50, "l"], [40, "xl"], [10, "x"], [9, "ix"], [5, "v"],
     [4, "iv"], [1, "i"],
   ];
-  let rest = Math.max(1, n);
+  let rest = n;
   let out = "";
   for (const [val, sym] of romans)
     while (rest >= val) {
@@ -123,7 +127,7 @@ function placeCaret(tr: Transaction, id: string): boolean {
   return true;
 }
 
-type HeadingSpot = { pos: number; page: number };
+type HeadingSpot = TocSpot;
 let headingSpots: HeadingSpot[] = [];
 const tocRefreshers = new Set<() => void>();
 const placedNotes = new Map<string, { page: number; top: number }>();
@@ -556,14 +560,24 @@ function pageOf(el: HTMLElement, paper: HTMLElement): number {
 
 function layoutNotes(view: EditorView) {
   tocRefreshers.forEach((refresh) => refresh());
+  const fromBreaks = pageBreakSpots(view.state.doc);
+  const restarts = headingPageRestarts(view.state.doc);
   const paper = view.dom.closest(".paginated-paper") as HTMLElement | null;
-  if (!paper) return;
+  if (!paper) {
+    headingSpots = fromBreaks;
+    tocRefreshers.forEach((refresh) => refresh());
+    return;
+  }
   const pageHeight = parseFloat(paper.style.getPropertyValue("--page-height")) || 0;
   const margin =
     parseFloat(paper.style.getPropertyValue("--page-margin-bottom")) ||
     parseFloat(paper.style.getPropertyValue("--page-margin")) ||
     0;
-  if (!pageHeight) return;
+  if (!pageHeight) {
+    headingSpots = fromBreaks;
+    tocRefreshers.forEach((refresh) => refresh());
+    return;
+  }
   const spots: HeadingSpot[] = [];
   view.state.doc.descendants((node, pos) => {
     if (node.type.name === "note" || node.type.name === "tableOfContents") return false;
@@ -572,7 +586,12 @@ function layoutNotes(view: EditorView) {
     if (dom instanceof HTMLElement)
       spots.push({ pos, page: pageOf(dom, paper) + 1 });
   });
-  headingSpots = spots;
+  const painted = new Map(spots.map((spot) => [spot.pos, spot.page]));
+  headingSpots = fromBreaks.map((spot) => {
+    const physical = painted.get(spot.pos);
+    if (physical == null) return spot;
+    return { pos: spot.pos, page: printedFromPhysical(physical, restarts) };
+  });
   tocRefreshers.forEach((refresh) => refresh());
 
   const refs = noteRefs(view.state.doc).filter((ref) => ref.kind === "footnote");
@@ -863,6 +882,7 @@ declare module "@tiptap/core" {
 
 export const documentNotes: Extensions = [
   TableOfContents,
+  FigureList,
   NoteReference,
   Note,
   NotesBehavior,

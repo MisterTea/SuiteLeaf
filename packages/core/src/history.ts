@@ -649,7 +649,10 @@ function isTextBlock(node: TextNode): boolean {
 /** Apply merged paragraph texts onto a document snapshot.
  * Empty blocks are skipped, matching {@link blockTexts}, so a blank line
  * between paragraphs does not shift the restored text. Extra texts become
- * new paragraphs. Missing texts clear the blocks they used to fill. */
+ * new paragraphs. Missing texts clear the blocks they used to fill.
+ * A block whose text is unchanged keeps its runs and marks. A block with one
+ * text run keeps that run's marks when only the string changes. Several runs
+ * still collapse to plain text, because the collaboration log stores strings. */
 export function applyParagraphTexts(content: unknown, texts: string[]): unknown {
   const copy = clone(content) as TextNode;
   if (!copy || typeof copy !== "object") return content;
@@ -663,6 +666,12 @@ export function applyParagraphTexts(content: unknown, texts: string[]): unknown 
     if (!filled) return;
     const next = texts[index];
     index += 1;
+    if (next === filled) return;
+    const runs = node.content ?? [];
+    if (next && runs.length === 1 && typeof runs[0]?.text === "string") {
+      runs[0].text = next;
+      return;
+    }
     node.content = next ? [{ type: "text", text: next }] : [];
   };
   walk(copy);

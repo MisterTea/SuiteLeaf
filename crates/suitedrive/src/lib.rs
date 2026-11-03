@@ -9,14 +9,25 @@
 //! concurrently, last-writer-wins picks the head version, and the other
 //! version stays available in the file's history.
 
+pub mod backup;
+pub mod backup_chain;
 pub mod blobs;
 mod directory;
+mod guest;
+pub mod move_preview;
+mod policy;
+pub mod seal;
+pub mod share_migration;
 
 pub use directory::{AuditEvent, DirectoryGroup, GroupDetail, GroupMember, PersonFile, TrailEntry};
+pub use guest::{GuestShare, guest_role};
+pub use policy::{PolicyChange, PolicyPlan};
+pub use share_migration::{AccessChange, MemberPlan, RestrictPlan};
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    path::Path,
+    fs,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::{Duration, SystemTime},
 };
@@ -48,6 +59,7 @@ pub fn tables() -> Vec<TableDef> {
             .column("createdAt", Text)
             .column("updatedAt", Text)
             .column("trashed", Integer)
+            .column("restricted", Integer)
             .index("parentId")
             .index("ownerId"),
         TableDef::new("drive_version", "id")
@@ -203,11 +215,20 @@ fn appends_form_responses(previous: &[u8], next: &[u8]) -> bool {
     ) else {
         return false;
     };
-    next_rows.len() > previous_rows.len()
-        && next_rows
+    if next_rows.len() <= previous_rows.len()
+        || next_rows
             .iter()
             .zip(previous_rows)
-            .all(|(next_row, previous_row)| next_row == previous_row)
+            .any(|(next_row, previous_row)| next_row != previous_row)
+    {
+        return false;
+    }
+    let mut expected = previous;
+    let Some(responses) = expected.pointer_mut("/content/responses") else {
+        return false;
+    };
+    *responses = serde_json::Value::Array(next_rows.clone());
+    expected == next
 }
 
 fn is_form_name(name: &str) -> bool {
@@ -252,11 +273,15 @@ fn accepted_grid(
     let object = parsed.as_object()?;
     let mut chosen = BTreeMap::new();
     for (row, column) in object {
-        let column = column.as_str()?;
+        let column = column.as_str()?.trim();
+        let row = row.trim();
+        if row.is_empty() || column.is_empty() {
+            return None;
+        }
         if !rows.iter().any(|item| item == row) || !columns.iter().any(|item| item == column) {
             return None;
         }
-        chosen.insert(row.clone(), column.to_owned());
+        chosen.insert(row.to_owned(), column.to_owned());
     }
     Some(chosen)
 }
@@ -362,7 +387,11 @@ fn checked_answers(
             let allowed = question
                 .get("choices")
                 .and_then(|choices| choices.as_array())
-                .is_some_and(|choices| choices.iter().any(|choice| choice.as_str() == Some(value)));
+                .is_some_and(|choices| {
+                    choices
+                        .iter()
+                        .any(|choice| choice.as_str().is_some_and(|text| text.trim() == value))
+                });
             if !allowed {
                 return Err(DriveError::BadRequest(format!(
                     "{prompt} must be one of the choices"
@@ -551,6 +580,65 @@ pub struct ItemAccess {
     pub your_role: Role,
 }
 
+/// Why one person can or cannot open one item. `role` is the same decision
+/// [`Drive::role`] returns. Other people's grants are not included.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccessExplanation {
+    pub role: Option<Role>,
+    pub reason: AccessReason,
+    /// The folder walk stopped at the depth limit while a parent remained.
+    pub folder_chain_truncated: bool,
+    /// Groups this person belongs to whose membership contains a cycle.
+    pub group_loops: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum AccessReason {
+    Admin,
+    Owner {
+        item_id: String,
+        item_name: String,
+    },
+    Grant {
+        principal_type: String,
+        principal_id: String,
+        item_id: String,
+        item_name: String,
+        inherited: bool,
+    },
+    Expired {
+        principal_type: String,
+        principal_id: String,
+        item_id: String,
+    },
+    /// A folder stopped the walk. Grants on folders above it do not apply.
+    Restricted {
+        item_id: String,
+        item_name: String,
+    },
+    None,
+}
+
+struct GrantHit {
+    role: Role,
+    principal_type: String,
+    principal_id: String,
+    item_id: String,
+    item_name: String,
+    depth: usize,
+}
+
+fn prefer_grant(current: Option<GrantHit>, next: GrantHit) -> GrantHit {
+    match current {
+        None => next,
+        Some(current) if next.role > current.role => next,
+        Some(current) if next.role == current.role && next.depth < current.depth => next,
+        Some(current) => current,
+    }
+}
+
 /// A comment stored beside a file, separate from the file's content.
 #[derive(Clone, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -575,11 +663,16 @@ pub struct PublicForm {
 /// A beat older than this is omitted. Nothing sweeps it in the background.
 pub const PRESENCE_TTL: Duration = Duration::from_secs(15);
 
+/// A beat older than this, and still inside [`PRESENCE_TTL`], is idle.
+pub const PRESENCE_IDLE: Duration = Duration::from_secs(5);
+
 /// Someone else who currently has a file open.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub struct Presence {
     pub name: String,
     pub editing: bool,
+    /// True when their last beat is older than [`PRESENCE_IDLE`] and they are still listed.
+    pub idle: bool,
 }
 
 struct PresenceBeat {
@@ -603,6 +696,13 @@ fn presence_fresh(at: SystemTime, now: SystemTime) -> bool {
         Ok(age) => age <= PRESENCE_TTL,
         // A beat slightly ahead of this clock is still current.
         Err(_) => true,
+    }
+}
+
+fn presence_idle(at: SystemTime, now: SystemTime) -> bool {
+    match now.duration_since(at) {
+        Ok(age) => age > PRESENCE_IDLE,
+        Err(_) => false,
     }
 }
 
@@ -630,6 +730,8 @@ pub enum DriveError {
     BadRequest(String),
     #[error("the file has not replicated to this node yet")]
     Unavailable,
+    #[error("SuiteDrive does not have room for this file.")]
+    NoRoom,
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
@@ -723,12 +825,32 @@ fn check_name(name: &str) -> DriveResult<String> {
     Ok(name.to_owned())
 }
 
-/// A grant with no end, or an end still in the future, still opens the file.
+fn real_utc_day(year: u16, month: u8, day: u8) -> bool {
+    let length = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => {
+            if year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400)) {
+                29
+            } else {
+                28
+            }
+        }
+        _ => return false,
+    };
+    (1..=length).contains(&day)
+}
+
+/// A grant with no end, or a real end still in the future, still opens the file.
+/// A date that is not a real day does not.
 fn grant_live(expires_at: Option<&str>, now: &str) -> bool {
-    match expires_at.map(str::trim).filter(|s| !s.is_empty()) {
-        Some(at) => at > now,
-        None => true,
-    }
+    let Some(at) = expires_at.map(str::trim).filter(|s| !s.is_empty()) else {
+        return true;
+    };
+    let Ok(end) = normalize_expiry(at) else {
+        return false;
+    };
+    end.as_str() > now
 }
 
 /// Store an end time in the same UTC shape as [`iso_now`], so a string
@@ -754,9 +876,12 @@ fn normalize_expiry(raw: &str) -> DriveResult<String> {
     {
         return Err(DriveError::BadRequest("Choose the day access ends.".into()));
     }
-    let time = time
-        .strip_suffix('Z')
-        .ok_or_else(|| DriveError::BadRequest("Choose the day access ends.".into()))?;
+    if !real_utc_day(year, month, day) {
+        return Err(DriveError::BadRequest(
+            "That day is not on the calendar.".into(),
+        ));
+    }
+    let (time, offset_minutes) = zone_clock(time)?;
     let mut clock = time.split(':');
     let (Some(hh), Some(mm), Some(rest), None) =
         (clock.next(), clock.next(), clock.next(), clock.next())
@@ -787,7 +912,114 @@ fn normalize_expiry(raw: &str) -> DriveResult<String> {
     {
         return Err(DriveError::BadRequest("Choose the day access ends.".into()));
     }
-    Ok(format!("{y}-{m}-{d}T{hh}:{mm}:{second:02}.{millis:03}Z"))
+    let Some((utc_year, utc_month, utc_day, utc_hour, utc_minute)) = utc_parts(
+        year as i32,
+        month as i32,
+        day as i32,
+        hour as i32,
+        minute as i32,
+        offset_minutes,
+    ) else {
+        return Err(DriveError::BadRequest(
+            "That day is not on the calendar.".into(),
+        ));
+    };
+    Ok(format!(
+        "{utc_year:04}-{utc_month:02}-{utc_day:02}T{utc_hour:02}:{utc_minute:02}:{second:02}.{millis:03}Z"
+    ))
+}
+
+/// `Z` is zero. `+HH:MM` and `-HH:MM` are minute offsets. The clock text is returned without the zone.
+fn zone_clock(time: &str) -> DriveResult<(&str, i32)> {
+    if time.contains(['\n', '\r']) {
+        return Err(DriveError::BadRequest("Choose the day access ends.".into()));
+    }
+    if let Some(clock) = time.strip_suffix('Z') {
+        return Ok((clock, 0));
+    }
+    let Some(sign_at) = time.rfind(['+', '-']) else {
+        return Err(DriveError::BadRequest("Choose the day access ends.".into()));
+    };
+    if sign_at == 0 {
+        return Err(DriveError::BadRequest("Choose the day access ends.".into()));
+    }
+    let sign: i32 = if time.as_bytes()[sign_at] == b'+' { 1 } else { -1 };
+    let zone = &time[sign_at + 1..];
+    let Some((zh, zm)) = zone.split_once(':') else {
+        return Err(DriveError::BadRequest("Choose the day access ends.".into()));
+    };
+    if zh.len() != 2 || zm.len() != 2 {
+        return Err(DriveError::BadRequest("Choose the day access ends.".into()));
+    }
+    let zone_hour: i32 = zh.parse().unwrap_or(99);
+    let zone_minute: i32 = zm.parse().unwrap_or(99);
+    if !(0..=23).contains(&zone_hour) || !(0..=59).contains(&zone_minute) {
+        return Err(DriveError::BadRequest("Choose the day access ends.".into()));
+    }
+    Ok((&time[..sign_at], sign * (zone_hour * 60 + zone_minute)))
+}
+
+fn month_length(year: i32, month: i32) -> Option<i32> {
+    if !(1970..=9999).contains(&year) {
+        return None;
+    }
+    let length = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => {
+            if real_utc_day(year as u16, 2, 29) {
+                29
+            } else {
+                28
+            }
+        }
+        _ => return None,
+    };
+    Some(length)
+}
+
+/// The UTC calendar parts of a local clock minus its minute offset.
+fn utc_parts(
+    year: i32,
+    month: i32,
+    day: i32,
+    hour: i32,
+    minute: i32,
+    offset_minutes: i32,
+) -> Option<(i32, i32, i32, i32, i32)> {
+    let mut total = hour * 60 + minute - offset_minutes;
+    let mut y = year;
+    let mut m = month;
+    let mut d = day;
+    while total < 0 {
+        total += 24 * 60;
+        d -= 1;
+    }
+    while total >= 24 * 60 {
+        total -= 24 * 60;
+        d += 1;
+    }
+    while d < 1 {
+        m -= 1;
+        if m < 1 {
+            m = 12;
+            y -= 1;
+        }
+        d += month_length(y, m)?;
+    }
+    loop {
+        let length = month_length(y, m)?;
+        if d <= length {
+            break;
+        }
+        d -= length;
+        m += 1;
+        if m > 12 {
+            m = 1;
+            y += 1;
+        }
+    }
+    Some((y, m, d, total / 60, total % 60))
 }
 
 /// Requests and responses of the blob protocol.
@@ -1183,6 +1415,46 @@ pub struct Drive {
     /// Latest open-file beat per item, then per user. Read paths drop beats
     /// older than [`PRESENCE_TTL`]; there is no sweeper thread.
     presence: Mutex<BTreeMap<String, BTreeMap<String, PresenceBeat>>>,
+    /// Bytes accepted for an upload that is not a version yet.
+    partials: Mutex<BTreeMap<String, OpenUpload>>,
+    partial_dir: PathBuf,
+    storage_budget: Mutex<Option<u64>>,
+}
+
+struct OpenUpload {
+    total: usize,
+    bytes: Vec<u8>,
+}
+
+fn load_partials(dir: &Path) -> BTreeMap<String, OpenUpload> {
+    let mut map = BTreeMap::new();
+    let Ok(entries) = fs::read_dir(dir) else {
+        return map;
+    };
+    for entry in entries.flatten() {
+        let Some(id) = entry.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        if id.is_empty()
+            || id.len() > 80
+            || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+        {
+            continue;
+        }
+        let Ok(bytes) = fs::read(entry.path()) else {
+            continue;
+        };
+        if bytes.len() < 8 {
+            continue;
+        }
+        let total = u64::from_le_bytes(bytes[..8].try_into().unwrap_or([0; 8])) as usize;
+        let body = bytes[8..].to_vec();
+        if total == 0 || total > 256 * 1024 * 1024 || body.len() >= total {
+            continue;
+        }
+        map.insert(id, OpenUpload { total, bytes: body });
+    }
+    map
 }
 
 impl Drive {
@@ -1193,12 +1465,18 @@ impl Drive {
                 anyhow::bail!("the SuiteDB schema lacks the {} table", t.name);
             }
         }
+        let partial_dir = root.join("partials");
+        fs::create_dir_all(&partial_dir)
+            .with_context(|| format!("create {}", partial_dir.display()))?;
         let drive = Arc::new(Drive {
             db: db.clone(),
             blobs: BlobStore::open(root)?,
             wanted: Mutex::default(),
             notify: Notify::new(),
             presence: Mutex::default(),
+            partials: Mutex::new(load_partials(&partial_dir)),
+            partial_dir,
+            storage_budget: Mutex::new(None),
         });
         let weak = Arc::downgrade(&drive);
         db.on_applied(Box::new(move |rows| {
@@ -1223,6 +1501,25 @@ impl Drive {
 
     pub fn blobs(&self) -> &BlobStore {
         &self.blobs
+    }
+
+    /// Content hashes named by file versions. A hash that cannot be read is left out.
+    pub fn archived_contents(&self) -> DriveResult<Vec<Hash>> {
+        let mut hashes = Vec::new();
+        for row in self
+            .db
+            .query("SELECT DISTINCT contentHash FROM drive_version", &[])?
+        {
+            let Some(value) = text(&row, "contentHash") else {
+                continue;
+            };
+            if let Ok(hash) = value.parse::<Hash>() {
+                hashes.push(hash);
+            }
+        }
+        hashes.sort();
+        hashes.dedup();
+        Ok(hashes)
     }
 
     fn want(&self, hash: Hash) {
@@ -1264,38 +1561,451 @@ impl Drive {
     /// The caller's effective role: ownership or sharing on the item or any
     /// ancestor folder, whichever is highest.
     pub fn role(&self, who: &Principal, id: &str) -> DriveResult<Option<Role>> {
-        let mut current = Some(self.item_row(id)?);
+        Ok(self.explain(who, id)?.role)
+    }
+
+    /// The same decision as [`Self::role`], with the grant that produced it.
+    pub fn explain(&self, who: &Principal, id: &str) -> DriveResult<AccessExplanation> {
+        self.explain_in(who, id, None, &[], &[])
+    }
+
+    /// An explanation the caller is allowed to see.
+    /// A hidden file and a missing file both say they were not found.
+    pub fn explain_visible(&self, who: &Principal, id: &str) -> DriveResult<AccessExplanation> {
+        let explanation = self.explain(who, id)?;
+        if Self::explanation_hides(&explanation) {
+            return Err(DriveError::NotFound);
+        }
+        Ok(explanation)
+    }
+
+    /// `also_stop` treats that folder as restricted for this decision only.
+    /// `extra_groups` and `skip_groups` change membership for this decision only.
+    fn explain_in(
+        &self,
+        who: &Principal,
+        id: &str,
+        also_stop: Option<&str>,
+        extra_groups: &[String],
+        skip_groups: &[String],
+    ) -> DriveResult<AccessExplanation> {
+        let _ = self.item_row(id)?;
+        let group_loops = self.looping_groups(&who.id)?;
         if who.admin {
-            return Ok(Some(Role::Owner));
+            return Ok(AccessExplanation {
+                role: Some(Role::Owner),
+                reason: AccessReason::Admin,
+                folder_chain_truncated: false,
+                group_loops,
+            });
         }
         let orgs = self.orgs(who)?;
-        let groups = self.group_ids(&who.id)?;
-        let now = iso_now();
-        let mut best = None;
-        for _ in 0..MAX_DEPTH {
-            let Some(row) = current.take() else { break };
-            let item = text(&row, "id").unwrap_or_default();
-            if text(&row, "ownerId").as_deref() == Some(who.id.as_str()) {
-                return Ok(Some(Role::Owner));
+        let mut groups = self.group_ids(&who.id)?;
+        groups.retain(|value| match value {
+            Value::Text(group) => !skip_groups.iter().any(|skip| skip == group),
+            _ => true,
+        });
+        for extra in extra_groups {
+            let present = groups
+                .iter()
+                .any(|value| matches!(value, Value::Text(group) if group == extra));
+            if !present && !skip_groups.iter().any(|skip| skip == extra) {
+                groups.push(Value::Text(extra.clone()));
             }
-            let mut params = vec![Value::Text(item), Value::Text(who.id.clone())];
-            let grant = principal_clause("", 2, &orgs, &groups, &mut params);
+        }
+        let now = iso_now();
+        let mut best: Option<GrantHit> = None;
+        let mut expired: Option<GrantHit> = None;
+        let mut restricted_wall: Option<(String, String)> = None;
+        let mut current = Some(self.item_row(id)?);
+        let mut truncated = false;
+        for depth in 0..MAX_DEPTH {
+            let Some(row) = current.take() else { break };
+            let item_id = text(&row, "id").unwrap_or_default();
+            let item_name = text(&row, "name").unwrap_or_default();
+            if text(&row, "ownerId").as_deref() == Some(who.id.as_str()) {
+                return Ok(AccessExplanation {
+                    role: Some(Role::Owner),
+                    reason: AccessReason::Owner { item_id, item_name },
+                    folder_chain_truncated: false,
+                    group_loops,
+                });
+            }
+            let mut params = vec![Value::Text(item_id.clone()), Value::Text(who.id.clone())];
+            let clause = principal_clause("", 2, &orgs, &groups, &mut params);
             let grants = self.db.query(
-                &format!("SELECT role, expiresAt FROM drive_acl WHERE itemId = ?1 AND ({grant})"),
+                &format!(
+                    "SELECT principalType, principalId, role, expiresAt FROM drive_acl WHERE itemId = ?1 AND ({clause})"
+                ),
                 &params,
             )?;
             for grant in grants {
-                if !grant_live(text(&grant, "expiresAt").as_deref(), &now) {
+                let Some(role) = text(&grant, "role").and_then(|r| Role::parse(&r)) else {
                     continue;
+                };
+                let hit = GrantHit {
+                    role,
+                    principal_type: text(&grant, "principalType").unwrap_or_default(),
+                    principal_id: text(&grant, "principalId").unwrap_or_default(),
+                    item_id: item_id.clone(),
+                    item_name: item_name.clone(),
+                    depth,
+                };
+                if grant_live(text(&grant, "expiresAt").as_deref(), &now) {
+                    best = Some(prefer_grant(best, hit));
+                } else {
+                    expired = Some(prefer_grant(expired, hit));
                 }
-                best = best.max(text(&grant, "role").and_then(|r| Role::parse(&r)));
+            }
+            if int(&row, "restricted") == 1 || also_stop == Some(item_id.as_str()) {
+                restricted_wall = Some((item_id, item_name));
+                break;
             }
             current = match text(&row, "parentId") {
                 Some(parent) => self.db.get("drive_item", &parent)?,
                 None => None,
             };
+            if depth + 1 == MAX_DEPTH && current.is_some() {
+                truncated = true;
+            }
         }
-        Ok(best)
+        if let Some(hit) = best {
+            let inherited = hit.item_id != id;
+            return Ok(AccessExplanation {
+                role: Some(hit.role),
+                reason: AccessReason::Grant {
+                    principal_type: hit.principal_type,
+                    principal_id: hit.principal_id,
+                    item_id: hit.item_id,
+                    item_name: hit.item_name,
+                    inherited,
+                },
+                folder_chain_truncated: truncated,
+                group_loops,
+            });
+        }
+        if let Some(hit) = expired {
+            return Ok(AccessExplanation {
+                role: None,
+                reason: AccessReason::Expired {
+                    principal_type: hit.principal_type,
+                    principal_id: hit.principal_id,
+                    item_id: hit.item_id,
+                },
+                folder_chain_truncated: truncated,
+                group_loops,
+            });
+        }
+        if let Some((item_id, mut item_name)) = restricted_wall {
+            let parent = self
+                .item_row(&item_id)
+                .ok()
+                .and_then(|row| text(&row, "parentId"));
+            let visible = parent
+                .as_deref()
+                .is_some_and(|parent| self.role(who, parent).ok().flatten().is_some());
+            if !visible {
+                item_name.clear();
+                return Ok(AccessExplanation {
+                    role: None,
+                    reason: AccessReason::Restricted {
+                        item_id: String::new(),
+                        item_name,
+                    },
+                    folder_chain_truncated: truncated,
+                    group_loops,
+                });
+            }
+            return Ok(AccessExplanation {
+                role: None,
+                reason: AccessReason::Restricted { item_id, item_name },
+                folder_chain_truncated: truncated,
+                group_loops,
+            });
+        }
+        Ok(AccessExplanation {
+            role: None,
+            reason: AccessReason::None,
+            folder_chain_truncated: truncated,
+            group_loops,
+        })
+    }
+
+    fn explanation_hides(explanation: &AccessExplanation) -> bool {
+        match &explanation.reason {
+            AccessReason::None => true,
+            AccessReason::Restricted { item_id, .. } if item_id.is_empty() => true,
+            _ => false,
+        }
+    }
+
+    /// Stop grants on folders above this one. Only a folder owner can set it.
+    pub fn set_restricted(&self, who: &Principal, id: &str, restricted: bool) -> DriveResult<()> {
+        self.require(who, id, Role::Owner)?;
+        let row = self.item_row(id)?;
+        if text(&row, "kind").as_deref() != Some("folder") {
+            return Err(DriveError::BadRequest(
+                "Only a folder can be restricted.".into(),
+            ));
+        }
+        self.db.transact(|tx| {
+            tx.upsert(
+                "drive_item",
+                id,
+                [("restricted", Value::Integer(if restricted { 1 } else { 0 }))],
+            )
+        })?;
+        Ok(())
+    }
+
+    /// Who would lose or keep a different role if this folder became restricted.
+    /// Nothing is written.
+    pub fn plan_restrict(&self, who: &Principal, id: &str) -> DriveResult<RestrictPlan> {
+        self.require(who, id, Role::Owner)?;
+        let row = self.item_row(id)?;
+        if text(&row, "kind").as_deref() != Some("folder") {
+            return Err(DriveError::BadRequest(
+                "Only a folder can be restricted.".into(),
+            ));
+        }
+        let folder_name = text(&row, "name").unwrap_or_default();
+        let items = self.subtree(id)?;
+        let mut changes = Vec::new();
+        for principal in self.users_above(id)? {
+            let person = Principal {
+                id: principal.clone(),
+                admin: false,
+            };
+            for (item_id, item_name) in &items {
+                let before = self.explain(&person, item_id)?.role;
+                let after = self.explain_in(&person, item_id, Some(id), &[], &[])?.role;
+                if before != after {
+                    changes.push(AccessChange {
+                        principal_id: principal.clone(),
+                        item_id: item_id.clone(),
+                        item_name: item_name.clone(),
+                        before,
+                        after,
+                    });
+                }
+            }
+        }
+        Ok(RestrictPlan {
+            folder_id: id.to_owned(),
+            folder_name: folder_name.clone(),
+            changes,
+            recovery: format!(
+                "Clear the restriction on {folder_name}. Grants stay, so access from the folder above returns."
+            ),
+        })
+    }
+
+    /// Who would gain or lose access if a person joined or left this group.
+    /// Nothing is written.
+    pub fn plan_member(
+        &self,
+        group_id: &str,
+        member_id: &str,
+        adding: bool,
+    ) -> DriveResult<MemberPlan> {
+        if member_id.trim().is_empty() {
+            return Err(DriveError::BadRequest("Name the person.".into()));
+        }
+        let group = self
+            .db
+            .get("directory_group", group_id)?
+            .ok_or(DriveError::NotFound)?;
+        let group_name = text(&group, "name").unwrap_or_default();
+        let grants = self.db.query(
+            "SELECT itemId FROM drive_acl WHERE principalType = 'group' AND principalId = ?1",
+            &[Value::Text(group_id.into())],
+        )?;
+        let mut items = Vec::new();
+        for grant in grants {
+            let Some(item_id) = text(&grant, "itemId") else {
+                continue;
+            };
+            for (id, name) in self.subtree(&item_id)? {
+                if items.iter().any(|(seen, _)| seen == &id) {
+                    continue;
+                }
+                items.push((id, name));
+            }
+        }
+        let as_group = self.db.get("directory_group", member_id)?.is_some();
+        let people = if as_group {
+            self.users_in_group(member_id)?
+        } else {
+            vec![member_id.to_owned()]
+        };
+        let mut changes = Vec::new();
+        for person_id in people {
+            let person = Principal {
+                id: person_id.clone(),
+                admin: false,
+            };
+            let (extra, skip) = if !as_group {
+                if adding {
+                    (vec![group_id.to_owned()], Vec::new())
+                } else {
+                    (Vec::new(), vec![group_id.to_owned()])
+                }
+            } else if adding {
+                (vec![group_id.to_owned()], Vec::new())
+            } else if self.belongs_without_edge(&person_id, group_id, member_id)? {
+                (Vec::new(), Vec::new())
+            } else {
+                (Vec::new(), vec![group_id.to_owned()])
+            };
+            for (item_id, item_name) in &items {
+                let before = self.explain(&person, item_id)?.role;
+                let after = self.explain_in(&person, item_id, None, &extra, &skip)?.role;
+                if before != after {
+                    changes.push(AccessChange {
+                        principal_id: person_id.clone(),
+                        item_id: item_id.clone(),
+                        item_name: item_name.clone(),
+                        before,
+                        after,
+                    });
+                }
+            }
+        }
+        Ok(MemberPlan {
+            group_id: group_id.to_owned(),
+            group_name,
+            changes,
+        })
+    }
+
+    /// Add or remove a person only when the access plan still matches.
+    /// A different plan writes nothing.
+    pub fn commit_member(
+        &self,
+        actor: &str,
+        group_id: &str,
+        member_id: &str,
+        adding: bool,
+        expected: &[AccessChange],
+    ) -> DriveResult<MemberPlan> {
+        let plan = self.plan_member(group_id, member_id, adding)?;
+        let same = plan.changes.len() == expected.len()
+            && plan.changes.iter().all(|change| {
+                expected.iter().any(|item| {
+                    item.item_id == change.item_id
+                        && item.before == change.before
+                        && item.after == change.after
+                })
+            });
+        if !same {
+            return Err(DriveError::BadRequest(
+                "The access plan changed. Review it again.".into(),
+            ));
+        }
+        let member_type = if self.db.get("directory_group", member_id)?.is_some() {
+            "group"
+        } else {
+            "user"
+        };
+        if adding {
+            self.add_member(actor, group_id, member_type, member_id)?;
+        } else {
+            self.remove_member(actor, group_id, member_type, member_id)?;
+        }
+        Ok(plan)
+    }
+
+    /// Record the impact, then restrict the folder. Grants are not deleted.
+    pub fn restrict_folder(&self, who: &Principal, id: &str) -> DriveResult<RestrictPlan> {
+        let plan = self.plan_restrict(who, id)?;
+        self.set_restricted(who, id, true)?;
+        Ok(plan)
+    }
+
+    /// Undo a restriction. Grants that were already on the folders stay.
+    pub fn restore_inheritance(&self, who: &Principal, id: &str) -> DriveResult<()> {
+        self.set_restricted(who, id, false)
+    }
+
+    fn subtree(&self, id: &str) -> DriveResult<Vec<(String, String)>> {
+        let mut out = Vec::new();
+        let mut queue = vec![id.to_owned()];
+        while let Some(current) = queue.pop() {
+            let row = self.item_row(&current)?;
+            out.push((current.clone(), text(&row, "name").unwrap_or_default()));
+            let children = self.db.query(
+                "SELECT id FROM drive_item WHERE parentId = ?1 AND trashed = 0",
+                &[Value::Text(current)],
+            )?;
+            for child in children {
+                if let Some(child_id) = text(&child, "id") {
+                    queue.push(child_id);
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    fn users_above(&self, folder_id: &str) -> DriveResult<Vec<String>> {
+        let mut users = Vec::new();
+        let mut current = text(&self.item_row(folder_id)?, "parentId");
+        for _ in 0..MAX_DEPTH {
+            let Some(parent) = current else { break };
+            let grants = self.db.query(
+                "SELECT principalType, principalId FROM drive_acl WHERE itemId = ?1",
+                &[Value::Text(parent.clone())],
+            )?;
+            for grant in grants {
+                let kind = text(&grant, "principalType").unwrap_or_default();
+                let principal = text(&grant, "principalId").unwrap_or_default();
+                if kind == "user" && !users.contains(&principal) {
+                    users.push(principal);
+                } else if kind == "group" {
+                    for person in self.people_in(&principal)? {
+                        if !users.contains(&person) {
+                            users.push(person);
+                        }
+                    }
+                } else if kind == "org" {
+                    for person in self.people_in_org(&principal)? {
+                        if !users.contains(&person) {
+                            users.push(person);
+                        }
+                    }
+                }
+            }
+            current = self
+                .db
+                .get("drive_item", &parent)?
+                .and_then(|row| text(&row, "parentId"));
+        }
+        Ok(users)
+    }
+
+    fn people_in_org(&self, org_id: &str) -> DriveResult<Vec<String>> {
+        if self.db.schema().table("member").is_none() {
+            return Ok(vec![]);
+        }
+        Ok(self
+            .db
+            .query(
+                "SELECT userId FROM member WHERE organizationId = ?1",
+                &[Value::Text(org_id.to_owned())],
+            )?
+            .into_iter()
+            .filter_map(|row| text(&row, "userId"))
+            .collect())
+    }
+
+    fn looping_groups(&self, user_id: &str) -> DriveResult<Vec<String>> {
+        let mut loops = Vec::new();
+        for value in self.group_ids(user_id)? {
+            let Value::Text(id) = value else { continue };
+            if self.group_has_loop(&id)? {
+                loops.push(id);
+            }
+        }
+        Ok(loops)
     }
 
     fn require(&self, who: &Principal, id: &str, needed: Role) -> DriveResult<Role> {
@@ -1685,8 +2395,162 @@ impl Drive {
             let role = self.role(who, id)?;
             return Err(DriveError::Conflict(Box::new(self.to_item(&row, role)?)));
         }
+        self.ensure_room(u64::try_from(bytes.len()).unwrap_or(u64::MAX))?;
         self.commit_bytes(id, &who.id, mime, bytes)?;
         self.get(who, id)
+    }
+
+    /// A blank value means there is no budget. A value that is not a whole number is not repeated.
+    pub fn storage_budget_from(raw: &str) -> DriveResult<Option<u64>> {
+        if raw.trim().is_empty() {
+            return Ok(None);
+        }
+        raw.trim().parse::<u64>().map(Some).map_err(|_| {
+            DriveError::BadRequest("The storage budget is not a whole number of bytes.".into())
+        })
+    }
+
+    pub fn set_storage_budget(&self, budget: Option<u64>) {
+        *self.storage_budget.lock().expect("storage budget") = budget;
+    }
+
+    fn ensure_room(&self, incoming: u64) -> DriveResult<()> {
+        let budget = *self.storage_budget.lock().expect("storage budget");
+        let Some(budget) = budget else {
+            return Ok(());
+        };
+        let stored = self
+            .blobs
+            .stored_bytes()
+            .map_err(|error| DriveError::Other(error))?;
+        if stored.saturating_add(incoming) > budget {
+            return Err(DriveError::NoRoom);
+        }
+        Ok(())
+    }
+
+    /// `bytes start-end/total`, with `end` inclusive. A bad header is none.
+    pub fn content_range(header: &str) -> Option<(usize, usize, usize)> {
+        let rest = header.trim().strip_prefix("bytes ")?;
+        let (range, total_text) = rest.split_once('/')?;
+        let (start_text, end_text) = range.split_once('-')?;
+        let start = start_text.parse::<usize>().ok()?;
+        let end = end_text.parse::<usize>().ok()?;
+        let total = total_text.parse::<usize>().ok()?;
+        if total == 0 {
+            return (start == 0 && end == 0).then_some((0, 0, 0));
+        }
+        if end < start || end >= total {
+            return None;
+        }
+        Some((start, end, total))
+    }
+
+    /// Store one slice of a file. A finished slice becomes a version.
+    /// A slice that does not continue the saved part is refused, and that
+    /// part stays. The error does not include the slice.
+    pub fn write_span(
+        &self,
+        who: &Principal,
+        id: &str,
+        if_match: Option<&str>,
+        mime: Option<&str>,
+        start: usize,
+        total: usize,
+        chunk: &[u8],
+    ) -> DriveResult<Option<Item>> {
+        let allowed = match self.role(who, id)? {
+            Some(role) if role >= Role::Editor => true,
+            _ => false,
+        };
+        if !allowed {
+            return Err(DriveError::Forbidden);
+        }
+        let row = self.item_row(id)?;
+        if text(&row, "kind").as_deref() != Some("file") {
+            return Err(DriveError::BadRequest("Folders have no content.".into()));
+        }
+        self.ensure_room(u64::try_from(total).unwrap_or(u64::MAX))?;
+        let head = text(&row, "headVersionId");
+        if let Some(expected) = if_match.map(|m| m.trim_matches('"'))
+            && expected != "*"
+            && Some(expected) != head.as_deref()
+        {
+            let role = self.role(who, id)?;
+            return Err(DriveError::Conflict(Box::new(self.to_item(&row, role)?)));
+        }
+        if total > 256 * 1024 * 1024 || start > total || chunk.len() > total - start {
+            return Err(DriveError::BadRequest(
+                "That upload does not continue the saved part.".into(),
+            ));
+        }
+        if total == 0 {
+            self.commit_bytes(id, &who.id, mime, &[])?;
+            return Ok(Some(self.get(who, id)?));
+        }
+        let finished = {
+            let mut partials = self.partials.lock().expect("uploads");
+            if start == 0 {
+                partials.insert(
+                    id.to_owned(),
+                    OpenUpload {
+                        total,
+                        bytes: chunk.to_vec(),
+                    },
+                );
+            } else {
+                let Some(entry) = partials.get_mut(id) else {
+                    return Err(DriveError::BadRequest(
+                        "That upload does not continue the saved part.".into(),
+                    ));
+                };
+                if entry.total != total || entry.bytes.len() != start {
+                    return Err(DriveError::BadRequest(
+                        "That upload does not continue the saved part.".into(),
+                    ));
+                }
+                entry.bytes.extend_from_slice(chunk);
+            }
+            let entry = partials.get(id).expect("upload");
+            if entry.bytes.len() < entry.total {
+                let copy = OpenUpload {
+                    total: entry.total,
+                    bytes: entry.bytes.clone(),
+                };
+                drop(partials);
+                self.store_partial(id, &copy);
+                return Ok(None);
+            }
+            partials.remove(id).expect("upload").bytes
+        };
+        self.clear_partial_file(id);
+        self.commit_bytes(id, &who.id, mime, &finished)?;
+        Ok(Some(self.get(who, id)?))
+    }
+
+    fn store_partial(&self, id: &str, upload: &OpenUpload) {
+        let Some(path) = self.partial_path(id) else {
+            return;
+        };
+        let mut bytes = (upload.total as u64).to_le_bytes().to_vec();
+        bytes.extend_from_slice(&upload.bytes);
+        let _ = fs::write(path, bytes);
+    }
+
+    fn clear_partial_file(&self, id: &str) {
+        if let Some(path) = self.partial_path(id) {
+            let _ = fs::remove_file(path);
+        }
+    }
+
+    fn partial_path(&self, id: &str) -> Option<PathBuf> {
+        if id.is_empty()
+            || id.len() > 80
+            || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+        {
+            return None;
+        }
+        Some(self.partial_dir.join(id))
     }
 
     fn commit_bytes(
@@ -2434,6 +3298,7 @@ impl Drive {
             .map(|(_, beat)| Presence {
                 name: beat.name.clone(),
                 editing: beat.editing,
+                idle: presence_idle(beat.at, now),
             })
             .collect();
         if people.is_empty() {

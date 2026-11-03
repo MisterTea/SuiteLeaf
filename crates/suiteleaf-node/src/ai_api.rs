@@ -98,9 +98,9 @@ async fn completions(
         .get(header::CONTENT_TYPE)
         .cloned()
         .unwrap_or_else(|| header::HeaderValue::from_static("text/event-stream"));
-    let stream = upstream.bytes_stream().map_err(|error| {
-        std::io::Error::other(error)
-    });
+    let stream = upstream
+        .bytes_stream()
+        .map_err(|error| std::io::Error::other(error));
     Response::builder()
         .status(status)
         .header(header::CONTENT_TYPE, content_type)
@@ -109,7 +109,12 @@ async fn completions(
         .unwrap_or_else(|_| StatusCode::BAD_GATEWAY.into_response())
 }
 
-async fn proxy_local(state: &AppState, path: &str, headers: HeaderMap, body: axum::body::Bytes) -> Response {
+async fn proxy_local(
+    state: &AppState,
+    path: &str,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
     if body.len() > 4_000_000 {
         return StatusCode::PAYLOAD_TOO_LARGE.into_response();
     }

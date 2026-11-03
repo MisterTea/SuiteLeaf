@@ -4,6 +4,10 @@ const PLACE = "suiteleaf.ai.place";
 const MODEL = "suiteleaf.ai.model";
 const ENDPOINT = "suiteleaf.ai.endpoint";
 const API_KEY = "suiteleaf.ai.apiKey";
+const ENABLED = "suiteleaf.ai.enabled";
+const LOCAL_ONLY = "suiteleaf.ai.localOnly";
+const SEND_DOCUMENT = "suiteleaf.ai.sendDocument";
+const REVIEW_EDITS = "suiteleaf.ai.reviewEdits";
 
 export const DEFAULT_MODEL = "frognano-4b";
 
@@ -11,6 +15,12 @@ export const DEFAULT_MODEL = "frognano-4b";
 export type AiPlace = "server" | "remote";
 
 export interface AiPreferences {
+  /** The assistant stays off until this is turned on. Editing does not need it. */
+  enabled: boolean;
+  /**
+   * When true, a remote endpoint is refused. Choosing that endpoint turns this off.
+   */
+  localOnly: boolean;
   place: AiPlace;
   /** Model id sent to a server or a remote endpoint. FrogNano unless the user chooses another. */
   model: string;
@@ -18,6 +28,10 @@ export interface AiPreferences {
   endpoint: string;
   /** Optional bearer token for the remote endpoint. Kept in this browser. */
   apiKey: string;
+  /** When true, a remote endpoint may receive the open document. */
+  sendDocument: boolean;
+  /** When true, document edits wait until Accept. Other tools still run. */
+  reviewEdits: boolean;
 }
 
 const listeners = new Set<() => void>();
@@ -35,10 +49,14 @@ function load(): AiPreferences {
   const place = stored(PLACE);
   const model = stored(MODEL).trim();
   return {
+    enabled: stored(ENABLED) === "1",
+    localOnly: stored(LOCAL_ONLY) !== "0",
     place: place === "remote" ? "remote" : "server",
     model: model || DEFAULT_MODEL,
     endpoint: stored(ENDPOINT).trim(),
     apiKey: stored(API_KEY),
+    sendDocument: stored(SEND_DOCUMENT) === "1",
+    reviewEdits: stored(REVIEW_EDITS) === "1",
   };
 }
 
@@ -61,11 +79,18 @@ export function writeAiPreferences(next: Partial<AiPreferences>) {
   snapshot = { ...snapshot, ...next };
   if (next.model !== undefined) snapshot.model = next.model.trim();
   if (next.endpoint !== undefined) snapshot.endpoint = next.endpoint.trim();
-  if (next.place !== undefined) snapshot.place = next.place === "remote" ? "remote" : "server";
+  if (next.place !== undefined) {
+    snapshot.place = next.place === "remote" ? "remote" : "server";
+    if (next.localOnly === undefined) snapshot.localOnly = snapshot.place !== "remote";
+  }
   try {
+    localStorage.setItem(ENABLED, snapshot.enabled ? "1" : "0");
+    localStorage.setItem(LOCAL_ONLY, snapshot.localOnly ? "1" : "0");
     localStorage.setItem(PLACE, snapshot.place);
     localStorage.setItem(MODEL, snapshot.model || DEFAULT_MODEL);
     localStorage.setItem(ENDPOINT, snapshot.endpoint);
+    localStorage.setItem(SEND_DOCUMENT, snapshot.sendDocument ? "1" : "0");
+    localStorage.setItem(REVIEW_EDITS, snapshot.reviewEdits ? "1" : "0");
     if (snapshot.apiKey) localStorage.setItem(API_KEY, snapshot.apiKey);
     else localStorage.removeItem(API_KEY);
   } catch {

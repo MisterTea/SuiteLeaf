@@ -1,0 +1,5 @@
+# Waterfall chart
+
+`waterfallSteps` turns changes into running bars. Dues `40`, Compost `-15`, and Paths `10` end at `35`. Dues rises from 0 to 40, Compost falls from 40 to 25, and Paths rises from 25 to 35. A final Total bar runs from 0 to 35. A row already named Total is not added again as a change. If that stated total is not `35`, the result says `The stated total is 99. The changes add to 35.`
+
+Each bar is labeled with its number: `40`, `-15`, `10`, and the total `35`. The category name is not part of that label. A non-finite change is labeled `0`. A change that is text, including `secret-value`, is left out instead of added as zero. Dues `40` and Paths `10` then end at `50`, and the note is `1 change was not a number.` That word is not in the bars. The waterfall chart shows that note. The spreadsheet chart type Waterfall draws those floating bars and those numbers. The chart panel was not opened in the browser. Saving the workbook and opening it again keeps the type `waterfall`. An Excel export writes the same chart as a column chart, `barChart`, because this export does not write a native Excel waterfall. The changes passed in are not modified.

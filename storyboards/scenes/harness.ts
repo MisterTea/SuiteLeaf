@@ -77,6 +77,7 @@ function assistantScript(baseURL: string | undefined) {
   return `(() => {
     localStorage.setItem("suiteleaf.ai.modelHost", ${JSON.stringify(models)});
     localStorage.setItem("suiteleaf.ai.model", ${JSON.stringify(model)});
+    localStorage.setItem("suiteleaf.ai.enabled", "1");
     ${thinkingScript}
     if (${JSON.stringify(device)} === "auto") localStorage.removeItem("suiteleaf.ai.device");
     else localStorage.setItem("suiteleaf.ai.device", ${JSON.stringify(device)});

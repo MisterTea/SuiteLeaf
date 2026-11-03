@@ -1,5 +1,6 @@
 import type { AiGenerateEvent, AiGenerateRequest, AiModelId, AiStatus } from "@suiteleaf/core/ai";
 import { AI_MODELS } from "@suiteleaf/core/ai";
+import { cappedTokens, promptHostAllowed, remotePrompt } from "./policy";
 
 export interface CompletionTarget {
   /** Base URL (`http://host:8080/v1`) or the completions URL itself. */
@@ -11,6 +12,12 @@ export interface CompletionTarget {
   authorization?: () => Promise<string | undefined>;
   /** Ask the server to download a built-in model before the first reply. */
   prepare?: boolean;
+  /** When set, a host other than this computer is not fetched. */
+  localOnly?: boolean;
+  /** Organization cap for `max_tokens`. */
+  maxTokens?: number;
+  /** False holds the document. Missing means this call is not a remote document send. */
+  sendDocument?: boolean;
 }
 
 /** `http://host:8080/v1` and `http://host:8080` both address `/v1/completions`. */
@@ -131,8 +138,14 @@ export function openAiCompletionModel(target: CompletionTarget) {
       if (target.prepare) {
         const display = target.model in AI_MODELS ? AI_MODELS[target.model as AiModelId].name : target.model;
         set({ state: "loading", backend: "remote", modelId: knownId(target.model), model: display, progress: 0, message: `Preparing ${display}` });
+        const preparing = loadUrl(target.endpoint);
+        if (!promptHostAllowed(preparing, target.localOnly === true)) {
+          const error: AiStatus = { state: "error", backend: "remote", message: "Document text stays here." };
+          set(error);
+          return error;
+        }
         try {
-          const response = await fetch(loadUrl(target.endpoint), {
+          const response = await fetch(preparing, {
             method: "POST",
             headers,
             body: JSON.stringify({ model: target.model }),
@@ -217,6 +230,17 @@ async function streamCompletion(
     onEvent({ type: "error", message: "Sign in to use the assistant on this server." });
     return;
   }
+  if (!promptHostAllowed(url, target.localOnly === true)) {
+    onEvent({ type: "error", message: "Document text stays here." });
+    return;
+  }
+  if (target.sendDocument === false) {
+    const held = remotePrompt(request.prompt, false);
+    if ("error" in held) {
+      onEvent({ type: "error", message: held.error });
+      return;
+    }
+  }
   let response: Response;
   try {
     response = await fetch(url, {
@@ -226,7 +250,7 @@ async function streamCompletion(
       body: JSON.stringify({
         model: target.model,
         prompt: request.prompt,
-        max_tokens: request.maxTokens,
+        max_tokens: cappedTokens(request.maxTokens, target.maxTokens ?? null),
         temperature: request.temperature,
         top_p: request.topP,
         stop: request.stop.length ? request.stop : undefined,

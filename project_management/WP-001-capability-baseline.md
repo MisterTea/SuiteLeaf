@@ -2,12 +2,12 @@
 id: "WP-001"
 title: "Capability inventory and parity release gates"
 type: "work_package"
-status: "ready"
+status: "in_progress"
 priority: "P0"
 phase: 1
 area: "quality"
 created: "2026-10-29"
-updated: "2026-10-29"
+updated: "2026-10-30"
 owner: "unassigned"
 blocked: false
 blocked_on: []
@@ -62,3 +62,29 @@ Do not promise a percentage of total Office feature parity: there is no defined 
 ## Research and related context
 
 Source IDs refer to [SOURCES.md](SOURCES.md): `S01`, `S02`, `S03`. External complaints motivate requirements; they are not measured prevalence or proof of current competitor defects.
+
+# Progress
+
+2026-10-30: In progress. Added a machine-readable capability catalog in `packages/core/src/capabilities/` with parity tiers (everyday editor, professional desktop, enterprise workspace), statuses, platforms, modes, UI entry points, formats, limits, evidence, seven representative workflows, and the four phase release gates. `npm run check:capabilities` validates the catalog and fails if that directory is under 90% statements, branches, functions, or lines. The check on this date passed at 100% statements, branches, functions, and lines for `packages/core/src/capabilities`. No capability is `verified`. A combined vitest run of the catalog test plus `tests/json-data.test.ts`, `tests/slide-editing.test.ts`, and `tests/sheet-links.test.ts` exited 0 (4 files, 26 tests). Those three files are baseline rows with scoped notes. They are not painted-canvas or full-workflow passes. `docs/capabilities.md` is the update procedure. `npm run test:coverage` is still the whole-suite command and does not yet fail the build on a repository-wide threshold.
+
+Still open for this package: record a dated full-suite coverage measurement, and attach a passing test to each advertised capability before any row becomes `verified`. The 2026-10-31 browser pass below is the workflow note; it does not verify a catalog row.
+
+2026-10-31: independent backup and managed updates are `partial`, not `absent`. The backup evidence is the Rust test that copies issuer `https://idp.example`, audience `suiteleaf`, and an idle time of 1800 seconds, and leaves out the client secret. The update evidence is `npx vitest run tests/updates.test.ts` (9 tests). Neither row is `verified`. The release report now has 6 passes and the remaining evidence stays inconclusive. `npm run check:capabilities` passed at 100% statements, branches, functions, and lines for `packages/core/src/capabilities`. 2026-10-31: one workflow per editor was walked in the browser at `http://127.0.0.1:5174/` (Vite, hash routes). Document: New document opened an editor titled Untitled document; typing into Document content produced “North beds”; Back to files listed the file; reopening showed “North beds” again. Spreadsheet: New spreadsheet opened Untitled spreadsheet, sheet tab Sheet1, name box B5 after a click on the painted grid, and the file appeared in the list. Keystrokes and the formula bar did not show a cell value, so no cell entry is claimed. Presentation: New presentation opened Untitled presentation; the title field accepted “North beds”; the slide list read “Slide 1: North beds”; leaving and reopening kept that title. The status line read “Saved on this device.” No capability is `verified`. A dated full-suite coverage measurement is still open.
+
+2026-10-31, later: the disaster-recovery workflow no longer says backup restore is absent. The note says a clean database can be restored from a local archive, that restore does not start a node, and it is not a pass. Independent backup stays `partial`. `npx vitest run tests/capabilities/catalog.test.ts` passed. `npm run check:capabilities` was not re-run for this note. No capability is `verified`. A dated full-suite coverage measurement is still open.
+
+2026-11-01: `npx vitest run --coverage` passed 1805 tests in 325 files. The totals were 71.56% lines (28303 of 39547), 68.49% statements (32212 of 47030), 63.85% functions (5581 of 8740), and 61.49% branches (24454 of 39764). That is below 90%. The command does not fail the build on that threshold. The first run timed out on `keeps a picture that fills a slide group` at 5 seconds while coverage was on, because that test also reads `datasets/napierone/files/pptx/0153-pptx.pptx` (2.7 MB). The timeout for that test is now 60 seconds, and the second run passed. This measurement is the Vitest suite, not the Rust tests. No capability is `verified`.
+
+2026-11-01: employee departure stays inconclusive. A device named `secret-value` can be signed out in the note, and that name is not in the note. One session can be asked to sign in again. The account is not removed. Files this person owns are not given to someone else. The Admin page shows that list. `npx vitest run tests/departure-checklist.test.ts tests/ui/departure-note.test.tsx tests/capabilities/catalog.test.ts` passed (10 tests). The Admin page was not opened. This is not a pass. No capability is `verified`.
+
+2026-11-01: removing an account can give that person's files to someone else. Sam's Beds and Paths become Priya's. Priya's Notes stays Priya's. Sam is left with no files. Someone who is not an administrator cannot do this. An empty new owner says `Choose a person to own this file.` and does not move Beds. That sentence does not contain `secret-value`. The departure review still does not remove the account or move files. `cargo test -p suitedrive --test directory handing_over_every_owned_file_leaves_someone_elses_file` passed. `npx vitest run tests/departure-checklist.test.ts tests/ui/departure-note.test.tsx tests/capabilities/catalog.test.ts` passed (10 tests). The Admin page was not opened. This is not a pass. No capability is `verified`.
+
+2026-11-01: the offline-trip workflow stays inconclusive. An edit titled `My edit` stays as a recovery draft when the file on disk was changed to `External edit`. Reloading reads `External edit`. Opening the store again still has the draft. `npx vitest run tests/store.test.ts -t "recovery draft"` passed (2 tests). `npx vitest run tests/capabilities/catalog.test.ts` passed (8 tests). The desktop app was not started. This is not a pass. No capability is `verified`.
+
+2026-11-01: the chart capability lists combo charts with bar, line, pie, and scatter. Area, radar, and waterfall stay absent. The status stays `implemented`. `npx vitest run tests/capabilities/catalog.test.ts` passed (8 tests). The spreadsheet was not opened. No capability is `verified`.
+
+2026-11-01: the chart capability also lists area, stacked, waterfall, and histogram charts, which the spreadsheet already draws. Radar charts stay absent. The status stays `implemented`. `npx vitest run tests/capabilities/catalog.test.ts` passed (8 tests). The spreadsheet was not opened. No capability is `verified`.
+
+2026-11-01: the sharing capability no longer says access is unexplained before a permission change. Share changes, folder moves, and group membership have a preview. The remaining limit is that a sharing-policy migration does not produce an impact report. Sharing stays `partial`. `npx vitest run tests/capabilities/catalog.test.ts` passed (8 tests). The share dialog and the Admin page were not opened. No capability is `verified`.
+
+2026-11-01: the sharing capability now records an editor-to-viewer migration for files the owner has. The remaining limit is that this is not an organization-wide policy and the Admin page does not run it. Sharing stays `partial`. `npx vitest run tests/capabilities/catalog.test.ts` passed (8 tests). The Admin page was not opened. No capability is `verified`.

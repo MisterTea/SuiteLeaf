@@ -45,7 +45,7 @@ it("hides the slide number on a title layout and keeps it on a content layout", 
   );
   zip.file(
     "ppt/slides/slide2.xml",
-    `<p:sld><p:cSld><p:spTree/></p:cSld></p:sld>`,
+    `<p:sld><p:cSld><p:spTree>${number}</p:spTree></p:cSld></p:sld>`,
   );
   zip.file(
     "ppt/slides/_rels/slide2.xml.rels",
@@ -95,6 +95,16 @@ it("paints an OLE preview from the VML drawing when the frame has no picture", a
       '<v:shape o:spid="_x0000_s1026"><v:imagedata o:relid="rId1"/></v:shape>',
     ),
   ).toEqual([{ spid: "_x0000_s1026", relId: "rId1" }]);
+  expect(
+    vmlOleImageRels(
+      `<v:shape id="_x0000_s41985" type="#_x0000_t75" style='position:absolute;left:84pt;top:54pt;width:552pt;height:342pt'><v:imagedata o:relid="rId1" o:title=""/></v:shape>`,
+    ),
+  ).toEqual([{ spid: "_x0000_s41985", relId: "rId1" }]);
+  expect(
+    vmlOleImageRels(
+      '<v:shape id="Object" o:spid="_x0000_s9"><v:imagedata o:relid=\'rId2\'/></v:shape>',
+    ),
+  ).toEqual([{ spid: "_x0000_s9", relId: "rId2" }]);
   const zip = new JSZip();
   zip.file(
     "[Content_Types].xml",

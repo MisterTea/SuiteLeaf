@@ -10,11 +10,15 @@ import {
   FADE_ON_CLICK,
   applyFadeOnClick,
   applySlideAnimation,
+  animationEnterMs,
+  audienceClass,
   audiencePhase,
+  clickSteps,
   fadeOnClickIds,
   fadeOnClickReason,
   fadesOnClick,
   moveShowCursor,
+  shownSlideIndex,
   nextCursor,
   prevCursor,
   startOfShow,
@@ -136,5 +140,81 @@ describe("fade in on click", () => {
     ]);
     expect(moveShowCursor(startOfShow(), "next", () => ids, 2).slideIndex).toBe(0);
     expect(audiencePhase({ id: "chart" }, 0, ids, null)).toBe("plain");
+  });
+
+  it("reveals two objects that share an order on one click", () => {
+    const elements = [
+      { id: "title", animation: FADE_ON_CLICK, animationOrder: 1 },
+      { id: "photo", animation: "fly-on-click" as const, animationOrder: 1 },
+      { id: "note" },
+    ];
+    const ids = fadeOnClickIds(elements);
+    const steps = clickSteps(elements);
+    expect(steps).toEqual([2]);
+    const shown = nextCursor(startOfShow(), ids, 1, steps);
+    expect(shown).toEqual({ slideIndex: 0, revealed: 2, enteringId: "title" });
+    expect(audiencePhase({ id: "photo", animation: "fly-on-click" }, shown.revealed, ids, shown.enteringId)).toBe(
+      "shown",
+    );
+    expect(audiencePhase({ id: "note" }, shown.revealed, ids, shown.enteringId)).toBe("plain");
+    const back = prevCursor(shown, () => ids, () => steps);
+    expect(back.revealed).toBe(0);
+    expect(JSON.stringify(shown)).not.toContain("secret-value");
+  });
+
+  it("starts the next object after the previous entrance on the same click", () => {
+    const elements = [
+      { id: "title", animation: FADE_ON_CLICK, animationOrder: 1 },
+      { id: "photo", animation: "fly-on-click" as const, animationOrder: 2, animationTrigger: "after" },
+      { id: "note" },
+    ];
+    const ids = fadeOnClickIds(elements);
+    const steps = clickSteps(elements);
+    expect(steps).toEqual([2]);
+    const shown = nextCursor(startOfShow(), ids, 1, steps);
+    expect(shown).toEqual({ slideIndex: 0, revealed: 2, enteringId: "title" });
+    expect(audiencePhase(elements[1], shown.revealed, ids, shown.enteringId)).toBe("after");
+    expect(audienceClass("after", "fly-on-click")).toContain("animation-after-previous");
+    expect(audiencePhase({ id: "note" }, shown.revealed, ids, shown.enteringId)).toBe("plain");
+    expect(JSON.stringify(shown)).not.toContain("secret-value");
+  });
+
+  it("uses a stored entrance length and keeps the default when the length is unusable", () => {
+    expect(animationEnterMs(undefined)).toBe(600);
+    expect(animationEnterMs(1500)).toBe(1500);
+    expect(animationEnterMs(9000)).toBe(5000);
+    expect(animationEnterMs(Number.NaN)).toBe(600);
+    expect(animationEnterMs(-4)).toBe(0);
+    const file = createFile("slide", "Talk") as SlideFile;
+    const slideId = file.content.slideOrder[0];
+    file.content.slides[slideId].elements.push({
+      id: "title",
+      type: "text",
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 40,
+      content: "Welcome",
+      animation: "fade-on-click",
+      animationDuration: 1500,
+    });
+    const opened = parseFile(serializeFile(file));
+    if (opened.kind !== "slide") throw new Error("Expected slides");
+    const element = opened.content.slides[slideId].elements.find((item) => item.id === "title");
+    expect(element?.animationDuration).toBe(1500);
+    expect(animationEnterMs(element?.animationDuration)).toBe(1500);
+    expect(JSON.stringify(element)).not.toContain("secret-value");
+  });
+
+  it("skips a hidden slide while the show moves", () => {
+    const shown = (index: number) => index !== 1;
+    expect(shownSlideIndex(1, 3, 1, shown)).toBe(2);
+    const next = moveShowCursor(startOfShow(0), "next", () => [], 3, () => [], shown);
+    expect(next.slideIndex).toBe(2);
+    const back = moveShowCursor(next, "prev", () => [], 3, () => [], shown);
+    expect(back.slideIndex).toBe(0);
+    const home = moveShowCursor(next, "home", () => [], 3, () => [], (index) => index !== 0);
+    expect(home.slideIndex).toBe(1);
+    expect(JSON.stringify({ next, back, home })).not.toContain("secret-value");
   });
 });

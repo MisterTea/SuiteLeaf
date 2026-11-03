@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { createFile, parseFile, serializeFile } from "../packages/core/src";
 import {
   applySuggestionCase,
   boxesOverlap,
   changeAllCells,
   changeAllValues,
   collectSheetIssues,
+  issuesFromCells,
   collectSlideIssues,
   misspellingsInText,
   plainCellText,
@@ -113,6 +115,13 @@ describe("grid spelling", () => {
     expect(next.slides.s.elements[1].content).toBe("Update");
     expect(collectSlideIssues(next, none, []).map((issue) => issue.word)).toEqual([]);
     expect(collectSlideIssues(deck, none, []).map((issue) => issue.word)).toEqual(["recieve"]);
+    expect(collectSlideIssues(deck, none, [], "es")).toEqual([]);
+    const file = createFile("slide", "Pitch");
+    if (file.kind !== "slide") throw new Error("expected slides");
+    file.content.proofingLanguage = "es";
+    const reopened = parseFile(serializeFile(file));
+    if (reopened.kind !== "slide") throw new Error("expected slides");
+    expect(reopened.content.proofingLanguage).toBe("es");
   });
 
   it("places the underline under the misspelled word, on the line it wraps onto", () => {
@@ -235,5 +244,23 @@ describe("grid spelling", () => {
     const values = changeAllValues(cells, () => "We will recieve the grant", "receive");
     expect(values.get("s1")?.[1]?.[1]).toBe("We will receive the grant");
     expect(changeAllValues(cells, () => "already receive", "receive").size).toBe(0);
+  });
+
+  it("does not check a Spanish cell against the English dictionary", () => {
+    const cells = [
+      {
+        sheetId: "s",
+        sheetName: "Beds",
+        row: 0,
+        column: 0,
+        text: "reciev",
+      },
+    ];
+    expect(issuesFromCells(cells, none, [], "es")).toEqual([]);
+    expect(issuesFromCells(cells, none, []).map((issue) => issue.word)).toEqual(["reciev"]);
+    expect(misspellingsInText("reciev", none, [], "es")).toEqual([]);
+    expect(
+      misspellingsInText("reciev", { added: [], flagged: ["reciev"] }, [], "es").map((hit) => hit.word),
+    ).toEqual(["reciev"]);
   });
 });

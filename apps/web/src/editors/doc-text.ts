@@ -5,7 +5,7 @@ function text(node: JsonNode): string {
   if (node.type === "text") return node.text ?? "";
   if (node.type === "equation") return String(node.attrs?.plain ?? "");
   if (node.type === "linkedChart")
-    return chartPlainLines(node.attrs).join(newline);
+    return chartPlainLines(node.attrs, node.attrs?.viewerAllowed !== false).join(newline);
   if (node.type === "tab") return "\t";
   if (node.type === "hardBreak") return newline;
   if (node.type === "image" || node.type === "inlineImage") return "";

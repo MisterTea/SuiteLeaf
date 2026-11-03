@@ -3,6 +3,7 @@ import { createFile, parseFile, serializeFile } from "../packages/core/src";
 
 import {
   PRINT_MAX_CELLS,
+  chartsForPrint,
   escapePrint,
   mergePrint,
   paginatePrinted,
@@ -141,4 +142,31 @@ test("print settings survive the native file round trip and can be cleared", () 
   const cleared: PrintContent = saved.content;
   writeSheetPrint(cleared, id, { breaksAbove: [], repeatFirstRow: false });
   expect(cleared.print).toBeUndefined();
+});
+
+test("a printed sheet names its chart and leaves the cell value out", () => {
+  const charts = chartsForPrint(
+    [
+      {
+        sheetId: "s1",
+        title: "Dues",
+        type: "bar",
+        excel: {
+          series: [{ name: "Dues", axis: 1, color: "#112233" }],
+          legend: "bottom",
+          biff: { categories: ["North"] },
+        },
+      },
+      { sheetId: "other", title: "secret-value", type: "line" },
+    ],
+    "s1",
+  );
+  const html = printMarkup("Budget", "Sheet", [{ rows: [] }], false, charts);
+  expect(html).toContain("Bar chart Dues.");
+  expect(html).toContain("Series Dues.");
+  expect(html).toContain("Categories North.");
+  expect(html).toContain("Legend bottom.");
+  expect(html).not.toContain("#112233");
+  expect(html).not.toContain("secret-value");
+  expect(html).not.toContain("40");
 });

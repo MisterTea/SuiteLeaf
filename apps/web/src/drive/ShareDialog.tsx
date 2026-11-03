@@ -9,6 +9,8 @@ import {
   type ItemAccess,
 } from "../node-client";
 import { ExpiryCalendar } from "./ExpiryCalendar";
+import { accessExplanationText } from "./access-explanation";
+import { shareChangePreview } from "./share-change";
 import { endedPhrase, untilPhrase } from "./share-expiry";
 import {
   GRANT_ROLES,
@@ -151,7 +153,7 @@ function RoleMenu({
 
 /**
  * Share a SuiteDrive file or folder with people who have accounts on this
- * server. Changes save as soon as a role is chosen; there is no separate Save.
+ * server. A role change waits until the access preview is applied.
  */
 export function ShareDialog({
   itemId,
@@ -168,6 +170,7 @@ export function ShareDialog({
   const [target, setTarget] = useState<Target>({ id: itemId, name: itemName });
   const [back, setBack] = useState<Target | null>(null);
   const [access, setAccess] = useState<ItemAccess | null>(null);
+  const [reason, setReason] = useState("");
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [matches, setMatches] = useState<AccountProfile[]>([]);
@@ -177,6 +180,11 @@ export function ShareDialog({
   const [grantRole, setGrantRole] = useState<GrantRole>(defaultGrantRole(kind));
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const [pending, setPending] = useState<{
+    note: string;
+    said: string;
+    run: () => Promise<void>;
+  } | null>(null);
   const [undo, setUndo] = useState<{
     person: AccessGrant;
     until: number;
@@ -193,8 +201,10 @@ export function ShareDialog({
     const n = ++listRef.current;
     try {
       const next = await drive.access(id);
+      const explained = await drive.explanation(id).catch(() => null);
       if (n === listRef.current) {
         setAccess(next);
+        setReason(explained ? accessExplanationText(explained) : "");
         setError("");
       }
     } catch (e) {
@@ -288,26 +298,46 @@ export function ShareDialog({
     }
   };
 
+  const stage = (
+    preview: { name: string; fromRole: string | null; toRole: string | null },
+    run: () => Promise<void>,
+    said: string,
+  ) => {
+    const next = shareChangePreview(preview);
+    if (!next.changes) {
+      setPending(null);
+      setNotice(next.note);
+      return;
+    }
+    setNotice("");
+    setPending({ note: next.note, said, run });
+  };
+
   const grant = () => {
     if (!picked) return;
     const person = picked;
     const role = grantRole;
-    void apply(async () => {
-      await drive.share(
-        target.id,
-        person.id,
-        role,
-        person.kind === "group" ? "group" : "user",
-      );
-      setPicked(null);
-      setQuery("");
-      setGrantRole(defaultRole);
-    }, `${givenName(person)} can now ${roleVerb(role)}`);
+    stage(
+      { name: givenName(person), fromRole: null, toRole: role },
+      async () => {
+        await drive.share(
+          target.id,
+          person.id,
+          role,
+          person.kind === "group" ? "group" : "user",
+        );
+        setPicked(null);
+        setQuery("");
+        setGrantRole(defaultRole);
+      },
+      `${givenName(person)} can now ${roleVerb(role)}`,
+    );
   };
 
   const changeRole = (person: AccessGrant, role: GrantRole) => {
     const name = givenName(person);
-    void apply(
+    stage(
+      { name, fromRole: person.role, toRole: role },
       () =>
         drive.share(
           target.id,
@@ -323,17 +353,21 @@ export function ShareDialog({
 
   const remove = (person: AccessGrant) => {
     const name = personLabel(person);
-    void apply(async () => {
-      await drive.share(
-        target.id,
-        person.principalId,
-        null,
-        person.principalType === "group" || person.principalType === "org"
-          ? person.principalType
-          : "user",
-      );
-      setUndo({ person, until: Date.now() + UNDO_MS });
-    }, `${name} no longer has access`);
+    stage(
+      { name, fromRole: person.role, toRole: null },
+      async () => {
+        await drive.share(
+          target.id,
+          person.principalId,
+          null,
+          person.principalType === "group" || person.principalType === "org"
+            ? person.principalType
+            : "user",
+        );
+        setUndo({ person, until: Date.now() + UNDO_MS });
+      },
+      `${name} no longer has access`,
+    );
   };
 
   const confirmHandover = () => {
@@ -421,6 +455,28 @@ export function ShareDialog({
           <p className="dialog-error" role="alert">
             {error}
           </p>
+        ) : null}
+        {pending ? (
+          <div className="share-confirm" role="group" aria-label="Access change">
+            <p>{pending.note}</p>
+            <div>
+              <button type="button" onClick={() => setPending(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="dialog-primary-btn"
+                disabled={busy}
+                onClick={() => {
+                  const next = pending;
+                  setPending(null);
+                  void apply(next.run, next.said);
+                }}
+              >
+                Apply this access change
+              </button>
+            </div>
+          </div>
         ) : null}
         {canManage ? (
           <div className="share-add">
@@ -529,6 +585,7 @@ export function ShareDialog({
             onClose={() => setExpiring(null)}
           />
         ) : null}
+        {reason ? <p className="share-notice">{reason}</p> : null}
         <h3 className="share-list-title">People and groups with access</h3>
         {access ? null : <p className="share-private">Loading…</p>}
         <ul className="share-people">

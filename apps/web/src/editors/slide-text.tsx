@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, type CSSProperties } from "react";
 import type { TextRun } from "@suiteleaf/core";
+import { paintFontFamily } from "@suiteleaf/core";
 import {
   cleanRun,
   hasTextRuns,
@@ -16,7 +17,9 @@ export function runStyle(run: TextRun, baseFontSize?: number): CSSProperties {
   return {
     fontWeight: run.bold ? 700 : 400,
     fontStyle: run.italic ? "italic" : "normal",
-    textDecoration: run.underline ? "underline" : "none",
+    textDecoration: [run.underline ? "underline" : "", run.strike ? "line-through" : ""]
+      .filter(Boolean)
+      .join(" ") || "none",
     ...(run.color ? { color: run.color } : {}),
     ...(run.highlight ? { backgroundColor: run.highlight } : {}),
     ...(run.fontSize
@@ -27,9 +30,13 @@ export function runStyle(run: TextRun, baseFontSize?: number): CSSProperties {
         }
       : {}),
     ...(run.caps === "all" ? { textTransform: "uppercase" as const } : {}),
-    ...(run.caps === "small" ? { fontVariantCaps: "small-caps" as const } : {}),
-    ...(run.baseline ? { verticalAlign: `${run.baseline / 100}em` } : {}),
-    ...(run.font ? { fontFamily: run.font } : {}),
+    ...(run.caps === "small"
+      ? { fontVariantCaps: "small-caps" as const, fontSynthesis: "small-caps" as const }
+      : {}),
+    ...(run.baseline
+      ? { verticalAlign: `${run.baseline / 100}em`, lineHeight: 0 }
+      : {}),
+    ...(run.font ? { fontFamily: paintFontFamily(run.font) } : {}),
   };
 }
 
@@ -69,7 +76,7 @@ export function RunSpans({
   return runsOf({ content, runs, bold, italic, underline }).map(
     (run, index) => (
       <span key={index} style={runStyle(run, fontSize)}>
-        {run.text}
+        {run.scriptScale ? <span style={{ fontSize: "0.65em" }}>{run.text}</span> : run.text}
       </span>
     ),
   );
@@ -78,7 +85,18 @@ export function RunSpans({
 type StyleAttr = Partial<
   Pick<
     TextRun,
-    "bold" | "italic" | "underline" | "color" | "highlight" | "fontSize" | "font" | "paragraphBreak" | "baseline"
+    | "bold"
+    | "italic"
+    | "underline"
+    | "strike"
+    | "color"
+    | "highlight"
+    | "fontSize"
+    | "font"
+    | "paragraphBreak"
+    | "baseline"
+    | "scriptScale"
+    | "href"
   >
 >;
 
@@ -89,6 +107,7 @@ function styleFrom(el: HTMLElement): StyleAttr {
   if (el.dataset.italic === "1" || el.tagName === "I" || el.tagName === "EM")
     next.italic = true;
   if (el.dataset.underline === "1" || el.tagName === "U") next.underline = true;
+  if (el.dataset.strike === "1" || el.tagName === "S" || el.tagName === "DEL") next.strike = true;
   if (el.dataset.color) next.color = el.dataset.color;
   if (el.dataset.highlight) next.highlight = el.dataset.highlight;
   if (el.dataset.fontSize && Number(el.dataset.fontSize) > 0)
@@ -96,7 +115,10 @@ function styleFrom(el: HTMLElement): StyleAttr {
   if (el.dataset.paragraphBreak === "1") next.paragraphBreak = true;
   if (el.dataset.baseline && Number(el.dataset.baseline))
     next.baseline = Number(el.dataset.baseline);
+  if (el.dataset.scriptScale === "1") next.scriptScale = true;
   if (el.dataset.font) next.font = el.dataset.font;
+  if (el.dataset.href && /^(https?:|mailto:)/i.test(el.dataset.href))
+    next.href = el.dataset.href;
   return next;
 }
 
@@ -108,10 +130,14 @@ function paragraphMetrics(el: HTMLElement): Partial<TextRun> {
   const before = Number(el.dataset.spaceBefore);
   if (margin) next.paraMargin = margin;
   if (hang) next.paraHang = hang;
+  const first = Number(el.dataset.paraFirst);
+  if (first) next.paraFirst = first;
   if (before) next.spaceBefore = before;
   const align = el.dataset.paraAlign;
   if (align === "left" || align === "center" || align === "right" || align === "justify")
     next.paraAlign = align;
+  const line = Number(el.dataset.paraLine);
+  if (line > 0) next.paraLine = line;
   return next;
 }
 
@@ -122,7 +148,17 @@ export function runsFromDom(root: HTMLElement): TextRun[] {
     if (node.nodeType === Node.TEXT_NODE) {
       const text = (node.textContent ?? "").replace(/\u00a0/g, " ");
       if (text) {
-        runs.push(cleanRun({ ...style, ...stamp, text }));
+        const bulletSrc = node.parentElement
+          ?.closest("[data-bullet-src]")
+          ?.getAttribute("data-bullet-src");
+        runs.push(
+          cleanRun({
+            ...style,
+            ...stamp,
+            text,
+            ...(bulletSrc ? { bulletSrc } : {}),
+          }),
+        );
         stamp = null;
       }
       return;
@@ -130,6 +166,18 @@ export function runsFromDom(root: HTMLElement): TextRun[] {
     if (!(node instanceof HTMLElement)) return;
     if (node.tagName === "BR") {
       runs.push({ ...style, text: "\n" });
+      return;
+    }
+    // Each mixed-size hard break is its own line. The break sits before that line.
+    if (node.dataset.slideLine === "1") {
+      if (runs.length && !runs[runs.length - 1]?.text.endsWith("\n")) {
+        const fontSize = Number(node.dataset.fontSize);
+        runs.push({
+          text: "\n",
+          ...(fontSize > 0 ? { fontSize } : {}),
+        });
+      }
+      for (const child of node.childNodes) walk(child, style);
       return;
     }
     const next = { ...style, ...styleFrom(node) };
@@ -211,6 +259,9 @@ export function SlideTextBody({
   italic,
   underline,
   kern,
+  hang,
+  fontFamily,
+  fontSize,
   placeholder,
   editing,
   onText,
@@ -222,6 +273,10 @@ export function SlideTextBody({
   italic?: boolean;
   underline?: boolean;
   kern?: number;
+  /** Shared hanging indent, in slide pixels, when list items do not each carry one. */
+  hang?: number;
+  fontFamily?: string;
+  fontSize?: number;
   placeholder?: string;
   editing: boolean;
   onText: (runs: TextRun[], opts?: { bullet?: boolean }) => void;
@@ -248,10 +303,10 @@ export function SlideTextBody({
       editing && document.activeElement === node
         ? selectionOffsets(node)
         : null;
-    node.innerHTML = runsToHtml(expected, kern);
+    node.innerHTML = runsToHtml(expected, kern, hang, { fontFamily, fontSize, bold, italic });
     node.dataset.empty = plainText(expected) ? "false" : "true";
     if (sel) restoreSelection(node, sel.start, sel.end);
-  }, [signature, editing, content, runs, bold, italic, underline, kern]);
+  }, [signature, editing, content, runs, bold, italic, underline, kern, hang, fontFamily, fontSize]);
 
   useLayoutEffect(() => {
     if (!editing) return;
@@ -341,7 +396,7 @@ export function SlideTextBody({
           next.to,
           next.replacement,
         );
-        node.innerHTML = runsToHtml(runs, kern);
+        node.innerHTML = runsToHtml(runs, kern, hang, { fontFamily, fontSize, bold, italic });
         node.dataset.empty = plainText(runs) ? "false" : "true";
         restoreSelection(node, next.caret, next.caret);
         onTextRef.current(runs);
@@ -361,7 +416,7 @@ export function SlideTextBody({
               next.to,
               next.replacement,
             );
-            node.innerHTML = runsToHtml(runs, kern);
+            node.innerHTML = runsToHtml(runs, kern, hang, { fontFamily, fontSize, bold, italic });
             node.dataset.empty = plainText(runs) ? "false" : "true";
             restoreSelection(node, next.caret, next.caret);
             onTextRef.current(runs, next.bullet ? { bullet: true } : undefined);

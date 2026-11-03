@@ -65,6 +65,7 @@ import {
   type ProofingSettings,
 } from "../../editors/doc-word-count";
 import { grammarRanges } from "../../editors/doc-grammar";
+import { checksEnglishSpelling } from "../../editors/proofing-language";
 import { refreshSpelling } from "../../editors/doc-proofing";
 import { COLUMN_LAYOUT, applyColumnLayout } from "../../editors/doc-columns";
 import { localVersions, recordLocalParagraphRestore } from "../../editors/local-versions";
@@ -1498,7 +1499,7 @@ async function openRecord(title: string): Promise<FileRecord> {
   const matches = (await storage.list()).filter(
     (record) => record.file.kind === "doc" && record.file.title === title,
   );
-  if (matches.length === 1) return matches[0];
+  if (matches.length === 1) return (await storage.get(matches[0].file.id)) ?? matches[0];
   throw new ToolError(`Could not find the open document "${title}" on this computer.`);
 }
 
@@ -2657,9 +2658,11 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
       async execute() {
         ctx.showSpelling();
         const personal = readPersonalDictionary();
-        const ignored = readProofing(proofingJson(editor)).ignored;
+        const proofing = readProofing(proofingJson(editor));
+        if (!checksEnglishSpelling(proofing.language))
+          return "This document is not set to English. Spelling was not checked against the English dictionary, and the text was not sent anywhere.";
         const words = new Map<string, number>();
-        for (const word of misspelledWords(proofingJson(editor), personal, ignored))
+        for (const word of misspelledWords(proofingJson(editor), personal, proofing.ignored, proofing.language))
           words.set(word, (words.get(word) ?? 0) + 1);
         if (!words.size) return "No spelling mistakes found.";
         const lines = [...words].map(([w, count]) => {
@@ -2690,10 +2693,12 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         const requested = word?.trim() ?? "";
         const bulk = !requested || /^(all|every|everything|\*)$/i.test(requested);
         const personal = readPersonalDictionary();
-        const ignored = readProofing(proofingJson(editor)).ignored;
-        const liveRanges = () => misspelledRanges(editor.state.doc, personal, ignored);
+        const proofing = readProofing(proofingJson(editor));
+        if (!checksEnglishSpelling(proofing.language))
+          return "This document is not set to English. Spelling was not changed, and the text was not sent anywhere.";
+        const liveRanges = () => misspelledRanges(editor.state.doc, personal, proofing.ignored, proofing.language);
         if (!bulk) {
-          const ranges = copiesOf(editor.state.doc, requested, personal, ignored);
+          const ranges = copiesOf(editor.state.doc, requested, personal, proofing.ignored, proofing.language);
           if (!ranges.length) {
             const present = editor.state.doc.textContent.toLowerCase().includes(requested.toLowerCase());
             return present
@@ -2709,7 +2714,7 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
           const suggestion = spellingSuggestions(group.word)[0];
           if (!suggestion) continue;
           const next = !bulk && correction?.trim() ? correction.trim() : suggestion;
-          const ranges = copiesOf(editor.state.doc, group.word, personal, ignored);
+          const ranges = copiesOf(editor.state.doc, group.word, personal, proofing.ignored, proofing.language);
           if (!ranges.length) continue;
           const bold = ranges.some((range) => wordIsBold(editor, range));
           editor.view.dispatch(changeAllTransaction(editor.state, ranges, next));
@@ -2781,9 +2786,9 @@ export function docTools(ctx: DocsAgentContext): SuiteTool[] {
         const cleaned = word.trim();
         if (!cleaned) throw new ToolError("Say which word to add to the dictionary.");
         const personal = readPersonalDictionary();
-        const ignored = readProofing(proofingJson(editor)).ignored;
-        const ranges = copiesOf(editor.state.doc, cleaned, personal, ignored);
-        if (ranges.length && spellingSuggestions(ranges[0].word).length) {
+        const proofing = readProofing(proofingJson(editor));
+        const ranges = copiesOf(editor.state.doc, cleaned, personal, proofing.ignored, proofing.language);
+        if (checksEnglishSpelling(proofing.language) && ranges.length && spellingSuggestions(ranges[0].word).length) {
           const suggestion = spellingSuggestions(ranges[0].word)[0];
           return `"${ranges[0].word}" looks like a typo (suggestion: ${suggestion}). It was not added to the dictionary. Correct it with fix_spelling.`;
         }

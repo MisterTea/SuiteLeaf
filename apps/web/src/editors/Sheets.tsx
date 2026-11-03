@@ -51,13 +51,15 @@ import NoteEnUS from "@univerjs/preset-sheets-note/locales/en-US";
 import "@univerjs/preset-sheets-note/lib/index.css";
 import SheetCleanup from "./sheet-cleanup-ui";
 import { SheetSpelling } from "./grid-spelling-ui";
+import { SheetLanguageField } from "./sheet-language";
+import { proofingLanguage, type ProofingLanguage } from "./proofing-language";
 import SheetRowGroups, { type SheetRowGroupsHandle } from "./sheet-row-groups-ui";
 import SheetColumnGroups, { type SheetColumnGroupsHandle } from "./sheet-column-groups-ui";
 import SheetFeatures from "./sheet-features";
 import SheetList from "./sheet-list";
 import { FontControls } from "./font-controls";
 import SheetPrint, { type SheetPrintHandle } from "./sheet-print-ui";
-import { PRINT_MAX_CELLS, paginatePrinted, printMarkup, printedPages, readSheetPrint } from "./sheet-print";
+import { PRINT_MAX_CELLS, chartsForPrint, paginatePrinted, printMarkup, printedPages, readSheetPrint } from "./sheet-print";
 import SheetDropdowns, { type SheetDropdownHandle } from "./sheet-dropdown-panel";
 import SheetLinks, { type SheetLinkHandle } from "./sheet-links";
 import {
@@ -94,6 +96,8 @@ import {
   Bar,
   LineChart,
   Line,
+  AreaChart,
+  Area,
   PieChart,
   Pie,
   ScatterChart,
@@ -115,6 +119,9 @@ import {
   Undo2,
   Redo2,
   Printer,
+  ListChecks,
+  Target,
+  Timer,
   PaintRoller,
   Minus,
   Plus,
@@ -133,19 +140,59 @@ import {
   Lock,
 } from "lucide-react";
 import { ColorTool } from "./color-picker";
+import { SheetAccessNote } from "./sheet-access-note";
+import { SheetTableNote } from "./sheet-table-note";
+import { SheetCellFields } from "./sheet-cell-fields";
+import { PivotSliceFields } from "./pivot-slice-fields";
+import { PivotSortFields } from "./pivot-sort-fields";
+import { PivotDifferenceFields, pivotDifferenceFromForm } from "./pivot-difference-fields";
+import { PivotDrillList } from "./pivot-drill-list";
+import { SheetCostNote } from "./sheet-cost-note";
+import { SheetAuditNote } from "./sheet-audit-note";
+import { WaterfallPreview } from "./waterfall-chart";
+import { ComboPreview } from "./combo-chart";
+import { StackedPreview } from "./stacked-chart";
+import { HistogramPreview } from "./histogram-chart";
+import { waterfallSteps } from "@suiteleaf/core";
+import {
+  applySheetQuery,
+  checkSheetQuery,
+  forgetSheetSchedule,
+  rememberSheetSchedule,
+  rememberSheetStep,
+  savedSheetSchedule,
+  savedSheetStep,
+  SheetQueryPanel,
+  type SheetQueryResult,
+} from "./sheet-query-panel";
+import { parseCellAddress, seekOnSheet, SheetGoalPanel } from "./sheet-goal-panel";
+import { solveOnSheet } from "./sheet-solver";
 import {
   filename,
+  localTableBlocked,
+  localTableValues,
   parseRange,
   rangeLabel,
   type SheetFile,
   type ChartDefinition,
   type PivotDefinition,
   type SourceRange,
+  pivotSliceFromForm,
+  pivotSortFromForm,
+  pivotSortChoice,
+  slicePivot,
+  structuredFormulaNote,
+  tableAfterStructure,
+  tableOutline,
+  editsFromRangeValues,
+  extendTablesForEdits,
+  growSources,
 } from "@suiteleaf/core";
 import {
   copySheetName,
   defaultValueField,
   pivotCells,
+  pivotMeasures,
   pivotResult,
   shiftRange,
   uniqueSheetName,
@@ -179,6 +226,7 @@ import { useMode } from "../mode";
 import { getSession } from "../node-client";
 import { useAgentHost } from "../ai/host";
 import { sheetBeforeTool, sheetReview, sheetSnapshot, sheetTools, type SheetsAgentContext } from "../ai/tools/sheets";
+import { axisLimit, seriesAxis } from "./chart-axis";
 
 const FORMULA_BAR_KEY = "suiteleaf_sheets_formula_bar";
 /** Formula bar visibility is a per-person preference, not part of the workbook. */
@@ -218,20 +266,31 @@ function ExcelLineChart({
   const w = chart.width,
     h = chart.height;
   const count = Math.max(1, ...series.map((s) => s.length));
-  const maximum = Math.max(
-    0,
-    ...series.flat().filter((v): v is number => typeof v === "number"),
+  const numeric = (values: CellValue[]) =>
+    values.filter((value): value is number => typeof value === "number");
+  const secondary = series.some(
+    (_, index) => seriesAxis(chart.excel?.series[index]?.axis) === "secondary",
   );
+  const primaryValues = secondary
+    ? series.flatMap((values, index) =>
+        seriesAxis(chart.excel?.series[index]?.axis) === "primary" ? numeric(values) : [],
+      )
+    : series.flatMap(numeric);
+  const secondaryValues = series.flatMap((values, index) =>
+    seriesAxis(chart.excel?.series[index]?.axis) === "secondary" ? numeric(values) : [],
+  );
+  const primaryLimit = axisLimit(primaryValues);
+  const secondaryLimit = axisLimit(secondaryValues);
+  const maximum = Math.max(0, ...primaryValues, 0);
   const step =
-    Math.pow(10, Math.floor(Math.log10(maximum || 1))) *
-    (maximum <= 20 ? 0.2 : 0.5);
+    Math.pow(10, Math.floor(Math.log10(maximum || 1))) * (maximum <= 20 ? 0.2 : 0.5);
   const top = 15,
     bottom = h - 34,
     left = 34,
     right = w - (chart.excel?.legend === "r" ? 128 : 20);
-  const limit = Math.max(step, Math.ceil(maximum / step) * step);
+  const limit = primaryLimit;
   const px = (i: number) => left + ((right - left) * (i + 0.5)) / count;
-  const py = (v: number) => bottom - ((bottom - top) * v) / limit;
+  const py = (v: number, scale = limit) => bottom - ((bottom - top) * v) / scale;
   const ticks = Array.from(
     { length: Math.round(limit / step) + 1 },
     (_, i) => i * step,
@@ -248,6 +307,7 @@ function ExcelLineChart({
         fontSize: 12,
       }}
       aria-label="Imported Excel line chart"
+      data-secondary-axis={secondary ? "true" : "false"}
     >
       <rect
         x={0.5}
@@ -280,10 +340,19 @@ function ExcelLineChart({
           </text>
         </g>
       ))}
+      {secondary
+        ? [0, secondaryLimit / 2, secondaryLimit].map((value) => (
+            <text key={value} x={right + 8} y={py(value, secondaryLimit) + 4}>
+              {value}
+            </text>
+          ))
+        : null}
       {series.map((s, i) => {
         const color = chart.excel!.series[i].color;
+        const scale =
+          seriesAxis(chart.excel?.series[i]?.axis) === "secondary" ? secondaryLimit : limit;
         const points = s.flatMap((v, j) =>
-          typeof v === "number" ? [{ x: px(j), y: py(v) }] : [],
+          typeof v === "number" ? [{ x: px(j), y: py(v, scale) }] : [],
         );
         return (
           <g key={i}>
@@ -655,6 +724,15 @@ function EmbeddedChart({ data }: { data?: { chartId: string } }) {
     "#267C60",
   ];
   const ticks = valueTicks(values.slice(1).flatMap((r) => r.slice(1)));
+  const waterfall =
+    c.type === "waterfall"
+      ? waterfallSteps(
+          values.slice(1).map((row) => ({
+            label: String(row[0] ?? ""),
+            change: typeof row[1] === "number" ? row[1] : 0,
+          })),
+        )
+      : null;
   const valueAxis = {
     tickFormatter: formatAxis,
     ...(ticks && { ticks, domain: [ticks[0], ticks.at(-1)!] }),
@@ -666,10 +744,11 @@ function EmbeddedChart({ data }: { data?: { chartId: string } }) {
   return (
     <div
       className="suiteleaf-chart"
-      aria-label={`Chart: ${c.title}`}
+      aria-label={`Chart: ${c.title}${waterfall?.mismatch ? `. ${waterfall.mismatch}` : ""}`}
       data-chart-id={c.id}
     >
       <strong>{c.title}</strong>
+      {waterfall?.mismatch ? <p>{waterfall.mismatch}</p> : null}
       <ResponsiveContainer width="100%" height="100%">
         {c.type === "pie" ? (
           <PieChart>
@@ -715,6 +794,45 @@ function EmbeddedChart({ data }: { data?: { chartId: string } }) {
               fill={colors[0]}
             />
           </ScatterChart>
+        ) : c.type === "histogram" ? (
+          <HistogramPreview cells={values.slice(1).map((row) => row[1])} />
+        ) : c.type === "waterfall" ? (
+          <WaterfallPreview
+            rows={values.slice(1).map((row) => ({
+              label: String(row[0] ?? ""),
+              change: row[1],
+            }))}
+          />
+        ) : c.type === "area" ? (
+          <AreaChart data={rows}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="label" height={44} />
+            <YAxis {...valueAxis} />
+            <Tooltip formatter={formatTooltip} />
+            <Legend verticalAlign="top" />
+            {keys.map((k, i) => (
+              <Area
+                key={k}
+                type="monotone"
+                dataKey={k}
+                name={String(headers[i + 1] ?? k)}
+                stroke={colors[i % colors.length]}
+                fill={colors[i % colors.length]}
+                fillOpacity={0.25}
+                isAnimationActive={false}
+              />
+            ))}
+          </AreaChart>
+        ) : c.type === "combo" ? (
+          <ComboPreview rows={rows} keys={keys} headers={headers} colors={colors} />
+        ) : c.type === "stacked" ? (
+          <StackedPreview
+            rows={rows}
+            keys={keys}
+            headers={headers}
+            colors={colors}
+            cells={values.slice(1).flatMap((row) => row.slice(1))}
+          />
         ) : c.type === "line" ? (
           <LineChart data={rows}>
             <CartesianGrid strokeDasharray="3 3" />
@@ -889,6 +1007,15 @@ export default function Sheets({
   const [ready, setReady] = useState(false),
     [booted, setBooted] = useState(false),
     [panel, setPanel] = useState<"chart" | "pivot" | null>(null),
+    [costOpen, setCostOpen] = useState(false),
+    [auditOpen, setAuditOpen] = useState(false),
+    [languageOpen, setLanguageOpen] = useState(false),
+    [proofing, setProofing] = useState<ProofingLanguage>(() =>
+      proofingLanguage(file.content.proofingLanguage),
+    ),
+    [sheetAccessOpen, setSheetAccessOpen] = useState(false),
+    [queryOpen, setQueryOpen] = useState(false),
+    [goalOpen, setGoalOpen] = useState(false),
     [editing, setEditing] = useState<string>(),
     [range, setRange] = useState("A1:B5"),
     [sourceSheet, setSourceSheet] = useState(""),
@@ -898,8 +1025,21 @@ export default function Sheets({
     [columnFields, setColumnFields] = useState(""),
     [valueField, setValueField] = useState(1),
     [aggregate, setAggregate] = useState<PivotDefinition["aggregate"]>("SUM"),
+    [secondAggregate, setSecondAggregate] = useState<"" | PivotDefinition["aggregate"]>(""),
     [filterColumn, setFilterColumn] = useState(-1),
     [filterValue, setFilterValue] = useState(""),
+    [dateColumn, setDateColumn] = useState(-1),
+    [dateGroup, setDateGroup] = useState(""),
+    [slicerColumn, setSlicerColumn] = useState(-1),
+    [slicerText, setSlicerText] = useState(""),
+    [sortChoice, setSortChoice] = useState(""),
+    [drillGroup, setDrillGroup] = useState(""),
+    [calculatedName, setCalculatedName] = useState(""),
+    [calculatedOp, setCalculatedOp] = useState<"multiply" | "add" | "divide">("multiply"),
+    [calculatedAmount, setCalculatedAmount] = useState("1"),
+    [differenceName, setDifferenceName] = useState(""),
+    [differenceLeft, setDifferenceLeft] = useState(-1),
+    [differenceRight, setDifferenceRight] = useState(-1),
     [, setRevision] = useState(0),
     [zoom, setZoom] = useState("100%"),
     [fontFamily, setFontFamily] = useState("Arial"),
@@ -1779,6 +1919,30 @@ export default function Sheets({
               if (shifted) item.source = shifted;
               else item.invalid = true;
             }
+          content.current.tables = (content.current.tables ?? []).flatMap((table) => {
+            if (table.sheetId !== p.subUnitId) return [table];
+            const shifted = tableAfterStructure(
+              table,
+              axis,
+              start,
+              end - start + 1,
+              structural[1] === "remove",
+            );
+            return shifted ? [shifted] : [];
+          });
+        }
+        if (command.id.includes("set-range-values") && content.current.tables?.length) {
+          const edits = editsFromRangeValues({
+            subUnitId: typeof p.subUnitId === "string" ? p.subUnitId : undefined,
+            range: p.range,
+            value: p.value,
+          });
+          const grown = extendTablesForEdits(content.current.tables, edits);
+          content.current.tables = grown.tables;
+          for (const change of grown.grown) {
+            content.current.charts = growSources(content.current.charts, change.before, change.after);
+            content.current.pivots = growSources(content.current.pivots, change.before, change.after);
+          }
         }
         for (const item of [
           ...content.current.charts,
@@ -2390,6 +2554,7 @@ export default function Sheets({
         s.getSheetName(),
         paginatePrinted(printedPages(values, settings)),
         settings.repeatFirstRow,
+        chartsForPrint(content.current.charts, s.getSheetId()),
       );
       document
         .querySelectorAll(".suiteleaf-chart")
@@ -2635,8 +2800,23 @@ export default function Sheets({
       setColumnFields(p?.columns.join(",") ?? "");
       setValueField(p?.value ?? 1);
       setAggregate(p?.aggregate ?? "SUM");
+      setSecondAggregate(p?.measures?.[1]?.aggregate ?? "");
       setFilterColumn(p?.filterColumn ?? -1);
       setFilterValue(p?.filterValue ?? "");
+      setDateColumn(p?.dateColumn ?? -1);
+      setDateGroup(p?.dateGroup ?? "");
+      setSlicerColumn(p?.slicerColumn ?? -1);
+      setSlicerText(p?.slicerValues?.join(", ") ?? "");
+      setSortChoice(pivotSortChoice(p?.sort));
+      setDrillGroup("");
+      setCalculatedName(p?.calculated?.name ?? "");
+      setCalculatedOp(p?.calculated?.op ?? "multiply");
+      setCalculatedAmount(
+        p?.calculated ? String(p.calculated.amount) : "1",
+      );
+      setDifferenceName(p?.difference?.name ?? "");
+      setDifferenceLeft(p?.difference?.left ?? -1);
+      setDifferenceRight(p?.difference?.right ?? -1);
     }
   };
   editChart.current = (id) => startPanel("chart", id);
@@ -2688,8 +2868,16 @@ export default function Sheets({
     await api.current.getFormula().onCalculationResultApplied(10000);
     const s = book.current.getSheetBySheetId(p.targetSheetId);
     if (!s) throw new Error("The pivot worksheet has been deleted.");
-    const values = readRange(p.source);
-    const result = pivotResult(values, p);
+    const values = slicePivot(readRange(p.source), {
+      dateColumn: p.dateColumn,
+      dateGroup: p.dateGroup,
+      slicerColumn: p.slicerColumn,
+      slicerValues: p.slicerValues,
+    });
+    const result =
+      p.measures && p.measures.length > 1
+        ? pivotMeasures(values, p, p.measures)
+        : pivotResult(values, p);
     const numberFormat =
       p.aggregate === "COUNT"
         ? undefined
@@ -2825,19 +3013,47 @@ export default function Sheets({
           v.trim() ? v.split(",").map((n) => Number(n.trim())) : [];
         const rows = indices(rowFields),
           columns = indices(columnFields);
+        const slice = pivotSliceFromForm({
+          dateColumn,
+          dateGroup,
+          slicerColumn,
+          slicerText,
+        });
+        const grouped = slicePivot(values, slice);
         if ([...rows, ...columns].some((n) => !Number.isInteger(n) || n < 0))
           throw new Error("Use field indexes such as 0 or 0,1.");
+        const amount = Number(calculatedAmount);
+        const calculated =
+          calculatedName.trim() && Number.isFinite(amount)
+            ? { name: calculatedName.trim(), op: calculatedOp, amount }
+            : undefined;
+        const difference = pivotDifferenceFromForm({
+          name: differenceName,
+          left: differenceLeft,
+          right: differenceRight,
+          columnCount: values[0]?.length ?? 0,
+        });
+        const value = valueChosen.current ? valueField : defaultValueField(values, rows);
+        const measures = secondAggregate
+          ? [
+              { value, aggregate },
+              { value, aggregate: secondAggregate },
+            ]
+          : undefined;
         const config = {
           rows,
           columns,
-          value: valueChosen.current
-            ? valueField
-            : defaultValueField(values, rows),
+          value,
           aggregate,
           filterColumn,
           filterValue,
+          calculated,
+          difference,
+          measures,
+          sort: pivotSortFromForm(sortChoice),
+          ...slice,
         };
-        const result = pivotResult(values, config);
+        const result = pivotResult(grouped, config);
         const name = title.trim() || "Pivot table";
         let p = content.current.pivots.find((p) => p.id === editing);
         if (!p) {
@@ -2895,8 +3111,11 @@ export default function Sheets({
               setColumnFields((v.columns ?? []).join(","));
               setValueField(v.value ?? 1);
               setAggregate(v.aggregate ?? "SUM");
+              setSecondAggregate("");
               setFilterColumn(v.filterColumn ?? -1);
               setFilterValue(v.filterValue ?? "");
+              setSortChoice("");
+              setDrillGroup("");
             }
           },
           submitPanel: () => submitRef.current(),
@@ -2971,6 +3190,25 @@ export default function Sheets({
     /* The inline editor allows temporarily incomplete ranges. */
   }
   const items = content.current;
+  useEffect(() => {
+    if (!ready || !api.current) return;
+    for (const table of items.tables ?? []) {
+      const box = tableOutline(table);
+      if (!box) continue;
+      try {
+        const sheet = book.current?.getSheetBySheetId?.(box.sheetId);
+        const rows = box.endRow - box.startRow + 1;
+        const columns = box.endColumn - box.startColumn + 1;
+        sheet?.getRange(box.startRow, box.startColumn, rows, columns)?.setBorder?.(
+          api.current.Enum.BorderType.ALL,
+          api.current.Enum.BorderStyleTypes.THIN,
+          "#5f6368",
+        );
+      } catch {
+        // An inactive sheet may not accept a border until it is shown.
+      }
+    }
+  }, [ready, items.tables]);
   const activePivot = ready
     ? items.pivots.find(
         (p) =>
@@ -2988,11 +3226,35 @@ export default function Sheets({
     injectorRef,
     persist: () => persist.current(),
     notify: setNotice,
+    formulaNote: (formula) => {
+      const tables = content.current.tables ?? [];
+      const sheetId = book.current?.getActiveSheet?.()?.getSheetId?.() ?? "";
+      const headers: Record<string, string[]> = {};
+      for (const table of tables) {
+        try {
+          const sheet = book.current?.getSheetBySheetId?.(table.sheetId);
+          const width = table.endColumn - table.startColumn + 1;
+          const row = sheet?.getRange(table.headerRow, table.startColumn, 1, width).getValues()?.[0] ?? [];
+          headers[table.name] = row.map((value: unknown) => (value == null ? "" : String(value)));
+        } catch {
+          headers[table.name] = [];
+        }
+      }
+      return structuredFormulaNote(formula, tables, headers, sheetId);
+    },
   });
   functionActions.current = {
     insertFunction: functions.insertFunction,
     autoSum: functions.autoSum,
   };
+  let pivotSource: (string | number | boolean | null)[][] = [];
+  if (panel === "pivot") {
+    try {
+      pivotSource = readRange(parseRange(range, sourceSheet));
+    } catch {
+      pivotSource = [];
+    }
+  }
   return (
     <div
       className={`sheets-editor${readOnly ? " view-locked" : ""}`}
@@ -3047,6 +3309,7 @@ export default function Sheets({
           engineRef={engine}
           fileId={file.id}
           ready={ready}
+          language={proofing}
           persist={() => persist.current()}
         />
       ) : null}
@@ -3082,6 +3345,203 @@ export default function Sheets({
           onError={onError}
         />
       ) : null}
+      {costOpen ? (
+        <SheetCostNote content={content.current} onOpenQuery={() => setQueryOpen(true)} />
+      ) : null}
+      {auditOpen ? <SheetAuditNote content={content.current} /> : null}
+      {languageOpen ? (
+        <SheetLanguageField
+          language={proofing}
+          onChange={(language) => {
+            content.current.proofingLanguage = language;
+            setProofing(language);
+            persist.current();
+          }}
+        />
+      ) : null}
+      <SheetTableNote tables={content.current.tables ?? []} />
+      {sheetAccessOpen ? (
+        <>
+          <SheetAccessNote
+            content={content.current}
+            onSelect={(sheetId, column, row = 0) => {
+              const workbook = book.current as
+                | {
+                    getSheetBySheetId?: (id: string) => { getRange: (row: number, column: number, rows: number, columns: number) => { activate: () => void } } | null;
+                  }
+                | null;
+              workbook?.getSheetBySheetId?.(sheetId)?.getRange(row, column, 1, 1).activate();
+            }}
+          />
+          <SheetCellFields
+            sheets={content.current.workbook.sheetOrder.map((id) => {
+              const sheet = content.current.workbook.sheets[id];
+              return {
+                id,
+                name: sheet?.name?.trim() || "Sheet",
+                grid: sheet?.cellData ?? {},
+              };
+            })}
+            disabled={readOnly}
+            onEdit={(row, column, value, sheetId) => {
+              const target = sheetId || content.current.workbook.sheetOrder[0];
+              void api.current?.executeCommand(SetRangeValuesCommand.id, {
+                ...(target ? { subUnitId: target } : {}),
+                range: {
+                  startRow: row,
+                  endRow: row,
+                  startColumn: column,
+                  endColumn: column,
+                },
+                value: { v: value, p: null },
+              });
+            }}
+          />
+        </>
+      ) : null}
+      {queryOpen ? (
+        <SheetQueryPanel
+          disabled={readOnly}
+          initial={savedSheetStep(content.current.queries)}
+          schedule={savedSheetSchedule(content.current.queries)}
+          onRememberSchedule={(minutes, source) => {
+            content.current.queries = rememberSheetSchedule(content.current.queries, minutes, source);
+            persist.current();
+          }}
+          onForgetSchedule={() => {
+            content.current.queries = forgetSheetSchedule(content.current.queries);
+            persist.current();
+          }}
+          onCheck={(step) => {
+            const sheet = book.current?.getActiveSheet?.();
+            if (!sheet) return "The spreadsheet is not open.";
+            return checkSheetQuery(sheet, step);
+          }}
+          onLocalTable={(rows) => {
+            const sheet = book.current?.getActiveSheet?.();
+            const cell = book.current?.getActiveCell?.();
+            const values = localTableValues(rows);
+            if (!sheet || !cell || values.length === 0 || values[0].length === 0) {
+              return "The spreadsheet is not open.";
+            }
+            const height = values.length;
+            const width = values[0].length;
+            const existing = sheet.getRange(cell.getRow(), cell.getColumn(), height, width).getRawValues?.() ?? [];
+            if (localTableBlocked(existing)) return "A cell already has a value.";
+            sheet.getRange(cell.getRow(), cell.getColumn(), height, width).setValues(values);
+            persist.current();
+            return height === 2 ? "The table has 1 row." : `The table has ${height - 1} rows.`;
+          }}
+          onApply={(step, previous) => {
+            const sheet = book.current?.getActiveSheet?.();
+            if (!sheet)
+              return {
+                placement: previous,
+                message: "The spreadsheet is not open.",
+                changed: false,
+              } satisfies SheetQueryResult;
+            try {
+              const result = applySheetQuery(sheet, step, previous, new Date().toISOString());
+              if (result.changed) {
+                content.current.queries = rememberSheetStep(content.current.queries, step);
+                persist.current();
+              }
+              return result;
+            } catch (caught) {
+              return {
+                placement: previous,
+                message: caught instanceof Error ? caught.message : String(caught),
+                changed: false,
+              };
+            }
+          }}
+        />
+      ) : null}
+      {goalOpen ? (
+        <SheetGoalPanel
+          disabled={readOnly}
+          onSeek={async ({ formula, target, low, high, shouldStop }) => {
+            const address = parseCellAddress(formula);
+            const sheet = book.current?.getActiveSheet?.();
+            const active = book.current?.getActiveCell?.();
+            if (!address) return { message: "Name the formula cell, such as B2.", wrote: false };
+            if (!sheet || !active) return { message: "Select the input cell.", wrote: false };
+            try {
+              const result = await seekOnSheet({
+                input: { row: active.getRow(), column: active.getColumn() },
+                formula: address,
+                target,
+                low,
+                high,
+                read: (cell) => {
+                  const range = sheet.getRange(cell.row, cell.column, 1, 1);
+                  const raw = range.getFormulas?.()?.[0]?.[0];
+                  return {
+                    formula: typeof raw === "string" ? raw : "",
+                    value: range.getValues?.()?.[0]?.[0],
+                  };
+                },
+                write: (cell, value) => {
+                  sheet.getRange(cell.row, cell.column, 1, 1).setValues([[value]]);
+                },
+                calculate: async () => {
+                  await api.current?.getFormula()?.onCalculationResultApplied(10000);
+                },
+                shouldStop,
+              });
+              if (result.wrote) persist.current();
+              return result;
+            } catch (caught) {
+              return {
+                message: caught instanceof Error ? caught.message : String(caught),
+                wrote: false,
+              };
+            }
+          }}
+          onSolve={async ({ formula, second, third, target, low, high, secondLow, secondHigh, thirdLow, thirdHigh, atMost, shouldStop }) => {
+            const address = parseCellAddress(formula);
+            const other = parseCellAddress(second);
+            const extra = third ? parseCellAddress(third) : null;
+            const sheet = book.current?.getActiveSheet?.();
+            const active = book.current?.getActiveCell?.();
+            if (third && !extra) return { message: "Name the third input, such as D2.", wrote: false };
+            if (!address || !other) return { message: "Name the formula cell, such as B2.", wrote: false };
+            if (!sheet || !active) return { message: "Select the input cell.", wrote: false };
+            const read = (cell: { row: number; column: number }) => {
+              const range = sheet.getRange(cell.row, cell.column, 1, 1);
+              const raw = range.getFormulas?.()?.[0]?.[0];
+              return {
+                formula: typeof raw === "string" ? raw : "",
+                value: range.getValues?.()?.[0]?.[0],
+              };
+            };
+            try {
+              const result = await solveOnSheet({
+                inputs: extra
+                  ? [{ row: active.getRow(), column: active.getColumn() }, other, extra]
+                  : [{ row: active.getRow(), column: active.getColumn() }, other],
+                formula: address,
+                target,
+                lows: extra ? [low, secondLow, thirdLow ?? secondLow] : [low, secondLow],
+                highs: extra ? [high, secondHigh, thirdHigh ?? secondHigh] : [high, secondHigh],
+                atMost,
+                read,
+                write: (cell, value) => {
+                  sheet.getRange(cell.row, cell.column, 1, 1).setValues([[value]]);
+                },
+                calculate: async () => {
+                  await api.current?.getFormula()?.onCalculationResultApplied(10000);
+                },
+                shouldStop,
+              });
+              if (result.wrote) persist.current();
+              return result;
+            } catch {
+              return { message: "The formula could not be calculated. The inputs were put back.", wrote: false };
+            }
+          }}
+        />
+      ) : null}
       <div
         className="sheets-toolbar"
         role="toolbar"
@@ -3112,6 +3572,48 @@ export default function Sheets({
           }}
         >
           <Printer size={16} />
+        </Tool>
+        <Tool
+          label="Language"
+          active={languageOpen}
+          onClick={() => setLanguageOpen((open) => !open)}
+        >
+          <span>Language</span>
+        </Tool>
+        <Tool
+          label="Audit"
+          active={auditOpen}
+          onClick={() => setAuditOpen((open) => !open)}
+        >
+          <span>Audit</span>
+        </Tool>
+        <Tool
+          label="Cost"
+          active={costOpen}
+          onClick={() => setCostOpen((open) => !open)}
+        >
+          <Timer size={16} />
+        </Tool>
+        <Tool
+          label="Accessibility"
+          active={sheetAccessOpen}
+          onClick={() => setSheetAccessOpen((open) => !open)}
+        >
+          <ListChecks size={16} />
+        </Tool>
+        <Tool
+          label="Query"
+          active={queryOpen}
+          onClick={() => setQueryOpen((open) => !open)}
+        >
+          <Filter size={16} />
+        </Tool>
+        <Tool
+          label="Goal Seek"
+          active={goalOpen}
+          onClick={() => setGoalOpen((open) => !open)}
+        >
+          <Target size={16} />
         </Tool>
         <Tool label="Paint format" disabled={readOnly} onClick={() => {}}>
           <PaintRoller size={16} />
@@ -3560,8 +4062,13 @@ export default function Sheets({
               >
                 <option value="bar">Column / bar</option>
                 <option value="line">Line</option>
+                <option value="area">Area</option>
+                <option value="combo">Combo</option>
+                <option value="stacked">Stacked</option>
                 <option value="pie">Pie</option>
                 <option value="scatter">Scatter</option>
+                <option value="waterfall">Waterfall</option>
+                <option value="histogram">Histogram</option>
               </select>
             </label>
           ) : (
@@ -3634,11 +4141,68 @@ export default function Sheets({
                     setAggregate(e.target.value as PivotDefinition["aggregate"])
                   }
                 >
-                  {["SUM", "COUNT", "AVERAGE", "MIN", "MAX"].map((a) => (
+                  {["SUM", "COUNT", "AVERAGE", "MIN", "MAX", "PERCENT"].map((a) => (
                     <option key={a}>{a}</option>
                   ))}
                 </select>
               </label>
+              <label>
+                Also summarize
+                <select
+                  aria-label="Second summary"
+                  value={secondAggregate}
+                  onChange={(e) =>
+                    setSecondAggregate(e.target.value as "" | PivotDefinition["aggregate"])
+                  }
+                >
+                  <option value="">No second summary</option>
+                  {["SUM", "COUNT", "AVERAGE", "MIN", "MAX", "PERCENT"].map((a) => (
+                    <option key={a}>{a}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Calculated field
+                <input
+                  aria-label="Calculated field name"
+                  value={calculatedName}
+                  onChange={(e) => setCalculatedName(e.target.value)}
+                  placeholder="Fee"
+                />
+              </label>
+              <label>
+                Calculation
+                <select
+                  aria-label="Calculated field operation"
+                  value={calculatedOp}
+                  onChange={(e) =>
+                    setCalculatedOp(
+                      e.target.value === "add" || e.target.value === "divide" ? e.target.value : "multiply",
+                    )
+                  }
+                >
+                  <option value="multiply">Multiply each value</option>
+                  <option value="divide">Divide each value</option>
+                  <option value="add">Add to each value</option>
+                </select>
+              </label>
+              <label>
+                Amount
+                <input
+                  aria-label="Calculated field amount"
+                  value={calculatedAmount}
+                  onChange={(e) => setCalculatedAmount(e.target.value)}
+                />
+              </label>
+              <PivotDifferenceFields
+                name={differenceName}
+                left={differenceLeft}
+                right={differenceRight}
+                fields={fields}
+                onName={setDifferenceName}
+                onLeft={setDifferenceLeft}
+                onRight={setDifferenceRight}
+              />
               <label>
                 Filter field
                 <select
@@ -3662,6 +4226,28 @@ export default function Sheets({
                   />
                 </label>
               ) : null}
+              <PivotSliceFields
+                dateColumn={dateColumn}
+                dateGroup={dateGroup}
+                slicerColumn={slicerColumn}
+                slicerText={slicerText}
+                fields={fields}
+                onDateColumn={(column) => {
+                  setDateColumn(column);
+                  if (column >= 0 && !dateGroup) setDateGroup("year");
+                  if (column < 0) setDateGroup("");
+                }}
+                onDateGroup={setDateGroup}
+                onSlicerColumn={setSlicerColumn}
+                onSlicerText={setSlicerText}
+              />
+              <PivotSortFields value={sortChoice} onChange={setSortChoice} />
+              <PivotDrillList
+                values={pivotSource}
+                slice={pivotSliceFromForm({ dateColumn, dateGroup, slicerColumn, slicerText })}
+                group={drillGroup}
+                onGroup={setDrillGroup}
+              />
               <p className="hint">
                 Pivot results appear in a protected worksheet with grand totals
                 and update when the source changes. Make an editable copy to

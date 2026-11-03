@@ -127,6 +127,53 @@ describe("slide themes", () => {
     expect(byId(themed.slides.s2, "section").fontFamily).toBe("Montserrat");
   });
 
+  it("restyles the master and keeps a hand-set master colour", () => {
+    const source = deck();
+    source.master = {
+      elements: [
+        {
+          id: "footer",
+          type: "text",
+          placeholder: "footer",
+          content: "Garden club",
+          x: 40,
+          y: 500,
+          width: 200,
+          height: 24,
+          fontFamily: "Arial",
+          color: "#111111",
+        },
+        {
+          id: "mark",
+          type: "text",
+          content: "Keep",
+          x: 40,
+          y: 40,
+          width: 80,
+          height: 24,
+          fontFamily: "Courier",
+          color: "#000000",
+          themeOverride: true,
+        },
+      ],
+    };
+    const themed = applyDeckTheme(source, meadow);
+    expect(themed.master?.background?.color).toBe(meadow.background);
+    expect(themed.master?.elements.find((el) => el.id === "footer")).toMatchObject({
+      fontFamily: meadow.bodyFont,
+      color: meadow.bodyColor,
+      content: "Garden club",
+    });
+    expect(themed.master?.elements.find((el) => el.id === "mark")).toMatchObject({
+      fontFamily: "Courier",
+      color: "#000000",
+    });
+    expect(source.master.elements[0]?.fontFamily).toBe("Arial");
+    const next = applyDeckTheme(themed, ink);
+    expect(next.master?.elements.find((el) => el.id === "footer")?.fontFamily).toBe(ink.bodyFont);
+    expect(next.master?.elements.find((el) => el.id === "mark")?.fontFamily).toBe("Courier");
+  });
+
   it("updates every slide from the theme panel in one step, except overrides", () => {
     const themed = customizeTheme(
       applyDeckTheme(deck(), meadow),
@@ -220,5 +267,6 @@ describe("slide transitions", () => {
     expect(transitionMs({ type: "fade", duration: 0.4 }, false)).toBe(400);
     expect(transitionMs({ type: "push", duration: 1.2 }, true)).toBe(0);
     expect(transitionMs({ type: "none", duration: 0.4 }, false)).toBe(0);
+    expect(transitionMs({ type: "fade", duration: Number.NaN }, false)).toBe(0);
   });
 });

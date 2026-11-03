@@ -3353,13 +3353,13 @@ export function sheetTools(ctx: SheetsAgentContext): SuiteTool[] {
       name: "create_pivot",
       label: "Pivot table",
       description:
-        "Summarize a table with a pivot table on a new, read-only sheet that updates by itself when the source changes. rows: headers whose values go down the side; columns: headers whose values go across the top (\"split by who paid\" is columns [\"Paid by\"]); value: the header to summarize; summarize: SUM, COUNT, AVERAGE, MIN or MAX. Grand totals are added. Numbers keep the source column's number format; number_format (e.g. currency for dollars) sets it on the source's value cells, which the pivot follows. Only use filter_column/filter_value when the user asks to leave some rows out (keeps rows whose filter_column equals filter_value).",
+        "Summarize a table with a pivot table on a new, read-only sheet that updates by itself when the source changes. rows: headers whose values go down the side; columns: headers whose values go across the top (\"split by who paid\" is columns [\"Paid by\"]); value: the header to summarize; summarize: SUM, COUNT, AVERAGE, MIN, MAX, or PERCENT. PERCENT is each number as a percent of the total. Grand totals are added. Numbers keep the source column's number format; number_format (e.g. currency for dollars) sets it on the source's value cells, which the pivot follows. Only use filter_column/filter_value when the user asks to leave some rows out (keeps rows whose filter_column equals filter_value).",
       parameters: Type.Object({
         range: Type.Optional(Type.String()),
         rows: Type.Array(Type.String({ description: "Header names; their values go down the side" })),
         columns: Type.Optional(Type.Array(Type.String({ description: "Header names; their values go across the top" }))),
         value: Type.String(),
-        summarize: Type.String({ enum: ["SUM", "COUNT", "AVERAGE", "MIN", "MAX"] }),
+        summarize: Type.String({ enum: ["SUM", "COUNT", "AVERAGE", "MIN", "MAX", "PERCENT"] }),
         filter_column: Type.Optional(Type.String()),
         filter_value: Type.Optional(Type.String()),
         title: Type.Optional(Type.String()),

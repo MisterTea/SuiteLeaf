@@ -173,10 +173,11 @@ describe("multiuser room", () => {
     let file = createFile("doc", "Notes");
     file = edited(file, ["One", "Two"], maya, "2026-10-13T18:00:00.000Z").file;
     const room = new DocumentRoom(file);
-    expect(room.join({ id: "view", name: "View", role: "viewer" }, 0).joined).toBe(false);
+    expect(room.join({ id: "view", name: "View", role: "viewer" }, 0).joined).toBe(true);
     expect(room.mode).toBe("solo");
+    expect(room.applyUpdate("view", Y.encodeStateAsUpdate(new Y.Doc()), null, 0)).toBe(false);
     room.join({ ...maya, role: "editor" }, 0);
-    expect(room.mode).toBe("solo");
+    expect(room.mode).toBe("multiuser");
     expect(room.join({ ...sam, role: "commenter" }, 1_000).mode).toBe("multiuser");
     expect(
       room.applyUpdate(
@@ -199,7 +200,7 @@ describe("multiuser room", () => {
     const stillHere = 1_000 + VERSION_PAUSE_MS;
     room.activity(sam.id, stillHere);
     const oneGone = room.kick(stillHere);
-    expect(oneGone.kicked).toEqual([maya.id]);
+    expect(oneGone.kicked.sort()).toEqual([maya.id, "view"]);
     expect(oneGone.version).toBeNull();
     expect(room.mode).toBe("multiuser");
 

@@ -5,7 +5,10 @@ test.use({ viewport: { width: 1400, height: 900 } });
 test("opening or leaving a document closes the assistant and starts a new conversation", async ({
   page,
 }) => {
-  await page.addInitScript(() => sessionStorage.setItem("suiteleaf.ai.open", "1"));
+  await page.addInitScript(() => {
+    localStorage.setItem("suiteleaf.ai.enabled", "1");
+    sessionStorage.setItem("suiteleaf.ai.open", "1");
+  });
   await page.goto("/");
   const panel = page.getByRole("complementary", { name: "AI assistant" });
   await expect(panel).toBeVisible();

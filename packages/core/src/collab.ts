@@ -18,10 +18,10 @@ export type CollabJoin = {
   mode: "solo" | "multiuser";
 };
 
-const writers = new Set<CollabRole>(["commenter", "editor", "owner"]);
+const readers = new Set<CollabRole>(["viewer", "commenter", "editor", "owner"]);
 
 export function canJoinRoom(role: CollabRole): boolean {
-  return writers.has(role);
+  return readers.has(role);
 }
 
 /** Mirror paragraph text into the Y.Doc so a later compaction can read it. */
@@ -72,7 +72,7 @@ export function connectDocs(left: Y.Doc, right: Y.Doc) {
 type Person = { role: CollabRole; name: string; lastActive: number };
 
 /**
- * One open document on a node. A viewer never joins. A second commenter,
+ * One open document on a node. A viewer joins and can read. A second commenter,
  * editor, or owner switches the room to a Yjs document. Idle people are
  * dropped with no message; the room compacts only after the last writer goes.
  */
@@ -133,6 +133,7 @@ export class DocumentRoom<T extends TrackedFile> {
   ): boolean {
     const person = this.people.get(userId);
     if (!person) return false;
+    if (person.role === "viewer") return false;
     if (person.role === "commenter" && touch?.unit !== "comment") return false;
     if (this.mode !== "multiuser") return false;
     Y.applyUpdate(this.doc, update);
@@ -158,12 +159,14 @@ export class DocumentRoom<T extends TrackedFile> {
     if (this.people.size > 0 || this.mode !== "multiuser" || !this.baseline)
       return { kicked, version: null };
     const texts = paragraphTexts(this.doc);
+    const rich = this.file.kind === "doc" ? prosemirrorJson(this.doc) : null;
     const content =
-      this.merged !== undefined
+      (rich ? embeddedDocument(rich) : null) ??
+      (this.merged !== undefined
         ? this.merged
         : this.file.kind === "doc"
           ? applyParagraphTexts(this.baseline.content, texts)
-          : this.baseline.content;
+          : this.baseline.content);
     const compacted = compactSession(
       this.baseline,
       content,
@@ -178,6 +181,117 @@ export class DocumentRoom<T extends TrackedFile> {
     this.merged = undefined;
     return { kicked, version: compacted.version };
   }
+}
+
+const hashedMark = /(.*)(--[a-zA-Z0-9+/=]{8})$/;
+const embeddedImage = /^data:image\/(png|jpeg|gif|webp|svg\+xml);base64,/i;
+
+/** Keep an embedded picture's bytes. Drop a picture whose source is only a file name. */
+function embeddedDocument(content: unknown): unknown {
+  if (!content || typeof content !== "object") return content;
+  const node = content as { type?: string; attrs?: { src?: string }; content?: unknown[] };
+  if (!Array.isArray(node.content)) return content;
+  return {
+    ...node,
+    content: node.content
+      .filter((child) => {
+        if (!child || typeof child !== "object") return true;
+        const item = child as { type?: string; attrs?: { src?: string } };
+        if (item.type !== "image" && item.type !== "inlineImage") return true;
+        return embeddedImage.test(String(item.attrs?.src ?? ""));
+      })
+      .map((child) => embeddedDocument(child)),
+  };
+}
+
+/** The ProseMirror tree y-prosemirror stores on `prosemirror`, or null when that fragment is empty. */
+export function prosemirrorJson(doc: Y.Doc): unknown | null {
+  const fragment = doc.getXmlFragment("prosemirror");
+  if (fragment.length === 0) return null;
+  const content = fragment.toArray().flatMap((item) => xmlNodes(item));
+  if (content.length === 0) return null;
+  const threads = commentThreadsFromRoom(doc);
+  return threads ? { type: "doc", attrs: { commentThreads: threads }, content } : { type: "doc", content };
+}
+
+/** Store comment threads on the shared room. A value that is not a list is removed. */
+export function syncCommentThreads(doc: Y.Doc, threads: unknown): void {
+  const map = doc.getMap("docAttrs");
+  const next = Array.isArray(threads) ? JSON.stringify(threads) : "";
+  const current = map.get("commentThreads");
+  if (current === next || (next === "" && current == null)) return;
+  doc.transact(() => {
+    if (next) map.set("commentThreads", next);
+    else map.delete("commentThreads");
+  });
+}
+
+/** Comment threads stored on the room. Text that is not a list is left out. */
+export function commentThreadsFromRoom(doc: Y.Doc): unknown[] | null {
+  const raw = doc.getMap("docAttrs").get("commentThreads");
+  if (typeof raw !== "string" || !raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function xmlNodes(item: Y.XmlElement | Y.XmlText | Y.XmlFragment | Y.XmlHook): unknown[] {
+  if (item instanceof Y.XmlText) return textNodes(item);
+  if (!(item instanceof Y.XmlElement)) return [];
+  const node: { type: string; attrs?: Record<string, unknown>; content?: unknown[] } = {
+    type: item.nodeName,
+  };
+  const attrs = item.getAttributes();
+  const keys = Object.keys(attrs).filter((key) => key !== "ychange");
+  if (keys.length > 0) {
+    node.attrs = {};
+    for (const key of keys) node.attrs[key] = attrs[key];
+  }
+  const children = item.toArray().flatMap((child) => xmlNodes(child));
+  if (children.length > 0) node.content = children;
+  return [node];
+}
+
+function textNodes(item: Y.XmlText): unknown[] {
+  return item.toDelta().flatMap((delta: { insert?: unknown; attributes?: Record<string, unknown> }) => {
+    if (typeof delta.insert !== "string" || delta.insert.length === 0) return [];
+    const text: { type: "text"; text: string; marks?: { type: string; attrs?: unknown }[] } = {
+      type: "text",
+      text: delta.insert,
+    };
+    const attributes = delta.attributes;
+    if (attributes) {
+      const marks = Object.keys(attributes)
+        .filter((name) => name !== "ychange")
+        .map((name) => {
+          const match = hashedMark.exec(name);
+          return { type: match?.[1] ?? name, attrs: attributes[name] };
+        });
+      if (marks.length > 0) text.marks = marks;
+    }
+    return [text];
+  });
+}
+
+/** True when the shared room already has paragraph text or a ProseMirror fragment. */
+export function roomAlreadyHasText(doc: Y.Doc): boolean {
+  if (doc.getXmlFragment("prosemirror").length > 0) return true;
+  return paragraphTexts(doc).some((text) => text.trim().length > 0);
+}
+
+/** Plain paragraphs, used when the shared fragment is empty but the room already has text. */
+export function paragraphsAsDocument(texts: string[]): {
+  type: "doc";
+  content: { type: "paragraph"; content?: { type: "text"; text: string }[] }[];
+} {
+  const content = texts
+    .map((text) => text.trim())
+    .filter((text) => text.length > 0)
+    .map((text) => ({ type: "paragraph" as const, content: [{ type: "text" as const, text }] }));
+  return { type: "doc", content: content.length > 0 ? content : [{ type: "paragraph" }] };
 }
 
 export function seedParagraphs(doc: Y.Doc, texts: string[]) {

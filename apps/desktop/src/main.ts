@@ -17,9 +17,30 @@ import {
   dirname,
   relative,
 } from "node:path";
-import { readFile, stat } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { mkdirSync } from "node:fs";
 import { convertOffice } from "./office-converter";
+import { consumeFailedStart, restartWhileDirty, startReleasePoll } from "./updates";
+
+async function ringDeviceId(userData: string): Promise<string | undefined> {
+  const path = join(userData, "update-ring-id");
+  try {
+    const existing = (await readFile(path, "utf8")).trim();
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(existing)) {
+      return existing;
+    }
+  } catch {
+    // A missing file gets a new id below.
+  }
+  try {
+    const id = randomUUID();
+    await writeFile(path, id, "utf8");
+    return id;
+  } catch {
+    return undefined;
+  }
+}
 import { PPTX_INPUT_LIMIT } from "@suiteleaf/core/office";
 import { isPowerPointExtension } from "@suiteleaf/core/open-office";
 import { runImportCommand } from "./import-cli";
@@ -304,12 +325,16 @@ function createWindow() {
   window.webContents.session.setPermissionCheckHandler(
     (contents, permission) => !!allowClipboard(contents, permission),
   );
+  // The Vite dev page starts with an inline React preamble. The packaged page does not.
+  const scriptSrc = process.env.ELECTRON_RENDERER_URL
+    ? "script-src 'self' 'unsafe-eval' 'unsafe-inline'"
+    : "script-src 'self' 'unsafe-eval'";
   window.webContents.session.webRequest.onHeadersReceived((details, callback) =>
     callback({
       responseHeaders: {
         ...details.responseHeaders,
         "Content-Security-Policy": [
-          `default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ${mode.kind === "cluster" ? new URL(mode.serverUrl).origin : ""} https: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`,
+          `default-src 'self'; ${scriptSrc}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ${mode.kind === "cluster" ? new URL(mode.serverUrl).origin : ""} https: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`,
         ],
       },
     }),
@@ -342,6 +367,16 @@ function createWindow() {
           "Keep this window open until the save completes. Closing now may lose the latest edits.",
       }) === 1);
   window.on("close", (event) => {
+    const restart = restartWhileDirty(dirty);
+    if (restart.action === "wait") {
+      event.preventDefault();
+      dialog.showMessageBoxSync(window!, {
+        type: "warning",
+        buttons: ["Keep editing"],
+        message: restart.reason,
+      });
+      return;
+    }
     if (dirty && !chooseClose()) event.preventDefault();
   });
   // The page's beforeunload guard would otherwise cancel a close the user already chose.
@@ -530,6 +565,48 @@ else {
     window?.focus();
   });
   void app.whenReady().then(async () => {
+    let managedText: string | null = null;
+    try {
+      managedText = await readFile(join(app.getPath("userData"), "update-policy.json"), "utf8");
+    } catch {
+      managedText = null;
+    }
+    const failedPath = join(app.getPath("userData"), "failed-start.json");
+    const rollbackPath = join(app.getPath("userData"), "rollback-plan.json");
+    try {
+      let failedText: string | null = null;
+      try {
+        failedText = await readFile(failedPath, "utf8");
+      } catch {
+        failedText = null;
+      }
+      await consumeFailedStart({
+        text: failedText,
+        writePlan: (version) =>
+          writeFile(rollbackPath, JSON.stringify({ version }), "utf8"),
+        removeRecord: () => unlink(failedPath),
+      });
+    } catch {
+      // A plan that cannot be stored stays for the next launch. Nothing is replaced.
+    }
+    let rollbackText: string | null = null;
+    try {
+      rollbackText = await readFile(rollbackPath, "utf8");
+    } catch {
+      rollbackText = null;
+    }
+    startReleasePoll({
+      currentVersion: app.getVersion(),
+      currentSchema: 5,
+      currentRuntime: process.versions.node,
+      currentPlatform: process.platform,
+      currentOsVersion: process.getSystemVersion(),
+      env: process.env,
+      installerDirectory: join(app.getPath("userData"), "updates"),
+      managedText,
+      rollbackText,
+      deviceId: await ringDeviceId(app.getPath("userData")),
+    });
     if (hideWindows) app.dock?.hide();
     if (!process.env.SUITELEAF_TEST_DATA)
       await migrateLocalData(app.getPath("userData"), localDirectory);

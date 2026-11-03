@@ -3,7 +3,7 @@ import type { JsonNode } from "./index";
 
 /** The three styles Google Docs offers. APA is the default. */
 export type CitationStyle = "apa" | "mla" | "chicago";
-export type SourceKind = "book" | "article";
+export type SourceKind = "book" | "article" | "website";
 
 export type CitationSource = {
   id: string;
@@ -12,10 +12,21 @@ export type CitationSource = {
   guid: string;
   kind: SourceKind;
   author: string;
+  /** Every author, when the source names more than the first. */
+  authors?: string[];
   title: string;
   year: string;
   /** Optional page. Empty means the citation has no page, and never a "#" stand-in. */
   page: string;
+  editor?: string;
+  /** Every editor, when the source names more than the first. */
+  editors?: string[];
+  doi?: string;
+  url?: string;
+  journal?: string;
+  volume?: string;
+  pages?: string;
+  accessed?: string;
 };
 
 export type CitationLibrary = {
@@ -46,10 +57,37 @@ function isSource(value: unknown): value is CitationSource {
   if (typeof source.author !== "string") return false;
   if (typeof source.title !== "string") return false;
   if (typeof source.year !== "string") return false;
-  if (source.kind !== "book" && source.kind !== "article") return false;
+  if (source.kind !== "book" && source.kind !== "article" && source.kind !== "website") return false;
   if (typeof source.tag !== "string") source.tag = source.id;
   if (typeof source.guid !== "string") source.guid = "";
   if (typeof source.page !== "string") source.page = "";
+  for (const key of ["editor", "doi", "url", "journal", "volume", "pages", "accessed"] as const) {
+    const value = source[key];
+    if (value == null || value === "") delete source[key];
+    else if (typeof value !== "string") return false;
+  }
+  if (source.authors !== undefined) {
+    if (!Array.isArray(source.authors) || source.authors.some((name) => typeof name !== "string")) {
+      delete source.authors;
+    } else {
+      const names = source.authors
+        .map((name) => name.trim())
+        .filter((name) => name && !/[\r\n]/.test(name));
+      if (names.length) source.authors = names;
+      else delete source.authors;
+    }
+  }
+  if (source.editors !== undefined) {
+    if (!Array.isArray(source.editors) || source.editors.some((name) => typeof name !== "string")) {
+      delete source.editors;
+    } else {
+      const names = source.editors
+        .map((name) => name.trim())
+        .filter((name) => name && !/[\r\n]/.test(name));
+      if (names.length) source.editors = names;
+      else delete source.editors;
+    }
+  }
   return true;
 }
 
@@ -88,9 +126,43 @@ function uniqueTag(author: string, year: string, taken: string[]): string {
   return tag;
 }
 
+/** Every named author. A source with no list uses its single author field. */
+export function authorList(source: CitationSource): string[] {
+  const listed = (source.authors ?? [])
+    .map((name) => name.trim())
+    .filter((name) => name && !/[\r\n]/.test(name));
+  if (listed.length) return listed;
+  const one = source.author.trim();
+  if (!one || /[\r\n]/.test(one)) return ["Unknown"];
+  return [one];
+}
+
+export function editorList(source: CitationSource): string[] {
+  const listed = (source.editors ?? [])
+    .map((name) => name.trim())
+    .filter((name) => name && !/[\r\n]/.test(name));
+  if (listed.length) return listed;
+  const one = source.editor?.trim() ?? "";
+  if (!one || /[\r\n]/.test(one)) return [];
+  return [one];
+}
+
+function editorNote(source: CitationSource): string {
+  const names = editorList(source);
+  if (!names.length) return "";
+  return ` Edited by ${authorPhrase(names, false)}.`;
+}
+
+function authorPhrase(names: string[], brief: boolean): string {
+  if (names.length === 1) return names[0];
+  if (brief && names.length > 2) return `${names[0]} et al.`;
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
+}
+
 /** In-text citation. A blank page is omitted; the result never contains "#". */
 export function inText(source: CitationSource, style: CitationStyle): string {
-  const author = source.author.trim() || "Unknown";
+  const author = authorPhrase(authorList(source), true);
   const year = source.year.trim();
   const page = source.page.trim();
   if (style === "mla") return page ? `(${author} ${page})` : `(${author})`;
@@ -110,7 +182,7 @@ export function bibliographyRuns(
   source: CitationSource,
   style: CitationStyle,
 ): BibRun[] {
-  const author = source.author.trim() || "Unknown";
+  const author = authorPhrase(authorList(source), false);
   const year = source.year.trim();
   const title = source.title.trim() || "Untitled";
   if (source.kind === "article" && style !== "apa") {
@@ -153,6 +225,115 @@ export function bibliographyPlain(
   return bibliographyRuns(source, style)
     .map((run) => run.text)
     .join("");
+}
+
+function realIsoDay(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
+/** An https address with no credential. Anything else is left out of the entry. */
+function publicAddress(value: string | undefined): string {
+  const text = value?.trim() ?? "";
+  if (!text || /[\r\n]/.test(text)) return "";
+  if (/password|secret|token|authorization|api[-_]?key|credential/i.test(text)) return "";
+  try {
+    const parsed = new URL(text);
+    if (parsed.username || parsed.password || parsed.protocol !== "https:") return "";
+  } catch {
+    return "";
+  }
+  return text;
+}
+
+function accessNote(accessed: string | undefined): string {
+  const value = accessed?.trim() ?? "";
+  if (!realIsoDay(value)) return "";
+  return ` Accessed ${value}.`;
+}
+
+function publicationBit(value: string | undefined): string {
+  const text = value?.trim() ?? "";
+  if (!text || /[\r\n]/.test(text)) return "";
+  return text;
+}
+
+/** `12--4` is shown as `4--12`. Any other page text is left as written. */
+function pageRange(value: string | undefined): string {
+  const text = publicationBit(value);
+  const match = /^(\d+)--(\d+)$/.exec(text);
+  if (!match) return text;
+  const start = Number(match[1]);
+  const end = Number(match[2]);
+  if (start > end) return `${end}--${start}`;
+  return text;
+}
+
+/** Journal, volume, and pages for the full entry. The short entry leaves them out. */
+function publicationNote(source: CitationSource): string {
+  const bits = [publicationBit(source.journal), publicationBit(source.volume), pageRange(source.pages)].filter(
+    Boolean,
+  );
+  if (!bits.length) return "";
+  return ` ${bits.join(", ")}.`;
+}
+
+/**
+ * The short entry plus journal, volume, pages, a DOI, and an access date, when
+ * the source has them. The short entry and the in-text citation stay without them.
+ */
+export function bibliographyFull(source: CitationSource, style: CitationStyle): string {
+  const plain = bibliographyPlain(source, style);
+  const edited = editorNote(source);
+  const publication = publicationNote(source);
+  const doi = source.doi?.trim().replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, "");
+  const link = doi ? ` https://doi.org/${doi}` : "";
+  const site = source.kind === "website" ? publicAddress(source.url) : "";
+  const siteNote = site ? ` ${site}` : "";
+  const accessed = accessNote(source.accessed);
+  if (!edited && !publication && !link && !siteNote && !accessed) return plain;
+  return `${plain}${edited}${publication}${link}${siteNote}${accessed}`;
+}
+
+export type CitationWarning = {
+  path: number[];
+  sourceId: string;
+  message: string;
+};
+
+/** Citations whose source is not in the list. The document is not changed. */
+export function citationWarnings(
+  doc: JsonNode,
+  sources: CitationSource[],
+): CitationWarning[] {
+  const known = new Set(sources.map((source) => source.id));
+  const warnings: CitationWarning[] = [];
+  const walk = (node: JsonNode, path: number[]) => {
+    if (node.type === "citation") {
+      const sourceId = String(node.attrs?.sourceId ?? "");
+      if (!known.has(sourceId)) {
+        warnings.push({
+          path,
+          sourceId,
+          message: sourceId
+            ? `No source is stored for “${sourceId}”. Choose a source or remove this citation.`
+            : "This citation has no source. Choose a source or remove it.",
+        });
+      }
+    }
+    node.content?.forEach((child, index) => walk(child, [...path, index]));
+  };
+  walk(doc, []);
+  return warnings;
 }
 
 export function citedSources(
@@ -236,7 +417,17 @@ export function bibliographyXml(
       const pages = source.page.trim()
         ? `<b:Pages>${xmlEscape(source.page.trim())}</b:Pages>`
         : "";
-      return `<b:Source><b:Tag>${xmlEscape(source.tag)}</b:Tag><b:SourceType>${source.kind === "article" ? "JournalArticle" : "Book"}</b:SourceType><b:Guid>${xmlEscape(source.guid || `{${crypto.randomUUID().toUpperCase()}}`)}</b:Guid><b:Title>${xmlEscape(source.title)}</b:Title><b:Year>${xmlEscape(source.year)}</b:Year>${pages}<b:Author><b:Author><b:NameList><b:Person><b:Last>${xmlEscape(source.author)}</b:Last></b:Person></b:NameList></b:Author></b:Author></b:Source>`;
+      const people = authorList(source)
+        .map((name) => `<b:Person><b:Last>${xmlEscape(name)}</b:Last></b:Person>`)
+        .join("");
+      const editors = editorList(source)
+        .map((name) => `<b:Person><b:Last>${xmlEscape(name)}</b:Last></b:Person>`)
+        .join("");
+      const editorXml = editors ? `<b:Editor><b:NameList>${editors}</b:NameList></b:Editor>` : "";
+      const sourceType = source.kind === "article" ? "JournalArticle" : source.kind === "website" ? "InternetSite" : "Book";
+      const url = publicAddress(source.url);
+      const urlXml = url ? `<b:URL>${xmlEscape(url)}</b:URL>` : "";
+      return `<b:Source><b:Tag>${xmlEscape(source.tag)}</b:Tag><b:SourceType>${sourceType}</b:SourceType><b:Guid>${xmlEscape(source.guid || `{${crypto.randomUUID().toUpperCase()}}`)}</b:Guid><b:Title>${xmlEscape(source.title)}</b:Title><b:Year>${xmlEscape(source.year)}</b:Year>${pages}${urlXml}<b:Author><b:Author><b:NameList>${people}</b:NameList></b:Author>${editorXml}</b:Author></b:Source>`;
     })
     .join("");
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<b:Sources SelectedStyle="${xmlEscape(picked.file)}" StyleName="${picked.name}" xmlns:b="${BIBLIOGRAPHY_NS}" xmlns="${BIBLIOGRAPHY_NS}">${body}</b:Sources>`;
@@ -261,7 +452,18 @@ export function parseBibliographyXml(xml: string): CitationLibrary {
         )?.[1] ?? "",
       ).trim();
     const tag = text("Tag");
-    const author = text("Last");
+    const namesIn = (section: string) =>
+      [...section.matchAll(/<(?:b:)?Last\b[^>]*>([\s\S]*?)<\/(?:b:)?Last>/g)]
+        .map((part) => decodeXml(part[1] ?? "").trim())
+        .filter(Boolean);
+    const authorBlock =
+      /<(?:b:)?Author\b[^>]*>\s*<(?:b:)?Author\b[^>]*>([\s\S]*?)<\/(?:b:)?Author>/.exec(block)?.[1] ??
+      block;
+    const authors = namesIn(authorBlock);
+    const editors = namesIn(
+      /<(?:b:)?Editor\b[^>]*>([\s\S]*?)<\/(?:b:)?Editor>/.exec(block)?.[1] ?? "",
+    );
+    const author = authors[0] ?? "";
     if (!tag && !author) continue;
     const type = text("SourceType");
     const id = tag || `c${sources.length + 1}`;
@@ -269,11 +471,15 @@ export function parseBibliographyXml(xml: string): CitationLibrary {
       id,
       tag: tag || id,
       guid: text("Guid"),
-      kind: /article/i.test(type) ? "article" : "book",
+      kind: /article/i.test(type) ? "article" : /internet|website/i.test(type) ? "website" : "book",
       author,
+      ...(authors.length > 1 ? { authors } : {}),
+      ...(editors.length ? { editor: editors[0] } : {}),
+      ...(editors.length > 1 ? { editors } : {}),
       title: text("Title"),
       year: text("Year"),
       page: text("Pages"),
+      ...(publicAddress(text("URL")) ? { url: publicAddress(text("URL")) } : {}),
     });
   }
   return { style: styleFromName(decodeXml(styleName)), sources };
@@ -547,6 +753,14 @@ export async function bibliographyParts(zip: JSZip): Promise<string> {
   return chunks.join("\n");
 }
 
+/** Short runs plus the journal, DOI, and access date the full entry adds. */
+function bibliographyExportRuns(source: CitationSource, style: CitationStyle): BibRun[] {
+  const runs = bibliographyRuns(source, style);
+  const extra = bibliographyFull(source, style).slice(bibliographyPlain(source, style).length);
+  if (!extra) return runs;
+  return [...runs, { text: extra }];
+}
+
 function bibliographyFieldXml(
   sources: CitationSource[],
   style: CitationStyle,
@@ -557,7 +771,7 @@ function bibliographyFieldXml(
   if (!sources.length)
     return `<w:p>${begin}${title}${end}</w:p>`;
   const entries = sources.map((source) =>
-    bibliographyRuns(source, style)
+    bibliographyExportRuns(source, style)
       .map((run) => {
         const props = run.italic ? "<w:rPr><w:i/></w:rPr>" : "";
         return `<w:r>${props}<w:t xml:space="preserve">${xmlEscape(run.text)}</w:t></w:r>`;

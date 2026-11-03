@@ -1,8 +1,9 @@
 //! Three real nodes, and several signed-in clients editing one file at once.
 //!
 //! Sessions replicate through SuiteDB, so any node can authenticate a client.
-//! The live Yjs room stays on the node the clients joined. Concurrent edits
-//! have to converge there, a viewer or commenter must not change the body,
+//! Concurrent edits converge on the node the clients joined. The saved Yjs
+//! log replicates with SuiteDB, and a person who then opens the file on
+//! another node is given that document. A viewer or commenter must not change the body,
 //! and a compacted document has to show up on the other nodes. Sheets,
 //! presentations, and drawings converge the same way through their own maps:
 //! cells, slides, and drawing lines. Simultaneous saves must leave one head
@@ -11,6 +12,7 @@
 #![allow(clippy::zombie_processes)]
 
 use std::{
+    collections::HashMap,
     io::{BufRead, BufReader, Read},
     path::Path,
     process::{Child, Command, Stdio},
@@ -29,6 +31,7 @@ use tokio::{
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use yrs::{
     Any, Array, Doc, GetString, Map, Out, ReadTxn, StateVector, Text, TextPrelim, Transact, Update,
+    Xml, XmlElementPrelim, XmlFragment, XmlOut, XmlTextPrelim, types::Attrs, undo::UndoManager,
     updates::decoder::Decode,
 };
 
@@ -69,6 +72,9 @@ struct ClientInner {
     accepted: bool,
     joins: u64,
     failed: Option<String>,
+    closed: bool,
+    reply: Option<(String, String)>,
+    caret: Option<(String, u64, u64)>,
 }
 
 struct LiveClient {
@@ -99,6 +105,19 @@ fn init(dir: &Path, swarm_key: Option<&Path>) {
 }
 
 fn start(dir: &Path, bootstrap: Option<&str>) -> Node {
+    start_in(dir, bootstrap, None)
+}
+
+fn start_in(dir: &Path, bootstrap: Option<&str>, emergency: Option<&str>) -> Node {
+    start_env(dir, bootstrap, emergency, &[])
+}
+
+fn start_env(
+    dir: &Path,
+    bootstrap: Option<&str>,
+    emergency: Option<&str>,
+    extra: &[(&str, &str)],
+) -> Node {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_suiteleaf-node"));
     cmd.args([
         "run",
@@ -118,6 +137,12 @@ fn start(dir: &Path, bootstrap: Option<&str>) -> Node {
     .env("RUST_LOG", "warn")
     .stdout(Stdio::piped())
     .stderr(Stdio::inherit());
+    if let Some(code) = emergency {
+        cmd.env("SUITELEAF_EMERGENCY_CODE", code);
+    }
+    for (name, value) in extra {
+        cmd.env(name, value);
+    }
     if let Some(addr) = bootstrap {
         cmd.args(["--bootstrap", addr]);
     }
@@ -149,14 +174,18 @@ fn start(dir: &Path, bootstrap: Option<&str>) -> Node {
 
 impl Cluster {
     async fn boot() -> Self {
+        Self::boot_with(None).await
+    }
+
+    async fn boot_with(emergency: Option<&str>) -> Self {
         let dirs: Vec<_> = (0..3).map(|_| tempfile::tempdir().unwrap()).collect();
         init(dirs[0].path(), None);
         let key = dirs[0].path().join("swarm.key");
         init(dirs[1].path(), Some(&key));
         init(dirs[2].path(), Some(&key));
-        let first = start(dirs[0].path(), None);
-        let second = start(dirs[1].path(), Some(&first.p2p));
-        let third = start(dirs[2].path(), Some(&first.p2p));
+        let first = start_in(dirs[0].path(), None, emergency);
+        let second = start_in(dirs[1].path(), Some(&first.p2p), emergency);
+        let third = start_in(dirs[2].path(), Some(&first.p2p), emergency);
         let cluster = Cluster {
             _dirs: dirs,
             nodes: vec![first, second, third],
@@ -748,6 +777,12 @@ impl Cluster {
         .await;
     }
 
+    fn restart(&mut self, index: usize) {
+        let dir = self._dirs[index].path().to_owned();
+        drop(self.nodes.remove(index));
+        self.nodes.insert(index, start(&dir, None));
+    }
+
     fn assert_alive(&mut self) {
         for (index, node) in self.nodes.iter_mut().enumerate() {
             match node.child.try_wait() {
@@ -829,6 +864,9 @@ impl LiveClient {
             accepted: false,
             joins: 0,
             failed: None,
+            closed: false,
+            reply: None,
+            caret: None,
         }));
         let writer = tokio::spawn(async move {
             while let Some(text) = rx.recv().await {
@@ -854,6 +892,21 @@ impl LiveClient {
                 };
                 let mut inner = reader_state.lock().expect("client");
                 let kind = value.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                if kind == "selection" {
+                    let name = value.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                    let anchor = value.get("anchor").and_then(|v| v.as_u64());
+                    let head = value.get("head").and_then(|v| v.as_u64());
+                    if let (Some(anchor), Some(head)) = (anchor, head) {
+                        inner.caret = Some((name.to_owned(), anchor, head));
+                    }
+                    continue;
+                }
+                if kind == "ack" || kind == "reject" {
+                    if let Some(id) = value.get("id").and_then(|v| v.as_str()) {
+                        inner.reply = Some((kind.to_owned(), id.to_owned()));
+                    }
+                    continue;
+                }
                 if kind == "update" {
                     if let Some(encoded) = value.get("update").and_then(|v| v.as_str())
                         && let Err(err) = integrate(&inner.doc, &decode_b64(encoded))
@@ -881,6 +934,7 @@ impl LiveClient {
                     .unwrap_or(false);
                 inner.joins += 1;
             }
+            reader_state.lock().expect("client").closed = true;
         });
         let heartbeat_tx = tx.clone();
         let heartbeat = tokio::spawn(async move {
@@ -910,10 +964,32 @@ impl LiveClient {
         client
     }
 
+    fn closed(&self) -> bool {
+        self.state.lock().expect("client").closed
+    }
+
     fn send(&self, message: &Value) {
         self.outgoing
             .send(message.to_string())
             .unwrap_or_else(|_| panic!("{} socket closed", self.name));
+    }
+
+    fn try_send_update(&self, bytes: &[u8], unit: &str, key: &str) -> bool {
+        if bytes.len() <= 2 {
+            return false;
+        }
+        self.outgoing
+            .send(
+                json!({
+                    "type": "update",
+                    "update": STANDARD.encode(bytes),
+                    "unit": unit,
+                    "key": key,
+                    "at": AT
+                })
+                .to_string(),
+            )
+            .is_ok()
     }
 
     fn send_update(&self, bytes: &[u8], unit: &str, key: &str) {
@@ -953,6 +1029,14 @@ impl LiveClient {
 
     fn mode(&self) -> String {
         self.state.lock().expect("client").mode.clone()
+    }
+
+    fn caret(&self) -> Option<(String, u64, u64)> {
+        self.state.lock().expect("client").caret.clone()
+    }
+
+    fn reply(&self) -> Option<(String, String)> {
+        self.state.lock().expect("client").reply.clone()
     }
 
     fn accepted(&self) -> bool {
@@ -1011,6 +1095,42 @@ impl LiveClient {
             panic!("{}: {err}", self.name);
         }
         value
+    }
+
+    /// Track only this client's later paragraph edits. Remote updates are not undone.
+    fn track_own_paragraphs(&self) -> UndoManager<()> {
+        let inner = self.state.lock().expect("client");
+        let paragraphs = inner.doc.get_or_insert_array("paragraphs");
+        let mut options = yrs::undo::Options::default();
+        options.capture_timeout_millis = 0;
+        let mut undo = UndoManager::with_scope_and_options(&inner.doc, &paragraphs, options);
+        undo.include_origin(inner.doc.client_id());
+        undo
+    }
+
+    fn append_own_paragraph(&self, text: &str) {
+        let inner = self.state.lock().expect("client");
+        let origin = inner.doc.client_id();
+        let paragraphs = inner.doc.get_or_insert_array("paragraphs");
+        let before = inner.doc.transact().state_vector();
+        {
+            let mut txn = inner.doc.transact_mut_with(origin);
+            let index = paragraphs.len(&txn);
+            paragraphs.insert(&mut txn, index, TextPrelim::new(text));
+        }
+        let update = inner.doc.transact().encode_state_as_update_v1(&before);
+        drop(inner);
+        self.send_update(&update, "paragraph", "0");
+    }
+
+    fn undo_own_paragraph(&self, undo: &mut UndoManager<()>) {
+        let inner = self.state.lock().expect("client");
+        let before = inner.doc.transact().state_vector();
+        let undone = undo.undo_blocking();
+        assert!(undone, "{} had no paragraph of its own to undo", self.name);
+        let update = inner.doc.transact().encode_state_as_update_v1(&before);
+        drop(inner);
+        self.send_update(&update, "paragraph", "undo");
     }
 
     fn append_paragraph(&self, text: &str) {
@@ -1261,7 +1381,8 @@ async fn same_paragraph_merges(cluster: &Cluster, item: &str, clients: &[LiveCli
 
 async fn rejected_writers_leave_the_body(cluster: &Cluster, item: &str, editors: &[LiveClient]) {
     let lars = cluster.connect(0, item, "lars").await;
-    assert!(!lars.accepted(), "a viewer joined the writing room");
+    assert!(lars.accepted(), "a viewer was turned away");
+    assert_eq!(lars.paragraphs(), editors[0].paragraphs());
     lars.send_update(
         &root_update("viewerIntrusion", "VIEWER SHOULD NOT LAND"),
         "paragraph",
@@ -1386,6 +1507,103 @@ async fn concurrent_clients_converge_across_a_cluster() {
     cluster.assert_alive();
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn a_viewer_who_opened_first_hears_when_the_room_is_shared() {
+    let cluster = Cluster::boot().await;
+    let notes = cluster.shared_notes().await;
+    let lars = cluster.connect(0, &notes, "lars").await;
+    assert_eq!(lars.mode(), "solo");
+    let maya = cluster.connect(0, &notes, "maya").await;
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        if lars.mode() == "multiuser" {
+            break;
+        }
+        if Instant::now() >= deadline {
+            panic!("viewer stayed {}", lars.mode());
+        }
+        sleep(Duration::from_millis(40)).await;
+    }
+    maya.append_paragraph("Tomatoes are in");
+    wait_paragraphs(&[lars, maya], &["Tomatoes are in"]).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_stored_edit_is_acknowledged_and_a_viewer_edit_is_refused() {
+    let cluster = Cluster::boot().await;
+    let notes = cluster.shared_notes().await;
+    let editors = cluster.editors(0, &notes, &["maya", "sam"]).await;
+    let update = {
+        let inner = editors[0].state.lock().expect("client");
+        seed_paragraphs(&inner.doc, &["Tomatoes are in"])
+    };
+    editors[0].send(&json!({
+        "type": "update",
+        "id": "edit-1",
+        "update": STANDARD.encode(update),
+        "unit": "paragraph",
+        "key": "0",
+        "at": AT
+    }));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        if editors[0].reply() == Some(("ack".into(), "edit-1".into())) {
+            break;
+        }
+        if Instant::now() >= deadline {
+            panic!(
+                "the stored edit was not acknowledged: {:?}",
+                editors[0].reply()
+            );
+        }
+        sleep(Duration::from_millis(40)).await;
+    }
+    wait_paragraphs(&editors, &["Tomatoes are in"]).await;
+    let lars = cluster.connect(0, &notes, "lars").await;
+    lars.send(&json!({
+        "type": "update",
+        "id": "view-1",
+        "update": STANDARD.encode(root_update("viewerIntrusion", "VIEWER SHOULD NOT LAND")),
+        "unit": "paragraph",
+        "key": "0",
+        "at": AT
+    }));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        if lars.reply() == Some(("reject".into(), "view-1".into())) {
+            break;
+        }
+        if Instant::now() >= deadline {
+            panic!("the viewer edit was not refused: {:?}", lars.reply());
+        }
+        sleep(Duration::from_millis(40)).await;
+    }
+    assert_eq!(editors[0].root("viewerIntrusion"), "");
+    assert_eq!(editors[0].paragraphs(), ["Tomatoes are in"]);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_live_caret_reaches_the_other_person_without_changing_the_text() {
+    let cluster = Cluster::boot().await;
+    let notes = cluster.shared_notes().await;
+    let editors = cluster.editors(0, &notes, &["maya", "sam"]).await;
+    let before = editors[1].paragraphs();
+    editors[0]
+        .send(&json!({"type": "selection", "anchor": 1, "head": 4, "text": "Tomatoes are in"}));
+    editors[0].send(&json!({"type": "selection", "anchor": 1, "head": 4}));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        if editors[1].caret() == Some(("Maya".into(), 1, 4)) {
+            break;
+        }
+        if Instant::now() >= deadline {
+            panic!("Sam did not see Maya's caret: {:?}", editors[1].caret());
+        }
+        sleep(Duration::from_millis(40)).await;
+    }
+    assert_eq!(editors[1].paragraphs(), before);
+}
+
 struct MapCase {
     name: &'static str,
     file_name: &'static str,
@@ -1489,7 +1707,17 @@ async fn maps_converge(cluster: &Cluster, case: &MapCase) {
     .await;
 
     let lars = cluster.connect(0, &item, "lars").await;
-    assert!(!lars.accepted(), "a viewer joined the {} room", case.name);
+    assert!(
+        lars.accepted(),
+        "a viewer was turned away from {}",
+        case.name
+    );
+    assert_eq!(
+        lars.entry(case.map, case.left_key),
+        editors[0].entry(case.map, case.left_key),
+        "{}",
+        case.name
+    );
     lars.send_update(
         &map_update(case.map, "intrusion", "VIEWER SHOULD NOT LAND"),
         case.unit,
@@ -1616,4 +1844,1377 @@ async fn sheets_presentations_and_drawings_converge_across_a_cluster() {
     }
     cluster.heads_match().await;
     cluster.assert_alive();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_edit_on_one_node_is_in_the_room_on_another() {
+    let mut cluster = Cluster::boot().await;
+    let notes = cluster.shared_notes().await;
+    let editors = cluster.editors(0, &notes, &["maya", "sam"]).await;
+    different_paragraphs_converge(&editors).await;
+    cluster
+        .wait_until("the collaboration log reaches another node", || async {
+            let room = cluster
+                .db(
+                    1,
+                    json!({
+                        "op": "findOne",
+                        "model": "drive_room",
+                        "where": [{ "field": "id", "value": notes }]
+                    }),
+                )
+                .await;
+            let updates = cluster
+                .db(
+                    1,
+                    json!({
+                        "op": "findMany",
+                        "model": "drive_room_update",
+                        "where": [{ "field": "itemId", "value": notes }]
+                    }),
+                )
+                .await;
+            room["mode"].as_str() == Some("multiuser")
+                && updates.as_array().is_some_and(|rows| !rows.is_empty())
+        })
+        .await;
+    let remote = cluster.connect(1, &notes, "ravi").await;
+    let expected = vec!["Tomatoes are in".to_owned(), "Beans are staked".to_owned()];
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        if remote.paragraphs() == expected {
+            break;
+        }
+        if Instant::now() >= deadline {
+            panic!(
+                "the other node's room showed {:?}, mode {}",
+                remote.paragraphs(),
+                remote.mode()
+            );
+        }
+        sleep(Duration::from_millis(100)).await;
+    }
+    drop(editors);
+    cluster.assert_alive();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_open_room_on_another_node_reads_a_later_edit() {
+    let mut cluster = Cluster::boot().await;
+    let notes = cluster.shared_notes().await;
+    let editors = cluster.editors(0, &notes, &["maya", "sam"]).await;
+    different_paragraphs_converge(&editors).await;
+    cluster
+        .wait_until("the collaboration log reaches another node", || async {
+            let room = cluster
+                .db(
+                    1,
+                    json!({
+                        "op": "findOne",
+                        "model": "drive_room",
+                        "where": [{ "field": "id", "value": notes }]
+                    }),
+                )
+                .await;
+            room["mode"].as_str() == Some("multiuser")
+        })
+        .await;
+    let remote = cluster.connect(1, &notes, "ravi").await;
+    let first = vec!["Tomatoes are in".to_owned(), "Beans are staked".to_owned()];
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        if remote.paragraphs() == first {
+            break;
+        }
+        if Instant::now() >= deadline {
+            panic!("the open room started as {:?}", remote.paragraphs());
+        }
+        sleep(Duration::from_millis(100)).await;
+    }
+    let before = cluster
+        .db(
+            1,
+            json!({
+                "op": "findMany",
+                "model": "drive_room_update",
+                "where": [{ "field": "itemId", "value": notes }]
+            }),
+        )
+        .await
+        .as_array()
+        .map(|rows| rows.len())
+        .unwrap_or(0);
+    editors[0].edit_paragraph(0, "Tomatoes are picked");
+    cluster
+        .wait_until("the later edit reaches the other node's log", || async {
+            let updates = cluster
+                .db(
+                    1,
+                    json!({
+                        "op": "findMany",
+                        "model": "drive_room_update",
+                        "where": [{ "field": "itemId", "value": notes }]
+                    }),
+                )
+                .await;
+            updates.as_array().is_some_and(|rows| rows.len() > before)
+        })
+        .await;
+    let expected = vec![
+        "Tomatoes are picked".to_owned(),
+        "Beans are staked".to_owned(),
+    ];
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        if remote.paragraphs() == expected {
+            break;
+        }
+        if Instant::now() >= deadline {
+            panic!(
+                "the room that was already open showed {:?}, mode {}",
+                remote.paragraphs(),
+                remote.mode()
+            );
+        }
+        sleep(Duration::from_millis(100)).await;
+    }
+    drop(editors);
+    cluster.assert_alive();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn formatted_text_a_table_and_an_image_converge_on_another_node() {
+    let mut cluster = Cluster::boot().await;
+    let notes = cluster.shared_notes().await;
+    let editors = cluster.editors(0, &notes, &["maya", "sam"]).await;
+    cluster
+        .wait_until("the room is multiuser on another node", || async {
+            let room = cluster
+                .db(
+                    1,
+                    json!({
+                        "op": "findOne",
+                        "model": "drive_room",
+                        "where": [{ "field": "id", "value": notes }]
+                    }),
+                )
+                .await;
+            room["mode"].as_str() == Some("multiuser")
+        })
+        .await;
+    let remote = cluster.connect(1, &notes, "ravi").await;
+    let update = {
+        let maya = editors[0].state.lock().expect("client");
+        insert_rich(&maya.doc)
+    };
+    editors[0].send_update(&update, "paragraph", "rich");
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        let sam = editors[1].state.lock().expect("client");
+        let remote_doc = remote.state.lock().expect("client");
+        let sam_rich = rich_snapshot(&sam.doc);
+        let remote_rich = rich_snapshot(&remote_doc.doc);
+        drop(sam);
+        drop(remote_doc);
+        let ready = |text: &str| {
+            text.contains("Keep")
+                && text.contains("bold")
+                && text.contains("table level=1")
+                && text.contains("tableCell")
+                && text.contains("Beds")
+                && text.contains("image alt=North beds")
+                && text.contains("src=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+        };
+        if ready(&sam_rich) && remote_rich == sam_rich {
+            break;
+        }
+        if Instant::now() >= deadline {
+            panic!("the other node showed {remote_rich:?} and the first node showed {sam_rich:?}");
+        }
+        sleep(Duration::from_millis(100)).await;
+    }
+    drop(editors);
+    cluster.assert_alive();
+}
+
+fn insert_rich(doc: &Doc) -> Vec<u8> {
+    let fragment = doc.get_or_insert_xml_fragment("prosemirror");
+    let before = doc.transact().state_vector();
+    let mut txn = doc.transact_mut();
+    let paragraph = fragment.push_back(&mut txn, XmlElementPrelim::empty("paragraph"));
+    let text = paragraph.push_back(&mut txn, XmlTextPrelim::new("Keep"));
+    let mut bold = Attrs::new();
+    bold.insert(Arc::from("bold"), Any::Map(Arc::new(HashMap::new())));
+    text.format(&mut txn, 0, 4, bold);
+    let table = fragment.push_back(&mut txn, XmlElementPrelim::empty("table"));
+    table.insert_attribute(&mut txn, "level", "1");
+    let row = table.push_back(&mut txn, XmlElementPrelim::empty("tableRow"));
+    let cell = row.push_back(&mut txn, XmlElementPrelim::empty("tableCell"));
+    cell.push_back(&mut txn, XmlTextPrelim::new("Beds"));
+    let image = fragment.push_back(&mut txn, XmlElementPrelim::empty("image"));
+    image.insert_attribute(&mut txn, "alt", "North beds");
+    image.insert_attribute(
+        &mut txn,
+        "src",
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    );
+    drop(txn);
+    doc.transact().encode_state_as_update_v1(&before)
+}
+
+fn rich_snapshot(doc: &Doc) -> String {
+    let txn = doc.transact();
+    let Some(fragment) = txn.get_xml_fragment("prosemirror") else {
+        return String::new();
+    };
+    let mut out = String::new();
+    for child in fragment.children(&txn) {
+        let XmlOut::Element(element) = child else {
+            continue;
+        };
+        out.push_str(element.tag().as_ref());
+        let mut attrs: Vec<_> = element
+            .attributes(&txn)
+            .map(|(key, value)| format!("{key}={value}"))
+            .collect();
+        attrs.sort();
+        for attr in attrs {
+            out.push(' ');
+            out.push_str(&attr);
+        }
+        out.push('\n');
+        write_xml_children(&txn, &element, &mut out);
+    }
+    out
+}
+
+fn write_xml_children(txn: &impl ReadTxn, element: &impl XmlFragment, out: &mut String) {
+    for grandchild in element.children(txn) {
+        match grandchild {
+            XmlOut::Text(text) => {
+                out.push_str(&text.get_string(txn));
+                for chunk in text.diff(txn, |_| ()) {
+                    let Some(attributes) = chunk.attributes else {
+                        continue;
+                    };
+                    let mut names: Vec<_> = attributes
+                        .iter()
+                        .map(|(name, _)| name.as_ref().to_owned())
+                        .collect();
+                    names.sort();
+                    for name in names {
+                        out.push(' ');
+                        out.push_str(&name);
+                    }
+                }
+                out.push('\n');
+            }
+            XmlOut::Element(child) => {
+                out.push_str(child.tag().as_ref());
+                out.push('\n');
+                write_xml_children(txn, &child, out);
+            }
+            XmlOut::Fragment(_) => {}
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_restart_keeps_an_edit_that_was_written_to_the_log() {
+    let mut cluster = Cluster::boot().await;
+    let notes = cluster.shared_notes().await;
+    let editors = cluster.editors(0, &notes, &["maya", "sam"]).await;
+    different_paragraphs_converge(&editors).await;
+    cluster
+        .wait_until("the edit is stored before the node stops", || async {
+            let updates = cluster
+                .db(
+                    0,
+                    json!({
+                        "op": "findMany",
+                        "model": "drive_room_update",
+                        "where": [{ "field": "itemId", "value": notes }]
+                    }),
+                )
+                .await;
+            updates.as_array().is_some_and(|rows| !rows.is_empty())
+        })
+        .await;
+    cluster.restart(0);
+    drop(editors);
+    let again = cluster.connect(0, &notes, "maya").await;
+    let expected = vec!["Tomatoes are in".to_owned(), "Beans are staked".to_owned()];
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        if again.paragraphs() == expected {
+            break;
+        }
+        if Instant::now() >= deadline {
+            panic!(
+                "after restart the room showed {:?}, mode {}",
+                again.paragraphs(),
+                again.mode()
+            );
+        }
+        sleep(Duration::from_millis(100)).await;
+    }
+    cluster.assert_alive();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_dropped_connection_and_a_duplicate_edit_keep_the_saved_text() {
+    let mut cluster = Cluster::boot().await;
+    let notes = cluster.shared_notes().await;
+    let mut editors = cluster.editors(0, &notes, &["maya", "sam"]).await;
+    different_paragraphs_converge(&editors).await;
+    drop(editors.remove(0));
+    let bytes = editors[0].edit_paragraph(1, "Beans are picked");
+    editors[0].send_update(&bytes, "paragraph", "1");
+    let expected = vec!["Tomatoes are in".to_owned(), "Beans are picked".to_owned()];
+    let returned = cluster.connect(0, &notes, "maya").await;
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        if editors[0].paragraphs() == expected && returned.paragraphs() == expected {
+            break;
+        }
+        if Instant::now() >= deadline {
+            panic!(
+                "after the dropped connection Sam showed {:?} and Maya showed {:?}",
+                editors[0].paragraphs(),
+                returned.paragraphs()
+            );
+        }
+        sleep(Duration::from_millis(100)).await;
+    }
+    cluster
+        .db(
+            0,
+            json!({
+                "op": "update",
+                "model": "session",
+                "where": [{ "field": "id", "value": "maya-session" }],
+                "update": { "expiresAt": "2000-01-01T00:00:00.000Z" }
+            }),
+        )
+        .await;
+    assert!(
+        connection_is_refused(&cluster, &notes, "maya").await,
+        "an expired session opened the room"
+    );
+    assert_eq!(editors[0].paragraphs(), expected);
+    drop(returned);
+    drop(editors);
+    cluster.assert_alive();
+}
+
+async fn connection_is_refused(cluster: &Cluster, item: &str, person_id: &str) -> bool {
+    let person = cluster.person(person_id);
+    let url = format!(
+        "{}/api/drive/items/{item}/session?access_token={}",
+        cluster.nodes[0].http.replacen("http", "ws", 1),
+        person.token
+    );
+    match timeout(Duration::from_secs(5), connect_async(&url)).await {
+        Ok(Ok(_)) => false,
+        _ => true,
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_expired_session_cannot_change_the_open_room() {
+    let mut cluster = Cluster::boot().await;
+    let notes = cluster.shared_notes().await;
+    let editors = cluster.editors(0, &notes, &["maya", "sam"]).await;
+    different_paragraphs_converge(&editors).await;
+    let expected = vec!["Tomatoes are in".to_owned(), "Beans are staked".to_owned()];
+    cluster
+        .db(
+            0,
+            json!({
+                "op": "update",
+                "model": "session",
+                "where": [{ "field": "id", "value": "maya-session" }],
+                "update": { "expiresAt": "2000-01-01T00:00:00.000Z" }
+            }),
+        )
+        .await;
+    let inner = editors[0].state.lock().expect("client");
+    let update = replace_paragraph(&inner.doc, 0, "Tomatoes are gone");
+    drop(inner);
+    let _ = editors[0].try_send_update(&update, "paragraph", "0");
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        let sam = editors[1].paragraphs();
+        if sam != expected {
+            panic!("an expired session changed the room to {sam:?}");
+        }
+        if editors[0].closed() {
+            break;
+        }
+        if Instant::now() >= deadline {
+            panic!("the expired session stayed connected");
+        }
+        sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(editors[1].paragraphs(), expected);
+    drop(editors);
+    cluster.assert_alive();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn removing_access_closes_the_open_room_and_keeps_the_saved_text() {
+    let mut cluster = Cluster::boot().await;
+    let notes = cluster.shared_notes().await;
+    let editors = cluster.editors(0, &notes, &["maya", "sam"]).await;
+    different_paragraphs_converge(&editors).await;
+    let expected = vec!["Tomatoes are in".to_owned(), "Beans are staked".to_owned()];
+    let maya = Person {
+        id: "maya".into(),
+        name: "Maya".into(),
+        token: cluster.person("maya").token.clone(),
+    };
+    let removed = cluster
+        .request(
+            0,
+            &maya,
+            reqwest::Method::PUT,
+            &format!("/api/drive/items/{notes}/acl"),
+            Some(
+                serde_json::to_vec(&json!({
+                    "principalType": "user",
+                    "principalId": "sam",
+                    "role": null
+                }))
+                .unwrap(),
+            ),
+            None,
+        )
+        .await;
+    assert!(
+        removed.status().is_success(),
+        "removing access failed: {}",
+        removed.status()
+    );
+    let inner = editors[1].state.lock().expect("client");
+    let update = replace_paragraph(&inner.doc, 0, "Tomatoes are gone");
+    drop(inner);
+    let _ = editors[1].try_send_update(&update, "paragraph", "0");
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        let maya_text = editors[0].paragraphs();
+        if maya_text != expected {
+            panic!("a removed editor changed the room to {maya_text:?}");
+        }
+        if editors[1].closed() {
+            break;
+        }
+        if Instant::now() >= deadline {
+            panic!("the removed editor stayed connected");
+        }
+        sleep(Duration::from_millis(50)).await;
+    }
+    let sam = Person {
+        id: "sam".into(),
+        name: "Sam".into(),
+        token: cluster.person("sam").token.clone(),
+    };
+    let read = cluster
+        .request(
+            0,
+            &sam,
+            reqwest::Method::GET,
+            &format!("/api/drive/items/{notes}/content"),
+            None,
+            None,
+        )
+        .await;
+    assert!(
+        !read.status().is_success(),
+        "a removed editor could still read the file"
+    );
+    assert_eq!(editors[0].paragraphs(), expected);
+    drop(editors);
+    cluster.assert_alive();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn simultaneous_joins_see_the_saved_edit() {
+    let mut cluster = Cluster::boot().await;
+    let notes = cluster.shared_notes().await;
+    let editors = cluster.editors(0, &notes, &["maya", "sam"]).await;
+    different_paragraphs_converge(&editors).await;
+    let expected = vec!["Tomatoes are in".to_owned(), "Beans are staked".to_owned()];
+    cluster
+        .wait_until("the saved edit is on the other node", || async {
+            let room = cluster
+                .db(
+                    1,
+                    json!({
+                        "op": "findOne",
+                        "model": "drive_room",
+                        "where": [{ "field": "id", "value": notes }]
+                    }),
+                )
+                .await;
+            let updates = cluster
+                .db(
+                    1,
+                    json!({
+                        "op": "findMany",
+                        "model": "drive_room_update",
+                        "where": [{ "field": "itemId", "value": notes }]
+                    }),
+                )
+                .await;
+            room["mode"].as_str() == Some("multiuser")
+                && updates.as_array().is_some_and(|rows| !rows.is_empty())
+        })
+        .await;
+    let (ravi, noor) = tokio::join!(
+        cluster.connect(1, &notes, "ravi"),
+        cluster.connect(1, &notes, "noor"),
+    );
+    assert_eq!(ravi.paragraphs(), expected);
+    assert_eq!(noor.paragraphs(), expected);
+    assert_eq!(editors[0].paragraphs(), expected);
+    assert_eq!(editors[1].paragraphs(), expected);
+    drop(ravi);
+    drop(noor);
+    drop(editors);
+    cluster.assert_alive();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn joins_before_the_log_arrives_still_see_the_edit() {
+    let mut cluster = Cluster::boot().await;
+    let notes = cluster.shared_notes().await;
+    let (ravi, noor) = tokio::join!(
+        cluster.connect(1, &notes, "ravi"),
+        cluster.connect(1, &notes, "noor"),
+    );
+    let editors = cluster.editors(0, &notes, &["maya", "sam"]).await;
+    different_paragraphs_converge(&editors).await;
+    let expected = vec!["Tomatoes are in".to_owned(), "Beans are staked".to_owned()];
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        if ravi.paragraphs() == expected && noor.paragraphs() == expected {
+            break;
+        }
+        if Instant::now() >= deadline {
+            panic!(
+                "opened before the log: Ravi showed {:?} and Noor showed {:?}",
+                ravi.paragraphs(),
+                noor.paragraphs()
+            );
+        }
+        sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(editors[0].paragraphs(), expected);
+    assert_eq!(editors[1].paragraphs(), expected);
+    drop(ravi);
+    drop(noor);
+    drop(editors);
+    cluster.assert_alive();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn undoing_one_paragraph_keeps_the_other_persons_text() {
+    let mut cluster = Cluster::boot().await;
+    let notes = cluster.shared_notes().await;
+    let editors = cluster.editors(0, &notes, &["maya", "sam"]).await;
+    let mut maya_undo = editors[0].track_own_paragraphs();
+    editors[0].append_own_paragraph("Tomatoes are in");
+    wait_paragraphs(&editors, &["Tomatoes are in"]).await;
+    editors[1].append_paragraph("Beans are staked");
+    wait_paragraphs(&editors, &["Tomatoes are in", "Beans are staked"]).await;
+    editors[0].undo_own_paragraph(&mut maya_undo);
+    wait_paragraphs(&editors, &["Beans are staked"]).await;
+    drop(editors);
+    cluster.assert_alive();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_guest_share_over_http_refuses_a_bad_role() {
+    let cluster = Cluster::boot().await;
+    let item = cluster.shared_notes().await;
+    let maya = cluster.person("maya");
+    let path = format!("/api/drive/items/{item}/guest");
+    let bad = cluster
+        .request(
+            0,
+            maya,
+            reqwest::Method::POST,
+            &path,
+            Some(
+                serde_json::to_vec(&json!({
+                    "principalId": "sam",
+                    "role": "secret-value",
+                    "expiresAt": "2099-01-03T00:00:00.000Z"
+                }))
+                .unwrap(),
+            ),
+            None,
+        )
+        .await;
+    let status = bad.status();
+    let text = bad.text().await.unwrap_or_default();
+    assert_eq!(status, reqwest::StatusCode::BAD_REQUEST);
+    assert!(text.contains("viewer or a commenter"), "{text}");
+    assert!(!text.contains("secret-value"));
+    let dated = cluster
+        .request(
+            0,
+            maya,
+            reqwest::Method::POST,
+            &path,
+            Some(
+                serde_json::to_vec(&json!({
+                    "principalId": "sam",
+                    "role": "viewer",
+                    "expiresAt": "secret-value"
+                }))
+                .unwrap(),
+            ),
+            None,
+        )
+        .await;
+    let dated_text = dated.text().await.unwrap_or_default();
+    assert!(dated_text.contains("end date"), "{dated_text}");
+    assert!(!dated_text.contains("secret-value"));
+    let saved = cluster
+        .json(
+            0,
+            maya,
+            reqwest::Method::POST,
+            &path,
+            Some(
+                serde_json::to_vec(&json!({
+                    "principalId": "sam",
+                    "role": "viewer",
+                    "expiresAt": "2099-01-03T00:00:00.000Z"
+                }))
+                .unwrap(),
+            ),
+        )
+        .await;
+    assert_eq!(saved["ok"], true);
+    let review = cluster
+        .json(0, maya, reqwest::Method::GET, "/api/drive/guests", None)
+        .await;
+    let encoded = review.to_string();
+    assert!(encoded.contains("sam"), "{encoded}");
+    assert!(encoded.contains("viewer"), "{encoded}");
+    assert!(encoded.contains("2099-01-03T00:00:00.000Z"), "{encoded}");
+    assert!(!encoded.contains("North bed"));
+    assert!(!encoded.contains("secret-value"));
+    let sam = cluster.person("sam");
+    let own = cluster
+        .json(0, sam, reqwest::Method::GET, "/api/drive/guests", None)
+        .await;
+    assert_eq!(own["guests"].as_array().map(|rows| rows.len()), Some(0));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_lost_device_over_http_signs_out_only_that_session() {
+    let cluster = Cluster::boot().await;
+    let sam = cluster.person("sam");
+    let priya = cluster.person("priya");
+    cluster
+        .db(
+            0,
+            json!({
+                "op": "update",
+                "model": "session",
+                "where": [{ "field": "id", "value": "sam-session" }],
+                "update": { "userAgent": "Garden browser" }
+            }),
+        )
+        .await;
+    cluster
+        .db(
+            0,
+            json!({
+                "op": "update",
+                "model": "session",
+                "where": [{ "field": "id", "value": "priya-session" }],
+                "update": { "userAgent": "Lost phone" }
+            }),
+        )
+        .await;
+    cluster
+        .db(
+            0,
+            json!({
+                "op": "create",
+                "model": "session",
+                "data": {
+                    "id": "sam-phone",
+                    "token": "phone-token",
+                    "userId": "sam",
+                    "userAgent": "Lost phone",
+                    "expiresAt": "2099-01-01T00:00:00.000Z",
+                    "createdAt": AT,
+                    "updatedAt": AT
+                }
+            }),
+        )
+        .await;
+    let blank = cluster
+        .request(
+            0,
+            sam,
+            reqwest::Method::POST,
+            "/api/node/sessions/lost-device",
+            Some(serde_json::to_vec(&json!({ "device": "  " })).unwrap()),
+            None,
+        )
+        .await;
+    let blank_status = blank.status();
+    let blank_text = blank.text().await.unwrap_or_default();
+    assert_eq!(blank_status, reqwest::StatusCode::BAD_REQUEST);
+    assert!(
+        blank_text.contains("Name the device to sign out."),
+        "{blank_text}"
+    );
+    let missed = cluster
+        .json(
+            0,
+            sam,
+            reqwest::Method::POST,
+            "/api/node/sessions/lost-device",
+            Some(serde_json::to_vec(&json!({ "device": "secret-value" })).unwrap()),
+        )
+        .await;
+    assert_eq!(missed["ended"], 0);
+    assert!(!missed.to_string().contains("secret-value"));
+    let ended = cluster
+        .json(
+            0,
+            sam,
+            reqwest::Method::POST,
+            "/api/node/sessions/lost-device",
+            Some(serde_json::to_vec(&json!({ "device": "Lost phone" })).unwrap()),
+        )
+        .await;
+    assert_eq!(ended["ended"], 1);
+    assert!(!ended.to_string().contains("Lost phone"));
+    let phone = Person {
+        id: "sam".into(),
+        name: "Sam".into(),
+        token: "phone-token".into(),
+    };
+    let denied = cluster
+        .request(
+            0,
+            &phone,
+            reqwest::Method::GET,
+            "/api/drive/items",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(denied.status(), reqwest::StatusCode::UNAUTHORIZED);
+    cluster
+        .json(0, sam, reqwest::Method::GET, "/api/drive/items", None)
+        .await;
+    cluster
+        .json(0, priya, reqwest::Method::GET, "/api/drive/items", None)
+        .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_emergency_sign_in_over_http_uses_the_code_once() {
+    let code = "garden-emergency-code";
+    let cluster = Cluster::boot_with(Some(code)).await;
+    for node in 0..cluster.nodes.len() {
+        let updated = cluster
+            .db(
+                node,
+                json!({
+                    "op": "update",
+                    "model": "user",
+                    "where": [{ "field": "id", "value": "sam" }],
+                    "update": { "role": "admin", "banned": 0 }
+                }),
+            )
+            .await;
+        assert!(updated["role"] == "admin", "{updated}");
+    }
+    let url = format!("{}/api/node/emergency", cluster.nodes[0].http);
+    let post = |body: Value| {
+        let url = url.clone();
+        let http = cluster.http.clone();
+        async move { http.post(url).json(&body).send().await.expect("emergency") }
+    };
+    let wrong = post(json!({
+        "userId": "sam",
+        "code": "secret-value",
+        "reason": "the issuer was wrong"
+    }))
+    .await;
+    let wrong_status = wrong.status();
+    let wrong_text = wrong.text().await.unwrap_or_default();
+    assert_eq!(wrong_status, reqwest::StatusCode::UNAUTHORIZED);
+    assert!(wrong_text.contains("does not match"), "{wrong_text}");
+    assert!(!wrong_text.contains("secret-value"));
+    assert!(!wrong_text.contains(code));
+    let priya = post(json!({
+        "userId": "priya",
+        "code": code,
+        "reason": "the issuer was wrong"
+    }))
+    .await;
+    let priya_text = priya.text().await.unwrap_or_default();
+    assert!(priya_text.contains("administrator"), "{priya_text}");
+    assert!(!priya_text.contains(code));
+    let coded = post(json!({
+        "userId": "sam",
+        "code": code,
+        "reason": code
+    }))
+    .await;
+    let coded_text = coded.text().await.unwrap_or_default();
+    assert!(coded_text.contains("not the code"), "{coded_text}");
+    assert!(!coded_text.contains(code));
+    let opened = post(json!({
+        "userId": "sam",
+        "code": code,
+        "reason": "the issuer was wrong"
+    }))
+    .await;
+    let opened_status = opened.status();
+    let opened_text = opened.text().await.unwrap_or_default();
+    assert!(opened_status.is_success(), "{opened_text}");
+    assert!(!opened_text.contains(code));
+    let body: Value = serde_json::from_str(&opened_text).unwrap();
+    let token = body["token"].as_str().unwrap();
+    assert_ne!(token, code);
+    assert_eq!(body["userId"], "sam");
+    let listed = cluster
+        .http
+        .get(format!("{}/api/drive/items", cluster.nodes[0].http))
+        .header("authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .unwrap();
+    assert!(listed.status().is_success());
+    let again = post(json!({
+        "userId": "sam",
+        "code": code,
+        "reason": "the issuer was wrong"
+    }))
+    .await;
+    let again_text = again.text().await.unwrap_or_default();
+    assert!(again_text.contains("already used"), "{again_text}");
+    assert!(!again_text.contains(code));
+    let audit = cluster
+        .db(
+            0,
+            json!({
+                "op": "findMany",
+                "model": "audit_event",
+                "where": [{ "field": "action", "value": "emergency.sign-in" }]
+            }),
+        )
+        .await;
+    let audit_text = audit.to_string();
+    assert!(audit_text.contains("emergency.sign-in"), "{audit_text}");
+    assert!(audit_text.contains("the issuer was wrong"), "{audit_text}");
+    assert!(!audit_text.contains(code), "{audit_text}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn rotating_a_session_over_http_replaces_only_that_token() {
+    let cluster = Cluster::boot().await;
+    let sam = cluster.person("sam");
+    let priya = cluster.person("priya");
+    let missing = cluster
+        .request(
+            0,
+            sam,
+            reqwest::Method::POST,
+            "/api/node/sessions/secret-value/rotate",
+            None,
+            None,
+        )
+        .await;
+    let missing_status = missing.status();
+    let missing_text = missing.text().await.unwrap_or_default();
+    assert_eq!(missing_status, reqwest::StatusCode::NOT_FOUND);
+    assert!(!missing_text.contains("secret-value"));
+    let other = cluster
+        .request(
+            0,
+            sam,
+            reqwest::Method::POST,
+            "/api/node/sessions/priya-session/rotate",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(other.status(), reqwest::StatusCode::NOT_FOUND);
+    cluster
+        .json(0, priya, reqwest::Method::GET, "/api/drive/items", None)
+        .await;
+    let rotated = cluster
+        .json(
+            0,
+            sam,
+            reqwest::Method::POST,
+            "/api/node/sessions/sam-session/rotate",
+            None,
+        )
+        .await;
+    let token = rotated["token"].as_str().unwrap().to_owned();
+    assert_ne!(token, "sam-token");
+    let stale = cluster
+        .request(0, sam, reqwest::Method::GET, "/api/drive/items", None, None)
+        .await;
+    assert_eq!(stale.status(), reqwest::StatusCode::UNAUTHORIZED);
+    let next = Person {
+        id: "sam".into(),
+        name: "Sam".into(),
+        token: token.clone(),
+    };
+    cluster
+        .json(0, &next, reqwest::Method::GET, "/api/drive/items", None)
+        .await;
+    let listed = cluster
+        .json(0, &next, reqwest::Method::GET, "/api/node/sessions", None)
+        .await;
+    let listed_text = listed.to_string();
+    assert!(listed_text.contains("sam-session"), "{listed_text}");
+    assert!(listed_text.contains("\"current\":true"), "{listed_text}");
+    assert!(!listed_text.contains(&token), "{listed_text}");
+    cluster
+        .json(0, priya, reqwest::Method::GET, "/api/drive/items", None)
+        .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_group_member_plan_over_http_does_not_change_access() {
+    let cluster = Cluster::boot().await;
+    for node in 0..cluster.nodes.len() {
+        let updated = cluster
+            .db(
+                node,
+                json!({
+                    "op": "update",
+                    "model": "user",
+                    "where": [{ "field": "id", "value": "sam" }],
+                    "update": { "role": "admin", "banned": 0 }
+                }),
+            )
+            .await;
+        assert!(updated["role"] == "admin", "{updated}");
+    }
+    let maya = cluster.person("maya");
+    let sam = cluster.person("sam");
+    let priya = cluster.person("priya");
+    let lars = cluster.person("lars");
+    let created = cluster
+        .json(
+            0,
+            maya,
+            reqwest::Method::POST,
+            "/api/drive/items",
+            Some(serde_json::to_vec(&json!({ "name": "Watering rota.sldoc" })).unwrap()),
+        )
+        .await;
+    let item = created["id"].as_str().unwrap().to_owned();
+    let saved = cluster
+        .request(
+            0,
+            maya,
+            reqwest::Method::PUT,
+            &format!("/api/drive/items/{item}/content"),
+            Some(b"secret-value".to_vec()),
+            None,
+        )
+        .await;
+    assert!(saved.status().is_success(), "{}", saved.status());
+    let group = cluster
+        .json(
+            0,
+            sam,
+            reqwest::Method::POST,
+            "/api/admin/groups",
+            Some(serde_json::to_vec(&json!({ "name": "Garden club" })).unwrap()),
+        )
+        .await;
+    let group_id = group["id"].as_str().unwrap().to_owned();
+    cluster
+        .json(
+            0,
+            maya,
+            reqwest::Method::PUT,
+            &format!("/api/drive/items/{item}/acl"),
+            Some(
+                serde_json::to_vec(&json!({
+                    "principalType": "group",
+                    "principalId": group_id,
+                    "role": "editor"
+                }))
+                .unwrap(),
+            ),
+        )
+        .await;
+    cluster
+        .json(
+            0,
+            sam,
+            reqwest::Method::POST,
+            &format!("/api/admin/groups/{group_id}/members"),
+            Some(
+                serde_json::to_vec(&json!({
+                    "memberType": "user",
+                    "memberId": "priya"
+                }))
+                .unwrap(),
+            ),
+        )
+        .await;
+    let path = format!("/api/admin/groups/{group_id}/member-plan");
+    let refused = cluster
+        .request(
+            0,
+            maya,
+            reqwest::Method::POST,
+            &path,
+            Some(serde_json::to_vec(&json!({ "memberId": "sam", "adding": true })).unwrap()),
+            None,
+        )
+        .await;
+    assert_eq!(refused.status(), reqwest::StatusCode::FORBIDDEN);
+    let blank = cluster
+        .request(
+            0,
+            sam,
+            reqwest::Method::POST,
+            &path,
+            Some(serde_json::to_vec(&json!({ "memberId": " ", "adding": true })).unwrap()),
+            None,
+        )
+        .await;
+    let blank_status = blank.status();
+    let blank_text = blank.text().await.unwrap_or_default();
+    assert_eq!(blank_status, reqwest::StatusCode::BAD_REQUEST);
+    assert!(blank_text.contains("Name the person."));
+    assert!(!blank_text.contains("secret-value"));
+    let added = cluster
+        .json(
+            0,
+            sam,
+            reqwest::Method::POST,
+            &path,
+            Some(serde_json::to_vec(&json!({ "memberId": "sam", "adding": true })).unwrap()),
+        )
+        .await;
+    let added_text = added.to_string();
+    assert!(added_text.contains(&item), "{added_text}");
+    assert!(added_text.contains("\"after\":\"editor\""), "{added_text}");
+    assert!(!added_text.contains("secret-value"), "{added_text}");
+    let lars_read = cluster
+        .request(
+            0,
+            lars,
+            reqwest::Method::GET,
+            &format!("/api/drive/items/{item}/content"),
+            None,
+            None,
+        )
+        .await;
+    assert!(!lars_read.status().is_success(), "{}", lars_read.status());
+    let removed = cluster
+        .json(
+            0,
+            sam,
+            reqwest::Method::POST,
+            &path,
+            Some(serde_json::to_vec(&json!({ "memberId": "priya", "adding": false })).unwrap()),
+        )
+        .await;
+    let removed_text = removed.to_string();
+    assert!(
+        removed_text.contains("\"before\":\"editor\""),
+        "{removed_text}"
+    );
+    assert!(removed_text.contains("\"after\":null"), "{removed_text}");
+    assert!(!removed_text.contains("secret-value"), "{removed_text}");
+    cluster
+        .request(
+            0,
+            priya,
+            reqwest::Method::GET,
+            &format!("/api/drive/items/{item}/content"),
+            None,
+            None,
+        )
+        .await
+        .error_for_status()
+        .expect("Priya still has the file");
+}
+
+#[tokio::test]
+async fn a_content_range_upload_finishes_over_http() {
+    let dir = tempfile::tempdir().unwrap();
+    init(dir.path(), None);
+    let node = start(dir.path(), None);
+    let http = reqwest::Client::new();
+    for (model, data) in [
+        (
+            "user",
+            json!({
+                "id": "ada",
+                "name": "Ada",
+                "email": "ada@gardenclub.org",
+                "role": "user",
+                "emailVerified": 1,
+                "createdAt": AT,
+                "updatedAt": AT
+            }),
+        ),
+        (
+            "session",
+            json!({
+                "id": "ada-session",
+                "token": "ada-token",
+                "userId": "ada",
+                "expiresAt": "2099-01-01T00:00:00.000Z",
+                "createdAt": AT,
+                "updatedAt": AT
+            }),
+        ),
+    ] {
+        let response = http
+            .post(format!("{}/internal/db", node.internal))
+            .header("x-suiteleaf-internal", TOKEN)
+            .json(&json!({ "op": "create", "model": model, "data": data }))
+            .send()
+            .await
+            .unwrap();
+        assert!(response.status().is_success(), "{model}");
+    }
+    let created = http
+        .post(format!("{}/api/drive/items", node.http))
+        .header("authorization", "Bearer ada-token")
+        .json(&json!({
+            "name": "Notes.sldoc",
+            "kind": "file",
+            "mime": "text/plain"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert!(created.status().is_success(), "{}", created.status());
+    let item = created.json::<Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let path = format!("{}/api/drive/items/{item}/content", node.http);
+    let first = http
+        .put(&path)
+        .header("authorization", "Bearer ada-token")
+        .header("content-type", "text/plain")
+        .header("content-range", "bytes 0-3/10")
+        .body("Beds")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(first.status(), reqwest::StatusCode::ACCEPTED);
+    let first_body = first.text().await.unwrap();
+    assert!(first_body.contains("\"accepted\":4"), "{first_body}");
+    assert!(!first_body.contains("Beds"), "{first_body}");
+    let gap = http
+        .put(&path)
+        .header("authorization", "Bearer ada-token")
+        .header("content-type", "text/plain")
+        .header("content-range", "bytes 6-9/10")
+        .body("secret-value")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(gap.status(), reqwest::StatusCode::BAD_REQUEST);
+    let gap_body = gap.text().await.unwrap();
+    assert!(
+        gap_body.contains("That upload does not continue the saved part."),
+        "{gap_body}"
+    );
+    assert!(!gap_body.contains("secret-value"), "{gap_body}");
+    let done = http
+        .put(&path)
+        .header("authorization", "Bearer ada-token")
+        .header("content-type", "text/plain")
+        .header("content-range", "bytes 4-9/10")
+        .body(" north")
+        .send()
+        .await
+        .unwrap();
+    assert!(done.status().is_success(), "{}", done.status());
+    let read = http
+        .get(&path)
+        .header("authorization", "Bearer ada-token")
+        .send()
+        .await
+        .unwrap();
+    assert!(read.status().is_success());
+    assert_eq!(read.text().await.unwrap(), "Beds north");
+    let blank = http
+        .post(format!("{}/api/drive/items", node.http))
+        .header("authorization", "Bearer ada-token")
+        .json(&json!({
+            "name": "Blank.sldoc",
+            "kind": "file",
+            "mime": "text/plain"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert!(blank.status().is_success(), "{}", blank.status());
+    let blank_id = blank.json::<Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let blank_path = format!("{}/api/drive/items/{blank_id}/content", node.http);
+    let empty = http
+        .put(&blank_path)
+        .header("authorization", "Bearer ada-token")
+        .header("content-type", "text/plain")
+        .header("content-range", "bytes 0-0/0")
+        .body("")
+        .send()
+        .await
+        .unwrap();
+    assert!(empty.status().is_success(), "{}", empty.status());
+    let empty_body = empty.text().await.unwrap();
+    assert!(!empty_body.contains("secret-value"), "{empty_body}");
+    let empty_read = http
+        .get(&blank_path)
+        .header("authorization", "Bearer ada-token")
+        .send()
+        .await
+        .unwrap();
+    assert!(empty_read.status().is_success());
+    assert_eq!(empty_read.text().await.unwrap(), "");
+}
+
+#[tokio::test]
+async fn a_due_backup_seals_the_live_file_over_http() {
+    let dir = tempfile::tempdir().unwrap();
+    init(dir.path(), None);
+    let key_path = dir.path().join("backup.key");
+    std::fs::write(&key_path, [7u8; 32]).unwrap();
+    let sealed = dir.path().join("sealed").join("backup.seal");
+    let copy = dir.path().join("away").join("backup.seal");
+    let fresh = dir.path().join("fresh");
+    std::fs::create_dir_all(sealed.parent().unwrap()).unwrap();
+    std::fs::create_dir_all(copy.parent().unwrap()).unwrap();
+    let node = start_env(
+        dir.path(),
+        None,
+        None,
+        &[
+            ("SUITELEAF_BACKUP_EVERY_HOURS", "24"),
+            ("SUITELEAF_BACKUP_KEY_FILE", key_path.to_str().unwrap()),
+            ("SUITELEAF_BACKUP_SEALED", sealed.to_str().unwrap()),
+            ("SUITELEAF_BACKUP_COPY", copy.to_str().unwrap()),
+            ("SUITELEAF_BACKUP_DIR", fresh.to_str().unwrap()),
+        ],
+    );
+    let http = reqwest::Client::new();
+    for (model, data) in [
+        (
+            "user",
+            json!({
+                "id": "ada",
+                "name": "Ada",
+                "email": "ada@gardenclub.org",
+                "role": "admin",
+                "emailVerified": 1,
+                "createdAt": AT,
+                "updatedAt": AT
+            }),
+        ),
+        (
+            "session",
+            json!({
+                "id": "ada-session",
+                "token": "ada-token",
+                "userId": "ada",
+                "expiresAt": "2099-01-01T00:00:00.000Z",
+                "createdAt": AT,
+                "updatedAt": AT
+            }),
+        ),
+    ] {
+        let response = http
+            .post(format!("{}/internal/db", node.internal))
+            .header("x-suiteleaf-internal", TOKEN)
+            .json(&json!({ "op": "create", "model": model, "data": data }))
+            .send()
+            .await
+            .unwrap();
+        assert!(response.status().is_success(), "{model}");
+    }
+    let created = http
+        .post(format!("{}/api/drive/items", node.http))
+        .header("authorization", "Bearer ada-token")
+        .json(&json!({
+            "name": "Notes.sldoc",
+            "kind": "file",
+            "mime": "text/plain"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert!(created.status().is_success(), "{}", created.status());
+    let item = created.json::<Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let wrote = http
+        .put(format!("{}/api/drive/items/{item}/content", node.http))
+        .header("authorization", "Bearer ada-token")
+        .header("content-type", "text/plain")
+        .body("keep this")
+        .send()
+        .await
+        .unwrap();
+    assert!(wrote.status().is_success(), "{}", wrote.status());
+    let ran = http
+        .post(format!("{}/api/admin/backup", node.http))
+        .header("authorization", "Bearer ada-token")
+        .send()
+        .await
+        .unwrap();
+    assert!(ran.status().is_success(), "{}", ran.status());
+    let body = ran.text().await.unwrap();
+    assert!(body.contains("\"wrote\":true"), "{body}");
+    assert!(body.contains("No backup has been recorded."), "{body}");
+    assert!(!body.contains("secret-value"), "{body}");
+    assert!(!body.contains("keep this"), "{body}");
+    let again = http
+        .post(format!("{}/api/admin/backup", node.http))
+        .header("authorization", "Bearer ada-token")
+        .send()
+        .await
+        .unwrap();
+    let again_body = again.text().await.unwrap();
+    assert!(again_body.contains("\"wrote\":false"), "{again_body}");
+    assert!(
+        again_body.contains("The last backup is still inside the schedule."),
+        "{again_body}"
+    );
+    assert!(!again_body.contains("secret-value"), "{again_body}");
+    let opened = dir.path().join("opened");
+    let manifest = suitedrive::seal::open_sealed(&copy, &[7u8; 32], &opened).unwrap();
+    assert!(!manifest.recorded_at.is_empty());
+    assert_eq!(
+        suitedrive::blobs::BlobStore::open(&opened.join("blobs"))
+            .unwrap()
+            .get_content(&manifest.contents[0].parse().unwrap())
+            .unwrap()
+            .unwrap(),
+        b"keep this"
+    );
 }

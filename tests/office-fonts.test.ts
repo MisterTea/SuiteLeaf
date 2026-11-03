@@ -21,6 +21,25 @@ describe("Office font faces", () => {
     for (const face of faces) expect(existsSync(new URL(face.file, fonts)), face.file).toBe(true);
   });
 
+  it("draws Arial Narrow's four styles, including the roman cuts Word does not ship", () => {
+    const narrow = faces.filter((face) => face.family === "Arial Narrow");
+    expect(narrow.map(({ weight, style, file }) => [weight, style, file])).toEqual(
+      expect.arrayContaining([
+        [400, "normal", "suiteleaf-pine-regular.woff2"],
+        [700, "normal", "suiteleaf-pine-bold.woff2"],
+        [400, "italic", "suiteleaf-pine-italic.woff2"],
+        [700, "italic", "suiteleaf-pine-bold-italic.woff2"],
+      ]),
+    );
+    const pine = faces.filter((face) => face.family === "SuiteLeaf Pine");
+    expect(pine.map(({ weight, style, file }) => [weight, style, file])).toEqual(
+      expect.arrayContaining([
+        [400, "normal", "suiteleaf-pine-regular.woff2"],
+        [700, "normal", "suiteleaf-pine-bold.woff2"],
+      ]),
+    );
+  });
+
   it("draws Calibri's four styles with SuiteLeaf Willow", () => {
     const calibri = faces.filter((face) => face.family === "Calibri");
     expect(calibri.map(({ weight, style, file }) => [weight, style, file])).toEqual(

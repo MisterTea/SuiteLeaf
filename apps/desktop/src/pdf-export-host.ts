@@ -4,6 +4,7 @@ import type { SuiteFile } from "@suiteleaf/core";
 import { serializeFile } from "@suiteleaf/core";
 import { registerAppProtocol } from "./app-protocol";
 import type { PdfRenderer } from "./convert-cli";
+import { restorePrintPageBox } from "./pdf-page-box";
 
 const csp = [
   "default-src 'self'",
@@ -87,7 +88,9 @@ async function renderPresentation(
     displayHeaderFooter: false,
     margins: { top: 0, bottom: 0, left: 0, right: 0 },
   });
-  return bytes;
+  const { pointWidth, pointHeight } = file.content;
+  if (!(pointWidth && pointHeight)) return bytes;
+  return restorePrintPageBox(bytes, pointWidth, pointHeight);
 }
 
 /** Hidden window that prints imported presentations. It never writes the library. */

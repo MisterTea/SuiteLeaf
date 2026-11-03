@@ -110,4 +110,23 @@ describe("grammar", () => {
       { text: "strong", types: ["italic"] },
     ]);
   });
+
+  it("explains the suggestion without sending the sentence away", () => {
+    const plural = grammarIssues(paragraph("they was ready"));
+    expect(plural[0]?.explanation).toBe("A plural subject takes were.");
+    const article = grammarIssues(paragraph("a hour"));
+    expect(article[0]?.explanation).toBe("Use an before a vowel sound.");
+    expect(plural[0]?.explanation).not.toContain("ready");
+  });
+
+  it("flags a word written twice and leaves one secret word alone", () => {
+    const doubled = grammarIssues(paragraph("the the beds"));
+    expect(doubled.map((issue) => [issue.text, issue.suggestion, issue.explanation])).toEqual([
+      ["the the", "the", "This word is written twice."],
+    ]);
+    expect(JSON.stringify(doubled)).not.toContain("secret-value");
+    expect(grammarIssues(paragraph("the secret-value"))).toEqual([]);
+    expect(grammarIssues(paragraph("the. the"))).toEqual([]);
+    expect(grammarIssues(paragraph("the the beds"), ["repeated the → the"])).toEqual([]);
+  });
 });

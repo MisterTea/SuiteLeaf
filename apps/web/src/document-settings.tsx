@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Settings } from "lucide-react";
 import { Navigate, useNavigate } from "react-router-dom";
+import { AssistantOptIn } from "./ai/assistant-settings";
 import { useMode } from "./mode";
+import { ExpansionNotice, FeatureMatrix } from "./packaging-view";
 
 export function SettingsButton() {
   const { mode } = useMode();
@@ -72,6 +74,13 @@ export function SettingsPage() {
         </button>
         <h1>Settings</h1>
       </header>
+      <FeatureMatrix />
+      <ExpansionNotice />
+      <section className="settings-card" aria-labelledby="assistant-title">
+        <h2 id="assistant-title">Assistant</h2>
+        <p>Documents, spreadsheets, and slides work with the assistant off. Turning it on can download a model onto this computer.</p>
+        <AssistantOptIn />
+      </section>
       <section
         className="settings-card"
         aria-labelledby="document-directory-title"

@@ -1,12 +1,19 @@
 /** Shown under the bars. The source name stays even after the file is gone. */
 export const missingSpreadsheetText = "The spreadsheet is missing.";
 
+/** Shown instead of the bars when this viewer cannot open the source. */
+export const withheldChartText =
+  "You cannot view this spreadsheet. The bars are not included.";
+
 export interface LinkedChartAttrs {
   sourceId: string;
   sourceTitle: string;
   labels: string[];
   values: number[];
   missing: boolean;
+  withheld?: boolean;
+  /** When the copied values were taken. Empty when that time was not stored. */
+  snapshotAt: string;
 }
 
 /** "From Plot fees" — the file name, not a hidden link. */
@@ -44,20 +51,61 @@ export function linkedChartAttrs(
     labels,
     values,
     missing: raw?.missing === true,
+    withheld: false,
+    snapshotAt: snapshotTime(raw?.snapshotAt),
+  };
+}
+
+const SNAPSHOT_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+function snapshotTime(value: unknown): string {
+  return typeof value === "string" && SNAPSHOT_TIME.test(value) ? value : "";
+}
+
+/** Names the copied spreadsheet. The source id is not included. */
+export function chartProvenance(title: string, snapshotAt: string): string {
+  const name = title.trim() || "spreadsheet";
+  const when = snapshotTime(snapshotAt)
+    ? ` Taken ${snapshotTime(snapshotAt)}.`
+    : " The time of this copy was not recorded.";
+  return `Snapshot of ${name}.${when} These values are a copy, not a live link.`;
+}
+
+/**
+ * A viewer who cannot open the source gets the file name and no bars.
+ * The source id, labels, and values are left out. The input is not changed.
+ */
+export function chartForViewer(
+  raw: Record<string, unknown> | null | undefined,
+  allowed: boolean,
+): LinkedChartAttrs {
+  const chart = linkedChartAttrs(raw);
+  if (allowed) return chart;
+  return {
+    sourceId: "",
+    sourceTitle: chart.sourceTitle,
+    labels: [],
+    values: [],
+    missing: false,
+    withheld: true,
+    snapshotAt: chart.snapshotAt,
   };
 }
 
 /** Lines for a plain-text copy of the chart: the source, then each bar. */
 export function chartPlainLines(
   raw: Record<string, unknown> | null | undefined,
+  allowed = true,
 ): string[] {
-  const chart = linkedChartAttrs(raw);
+  const chart = chartForViewer(raw, allowed);
   const lines = [
     chartCaption(chart.sourceTitle),
+    chartProvenance(chart.sourceTitle, chart.snapshotAt),
     ...chart.labels.map(
       (label, index) => `${label}\t${chart.values[index]}`,
     ),
   ];
+  if (chart.withheld) lines.push(withheldChartText);
   if (chart.missing) lines.push(missingSpreadsheetText);
   return lines;
 }
@@ -69,10 +117,16 @@ export type ChartDomSpec =
 
 export function linkedChartDom(
   raw: Record<string, unknown> | null | undefined,
+  allowed = true,
 ): [string, Record<string, string>, ...ChartDomSpec[]] {
-  const chart = linkedChartAttrs(raw);
+  const chart = chartForViewer(raw, allowed);
   const children: ChartDomSpec[] = [
     ["p", { class: "linked-chart-source" }, chartCaption(chart.sourceTitle)],
+    [
+      "p",
+      { class: "linked-chart-provenance" },
+      chartProvenance(chart.sourceTitle, chart.snapshotAt),
+    ],
   ];
   if (chart.labels.length)
     children.push([
@@ -87,6 +141,8 @@ export function linkedChartDom(
         ],
       ),
     ]);
+  if (chart.withheld)
+    children.push(["p", { class: "linked-chart-withheld" }, withheldChartText]);
   if (chart.missing)
     children.push([
       "p",
@@ -103,6 +159,8 @@ export function linkedChartDom(
       "data-labels": JSON.stringify(chart.labels),
       "data-values": JSON.stringify(chart.values),
       "data-missing": chart.missing ? "true" : "false",
+      "data-withheld": chart.withheld ? "true" : "false",
+      "data-snapshot-at": chart.snapshotAt,
     },
     ...children,
   ];
@@ -126,6 +184,7 @@ function specToHtml(spec: ChartDomSpec): string {
 /** The same tree HTML export writes for a linked chart. */
 export function linkedChartHtml(
   raw: Record<string, unknown> | null | undefined,
+  allowed = true,
 ): string {
-  return specToHtml(linkedChartDom(raw));
+  return specToHtml(linkedChartDom(raw, allowed));
 }

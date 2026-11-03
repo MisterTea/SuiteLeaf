@@ -1,5 +1,7 @@
 /** Paper page breaks and a repeating print header. Not the on-screen freeze. */
 
+import { chartSummary, type ChartSummaryInput } from "@suiteleaf/core";
+
 export type SheetPrintSettings = {
   /** 0-based rows. A break is drawn above each one, and that row starts a page. */
   breaksAbove: number[];
@@ -192,12 +194,39 @@ export function paginatePrinted(
   return out;
 }
 
+type PrintableChart = {
+  sheetId: string;
+  title: string;
+  type: string;
+  invalid?: boolean;
+  excel?: {
+    series?: { name: string; axis?: number; color?: string }[];
+    legend?: string;
+    biff?: { categories?: string[] };
+  };
+};
+
+/** Charts on this sheet, without colors or cell values. */
+export function chartsForPrint(charts: readonly PrintableChart[], sheetId: string): ChartSummaryInput[] {
+  return charts
+    .filter((chart) => chart.sheetId === sheetId)
+    .map((chart) => ({
+      title: chart.title,
+      type: chart.type,
+      invalid: chart.invalid,
+      series: chart.excel?.series?.map((item) => ({ name: item.name, axis: item.axis })),
+      categories: chart.excel?.biff?.categories,
+      legend: chart.excel?.legend,
+    }));
+}
+
 /** HTML for the existing print path. Page breaks are real pages; row 1 repeats only when asked. */
 export function printMarkup(
   title: string,
   sheetName: string,
   pages: PrintedPage[],
   repeat: boolean,
+  charts: readonly ChartSummaryInput[] = [],
 ): string {
   const body = pages
     .map(
@@ -205,5 +234,9 @@ export function printMarkup(
         `<article class="print-page" data-page="${index + 1}">${tableHtml(page, repeat)}</article>`,
     )
     .join("");
-  return `<h1>${escapePrint(title)} — ${escapePrint(sheetName)}</h1>${body}`;
+  const notes = charts
+    .map((chart) => `<p>${escapePrint(chartSummary(chart))}</p>`)
+    .join("");
+  const chartHtml = notes ? `<section class="print-charts">${notes}</section>` : "";
+  return `<h1>${escapePrint(title)} — ${escapePrint(sheetName)}</h1>${body}${chartHtml}`;
 }

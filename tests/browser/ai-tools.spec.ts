@@ -18,6 +18,10 @@ test.describe.configure({ timeout: 120_000 });
 
 test.skip(({ browserName, isMobile }) => browserName !== "chromium" || !!isMobile, "Tool behaviour is browser-independent.");
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("suiteleaf.ai.enabled", "1"));
+});
+
 test("document tools write, style, find, replace and check spelling", async ({ page }) => {
   await page.goto("/");
   await waitForTools(page, "create_file");

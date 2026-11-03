@@ -7,6 +7,7 @@ import { stampNativeImageTypes } from "./pptx-native-image-types";
 import { nativeLayerMarker, stampImageLayers } from "./pptx-image-layers";
 import type { SlideElement, SlideFile, TextRun } from "./index";
 import { stampSlideMotion } from "./slide-motion";
+import { readingOrderMarker, stampReadingOrder } from "./pptx-reading-order";
 import { stampSvgAlternatives, svgFallbackMarker } from "./pptx-svg";
 import { kerningThreshold } from "./kerning";
 import { kernMarker, stampKerning } from "./pptx-kerning";
@@ -40,6 +41,10 @@ function box(el: SlideElement) {
   };
 }
 
+function orderName(slide: { readingOrder?: string[] }, id: string): string | undefined {
+  return slide.readingOrder?.includes(id) ? readingOrderMarker(id) : undefined;
+}
+
 function shapeName(el: SlideElement): string {
   if (el.shapeType === "ellipse") return "ellipse";
   if (el.shapeType === "roundRect") return "roundRect";
@@ -67,6 +72,7 @@ export async function exportPptx(file: SlideFile): Promise<Uint8Array> {
       slide.background = { color: color(source.background.color, "FFFFFF") };
     for (const el of source.elements) {
       const place = box(el);
+      const label = orderName(source, el.id);
       if (el.nativeDrawing) {
         const marker = nativeDrawingMarker(el.id);
         if (el.type === "image" && el.src && /^data:image\//.test(el.src))
@@ -82,7 +88,7 @@ export async function exportPptx(file: SlideFile): Promise<Uint8Array> {
       }
       if ((el.type === "video" || el.type === "audio") && el.src) {
         const media =
-          /^data:(video\/(mp4|webm)|audio\/(wav|mpeg|ogg));base64,/i.exec(
+          /^data:(video\/(mp4|webm|quicktime|mpeg)|audio\/(wav|mpeg|ogg));base64,/i.exec(
             el.src,
           );
         if (media)
@@ -90,7 +96,12 @@ export async function exportPptx(file: SlideFile): Promise<Uint8Array> {
             type: el.type,
             data: el.src,
             ...place,
-            extn: media[2] || (media[3] === "mpeg" ? "mp3" : media[3]),
+            extn:
+              media[2] === "quicktime"
+                ? "mov"
+                : media[2] === "mpeg"
+                  ? "mpg"
+                  : media[2] || (media[3] === "mpeg" ? "mp3" : media[3]),
             ...(el.poster ? { cover: el.poster } : {}),
           });
         continue;
@@ -101,13 +112,14 @@ export async function exportPptx(file: SlideFile): Promise<Uint8Array> {
             el.src,
           );
         if (!image) continue;
-        slide.addImage({
+          slide.addImage({
           data: el.src,
           altText: el.svgSrc
             ? svgFallbackMarker(el.id)
             : el.imageLayer
               ? nativeLayerMarker(el.id)
               : el.alt,
+          ...(label ? { objectName: label } : {}),
           ...place,
         });
         continue;
@@ -132,6 +144,7 @@ export async function exportPptx(file: SlideFile): Promise<Uint8Array> {
             ...place,
             fontFace: officeFont(el.fontFamily || "Arial"),
             fontSize: el.fontSize || 14,
+            ...(label ? { objectName: label } : {}),
           },
         );
         continue;
@@ -139,6 +152,7 @@ export async function exportPptx(file: SlideFile): Promise<Uint8Array> {
       if (el.type === "shape") {
         slide.addShape(shapeName(el) as unknown as PptxGenJS.ShapeType, {
           ...place,
+          ...(label && !runs(el).length ? { objectName: label } : {}),
           fill: el.fill ? { color: color(el.fill, "FFFFFF") } : undefined,
           line: el.stroke
             ? { color: color(el.stroke, "000000"), width: el.strokeWidth || 1 }
@@ -165,7 +179,11 @@ export async function exportPptx(file: SlideFile): Promise<Uint8Array> {
         })),
         {
           ...place,
-          ...(kerningThreshold(el.kern) ? { objectName: kernMarker(el.id) } : {}),
+          ...(kerningThreshold(el.kern)
+            ? { objectName: kernMarker(el.id) }
+            : label
+              ? { objectName: label }
+              : {}),
           fontSize: el.fontSize || 18,
           fontFace: officeFont(el.fontFamily || "Arial"),
           align: el.align || "left",
@@ -185,9 +203,10 @@ export async function exportPptx(file: SlideFile): Promise<Uint8Array> {
   const slides = deck.slideOrder
     .map((id) => deck.slides[id])
     .filter((slide) => slide != null);
+  const ordered = await stampReadingOrder(bytes, slides);
   const exported = await stampImageLayers(
     await stampSvgAlternatives(
-      await stampKerning(await stampSlideMotion(bytes, slides), slides),
+      await stampKerning(await stampSlideMotion(ordered, slides), slides),
       slides,
     ),
     slides,

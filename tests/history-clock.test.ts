@@ -322,21 +322,23 @@ describe("fake clock", () => {
 });
 
 describe("opening and leaving together", () => {
-  it("lets several writers open at the same instant and ignores viewers", () => {
+  it("lets several writers open at the same instant and keeps a viewer from writing", () => {
     const session = new Session();
     const instant = session.clock.now();
-    expect(session.join(viewer).joined).toBe(false);
-    expect(session.join({ ...maya, role: "editor" })).toEqual({ joined: true, mode: "solo" });
+    expect(session.join(viewer)).toEqual({ joined: true, mode: "solo" });
+    expect(session.join({ ...maya, role: "editor" })).toEqual({ joined: true, mode: "multiuser" });
     expect(session.join({ ...sam, role: "owner" })).toEqual({ joined: true, mode: "multiuser" });
     expect(session.join({ ...rosa, role: "commenter" })).toEqual({
       joined: true,
       mode: "multiuser",
     });
-    expect(session.room.present()).toEqual([maya.id, sam.id, rosa.id]);
+    expect(session.room.present()).toEqual([viewer.id, maya.id, sam.id, rosa.id]);
+    expect(session.edit(viewer, 0, "VIEWER SHOULD NOT LAND")).toBe(false);
+    expect(paragraphTexts(session.room.doc)).toEqual(["One", "Two"]);
     expect(session.room.lastActive(maya.id)).toBe(instant);
     expect(session.room.lastActive(sam.id)).toBe(instant);
     expect(session.join({ ...maya, role: "editor" }).mode).toBe("multiuser");
-    expect(session.room.present()).toEqual([maya.id, sam.id, rosa.id]);
+    expect(session.room.present()).toEqual([viewer.id, maya.id, sam.id, rosa.id]);
   });
 
   it("kicks everyone who stopped together and saves one version", () => {
@@ -559,6 +561,27 @@ describe("edits at different rates", () => {
       "One more",
       "Two",
     ]);
+    const marked = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Keep", marks: [{ type: "bold" }] }],
+        },
+        { type: "paragraph", content: [{ type: "text", text: "Drop" }] },
+      ],
+    };
+    const kept = applyParagraphTexts(marked, ["Keep", "Added"]) as {
+      content: { content: { text?: string; marks?: { type: string }[] }[] }[];
+    };
+    expect(kept.content[0]?.content[0]?.marks).toEqual([{ type: "bold" }]);
+    const retitled = applyParagraphTexts(marked, ["Kept", "Drop"]) as {
+      content: { content: { text?: string; marks?: { type: string }[] }[] }[];
+    };
+    expect(retitled.content[0]?.content[0]).toMatchObject({
+      text: "Kept",
+      marks: [{ type: "bold" }],
+    });
 
     const session = new Session(withText(createFile("doc", "Notes"), ["Keep", "Drop"]));
     session.join({ ...maya, role: "editor" });

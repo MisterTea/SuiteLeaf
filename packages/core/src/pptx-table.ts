@@ -1,3 +1,27 @@
+import { officeSingleSpacing } from "./office-fonts";
+import { mediumStyle2, mediumTableStyle } from "./pptx-table-styles";
+
+/** A run kept when one cell mixes a symbol font, a subscript, or more than one colour. */
+export type TableCellRun = {
+  text: string;
+  color?: string;
+  font?: string;
+  fontSize?: number;
+  baseline?: number;
+  bold?: boolean;
+  paragraphBreak?: boolean;
+  paraMargin?: number;
+  paraHang?: number;
+  paraFirst?: number;
+  paraTab?: number;
+  paraTabs?: { pos: number; align: "l" | "ctr" | "r" | "dec" }[];
+  /** Stacked Office math. `text` stays the linear reading. */
+  fraction?: {
+    num: { text: string; script?: "sub" | "sup" }[];
+    den: { text: string; script?: "sub" | "sup" }[];
+  };
+};
+
 /** One edge of a cell. Width is in points; PowerPoint's hairline is 1. */
 export type TableRule = { color: string; width?: number };
 
@@ -7,9 +31,13 @@ export type TableCellStyle = {
   italic?: boolean;
   fill?: string;
   color?: string;
+  /** Latin face for the cell. The table's theme font is wider when the cell names another. */
+  font?: string;
   fontSize?: number;
   align?: "left" | "center" | "right" | "justify";
   colSpan?: number;
+  /** DrawingML rowSpan. Continuation rows omit the covered cells. */
+  rowSpan?: number;
   /** Interior border colour from the table style, painted on every side. */
   border?: string;
   borderTop?: TableRule;
@@ -22,11 +50,29 @@ export type TableCellStyle = {
   padBottom?: number;
   padLeft?: number;
   valign?: "top" | "middle" | "bottom";
-  /** Paragraph left edge and hanging indent, in slide pixels. One entry per line. */
-  lines?: { margin?: number; hang?: number }[];
+  /** Paragraph left edge, hanging indent, and first-line indent, in slide pixels. */
+  lines?: {
+    margin?: number;
+    hang?: number;
+    first?: number;
+    tabs?: { pos: number; align: "l" | "ctr" | "r" | "dec" }[];
+  }[];
+  /** Default tab interval, in points. */
+  tabSize?: number;
+  /** Per-run face, colour, and baseline when the cell is not one style. */
+  runs?: TableCellRun[];
 };
 
-export type BuiltTableCell = TableCellStyle & { boldSet?: boolean };
+export type BuiltTableCell = TableCellStyle & {
+  boldSet?: boolean;
+  /** `tcPr` `a:noFill` hides the table-style fill. */
+  noFill?: boolean;
+  /** An explicit `a:noFill` line hides that table-style edge. */
+  clearTop?: boolean;
+  clearRight?: boolean;
+  clearBottom?: boolean;
+  clearLeft?: boolean;
+};
 
 type Paint = (xml: string) => string | undefined;
 
@@ -67,14 +113,149 @@ export function tableCellContinues(cellXml: string): boolean {
   return /\b(?:hMerge|vMerge)="1"/.test(cellXml);
 }
 
-function cellFillXml(cellXml: string): string | undefined {
-  const tcPr =
-    /<a:tcPr\b[\s\S]*?<\/a:tcPr>|<a:tcPr\b[^>]*\/>/.exec(cellXml)?.[0] ?? "";
-  const stripped = tcPr.replace(
-    /<a:(lnL|lnR|lnT|lnB|tcBdr)\b[\s\S]*?<\/a:\1>/g,
+function tableRows(tblXml: string) {
+  return [...tblXml.matchAll(/<a:tr\b[\s\S]*?<\/a:tr>/g)].map((match) =>
+    [...match[0].matchAll(/<a:tc\b[\s\S]*?<\/a:tc>/g)].map((cell) => {
+      const xml = cell[0];
+      const open = /^<a:tc\b[^>]*>/.exec(xml)?.[0] ?? xml;
+      return {
+        hMerge: /\bhMerge="1"/.test(xml),
+        vMerge: /\bvMerge="1"/.test(xml),
+        gridSpan: Math.max(1, Number(/\bgridSpan="(\d+)"/.exec(open)?.[1] ?? 1)),
+        rowSpanAttr: Number(/\browSpan="(\d+)"/.exec(open)?.[1] ?? 0),
+      };
+    }),
+  );
+}
+
+function cellAtColumn(
+  row: ReturnType<typeof tableRows>[number],
+  column: number,
+) {
+  let col = 0;
+  for (const cell of row) {
+    if (column >= col && column < col + cell.gridSpan) return cell;
+    col += cell.gridSpan;
+  }
+}
+
+/**
+ * Row span of each anchor cell, in reading order.
+ * Continuation cells (`hMerge` / `vMerge`) are omitted, matching the imported grid.
+ * An explicit `rowSpan` wins. Otherwise the following `vMerge` cells are counted.
+ */
+export function anchorRowSpans(tblXml: string): number[] {
+  const rows = tableRows(tblXml);
+  const spans: number[] = [];
+  rows.forEach((row, r) => {
+    let col = 0;
+    for (const cell of row) {
+      if (!cell.hMerge && !cell.vMerge) {
+        let span = cell.rowSpanAttr > 1 ? cell.rowSpanAttr : 1;
+        if (!(cell.rowSpanAttr > 1)) {
+          for (let look = r + 1; look < rows.length; look++) {
+            const below = cellAtColumn(rows[look], col);
+            if (!below?.vMerge) break;
+            span += 1;
+          }
+        }
+        spans.push(span);
+      }
+      col += cell.gridSpan;
+    }
+  });
+  return spans;
+}
+
+/** Colour written on a run, not the inherited paragraph default. */
+export function explicitRunColor(cellXml: string, paint: Paint): string | undefined {
+  const body = /<a:txBody\b[\s\S]*?<\/a:txBody>/.exec(cellXml)?.[0] ?? "";
+  for (const run of body.matchAll(/<a:rPr\b[^>]*>([\s\S]*?)<\/a:rPr>/g)) {
+    const color = paint(run[1]);
+    if (color && color !== "transparent") return color;
+  }
+}
+
+/**
+ * Runs for a cell that mixes faces, baselines, or colours.
+ * A uniform cell keeps the single mark colour and the joined string.
+ */
+export function tableCellRuns(
+  paragraphs: {
+    text?: string;
+    runs?: TableCellRun[];
+    listMargin?: number;
+    hang?: number;
+    firstIndent?: number;
+    tabInterval?: number;
+    tabs?: { pos: number; align: "l" | "ctr" | "r" | "dec" }[];
+  }[],
+): TableCellRun[] | undefined {
+  const geom = (paragraph: (typeof paragraphs)[number]): Partial<TableCellRun> => ({
+    ...(paragraph.listMargin ? { paraMargin: paragraph.listMargin } : {}),
+    ...(paragraph.hang ? { paraHang: paragraph.hang } : {}),
+    ...(paragraph.firstIndent ? { paraFirst: paragraph.firstIndent } : {}),
+    ...(paragraph.tabInterval ? { paraTab: paragraph.tabInterval } : {}),
+    ...(paragraph.tabs?.length ? { paraTabs: paragraph.tabs } : {}),
+  });
+  const runs: TableCellRun[] = [];
+  paragraphs.forEach((paragraph, index) => {
+    if (index) runs.push({ text: "\n", paragraphBreak: true, ...geom(paragraph) });
+    paragraph.runs?.forEach((run, runIndex) => {
+      if (!run.text) return;
+      runs.push(index === 0 && runIndex === 0 ? { ...run, ...geom(paragraph) } : run);
+    });
+  });
+  const colors = new Set(runs.map((run) => run.color).filter(Boolean));
+  const mixed =
+    runs.some((run) => run.font || run.baseline || run.fraction) || colors.size > 1;
+  // A hard break inside a paragraph is not the next paragraph. Keep the runs
+  // so a tab or a first-line indent stays on its own paragraph.
+  const geometric = paragraphs.some(
+    (paragraph) =>
+      (paragraph.firstIndent || 0) > 0 ||
+      (paragraph.tabs?.length || 0) > 0 ||
+      (paragraph.tabInterval || 0) > 0 ||
+      (paragraph.text || "").includes("\t"),
+  );
+  if (!mixed && !geometric) return;
+  return runs.map((run) => ({
+    text: run.text,
+    ...(run.color ? { color: run.color } : {}),
+    ...(run.font ? { font: run.font } : {}),
+    ...(run.fontSize ? { fontSize: run.fontSize } : {}),
+    ...(run.baseline ? { baseline: run.baseline } : {}),
+    ...(run.bold ? { bold: true } : {}),
+    ...(run.paragraphBreak ? { paragraphBreak: true } : {}),
+    ...(run.paraMargin ? { paraMargin: run.paraMargin } : {}),
+    ...(run.paraHang ? { paraHang: run.paraHang } : {}),
+    ...(run.paraFirst ? { paraFirst: run.paraFirst } : {}),
+    ...(run.paraTab ? { paraTab: run.paraTab } : {}),
+    ...(run.paraTabs?.length ? { paraTabs: run.paraTabs } : {}),
+    ...(run.fraction ? { fraction: run.fraction } : {}),
+  }));
+}
+
+function cellProperties(cellXml: string): string {
+  return (
+    /<a:tcPr\b[\s\S]*?<\/a:tcPr>|<a:tcPr\b[^>]*\/>/.exec(cellXml)?.[0] ?? ""
+  );
+}
+
+/** Line elements are not the cell fill. A remaining `a:noFill` clears the style. */
+function cellFillBody(cellXml: string): string {
+  return cellProperties(cellXml).replace(
+    /<a:(lnL|lnR|lnT|lnB|lnTlToBr|lnBlToTr|tcBdr)\b[\s\S]*?<\/a:\1>/g,
     "",
   );
-  return /<a:solidFill\b[\s\S]*?<\/a:solidFill>/.exec(stripped)?.[0];
+}
+
+function cellFillXml(cellXml: string): string | undefined {
+  return /<a:solidFill\b[\s\S]*?<\/a:solidFill>/.exec(cellFillBody(cellXml))?.[0];
+}
+
+function cellFillCleared(cellXml: string): boolean {
+  return /<a:noFill\b/.test(cellFillBody(cellXml));
 }
 
 function runBold(cellXml: string): { set: boolean; bold: boolean } {
@@ -100,6 +281,13 @@ export function explicitTableCell(
     size?: number;
     align?: "left" | "center" | "right" | "justify";
     color?: string;
+    font?: string;
+    runs?: TableCellRun[];
+    listMargin?: number;
+    hang?: number;
+    firstIndent?: number;
+    tabInterval?: number;
+    tabs?: { pos: number; align: "l" | "ctr" | "r" | "dec" }[];
   }[],
   paint: Paint,
 ): BuiltTableCell {
@@ -109,9 +297,12 @@ export function explicitTableCell(
   if (bold.bold || paragraphs.some((paragraph) => paragraph.bold))
     mark.bold = true;
   if (paragraphs.some((paragraph) => paragraph.italic)) mark.italic = true;
-  const fillXml = cellFillXml(cellXml);
-  const fill = fillXml ? paint(fillXml) : undefined;
-  if (fill) mark.fill = fill;
+  if (cellFillCleared(cellXml)) mark.noFill = true;
+  else {
+    const fillXml = cellFillXml(cellXml);
+    const fill = fillXml ? paint(fillXml) : undefined;
+    if (fill) mark.fill = fill;
+  }
   // An empty paragraph still inherits the default text style. The words live
   // in a later paragraph, and that is the colour and size PowerPoint draws.
   const written = paragraphs.filter((paragraph) => paragraph.text?.trim());
@@ -120,8 +311,20 @@ export function explicitTableCell(
     ranked.find((paragraph) => paragraph.color || paragraph.size) ??
     ranked[0];
   const sized = ranked.find((paragraph) => paragraph.size && paragraph.size > 0);
-  if (first?.color) mark.color = first.color;
+  // The paragraph colour is the inherited default. An explicit run fill is the
+  // only colour that should cover the table style (white header text, red cells).
+  const explicit = explicitRunColor(cellXml, paint);
+  if (explicit) mark.color = explicit;
+  // PowerPoint draws an unsized table run at 18pt. The presentation
+  // default text style is for shapes and is not this size.
   if (sized?.size) mark.fontSize = sized.size;
+  else mark.fontSize = 18;
+  const faced = ranked.find((paragraph) => paragraph.font);
+  if (faced?.font) mark.font = faced.font;
+  const runs = tableCellRuns(paragraphs);
+  if (runs) mark.runs = runs;
+  const tabbed = paragraphs.find((paragraph) => paragraph.tabInterval);
+  if (tabbed?.tabInterval) mark.tabSize = tabbed.tabInterval;
   if (first?.align && first.align !== "left") mark.align = first.align;
   const span = Number(/gridSpan="(\d+)"/.exec(cellXml)?.[1] ?? 1);
   if (span > 1) mark.colSpan = span;
@@ -155,10 +358,18 @@ export function explicitTableCell(
   const right = rule("lnR");
   const bottom = rule("lnB");
   const left = rule("lnL");
-  if (top && top !== "none") mark.borderTop = top;
-  if (right && right !== "none") mark.borderRight = right;
-  if (bottom && bottom !== "none") mark.borderBottom = bottom;
-  if (left && left !== "none") mark.borderLeft = left;
+  const edge = (
+    value: TableRule | "none" | undefined,
+    border: "borderTop" | "borderRight" | "borderBottom" | "borderLeft",
+    clear: "clearTop" | "clearRight" | "clearBottom" | "clearLeft",
+  ) => {
+    if (value === "none") mark[clear] = true;
+    else if (value) mark[border] = value;
+  };
+  edge(top, "borderTop", "clearTop");
+  edge(right, "borderRight", "clearRight");
+  edge(bottom, "borderBottom", "clearBottom");
+  edge(left, "borderLeft", "clearLeft");
   return mark;
 }
 
@@ -180,10 +391,10 @@ export function tableStyleById(
   id: string,
 ): string | undefined {
   const wanted = id.replace(/[{}]/g, "").toLowerCase();
-  if (!wanted) {
-    const def = /<a:tblStyleLst\b[^>]*\bdef="([^"]+)"/.exec(stylesXml)?.[1];
-    return def ? tableStyleById(stylesXml, def) : undefined;
-  }
+  // A missing id is a plain grid. tblStyleLst def is the style the editor
+  // assigns to a new table; PowerPoint does not paint it unless the table
+  // names that id.
+  if (!wanted) return undefined;
   for (const match of stylesXml.matchAll(
     /<a:tblStyle\b([^>]*)>[\s\S]*?<\/a:tblStyle>/g,
   )) {
@@ -199,21 +410,48 @@ function block(xml: string, tag: string): string {
   );
 }
 
+/** A style fill of alpha 0 is empty. Painting it would lay white over the table. */
+function opaqueStyleFill(color: string | undefined): string | undefined {
+  if (!color) return;
+  if (/^rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*0(?:\.0+)?\s*\)$/.test(color)) return;
+  return color;
+}
+
 function stylePart(xml: string, paint: Paint): StylePart {
   const tx = /<a:tcTxStyle\b([^>]*)(?:\/>|>([\s\S]*?)<\/a:tcTxStyle>)/.exec(xml);
-  const color = tx?.[2] ? paint(tx[2]) : undefined;
+  // fontRef carries a placeholder colour for the face. The scheme colour
+  // beside it is the text colour; the placeholder must not win.
+  const txBody = tx?.[2]?.replace(/<a:fontRef\b[\s\S]*?<\/a:fontRef>/g, "") ?? "";
+  const color = txBody ? paint(txBody) : undefined;
   const bold = tx ? /\bb="(?:on|1)"/.test(tx[1]) : false;
   const tc = block(xml, "tcStyle").replace(
     /<a:tcBdr\b[\s\S]*?<\/a:tcBdr>/g,
     "",
   );
   const fillXml = /<a:solidFill\b[\s\S]*?<\/a:solidFill>/.exec(tc)?.[0];
-  const fill = fillXml ? paint(fillXml) : undefined;
+  const fill = opaqueStyleFill(fillXml ? paint(fillXml) : undefined);
   return {
     ...(bold ? { bold: true } : {}),
     ...(color ? { color } : {}),
     ...(fill ? { fill } : {}),
   };
+}
+
+/**
+ * Fill stored on tblPr, behind the cells. An explicit noFill hides the style
+ * background. Anything else leaves the style free to paint its own tblBg.
+ */
+export function tablePropertyFillXml(tblXml: string): string {
+  const inner = /<a:tblPr\b[^>]*>([\s\S]*?)<\/a:tblPr>/.exec(tblXml)?.[1];
+  if (inner == null) return "";
+  const body = inner
+    .replace(/<a:effectLst\b[\s\S]*?<\/a:effectLst>/g, "")
+    .replace(/<a:effectDag\b[\s\S]*?<\/a:effectDag>/g, "");
+  const fill =
+    /<a:(solidFill|gradFill|pattFill)\b[\s\S]*?<\/a:\1>/.exec(body)?.[0];
+  if (fill) return fill;
+  if (/<a:noFill\b/.test(body)) return "none";
+  return "";
 }
 
 /** White (or other) interior rules from the whole-table style. */
@@ -381,7 +619,16 @@ const lightStyle1Color: Record<string, string> = {
   "68d230f3-cf80-4859-8ce7-a43ee81993b5": "accent6",
 };
 
+/** Black hairline grid used when a table does not name a style. */
+export function plainTableGrid(): string {
+  const edge = (name: string) =>
+    `<a:${name}><a:ln w="12700" cmpd="sng"><a:solidFill><a:srgbClr val="000000"/></a:solidFill></a:ln></a:${name}>`;
+  return `<a:tblStyle styleId="" styleName="Table Grid"><a:wholeTbl><a:tcStyle><a:tcBdr>${edge("left")}${edge("right")}${edge("top")}${edge("bottom")}${edge("insideH")}${edge("insideV")}</a:tcBdr></a:tcStyle></a:wholeTbl></a:tblStyle>`;
+}
+
 export function builtinTableStyle(id: string): string | undefined {
+  const medium = mediumTableStyle(id) ?? mediumStyle2(id);
+  if (medium) return medium;
   const color = lightStyle1Color[id.replace(/[{}]/g, "").toLowerCase()];
   if (!color) return;
   const line = (edge: string) =>
@@ -412,16 +659,25 @@ export function mergeTableCell(
   const mark: TableCellStyle = {};
   if (cell.boldSet ? cell.bold : cell.bold || styled?.bold) mark.bold = true;
   if (cell.italic) mark.italic = true;
-  const fill = cell.fill || styled?.fill;
+  const fill = cell.noFill ? undefined : cell.fill || styled?.fill;
   const color = cell.color || styled?.color;
   if (fill) mark.fill = fill;
   if (color) mark.color = color;
   if (cell.fontSize) mark.fontSize = cell.fontSize;
+  if (cell.font) mark.font = cell.font;
   if (cell.align) mark.align = cell.align;
   if (cell.colSpan && cell.colSpan > 1) mark.colSpan = cell.colSpan;
+  if (cell.rowSpan && cell.rowSpan > 1) mark.rowSpan = cell.rowSpan;
   const edges = { ...styleEdges };
+  const cleared = {
+    borderTop: cell.clearTop,
+    borderRight: cell.clearRight,
+    borderBottom: cell.clearBottom,
+    borderLeft: cell.clearLeft,
+  };
   for (const key of ["borderTop", "borderRight", "borderBottom", "borderLeft"] as const) {
-    if (cell[key]) edges[key] = cell[key];
+    if (cleared[key]) delete edges[key];
+    else if (cell[key]) edges[key] = cell[key];
   }
   if (edges.borderTop) mark.borderTop = edges.borderTop;
   if (edges.borderRight) mark.borderRight = edges.borderRight;
@@ -435,19 +691,328 @@ export function mergeTableCell(
   if (cell.padLeft != null) mark.padLeft = cell.padLeft;
   if (cell.valign) mark.valign = cell.valign;
   if (cell.lines?.length) mark.lines = cell.lines;
+  if (cell.tabSize) mark.tabSize = cell.tabSize;
+  if (cell.runs?.length) mark.runs = cell.runs;
   return mark;
 }
 
 /** Per-line list inset when a cell's paragraphs do not share one hanging marker. */
 export function tableLineLayout(
-  paragraphs: { listMargin?: number; hang?: number }[],
-): { margin?: number; hang?: number }[] | undefined {
-  if (!paragraphs.some((paragraph) => paragraph.listMargin || paragraph.hang))
+  paragraphs: {
+    listMargin?: number;
+    hang?: number;
+    firstIndent?: number;
+    tabs?: { pos: number; align: "l" | "ctr" | "r" | "dec" }[];
+  }[],
+): {
+  margin?: number;
+  hang?: number;
+  first?: number;
+  tabs?: { pos: number; align: "l" | "ctr" | "r" | "dec" }[];
+}[] | undefined {
+  if (
+    !paragraphs.some(
+      (paragraph) =>
+        paragraph.listMargin || paragraph.hang || paragraph.firstIndent || paragraph.tabs?.length,
+    )
+  )
     return;
   return paragraphs.map((paragraph) => ({
     ...(paragraph.listMargin ? { margin: paragraph.listMargin } : {}),
     ...(paragraph.hang ? { hang: paragraph.hang } : {}),
+    ...(paragraph.firstIndent ? { first: paragraph.firstIndent } : {}),
+    ...(paragraph.tabs?.length ? { tabs: paragraph.tabs } : {}),
   }));
+}
+
+/**
+ * Google Slides writes a 3,000,000 EMU frame and keeps the real size on the
+ * grid. PowerPoint draws that grid. A frame taller than its rows is leftover
+ * space, not a stretch target: painting the rows into it covers the text
+ * below. A frame that matches its grid, or a shorter resized frame, stays put.
+ */
+export function tableFrameBox(
+  frame: { width: number; height: number },
+  frameCx: number,
+  frameCy: number,
+  gridW: number,
+  gridH: number,
+  metrics: { width: number; height: number; emuWidth: number; emuHeight: number },
+): { width: number; height: number; emuHeight: number } {
+  const placeholder =
+    frameCx === 3000000 &&
+    frameCy === 3000000 &&
+    gridW > 0 &&
+    gridH > 0 &&
+    (gridW !== frameCx || gridH !== frameCy);
+  if (placeholder) {
+    return {
+      width: (gridW / metrics.emuWidth) * metrics.width,
+      height: (gridH / metrics.emuHeight) * metrics.height,
+      emuHeight: gridH,
+    };
+  }
+  const rowsAreShorter = gridH > 0 && frameCy > gridH;
+  return {
+    width: frame.width,
+    height: rowsAreShorter
+      ? (gridH / metrics.emuHeight) * metrics.height
+      : frame.height,
+    emuHeight: rowsAreShorter ? gridH : frameCy > 0 ? frameCy : gridH || 1,
+  };
+}
+
+/**
+ * A stored row height is kept. Height 0 is unset, not a collapsed row, unless
+ * the explicit rows already fill the frame. Those unset rows share whatever
+ * frame height is left so the grid stays inside the graphic frame. The
+ * 3,000,000 EMU placeholder is not a real frame, so it does not donate space.
+ */
+export function distributeUnsetTableRows(
+  rowEmu: number[],
+  frameCy: number,
+  frameCx = 0,
+): number[] {
+  if (frameCx === 3000000 && frameCy === 3000000) return rowEmu;
+  const unset = rowEmu.filter((height) => !(height > 0)).length;
+  if (unset === 0) return rowEmu;
+  const set = rowEmu.reduce((sum, height) => sum + (height > 0 ? height : 0), 0);
+  const leftover = frameCy - set;
+  if (!(leftover > 0)) return rowEmu;
+  const share = leftover / unset;
+  return rowEmu.map((height) => (height > 0 ? height : share));
+}
+
+/**
+ * A resized table keeps its old row heights while the frame is the size
+ * PowerPoint paints. Scale those rows into an on-slide frame that is only
+ * modestly taller. A frame more than half again as tall is leftover space:
+ * stretching it would cover the shapes underneath. The 3,000,000 EMU
+ * placeholder is not a real frame.
+ */
+export function scaleRowsIntoFrame(
+  rowEmu: number[],
+  frameCy: number,
+  frameTop: number,
+  frameCx: number,
+  slideEmuHeight: number,
+): number[] {
+  if (frameCx === 3000000 && frameCy === 3000000) return rowEmu;
+  const sum = rowEmu.reduce((total, height) => total + height, 0);
+  if (!(sum > 0) || !(frameCy > sum) || frameCy > sum * 1.5) return rowEmu;
+  if (frameTop < -1 || frameTop + frameCy > slideEmuHeight + 1) return rowEmu;
+  const scale = frameCy / sum;
+  return rowEmu.map((height) => height * scale);
+}
+
+/** Arial Narrow lays out as SuiteLeaf Pine, which is narrower than Willow. */
+function narrowTableFace(font: string | undefined): boolean {
+  const name = font?.trim().toLowerCase();
+  return name === "suiteleaf pine" || name === "arial narrow";
+}
+
+/**
+ * Advance, in em, of SuiteLeaf Pine (regular). Bold uses the same 1.06 scale
+ * as Willow. These are the face's own advances, so a narrow cell does not
+ * wrap a line early and grow the row.
+ */
+function pineEm(ch: string): number {
+  if (ch === " ") return 0.228;
+  if ("ijl".includes(ch)) return 0.182;
+  if ("ftr".includes(ch)) return 0.243;
+  if (".,:;!'`|".includes(ch)) return 0.223;
+  if (ch === "m" || ch === "w") return 0.637;
+  if (ch === "%") return 0.729;
+  if ("MW@".includes(ch)) return 0.763;
+  if (ch >= "0" && ch <= "9") return 0.456;
+  if (ch >= "A" && ch <= "Z") return 0.555;
+  return 0.401;
+}
+
+/** Advance, in em, of SuiteLeaf Willow. Narrow averages wrap a line too late and clip it. */
+function glyphEm(ch: string, face?: string): number {
+  if (narrowTableFace(face)) return pineEm(ch);
+  if (ch === " ") return 0.226;
+  if ("ijl".includes(ch)) return 0.23;
+  if ("ftr".includes(ch)) return 0.33;
+  if (".,:;!'`|".includes(ch)) return 0.25;
+  if (ch === "m" || ch === "w") return 0.76;
+  if (ch === "%") return 0.715;
+  if ("MW@".includes(ch)) return 0.87;
+  if (ch >= "0" && ch <= "9") return 0.507;
+  if (ch >= "A" && ch <= "Z") return 0.58;
+  return 0.5;
+}
+
+function wrapLines(
+  text: string,
+  widthPt: number,
+  font: number,
+  bold: boolean,
+  face?: string,
+): number {
+  const scale = bold ? 1.06 : 1;
+  const space = glyphEm(" ", face) * font * scale;
+  const widthOf = (word: string) => {
+    let width = 0;
+    for (const ch of word) width += glyphEm(ch, face) * font * scale;
+    return width;
+  };
+  let count = 0;
+  for (const para of text.split("\n")) {
+    if (!para) {
+      count += 1;
+      continue;
+    }
+    let line = 0;
+    let lines = 1;
+    for (const word of para.split(" ")) {
+      if (!word) continue;
+      const wordWidth = widthOf(word);
+      if (wordWidth > widthPt) {
+        if (line > 0) {
+          lines += 1;
+          line = 0;
+        }
+        for (const ch of word) {
+          const advance = glyphEm(ch) * font * scale;
+          if (line > 0 && line + advance > widthPt) {
+            lines += 1;
+            line = advance;
+          } else line += advance;
+        }
+        continue;
+      }
+      const gap = line > 0 ? space : 0;
+      if (line > 0 && line + gap + wordWidth > widthPt) {
+        lines += 1;
+        line = wordWidth;
+      } else line += gap + wordWidth;
+    }
+    count += lines;
+  }
+  return Math.max(count, 1);
+}
+
+type RowMeasure = {
+  fontSize?: number;
+  font?: string;
+  bold?: boolean;
+  padTop?: number;
+  padRight?: number;
+  padBottom?: number;
+  padLeft?: number;
+  colSpan?: number;
+  /** Subscript runs are narrower than the concatenated cell text. */
+  runs?: { text?: string; baseline?: number; fontSize?: number }[];
+};
+
+/** Width of a cell's runs, in points. A newline means the cell is not one line. */
+function runLineWidth(mark: RowMeasure, font: number): number | undefined {
+  if (!mark.runs?.length) return;
+  const scale = mark.bold ? 1.06 : 1;
+  let width = 0;
+  for (const run of mark.runs) {
+    const size = (run.fontSize && run.fontSize > 0 ? run.fontSize : font) * (run.baseline ? 0.65 : 1);
+    const faceScale = run.baseline ? 1 : scale;
+    for (const ch of run.text || "") {
+      if (ch === "\n") return;
+      width += glyphEm(ch, mark.font) * size * faceScale;
+    }
+  }
+  return width;
+}
+
+/**
+ * Several empty paragraphs are line boxes. One empty paragraph is just an
+ * empty cell, and it does not make the row taller.
+ */
+function blankParagraphLines(text: string): number {
+  if (text.trim()) return 0;
+  const lines = text.split("\n").length;
+  return lines >= 2 ? lines : 0;
+}
+
+/** Wrapped height of one row, in EMUs. An empty row needs nothing. */
+export function tableTextRowEmu(
+  rows: string[][],
+  marks: RowMeasure[][],
+  colEmu: number[],
+): number[] {
+  const pt = 12700;
+  return rows.map((row, r) => {
+    let col = 0;
+    let need = 0;
+    row.forEach((text, c) => {
+      const mark = marks[r]?.[c];
+      const span = mark?.colSpan && mark.colSpan > 0 ? mark.colSpan : 1;
+      const width = colEmu.slice(col, col + span).reduce((sum, cell) => sum + cell, 0);
+      col += span;
+      // Fixture grids use token widths. A real cell is at least a tenth of an inch.
+      if (!(width > 100_000)) return;
+      const blanks = blankParagraphLines(text);
+      // A trailing empty paragraph is the end mark of the cell. It does not
+      // add a line, and it must not stretch a row PowerPoint left equal.
+      const body = text.replace(/\n+$/, "");
+      if (!body.trim() && !blanks) return;
+      const sized = mark?.fontSize && mark.fontSize > 0 ? mark.fontSize : 0;
+      // Wrapped words keep the 14pt measure when the cell names no size.
+      // Unsized empty paragraphs are the 18pt body default. Both sit on the
+      // Windows line grid, which is what a stored one-line row is tall enough for.
+      const font = sized || (blanks ? 18 : 14);
+      const padLeft = (mark?.padLeft ?? 7.2) * pt;
+      const padRight = (mark?.padRight ?? 7.2) * pt;
+      const padTop = mark?.padTop ?? 3.6;
+      const padBottom = mark?.padBottom ?? 3.6;
+      const grid = officeSingleSpacing(mark?.font || "Calibri");
+      if (!body.trim() && blanks) {
+        const height = (padTop + padBottom + blanks * font * grid) * pt;
+        if (height > need) need = height;
+        return;
+      }
+      const inner = Math.max(font, (width - padLeft - padRight) / pt);
+      const oneLine = runLineWidth(mark ?? {}, font);
+      // Willow's advances run a little wide. A line that is only slightly
+      // over the cell still fits in PowerPoint, and wrapping it doubles the row.
+      const lines =
+        oneLine != null && oneLine <= inner * 1.08 && !body.includes("\n")
+          ? 1
+          : wrapLines(body, inner, font, !!mark?.bold, mark?.font);
+      const height = (padTop + padBottom + lines * font * grid) * pt;
+      if (height > need) need = height;
+    });
+    return need;
+  });
+}
+
+/**
+ * A stored row that clips its wrapped text grows to that text.
+ * Rows that already fit stay on the stored grid, so a taller frame is not a
+ * stretch target. Growth that would pass the graphic frame is scaled back
+ * into it. The 3,000,000 EMU placeholder is not a real frame.
+ */
+export function growClippedTableRows(
+  rowEmu: number[],
+  neededEmu: number[],
+  frameCy = 0,
+  frameCx = 0,
+): number[] {
+  const grown = rowEmu.map((height, index) => {
+    const need = neededEmu[index] ?? 0;
+    if (!(height > 0) || !(need > height * 1.25)) return height;
+    return need;
+  });
+  const grew = grown.some((height, index) => height > (rowEmu[index] ?? 0));
+  const sum = grown.reduce((total, height) => total + height, 0);
+  if (
+    !grew ||
+    (frameCx === 3000000 && frameCy === 3000000) ||
+    !(frameCy > 0) ||
+    !(sum > frameCy)
+  )
+    return grown;
+  const scale = frameCy / sum;
+  return grown.map((height) => height * scale);
 }
 
 export function tableFractions(widths: number[]): number[] | undefined {

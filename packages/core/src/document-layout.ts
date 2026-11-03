@@ -1,4 +1,6 @@
 import type { JsonNode } from "./index";
+import { keepWithNextLayout } from "./keep-with-next";
+import { paginateSection, type SectionPiece } from "./table-pages";
 import { bodyEdgeInsets, resolveEdgePx } from "./header-edge";
 import { fontKerning, kernFeature, kerningThreshold } from "./kerning";
 
@@ -816,7 +818,7 @@ const BODY_LINE_PX = BODY_FONT_PX * 1.333333;
 const BODY_CHAR_PX = BODY_FONT_PX * 0.5;
 const FLOW_TEXT_BLOCKS = new Set(["paragraph", "heading", "codeBlock"]);
 
-function pageTextCapacity(settings: PageSettings): { charsPerLine: number; linesPerPage: number } {
+export function pageTextCapacity(settings: PageSettings): { charsPerLine: number; linesPerPage: number } {
   const { width, height } = pageDimensions(settings);
   const insets = bodyEdgeInsets(settings, width);
   const bodyHeight = Math.max(1, height - insets.top - insets.bottom);
@@ -869,6 +871,11 @@ export function sectionContentPages(
   settings: PageSettings = defaultPageSettings,
 ): number {
   const segments = [""];
+  const { charsPerLine, linesPerPage } = pageTextCapacity(settings);
+  const blocks: { lines: number; keepNext?: boolean; widowControl?: boolean }[] = [];
+  const pieces: SectionPiece[] = [];
+  let sawTable = false;
+  let keep = false;
   const addBlock = (text: string) => {
     const current = segments[segments.length - 1] ?? "";
     segments[segments.length - 1] = current ? `${current}\n${text}` : text;
@@ -877,16 +884,43 @@ export function sectionContentPages(
     for (const node of items) {
       if (node.type === "pageBreak") {
         segments.push("");
+        pieces.push({ kind: "break" });
+        continue;
+      }
+      if (node.type === "table" && node.content?.length) {
+        sawTable = true;
+        const heights = node.content.map((row) =>
+          Math.max(1, blockLines(nodeText(row), charsPerLine)),
+        );
+        pieces.push({
+          kind: "table",
+          heights,
+          repeatHeader: node.attrs?.repeatHeader === true,
+        });
         continue;
       }
       if (FLOW_TEXT_BLOCKS.has(node.type)) {
         addBlock(nodeText(node));
+        pieces.push({
+          kind: "text",
+          lines: blockLines(nodeText(node), charsPerLine),
+          keepNext: node.attrs?.keepNext === true,
+          widowControl: node.attrs?.widowControl === true,
+        });
+        if (node.attrs?.keepNext === true || node.attrs?.widowControl === true) keep = true;
+        blocks.push({
+          lines: blockLines(nodeText(node), charsPerLine),
+          keepNext: node.attrs?.keepNext === true,
+          widowControl: node.attrs?.widowControl === true,
+        });
         continue;
       }
       if (node.content?.length) visit(node.content);
     }
   };
   visit(nodes);
+  if (sawTable) return paginateSection(pieces, linesPerPage);
+  if (keep) return keepWithNextLayout(blocks, linesPerPage).count;
   return pagesForTextSegments(segments, settings);
 }
 

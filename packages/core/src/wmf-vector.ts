@@ -1,3 +1,5 @@
+import { encodeRgbaPng } from "./emf-raster";
+
 /**
  * Windows metafiles as SVG. Chromium does not paint image/wmf, so a chart or
  * equation stored as a placeable or standard metafile would otherwise be blank.
@@ -235,6 +237,85 @@ function stock(index: number): GdiObject | undefined {
     return { kind: "pen", color: pens[index], width: 0, dash: "" };
 }
 
+/**
+ * META_DIBSTRETCHBLT and META_STRETCHDIB. Office stores pasted diagrams and
+ * OLE previews as a DIB inside a metafile; without this blit the picture stays
+ * blank and the alt text shows. StretchDIBits adds a color-usage word before
+ * the same source and destination fields.
+ */
+function dibStretchImage(
+  bytes: Uint8Array,
+  view: DataView,
+  body: number,
+  end: number,
+  mapPoint: (x: number, y: number) => readonly [number, number],
+  extra = 0,
+): string | undefined {
+  if (end < body + 60 + extra) return;
+  if (view.getUint32(body, true) !== 0x00cc0020) return;
+  const base = body + extra;
+  const srcHeight = view.getInt16(base + 4, true);
+  const srcWidth = view.getInt16(base + 6, true);
+  const ySrc = view.getInt16(base + 8, true);
+  const xSrc = view.getInt16(base + 10, true);
+  const destHeight = view.getInt16(base + 12, true);
+  const destWidth = view.getInt16(base + 14, true);
+  const yDest = view.getInt16(base + 16, true);
+  const xDest = view.getInt16(base + 18, true);
+  const info = base + 20;
+  const biSize = view.getUint32(info, true);
+  if (biSize < 40 || info + biSize > end) return;
+  const bw = view.getInt32(info + 4, true);
+  const bh = view.getInt32(info + 8, true);
+  const depth = view.getUint16(info + 14, true);
+  const comp = view.getUint32(info + 16, true);
+  if (comp !== 0 || (depth !== 24 && depth !== 32) || bw < 1 || bh === 0) return;
+  const sh = Math.abs(bh);
+  if (bw > 4096 || sh > 4096) return;
+  const samples = depth === 32 ? 4 : 3;
+  const stride = Math.ceil((bw * samples) / 4) * 4;
+  const bits = info + biSize;
+  if (bits + stride * sh > end) return;
+  const full = new Uint8Array(bw * sh * 4);
+  for (let y = 0; y < sh; y++) {
+    const srcY = bh > 0 ? sh - 1 - y : y;
+    for (let x = 0; x < bw; x++) {
+      const p = bits + srcY * stride + x * samples;
+      const d = (y * bw + x) * 4;
+      full[d] = bytes[p + 2];
+      full[d + 1] = bytes[p + 1];
+      full[d + 2] = bytes[p];
+      full[d + 3] = 255;
+    }
+  }
+  let sx = Math.max(0, xSrc);
+  let sy = Math.max(0, ySrc);
+  let sw = srcWidth > 0 ? srcWidth : bw;
+  let shSrc = srcHeight > 0 ? srcHeight : sh;
+  if (sx >= bw || sy >= sh) return;
+  sw = Math.min(sw, bw - sx);
+  shSrc = Math.min(shSrc, sh - sy);
+  let pixels = full;
+  let pw = bw;
+  let ph = sh;
+  if (sx || sy || sw !== bw || shSrc !== sh) {
+    pixels = new Uint8Array(sw * shSrc * 4);
+    for (let y = 0; y < shSrc; y++) {
+      pixels.set(
+        full.subarray(((sy + y) * bw + sx) * 4, ((sy + y) * bw + sx + sw) * 4),
+        y * sw * 4,
+      );
+    }
+    pw = sw;
+    ph = shSrc;
+  }
+  if (!destWidth || !destHeight) return;
+  const [x0, y0] = mapPoint(xDest, yDest);
+  const [x1, y1] = mapPoint(xDest + destWidth, yDest + destHeight);
+  const href = encodeRgbaPng(pw, ph, pixels);
+  return `<image href="${href}" x="${num(Math.min(x0, x1))}" y="${num(Math.min(y0, y1))}" width="${num(Math.abs(x1 - x0))}" height="${num(Math.abs(y1 - y0))}" preserveAspectRatio="none"/>`;
+}
+
 /** SVG data URL for a path-based WMF, or undefined when the file is not one. */
 export function vectorWmf(bytes: Uint8Array): string | undefined {
   if (bytes.length < 18) return;
@@ -278,6 +359,8 @@ export function vectorWmf(bytes: Uint8Array): string | undefined {
   let bkColor = "#ffffff";
   let bkMode = 2;
   let align = 0;
+  // GDI starts in alternate (even-odd) fill. Charts switch to winding for holes.
+  let fillMode = 1;
   let currentX = 0;
   let currentY = 0;
   let clip: Dc["clip"];
@@ -371,9 +454,10 @@ export function vectorWmf(bytes: Uint8Array): string | undefined {
     const fill = brush.color ?? "none";
     const stroke = strokeAttrs(pen);
     if (fill === "none" && !stroke) return;
+    const rule = fillMode === 2 ? "nonzero" : "evenodd";
     if (ellipse) {
       shapes.push(
-        `<ellipse cx="${num(ellipse.cx)}" cy="${num(ellipse.cy)}" rx="${num(ellipse.rx)}" ry="${num(ellipse.ry)}" fill="${fill}"${stroke}${clipAttr()}/>`,
+        `<ellipse cx="${num(ellipse.cx)}" cy="${num(ellipse.cy)}" rx="${num(ellipse.rx)}" ry="${num(ellipse.ry)}" fill="${fill}" fill-rule="${rule}"${stroke}${clipAttr()}/>`,
       );
       return;
     }
@@ -383,7 +467,7 @@ export function vectorWmf(bytes: Uint8Array): string | undefined {
       const [px, py] = mapPoint(x, y);
       path += `${index ? "L" : "M"}${num(px)} ${num(py)}`;
     });
-    shapes.push(`<path d="${path}Z" fill="${fill}"${stroke}${clipAttr()}/>`);
+    shapes.push(`<path d="${path}Z" fill="${fill}" fill-rule="${rule}"${stroke}${clipAttr()}/>`);
   };
   const paintText = (x: number, y: number, raw: Uint8Array, dx: number[]) => {
     flush();
@@ -467,6 +551,8 @@ export function vectorWmf(bytes: Uint8Array): string | undefined {
       bkColor = cssColor(bytes[body], bytes[body + 1], bytes[body + 2]);
     } else if (func === 0x0102 && end >= body + 2) {
       bkMode = u16(body);
+    } else if (func === 0x0106 && end >= body + 2) {
+      fillMode = u16(body);
     } else if (func === 0x012e && end >= body + 2) {
       align = u16(body);
     } else if (func === 0x02fa && end >= body + 10) {
@@ -600,6 +686,36 @@ export function vectorWmf(bytes: Uint8Array): string | undefined {
       // A null or unknown region resets the clip. These charts pass index 0.
       flush();
       clip = undefined;
+    } else if (func === 0x0538 && end >= body + 4) {
+      // PolyPolygon: polygon count, then a count per polygon, then the points.
+      const polygons = u16(body);
+      let cursor = body + 2;
+      if (polygons < 1 || cursor + polygons * 2 > end) {
+        pos = next;
+        continue;
+      }
+      const counts: number[] = [];
+      for (let n = 0; n < polygons; n++) {
+        counts.push(u16(cursor));
+        cursor += 2;
+      }
+      flush();
+      let path = "";
+      for (const count of counts) {
+        const pts = points(cursor, Math.min(count, Math.floor((end - cursor) / 4)));
+        cursor += count * 4;
+        if (!pts.length) continue;
+        pts.forEach(([x, y], index) => {
+          const [px, py] = mapPoint(x, y);
+          path += `${index ? "L" : "M"}${num(px)} ${num(py)}`;
+        });
+        path += "Z";
+      }
+      const fill = brush.color ?? "none";
+      const stroke = strokeAttrs(pen);
+      const rule = fillMode === 2 ? "nonzero" : "evenodd";
+      if (path && (fill !== "none" || stroke))
+        shapes.push(`<path d="${path}" fill="${fill}" fill-rule="${rule}"${stroke}${clipAttr()}/>`);
     } else if (func === 0x0a32 && end >= body + 8) {
       const y = i16(body);
       const x = i16(body + 2);
@@ -625,6 +741,17 @@ export function vectorWmf(bytes: Uint8Array): string | undefined {
         currentX = useX + (dx.length ? dx.reduce((sum, width) => sum + width, 0) : length * font.size * 0.5);
         if (horizontal === 6) currentX = useX + length * font.size * 0.25;
       }
+    } else if (func === 0x0b41 || func === 0x0f43) {
+      flush();
+      const image = dibStretchImage(
+        bytes,
+        view,
+        body,
+        end,
+        mapPoint,
+        func === 0x0f43 ? 2 : 0,
+      );
+      if (image) shapes.push(image);
     }
     pos = next;
   }

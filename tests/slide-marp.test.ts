@@ -30,7 +30,9 @@ import {
   dataUriFor,
   filesBeside,
   listRelativeFiles,
+  hasMarpHeader,
   markdownInFolder,
+  officeImportTargets,
   marpAssetPaths,
   normalizeFolderFiles,
   preferredMarkdown,
@@ -61,6 +63,24 @@ function fill(slide: Slide, texts: string[], notes?: string) {
 }
 
 describe("MARP markdown", () => {
+  it("round-trips a hidden slide and refuses another hidden value", () => {
+    const slide = fill(newSlide("title-body"), ["North"], "Water the beds");
+    slide.hidden = true;
+    const deck = deckOf([slide]);
+    const markdown = deckToMarp(deck);
+    expect(markdown).toContain("<!-- _hidden: true -->");
+    const back = marpToDeck(markdown, deck);
+    expect(back).not.toHaveProperty("error");
+    if ("error" in back) return;
+    const again = back.deck.slides[back.deck.slideOrder[0]];
+    expect(again.hidden).toBe(true);
+    expect(again.notes).toBe("Water the beds");
+    expect(slide.notes).toBe("Water the beds");
+    const bad = marpToDeck("---\nmarp: true\n---\n\n<!-- _hidden: secret-value -->\n\n# Beds\n", deck);
+    expect(bad).toEqual({ error: "Slide 1: Hidden must be true or false." });
+    expect(JSON.stringify(bad)).not.toContain("secret-value");
+  });
+
   it("round-trips layouts, bullets, notes, and a built-in theme", () => {
     const deck = deckOf(
       [
@@ -683,6 +703,24 @@ Thoughtful slide design
       "13_Feature_Engineering.md",
     );
     expect(preferredMarkdown(["a.md", "b.md"], "")).toBeNull();
+    expect(
+      officeImportTargets([
+        { relativePath: "source_slides/lec-01-intro.pptx" },
+        { relativePath: "source_slides/week/lec-02.doc" },
+        { relativePath: "source_slides/notes.txt" },
+        { relativePath: "source_slides/.hidden/secret.pptx" },
+        { relativePath: "lecture.md" },
+      ]).map((item) => [item.file.relativePath, item.folder]),
+    ).toEqual([
+      ["source_slides/lec-01-intro.pptx", "source_slides"],
+      ["source_slides/week/lec-02.doc", "source_slides/week"],
+    ]);
+    expect(
+      officeImportTargets([{ relativePath: "deck/slides.md" }, { relativePath: "deck/plot.pptx" }]),
+    ).toEqual([{ file: { relativePath: "deck/plot.pptx" }, folder: "deck" }]);
+    expect(hasMarpHeader("---\nmarp: true\ntheme: beam_ut\n---\n\n# Hello\n")).toBe(true);
+    expect(hasMarpHeader("---\ntitle: Notes\n---\n\n# Hello\n")).toBe(false);
+    expect(hasMarpHeader("# Hello\n")).toBe(false);
     const flat = normalizeFolderFiles([
       { relativePath: "13_Feature_Engineering/13_Feature_Engineering.md" },
       { relativePath: "13_Feature_Engineering/media/plot.png" },

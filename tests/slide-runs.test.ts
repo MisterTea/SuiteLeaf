@@ -16,6 +16,7 @@ import {
   plainText,
   rangeHas,
   runsOf,
+  runsToHtml,
   styleSelection,
   styleWholeBox,
   textInnerHtml,
@@ -155,13 +156,16 @@ describe("per-word slide formatting", () => {
     expect(saved.content).toBe(line);
     expect(saved.runs?.find((run) => run.text === "fair")?.bold).toBe(true);
     expect(saved.runs?.find((run) => run.text === "community")?.color).toBe("#95d5b2");
-    expect(textInnerHtml({
+    const hung = textInnerHtml({
       runs: [
         { text: "• Parent", paraMargin: 8, paraHang: 6 },
         { text: "\n", paragraphBreak: true, paraMargin: 24, paraHang: 6, spaceBefore: 4 },
         { text: "○ Child" },
       ],
-    })).toContain('padding-left:24px');
+    });
+    expect(hung).toContain("padding-left:calc(30px * var(--canvas-fit, 1))");
+    expect(hung).toContain("text-indent:calc(-6px * var(--canvas-fit, 1))");
+    expect(hung).not.toContain("hanging");
     expect(textInnerHtml({
       runs: [
         { text: "Left" },
@@ -181,6 +185,67 @@ describe("per-word slide formatting", () => {
     expect(textInnerHtml({
       runs: [{ text: "DA", color: "#ff0000", stroke: "#0000ff", strokeWidth: 1 }],
     })).toContain("-webkit-text-stroke:");
+    expect(textInnerHtml({
+      runs: [
+        { text: "Ø ", font: "SuiteLeaf Sprig", paraHang: 27 },
+        { text: "Advance" },
+        { text: "\n", paragraphBreak: true, paraHang: 27 },
+        { text: "Ø ", font: "SuiteLeaf Sprig" },
+        { text: "Beyond" },
+      ],
+    })).toMatch(/slide-bullet-slot/g);
+    expect((textInnerHtml({
+      runs: [
+        { text: "Ø ", font: "SuiteLeaf Sprig", paraHang: 27 },
+        { text: "Advance" },
+        { text: "\n", paragraphBreak: true, paraHang: 27 },
+        { text: "Ø ", font: "SuiteLeaf Sprig" },
+        { text: "Beyond" },
+      ],
+    }).match(/slide-bullet-slot/g) ?? []).length).toBe(2);
+    expect(textInnerHtml({
+      runs: [
+        { text: "Ø ", font: "SuiteLeaf Sprig", paraHang: 27 },
+        { text: "Advance" },
+      ],
+    })).toMatch(/font-size:0/);
+    expect(textInnerHtml({
+      runs: [{ text: "Ø ", font: "SuiteLeaf Sprig" }, { text: "Advance" }],
+    })).not.toContain("slide-bullet-slot");
+    expect(textInnerHtml({
+      hang: 27,
+      runs: [{ text: "n ", font: "SuiteLeaf Sprig" }, { text: "Next" }],
+    })).toContain("slide-bullet-slot");
+    const editingBullet = runsToHtml(runsOf({ content: "• Early 2000s" }), undefined, 18);
+    expect(editingBullet).toContain("slide-bullet-fixed");
+    expect(editingBullet).toContain('contenteditable="false"');
+    expect(editingBullet).toContain("Early 2000s");
+    expect(editingBullet.indexOf("slide-bullet-fixed")).toBeLessThan(editingBullet.indexOf("Early 2000s"));
+    const plainBullet = textInnerHtml({
+      runs: [
+        { text: "● ", color: "#002F56", paraHang: 36 },
+        { text: "Management" },
+      ],
+    });
+    expect(plainBullet).toContain("slide-bullet-slot");
+    expect(plainBullet).toContain("min-width:calc(36px * var(--canvas-fit, 1))");
+    expect(plainBullet).toContain("text-indent:0");
+    expect(plainBullet.indexOf("slide-bullet-slot")).toBeLessThan(plainBullet.indexOf("Management"));
+    const officeList = textInnerHtml({
+      runs: [
+        { text: "▪ ", color: "#333399", paraHang: 27 },
+        { text: "Welcome" },
+        { text: "\n", paragraphBreak: true, paraHang: 27, spaceBefore: 7.5 },
+        { text: "▪ ", color: "#333399" },
+        { text: "Goal" },
+        { text: "\n", paragraphBreak: true, paraHang: 27, paraMargin: 13.5, spaceBefore: 7.5 },
+        { text: "▪ ", color: "#333399" },
+        { text: "Increase" },
+      ],
+    });
+    expect(officeList).not.toContain("slide-bullet-fixed");
+    expect(officeList.match(/slide-bullet-slot/g)?.length).toBe(3);
+    expect(officeList.match(/min-width:calc\(27px \* var\(--canvas-fit, 1\)\)/g)?.length).toBe(3);
     expect(textInnerHtml(saved)).toContain('data-bold="1"');
     expect(textInnerHtml(saved)).toContain("data-color=\"#95d5b2\"");
     expect(runsOf(saved).map((run) => run.text).join("")).toBe(line);

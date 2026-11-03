@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { JsonNode } from "../packages/core/src";
 import {
+  letterTitle,
+  mergeBatch,
+  mergeIssueText,
   mergeLetters,
   mergeSheetChoices,
+  nameColumn,
+  previewMerge,
   sheetTable,
   spreadsheetChoices,
 } from "../apps/web/src/editors/mail-merge";
@@ -17,6 +22,29 @@ function doc(text: string): JsonNode {
 const letter = "Hello {{Name}}, your plot is {{Plot}}.";
 
 describe("merge letters", () => {
+  it("matches a placeholder to a header with surrounding space", () => {
+    const headers = [" Name ", "Plot"];
+    const before = headers.slice();
+    const result = mergeLetters(doc("Hello {{Name}}."), headers, [["Rosa", "Sunny"]]);
+    expect(headers).toEqual(before);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.content.content?.[0]?.content?.[0]?.text).toBe("Hello Rosa.");
+    expect(previewMerge(doc("Hello {{Name}}."), headers, [["Rosa", "Sunny"]])).toEqual([]);
+    const blank = mergeLetters(doc("Hello {{Name}}."), [" "], [["Rosa"]]);
+    expect(blank.ok).toBe(false);
+  });
+
+  it("matches a placeholder when the header uses different capitalization", () => {
+    const headers = ["name"];
+    const result = mergeLetters(doc("Hello {{Name}}."), headers, [["Rosa"]]);
+    expect(headers).toEqual(["name"]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.content.content?.[0]?.content?.[0]?.text).toBe("Hello Rosa.");
+    expect(previewMerge(doc("Hello {{Name}}."), headers, [["Rosa"]])).toEqual([]);
+  });
+
   it("writes one letter per row with a page break between them", () => {
     const template = doc(letter);
     const result = mergeLetters(
@@ -189,5 +217,60 @@ describe("merge letters", () => {
         place: "On this computer",
       },
     ]);
+  });
+});
+
+describe("merge batch", () => {
+  it("lists a blank field before writing and keeps the template", () => {
+    const template = doc(letter);
+    const snapshot = structuredClone(template);
+    const issues = previewMerge(
+      template,
+      ["Name", "Plot"],
+      [
+        ["Rosa", ""],
+        ["Leo", "Shade"],
+      ],
+    );
+    expect(issues).toEqual([{ row: 1, field: "Plot", reason: "blank", column: 1 }]);
+    const batch = mergeBatch(template, ["Name", "Plot"], [["Rosa", ""]], "Name");
+    expect(batch.ok).toBe(false);
+    expect(JSON.stringify(template)).toBe(JSON.stringify(snapshot));
+  });
+
+  it("writes distinct letters and repeats the same names for the same rows", () => {
+    const rows = [
+      ["Rosa", "Sunny"],
+      ["Rosa", "Shade"],
+    ];
+    const first = mergeBatch(doc(letter), ["Name", "Plot"], rows, "Name");
+    const second = mergeBatch(doc(letter), ["Name", "Plot"], rows, "Name");
+    expect(first.ok && first.letters.map((letter) => letter.name)).toEqual(["Rosa", "Rosa 2"]);
+    const mixed = mergeBatch(doc("Hello {{Name}}."), ["Name"], [["Ada"], ["ada"]], "Name");
+    expect(mixed.ok && mixed.letters.map((letter) => letter.name)).toEqual(["Ada", "ada 2"]);
+    expect(second.ok && second.letters.map((letter) => letter.name)).toEqual(
+      first.ok ? first.letters.map((letter) => letter.name) : [],
+    );
+    if (!first.ok) return;
+    expect(JSON.stringify(first.letters[0].content)).toContain("Sunny");
+    expect(JSON.stringify(first.letters[1].content)).toContain("Shade");
+  });
+
+  it("names files from the Name column and describes a blank cell", () => {
+    expect(nameColumn(["Plot", "Name"])).toBe("Name");
+    expect(nameColumn(["Plot"])).toBe("Plot");
+    expect(
+      mergeIssueText([{ row: 1, field: "Plot", reason: "blank", column: 1 }]),
+    ).toBe("Row 1 has no Plot. Cell B2.");
+    expect(mergeIssueText([{ row: 0, field: "secret-value", reason: "missing-column" }])).toBe(
+      "That name is not a column.",
+    );
+    expect(mergeIssueText([{ row: 2, field: "apiKey", reason: "blank", column: 0 }])).toBe(
+      "Row 2 has an empty cell. Cell A3.",
+    );
+    expect(letterTitle("Garden notes", "Rosa")).toBe("Garden notes — Rosa");
+    expect(letterTitle("Garden notes", "../../secret-value")).toBe("Garden notes — secret-value");
+    expect(letterTitle("Garden notes", "../")).toBe("Garden notes — Letter");
+    expect(letterTitle("Garden notes", "Beds/North")).toBe("Garden notes — Beds North");
   });
 });

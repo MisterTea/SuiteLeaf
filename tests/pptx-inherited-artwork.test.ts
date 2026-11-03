@@ -83,6 +83,70 @@ describe("inherited PowerPoint artwork", () => {
     expect(media.length).toBeGreaterThan(0);
     expect(await output.file(media[0])!.async("nodebuffer")).toEqual(image);
   });
+  it("keeps the master background when a click animation targets a shape background", async () => {
+    const zip = new JSZip();
+    zip.file(
+      "ppt/presentation.xml",
+      '<p:presentation><p:sldSz cx="9144000" cy="6858000"/></p:presentation>',
+    );
+    zip.file(
+      "ppt/slides/slide1.xml",
+      `<p:sld><p:cSld><p:spTree/></p:cSld><p:timing><p:tnLst><p:par><p:cTn><p:childTnLst><p:set><p:cBhvr><p:tgtEl><p:spTgt spid="150"><p:bg/></p:spTgt></p:tgtEl></p:cBhvr></p:set></p:childTnLst></p:cTn></p:par></p:tnLst></p:timing></p:sld>`,
+    );
+    zip.file(
+      "ppt/slides/_rels/slide1.xml.rels",
+      `<Relationships>${relation("layout", "slideLayout", "../slideLayouts/slideLayout1.xml")}</Relationships>`,
+    );
+    zip.file("ppt/slideLayouts/slideLayout1.xml", "<p:sldLayout><p:cSld><p:spTree/></p:cSld></p:sldLayout>");
+    zip.file(
+      "ppt/slideLayouts/_rels/slideLayout1.xml.rels",
+      `<Relationships>${relation("master", "slideMaster", "../slideMasters/slideMaster1.xml")}</Relationships>`,
+    );
+    zip.file(
+      "ppt/slideMasters/slideMaster1.xml",
+      `<p:sldMaster><p:cSld><p:bg><p:bgPr><a:blipFill><a:blip r:embed="image"/></a:blipFill></p:bgPr></p:bg><p:spTree/></p:cSld></p:sldMaster>`,
+    );
+    zip.file(
+      "ppt/slideMasters/_rels/slideMaster1.xml.rels",
+      `<Relationships>${relation("image", "image", "../media/background.png")}</Relationships>`,
+    );
+    zip.file("ppt/media/background.png", image);
+    const parsed = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+    const slide = parsed.content.slides[parsed.content.slideOrder[0]];
+    expect(slide.elements.some((el) => el.alt === "Slide background")).toBe(true);
+  });
+
+  it("does not copy a layout slide number when the slide omits the placeholder", async () => {
+    const number = `<p:sp><p:nvSpPr><p:cNvPr id="6" name="Slide Number"/><p:nvPr><p:ph type="sldNum" idx="12"/></p:nvPr></p:nvSpPr><p:spPr><a:xfrm><a:off x="8000000" y="6400000"/><a:ext cx="800000" cy="300000"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:fld type="slidenum"><a:rPr/><a:t>‹#›</a:t></a:fld></a:p></p:txBody></p:sp>`;
+    const deck = async (hidden: boolean) => {
+      const zip = new JSZip();
+      zip.file(
+        "ppt/presentation.xml",
+        '<p:presentation><p:sldSz cx="9144000" cy="6858000"/></p:presentation>',
+      );
+      zip.file(
+        "ppt/slides/slide1.xml",
+        `<p:sld${hidden ? ' showMasterSp="0"' : ""}><p:cSld><p:spTree/></p:cSld></p:sld>`,
+      );
+      zip.file(
+        "ppt/slides/_rels/slide1.xml.rels",
+        `<Relationships>${relation("layout", "slideLayout", "../slideLayouts/slideLayout1.xml")}</Relationships>`,
+      );
+      zip.file(
+        "ppt/slideLayouts/slideLayout1.xml",
+        `<p:sldLayout><p:cSld><p:spTree>${number}</p:spTree></p:cSld></p:sldLayout>`,
+      );
+      return parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+    };
+    const shown = await deck(false);
+    const hidden = await deck(true);
+    const contents = (parsed: Awaited<ReturnType<typeof parsePowerPoint>>) =>
+      parsed.content.slides[parsed.content.slideOrder[0]].elements.map(
+        (el) => el.content,
+      );
+    expect(contents(shown)).not.toContain("1");
+    expect(contents(hidden)).not.toContain("1");
+  });
   it("hides layout artwork when the slide hides background graphics", async () => {
     const parsed = await fixture({
       hiddenMaster: true,

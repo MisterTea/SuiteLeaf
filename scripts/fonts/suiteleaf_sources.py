@@ -189,6 +189,8 @@ gf("andika/Andika-Regular.ttf", "202b96b1f174a4a43baefe885b40dacacb81786755efd08
      "sha256": "d46baaaf2264f35055c47b0450bad6372e6426ac86b0d224d3a17fa275b110f9", "kind": "tar",
      "members": {"*/fonts/P052-Roman.ttf": "urw/P052-Roman.ttf", "*/fonts/P052-Bold.ttf": "urw/P052-Bold.ttf",
                  "*/fonts/P052-Italic.ttf": "urw/P052-Italic.ttf", "*/fonts/P052-BoldItalic.ttf": "urw/P052-BoldItalic.ttf",
+                 "*/fonts/NimbusSansNarrow-Regular.otf": "urw/NimbusSansNarrow-Regular.otf",
+                 "*/fonts/NimbusSansNarrow-Bold.otf": "urw/NimbusSansNarrow-Bold.otf",
                  "*/fonts/LICENSE": "urw/LICENSE", "*/fonts/COPYING": "urw/COPYING"}},
     {"url": "https://mirrors.ctan.org/fonts/tex-gyre.zip",
      "sha256": "1773c470f9e388e087b68e3426e115af2cd236845a7e05ceb25b2a503409a7a3", "kind": "zip",

@@ -8,6 +8,8 @@ import { onAiPreferencesChanged } from "./preferences";
 import { cancelApproval, currentRequest, startRequest, takeCheckpoint, type Checkpoint, type FileChange } from "./guard";
 import { activeHost, currentReview, currentSnapshot, currentSuiteTools, registerToolEverywhere, toAgentTool, toolScreen } from "./host";
 import { clearTodos, formatTodos, multiPart, openTodos, todoStore, todoTool } from "./todo";
+import { quoteRetrievedText } from "./retrieved-text";
+import { assistantAccessNow, assistantTargetAllowed } from "./tool-permission";
 
 export const SYSTEM_PROMPT = `You are the assistant built into SuiteLeaf, an office suite with documents, spreadsheets and presentations. You do the user's task yourself by calling tools; each tool acts in the app the user is looking at, and they watch you work.
 
@@ -283,16 +285,33 @@ class AgentSession {
       transformContext: async (messages) =>
         messages
           .filter((m) => !isEmptyReply(m))
-          .map((m) =>
-            m.role === "toolResult" && this.explained.has(m.toolCallId)
-              ? { ...m, content: [{ type: "text" as const, text: this.explained.get(m.toolCallId)! }] }
-              : m,
-          ),
+          .map((m) => {
+            if (m.role !== "toolResult") return m;
+            const explained = this.explained.get(m.toolCallId);
+            const content =
+              explained !== undefined
+                ? [{ type: "text" as const, text: explained }]
+                : m.content.map((part) =>
+                    part.type === "text" ? { ...part, text: part.text } : part,
+                  );
+            return {
+              ...m,
+              content: content.map((part) =>
+                part.type === "text" ? { ...part, text: quoteRetrievedText(part.text).text } : part,
+              ),
+            };
+          }),
       // Each turn sees the tools of the screen the agent is on now.
       prepareNextTurnWithContext: ({ context }) => ({
         context: { ...context, tools: currentSuiteTools().map(toAgentTool) },
       }),
       beforeToolCall: async ({ toolCall, args, context }) => {
+        const permission = assistantTargetAllowed(
+          await assistantAccessNow(),
+          toolCall.name,
+          args,
+        );
+        if (!permission.ok) return { block: true, reason: permission.reason };
         const key = toolCall.name + JSON.stringify(args);
         if ((args as Record<string, unknown>)?.[PARSE_ERROR])
           return {

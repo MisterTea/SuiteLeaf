@@ -34,6 +34,62 @@ export function bulletPointSize(
   return size > 0 && size < 400 ? size : undefined;
 }
 
+/**
+ * A paragraph that only replaces the bullet kind still keeps the list level's
+ * colour, size, and font. The nearest specified property wins.
+ */
+export function inheritedBulletColorXml(styleParts: readonly string[]): string {
+  for (let index = styleParts.length - 1; index >= 0; index--) {
+    const found = /<a:buClr\b[\s\S]*?<\/a:buClr>/.exec(styleParts[index] || "");
+    if (found) return found[0];
+  }
+  return "";
+}
+
+/**
+ * The picture bullet on the winning list level.
+ * A later character, number, or `buNone` replaces it.
+ */
+export function pictureBulletEmbed(styleParts: readonly string[]): string | undefined {
+  const style =
+    [...styleParts].reverse().find((xml) => /<a:bu(?:None|Char|AutoNum|Blip)\b/.test(xml)) ||
+    "";
+  const tags = [...style.matchAll(/<a:bu(None|Char|AutoNum|Blip)\b/g)];
+  if (tags.at(-1)?.[1] !== "Blip") return;
+  return /<a:buBlip\b[^>]*>\s*<a:blip\b[^>]*\br:embed="([^"]+)"/.exec(style)?.[1];
+}
+
+/** The bullet face. A later `buFont` replaces the list level. */
+export function inheritedBulletTypeface(styleParts: readonly string[]): string | undefined {
+  for (let index = styleParts.length - 1; index >= 0; index--) {
+    const found = /<a:buFont\b[^>]*\btypeface="([^"]*)"/.exec(styleParts[index] || "");
+    if (found) return found[1];
+  }
+  return undefined;
+}
+
+/**
+ * `buSzPts` is an absolute hundredth-point size. `buSzPct` scales the
+ * paragraph. Whichever the nearest style specifies is the marker size.
+ */
+export function inheritedBulletPoints(
+  styleParts: readonly string[],
+  paragraphPoints: number | undefined,
+): number | undefined {
+  for (let index = styleParts.length - 1; index >= 0; index--) {
+    const xml = styleParts[index] || "";
+    const pts = /<a:buSzPts\b[^>]*\bval="(\d+)"/.exec(xml);
+    const pct = /<a:buSzPct\b[^>]*\bval="(\d+)"/.exec(xml);
+    const ptsAt = pts ? pts.index : -1;
+    const pctAt = pct ? pct.index : -1;
+    if (ptsAt < 0 && pctAt < 0) continue;
+    if (pctAt > ptsAt) return bulletPointSize(paragraphPoints, pct?.[1]);
+    const size = Number(pts?.[1]) / 100;
+    return size > 0 && size < 400 ? size : undefined;
+  }
+  return undefined;
+}
+
 /** DrawingML buAutoNum type, as the marker PowerPoint paints before the paragraph. */
 export function formatAutoNum(kind: string, n: number): string {
   const alpha = (upper: boolean) => {
@@ -124,8 +180,12 @@ type ListRun = {
   paragraphBreak?: boolean;
   paraMargin?: number;
   paraHang?: number;
+  paraFirst?: number;
+  paraTab?: number;
+  paraTabs?: { pos: number; align: "l" | "ctr" | "r" | "dec" }[];
   spaceBefore?: number;
   paraAlign?: "left" | "center" | "right" | "justify";
+  paraLine?: number;
 };
 
 /**
@@ -138,18 +198,40 @@ export function layoutListRuns<T extends ListRun>(
     runs: T[];
     hang?: number;
     listMargin?: number;
+    firstIndent?: number;
+    tabs?: { pos: number; align: "l" | "ctr" | "r" | "dec" }[];
+    tabInterval?: number;
     spaceBefore?: number;
     align?: "left" | "center" | "right" | "justify";
+    size?: number;
+    cssLine?: number;
   }[],
 ): { hang?: number; listMargin: number; runs: T[] } {
   const textual = paragraphs.filter((paragraph) => paragraph.text.trim());
   const same = (
-    a: { hang?: number; listMargin?: number; spaceBefore?: number },
-    b: { hang?: number; listMargin?: number; spaceBefore?: number },
+    a: {
+      hang?: number;
+      listMargin?: number;
+      spaceBefore?: number;
+      firstIndent?: number;
+      tabInterval?: number;
+      tabs?: { pos: number }[];
+    },
+    b: {
+      hang?: number;
+      listMargin?: number;
+      spaceBefore?: number;
+      firstIndent?: number;
+      tabInterval?: number;
+      tabs?: { pos: number }[];
+    },
   ) =>
     (a.hang || 0) === (b.hang || 0) &&
     (a.listMargin || 0) === (b.listMargin || 0) &&
-    (a.spaceBefore || 0) === (b.spaceBefore || 0);
+    (a.spaceBefore || 0) === (b.spaceBefore || 0) &&
+    (a.firstIndent || 0) === (b.firstIndent || 0) &&
+    (a.tabInterval || 0) === (b.tabInterval || 0) &&
+    (a.tabs?.length || 0) === (b.tabs?.length || 0);
   const head = textual[0];
   const varied = !!head && textual.some((paragraph) => !same(paragraph, head));
   const shared = !varied && !!head?.hang && !(head.spaceBefore || 0);
@@ -163,10 +245,20 @@ export function layoutListRuns<T extends ListRun>(
     varied ||
     alignVaries ||
     textual.some((paragraph) => (paragraph.spaceBefore || 0) > 0) ||
-    (!shared && textual.some((paragraph) => (paragraph.listMargin || 0) > 0));
+    (!shared && textual.some((paragraph) => (paragraph.listMargin || 0) > 0)) ||
+    textual.some(
+      (paragraph) =>
+        (paragraph.firstIndent || 0) > 0 ||
+        (paragraph.tabs?.length || 0) > 0 ||
+        (paragraph.tabInterval || 0) > 0 ||
+        paragraph.text.includes("\t"),
+    );
   const extras = (paragraph: {
     hang?: number;
     listMargin?: number;
+    firstIndent?: number;
+    tabs?: { pos: number; align: "l" | "ctr" | "r" | "dec" }[];
+    tabInterval?: number;
     spaceBefore?: number;
     align?: "left" | "center" | "right" | "justify";
   }) => {
@@ -174,6 +266,9 @@ export function layoutListRuns<T extends ListRun>(
     return {
       ...(paragraph.listMargin ? { paraMargin: paragraph.listMargin } : {}),
       ...(paragraph.hang ? { paraHang: paragraph.hang } : {}),
+      ...(paragraph.firstIndent ? { paraFirst: paragraph.firstIndent } : {}),
+      ...(paragraph.tabs?.length ? { paraTabs: paragraph.tabs } : {}),
+      ...(paragraph.tabInterval ? { paraTab: paragraph.tabInterval } : {}),
       ...(paragraph.spaceBefore ? { spaceBefore: paragraph.spaceBefore } : {}),
       ...(alignVaries && alignOf(paragraph) !== baseAlign
         ? { paraAlign: alignOf(paragraph) }
@@ -182,17 +277,22 @@ export function layoutListRuns<T extends ListRun>(
   };
   const runs: T[] = [];
   paragraphs.forEach((paragraph, index) => {
-    if (index) {
+    const line = paragraph.cssLine ? { paraLine: paragraph.cssLine } : {};
+    // A leading empty paragraph is a blank line. The break before the next
+    // paragraph would otherwise be filled by that paragraph's text.
+    if ((index === 0 && !paragraph.text.trim()) || index) {
       runs.push({
         text: "\n",
         paragraphBreak: true,
         ...extras(paragraph),
+        ...line,
+        ...(paragraph.size ? { fontSize: paragraph.size } : {}),
       } as T);
     }
     paragraph.runs.forEach((run, runIndex) => {
       runs.push(
         index === 0 && runIndex === 0
-          ? ({ ...run, ...extras(paragraph) } as T)
+          ? ({ ...run, ...extras(paragraph), ...line } as T)
           : run,
       );
     });

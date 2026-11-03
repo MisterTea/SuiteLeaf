@@ -5,6 +5,8 @@ import {
   type SheetFile,
   type SourceRange,
 } from "./index";
+import { excelChartElement } from "./waterfall";
+import { comboChartXml, comboSplit } from "./combo-chart";
 const esc = (v: unknown) =>
   String(v ?? "").replace(
     /[&<>"']/g,
@@ -42,7 +44,7 @@ function cache(
     tag = numeric ? "num" : "str";
   return `<c:${tag}Ref><c:f>${esc(reference(file, range))}</c:f><c:${tag}Cache>${numeric ? "<c:formatCode>General</c:formatCode>" : ""}<c:ptCount val="${v.length}"/>${v.map((value, i) => (value === null || (numeric && typeof value !== "number") ? "" : `<c:pt idx="${i}"><c:v>${esc(value)}</c:v></c:pt>`)).join("")}</c:${tag}Cache></c:${tag}Ref>`;
 }
-function chartXml(file: Pick<SheetFile, "content">, chart: ChartDefinition) {
+export function chartXml(file: Pick<SheetFile, "content">, chart: ChartDefinition) {
   const source = chart.source;
   const categories = {
     ...source,
@@ -68,28 +70,45 @@ function chartXml(file: Pick<SheetFile, "content">, chart: ChartDefinition) {
         color: ["#4285f4", "#34a853", "#fbbc04", "#ea4335"][i % 4],
       }),
     );
-  const seriesXml = series
-    .map(
-      (s, i) =>
-        `<c:ser><c:idx val="${i}"/><c:order val="${i}"/><c:tx><c:v>${esc(s.name)}</c:v></c:tx><c:spPr><a:solidFill><a:srgbClr val="${s.color.replace("#", "")}"/></a:solidFill></c:spPr>${chart.type === "scatter" ? `<c:xVal>${cache(file, categories, true)}</c:xVal><c:yVal>${cache(file, s.values, true)}</c:yVal>` : `<c:cat>${cache(file, categories, false)}</c:cat><c:val>${cache(file, s.values, true)}</c:val>`}</c:ser>`,
-    )
-    .join("");
-  const axes =
-    chart.type === "pie" ? "" : `<c:axId val="100"/><c:axId val="200"/>`;
-  const type = `${chart.type}Chart`;
+  const oneSeries = (s: (typeof series)[number], i: number) =>
+    `<c:ser><c:idx val="${i}"/><c:order val="${i}"/><c:tx><c:v>${esc(s.name)}</c:v></c:tx><c:spPr><a:solidFill><a:srgbClr val="${s.color.replace("#", "")}"/></a:solidFill></c:spPr>${chart.type === "scatter" ? `<c:xVal>${cache(file, categories, true)}</c:xVal><c:yVal>${cache(file, s.values, true)}</c:yVal>` : `<c:cat>${cache(file, categories, false)}</c:cat><c:val>${cache(file, s.values, true)}</c:val>`}</c:ser>`;
+  const seriesXml = series.map(oneSeries).join("");
+  const drawn =
+    chart.type === "waterfall" ||
+    chart.type === "histogram" ||
+    chart.type === "combo" ||
+    chart.type === "stacked"
+      ? "bar"
+      : chart.type;
+  const axes = drawn === "pie" ? "" : `<c:axId val="100"/><c:axId val="200"/>`;
+  const parts = chart.type === "combo" ? comboSplit(series) : null;
+  const plot = parts
+    ? comboChartXml(
+        parts.columns.map((item, index) => oneSeries(item, index)).join(""),
+        parts.line
+          .map((item, index) => oneSeries(item, parts.columns.length + index))
+          .join(""),
+      )
+    : null;
+  const type = excelChartElement(
+    chart.type === "combo" ? "bar" : chart.type,
+  );
   const config =
-    chart.type === "bar"
+    chart.type === "stacked"
+      ? '<c:barDir val="col"/><c:grouping val="stacked"/>'
+      : drawn === "bar"
       ? '<c:barDir val="col"/><c:grouping val="clustered"/>'
-      : chart.type === "line"
+      : drawn === "line" || drawn === "area"
         ? '<c:grouping val="standard"/>'
-        : chart.type === "scatter"
+        : drawn === "scatter"
           ? '<c:scatterStyle val="marker"/>'
           : '<c:varyColors val="1"/>';
   const axisXml =
-    chart.type === "pie"
+    drawn === "pie"
       ? ""
-      : `<c:${chart.type === "scatter" ? "valAx" : "catAx"}><c:axId val="100"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:axPos val="b"/><c:crossAx val="200"/><c:crosses val="autoZero"/></c:${chart.type === "scatter" ? "valAx" : "catAx"}><c:valAx><c:axId val="200"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:axPos val="l"/><c:majorGridlines/><c:numFmt formatCode="General" sourceLinked="1"/><c:crossAx val="100"/><c:crosses val="autoZero"/></c:valAx>`;
-  return `${declaration}<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><c:chart><c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>${esc(chart.title)}</a:t></a:r></a:p></c:rich></c:tx></c:title><c:plotArea><c:layout/><c:${type}>${config}${seriesXml}${axes}</c:${type}>${axisXml}</c:plotArea><c:legend><c:legendPos val="r"/></c:legend><c:plotVisOnly val="1"/></c:chart></c:chartSpace>`;
+      : `<c:${drawn === "scatter" ? "valAx" : "catAx"}><c:axId val="100"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:axPos val="b"/><c:crossAx val="200"/><c:crosses val="autoZero"/></c:${drawn === "scatter" ? "valAx" : "catAx"}><c:valAx><c:axId val="200"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:axPos val="l"/><c:majorGridlines/><c:numFmt formatCode="General" sourceLinked="1"/><c:crossAx val="100"/><c:crosses val="autoZero"/></c:valAx>`;
+  const body = plot ?? `<c:${type}>${config}${seriesXml}${axes}</c:${type}>`;
+  return `${declaration}<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><c:chart><c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>${esc(chart.title)}</a:t></a:r></a:p></c:rich></c:tx></c:title><c:plotArea><c:layout/>${body}${axisXml}</c:plotArea><c:legend><c:legendPos val="r"/></c:legend><c:plotVisOnly val="1"/></c:chart></c:chartSpace>`;
 }
 export async function addXlsxDrawings(
   zip: JSZip,

@@ -9,6 +9,8 @@ import {
   type CitationStyle,
   type SourceKind,
 } from "@suiteleaf/core/citations";
+import { exportBibtex, exportRis, importBibtex, importRis } from "@suiteleaf/core/bibliography";
+import { fetchReferenceLibrary } from "@suiteleaf/core/reference-manager";
 
 const STYLES: { id: CitationStyle; label: string }[] = [
   { id: "apa", label: "APA" },
@@ -61,7 +63,12 @@ export function DocCitations({
   const [year, setYear] = useState("");
   const [page, setPage] = useState("");
   const [error, setError] = useState("");
+  const [bibMessage, setBibMessage] = useState("");
+  const [managerAddress, setManagerAddress] = useState("");
+  const [managerAllowed, setManagerAllowed] = useState(false);
   const authorRef = useRef<HTMLInputElement>(null);
+  const bibRef = useRef<HTMLInputElement>(null);
+  const risRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     editor.storage.citationLibrary.openPanel = () => onOpen(true);
@@ -83,6 +90,19 @@ export function DocCitations({
 
   const setStyle = (style: CitationStyle) => {
     editor.view.dispatch(editor.state.tr.setDocAttribute("citationStyle", style));
+  };
+  const fetchManager = () => {
+    void fetchReferenceLibrary(managerAddress, library.sources, {
+      allowed: managerAllowed,
+      online: navigator.onLine,
+      fetchLibrary: async (address) => {
+        const response = await fetch(address);
+        return { status: response.status, body: await response.text() };
+      },
+    }).then((result) => {
+      if (result.fetched) setSources(result.sources);
+      setBibMessage(result.issues[0]?.message ?? (result.fetched ? "" : "The reference manager did not answer."));
+    });
   };
   const setSources = (
     sources: typeof library.sources,
@@ -176,7 +196,7 @@ export function DocCitations({
             }}
           >
             <div className="doc-citations-kinds" role="group" aria-label="Source type">
-              {(["book", "article"] as const).map((value) => (
+              {(["book", "article", "website"] as const).map((value) => (
                 <button
                   key={value}
                   type="button"
@@ -184,7 +204,7 @@ export function DocCitations({
                   className={kind === value ? "is-selected" : ""}
                   onClick={() => setKind(value)}
                 >
-                  {value === "book" ? "Book" : "Article"}
+                  {value === "book" ? "Book" : value === "article" ? "Article" : "Website"}
                 </button>
               ))}
             </div>
@@ -258,6 +278,134 @@ export function DocCitations({
             Add citation source
           </button>
         )}
+        <input
+          ref={bibRef}
+          type="file"
+          accept=".bib,text/plain"
+          hidden
+          aria-label="BibTeX file"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            if (!file) return;
+            void file.text().then((text) => {
+              const result = importBibtex(text, library.sources);
+              setSources(result.sources);
+              setBibMessage(
+                result.issues.length
+                  ? result.issues
+                      .slice(0, 5)
+                      .map((issue) => `${issue.key || "Entry"}: ${issue.message}`)
+                      .join(" ")
+                  : "",
+              );
+            });
+          }}
+        />
+        <div className="doc-citations-form-actions">
+          <button
+            type="button"
+            className="doc-citations-quiet"
+            disabled={readOnly}
+            onClick={() => bibRef.current?.click()}
+          >
+            Import BibTeX
+          </button>
+          <label>
+            <input
+              type="checkbox"
+              checked={managerAllowed}
+              disabled={readOnly}
+              onChange={(event) => setManagerAllowed(event.target.checked)}
+            />
+            Allow reference manager
+          </label>
+          <input
+            aria-label="Reference manager address"
+            value={managerAddress}
+            disabled={readOnly || !managerAllowed}
+            onChange={(event) => setManagerAddress(event.target.value)}
+          />
+          <button
+            type="button"
+            className="doc-citations-quiet"
+            disabled={readOnly || !managerAllowed}
+            onClick={fetchManager}
+          >
+            Fetch library
+          </button>
+          <button
+            type="button"
+            className="doc-citations-quiet"
+            disabled={!library.sources.length}
+            onClick={() => {
+              const url = URL.createObjectURL(
+                new Blob([exportBibtex(library.sources)], { type: "text/plain" }),
+              );
+              const link = document.createElement("a");
+              link.href = url;
+              link.download = "bibliography.bib";
+              link.click();
+              URL.revokeObjectURL(url);
+            }}
+          >
+            Download BibTeX
+          </button>
+          <input
+            ref={risRef}
+            type="file"
+            accept=".ris,text/plain"
+            hidden
+            aria-label="RIS file"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (!file) return;
+              void file.text().then((text) => {
+                const result = importRis(text, library.sources);
+                setSources(result.sources);
+                setBibMessage(
+                  result.issues.length
+                    ? result.issues
+                        .slice(0, 5)
+                        .map((issue) => `${issue.key || "Entry"}: ${issue.message}`)
+                        .join(" ")
+                    : "",
+                );
+              });
+            }}
+          />
+          <button
+            type="button"
+            className="doc-citations-quiet"
+            disabled={readOnly}
+            onClick={() => risRef.current?.click()}
+          >
+            Import RIS
+          </button>
+          <button
+            type="button"
+            className="doc-citations-quiet"
+            disabled={!library.sources.length}
+            onClick={() => {
+              const url = URL.createObjectURL(
+                new Blob([exportRis(library.sources)], { type: "text/plain" }),
+              );
+              const link = document.createElement("a");
+              link.href = url;
+              link.download = "bibliography.ris";
+              link.click();
+              URL.revokeObjectURL(url);
+            }}
+          >
+            Download RIS
+          </button>
+        </div>
+        {bibMessage ? (
+          <p className="doc-citations-error" role="alert">
+            {bibMessage}
+          </p>
+        ) : null}
         {library.sources.length ? (
           <ul className="doc-citations-list">
             {library.sources.map((source) => {
@@ -284,9 +432,10 @@ export function DocCitations({
                   </div>
                   <p>{source.title}</p>
                   <p className="doc-citation-meta">
-                    {source.kind === "book" ? "Book" : "Article"}
+                    {source.kind === "book" ? "Book" : source.kind === "article" ? "Article" : "Website"}
                     {" · "}
                     {inText(source, library.style)}
+                    {source.doi ? ` · ${source.doi}` : ""}
                   </p>
                   <label className="doc-citation-year">
                     Year

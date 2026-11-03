@@ -5,6 +5,7 @@ import {
   spellingTokens,
   type PersonalDictionary,
 } from "./doc-spelling";
+import type { ProofingLanguage } from "./proofing-language";
 import { columnLabel } from "./sheet-cleanup";
 
 export type SpellHit = {
@@ -40,9 +41,10 @@ export function misspellingsInText(
   text: string,
   personal: PersonalDictionary,
   ignored: readonly string[],
+  language: ProofingLanguage = "en",
 ) {
   return spellingTokens(text)
-    .filter((token) => isMisspelling(token.word, personal, ignored, token.sentenceStart))
+    .filter((token) => isMisspelling(token.word, personal, ignored, token.sentenceStart, language))
     .map(({ word, from, to }) => ({ word, from, to }));
 }
 
@@ -299,12 +301,13 @@ export function issuesFromCells(
   cells: CellSource[],
   personal: PersonalDictionary,
   ignored: readonly string[],
+  language: ProofingLanguage = "en",
 ): SheetIssue[] {
   const several = new Set(cells.map((cell) => cell.sheetName)).size > 1;
   const issues: SheetIssue[] = [];
   for (const cell of cells) {
     const a1 = `${columnLabel(cell.column)}${cell.row + 1}`;
-    for (const hit of misspellingsInText(cell.text, personal, ignored)) {
+    for (const hit of misspellingsInText(cell.text, personal, ignored, language)) {
       issues.push({
         ...hit,
         key: `${cell.sheetId}:${cell.row}:${cell.column}:${hit.from}`,
@@ -333,6 +336,7 @@ export function collectSheetIssues(
   workbook: { getSheets?: () => SheetLike[] } | null | undefined,
   personal: PersonalDictionary,
   ignored: readonly string[],
+  language: ProofingLanguage = "en",
 ): SheetIssue[] {
   if (!workbook?.getSheets) return [];
   const cells: CellSource[] = [];
@@ -362,7 +366,7 @@ export function collectSheetIssues(
       });
     });
   }
-  return issuesFromCells(cells, personal, ignored);
+  return issuesFromCells(cells, personal, ignored, language);
 }
 
 type SlideRun = { text: string };
@@ -402,6 +406,7 @@ export function collectSlideIssues(
   deck: DeckLike,
   personal: PersonalDictionary,
   ignored: readonly string[],
+  language: ProofingLanguage = "en",
 ): SlideIssue[] {
   const issues: SlideIssue[] = [];
   deck.slideOrder.forEach((slideId, index) => {
@@ -409,7 +414,7 @@ export function collectSlideIssues(
     if (!slide) return;
     for (const element of slide.elements) {
       if (element.type !== "text" || !element.content) continue;
-      for (const hit of misspellingsInText(element.content, personal, ignored)) {
+      for (const hit of misspellingsInText(element.content, personal, ignored, language)) {
         issues.push({
           ...hit,
           key: `${slideId}:${element.id}:${hit.from}`,

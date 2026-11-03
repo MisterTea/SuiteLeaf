@@ -183,9 +183,10 @@ export function SlidePrintDeck({
       {deck.slideOrder.filter((id) => deck.slides[id] && !deck.slides[id].hidden).map((id, index) => {
         const slide = deck.slides[id];
         if (!slide) return null;
+        const notes = slide.notes?.trim();
         return (
+          <section key={id} className="slides-print-sheet">
           <div
-            key={id}
             className="slides-print-page"
             data-print-slide={index + 1}
             style={{
@@ -201,6 +202,8 @@ export function SlidePrintDeck({
           >
             <SlideStill deck={deck} slide={slide} index={index} />
           </div>
+          {notes ? <p className="slides-print-notes">{notes}</p> : null}
+          </section>
         );
       })}
     </div>,

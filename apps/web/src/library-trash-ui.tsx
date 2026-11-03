@@ -14,6 +14,7 @@ import type { DragEvent } from "react";
 import { Link } from "react-router-dom";
 import type { FileRecord } from "@suiteleaf/core";
 import { formatModified } from "./drive/status";
+import { recordSaveStatus } from "./save-state";
 import { DrawingIcon } from "./drawing-home";
 import {
   moveToTrashTitle,
@@ -79,6 +80,9 @@ export function FileLibraryRow({
             {!snippet && !record.recovery && record.path ? (
               <small>{record.path}</small>
             ) : null}
+            <small className="file-save-where">
+              {recordSaveStatus(record, { desktop }).label}
+            </small>
           </span>
         </Link>
         {trashed && view !== "trash" ? (

@@ -36,6 +36,29 @@
   flex-direction: column;
   min-width: 0;
 }
+.label-preview {
+  margin-top: 12px;
+}
+.label-sheet {
+  position: relative;
+  margin-top: 8px;
+  background: #fff;
+  border: 1px solid #dadce0;
+}
+.label-slot {
+  position: absolute;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 2px 4px;
+  border: 1px solid #e0e0e0;
+  font-size: 8px;
+  line-height: 1.2;
+}
+.label-slot span {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+}
 .merge-sheet-place {
   color: #5f6368;
   font-size: 12px;

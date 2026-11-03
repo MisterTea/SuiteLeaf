@@ -1,5 +1,6 @@
 import type { JsonNode } from "@suiteleaf/core";
 import type { Node as ProseNode } from "@tiptap/pm/model";
+import { proofingLanguage, type ProofingLanguage } from "./proofing-language";
 
 /** Saved on the document so exclusions and ignored words travel with the file. */
 export type ProofingSettings = {
@@ -9,6 +10,8 @@ export type ProofingSettings = {
   ignored: string[];
   /** Grammar phrases the reader skipped. Separate from ignored spellings. */
   ignoredGrammar: string[];
+  /** Absent means English, the only language with a local dictionary. */
+  language: ProofingLanguage;
 };
 
 export const defaultProofing: ProofingSettings = {
@@ -16,6 +19,7 @@ export const defaultProofing: ProofingSettings = {
   countFootnotes: false,
   ignored: [],
   ignoredGrammar: [],
+  language: "en",
 };
 
 export const WORD_COUNT_VISIBILITY_KEY = "suiteleaf.doc-word-count";
@@ -54,6 +58,7 @@ export function readProofing(doc: JsonNode | null | undefined): ProofingSettings
     countFootnotes: value.countFootnotes === true,
     ignored: phrases(value.ignored),
     ignoredGrammar: phrases(value.ignoredGrammar),
+    language: proofingLanguage(value.language),
   };
 }
 
