@@ -28,7 +28,12 @@ export type A11yFinding = {
   message: string;
 };
 
-const VAGUE_LINKS = new Set(["click here", "here", "link", "read more"]);
+const VAGUE_LINKS = new Set(["click here", "here", "link", "read more", "learn more", "more"]);
+
+/** Drop characters that take no space, then trim. */
+function visibleText(value: string): string {
+  return value.replace(/[\u200B-\u200D\uFEFF]/g, "").trim();
+}
 
 function headingLevel(node: JsonNode): number | undefined {
   const level = Number(node.attrs?.level);
@@ -41,7 +46,7 @@ function linkText(node: JsonNode): { href: string; text: string } | undefined {
   if (!link || node.type !== "text") return undefined;
   return {
     href: String(link.attrs?.href ?? ""),
-    text: (node.text ?? "").trim(),
+    text: visibleText(node.text ?? ""),
   };
 }
 
@@ -72,7 +77,7 @@ export function checkDocument(doc: JsonNode): A11yFinding[] {
         lastLevel = level;
         sawHeading = true;
       }
-      if (nodeText(node).trim() === "") {
+      if (visibleText(nodeText(node)) === "") {
         findings.push({
           rule: "empty-heading",
           path,
@@ -117,7 +122,7 @@ export function checkDocument(doc: JsonNode): A11yFinding[] {
           automatic: true,
           message: "This table has no header cells in its first row.",
         });
-      } else if (headers.some((cell) => nodeText(cell).trim() === "")) {
+      } else if (headers.some((cell) => visibleText(nodeText(cell)) === "")) {
         findings.push({
           rule: "table-header",
           path,
@@ -195,7 +200,6 @@ export function nodeAtPath(
     current = current?.content?.[index];
     if (!current) return null;
   }
-  if (!current) return null;
   return { type: current.type, text: nodeText(current) };
 }
 

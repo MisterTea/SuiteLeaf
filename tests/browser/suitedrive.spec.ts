@@ -236,7 +236,7 @@ test.describe("SuiteDrive across two nodes", () => {
     await pageA.getByLabel("File title").fill("Field report");
     const editorA = pageA.getByRole("textbox", { name: "Document content" });
     await editorA.fill("Written on node A");
-    await expect(pageA.getByRole("status")).toHaveText("Saved to SuiteDrive", {
+    await expect(pageA.getByRole("status").first()).toHaveText("Saved to SuiteDrive", {
       timeout: 20000,
     });
     await pageA.getByRole("button", { name: "File", exact: true }).click();
@@ -266,7 +266,7 @@ test.describe("SuiteDrive across two nodes", () => {
     await expect(editorB).toContainText("Written on node A");
 
     await editorB.fill("Rewritten on node B");
-    await expect(pageB.getByRole("status")).toHaveText("Saved to SuiteDrive", {
+    await expect(pageB.getByRole("status").first()).toHaveText("Saved to SuiteDrive", {
       timeout: 20000,
     });
 
@@ -334,7 +334,8 @@ test.describe("SuiteDrive across two nodes", () => {
     await page.getByLabel("File title").fill("Offline notes");
     const editor = page.getByRole("textbox", { name: "Document content" });
     await editor.fill("First draft");
-    const status = page.getByRole("status");
+    // The save status comes first; a room notice such as "Joining the shared document." can show beside it.
+    const status = page.getByRole("status").first();
     await expect(status).toHaveText("Saved to SuiteDrive", { timeout: 20000 });
 
     const reopen = async () => {
@@ -420,7 +421,7 @@ test.describe("SuiteDrive across two nodes", () => {
     await page.getByLabel("File title").fill("Busy notes");
     const editor = page.getByRole("textbox", { name: "Document content" });
     await editor.fill("First");
-    const status = page.getByRole("status");
+    const status = page.getByRole("status").first();
     await expect(status).toHaveText("Saved to SuiteDrive", { timeout: 20000 });
 
     const ifMatch: (string | undefined)[] = [];
@@ -475,7 +476,7 @@ test.describe("SuiteDrive across two nodes", () => {
     await page.getByLabel("File title").fill("Quick notes");
     const editor = page.getByRole("textbox", { name: "Document content" });
     await editor.fill("First");
-    const status = page.getByRole("status");
+    const status = page.getByRole("status").first();
     await expect(status).toHaveText("Saved to SuiteDrive", { timeout: 20000 });
 
     const uploads: { ifMatch?: string; release: () => void }[] = [];
@@ -526,7 +527,7 @@ test.describe("SuiteDrive across two nodes", () => {
   }) => {
     const page = await pageHoldingWrites(browser);
     await signUp(page, "leave-saving@example.com");
-    const status = page.getByRole("status");
+    const status = page.getByRole("status").first();
     const editor = page.getByRole("textbox", { name: "Document content" });
     const uploads: {
       ifMatch?: string;
@@ -616,7 +617,7 @@ test.describe("SuiteDrive across two nodes", () => {
     await title.fill("Draft plan");
     const editor = page.getByRole("textbox", { name: "Document content" });
     await editor.fill("First draft");
-    const status = page.getByRole("status");
+    const status = page.getByRole("status").first();
     await expect(status).toHaveText("Saved to SuiteDrive", { timeout: 20000 });
 
     await editor.fill("My version");
@@ -650,7 +651,7 @@ test.describe("SuiteDrive across two nodes", () => {
   }) => {
     const page = await (await browser.newContext()).newPage();
     await signUp(page, "sign-out@example.com");
-    const status = page.getByRole("status");
+    const status = page.getByRole("status").first();
     const editor = page.getByRole("textbox", { name: "Document content" });
     await page.getByRole("button", { name: "New document" }).click();
     await page.getByLabel("File title").fill("Private notes");
@@ -713,7 +714,7 @@ test.describe("SuiteDrive across two nodes", () => {
     );
     await editor.press("End");
     await page.keyboard.type(" not uploaded yet");
-    await expect(status).toHaveText("Saved on this device · Unavailable", {
+    await expect(status).toContainText("Saved on this device · Retry this file.", {
       timeout: 20000,
     });
     await page.getByRole("button", { name: "Back to files" }).click();
@@ -932,7 +933,7 @@ test.describe("SuiteDrive across two nodes", () => {
     await page
       .getByRole("textbox", { name: "Document content" })
       .fill("Mon Rosa");
-    await expect(page.getByRole("status")).toHaveText("Saved to SuiteDrive", {
+    await expect(page.getByRole("status").first()).toHaveText("Saved to SuiteDrive", {
       timeout: 20000,
     });
     await page.getByRole("button", { name: "Back to files" }).click();

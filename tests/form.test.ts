@@ -7,7 +7,7 @@ import {
   gridAnswerError,
 } from "../apps/web/src/form-grid";
 import { choiceAnswerError, listedChoice } from "../apps/web/src/form-choice";
-import { appendFormResponse, keepFormQuestions } from "../apps/web/src/form-submit";
+import { appendFormResponse, formClosedMessage, formDeadlineMessage, keepFormQuestions } from "../apps/web/src/form-submit";
 
 describe("forms", () => {
   it("keeps the questions when a response includes another field", () => {
@@ -40,6 +40,33 @@ describe("forms", () => {
     expect(next.responses[1].answers).toEqual({ plot: "West" });
     expect(JSON.stringify(next.responses)).not.toContain("secret-value");
     expect(content.responses).toHaveLength(1);
+    const again = appendFormResponse(next, {
+      id: "r1",
+      answers: { plot: "secret-value" },
+    });
+    expect(again.responses.map((response) => response.answers.plot)).toEqual(["North", "West"]);
+    expect(JSON.stringify(again)).not.toContain("secret-value");
+    const closed = appendFormResponse(
+      { ...again, accepting: false },
+      { id: "r3", answers: { plot: "secret-value" } },
+    );
+    expect(closed.responses).toHaveLength(2);
+    expect(formClosedMessage(closed)).toBe("This form is not taking more responses.");
+    expect(formClosedMessage({ accepting: true })).toBeNull();
+    const past = new Date("2026-11-03T12:00:00.000Z");
+    expect(formDeadlineMessage("2020-01-01T00:00:00.000Z", past)).toBe(
+      "The deadline for this form has passed.",
+    );
+    expect(formDeadlineMessage("2099-01-01T00:00:00.000Z", past)).toBeNull();
+    expect(formDeadlineMessage("secret-value", past)).toBeNull();
+    const late = appendFormResponse(
+      { ...again, deadline: "2020-01-01T00:00:00.000Z" },
+      { id: "r4", answers: { plot: "secret-value" } },
+      past,
+    );
+    expect(late.responses).toHaveLength(2);
+    expect(JSON.stringify(late)).not.toContain("secret-value");
+    expect(JSON.stringify(closed)).not.toContain("secret-value");
   });
 
   it("round-trips an empty form and keeps choice answers", () => {

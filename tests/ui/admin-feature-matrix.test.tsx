@@ -31,6 +31,8 @@ vi.mock("../../apps/web/src/node-client", () => ({
     organizationExport: async () => ({}),
   },
   currentAccount: async () => ({ role: "admin" }),
+  getSession: () => null,
+  onSession: () => () => {},
 }));
 
 afterEach(cleanup);

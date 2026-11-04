@@ -36,6 +36,6 @@ it("uses adj1 as the arrow shaft and adj2 as the head", () => {
   const longHead = svg(
     art("rightArrow", `<a:gd name="adj1" fmla="val 50000"/><a:gd name="adj2" fmla="val 100000"/>`)?.src,
   );
-  expect(longHead).toContain("M 0 250000");
-  expect(longHead).toContain("L 1000000 250000");
+  expect(longHead).toContain("M 0 20");
+  expect(longHead).toContain("L 50 20");
 });

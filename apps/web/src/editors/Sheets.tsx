@@ -1,65 +1,32 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState } from "react";
+import type * as Y from "yjs";
 import {
-  createUniver,
   defaultTheme,
-  LocaleType,
-  LifecycleStages,
-  mergeLocales,
-  numfmt,
   UserManagerService,
-  IUndoRedoService,
   type IWorkbookData,
 } from "@univerjs/presets";
-import { ICommandService } from "@univerjs/core";
-import { IRenderManagerService } from "@univerjs/engine-render";
 import { stopSheetKerning } from "../sheet-kerning";
-import { SetRangeValuesCommand } from "@univerjs/sheets";
-import { SheetDataValidationModel } from "@univerjs/sheets-data-validation";
-import { SheetsNoteModel } from "@univerjs/sheets-note";
-import type { FRange } from "@univerjs/sheets/facade";
+import {
+  addCommentAuthors,
+  createSheetUniver,
+  keepFieldFocusWhileStarting,
+  resolveExcelChartAnchors,
+} from "./sheet-workbook-startup";
 import {
   IDescriptionService,
   IEditorService,
   IShortcutService,
   KeyCode,
-  SheetsSelectionsService,
-  UniverSheetsCorePreset,
 } from "@univerjs/preset-sheets-core";
-import CoreEnUS from "@univerjs/preset-sheets-core/locales/en-US";
-import { UniverSheetsDrawingPreset } from "@univerjs/preset-sheets-drawing";
-import DrawingEnUS from "@univerjs/preset-sheets-drawing/locales/en-US";
-import { UniverSheetsFilterPreset } from "@univerjs/preset-sheets-filter";
-import FilterEnUS from "@univerjs/preset-sheets-filter/locales/en-US";
-import { UniverSheetsSortPreset } from "@univerjs/preset-sheets-sort";
-import SortEnUS from "@univerjs/preset-sheets-sort/locales/en-US";
-import { UniverSheetsFindReplacePreset } from "@univerjs/preset-sheets-find-replace";
-import FindEnUS from "@univerjs/preset-sheets-find-replace/locales/en-US";
-import { UniverSheetsDataValidationPreset } from "@univerjs/preset-sheets-data-validation";
-import ValidationEnUS from "@univerjs/preset-sheets-data-validation/locales/en-US";
 import "@univerjs/preset-sheets-data-validation/lib/index.css";
-import { UniverSheetsConditionalFormattingPreset } from "@univerjs/preset-sheets-conditional-formatting";
-import ConditionalEnUS from "@univerjs/preset-sheets-conditional-formatting/locales/en-US";
 import "@univerjs/preset-sheets-conditional-formatting/lib/index.css";
-import { UniverSheetsThreadCommentPreset } from "@univerjs/preset-sheets-thread-comment";
-import CommentEnUS from "@univerjs/preset-sheets-thread-comment/locales/en-US";
 import "@univerjs/preset-sheets-thread-comment/lib/index.css";
-import {
-  SheetsNotePopupService,
-  UniverSheetsNotePreset,
-} from "@univerjs/preset-sheets-note";
-import NoteEnUS from "@univerjs/preset-sheets-note/locales/en-US";
 import "@univerjs/preset-sheets-note/lib/index.css";
-import SheetCleanup from "./sheet-cleanup-ui";
-import { SheetSpelling } from "./grid-spelling-ui";
-import { SheetLanguageField } from "./sheet-language";
+import { SheetSidePanels, SheetToolDialogs } from "./sheet-panels";
 import { proofingLanguage, type ProofingLanguage } from "./proofing-language";
-import SheetRowGroups, { type SheetRowGroupsHandle } from "./sheet-row-groups-ui";
-import SheetColumnGroups, { type SheetColumnGroupsHandle } from "./sheet-column-groups-ui";
-import SheetFeatures from "./sheet-features";
-import SheetList from "./sheet-list";
-import { FontControls } from "./font-controls";
-import SheetPrint, { type SheetPrintHandle } from "./sheet-print-ui";
-import { PRINT_MAX_CELLS, chartsForPrint, paginatePrinted, printMarkup, printedPages, readSheetPrint } from "./sheet-print";
+import type { SheetRowGroupsHandle } from "./sheet-row-groups-ui";
+import type { SheetColumnGroupsHandle } from "./sheet-column-groups-ui";
+import type { SheetPrintHandle } from "./sheet-print-ui";
 import SheetDropdowns, { type SheetDropdownHandle } from "./sheet-dropdown-panel";
 import SheetLinks, { type SheetLinkHandle } from "./sheet-links";
 import {
@@ -68,20 +35,12 @@ import {
 } from "./formula-suggestions";
 import { useSheetFunctions } from "./function-help-ui";
 import SortRangeDialog from "./SortRangeDialog";
-import NamedRanges, { type NamedRangesHandle } from "./named-ranges-ui";
-import {
-  checkboxForFilterLabel,
-  phoneCheckboxWrite,
-  pointInBox,
-  pointerScrolled,
-  shouldOpenPhoneHeaderFilter,
-  type ScreenBox,
-} from "./sheet-phone-gestures";
+import type { NamedRangesHandle } from "./named-ranges-ui";
+import { sheetSelectionLabel, type RemoteSheetSelection, type SheetSelection } from "../collab/selection";
+import type { SortView } from "../collab/sheet-sort";
 import {
   attachSheetViewLock,
   blocksSheetEdit,
-  filterViewChoices,
-  valueFilterCriteria,
   watchFormulaBar,
   type SheetAccess,
 } from "./view-lock";
@@ -90,889 +49,52 @@ import "@univerjs/preset-sheets-drawing/lib/index.css";
 import "@univerjs/preset-sheets-filter/lib/index.css";
 import "@univerjs/preset-sheets-sort/lib/index.css";
 import "@univerjs/preset-sheets-find-replace/lib/index.css";
+import { X } from "lucide-react";
+import { SheetFormatToolbar, SheetToolbar } from "./sheet-toolbars";
+import { SheetAnalysisPanel, SheetPivotBar } from "./sheet-analysis-panel";
 import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  LineChart,
-  Line,
-  AreaChart,
-  Area,
-  PieChart,
-  Pie,
-  ScatterChart,
-  Scatter,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  Cell,
-} from "recharts";
-import Papa from "papaparse";
-import {
-  BarChart3,
-  TableProperties,
-  X,
-  RefreshCw,
-  Filter,
-  Undo2,
-  Redo2,
-  Printer,
-  ListChecks,
-  Target,
-  Timer,
-  PaintRoller,
-  Minus,
-  Plus,
-  Bold,
-  Italic,
-  Strikethrough,
-  PaintBucket,
-  Grid,
-  Split,
-  AlignLeft,
-  AlignVerticalSpaceAround,
-  WrapText,
-  Link,
-  MessageSquarePlus,
-  ChevronDown,
-  Lock,
-} from "lucide-react";
-import { ColorTool } from "./color-picker";
-import { SheetAccessNote } from "./sheet-access-note";
-import { SheetTableNote } from "./sheet-table-note";
-import { SheetCellFields } from "./sheet-cell-fields";
-import { PivotSliceFields } from "./pivot-slice-fields";
-import { PivotSortFields } from "./pivot-sort-fields";
-import { PivotDifferenceFields, pivotDifferenceFromForm } from "./pivot-difference-fields";
-import { PivotDrillList } from "./pivot-drill-list";
-import { SheetCostNote } from "./sheet-cost-note";
-import { SheetAuditNote } from "./sheet-audit-note";
-import { WaterfallPreview } from "./waterfall-chart";
-import { ComboPreview } from "./combo-chart";
-import { StackedPreview } from "./stacked-chart";
-import { HistogramPreview } from "./histogram-chart";
-import { waterfallSteps } from "@suiteleaf/core";
-import {
-  applySheetQuery,
-  checkSheetQuery,
-  forgetSheetSchedule,
-  rememberSheetSchedule,
-  rememberSheetStep,
-  savedSheetSchedule,
-  savedSheetStep,
-  SheetQueryPanel,
-  type SheetQueryResult,
-} from "./sheet-query-panel";
-import { parseCellAddress, seekOnSheet, SheetGoalPanel } from "./sheet-goal-panel";
-import { solveOnSheet } from "./sheet-solver";
-import {
-  filename,
-  localTableBlocked,
-  localTableValues,
-  parseRange,
   rangeLabel,
   type SheetFile,
-  type ChartDefinition,
   type PivotDefinition,
   type SourceRange,
-  pivotSliceFromForm,
-  pivotSortFromForm,
-  pivotSortChoice,
-  slicePivot,
-  structuredFormulaNote,
-  tableAfterStructure,
-  tableOutline,
-  editsFromRangeValues,
-  extendTablesForEdits,
-  growSources,
 } from "@suiteleaf/core";
-import {
-  copySheetName,
-  defaultValueField,
-  pivotCells,
-  pivotMeasures,
-  pivotResult,
-  shiftRange,
-  uniqueSheetName,
-  valueFormat,
-  valueTicks,
-  type CellValue,
-} from "../analysis";
-import { sortBody, type GridRange, type SortRule } from "../sort-range";
-import {
-  copiedRangeAfterMenuCopy,
-  transposeCopiedRange,
-  type CopiedCell,
-} from "../sheet-transpose";
-import {
-  numberFormatsByGroup,
-  applyNamedFormat,
-  numberFormatById,
-} from "../formats";
-import { exportBinary, exportText, printDocument } from "../storage";
-import { placeSheetImage, readImageFile } from "../templates/sheet-image";
-import { Tool, type EditorActions, type SheetView } from "../ui";
-import { MenuSearchPill } from "../command-palette";
+import type { CellValue } from "../analysis";
+import type { CopiedCell } from "../sheet-transpose";
+import { placeSheetImage } from "../templates/sheet-image";
+import type { EditorActions } from "../ui";
 import "../excel-overflow";
 import "../excel-number-display";
 import "../excel-wrap";
 import "../excel-cell";
 import { resolveExcelColumnWidths } from "../excel-layout";
 import { useTheme } from "../theme";
-import { currentAuthor, onAuthorChange, setLocalName } from "../identity";
+import { currentAuthor, onAuthorChange } from "../identity";
 import { useMode } from "../mode";
 import { getSession } from "../node-client";
-import { useAgentHost } from "../ai/host";
-import { sheetBeforeTool, sheetReview, sheetSnapshot, sheetTools, type SheetsAgentContext } from "../ai/tools/sheets";
-import { axisLimit, seriesAxis } from "./chart-axis";
-
-const FORMULA_BAR_KEY = "suiteleaf_sheets_formula_bar";
-/** Formula bar visibility is a per-person preference, not part of the workbook. */
-function formulaBarVisible() {
-  try {
-    return localStorage.getItem(FORMULA_BAR_KEY) !== "hidden";
-  } catch {
-    return true;
-  }
-}
-function setFormulaBarVisible(visible: boolean) {
-  try {
-    if (visible) localStorage.removeItem(FORMULA_BAR_KEY);
-    else localStorage.setItem(FORMULA_BAR_KEY, "hidden");
-  } catch {
-    // ignore localStorage failures
-  }
-}
-
-const shortcut = (key: string) =>
-  `${navigator.platform.includes("Mac") ? "⌘" : "Ctrl+"}${key}`;
-type ChartState = {
-  definition: ChartDefinition;
-  values: CellValue[][];
-  numberFormats: string[];
-  excelValues?: CellValue[][];
-};
-function ExcelLineChart({
-  chart,
-  series,
-}: {
-  chart: ChartDefinition;
-  series: CellValue[][];
-}) {
-  if (chart.excel?.biff)
-    return <BinaryLineChart chart={chart} series={series} />;
-  const w = chart.width,
-    h = chart.height;
-  const count = Math.max(1, ...series.map((s) => s.length));
-  const numeric = (values: CellValue[]) =>
-    values.filter((value): value is number => typeof value === "number");
-  const secondary = series.some(
-    (_, index) => seriesAxis(chart.excel?.series[index]?.axis) === "secondary",
-  );
-  const primaryValues = secondary
-    ? series.flatMap((values, index) =>
-        seriesAxis(chart.excel?.series[index]?.axis) === "primary" ? numeric(values) : [],
-      )
-    : series.flatMap(numeric);
-  const secondaryValues = series.flatMap((values, index) =>
-    seriesAxis(chart.excel?.series[index]?.axis) === "secondary" ? numeric(values) : [],
-  );
-  const primaryLimit = axisLimit(primaryValues);
-  const secondaryLimit = axisLimit(secondaryValues);
-  const maximum = Math.max(0, ...primaryValues, 0);
-  const step =
-    Math.pow(10, Math.floor(Math.log10(maximum || 1))) * (maximum <= 20 ? 0.2 : 0.5);
-  const top = 15,
-    bottom = h - 34,
-    left = 34,
-    right = w - (chart.excel?.legend === "r" ? 128 : 20);
-  const limit = primaryLimit;
-  const px = (i: number) => left + ((right - left) * (i + 0.5)) / count;
-  const py = (v: number, scale = limit) => bottom - ((bottom - top) * v) / scale;
-  const ticks = Array.from(
-    { length: Math.round(limit / step) + 1 },
-    (_, i) => i * step,
-  );
-  return (
-    <svg
-      className="excel-line-chart"
-      width="100%"
-      height="100%"
-      viewBox={`0 0 ${w} ${h}`}
-      style={{
-        background: "white",
-        fontFamily: "Calibri",
-        fontSize: 12,
-      }}
-      aria-label="Imported Excel line chart"
-      data-secondary-axis={secondary ? "true" : "false"}
-    >
-      <rect
-        x={0.5}
-        y={0.5}
-        width={w - 1}
-        height={h - 1}
-        fill="none"
-        stroke="#808080"
-      />
-      {ticks.map((v) => (
-        <g key={v}>
-          <line x1={left} x2={right} y1={py(v)} y2={py(v)} stroke="#808080" />
-          <text x={left - 12} y={py(v) + 4} textAnchor="end">
-            {v}
-          </text>
-        </g>
-      ))}
-      <line x1={left} x2={left} y1={top} y2={bottom} stroke="#808080" />
-      {Array.from({ length: count }, (_, i) => (
-        <g key={i}>
-          <line
-            x1={px(i)}
-            x2={px(i)}
-            y1={bottom}
-            y2={bottom + 5}
-            stroke="#808080"
-          />
-          <text x={px(i)} y={bottom + 22} textAnchor="middle">
-            {i + 1}
-          </text>
-        </g>
-      ))}
-      {secondary
-        ? [0, secondaryLimit / 2, secondaryLimit].map((value) => (
-            <text key={value} x={right + 8} y={py(value, secondaryLimit) + 4}>
-              {value}
-            </text>
-          ))
-        : null}
-      {series.map((s, i) => {
-        const color = chart.excel!.series[i].color;
-        const scale =
-          seriesAxis(chart.excel?.series[i]?.axis) === "secondary" ? secondaryLimit : limit;
-        const points = s.flatMap((v, j) =>
-          typeof v === "number" ? [{ x: px(j), y: py(v, scale) }] : [],
-        );
-        return (
-          <g key={i}>
-            <polyline
-              fill="none"
-              stroke={color}
-              strokeWidth={3.3}
-              points={points.map((p) => `${p.x},${p.y}`).join(" ")}
-            />
-            {chart.excel?.markers &&
-              points.map((p, j) =>
-                i % 2 ? (
-                  <rect
-                    key={j}
-                    x={p.x - 5}
-                    y={p.y - 5}
-                    width={10}
-                    height={10}
-                    fill={color}
-                  />
-                ) : (
-                  <path
-                    key={j}
-                    d={`M${p.x} ${p.y - 5}l5 5-5 5-5-5Z`}
-                    fill={color}
-                  />
-                ),
-              )}
-            {chart.excel?.legend === "r" && (
-              <g
-                transform={`translate(${right + 20},${h / 2 + (i - (series.length - 1) / 2) * 24})`}
-              >
-                <line x2={27} stroke={color} strokeWidth={3.3} />
-                {i % 2 ? (
-                  <rect x={10} y={-4} width={8} height={8} fill={color} />
-                ) : (
-                  <path d="M14 -4l4 4-4 4-4-4Z" fill={color} />
-                )}
-                <text x={30} y={4}>
-                  {chart.excel.series[i].name}
-                </text>
-              </g>
-            )}
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-function BinaryLineChart({
-  chart,
-  series,
-}: {
-  chart: ChartDefinition;
-  series: CellValue[][];
-}) {
-  const meta = chart.excel!.biff!,
-    definitions = chart.excel!.series,
-    w = chart.width,
-    h = chart.height;
-  const count = Math.max(
-    1,
-    meta.categories.length,
-    ...series.map((s) => s.length),
-  );
-  const left = 140,
-    right = w - 90,
-    top = 70,
-    bottom = h - (meta.dataTable ? (definitions.length + 1) * 19 + 18 : 72);
-  const scales = meta.axes.map((axis, index) => {
-    const values = series.flatMap((s, i) =>
-      (definitions[i].axis ?? 0) === index
-        ? s.filter((v): v is number => typeof v === "number")
-        : [],
-    );
-    const peak = Math.max(0, ...values),
-      unit = 10 ** Math.floor(Math.log10(peak || 1));
-    return {
-      min: axis.min ?? 0,
-      max: axis.max ?? Math.ceil(peak / unit) * unit,
-      step: axis.step ?? unit,
-    };
-  });
-  const px = (i: number) => left + ((right - left) * (i + 0.5)) / count;
-  const py = (v: number, axis: number) => {
-    const s = scales[axis] ?? scales[0];
-    return bottom - ((bottom - top) * (v - s.min)) / (s.max - s.min || 1);
-  };
-  const fmt = (value: CellValue, format: string | undefined) =>
-    typeof value === "number"
-      ? numfmt.format(format ?? "#,##0", value)
-      : String(value ?? "");
-  const marker = (
-    x: number,
-    y: number,
-    color: string,
-    kind: number,
-    key: number,
-  ) =>
-    kind === 3 ? (
-      <path key={key} d={`M${x} ${y - 4}l4 8h-8Z`} fill={color} />
-    ) : kind === 8 ? (
-      <circle key={key} cx={x} cy={y} r={4} fill={color} />
-    ) : kind === 4 ? (
-      <rect key={key} x={x - 3} y={y - 3} width={6} height={6} fill={color} />
-    ) : kind ? (
-      <path key={key} d={`M${x} ${y - 4}l4 4-4 4-4-4Z`} fill={color} />
-    ) : null;
-  return (
-    <svg
-      width="100%"
-      height="100%"
-      viewBox={`0 0 ${w} ${h}`}
-      aria-label={chart.title}
-      style={{ background: "white", fontSize: 11, fontFamily: "sans-serif" }}
-    >
-      <rect
-        x={0.5}
-        y={0.5}
-        width={w - 1}
-        height={h - 1}
-        fill="white"
-        stroke="#808080"
-      />
-      <text
-        x={w / 2}
-        y={30}
-        textAnchor="middle"
-        fontSize={19}
-        fontWeight="bold"
-      >
-        {chart.title}
-      </text>
-      {scales.map((s, axis) => {
-        const format = definitions.find(
-          (d) => (d.axis ?? 0) === axis,
-        )?.numberFormat;
-        const ticks = Array.from(
-          {
-            length: Math.min(
-              40,
-              Math.floor((s.max - s.min) / s.step + 0.001) + 1,
-            ),
-          },
-          (_, i) => s.min + i * s.step,
-        );
-        return (
-          <g key={axis}>
-            <text
-              x={axis ? right : left}
-              y={52}
-              textAnchor={axis ? "end" : "start"}
-            >
-              {meta.axisTitles[axis]}
-            </text>
-            <line
-              x1={axis ? right : left}
-              x2={axis ? right : left}
-              y1={top}
-              y2={bottom}
-              stroke="#777"
-            />
-            {ticks.map((v, i) => (
-              <g key={i}>
-                {!axis && (
-                  <line
-                    x1={left}
-                    x2={right}
-                    y1={py(v, axis)}
-                    y2={py(v, axis)}
-                    stroke="#888"
-                  />
-                )}
-                <text
-                  x={axis ? right + 12 : left - 12}
-                  y={py(v, axis) + 4}
-                  textAnchor={axis ? "start" : "end"}
-                >
-                  {fmt(v, format)}
-                </text>
-              </g>
-            ))}
-          </g>
-        );
-      })}
-      {series.map((s, i) => {
-        const d = definitions[i],
-          points = s.flatMap((v, j) =>
-            typeof v === "number" ? [{ x: px(j), y: py(v, d.axis ?? 0) }] : [],
-          );
-        return (
-          <g key={i}>
-            <polyline
-              fill="none"
-              stroke={d.color}
-              strokeWidth={2}
-              points={points.map((p) => `${p.x},${p.y}`).join(" ")}
-            />
-            {points.map((p, j) => marker(p.x, p.y, d.color, d.marker ?? 0, j))}
-          </g>
-        );
-      })}
-      {Array.from({ length: count }, (_, i) => (
-        <text key={i} x={px(i)} y={bottom + 15} textAnchor="middle">
-          {meta.categories[i] ?? String(i + 1)}
-        </text>
-      ))}
-      {meta.dataTable &&
-        definitions.map((d, i) => (
-          <g key={i}>
-            <line
-              x1={5}
-              x2={right}
-              y1={bottom + (i + 1) * 19}
-              y2={bottom + (i + 1) * 19}
-              stroke="#888"
-            />
-            <line
-              x1={12}
-              x2={35}
-              y1={bottom + (i + 1) * 19 + 10}
-              y2={bottom + (i + 1) * 19 + 10}
-              stroke={d.color}
-              strokeWidth={2}
-            />
-            <text x={40} y={bottom + (i + 1) * 19 + 14} fontSize={10}>
-              {d.name}
-            </text>
-            {Array.from({ length: count }, (_, j) => (
-              <g key={j}>
-                <line
-                  x1={left + ((right - left) * j) / count}
-                  x2={left + ((right - left) * j) / count}
-                  y1={bottom}
-                  y2={bottom + (definitions.length + 1) * 19}
-                  stroke="#888"
-                />
-                <text
-                  x={px(j)}
-                  y={bottom + (i + 1) * 19 + 14}
-                  textAnchor="middle"
-                  fontSize={10}
-                >
-                  {fmt(series[i]?.[j] ?? null, d.numberFormat)}
-                </text>
-              </g>
-            ))}
-          </g>
-        ))}
-      {!meta.dataTable &&
-        definitions.map((d, i) => (
-          <g
-            key={i}
-            transform={`translate(${left + (i % 3) * 290},${h - 40 + Math.floor(i / 3) * 15})`}
-          >
-            <line x2={20} stroke={d.color} strokeWidth={2} />
-            <text x={26} y={4}>
-              {d.name}
-            </text>
-          </g>
-        ))}
-      {meta.annotations.map((text, i) => {
-        const chars = [...text],
-          lines = Array.from({ length: Math.ceil(chars.length / 24) }, (_, j) =>
-            chars.slice(j * 24, (j + 1) * 24).join(""),
-          );
-        const x = right - 260,
-          y = top + 25 + i * 160;
-        return (
-          <g key={i}>
-            <rect
-              x={x - 6}
-              y={y - 15}
-              width={270}
-              height={lines.length * 15 + 15}
-              fill="white"
-              stroke="#333"
-            />
-            <text x={x} y={y}>
-              {lines.map((line, j) => (
-                <tspan key={j} x={x} dy={j ? 15 : 0}>
-                  {line}
-                </tspan>
-              ))}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-function suggestedChartTitle(headers: CellValue[]) {
-  const names = headers
-    .slice(1)
-    .map((value) => String(value ?? ""))
-    .filter(Boolean);
-  if (!names.length) return "Chart";
-  return names.length === 1
-    ? names[0]
-    : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
-}
-const rowVisibilityMutation =
-  /^sheet\.mutation\.(set-filter-criteria|set-filter-range|re-calc-filter|remove-filter|set-row-hidden|set-row-visible|set-col-hidden|set-col-visible)$/;
-/**
- * Univer's filter list toggles a value only from its small checkbox. As in Sheets and
- * Excel, clicking the value's label or count toggles it too. Rows with an expand arrow
- * (date groups) keep expanding on a label click.
- */
-function toggleFilterValueFromLabel(event: MouseEvent) {
-  const target = event.target instanceof Element ? event.target : null;
-  if (!target) return;
-  checkboxForFilterLabel(target)?.click();
-}
-const charts = new Map<string, ChartState>();
-const emptyChart: ChartState | undefined = undefined;
-function EmbeddedChart({ data }: { data?: { chartId: string } }) {
-  const id = data?.chartId ?? "";
-  const state = useSyncExternalStore(
-    (callback) => {
-      const event = `chart:${id}`;
-      window.addEventListener(event, callback);
-      return () => window.removeEventListener(event, callback);
-    },
-    () => charts.get(id) ?? emptyChart,
-  );
-  if (!state) return <div>Loading chart…</div>;
-  const { definition: c, values, numberFormats } = state;
-  if (c.type === "line" && c.excel && !c.invalid)
-    return <ExcelLineChart chart={c} series={state.excelValues ?? []} />;
-  const formatValue = (value: unknown, column: number) =>
-    numberFormats[column]
-      ? numfmt.format(numberFormats[column], value)
-      : String(value ?? "");
-  const formatAxis = (value: number) => formatValue(value, 1);
-  const formatTooltip = (
-    value: unknown,
-    _name: unknown,
-    item: { dataKey?: unknown },
-  ) => {
-    const column =
-      item.dataKey === "y"
-        ? 1
-        : Number(String(item.dataKey ?? "v0").slice(1)) + 1;
-    return formatValue(value, column);
-  };
-  if (c.invalid)
-    return (
-      <div className="suiteleaf-chart" data-chart-id={c.id}>
-        <strong>{c.title}</strong>
-        <p>Source range unavailable. Edit this chart to select a new range.</p>
-      </div>
-    );
-  const headers = values[0] ?? [],
-    keys = headers.slice(1).map((_, i) => `v${i}`);
-  const rows = values.slice(1).map((r) => ({
-    label: String(r[0] ?? ""),
-    ...Object.fromEntries(
-      keys.map((k, i) => [k, typeof r[i + 1] === "number" ? r[i + 1] : null]),
-    ),
-  }));
-  const colors = [
-    "#4F81BD",
-    "#C0504D",
-    "#9BBB59",
-    "#8064A2",
-    "#4BACC6",
-    "#F79646",
-    "#2C4D75",
-    "#267C60",
-  ];
-  const ticks = valueTicks(values.slice(1).flatMap((r) => r.slice(1)));
-  const waterfall =
-    c.type === "waterfall"
-      ? waterfallSteps(
-          values.slice(1).map((row) => ({
-            label: String(row[0] ?? ""),
-            change: typeof row[1] === "number" ? row[1] : 0,
-          })),
-        )
-      : null;
-  const valueAxis = {
-    tickFormatter: formatAxis,
-    ...(ticks && { ticks, domain: [ticks[0], ticks.at(-1)!] }),
-    width: Math.max(
-      36,
-      12 + 7 * Math.max(0, ...(ticks ?? []).map((t) => formatAxis(t).length)),
-    ),
-  };
-  return (
-    <div
-      className="suiteleaf-chart"
-      aria-label={`Chart: ${c.title}${waterfall?.mismatch ? `. ${waterfall.mismatch}` : ""}`}
-      data-chart-id={c.id}
-    >
-      <strong>{c.title}</strong>
-      {waterfall?.mismatch ? <p>{waterfall.mismatch}</p> : null}
-      <ResponsiveContainer width="100%" height="100%">
-        {c.type === "pie" ? (
-          <PieChart>
-            <Pie
-              data={rows}
-              dataKey="v0"
-              nameKey="label"
-              isAnimationActive={false}
-              label={({ value }: { value?: any }) => formatValue(value, 1)}
-            >
-              {rows.map((_, index) => (
-                <Cell
-                  key={`cell-${index}`}
-                  fill={colors[index % colors.length]}
-                />
-              ))}
-            </Pie>
-            <Tooltip formatter={formatTooltip} />
-          </PieChart>
-        ) : c.type === "scatter" ? (
-          <ScatterChart>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis
-              type="number"
-              dataKey="x"
-              name={String(headers[0] ?? "X")}
-              tickFormatter={(v) => formatValue(v, 0)}
-            />
-            <YAxis
-              type="number"
-              dataKey="y"
-              name={String(headers[1] ?? "Y")}
-              tickFormatter={formatAxis}
-            />
-            <Tooltip formatter={formatTooltip} />
-            <Scatter
-              data={values
-                .slice(1)
-                .filter(
-                  (r) => typeof r[0] === "number" && typeof r[1] === "number",
-                )
-                .map((r) => ({ x: r[0], y: r[1] }))}
-              fill={colors[0]}
-            />
-          </ScatterChart>
-        ) : c.type === "histogram" ? (
-          <HistogramPreview cells={values.slice(1).map((row) => row[1])} />
-        ) : c.type === "waterfall" ? (
-          <WaterfallPreview
-            rows={values.slice(1).map((row) => ({
-              label: String(row[0] ?? ""),
-              change: row[1],
-            }))}
-          />
-        ) : c.type === "area" ? (
-          <AreaChart data={rows}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="label" height={44} />
-            <YAxis {...valueAxis} />
-            <Tooltip formatter={formatTooltip} />
-            <Legend verticalAlign="top" />
-            {keys.map((k, i) => (
-              <Area
-                key={k}
-                type="monotone"
-                dataKey={k}
-                name={String(headers[i + 1] ?? k)}
-                stroke={colors[i % colors.length]}
-                fill={colors[i % colors.length]}
-                fillOpacity={0.25}
-                isAnimationActive={false}
-              />
-            ))}
-          </AreaChart>
-        ) : c.type === "combo" ? (
-          <ComboPreview rows={rows} keys={keys} headers={headers} colors={colors} />
-        ) : c.type === "stacked" ? (
-          <StackedPreview
-            rows={rows}
-            keys={keys}
-            headers={headers}
-            colors={colors}
-            cells={values.slice(1).flatMap((row) => row.slice(1))}
-          />
-        ) : c.type === "line" ? (
-          <LineChart data={rows}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis
-              dataKey="label"
-              label={{
-                value: String(headers[0] ?? ""),
-                position: "insideBottom",
-                offset: 0,
-              }}
-              height={44}
-            />
-            <YAxis {...valueAxis} />
-            <Tooltip formatter={formatTooltip} />
-            <Legend
-              itemSorter={null}
-              verticalAlign="top"
-              wrapperStyle={{ paddingBottom: 8 }}
-            />
-            {keys.map((k, i) => (
-              <Line
-                key={k}
-                type="monotone"
-                dataKey={k}
-                name={String(headers[i + 1] ?? k)}
-                stroke={colors[i % colors.length]}
-                isAnimationActive={false}
-              />
-            ))}
-          </LineChart>
-        ) : (
-          <BarChart data={rows}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis
-              dataKey="label"
-              label={{
-                value: String(headers[0] ?? ""),
-                position: "insideBottom",
-                offset: 0,
-              }}
-              height={44}
-            />
-            <YAxis {...valueAxis} />
-            <Tooltip formatter={formatTooltip} />
-            <Legend
-              itemSorter={null}
-              verticalAlign="top"
-              wrapperStyle={{ paddingBottom: 8 }}
-            />
-            {keys.map((k, i) => (
-              <Bar
-                key={k}
-                dataKey={k}
-                name={String(headers[i + 1] ?? k)}
-                fill={colors[i % colors.length]}
-                isAnimationActive={false}
-              />
-            ))}
-          </BarChart>
-        )}
-      </ResponsiveContainer>
-    </div>
-  );
-}
-const HEADER_FILL = "#d2e3fc";
-const DATA_FILLS = ["#ffffff", "#e8f0fe"] as const;
-type CellBounds = {
-  startRow: number;
-  endRow: number;
-  startColumn: number;
-  endColumn: number;
-};
-function singleCell(box: CellBounds) {
-  return box.startRow === box.endRow && box.startColumn === box.endColumn;
-}
-function boundsCover(outer: CellBounds, inner: CellBounds) {
-  return (
-    inner.startRow >= outer.startRow &&
-    inner.endRow <= outer.endRow &&
-    inner.startColumn >= outer.startColumn &&
-    inner.endColumn <= outer.endColumn
-  );
-}
-/**
- * A single cell grows to the sheet's used block when that block is more than
- * one cell and contains the selection. Univer range themes persist as a
- * workbook resource and paint through a render interceptor, so they never
- * land on cell style bg. Each row is filled with setBackgroundColor instead.
- */
-function rangeForAlternatingColors(sheet: {
-  getDataRange?: () => { getRange: () => CellBounds };
-}, range: { getRange: () => CellBounds }) {
-  const box = range.getRange();
-  if (!singleCell(box)) return range;
-  const data = sheet.getDataRange?.();
-  if (!data) return range;
-  const used = data.getRange();
-  const rows = used.endRow - used.startRow + 1;
-  const columns = used.endColumn - used.startColumn + 1;
-  if ((rows < 2 && columns < 2) || !boundsCover(used, box)) return range;
-  return data;
-}
-function paintAlternatingColors(
-  sheet: {
-    getRange: (
-      row: number,
-      column: number,
-      rows: number,
-      columns: number,
-    ) => { setBackgroundColor: (color: string) => unknown };
-  },
-  box: CellBounds,
-) {
-  const width = box.endColumn - box.startColumn + 1;
-  const height = box.endRow - box.startRow + 1;
-  if (width < 1 || height < 1) return;
-  for (let row = 0; row < height; row++) {
-    const color = row === 0 ? HEADER_FILL : DATA_FILLS[(row - 1) % 2];
-    sheet
-      .getRange(box.startRow + row, box.startColumn, 1, width)
-      .setBackgroundColor(color);
-  }
-}
-
-/** Menu clicks can land before the grid's helpers have mounted. */
-function callWhenMounted<T>(ref: { current: T | null }, run: (value: T) => void) {
-  if (ref.current) {
-    run(ref.current);
-    return;
-  }
-  const started = Date.now();
-  const timer = window.setInterval(() => {
-    if (ref.current) {
-      window.clearInterval(timer);
-      run(ref.current);
-    } else if (Date.now() - started > 8000) window.clearInterval(timer);
-  }, 50);
-}
-
-const SHEET_FONTS = ["Arial", "Roboto", "Calibri", "Times New Roman", "Courier New", "Georgia"];
+import { charts, EmbeddedChart } from "./sheet-embedded-chart";
+import { formulaBarVisible, toggleFilterValueFromLabel } from "./sheet-editor-util";
+import { watchChartDoubleClick } from "./sheet-chart-floats";
+import { watchPhoneTaps, watchSheetSelection } from "./sheet-grid-watchers";
+import { outlineTables, tableFormulaNote } from "./sheet-content-sync";
+import { startSheetSession } from "./sheet-session";
+import { redoSharedSheet, undoSharedSheet, watchRemoteSheet } from "./sheet-remote-sync";
+import { sheetFormatCommands, useSheetTextFormat } from "./sheet-format-commands";
+import {
+  sheetDataCommands,
+  type SheetFilterView,
+  type SheetSorting,
+} from "./sheet-data-commands";
+import {
+  analysisFields,
+  copyPivotOn,
+  openAnalysisPanel,
+  refreshPivotOn,
+  submitAnalysis,
+  takeAnalysisSelection,
+  useAnalysisForm,
+  type AnalysisContext,
+} from "./sheet-analysis";
+import { printActiveSheet, sheetEditorActions, useSheetAgent } from "./sheet-editor-actions";
 
 export default function Sheets({
   file,
@@ -981,6 +103,10 @@ export default function Sheets({
   onError,
   readOnly = false,
   canComment = false,
+  collabDoc = null,
+  remoteSelections = [],
+  onLocalSelection,
+  onUndoConflict,
 }: {
   file: SheetFile;
   onChange: (content: SheetFile["content"], op?: unknown) => void;
@@ -990,6 +116,12 @@ export default function Sheets({
   readOnly?: boolean;
   /** Commenters may reply. Replies stay on this screen; saves are already skipped. */
   canComment?: boolean;
+  /** Shared room. Remote cells are applied with their worksheet id. */
+  collabDoc?: Y.Doc | null;
+  /** Ranges other people have selected. Cell values are not included. */
+  remoteSelections?: RemoteSheetSelection[];
+  onLocalSelection?: (selection: SheetSelection) => void;
+  onUndoConflict?: (text: string) => void;
 }) {
   const { isDark } = useTheme();
   const cluster = useMode().mode.kind === "cluster";
@@ -1001,6 +133,8 @@ export default function Sheets({
     content = useRef(structuredClone(file.content)),
     changes = useRef(onChange),
     pendingMutations = useRef<{ id: string; params?: unknown }[]>([]),
+    sharedChartIds = useRef<string[] | null>(null),
+    applyingRemote = useRef(false),
     error = useRef(onError);
   changes.current = onChange;
   error.current = onError;
@@ -1015,55 +149,14 @@ export default function Sheets({
     ),
     [sheetAccessOpen, setSheetAccessOpen] = useState(false),
     [queryOpen, setQueryOpen] = useState(false),
-    [goalOpen, setGoalOpen] = useState(false),
-    [editing, setEditing] = useState<string>(),
-    [range, setRange] = useState("A1:B5"),
-    [sourceSheet, setSourceSheet] = useState(""),
-    [title, setTitle] = useState("Chart"),
-    [chartType, setChartType] = useState<ChartDefinition["type"]>("bar"),
-    [rowFields, setRowFields] = useState("0"),
-    [columnFields, setColumnFields] = useState(""),
-    [valueField, setValueField] = useState(1),
-    [aggregate, setAggregate] = useState<PivotDefinition["aggregate"]>("SUM"),
-    [secondAggregate, setSecondAggregate] = useState<"" | PivotDefinition["aggregate"]>(""),
-    [filterColumn, setFilterColumn] = useState(-1),
-    [filterValue, setFilterValue] = useState(""),
-    [dateColumn, setDateColumn] = useState(-1),
-    [dateGroup, setDateGroup] = useState(""),
-    [slicerColumn, setSlicerColumn] = useState(-1),
-    [slicerText, setSlicerText] = useState(""),
-    [sortChoice, setSortChoice] = useState(""),
-    [drillGroup, setDrillGroup] = useState(""),
-    [calculatedName, setCalculatedName] = useState(""),
-    [calculatedOp, setCalculatedOp] = useState<"multiply" | "add" | "divide">("multiply"),
-    [calculatedAmount, setCalculatedAmount] = useState("1"),
-    [differenceName, setDifferenceName] = useState(""),
-    [differenceLeft, setDifferenceLeft] = useState(-1),
-    [differenceRight, setDifferenceRight] = useState(-1),
-    [, setRevision] = useState(0),
-    [zoom, setZoom] = useState("100%"),
-    [fontFamily, setFontFamily] = useState("Arial"),
-    [fontSize, setFontSize] = useState(10),
-    [isBold, setIsBold] = useState(false),
-    [isItalic, setIsItalic] = useState(false),
-    [isStrike, setIsStrike] = useState(false),
-    [textColor, setTextColor] = useState("#000000"),
-    [fillColor, setFillColor] = useState("#ffffff"),
-    [hAlign, setHAlign] = useState<"left" | "center" | "right">("left"),
-    [vAlign, setVAlign] = useState<"top" | "middle" | "bottom">("middle"),
-    [isWrap, setIsWrap] = useState(false),
-    [sorting, setSorting] = useState<{
-      range: GridRange;
-      values: CellValue[][];
-      initialRules?: SortRule[];
-      initialHeader?: boolean;
-    } | null>(null),
+    [goalOpen, setGoalOpen] = useState(false);
+  const form = useAnalysisForm();
+  const [, setRevision] = useState(0);
+  const format = useSheetTextFormat();
+  const { setIsBold, setIsItalic, setIsStrike } = format;
+  const [sorting, setSorting] = useState<SheetSorting | null>(null),
     [notice, setNotice] = useState(""),
-    [filterView, setFilterView] = useState<{
-      header: string;
-      value: string;
-      hidden: number;
-    } | null>(null);
+    [filterView, setFilterView] = useState<SheetFilterView | null>(null);
   const pending = useRef(false);
   const tabSettings = useRef<{ openTabs: () => void; openCommentName: () => void }>(null);
   const sheetList = useRef<{ open: () => void }>(null);
@@ -1105,6 +198,35 @@ export default function Sheets({
   readOnlyRef.current = readOnly;
   const canCommentRef = useRef(canComment);
   canCommentRef.current = canComment;
+  const reportSelection = useRef(onLocalSelection);
+  reportSelection.current = onLocalSelection;
+  const remoteSelectionsRef = useRef(remoteSelections);
+  remoteSelectionsRef.current = remoteSelections;
+  const placeRemoteRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    placeRemoteRef.current();
+  }, [remoteSelections]);
+  const personalView = useRef<SortView | null>(null);
+  const sharedSort = useRef(false);
+  const sharedRoom = useRef(false);
+  sharedRoom.current = !!collabDoc;
+  const undoCollab = useRef<() => boolean>(() => false);
+  const redoCollab = useRef<() => boolean>(() => false);
+  undoCollab.current = () => undoSharedSheet(collabDoc, onUndoConflict);
+  redoCollab.current = () => redoSharedSheet(collabDoc, onUndoConflict);
+  useEffect(() => {
+    if (!collabDoc || !ready) return;
+    return watchRemoteSheet(collabDoc, {
+      api,
+      book,
+      content,
+      applyingRemote,
+      personalView,
+      readOnlyRef,
+      persist,
+      refreshCharts,
+    });
+  }, [collabDoc, ready]);
   const access = (): SheetAccess =>
     readOnlyRef.current ? (canCommentRef.current ? "comment" : "view") : "edit";
   // Univer focuses its hidden cell editor while it starts, which would send
@@ -1112,31 +234,7 @@ export default function Sheets({
   useEffect(() => {
     const container = host.current;
     if (!container) return;
-    let touched = false;
-    const touch = () => {
-      touched = true;
-    };
-    const keep = (e: FocusEvent) => {
-      const from = e.relatedTarget,
-        to = e.target;
-      if (
-        startingUp.current &&
-        !touched &&
-        from instanceof HTMLElement &&
-        from.isConnected &&
-        !container.contains(from) &&
-        from.matches("input, textarea, select, [contenteditable='true']") &&
-        to instanceof HTMLElement &&
-        !!to.closest('[data-u-comp="editor"]')
-      )
-        from.focus();
-    };
-    container.addEventListener("pointerdown", touch, true);
-    document.addEventListener("focusin", keep, true);
-    return () => {
-      container.removeEventListener("pointerdown", touch, true);
-      document.removeEventListener("focusin", keep, true);
-    };
+    return keepFieldFocusWhileStarting(container, startingUp);
   }, []);
   useEffect(() => {
     if (!ready) return;
@@ -1159,12 +257,8 @@ export default function Sheets({
     if (!host.current) return;
     const container = host.current;
     const sessionContent = content.current;
-    let disposed = false,
-      busy = false,
-      timer: ReturnType<typeof setTimeout> | undefined,
-      chartHydrationTimer: ReturnType<typeof setTimeout> | undefined;
-    const chartOrigins = new Map<string, { left: number; top: number }>();
-    const hydratedImageIds = new Set<string>();
+    let disposed = false;
+    const timer: { current?: ReturnType<typeof setTimeout> } = {};
     let cleanup: (() => void) | undefined;
     let partialCleanup: (() => void) | undefined;
     let detachView = () => {};
@@ -1185,55 +279,7 @@ export default function Sheets({
         window.removeEventListener("suiteleaf:open-sheet-comments", openFromHeader);
       };
       stopSheetKerning();
-      const { univer, univerAPI } = createUniver({
-        // The light palette's dark tokens stay dark under univer-dark. The dark
-        // palette's gray-900 is near white, which left black text inverted to
-        // white on a white grid. Dark mode inverts the default black text to white.
-        theme: defaultTheme,
-        darkMode: isDark,
-        locale: LocaleType.EN_US,
-        locales: {
-          [LocaleType.EN_US]: mergeLocales(
-            CoreEnUS,
-            DrawingEnUS,
-            FilterEnUS,
-            SortEnUS,
-            FindEnUS,
-            ValidationEnUS,
-            ConditionalEnUS,
-            CommentEnUS,
-            NoteEnUS,
-            // mergeLocales only merges top-level keys, so keep the rest of Univer's ui strings.
-            {
-              ui: {
-                ...CoreEnUS.ui,
-                clipboard: {
-                  ...CoreEnUS.ui.clipboard,
-                  authentication: {
-                    title: "Clipboard access blocked",
-                    content: `Use ${shortcut("C")}, ${shortcut("X")} and ${shortcut("V")} to copy, cut and paste.`,
-                  },
-                },
-              },
-            },
-          ),
-        },
-        presets: [
-          UniverSheetsCorePreset({
-            container,
-            header: true,
-            toolbar: false,
-          }),
-          UniverSheetsDrawingPreset(),
-          UniverSheetsFilterPreset(),
-          UniverSheetsSortPreset(),
-          UniverSheetsFindReplacePreset(),
-          UniverSheetsDataValidationPreset(),
-          UniverSheetsConditionalFormattingPreset(),
-          UniverSheetsThreadCommentPreset(),
-          UniverSheetsNotePreset(),
-        ],
-      });
+      const { univer, univerAPI } = createSheetUniver(container, isDark);
       const injector = univer.__getInjector();
       engine.current = injector;
       injectorRef.current = injector;
@@ -1244,7 +290,7 @@ export default function Sheets({
       );
       partialCleanup = () => {
         stopSuggestionGuard();
-        clearTimeout(timer);
+        clearTimeout(timer.current);
         api.current = null;
         book.current = null;
         engine.current = null;
@@ -1311,750 +357,58 @@ export default function Sheets({
       book.current = workbook;
       setBooted(true);
       rankFormulaSuggestions(injector.get(IDescriptionService));
-      // Authors from other devices are unknown here; without a profile Univer
-      // hides their name and the reply-to button.
-      for (const thread of workbook.getComments())
-        for (const comment of [thread, ...(thread.getReplies() ?? [])]) {
-          const { personId, authorName } = comment.getCommentData();
-          if (personId && personId !== me.userID && !users.getUser(personId))
-            users.addUser({
-              userID: personId,
-              name: authorName || "Anonymous",
-              avatar: "",
-            });
-        }
-      // Univer closes an open note only when a selection move ends, not when the
-      // name box or a command sets the selection.
-      const notePopups = injector.get(SheetsNotePopupService);
-      const noteModel = injector.get(SheetsNoteModel);
+      addCommentAuthors(workbook, users, me);
       const sheetHost = host.current;
-      const closeNoteOnMove = injector
-        .get(SheetsSelectionsService)
-        .selectionChanged$.subscribe((selections) => {
-          const popup = notePopups.activePopup,
-            range = selections?.[0]?.range,
-            sheet = workbook.getActiveSheet(),
-            sheetId = sheet.getSheetId();
-          if (
-            popup &&
-            range &&
-            !(
-              popup.subUnitId === sheetId &&
-              range.startRow === popup.row &&
-              range.startColumn === popup.col
-            )
-          )
-            notePopups.hidePopup(true);
-          // A phone has no hover. Selecting the cell opens its note.
-          if (
-            window.innerWidth <= 700 &&
-            range &&
-            range.startRow === range.endRow &&
-            range.startColumn === range.endColumn
-          ) {
-            const note = noteModel.getNote(workbook.getId(), sheetId, {
-              row: range.startRow,
-              col: range.startColumn,
-            });
-            if (note)
-              notePopups.showPopup({
-                unitId: workbook.getId(),
-                subUnitId: sheetId,
-                noteId: note.id,
-                row: range.startRow,
-                col: range.startColumn,
-              });
-          }
-          publishActiveCell(range);
-        });
-      // The fill handle is a few canvas pixels at the selection's corner.
-      // Store that corner in screen coordinates, including the sheet's scroll.
-      const publishActiveCell = (
-        range: { startRow: number; startColumn: number; endRow: number; endColumn: number } | null | undefined,
-      ) => {
-        if (!sheetHost || !range) return;
-        try {
-          const corner = workbook.getActiveSheet()?.getRange(range.endRow, range.endColumn).getCellRect();
-          if (!corner) return;
-          const render = injector.get(IRenderManagerService).getRenderUnitById(workbook.getId());
-          const viewport = render?.scene.getViewport("viewMain");
-          const canvas = render?.engine.getCanvasElement();
-          if (!render || !viewport || !canvas) return;
-          const { scaleX, scaleY } = render.scene.getAncestorScale();
-          const bounds = canvas.getBoundingClientRect();
-          const painted = Number.parseFloat(canvas.style.width) || bounds.width;
-          const scaleAdjust = bounds.width / painted || 1;
-          const toX = (value: number) =>
-            (value - viewport.viewportScrollX) * scaleAdjust * scaleX + bounds.left;
-          const toY = (value: number) =>
-            (value - viewport.viewportScrollY) * scaleAdjust * scaleY + bounds.top;
-          sheetHost.dataset.activeCell = JSON.stringify({
-            left: toX(corner.left),
-            top: toY(corner.top),
-            right: toX(corner.right),
-            bottom: toY(corner.bottom),
-          });
-        } catch {
-          delete sheetHost.dataset.activeCell;
-        }
-      };
-      const fillScroll = injector
-        .get(IRenderManagerService)
-        .getRenderUnitById(workbook.getId())
-        ?.scene.getViewport("viewMain")
-        ?.onScrollAfter$.subscribeEvent(() => {
-          const active = workbook.getActiveSheet()?.getSelection()?.getActiveRange();
-          publishActiveCell(
-            active
-              ? {
-                  startRow: active.getRow(),
-                  startColumn: active.getColumn(),
-                  endRow: active.getLastRow(),
-                  endColumn: active.getLastColumn(),
-                }
-              : null,
-          );
-        });
-      // The filter funnel is a 16px mark on the right of the header. On a phone
-      // that mark is often off the screen, so a tap in the header cell opens
-      // the same panel. A scroll or a lift elsewhere must not: opening the
-      // panel closes the cell editor.
-      const validations = injector.get(SheetDataValidationModel);
-      const checkedValue = (value: unknown) =>
-        value === true || value === 1 || value === "1" || value === "TRUE";
-      const readActiveBox = (): ScreenBox | null => {
-        const raw = sheetHost?.dataset.activeCell;
-        if (!raw) return null;
-        try {
-          const box = JSON.parse(raw) as Partial<ScreenBox>;
-          if (
-            typeof box.left !== "number" ||
-            typeof box.top !== "number" ||
-            typeof box.right !== "number" ||
-            typeof box.bottom !== "number"
-          )
-            return null;
-          return { left: box.left, top: box.top, right: box.right, bottom: box.bottom };
-        } catch {
-          return null;
-        }
-      };
-      // Univer toggles a checkbox on pointer down when the tap hits its box,
-      // including the first time that cell is selected. That write is not
-      // repeated. A tap that misses the box on an already-selected cell still
-      // flips it. A scroll does not.
-      const checkboxCell = () => {
-        const sheet = workbook.getActiveSheet();
-        const cell = sheet?.getActiveCell();
-        if (!sheet || !cell) return null;
-        const row = cell.getRow();
-        const col = cell.getColumn();
-        const rule = validations.getRuleByLocation(workbook.getId(), sheet.getSheetId(), row, col);
-        if (rule?.type !== "checkbox") return null;
-        return {
-          row,
-          col,
-          on: checkedValue(cell.getValue()),
-          checked: rule.formula1 ?? "TRUE",
-          unchecked: rule.formula2 ?? "FALSE",
-        };
-      };
-      let phoneGesture = 0;
-      const phoneBoxWrites: { gesture: number; row: number; col: number }[] = [];
-      const watchPhoneBoxWrite = injector.get(ICommandService).onCommandExecuted((command) => {
-        if (command.id !== SetRangeValuesCommand.id) return;
-        const params = command.params as {
-          suiteleafPhoneWrite?: boolean;
-          range?: {
-            startRow?: number;
-            endRow?: number;
-            startColumn?: number;
-            endColumn?: number;
-          };
-        } | undefined;
-        if (params?.suiteleafPhoneWrite) return;
-        const range = params?.range;
-        if (!range) return;
-        const { startRow, endRow, startColumn, endColumn } = range;
-        if (
-          typeof startRow !== "number" ||
-          typeof startColumn !== "number" ||
-          startRow !== endRow ||
-          startColumn !== endColumn
-        )
-          return;
-        phoneBoxWrites.push({ gesture: phoneGesture, row: startRow, col: startColumn });
-        if (phoneBoxWrites.length > 8) phoneBoxWrites.shift();
+      const stopSelection = watchSheetSelection({
+        injector,
+        workbook,
+        sheetHost,
+        reportSelection,
+        placeRemoteRef,
+        remoteSelectionsRef,
       });
-      let press: {
-        x: number;
-        y: number;
-        gesture: number;
-        checkbox: ReturnType<typeof checkboxCell>;
-      } | null = null;
-      const onPhonePointerDown = (event: PointerEvent) => {
-        if (window.innerWidth > 700 || event.button === 2) return;
-        phoneGesture += 1;
-        press = {
-          x: event.clientX,
-          y: event.clientY,
-          gesture: phoneGesture,
-          checkbox: checkboxCell(),
-        };
-      };
-      const onPhonePointerUp = (event: PointerEvent) => {
-        const start = press;
-        press = null;
-        if (window.innerWidth > 700) return;
-        const up = { x: event.clientX, y: event.clientY };
-        const down = start ? { x: start.x, y: start.y } : null;
-        const scrolled = pointerScrolled(down, up);
-        const before = start?.checkbox ?? null;
-        window.setTimeout(() => {
-          const sheet = workbook.getActiveSheet();
-          const range = sheet?.getSelection()?.getActiveRange();
-          const singleHeaderCell =
-            !!range &&
-            range.getRow() === 0 &&
-            range.getLastRow() === range.getRow() &&
-            range.getLastColumn() === range.getColumn();
-          if (
-            sheet &&
-            range &&
-            shouldOpenPhoneHeaderFilter({
-              narrow: true,
-              singleHeaderCell,
-              down,
-              up,
-              headerBox: singleHeaderCell ? readActiveBox() : null,
-            })
-          ) {
-            injector.get(ICommandService).executeCommand("sheet.operation.open-filter-panel", {
-              unitId: workbook.getId(),
-              subUnitId: sheet.getSheetId(),
-              col: range.getColumn(),
-            });
-          }
-        }, 0);
-        window.setTimeout(() => {
-          const after = checkboxCell();
-          const box = readActiveBox();
-          const tapOnCell =
-            !!box && !!down && pointInBox(down, box) && pointInBox(up, box);
-          const alreadyToggled =
-            !!after &&
-            !!start &&
-            phoneBoxWrites.some(
-              (entry) =>
-                entry.gesture === start.gesture &&
-                entry.row === after.row &&
-                entry.col === after.col,
-            );
-          const write = phoneCheckboxWrite({
-            before,
-            after,
-            scrolled,
-            tapOnCell,
-            alreadyToggled,
-            checked: after?.checked ?? "TRUE",
-            unchecked: after?.unchecked ?? "FALSE",
-          });
-          if (!write || !after) return;
-          injector.get(ICommandService).executeCommand(SetRangeValuesCommand.id, {
-            suiteleafPhoneWrite: true,
-            range: {
-              startRow: after.row,
-              endRow: after.row,
-              startColumn: after.col,
-              endColumn: after.col,
-            },
-            value: write,
-          });
-        }, 180);
-      };
-      sheetHost?.addEventListener("pointerdown", onPhonePointerDown, true);
-      sheetHost?.addEventListener("pointerup", onPhonePointerUp);
-      // Excel stores a cached result for every formula cell but recalculates formulas on
-      // open. An imported snapshot can carry a stale or missing cached value that would
-      // display 0 while the formula resolves to a real number, so force one explicit full
-      // recalculation on import: this is an external data change that produced no dirty
-      // command, which is exactly when executeCalculation() applies.
-      univerAPI.getFormula().executeCalculation();
-      void univerAPI
-        .getFormula()
-        .onCalculationResultApplied(5000)
-        .catch(() => {});
-      // Import inert embedded appearances through the editor's native drawing service.
-      // Restored workbook resources retain the same IDs, avoiding duplicate images.
-      const hydrateImages = async () => {
-        for (const image of content.current.images ?? []) {
-          if (disposed) return;
-          const sheet = workbook.getSheetBySheetId(image.sheetId);
-          if (!sheet) continue;
-          if (sheet.getImageById(image.id)) {
-            hydratedImageIds.add(image.id);
-            continue;
-          }
-          const config = (content.current.workbook as unknown as IWorkbookData)
-            .sheets[image.sheetId];
-          const span = (axis: "row" | "column", from: number, to: number) => {
-            let sum = 0;
-            for (let index = from; index < to; index++) {
-              if (axis === "column") {
-                const column = config.columnData?.[index];
-                if (column?.hd === 1) continue;
-                sum += column?.w ?? config.defaultColumnWidth ?? 100;
-              } else {
-                const row = config.rowData?.[index];
-                if (row?.hd === 1) continue;
-                sum += row?.h ?? config.defaultRowHeight ?? 24;
-              }
-            }
-            return sum;
-          };
-          const width = image.to
-            ? span("column", image.column, image.to.column) +
-              image.to.offsetX -
-              image.offsetX
-            : image.width;
-          const height = image.to
-            ? span("row", image.row, image.to.row) +
-              image.to.offsetY -
-              image.offsetY
-            : image.height;
-          const builder = sheet
-            .newOverGridImage()
-            .setSource(image.src, univerAPI.Enum.ImageSourceType.BASE64)
-            .setColumn(image.column)
-            .setRow(image.row)
-            .setColumnOffset(image.offsetX)
-            .setRowOffset(image.offsetY)
-            .setWidth(width)
-            .setHeight(height)
-            .setAnchorType(image.anchorType as any);
-          if (image.to && image.anchorType === "1") {
-            builder.setPlacement({
-              kind: univerAPI.Enum.SheetDrawingAnchorType.Both,
-              from: {
-                row: image.row,
-                column: image.column,
-                rowOffset: image.offsetY,
-                columnOffset: image.offsetX,
-              },
-              to: {
-                row: image.to.row,
-                column: image.to.column,
-                rowOffset: image.to.offsetY,
-                columnOffset: image.to.offsetX,
-              },
-            });
-          } else if (image.anchorType === "1") {
-            // Grouped VML children use absolute offsets from A1. Normalize
-            // those bounds into cell markers before cell sizes can change.
-            const markerAt = (axis: "row" | "column", position: number) => {
-              let index = 0;
-              while (
-                index <
-                (axis === "row"
-                  ? (config.rowCount ?? 1000)
-                  : (config.columnCount ?? 26)) -
-                  1
-              ) {
-                const size = span(axis, index, index + 1);
-                if (size > 0 && position < size) break;
-                position -= size;
-                index++;
-              }
-              return { index, offset: position };
-            };
-            const left = span("column", 0, image.column) + image.offsetX;
-            const top = span("row", 0, image.row) + image.offsetY;
-            const fromColumn = markerAt("column", left);
-            const fromRow = markerAt("row", top);
-            const toColumn = markerAt("column", left + width);
-            const toRow = markerAt("row", top + height);
-            builder.setPlacement({
-              kind: univerAPI.Enum.SheetDrawingAnchorType.Both,
-              from: {
-                row: fromRow.index,
-                column: fromColumn.index,
-                rowOffset: fromRow.offset,
-                columnOffset: fromColumn.offset,
-              },
-              to: {
-                row: toRow.index,
-                column: toColumn.index,
-                rowOffset: toRow.offset,
-                columnOffset: toColumn.offset,
-              },
-            });
-          }
-          const built = await builder.buildAsync();
-          if (disposed) return;
-          sheet.insertImages([{ ...built, drawingId: image.id }]);
-          hydratedImageIds.add(image.id);
-        }
-      };
-      void hydrateImages().catch((cause: unknown) => {
-        if (!disposed)
-          error.current(
-            `Embedded image import failed: ${cause instanceof Error ? cause.message : String(cause)}`,
-          );
-      });
-
-      const hydrateCharts = () => {
-        if (disposed) return;
-        for (const c of content.current.charts) {
-          const sheet = workbook.getSheetBySheetId(c.sheetId);
-          if (!sheet) continue;
-          try {
-            const values = c.invalid ? [] : readRange(c.source);
-            const numberFormats = c.invalid
-              ? []
-              : workbook
-                  .getSheetBySheetId(c.source.sheetId)!
-                  .getRange(rangeLabel(c.source))
-                  .getNumberFormats();
-            const formats = (values[0] ?? []).map((_, column) => {
-              const row = values.findIndex(
-                (cells, i) => i > 0 && typeof cells[column] === "number",
-              );
-              return numberFormats[row]?.[column] ?? "";
-            });
-            charts.set(c.id, {
-              definition: { ...c },
-              values,
-              numberFormats: formats,
-              excelValues: c.excel?.series.map((s) =>
-                readRange(s.values).flat(),
-              ),
-            });
-          } catch {
-            c.invalid = true;
-            charts.set(c.id, {
-              definition: { ...c },
-              values: [],
-              numberFormats: [],
-            });
-          }
-          window.dispatchEvent(new Event(`chart:${c.id}`));
-          let origin: { left: number; top: number } | undefined;
-          try {
-            origin = JSON.parse(sheet.getRange("A1").getCellRect().toJSON());
-          } catch {
-            // The canvas for an inactive sheet may not exist until activation.
-            if (c.excel) continue;
-          }
-          const gridX = c.excel && origin ? origin.left : 0;
-          const gridY = c.excel && origin ? origin.top : 0;
-          if (c.excel && origin && !chartOrigins.has(c.id))
-            chartOrigins.set(c.id, origin);
-          if (!sheet.getFloatDomById(c.id))
-            sheet.addFloatDomToPosition(
-              {
-                componentKey: "suiteleaf-chart",
-                data: { chartId: c.id },
-                initPosition: {
-                  startX: c.x + gridX - (c.excel ? 2 : 0),
-                  endX: c.x + c.width + gridX + (c.excel ? 2 : 0),
-                  startY: c.y + gridY - (c.excel ? 2 : 0),
-                  endY: c.y + c.height + gridY + (c.excel ? 2 : 0),
-                },
-              },
-              c.id,
-            );
-        }
-      };
-      refreshCharts.current = () => {
-        busy = true;
-        try {
-          hydrateCharts();
-        } finally {
-          busy = false;
-        }
-      };
-      const scheduleChartHydration = (remaining = 100) => {
-        clearTimeout(chartHydrationTimer);
-        chartHydrationTimer = setTimeout(() => {
-          if (disposed) return;
-          refreshCharts.current();
-          const active = workbook.getActiveSheet();
-          const missing = content.current.charts.some(
-            (c) =>
-              c.sheetId === active.getSheetId() &&
-              !active.getFloatDomById(c.id),
-          );
-          if (missing && remaining > 0) scheduleChartHydration(remaining - 1);
-          else if (missing)
-            error.current(
-              "The chart canvas did not become ready. Reopen this workbook to retry.",
-            );
-        }, 50);
-      };
-      busy = true;
-      hydrateCharts();
-      busy = false;
-      // Floating drawings need the sheet selection renderer, which is created
-      // after the workbook facade. Retry once the initial canvas has mounted.
-      scheduleChartHydration();
-      persist.current = () => {
-        if (disposed) return;
-        pending.current = false;
-        // A viewer filter or a comment reply stays on this screen. The file is unchanged.
-        if (readOnlyRef.current) return;
-        if (content.current.images)
-          content.current.images = content.current.images.filter(
-            (image) =>
-              !hydratedImageIds.has(image.id) ||
-              !!workbook
-                .getSheetBySheetId(image.sheetId)
-                ?.getImageById(image.id),
-          );
-
-        for (const c of content.current.charts) {
-          const dom = workbook
-            .getSheetBySheetId(c.sheetId)
-            ?.getFloatDomById(c.id);
-          if (dom) {
-            c.x =
-              dom.position.left === undefined
-                ? c.x
-                : dom.position.left -
-                  (c.excel ? (chartOrigins.get(c.id)?.left ?? 46) - 2 : 0);
-            c.y =
-              dom.position.top === undefined
-                ? c.y
-                : dom.position.top -
-                  (c.excel ? (chartOrigins.get(c.id)?.top ?? 20) - 2 : 0);
-            c.width =
-              dom.position.width === undefined
-                ? c.width
-                : dom.position.width - (c.excel ? 4 : 0);
-            c.height =
-              dom.position.height === undefined
-                ? c.height
-                : dom.position.height - (c.excel ? 4 : 0);
-          }
-        }
-        content.current.workbook =
-          workbook.save() as unknown as SheetFile["content"]["workbook"];
-        const mutations = pendingMutations.current.splice(0);
-        changes.current(structuredClone(content.current), {
-          kind: "sheet",
-          mutations,
-        });
-        setRevision((v) => v + 1);
-      };
-      syncTextStyle.current = () => {
-        const style = workbook.getActiveRange()?.getCellStyleData();
-        setIsBold(style?.bl === 1);
-        setIsItalic(style?.it === 1);
-        setIsStrike(style?.st?.s === 1);
-      };
-      const changedSheets = new Set<string>();
-      const publishValue = () => {
-        try {
-          const value = workbook.getActiveRange()?.getValue();
-          container.dataset.activeValue = value == null ? "" : String(value);
-        } catch {
-          container.dataset.activeValue = "";
-        }
-      };
-      publishValue();
-      const listener = workbook.onCommandExecuted((command: any) => {
-        if (
-          !disposed &&
-          (command.id === "sheet.operation.set-selections" ||
-            command.id === "sheet.mutation.set-range-values")
-        ) {
-          syncTextStyle.current();
-          publishValue();
-        }
-        if (busy || disposed || !command.id.includes("mutation")) return;
-        pending.current = true;
-        pendingMutations.current.push({
-          id: command.id,
-          params: command.params,
-        });
-        const p = command.params ?? {};
-        // A pivot's own output never triggers further pivot refreshes, so pivots of pivots cannot loop.
-        if (!writingPivot.current) {
-          if (typeof p.subUnitId === "string") changedSheets.add(p.subUnitId);
-          for (const unit of Object.values(p.unitData ?? {}))
-            for (const id of Object.keys(unit ?? {})) changedSheets.add(id);
-        }
-        const structural = /sheet\.mutation\.(insert|remove)-(row|col)$/.exec(
-          command.id,
-        );
-        if (structural && p.range) {
-          const axis = structural[2] === "row" ? "row" : "column";
-          const start = axis === "row" ? p.range.startRow : p.range.startColumn;
-          const end = axis === "row" ? p.range.endRow : p.range.endColumn;
-          for (const chart of content.current.charts) {
-            for (const series of chart.excel?.series ?? []) {
-              if (series.values.sheetId !== p.subUnitId) continue;
-              const shifted = shiftRange(
-                series.values,
-                axis,
-                start,
-                end - start + 1,
-                structural[1] === "remove",
-              );
-              if (shifted) series.values = shifted;
-              else chart.invalid = true;
-            }
-          }
-          for (const item of [
-            ...content.current.charts,
-            ...content.current.pivots,
-          ])
-            if (item.source.sheetId === p.subUnitId) {
-              const shifted = shiftRange(
-                item.source,
-                axis,
-                start,
-                end - start + 1,
-                structural[1] === "remove",
-              );
-              if (shifted) item.source = shifted;
-              else item.invalid = true;
-            }
-          content.current.tables = (content.current.tables ?? []).flatMap((table) => {
-            if (table.sheetId !== p.subUnitId) return [table];
-            const shifted = tableAfterStructure(
-              table,
-              axis,
-              start,
-              end - start + 1,
-              structural[1] === "remove",
-            );
-            return shifted ? [shifted] : [];
-          });
-        }
-        if (command.id.includes("set-range-values") && content.current.tables?.length) {
-          const edits = editsFromRangeValues({
-            subUnitId: typeof p.subUnitId === "string" ? p.subUnitId : undefined,
-            range: p.range,
-            value: p.value,
-          });
-          const grown = extendTablesForEdits(content.current.tables, edits);
-          content.current.tables = grown.tables;
-          for (const change of grown.grown) {
-            content.current.charts = growSources(content.current.charts, change.before, change.after);
-            content.current.pivots = growSources(content.current.pivots, change.before, change.after);
-          }
-        }
-        for (const item of [
-          ...content.current.charts,
-          ...content.current.pivots,
-        ])
-          if (!workbook.getSheetBySheetId(item.source.sheetId))
-            item.invalid = true;
-        if (command.id.includes("remove-sheet"))
-          content.current.pivots = content.current.pivots.filter((p) =>
-            workbook.getSheetBySheetId(p.targetSheetId),
-          );
-        clearTimeout(timer);
-        timer = setTimeout(() => {
-          refreshCharts.current();
-          persist.current();
-          if (changedSheets.size) {
-            refreshPivots.current(new Set(changedSheets));
-            changedSheets.clear();
-          }
-        }, 180);
-      });
-      // Univer's status bar only recalculates when the selection changes, so a filter
-      // that hides or reveals rows under the selection would leave Sum and Average
-      // counting rows that are no longer visible.
-      const selections = univer.__getInjector().get(SheetsSelectionsService);
-      const rowsShown = workbook.onCommandExecuted((command: any) => {
-        if (!rowVisibilityMutation.test(command.id)) return;
-        const current = selections.getCurrentSelections();
-        if (current.length) selections.setSelections([...current]);
-      });
-      const activeSheetChanged = univerAPI.addEvent(
-        univerAPI.Event.ActiveSheetChanged,
-        () => {
-          setRevision((v) => v + 1);
-          scheduleChartHydration();
-        },
-      );
-      const removed = univerAPI.addEvent(
-        univerAPI.Event.FloatDomDeleted,
-        ({ drawings }) => {
-          if (busy || disposed) return;
-          content.current.charts = content.current.charts.filter(
-            (c) => !drawings.includes(c.id),
-          );
-          drawings.forEach((id) => charts.delete(id));
-          persist.current();
-        },
-      );
-      let permissionsReady = false;
-      const signalReady = () => {
-        if (
-          !disposed &&
-          permissionsReady &&
-          univerAPI.getCurrentLifecycleStage() >= LifecycleStages.Steady
-        )
-          setReady(true);
-      };
-      const lifecycleReady = univerAPI.addEvent(
-        univerAPI.Event.LifeCycleChanged,
-        signalReady,
-      );
-      // Local permissions need their view/manage points restored without a server.
-      void (async () => {
-        for (const sheet of workbook.getSheets()) {
-          const permission = sheet.getWorksheetPermission();
-          if (sheet.getCustomMetadata()?.suiteleafProtection?.sheet) {
-            if (!permission.isProtected()) await permission.protect();
-            await permission.setReadOnly();
-          }
-          const rules = await permission.listRangeProtectionRules({
-            ignoreCollaborators: true,
-          });
-          for (const rule of rules) {
-            await rule.setPoint(univerAPI.Enum.RangePermissionPoint.View, true);
-            await rule.setPoint(
-              univerAPI.Enum.RangePermissionPoint.Delete,
-              true,
-            );
-            await rule.setPoint(
-              univerAPI.Enum.RangePermissionPoint.ManageCollaborator,
-              true,
-            );
-            await rule.setPoint(
-              univerAPI.Enum.RangePermissionPoint.Edit,
-              false,
-            );
-          }
-        }
-        permissionsReady = true;
-        signalReady();
-      })().catch((cause) => {
-        if (!disposed)
-          error.current(cause instanceof Error ? cause.message : String(cause));
+      const stopPhoneTaps = watchPhoneTaps({ injector, workbook, sheetHost });
+      const stopSession = startSheetSession({
+        univer,
+        univerAPI,
+        workbook,
+        container,
+        isDisposed: () => disposed,
+        timer,
+        content,
+        readRange,
+        error,
+        refreshCharts,
+        persist,
+        pending,
+        readOnlyRef,
+        canCommentRef,
+        pendingMutations,
+        changes,
+        access,
+        personalView,
+        sharedSort,
+        sharedChartIds,
+        setRevision,
+        syncTextStyle,
+        setIsBold,
+        setIsItalic,
+        setIsStrike,
+        applyingRemote,
+        writingPivot,
+        refreshPivots,
+        setReady,
       });
       return () => {
         disposed = true;
-        clearTimeout(timer);
-        clearTimeout(chartHydrationTimer);
-        listener.dispose();
-        rowsShown.dispose();
-        lifecycleReady.dispose();
-        removed.dispose();
-        activeSheetChanged.dispose();
+        clearTimeout(timer.current);
+        stopSession();
         stopAuthor();
         signComments.dispose();
         stopViewLock();
         stopFormulaLock();
-        closeNoteOnMove.unsubscribe();
-        fillScroll?.unsubscribe();
-        watchPhoneBoxWrite.dispose();
-        sheetHost?.removeEventListener("pointerdown", onPhonePointerDown, true);
-        sheetHost?.removeEventListener("pointerup", onPhonePointerUp);
+        stopSelection();
+        stopPhoneTaps();
         partialCleanup?.();
         partialCleanup = undefined;
       };
@@ -2067,28 +421,7 @@ export default function Sheets({
           error.current(cause instanceof Error ? cause.message : String(cause));
       })
       .then(() => {
-        for (const c of content.current.charts) {
-          if (!c.excel || c.excel.anchorResolved) continue;
-          const sheet = (content.current.workbook as unknown as IWorkbookData)
-            .sheets[c.sheetId];
-          const a = c.excel.anchor;
-          const x = (column: number, offset: number) =>
-            Array.from(
-              { length: column },
-              (_, i) =>
-                sheet.columnData?.[i]?.w ?? sheet.defaultColumnWidth ?? 100,
-            ).reduce((sum, v) => sum + v, 0) + offset;
-          const y = (row: number, offset: number) =>
-            Array.from(
-              { length: row },
-              (_, i) => sheet.rowData?.[i]?.h ?? sheet.defaultRowHeight ?? 24,
-            ).reduce((sum, v) => sum + v, 0) + offset;
-          c.x = x(a.fromColumn, a.fromColumnOffset);
-          c.y = y(a.fromRow, a.fromRowOffset);
-          c.width = x(a.toColumn, a.toColumnOffset) - c.x;
-          c.height = y(a.toRow, a.toRowOffset) - c.y;
-          c.excel.anchorResolved = true;
-        }
+        resolveExcelChartAnchors(content);
         if (!disposed) cleanup = initialize();
       })
       .catch((cause) => {
@@ -2123,820 +456,105 @@ export default function Sheets({
       api.current.setTheme?.(defaultTheme);
     } catch {}
   }, [isDark]);
-  // Univer's own currency command applies an accounting pattern with red
-  // parentheses; the toolbar $ follows Sheets' plain currency instead.
-  const formatCurrency = () => {
-    const ranges =
-      book.current?.getActiveSheet()?.getSelection()?.getActiveRangeList() ??
-      [];
-    try {
-      for (const r of ranges)
-        r.setNumberFormat(numberFormatById("currency2")!.code);
-    } catch {}
-    persist.current();
-  };
-  const formatPercent = () => {
-    try {
-      api.current?.executeCommand("sheet.command.numfmt.set.percent");
-    } catch {}
-    persist.current();
-  };
-  const addDecimal = () => {
-    try {
-      api.current?.executeCommand("sheet.command.numfmt.add.decimal.command");
-    } catch {}
-    persist.current();
-  };
-  const subtractDecimal = () => {
-    try {
-      api.current?.executeCommand(
-        "sheet.command.numfmt.subtract.decimal.command",
-      );
-    } catch {}
-    persist.current();
-  };
-  // "More formats": apply a named catalog format (currency, percent, date, …)
-  // to the active range by its Excel/Univer number-format code. Unknown ids are
-  // a no-op; the active range is read exactly like the currency/percent tools.
-  const applyNamedFormatNow = (id: string) => {
-    const r = book.current?.getActiveRange();
-    if (!r) return;
-    const applied = applyNamedFormat(id, (code) => {
-      try {
-        (r as any).setNumberFormat?.(code);
-      } catch {}
-    });
-    if (applied.ok) persist.current();
-  };
-  // The same commands as Cmd+B/I and Alt+Shift+5: they toggle from the active
-  // cell's style and also format the text being edited inside a cell.
-  const toggleTextStyle = (command: string) =>
-    void Promise.resolve(api.current?.executeCommand(command))
-      .then(() => {
-        syncTextStyle.current();
-        persist.current();
-      })
-      .catch((e) => onError(e instanceof Error ? e.message : String(e)));
-  const toggleBold = () => toggleTextStyle("sheet.command.set-range-bold");
-  const toggleItalic = () => toggleTextStyle("sheet.command.set-range-italic");
-  const toggleStrike = () => toggleTextStyle("sheet.command.set-range-stroke");
-  const readCopiedRange = () => {
-    try {
-      const range = book.current?.getActiveRange?.();
-      if (!range) return null;
-      const box = range.getRange();
-      const height = box.endRow - box.startRow + 1;
-      const width = box.endColumn - box.startColumn + 1;
-      if (height < 1 || width < 1) return null;
-      const formulas = (range.getFormulas?.() ?? []) as unknown[][];
-      const values = (range.getValues?.() ?? []) as unknown[][];
-      const cells: CopiedCell[][] = Array.from({ length: height }, (_, r) =>
-        Array.from({ length: width }, (_, c) => {
-          const raw = formulas[r]?.[c];
-          const text = typeof raw === "string" ? raw.trim() : "";
-          const formula = text
-            ? text.startsWith("=")
-              ? text
-              : `=${text}`
-            : null;
-          const current = values[r]?.[c];
-          const plain =
-            typeof current === "string" ||
-            typeof current === "number" ||
-            typeof current === "boolean"
-              ? current
-              : null;
-          return { formula, value: formula ? null : plain };
-        }),
-      );
-      return {
-        source: { row: box.startRow, column: box.startColumn },
-        cells,
-      };
-    } catch {
-      return null;
-    }
-  };
-  const clipboard = async (action: "cut" | "copy" | "paste") => {
-    // Snapshot before the command returns. Paste special must not read the cells again.
-    const snapshot = action === "copy" ? readCopiedRange() : null;
-    let done = false;
-    try {
-      done = !!(await api.current?.executeCommand(`univer.command.${action}`));
-    } catch {}
-    if (action === "copy") {
-      copiedRange.current = copiedRangeAfterMenuCopy(
-        done,
-        snapshot,
-        copiedRange.current,
-      );
-    }
-    if (done) return;
-    const key = shortcut({ cut: "X", copy: "C", paste: "V" }[action]);
-    setNotice(
-      `Your browser doesn't let the Edit menu ${action} here. Use ${key} to ${action}.`,
-    );
-  };
-  const pasteTranspose = () => {
-    const snap = copiedRange.current;
-    if (!snap?.cells.length) {
-      setNotice("Copy a range before you transpose it.");
-      return;
-    }
-    if (readOnlyRef.current) return;
-    const sheet = book.current?.getActiveSheet?.();
-    const active = book.current?.getActiveCell?.();
-    if (!sheet || !active) return;
-    const destination = { row: active.getRow(), column: active.getColumn() };
-    const grid = transposeCopiedRange(snap.cells, snap.source, destination);
-    if (!grid.length || !grid[0]?.length) return;
-    try {
-      sheet
-        .getRange(destination.row, destination.column, grid.length, grid[0].length)
-        .setValues(
-          grid.map((row) => row.map((cell) => cell.formula ?? cell.value)),
-        );
-    } catch (e) {
-      error.current(e instanceof Error ? e.message : String(e));
-      return;
-    }
-    setNotice("");
-    persist.current();
-  };
-  const deleteValues = () => {
-    const ranges =
-      book.current?.getActiveSheet()?.getSelection()?.getActiveRangeList() ??
-      [];
-    try {
-      for (const r of ranges) r.clearContent();
-    } catch (e) {
-      onError(e instanceof Error ? e.message : String(e));
-    }
-    persist.current();
-  };
-  const handleTextColor = (color: string) => {
-    setTextColor(color);
-    const r = book.current?.getActiveRange();
-    if (r) {
-      r.setFontColor(color);
-      persist.current();
-    }
-  };
-  const handleFillColor = (color: string) => {
-    setFillColor(color);
-    const r = book.current?.getActiveRange();
-    if (r) {
-      r.setBackgroundColor(color);
-      persist.current();
-    }
-  };
-  const alternatingColors = () => {
-    const sheet = book.current?.getActiveSheet?.();
-    const selected = book.current?.getActiveRange?.();
-    if (!sheet || !selected) return;
-    const target = rangeForAlternatingColors(sheet, selected);
-    paintAlternatingColors(sheet, target.getRange());
-    persist.current();
-  };
-  const applyBorders = () => {
-    const r = book.current?.getActiveRange();
-    if (r && api.current) {
-      try {
-        r.setBorder(
-          api.current.Enum.BorderType.ALL,
-          api.current.Enum.BorderStyleTypes.THIN,
-          "#000000",
-        );
-      } catch {}
-      persist.current();
-    }
-  };
-  const mergeCells = () => {
-    const r = book.current?.getActiveRange();
-    if (r) {
-      try {
-        r.merge();
-      } catch {}
-      persist.current();
-    }
-  };
-  const unmergeCells = () => {
-    const listed = book.current?.getActiveSheet()?.getSelection()?.getActiveRangeList();
-    const active = book.current?.getActiveRange();
-    const selected: FRange[] =
-      Array.isArray(listed) && listed.length ? listed : active ? [active] : [];
-    if (!selected.length) return;
-    if (!selected.some((range) => range.isPartOfMerge())) {
-      setNotice("These cells are not merged.");
-      return;
-    }
-    try {
-      for (const range of selected) {
-        if (range.isPartOfMerge()) range.breakApart();
-      }
-    } catch {}
-    setNotice("");
-    persist.current();
-  };
-  const cycleHorizontalAlign = () => {
-    const next =
-      hAlign === "left" ? "center" : hAlign === "center" ? "right" : "left";
-    setHAlign(next);
-    const r = book.current?.getActiveRange();
-    if (r) {
-      r.setHorizontalAlignment(next);
-      persist.current();
-    }
-  };
-  const cycleVerticalAlign = () => {
-    const next =
-      vAlign === "top" ? "middle" : vAlign === "middle" ? "bottom" : "top";
-    setVAlign(next);
-    const r = book.current?.getActiveRange();
-    if (r) {
-      r.setVerticalAlignment(next);
-      persist.current();
-    }
-  };
-  const toggleWrap = () => {
-    const next = !isWrap;
-    setIsWrap(next);
-    const r = book.current?.getActiveRange();
-    if (r) {
-      r.setWrap(next);
-      persist.current();
-    }
-  };
-  // Positive tr.a is clockwise on this grid. A non-number is stacked text
-  // ({ a: 0, v: 1 }). Null removes tr and leaves wrap.
-  const rotateText = (angle: number | { a: 0; v: 1 } | null) => {
-    const r = book.current?.getActiveRange();
-    if (!r) return;
-    if (angle == null) r.setValue({ s: { tr: null } });
-    else r.setTextRotation(angle);
-    persist.current();
-  };
-  const handleFontFamily = (family: string) => {
-    setFontFamily(family);
-    const r = book.current?.getActiveRange();
-    if (r) {
-      r.setFontFamily(family);
-      persist.current();
-    }
-  };
-  const handleFontSize = (size: number) => {
-    setFontSize(size);
-    const r = book.current?.getActiveRange();
-    if (r) {
-      r.setFontSize(size);
-      persist.current();
-    }
-  };
-  const handleZoom = (z: string) => {
-    setZoom(z);
-    const ratio = parseInt(z, 10) / 100;
-    try {
-      const s = book.current?.getActiveSheet();
-      s?.zoom(ratio);
-    } catch {}
-  };
-  const toggleFilter = () => {
-    if (readOnlyRef.current) return;
-    try {
-      const sheet = book.current?.getActiveSheet();
-      if (!sheet) return;
-      const existing = sheet.getFilter();
-      if (existing) existing.remove();
-      else {
-        const selected = book.current?.getActiveRange();
-        const target =
-          selected && selected.getRange().endRow > selected.getRange().startRow
-            ? selected
-            : sheet.getDataRange();
-        if (!target.createFilter())
-          throw new Error(
-            "Select a range with a header row to create a filter.",
-          );
-      }
-      persist.current();
-    } catch (e) {
-      onError(e instanceof Error ? e.message : String(e));
-    }
-  };
-  const sheetRows = (): string[][] => {
-    const sheet = book.current?.getActiveSheet();
-    if (!sheet) return [];
-    return (sheet.getDataRange().getDisplayValues() as unknown[][]).map((row) =>
-      row.map((cell) => String(cell ?? "")),
-    );
-  };
-  const createFilterView = () => {
-    if (!readOnlyRef.current) return;
-    try {
-      const sheet = book.current?.getActiveSheet();
-      if (!sheet) return;
-      const range = sheet.getDataRange();
-      if (!range.getFilter() && !range.createFilter())
-        throw new Error("This sheet has no header row to filter.");
-      setFilterView({ header: "", value: "", hidden: 0 });
-    } catch (e) {
-      onError(e instanceof Error ? e.message : String(e));
-    }
-  };
-  const applyFilterView = (value: string) => {
-    if (!readOnlyRef.current) return;
-    try {
-      const sheet = book.current?.getActiveSheet();
-      if (!sheet) return;
-      const choice = filterViewChoices(sheetRows()).find(
-        (item) => item.value === value,
-      );
-      if (!choice) return;
-      const range = sheet.getDataRange();
-      const filter = range.getFilter() ?? range.createFilter();
-      if (!filter) throw new Error("This sheet has no header row to filter.");
-      const criteria = valueFilterCriteria(
-        choice.column,
-        range.getRange().startColumn,
-        value,
-      );
-      filter.setColumnFilterCriteria(criteria.column, criteria.criteria);
-      setFilterView({
-        header: choice.header,
-        value,
-        hidden: filter.getFilteredOutRows().length,
-      });
-    } catch (e) {
-      onError(e instanceof Error ? e.message : String(e));
-    }
-  };
-  const clearFilterView = () => {
-    try {
-      book.current?.getActiveSheet()?.getFilter()?.remove();
-    } catch {
-      /* The filter is already gone. */
-    }
-    setFilterView(null);
-  };
-  const openSortRange = () => {
-    const sheet = book.current?.getActiveSheet();
-    if (!sheet) return;
-    const selected = book.current?.getActiveRange();
-    const target =
-      selected && selected.getRange().endRow > selected.getRange().startRow
-        ? selected
-        : sheet.getDataRange();
-    setSorting({ range: target.getRange(), values: target.getValues() });
-  };
-  const sortRange = (rules: SortRule[], hasHeader: boolean) => {
-    try {
-      const body = sortBody(sorting!.range, hasHeader);
-      book.current
-        .getActiveSheet()
-        .getRange(
-          body.startRow,
-          body.startColumn,
-          body.endRow - body.startRow + 1,
-          body.endColumn - body.startColumn + 1,
-        )
-        .sort(rules);
-      persist.current();
-      setSorting(null);
-    } catch (e) {
-      onError(e instanceof Error ? e.message : String(e));
-    }
-  };
-  const view = (): SheetView => {
-    const sheet = book.current?.getActiveSheet();
-    const freeze = sheet?.getFreeze();
-    const cell = book.current?.getActiveCell();
-    const frozenRows = freeze?.ySplit ? freeze.startRow : 0;
-    const frozenColumns = freeze?.xSplit ? freeze.startColumn : 0;
-    // The main viewport excludes frozen panes; keep at least two of its rows/columns scrollable.
-    const visible = sheet?.getVisibleRange();
-    return {
-      frozenRows,
-      frozenColumns,
-      row: (cell?.getRow() ?? 0) + 1,
-      column: (cell?.getColumn() ?? 0) + 1,
-      maxFrozenRows: visible
-        ? frozenRows + visible.endRow - visible.startRow - 1
-        : 0,
-      maxFrozenColumns: visible
-        ? frozenColumns + visible.endColumn - visible.startColumn - 1
-        : 0,
-      gridlines: !sheet?.hasHiddenGridLines(),
-      formulaBar: formulaBarVisible(),
-    };
-  };
-  const setFrozen = (axis: "rows" | "columns", count: number) => {
-    const sheet = book.current?.getActiveSheet();
-    if (!sheet) return;
-    if (axis === "rows") sheet.setFrozenRows(count);
-    else sheet.setFrozenColumns(count);
-  };
+  const formatting = sheetFormatCommands({
+    book,
+    api,
+    persist,
+    syncTextStyle,
+    onError,
+    setNotice,
+    format,
+  });
+  const data = sheetDataCommands({
+    book,
+    api,
+    persist,
+    onError,
+    error,
+    copiedRange,
+    readOnlyRef,
+    pendingMutations,
+    sharedSort,
+    personalView,
+    sharedRoom,
+    setNotice,
+    setFilterView,
+    sorting,
+    setSorting,
+  });
+  const { sortRange, setFrozen, clearFilterView } = data;
   useEffect(() => {
     // Menus register once the workbook exists. Permission restore can fail
     // without ever reaching the steady lifecycle, and viewers still need them.
     if (!booted) return;
-    printSheet.current = async () => {
-      await api.current.getFormula().onCalculationResultApplied(10000);
-      const s = book.current.getActiveSheet();
-      const values = s.getDataRange().getValues() as CellValue[][];
-      const cellCount = values.length * (values[0]?.length ?? 0);
-      if (cellCount > PRINT_MAX_CELLS)
-        throw new Error(`Print a sheet with at most ${PRINT_MAX_CELLS.toLocaleString()} cells.`);
-      const settings = readSheetPrint(content.current, s.getSheetId());
-      const el = document.createElement("section");
-      el.className = "sheet-print";
-      el.innerHTML = printMarkup(
-        file.title,
-        s.getSheetName(),
-        paginatePrinted(printedPages(values, settings)),
-        settings.repeatFirstRow,
-        chartsForPrint(content.current.charts, s.getSheetId()),
-      );
-      document
-        .querySelectorAll(".suiteleaf-chart")
-        .forEach((c) => el.append(c.cloneNode(true)));
-      document.body.append(el);
-      document.body.classList.add("printing-sheet");
-      try {
-        await printDocument();
-      } finally {
-        document.body.classList.remove("printing-sheet");
-        el.remove();
-      }
-    };
+    printSheet.current = () => printActiveSheet({ api, book, content, file });
     const reportActions = (actions: EditorActions) => {
       sheetActionsRef.current = actions;
       onActions(actions);
     };
-    reportActions({
-      flush: async () => {
-        await api.current?.getFormula().onCalculationResultApplied(10000);
-        if (pending.current) persist.current();
-      },
-      async export(format) {
-        await api.current.getFormula().onCalculationResultApplied(10000);
-        if (format === "xlsx") {
-          persist.current();
-          const { exportXlsx } = await import("@suiteleaf/core/xlsx-export");
-          await exportBinary(
-            filename(file.title, "xlsx"),
-            await exportXlsx({ content: content.current }),
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          );
-          return;
-        }
-        const s = book.current.getActiveSheet();
-        const values = s.getDataRange().getRawValues();
-        await exportText(
-          filename(file.title, format),
-          Papa.unparse(values, {
-            delimiter: format === "tsv" ? "\t" : ",",
-            escapeFormulae: true,
-          }),
-          format === "tsv" ? "text/tab-separated-values" : "text/csv",
-        );
-      },
-      async print() {
-        await printSheet.current();
-      },
-      sheetActions: {
-        insertImage: () => {
-          const input = document.createElement("input");
-          input.type = "file";
-          input.accept =
-            "image/png,image/jpeg,image/gif,image/webp,image/svg+xml,.svg";
-          input.onchange = () => {
-            const chosen = input.files?.[0];
-            if (!chosen) return;
-            void readImageFile(chosen)
-              .then((src) => insertImage.current(src))
-              .catch((e: unknown) =>
-                error.current(e instanceof Error ? e.message : String(e)),
-              );
-          };
-          input.click();
-        },
-        dataValidation: () => {
-          callWhenMounted(dropdowns, (dropdown) => {
-            if (dropdown.openExisting()) return;
-            void api.current?.executeCommand(
-              "data-validation.operation.open-validation-panel",
-              {},
-            );
-          });
-        },
-        conditionalFormatting: () =>
-          void api.current?.executeCommand(
-            "sheet.operation.open.conditional.formatting.panel",
-            { value: 2 },
-          ),
-        openComments: () =>
-          void api.current?.executeCommand(
-            "sheet.operation.toggle-comment-panel",
-            {},
-          ),
-        insertComment: () =>
-          void api.current?.executeCommand(
-            "sheet.operation.show-comment-modal",
-            {},
-          ),
-        insertNote: () =>
-          void api.current?.executeCommand("sheet.operation.add-note-popup", {}),
-        commentName: () => callWhenMounted(tabSettings, (tabs) => tabs.openCommentName()),
-        tabsProtection: () => callWhenMounted(tabSettings, (tabs) => tabs.openTabs()),
-        openSheetList: () => callWhenMounted(sheetList, (list) => list.open()),
-        insertCheckbox: () => {
-          const range = book.current?.getActiveRange();
-          if (range) {
-            range.setDataValidation(
-              api.current
-                .newDataValidation()
-                .requireCheckbox("TRUE", "FALSE")
-                .build(),
-            );
-            const { startRow, startColumn } = range.getRange();
-            const unticked: Record<number, Record<number, { v: boolean }>> =
-              {};
-            range.getCellDatas().forEach((row: any[], r: number) =>
-              row.forEach((cell, c) => {
-                if (!cell?.f && !cell?.p && (cell?.v ?? "") === "")
-                  (unticked[startRow + r] ??= {})[startColumn + c] = {
-                    v: false,
-                  };
-              }),
-            );
-            void (
-              Object.keys(unticked).length
-                ? api.current.executeCommand("sheet.command.set-range-values", {
-                    value: unticked,
-                  })
-                : Promise.resolve()
-            ).then(() => persist.current());
-          }
-        },
-        insertDropdown: () => callWhenMounted(dropdowns, (dropdown) => dropdown.openNew()),
-        insertLink: () => links.current?.open(),
-        undo: () => void api.current?.undo(),
-        redo: () => void api.current?.redo(),
-        cut: () => void clipboard("cut"),
-        copy: () => void clipboard("copy"),
-        paste: () => void clipboard("paste"),
-        pasteTranspose,
-        deleteValues,
-        insertChart: () => startPanel("chart"),
-        insertPivot: () => startPanel("pivot"),
-        analyses: () => ({
-          charts: content.current.charts.map((c) => ({
-            id: c.id,
-            title: c.title,
-            invalid: !!c.invalid,
-          })),
-          pivots: content.current.pivots.map((p) => ({
-            id: p.id,
-            title: p.title,
-            invalid: !!p.invalid,
-            stale: pivotErrors.current.has(p.id),
-          })),
-        }),
-        editAnalysis: (kind, id) => startPanel(kind, id),
-        deleteChart: (id) => {
-          const chart = content.current.charts.find((c) => c.id === id);
-          if (!chart) return;
-          book.current?.getSheetBySheetId(chart.sheetId)?.removeFloatDom(chart.id);
-          content.current.charts = content.current.charts.filter((c) => c.id !== id);
-          charts.delete(id);
-          persist.current();
-        },
-        refreshPivot: (id) => {
-          const pivot = content.current.pivots.find((p) => p.id === id);
-          if (pivot) void refreshPivot(pivot).catch((e) => onError(String(e)));
-        },
-        copyPivot: (id) => {
-          const pivot = content.current.pivots.find((p) => p.id === id);
-          if (pivot) copyPivot(pivot);
-        },
-        insertFunction: (name: string) => functionActions.current.insertFunction(name),
-        toggleFilter,
-        createFilterView,
-        applyFilterView,
-        clearFilterView,
-        filterViewChoices: () => {
-          if (!readOnlyRef.current) return [];
-          try {
-            return filterViewChoices(sheetRows());
-          } catch {
-            return [];
-          }
-        },
-        sortRange: openSortRange,
-        namedRanges: () => names.current?.open(),
-        groupRows: () => callWhenMounted(rowGroups, (groups) => groups.groupRows()),
-        groupColumns: () =>
-          callWhenMounted(columnGroups, (groups) => groups.groupColumns()),
-        trimWhitespace: () => cleanup.current?.trim(),
-        removeDuplicates: () => cleanup.current?.duplicates(),
-        splitTextToColumns: () => cleanup.current?.split(),
-        hasFilter: () => !!book.current?.getActiveSheet()?.getFilter(),
-        formatCurrency,
-        formatPercent,
-        toggleBold,
-        toggleItalic,
-        toggleStrike,
-        clearFormatting: () => {
-          const r = book.current?.getActiveRange();
-          r?.clearFormat();
-          persist.current();
-        },
-        align: (al) => {
-          setHAlign(al);
-          book.current?.getActiveRange()?.setHorizontalAlignment(al);
-          persist.current();
-        },
-        rotateText,
-        unmergeCells,
-        alternatingColors,
-        view,
-        freezeRows: (count) => setFrozen("rows", count),
-        freezeColumns: (count) => setFrozen("columns", count),
-        showGridlines: (visible) =>
-          void book.current?.getActiveSheet()?.setHiddenGridlines(!visible),
-        insertPageBreak: () => printing.current?.insertPageBreak(),
-        openPrintSettings: () => printing.current?.openPrintSettings(),
-        showFormulaBar: (visible) => {
-          setFormulaBarVisible(visible);
-          api.current?.setUIVisible(
-            api.current.Enum.BuiltInUIPart.HEADER,
-            visible,
-          );
-        },
-        openSpelling: () => spelling.current?.open(),
-      },
-    });
-  }, [booted, file.title, onActions]);
-  const startPanel = (type: "chart" | "pivot", id?: string) => {
-    setPanel(type);
-    setEditing(id);
-    const c =
-      type === "chart"
-        ? content.current.charts.find((c) => c.id === id)
-        : content.current.pivots.find((c) => c.id === id);
-    const s = book.current.getActiveSheet();
-    setSourceSheet(c?.source.sheetId ?? s.getSheetId());
-    setRange(
-      c
-        ? rangeLabel(c.source)
-        : (book.current.getActiveRange()?.getA1Notation() ?? "A1:B5"),
+    reportActions(
+      sheetEditorActions({
+        ...formatting,
+        ...data,
+        setHAlign: format.setHAlign,
+        api,
+        book,
+        content,
+        file,
+        pending,
+        persist,
+        printSheet,
+        insertImage,
+        error,
+        onError,
+        dropdowns,
+        tabSettings,
+        sheetList,
+        links,
+        names,
+        rowGroups,
+        columnGroups,
+        cleanup,
+        printing,
+        spelling,
+        undoCollab,
+        redoCollab,
+        readOnlyRef,
+        pivotErrors,
+        functionActions,
+        startPanel,
+        refreshPivot,
+        copyPivot,
+      }),
     );
-    setTitle(c?.title ?? (type === "chart" ? "" : "Pivot table"));
-    if (type === "chart") setChartType((c as ChartDefinition)?.type ?? "bar");
-    else {
-      const p = c as PivotDefinition | undefined;
-      valueChosen.current = !!p;
-      setRowFields(p?.rows.join(",") ?? "0");
-      setColumnFields(p?.columns.join(",") ?? "");
-      setValueField(p?.value ?? 1);
-      setAggregate(p?.aggregate ?? "SUM");
-      setSecondAggregate(p?.measures?.[1]?.aggregate ?? "");
-      setFilterColumn(p?.filterColumn ?? -1);
-      setFilterValue(p?.filterValue ?? "");
-      setDateColumn(p?.dateColumn ?? -1);
-      setDateGroup(p?.dateGroup ?? "");
-      setSlicerColumn(p?.slicerColumn ?? -1);
-      setSlicerText(p?.slicerValues?.join(", ") ?? "");
-      setSortChoice(pivotSortChoice(p?.sort));
-      setDrillGroup("");
-      setCalculatedName(p?.calculated?.name ?? "");
-      setCalculatedOp(p?.calculated?.op ?? "multiply");
-      setCalculatedAmount(
-        p?.calculated ? String(p.calculated.amount) : "1",
-      );
-      setDifferenceName(p?.difference?.name ?? "");
-      setDifferenceLeft(p?.difference?.left ?? -1);
-      setDifferenceRight(p?.difference?.right ?? -1);
-    }
+  }, [booted, file.title, onActions]);
+  const analysis: AnalysisContext = {
+    api,
+    book,
+    content,
+    readRange,
+    persist,
+    refreshCharts,
+    pivotWrites,
+    writingPivot,
+    pivotErrors,
+    valueChosen,
+    panel,
+    setPanel,
+    form,
+    onError,
   };
+  const startPanel = (type: "chart" | "pivot", id?: string) =>
+    openAnalysisPanel(analysis, type, id);
   editChart.current = (id) => startPanel("chart", id);
   useEffect(() => {
     const container = host.current;
     if (!container) return;
-    // Like Sheets, double-clicking a chart opens its editor. Univer hands a
-    // selected chart's pointer events to the canvas (re-dispatching each
-    // press), so no native dblclick reaches the chart element.
-    let last = { id: "", time: 0, x: 0, y: 0 };
-    const chartAt = (x: number, y: number) =>
-      [...container.querySelectorAll<HTMLElement>("[data-chart-id]")].find((el) => {
-        const r = el.getBoundingClientRect();
-        return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
-      })?.dataset.chartId ?? "";
-    const pointerDown = (e: PointerEvent) => {
-      if (e.button !== 0 || !e.isTrusted) return;
-      const id = chartAt(e.clientX, e.clientY);
-      if (
-        id &&
-        id === last.id &&
-        e.timeStamp - last.time < 500 &&
-        Math.hypot(e.clientX - last.x, e.clientY - last.y) < 28
-      ) {
-        last = { id: "", time: 0, x: 0, y: 0 };
-        editChart.current(id);
-      } else last = { id, time: e.timeStamp, x: e.clientX, y: e.clientY };
-    };
-    const doubleClick = (event: MouseEvent) => {
-      const id = chartAt(event.clientX, event.clientY);
-      if (!id) return;
-      last = { id: "", time: 0, x: 0, y: 0 };
-      editChart.current(id);
-    };
-    container.addEventListener("pointerdown", pointerDown, true);
-    container.addEventListener("dblclick", doubleClick, true);
-    return () => {
-      container.removeEventListener("pointerdown", pointerDown, true);
-      container.removeEventListener("dblclick", doubleClick, true);
-    };
+    return watchChartDoubleClick(container, editChart);
   }, []);
-  const takeSelection = () => {
-    const r = book.current?.getActiveRange();
-    if (!r) return;
-    setSourceSheet(book.current.getActiveSheet().getSheetId());
-    setRange(r.getA1Notation());
-  };
-  const refreshPivot = async (p: PivotDefinition, onlyIfChanged = false) => {
-    await api.current.getFormula().onCalculationResultApplied(10000);
-    const s = book.current.getSheetBySheetId(p.targetSheetId);
-    if (!s) throw new Error("The pivot worksheet has been deleted.");
-    const values = slicePivot(readRange(p.source), {
-      dateColumn: p.dateColumn,
-      dateGroup: p.dateGroup,
-      slicerColumn: p.slicerColumn,
-      slicerValues: p.slicerValues,
-    });
-    const result =
-      p.measures && p.measures.length > 1
-        ? pivotMeasures(values, p, p.measures)
-        : pivotResult(values, p);
-    const numberFormat =
-      p.aggregate === "COUNT"
-        ? undefined
-        : valueFormat(
-            values,
-            book.current
-              .getSheetBySheetId(p.source.sheetId)
-              .getRange(rangeLabel(p.source))
-              .getNumberFormats(),
-            p.value,
-          );
-    const signature = JSON.stringify([result, numberFormat]);
-    pivotErrors.current.delete(p.id);
-    if (onlyIfChanged && pivotWrites.current.get(p.id) === signature) return;
-    const permission = s.getWorksheetPermission();
-    const grow =
-      result.length > s.getMaxRows() || result[0].length > s.getMaxColumns();
-    try {
-      if (grow) {
-        if (permission.isProtected()) await permission.setEditable();
-        if (result.length > s.getMaxRows())
-          s.insertRows(s.getMaxRows() - 1, result.length - s.getMaxRows() + 1);
-        if (result[0].length > s.getMaxColumns())
-          s.insertColumns(
-            s.getMaxColumns() - 1,
-            result[0].length - s.getMaxColumns() + 1,
-          );
-      }
-      // A direct mutation keeps recalculation out of the undo stack, so Cmd+Z after a
-      // source edit undoes the edit itself; the pivot then follows it back.
-      writingPivot.current = true;
-      try {
-        api.current.syncExecuteCommand("sheet.mutation.set-range-values", {
-          unitId: book.current.getId(),
-          subUnitId: p.targetSheetId,
-          cellValue: pivotCells(result, {
-            rowFields: p.rows.length,
-            numberFormat,
-            previous: {
-              rows: s.getLastRow() + 1,
-              columns: s.getLastColumn() + 1,
-            },
-          }),
-          isOverrideStyle: true,
-        });
-      } finally {
-        writingPivot.current = false;
-      }
-      pivotWrites.current.set(p.id, signature);
-      p.invalid = false;
-    } finally {
-      if (grow || !permission.isProtected()) {
-        if (!permission.isProtected())
-          await permission.protect({ name: "Generated pivot" });
-        await permission.setReadOnly();
-      }
-    }
-    persist.current();
-  };
+  const takeSelection = () => takeAnalysisSelection(analysis);
+  const refreshPivot = (p: PivotDefinition, onlyIfChanged = false) =>
+    refreshPivotOn(analysis, p, onlyIfChanged);
   refreshPivots.current = (sheetIds) => {
     for (const p of content.current.pivots)
       if (
@@ -2952,262 +570,37 @@ export default function Sheets({
           setRevision((v) => v + 1);
         });
   };
-  const copyPivot = (p: PivotDefinition) => {
-    const s = book.current.getSheetBySheetId(p.targetSheetId);
-    if (!s) return;
-    const rows = s.getLastRow() + 1,
-      columns = s.getLastColumn() + 1;
-    if (rows < 1 || columns < 1) return;
-    const cells = s.getRange(0, 0, rows, columns).getCellDatas();
-    const copy = book.current.create(
-      copySheetName(
-        p.title,
-        book.current.getSheets().map((x: any) => x.getSheetName()),
-      ),
-      Math.max(1000, rows),
-      Math.max(26, columns),
-    );
-    copy
-      .getRange(0, 0, rows, columns)
-      .setValues(cells.map((r: any[]) => r.map((c) => c ?? {})));
-    book.current.setActiveSheet(copy.getSheetId());
-    persist.current();
-  };
-  const submit = async () => {
-    try {
-      await api.current.getFormula().onCalculationResultApplied(10000);
-      const source = parseRange(range, sourceSheet);
-      const values = readRange(source);
-      if (values.length < 2 || values[0].length < 2)
-        throw new Error(
-          "Select a header row and at least two columns with data.",
-        );
-      if (panel === "chart") {
-        const old = content.current.charts.find((c) => c.id === editing);
-        const c: ChartDefinition = {
-          id: old?.id ?? crypto.randomUUID(),
-          title: title.trim() || suggestedChartTitle(values[0]),
-          type: chartType,
-          source,
-          sheetId: old?.sheetId ?? book.current.getActiveSheet().getSheetId(),
-          x: old?.x ?? 320,
-          y:
-            old?.y ??
-            Array.from(
-              {
-                length:
-                  book.current.getActiveSheet().getDataRange().getLastRow() + 1,
-              },
-              (_, row) => book.current.getActiveSheet().getRowHeight(row),
-            ).reduce((total: number, height: number) => total + height, 48),
-          width: old?.width ?? 520,
-          height: old?.height ?? 340,
-        };
-        content.current.charts = content.current.charts
-          .filter((x) => x.id !== c.id)
-          .concat(c);
-        refreshCharts.current();
-        persist.current();
-      } else {
-        const indices = (v: string) =>
-          v.trim() ? v.split(",").map((n) => Number(n.trim())) : [];
-        const rows = indices(rowFields),
-          columns = indices(columnFields);
-        const slice = pivotSliceFromForm({
-          dateColumn,
-          dateGroup,
-          slicerColumn,
-          slicerText,
-        });
-        const grouped = slicePivot(values, slice);
-        if ([...rows, ...columns].some((n) => !Number.isInteger(n) || n < 0))
-          throw new Error("Use field indexes such as 0 or 0,1.");
-        const amount = Number(calculatedAmount);
-        const calculated =
-          calculatedName.trim() && Number.isFinite(amount)
-            ? { name: calculatedName.trim(), op: calculatedOp, amount }
-            : undefined;
-        const difference = pivotDifferenceFromForm({
-          name: differenceName,
-          left: differenceLeft,
-          right: differenceRight,
-          columnCount: values[0]?.length ?? 0,
-        });
-        const value = valueChosen.current ? valueField : defaultValueField(values, rows);
-        const measures = secondAggregate
-          ? [
-              { value, aggregate },
-              { value, aggregate: secondAggregate },
-            ]
-          : undefined;
-        const config = {
-          rows,
-          columns,
-          value,
-          aggregate,
-          filterColumn,
-          filterValue,
-          calculated,
-          difference,
-          measures,
-          sort: pivotSortFromForm(sortChoice),
-          ...slice,
-        };
-        const result = pivotResult(grouped, config);
-        const name = title.trim() || "Pivot table";
-        let p = content.current.pivots.find((p) => p.id === editing);
-        if (!p) {
-          const target = book.current.create(
-            uniqueSheetName(
-              name.slice(0, 31),
-              book.current.getSheets().map((s: any) => s.getSheetName()),
-            ),
-            Math.max(1000, result.length),
-            Math.max(26, result[0].length),
-          );
-          p = {
-            id: crypto.randomUUID(),
-            title: name,
-            source,
-            targetSheetId: target.getSheetId(),
-            ...config,
-          };
-          content.current.pivots.push(p);
-        } else
-          Object.assign(p, { title: name, source, ...config, invalid: false });
-        await refreshPivot(p);
-        book.current.setActiveSheet(p.targetSheetId);
-      }
-      setPanel(null);
-    } catch (e) {
-      onError(e instanceof Error ? e.message : String(e));
-    }
-  };
+  const copyPivot = (p: PivotDefinition) => copyPivotOn(analysis, p);
+  const submit = () => submitAnalysis(analysis);
   const submitRef = useRef(submit);
   submitRef.current = submit;
   const sortRef = useRef(sortRange);
   sortRef.current = sortRange;
-  useAgentHost("editor", () => {
-    const ctx: SheetsAgentContext | null = ready
-      ? {
-          api: api.current,
-          book: book.current,
-          title: file.title,
-          content: () => content.current,
-          persist: () => persist.current(),
-          settle: async () => {
-            await api.current?.getFormula().onCalculationResultApplied(10000);
-          },
-          openPanel: (type, v, id) => {
-            setPanel(type);
-            setEditing(id);
-            setSourceSheet(v.sheetId);
-            setRange(v.range);
-            setTitle(v.title);
-            if (type === "chart") setChartType(v.chartType ?? "bar");
-            else {
-              valueChosen.current = v.value !== undefined;
-              setRowFields((v.rows ?? [0]).join(","));
-              setColumnFields((v.columns ?? []).join(","));
-              setValueField(v.value ?? 1);
-              setAggregate(v.aggregate ?? "SUM");
-              setSecondAggregate("");
-              setFilterColumn(v.filterColumn ?? -1);
-              setFilterValue(v.filterValue ?? "");
-              setSortChoice("");
-              setDrillGroup("");
-            }
-          },
-          submitPanel: () => submitRef.current(),
-          refreshCharts: () => refreshCharts.current(),
-          copyPivot,
-          showSort: (r, initialRules, initialHeader) => {
-            const sheet = book.current.getActiveSheet();
-            const target = sheet.getRange(
-              r.startRow,
-              r.startColumn,
-              r.endRow - r.startRow + 1,
-              r.endColumn - r.startColumn + 1,
-            );
-            setSorting({
-              range: target.getRange(),
-              values: target.getValues(),
-              initialRules,
-              initialHeader,
-            });
-          },
-          sort: (rules, hasHeader) => sortRef.current(rules, hasHeader),
-          freeze: setFrozen,
-          groupRows: (startRow, endRow) =>
-            rowGroups.current?.groupSpan(startRow, endRow) ?? {
-              ok: false,
-              message: "Row groups are not ready.",
-            },
-          showOnlyRow: (row) =>
-            rowGroups.current?.showOnlyRow(row) ?? {
-              ok: false,
-              message: "Row groups are not ready.",
-            },
-          groupColumns: (startColumn, endColumn) =>
-            columnGroups.current?.groupSpan(startColumn, endColumn) ?? {
-              ok: false,
-              message: "Column groups are not ready.",
-            },
-          showOnlyColumn: (column) =>
-            columnGroups.current?.showOnlyColumn(column) ?? {
-              ok: false,
-              message: "Column groups are not ready.",
-            },
-          insertCheckbox: () => sheetActionsRef.current?.sheetActions?.insertCheckbox?.(),
-          exportAs: (format) => sheetActionsRef.current!.export(format),
-          setAuthor: cluster ? undefined : setLocalName,
-          signature: () =>
-            currentAuthor(cluster ? getSession()?.user : null).signature,
-          undoCount: () =>
-            injectorRef.current?.get(IUndoRedoService).getUndoRedoStatus(book.current.getId()).undos ?? 0,
-        }
-      : null;
-    return {
-      kind: "sheet",
-      snapshot: () => (ctx ? sheetSnapshot(ctx) : "A spreadsheet is opening."),
-      tools: ctx ? sheetTools(ctx) : [],
-      beforeTool: () => ctx && sheetBeforeTool(ctx),
-      review: () => (ctx ? sheetReview(ctx) : []),
-    };
+  useSheetAgent(ready, {
+    api,
+    book,
+    file,
+    content,
+    persist,
+    setPanel,
+    form,
+    valueChosen,
+    submitRef,
+    refreshCharts,
+    copyPivot,
+    setSorting,
+    sortRef,
+    setFrozen,
+    rowGroups,
+    columnGroups,
+    sheetActionsRef,
+    cluster,
+    injectorRef,
   });
-  let fields: CellValue[] = [],
-    shownValueField = valueField;
-  try {
-    const values = readRange(parseRange(range, sourceSheet));
-    fields = values[0] ?? [];
-    // Until a value field is chosen, follow the range and rows to the first numeric field.
-    if (panel === "pivot" && !valueChosen.current)
-      shownValueField = defaultValueField(
-        values,
-        rowFields ? rowFields.split(",").map(Number) : [],
-      );
-  } catch {
-    /* The inline editor allows temporarily incomplete ranges. */
-  }
   const items = content.current;
   useEffect(() => {
     if (!ready || !api.current) return;
-    for (const table of items.tables ?? []) {
-      const box = tableOutline(table);
-      if (!box) continue;
-      try {
-        const sheet = book.current?.getSheetBySheetId?.(box.sheetId);
-        const rows = box.endRow - box.startRow + 1;
-        const columns = box.endColumn - box.startColumn + 1;
-        sheet?.getRange(box.startRow, box.startColumn, rows, columns)?.setBorder?.(
-          api.current.Enum.BorderType.ALL,
-          api.current.Enum.BorderStyleTypes.THIN,
-          "#5f6368",
-        );
-      } catch {
-        // An inactive sheet may not accept a border until it is shown.
-      }
-    }
+    outlineTables(api, book, items.tables);
   }, [ready, items.tables]);
   const activePivot = ready
     ? items.pivots.find(
@@ -3226,35 +619,13 @@ export default function Sheets({
     injectorRef,
     persist: () => persist.current(),
     notify: setNotice,
-    formulaNote: (formula) => {
-      const tables = content.current.tables ?? [];
-      const sheetId = book.current?.getActiveSheet?.()?.getSheetId?.() ?? "";
-      const headers: Record<string, string[]> = {};
-      for (const table of tables) {
-        try {
-          const sheet = book.current?.getSheetBySheetId?.(table.sheetId);
-          const width = table.endColumn - table.startColumn + 1;
-          const row = sheet?.getRange(table.headerRow, table.startColumn, 1, width).getValues()?.[0] ?? [];
-          headers[table.name] = row.map((value: unknown) => (value == null ? "" : String(value)));
-        } catch {
-          headers[table.name] = [];
-        }
-      }
-      return structuredFormulaNote(formula, tables, headers, sheetId);
-    },
+    formulaNote: (formula) => tableFormulaNote(content, book, formula),
   });
   functionActions.current = {
     insertFunction: functions.insertFunction,
     autoSum: functions.autoSum,
   };
-  let pivotSource: (string | number | boolean | null)[][] = [];
-  if (panel === "pivot") {
-    try {
-      pivotSource = readRange(parseRange(range, sourceSheet));
-    } catch {
-      pivotSource = [];
-    }
-  }
+  const { fields, shownValueField, pivotSource } = analysisFields(analysis);
   return (
     <div
       className={`sheets-editor${readOnly ? " view-locked" : ""}`}
@@ -3274,648 +645,76 @@ export default function Sheets({
           </button>
         </div>
       ) : null}
-      {ready && api.current && engine.current ? (
-        <NamedRanges
-          ref={names}
-          api={api.current}
-          engine={engine.current}
-          persist={() => persist.current()}
-        />
-      ) : null}
-      {ready && api.current && engine.current ? (
-        <SheetPrint
-          ref={printing}
-          api={api.current}
-          engine={engine.current}
-          content={content}
-          persist={() => persist.current()}
-          onPrint={() => printSheet.current()}
-        />
-      ) : null}
-      {ready && api.current && engine.current ? (
-        <SheetCleanup
-          ref={cleanup}
-          api={api.current}
-          engine={engine.current}
-          persist={() => persist.current()}
-          onError={onError}
-        />
-      ) : null}
-      {ready ? (
-        <SheetSpelling
-          ref={spelling}
-          bookRef={book}
-          hostRef={host}
-          engineRef={engine}
-          fileId={file.id}
-          ready={ready}
-          language={proofing}
-          persist={() => persist.current()}
-        />
-      ) : null}
-      {ready && api.current && engine.current ? (
-        <SheetRowGroups
-          ref={rowGroups}
-          api={api.current}
-          engine={engine.current}
-          persist={() => persist.current()}
-        />
-      ) : null}
-      {ready && api.current && engine.current ? (
-        <SheetColumnGroups
-          ref={columnGroups}
-          api={api.current}
-          engine={engine.current}
-          persist={() => persist.current()}
-        />
-      ) : null}
-      {ready && api.current ? (
-        <SheetFeatures
-          ref={tabSettings}
-          api={api.current}
-          persist={() => persist.current()}
-          onError={onError}
-        />
-      ) : null}
-      {ready && api.current ? (
-        <SheetList
-          ref={sheetList}
-          api={api.current}
-          persist={() => persist.current()}
-          onError={onError}
-        />
-      ) : null}
-      {costOpen ? (
-        <SheetCostNote content={content.current} onOpenQuery={() => setQueryOpen(true)} />
-      ) : null}
-      {auditOpen ? <SheetAuditNote content={content.current} /> : null}
-      {languageOpen ? (
-        <SheetLanguageField
-          language={proofing}
-          onChange={(language) => {
-            content.current.proofingLanguage = language;
-            setProofing(language);
-            persist.current();
-          }}
-        />
-      ) : null}
-      <SheetTableNote tables={content.current.tables ?? []} />
-      {sheetAccessOpen ? (
-        <>
-          <SheetAccessNote
-            content={content.current}
-            onSelect={(sheetId, column, row = 0) => {
-              const workbook = book.current as
-                | {
-                    getSheetBySheetId?: (id: string) => { getRange: (row: number, column: number, rows: number, columns: number) => { activate: () => void } } | null;
-                  }
-                | null;
-              workbook?.getSheetBySheetId?.(sheetId)?.getRange(row, column, 1, 1).activate();
-            }}
-          />
-          <SheetCellFields
-            sheets={content.current.workbook.sheetOrder.map((id) => {
-              const sheet = content.current.workbook.sheets[id];
-              return {
-                id,
-                name: sheet?.name?.trim() || "Sheet",
-                grid: sheet?.cellData ?? {},
-              };
-            })}
-            disabled={readOnly}
-            onEdit={(row, column, value, sheetId) => {
-              const target = sheetId || content.current.workbook.sheetOrder[0];
-              void api.current?.executeCommand(SetRangeValuesCommand.id, {
-                ...(target ? { subUnitId: target } : {}),
-                range: {
-                  startRow: row,
-                  endRow: row,
-                  startColumn: column,
-                  endColumn: column,
-                },
-                value: { v: value, p: null },
-              });
-            }}
-          />
-        </>
-      ) : null}
-      {queryOpen ? (
-        <SheetQueryPanel
-          disabled={readOnly}
-          initial={savedSheetStep(content.current.queries)}
-          schedule={savedSheetSchedule(content.current.queries)}
-          onRememberSchedule={(minutes, source) => {
-            content.current.queries = rememberSheetSchedule(content.current.queries, minutes, source);
-            persist.current();
-          }}
-          onForgetSchedule={() => {
-            content.current.queries = forgetSheetSchedule(content.current.queries);
-            persist.current();
-          }}
-          onCheck={(step) => {
-            const sheet = book.current?.getActiveSheet?.();
-            if (!sheet) return "The spreadsheet is not open.";
-            return checkSheetQuery(sheet, step);
-          }}
-          onLocalTable={(rows) => {
-            const sheet = book.current?.getActiveSheet?.();
-            const cell = book.current?.getActiveCell?.();
-            const values = localTableValues(rows);
-            if (!sheet || !cell || values.length === 0 || values[0].length === 0) {
-              return "The spreadsheet is not open.";
-            }
-            const height = values.length;
-            const width = values[0].length;
-            const existing = sheet.getRange(cell.getRow(), cell.getColumn(), height, width).getRawValues?.() ?? [];
-            if (localTableBlocked(existing)) return "A cell already has a value.";
-            sheet.getRange(cell.getRow(), cell.getColumn(), height, width).setValues(values);
-            persist.current();
-            return height === 2 ? "The table has 1 row." : `The table has ${height - 1} rows.`;
-          }}
-          onApply={(step, previous) => {
-            const sheet = book.current?.getActiveSheet?.();
-            if (!sheet)
-              return {
-                placement: previous,
-                message: "The spreadsheet is not open.",
-                changed: false,
-              } satisfies SheetQueryResult;
-            try {
-              const result = applySheetQuery(sheet, step, previous, new Date().toISOString());
-              if (result.changed) {
-                content.current.queries = rememberSheetStep(content.current.queries, step);
-                persist.current();
-              }
-              return result;
-            } catch (caught) {
-              return {
-                placement: previous,
-                message: caught instanceof Error ? caught.message : String(caught),
-                changed: false,
-              };
-            }
-          }}
-        />
-      ) : null}
-      {goalOpen ? (
-        <SheetGoalPanel
-          disabled={readOnly}
-          onSeek={async ({ formula, target, low, high, shouldStop }) => {
-            const address = parseCellAddress(formula);
-            const sheet = book.current?.getActiveSheet?.();
-            const active = book.current?.getActiveCell?.();
-            if (!address) return { message: "Name the formula cell, such as B2.", wrote: false };
-            if (!sheet || !active) return { message: "Select the input cell.", wrote: false };
-            try {
-              const result = await seekOnSheet({
-                input: { row: active.getRow(), column: active.getColumn() },
-                formula: address,
-                target,
-                low,
-                high,
-                read: (cell) => {
-                  const range = sheet.getRange(cell.row, cell.column, 1, 1);
-                  const raw = range.getFormulas?.()?.[0]?.[0];
-                  return {
-                    formula: typeof raw === "string" ? raw : "",
-                    value: range.getValues?.()?.[0]?.[0],
-                  };
-                },
-                write: (cell, value) => {
-                  sheet.getRange(cell.row, cell.column, 1, 1).setValues([[value]]);
-                },
-                calculate: async () => {
-                  await api.current?.getFormula()?.onCalculationResultApplied(10000);
-                },
-                shouldStop,
-              });
-              if (result.wrote) persist.current();
-              return result;
-            } catch (caught) {
-              return {
-                message: caught instanceof Error ? caught.message : String(caught),
-                wrote: false,
-              };
-            }
-          }}
-          onSolve={async ({ formula, second, third, target, low, high, secondLow, secondHigh, thirdLow, thirdHigh, atMost, shouldStop }) => {
-            const address = parseCellAddress(formula);
-            const other = parseCellAddress(second);
-            const extra = third ? parseCellAddress(third) : null;
-            const sheet = book.current?.getActiveSheet?.();
-            const active = book.current?.getActiveCell?.();
-            if (third && !extra) return { message: "Name the third input, such as D2.", wrote: false };
-            if (!address || !other) return { message: "Name the formula cell, such as B2.", wrote: false };
-            if (!sheet || !active) return { message: "Select the input cell.", wrote: false };
-            const read = (cell: { row: number; column: number }) => {
-              const range = sheet.getRange(cell.row, cell.column, 1, 1);
-              const raw = range.getFormulas?.()?.[0]?.[0];
-              return {
-                formula: typeof raw === "string" ? raw : "",
-                value: range.getValues?.()?.[0]?.[0],
-              };
-            };
-            try {
-              const result = await solveOnSheet({
-                inputs: extra
-                  ? [{ row: active.getRow(), column: active.getColumn() }, other, extra]
-                  : [{ row: active.getRow(), column: active.getColumn() }, other],
-                formula: address,
-                target,
-                lows: extra ? [low, secondLow, thirdLow ?? secondLow] : [low, secondLow],
-                highs: extra ? [high, secondHigh, thirdHigh ?? secondHigh] : [high, secondHigh],
-                atMost,
-                read,
-                write: (cell, value) => {
-                  sheet.getRange(cell.row, cell.column, 1, 1).setValues([[value]]);
-                },
-                calculate: async () => {
-                  await api.current?.getFormula()?.onCalculationResultApplied(10000);
-                },
-                shouldStop,
-              });
-              if (result.wrote) persist.current();
-              return result;
-            } catch {
-              return { message: "The formula could not be calculated. The inputs were put back.", wrote: false };
-            }
-          }}
-        />
-      ) : null}
-      <div
-        className="sheets-toolbar"
-        role="toolbar"
-        aria-label="Spreadsheet formatting"
-      >
-        <MenuSearchPill />
-
-        <Tool
-          label="Undo (Cmd+Z)"
-          disabled={readOnly}
-          onClick={() => void api.current?.undo()}
-        >
-          <Undo2 size={16} />
-        </Tool>
-        <Tool
-          label="Redo (Cmd+Y)"
-          disabled={readOnly}
-          onClick={() => void api.current?.redo()}
-        >
-          <Redo2 size={16} />
-        </Tool>
-        <Tool
-          label="Print (Cmd+P)"
-          onClick={() => {
-            void printSheet.current().catch((e: unknown) =>
-              onError(e instanceof Error ? e.message : String(e)),
-            );
-          }}
-        >
-          <Printer size={16} />
-        </Tool>
-        <Tool
-          label="Language"
-          active={languageOpen}
-          onClick={() => setLanguageOpen((open) => !open)}
-        >
-          <span>Language</span>
-        </Tool>
-        <Tool
-          label="Audit"
-          active={auditOpen}
-          onClick={() => setAuditOpen((open) => !open)}
-        >
-          <span>Audit</span>
-        </Tool>
-        <Tool
-          label="Cost"
-          active={costOpen}
-          onClick={() => setCostOpen((open) => !open)}
-        >
-          <Timer size={16} />
-        </Tool>
-        <Tool
-          label="Accessibility"
-          active={sheetAccessOpen}
-          onClick={() => setSheetAccessOpen((open) => !open)}
-        >
-          <ListChecks size={16} />
-        </Tool>
-        <Tool
-          label="Query"
-          active={queryOpen}
-          onClick={() => setQueryOpen((open) => !open)}
-        >
-          <Filter size={16} />
-        </Tool>
-        <Tool
-          label="Goal Seek"
-          active={goalOpen}
-          onClick={() => setGoalOpen((open) => !open)}
-        >
-          <Target size={16} />
-        </Tool>
-        <Tool label="Paint format" disabled={readOnly} onClick={() => {}}>
-          <PaintRoller size={16} />
-        </Tool>
-
-        <select
-          className="toolbar-select zoom-select"
-          aria-label="Zoom"
-          value={zoom}
-          onChange={(e) => handleZoom(e.target.value)}
-        >
-          <option value="50%">50%</option>
-          <option value="75%">75%</option>
-          <option value="90%">90%</option>
-          <option value="100%">100%</option>
-          <option value="125%">125%</option>
-          <option value="150%">150%</option>
-          <option value="200%">200%</option>
-        </select>
-
-        <span className="toolbar-divider" />
-
-        <Tool label="Format as currency" disabled={readOnly} onClick={formatCurrency}>
-          <span style={{ fontSize: 14, fontWeight: 600 }}>$</span>
-        </Tool>
-        <Tool label="Format as percent" disabled={readOnly} onClick={formatPercent}>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>%</span>
-        </Tool>
-        <Tool label="Decrease decimal places" disabled={readOnly} onClick={subtractDecimal}>
-          <span style={{ fontSize: 12, fontWeight: 600 }}>.0←</span>
-        </Tool>
-        <Tool label="Increase decimal places" disabled={readOnly} onClick={addDecimal}>
-          <span style={{ fontSize: 12, fontWeight: 600 }}>.00→</span>
-        </Tool>
-        <details className="more-formats">
-          <summary
-            className="tool more-formats-btn"
-            title="More formats"
-            aria-label="More formats"
-            aria-disabled={readOnly}
-          >
-            <span style={{ fontSize: 12, fontWeight: 600 }}>123</span>
-            <ChevronDown size={11} />
-          </summary>
-          <div className="more-formats-menu analysis-list">
-            {Object.entries(numberFormatsByGroup()).map(
-              ([group, items]: [string, any[]]) => (
-                <div key={group}>
-                  <div className={`more-formats-group ${group}`}>{group}</div>
-                  {items.map((f) => (
-                    <button
-                      key={f.id}
-                      type="button"
-                      className="more-formats-item"
-                      title={f.code}
-                      onClick={() => applyNamedFormatNow(f.id)}
-                    >
-                      {f.label}
-                    </button>
-                  ))}
-                </div>
-              ),
-            )}
-          </div>
-        </details>
-
-        <span className="toolbar-divider" />
-
-        <Tool
-          label="Insert comment (Cmd+Option+M)"
-          disabled={readOnly}
-          onClick={() =>
-            void api.current?.executeCommand(
-              "sheet.operation.show-comment-modal",
-            )
-          }
-        >
-          <MessageSquarePlus size={16} />
-        </Tool>
-
-        <button
-          type="button"
-          className="tool chart-btn"
-          title="Insert chart"
-          aria-label="Insert chart"
-          disabled={!ready || readOnly}
-          onClick={() => startPanel("chart")}
-        >
-          <BarChart3 size={16} />
-        </button>
-
-        <button
-          type="button"
-          className={`tool filter-btn ${book.current?.getActiveSheet()?.getFilter() ? "active" : ""}`}
-          title={
-            book.current?.getActiveSheet()?.getFilter()
-              ? "Remove filter"
-              : "Create a filter"
-          }
-          aria-label={
-            book.current?.getActiveSheet()?.getFilter()
-              ? "Remove filter"
-              : "Create a filter"
-          }
-          aria-pressed={!!book.current?.getActiveSheet()?.getFilter()}
-          disabled={!ready || readOnly}
-          onClick={toggleFilter}
-        >
-          <Filter size={16} />
-        </button>
-
-        <button
-          type="button"
-          className="tool functions-btn"
-          title="Functions"
-          aria-label="Functions"
-          disabled={readOnly}
-          onClick={() => functions.autoSum()}
-        >
-          <span
-            style={{
-              fontFamily: "serif",
-              fontStyle: "italic",
-              fontWeight: "bold",
-              fontSize: 14,
-            }}
-          >
-            ∑
-          </span>
-          <ChevronDown size={10} />
-        </button>
-
-        <button
-          type="button"
-          className="tool pivot-btn"
-          title="Pivot table"
-          aria-label="Pivot table"
-          disabled={!ready || readOnly}
-          onClick={() => startPanel("pivot")}
-        >
-          <TableProperties size={16} />
-        </button>
-      </div>
-      <div
-        className="sheets-toolbar sheets-format-toolbar"
-        role="toolbar"
-        aria-label="Text formatting"
-      >
-        <FontControls disabled={readOnly}>
-        <select
-          className="toolbar-select font-family-select"
-          aria-label="Font family"
-          disabled={readOnly}
-          value={fontFamily}
-          onChange={(e) => handleFontFamily(e.target.value)}
-        >
-          {!SHEET_FONTS.includes(fontFamily) ? <option value={fontFamily}>{fontFamily}</option> : null}
-          {SHEET_FONTS.map((font) => (
-            <option key={font} value={font}>
-              {font}
-            </option>
-          ))}
-        </select>
-
-        <span className="toolbar-divider" />
-
-        <div className="font-size-stepper">
-          <button
-            type="button"
-            className="stepper-btn"
-            title="Decrease font size"
-            aria-label="Decrease font size"
-            disabled={readOnly}
-            onClick={() => handleFontSize(Math.max(6, fontSize - 1))}
-          >
-            <Minus size={12} />
-          </button>
-          <input
-            className="font-size-input"
-            aria-label="Font size"
-            disabled={readOnly}
-            value={fontSize}
-            onChange={(e) => handleFontSize(Number(e.target.value) || 10)}
-          />
-          <button
-            type="button"
-            className="stepper-btn"
-            title="Increase font size"
-            aria-label="Increase font size"
-            disabled={readOnly}
-            onClick={() => handleFontSize(Math.min(72, fontSize + 1))}
-          >
-            <Plus size={12} />
-          </button>
-        </div>
-        </FontControls>
-
-        <span className="toolbar-divider" />
-
-        <Tool label="Bold (Cmd+B)" disabled={readOnly} active={isBold} onClick={toggleBold}>
-          <Bold size={16} />
-        </Tool>
-        <Tool label="Italic (Cmd+I)" disabled={readOnly} active={isItalic} onClick={toggleItalic}>
-          <Italic size={16} />
-        </Tool>
-        <Tool
-          label="Strikethrough (Alt+Shift+5)"
-          disabled={readOnly}
-          active={isStrike}
-          onClick={toggleStrike}
-        >
-          <Strikethrough size={16} />
-        </Tool>
-        <ColorTool
-          label="Text color"
-          value={textColor}
-          disabled={readOnly}
-          onCommit={handleTextColor}
-        >
-          <span className="text-color-letter">A</span>
-        </ColorTool>
-        <ColorTool
-          label="Fill color"
-          value={fillColor}
-          disabled={readOnly}
-          onCommit={handleFillColor}
-        >
-          <PaintBucket size={16} />
-        </ColorTool>
-
-        <button
-          type="button"
-          className="tool borders-btn"
-          title="Borders"
-          aria-label="Borders"
-          disabled={readOnly}
-          onClick={applyBorders}
-        >
-          <Grid size={16} />
-          <ChevronDown size={10} />
-        </button>
-
-        <button
-          type="button"
-          className="tool merge-btn"
-          title="Merge cells"
-          aria-label="Merge cells"
-          disabled={readOnly}
-          onClick={mergeCells}
-        >
-          <Split size={16} />
-          <ChevronDown size={10} />
-        </button>
-
-        <span className="toolbar-divider" />
-
-        <button
-          type="button"
-          className="tool align-btn"
-          title="Horizontal align"
-          aria-label="Horizontal align"
-          disabled={readOnly}
-          onClick={cycleHorizontalAlign}
-        >
-          <AlignLeft size={16} />
-          <ChevronDown size={10} />
-        </button>
-
-        <button
-          type="button"
-          className="tool valign-btn"
-          title="Vertical align"
-          aria-label="Vertical align"
-          disabled={readOnly}
-          onClick={cycleVerticalAlign}
-        >
-          <AlignVerticalSpaceAround size={16} />
-          <ChevronDown size={10} />
-        </button>
-
-        <button
-          type="button"
-          className="tool wrap-btn"
-          title="Text wrapping"
-          aria-label="Text wrapping"
-          disabled={readOnly}
-          onClick={toggleWrap}
-        >
-          <WrapText size={16} />
-          <ChevronDown size={10} />
-        </button>
-
-        <span className="toolbar-divider" />
-
-        <Tool
-          label="Insert link (Cmd+K)"
-          disabled={readOnly}
-          onClick={() => links.current?.open()}
-        >
-          <Link size={16} />
-        </Tool>
-      </div>
+      <SheetToolDialogs
+        ready={ready}
+        api={api}
+        engine={engine}
+        book={book}
+        host={host}
+        file={file}
+        content={content}
+        persist={persist}
+        printSheet={printSheet}
+        onError={onError}
+        proofing={proofing}
+        names={names}
+        printing={printing}
+        cleanup={cleanup}
+        spelling={spelling}
+        rowGroups={rowGroups}
+        columnGroups={columnGroups}
+        tabSettings={tabSettings}
+        sheetList={sheetList}
+      />
+      <SheetSidePanels
+        costOpen={costOpen}
+        auditOpen={auditOpen}
+        languageOpen={languageOpen}
+        sheetAccessOpen={sheetAccessOpen}
+        queryOpen={queryOpen}
+        goalOpen={goalOpen}
+        setQueryOpen={setQueryOpen}
+        content={content}
+        book={book}
+        api={api}
+        persist={persist}
+        readOnly={readOnly}
+        proofing={proofing}
+        setProofing={setProofing}
+      />
+      <SheetToolbar
+        readOnly={readOnly}
+        ready={ready}
+        api={api}
+        book={book}
+        undoCollab={undoCollab}
+        redoCollab={redoCollab}
+        printSheet={printSheet}
+        onError={onError}
+        languageOpen={languageOpen}
+        setLanguageOpen={setLanguageOpen}
+        auditOpen={auditOpen}
+        setAuditOpen={setAuditOpen}
+        costOpen={costOpen}
+        setCostOpen={setCostOpen}
+        sheetAccessOpen={sheetAccessOpen}
+        setSheetAccessOpen={setSheetAccessOpen}
+        queryOpen={queryOpen}
+        setQueryOpen={setQueryOpen}
+        goalOpen={goalOpen}
+        setGoalOpen={setGoalOpen}
+        format={format}
+        commands={formatting}
+        startPanel={startPanel}
+        toggleFilter={data.toggleFilter}
+        functions={functions}
+      />
+      <SheetFormatToolbar
+        readOnly={readOnly}
+        format={format}
+        commands={formatting}
+        links={links}
+      />
       {filterView ? (
         <div
           className="filter-view-bar"
@@ -3934,46 +733,20 @@ export default function Sheets({
         </div>
       ) : null}
       {activePivot ? (
-        <div
-          className="pivot-bar"
-          role="region"
-          aria-label="Pivot table details"
-        >
-          <Lock size={14} aria-hidden="true" />
-          <span className="pivot-bar-text">
-            <strong>Pivot table</strong> from{" "}
-            {book.current
-              ?.getSheetBySheetId(activePivot.source.sheetId)
-              ?.getSheetName() ?? "a deleted sheet"}{" "}
-            {rangeLabel(activePivot.source)} ·{" "}
-            {activePivot.invalid ? (
-              <span className="pivot-bar-warning">
-                Source missing. Edit the pivot to choose a new range.
-              </span>
-            ) : activePivotError ? (
-              <span className="pivot-bar-warning">
-                Not updated: {activePivotError}
-              </span>
-            ) : (
-              "Updates when the source changes"
-            )}
-          </span>
-          <button onClick={() => startPanel("pivot", activePivot.id)}>
-            Edit
-          </button>
-          <button
-            title="Refresh pivot"
-            aria-label="Refresh pivot"
-            onClick={() =>
-              void refreshPivot(activePivot).catch((e) => onError(String(e)))
-            }
-          >
-            <RefreshCw size={14} />
-          </button>
-          <button onClick={() => copyPivot(activePivot)}>
-            Make editable copy
-          </button>
-        </div>
+        <SheetPivotBar
+          activePivot={activePivot}
+          activePivotError={activePivotError}
+          book={book}
+          startPanel={startPanel}
+          refreshPivot={refreshPivot}
+          copyPivot={copyPivot}
+          onError={onError}
+        />
+      ) : null}
+      {remoteSelections.length ? (
+        <p className="sheet-remote-selections">
+          {remoteSelections.map((selection) => sheetSelectionLabel(selection)).join(", ")}
+        </p>
       ) : null}
       <div
         className="sheet-host"
@@ -3985,280 +758,25 @@ export default function Sheets({
       {sorting ? (
         <SortRangeDialog
           {...sorting}
+          shared={!!collabDoc}
           onSort={sortRange}
           onClose={() => setSorting(null)}
         />
       ) : null}
       {panel ? (
-        <aside
-          className="analysis-panel"
-          style={{ top: host.current?.offsetTop }}
-        >
-          <header>
-            <h2>
-              {editing ? "Edit" : "Insert"}{" "}
-              {panel === "chart" ? "chart" : "pivot table"}
-            </h2>
-            <button
-              aria-label="Close analysis panel"
-              onClick={() => setPanel(null)}
-            >
-              <X size={18} />
-            </button>
-          </header>
-          <label>
-            Title
-            <input
-              value={title}
-              placeholder={
-                panel === "chart" ? suggestedChartTitle(fields) : "Pivot table"
-              }
-              maxLength={100}
-              onChange={(e) => setTitle(e.target.value)}
-            />
-          </label>
-          <label>
-            Source worksheet
-            <select
-              value={sourceSheet}
-              onChange={(e) => setSourceSheet(e.target.value)}
-            >
-              {book.current?.getSheets().map((s: any) => (
-                <option key={s.getSheetId()} value={s.getSheetId()}>
-                  {s.getSheetName()}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="range-field">
-            <label>
-              Source range
-              <input
-                value={range}
-                onChange={(e) => setRange(e.target.value)}
-                placeholder="A1:D20"
-              />
-            </label>
-            <button
-              type="button"
-              title="Use the cells selected in the grid"
-              onClick={takeSelection}
-            >
-              Use selection
-            </button>
-          </div>
-          <p className="hint">
-            First row supplies field names. The full source range is used,
-            including filtered rows.
-          </p>
-          {panel === "chart" ? (
-            <label>
-              Chart type
-              <select
-                value={chartType}
-                onChange={(e) =>
-                  setChartType(e.target.value as ChartDefinition["type"])
-                }
-              >
-                <option value="bar">Column / bar</option>
-                <option value="line">Line</option>
-                <option value="area">Area</option>
-                <option value="combo">Combo</option>
-                <option value="stacked">Stacked</option>
-                <option value="pie">Pie</option>
-                <option value="scatter">Scatter</option>
-                <option value="waterfall">Waterfall</option>
-                <option value="histogram">Histogram</option>
-              </select>
-            </label>
-          ) : (
-            <>
-              <label>
-                Rows
-                <select
-                  multiple
-                  value={rowFields ? rowFields.split(",") : []}
-                  onChange={(e) =>
-                    setRowFields(
-                      Array.from(e.target.selectedOptions)
-                        .map((o) => o.value)
-                        .join(","),
-                    )
-                  }
-                >
-                  {fields.map((v, i) => (
-                    <option key={i} value={i}>
-                      {String(v ?? "Blank field")}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Columns (optional)
-                <select
-                  multiple
-                  value={columnFields ? columnFields.split(",") : []}
-                  onChange={(e) =>
-                    setColumnFields(
-                      Array.from(e.target.selectedOptions)
-                        .map((o) => o.value)
-                        .join(","),
-                    )
-                  }
-                >
-                  {fields.map((v, i) => (
-                    <option key={i} value={i}>
-                      {String(v ?? "Blank field")}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <p className="hint">
-                Use Command / Ctrl to select several fields, or to clear a
-                selection.
-              </p>
-              <label>
-                Value field
-                <select
-                  value={shownValueField}
-                  onChange={(e) => {
-                    valueChosen.current = true;
-                    setValueField(+e.target.value);
-                  }}
-                >
-                  {fields.map((v, i) => (
-                    <option key={i} value={i}>
-                      {String(v)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Summarize by
-                <select
-                  value={aggregate}
-                  onChange={(e) =>
-                    setAggregate(e.target.value as PivotDefinition["aggregate"])
-                  }
-                >
-                  {["SUM", "COUNT", "AVERAGE", "MIN", "MAX", "PERCENT"].map((a) => (
-                    <option key={a}>{a}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Also summarize
-                <select
-                  aria-label="Second summary"
-                  value={secondAggregate}
-                  onChange={(e) =>
-                    setSecondAggregate(e.target.value as "" | PivotDefinition["aggregate"])
-                  }
-                >
-                  <option value="">No second summary</option>
-                  {["SUM", "COUNT", "AVERAGE", "MIN", "MAX", "PERCENT"].map((a) => (
-                    <option key={a}>{a}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Calculated field
-                <input
-                  aria-label="Calculated field name"
-                  value={calculatedName}
-                  onChange={(e) => setCalculatedName(e.target.value)}
-                  placeholder="Fee"
-                />
-              </label>
-              <label>
-                Calculation
-                <select
-                  aria-label="Calculated field operation"
-                  value={calculatedOp}
-                  onChange={(e) =>
-                    setCalculatedOp(
-                      e.target.value === "add" || e.target.value === "divide" ? e.target.value : "multiply",
-                    )
-                  }
-                >
-                  <option value="multiply">Multiply each value</option>
-                  <option value="divide">Divide each value</option>
-                  <option value="add">Add to each value</option>
-                </select>
-              </label>
-              <label>
-                Amount
-                <input
-                  aria-label="Calculated field amount"
-                  value={calculatedAmount}
-                  onChange={(e) => setCalculatedAmount(e.target.value)}
-                />
-              </label>
-              <PivotDifferenceFields
-                name={differenceName}
-                left={differenceLeft}
-                right={differenceRight}
-                fields={fields}
-                onName={setDifferenceName}
-                onLeft={setDifferenceLeft}
-                onRight={setDifferenceRight}
-              />
-              <label>
-                Filter field
-                <select
-                  value={filterColumn}
-                  onChange={(e) => setFilterColumn(+e.target.value)}
-                >
-                  <option value={-1}>No filter</option>
-                  {fields.map((v, i) => (
-                    <option key={i} value={i}>
-                      {String(v)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {filterColumn >= 0 ? (
-                <label>
-                  Equals
-                  <input
-                    value={filterValue}
-                    onChange={(e) => setFilterValue(e.target.value)}
-                  />
-                </label>
-              ) : null}
-              <PivotSliceFields
-                dateColumn={dateColumn}
-                dateGroup={dateGroup}
-                slicerColumn={slicerColumn}
-                slicerText={slicerText}
-                fields={fields}
-                onDateColumn={(column) => {
-                  setDateColumn(column);
-                  if (column >= 0 && !dateGroup) setDateGroup("year");
-                  if (column < 0) setDateGroup("");
-                }}
-                onDateGroup={setDateGroup}
-                onSlicerColumn={setSlicerColumn}
-                onSlicerText={setSlicerText}
-              />
-              <PivotSortFields value={sortChoice} onChange={setSortChoice} />
-              <PivotDrillList
-                values={pivotSource}
-                slice={pivotSliceFromForm({ dateColumn, dateGroup, slicerColumn, slicerText })}
-                group={drillGroup}
-                onGroup={setDrillGroup}
-              />
-              <p className="hint">
-                Pivot results appear in a protected worksheet with grand totals
-                and update when the source changes. Make an editable copy to
-                annotate them.
-              </p>
-            </>
-          )}
-          <button className="primary" onClick={() => void submit()}>
-            {editing ? "Update" : "Create"} {panel}
-          </button>
-        </aside>
+        <SheetAnalysisPanel
+          panel={panel}
+          setPanel={setPanel}
+          form={form}
+          fields={fields}
+          shownValueField={shownValueField}
+          pivotSource={pivotSource}
+          valueChosen={valueChosen}
+          book={book}
+          host={host}
+          takeSelection={takeSelection}
+          submit={submit}
+        />
       ) : null}
       {ready && dropdownEngine.current ? (
         <SheetDropdowns

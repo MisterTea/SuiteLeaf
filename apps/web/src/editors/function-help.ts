@@ -198,6 +198,39 @@ const CATALOG: FunctionEntry[] = [
     example: "MEDIAN(B2:B29)",
   },
   {
+    name: "AVERAGEIFS",
+    category: "Statistical",
+    description: "Averages cells that match every condition.",
+    args: [
+      arg("average_range", "The cells to average.", "C2:C29"),
+      arg("range", "The cells to test.", "D2:D29"),
+      arg("criterion", "Which cells to include.", '"Pass"'),
+    ],
+    example: 'AVERAGEIFS(C2:C29, D2:D29, "Pass")',
+  },
+  {
+    name: "SUMIFS",
+    category: "Statistical",
+    description: "Adds cells that match every condition.",
+    args: [
+      arg("sum_range", "The cells to add.", "C2:C29"),
+      arg("range", "The cells to test.", "D2:D29"),
+      arg("criterion", "Which cells to include.", '"Pass"'),
+    ],
+    example: 'SUMIFS(C2:C29, D2:D29, "Pass")',
+  },
+  {
+    name: "AVERAGEIF",
+    category: "Statistical",
+    description: "Averages cells that match a condition.",
+    args: [
+      arg("range", "The cells to test.", "D2:D29"),
+      arg("criterion", "Which cells to include.", '"Pass"'),
+      arg("average_range", "The cells to average. Optional.", "C2:C29"),
+    ],
+    example: 'AVERAGEIF(D2:D29, "Pass", C2:C29)',
+  },
+  {
     name: "SUMIF",
     category: "Statistical",
     description: "Adds cells that match a condition.",

@@ -22,10 +22,35 @@ pub fn prosemirror_json(doc: &Doc) -> Option<Value> {
         return None;
     }
     let mut document = json!({ "type": "doc", "content": content });
+    let mut attrs = serde_json::Map::new();
     if let Some(threads) = stored_threads(&txn) {
-        document["attrs"] = json!({ "commentThreads": threads });
+        attrs.insert("commentThreads".into(), threads);
+    }
+    if let Some(review) = stored_review(&txn) {
+        attrs.insert("review".into(), review);
+    }
+    if !attrs.is_empty() {
+        document["attrs"] = Value::Object(attrs);
     }
     Some(document)
+}
+
+fn stored_review(txn: &impl ReadTxn) -> Option<Value> {
+    use yrs::Map;
+    let map = txn.get_map("docAttrs")?;
+    let yrs::Out::Any(Any::String(text)) = map.get(txn, "review")? else {
+        return None;
+    };
+    if text.contains("secret-value") {
+        return None;
+    }
+    let parsed: Value = serde_json::from_str(text.as_ref()).ok()?;
+    parsed
+        .as_object()
+        .and_then(|item| item.get("decisions"))
+        .and_then(Value::as_array)
+        .is_some()
+        .then_some(parsed)
 }
 
 fn stored_threads(txn: &impl ReadTxn) -> Option<Value> {
@@ -141,11 +166,11 @@ fn attr_value(raw: &str) -> Value {
     if raw == "null" {
         return Value::Null;
     }
-    if (raw.starts_with('{') && raw.ends_with('}')) || (raw.starts_with('[') && raw.ends_with(']'))
+    if ((raw.starts_with('{') && raw.ends_with('}'))
+        || (raw.starts_with('[') && raw.ends_with(']')))
+        && let Ok(parsed) = serde_json::from_str(raw)
     {
-        if let Ok(parsed) = serde_json::from_str(raw) {
-            return parsed;
-        }
+        return parsed;
     }
     if let Ok(number) = raw.parse::<i64>()
         && raw == number.to_string()
@@ -255,6 +280,33 @@ mod tests {
             kept["attrs"]["commentThreads"][0]["messages"][0]["text"],
             "Water the beds"
         );
+    }
+
+    #[test]
+    fn a_review_stays_with_the_fragment() {
+        let doc = Doc::new();
+        let fragment = doc.get_or_insert_xml_fragment("prosemirror");
+        let mut txn = doc.transact_mut();
+        let paragraph = fragment.push_back(&mut txn, XmlElementPrelim::empty("paragraph"));
+        paragraph.push_back(&mut txn, XmlTextPrelim::new("North"));
+        let map = txn.get_or_insert_map("docAttrs");
+        map.insert(&mut txn, "review", "secret-value");
+        drop(txn);
+        let dropped = prosemirror_json(&doc).expect("fragment");
+        assert!(dropped.get("attrs").is_none());
+        assert!(!dropped.to_string().contains("secret-value"));
+        let mut txn = doc.transact_mut();
+        let map = txn.get_or_insert_map("docAttrs");
+        map.insert(
+            &mut txn,
+            "review",
+            r#"{"decisions":[{"block":1,"note":"Block 1 needs a choice."}],"choices":[{"block":1,"side":"left"}],"approvedVersion":"rev-1"}"#,
+        );
+        drop(txn);
+        let kept = prosemirror_json(&doc).expect("fragment");
+        assert_eq!(kept["content"][0]["content"][0]["text"], "North");
+        assert_eq!(kept["attrs"]["review"]["approvedVersion"], "rev-1");
+        assert_eq!(kept["attrs"]["review"]["choices"][0]["side"], "left");
     }
 
     #[test]

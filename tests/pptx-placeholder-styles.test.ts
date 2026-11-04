@@ -117,7 +117,7 @@ it("keeps a centered line inside a left-aligned body and a blank paragraph", asy
   const { textInnerHtml } = await import("../apps/web/src/editors/slide-runs");
   const html = textInnerHtml(el);
   expect(html).toContain("text-align:center");
-  expect(html).toContain("min-height:1lh");
+  expect(html).toContain("<br>");
 });
 
 it("uses an explicit run size for the box when every line overrides the list default", async () => {

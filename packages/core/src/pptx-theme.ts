@@ -664,7 +664,7 @@ function linePaint(
   lineXml: string,
   scheme: Record<string, string>,
   phClr: string,
-) {
+): { color?: string; emu?: number; dash?: string } {
   if (/<a:noFill\b/.test(lineXml)) return {};
   const width = /<a:ln\b[^>]*\bw="(\d+)"/.exec(lineXml)?.[1];
   const dash = presetDashName(lineXml);
@@ -813,8 +813,10 @@ export function paintSlideBackgroundWindow<
   if (element.type !== "shape") return element;
   const src = backgroundWindowSrc(element, slide);
   if (!src) return element;
-  const { fill: _fill, shapeType: _shape, ...rest } = element;
-  return { ...rest, type: "image", src, alt: element.alt || "Slide background" } as T;
+  const rest = { ...element };
+  delete rest.fill;
+  delete rest.shapeType;
+  return { ...rest, type: "image", src, alt: element.alt || "Slide background" } as unknown as T;
 }
 
 /** Resolve p:style fillRef, lnRef, and fontRef, letting spPr overrides win. */

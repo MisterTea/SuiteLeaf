@@ -67,6 +67,7 @@ function deck() {
   });
 }
 
+// An Office font is painted with its layout-identical SuiteLeaf face, such as Georgia with SuiteLeaf Durian.
 async function family(page: import("@playwright/test").Page, content: string) {
   return page.locator(".slide-canvas").evaluate((root, content) => {
     const area = [...root.querySelectorAll("textarea")].find(
@@ -108,7 +109,7 @@ test("a theme restyles free text, and reduced motion cuts transitions", async ({
   await expect(page.locator(".slide-canvas .slide-shape")).toHaveCSS("background-color", "rgb(149, 213, 178)");
 
   await page.getByLabel("Heading font").selectOption("Georgia");
-  await expect.poll(() => family(page, "Hello")).toMatch(/Georgia/);
+  await expect.poll(() => family(page, "Hello")).toMatch(/SuiteLeaf Durian/);
   await expect.poll(() => family(page, "A free box")).toMatch(/Source Sans/);
   await page.getByLabel("Accent hex").fill("#2e7d32");
   await expect(page.locator(".slide-canvas .slide-shape")).toHaveCSS("background-color", "rgb(46, 125, 50)");
@@ -118,10 +119,10 @@ test("a theme restyles free text, and reduced motion cuts transitions", async ({
   await page.getByLabel("Font family").selectOption("Georgia");
   await expect(page.locator(".theme-override-bar")).toContainText("Overrides theme");
   await page.getByRole("button", { name: "Ink", exact: true }).click();
-  await expect.poll(() => family(page, "A free box")).toMatch(/Georgia/);
-  await expect.poll(() => family(page, "Hello")).toMatch(/Trebuchet/);
+  await expect.poll(() => family(page, "A free box")).toMatch(/SuiteLeaf Durian/);
+  await expect.poll(() => family(page, "Hello")).toMatch(/SuiteLeaf Blackthorn/);
   await page.getByRole("button", { name: "Reset to theme" }).click();
-  await expect.poll(() => family(page, "A free box")).toMatch(/Arial/);
+  await expect.poll(() => family(page, "A free box")).toMatch(/SuiteLeaf Aspen/);
 
   await page.keyboard.press("ControlOrMeta+M");
   await expect(page.locator(".thumbnail-row")).toHaveCount(2);

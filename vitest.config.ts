@@ -23,5 +23,15 @@ export default defineConfig({
       "tests/**/*.test.tsx",
       "services/*/test/**/*.test.ts",
     ],
+    coverage: {
+      include: [
+        "apps/web/src/**/*.{ts,tsx}",
+        "apps/desktop/src/**/*.ts",
+        "packages/core/src/**/*.ts",
+        "services/*/src/**/*.ts",
+      ],
+      exclude: ["**/*.d.ts"],
+      thresholds: { lines: 90, statements: 90 },
+    },
   },
 });

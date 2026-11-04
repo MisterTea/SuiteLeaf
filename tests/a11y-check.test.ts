@@ -62,6 +62,66 @@ describe("document accessibility notes", () => {
     );
   });
 
+  it("treats a heading or link of only invisible characters as empty", () => {
+    const findings = checkDocument(
+      doc([
+        {
+          type: "heading",
+          attrs: { level: 1 },
+          content: [{ type: "text", text: "\u200B" }],
+        },
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: "\u200Blearn more\u200B",
+              marks: [{ type: "link", attrs: { href: "https://example.com/secret-value" } }],
+            },
+          ],
+        },
+        {
+          type: "table",
+          content: [
+            {
+              type: "tableRow",
+              content: [
+                {
+                  type: "tableHeader",
+                  content: [{ type: "text", text: "\uFEFF" }],
+                },
+              ],
+            },
+          ],
+        },
+      ]),
+    );
+    expect(findings.find((item) => item.rule === "empty-heading")?.message).toBe("This heading has no text.");
+    expect(findings.find((item) => item.rule === "vague-link")?.message).toBe(
+      "This link text does not say where it goes.",
+    );
+    expect(findings.find((item) => item.rule === "table-header")?.message).toBe(
+      "A header cell in the first row is empty.",
+    );
+    expect(JSON.stringify(findings)).not.toContain("secret-value");
+    const address = checkDocument(
+      doc([
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: "https://example.com/beds",
+              marks: [{ type: "link", attrs: { href: "https://example.com/beds" } }],
+            },
+          ],
+        },
+      ]),
+    );
+    expect(address.find((item) => item.rule === "vague-link")?.automatic).toBe(true);
+    expect(nodeAtPath(doc([{ type: "paragraph" }]), [4])).toBeNull();
+  });
+
   it("asks a person to judge an empty alt and a colored run", () => {
     const findings = checkDocument(
       doc([

@@ -1,6 +1,6 @@
 # 15 · Summarize spending with a pivot table
 
-**Mode:** single-node · **App:** Sheets · **Video:** [videos/15-summarize-with-a-pivot.mp4](videos/15-summarize-with-a-pivot.mp4) · **Script:** [scenes/sheets.spec.ts](scenes/sheets.spec.ts)
+**Mode:** single-node · **App:** Sheets · **Video:** [videos/15-summarize-with-a-pivot.mp4](videos/15-summarize-with-a-pivot.mp4) · **Script:** [scenes/sheets-charts.spec.ts](scenes/sheets-charts.spec.ts)
 
 ## Who and why
 

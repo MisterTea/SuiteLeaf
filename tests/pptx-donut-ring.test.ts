@@ -25,11 +25,11 @@ describe("DrawingML donut ring", () => {
     // Default adj 25000 on a 2:1 box: thickness is a quarter of the short side.
     const open = svg(donut("").src);
     expect(open).toContain("evenodd");
-    expect(open).toContain("A 750000 250000");
+    expect(open).toContain("A 37.5 20");
     // A small adjust is a thin ring. The hole is most of the ellipse, not a pinprick.
     const cycle = svg(donut(`<a:gd name="adj" fmla="val 12597"/>`, "2000000", "2000000").src);
-    expect(cycle).toContain("A 748060 748060");
-    expect(cycle).not.toContain("A 125970 125970");
+    expect(cycle).toContain("A 37.4 29.92");
+    expect(cycle).not.toContain("A 6.2985");
   });
 
   it("omits the hole when the thickness closes the shorter radius", () => {

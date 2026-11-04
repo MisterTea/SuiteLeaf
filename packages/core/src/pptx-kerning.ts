@@ -52,11 +52,14 @@ export function lastSpacingPoints(
  * The last `a:spcBef` or `a:spcAft` wins, whether it is points or a percentage
  * of the font. `spcPct` is thousandths of a percent, so 10000 is 10% of the
  * font, not a full line. A later percentage replaces an inherited point gap.
+ * Shrink-to-fit also shrinks a point gap by `pointScale`. A percentage gap
+ * already follows the fitted font.
  */
 export function paragraphGapPoints(
   xml: string,
   tag: "spcBef" | "spcAft",
   fontPt: number,
+  pointScale = 1,
 ): number | undefined {
   const matches = [
     ...xml.matchAll(
@@ -67,7 +70,7 @@ export function paragraphGapPoints(
   if (!last) return;
   const raw = Number(last[2]);
   if (!Number.isFinite(raw) || raw < 0) return;
-  if (last[1] === "spcPts") return raw / 100;
+  if (last[1] === "spcPts") return (raw / 100) * Math.max(0, pointScale);
   if (!(fontPt > 0)) return 0;
   return Math.min(fontPt * 10, (fontPt * raw) / 100000);
 }

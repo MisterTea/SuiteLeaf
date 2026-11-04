@@ -1,5 +1,7 @@
 import { Node } from "@tiptap/core";
-import { countBreak, countedPage, startPageCount } from "./doc-toc-pages";
+import { figureListEntries } from "./figure-list-entries";
+
+export { figureListEntries } from "./figure-list-entries";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -7,49 +9,6 @@ declare module "@tiptap/core" {
       insertFigureList: (kind?: "figure" | "table") => ReturnType;
     };
   }
-}
-
-/** Figure and table captions with a page taken from page breaks. Caption ids are not returned. */
-
-type ListNode = {
-  type?: string;
-  text?: string;
-  attrs?: { captionId?: string; captionKind?: string; kind?: string; restartAt?: unknown };
-  content?: ListNode[];
-};
-
-function nodeText(node: ListNode): string {
-  if (node.text) return node.text;
-  return (node.content ?? []).map(nodeText).join("");
-}
-
-export function figureListEntries(
-  doc: { content?: ListNode[] },
-  kind: "figure" | "table",
-): { label: string; page: number }[] {
-  const entries: { label: string; page: number }[] = [];
-  const count = startPageCount();
-  const walk = (nodes: ListNode[]) => {
-    for (const node of nodes) {
-      if (node.type === "note" || node.type === "tableOfContents" || node.type === "figureList") continue;
-      if (node.type === "sectionBreak") {
-        countBreak(count, node.attrs?.restartAt);
-        continue;
-      }
-      if (node.type === "pageBreak") {
-        countBreak(count);
-        continue;
-      }
-      const id = node.attrs?.captionId;
-      if (id && node.attrs?.captionKind === kind) {
-        const label = nodeText(node).trim() || (kind === "figure" ? "Figure" : "Table");
-        entries.push({ label, page: countedPage(count) });
-      }
-      if (node.content) walk(node.content);
-    }
-  };
-  walk(doc.content ?? []);
-  return entries;
 }
 
 export const FigureList = Node.create({

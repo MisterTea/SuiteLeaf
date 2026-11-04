@@ -1,7 +1,9 @@
 import JSZip from "jszip";
 import * as CFB from "cfb";
 import { XMLParser, XMLValidator } from "fast-xml-parser";
-import { NATIVE_FILE_LIMIT, parseFile, type SuiteFile } from "./index";
+import { NATIVE_FILE_LIMIT, parseFile, type JsonNode, type SuiteFile } from "./index";
+import { reviewFromDocx } from "./review-docx";
+import { writeReview } from "./review-store";
 import { importDocx } from "./word";
 import { importXlsx, normalizeBinaryExcel } from "./excel";
 export const OFFICE_INPUT_LIMIT = 120 * 1024 * 1024;
@@ -225,6 +227,14 @@ export async function importOffice(
         `The Office ZIP package contains a corrupt part: ${message}`,
       );
     throw e;
+  }
+  if (format === "docx") {
+    const review = await reviewFromDocx(bytes);
+    const content = result.file.content;
+    if (review && content && typeof content === "object" && (content as JsonNode).type === "doc") {
+      const written = writeReview(content as JsonNode, review);
+      if (!("reason" in written)) result.file.content = written;
+    }
   }
   result.report.format = format;
   if (binary)

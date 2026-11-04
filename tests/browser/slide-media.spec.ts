@@ -50,6 +50,7 @@ async function expectPlaying(media: Locator) {
     .toBe(true);
 }
 
+// The file stores each clip as a data address; the page plays it from a blob address.
 test("audio and video stay on the slide and the audio plays", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -73,7 +74,7 @@ test("audio and video stay on the slide and the audio plays", async ({ page }) =
   await expect(audio).toBeVisible();
   await expect(audio).toContainText("quiet.wav");
   await expect(audio.getByRole("button", { name: "Play audio" })).toBeVisible();
-  await expect(audio.locator("audio")).toHaveAttribute("src", /^data:audio\/wav;base64,/);
+  await expect(audio.locator("audio")).toHaveAttribute("src", /^blob:/);
   await audio.getByRole("button", { name: "Play audio" }).click();
   await expectPlaying(audio.locator("audio"));
 
@@ -106,7 +107,7 @@ test("audio and video stay on the slide and the audio plays", async ({ page }) =
   await expect(video).toContainText("clip.webm");
   await expect(video.getByRole("button", { name: "Play video" })).toBeVisible();
   await expect(video.locator("video")).toHaveCount(1);
-  await expect(video.locator("video")).toHaveAttribute("src", /^data:video\/webm;base64,/);
+  await expect(video.locator("video")).toHaveAttribute("src", /^blob:/);
 
   await page.getByRole("button", { name: "Slideshow", exact: true }).click();
   const show = page.locator(".presenter-overlay");
@@ -128,8 +129,8 @@ test("audio and video stay on the slide and the audio plays", async ({ page }) =
   await expect(video).toContainText("clip.webm");
   await expect(audio).toHaveAttribute("data-x", movedX!);
   await expect(audio).toHaveAttribute("data-y", movedY!);
-  await expect(audio.locator("audio")).toHaveAttribute("src", /^data:audio\/wav;base64,/);
-  await expect(video.locator("video")).toHaveAttribute("src", /^data:video\/webm;base64,/);
+  await expect(audio.locator("audio")).toHaveAttribute("src", /^blob:/);
+  await expect(video.locator("video")).toHaveAttribute("src", /^blob:/);
   await audio.getByRole("button", { name: "Play audio" }).click();
   await expectPlaying(audio.locator("audio"));
 

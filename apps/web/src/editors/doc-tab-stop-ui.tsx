@@ -79,7 +79,10 @@ export function TabStopField({ editor }: { editor: Editor | null }) {
           apply(event.currentTarget.value);
           setDraft(null);
         }}
-        onBlur={() => setDraft(null)}
+        onBlur={() => {
+          range.current = null;
+          setDraft(null);
+        }}
       />
       <span id="doc-tab-stop-hint">{hintFor(stored)}</span>
     </label>

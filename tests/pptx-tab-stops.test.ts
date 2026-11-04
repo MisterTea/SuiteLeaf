@@ -80,6 +80,40 @@ it("keeps a positive first-line indent and a default tab on a table cell", async
   expect(html).toContain("Lunch");
 });
 
+it("measures default tabs from the text box, not from the bullet", () => {
+  const html = runsToHtml([
+    {
+      text: "\n",
+      paragraphBreak: true,
+      paraHang: 18,
+      paraMargin: 108,
+      paraTab: 72,
+      fontSize: 16,
+    },
+    { text: "§ ", fontSize: 16 },
+    { text: "ABCDEFGHIJ\tZ", fontSize: 16 },
+  ]);
+  // Bullet and letters use the fallback width, half a point per character.
+  // Absolute position 108+16+80 = 204, so the next 72pt stop is 216.
+  expect(html).toContain("width:calc(12 * var(--slide-pt, 1) * 1px)");
+});
+
+it("does not let a symbol bullet's em space skip a tab stop", () => {
+  const html = runsToHtml([
+    {
+      text: "\n",
+      paragraphBreak: true,
+      paraHang: 27,
+      paraTab: 72,
+      fontSize: 32,
+    },
+    { text: "§ ", font: "SuiteLeaf Sprig", fontSize: 32 },
+    { text: "A\tZ", fontSize: 32 },
+  ]);
+  // After the gutter, "A" is 16px in the fallback measure, so the stop is 72.
+  expect(html).toContain("width:calc(29 * var(--slide-pt, 1) * 1px)");
+});
+
 it("lands a leading tab on the hanging margin, not the default tab interval", () => {
   const html = runsToHtml([
     {

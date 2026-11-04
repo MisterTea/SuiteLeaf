@@ -27,6 +27,7 @@ export function SidePane({
   label,
   closeLabel,
   className = "",
+  dir,
   onClose,
   children,
 }: {
@@ -36,12 +37,13 @@ export function SidePane({
   label: string;
   closeLabel: string;
   className?: string;
+  dir?: "ltr" | "rtl";
   onClose: () => void;
   children: ReactNode;
 }) {
   const slot = useContext(SidePaneSlot);
   const pane = (
-    <aside className={`side-pane ${className}`} aria-label={label}>
+    <aside className={`side-pane ${className}`} aria-label={label} dir={dir}>
       <header className="side-pane-header">
         <div>
           <h2>{title}</h2>

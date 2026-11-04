@@ -15,6 +15,7 @@ import {
   misspelledWords,
   spellingSuggestionReason,
   spellingSuggestions,
+  typoCorrection,
   type PersonalDictionary,
 } from "../apps/web/src/editors/doc-spelling";
 import {
@@ -127,6 +128,24 @@ describe("spelling", () => {
     expect(spellingSuggestions("occured")[0]).toBe("occurred");
     expect(spellingSuggestions("definately")[0]).toBe("definitely");
     expect(isMisspelling("wer", none, [])).toBe(true);
+  });
+
+  it("treats only a one-edit suggestion as a typo correction", () => {
+    for (const [typo, fixed] of [
+      ["recieve", "receive"],
+      ["teh", "the"],
+      ["movment", "movement"],
+      ["seperate", "separate"],
+    ])
+      expect(typoCorrection(typo)).toBe(fixed);
+    expect(spellingSuggestions("kenkey")).toEqual(["kennedy", "monkey"]);
+    expect(typoCorrection("kenkey")).toBeUndefined();
+    expect(spellingSuggestions("fufu").length).toBeGreaterThan(0);
+    expect(typoCorrection("fufu")).toBeUndefined();
+    expect(typoCorrection("zyxwvq")).toBeUndefined();
+  });
+
+  it("lets a flagged word override the dictionary and reads possessives and plurals as words", () => {
     expect(isMisspelling("were", none, [])).toBe(false);
     expect(isMisspelling("were", flagWord(none, "wer"), [])).toBe(false);
     expect(isMisspelling("were", flagWord(none, "were"), [])).toBe(true);

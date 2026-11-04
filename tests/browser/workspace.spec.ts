@@ -495,7 +495,7 @@ test("document outline, images, tables, find/replace, and print layout", async (
   await page.getByRole("button", { name: "Insert table", exact: true }).click();
   await page.getByRole("button", { name: "Create table", exact: true }).click();
   await expect(page.locator(".document-content table")).toBeVisible();
-  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
+  await page.locator('input[type=file][accept^="image/"]').setInputFiles({
     name: "pixel.png",
     mimeType: "image/png",
     buffer: Buffer.from(

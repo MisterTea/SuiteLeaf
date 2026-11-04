@@ -170,22 +170,30 @@ export const Equation = Node.create({
   },
 
   addNodeView() {
-    return ({ node, view, getPos }) => {
+    return ({ node, view, getPos, editor }) => {
       let current = node;
       let editing: number | null = null;
       let suppress = false;
+      let interactive = view.editable;
       const dom = document.createElement("span");
 
       const render = () => {
+        interactive = view.editable;
         paintEquation(dom, exprOf(current), {
-          interactive: view.editable,
+          interactive,
           editing,
           onEdit(id) {
+            if (!view.editable) return;
             editing = id;
             render();
           },
           onCommit(id, text) {
             if (suppress || editing !== id) return;
+            if (!view.editable) {
+              editing = null;
+              render();
+              return;
+            }
             const nextText = text.trim();
             const previous = exprOf(current);
             const next = nextText ? replaceSlot(previous, id, nextText) : null;
@@ -215,9 +223,23 @@ export const Equation = Node.create({
         });
       };
 
+      // Node views are built before the editable setting applies, and do not
+      // repaint when it changes, so follow it from the editor's events.
+      const followEditable = () => {
+        if (view.editable === interactive) return;
+        editing = null;
+        render();
+      };
+      editor.on("create", followEditable);
+      editor.on("update", followEditable);
+
       render();
       return {
         dom,
+        destroy() {
+          editor.off("create", followEditable);
+          editor.off("update", followEditable);
+        },
         update(next) {
           if (next.type.name !== "equation") return false;
           const same =

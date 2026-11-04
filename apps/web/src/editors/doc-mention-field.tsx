@@ -70,7 +70,7 @@ export function readMentionField(root: HTMLElement): MentionBody {
     if (nextBlock && block && text && !text.endsWith("\n")) text += "\n";
     node.childNodes.forEach((child) => walk(child, nextBlock));
   };
-  root.childNodes.forEach((child) => walk(child, false));
+  root.childNodes.forEach((child) => walk(child, true));
   text = text.replace(/\n$/, "");
   return { text, mentions: normalizeMentions(mentions, text.length) };
 }

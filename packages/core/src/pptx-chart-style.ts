@@ -38,7 +38,7 @@ function hasFill(xml: string): boolean {
 
 function stopColor(inner: string, colors: string[], schemeMap: Record<string, string>): string {
   const node =
-    /<a:(?:srgbClr|schemeClr|sysClr)\b[\s\S]*?<\/a:\1>|<a:(?:srgbClr|schemeClr|sysClr)\b[^>]*\/>/.exec(
+    /<a:(srgbClr|schemeClr|sysClr)\b[\s\S]*?<\/a:\1>|<a:(?:srgbClr|schemeClr|sysClr)\b[^>]*\/>/.exec(
       inner,
     )?.[0] ?? "";
   if (!node) return "#FFFFFF";

@@ -230,15 +230,44 @@ export function settleSelection(
   return { activeId: active, selected: nextSelected };
 }
 
-function cloneSlide(slide: Slide, newId: () => string, markCopy: boolean): Slide {
+function takeId(newId: () => string, used: Set<string>): string | null {
+  let last = "";
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    last = newId().trim();
+    if (last && !used.has(last) && !/[\u0000-\u001f]/.test(last)) {
+      used.add(last);
+      return last;
+    }
+  }
+  if (!last || /[\u0000-\u001f]/.test(last)) return null;
+  for (let n = 2; n < 100; n += 1) {
+    const candidate = `${last}-${n}`;
+    if (!used.has(candidate)) {
+      used.add(candidate);
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function cloneSlide(
+  slide: Slide,
+  newId: () => string,
+  markCopy: boolean,
+  slideIds: Set<string>,
+  elementIds: Set<string>,
+): Slide | null {
+  const id = takeId(newId, slideIds);
+  if (!id) return null;
   const copy = structuredClone(slide);
-  copy.id = newId();
+  copy.id = id;
   if (markCopy && copy.title) copy.title = `${copy.title} (copy)`;
   const ids = new Map<string, string>();
-  copy.elements = copy.elements.map((el) => {
-    const id = newId();
-    ids.set(el.id, id);
-    return { ...el, id };
+  copy.elements = copy.elements.flatMap((el) => {
+    const next = takeId(newId, elementIds);
+    if (!next) return [];
+    ids.set(el.id, next);
+    return [{ ...el, id: next }];
   });
   // A copied mark has to point at the copied object, not the original.
   if (copy.comments?.length) {
@@ -248,11 +277,11 @@ function cloneSlide(slide: Slide, newId: () => string, markCopy: boolean): Slide
       return [
         {
           ...thread,
-          id: newId(),
+          id: takeId(newId, elementIds) ?? thread.id,
           elementId,
           messages: thread.messages.map((message) => ({
             ...message,
-            id: newId(),
+            id: takeId(newId, elementIds) ?? message.id,
           })),
         },
       ];
@@ -271,8 +300,16 @@ export function duplicateSlides(
   const moving = deck.slideOrder.filter((id) => selected.has(id) && deck.slides[id]);
   if (!moving.length) return { deck, newIds: [] };
   const last = Math.max(...moving.map((id) => deck.slideOrder.indexOf(id)));
-  const clones = moving.map((id) => cloneSlide(deck.slides[id], newId, true));
+  const slideIds = new Set(deck.slideOrder);
+  const elementIds = new Set(
+    Object.values(deck.slides).flatMap((slide) => slide.elements.map((element) => element.id)),
+  );
+  const clones = moving.flatMap((id) => {
+    const clone = cloneSlide(deck.slides[id], newId, true, slideIds, elementIds);
+    return clone ? [clone] : [];
+  });
   const newIds = clones.map((slide) => slide.id);
+  if (!newIds.length) return { deck, newIds };
   const slideOrder = [...deck.slideOrder];
   slideOrder.splice(last + 1, 0, ...newIds);
   const slides = { ...deck.slides };
@@ -318,7 +355,14 @@ export function pasteSlides(
   newId: () => string,
 ): { deck: Presentation; newIds: string[] } {
   if (!slides.length) return { deck, newIds: [] };
-  const clones = slides.map((slide) => cloneSlide(slide, newId, false));
+  const slideIds = new Set(deck.slideOrder);
+  const elementIds = new Set(
+    Object.values(deck.slides).flatMap((slide) => slide.elements.map((element) => element.id)),
+  );
+  const clones = slides.flatMap((slide) => {
+    const clone = cloneSlide(slide, newId, false, slideIds, elementIds);
+    return clone ? [clone] : [];
+  });
   const newIds = clones.map((slide) => slide.id);
   const index = deck.slideOrder.indexOf(afterId);
   const at = index < 0 ? deck.slideOrder.length : index + 1;

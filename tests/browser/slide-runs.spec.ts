@@ -83,9 +83,10 @@ test("bold and colour apply to one word, and the theme still restyles the rest",
   await expect(editor).toHaveAttribute("contenteditable", "true");
 
   const point = await editor.evaluate((root, word) => {
-    const value = root.textContent ?? "";
-    const at = value.indexOf(word);
-    const node = root.firstChild?.firstChild ?? root.firstChild;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node && !(node.textContent ?? "").includes(word)) node = walker.nextNode();
+    const at = (node?.textContent ?? "").indexOf(word);
     const range = document.createRange();
     range.setStart(node!, at);
     range.setEnd(node!, at + word.length);
@@ -101,9 +102,10 @@ test("bold and colour apply to one word, and the theme still restyles the rest",
   }, "fair");
   await page.mouse.click(point.x, point.y);
   await editor.evaluate((root) => {
-    const value = root.textContent ?? "";
-    const at = value.indexOf("fair");
-    const node = document.createTreeWalker(root, NodeFilter.SHOW_TEXT).nextNode();
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node && !(node.textContent ?? "").includes("fair")) node = walker.nextNode();
+    const at = (node?.textContent ?? "").indexOf("fair");
     const range = document.createRange();
     range.setStart(node!, at);
     range.setEnd(node!, at + 4);

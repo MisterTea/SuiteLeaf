@@ -127,7 +127,7 @@ function runsIn(el: HTMLElement): TextRun[] {
       let text = node.textContent ?? "";
       if (!pre) {
         text = text.replace(/\s+/g, " ");
-        if (text === " " && (runs.length === 0 || runs[runs.length - 1]?.text.endsWith("\n"))) return;
+        if (runs.length === 0 || runs[runs.length - 1]?.text.endsWith("\n")) text = text.replace(/^ /, "");
       }
       pushRun(runs, text, {
         bold: !!style && weight(style) >= 600,

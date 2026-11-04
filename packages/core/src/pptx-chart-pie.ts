@@ -431,7 +431,7 @@ function pieTitle(
   const room = Math.max(12, placed ? width - x - 4 : width * 0.92);
   // Bold chart titles are wider than a half-em. Shrink a single line that would run off the chart.
   let size = titleSize;
-  let lines = wrapLabel(options.title, Math.max(12, Math.floor(room / (size * 0.5)))).slice(0, 3);
+  const lines = wrapLabel(options.title, Math.max(12, Math.floor(room / (size * 0.5)))).slice(0, 3);
   if (lines.length === 1) {
     const need = (lines[0] ?? "").length * size * 0.62;
     if (need > room) size = Math.max(8, size * (room / need));

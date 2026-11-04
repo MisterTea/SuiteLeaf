@@ -47,7 +47,6 @@ export function listShortcut(text: string, caret: number): ListEdit | null {
     const replacement = `${bullet[1]}• `;
     return edit(text, start, end, replacement, start + replacement.length, true);
   }
-  if (/^\s*\d+\.\s$/.test(line)) return null;
   return null;
 }
 

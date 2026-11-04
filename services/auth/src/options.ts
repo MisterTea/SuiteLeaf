@@ -141,6 +141,11 @@ export function authOptions(
       ...(env.google ? { google: env.google } : {}),
       ...(env.github ? { github: env.github } : {}),
     },
+    session: {
+      additionalFields: {
+        reauthAt: { type: "string", required: false, input: false },
+      },
+    },
     account: {
       encryptOAuthTokens: true,
       accountLinking: {

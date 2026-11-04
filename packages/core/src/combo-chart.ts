@@ -1,10 +1,12 @@
+function lineAxis(item: unknown): boolean {
+  return !!item && typeof item === "object" && "axis" in item && item.axis === 2;
+}
+
 /** Columns stay on the left. The last series, or any series marked axis 2, is the line. */
-export function comboSplit<T extends { axis?: number }>(
-  series: readonly T[],
-): { columns: T[]; line: T[] } {
+export function comboSplit<T>(series: readonly T[]): { columns: T[]; line: T[] } {
   if (series.length < 2) return { columns: [...series], line: [] };
-  const line = series.filter((item) => item.axis === 2);
-  if (line.length > 0) return { columns: series.filter((item) => item.axis !== 2), line };
+  const line = series.filter((item) => lineAxis(item));
+  if (line.length > 0) return { columns: series.filter((item) => !lineAxis(item)), line };
   return { columns: series.slice(0, -1), line: series.slice(-1) };
 }
 

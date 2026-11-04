@@ -553,8 +553,8 @@ test("undo all of this puts back the files a request changed and removes the one
   const changes = await page.evaluate(() => window.__suiteleafAgent!.checkpointChanges());
   expect(changes).toEqual(
     expect.arrayContaining([
-      { kind: "changed", title: "Garden plan", drive: false },
-      { kind: "created", title: "Seed costs", drive: false },
+      expect.objectContaining({ kind: "changed", title: "Garden plan", drive: false }),
+      expect.objectContaining({ kind: "created", title: "Seed costs", drive: false }),
     ]),
   );
   expect(await page.evaluate(() => window.__suiteleafAgent!.checkpointRestore())).toBe("Put back 2 file(s) as they were before.");

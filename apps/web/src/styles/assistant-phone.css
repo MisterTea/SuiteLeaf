@@ -1,0 +1,34 @@
+/* Phone: the assistant covers the screen from the bottom, and the document
+   keeps the full width. A side panel would leave a sliver of the page. */
+@media (max-width: 700px) {
+  body.agent-open .home,
+  body.agent-open .workspace,
+  body.agent-open .loading,
+  body.agent-open .sign-in-screen {
+    margin-right: 0;
+  }
+  body.agent-open .workspace {
+    width: 100%;
+  }
+  body.agent-open .gdocs-modal-overlay {
+    right: 0;
+  }
+  .agent-sidebar {
+    top: auto;
+    left: 0;
+    width: 100%;
+    height: min(72vh, 640px);
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -12px 40px rgba(32, 33, 36, 0.28);
+  }
+  body.agent-open .title-block input {
+    field-sizing: auto;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    flex: 1;
+  }
+}
+

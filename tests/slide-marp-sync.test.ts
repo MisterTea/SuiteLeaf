@@ -4,7 +4,7 @@ import { duplicateSlides, deleteSlides, moveSelection, withElements, withoutElem
 import { applyBackground } from "../apps/web/src/editors/slide-layouts";
 import { DECK_THEMES, applyDeckTheme, slideFromTheme } from "../apps/web/src/editors/slide-theme";
 import { reorderFittedMarpItem } from "../apps/web/src/editors/slide-marp";
-import { styleSelection } from "../apps/web/src/editors/slide-runs";
+import { styleSelection } from "../apps/web/src/editors/slide-run-format";
 import {
   deckFromMarkdown,
   inlineMarkdown,

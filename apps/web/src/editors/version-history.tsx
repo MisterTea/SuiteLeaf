@@ -35,6 +35,7 @@ import { storage } from "../storage";
 import { editorCollaborator } from "../collaborator";
 import {
   localVersions,
+  nameLocalFile,
   nameLocalVersion,
   restoreLocalVersion,
 } from "./local-versions";
@@ -479,6 +480,7 @@ export function VersionHistory({
         await drive.nameVersion(record.drive.itemId, naming.id, name);
       else if (fileNow.current().versions?.some((version) => version.id === naming.id))
         onCommitFile(nameVersion(fileNow.current(), naming.id, name));
+      else if (naming.id === "current") await nameLocalFile(fileNow.current(), naming, name);
       else await nameLocalVersion(naming.id, name);
       setNaming(null);
       setRefresh((value) => value + 1);

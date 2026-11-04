@@ -185,7 +185,7 @@ function gridStroke(
 ): { color: string; opacity: number; width: number } | undefined {
   const block = /<c:majorGridlines\b[\s\S]*?<\/c:majorGridlines>/.exec(axis)?.[0];
   if (!block) return;
-  const solid = /<a:(?:srgbClr|schemeClr|sysClr)\b[\s\S]*?<\/a:\1>|<a:(?:srgbClr|schemeClr|sysClr)\b[^>]*\/>/.exec(
+  const solid = /<a:(srgbClr|schemeClr|sysClr)\b[\s\S]*?<\/a:\1>|<a:(?:srgbClr|schemeClr|sysClr)\b[^>]*\/>/.exec(
     block,
   )?.[0];
   const alpha = Number(/<a:alpha\b[^>]*\bval="(-?\d+)"/.exec(block)?.[1] ?? "");

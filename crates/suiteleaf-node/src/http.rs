@@ -112,6 +112,7 @@ pub fn cors(config: &Config) -> CorsLayer {
         .allow_headers([
             header::AUTHORIZATION,
             header::CONTENT_TYPE,
+            header::CONTENT_RANGE,
             header::IF_MATCH,
         ])
         .expose_headers([

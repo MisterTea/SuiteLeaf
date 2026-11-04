@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-import { readFileSync } from "node:fs";
 import { act, cleanup, render, renderHook } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { createFile } from "../../packages/core/src";
+import { readAppStyle } from "../app-style";
 import {
   SlidePrintDeck,
   printPageBackground,
@@ -20,7 +20,6 @@ it("clips a picture that hangs off the slide instead of omitting it from print",
   const file = createFile("slide");
   if (file.kind !== "slide") throw new Error("Expected slides");
   const slide = file.content.slides[file.content.slideOrder[0]];
-  const height = file.content.height || 540;
   slide.elements = [
     {
       id: "hang",
@@ -46,12 +45,12 @@ it("clips a picture that hangs off the slide instead of omitting it from print",
   render(<SlidePrintDeck active deck={file.content} />);
   const images = [...document.querySelectorAll<HTMLElement>(".slides-print-deck .slide-image")];
   expect(images).toHaveLength(2);
-  expect(images[0].style.top).toBe("0%");
-  expect(parseFloat(images[0].style.height)).toBeCloseTo(((220 - 30) / height) * 100, 4);
+  expect(images[0].style.top).toBe("0px");
+  expect(parseFloat(images[0].style.height)).toBeCloseTo(220 - 30, 4);
   const photo = images[0].querySelector("img");
   expect(photo?.getAttribute("alt")).toBe("Hanging photograph");
   expect(photo?.style.clipPath.startsWith("inset(")).toBe(true);
-  expect(images[1].style.top).toBe(`${(40 / height) * 100}%`);
+  expect(images[1].style.top).toBe("40px");
 });
 
 it("leaves a picture that hangs off the slide and drops a box parked fully outside it", () => {
@@ -81,7 +80,6 @@ it("keeps a section numeral whose box starts above the slide", () => {
   const file = createFile("slide");
   if (file.kind !== "slide") throw new Error("Expected slides");
   const slide = file.content.slides[file.content.slideOrder[0]];
-  const height = file.content.height || 540;
   slide.elements = [
     {
       id: "numeral",
@@ -97,9 +95,9 @@ it("keeps a section numeral whose box starts above the slide", () => {
   render(<SlidePrintDeck active deck={file.content} />);
   const box = document.querySelector<HTMLElement>(".slides-print-deck .slide-text");
   expect(box?.textContent).toBe("4");
-  expect(box?.style.top).toBe("0%");
+  expect(box?.style.top).toBe("0px");
   expect(box?.style.overflow).toBe("hidden");
-  expect(parseFloat(box?.style.height || "")).toBeCloseTo(((360 - 48) / height) * 100, 4);
+  expect(parseFloat(box?.style.height || "")).toBeCloseTo(360 - 48, 4);
   const shift = box?.querySelector<HTMLElement>(".slide-text-shift");
   expect(shift?.style.top).toBe(`${(-48 / (360 - 48)) * 100}%`);
 });
@@ -475,7 +473,7 @@ it("releases embedded asset URLs after the print surface closes", () => {
 });
 
 it("wraps an unbroken table token inside the cell", () => {
-  const block = readFileSync("apps/web/src/style.css", "utf8").match(/\.slide-table td \{[^}]+\}/)?.[0];
+  const block = readAppStyle().match(/\.slide-table td \{[^}]+\}/)?.[0];
   expect(block).toContain("white-space: pre-wrap");
   expect(block).toContain("overflow-wrap: anywhere");
 });
@@ -513,7 +511,7 @@ it("paints a quarter-turned bar in the rotated frame instead of the tall box", (
 });
 
 it("keeps a centered print face content-sized so flex can place it", () => {
-  const css = readFileSync("apps/web/src/style.css", "utf8");
+  const css = readAppStyle();
   const rule = css.match(
     /\.slides-print-deck \.slide-text\[data-valign="middle"\] \.slide-text-face[\s\S]*?\}/,
   )?.[0];
@@ -541,7 +539,7 @@ it("feathers a filled shape on every side when the slide stores a soft edge", ()
   render(<SlidePrintDeck active deck={file.content} />);
   const shape = document.querySelector<HTMLElement>(".slide-shape");
   expect(shape?.style.maskImage).toContain("linear-gradient");
-  expect(shape?.style.maskImage).toContain("min(40px, 49%)");
+  expect(shape?.style.maskImage).toContain("min(calc(40px * var(--canvas-fit, 1)), 49%)");
   expect(shape?.style.maskComposite).toBe("intersect");
 });
 
@@ -564,7 +562,7 @@ it("feathers a picture on every side when the slide stores a soft edge", () => {
   render(<SlidePrintDeck active deck={file.content} />);
   const picture = document.querySelector<HTMLElement>(".slide-image");
   expect(picture?.style.maskImage).toContain("linear-gradient");
-  expect(picture?.style.maskImage).toContain("min(50px, 49%)");
+  expect(picture?.style.maskImage).toContain("min(calc(50px * var(--canvas-fit, 1)), 49%)");
   expect(picture?.style.maskComposite).toBe("intersect");
 });
 
@@ -631,7 +629,7 @@ it("prints speaker notes under a visible slide and leaves a hidden slide out", (
   const sheet = document.querySelector(".slides-print-sheet");
   expect(sheet?.querySelector(".slides-print-page .slides-print-notes")).toBeNull();
   expect(sheet?.querySelector(":scope > .slides-print-notes")?.textContent).toBe("Water <the> beds");
-  const css = readFileSync("apps/web/src/style.css", "utf8");
+  const css = readAppStyle();
   expect(css).toContain(".slides-print-deck .slides-print-sheet {\n    break-after: page;");
   expect(css).toContain(".slides-print-deck .slides-print-page {\n    overflow: hidden;");
   expect(css).toContain(".slides-print-deck .slides-print-notes {\n    /* A slide PDF is one page.");

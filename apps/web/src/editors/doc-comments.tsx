@@ -1,10 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { Extension, Mark } from "@tiptap/core";
 import type { Editor } from "@tiptap/react";
+import type { JsonNode } from "@suiteleaf/core";
 import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import type { Node as ProseNode } from "@tiptap/pm/model";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { Check, MessageSquarePlus } from "lucide-react";
+import { readProofing } from "./doc-word-count";
+import { proofingTextDirection } from "./proofing-language";
 import {
   commentThreads,
   threadForReader,
@@ -577,13 +580,13 @@ export function DocComments({
   };
 
   const resolve = (id: string) => {
-    const display = chosenName() || authorNow().signature;
+    const display = authorNow().signature || name.trim();
     updateThread(
       id,
       (thread) => ({
         ...thread,
         resolved: true,
-        resolvedBy: display || thread.messages[0]?.authorName,
+        resolvedBy: display || undefined,
         resolvedAt: new Date().toISOString(),
       }),
       true,
@@ -644,6 +647,7 @@ export function DocComments({
     tab === "resolved" ? thread.resolved : !thread.resolved,
   );
 
+  const direction = proofingTextDirection(readProofing(editor.getJSON() as JsonNode).language);
   return (
     <>
     {selection ? (
@@ -662,6 +666,7 @@ export function DocComments({
       className="doc-comment-gutter"
       ref={gutter}
       aria-label="Comments"
+      dir={direction}
       hidden={!showGutter}
     >
       {hint ? <p className="doc-comment-hint">{hint}</p> : null}
@@ -797,6 +802,7 @@ export function DocComments({
         label="All comments"
         closeLabel="Close comments"
         className="doc-comment-panel"
+        dir={direction}
         onClose={() => setPanel(false)}
       >
         <div className="doc-comment-tabs" role="tablist" aria-label="Comment filters">

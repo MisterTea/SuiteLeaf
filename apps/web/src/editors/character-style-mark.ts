@@ -4,6 +4,19 @@ import { Mark } from "@tiptap/core";
 export const CharacterStyleMark = Mark.create({
   name: "characterStyle",
   addAttributes() {
-    return { style: { default: null } };
+    return {
+      style: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-character-style"),
+        renderHTML: (attributes) =>
+          attributes.style ? { "data-character-style": String(attributes.style) } : {},
+      },
+    };
+  },
+  parseHTML() {
+    return [{ tag: "span[data-character-style]" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["span", HTMLAttributes, 0];
   },
 });

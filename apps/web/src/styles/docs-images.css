@@ -1,0 +1,300 @@
+.doc-image-frame {
+  display: contents;
+}
+.doc-image-frame[data-cropped="true"] {
+  display: block;
+  overflow: hidden;
+  line-height: 0;
+}
+.doc-image-host {
+  position: relative;
+}
+.doc-image-actions {
+  display: none;
+  position: absolute;
+  /* The corner handle sits 5px past the photo. A 4px gap paints Wrap text on it. */
+  top: calc(100% + 14px);
+  left: 0;
+  z-index: 4;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 100%;
+}
+.ProseMirror-selectednode.doc-image-host > .doc-image-actions,
+.doc-image-host[data-cropping="true"] > .doc-image-actions,
+.doc-image-host:focus-within > .doc-image-actions,
+.doc-image-host:hover > .doc-image-actions {
+  display: flex;
+}
+.document-content .doc-image-host[data-wrap="left"] {
+  display: block !important;
+  float: left;
+  max-width: 55%;
+  margin: 0 12px 8px 0;
+}
+.document-content > .doc-image-host[data-wrap="left"] + p {
+  margin-left: var(--wrap-indent, 0px);
+}
+.document-content > .doc-image-host[data-wrap="right"] + p {
+  margin-right: var(--wrap-indent, 0px);
+}
+.document-content .doc-image-host[data-wrap="left"] [data-resize-wrapper],
+.document-content .doc-image-host[data-wrap="right"] [data-resize-wrapper] {
+  width: 100% !important;
+  max-width: 100%;
+}
+.document-content .doc-image-host[data-wrap="left"] img,
+.document-content .doc-image-host[data-wrap="right"] img {
+  max-width: 100%;
+  height: auto;
+}
+.document-content .doc-image-host[data-wrap="right"] {
+  display: block !important;
+  float: right;
+  max-width: 55%;
+  margin: 0 0 8px 12px;
+}
+.document-content .doc-image-host[data-wrap="break"] {
+  clear: both;
+}
+/* An inline picture's box is only as wide as the picture, so max-width: 100%
+   freezes a corner drag. Let the drag set a real width. */
+.document-content .doc-image-host[data-inline="true"] {
+  display: inline-block !important;
+  width: fit-content;
+  max-width: none;
+  min-width: 0;
+  vertical-align: text-bottom;
+  position: relative;
+  z-index: 2;
+}
+.document-content .doc-image-host[data-inline="true"] [data-resize-wrapper] {
+  display: inline-block !important;
+  width: auto;
+  max-width: none;
+  min-width: 0;
+}
+.document-content .doc-image-host[data-inline="true"] img {
+  display: inline-block !important;
+  max-width: none;
+  max-height: none;
+  min-width: 0;
+  vertical-align: text-bottom;
+}
+/* Behind text keeps the sentence slot. The photo paints under the words. */
+.document-content:has(.doc-image-host[data-wrap="behind"]) {
+  isolation: isolate;
+  overflow: clip;
+}
+.document-content .doc-image-host[data-wrap="behind"] {
+  z-index: auto;
+  overflow: visible;
+}
+.document-content .doc-image-host[data-wrap="behind"] [data-resize-wrapper] {
+  overflow: visible;
+  z-index: auto;
+}
+.document-content .doc-image-host[data-wrap="behind"] img {
+  position: relative;
+  z-index: -1;
+  opacity: 0.4;
+}
+.document-content .doc-image-host[data-inline="true"] [data-resize-handle] {
+  z-index: 3;
+}
+.doc-image-crop-button[hidden],
+.doc-image-crop-hint[hidden],
+.doc-crop-edge[hidden] {
+  display: none;
+}
+.document-content[contenteditable="false"] .doc-image-actions,
+.document-content[contenteditable="false"] .doc-crop-edge {
+  display: none !important;
+}
+.doc-image-crop-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid #c4c7c5;
+  border-radius: 8px;
+  background: #fff;
+  color: #1f1f1f;
+  font: 600 13px/1 Arial, sans-serif;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+.doc-image-crop-button[aria-pressed="true"] {
+  border-color: #e8710a;
+  background: #fef3e6;
+  color: #7a4b08;
+}
+.doc-image-crop-button:focus-visible,
+.doc-crop-edge:focus-visible {
+  outline: 2px solid #1a73e8;
+  outline-offset: 2px;
+}
+.doc-image-crop-hint {
+  margin: 0;
+  color: #7a4b08;
+  font: 500 13px/1.3 Arial, sans-serif;
+}
+.doc-crop-edge {
+  position: absolute;
+  z-index: 3;
+  padding: 0;
+  border: 2px solid #fff;
+  border-radius: 4px;
+  background: #e8710a;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+.doc-crop-edge[data-crop-edge="left"],
+.doc-crop-edge[data-crop-edge="right"] {
+  top: 50%;
+  width: 12px;
+  height: 36px;
+  cursor: ew-resize;
+}
+.doc-crop-edge[data-crop-edge="left"] {
+  left: 8px;
+  transform: translate(0, -50%);
+}
+.doc-crop-edge[data-crop-edge="right"] {
+  right: 8px;
+  transform: translate(0, -50%);
+}
+.doc-crop-edge[data-crop-edge="top"],
+.doc-crop-edge[data-crop-edge="bottom"] {
+  left: 50%;
+  width: 36px;
+  height: 12px;
+  cursor: ns-resize;
+}
+.doc-crop-edge[data-crop-edge="top"] {
+  top: 8px;
+  transform: translate(-50%, 0);
+}
+.doc-crop-edge[data-crop-edge="bottom"] {
+  bottom: 8px;
+  transform: translate(-50%, 0);
+}
+.doc-image-host[data-cropping="true"] > [data-resize-wrapper] {
+  outline: 2px solid #e8710a;
+  outline-offset: 1px;
+}
+.doc-image-host[data-cropping="true"] [data-resize-handle] {
+  display: none;
+}
+@media (max-width: 700px) {
+  .doc-image-crop-button {
+    min-height: 32px;
+  }
+}
+@media print {
+  .doc-image-actions,
+  .doc-crop-edge {
+    display: none !important;
+  }
+}
+.image-alt-card {
+  position: fixed;
+  z-index: 50;
+  width: min(320px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 10px 12px 12px;
+  border: 1px solid #dadce0;
+  border-radius: 12px;
+  background: #fff;
+  color: #1f1f1f;
+  font: 14px/1.4 Arial, sans-serif;
+  box-shadow: 0 8px 28px rgba(32, 33, 36, 0.18);
+}
+.image-alt-launch {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  min-height: 40px;
+  border: 0;
+  border-radius: 8px;
+  background: #e8f0fe;
+  color: #174ea6;
+  font: 600 14px/1.2 Arial, sans-serif;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+.image-alt-launch:hover {
+  background: #d2e3fc;
+}
+.image-alt-status {
+  margin: 8px 2px 0;
+  color: #1f1f1f;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.image-alt-status.is-empty {
+  color: #8a4b08;
+}
+.image-alt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.image-alt-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.image-alt-hint {
+  margin: 4px 0 8px;
+  color: #5f6368;
+  font-size: 12px;
+}
+.image-alt-card textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 72px;
+  resize: vertical;
+  border: 1px solid #c4c7c5;
+  border-radius: 8px;
+  padding: 8px;
+  font: 14px/1.4 Arial, sans-serif;
+  color: #1f1f1f;
+}
+.image-alt-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+@media (max-width: 700px) {
+  /* A closed description sits in the corner, clear of the paragraph under the photo. */
+  .image-alt-card:not(:has(form)) {
+    top: 108px !important;
+    left: auto !important;
+    right: 8px !important;
+    width: auto;
+    max-width: 148px;
+    padding: 6px;
+  }
+  .image-alt-card:not(:has(form)) .image-alt-status {
+    display: none;
+  }
+  .image-alt-card:has(form) {
+    top: auto !important;
+    bottom: 8px !important;
+    left: 8px !important;
+    right: 8px !important;
+    width: auto;
+    max-height: min(46vh, 360px);
+  }
+}
+@media print {
+  .image-alt-card {
+    display: none;
+  }
+}

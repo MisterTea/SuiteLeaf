@@ -9,7 +9,8 @@ export const officeLineGrid: Record<string, number> = {
   "Aptos Light": 1.2207,
   "Aptos Narrow": 1.2207,
   "Aptos SemiBold": 1.2207,
-  "Arial": 1.1172,
+  // PowerPoint's single spacing for Arial is wider than (winAscent+winDescent)/em.
+  "Arial": 1.214,
   "Arial Black": 1.4102,
   "Arial Rounded MT Bold": 1.1572,
   "Baskerville Old Face": 1.1406,
@@ -122,7 +123,7 @@ export const officeLineGrid: Record<string, number> = {
   "SuiteLeaf Araucaria Light": 1.2871,
   "SuiteLeaf Araucaria Medium": 1.2871,
   "SuiteLeaf Ash": 1.209,
-  "SuiteLeaf Aspen": 1.1172,
+  "SuiteLeaf Aspen": 1.214,
   "SuiteLeaf Asunaro": 1.011,
   "SuiteLeaf Avocado": 1.2715,
   "SuiteLeaf Banyan": 1.1328,

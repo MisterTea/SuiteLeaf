@@ -43,6 +43,7 @@ pub fn accept_assertion(
 }
 
 /// The bytes a key signs. A field that could change the line breaks is refused.
+#[allow(dead_code)]
 pub fn assertion_message(assertion: &Assertion) -> Result<Vec<u8>, &'static str> {
     for field in [
         assertion.issuer.as_str(),
@@ -67,6 +68,7 @@ pub fn assertion_message(assertion: &Assertion) -> Result<Vec<u8>, &'static str>
 
 /// The assertion must match this public key before the issuer, audience, expiry, and replay checks.
 /// This does not sign anyone in.
+#[allow(dead_code)]
 pub fn verify_signed_assertion(
     assertion: &Assertion,
     signature: &[u8],
@@ -135,6 +137,7 @@ pub fn link_subject(linked: Option<&str>, subject: &str) -> Result<(), &'static 
 }
 
 /// Issuer plus subject. An email-shaped subject is refused, and the refusal does not repeat it.
+#[allow(dead_code)]
 pub fn external_identity_id(issuer: &str, subject: &str) -> Result<String, &'static str> {
     let issuer = issuer.trim();
     if issuer.is_empty() {

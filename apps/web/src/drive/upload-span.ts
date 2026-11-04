@@ -15,7 +15,8 @@ export async function uploadDriveSpan(
   start: number,
   end: number,
 ): Promise<{ done: false; accepted: number } | { done: true; link: DriveLink; accepted: number }> {
-  const body = serializeFile(file);
+  // Ranges count UTF-8 bytes, as the server does, not string characters.
+  const body = new TextEncoder().encode(serializeFile(file));
   const range = contentRangeHeader(start, end, body.length);
   if (!range || end > body.length || (body.length > 0 && start >= end)) {
     throw new Error("That upload does not continue the saved part.");
@@ -28,7 +29,7 @@ export async function uploadDriveSpan(
   const response = await api(`/api/drive/items/${encodeURIComponent(link.itemId)}/content`, {
     method: "PUT",
     headers,
-    body: body.slice(start, end),
+    body: body.subarray(start, end),
   });
   if (response.status === 202) {
     const result = (await response.json()) as { accepted?: unknown };

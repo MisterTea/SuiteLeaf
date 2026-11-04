@@ -25,6 +25,7 @@ const bridge: DesktopBridge = {
   open: () => ipcRenderer.invoke("files:open"),
   saveAs: (r) => ipcRenderer.invoke("files:save-as", r),
   exportFile: (name, text) => ipcRenderer.invoke("files:export", name, text),
+  exportSlidesPng: (json) => ipcRenderer.invoke("slides:export-png", json),
   print: (title) => ipcRenderer.invoke("print", title),
   setDirty: (dirty) => ipcRenderer.send("dirty", dirty),
   getMode: () => ipcRenderer.invoke("mode:get"),
@@ -65,10 +66,16 @@ const bridge: DesktopBridge = {
 };
 contextBridge.exposeInMainWorld("suiteleaf", bridge);
 let pdfFile: ((json: string) => void) | undefined;
+let pngFile: ((json: string) => void) | undefined;
+let pngNext: (() => void) | undefined;
 let pdfAnnounced = false;
 ipcRenderer.on("pdf:file", (_event, json: unknown) => {
   if (typeof json === "string") pdfFile?.(json);
 });
+ipcRenderer.on("png:file", (_event, json: unknown) => {
+  if (typeof json === "string") pngFile?.(json);
+});
+ipcRenderer.on("png:next", () => pngNext?.());
 contextBridge.exposeInMainWorld("suiteleafPdf", {
   listen(callback: (json: string) => void) {
     pdfFile = callback;
@@ -77,10 +84,22 @@ contextBridge.exposeInMainWorld("suiteleafPdf", {
       ipcRenderer.send("pdf:listening");
     }
   },
+  listenPng(callback: (json: string) => void) {
+    pngFile = callback;
+  },
+  onPngNext(callback: () => void) {
+    pngNext = callback;
+  },
   ready() {
     ipcRenderer.send("pdf:ready");
   },
   fail(message: string) {
     ipcRenderer.send("pdf:fail", String(message).slice(0, 500));
+  },
+  pngFail(message: string) {
+    ipcRenderer.send("png:fail", String(message).slice(0, 500));
+  },
+  slide(bounds: unknown) {
+    ipcRenderer.send("png:slide", bounds);
   },
 });

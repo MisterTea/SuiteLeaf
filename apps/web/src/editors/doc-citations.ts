@@ -89,8 +89,7 @@ const Citation = Node.create({
             ? [state.schema.text(" "), node]
             : [node];
           let tr = state.tr.replaceWith(from, to, content);
-          const after = tr.mapping.map(to) + (needsSpace ? 2 : 1);
-          const pos = Math.min(after, tr.doc.content.size);
+          const pos = Math.min(tr.mapping.map(to), tr.doc.content.size);
           tr = tr.setSelection(TextSelection.create(tr.doc, pos)).scrollIntoView();
           dispatch(tr);
           return true;

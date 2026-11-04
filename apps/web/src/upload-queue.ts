@@ -422,13 +422,13 @@ function persistable(job: UploadJob): Omit<UploadJob, "nextAttemptAt"> & { nextA
   };
 }
 
-export function browserUploadStore(
-  bucket: Pick<Storage, "getItem" | "setItem"> = localStorage,
-): Store {
+export function browserUploadStore(given?: Pick<Storage, "getItem" | "setItem">): Store {
+  // Read when used: this module is imported where no localStorage global exists.
+  const bucket = () => given ?? localStorage;
   return {
     read() {
       try {
-        const raw = bucket.getItem(UPLOAD_QUEUE_KEY);
+        const raw = bucket().getItem(UPLOAD_QUEUE_KEY);
         const parsed = raw ? (JSON.parse(raw) as unknown) : [];
         if (!Array.isArray(parsed)) return [];
         return parsed.flatMap((row) => {
@@ -440,11 +440,11 @@ export function browserUploadStore(
       }
     },
     write(jobs) {
-      bucket.setItem(UPLOAD_QUEUE_KEY, JSON.stringify(jobs.map(persistable)));
+      bucket().setItem(UPLOAD_QUEUE_KEY, JSON.stringify(jobs.map(persistable)));
     },
     readSuccess() {
       try {
-        const raw = bucket.getItem(UPLOAD_SUCCESS_KEY);
+        const raw = bucket().getItem(UPLOAD_SUCCESS_KEY);
         if (!raw || !/^\d+$/.test(raw)) return;
         const at = Number(raw);
         return Number.isFinite(at) ? at : undefined;
@@ -454,7 +454,7 @@ export function browserUploadStore(
     },
     writeSuccess(at) {
       if (!Number.isFinite(at)) return;
-      bucket.setItem(UPLOAD_SUCCESS_KEY, String(Math.trunc(at)));
+      bucket().setItem(UPLOAD_SUCCESS_KEY, String(Math.trunc(at)));
     },
   };
 }

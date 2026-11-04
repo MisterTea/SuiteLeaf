@@ -1,0 +1,127 @@
+@media print {
+  body {
+    background: white;
+  }
+  .workspace-header,
+  .editor-menus,
+  .toolbar,
+  .outline,
+  .editor-status,
+  .doc-tab-bar,
+  .find-bar,
+  .error,
+  .sheet-extras,
+  .analysis-panel,
+  .slides-toolbar,
+  .slides-sidebar,
+  .speaker-notes-pane,
+  .marp-pane,
+  .presenter-overlay {
+    display: none !important;
+  }
+  .slides-editor,
+  .slides-main,
+  .slides-canvas-stage,
+  .slide-stage-viewport {
+    display: block !important;
+    padding: 0 !important;
+    background: white !important;
+    overflow: visible !important;
+  }
+  .slide-canvas {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    page-break-after: always;
+  }
+  .workspace,
+  .docs-editor,
+  .document-stage {
+    height: auto !important;
+    display: block !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    background: white !important;
+  }
+  .paper {
+    border: 0;
+    box-shadow: none;
+    width: 100%;
+    min-height: 0;
+  }
+  .document-content {
+    min-height: 0;
+    padding: 0;
+    font-size: 11pt;
+  }
+  .document-content .doc-search-match {
+    background: transparent;
+    box-shadow: none;
+  }
+  .document-content [data-resize-handle] {
+    display: none;
+  }
+  .document-content [data-resize-wrapper] {
+    outline: none !important;
+  }
+  .document-content tr,
+  img {
+    break-inside: avoid;
+  }
+  body.printing-sheet #root {
+    display: none;
+  }
+  body.printing-sheet .sheet-print {
+    display: block;
+    font-size: 10pt;
+  }
+  .sheet-print table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+  .sheet-print td {
+    padding: 5px;
+    border: 1px solid #bbb;
+  }
+  .sheet-print .print-page {
+    break-after: page;
+    page-break-after: always;
+    border: 0;
+    box-shadow: none;
+    margin: 0;
+    padding: 0;
+  }
+  .sheet-print .print-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+  .sheet-print tr {
+    break-inside: avoid;
+  }
+  .sheet-print thead {
+    display: table-header-group;
+  }
+  .sheet-print .print-header td {
+    font-weight: 700;
+  }
+  .sheet-print .suiteleaf-chart {
+    height: 340px;
+    width: 520px;
+    break-inside: avoid;
+    margin-top: 20px;
+  }
+  @page {
+    size: letter;
+    margin: 1in;
+  }
+  .document-content > h1:first-child {
+    margin-top: 20pt;
+  }
+  .document-content table {
+    width: 500pt;
+    max-width: none;
+    margin-left: calc((100% - 500pt) / 2);
+  }
+}
+

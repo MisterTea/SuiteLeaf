@@ -18,7 +18,7 @@ import {
   relative,
 } from "node:path";
 import { randomUUID } from "node:crypto";
-import { readFile, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import { mkdirSync } from "node:fs";
 import { convertOffice } from "./office-converter";
 import { consumeFailedStart, restartWhileDirty, startReleasePoll } from "./updates";
@@ -44,8 +44,18 @@ async function ringDeviceId(userData: string): Promise<string | undefined> {
 import { PPTX_INPUT_LIMIT } from "@suiteleaf/core/office";
 import { isPowerPointExtension } from "@suiteleaf/core/open-office";
 import { runImportCommand } from "./import-cli";
-import { cliUsage, ConvertStopped, runConvertCommand } from "./convert-cli";
-import { openPdfExportWindow } from "./pdf-export-host";
+import {
+  cliUsage,
+  ConvertStopped,
+  runConvertCommand,
+  slidePngFolder,
+  writeSlidePictures,
+} from "./convert-cli";
+import {
+  openPdfExportWindow,
+  openPngExportWindow,
+  renderPresentationPngs,
+} from "./pdf-export-host";
 import { registerAppProtocol } from "./app-protocol";
 import {
   applyLibraryMarks,
@@ -520,15 +530,25 @@ if (
       return;
     }
     if (command === "convert") {
+      const stopped = (cause: unknown): never => {
+        throw new ConvertStopped(
+          cause instanceof Error ? cause.message : String(cause),
+        );
+      };
       const code = await runConvertCommand(commandArgs.slice(1), {
         convertOffice,
         openRenderer: async () => {
           try {
             return await openPdfExportWindow();
           } catch (cause) {
-            throw new ConvertStopped(
-              cause instanceof Error ? cause.message : String(cause),
-            );
+            return stopped(cause);
+          }
+        },
+        openPngRenderer: async () => {
+          try {
+            return await openPngExportWindow();
+          } catch (cause) {
+            return stopped(cause);
           }
         },
         log,
@@ -773,6 +793,44 @@ else {
       if (result.canceled || !result.filePath) return null;
       await atomicWrite(result.filePath, text);
       return result.filePath;
+    });
+    register("slides:export-png", async (json: unknown) => {
+      if (typeof json !== "string" || json.length > 512 * 1024 * 1024)
+        throw new Error("Invalid presentation.");
+      const file = parseFile(json);
+      if (file.kind !== "slide")
+        throw new Error("Only a presentation can be exported as PNG.");
+      const chosen = await dialog.showSaveDialog(window!, {
+        title: "Export slides as PNG",
+        defaultPath: filename(file.title || "Slides", "png"),
+        buttonLabel: "Export",
+        filters: [{ name: "PNG folder", extensions: ["png"] }],
+      });
+      if (chosen.canceled || !chosen.filePath) return null;
+      const folder = slidePngFolder(chosen.filePath);
+      let names: string[] = [];
+      try {
+        names = await readdir(folder);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+      const pictures = names.filter((name) => /^Slide\d+\.png$/i.test(name));
+      if (pictures.length) {
+        const replace = dialog.showMessageBoxSync(window!, {
+          type: "warning",
+          buttons: ["Replace", "Cancel"],
+          defaultId: 1,
+          cancelId: 1,
+          message: "This folder already has slide pictures.",
+          detail: `Replacing removes the Slide pictures in ${basename(folder)}.`,
+        });
+        if (replace !== 0) return null;
+        await Promise.all(pictures.map((name) => unlink(join(folder, name))));
+      }
+      await mkdir(folder, { recursive: true });
+      const slides = await renderPresentationPngs(file);
+      await writeSlidePictures(folder, slides);
+      return folder;
     });
     register("print", async (title?: string) => {
       if (title !== undefined && typeof title !== "string")

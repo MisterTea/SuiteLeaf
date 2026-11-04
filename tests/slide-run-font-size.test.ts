@@ -40,10 +40,13 @@ describe("imported slide font sizes", () => {
 
   it("shrinks a baseline shift that omitted its own size", () => {
     const html = runsToHtml([{ text: "1", baseline: 30, scriptScale: true, fontSize: 18 }]);
-    expect(html).toContain("vertical-align:0.3em");
+    expect(html).toContain("position:relative");
+    expect(html).toContain("top:-0.3em");
+    expect(html).not.toContain("vertical-align:0.3em");
     expect(html).toContain("line-height:0");
     expect(html).toContain("font-size:0.65em");
     expect(runStyle({ text: "1", baseline: 30, fontSize: 18 }).lineHeight).toBe(0);
+    expect(runStyle({ text: "1", baseline: 30, fontSize: 18 }).top).toBe("-0.3em");
     expect(html).toContain('data-script-scale="1"');
     expect(html).toContain("font-size:calc(18 * var(--slide-pt, 1) * 1px)");
     expect(cleanRun({ text: "1", baseline: 30, scriptScale: true }).scriptScale).toBe(true);

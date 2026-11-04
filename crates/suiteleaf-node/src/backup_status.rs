@@ -107,27 +107,43 @@ pub async fn backup_run(State(state): State<AppState>, RequireUser(user): Requir
         }
     };
     let drive = state.drive.clone();
+    let db = state.db.clone();
+    let state_dir = state.config.data_dir.clone();
     let now = suitedb::hlc::iso_now();
     let freshness = std::path::PathBuf::from(freshness);
     let sealed_path = std::path::PathBuf::from(sealed);
     let copy_path = std::path::PathBuf::from(copy);
-    let result = tokio::task::spawn_blocking(move || {
-        let contents = drive
-            .archived_contents()
+    let result =
+        tokio::task::spawn_blocking(move || -> Result<suitedrive::seal::ScheduledSeal, String> {
+            let contents = drive
+                .archived_contents()
+                .map_err(|error| error.to_string())?;
+            let sealed = suitedrive::seal::scheduled_seal(
+                drive.blobs(),
+                &contents,
+                &freshness,
+                &hours,
+                &now,
+                &key,
+                &sealed_path,
+                &copy_path,
+                Some(&db),
+            )
             .map_err(|error| error.to_string())?;
-        suitedrive::seal::scheduled_seal(
-            drive.blobs(),
-            &contents,
-            &freshness,
-            &hours,
-            &now,
-            &key,
-            &sealed_path,
-            &copy_path,
-        )
-        .map_err(|error| error.to_string())
-    })
-    .await;
+            if let Ok(identity_dest) = std::env::var("SUITELEAF_IDENTITY_SEALED")
+                && sealed.wrote
+                && !identity_dest.is_empty()
+            {
+                crate::keys::seal_running_identity(
+                    &state_dir,
+                    &key,
+                    std::path::Path::new(&identity_dest),
+                )
+                .map_err(|_| "The backup could not be written.".to_owned())?;
+            }
+            Ok(sealed)
+        })
+        .await;
     let (wrote, schedule) = match result {
         Ok(Ok(seal)) => (seal.wrote, public_schedule(&seal.reason)),
         Ok(Err(text)) => (false, public_schedule(&text)),

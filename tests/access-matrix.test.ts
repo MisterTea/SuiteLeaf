@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { accessMatrix } from "../packages/core/src/access-matrix";
+import { readAppStyle } from "./app-style";
 
 describe("accessibility matrix", () => {
   it("keeps screen readers untested and names the contrast and motion rules", () => {
@@ -25,7 +26,7 @@ describe("accessibility matrix", () => {
     );
     expect(desktopContrast?.status).toBe("untested");
 
-    const css = readFileSync("apps/web/src/style.css", "utf8");
+    const css = readAppStyle();
     expect(css).toContain("@media (prefers-contrast: more)");
     expect(css).toContain("--text-primary: #000000");
     expect(css).toContain("--border: #000000");

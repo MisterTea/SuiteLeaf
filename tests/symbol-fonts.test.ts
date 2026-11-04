@@ -115,12 +115,12 @@ describe("symbol fonts", () => {
     const file = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
     const box = file.content.slides[file.content.slideOrder[0]].elements[0];
     expect(box.runs?.map((run) => [run.text, run.font])).toEqual([
-      ["Mail ", undefined],
+      ["Mail ", "SuiteLeaf Willow"],
       ["*", "SuiteLeaf Sprig"],
       ["\uF021", "SuiteLeaf Fern"],
       ["m", "SuiteLeaf Thistle"],
       ["\uF0B1", "SuiteLeaf Thistle"],
-      [" ok", undefined],
+      [" ok", "SuiteLeaf Willow"],
     ]);
     expect(box.fontFamily).toBe("SuiteLeaf Willow");
     const xml = await (await JSZip.loadAsync(await exportPptx(file))).file("ppt/slides/slide1.xml")!.async("string");

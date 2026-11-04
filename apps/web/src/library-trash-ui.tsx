@@ -10,11 +10,11 @@ import {
   Copy,
   FolderInput,
 } from "lucide-react";
-import type { DragEvent } from "react";
+import { useId, type DragEvent } from "react";
 import { Link } from "react-router-dom";
 import type { FileRecord } from "@suiteleaf/core";
 import { formatModified } from "./drive/status";
-import { recordSaveStatus } from "./save-state";
+import { recordSaveStatus, syncTargetHost } from "./save-state";
 import { DrawingIcon } from "./drawing-home";
 import {
   moveToTrashTitle,
@@ -54,10 +54,19 @@ export function FileLibraryRow({
   const title = record.file.title;
   const trashed = !!record.trashedAt;
   const starred = !!record.starred;
+  const saved = recordSaveStatus(record, { desktop });
+  const syncHost = syncTargetHost(record.drive?.nodeUrl);
+  const id = useId();
+  const note = snippet ? "snippet" : record.recovery ? "recovery" : record.path ? "path" : null;
+  // The link is named by the title alone; the lines under it describe the file.
+  const described = [note, "saved", syncHost ? "host" : null, saved.revision ? "revision" : null]
+    .filter(Boolean)
+    .map((part) => `${id}-${part}`)
+    .join(" ");
   return (
     <div className="file-row" draggable={!!onDragStart && !trashed} onDragStart={onDragStart}>
       <div className="file-main">
-        <Link to={`/file/${record.file.id}`}>
+        <Link to={`/file/${record.file.id}`} aria-label={title} aria-describedby={described}>
           <span className={`file-icon ${record.file.kind}`}>
             {record.file.kind === "doc" ? (
               <FileText size={21} />
@@ -73,16 +82,18 @@ export function FileLibraryRow({
           </span>
           <span>
             {title}
-            {snippet ? <small className="file-snippet">{snippet}</small> : null}
-            {!snippet && record.recovery ? (
-              <small>Recovery draft available</small>
+            {note === "snippet" ? (
+              <small id={`${id}-snippet`} className="file-snippet">{snippet}</small>
             ) : null}
-            {!snippet && !record.recovery && record.path ? (
-              <small>{record.path}</small>
+            {note === "recovery" ? (
+              <small id={`${id}-recovery`}>Recovery draft available</small>
             ) : null}
-            <small className="file-save-where">
-              {recordSaveStatus(record, { desktop }).label}
-            </small>
+            {note === "path" ? <small id={`${id}-path`}>{record.path}</small> : null}
+            <small id={`${id}-saved`} className="file-save-where">{saved.label}</small>
+            {syncHost ? <small id={`${id}-host`}>SuiteDrive on {syncHost}</small> : null}
+            {saved.revision ? (
+              <time id={`${id}-revision`} dateTime={saved.revision}>{saved.revision}</time>
+            ) : null}
           </span>
         </Link>
         {trashed && view !== "trash" ? (

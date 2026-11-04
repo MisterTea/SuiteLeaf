@@ -51,6 +51,8 @@ it("shows where a library file is saved and does not call a local file synced", 
     ),
   );
   expect(screen.getByText("Saved to SuiteDrive")).toBeTruthy();
+  expect(document.querySelector("time")?.getAttribute("dateTime")).toBe("2026-11-01T12:00:00.000Z");
+  expect(document.body.textContent).toContain("SuiteDrive on 127.0.0.1:8787");
   expect(document.body.textContent).not.toContain("secret-value");
   cleanup();
 
@@ -67,6 +69,7 @@ it("shows where a library file is saved and does not call a local file synced", 
     ),
   );
   expect(screen.getByText("Saved on this device · not yet on SuiteDrive")).toBeTruthy();
+  expect(document.body.textContent).not.toContain("2026-11-01T11:00:00.000Z");
   expect(document.body.textContent).not.toContain("Saved to SuiteDrive");
   expect(document.body.textContent).not.toContain("secret-value");
   cleanup();
@@ -74,4 +77,14 @@ it("shows where a library file is saved and does not call a local file synced", 
   render(row(record("Beds", { path: "/tmp/Beds.sldoc" }), true));
   expect(screen.getByText("Saved to file")).toBeTruthy();
   expect(document.body.textContent).not.toContain("Saved to SuiteDrive");
+});
+
+it("names the file link by its title and describes it with the lines under it", () => {
+  render(row(record("Beds", { recovery: true })));
+  const link = screen.getByRole("link", { name: "Beds" });
+  expect(link.getAttribute("aria-label")).toBe("Beds");
+  const described = (link.getAttribute("aria-describedby") ?? "")
+    .split(" ")
+    .map((id) => document.getElementById(id)?.textContent);
+  expect(described).toEqual(["Recovery draft available", "Draft saved · choose Save As"]);
 });

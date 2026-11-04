@@ -1,6 +1,6 @@
 # 16 · Import and export a CSV without losing leading zeros
 
-**Mode:** single-node · **App:** Sheets · **Video:** [videos/16-import-and-export-csv.mp4](videos/16-import-and-export-csv.mp4) · **Script:** [scenes/sheets.spec.ts](scenes/sheets.spec.ts)
+**Mode:** single-node · **App:** Sheets · **Video:** [videos/16-import-and-export-csv.mp4](videos/16-import-and-export-csv.mp4) · **Script:** [scenes/sheets-files.spec.ts](scenes/sheets-files.spec.ts)
 
 ## Who and why
 

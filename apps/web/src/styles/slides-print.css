@@ -1,0 +1,75 @@
+.slides-print-deck {
+  position: absolute;
+  left: -100000px;
+  top: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.slides-png-frame {
+  position: fixed;
+  left: 0;
+  top: 0;
+  margin: 0;
+  overflow: hidden;
+  background: #fff;
+}
+.slides-png-frame .slide-still {
+  width: 100%;
+  height: 100%;
+}
+.slides-print-page {
+  position: relative;
+  box-sizing: border-box;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+@media print {
+  body:has(> .slides-print-deck) > :not(.slides-print-deck) { display: none !important; }
+  html:has(.slides-print-deck), body:has(> .slides-print-deck) {
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  body > .slides-print-deck {
+    display: block !important;
+    position: static;
+    opacity: 1;
+  }
+  .slides-print-deck .slides-print-sheet {
+    break-after: page;
+    page-break-after: always;
+  }
+  .slides-print-deck .slides-print-sheet:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+  .slides-print-deck .slides-print-page {
+    overflow: hidden;
+    break-inside: avoid;
+    break-after: auto;
+    page-break-after: auto;
+  }
+  /* Ink past the slide box must not enlarge the page Chromium then shrinks to fit. */
+  .slides-print-deck .slide-surface {
+    overflow: hidden;
+  }
+  .slides-print-deck .slides-print-notes {
+    /* A slide PDF is one page. Notes stay in the sheet for the print document,
+       but they must not open a page after a full-size slide. */
+    display: none !important;
+  }
+  .slides-print-deck .slide-media-name,
+  .slides-print-deck .slide-media-play {
+    display: none !important;
+  }
+  .slides-print-deck .slide-audio {
+    background: transparent !important;
+    border: 0 !important;
+    padding: 0 !important;
+  }
+}

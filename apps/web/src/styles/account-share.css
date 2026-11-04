@@ -1,0 +1,518 @@
+.account-chip {
+  margin-top: auto;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--sidebar-selected);
+  color: var(--sidebar-selected-text);
+}
+.account-who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.account-actions {
+  display: flex;
+  gap: 4px;
+}
+.account-error {
+  margin: 0;
+  font-size: 11px;
+  color: #963b21;
+}
+.account-avatar {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--green);
+  color: white;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.account-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-name small {
+  display: block;
+  font-weight: 400;
+  font-size: 11px;
+  opacity: 0.8;
+}
+.account-actions button {
+  flex: 1;
+  gap: 5px;
+  padding: 5px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.account-actions button:hover {
+  border-color: var(--border);
+  background: var(--surface);
+}
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 24px;
+  padding: 12px 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--sidebar-selected);
+  color: var(--sidebar-selected-text);
+  font-size: 13px;
+}
+.notice svg {
+  flex-shrink: 0;
+}
+.notice button {
+  margin-left: auto;
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+.notice + .welcome {
+  margin-top: 36px;
+}
+.font-engine-notice {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  z-index: 1000;
+  width: max-content;
+  max-width: min(640px, calc(100vw - 32px));
+  margin: 0;
+  transform: translateX(-50%);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+.sign-in-ended {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--sidebar-selected);
+  color: var(--sidebar-selected-text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.sign-in-link {
+  margin-top: 10px;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+.sign-in-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--sidebar-bg);
+}
+.sign-in-card {
+  width: 420px;
+  background: var(--dialog-bg);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+.sign-in-card .dialog-header h2 {
+  color: var(--text-primary);
+}
+.sign-in-card .dialog-header h2 small,
+.dialog-note {
+  display: block;
+  margin: 4px 0 0;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.sign-in-card .floating-field label {
+  background: var(--dialog-bg);
+}
+.sign-in-card .floating-field input {
+  background: var(--input-bg);
+  color: var(--text-primary);
+}
+.sign-in-disconnect {
+  align-self: center;
+  color: var(--text-secondary);
+}
+.cluster-note {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+.cluster-note small {
+  padding-left: 0;
+}
+.cluster-note .cluster-sync {
+  display: flex;
+  align-items: center;
+  font-weight: 500;
+}
+.cluster-sync.copying .local-dot {
+  background: #d29a1e;
+}
+.drive-copying {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.sign-in-cluster-note {
+  margin: 0 0 14px;
+}
+.account-chip {
+  margin-top: 0;
+}
+/* On phones the sidebar is an icon rail; keep the mode controls as icons. */
+@media (max-width: 700px) {
+  .local-note {
+    display: block;
+    margin-top: auto;
+    font-size: 0;
+  }
+  .local-note .local-dot,
+  .local-note small:not(.cluster-sync) {
+    display: none;
+  }
+  .cluster-note {
+    display: flex;
+    position: fixed;
+    z-index: 30;
+    top: 14px;
+    left: 72px;
+    right: 64px;
+    margin: 0;
+    font-size: 0;
+    pointer-events: none;
+  }
+  .cluster-note svg {
+    display: none;
+  }
+  .cluster-note .cluster-sync {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    line-height: 1.3;
+    color: var(--text-primary);
+    pointer-events: auto;
+  }
+  .cluster-note small:not(.cluster-sync) {
+    display: block;
+    font-size: 12px;
+    line-height: 1.3;
+    color: var(--text-secondary);
+    pointer-events: auto;
+    white-space: normal;
+  }
+  .sign-in-link {
+    justify-content: center;
+    width: 100%;
+    padding: 10px 0;
+    font-size: 0;
+    gap: 0;
+  }
+  .account-chip {
+    margin-top: auto;
+    justify-items: center;
+    gap: 6px;
+    padding: 6px 0;
+  }
+  .account-name,
+  .account-action-label {
+    display: none;
+  }
+  .account-actions {
+    flex-direction: column;
+  }
+}
+.share-dialog {
+  width: min(520px, 92vw);
+  max-height: none;
+  overflow: visible;
+  gap: 12px;
+}
+@media (max-width: 700px) {
+  .share-dialog {
+    overflow: auto;
+  }
+}
+.share-add {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+}
+.share-add label {
+  font-size: 13px;
+  font-weight: 500;
+}
+.share-add input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.share-suggestions {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+.share-suggestions button,
+.share-role-menu button {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 8px 10px;
+}
+.share-suggestions button {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+.share-suggestions small,
+.share-people small,
+.share-role small {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 400;
+}
+.share-pending {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.share-list-title {
+  margin: 4px 0 0;
+  font-size: 13px;
+  font-weight: 500;
+}
+.share-people {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.share-people li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+}
+.share-people li > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.share-via {
+  color: var(--text-secondary);
+}
+.share-owner {
+  flex-shrink: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.share-role {
+  position: relative;
+  flex-shrink: 0;
+  z-index: 1;
+}
+.share-role:has(.share-role-menu) {
+  z-index: 5;
+}
+.share-role-btn {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 4px 10px;
+  min-width: 148px;
+}
+.share-role-btn span {
+  font-size: 13px;
+  font-weight: 500;
+}
+.share-role-btn small {
+  white-space: nowrap;
+}
+.share-role-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  width: 280px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+  z-index: 1100;
+}
+.share-role-menu button {
+  align-items: center;
+}
+.share-role-menu button span {
+  font-weight: 500;
+}
+.share-role-menu button small {
+  margin-right: auto;
+}
+.share-role-menu .share-remove {
+  color: var(--google-red);
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 0;
+}
+.share-private,
+.share-folder,
+.share-miss {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.share-miss {
+  color: var(--google-red);
+}
+.share-folder button,
+.share-notice button {
+  border: 0;
+  background: transparent;
+  color: var(--google-blue);
+  padding: 0 4px;
+  font-weight: 500;
+}
+.share-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-muted);
+  font-size: 13px;
+}
+.share-until {
+  color: var(--text-primary);
+  font-weight: 500;
+  font-size: 13px;
+}
+.share-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+.share-confirm p {
+  margin: 0;
+  font-size: 14px;
+}
+.share-confirm div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.share-remove-btn {
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 6px 12px;
+  color: var(--google-red);
+  font-weight: 500;
+}
+.share-expiry {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.share-expiry-head,
+.share-expiry-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.share-expiry-head button,
+.share-expiry-nav button {
+  border: 0;
+  background: transparent;
+  color: var(--google-blue);
+  font-weight: 500;
+  padding: 2px 6px;
+}
+.share-expiry-week,
+.share-expiry-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  text-align: center;
+}
+.share-expiry-week span {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.share-expiry-grid button {
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  padding: 6px 0;
+  font-size: 13px;
+}
+.share-expiry-grid button:hover:not(:disabled) {
+  background: var(--surface-muted);
+}
+.share-expiry-grid button:disabled {
+  color: var(--text-secondary);
+  opacity: 0.45;
+}
+.share-expiry-grid button.outside {
+  opacity: 0.7;
+}
+.share-expiry-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.access-refused {
+  margin: 0 0 12px;
+  color: var(--text-primary, #202124);
+  font-size: 18px;
+  font-weight: 500;
+}

@@ -14,7 +14,7 @@ export type SavePhase =
 
 export type SaveRecord = {
   file: { updatedAt: string };
-  drive?: { syncedAt?: string };
+  drive?: { syncedAt?: string; nodeUrl?: string };
   path?: string;
   recovery?: boolean;
 };
@@ -36,7 +36,25 @@ export type SaveFacts = {
   notice?: string;
   /** Replaces the synced label, for example after saving a conflict copy. */
   syncedLabel?: string;
+  /** Shared edits this device has not had stored yet. */
+  unacked?: number;
 };
+
+let unackedEdits = 0;
+
+/** Remember shared edits that the node has not stored. A count that is not a positive whole number is none. */
+export function noteUnackedEdits(count: number): void {
+  unackedEdits = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+}
+
+export function unackedEditCount(): number {
+  return unackedEdits;
+}
+
+function waitingEdits(facts: SaveFacts): number {
+  const count = facts.unacked ?? unackedEdits;
+  return Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+}
 
 export function saveWhere(record: SaveRecord, desktop: boolean): SaveWhere {
   if (record.drive) return "suitedrive";
@@ -45,13 +63,50 @@ export function saveWhere(record: SaveRecord, desktop: boolean): SaveWhere {
   return "browser";
 }
 
+/** A stored SuiteDrive time, or null when the value is not that time. */
+export function persistedRevision(value: string | undefined): string | null {
+  if (!value || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime()) || date.toISOString() !== value) return null;
+  return value;
+}
+
 /** Phase and label for the open file. `synced` requires the stored SuiteDrive revision. */
-export function recordSaveStatus(record: SaveRecord, facts: SaveFacts): { phase: SavePhase; label: string } {
+export function recordSaveStatus(
+  record: SaveRecord,
+  facts: SaveFacts,
+): { phase: SavePhase; label: string; revision: string | null } {
   const phase = savePhase(record, facts);
   const where = saveWhere(record, facts.desktop);
   let label = phaseLabel(phase, where, facts);
   if (facts.notice) label = `${facts.notice} · ${label}`;
-  return { phase, label };
+  const stored = persistedRevision(record.drive?.syncedAt);
+  const current = persistedRevision(record.file.updatedAt);
+  const revision = phase === "synced" && stored && stored === current ? stored : null;
+  return { phase, label, revision };
+}
+
+/** The SuiteDrive host, without a user name, password, path, or query. */
+export function syncTargetHost(nodeUrl: string | undefined): string | null {
+  if (!nodeUrl) return null;
+  try {
+    const url = new URL(nodeUrl);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    const host = url.host;
+    if (!host || /secret|password|token|api[_-]?key/i.test(host)) return null;
+    return host;
+  } catch {
+    return null;
+  }
+}
+
+/** The open editor names the stored revision when the status says SuiteDrive saved it. */
+export function editorSaveTitle(status: string, record: SaveRecord): string | undefined {
+  if (!status.includes("Saved to SuiteDrive") || status.includes("not yet")) return undefined;
+  const revision = recordSaveStatus(record, { desktop: false }).revision;
+  const host = syncTargetHost(record.drive?.nodeUrl);
+  if (revision && host) return `${revision} · ${host}`;
+  return revision ?? host ?? undefined;
 }
 
 export function savePhase(record: SaveRecord, facts: SaveFacts): SavePhase {
@@ -60,12 +115,12 @@ export function savePhase(record: SaveRecord, facts: SaveFacts): SavePhase {
   if (facts.savingLocal) return "saving-local";
   if (facts.editing) return "editing";
   if (!record.drive) return "local";
-  const pending = record.drive.syncedAt !== record.file.updatedAt;
-  if (pending && (facts.signedIn === false || facts.online === false)) return "offline";
-  if (facts.syncing && pending) return "syncing";
-  if (pending) return "pending-sync";
-  if (!record.drive.syncedAt) return "pending-sync";
-  return "synced";
+  const stored = persistedRevision(record.drive.syncedAt);
+  const current = persistedRevision(record.file.updatedAt);
+  if (stored && stored === current) return waitingEdits(facts) > 0 ? "pending-sync" : "synced";
+  if (facts.signedIn === false || facts.online === false) return "offline";
+  if (facts.syncing) return "syncing";
+  return "pending-sync";
 }
 
 function phaseLabel(phase: SavePhase, where: SaveWhere, facts: SaveFacts): string {

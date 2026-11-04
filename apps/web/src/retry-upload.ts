@@ -31,18 +31,20 @@ export async function retryQueuedFile(itemId: string, deps: RetryDeps): Promise<
     const loaded = await deps.load(record.file.id);
     if (loaded) record = loaded;
   }
+  const drive = record.drive;
+  if (!drive) return "missing";
   const body = serializeFile(record.file);
   try {
     const remote = await deps.read(job.itemId);
     if (sameUploadBody(body, remote.text)) {
       await deps.save({
         ...record,
-        drive: { ...record.drive, versionId: remote.versionId, syncedAt: record.file.updatedAt },
+        drive: { ...drive, versionId: remote.versionId, syncedAt: record.file.updatedAt },
       });
       deps.succeed(job.itemId, job.revision);
       return "already";
     }
-    const link = await deps.upload(record.file, record.drive);
+    const link = await deps.upload(record.file, drive);
     await deps.save({ ...record, drive: link });
     deps.succeed(job.itemId, job.revision);
     return "uploaded";

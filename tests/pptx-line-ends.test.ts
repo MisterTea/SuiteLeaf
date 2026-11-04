@@ -111,7 +111,6 @@ describe("connector ends", () => {
   });
 
   it("draws a large freeform arrowhead bigger than a normal one", async () => {
-    const zip = new JSZip();
     const shape = (size: string) =>
       `<p:sp><p:nvSpPr><p:cNvPr id="3" name="Line"/></p:nvSpPr><p:spPr>
         <a:xfrm><a:off x="0" y="0"/><a:ext cx="1000000" cy="100000"/></a:xfrm>

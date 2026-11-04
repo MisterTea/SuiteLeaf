@@ -2,7 +2,7 @@
 
 type Piece = {
   type?: string;
-  wordArt?: boolean;
+  wordArt?: boolean | string;
   decorative?: boolean;
   content?: string;
   rows?: string[][];

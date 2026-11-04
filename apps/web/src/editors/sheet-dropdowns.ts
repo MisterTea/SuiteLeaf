@@ -88,7 +88,8 @@ export function optionsFromValues(values: unknown[]): DropdownOption[] {
 export function isRangeFormula(formula1: string | undefined): boolean {
   const raw = String(formula1 ?? "").trim();
   if (!raw.startsWith("=")) return false;
-  const body = raw.slice(1).trim();
+  // Univer writes a range on another sheet as =[workbookId]Statuses!A2:A6.
+  const body = raw.slice(1).trim().replace(/^\[[^\]]+\](?=[^!]+!)/, "");
   if (!body || body.startsWith("[") || body.startsWith('"') || body.includes("("))
     return false;
   return /[A-Za-z]/.test(body);

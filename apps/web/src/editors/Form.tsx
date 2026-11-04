@@ -3,7 +3,10 @@ import type { EditorActions } from "../ui";
 import type { FormFile } from "@suiteleaf/core";
 import { listedChoice, choiceAnswerError } from "../form-choice";
 import { canonicalGridAnswer, filledLabels, gridAnswerError } from "../form-grid";
-import { appendFormResponse } from "../form-submit";
+import { visibleQuestionIds } from "../form-branch";
+import { formNumberAnswer } from "../form-number";
+import { formUploadAnswer, formUploadText } from "../form-upload";
+import { appendFormResponse, formClosedMessage, formDeadlineMessage } from "../form-submit";
 import { GridAnswer, GridAnswerLines } from "../form-grid-view";
 
 type Question = FormFile["content"]["questions"][number];
@@ -11,8 +14,14 @@ type View = "questions" | "respond" | "responses";
 
 const RATING_SCORES = ["1", "2", "3", "4", "5"] as const;
 
+/** An upload is stored as `name|size`. The table shows the name and size. */
+function uploadText(value: string) {
+  const shown = formUploadAnswer(value);
+  return "text" in shown ? shown.text : value;
+}
+
 function answerKind(value: string): Question["kind"] {
-  if (value === "choice" || value === "rating" || value === "grid") return value;
+  if (value === "choice" || value === "rating" || value === "grid" || value === "file" || value === "number") return value;
   return "text";
 }
 
@@ -129,11 +138,22 @@ export default function FormEditor({
   };
   const setQuestions = (next: Question[]) => {
     setQuestionsState(next);
-    write({ questions: next, responses: responsesRef.current });
+    write({
+      questions: next,
+      responses: responsesRef.current,
+      accepting: file.content.accepting,
+      deadline: file.content.deadline,
+    });
   };
 
   const submit = () => {
-    for (const question of questions) {
+    const closed = formClosedMessage(file.content) ?? formDeadlineMessage(file.content.deadline, new Date());
+    if (closed) {
+      setError(closed);
+      return;
+    }
+    const visible = new Set(visibleQuestionIds(questions, draft));
+    for (const question of questions.filter((question) => visible.has(question.id))) {
       const prompt = question.prompt || "This question";
       if (question.kind === "grid") {
         const message = gridAnswerError(
@@ -158,13 +178,26 @@ export default function FormEditor({
           setError(message);
           return;
         }
+      } else if (question.kind === "number") {
+        const written = (draft[question.id] ?? "").trim();
+        if (question.required && !written) {
+          setError(`${prompt} is required`);
+          return;
+        }
+        if (written) {
+          const result = formNumberAnswer(written, question.min, question.max);
+          if ("message" in result) {
+            setError(result.message);
+            return;
+          }
+        }
       } else if (question.required && !(draft[question.id] ?? "").trim()) {
         setError(`${prompt} is required`);
         return;
       }
     }
     const answers: Record<string, string> = {};
-    for (const question of questions) {
+    for (const question of questions.filter((question) => visible.has(question.id))) {
       if (question.kind === "grid") {
         const value = canonicalGridAnswer(
           filledLabels(question.rows),
@@ -175,15 +208,22 @@ export default function FormEditor({
       } else if (question.kind === "choice") {
         const value = listedChoice(question.choices, draft[question.id] ?? "");
         if (value) answers[question.id] = value;
+      } else if (question.kind === "number") {
+        const result = formNumberAnswer(draft[question.id] ?? "", question.min, question.max);
+        if ("text" in result && result.text) answers[question.id] = result.text;
       } else {
         const value = (draft[question.id] ?? "").trim();
         if (value) answers[question.id] = value;
       }
     }
-    const nextResponse = { id: crypto.randomUUID(), at: new Date().toISOString(), answers };
-    const stored = respondOnly
+    const nextResponse: FormFile["content"]["responses"][number] = {
+      id: crypto.randomUUID(),
+      at: new Date().toISOString(),
+      answers,
+    };
+    const stored: FormFile["content"] = respondOnly
       ? appendFormResponse({ ...file.content, responses: responsesRef.current }, nextResponse)
-      : { questions, responses: [...responsesRef.current, nextResponse] };
+      : { ...file.content, questions, responses: [...responsesRef.current, nextResponse] };
     setResponsesState(stored.responses);
     write(stored);
     setDraft({});
@@ -260,6 +300,8 @@ export default function FormEditor({
                   <option value="choice">One choice</option>
                   <option value="grid">Grid</option>
                   <option value="rating">Rating</option>
+                  <option value="file">File</option>
+                  <option value="number">Number</option>
                 </select>
               </label>
               <span className="form-required">
@@ -364,7 +406,9 @@ export default function FormEditor({
           {questions.length === 0 ? (
             <p className="form-empty">Add a question before collecting answers.</p>
           ) : (
-            questions.map((question) => (
+            questions
+              .filter((question) => visibleQuestionIds(questions, draft).includes(question.id))
+              .map((question) => (
               <fieldset key={question.id}>
                 <legend>
                   {question.prompt || "Untitled question"}
@@ -421,6 +465,35 @@ export default function FormEditor({
                       </span>
                     ))}
                   </div>
+                ) : question.kind === "number" ? (
+                  <input
+                    inputMode="decimal"
+                    aria-label={question.prompt || "Number"}
+                    value={draft[question.id] ?? ""}
+                    disabled={!allowSubmit}
+                    onChange={(event) => setDraft({ ...draft, [question.id]: event.target.value })}
+                  />
+                ) : question.kind === "file" ? (
+                  <input
+                    type="file"
+                    aria-label={question.prompt || "File"}
+                    disabled={!allowSubmit}
+                    onChange={(event) => {
+                      const picked = event.target.files?.[0];
+                      if (!picked) {
+                        setDraft({ ...draft, [question.id]: "" });
+                        return;
+                      }
+                      const result = formUploadText(picked.name, picked.size);
+                      if ("message" in result) {
+                        setError(result.message);
+                        setDraft({ ...draft, [question.id]: "" });
+                        return;
+                      }
+                      setError("");
+                      setDraft({ ...draft, [question.id]: `${picked.name.trim()}|${picked.size}` });
+                    }}
+                  />
                 ) : (
                   <input
                     aria-label={question.prompt || "Answer"}
@@ -474,6 +547,8 @@ export default function FormEditor({
                             rows={filledLabels(question.rows)}
                             value={response.answers[question.id] ?? ""}
                           />
+                        ) : question.kind === "file" ? (
+                          uploadText(response.answers[question.id] ?? "")
                         ) : (
                           response.answers[question.id] ?? ""
                         )}

@@ -1,0 +1,184 @@
+.form-editor {
+  padding: 24px 32px 48px;
+  max-width: 760px;
+}
+.form-views {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.form-views button {
+  border: 1px solid var(--border, #dadce0);
+  background: #fff;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font: inherit;
+  cursor: pointer;
+}
+.form-views button.selected {
+  background: #f3e8fd;
+  border-color: #7b1fa2;
+  color: #6a1b9a;
+}
+.form-question,
+.form-respond fieldset {
+  border: 1px solid var(--border, #dadce0);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin: 0 0 12px;
+  display: grid;
+  gap: 10px;
+}
+.form-question label,
+.form-respond label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+.form-required {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+}
+.form-question input,
+.form-question select,
+.form-respond input[type="text"],
+.form-respond input:not([type="radio"]):not([type="checkbox"]) {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--border, #dadce0);
+  border-radius: 8px;
+}
+.form-choices {
+  display: grid;
+  gap: 8px;
+}
+.form-rating {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.form-rating span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.form-grid-editor {
+  display: grid;
+  gap: 12px;
+}
+.form-grid-heading {
+  font-size: 13px;
+  font-weight: 600;
+}
+.form-grid {
+  width: max-content;
+  max-width: 100%;
+  border-collapse: collapse;
+}
+.form-grid th,
+.form-grid td {
+  padding: 4px 12px;
+  text-align: center;
+  font-weight: 500;
+}
+.form-grid th[scope="row"] {
+  text-align: left;
+  padding-left: 0;
+}
+.form-grid input[type="radio"] {
+  width: 1.1rem;
+  height: 1.1rem;
+  padding: 0;
+  border: 0;
+  accent-color: #7b1fa2;
+}
+.form-grid-answer {
+  white-space: pre-line;
+}
+.form-editor button[type="button"],
+.form-editor button[type="submit"] {
+  font: inherit;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid #7b1fa2;
+  background: #7b1fa2;
+  color: #fff;
+  cursor: pointer;
+  width: fit-content;
+}
+.form-empty {
+  color: var(--text-muted, #5f6368);
+}
+.form-error {
+  color: #b3261e;
+  margin: 0;
+}
+.sign-up-page {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 48px 24px 80px;
+  background: #fff;
+}
+.sign-up-page h1 {
+  font-size: 28px;
+  font-weight: 500;
+  margin: 0 0 20px;
+}
+.sign-up-received,
+.sign-up-closed {
+  font-size: 18px;
+  margin: 0;
+}
+.sign-up-link-dialog {
+  width: 560px;
+}
+.sign-up-link-warning {
+  margin: 0;
+  line-height: 1.45;
+}
+.sign-up-link-label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+.sign-up-link-label textarea {
+  font: inherit;
+  width: 100%;
+  box-sizing: border-box;
+  resize: none;
+  padding: 8px 10px;
+  border: 1px solid var(--border, #dadce0);
+  border-radius: 8px;
+  color: inherit;
+  background: var(--surface, #f8f9fa);
+}
+.sign-up-link-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sign-up-link-actions button {
+  font: inherit;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid #7b1fa2;
+  background: #7b1fa2;
+  color: #fff;
+  cursor: pointer;
+}
+.sign-up-link-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.form-responses table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.form-responses th,
+.form-responses td {
+  text-align: left;
+  border-bottom: 1px solid var(--border, #dadce0);
+  padding: 8px 10px;
+}
+

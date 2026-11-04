@@ -56,6 +56,23 @@ it("gives a larger paragraph mark the empty line after a hard break", async () =
   expect(element.runs?.find((run) => run.text === "\u200b")?.fontSize).toBe(66);
 });
 
+it("does not stretch a line of words when the paragraph mark is larger", async () => {
+  const zip = new JSZip();
+  zip.file(
+    "ppt/slides/slide1.xml",
+    `<p:sld><p:spTree><p:sp><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="4000000" cy="2000000"/></a:xfrm></p:spPr>
+      <p:txBody><a:bodyPr/><a:lstStyle/><a:p>
+        <a:pPr><a:defRPr sz="2000"/></a:pPr>
+        <a:r><a:rPr/><a:t>Ask what if</a:t></a:r>
+        <a:endParaRPr sz="2800"/>
+      </a:p></p:txBody></p:sp></p:spTree></p:sld>`,
+  );
+  const file = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+  const element = file.content.slides[file.content.slideOrder[0]].elements[0];
+  expect(element.runs?.some((run) => run.text === "\u200b")).toBe(false);
+  expect(element.fontSize).toBe(20);
+});
+
 it("drops a trailing break when the paragraph mark is shorter than that break", async () => {
   const zip = new JSZip();
   zip.file(
@@ -155,6 +172,35 @@ it("stacks paragraph space after onto the next paragraph's space before", async 
   expect(box?.runs?.find((run) => run.paragraphBreak)?.spaceBefore).toBeCloseTo((18 / 72) * inch, 5);
 });
 
+it("sizes a blank line after a subscript at the script size", async () => {
+  const zip = new JSZip();
+  zip.file(
+    "ppt/slides/slide1.xml",
+    `<p:sld><p:cSld><p:spTree><p:sp><p:nvSpPr><p:cNvPr id="2"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="4000000" cy="2000000"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:lstStyle><a:lvl1pPr><a:spcBef><a:spcPct val="20000"/></a:spcBef></a:lvl1pPr></a:lstStyle><a:p><a:r><a:rPr sz="2400"/><a:t>Start</a:t></a:r></a:p><a:p><a:endParaRPr sz="2400" baseline="-25000"/></a:p><a:p><a:r><a:rPr sz="2800"/><a:t>Next</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`,
+  );
+  const parsed = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+  const box = parsed.content.slides[parsed.content.slideOrder[0]].elements[0];
+  const runs = box?.runs ?? [];
+  const blank = runs.filter((run) => run.paragraphBreak);
+  expect(blank[0]?.fontSize).toBeCloseTo(24 * 0.65, 2);
+  expect(blank[1]?.fontSize).toBe(28);
+  const inch = parsed.content.width / (parsed.content.pointWidth / 72);
+  expect(blank[0]?.spaceBefore).toBeCloseTo((4.8 / 72) * inch, 2);
+});
+
+it("sizes a blank line from a subscript paragraph default", async () => {
+  const zip = new JSZip();
+  zip.file(
+    "ppt/slides/slide1.xml",
+    `<p:sld><p:cSld><p:spTree><p:sp><p:nvSpPr><p:cNvPr id="2"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="4000000" cy="2000000"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr sz="2400"/><a:t>Rewards</a:t></a:r></a:p><a:p><a:pPr><a:defRPr sz="2548" baseline="-26879"/></a:pPr><a:endParaRPr/></a:p><a:p><a:r><a:rPr sz="2800"/><a:t>Quantities</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`,
+  );
+  const parsed = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+  const blank = parsed.content.slides[parsed.content.slideOrder[0]].elements[0]?.runs?.find(
+    (run) => run.paragraphBreak,
+  );
+  expect(blank?.fontSize).toBeCloseTo(25.48 * 0.65, 2);
+});
+
 it("lets a paragraph spacing percentage replace an inherited point gap", async () => {
   const zip = new JSZip();
   zip.file(
@@ -203,7 +249,45 @@ it("keeps a second paragraph's line spacing when the box uses the first", async 
   expect(box?.runs?.[0]?.paraLine).toBeCloseTo(single, 5);
 });
 
-it("shrinks the line box when a later paragraph uses a smaller font", async () => {
+it("sizes a mixed line from its largest run, not the smaller quote", async () => {
+  const zip = new JSZip();
+  zip.file(
+    "ppt/presentation.xml",
+    `<p:presentation><p:defaultTextStyle><a:lvl1pPr><a:defRPr sz="2800"><a:latin typeface="Calibri"/></a:defRPr></a:lvl1pPr></p:defaultTextStyle></p:presentation>`,
+  );
+  zip.file(
+    "ppt/slides/slide1.xml",
+    `<p:sld><p:cSld><p:spTree><p:sp><p:nvSpPr><p:cNvPr id="2"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="4000000" cy="2000000"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr><a:latin typeface="Calibri"/></a:rPr><a:t>Query:</a:t></a:r><a:r><a:rPr sz="2400"><a:latin typeface="Calibri"/></a:rPr><a:t> “Austin?”</a:t></a:r></a:p><a:p><a:r><a:rPr><a:latin typeface="Calibri"/></a:rPr><a:t>Next</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`,
+  );
+  const parsed = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+  const box = parsed.content.slides[parsed.content.slideOrder[0]].elements[0];
+  expect(box?.fontSize).toBe(28);
+  const quote = box?.runs?.find((run) => run.text.includes("Austin"));
+  expect(quote?.fontSize).toBe(24);
+  expect(box?.runs?.find((run) => run.paragraphBreak)?.fontSize).toBe(28);
+});
+
+it("keeps the paragraph strut on the body size when a subscript is larger", async () => {
+  const zip = new JSZip();
+  zip.file(
+    "ppt/presentation.xml",
+    `<p:presentation><p:defaultTextStyle><a:lvl1pPr><a:defRPr sz="3200"><a:latin typeface="Calibri"/></a:defRPr></a:lvl1pPr></p:defaultTextStyle></p:presentation>`,
+  );
+  zip.file(
+    "ppt/slides/slide1.xml",
+    `<p:sld><p:cSld><p:spTree><p:sp><p:nvSpPr><p:cNvPr id="2"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="4000000" cy="2000000"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr><a:latin typeface="Calibri"/></a:rPr><a:t>P</a:t></a:r><a:r><a:rPr sz="3600" baseline="-25000"/><a:t>t</a:t></a:r></a:p><a:p><a:r><a:rPr><a:latin typeface="Calibri"/></a:rPr><a:t>Next</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`,
+  );
+  const parsed = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+  const box = parsed.content.slides[parsed.content.slideOrder[0]].elements[0];
+  expect(box?.fontSize).toBe(32);
+  const index = box?.runs?.find((run) => run.text === "t");
+  expect(index?.fontSize).toBe(36);
+  expect(index?.baseline).toBe(-25);
+  const next = box?.runs?.find((run) => run.paragraphBreak);
+  expect(next?.fontSize).toBe(32);
+});
+
+it("keeps the line-height multiple when a later paragraph uses a smaller font", async () => {
   const zip = new JSZip();
   zip.file(
     "ppt/slides/slide1.xml",
@@ -214,7 +298,7 @@ it("shrinks the line box when a later paragraph uses a smaller font", async () =
   const single = officeSingleSpacing("Arial");
   expect(box?.lineHeight).toBeCloseTo(single, 5);
   const body = box?.runs?.find((run) => run.paragraphBreak);
-  expect(body?.paraLine).toBeCloseTo(single * (18 / 28), 5);
+  expect(body?.paraLine).toBeUndefined();
 });
 
 it("keeps a run outline separate from the glyph fill", async () => {

@@ -14,6 +14,13 @@ const marginEdges = [
   "marginLeft",
   "marginRight",
 ] as const;
+/** The gutter bands and side insets read these, so they follow the edge being typed. */
+const plainEdge = {
+  marginTop: "top",
+  marginBottom: "bottom",
+  marginLeft: "left",
+  marginRight: "right",
+} as const;
 
 /**
  * Body margins are drawn while Page setup is open. Header and footer
@@ -29,6 +36,7 @@ export function liveMargins(base: PageSettings, draft: PageSettings): PageSettin
     if (draft[edge] === base[edge]) continue;
     next ??= { ...base };
     next[edge] = draft[edge];
+    next[plainEdge[edge]] = draft[edge];
   }
   return next ?? base;
 }

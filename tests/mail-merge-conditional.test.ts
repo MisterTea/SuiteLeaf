@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { plainMergeNumber, sameWritten } from "../apps/web/src/editors/mail-merge-match";
 import type { JsonNode } from "../packages/core/src";
 import { mergeBatch, mergeLetters, previewMerge } from "../apps/web/src/editors/mail-merge";
 
@@ -69,6 +70,38 @@ describe("conditional merge", () => {
     expect(text).not.toContain("{{else}}");
     expect(text).not.toContain("secret-value");
     expect(JSON.stringify(template)).toBe(before);
+  });
+
+  it("matches only plain numbers written two ways", () => {
+    expect(sameWritten("10", "10.0")).toBe(true);
+    expect(sameWritten("10", "10")).toBe(true);
+    expect(sameWritten("North", "north")).toBe(false);
+    expect(sameWritten("10 beds", "10")).toBe(false);
+    expect(sameWritten("-2", "-2.0")).toBe(true);
+    expect(plainMergeNumber(" 10.0 ")).toBe(10);
+    expect(plainMergeNumber("1e2")).toBeNull();
+    expect(plainMergeNumber("10 beds")).toBeNull();
+    expect(plainMergeNumber("9".repeat(400))).toBeNull();
+  });
+
+  it("treats a plain number written two ways as the same plot", () => {
+    const template = doc("{{#Plot == 10}}Beds{{else}}Other{{/Plot}}");
+    const before = JSON.stringify(template);
+    const rows = [["10"], ["10.0"], ["North"], ["10 beds"]];
+    const result = mergeLetters(template, ["Plot"], rows);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const text = JSON.stringify(result.content);
+    expect(text).toContain("Beds");
+    expect(text).toContain("Other");
+    const unequal = mergeLetters(doc("{{#Plot != 10}}Beds{{else}}Same{{/Plot}}"), ["Plot"], [["10.0"], ["North"]]);
+    expect(unequal.ok).toBe(true);
+    if (!unequal.ok) return;
+    const other = JSON.stringify(unequal.content);
+    expect(other).toContain("Same");
+    expect(other).toContain("Beds");
+    expect(JSON.stringify(template)).toBe(before);
+    expect(rows[1]?.[0]).toBe("10.0");
   });
 
   it("keeps the block when the column matches the named text", () => {

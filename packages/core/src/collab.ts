@@ -10,6 +10,7 @@ import {
   type StoredVersion,
   type TrackedFile,
 } from "./history";
+import { readReview, reviewPayload, type StoredReview } from "./review-store";
 
 export type CollabRole = "viewer" | "commenter" | "editor" | "owner";
 
@@ -211,7 +212,44 @@ export function prosemirrorJson(doc: Y.Doc): unknown | null {
   const content = fragment.toArray().flatMap((item) => xmlNodes(item));
   if (content.length === 0) return null;
   const threads = commentThreadsFromRoom(doc);
-  return threads ? { type: "doc", attrs: { commentThreads: threads }, content } : { type: "doc", content };
+  const review = reviewFromRoom(doc);
+  const attrs: Record<string, unknown> = {};
+  if (threads) attrs.commentThreads = threads;
+  if (review) attrs.review = review;
+  return Object.keys(attrs).length ? { type: "doc", attrs, content } : { type: "doc", content };
+}
+
+/** Store a review on the shared room. A value that is not a review is removed. */
+export function syncReview(doc: Y.Doc, review: unknown): void {
+  const payload =
+    review && typeof review === "object"
+      ? reviewPayload({
+          decisions: Array.isArray((review as StoredReview).decisions) ? (review as StoredReview).decisions : [],
+          choices: Array.isArray((review as StoredReview).choices) ? (review as StoredReview).choices : [],
+          approvedVersion: (review as StoredReview).approvedVersion,
+        })
+      : null;
+  const next = payload && (payload.decisions.length || payload.choices.length || payload.approvedVersion) ? JSON.stringify(payload) : "";
+  const map = doc.getMap("docAttrs");
+  const current = map.get("review");
+  if (current === next || (next === "" && current == null)) return;
+  doc.transact(() => {
+    if (next) map.set("review", next);
+    else map.delete("review");
+  });
+}
+
+/** The review stored on the room. Text that is not a review is left out. */
+export function reviewFromRoom(doc: Y.Doc): StoredReview | null {
+  const raw = doc.getMap("docAttrs").get("review");
+  if (typeof raw !== "string" || !raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    const read = readReview({ type: "doc", attrs: { review: parsed } });
+    return "reason" in read ? null : read;
+  } catch {
+    return null;
+  }
 }
 
 /** Store comment threads on the shared room. A value that is not a list is removed. */

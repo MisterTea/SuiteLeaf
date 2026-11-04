@@ -5,12 +5,12 @@
 
 import { Extension } from "@tiptap/core";
 import { closeHistory } from "@tiptap/pm/history";
-import { Plugin } from "@tiptap/pm/state";
+import { Plugin, type Transaction } from "@tiptap/pm/state";
 
 let group: { closed: boolean } | null = null;
 
 /** Mark a document change as part of the Accept that is running now. */
-export function stampAcceptGroup(tr: { getMeta(key: string): unknown; setMeta(key: string, value: unknown): unknown }) {
+export function stampAcceptGroup(tr: Transaction) {
   if (!group) return;
   if (!group.closed) {
     closeHistory(tr);

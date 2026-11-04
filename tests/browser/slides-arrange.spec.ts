@@ -75,10 +75,12 @@ test("every Slides Edit, Insert, Format, and Slide menu item does something", as
   await choose(page, "Insert", "Ellipse", "Shape");
   await choose(page, "Insert", "Rounded rectangle", "Shape");
   await expect(page.locator(".slide-canvas .slide-shape")).toHaveCount(3);
-  await expect(page.locator(".slide-shape.selected")).toHaveCSS(
-    "border-radius",
-    "12px",
-  );
+  // The radius is 12 slide pixels; the canvas may draw a slide pixel a little smaller than a CSS pixel.
+  const radius = await page.locator(".slide-shape.selected").evaluate((el) => {
+    const unit = parseFloat(getComputedStyle(el).getPropertyValue("--slide-unit")) || 1;
+    return parseFloat(getComputedStyle(el).borderTopLeftRadius) / unit;
+  });
+  expect(radius).toBeCloseTo(12, 1);
 
   const chooser = page.waitForEvent("filechooser");
   await choose(page, "Insert", "Image");

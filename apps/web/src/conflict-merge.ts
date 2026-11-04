@@ -476,10 +476,7 @@ export function combineDocuments(
   remote: SuiteFile,
   options?: { keepBoth?: boolean },
 ): CombinePlan {
-  const localCopy = {
-    ...structuredClone(local),
-    title: `${local.title} (your edits)`.slice(0, 200),
-  };
+  const localCopy = keptLocalCopy(local);
   if (base.kind !== "doc" || local.kind !== "doc" || remote.kind !== "doc") {
     return {
       localCopy,

@@ -17,6 +17,13 @@ class VersionDb extends Dexie {
 
 const db = new VersionDb();
 
+/** A snapshot time later than the last one, so two saved in one millisecond keep their order. */
+let lastStamp = 0;
+function stamp(): string {
+  lastStamp = Math.max(Date.now(), lastStamp + 1);
+  return new Date(lastStamp).toISOString();
+}
+
 export async function localVersions(fileId: string): Promise<LocalVersion[]> {
   const rows = await db.versions.where("fileId").equals(fileId).toArray();
   return rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
@@ -35,7 +42,7 @@ export async function noteLocalSnapshot(file: SuiteFile, explicit: boolean) {
   await db.versions.add({
     id: crypto.randomUUID(),
     fileId: file.id,
-    createdAt: new Date().toISOString(),
+    createdAt: stamp(),
     authorId: "local",
     authorName: "You",
     name: null,
@@ -47,6 +54,24 @@ export async function noteLocalSnapshot(file: SuiteFile, explicit: boolean) {
 export async function nameLocalVersion(id: string, name: string) {
   const trimmed = name.trim();
   await db.versions.update(id, { name: trimmed || null });
+}
+
+/** The open file is not a snapshot yet, so naming it keeps it as one. */
+export async function nameLocalFile(
+  file: SuiteFile,
+  by: Pick<HistoryVersion, "authorId" | "authorName">,
+  name: string,
+) {
+  await db.versions.add({
+    id: crypto.randomUUID(),
+    fileId: file.id,
+    createdAt: stamp(),
+    authorId: by.authorId,
+    authorName: by.authorName,
+    name: name.trim() || null,
+    restoredFrom: null,
+    native: serializeFile(file),
+  });
 }
 
 function contentJson(file: SuiteFile) {
@@ -63,12 +88,11 @@ export async function recordLocalParagraphRestore(
   name: string,
 ) {
   const latest = (await localVersions(previous.id))[0];
-  const now = Date.now();
   if (!latest || contentJson(parseFile(latest.native)) !== contentJson(previous)) {
     await db.versions.add({
       id: crypto.randomUUID(),
       fileId: previous.id,
-      createdAt: new Date(now).toISOString(),
+      createdAt: stamp(),
       authorId: "local",
       authorName: "You",
       name: null,
@@ -79,7 +103,7 @@ export async function recordLocalParagraphRestore(
   await db.versions.add({
     id: crypto.randomUUID(),
     fileId: next.id,
-    createdAt: new Date(now + 1).toISOString(),
+    createdAt: stamp(),
     authorId: "local",
     authorName: "You",
     name,
@@ -93,7 +117,7 @@ export async function restoreLocalVersion(version: LocalVersion): Promise<SuiteF
   await db.versions.add({
     id: crypto.randomUUID(),
     fileId: version.fileId,
-    createdAt: new Date().toISOString(),
+    createdAt: stamp(),
     authorId: "local",
     authorName: "You",
     name: null,

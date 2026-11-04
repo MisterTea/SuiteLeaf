@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { proofingTextDirection } from "./proofing-language";
 
 export type CellGrid = Record<string, Record<string, { v?: unknown } | null> | undefined>;
 
@@ -98,11 +99,13 @@ export function SheetCellFields({
   grid,
   sheets,
   disabled,
+  language = "en",
   onEdit,
 }: {
   grid?: CellGrid;
   sheets?: readonly { id: string; name: string; grid: CellGrid }[];
   disabled?: boolean;
+  language?: "en" | "es" | "fr" | "de" | "ar" | "he";
   onEdit: (row: number, column: number, value: string, sheetId?: string) => void;
 }) {
   const fields = sheets?.length
@@ -116,7 +119,7 @@ export function SheetCellFields({
   const leftOutNote =
     leftOut === 1 ? "1 more cell is outside this list." : `${leftOut} more cells are outside this list.`;
   return (
-    <div className="sheet-cell-fields">
+    <div className="sheet-cell-fields" dir={proofingTextDirection(language)}>
       {leftOut > 0 ? <p>{leftOutNote}</p> : null}
       {fields.map((field) => {
         const key = field.sheetId

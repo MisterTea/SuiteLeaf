@@ -47,7 +47,8 @@ test("the library searches inside files, sorts, renames and deletes in place", a
   await newFile(page, "presentation", "Garden club talk");
 
   const rows = page.locator(".file-row");
-  const names = () => rows.locator("a > span:last-child").allInnerTexts();
+  const names = () =>
+    rows.locator(".file-main > a").evaluateAll((links) => links.map((a) => a.getAttribute("aria-label") ?? ""));
   await expect(rows).toHaveCount(3);
   await expect(page.getByRole("button", { name: "Sample budget" })).toBeVisible();
 

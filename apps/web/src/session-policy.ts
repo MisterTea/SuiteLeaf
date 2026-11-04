@@ -2,6 +2,13 @@
 
 export type SessionDecision = "accept" | "expired" | "idle" | "reauth";
 
+/** Why a local session clock ended. Idle is not the same as an expired token. */
+export function sessionEndFor(decision: SessionDecision): "expired" | "idle" | null {
+  if (decision === "accept") return null;
+  if (decision === "idle") return "idle";
+  return "expired";
+}
+
 export function decideClientSession(input: {
   expiresAt?: string;
   updatedAt?: string;
@@ -46,10 +53,14 @@ export function sessionTimes(data: unknown): { expiresAt?: string; updatedAt?: s
   const session = (data as { session?: unknown }).session;
   if (!session || typeof session !== "object") return {};
   const row = session as { expiresAt?: unknown; updatedAt?: unknown };
-  return {
-    expiresAt: typeof row.expiresAt === "string" ? row.expiresAt : undefined,
-    updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : undefined,
-  };
+  return { expiresAt: isoTime(row.expiresAt), updatedAt: isoTime(row.updatedAt) };
+}
+
+/** The auth client turns ISO strings into Dates; the session stores strings. */
+function isoTime(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString();
+  return undefined;
 }
 
 /** Whole seconds from `/api/node/info`, or undefined when the node has no idle limit. */

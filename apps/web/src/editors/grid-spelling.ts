@@ -271,21 +271,24 @@ export function spellingMenuPosition(
     if (onScreen(candidate.left, candidate.top) && clear(candidate.left, candidate.top))
       return candidate;
   }
-  let left = Math.min(
+  const clampTop = (value: number) =>
+    Math.min(Math.max(margin, value), Math.max(margin, viewport.height - margin - menu.height));
+  const left = Math.min(
     Math.max(margin, cell.left),
     Math.max(margin, viewport.width - margin - menu.width),
   );
   let top = cell.top + cell.height + gap;
   if (!onScreen(left, top)) top = word.top - menu.height - gap;
+  // Clamp before checking the word, so pulling the menu on screen cannot drop it on the word.
+  top = clampTop(top);
   if (!clear(left, top)) {
+    const besideTop = clampTop(word.top);
     const right = word.left + word.width + gap;
     const leftSide = word.left - menu.width - gap;
-    if (onScreen(right, word.top)) return { left: right, top: word.top };
-    if (onScreen(leftSide, word.top)) return { left: leftSide, top: word.top };
-    top = word.top + word.height + gap;
+    if (onScreen(right, besideTop)) return { left: right, top: besideTop };
+    if (onScreen(leftSide, besideTop)) return { left: leftSide, top: besideTop };
+    top = clampTop(word.top + word.height + gap);
   }
-  left = Math.min(Math.max(margin, left), Math.max(margin, viewport.width - margin - menu.width));
-  top = Math.min(Math.max(margin, top), Math.max(margin, viewport.height - margin - menu.height));
   return { left, top };
 }
 

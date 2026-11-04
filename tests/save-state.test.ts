@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { recordSaveStatus, savePhase } from "../apps/web/src/save-state";
+import {
+  editorSaveTitle,
+  noteUnackedEdits,
+  recordSaveStatus,
+  unackedEditCount,
+  savePhase,
+  syncTargetHost,
+} from "../apps/web/src/save-state";
 
 const local = { file: { updatedAt: "2026-10-30T18:00:00.000Z" } };
 const drive = {
@@ -14,7 +21,49 @@ const stale = {
 describe("save status", () => {
   it("calls a file synced only when the SuiteDrive revision matches", () => {
     expect(recordSaveStatus(drive, { desktop: false }).label).toBe("Saved to SuiteDrive");
+    expect(recordSaveStatus(drive, { desktop: false }).revision).toBe("2026-10-30T18:00:00.000Z");
+    expect(editorSaveTitle("Saved to SuiteDrive", drive)).toBe("2026-10-30T18:00:00.000Z");
+    expect(
+      editorSaveTitle("Saved to SuiteDrive", {
+        ...drive,
+        drive: {
+          ...drive.drive,
+          nodeUrl: "https://user:secret-value@leaf.example/drive",
+        },
+      }),
+    ).toBe("2026-10-30T18:00:00.000Z · leaf.example");
+    expect(editorSaveTitle("Saved on this device · not yet on SuiteDrive", stale)).toBeUndefined();
+    expect(editorSaveTitle("Saved to SuiteDrive", stale)).toBeUndefined();
+    expect(syncTargetHost("https://user:secret-value@leaf.example/drive?token=secret-value")).toBe(
+      "leaf.example",
+    );
+    expect(syncTargetHost("file:///tmp/secret-value")).toBeNull();
+    expect(syncTargetHost("secret-value")).toBeNull();
+    expect(syncTargetHost("https://secret-value.example")).toBeNull();
+    expect(editorSaveTitle("Saved to SuiteDrive", {
+      file: { updatedAt: "secret-value" },
+      drive: { syncedAt: "secret-value" },
+    })).toBeUndefined();
     expect(savePhase(drive, { desktop: false })).toBe("synced");
+    const forged = recordSaveStatus(
+      {
+        file: { updatedAt: "secret-value" },
+        drive: { syncedAt: "secret-value" },
+      },
+      { desktop: false },
+    );
+    expect(forged.phase).toBe("pending-sync");
+    expect(forged.revision).toBeNull();
+    expect(forged.label).not.toContain("secret-value");
+    const impossible = recordSaveStatus(
+      {
+        file: { updatedAt: "2026-02-31T00:00:00.000Z" },
+        drive: { syncedAt: "2026-02-31T00:00:00.000Z" },
+      },
+      { desktop: false },
+    );
+    expect(impossible.phase).toBe("pending-sync");
+    expect(impossible.label).not.toContain("2026-02-31");
     const pending = recordSaveStatus(stale, { desktop: false });
     expect(pending.phase).toBe("pending-sync");
     expect(pending.label).toBe("Saved on this device · not yet on SuiteDrive");
@@ -68,5 +117,20 @@ describe("save status", () => {
     expect(
       recordSaveStatus(stale, { desktop: false, syncedLabel: "Saved a copy to SuiteDrive" }).label,
     ).toBe("Saved on this device · not yet on SuiteDrive");
+  });
+
+  it("keeps a shared edit that is still on this device off the synced label", () => {
+    noteUnackedEdits(Number.NaN);
+    expect(recordSaveStatus(drive, { desktop: false }).label).toBe("Saved to SuiteDrive");
+    noteUnackedEdits(1);
+    expect(unackedEditCount()).toBe(1);
+    const waiting = recordSaveStatus(drive, { desktop: false });
+    expect(waiting.label).toBe("Saved on this device · not yet on SuiteDrive");
+    expect(waiting.revision).toBeNull();
+    expect(waiting.label).not.toContain("secret-value");
+    expect(editorSaveTitle("Saved to SuiteDrive", drive)).toBeUndefined();
+    noteUnackedEdits(0);
+    expect(recordSaveStatus(drive, { desktop: false, unacked: 2 }).phase).toBe("pending-sync");
+    expect(recordSaveStatus(drive, { desktop: false }).label).toBe("Saved to SuiteDrive");
   });
 });

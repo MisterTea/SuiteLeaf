@@ -5,6 +5,10 @@ import {
   type PublicForm,
   type PublicQuestion,
 } from "./node-client";
+import { visibleQuestionIds } from "./form-branch";
+import { formNumberAnswer } from "./form-number";
+import { formUploadText } from "./form-upload";
+import { formClosedMessage, formDeadlineMessage } from "./form-submit";
 import { choiceAnswerError } from "./form-choice";
 import { canonicalGridAnswer, filledLabels, gridAnswerError } from "./form-grid";
 import { GridAnswer } from "./form-grid-view";
@@ -25,6 +29,14 @@ function questionError(question: PublicQuestion, value: string): string | null {
   }
   if (question.kind === "choice") {
     return choiceAnswerError(prompt, question.required, question.choices, value);
+  }
+  if (question.kind === "number") {
+    if (question.required && !answer) return `${prompt} is required`;
+    if (answer) {
+      const result = formNumberAnswer(answer, question.min, question.max);
+      if ("message" in result) return result.message;
+    }
+    return null;
   }
   if (question.required && !answer) return `${prompt} is required`;
   if (question.kind === "rating" && answer && !RATING_SCORES.includes(answer)) {
@@ -58,7 +70,8 @@ export default function SignUpPage({ token }: { token: string }) {
 
   const submit = async () => {
     if (!form) return;
-    for (const question of form.questions) {
+    const visible = new Set(visibleQuestionIds(form.questions, draft));
+    for (const question of form.questions.filter((question) => visible.has(question.id))) {
       const message = questionError(question, draft[question.id] ?? "");
       if (message) {
         setError(message);
@@ -66,7 +79,7 @@ export default function SignUpPage({ token }: { token: string }) {
       }
     }
     const answers: Record<string, string> = {};
-    for (const question of form.questions) {
+    for (const question of form.questions.filter((question) => visible.has(question.id))) {
       if (question.kind === "grid") {
         const value = canonicalGridAnswer(
           filledLabels(question.rows),
@@ -75,8 +88,13 @@ export default function SignUpPage({ token }: { token: string }) {
         );
         if (value) answers[question.id] = value;
       } else {
-        const value = (draft[question.id] ?? "").trim();
-        if (value) answers[question.id] = value;
+        if (question.kind === "number") {
+          const result = formNumberAnswer(draft[question.id] ?? "", question.min, question.max);
+          if ("text" in result && result.text) answers[question.id] = result.text;
+        } else {
+          const value = (draft[question.id] ?? "").trim();
+          if (value) answers[question.id] = value;
+        }
       }
     }
     try {
@@ -94,6 +112,16 @@ export default function SignUpPage({ token }: { token: string }) {
     return (
       <main className="sign-up-page">
         <p className="sign-up-closed">This sign-up is closed.</p>
+      </main>
+    );
+  }
+  const closedMessage = form
+    ? formClosedMessage(form) ?? formDeadlineMessage(form.deadline, new Date())
+    : null;
+  if (closedMessage) {
+    return (
+      <main className="sign-up-page">
+        <p className="sign-up-closed">{closedMessage}</p>
       </main>
     );
   }
@@ -126,7 +154,9 @@ export default function SignUpPage({ token }: { token: string }) {
             void submit();
           }}
         >
-          {form.questions.map((question) => (
+          {form.questions
+            .filter((question) => visibleQuestionIds(form.questions, draft).includes(question.id))
+            .map((question) => (
             <fieldset key={question.id}>
               <legend>
                 {question.prompt || "Untitled question"}
@@ -180,6 +210,34 @@ export default function SignUpPage({ token }: { token: string }) {
                     </span>
                   ))}
                 </div>
+              ) : question.kind === "number" ? (
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  aria-label={question.prompt || "Number"}
+                  value={draft[question.id] ?? ""}
+                  onChange={(event) => setDraft({ ...draft, [question.id]: event.target.value })}
+                />
+              ) : question.kind === "file" ? (
+                <input
+                  type="file"
+                  aria-label={question.prompt || "File"}
+                  onChange={(event) => {
+                    const picked = event.target.files?.[0];
+                    if (!picked) {
+                      setDraft({ ...draft, [question.id]: "" });
+                      return;
+                    }
+                    const result = formUploadText(picked.name, picked.size);
+                    if ("message" in result) {
+                      setError(result.message);
+                      setDraft({ ...draft, [question.id]: "" });
+                      return;
+                    }
+                    setError("");
+                    setDraft({ ...draft, [question.id]: `${picked.name.trim()}|${picked.size}` });
+                  }}
+                />
               ) : (
                 <input
                   type="text"

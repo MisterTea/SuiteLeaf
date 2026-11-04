@@ -236,7 +236,7 @@ test("a saved theme applies to another deck as a copy", async ({ page }) => {
   await expect.poll(() => family(page, free)).toMatch(/Source Sans/);
   await expect(page.locator(".slide-canvas .slide-shape")).toHaveCSS("background-color", centre);
   await page.getByRole("option", { name: "Slide 3: A line to keep" }).click();
-  await expect.poll(() => family(page, quote)).toMatch(/Georgia/);
+  await expect.poll(() => family(page, quote)).toMatch(/SuiteLeaf Durian/);
   const point = await page.locator(".slide-canvas").evaluate((root, content) => {
     const area = [...root.querySelectorAll("textarea")].find(
       (node) => (node as HTMLTextAreaElement).value === content,
@@ -295,7 +295,7 @@ test("a saved theme applies to another deck as a copy", async ({ page }) => {
   await page.getByRole("button", { name: "Theme", exact: true }).click();
   await page.getByRole("button", { name: "Paper", exact: true }).click();
   await expect(page.locator(".slide-canvas")).toHaveCSS("background-color", "rgb(255, 255, 255)");
-  await expect.poll(() => family(page, "Scratch")).toMatch(/Georgia/);
+  await expect.poll(() => family(page, "Scratch")).toMatch(/SuiteLeaf Durian/);
 
   await page.getByRole("button", { name: "Back to files" }).click();
   await page.getByRole("link", { name: "Spring classes", exact: true }).click();
@@ -340,7 +340,7 @@ test("a saved theme applies to another deck as a copy", async ({ page }) => {
   await expect(page.getByLabel("Accent hex")).toHaveValue("#66bb6a");
   await expect(page.locator(".transition-status").first()).toContainText("Montserrat");
   await page.getByRole("option", { name: "Slide 3: A line to keep" }).click();
-  await expect.poll(() => family(page, quote)).toMatch(/Georgia/);
+  await expect.poll(() => family(page, quote)).toMatch(/SuiteLeaf Durian/);
 });
 
 test("the theme library fits on a phone", async ({ page }) => {

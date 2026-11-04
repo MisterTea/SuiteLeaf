@@ -1,6 +1,6 @@
 # 14 · Turn a table into a chart
 
-**Mode:** single-node · **App:** Sheets · **Video:** [videos/14-chart-from-a-table.mp4](videos/14-chart-from-a-table.mp4) · **Script:** [scenes/sheets.spec.ts](scenes/sheets.spec.ts)
+**Mode:** single-node · **App:** Sheets · **Video:** [videos/14-chart-from-a-table.mp4](videos/14-chart-from-a-table.mp4) · **Script:** [scenes/sheets-charts.spec.ts](scenes/sheets-charts.spec.ts)
 
 ## Who and why
 

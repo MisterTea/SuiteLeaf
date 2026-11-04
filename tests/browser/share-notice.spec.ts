@@ -187,6 +187,7 @@ test("a shared file notifies the recipient and can be kept as an owned copy", as
       if (/\/mail|smtp|notify/i.test(request.url())) mailed.push(request.url());
     });
     await dialog.getByRole("button", { name: "Share", exact: true }).click();
+    await dialog.getByRole("button", { name: "Apply this access change" }).click();
     await expect(dialog.getByText("Sam can now edit")).toBeVisible();
     expect(mailed).toEqual([]);
 

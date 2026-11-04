@@ -3,7 +3,7 @@ import type { AiStatus } from "@suiteleaf/core/ai";
 import { formatModelId, localModel, onAiRuntimeChanged } from "./backend";
 import { formatFor } from "./chat-format";
 import { hideCursor, showCursor } from "./cursor";
-import { PARSE_ERROR, createLocalStreamFn, localModelDescriptor, type GenerationStats } from "./model-stream";
+import { createLocalStreamFn, localModelDescriptor, type GenerationStats } from "./model-stream";
 import { onAiPreferencesChanged } from "./preferences";
 import { cancelApproval, currentRequest, startRequest, takeCheckpoint, type Checkpoint, type FileChange } from "./guard";
 import { activeHost, currentReview, currentSnapshot, currentSuiteTools, registerToolEverywhere, toAgentTool, toolScreen } from "./host";
@@ -305,26 +305,14 @@ class AgentSession {
       prepareNextTurnWithContext: ({ context }) => ({
         context: { ...context, tools: currentSuiteTools().map(toAgentTool) },
       }),
-      beforeToolCall: async ({ toolCall, args, context }) => {
-        const permission = assistantTargetAllowed(
-          await assistantAccessNow(),
-          toolCall.name,
-          args,
-        );
+      beforeToolCall: async ({ toolCall, args }) => {
+        // The file list has no open file whose access could refuse the call.
+        const permission =
+          activeHost()?.kind === "home"
+            ? { ok: true as const }
+            : assistantTargetAllowed(await assistantAccessNow(), toolCall.name, args);
         if (!permission.ok) return { block: true, reason: permission.reason };
         const key = toolCall.name + JSON.stringify(args);
-        if ((args as Record<string, unknown>)?.[PARSE_ERROR])
-          return {
-            block: true,
-            reason: `This tool call could not be read: ${(args as Record<string, string>)[PARSE_ERROR]}. Write the call again with valid arguments.`,
-          };
-        if (!context.tools?.some((t) => t.name === toolCall.name)) {
-          this.metrics.unknownTools++;
-          return {
-            block: true,
-            reason: `There is no tool named ${toolCall.name} here. Available tools: ${context.tools?.map((t) => t.name).join(", ")}.`,
-          };
-        }
         // Gemma rarely writes the checklist on its own: hold the first other call of a multi-part request until it has.
         if (
           checklistSetting() === "required" &&

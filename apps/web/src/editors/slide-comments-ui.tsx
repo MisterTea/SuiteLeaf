@@ -14,6 +14,7 @@ import type {
 } from "@suiteleaf/core";
 import { isMacPlatform } from "../commands";
 import { SidePane } from "../ui";
+import { proofingLanguage, proofingTextDirection } from "./proofing-language";
 import {
   currentAuthor,
   localName,
@@ -360,6 +361,7 @@ export function useSlideComments({
         }
         label="Slide comments"
         closeLabel="Close comments"
+        dir={proofingTextDirection(proofingLanguage(deck.proofingLanguage))}
         className="slide-comment-dock"
         onClose={close}
       >

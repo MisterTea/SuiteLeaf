@@ -418,7 +418,7 @@ export function useDocProofing(
             )}
             {menu.suggestions[0] &&
             editor &&
-            copiesOf(editor.state.doc, menu.word, personal, settings.ignored).length > 1 ? (
+            copiesOf(editor.state.doc, menu.word, personal, settings.ignored, settings.language).length > 1 ? (
               <button
                 type="button"
                 role="menuitem"
@@ -471,6 +471,7 @@ export function useDocProofing(
       <div className="gdocs-modal-overlay page-setup-overlay" onMouseDown={close}>
         <form
           className="gdocs-dialog word-count-dialog"
+          dir={proofingTextDirection(settings.language)}
           role="dialog"
           aria-modal="true"
           aria-labelledby="word-count-title"
@@ -585,6 +586,7 @@ export function useDocProofing(
       <div className="gdocs-modal-overlay spelling-layer">
         <form
           className="gdocs-dialog spelling-panel"
+          dir={proofingTextDirection(settings.language)}
           role="dialog"
           aria-modal="false"
           aria-labelledby="spelling-title"
@@ -734,6 +736,7 @@ export function useDocProofing(
       <div className="gdocs-modal-overlay page-setup-overlay" onMouseDown={close}>
         <div
           className="gdocs-dialog dictionary-dialog"
+          dir={proofingTextDirection(settings.language)}
           role="dialog"
           aria-modal="true"
           aria-labelledby="dictionary-title"

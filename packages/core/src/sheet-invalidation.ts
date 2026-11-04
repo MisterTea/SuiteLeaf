@@ -3,6 +3,17 @@
  * Cell values are not copied. This does not calculate the formulas.
  */
 
+import { firstMatching, ifsWatch, parseCompareIf, parseIfs, parseLogic, plainIf, settleChoices, settleLogic } from "./sheet-ifs";
+import { applyClock } from "./sheet-clock";
+import { applyOffset } from "./sheet-offset";
+import { applyRandom } from "./sheet-rand";
+import { applyPairs } from "./sheet-finish";
+import { applyMath, medianOf, parseMath } from "./sheet-math";
+import { applyXLookup, exactLookup, parseLookup, parseXLookup } from "./sheet-lookup";
+import { applyText, parseText } from "./sheet-text";
+import { parseAverageIf, parseAverageIfs, parseCountIf, parseCountIfs, parseSumIf, parseSumIfs } from "./sheet-countifs";
+import { applySameSheetCriteria } from "./sheet-criteria-pass";
+import { dateParts, isoDateFromParts } from "./pivot-slicer";
 import { auditFormula, cellAddress } from "./sheet-audit";
 import { expandStructuredFormula, type SheetTable } from "./sheet-table";
 
@@ -146,11 +157,15 @@ function directRef(formula: string): string | null {
   return `${match[1].toUpperCase()}${match[2]}`;
 }
 
-/** Cells inside a small SUM, AVERAGE, COUNT, MIN, or MAX. A wider range is not listed. */
-function listedAggregate(formula: string): { kind: "sum" | "average" | "count" | "min" | "max"; cells: string[] } | null {
-  const match = /^=(SUM|AVERAGE|COUNT|MIN|MAX)\(\$?([A-Z]+)\$?(\d+):\$?([A-Z]+)\$?(\d+)\)$/i.exec(formula.trim());
+/** Cells inside a small SUM, AVERAGE, COUNT, COUNTA, PRODUCT, MEDIAN, MIN, or MAX. A wider range is not listed. */
+function listedAggregate(
+  formula: string,
+): { kind: "sum" | "average" | "count" | "counta" | "product" | "median" | "min" | "max"; cells: string[] } | null {
+  const match = /^=(SUM|AVERAGE|COUNT|COUNTA|PRODUCT|MEDIAN|MIN|MAX)\(\$?([A-Z]+)\$?(\d+):\$?([A-Z]+)\$?(\d+)\)$/i.exec(
+    formula.trim(),
+  );
   if (!match) return null;
-  const kind = match[1].toLowerCase() as "sum" | "average" | "count" | "min" | "max";
+  const kind = match[1].toLowerCase() as "sum" | "average" | "count" | "counta" | "product" | "median" | "min" | "max";
   const start = parseAddress(`${match[2]}${match[3]}`);
   const end = parseAddress(`${match[4]}${match[5]}`);
   if (!start || !end) return null;
@@ -196,15 +211,17 @@ function listedPair(formula: string): { op: "and" | "or"; left: string; right: s
   };
 }
 
-/** `=ABS(A1)`, `=NOT(A1)`, `=LEN(A1)`, or `=TRIM(A1)`. Absolute value and opposite leave text as it was. */
-function listedUnary(formula: string): { op: "abs" | "not" | "len" | "trim"; target: string } | null {
-  const match = /^=\s*(ABS|NOT|LEN|TRIM)\(\s*\$?([A-Z]+)\$?(\d+)\s*\)$/i.exec(formula.trim());
+/** `=ABS(A1)`, `=NOT(A1)`, `=LEN(A1)`, `=TRIM(A1)`, `=LOWER(A1)`, or `=UPPER(A1)`. */
+function listedUnary(
+  formula: string,
+): { op: "abs" | "not" | "len" | "trim" | "lower" | "upper"; target: string } | null {
+  const match = /^=\s*(ABS|NOT|LEN|TRIM|LOWER|UPPER)\(\s*\$?([A-Z]+)\$?(\d+)\s*\)$/i.exec(formula.trim());
   if (!match) return null;
   const name = match[1].toLowerCase();
-  return {
-    op: name === "not" ? "not" : name === "len" ? "len" : name === "trim" ? "trim" : "abs",
-    target: `${match[2].toUpperCase()}${match[3]}`,
-  };
+  const op = name === "abs" ? "abs" : name;
+  if (op !== "abs" && op !== "not" && op !== "len" && op !== "trim" && op !== "lower" && op !== "upper")
+    return null;
+  return { op, target: `${match[2].toUpperCase()}${match[3]}` };
 }
 
 function trimmedText(value: unknown): string | null {
@@ -212,6 +229,17 @@ function trimmedText(value: unknown): string | null {
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   if (typeof value === "string" && FORMULA_ERRORS.has(value)) return null;
   if (typeof value === "string") return value.replace(/ {2,}/g, " ").trim();
+  return null;
+}
+
+function changedCase(value: unknown, upper: boolean): string | null {
+  if (value === undefined || value === null || value === "") return "";
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const text = String(value);
+    return upper ? text.toUpperCase() : text.toLowerCase();
+  }
+  if (typeof value === "string" && FORMULA_ERRORS.has(value)) return null;
+  if (typeof value === "string") return upper ? value.toUpperCase() : value.toLowerCase();
   return null;
 }
 
@@ -223,25 +251,126 @@ function textLength(value: unknown): number | null {
   return null;
 }
 
-/** `=IF(A1, B1, C1)`. Zero uses the third cell. Other numbers use the second. */
-function listedIf(formula: string): { test: string; yes: string; no: string } | null {
-  const match = /^=IF\(\s*\$?([A-Z]+)\$?(\d+)\s*,\s*\$?([A-Z]+)\$?(\d+)\s*,\s*\$?([A-Z]+)\$?(\d+)\s*\)$/i.exec(
+/** `=VLOOKUP` or `=HLOOKUP`. Exact match only. A range wider than 64 cells is not listed. */
+function listedLookup(formula: string) {
+  return parseLookup(formula);
+}
+
+function expandSmallRange(startText: string, endText: string): string[] | null {
+  const start = parseAddress(startText);
+  const end = parseAddress(endText);
+  if (!start || !end) return null;
+  const row0 = Math.min(start.row, end.row);
+  const row1 = Math.max(start.row, end.row);
+  const col0 = Math.min(start.column, end.column);
+  const col1 = Math.max(start.column, end.column);
+  const count = (row1 - row0 + 1) * (col1 - col0 + 1);
+  if (count < 1 || count > 64) return null;
+  const cells: string[] = [];
+  for (let row = row0; row <= row1; row += 1) {
+    for (let column = col0; column <= col1; column += 1) {
+      const address = cellAddress(row, column);
+      if (address) cells.push(address);
+    }
+  }
+  return cells.length === count ? cells : null;
+}
+
+/** `=SUMIF(A1:A4, D1, B1:B4)`. The two ranges must be the same size. */
+function listedSumIf(formula: string): { criteriaCells: string[]; criteria: string; sumCells: string[] } | null {
+  const match =
+    /^=\s*SUMIF\(\s*\$?([A-Z]+)\$?(\d+):\$?([A-Z]+)\$?(\d+)\s*,\s*\$?([A-Z]+)\$?(\d+)\s*(?:,\s*\$?([A-Z]+)\$?(\d+):\$?([A-Z]+)\$?(\d+)\s*)?\)$/i.exec(
+      formula.trim(),
+    );
+  if (!match) return null;
+  const criteriaCells = expandSmallRange(`${match[1]}${match[2]}`, `${match[3]}${match[4]}`);
+  const sumCells = match[7]
+    ? expandSmallRange(`${match[7]}${match[8]}`, `${match[9]}${match[10]}`)
+    : criteriaCells;
+  if (!criteriaCells || !sumCells || criteriaCells.length !== sumCells.length) return null;
+  return { criteriaCells, criteria: `${match[5].toUpperCase()}${match[6]}`, sumCells };
+}
+
+/** `=COUNTIF(A1:A4, D1)`. A range wider than 64 cells is not listed. */
+function listedCountIf(formula: string): { cells: string[]; criteria: string } | null {
+  const match = /^=\s*COUNTIF\(\s*\$?([A-Z]+)\$?(\d+):\$?([A-Z]+)\$?(\d+)\s*,\s*\$?([A-Z]+)\$?(\d+)\s*\)$/i.exec(
     formula.trim(),
   );
   if (!match) return null;
+  const cells = expandSmallRange(`${match[1]}${match[2]}`, `${match[3]}${match[4]}`);
+  if (!cells) return null;
+  return { cells, criteria: `${match[5].toUpperCase()}${match[6]}` };
+}
+
+/** `=DATE(A1, B1, C1)`. A day that is not on the calendar is not listed as a result. */
+function listedDateBuild(formula: string): { year: string; month: string; day: string } | null {
+  const match =
+    /^=\s*DATE\(\s*\$?([A-Z]+)\$?(\d+)\s*,\s*\$?([A-Z]+)\$?(\d+)\s*,\s*\$?([A-Z]+)\$?(\d+)\s*\)$/i.exec(formula.trim());
+  if (!match) return null;
   return {
-    test: `${match[1].toUpperCase()}${match[2]}`,
-    yes: `${match[3].toUpperCase()}${match[4]}`,
-    no: `${match[5].toUpperCase()}${match[6]}`,
+    year: `${match[1].toUpperCase()}${match[2]}`,
+    month: `${match[3].toUpperCase()}${match[4]}`,
+    day: `${match[5].toUpperCase()}${match[6]}`,
   };
 }
 
-function conditionNumber(value: unknown): number | null {
-  if (value === undefined || value === null || value === "") return 0;
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && FORMULA_ERRORS.has(value)) return null;
-  if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) return Number(value);
-  return null;
+/** `=YEAR(A1)`, `=MONTH(A1)`, or `=DAY(A1)` for an ISO date. */
+function listedDate(formula: string): { op: "year" | "month" | "day"; target: string } | null {
+  const match = /^=\s*(YEAR|MONTH|DAY)\(\s*\$?([A-Z]+)\$?(\d+)\s*\)$/i.exec(formula.trim());
+  if (!match) return null;
+  const name = match[1].toLowerCase();
+  if (name !== "year" && name !== "month" && name !== "day") return null;
+  return { op: name, target: `${match[2].toUpperCase()}${match[3]}` };
+}
+
+/** `=INDEX(B1:B4, 2)` or `=INDEX(A1:C3, 2, 3)`. Positions start at 1. */
+function listedIndex(formula: string): { cells: string[]; columns: number; row: number; column: number } | null {
+  const match =
+    /^=\s*INDEX\(\s*\$?([A-Z]+)\$?(\d+):\$?([A-Z]+)\$?(\d+)\s*,\s*(\d+)\s*(?:,\s*(\d+)\s*)?\)$/i.exec(formula.trim());
+  if (!match) return null;
+  const cells = expandSmallRange(`${match[1]}${match[2]}`, `${match[3]}${match[4]}`);
+  const start = parseAddress(`${match[1]}${match[2]}`);
+  const end = parseAddress(`${match[3]}${match[4]}`);
+  if (!cells || !start || !end) return null;
+  const columns = Math.abs(end.column - start.column) + 1;
+  const row = Number(match[5]);
+  const column = match[6] ? Number(match[6]) : 1;
+  if (!Number.isInteger(row) || !Number.isInteger(column) || columns < 1) return null;
+  return { cells, columns, row, column };
+}
+
+/** `=MATCH(D1, A1:A4, 0)`. Exact match only. A wider range is not listed. */
+function listedMatch(formula: string): { key: string; cells: string[] } | null {
+  const match =
+    /^=\s*MATCH\(\s*\$?([A-Z]+)\$?(\d+)\s*,\s*\$?([A-Z]+)\$?(\d+):\$?([A-Z]+)\$?(\d+)\s*(?:,\s*0\s*)?\)$/i.exec(
+      formula.trim(),
+    );
+  if (!match) return null;
+  const cells = expandSmallRange(`${match[3]}${match[4]}`, `${match[5]}${match[6]}`);
+  if (!cells) return null;
+  return { key: `${match[1].toUpperCase()}${match[2]}`, cells };
+}
+
+function sameLookup(left: unknown, right: unknown): boolean {
+  if (typeof left === "number" && Number.isFinite(left) && typeof right === "number" && Number.isFinite(right))
+    return left === right;
+  if (typeof left === "string" && typeof right === "string") return left.toLowerCase() === right.toLowerCase();
+  const blank = (value: unknown) => value === undefined || value === null || value === "";
+  return blank(left) && blank(right);
+}
+
+/** `=IFERROR(A1, B1)`. An error uses the second cell. Any other value stays. */
+function listedIfError(formula: string): { value: string; fallback: string } | null {
+  const match = /^=\s*IFERROR\(\s*\$?([A-Z]+)\$?(\d+)\s*,\s*\$?([A-Z]+)\$?(\d+)\s*\)$/i.exec(formula.trim());
+  if (!match) return null;
+  return {
+    value: `${match[1].toUpperCase()}${match[2]}`,
+    fallback: `${match[3].toUpperCase()}${match[4]}`,
+  };
+}
+
+function isFormulaError(value: unknown): boolean {
+  return typeof value === "string" && FORMULA_ERRORS.has(value);
 }
 
 /** Halfway values go away from zero. `-1.5` to 0 places is `-2`. */
@@ -268,19 +397,13 @@ function readCell(cells: Cells, address: string): Cell {
   return cells[String(parsed.row)]?.[String(parsed.column)] ?? null;
 }
 
-/**
- * Copy a direct cell reference, such as `=A1`, add a small SUM, AVERAGE,
- * COUNT, MIN, or MAX, round one cell, take the absolute value of one cell,
- * require both of two cells or either of them, and choose between two cells with IF.
- * A wide range, a cycle, a sum or average that reads text, a condition that
- * is text, and any other formula are left as they were. The sheet passed in
- * is not changed.
- * The address lists do not include cell values.
- */
+/** Recalculate formulas that read `changed`. The sheet passed in is not changed. */
 export function recalculateDirty(
   sheet: { cellData?: Cells },
   changed: string,
   structured?: StructuredSource,
+  now: Date = new Date(),
+  random: () => number = Math.random,
 ): Recalculation {
   const source = sheetForCalc(sheet, structured);
   const cellData = structuredClone(source.cellData ?? {}) as Cells;
@@ -291,8 +414,25 @@ export function recalculateDirty(
   const sums: string[] = [];
   const rounds: string[] = [];
   const absolutes: string[] = [];
+  const mathCells: string[] = [];
+  const textCells: string[] = [];
   const boths: string[] = [];
+  const logics: string[] = [];
+  const fallbacks: string[] = [];
+  const lookups: string[] = [];
+  const xLookups: string[] = [];
+  const sumIfs: string[] = [];
+  const countIfs: string[] = [];
+  const countIfsMany: string[] = [];
+  const averageIfs: string[] = [];
+  const sumIfsMany: string[] = [];
+  const averageIfsMany: string[] = [];
+  const indexes: string[] = [];
+  const matches: string[] = [];
+  const dates: string[] = [];
+  const dateBuilds: string[] = [];
   const conditions: string[] = [];
+  const ifsMany: string[] = [];
   for (const address of dirty.cells) {
     const cell = readCell(cellData, address);
     const formula = typeof cell?.f === "string" ? cell.f : "";
@@ -316,12 +456,90 @@ export function recalculateDirty(
       absolutes.push(address);
       continue;
     }
+    const math = parseMath(formula);
+    if (math && math.sheet == null) {
+      mathCells.push(address);
+      continue;
+    }
+    const text = parseText(formula);
+    if (text && text.sheet == null) {
+      textCells.push(address);
+      continue;
+    }
     if (listedPair(formula)) {
       boths.push(address);
       continue;
     }
-    if (listedIf(formula)) {
+    const logic = parseLogic(formula);
+    if (logic && logic.sheet == null) {
+      logics.push(address);
+      continue;
+    }
+    if (listedLookup(formula)) {
+      lookups.push(address);
+      continue;
+    }
+    const xLookup = parseXLookup(formula);
+    if (xLookup && xLookup.sheet == null) {
+      xLookups.push(address);
+      continue;
+    }
+    if (listedSumIf(formula)) {
+      sumIfs.push(address);
+      continue;
+    }
+    if (listedCountIf(formula)) {
+      countIfs.push(address);
+      continue;
+    }
+    const many = parseCountIfs(formula) ?? parseCountIf(formula);
+    if (many && many.sheet == null) {
+      countIfsMany.push(address);
+      continue;
+    }
+    const averaged = parseAverageIf(formula);
+    if (averaged && averaged.sheet == null) {
+      averageIfs.push(address);
+      continue;
+    }
+    const summedMany = parseSumIfs(formula) ?? parseSumIf(formula);
+    if (summedMany && summedMany.sheet == null) {
+      sumIfsMany.push(address);
+      continue;
+    }
+    const averagedMany = parseAverageIfs(formula);
+    if (averagedMany && averagedMany.sheet == null) {
+      averageIfsMany.push(address);
+      continue;
+    }
+    if (listedDate(formula)) {
+      dates.push(address);
+      continue;
+    }
+    if (listedDateBuild(formula)) {
+      dateBuilds.push(address);
+      continue;
+    }
+    if (listedIndex(formula)) {
+      indexes.push(address);
+      continue;
+    }
+    if (listedMatch(formula)) {
+      matches.push(address);
+      continue;
+    }
+    if (listedIfError(formula)) {
+      fallbacks.push(address);
+      continue;
+    }
+    const compared = parseCompareIf(formula);
+    if (plainIf(formula) || (compared && compared.sheet == null)) {
       conditions.push(address);
+      continue;
+    }
+    const ifs = parseIfs(formula);
+    if (ifs && ifs.sheet == null) {
+      ifsMany.push(address);
       continue;
     }
     left.push(address);
@@ -353,14 +571,21 @@ export function recalculateDirty(
       let blocked = false;
       for (const part of parts.cells) {
         const value = readCell(cellData, part)?.v;
-        if (parts.kind === "count") {
+        if (parts.kind === "count" || parts.kind === "counta") {
           if (value !== undefined && value !== null && value !== "") count += 1;
           continue;
         }
-        if ((parts.kind === "average" || parts.kind === "min" || parts.kind === "max") && (value === undefined || value === null || value === "")) {
+        if (parts.kind === "product") {
+          if (typeof value === "number" && Number.isFinite(value)) numbers.push(value);
           continue;
         }
-        if (parts.kind === "min" || parts.kind === "max") {
+        if (
+          (parts.kind === "average" || parts.kind === "min" || parts.kind === "max" || parts.kind === "median") &&
+          (value === undefined || value === null || value === "")
+        ) {
+          continue;
+        }
+        if (parts.kind === "min" || parts.kind === "max" || parts.kind === "median") {
           if (typeof value === "number" && Number.isFinite(value)) numbers.push(value);
           else if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) numbers.push(Number(value));
           continue;
@@ -374,8 +599,14 @@ export function recalculateDirty(
       }
       if (blocked || ((parts.kind === "average" || parts.kind === "min" || parts.kind === "max") && numbers.length === 0)) continue;
       const total = numbers.reduce((sum, item) => sum + item, 0);
-      const next = parts.kind === "count"
+      const next = parts.kind === "count" || parts.kind === "counta"
         ? count
+        : parts.kind === "product"
+          ? numbers.length
+            ? numbers.reduce((product, item) => product * item, 1)
+            : 0
+        : parts.kind === "median"
+          ? medianOf(numbers)
         : parts.kind === "average"
           ? total / numbers.length
           : parts.kind === "min"
@@ -425,29 +656,272 @@ export function recalculateDirty(
     if (!wrote) break;
   }
   left.push(...roundWaiting);
-  const conditionWaiting = new Set(conditions);
-  for (let pass = 0; pass < conditions.length && conditionWaiting.size > 0; pass += 1) {
+  const lookupWaiting = new Set(lookups);
+  for (let pass = 0; pass < lookups.length && lookupWaiting.size > 0; pass += 1) {
     let wrote = false;
-    for (const address of [...conditionWaiting]) {
+    for (const address of [...lookupWaiting]) {
       const cell = readCell(cellData, address);
-      const choice = listedIf(typeof cell?.f === "string" ? cell.f : "");
-      if (!cell || !choice) continue;
-      if ([choice.test, choice.yes, choice.no].some((part) => part !== address && conditionWaiting.has(part))) {
-        continue;
-      }
-      const condition = conditionNumber(readCell(cellData, choice.test)?.v);
-      if (condition === null) continue;
-      const next = readCell(cellData, condition === 0 ? choice.no : choice.yes)?.v;
+      const lookup = listedLookup(typeof cell?.f === "string" ? cell.f : "");
+      if (!cell || !lookup) continue;
+      if ([lookup.key, ...lookup.cells].some((part) => part !== address && lookupWaiting.has(part))) continue;
+      const next = exactLookup(lookup, (part) => readCell(cellData, part)?.v, sameLookup);
       if (cell.v !== next) {
         cell.v = next;
         wrote = true;
       }
-      conditionWaiting.delete(address);
+      lookupWaiting.delete(address);
       calculated.push(address);
     }
     if (!wrote) break;
   }
-  left.push(...conditionWaiting);
+  left.push(...lookupWaiting);
+  const formulaOf = (address: string) => String(readCell(cellData, address)?.f ?? "");
+  const valueOf = (address: string) => readCell(cellData, address)?.v;
+  const writeCell = (address: string, next: unknown) => {
+    const cell = readCell(cellData, address);
+    if (!cell || cell.v === next) return false;
+    cell.v = next;
+    return true;
+  };
+  const xApplied = applyXLookup({
+    addresses: xLookups,
+    formula: formulaOf,
+    value: valueOf,
+    same: sameLookup,
+    write: writeCell,
+  });
+  calculated.push(...xApplied.calculated);
+  left.push(...xApplied.left);
+  const sumIfWaiting = new Set(sumIfs);
+  for (let pass = 0; pass < sumIfs.length && sumIfWaiting.size > 0; pass += 1) {
+    let wrote = false;
+    for (const address of [...sumIfWaiting]) {
+      const cell = readCell(cellData, address);
+      const sumIf = listedSumIf(typeof cell?.f === "string" ? cell.f : "");
+      if (!cell || !sumIf) continue;
+      const watched = [sumIf.criteria, ...sumIf.criteriaCells, ...sumIf.sumCells];
+      if (watched.some((part) => part !== address && sumIfWaiting.has(part))) continue;
+      const criteria = readCell(cellData, sumIf.criteria)?.v;
+      let total = 0;
+      let error: unknown = null;
+      for (let index = 0; index < sumIf.criteriaCells.length; index += 1) {
+        if (!sameLookup(readCell(cellData, sumIf.criteriaCells[index])?.v, criteria)) continue;
+        const stored = readCell(cellData, sumIf.sumCells[index])?.v;
+        if (isFormulaError(stored)) {
+          error = stored;
+          break;
+        }
+        const number = numericValue(stored);
+        if (number === null) continue;
+        total += number;
+      }
+      const next = error ?? total;
+      if (cell.v !== next) {
+        cell.v = next;
+        wrote = true;
+      }
+      sumIfWaiting.delete(address);
+      calculated.push(address);
+    }
+    if (!wrote) break;
+  }
+  left.push(...sumIfWaiting);
+  const countIfWaiting = new Set(countIfs);
+  for (let pass = 0; pass < countIfs.length && countIfWaiting.size > 0; pass += 1) {
+    let wrote = false;
+    for (const address of [...countIfWaiting]) {
+      const cell = readCell(cellData, address);
+      const countIf = listedCountIf(typeof cell?.f === "string" ? cell.f : "");
+      if (!cell || !countIf) continue;
+      if ([countIf.criteria, ...countIf.cells].some((part) => part !== address && countIfWaiting.has(part))) continue;
+      const criteria = readCell(cellData, countIf.criteria)?.v;
+      let count = 0;
+      for (const part of countIf.cells) {
+        if (sameLookup(readCell(cellData, part)?.v, criteria)) count += 1;
+      }
+      if (cell.v !== count) {
+        cell.v = count;
+        wrote = true;
+      }
+      countIfWaiting.delete(address);
+      calculated.push(address);
+    }
+    if (!wrote) break;
+  }
+  left.push(...countIfWaiting);
+  const criteria = applySameSheetCriteria({
+    countIfsMany,
+    averageIfs,
+    sumIfsMany,
+    averageIfsMany,
+    formula: (address) => {
+      const cell = readCell(cellData, address);
+      return typeof cell?.f === "string" ? cell.f : "";
+    },
+    value: (address) => readCell(cellData, address)?.v,
+    write: (address, next) => {
+      const cell = readCell(cellData, address);
+      if (!cell || cell.v === next) return false;
+      cell.v = next;
+      return true;
+    },
+    same: sameLookup,
+    numberOf: numericValue,
+    isError: isFormulaError,
+  });
+  calculated.push(...criteria.calculated);
+  left.push(...criteria.left);
+  const indexWaiting = new Set(indexes);
+  for (let pass = 0; pass < indexes.length && indexWaiting.size > 0; pass += 1) {
+    let wrote = false;
+    for (const address of [...indexWaiting]) {
+      const cell = readCell(cellData, address);
+      const index = listedIndex(typeof cell?.f === "string" ? cell.f : "");
+      if (!cell || !index) continue;
+      if (index.cells.some((part) => part !== address && indexWaiting.has(part))) continue;
+      const rows = index.cells.length / index.columns;
+      const inside = index.row >= 1 && index.row <= rows && index.column >= 1 && index.column <= index.columns;
+      const picked = inside ? index.cells[(index.row - 1) * index.columns + index.column - 1] : null;
+      const next = picked ? readCell(cellData, picked)?.v : "#REF!";
+      if (cell.v !== next) {
+        cell.v = next;
+        wrote = true;
+      }
+      indexWaiting.delete(address);
+      calculated.push(address);
+    }
+    if (!wrote) break;
+  }
+  left.push(...indexWaiting);
+  const dateWaiting = new Set(dates);
+  for (let pass = 0; pass < dates.length && dateWaiting.size > 0; pass += 1) {
+    let wrote = false;
+    for (const address of [...dateWaiting]) {
+      const cell = readCell(cellData, address);
+      const date = listedDate(typeof cell?.f === "string" ? cell.f : "");
+      if (!cell || !date) continue;
+      if (date.target !== address && dateWaiting.has(date.target)) continue;
+      const parts = dateParts(readCell(cellData, date.target)?.v);
+      if (!parts) continue;
+      const next = date.op === "year" ? parts.year : date.op === "month" ? parts.month : parts.day;
+      if (cell.v !== next) {
+        cell.v = next;
+        wrote = true;
+      }
+      dateWaiting.delete(address);
+      calculated.push(address);
+    }
+    if (!wrote) break;
+  }
+  left.push(...dateWaiting);
+  const dateBuildWaiting = new Set(dateBuilds);
+  for (let pass = 0; pass < dateBuilds.length && dateBuildWaiting.size > 0; pass += 1) {
+    let wrote = false;
+    for (const address of [...dateBuildWaiting]) {
+      const cell = readCell(cellData, address);
+      const built = listedDateBuild(typeof cell?.f === "string" ? cell.f : "");
+      if (!cell || !built) continue;
+      if ([built.year, built.month, built.day].some((part) => part !== address && dateBuildWaiting.has(part))) continue;
+      const year = numericValue(readCell(cellData, built.year)?.v);
+      const month = numericValue(readCell(cellData, built.month)?.v);
+      const day = numericValue(readCell(cellData, built.day)?.v);
+      if (year === null || month === null || day === null) continue;
+      const next = isoDateFromParts(year, month, day);
+      if (!next) continue;
+      if (cell.v !== next) {
+        cell.v = next;
+        wrote = true;
+      }
+      dateBuildWaiting.delete(address);
+      calculated.push(address);
+    }
+    if (!wrote) break;
+  }
+  left.push(...dateBuildWaiting);
+  const matchWaiting = new Set(matches);
+  for (let pass = 0; pass < matches.length && matchWaiting.size > 0; pass += 1) {
+    let wrote = false;
+    for (const address of [...matchWaiting]) {
+      const cell = readCell(cellData, address);
+      const match = listedMatch(typeof cell?.f === "string" ? cell.f : "");
+      if (!cell || !match) continue;
+      if ([match.key, ...match.cells].some((part) => part !== address && matchWaiting.has(part))) continue;
+      const key = readCell(cellData, match.key)?.v;
+      let next: unknown = "#N/A";
+      for (let position = 0; position < match.cells.length; position += 1) {
+        if (!sameLookup(readCell(cellData, match.cells[position])?.v, key)) continue;
+        next = position + 1;
+        break;
+      }
+      if (cell.v !== next) {
+        cell.v = next;
+        wrote = true;
+      }
+      matchWaiting.delete(address);
+      calculated.push(address);
+    }
+    if (!wrote) break;
+  }
+  left.push(...matchWaiting);
+  const fallbackWaiting = new Set(fallbacks);
+  for (let pass = 0; pass < fallbacks.length && fallbackWaiting.size > 0; pass += 1) {
+    let wrote = false;
+    for (const address of [...fallbackWaiting]) {
+      const cell = readCell(cellData, address);
+      const fallback = listedIfError(typeof cell?.f === "string" ? cell.f : "");
+      if (!cell || !fallback) continue;
+      if ([fallback.value, fallback.fallback].some((part) => part !== address && fallbackWaiting.has(part))) {
+        continue;
+      }
+      const stored = readCell(cellData, fallback.value)?.v;
+      const next = isFormulaError(stored) ? readCell(cellData, fallback.fallback)?.v : stored;
+      if (cell.v !== next) {
+        cell.v = next;
+        wrote = true;
+      }
+      fallbackWaiting.delete(address);
+      calculated.push(address);
+    }
+    if (!wrote) break;
+  }
+  left.push(...fallbackWaiting);
+  const settled = settleChoices(
+    conditions,
+    (address) => {
+      const formula = readCell(cellData, address)?.f;
+      return typeof formula === "string" ? formula : "";
+    },
+    (address) => readCell(cellData, address)?.v,
+    (address, value) => {
+      const cell = readCell(cellData, address);
+      if (!cell || cell.v === value) return false;
+      cell.v = value;
+      return true;
+    },
+  );
+  calculated.push(...settled.calculated);
+  left.push(...settled.left);
+  const ifsWaiting = new Set(ifsMany);
+  for (let pass = 0; pass < ifsMany.length && ifsWaiting.size > 0; pass += 1) {
+    let wrote = false;
+    for (const address of [...ifsWaiting]) {
+      const cell = readCell(cellData, address);
+      const parsed = parseIfs(typeof cell?.f === "string" ? cell.f : "");
+      if (!cell || !parsed || parsed.sheet) continue;
+      const watched = ifsWatch(parsed);
+      if (watched.some((part) => part !== address && ifsWaiting.has(part))) continue;
+      const next = firstMatching(parsed, (part) => readCell(cellData, part)?.v);
+      if (next === null) continue;
+      if (cell.v !== next) {
+        cell.v = next;
+        wrote = true;
+      }
+      ifsWaiting.delete(address);
+      calculated.push(address);
+    }
+    if (!wrote) break;
+  }
+  left.push(...ifsWaiting);
   const absoluteWaiting = new Set(absolutes);
   for (let pass = 0; pass < absolutes.length && absoluteWaiting.size > 0; pass += 1) {
     let wrote = false;
@@ -457,11 +931,12 @@ export function recalculateDirty(
       if (!cell || !unary) continue;
       if (unary.target !== address && absoluteWaiting.has(unary.target)) continue;
       const stored = readCell(cellData, unary.target)?.v;
-      if (unary.op === "trim") {
-        const trimmed = trimmedText(stored);
-        if (trimmed === null) continue;
-        if (cell.v !== trimmed) {
-          cell.v = trimmed;
+      if (unary.op === "trim" || unary.op === "lower" || unary.op === "upper") {
+        const next =
+          unary.op === "trim" ? trimmedText(stored) : changedCase(stored, unary.op === "upper");
+        if (next === null) continue;
+        if (cell.v !== next) {
+          cell.v = next;
           wrote = true;
         }
         absoluteWaiting.delete(address);
@@ -482,44 +957,32 @@ export function recalculateDirty(
     if (!wrote) break;
   }
   left.push(...absoluteWaiting);
-  const bothWaiting = new Set(boths);
-  for (let pass = 0; pass < boths.length && bothWaiting.size > 0; pass += 1) {
-    let wrote = false;
-    for (const address of [...bothWaiting]) {
-      const cell = readCell(cellData, address);
-      const pair = listedPair(typeof cell?.f === "string" ? cell.f : "");
-      if (!cell || !pair) continue;
-      if ([pair.left, pair.right].some((part) => part !== address && bothWaiting.has(part))) continue;
-      const leftNumber = numericValue(readCell(cellData, pair.left)?.v);
-      const rightNumber = numericValue(readCell(cellData, pair.right)?.v);
-      if (leftNumber === null || rightNumber === null) continue;
-      const truth = pair.op === "or" ? leftNumber !== 0 || rightNumber !== 0 : leftNumber !== 0 && rightNumber !== 0;
-      const next = truth ? 1 : 0;
-      if (cell.v !== next) {
-        cell.v = next;
-        wrote = true;
-      }
-      bothWaiting.delete(address);
-      calculated.push(address);
-    }
-    if (!wrote) break;
-  }
-  left.push(...bothWaiting);
-  for (let pass = 0; pass < targets.length; pass += 1) {
-    let wrote = false;
-    for (const address of targets) {
-      const cell = readCell(cellData, address);
-      const ref = directRef(typeof cell?.f === "string" ? cell.f : "");
-      if (!cell || !ref) continue;
-      const next = readCell(cellData, ref)?.v;
-      if (cell.v !== next) {
-        cell.v = next;
-        wrote = true;
-      }
-    }
-    if (!wrote) break;
-  }
-  calculated.push(...targets);
+  const logicApplied = settleLogic(logics, formulaOf, valueOf, writeCell);
+  calculated.push(...logicApplied.calculated);
+  left.push(...logicApplied.left);
+  const mathApplied = applyMath({ addresses: mathCells, formula: formulaOf, value: valueOf, write: writeCell });
+  calculated.push(...mathApplied.calculated);
+  left.push(...mathApplied.left);
+  const textApplied = applyText({ addresses: textCells, formula: formulaOf, value: valueOf, write: writeCell });
+  calculated.push(...textApplied.calculated);
+  left.push(...textApplied.left);
+  const finished = applyPairs({
+    boths,
+    targets,
+    formula: formulaOf,
+    value: valueOf,
+    write: writeCell,
+    pair: listedPair,
+    ref: directRef,
+    numberOf: numericValue,
+  });
+  calculated.push(
+    ...finished.calculated,
+    ...applyClock(cellData, now),
+    ...applyRandom(cellData, random),
+    ...applyOffset(cellData),
+  );
+  left.push(...finished.left);
   calculated.sort();
   left.sort();
   if (structured) {

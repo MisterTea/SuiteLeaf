@@ -18,6 +18,17 @@ export function emptyParagraphPointSize(paragraphXml: string): number | undefine
   return paragraphMarkPointSize(paragraphXml);
 }
 
+/** Baseline of the paragraph mark, in percent. A copied subscript mark carries one. */
+export function paragraphMarkBaseline(paragraphXml: string): number | undefined {
+  const tag = /<a:endParaRPr\b([^>]*)/.exec(paragraphXml)?.[1];
+  if (!tag) return;
+  const raw = /(?:^|\s)baseline="(-?\d+(?:\.\d+)?)"/.exec(tag)?.[1];
+  if (!raw) return;
+  const shift = Number(raw) / 1000;
+  if (!Number.isFinite(shift) || shift === 0) return;
+  return shift;
+}
+
 /**
  * A break at the end of a paragraph whose mark is shorter than that break
  * is the mark, not another blank line. A taller mark keeps the empty line

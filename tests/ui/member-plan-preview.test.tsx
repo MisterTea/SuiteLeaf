@@ -6,7 +6,7 @@ import { MemberPlanPreview } from "../../apps/web/src/admin/member-plan";
 afterEach(cleanup);
 
 it("shows the preview and does not add the person", async () => {
-  let added = false;
+  const added = false;
   render(
     <MemberPlanPreview
       disabled={false}

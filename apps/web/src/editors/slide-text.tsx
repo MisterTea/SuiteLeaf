@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import type { TextRun } from "@suiteleaf/core";
 import { paintFontFamily } from "@suiteleaf/core";
 import {
@@ -34,7 +34,7 @@ export function runStyle(run: TextRun, baseFontSize?: number): CSSProperties {
       ? { fontVariantCaps: "small-caps" as const, fontSynthesis: "small-caps" as const }
       : {}),
     ...(run.baseline
-      ? { verticalAlign: `${run.baseline / 100}em`, lineHeight: 0 }
+      ? { position: "relative" as const, top: `${-run.baseline / 100}em`, lineHeight: 0 }
       : {}),
     ...(run.font ? { fontFamily: paintFontFamily(run.font) } : {}),
   };
@@ -262,6 +262,7 @@ export function SlideTextBody({
   hang,
   fontFamily,
   fontSize,
+  lineHeight,
   placeholder,
   editing,
   onText,
@@ -277,6 +278,7 @@ export function SlideTextBody({
   hang?: number;
   fontFamily?: string;
   fontSize?: number;
+  lineHeight?: number;
   placeholder?: string;
   editing: boolean;
   onText: (runs: TextRun[], opts?: { bullet?: boolean }) => void;
@@ -287,6 +289,17 @@ export function SlideTextBody({
   const onCaretRef = useRef(onCaret);
   onTextRef.current = onText;
   onCaretRef.current = onCaret;
+  const measuredWithFonts = useRef(false);
+  const [fontsReady, setFontsReady] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void document.fonts?.ready.then(() => {
+      if (live) setFontsReady(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
   const signature = JSON.stringify(
     runsOf({ content, runs, bold, italic, underline }),
   );
@@ -295,7 +308,8 @@ export function SlideTextBody({
     const node = ref.current;
     if (!node) return;
     const expected = runsOf({ content, runs, bold, italic, underline });
-    if (JSON.stringify(runsFromDom(node)) === JSON.stringify(expected)) {
+    const remeasure = fontsReady && !measuredWithFonts.current;
+    if (!remeasure && JSON.stringify(runsFromDom(node)) === JSON.stringify(expected)) {
       node.dataset.empty = plainText(expected) ? "false" : "true";
       return;
     }
@@ -303,10 +317,11 @@ export function SlideTextBody({
       editing && document.activeElement === node
         ? selectionOffsets(node)
         : null;
-    node.innerHTML = runsToHtml(expected, kern, hang, { fontFamily, fontSize, bold, italic });
+    node.innerHTML = runsToHtml(expected, kern, hang, { fontFamily, fontSize, bold, italic, lineHeight });
     node.dataset.empty = plainText(expected) ? "false" : "true";
+    if (fontsReady) measuredWithFonts.current = true;
     if (sel) restoreSelection(node, sel.start, sel.end);
-  }, [signature, editing, content, runs, bold, italic, underline, kern, hang, fontFamily, fontSize]);
+  }, [signature, editing, content, runs, bold, italic, underline, kern, hang, fontFamily, fontSize, lineHeight, fontsReady]);
 
   useLayoutEffect(() => {
     if (!editing) return;
@@ -396,7 +411,7 @@ export function SlideTextBody({
           next.to,
           next.replacement,
         );
-        node.innerHTML = runsToHtml(runs, kern, hang, { fontFamily, fontSize, bold, italic });
+        node.innerHTML = runsToHtml(runs, kern, hang, { fontFamily, fontSize, bold, italic, lineHeight });
         node.dataset.empty = plainText(runs) ? "false" : "true";
         restoreSelection(node, next.caret, next.caret);
         onTextRef.current(runs);
@@ -416,7 +431,7 @@ export function SlideTextBody({
               next.to,
               next.replacement,
             );
-            node.innerHTML = runsToHtml(runs, kern, hang, { fontFamily, fontSize, bold, italic });
+            node.innerHTML = runsToHtml(runs, kern, hang, { fontFamily, fontSize, bold, italic, lineHeight });
             node.dataset.empty = plainText(runs) ? "false" : "true";
             restoreSelection(node, next.caret, next.caret);
             onTextRef.current(runs, next.bullet ? { bullet: true } : undefined);

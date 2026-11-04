@@ -1,6 +1,6 @@
 # 19 · Open an Excel workbook and send it back
 
-**Mode:** single-node · **App:** Sheets · **Video:** [videos/19-open-an-excel-workbook.mp4](videos/19-open-an-excel-workbook.mp4) · **Script:** [scenes/sheets.spec.ts](scenes/sheets.spec.ts)
+**Mode:** single-node · **App:** Sheets · **Video:** [videos/19-open-an-excel-workbook.mp4](videos/19-open-an-excel-workbook.mp4) · **Script:** [scenes/sheets-files.spec.ts](scenes/sheets-files.spec.ts)
 
 ## Who and why
 

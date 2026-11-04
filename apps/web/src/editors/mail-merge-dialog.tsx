@@ -145,7 +145,9 @@ export function MailMergeDialog({
         let saved = true;
         try {
           for (const file of batch.files) {
-            const blob = new Blob([file.pdf], { type: "application/pdf" });
+            const pdf = new ArrayBuffer(file.pdf.byteLength);
+            new Uint8Array(pdf).set(file.pdf);
+            const blob = new Blob([pdf], { type: "application/pdf" });
             const url = URL.createObjectURL(blob);
             const link = document.createElement("a");
             link.href = url;

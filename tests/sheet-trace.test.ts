@@ -75,6 +75,90 @@ describe("formula evaluation trace", () => {
       "D1",
     );
     expect(count.note).toBe("The count is 2.");
+    const filled = evaluationTrace(
+      { cellData: { "0": { "0": { v: 10 }, "1": { v: "secret-value" }, "2": { v: "" }, "3": { f: "=COUNTA(A1:C1)" } } } },
+      "D1",
+    );
+    expect(filled.note).toBe("The count of filled cells is 2.");
+    expect(JSON.stringify(filled)).not.toContain("secret-value");
+    expect(JSON.stringify(filled)).not.toContain("COUNTA");
+    const product = evaluationTrace(
+      { cellData: { "0": { "0": { v: 10 }, "1": { v: "secret-value" }, "2": { v: 4 }, "3": { f: "=PRODUCT(A1:C1)" } } } },
+      "D1",
+    );
+    expect(product.note).toBe("The product is 40.");
+    const middle = evaluationTrace(
+      {
+        cellData: {
+          "0": { "0": { v: 10 }, "1": { v: "secret-value" }, "2": { v: 4 }, "3": { v: 30 }, "4": { f: "=MEDIAN(A1:D1)" } },
+        },
+      },
+      "E1",
+    );
+    expect(middle.note).toBe("The median is 10.");
+    expect(JSON.stringify(middle)).not.toContain("secret-value");
+    expect(JSON.stringify(middle)).not.toContain("MEDIAN");
+    const whole = evaluationTrace(
+      { cellData: { "0": { "0": { v: 8.9 }, "1": { f: "=INT(A1)" } } } },
+      "B1",
+    );
+    expect(whole.note).toBe("The result is 8.");
+    const taken = evaluationTrace(
+      { cellData: { "0": { "0": { v: "Beds North" }, "1": { f: "=LEFT(A1, 4)" } } } },
+      "B1",
+    );
+    expect(taken.note).toBe("The result has 4 characters.");
+    const formatted = evaluationTrace(
+      { cellData: { "0": { "0": { v: 8.9 }, "1": { f: '=TEXT(A1, "0.00")' } } } },
+      "B1",
+    );
+    expect(formatted.note).toBe("The result has 4 characters.");
+    const today = evaluationTrace(
+      { cellData: { "0": { "0": { f: "=TODAY()" }, "1": { v: "secret-value" } } } },
+      "A1",
+      [],
+      new Date("2026-11-03T15:04:05.000Z"),
+    );
+    expect(today.note).toBe("The date is 2026-11-03.");
+    const drawn = evaluationTrace(
+      { cellData: { "0": { "0": { f: "=RAND()" }, "1": { v: "secret-value" } } } },
+      "A1",
+      [],
+      undefined,
+      () => 0.25,
+    );
+    expect(drawn.note).toBe("The random number is 0.25.");
+    const moved = evaluationTrace(
+      { cellData: { "0": { "0": { v: 10 }, "1": { f: "=OFFSET(A1, 1, 0)" } }, "1": { "0": { v: 4 }, "1": { v: "secret-value" } } } },
+      "B1",
+    );
+    expect(moved.note).toBe("The cell reached is 4.");
+    expect(JSON.stringify(moved)).not.toContain("secret-value");
+    expect(JSON.stringify(moved)).not.toContain("OFFSET");
+    expect(JSON.stringify(drawn)).not.toContain("secret-value");
+    expect(JSON.stringify(drawn)).not.toContain("RAND");
+    expect(JSON.stringify(today)).not.toContain("secret-value");
+    expect(JSON.stringify(today)).not.toContain("TODAY");
+    expect(JSON.stringify(formatted)).not.toContain("TEXT");
+    expect(JSON.stringify(formatted)).not.toContain("8.90");
+    expect(JSON.stringify(taken)).not.toContain("LEFT");
+    expect(JSON.stringify(taken)).not.toContain("Beds");
+    const broken = evaluationTrace(
+      { cellData: { "0": { "0": { v: "secret-value" }, "1": { f: "=LEFT(A1, 3)" } } } },
+      "B1",
+    );
+    expect(broken.note).toBe("The result has 3 characters.");
+    expect(JSON.stringify(broken)).not.toContain("secret-value");
+    expect(JSON.stringify(whole)).not.toContain("INT");
+    const textRoot = evaluationTrace(
+      { cellData: { "0": { "0": { v: "secret-value" }, "1": { f: "=SQRT(A1)" } } } },
+      "B1",
+    );
+    expect(textRoot.note).toBe("The number was not calculated.");
+    expect(JSON.stringify(textRoot)).not.toContain("secret-value");
+    expect(JSON.stringify(textRoot)).not.toContain("SQRT");
+    expect(JSON.stringify(product)).not.toContain("secret-value");
+    expect(JSON.stringify(product)).not.toContain("PRODUCT");
     expect(JSON.stringify(count)).not.toContain("secret-value");
     const minimum = evaluationTrace(
       { cellData: { "0": { "0": { v: 10 }, "1": { v: "secret-value" }, "2": { v: 4 }, "3": { f: "=MIN(A1:C1)" } } } },
@@ -300,6 +384,204 @@ describe("formula evaluation trace", () => {
       [{ name: "Beds", cellData: { "0": { "0": { v: "  Beds  " } } } }],
     );
     expect(other.note).toBe("Beds!A1 is text. The trimmed text has 4 characters.");
+    const lower = evaluationTrace(
+      { cellData: { "0": { "0": { v: "Beds North" }, "1": { f: "=LOWER(A1)" } } } },
+      "B1",
+    );
+    expect(lower.note).toBe("A1 is text. The lower case text has 10 characters.");
+    const recovered = evaluationTrace(
+      { cellData: { "0": { "0": { v: "#DIV/0!" }, "1": { v: 4 }, "2": { f: "=IFERROR(A1, B1)" } } } },
+      "C1",
+    );
+    expect(recovered.note).toBe("A1 shows #DIV/0!. The fallback is 4.");
+    const looked = evaluationTrace(
+      {
+        cellData: {
+          "0": { "0": { v: "West" }, "1": { v: "West" }, "2": { v: "secret-value" }, "3": { f: "=VLOOKUP(A1, B1:C1, 2)" } },
+        },
+      },
+      "D1",
+    );
+    expect(looked.note).toBe("The lookup found a match. The result is text.");
+    const across = evaluationTrace(
+      {
+        cellData: {
+          "0": { "0": { v: "north" }, "1": { v: "Beds" }, "2": { v: "North" }, "3": { f: "=HLOOKUP(A1, B1:C2, 2)" } },
+          "1": { "1": { v: 10 }, "2": { v: "secret-value" } },
+        },
+      },
+      "D1",
+    );
+    expect(across.note).toBe("The lookup found a match. The result is text.");
+    const second = evaluationTrace(
+      {
+        cellData: {
+          "0": {
+            "0": { v: "beds" },
+            "1": { v: "Beds" },
+            "2": { v: "secret-value" },
+            "3": { f: "=XLOOKUP(A1, B1:B1, C1:C1)" },
+          },
+        },
+      },
+      "D1",
+    );
+    expect(second.note).toBe("The lookup found a match. The result is text.");
+    expect(JSON.stringify(second)).not.toContain("secret-value");
+    expect(JSON.stringify(second)).not.toContain("XLOOKUP");
+    expect(JSON.stringify(across)).not.toContain("secret-value");
+    expect(JSON.stringify(across)).not.toContain("HLOOKUP");
+    const summed = evaluationTrace(
+      {
+        cellData: {
+          "0": { "0": { v: "Beds" }, "1": { v: 10 }, "2": { f: "=SUMIF(A1:A2, D1, B1:B2)" }, "3": { v: "Beds" } },
+          "1": { "0": { v: "North" }, "1": { v: "secret-value" } },
+        },
+      },
+      "C1",
+    );
+    expect(summed.note).toBe("The sum of matching cells is 10.");
+    const counted = evaluationTrace(
+      {
+        cellData: {
+          "0": { "0": { v: "Beds" }, "1": { f: "=COUNTIF(A1:A2, C1)" }, "2": { v: "Beds" } },
+          "1": { "0": { v: "secret-value" } },
+        },
+      },
+      "B1",
+    );
+    expect(counted.note).toBe("The count of matching cells is 1.");
+    const many = evaluationTrace(
+      {
+        cellData: {
+          "0": { "0": { v: "Beds" }, "1": { v: "North" }, "2": { f: "=COUNTIFS(A1:A2, D1, B1:B2, E1)" }, "3": { v: "Beds" }, "4": { v: "North" } },
+          "1": { "0": { v: "secret-value" }, "1": { v: "North" } },
+        },
+      },
+      "C1",
+    );
+    expect(many.note).toBe("The count of matching cells is 1.");
+    const averaged = evaluationTrace(
+      {
+        cellData: {
+          "0": { "0": { v: "Beds" }, "1": { v: 10 }, "2": { f: "=AVERAGEIF(A1:A2, D1, B1:B2)" }, "3": { v: "Beds" } },
+          "1": { "0": { v: "North" }, "1": { v: "secret-value" } },
+        },
+      },
+      "C1",
+    );
+    expect(averaged.note).toBe("The average of matching cells is 10.");
+    const summedMany = evaluationTrace(
+      {
+        cellData: {
+          "0": {
+            "0": { v: "Beds" },
+            "1": { v: 10 },
+            "2": { v: "North" },
+            "3": { f: "=SUMIFS(B1:B2, A1:A2, E1, C1:C2, F1)" },
+            "4": { v: "Beds" },
+            "5": { v: "North" },
+          },
+          "1": { "0": { v: "secret-value" }, "1": { v: 4 }, "2": { v: "North" } },
+        },
+      },
+      "D1",
+    );
+    expect(summedMany.note).toBe("The sum of matching cells is 10.");
+    const averagedMany = evaluationTrace(
+      {
+        cellData: {
+          "0": {
+            "0": { v: "Beds" },
+            "1": { v: 10 },
+            "2": { v: "North" },
+            "3": { f: "=AVERAGEIFS(B1:B2, A1:A2, E1, C1:C2, F1)" },
+            "4": { v: "Beds" },
+            "5": { v: "North" },
+          },
+          "1": { "0": { v: "secret-value" }, "1": { v: 4 }, "2": { v: "North" } },
+        },
+      },
+      "D1",
+    );
+    expect(averagedMany.note).toBe("The average of rows that match every condition is 10.");
+    expect(JSON.stringify(averagedMany)).not.toContain("secret-value");
+    expect(JSON.stringify(averagedMany)).not.toContain("AVERAGEIFS");
+    expect(JSON.stringify(summedMany)).not.toContain("secret-value");
+    expect(JSON.stringify(summedMany)).not.toContain("SUMIFS");
+    expect(JSON.stringify(averaged)).not.toContain("secret-value");
+    expect(JSON.stringify(averaged)).not.toContain("AVERAGEIF");
+    expect(JSON.stringify(many)).not.toContain("secret-value");
+    expect(JSON.stringify(many)).not.toContain("COUNTIFS");
+    const indexed = evaluationTrace(
+      { cellData: { "0": { "1": { v: "secret-value" }, "2": { f: "=INDEX(B1:B1, 1)" } } } },
+      "C1",
+    );
+    expect(indexed.note).toBe("The cell at that position is text.");
+    const year = evaluationTrace(
+      { cellData: { "0": { "0": { v: " 2026-01-15 " }, "1": { f: "=YEAR(A1)" } } } },
+      "B1",
+    );
+    expect(year.note).toBe("A1 is a date. The year is 2026.");
+    const built = evaluationTrace(
+      {
+        cellData: {
+          "0": { "0": { v: 2026 }, "1": { v: 1 }, "2": { v: 15 }, "3": { f: "=DATE(A1, B1, C1)" } },
+        },
+      },
+      "D1",
+    );
+    expect(built.note).toBe("The date is 2026-01-15.");
+    expect(JSON.stringify(built)).not.toContain("DATE");
+    const refused = evaluationTrace(
+      { cellData: { "0": { "0": { v: "secret-value" }, "1": { v: 1 }, "2": { v: 15 }, "3": { f: "=DATE(A1, B1, C1)" } } } },
+      "D1",
+    );
+    expect(refused.note).toBe("The date was not calculated.");
+    expect(JSON.stringify(refused)).not.toContain("secret-value");
+    expect(JSON.stringify(year)).not.toContain("YEAR");
+    const hidden = evaluationTrace(
+      { cellData: { "0": { "0": { v: "secret-value" }, "1": { f: "=MONTH(A1)" } } } },
+      "B1",
+    );
+    expect(hidden.note).toBe("The month was not calculated.");
+    expect(JSON.stringify(hidden)).not.toContain("secret-value");
+    expect(JSON.stringify(indexed)).not.toContain("secret-value");
+    expect(JSON.stringify(indexed)).not.toContain("INDEX");
+    const matched = evaluationTrace(
+      { cellData: { "0": { "0": { v: "Beds" }, "1": { v: "beds" }, "2": { f: "=MATCH(A1, B1:B1, 0)" } } } },
+      "C1",
+    );
+    expect(matched.note).toBe("The match is in position 1.");
+    expect(JSON.stringify(matched)).not.toContain("MATCH");
+    expect(JSON.stringify(counted)).not.toContain("secret-value");
+    expect(JSON.stringify(counted)).not.toContain("COUNTIF");
+    expect(JSON.stringify(summed)).not.toContain("secret-value");
+    expect(JSON.stringify(summed)).not.toContain("SUMIF");
+    expect(JSON.stringify(looked)).not.toContain("secret-value");
+    expect(JSON.stringify(looked)).not.toContain("VLOOKUP");
+    const missed = evaluationTrace(
+      { cellData: { "0": { "0": { v: "Missing" }, "1": { f: "=VLOOKUP(A1, B1:C1, 2)" } } } },
+      "B1",
+    );
+    expect(missed.note).toBe("The lookup did not find a match.");
+    expect(JSON.stringify(recovered)).not.toContain("IFERROR");
+    const kept = evaluationTrace(
+      { cellData: { "0": { "0": { v: "secret-value" }, "1": { f: "=IFERROR(A1, B1)" } } } },
+      "B1",
+    );
+    expect(kept.note).toBe("A1 is text. The value is kept.");
+    expect(JSON.stringify(kept)).not.toContain("secret-value");
+    expect(JSON.stringify(lower)).not.toContain("LOWER");
+    expect(JSON.stringify(lower)).not.toContain("Beds");
+    const upper = evaluationTrace(
+      { cellData: { "0": { "0": { f: "=UPPER(Beds!A1)" } } } },
+      "A1",
+      [{ name: "Beds", cellData: { "0": { "0": { v: "Secret-Value" } } } }],
+    );
+    expect(upper.note).toBe("Beds!A1 is text. The capital text has 12 characters.");
+    expect(JSON.stringify(upper)).not.toContain("Secret-Value");
+    expect(JSON.stringify(upper)).not.toContain("UPPER");
   });
 
   it("requires both cells", () => {
@@ -337,5 +619,125 @@ describe("formula evaluation trace", () => {
     expect(text.note).toBe("A1 is text. B1 is 4. The text is not shown. Either was not decided.");
     expect(JSON.stringify(text)).not.toContain("secret-value");
     expect(JSON.stringify(text)).not.toContain("OR");
+  });
+
+  it("names the first true test without the text", () => {
+    const chosen = evaluationTrace(
+      {
+        cellData: {
+          "0": {
+            "0": { v: 0 },
+            "1": { v: "secret-value" },
+            "2": { v: 1 },
+            "3": { v: 4 },
+            "4": { f: "=IFS(A1, B1, C1, D1)" },
+          },
+        },
+      },
+      "E1",
+    );
+    expect(chosen.note).toBe("The first true test uses 4.");
+    expect(JSON.stringify(chosen)).not.toContain("secret-value");
+    expect(JSON.stringify(chosen)).not.toContain("IFS");
+    const none = evaluationTrace(
+      { cellData: { "0": { "0": { v: 0 }, "1": { v: 2 }, "2": { v: 0 }, "3": { v: 9 }, "4": { f: "=IFS(A1, B1, C1, D1)" } } } },
+      "E1",
+    );
+    expect(none.note).toBe("No test was true.");
+  });
+
+  it("names a comparison without the text", () => {
+    const chosen = evaluationTrace(
+      {
+        cellData: {
+          "0": { "0": { v: 12 }, "1": { v: 4 }, "2": { f: "=IF(A1>10, B1, C1)" } },
+        },
+      },
+      "C1",
+    );
+    expect(chosen.note).toBe("The comparison is true. The result is 4.");
+    const hidden = evaluationTrace(
+      { cellData: { "0": { "0": { v: "secret-value" }, "1": { f: '=IF(A1>"Beds", "Yes", "No")' } } } },
+      "B1",
+    );
+    expect(hidden.note).toBe("The comparison was not decided.");
+    expect(JSON.stringify(hidden)).not.toContain("secret-value");
+    expect(JSON.stringify(hidden)).not.toContain("IF");
+  });
+
+  it("names AND, OR, NOT, and IFS comparisons without the text", () => {
+    const both = evaluationTrace(
+      { cellData: { "0": { "0": { v: 12 }, "1": { v: 3 }, "2": { f: "=AND(A1>10, B1<5)" } } } },
+      "C1",
+    );
+    expect(both.note).toBe("Both are true.");
+    const none = evaluationTrace(
+      { cellData: { "0": { "0": { v: 4 }, "1": { v: 9 }, "2": { f: "=OR(A1>10, B1<5)" } } } },
+      "C1",
+    );
+    expect(none.note).toBe("Neither is true.");
+    const opposite = evaluationTrace(
+      { cellData: { "0": { "0": { v: 12 }, "1": { f: "=NOT(A1>10)" } } } },
+      "B1",
+    );
+    expect(opposite.note).toBe("The opposite is 0.");
+    const chosen = evaluationTrace(
+      {
+        cellData: {
+          "0": { "0": { v: 4 }, "1": { v: "secret-value" }, "2": { v: 3 }, "3": { v: 8 }, "4": { f: "=IFS(A1>10, B1, C1<5, D1)" } },
+        },
+      },
+      "E1",
+    );
+    expect(chosen.note).toBe("The first true test uses 8.");
+    expect(JSON.stringify(chosen)).not.toContain("secret-value");
+    expect(JSON.stringify(chosen)).not.toContain("IFS");
+  });
+
+  it("counts a written comparison without the text", () => {
+    const chosen = evaluationTrace(
+      {
+        cellData: {
+          "0": { "0": { v: 12 }, "1": { f: '=COUNTIFS(A1:A3, ">10")' } },
+          "1": { "0": { v: 4 } },
+          "2": { "0": { v: "secret-value" } },
+        },
+      },
+      "B1",
+    );
+    expect(chosen.note).toBe("The count of matching cells is 1.");
+    expect(JSON.stringify(chosen)).not.toContain("secret-value");
+    expect(JSON.stringify(chosen)).not.toContain("COUNTIFS");
+  });
+
+  it("names a written sum without the text", () => {
+    const chosen = evaluationTrace(
+      {
+        cellData: {
+          "0": { "0": { v: "Pass" }, "1": { v: 10 }, "2": { f: '=SUMIF(A1:A3, "Pass", B1:B3)' } },
+          "1": { "0": { v: "pass" }, "1": { v: 4 } },
+          "2": { "0": { v: "secret-value" }, "1": { v: 9 } },
+        },
+      },
+      "C1",
+    );
+    expect(chosen.note).toBe("The sum of matching cells is 14.");
+    expect(JSON.stringify(chosen)).not.toContain("secret-value");
+    expect(JSON.stringify(chosen)).not.toContain("SUMIF");
+  });
+
+  it("names a written IFS result without the word", () => {
+    const chosen = evaluationTrace(
+      { cellData: { "0": { "0": { v: 12 }, "1": { f: '=IFS(A1>10, "High", TRUE, "Low")' } } } },
+      "B1",
+    );
+    expect(chosen.note).toBe("The first true test uses text.");
+    expect(JSON.stringify(chosen)).not.toContain("High");
+    const other = evaluationTrace(
+      { cellData: { "0": { "0": { v: "secret-value" }, "1": { f: '=IFS(A1>10, "High", TRUE, "Low")' } } } },
+      "B1",
+    );
+    expect(other.note).toBe("A test was not a number.");
+    expect(JSON.stringify(other)).not.toContain("secret-value");
   });
 });

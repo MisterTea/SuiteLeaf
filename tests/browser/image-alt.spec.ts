@@ -70,7 +70,7 @@ async function newDocument(page: Page) {
 }
 
 async function insertStall(page: Page) {
-  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
+  await page.locator('input[type=file][accept^="image/"]').setInputFiles({
     name: "IMG_2044.jpg",
     mimeType: "image/png",
     buffer: stallPhoto(),

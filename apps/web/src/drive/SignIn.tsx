@@ -138,7 +138,9 @@ export function SignInScreen({
             <p className="sign-in-ended" role="status">
               {ended === "signed-out"
                 ? `You signed out of ${host}. Your SuiteDrive files stay on the server.`
-                : "Your session ended. Sign in again to keep working in SuiteDrive. Changes you made are safe on this device."}
+                : ended === "idle"
+                  ? "This device is idle. Sign in again. Changes you made are safe on this device."
+                  : "Your session ended. Sign in again to keep working in SuiteDrive. Changes you made are safe on this device."}
             </p>
           ) : null}
           {mode === "signin" && clustered ? (

@@ -10,6 +10,7 @@ import {
 } from "node:fs/promises";
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
+import { readDraftBackup, writeDraftBackup } from "./draft-backup";
 import {
   applyLibraryMarks,
   driveLinkSchema,
@@ -171,6 +172,8 @@ export class FileStore {
       fingerprint?: unknown;
       recovery?: unknown;
       drive?: unknown;
+      starred?: unknown;
+      trashedAt?: unknown;
     };
     const fileValue = stored.file;
     if (!fileValue || typeof fileValue !== "object") return false;
@@ -603,6 +606,24 @@ export class FileStore {
       return structuredClone(r);
     });
   }
+  /** Copy recovery drafts only. A file that already lives on disk is left out. */
+  async exportRecoveryDrafts(folder: string) {
+    return writeDraftBackup(await this.list(), folder);
+  }
+
+  /** Read those drafts back. A file already saved on disk is not replaced. */
+  async importRecoveryDrafts(folder: string) {
+    const drafts = await readDraftBackup(folder);
+    let imported = 0;
+    for (const draft of drafts) {
+      const existing = await this.get(draft.file.id);
+      if (existing && !existing.recovery) continue;
+      await this.save({ file: draft.file, recovery: true });
+      imported += 1;
+    }
+    return imported;
+  }
+
   async remove(id: string) {
     await this.transaction(async () => {
       const old = this.records.get(id);

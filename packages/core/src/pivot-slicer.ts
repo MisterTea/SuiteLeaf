@@ -12,7 +12,7 @@ export type PivotSlice = {
 
 export type PivotCell = string | number | boolean | null;
 
-function calendarDay(text: string): { year: number; month: number } | null {
+function calendarDay(text: string): { year: number; month: number; day: number } | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-]\d{2}:\d{2})?)?$/.exec(text);
   if (!match) return null;
   const year = Number(match[1]);
@@ -38,7 +38,24 @@ function calendarDay(text: string): { year: number; month: number } | null {
   ) {
     return null;
   }
-  return { year, month };
+  return { year, month, day };
+}
+
+/** An ISO date from three numbers. A day that is not on the calendar is refused. */
+export function isoDateFromParts(year: number, month: number, day: number): string | null {
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
+  if (year < 1 || year > 9999 || month < 1 || month > 12 || day < 1) return null;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+  const monthText = String(month).padStart(2, "0");
+  const dayText = String(day).padStart(2, "0");
+  return `${String(year).padStart(4, "0")}-${monthText}-${dayText}`;
+}
+
+/** Year, month, and day from an ISO date. A day that is not on the calendar is refused. */
+export function dateParts(value: unknown): { year: number; month: number; day: number } | null {
+  if (typeof value !== "string") return null;
+  return calendarDay(value.trim());
 }
 
 /** Year, quarter, or month from an ISO date. Any other value stays as text. */

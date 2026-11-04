@@ -54,8 +54,8 @@ it("paints a layout freeform when the slide picture placeholder omits it", async
   );
   expect(shape?.type).toBe("image");
   const svg = Buffer.from(shape!.src!.split(",")[1], "base64").toString("utf8");
-  expect(svg).toContain("1682750");
-  expect(svg).toContain("2014537");
+  expect(svg).toContain("M 171.05 0");
+  expect(svg).toContain("L 366.63 0");
   expect(svg).not.toContain("<rect");
 });
 
@@ -96,7 +96,7 @@ it("clips a picture placeholder fill to the layout freeform", async () => {
   const picture = elements.find((el) => el.type === "image" && el.alt !== "Slide shape");
   expect(fill?.type).toBe("image");
   const svg = Buffer.from(fill!.src!.split(",")[1], "base64").toString("utf8");
-  expect(svg).toContain("1682750");
+  expect(svg).toContain("M 171.05 0");
   expect(svg).not.toContain("<rect");
   expect(elements.filter((el) => el.type === "shape")).toHaveLength(0);
   const wedgeY = Math.round(((2014537 / 4573587) * picture!.height) * 1000) / 1000;

@@ -19,6 +19,7 @@ import {
   convertUsage,
   parseConvertArgs,
   runConvertCommand,
+  slidePngFolder,
 } from "../apps/desktop/src/convert-cli";
 
 let root: string, source: string, output: string;
@@ -57,6 +58,8 @@ async function deck(name: string, slides: string[]) {
 }
 
 const pdf = () => new Uint8Array(Buffer.from("%PDF-1.4\n"));
+const png = () =>
+  Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 it("parses convert arguments", () => {
   expect(parseConvertArgs(["--help"])).toBe("help");
@@ -64,8 +67,13 @@ it("parses convert arguments", () => {
     {
       source,
       output,
+      to: "pdf",
     },
   );
+  expect(parseConvertArgs([source, "--to", "png"])).toEqual({
+    source,
+    to: "png",
+  });
   expect(() => parseConvertArgs([source])).toThrow("--to pdf");
   expect(() => parseConvertArgs([source, "--to", "html"])).toThrow("--to pdf");
   expect(() => parseConvertArgs([source, "--to", "pdf", "--output"])).toThrow(
@@ -110,6 +118,34 @@ it("writes a PDF for an imported presentation and does not save a SuiteLeaf file
   expect(log).toHaveBeenCalledWith("Converted 1; skipped 0; failed 0.");
 });
 
+it("writes a PNG folder named Slide1.png onward and numbers an existing folder", async () => {
+  const bytes = await deck("Lecture", ["Alpha", "Beta"]);
+  const pptx = join(source, "lecture.pptx");
+  await writeFile(pptx, bytes);
+  await mkdir(join(output, "lecture"), { recursive: true });
+  await writeFile(join(output, "lecture", "Slide1.png"), png());
+  const code = await runConvertCommand(
+    [pptx, "--to", "png", "--output", output],
+    {
+      convertOffice: openOfficeFile,
+      openRenderer: async () => async () => pdf(),
+      openPngRenderer: async () => async () => [png(), png()],
+      log: vi.fn(),
+      error: vi.fn(),
+    },
+  );
+  expect(code).toBe(0);
+  expect(await readdir(join(output, "lecture"))).toEqual(["Slide1.png"]);
+  expect(await readdir(join(output, "lecture (1)"))).toEqual([
+    "Slide1.png",
+    "Slide2.png",
+  ]);
+  expect(await readFile(pptx)).toEqual(Buffer.from(bytes));
+  expect(slidePngFolder(join(output, "lecture.png"))).toBe(
+    join(output, "lecture"),
+  );
+});
+
 it("converts a directory beside each source, skips other files, and numbers existing PDFs", async () => {
   await mkdir(join(source, "nested"));
   await writeFile(
@@ -118,9 +154,14 @@ it("converts a directory beside each source, skips other files, and numbers exis
   );
   await writeFile(join(source, "notes.docx"), "not a presentation");
   await writeFile(join(source, "nested", "talk.pdf"), "%PDF-old");
+  await writeFile(join(source, "nested", "~$talk.pptx"), "owner lock");
+  const imported: string[] = [];
   const log = vi.fn();
   const code = await runConvertCommand([source, "--to", "pdf"], {
-    convertOffice: async () => createFile("slide", "Talk"),
+    convertOffice: async (_bytes, _format, name) => {
+      imported.push(name);
+      return createFile("slide", "Talk");
+    },
     openRenderer: async () => async () => pdf(),
     log,
     error: vi.fn(),
@@ -133,6 +174,10 @@ it("converts a directory beside each source, skips other files, and numbers exis
     Buffer.from("%PDF-1.4\n"),
   );
   expect(await readdir(source)).toEqual(["nested", "notes.docx"]);
+  expect(imported).toEqual(["talk.pptx"]);
+  expect(
+    (await readdir(join(source, "nested"))).filter((name) => name.startsWith("~$")),
+  ).toEqual(["~$talk.pptx"]);
   expect(log).toHaveBeenCalledWith("Converted 1; skipped 2; failed 0.");
 });
 

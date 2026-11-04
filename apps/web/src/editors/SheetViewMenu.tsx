@@ -50,8 +50,8 @@ export function SheetViewMenu({
           const live = actions.current?.sheetActions;
           if (!live) return "The spreadsheet is still opening.";
           const current = live.view();
-          if (current.maxFrozenRows > 0 && count > current.maxFrozenRows)
-            return "There isn't room to freeze that many.";
+          const room = axis === "rows" ? current.maxFrozenRows : current.maxFrozenColumns;
+          if (room > 0 && count > room) return "There isn't room to freeze that many.";
           return true;
         }}
         onSelect={() => freeze(count)}

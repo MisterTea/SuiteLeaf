@@ -710,12 +710,11 @@ impl Db {
     /// database still in WAL mode is not copied as a half-written file.
     /// The live database is not replaced. `dest` is created or overwritten.
     pub fn checkpoint_copy(&self, dest: &Path) -> Result<()> {
-        if let Some(parent) = dest.parent() {
-            if !parent.as_os_str().is_empty() {
-                std::fs::create_dir_all(parent).map_err(|error| {
-                    Error::Invalid(format!("create {}: {error}", parent.display()))
-                })?;
-            }
+        if let Some(parent) = dest.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            std::fs::create_dir_all(parent)
+                .map_err(|error| Error::Invalid(format!("create {}: {error}", parent.display())))?;
         }
         let inner = self.lock();
         let _ = inner.conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");

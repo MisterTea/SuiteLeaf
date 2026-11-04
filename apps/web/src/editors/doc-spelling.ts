@@ -458,6 +458,21 @@ function sharedTrigrams(left: string, right: string) {
 
 /** Prefer a close, ordinary word: "movment" → movement, "teh" → the. */
 export function spellingSuggestions(word: string, limit = 5) {
+  return rankedSuggestions(word, limit).map((item) => item.word);
+}
+
+/**
+ * The correction for a typo: the best suggestion, when it is one letter added,
+ * dropped, changed, or swapped away, as receive is from recieve. A word whose
+ * closest suggestions are two edits away, such as kenkey (kennedy, monkey), is
+ * more likely a real word the dictionary does not know than a slip.
+ */
+export function typoCorrection(word: string): string | undefined {
+  const best = rankedSuggestions(word, 1)[0];
+  return best?.distance === 1 ? best.word : undefined;
+}
+
+function rankedSuggestions(word: string, limit: number) {
   const target = normalize(word).replace(/'/g, "");
   if (!/^[a-z-]+$/.test(target) || target.length > 32) return [];
   const near = edits(target);
@@ -479,7 +494,7 @@ export function spellingSuggestions(word: string, limit = 5) {
       (rank.get(item.word) ?? 99999);
     return score(left) - score(right) || left.word.localeCompare(right.word);
   });
-  return candidates.slice(0, limit).map((item) => item.word);
+  return candidates.slice(0, limit);
 }
 
 function oneLetterLonger(shorter: string, longer: string): boolean {
@@ -608,7 +623,7 @@ export function spellingHit(
     suggestions: checksEnglishSpelling(spoken) ? spellingSuggestions(found.word) : [],
     x: event.clientX,
     y: event.clientY,
-    kept: view.state.doc.resolve(from).marks().some((mark) => mark.type.name === SPELLING_IGNORE_MARK),
+    kept: overlaps(block.ignored, found.from, found.to),
   };
 }
 

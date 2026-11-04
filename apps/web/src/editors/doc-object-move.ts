@@ -74,16 +74,8 @@ export function placeObject(tr: Transaction, node: ProseNode): number {
   }
   const { selection } = tr;
   const $from = selection.$from;
-  if (
-    selection.empty &&
-    $from.parent.isTextblock &&
-    $from.parentOffset === $from.parent.content.size &&
-    canInsertAt(tr.doc, $from.after($from.depth), node.type)
-  ) {
-    const after = $from.after($from.depth);
-    tr.insert(after, node);
-    return after;
-  }
+  // An empty line becomes the object. Checked first, since the caret on an
+  // empty line is also at the end of its paragraph.
   if (selection.empty && $from.parent.isTextblock && $from.parent.content.size === 0) {
     const depth = $from.depth;
     const parent = $from.node(depth - 1);
@@ -93,6 +85,16 @@ export function placeObject(tr: Transaction, node: ProseNode): number {
       tr.replaceWith(before, $from.after(depth), node);
       return before;
     }
+  }
+  if (
+    selection.empty &&
+    $from.parent.isTextblock &&
+    $from.parentOffset === $from.parent.content.size &&
+    canInsertAt(tr.doc, $from.after($from.depth), node.type)
+  ) {
+    const after = $from.after($from.depth);
+    tr.insert(after, node);
+    return after;
   }
   const from = selection.from;
   tr.replaceSelectionWith(node);

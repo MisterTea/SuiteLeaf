@@ -14,6 +14,8 @@ use rand::{RngCore, rngs::OsRng};
 
 use crate::backup::{BackupManifest, verify_backup};
 
+mod retain;
+
 const MAGIC: &[u8] = b"SLSEAL1\0";
 const AAD: &[u8] = b"SLSEAL1";
 
@@ -91,6 +93,7 @@ pub fn store_sealed(sealed: &Path, key: &[u8], dest: &Path) -> Result<u64> {
 /// Write, seal, and copy a backup only when the schedule says one is due.
 /// The plaintext directory is removed after the sealed file is written.
 /// A schedule that is not due leaves no directory and no sealed file.
+#[allow(clippy::too_many_arguments)]
 pub fn export_sealed_if_due(
     source: &crate::blobs::BlobStore,
     contents: &[crate::blobs::Hash],
@@ -101,12 +104,18 @@ pub fn export_sealed_if_due(
     key: &[u8],
     sealed: &Path,
     independent: &Path,
+    database: Option<&suitedb::Db>,
 ) -> Result<Option<u64>> {
     let decision = crate::backup::backup_due(last, every_hours, now)?;
     if !decision.due {
         return Ok(None);
     }
-    if let Err(error) = crate::backup::export_backup(source, contents, now, backup) {
+    let exported = if let Some(database) = database {
+        crate::backup::export_backup_from_database(source, contents, now, backup, database)
+    } else {
+        crate::backup::export_backup(source, contents, now, backup)
+    };
+    if let Err(error) = exported {
         let _ = fs::remove_dir_all(backup);
         return Err(error);
     }
@@ -126,7 +135,32 @@ pub fn export_sealed_if_due(
     }
 }
 
-fn seal_stamp(now: &str) -> Option<String> {
+fn drill_database(backup: &Path, schema: &suitedb::Schema) -> Result<crate::backup::CleanRestore> {
+    use crate::blobs::BlobStore;
+    use libp2p_identity::ed25519;
+    use suitedb::Db;
+
+    let copy = backup.join(".database-copy.sqlite");
+    fs::copy(backup.join("database.sqlite"), &copy)?;
+    let archive = Db::open(&copy, ed25519::Keypair::generate(), schema.clone())?;
+    let scratch = backup.join(".drill-db");
+    if scratch.exists() {
+        fs::remove_dir_all(&scratch)?;
+    }
+    fs::create_dir_all(&scratch)?;
+    let live = Db::open(
+        &scratch.join("db.sqlite"),
+        ed25519::Keypair::generate(),
+        schema.clone(),
+    )?;
+    let blobs = BlobStore::open(&scratch.join("blobs"))?;
+    let restored = crate::backup::restore_clean(backup, &archive, &live, &blobs);
+    let _ = fs::remove_dir_all(&scratch);
+    let _ = fs::remove_file(&copy);
+    restored
+}
+
+pub(crate) fn seal_stamp(now: &str) -> Option<String> {
     let bytes = now.as_bytes();
     if bytes.len() < 20
         || bytes[4] != b'-'
@@ -163,6 +197,7 @@ fn next_seal_path(path: &Path, now: &str) -> Result<std::path::PathBuf> {
     Ok(next)
 }
 
+#[derive(Debug)]
 pub struct ScheduledSeal {
     pub wrote: bool,
     pub reason: String,
@@ -170,6 +205,7 @@ pub struct ScheduledSeal {
 
 /// Seal a due backup and record that time for the next check.
 /// A schedule that is not due writes nothing. The reason does not include the key or a path.
+#[allow(clippy::too_many_arguments)]
 pub fn scheduled_seal(
     source: &crate::blobs::BlobStore,
     contents: &[crate::blobs::Hash],
@@ -179,7 +215,12 @@ pub fn scheduled_seal(
     key: &[u8],
     sealed: &Path,
     independent: &Path,
+    database: Option<&suitedb::Db>,
 ) -> Result<ScheduledSeal> {
+    let schema = database.map(|db| db.schema().clone());
+    let keep_copies = retain::retention_count(freshness)?;
+    let sealed_name = sealed;
+    let independent_name = independent;
     let recorded = if freshness.join("manifest.json").is_file() {
         match crate::backup::backup_freshness(freshness) {
             Ok(report) => report.recorded_at,
@@ -205,8 +246,8 @@ pub fn scheduled_seal(
     } else {
         Some(recorded.as_str())
     };
-    let sealed = next_seal_path(sealed, now)?;
-    let independent = next_seal_path(independent, now)?;
+    let sealed = next_seal_path(sealed_name, now)?;
+    let independent = next_seal_path(independent_name, now)?;
     let written = match export_sealed_if_due(
         source,
         contents,
@@ -217,6 +258,7 @@ pub fn scheduled_seal(
         key,
         &sealed,
         &independent,
+        database,
     ) {
         Ok(written) => written,
         Err(error) => {
@@ -244,6 +286,27 @@ pub fn scheduled_seal(
         freshness.join("manifest.json"),
         serde_json::to_vec(&manifest)?,
     )?;
+    let plain = freshness.join(".scheduled-drill");
+    if plain.exists() {
+        fs::remove_dir_all(&plain)?;
+    }
+    open_sealed(&sealed, key, &plain)
+        .map_err(|_| anyhow::anyhow!("The restore drill did not pass."))?;
+    let drill = crate::backup::record_restore_drill(&plain, now)
+        .map_err(|_| anyhow::anyhow!("The restore drill did not pass."))?;
+    if plain.join("database.sqlite").is_file() {
+        let Some(schema) = schema.as_ref() else {
+            anyhow::bail!("The restore drill did not pass.");
+        };
+        drill_database(&plain, schema)
+            .map_err(|_| anyhow::anyhow!("The restore drill did not pass."))?;
+    }
+    fs::write(freshness.join("drill.json"), serde_json::to_vec(&drill)?)?;
+    fs::remove_dir_all(&plain)?;
+    if let Some(count) = keep_copies {
+        retain::retain_sealed_copies(sealed_name, now, count)?;
+        retain::retain_sealed_copies(independent_name, now, count)?;
+    }
     Ok(ScheduledSeal {
         wrote: true,
         reason: decision.reason,
@@ -373,6 +436,52 @@ pub fn open_sealed(sealed: &Path, key: &[u8], dest: &Path) -> Result<BackupManif
     verify_backup(dest)
 }
 
+/// Decrypt a sealed directory that is not a SuiteLeaf file backup.
+/// A wrong key leaves no directory. A path that leaves the destination is refused.
+pub fn open_sealed_files(sealed: &Path, key: &[u8], dest: &Path) -> Result<()> {
+    let key = key_bytes(key)?;
+    if dest.exists() {
+        bail!("That backup destination already exists.");
+    }
+    let bytes = fs::read(sealed).context("read sealed backup")?;
+    if bytes.len() < MAGIC.len() + 12 + 16 || &bytes[..MAGIC.len()] != MAGIC {
+        bail!("sealed backup header is not recognized");
+    }
+    let nonce = &bytes[MAGIC.len()..MAGIC.len() + 12];
+    let ciphertext = &bytes[MAGIC.len() + 12..];
+    let cipher = ChaCha20Poly1305::new((&key).into());
+    let plain = cipher
+        .decrypt(
+            Nonce::from_slice(nonce),
+            Payload {
+                msg: ciphertext,
+                aad: AAD,
+            },
+        )
+        .map_err(|_| anyhow::anyhow!("The backup key does not open this archive."))?;
+    let files = unpack(&plain)?;
+    for (path, _) in &files {
+        if path
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == "..")
+        {
+            bail!("That identity backup has extra files.");
+        }
+    }
+    let wrote = (|| -> Result<()> {
+        fs::create_dir_all(dest)?;
+        for (path, body) in &files {
+            fs::write(dest.join(path), body)?;
+        }
+        Ok(())
+    })();
+    if let Err(error) = wrote {
+        let _ = fs::remove_dir_all(dest);
+        return Err(error);
+    }
+    Ok(())
+}
+
 fn key_bytes(key: &[u8]) -> Result<[u8; 32]> {
     let bytes: [u8; 32] = key
         .try_into()
@@ -453,303 +562,4 @@ fn unpack(mut plain: &[u8]) -> Result<Vec<(String, Vec<u8>)>> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::backup::export_backup;
-    use crate::blobs::BlobStore;
-
-    #[test]
-    fn a_wrong_key_or_a_changed_byte_writes_nothing() {
-        let root = tempfile::tempdir().unwrap();
-        let source = BlobStore::open(&root.path().join("live")).unwrap();
-        let content = source.put_content(b"sealed bed").unwrap();
-        let backup = root.path().join("backup");
-        export_backup(&source, &[content], "2026-10-30T22:00:00.000Z", &backup).unwrap();
-        let key = [7u8; 32];
-        let sealed = root.path().join("off-cluster.seal");
-        seal_backup(&backup, &key, &sealed).unwrap();
-        let opened = root.path().join("opened");
-        let manifest = open_sealed(&sealed, &key, &opened).unwrap();
-        assert!(manifest.contents.contains(&content.to_string()));
-        let store = BlobStore::open(&opened.join("blobs")).unwrap();
-        assert_eq!(store.get_content(&content).unwrap().unwrap(), b"sealed bed");
-
-        let wrong = root.path().join("wrong");
-        let error = open_sealed(&sealed, &[9u8; 32], &wrong).unwrap_err();
-        assert!(error.to_string().contains("key"));
-        assert!(!wrong.exists());
-
-        let mut changed = fs::read(&sealed).unwrap();
-        let last = changed.len() - 1;
-        changed[last] ^= 0xff;
-        let tampered = root.path().join("tampered.seal");
-        fs::write(&tampered, changed).unwrap();
-        let dest = root.path().join("tampered-out");
-        assert!(open_sealed(&tampered, &key, &dest).is_err());
-        assert!(!dest.exists());
-
-        let named = root.path().join("secret-value.seal");
-        seal_backup(&backup, &key, &named).unwrap();
-        let again = seal_backup(&backup, &key, &named).unwrap_err().to_string();
-        assert_eq!(again, "That sealed backup already exists.");
-        assert!(!again.contains("secret-value"));
-        assert!(!again.contains("070707"));
-    }
-
-    #[test]
-    fn a_sealed_file_is_kept_only_in_a_different_directory_when_the_key_opens_it() {
-        let root = tempfile::tempdir().unwrap();
-        let source = BlobStore::open(&root.path().join("live")).unwrap();
-        let content = source.put_content(b"offsite bed").unwrap();
-        let backup = root.path().join("backup");
-        export_backup(&source, &[content], "2026-10-30T22:00:00.000Z", &backup).unwrap();
-        let key = [4u8; 32];
-        let sealed = root.path().join("cluster.seal");
-        seal_backup(&backup, &key, &sealed).unwrap();
-
-        let beside = root.path().join("still-here.seal");
-        assert!(store_sealed(&sealed, &key, &beside).is_err());
-        assert!(!beside.exists());
-
-        let vault = tempfile::tempdir().unwrap();
-        let stored = vault.path().join("copy.seal");
-        let bytes = store_sealed(&sealed, &key, &stored).unwrap();
-        assert_eq!(bytes, fs::metadata(&stored).unwrap().len());
-        let opened = vault.path().join("opened");
-        let manifest = open_sealed(&stored, &key, &opened).unwrap();
-        assert!(manifest.contents.contains(&content.to_string()));
-
-        let rejected = vault.path().join("rejected.seal");
-        assert!(store_sealed(&sealed, &[1u8; 32], &rejected).is_err());
-        assert!(!rejected.exists());
-    }
-
-    #[test]
-    fn a_partial_copy_resumes_and_a_different_file_is_left_alone() {
-        let root = tempfile::tempdir().unwrap();
-        let source = BlobStore::open(&root.path().join("live")).unwrap();
-        let content = source.put_content(b"resume bed").unwrap();
-        let backup = root.path().join("backup");
-        export_backup(&source, &[content], "2026-10-30T22:00:00.000Z", &backup).unwrap();
-        let key = [5u8; 32];
-        let sealed = root.path().join("cluster.seal");
-        seal_backup(&backup, &key, &sealed).unwrap();
-        let total = fs::metadata(&sealed).unwrap().len();
-        assert!(total > 16);
-
-        let beside = root.path().join("partial.seal");
-        assert!(resume_sealed_copy(&sealed, &key, &beside, 16).is_err());
-        assert!(!beside.exists());
-
-        let vault = tempfile::tempdir().unwrap();
-        let stored = vault.path().join("copy.seal");
-        let partial = resume_sealed_copy(&sealed, &key, &stored, 16).unwrap();
-        assert!(!partial.complete);
-        assert_eq!(partial.copied, 16);
-        assert_eq!(partial.total, total);
-        assert!(open_sealed(&stored, &key, &vault.path().join("early")).is_err());
-
-        let other = vault.path().join("other.seal");
-        fs::write(&other, b"other-bytes").unwrap();
-        let mismatch = resume_sealed_copy(&sealed, &key, &other, total).unwrap_err();
-        assert!(mismatch.to_string().contains("does not match"));
-        assert_eq!(fs::read(&other).unwrap(), b"other-bytes");
-
-        let finished = resume_sealed_copy(&sealed, &key, &stored, total).unwrap();
-        assert!(finished.complete);
-        assert_eq!(finished.copied, total);
-        let opened = vault.path().join("opened");
-        let manifest = open_sealed(&stored, &key, &opened).unwrap();
-        assert!(manifest.contents.contains(&content.to_string()));
-        assert_eq!(
-            BlobStore::open(&opened.join("blobs"))
-                .unwrap()
-                .get_content(&content)
-                .unwrap()
-                .unwrap(),
-            b"resume bed"
-        );
-
-        let wrong = vault.path().join("wrong.seal");
-        let error = resume_sealed_copy(&sealed, &[1u8; 32], &wrong, total).unwrap_err();
-        assert!(error.to_string().contains("key"));
-        assert!(!wrong.exists());
-    }
-
-    #[test]
-    fn a_due_schedule_seals_a_backup_and_an_early_one_does_not() {
-        let root = tempfile::tempdir().unwrap();
-        let source = BlobStore::open(&root.path().join("live")).unwrap();
-        let content = source.put_content(b"keep this").unwrap();
-        let key = [7u8; 32];
-        let early = export_sealed_if_due(
-            &source,
-            &[content],
-            Some("2026-11-01T00:00:00.000Z"),
-            24,
-            "2026-11-01T12:00:00.000Z",
-            &root.path().join("early-plain"),
-            &key,
-            &root.path().join("sealed").join("early.seal"),
-            &root.path().join("away").join("early.seal"),
-        )
-        .unwrap();
-        assert!(early.is_none());
-        assert!(!root.path().join("early-plain").exists());
-        assert!(!root.path().join("sealed").join("early.seal").exists());
-        let bytes = export_sealed_if_due(
-            &source,
-            &[content],
-            Some("2026-11-01T00:00:00.000Z"),
-            24,
-            "2026-11-02T00:00:00.000Z",
-            &root.path().join("plain"),
-            &key,
-            &root.path().join("sealed").join("backup.seal"),
-            &root.path().join("away").join("backup.seal"),
-        )
-        .unwrap()
-        .unwrap();
-        assert!(bytes > 0);
-        assert!(!root.path().join("plain").exists());
-        let opened = root.path().join("opened");
-        let manifest =
-            open_sealed(&root.path().join("away").join("backup.seal"), &key, &opened).unwrap();
-        assert_eq!(manifest.recorded_at, "2026-11-02T00:00:00.000Z");
-        assert_eq!(
-            BlobStore::open(&opened.join("blobs"))
-                .unwrap()
-                .get_content(&content)
-                .unwrap()
-                .unwrap(),
-            b"keep this"
-        );
-        let bad = export_sealed_if_due(
-            &source,
-            &[content],
-            None,
-            24,
-            "2026-11-02T00:00:00.000Z",
-            &root.path().join("bad-plain"),
-            b"secret-value",
-            &root.path().join("sealed").join("bad.seal"),
-            &root.path().join("away").join("bad.seal"),
-        )
-        .unwrap_err()
-        .to_string();
-        assert_eq!(bad, "The backup key must be 32 bytes.");
-        assert!(!bad.contains("secret-value"));
-        assert!(!root.path().join("bad-plain").exists());
-        assert!(!root.path().join("away").join("bad.seal").exists());
-    }
-
-    #[test]
-    fn a_scheduled_seal_records_the_time_and_skips_the_next_check() {
-        let root = tempfile::tempdir().unwrap();
-        let source = BlobStore::open(&root.path().join("live")).unwrap();
-        let content = source.put_content(b"keep this").unwrap();
-        let key = [7u8; 32];
-        let first = scheduled_seal(
-            &source,
-            &[content],
-            &root.path().join("fresh"),
-            "24",
-            "2026-11-02T00:00:00.000Z",
-            &key,
-            &root.path().join("sealed").join("backup.seal"),
-            &root.path().join("away").join("backup.seal"),
-        )
-        .unwrap();
-        assert!(first.wrote);
-        assert_eq!(first.reason, "No backup has been recorded.");
-        let opened = root.path().join("opened");
-        let manifest =
-            open_sealed(&root.path().join("away").join("backup.seal"), &key, &opened).unwrap();
-        assert_eq!(manifest.recorded_at, "2026-11-02T00:00:00.000Z");
-        assert_eq!(
-            BlobStore::open(&opened.join("blobs"))
-                .unwrap()
-                .get_content(&content)
-                .unwrap()
-                .unwrap(),
-            b"keep this"
-        );
-        let second = scheduled_seal(
-            &source,
-            &[content],
-            &root.path().join("fresh"),
-            "24",
-            "2026-11-02T12:00:00.000Z",
-            b"secret-value",
-            &root.path().join("sealed").join("again.seal"),
-            &root.path().join("away").join("again.seal"),
-        )
-        .unwrap();
-        assert!(!second.wrote);
-        assert_eq!(
-            second.reason,
-            "The last backup is still inside the schedule."
-        );
-        assert!(!second.reason.contains("secret-value"));
-        assert!(!root.path().join("away").join("again.seal").exists());
-    }
-
-    #[test]
-    fn a_later_due_seal_keeps_the_earlier_copy() {
-        let root = tempfile::tempdir().unwrap();
-        let source = BlobStore::open(&root.path().join("live")).unwrap();
-        let first_content = source.put_content(b"keep this").unwrap();
-        let key = [7u8; 32];
-        let sealed = root.path().join("sealed").join("backup.seal");
-        let copy = root.path().join("away").join("backup.seal");
-        scheduled_seal(
-            &source,
-            &[first_content],
-            &root.path().join("fresh"),
-            "24",
-            "2026-11-02T00:00:00.000Z",
-            &key,
-            &sealed,
-            &copy,
-        )
-        .unwrap();
-        let later = source.put_content(b"north bed").unwrap();
-        let second = scheduled_seal(
-            &source,
-            &[later],
-            &root.path().join("fresh"),
-            "24",
-            "2026-11-03T00:00:00.000Z",
-            &key,
-            &sealed,
-            &copy,
-        )
-        .unwrap();
-        assert!(second.wrote);
-        assert_eq!(second.reason, "A backup is due.");
-        assert!(!second.reason.contains("secret-value"));
-        let next = root.path().join("away").join("backup.seal-20261103000000");
-        assert!(next.is_file());
-        assert!(copy.is_file());
-        let opened = root.path().join("opened-first");
-        open_sealed(&copy, &key, &opened).unwrap();
-        assert_eq!(
-            BlobStore::open(&opened.join("blobs"))
-                .unwrap()
-                .get_content(&first_content)
-                .unwrap()
-                .unwrap(),
-            b"keep this"
-        );
-        let opened_later = root.path().join("opened-later");
-        open_sealed(&next, &key, &opened_later).unwrap();
-        assert_eq!(
-            BlobStore::open(&opened_later.join("blobs"))
-                .unwrap()
-                .get_content(&later)
-                .unwrap()
-                .unwrap(),
-            b"north bed"
-        );
-    }
-}
+mod tests;

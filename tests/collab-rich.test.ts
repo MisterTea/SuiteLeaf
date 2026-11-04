@@ -9,6 +9,7 @@ import {
   recordEdit,
   serializeFile,
   syncCommentThreads,
+  syncReview,
 } from "../packages/core/src";
 
 const png =
@@ -163,5 +164,35 @@ describe("rich collaboration compaction", () => {
     };
     expect(kept.attrs.commentThreads[0].quote).toBe("ripe");
     expect(kept.attrs.commentThreads[0].messages[0].text).toBe("Water the beds");
+  });
+
+  it("keeps a review with the shared fragment", () => {
+    const doc = new Y.Doc();
+    const fragment = doc.getXmlFragment("prosemirror");
+    const paragraph = new Y.XmlElement("paragraph");
+    const text = new Y.XmlText();
+    text.insert(0, "North");
+    paragraph.insert(0, [text]);
+    fragment.insert(0, [paragraph]);
+    doc.getMap("docAttrs").set("review", "secret-value");
+    const dropped = prosemirrorJson(doc) as { attrs?: unknown; content: { content: { text: string }[] }[] };
+    expect(dropped.attrs).toBeUndefined();
+    expect(JSON.stringify(dropped)).not.toContain("secret-value");
+    syncReview(doc, {
+      decisions: [
+        { block: 1, note: "secret-value" },
+        { block: 2, note: "Block 2 needs a choice." },
+      ],
+      choices: [{ block: 1, side: "left" }],
+      approvedVersion: "rev-1",
+    });
+    const kept = prosemirrorJson(doc) as {
+      attrs: { review: { decisions: { note: string }[]; approvedVersion: string } };
+      content: { content: { text: string }[] }[];
+    };
+    expect(kept.content[0].content[0].text).toBe("North");
+    expect(kept.attrs.review.decisions[0].note).toBe("Block 1 needs a choice.");
+    expect(kept.attrs.review.approvedVersion).toBe("rev-1");
+    expect(JSON.stringify(kept)).not.toContain("secret-value");
   });
 });

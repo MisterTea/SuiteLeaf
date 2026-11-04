@@ -106,6 +106,8 @@ test("the desktop app works as a cluster client and can switch back", async () =
     });
     try {
       const page = await app.firstWindow();
+      // A room notice such as "Joining the shared document." can show beside it for a moment.
+      const saveStatus = () => page.getByRole("status").first();
       const card = page.getByLabel("Sign in to SuiteLeaf");
       const stored = () =>
         page.evaluate(() => localStorage.getItem("suiteleaf:node-session"));
@@ -146,7 +148,7 @@ test("the desktop app works as a cluster client and can switch back", async () =
 
       await page.getByRole("button", { name: "New spreadsheet" }).click();
       await page.getByLabel("File title").fill("Team budget");
-      await expect(page.getByRole("status")).toHaveText("Saved to SuiteDrive", {
+      await expect(saveStatus()).toHaveText("Saved to SuiteDrive", {
         timeout: 20000,
       });
       await page.getByRole("button", { name: "Back to files" }).click();
@@ -181,7 +183,7 @@ test("the desktop app works as a cluster client and can switch back", async () =
       await page
         .getByRole("button", { name: "Team budget.slsheet", exact: true })
         .click();
-      await expect(page.getByRole("status")).toHaveText("Saved to SuiteDrive");
+      await expect(saveStatus()).toHaveText("Saved to SuiteDrive");
       await page.getByLabel("File title").fill("Team budget 2027");
       const second = JSON.parse((await stored())!).token;
       await app.evaluate(({ Menu }) => {

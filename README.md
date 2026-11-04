@@ -141,21 +141,25 @@ The importer runs without opening a window and scans subfolders for Office, Open
 
 Saved output appears in the desktop library through its directory watcher or the next startup scan. An explicit `--output` folder appears there when it is the selected document directory. The command reports totals and individual failures, continuing with remaining files. Exit status is **0** on success, **1** when individual files fail, and **2** for invalid arguments or an inaccessible source directory.
 
-To turn PowerPoint files into PDFs without adding them to the document library or SuiteDrive:
+To turn PowerPoint files into PDFs, or into a folder of PNG slides, without adding them to the document library or SuiteDrive:
 
 ```sh
 # One file. The PDF is written beside the presentation.
 suiteleaf convert deck.pptx --to pdf
 
+# The same deck as Slide1.png, Slide2.png, … in a folder named deck.
+suiteleaf convert deck.pptx --to png
+
 # A folder of presentations. Subfolders are preserved; other files are skipped.
 suiteleaf convert /path/to/decks --to pdf --output /path/to/pdfs
+suiteleaf convert /path/to/decks --to png --output /path/to/pngs
 
 suiteleaf convert --help
 ```
 
 On macOS, use `/Applications/SuiteLeaf.app/Contents/MacOS/SuiteLeaf convert …`. In a source checkout, build the desktop app and run `npx electron apps/desktop/out/main/index.js convert deck.pptx --to pdf`.
 
-`convert` imports each `.pptx`, `.ppt`, `.ppsx`, `.pptm`, `.potx`, or `.ppsm` file the same way Open does, then exports a PDF the same way Print / Save as PDF does. Only the PDF is written. Sources stay unchanged, and an existing PDF keeps its name while the new file gets a numbered suffix. Exit status matches `import`.
+`convert` imports each `.pptx`, `.ppt`, `.ppsx`, `.pptm`, `.potx`, or `.ppsm` file the same way Open does. `--to pdf` exports the way Print / Save as PDF does. `--to png` writes one picture per slide, including hidden slides, using PowerPoint's `Slide1.png` names. The desktop app's File menu does the same for the open presentation. Only the new files are written. Sources stay unchanged, and an existing PDF or PNG folder keeps its name while the new one gets a numbered suffix. Exit status matches `import`.
 
 ## Development and checks
 

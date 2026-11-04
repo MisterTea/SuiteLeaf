@@ -126,4 +126,6 @@ This does not time Univer recalculation, import, or painting, and it records no 
 
 2026-11-02: a delimited file that cannot be read says `That delimited file could not be read.` An unclosed quote around `secret-value` does not put that word in the notice. `npx vitest run tests/core.test.ts -t "detects or overrides the separator"` passed (1 test) at 02:31:26. The import menu was not opened. No speedup is claimed.
 
+2026-11-03: `=RAND()` and `=RANDBETWEEN` are calculated by the sheet's own recalculation from a draw the caller supplies. A draw of 0.25 stays 0.25. This does not time that calculation. The cost note already listed these formulas. The spreadsheet was not opened. The painted grid was not used. This is not Univer recalculation. No speedup is claimed.
+
 2026-11-02: a sheet name that breaks across lines is listed as another sheet. `NOW()` on that sheet is `another sheet B1`, and `TODAY()` on Fees stays `Fees A1`. The stored name stays `Garden` and the rest of that name. `npx vitest run tests/ui/sheet-cost-note.test.tsx -t "breaks across lines"` passed (1 test) at 06:47:54. The cost note was not opened in the browser. This is not Univer recalculation. No speedup is claimed. The painted grid was not used.

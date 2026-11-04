@@ -470,7 +470,23 @@ export const SuggestionMark = Mark.create({
     };
   },
   parseHTML() {
-    return [{ tag: "span[data-suggestion]" }];
+    return [
+      {
+        tag: "span[data-suggestion]",
+        getAttrs: (element) => {
+          const el = element as HTMLElement;
+          return {
+            id: el.getAttribute("data-suggestion") ?? "",
+            kind: el.getAttribute("data-suggestion-kind") ?? "insert",
+            author: el.getAttribute("data-suggestion-author") ?? "",
+            time: el.getAttribute("data-suggestion-time") ?? "",
+            property: el.getAttribute("data-property"),
+            before: el.getAttribute("data-before"),
+            after: el.getAttribute("data-after"),
+          };
+        },
+      },
+    ];
   },
   renderHTML({ mark }) {
     const kind = String(mark.attrs.kind ?? "insert");
@@ -483,6 +499,7 @@ export const SuggestionMark = Mark.create({
         "data-suggestion-time": mark.attrs.time,
         "data-property": mark.attrs.property || undefined,
         "data-before": mark.attrs.before || undefined,
+        "data-after": mark.attrs.after || undefined,
         class: `suggestion suggestion-${kind}`,
       },
       0,

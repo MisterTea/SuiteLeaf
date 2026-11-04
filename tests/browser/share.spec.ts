@@ -131,11 +131,14 @@ test("sharing suggests accounts, enforces commenter and viewer, and updates Shar
     await page.getByRole("button", { name: "Watering rota.sldoc", exact: true }).click();
     await page.getByRole("button", { name: "Share", exact: true }).click();
     const dialog = page.locator(".share-dialog");
+    // Each access change is previewed first and applied on confirmation.
+    const apply = () => dialog.getByRole("button", { name: "Apply this access change" }).click();
     await dialog.getByLabel("Add people").fill("sa");
     await expect(dialog.getByRole("option", { name: /Sam Okafor/ })).toContainText("sam@gardenclub.org");
     await dialog.getByRole("option", { name: /Sam Okafor/ }).click();
     await expect(dialog.getByRole("button", { name: "Role for Sam Okafor" })).toContainText("Can change anything");
     await dialog.getByRole("button", { name: "Share", exact: true }).click();
+    await apply();
     await expect(dialog.getByText("Sam can now edit")).toBeVisible();
 
     await dialog.getByLabel("Add people").fill("lee@example.com");
@@ -145,6 +148,7 @@ test("sharing suggests accounts, enforces commenter and viewer, and updates Shar
 
     await dialog.getByRole("button", { name: "Role for Sam Okafor" }).click();
     await dialog.getByRole("option", { name: /Commenter/ }).click();
+    await apply();
     await expect(dialog.getByText("Sam can now comment")).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Save" })).toHaveCount(0);
 
@@ -165,6 +169,7 @@ test("sharing suggests accounts, enforces commenter and viewer, and updates Shar
 
     await dialog.getByRole("button", { name: "Role for Sam Okafor" }).click();
     await dialog.getByRole("button", { name: "Remove access" }).click();
+    await apply();
     const undo = dialog.getByRole("button", { name: "Undo" });
     await expect(undo).toBeVisible();
     await page.waitForTimeout(5000);
@@ -180,6 +185,7 @@ test("sharing suggests accounts, enforces commenter and viewer, and updates Shar
 
     await dialog.getByRole("button", { name: "Role for Sam Okafor" }).click();
     await dialog.getByRole("option", { name: /^Viewer/ }).click();
+    await apply();
     await dialog.getByRole("button", { name: "Close" }).click();
     await page.getByRole("button", { name: "Back to files" }).click();
     await page.getByRole("button", { name: "Sign out" }).click();
@@ -254,6 +260,7 @@ test("a group can be given read, comment, or write access", async ({ browser }) 
     await page.getByRole("button", { name: "Watering rota.sldoc", exact: true }).click();
     await page.getByRole("button", { name: "Share", exact: true }).click();
     const dialog = page.locator(".share-dialog");
+    const apply = () => dialog.getByRole("button", { name: "Apply this access change" }).click();
     await dialog.getByLabel("Add people or groups").fill("Vol");
     await expect(dialog.getByRole("option", { name: /Volunteers/ })).toContainText("Group");
     await dialog.getByRole("option", { name: /Volunteers/ }).click();
@@ -263,6 +270,7 @@ test("a group can be given read, comment, or write access", async ({ browser }) 
     await expect(dialog.getByRole("option", { name: /^Editor/ })).toContainText("Can change anything");
     await dialog.getByRole("option", { name: /Commenter/ }).click();
     await dialog.getByRole("button", { name: "Share", exact: true }).click();
+    await apply();
     await expect(dialog.getByText("Volunteers can now comment")).toBeVisible();
     await expect(dialog.getByText("Group", { exact: true })).toBeVisible();
 
@@ -284,6 +292,7 @@ test("a group can be given read, comment, or write access", async ({ browser }) 
 
     await dialog.getByRole("button", { name: "Role for Volunteers" }).click();
     await dialog.getByRole("option", { name: /^Viewer/ }).click();
+    await apply();
     await expect(dialog.getByText("Volunteers can now view")).toBeVisible();
     const commentDenied = await authed(node.url, sam.token, `/api/drive/items/${item.id}/comments`, {
       method: "POST",
@@ -296,6 +305,7 @@ test("a group can be given read, comment, or write access", async ({ browser }) 
 
     await dialog.getByRole("button", { name: "Role for Volunteers" }).click();
     await dialog.getByRole("option", { name: /^Editor/ }).click();
+    await apply();
     await expect(dialog.getByText("Volunteers can now edit")).toBeVisible();
     const written = await authed(node.url, sam.token, `/api/drive/items/${item.id}/content`, {
       method: "PUT",

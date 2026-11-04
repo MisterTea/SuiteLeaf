@@ -468,7 +468,20 @@ const Note = Node.create({
       label: { default: "" },
     };
   },
-  parseHTML: () => [{ tag: "section[data-note-id]" }],
+  parseHTML: () => [
+    {
+      tag: "section[data-note-id]",
+      getAttrs: (element) => {
+        const el = element as HTMLElement;
+        return {
+          id: el.getAttribute("data-note-id"),
+          kind: el.getAttribute("data-note-kind") === "endnote" ? "endnote" : "footnote",
+          label: el.querySelector(".doc-note-label")?.textContent ?? "",
+        };
+      },
+      contentElement: (element) => element.querySelector(".doc-note-body") ?? element,
+    },
+  ],
   renderHTML: ({ node }) => [
     "section",
     {
@@ -542,14 +555,6 @@ const Note = Node.create({
   },
 });
 
-type Piece = {
-  id: string;
-  page: number;
-  skip: number;
-  height: number;
-  rule: boolean;
-};
-
 function pageOf(el: HTMLElement, paper: HTMLElement): number {
   const zoom = Number(paper.style.zoom) || 1;
   const stride = parseFloat(paper.style.getPropertyValue("--page-stride")) || 1;
@@ -610,97 +615,12 @@ function layoutNotes(view: EditorView) {
     const el = notes.get(ref.id);
     if (el) heights.set(ref.id, Math.max(24, el.offsetHeight));
   }
-  const pending = refs.flatMap((ref) => {
-    const dom = view.nodeDOM(ref.pos);
-    if (!(dom instanceof HTMLElement) || !heights.has(ref.id)) return [];
-    return [{ id: ref.id, page: pageOf(dom, paper), left: heights.get(ref.id) ?? 0, skip: 0 }];
-  });
-  const maxPage = Math.min(
-    30,
-    pending.reduce((max, item) => Math.max(max, item.page), 0),
-  );
-  const pieces: Piece[] = [];
-  const reserve: number[] = [];
-  for (let page = 0; page <= maxPage + pending.length + 1; page++) {
-    const mine = pending.filter((item) => item.page === page && item.left > 8);
-    if (!mine.length && page > maxPage) break;
-    let used = 0;
-    let rule = false;
-    for (const item of mine) {
-      const room = NOTE_BAND - used;
-      if (room < 28 && used > 0) {
-        item.page = page + 1;
-        continue;
-      }
-      const take = Math.min(item.left, Math.max(room, 28));
-      pieces.push({
-        id: item.id,
-        page,
-        skip: item.skip,
-        height: take,
-        rule: !rule,
-      });
-      rule = true;
-      item.skip += take;
-      item.left -= take;
-      used += take;
-      if (item.left > 8) item.page = page + 1;
-    }
-    reserve[page] = used ? used + 4 : 0;
-  }
-  const host = paper;
-  let layers = host.querySelector<HTMLElement>(".doc-note-layers");
+  let layers = paper.querySelector<HTMLElement>(".doc-note-layers");
   if (!layers) {
     layers = document.createElement("div");
     layers.className = "doc-note-layers";
     layers.setAttribute("aria-hidden", "true");
-    host.append(layers);
-  }
-  layers.replaceChildren();
-  const first = new Map<string, Piece>();
-  for (const piece of pieces) if (!first.has(piece.id)) first.set(piece.id, piece);
-  const byPage = new Map<number, Piece[]>();
-  for (const piece of pieces) {
-    const list = byPage.get(piece.page) ?? [];
-    list.push(piece);
-    byPage.set(piece.page, list);
-  }
-  for (const [page, list] of byPage) {
-    const stack = list.reduce((sum, piece) => sum + piece.height, 0);
-    let y = pageHeight - margin - stack;
-    for (const piece of list) {
-      const el = notes.get(piece.id);
-      const primary = first.get(piece.id);
-      if (piece === primary && el) {
-        el.classList.add("doc-note-placed");
-        el.classList.toggle("doc-note-rule", piece.rule);
-        el.style.setProperty("--page-index", String(page));
-        el.style.setProperty("--note-top", `${y}px`);
-        if (piece.height + 6 < (heights.get(piece.id) ?? 0)) {
-          el.style.maxHeight = `${piece.height}px`;
-          el.style.overflow = "hidden";
-        }
-      } else if (el) {
-        const copy = document.createElement("div");
-        copy.className = `doc-note-continued${piece.rule ? " doc-note-rule" : ""}`;
-        copy.style.setProperty("--page-index", String(page));
-        copy.style.setProperty("--note-top", `${y}px`);
-        copy.style.height = `${piece.height}px`;
-        const inner = document.createElement("div");
-        inner.className = "doc-note-continued-inner";
-        inner.style.marginTop = `-${piece.skip}px`;
-        const mark = document.createElement("span");
-        mark.className = "doc-note-label";
-        mark.textContent = el.querySelector(".doc-note-label")?.textContent ?? "";
-        const body = document.createElement("div");
-        body.className = "doc-note-body";
-        body.textContent = el.querySelector(".doc-note-body")?.textContent ?? "";
-        inner.append(mark, body);
-        copy.append(inner);
-        layers.append(copy);
-      }
-      y += piece.height;
-    }
+    paper.append(layers);
   }
   layers.replaceChildren();
   type StackItem = {
@@ -712,7 +632,7 @@ function layoutNotes(view: EditorView) {
     text: string;
     skip: number;
   };
-  const stacked: StackItem[] = refs.map((ref) => {
+  const stacked: StackItem[] = refs.filter((ref) => notes.has(ref.id)).map((ref) => {
     const el = notes.get(ref.id);
     const marker = view.nodeDOM(ref.pos);
     const text = el?.querySelector(".doc-note-body")?.textContent ?? "";
@@ -720,7 +640,7 @@ function layoutNotes(view: EditorView) {
       id: ref.id,
       el,
       page: marker instanceof HTMLElement ? pageOf(marker, paper) : 0,
-      full: heights.get(ref.id) ?? el?.offsetHeight ?? 28,
+      full: heights.get(ref.id) ?? 24,
       label: el?.querySelector(".doc-note-label")?.textContent ?? "",
       text,
       skip: 0,
@@ -745,11 +665,11 @@ function layoutNotes(view: EditorView) {
       stackedPages.set(item.page + 1, next);
     }
   }
+  const reserve: number[] = [];
   for (const [page, list] of stackedPages) {
-    let cursor =
-      pageHeight -
-      margin -
-      list.reduce((sum, item) => sum + Math.min(item.full, NOTE_BAND), 0);
+    const stack = list.reduce((sum, item) => sum + Math.min(item.full, NOTE_BAND), 0);
+    reserve[page] = stack + 4;
+    let cursor = pageHeight - margin - stack;
     const seen = new Set<string>();
     for (const item of list) {
       const band = Math.min(item.full, NOTE_BAND);
@@ -799,7 +719,7 @@ function layoutNotes(view: EditorView) {
   }
   const focusedNote = focused ? notes.get(focused) : undefined;
   if (focusedNote) revealInStage(focusedNote);
-  const next = reserve.map((n) => String(Math.round(n))).join(",");
+  const next = Array.from(reserve, (n) => String(Math.round(n ?? 0))).join(",");
   const root = view.dom as HTMLElement;
   const sig = refs.map((ref) => ref.id).join(".");
   if (root.dataset.noteSig !== sig) {

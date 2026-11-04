@@ -11,16 +11,8 @@ import {
   DECK_THEMES,
   resetToTheme,
 } from "../apps/web/src/editors/slide-theme";
-import {
-  hasTextRuns,
-  plainText,
-  rangeHas,
-  runsOf,
-  runsToHtml,
-  styleSelection,
-  styleWholeBox,
-  textInnerHtml,
-} from "../apps/web/src/editors/slide-runs";
+import { hasTextRuns, plainText, runsOf, runsToHtml, textInnerHtml } from "../apps/web/src/editors/slide-runs";
+import { rangeHas, styleSelection, styleWholeBox } from "../apps/web/src/editors/slide-run-format";
 
 const meadow = DECK_THEMES.find((theme) => theme.id === "meadow")!;
 const ink = DECK_THEMES.find((theme) => theme.id === "ink")!;
@@ -181,7 +173,7 @@ describe("per-word slide formatting", () => {
         { text: "\n", paragraphBreak: true, paraAlign: "center" },
         { text: "Callout" },
       ],
-    })).toContain("min-height:1lh");
+    })).toContain("<br>");
     expect(textInnerHtml({
       runs: [{ text: "DA", color: "#ff0000", stroke: "#0000ff", strokeWidth: 1 }],
     })).toContain("-webkit-text-stroke:");
@@ -249,5 +241,32 @@ describe("per-word slide formatting", () => {
     expect(textInnerHtml(saved)).toContain('data-bold="1"');
     expect(textInnerHtml(saved)).toContain("data-color=\"#95d5b2\"");
     expect(runsOf(saved).map((run) => run.text).join("")).toBe(line);
+  });
+
+  it("sizes each paragraph's line box from its own size, without rounding", () => {
+    const html = textInnerHtml({
+      fontSize: 48,
+      lineHeight: 0.97656,
+      runs: [
+        { text: "Line", fontSize: 48 },
+        { text: "\n", paragraphBreak: true, fontSize: 32, paraLine: 1.09863 },
+        { text: "Next", fontSize: 32 },
+      ],
+    });
+    expect(html).toContain("line-height:calc(48 * var(--slide-pt, 1) * 0.97656 * 1px)");
+    expect(html).toContain("line-height:calc(32 * var(--slide-pt, 1) * 1.09863 * 1px)");
+    expect(html).not.toContain("round(nearest");
+    const blank = textInnerHtml({
+      lineHeight: 1.2207,
+      runs: [
+        { text: "Above", fontSize: 24 },
+        { text: "\n", paragraphBreak: true, fontSize: 14 },
+        { text: "\n", paragraphBreak: true, fontSize: 24 },
+        { text: "Below", fontSize: 24 },
+      ],
+    });
+    const blankParas = blank.split('class="slide-para"').slice(1);
+    expect(blankParas[1]).toContain("<br>");
+    expect(blankParas[1]).toContain("calc(14 * var(--slide-pt, 1)");
   });
 });

@@ -1,5 +1,6 @@
 import * as aq from "arquero";
 import type { PivotDefinition, SourceRange } from "@suiteleaf/core";
+import { orderGroupsByTotal } from "./pivot-group-sort";
 export type CellValue = string | number | boolean | null;
 export function pivotResult(
   values: CellValue[][],
@@ -151,6 +152,21 @@ export function pivotResult(
       }
       return byKey(a, b) * (sort.by === "label" ? dir : 1);
     });
+  }
+  if (sort?.by === "value" && config.rows.length >= 2) {
+    const groupTotals = new Map(
+      rollup([`c${config.rows[0]}`]).map((record) => [
+        JSON.stringify([record[`c${config.rows[0]}`]]),
+        record.result,
+      ]),
+    );
+    rows = orderGroupsByTotal(
+      rows,
+      (row) => JSON.stringify([(JSON.parse(row) as CellValue[])[0]]),
+      (group) => groupTotals.get(group),
+      sort.direction,
+      byKey,
+    );
   }
   const lookup = new Map(
     grouped.map((r) => [`${rowKey(r)}|${colKey(r)}`, r.result]),

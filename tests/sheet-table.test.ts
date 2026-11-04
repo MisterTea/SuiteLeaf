@@ -2,7 +2,6 @@ import { expect, it } from "vitest";
 import { createFile, fileSchema } from "../packages/core/src";
 import {
   deleteTableCells,
-  deleteTableRows,
   editsFromRangeValues,
   extendTablesForEdits,
   growSources,

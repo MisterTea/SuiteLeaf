@@ -30,7 +30,7 @@ export function nextSlideTitle(index: number | null, heading: string | undefined
 
 /** The first text box, using master text when the box is blank. Notes are not an input. */
 export function slideTitleText(
-  elements: readonly { type?: string; wordArt?: boolean; id?: string; placeholder?: string; content?: string }[],
+  elements: readonly { type?: string; wordArt?: boolean | string; id?: string; placeholder?: string; content?: string }[],
   master: readonly { id?: string; placeholder?: string; content?: string }[] = [],
 ): string | undefined {
   const masterText = master.map((item) => ({

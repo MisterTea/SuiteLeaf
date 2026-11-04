@@ -1,0 +1,223 @@
+.tool {
+  border: 0;
+  background: transparent;
+  padding: 5px 6px;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.tool:hover {
+  background: var(--toolbar-tool-hover);
+}
+.tool:disabled:hover {
+  background: transparent;
+}
+.tool.active {
+  background: var(--toolbar-active);
+  color: var(--toolbar-active-text);
+}
+.docs-editor .toolbar .tool {
+  padding: 5px;
+}
+.toolbar-select {
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  outline: none;
+}
+.toolbar-select:hover {
+  background: var(--toolbar-tool-hover);
+}
+.zoom-select {
+  max-width: 75px;
+}
+.style-select {
+  max-width: 125px;
+}
+.font-family-select {
+  max-width: 135px;
+}
+.tab-stop-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 13px;
+}
+.tab-stop-field input {
+  width: 4.4em;
+  box-sizing: border-box;
+}
+#doc-tab-stop-hint:empty { display: none; }
+#doc-tab-stop-hint {
+  color: var(--text-secondary, #5f6368);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.line-spacing-control {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.line-spacing-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: 0;
+  background: transparent;
+  border-radius: 4px;
+  padding: 4px 4px 4px 5px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.line-spacing-button:hover,
+.line-spacing-button[aria-expanded="true"] {
+  background: var(--toolbar-tool-hover);
+}
+.line-spacing-button:focus-visible {
+  outline: 2px solid #1a73e8;
+  outline-offset: 1px;
+}
+.line-spacing-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 200;
+  min-width: 160px;
+  padding: 4px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+}
+.line-spacing-heading {
+  margin: 2px 8px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.line-spacing-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 13px;
+  text-align: left;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.line-spacing-menu button:hover,
+.line-spacing-menu button:focus {
+  background: var(--surface-hover, #f1f3f4);
+  outline: none;
+}
+.line-spacing-menu button[aria-selected="true"] {
+  background: #e8f0fe;
+  color: #174ea6;
+}
+.line-spacing-mark {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  display: inline-flex;
+}
+.font-size-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+.stepper-btn {
+  border: 0;
+  background: transparent;
+  padding: 4px;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.stepper-btn:hover {
+  background: var(--toolbar-tool-hover);
+}
+.font-size-input {
+  width: 32px;
+  text-align: center;
+  font-size: 13px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-primary);
+  padding: 2px 0;
+}
+.font-size-input:hover {
+  border-color: var(--border);
+}
+.font-size-input:focus {
+  background: var(--surface);
+  border-color: var(--google-blue);
+  outline: none;
+}
+.divider {
+  height: 20px;
+  border-left: 1px solid #ced9cc;
+  margin: 0 4px;
+}
+.color-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.color-tool:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+.color-icon-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+}
+.text-color-letter {
+  font-size: 14px;
+  font-weight: bold;
+  line-height: 1;
+  color: #1f1f1f;
+}
+.color-bar {
+  display: block;
+  width: 14px;
+  height: 3px;
+  border-radius: 1px;
+  margin-top: 1px;
+}
+.color-tool input {
+  opacity: 0;
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  cursor: pointer;
+}

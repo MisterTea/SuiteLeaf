@@ -529,7 +529,7 @@ impl Drive {
         Ok(false)
     }
 
-    pub(super) fn people_in(&self, start: &str) -> DriveResult<Vec<String>> {
+    pub(crate) fn people_in(&self, start: &str) -> DriveResult<Vec<String>> {
         let mut groups = BTreeSet::new();
         let mut stack = vec![start.to_owned()];
         let mut people = BTreeSet::new();

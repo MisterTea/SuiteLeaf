@@ -192,9 +192,10 @@ export const LinkedChart = Node.create({
   },
 
   addNodeView() {
-    return ({ node, view, getPos }) => {
+    return ({ node, view, getPos, editor }) => {
       let current: ProseNode = node;
       let token = 0;
+      let editable = view.editable;
       const dom = document.createElement("div");
 
       const refresh = (button: HTMLButtonElement) => {
@@ -275,13 +276,21 @@ export const LinkedChart = Node.create({
       };
 
       const render = () => {
+        editable = view.editable;
         paintChart(
           dom,
           chartForViewer(current.attrs, current.attrs.viewerAllowed !== false),
-          view.editable,
+          editable,
           refresh,
         );
       };
+      // Node views are built before the editable setting applies, and do not
+      // repaint when it changes, so follow it from the editor's events.
+      const followEditable = () => {
+        if (view.editable !== editable) render();
+      };
+      editor.on("create", followEditable);
+      editor.on("update", followEditable);
       render();
 
       return {
@@ -310,6 +319,8 @@ export const LinkedChart = Node.create({
         },
         destroy() {
           token += 1;
+          editor.off("create", followEditable);
+          editor.off("update", followEditable);
         },
       };
     };

@@ -26,6 +26,26 @@ it("numbers a caption from the page breaks and leaves the caption id out", () =>
   expect(JSON.stringify(figureListEntries(doc, "figure"))).not.toContain("secret-value");
 });
 
+it("names a caption of only invisible characters as a figure or a table", () => {
+  const doc = {
+    content: [
+      {
+        type: "paragraph",
+        attrs: { captionId: "secret-value", captionKind: "figure" },
+        content: [{ type: "text", text: "\u200B" }],
+      },
+      {
+        type: "paragraph",
+        attrs: { captionId: "beds", captionKind: "table" },
+        content: [{ type: "text", text: "\uFEFF" }],
+      },
+    ],
+  };
+  expect(figureListEntries(doc, "figure")).toEqual([{ label: "Figure", page: 1 }]);
+  expect(figureListEntries(doc, "table")).toEqual([{ label: "Table", page: 1 }]);
+  expect(JSON.stringify(figureListEntries(doc, "figure"))).not.toContain("secret-value");
+});
+
 it("restarts a figure page at a section break", () => {
   const doc = {
     content: [

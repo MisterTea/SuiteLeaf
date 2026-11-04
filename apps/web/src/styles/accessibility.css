@@ -1,0 +1,29 @@
+
+@media (prefers-contrast: more) {
+  :root,
+  :root[data-theme="dark"],
+  :root.dark-theme {
+    --text-primary: #000000;
+    --text-secondary: #000000;
+    --bg-app: #ffffff;
+    --surface: #ffffff;
+    --border: #000000;
+    --paper-bg: #ffffff;
+    --toolbar-bg: #ffffff;
+    --toolbar-active: #000000;
+    --toolbar-active-text: #ffffff;
+    --input-bg: #ffffff;
+    --dialog-bg: #ffffff;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

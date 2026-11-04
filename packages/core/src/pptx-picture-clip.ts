@@ -1,5 +1,5 @@
 import type { SlideElement } from "./index";
-import { geometryClipPath, shapeArtwork } from "./pptx-geometry";
+import { shapeArtwork } from "./pptx-geometry";
 import { pictureClip } from "./pptx-pictures";
 import { themePaint } from "./pptx-theme";
 

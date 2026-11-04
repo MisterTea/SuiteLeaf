@@ -8,7 +8,21 @@ import {
   type QuerySchedule,
 } from "@suiteleaf/core";
 
-type RemoteTable = { ok: boolean; rows: string[][] };
+type RemoteTable = { ok: boolean; status?: number; rows?: QueryRow[] };
+
+function queryRows(value: unknown): QueryRow[] {
+  if (!Array.isArray(value)) return [];
+  const rows: QueryRow[] = [];
+  for (const row of value) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) continue;
+    const record: QueryRow = {};
+    for (const [key, cell] of Object.entries(row)) {
+      if (typeof cell === "string") record[key] = cell;
+    }
+    rows.push(record);
+  }
+  return rows;
+}
 
 /** Refresh an https source on a timer. The address is not shown in the note. */
 export function QuerySchedule({
@@ -53,14 +67,17 @@ export function QuerySchedule({
       allowed: true,
       fetchRows: async (url) => {
         const authorization = tokenRef.current.trim();
-        if (fetchRows) return fetchRows(url, authorization || undefined);
+        if (fetchRows) {
+          const table = await fetchRows(url, authorization || undefined);
+          return { ok: table.ok, status: table.status ?? (table.ok ? 200 : 0), rows: table.rows ?? [] };
+        }
         const response = await fetch(
           url,
           authorization ? { headers: { Authorization: `Bearer ${authorization}` } } : undefined,
         );
-        if (!response.ok) return { ok: false, rows: [] };
-        const body = (await response.json()) as { rows?: string[][] };
-        return { ok: true, rows: Array.isArray(body.rows) ? body.rows : [] };
+        if (!response.ok) return { ok: false, status: response.status, rows: [] };
+        const body = (await response.json()) as { rows?: unknown };
+        return { ok: true, status: response.status, rows: queryRows(body.rows) };
       },
       previous: null,
     });

@@ -121,6 +121,10 @@ describe("slide rearranging", () => {
       "Old targets",
     ]);
     expect(duplicated.newIds).toEqual(["copy-1"]);
+    const copy = presentation.slides["copy-1"];
+    const ids = copy.elements.map((element) => element.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).not.toContain(chart);
 
     const outdated = presentation.slideOrder.slice(3);
     expect(canDeleteSlides(presentation.slideOrder, outdated)).toBe(true);
@@ -132,6 +136,24 @@ describe("slide rearranging", () => {
     expect(deleteSlides(removed.deck, removed.deck.slideOrder)).toEqual({
       error: "Presentations must have at least one slide.",
     });
+  });
+
+  it("gives two copied objects different ids when the id source repeats", () => {
+    const presentation = deck(["Results"]);
+    const slideId = presentation.slideOrder[0];
+    const first = centeredTextBox(presentation.width, presentation.height, () => "box");
+    const second = { ...first, id: "other", content: "North" };
+    const withBoxes = withElements(presentation, slideId, [first, second]);
+    const duplicated = duplicateSlides(withBoxes, [slideId], () => "copy-1");
+    const copy = duplicated.deck.slides[duplicated.newIds[0]];
+    expect(copy.elements.map((element) => element.content)).toEqual(
+      expect.arrayContaining(["Results", "North"]),
+    );
+    const ids = copy.elements.map((element) => element.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    const refused = duplicateSlides(presentation, [slideId], () => "secret-\nvalue");
+    expect(refused.newIds).toEqual([]);
+    expect(refused.deck).toBe(presentation);
   });
 
   it("pastes at the original position and nudges a second copy on the same slide", () => {

@@ -69,7 +69,7 @@ export const todoTool: SuiteTool = tool({
       case "add": {
         const steps = [...(items ?? []), ...(text ? [text] : [])].map((s) => s.trim()).filter(Boolean);
         if (!steps.length) throw new ToolError("Give the steps to add in items, for example items: [\"Make the header bold\", \"Format the totals as dollars\"].");
-        for (const step of steps) todos.push({ id: nextId++, text: step, done: false });
+        todos = [...todos, ...steps.map((step) => ({ id: nextId++, text: step, done: false }))];
         changed();
         return `Added ${steps.length} item(s). Checklist:\n${status()}`;
       }
@@ -78,10 +78,8 @@ export const todoTool: SuiteTool = tool({
         if (!wanted.length) throw new ToolError(`Give the id of the item to toggle. Checklist:\n${formatTodos()}`);
         const missing = wanted.filter((n) => !todos.some((t) => t.id === n));
         if (missing.length) throw new ToolError(`There is no item #${missing.join(", #")}. Checklist:\n${formatTodos()}`);
-        for (const n of wanted) {
-          const t = todos.find((x) => x.id === n)!;
-          t.done = !t.done;
-        }
+        const flips = (n: number) => wanted.filter((w) => w === n).length % 2 === 1;
+        todos = todos.map((t) => (flips(t.id) ? { ...t, done: !t.done } : t));
         changed();
         return `Checklist:\n${status()}`;
       }

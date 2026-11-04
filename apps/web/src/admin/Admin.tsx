@@ -7,6 +7,7 @@ import { useMode } from "../mode";
 import { useNodeSession } from "../drive/SignIn";
 import {
   adminApi,
+  api,
   currentAccount,
   type AdminGroup,
   type AdminGroupDetail,
@@ -24,6 +25,8 @@ import { ExpansionNotice, FeatureMatrix } from "../packaging-view";
 import { ProviderCheck } from "./provider-check";
 import { DepartureNote } from "./departure-note";
 import { MemberPlanPreview, commitMember, memberPlanText, type MemberPlan } from "./member-plan";
+import { OrgPolicyReview, type OrgPolicyPlan } from "./org-policy";
+import { PersonAccess } from "./person-access";
 import {
   SessionList,
   endLostDevice,
@@ -204,6 +207,12 @@ export function AdminApp() {
   return (
     <div className="admin-page">
       <DepartureNote />
+      <OrgPolicyReview
+        onReview={async () => (await adminApi.editorPolicy()) as OrgPolicyPlan}
+        onApply={async (stamp) => {
+          await adminApi.applyEditorPolicy(stamp);
+        }}
+      />
       <SessionList
         sessions={sessions}
         activity={{ now: new Date().toISOString(), idleSecs: session?.idleSecs }}
@@ -483,6 +492,11 @@ function PersonPage({
         All people
       </button>
       <h2>{person.user.name || person.user.email}</h2>
+      <PersonAccess
+        onLoad={async () =>
+          (await api(`/api/drive/people/${encodeURIComponent(id)}/access`)).json()
+        }
+      />
       <CycleNotice message={error} />
       <form
         className="admin-form"

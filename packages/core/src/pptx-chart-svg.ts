@@ -895,9 +895,9 @@ function radarDrawing(
   const cx = width / 2;
   const cy = height / 2;
   const gridPaint = /<c:majorGridlines>[\s\S]*?<\/c:majorGridlines>/.exec(valueAxis)?.[0] ?? "";
-  const grid = /<a:solidFill>/.test(gridPaint) ? seriesColor(gridPaint, colors, 0) : "#D9D9D9";
+  const grid = /<a:solidFill>/.test(gridPaint) ? seriesColor(gridPaint, colors, {}, 0) : "#D9D9D9";
   const labelPaint = /<a:defRPr\b[\s\S]*?<\/a:defRPr>/.exec(categoryAxis)?.[0] ?? "";
-  const label = /<a:solidFill>/.test(labelPaint) ? seriesColor(labelPaint, colors, 0) : "#595959";
+  const label = /<a:solidFill>/.test(labelPaint) ? seriesColor(labelPaint, colors, {}, 0) : "#595959";
   const gridWidth = Number(/<a:ln\b[^>]*\bw="(\d+)"/.exec(gridPaint)?.[1] ?? "") / 12700;
   const stroke = Number.isFinite(gridWidth) && gridWidth > 0 ? gridWidth : 0.75;
   const at = (index: number, distance: number): [number, number] => {

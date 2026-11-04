@@ -1,0 +1,243 @@
+.gdocs-modal-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 999;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 85px 40px 0 0;
+}
+.gdocs-dialog {
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  width: 440px;
+  max-width: 90vw;
+  padding: 20px 24px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  pointer-events: auto;
+  border: 1px solid #dadce0;
+}
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.dialog-header h2 {
+  font-size: 16px;
+  font-weight: 500;
+  margin: 0;
+  color: #1f1f1f;
+}
+.dialog-close-btn {
+  border: 0;
+  background: transparent;
+  padding: 4px;
+  border-radius: 50%;
+  color: #5f6368;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.dialog-close-btn:hover {
+  background: #f1f3f4;
+}
+.dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.form-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.floating-field {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.floating-field label {
+  font-size: 11px;
+  color: #1a73e8;
+  font-weight: 500;
+  background: #ffffff;
+  padding: 0 4px;
+  position: absolute;
+  top: -7px;
+  left: 10px;
+  z-index: 1;
+}
+.field-input-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.field-input-row input,
+.floating-field input {
+  width: 100%;
+  border: 1px solid #1a73e8;
+  border-radius: 4px;
+  padding: 9px 12px;
+  font-size: 13px;
+  color: #1f1f1f;
+  outline: none;
+}
+.floating-field input:not(:focus) {
+  border-color: #747775;
+}
+.floating-field input:focus {
+  border-color: #1a73e8;
+  box-shadow: 0 0 0 1px #1a73e8;
+}
+.match-counter {
+  position: absolute;
+  right: 10px;
+  font-size: 12px;
+  color: #5f6368;
+}
+.find-tab-place {
+  margin: 8px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #174ea6;
+}
+.dialog-error {
+  margin: -4px 0 0;
+  font-size: 12px;
+  color: #b3261e;
+}
+.field-input-row input {
+  padding-right: 84px;
+}
+.find-replace-dialog .dialog-header {
+  cursor: move;
+  touch-action: none;
+  user-select: none;
+}
+.find-replace-dialog .dialog-close-btn {
+  cursor: pointer;
+}
+.find-summary {
+  margin: 0;
+  font-size: 12px;
+  color: #188038;
+}
+.options-checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #1f1f1f;
+  cursor: pointer;
+}
+.checkbox-row input {
+  accent-color: #1a73e8;
+  cursor: pointer;
+}
+.field-help-link {
+  color: #1a73e8;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+.dialog-text-btn {
+  border: 0;
+  background: transparent;
+  color: #1a73e8;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 7px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.dialog-text-btn:hover {
+  background: #f1f3f4;
+}
+.dialog-text-btn:disabled {
+  color: #9aa0a6;
+  cursor: default;
+  background: transparent;
+}
+.dialog-primary-btn {
+  border: 0;
+  background: #0b57d0;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 7px 18px;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.dialog-primary-btn:hover {
+  background: #0842a0;
+}
+.dialog-primary-btn:disabled {
+  background: #e1e3e1;
+  color: #8e918f;
+  cursor: default;
+}
+.error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff1e9;
+  color: #963b21;
+  border: 1px solid #f0c9b7;
+  padding: 12px 20px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.error button {
+  font-size: 11px;
+  padding: 5px 8px;
+}
+.error button:last-child {
+  margin-left: auto;
+}
+.drive-conflict-text {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.45;
+}
+.drive-conflict-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+}
+.drive-conflict-actions button:last-child {
+  margin-left: 0;
+}
+@media (max-width: 700px) {
+  .drive-conflict {
+    flex-wrap: wrap;
+  }
+  .drive-conflict-text {
+    flex-basis: calc(100% - 28px);
+  }
+  .drive-conflict-actions {
+    margin-left: 28px;
+  }
+}
+.loading {
+  padding: 80px 30px;
+  text-align: center;
+  color: #768678;
+}

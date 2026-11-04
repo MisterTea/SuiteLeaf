@@ -67,6 +67,7 @@ test("assistant export reports a cancelled save dialog", async () => {
       dialog.showSaveDialog = async () => ({ canceled: true, filePath: "" });
     });
     const page = await app.firstWindow();
+    await page.evaluate(() => localStorage.setItem("suiteleaf.ai.enabled", "1"));
     await page.getByRole("button", { name: "New document" }).click();
     await page.getByRole("textbox", { name: "Document content" }).fill("Minutes");
     const call = (format: string) =>
@@ -80,6 +81,12 @@ test("assistant export reports a cancelled save dialog", async () => {
     expect(await call("html")).toContain(`saved it as ${output}`);
     expect(await readFile(output, "utf8")).toContain("Minutes");
   } finally {
+    // The new document is never saved, so closing normally asks about it.
+    await app
+      .evaluate(({ BrowserWindow }) => {
+        for (const w of BrowserWindow.getAllWindows()) w.destroy();
+      })
+      .catch(() => {});
     await app.close();
     await rm(dir, { recursive: true, force: true });
   }

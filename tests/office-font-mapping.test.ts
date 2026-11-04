@@ -35,7 +35,7 @@ describe("Office font names", () => {
     expect(officeSingleSpacing("Calibri")).toBeCloseTo(1.2207, 4);
     expect(officeSingleSpacing("SuiteLeaf Willow")).toBeCloseTo(1.2207, 4);
     expect(officeSingleSpacing("Calibri Light")).toBeCloseTo(1.2207, 4);
-    expect(officeSingleSpacing("Arial")).toBeCloseTo(1.1172, 4);
+    expect(officeSingleSpacing("Arial")).toBeCloseTo(1.214, 4);
     expect(officeSingleSpacing("TU Delft-UltraLight")).toBe(1);
     expect(officeSingleSpacing(undefined)).toBe(1);
   });

@@ -11,6 +11,7 @@ vi.mock("../../apps/web/src/node-client", () => ({
     user: { id: "maya", name: "Maya" },
   }),
   accessToken: async () => "token-not-shown",
+  onSession: () => () => {},
 }));
 
 class FakeSocket {

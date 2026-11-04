@@ -359,11 +359,25 @@ function sheetBody(before: unknown, after: unknown): string | null {
 
 type Deck = { slideOrder?: string[]; slides?: Record<string, unknown> };
 
+function elementIds(slide: unknown): string[] {
+  if (!slide || typeof slide !== "object" || Array.isArray(slide)) return [];
+  const list = (slide as { elements?: unknown }).elements;
+  if (!Array.isArray(list)) return [];
+  const ids: string[] = [];
+  for (const item of list) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const id = (item as { id?: unknown }).id;
+    if (typeof id === "string" && id && !ids.includes(id)) ids.push(id);
+  }
+  return ids;
+}
+
 export function slideOp(before: unknown, after: unknown): {
   kind: "slide";
   added: string[];
   removed: string[];
   edited: string[];
+  removedElements: { slide: string; id: string }[];
 } {
   const left = (before ?? {}) as Deck;
   const right = (after ?? {}) as Deck;
@@ -371,6 +385,14 @@ export function slideOp(before: unknown, after: unknown): {
   const orderB = right.slideOrder ?? [];
   const setA = new Set(orderA);
   const setB = new Set(orderB);
+  const removedElements: { slide: string; id: string }[] = [];
+  for (const id of orderB) {
+    if (!setA.has(id)) continue;
+    const afterIds = new Set(elementIds(right.slides?.[id]));
+    for (const element of elementIds(left.slides?.[id])) {
+      if (!afterIds.has(element)) removedElements.push({ slide: id, id: element });
+    }
+  }
   return {
     kind: "slide",
     added: orderB.filter((id) => !setA.has(id)),
@@ -378,6 +400,7 @@ export function slideOp(before: unknown, after: unknown): {
     edited: orderB.filter(
       (id) => setA.has(id) && JSON.stringify(left.slides?.[id]) !== JSON.stringify(right.slides?.[id]),
     ),
+    removedElements,
   };
 }
 

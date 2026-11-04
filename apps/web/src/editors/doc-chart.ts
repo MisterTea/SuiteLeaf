@@ -224,10 +224,10 @@ export function stageChartUpdate(
   if (!allowed) return { chart, proposal: null, notice: withheldChartText };
   const result = applyChartUpdate(current, sheet, now);
   const proposal = result.attrs;
+  // The snapshot time is new on every read, so it alone is not a newer copy.
   const same =
     proposal.sourceTitle === chart.sourceTitle &&
     proposal.missing === chart.missing &&
-    proposal.snapshotAt === chart.snapshotAt &&
     proposal.labels.join("\0") === chart.labels.join("\0") &&
     proposal.values.join(",") === chart.values.join(",");
   if (same) return { chart, proposal: null, notice: result.error ?? "" };

@@ -15,7 +15,6 @@ import {
   retriesAutomatically,
   sameUploadBody,
   syncHealth,
-  uploadDelay,
 } from "../apps/web/src/upload-queue";
 
 describe("SuiteDrive upload queue", () => {

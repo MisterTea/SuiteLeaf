@@ -7,26 +7,15 @@ import {
   type RefObject,
 } from "react";
 import { CommandType, ICommandService } from "@univerjs/core";
-import { DataValidatorRegistryService } from "@univerjs/data-validation";
-import { DataValidationListCacheService } from "@univerjs/sheets-data-validation";
 import { IMenuManagerService, MenuItemType } from "@univerjs/ui";
-import { X } from "lucide-react";
 import {
   cellRef,
-  colorsForLabels,
-  type DropdownMeta,
   displayRangeRef,
-  extendRef,
   formatRangeFormula,
   parseA1Ref,
-  parseDropdownMeta,
-  reconcileSource,
-  type ParsedRef,
   type SourceCell,
 } from "./sheet-dropdown-source";
 import {
-  DROPDOWN_COLORS,
-  allowedOptionsMessage,
   canonicalOption,
   chipTextColor,
   dropdownTokens,
@@ -35,63 +24,32 @@ import {
   isRangeFormula,
   isRejectStyle,
   listRuleFields,
-  mismatchNotice,
+  allowedOptionsMessage,
   mostCommonLabel,
-  newOptionId,
   optionsFromRule,
   optionsFromValues,
   rejectionMessage,
   renamedOptions,
   rewriteListValues,
   storedLabel,
-  trimmedText,
   type CellAddress,
   type DropdownOption,
-  type DropdownRuleHit,
   type Mismatch,
 } from "./sheet-dropdowns";
+import { dropdownBook, notationOf, type Box } from "./sheet-dropdown-book";
+import { patchListValidation } from "./sheet-dropdown-validation";
+import { syncDropdownSources } from "./sheet-dropdown-sync";
+import { DropdownEditor, type Draft } from "./sheet-dropdown-editor";
+import { DropdownFilterList, type Filter } from "./sheet-dropdown-filter";
+import { DropdownReview } from "./sheet-dropdown-review";
 
 const COMMAND = "suiteleaf.command.sheet-dropdown";
-
-type Box = {
-  startRow: number;
-  endRow: number;
-  startColumn: number;
-  endColumn: number;
-};
-
-type Draft = {
-  options: DropdownOption[];
-  origin: DropdownOption[];
-  reject: boolean;
-  multiple: boolean;
-  notation: string;
-  source: "list" | "range";
-  rangeRef: string;
-};
-
-type Filter = {
-  query: string;
-  index: number;
-  row: number;
-  column: number;
-  options: DropdownOption[];
-  reject: boolean;
-  multiple: boolean;
-  message: string;
-  x: number;
-  y: number;
-};
 
 export type SheetDropdownHandle = {
   openNew: () => void;
   /** Opens the dropdown editor when the selection already has a list. */
   openExisting: () => boolean;
 };
-
-function notationOf(range: { getA1Notation?: () => string }): string {
-  return (range.getA1Notation?.() ?? "").replace(/\$/g, "");
-}
 
 export default function SheetDropdowns({
   api,
@@ -136,133 +94,21 @@ export default function SheetDropdowns({
   const keyRef = useRef<(event: KeyboardEvent) => void>(() => {});
   const addRef = useRef<HTMLInputElement>(null);
 
-  const sheet = () => api.getActiveWorkbook()?.getActiveSheet();
-
-  const readCells = (range: any): CellAddress[] => {
-    const box = range.getRange() as Box;
-    const values = (range.getValues?.() ?? []) as unknown[][];
-    const datas = range.getCellDatas?.() as { f?: string }[][] | undefined;
-    const cells: CellAddress[] = [];
-    values.forEach((row, r) => {
-      (row ?? []).forEach((value, c) => {
-        if (datas?.[r]?.[c]?.f) return;
-        cells.push({
-          row: box.startRow + r,
-          column: box.startColumn + c,
-          value,
-        });
-      });
-    });
-    return cells;
-  };
-
-  const isListType = (rule: any) => {
-    const type = rule?.getCriteriaType?.() ?? rule?.rule?.type ?? rule?.type;
-    return type === "list" || type === "listMultiple";
-  };
-  const isMultiple = (rule: any) =>
-    (rule?.getCriteriaType?.() ?? rule?.rule?.type ?? rule?.type) === "listMultiple";
-
-  const listOn = (range: any) =>
-    (range.getDataValidations?.() ?? []).find((rule: any) => isListType(rule)) ?? null;
-
-  const workbook = () => api.getActiveWorkbook();
-
-  const sheetByName = (name: string | null) => {
-    const book = workbook();
-    if (!book) return null;
-    if (!name) return book.getActiveSheet();
-    return book.getSheetByName(name) ?? null;
-  };
-
-  const growDown = (ref: ParsedRef): ParsedRef => {
-    let current = ref;
-    if (current.startColumn !== current.endColumn) return current;
-    const source = sheetByName(current.sheet);
-    if (!source) return current;
-    for (let step = 0; step < 30; step++) {
-      const below = (
-        source.getRange(current.endRow + 1, current.startColumn, 1, 1).getValues?.() as
-          | unknown[][]
-          | undefined
-      )?.[0]?.[0];
-      const extended = extendRef(current, below);
-      if (!extended) break;
-      current = extended;
-    }
-    return current;
-  };
-
-  const readRefCells = (ref: ParsedRef) => {
-    const source = sheetByName(ref.sheet);
-    if (!source) return null;
-    const height = ref.endRow - ref.startRow + 1;
-    const width = ref.endColumn - ref.startColumn + 1;
-    const values = (source.getRange(ref.startRow, ref.startColumn, height, width).getValues?.() ??
-      []) as unknown[][];
-    const cells: { row: number; column: number; value: unknown }[] = [];
-    values.forEach((row, r) =>
-      (row ?? []).forEach((value, c) =>
-        cells.push({ row: ref.startRow + r, column: ref.startColumn + c, value }),
-      ),
-    );
-    return cells;
-  };
-
-  const optionsFromMeta = (
-    formula1: string | undefined,
-    formula2: string | undefined,
-    donors: DropdownOption[] = [],
-    stored?: DropdownMeta | null,
-  ): DropdownOption[] => {
-    if (!isRangeFormula(formula1)) return optionsFromRule(formula1, formula2);
-    const parsed = parseA1Ref(String(formula1));
-    if (!parsed) return [];
-    const cells = readRefCells(growDown(parsed));
-    if (!cells) return [];
-    const labels = cells.map((cell) => trimmedText(cell.value)).filter(Boolean);
-    const painted = colorsForLabels(labels, formula2, stored ?? null);
-    const seen = new Set<string>();
-    const options: DropdownOption[] = [];
-    for (const label of labels) {
-      const key = label.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const donor = donors.find((option) => option.label.toLowerCase() === key);
-      options.push({
-        id: donor?.id ?? `src-${options.length}`,
-        label,
-        color: donor?.color ?? painted[label],
-      });
-    }
-    return options;
-  };
-
-  const hitAt = (row: number, column: number): DropdownRuleHit | null => {
-    const range = sheet()?.getRange(row, column, 1, 1);
-    const rule = range ? listOn(range) : null;
-    if (!rule) return null;
-    const options = optionsFromMeta(
-      rule.rule?.formula1,
-      rule.rule?.formula2,
-      [],
-      rule.rule?.bizInfo?.suiteleafDropdown,
-    );
-    if (!options.length) return null;
-    return {
-      options,
-      multiple: isMultiple(rule),
-      reject: isRejectStyle(rule.rule?.errorStyle),
-    };
-  };
-
-  const targetRanges = () => {
-    const range = sheet()?.getActiveRange();
-    if (!range) return [];
-    const existing = listOn(range);
-    const ranges = existing?.getRanges?.() ?? [];
-    return ranges.length ? ranges : [range];
-  };
+  const reader = dropdownBook(api);
+  const {
+    sheet,
+    readCells,
+    isMultiple,
+    listOn,
+    workbook,
+    growDown,
+    optionsFromMeta,
+    hitAt,
+    targetRanges,
+    loadRange,
+    singleListCell,
+    currentLabel,
+  } = reader;
 
   const openEditor = (rule: any, fallback: any) => {
     const ranges = rule.getRanges?.() ?? [];
@@ -373,84 +219,7 @@ export default function SheetDropdowns({
   };
 
   useEffect(() => {
-    const registry = injector.get(DataValidatorRegistryService);
-    const patchValidator = (id: string) => {
-      const item = registry.getValidatorItem(id) as
-        | { isValidType: (...args: any[]) => Promise<boolean>; __suiteleaf?: boolean }
-        | undefined;
-      if (!item || item.__suiteleaf) return;
-      const original = item.isValidType.bind(item);
-      item.isValidType = async (cellInfo: any, formula: any, rule: any) => {
-        const options = isRangeFormula(rule?.formula1)
-          ? optionsFromMeta(rule.formula1, rule.formula2)
-          : optionsFromRule(rule?.formula1, rule?.formula2);
-        const multiple = rule?.type === "listMultiple";
-        if (options.length) {
-          const tokens = multiple ? dropdownTokens(cellInfo?.value) : [cellInfo?.value];
-          const meaningful = tokens.filter((token) => trimmedText(token));
-          if (
-            meaningful.length &&
-            meaningful.every((token) => canonicalOption(token, options))
-          )
-            return true;
-        }
-        return original(cellInfo, formula, rule);
-      };
-      item.__suiteleaf = true;
-    };
-    patchValidator("list");
-    patchValidator("listMultiple");
-    const cache = injector.get(DataValidationListCacheService) as {
-      computeAndCache: (...args: any[]) => any;
-      setCache: (...args: any[]) => void;
-      clear?: () => void;
-      __suiteleaf?: boolean;
-    };
-    if (cache && !cache.__suiteleaf) {
-      const original = cache.computeAndCache.bind(cache);
-      cache.computeAndCache = (
-        unitId: string,
-        subUnitId: string,
-        rule: any,
-        formulaResult: unknown,
-      ) => {
-        const item = original(unitId, subUnitId, rule, formulaResult);
-        if (rule?.type !== "list" && rule?.type !== "listMultiple") return item;
-        const seen = new Set<string>();
-        const unique = (item.list as string[])
-          .map((label) => String(label).trim())
-          .filter((label) => {
-            if (!label) return false;
-            const key = label.toLowerCase();
-            if (seen.has(key)) return false;
-            seen.add(key);
-            return true;
-          });
-        const painted = colorsForLabels(
-          unique,
-          rule.formula2,
-          rule.bizInfo?.suiteleafDropdown ?? null,
-        );
-        const listWithColor = unique.map((label) => ({
-          label,
-          color: painted[label] || "",
-        }));
-        const colorMap: Record<string, string> = {};
-        for (const entry of listWithColor)
-          if (entry.color) colorMap[entry.label] = entry.color;
-        const next = {
-          list: unique,
-          listWithColor,
-          colorMap,
-          set: new Set(unique),
-        };
-        cache.setCache(unitId, subUnitId, rule.uid, next);
-        return next;
-      };
-      cache.__suiteleaf = true;
-      cache.clear?.();
-      sheet()?.refreshCanvas?.();
-    }
+    patchListValidation(injector, optionsFromMeta, sheet);
     const commands = injector.get(ICommandService);
     const registered = commands.registerCommand({
       id: COMMAND,
@@ -534,126 +303,8 @@ export default function SheetDropdowns({
     persist();
   };
 
-  const syncSources = async () => {
-    if (syncing.current || draftRef.current) return;
-    const book = workbook();
-    if (!book) return;
-    syncing.current = true;
-    try {
-      for (const worksheet of book.getSheets?.() ?? []) {
-        const rules = worksheet.getDataValidations?.() ?? [];
-        const updates: { row: number; column: number; label: string; color: string }[] = [];
-        for (const rule of rules) {
-          const formula1 = rule.rule?.formula1 as string | undefined;
-          if (!isRangeFormula(formula1)) continue;
-          let parsed = parseA1Ref(String(formula1));
-          if (!parsed) continue;
-          const source = sheetByName(parsed.sheet);
-          if (!source || parsed.startColumn !== parsed.endColumn) continue;
-          for (let step = 0; step < 30; step++) {
-            const below = (
-              source
-                .getRange(parsed.endRow + 1, parsed.startColumn, 1, 1)
-                .getValues?.() as unknown[][] | undefined
-            )?.[0]?.[0];
-            const extended = extendRef(parsed, below);
-            if (!extended) break;
-            parsed = extended;
-          }
-          const cells = readRefCells(parsed);
-          if (!cells) continue;
-          const meta =
-            rule.rule?.bizInfo?.suiteleafDropdown ?? parseDropdownMeta(rule.rule?.formula2);
-          const previous: SourceCell[] = (meta?.sources ?? []).map((cell: SourceCell) => ({
-            row: cell.row,
-            column: cell.column,
-            label: cell.label,
-            color:
-              meta?.colors[cell.label] ??
-              Object.entries(meta?.colors ?? {}).find(
-                ([name]) => name.toLowerCase() === cell.label.toLowerCase(),
-              )?.[1] ??
-              DROPDOWN_COLORS[0].value,
-          }));
-          const next = reconcileSource(previous, cells);
-          if (!next.options.length) continue;
-          const renamedTo = new Set(next.renames.map((item) => item.to.toLowerCase()));
-          for (const option of next.options) {
-            if (renamedTo.has(option.label.toLowerCase())) continue;
-            const hinted =
-              meta?.colors?.[option.label] ??
-              Object.entries(meta?.colors ?? {}).find(
-                ([name]) => name.toLowerCase() === option.label.toLowerCase(),
-              )?.[1];
-            if (typeof hinted === "string" && /^#[\da-f]{6}$/i.test(hinted)) option.color = hinted;
-          }
-          for (const cell of next.sources) {
-            const match = next.options.find((option) => option.label.toLowerCase() === cell.label.toLowerCase());
-            if (match) cell.color = match.color;
-          }
-          const nextFormula = formatRangeFormula(parsed);
-          const nextMeta = {
-            colors: Object.fromEntries(
-              next.options.map((option) => [option.label, option.color]),
-            ),
-            sources: next.sources.map(({ row, column, label }) => ({ row, column, label })),
-          };
-          const nextFormula2 = next.options.map((option) => option.color).join(",");
-          const metaChanged = JSON.stringify(nextMeta) !== JSON.stringify(meta ?? {});
-          if (nextFormula !== formula1 || nextFormula2 !== rule.rule?.formula2 || metaChanged) {
-            const unitId = book.getId();
-            const subUnitId = worksheet.getSheetId();
-            const labels = next.options.map((option) => option.label);
-            await api.executeCommand("sheets.command.update-data-validation-setting", {
-              unitId,
-              subUnitId,
-              ruleId: rule.rule.uid,
-              setting: {
-                type: rule.rule.type,
-                formula1: nextFormula,
-                formula2: nextFormula2,
-                allowBlank: rule.rule.allowBlank !== false,
-              },
-            });
-            await api.executeCommand("sheets.command.update-data-validation-options", {
-              unitId,
-              subUnitId,
-              ruleId: rule.rule.uid,
-              options: {
-                error: allowedOptionsMessage(labels),
-                showErrorMessage: true,
-                showDropDown: true,
-                renderMode: rule.rule.renderMode ?? 2,
-                bizInfo: { suiteleafDropdown: nextMeta },
-              },
-            });
-            try {
-              injector
-                .get(DataValidationListCacheService)
-                .markRuleDirty?.(unitId, subUnitId, rule.rule.uid);
-            } catch {
-              /* The list repaints when the rule itself changes. */
-            }
-          }
-          if (!next.renames.length) continue;
-          const multiple = isMultiple(rule);
-          const targets = (rule.getRanges?.() ?? []).flatMap((range: any) => readCells(range));
-          for (const cell of targets) {
-            const label = storedLabel(cell.value, next.options, next.renames, multiple);
-            if (!label) continue;
-            const color = multiple
-              ? "#ffffff"
-              : (next.options.find((option) => option.label === label)?.color ?? "#ffffff");
-            updates.push({ ...cell, label, color });
-          }
-        }
-        if (updates.length)
-          await writeCells(updates, { unitId: book.getId(), subUnitId: worksheet.getSheetId() });
-      }
-    } finally {
-      syncing.current = false;
-    }
-  };
+  const syncSources = () =>
+    syncDropdownSources({ api, injector, syncing, draftRef, reader, writeCells });
   syncRef.current = () => {
     void syncSources();
   };
@@ -746,32 +397,6 @@ export default function SheetDropdowns({
     }
   };
 
-  const loadRange = (rangeRef: string, donors: DropdownOption[]) => {
-    const parsed = parseA1Ref(rangeRef);
-    if (!parsed) return { options: donors, error: "Enter a range like Statuses!A2:A5.", sources: [] as SourceCell[] };
-    if (parsed.sheet && !sheetByName(parsed.sheet))
-      return { options: [] as DropdownOption[], error: `No sheet named ${parsed.sheet}.`, sources: [] as SourceCell[] };
-    const cells = readRefCells(parsed);
-    if (!cells) return { options: [] as DropdownOption[], error: "That range isn't on this spreadsheet.", sources: [] as SourceCell[] };
-    const previous: SourceCell[] = donors.map((option, index) => ({
-      row: -1 - index,
-      column: -1,
-      label: option.label,
-      color: option.color,
-    }));
-    const next = reconcileSource(previous, cells);
-    if (!next.options.length)
-      return { options: [] as DropdownOption[], error: "That range has no values. Blank cells are skipped.", sources: [] as SourceCell[] };
-    const options = next.options.map((option) => {
-      const donor = donors.find((item) => item.label.toLowerCase() === option.label.toLowerCase());
-      return donor ? { ...option, id: donor.id, color: donor.color } : option;
-    });
-    return { options, error: "", sources: next.sources.map((cell) => {
-      const match = options.find((option) => option.label.toLowerCase() === cell.label.toLowerCase());
-      return match ? { ...cell, color: match.color } : cell;
-    }) };
-  };
-
   const apply = () => {
     if (!draft) return;
     if (draft.source === "range") {
@@ -829,35 +454,6 @@ export default function SheetDropdowns({
       x: Math.max(8, Math.min(box.x + x, window.innerWidth - 260)),
       y: Math.max(8, Math.min(box.y + y + (active.getRowHeight(row) || 24), window.innerHeight - 240)),
     };
-  };
-
-  const singleListCell = () => {
-    const range = sheet()?.getActiveRange();
-    const box = range?.getRange() as Box | undefined;
-    if (!range || !box) return null;
-    if (box.startRow !== box.endRow || box.startColumn !== box.endColumn) return null;
-    const rule = listOn(range);
-    if (!rule) return null;
-    const options = optionsFromMeta(
-      rule.rule?.formula1,
-      rule.rule?.formula2,
-      [],
-      rule.rule?.bizInfo?.suiteleafDropdown,
-    );
-    if (!options.length) return null;
-    return {
-      row: box.startRow,
-      column: box.startColumn,
-      options,
-      multiple: isMultiple(rule),
-      reject: isRejectStyle(rule.rule?.errorStyle),
-      message: rule.rule?.error || allowedOptionsMessage(options.map((o) => o.label)),
-    };
-  };
-
-  const currentLabel = (row: number, column: number) => {
-    const values = sheet()?.getRange(row, column, 1, 1).getValues?.() as unknown[][] | undefined;
-    return values?.[0]?.[0];
   };
 
   const choose = async (
@@ -1022,7 +618,6 @@ export default function SheetDropdowns({
     event.stopPropagation();
   };
 
-  const reviewing = reviewAt != null ? mismatches[reviewAt] : undefined;
   const showMismatch = (index: number) => {
     const cell = mismatches[index];
     if (!cell) return;
@@ -1060,314 +655,31 @@ export default function SheetDropdowns({
     else showMismatch(reviewAt + 1);
   };
 
-  const visible = filter ? filteredOptions(filter.options, filter.query) : [];
-
   return (
     <>
       {draft ? (
-        <aside
-          className="dropdown-panel"
-          role="dialog"
-          aria-label="Dropdown"
-          onKeyDown={(event) => {
-            if (event.key === "Escape") setDraft(null);
-          }}
-        >
-          <header>
-            <h2>Dropdown</h2>
-            <button type="button" aria-label="Close" onClick={() => setDraft(null)}>
-              <X size={18} />
-            </button>
-          </header>
-          <p className="dropdown-range">{draft.notation || "Selected cells"}</p>
-          <div className="dropdown-source" role="radiogroup" aria-label="Option source">
-            <label>
-              <input
-                type="radio"
-                name="dropdown-source"
-                checked={draft.source === "list"}
-                onChange={() => {
-                  setRangeError("");
-                  setDraft({ ...draft, source: "list" });
-                }}
-              />
-              List
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="dropdown-source"
-                checked={draft.source === "range"}
-                onChange={() => {
-                  const loaded = draft.rangeRef
-                    ? loadRange(draft.rangeRef, draft.options)
-                    : { options: draft.options, error: "" };
-                  setRangeError(loaded.error);
-                  setDraft({
-                    ...draft,
-                    source: "range",
-                    options: loaded.options.length ? loaded.options : draft.options,
-                  });
-                }}
-              />
-              From a range
-            </label>
-          </div>
-          {draft.source === "range" ? (
-            <label className="dropdown-range-field">
-              Source range
-              <input
-                aria-label="Source range"
-                value={draft.rangeRef}
-                placeholder="Statuses!A2:A5"
-                aria-invalid={rangeError ? true : undefined}
-                onChange={(event) => {
-                  const rangeRef = event.target.value;
-                  const parsed = parseA1Ref(rangeRef);
-                  if (!parsed || !rangeRef.includes(":")) {
-                    setRangeError("");
-                    setDraft({ ...draft, rangeRef });
-                    return;
-                  }
-                  const loaded = loadRange(rangeRef, draft.options);
-                  setRangeError(loaded.error);
-                  setDraft({
-                    ...draft,
-                    rangeRef,
-                    options: loaded.options.length ? loaded.options : draft.options,
-                  });
-                }}
-              />
-            </label>
-          ) : null}
-          <p className="dropdown-lead">
-            {draft.source === "range"
-              ? "These are the cells in that range. A blank is skipped, and a colour stays with the name when you rename a cell."
-              : "Options from this selection, with spaces and capitalization tidied."}
-          </p>
-          <ul className="dropdown-options">
-            {draft.options.map((option, index) => (
-              <li key={option.id}>
-                <span
-                  className="dropdown-chip"
-                  style={{
-                    background: option.color,
-                    color: chipTextColor(option.color),
-                  }}
-                >
-                  {option.label.trim() || "Option"}
-                </span>
-                {draft.source === "list" ? (
-                  <input
-                    ref={index === draft.options.length - 1 ? addRef : undefined}
-                    aria-label={`Option ${index + 1}`}
-                    value={option.label}
-                    onChange={(event) => {
-                      const label = event.target.value;
-                      setDraft({
-                        ...draft,
-                        options: draft.options.map((item) =>
-                          item.id === option.id ? { ...item, label } : item,
-                        ),
-                      });
-                      setComma(false);
-                    }}
-                  />
-                ) : (
-                  <span />
-                )}
-                {draft.source === "list" ? (
-                  <button
-                    type="button"
-                    aria-label={`Remove ${option.label || "option"}`}
-                    onClick={() =>
-                      setDraft({
-                        ...draft,
-                        options: draft.options.filter((item) => item.id !== option.id),
-                      })
-                    }
-                  >
-                    <X size={14} />
-                  </button>
-                ) : null}
-                <div className="dropdown-swatches" role="group" aria-label={`Color for ${option.label || "option"}`}>
-                  {DROPDOWN_COLORS.map((color) => (
-                    <button
-                      key={color.value}
-                      type="button"
-                      className={color.value === option.color ? "selected" : ""}
-                      style={{ background: color.value }}
-                      aria-label={color.name}
-                      aria-pressed={color.value === option.color}
-                      onClick={() =>
-                        setDraft({
-                          ...draft,
-                          options: draft.options.map((item) =>
-                            item.id === option.id ? { ...item, color: color.value } : item,
-                          ),
-                        })
-                      }
-                    />
-                  ))}
-                </div>
-              </li>
-            ))}
-          </ul>
-          {draft.source === "list" ? (
-            <button
-              type="button"
-              className="dropdown-add"
-              onClick={() => {
-                setDraft({
-                  ...draft,
-                  options: [
-                    ...draft.options,
-                    {
-                      id: newOptionId(),
-                      label: "",
-                      color:
-                        DROPDOWN_COLORS[draft.options.length % DROPDOWN_COLORS.length].value,
-                    },
-                  ],
-                });
-                requestAnimationFrame(() => addRef.current?.focus());
-              }}
-            >
-              Add option
-            </button>
-          ) : null}
-          <label className="dropdown-reject">
-            <input
-              type="checkbox"
-              checked={draft.multiple}
-              onChange={(event) => setDraft({ ...draft, multiple: event.target.checked })}
-            />
-            Allow more than one
-          </label>
-          <label className="dropdown-reject">
-            <input
-              type="checkbox"
-              checked={draft.reject}
-              onChange={(event) => setDraft({ ...draft, reject: event.target.checked })}
-            />
-            Reject other values
-          </label>
-          <p className="dropdown-help">
-            {draft.multiple
-              ? "Enter adds a choice and leaves the list open. Escape closes it."
-              : draft.reject
-                ? "Anything else is refused, and the message names these options."
-                : "Anything else is kept and marked, with a warning that names these options."}
-          </p>
-          {comma && draft.source === "list" ? (
-            <p className="dropdown-error" role="alert">
-              Options can't include a comma. Excel's list splits on commas.
-            </p>
-          ) : null}
-          {rangeError && draft.source === "range" ? (
-            <p className="dropdown-error" role="alert">
-              {rangeError}
-            </p>
-          ) : null}
-          <button
-            type="button"
-            className="primary"
-            onClick={apply}
-            disabled={
-              draft.source === "range"
-                ? !draft.rangeRef.trim() || !draft.options.some((option) => option.label.trim())
-                : !draft.options.some((option) => option.label.trim())
-            }
-          >
-            Done
-          </button>
-        </aside>
+        <DropdownEditor
+          draft={draft}
+          setDraft={setDraft}
+          rangeError={rangeError}
+          setRangeError={setRangeError}
+          comma={comma}
+          setComma={setComma}
+          addRef={addRef}
+          loadRange={loadRange}
+          apply={apply}
+        />
       ) : null}
-      {mismatches.length && reviewAt == null ? (
-        <div className="dropdown-notice" role="status">
-          <span>{mismatchNotice(mismatches.length)}</span>
-          <button type="button" onClick={() => showMismatch(0)}>
-            Review
-          </button>
-        </div>
-      ) : null}
-      {reviewing ? (
-        <aside className="dropdown-review" role="dialog" aria-label="Review values">
-          <header>
-            <h2>Review</h2>
-            <button type="button" aria-label="Close review" onClick={() => setReviewAt(null)}>
-              <X size={18} />
-            </button>
-          </header>
-          <p className="dropdown-lead">
-            {(reviewAt ?? 0) + 1} of {mismatches.length}
-          </p>
-          <p className="dropdown-bad">{trimmedText(reviewing.value) || cellText(reviewing.value)}</p>
-          <p>
-            Use <strong>{reviewing.suggestion}</strong>?
-          </p>
-          <div className="dropdown-review-actions">
-            <button type="button" className="primary" onClick={accept} disabled={!reviewing.suggestion}>
-              Accept
-            </button>
-            <button type="button" onClick={skip}>
-              Skip
-            </button>
-          </div>
-        </aside>
-      ) : null}
+      <DropdownReview
+        mismatches={mismatches}
+        reviewAt={reviewAt}
+        setReviewAt={setReviewAt}
+        showMismatch={showMismatch}
+        accept={accept}
+        skip={skip}
+      />
       {filter ? (
-        <div
-          className="dropdown-filter"
-          role="listbox"
-          aria-label="Dropdown options"
-          style={{ left: filter.x, top: filter.y }}
-        >
-          <p>
-            {filter.query
-              ? `Matching “${filter.query.trim()}”`
-              : filter.multiple
-                ? "Enter adds one. Escape closes the list."
-                : "Options"}
-          </p>
-          {visible.length ? (
-            visible.map((option, index) => {
-              const needle = filter.query.trim().toLowerCase();
-              const at = option.label.toLowerCase().indexOf(needle);
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  role="option"
-                  aria-selected={index === filter.index}
-                  className={index === filter.index ? "active" : ""}
-                  onMouseEnter={() => setFilterLive({ ...filter, index })}
-                  onClick={() => void choose(filter.row, filter.column, option, filter.multiple)}
-                >
-                  <span
-                    className="dropdown-chip"
-                    style={{
-                      background: option.color,
-                      color: chipTextColor(option.color),
-                    }}
-                  >
-                    {needle && at >= 0 ? (
-                      <>
-                        {option.label.slice(0, at)}
-                        <strong>{option.label.slice(at, at + needle.length)}</strong>
-                        {option.label.slice(at + needle.length)}
-                      </>
-                    ) : (
-                      option.label
-                    )}
-                  </span>
-                </button>
-              );
-            })
-          ) : (
-            <p className="dropdown-empty">No option matches. Enter refuses it.</p>
-          )}
-        </div>
+        <DropdownFilterList filter={filter} setFilterLive={setFilterLive} choose={choose} />
       ) : null}
       {refused ? (
         <div className="dropdown-refuse" role="alertdialog" aria-label="Value not allowed">
@@ -1379,8 +691,4 @@ export default function SheetDropdowns({
       ) : null}
     </>
   );
-}
-
-function cellText(value: unknown): string {
-  return value == null ? "" : String(value);
 }

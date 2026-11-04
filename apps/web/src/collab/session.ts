@@ -1,5 +1,16 @@
 import { useEffect, useRef } from "react";
 import * as Y from "yjs";
+
+/** Docs asked to copy the open file into an empty room. This stays off the Y.Doc so later updates do not depend on it. */
+const seeders = new WeakSet<Y.Doc>();
+
+export function markSeedDocument(doc: Y.Doc): void {
+  seeders.add(doc);
+}
+
+export function shouldSeedDocument(doc: Y.Doc): boolean {
+  return seeders.has(doc);
+}
 import { editorCollaborator } from "../collaborator";
 import { accessToken, getSession, onSession, type DriveRole } from "../node-client";
 import {
@@ -11,8 +22,25 @@ import {
   sessionUrl,
   type CollabUpdate,
 } from "./connection";
+import { noteUnackedEdits } from "../save-state";
 import { authFailurePlan, joinMessage, roomRecoveryText, type RoomLink, type RoomStop } from "./recovery";
-import { localSelectionMessage, remoteCaret, type RemoteCaret } from "./selection";
+import {
+  localSelectionMessage,
+  localSheetSelectionMessage,
+  localSlideSelectionMessage,
+  remoteCaret,
+  remoteSheetSelection,
+  remoteSlideSelection,
+  type RemoteCaret,
+  type RemoteSheetSelection,
+  type RemoteSlideSelection,
+  type SheetSelection,
+  type SlideSelection,
+} from "./selection";
+import { mirrorSheetCells } from "./sheet-cells";
+import { noteSheetEdit } from "./sheet-undo";
+import { mirrorSlides } from "./slide-room";
+import { noteSlideEdit } from "./slide-undo";
 import { bindWaitingUndo } from "./waiting-undo";
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -42,7 +70,11 @@ export function useDocumentRoom({
   onDoc,
   onSoloAgain,
   sendSelection,
+  sendSheetSelection,
+  sendSlideSelection,
   onCaret,
+  onSheetSelection,
+  onSlideSelection,
   onRecovery,
 }: {
   itemId?: string;
@@ -59,14 +91,22 @@ export function useDocumentRoom({
   onDoc: (doc: Y.Doc | null) => void;
   onSoloAgain: () => void;
   sendSelection?: { current: (anchor: number, head: number) => void };
+  sendSheetSelection?: { current: (selection: SheetSelection) => void };
+  sendSlideSelection?: { current: (selection: SlideSelection) => void };
   onCaret?: (caret: RemoteCaret) => void;
+  onSheetSelection?: (selection: RemoteSheetSelection) => void;
+  onSlideSelection?: (selection: RemoteSlideSelection) => void;
   onRecovery?: (text: string | null) => void;
 }) {
   const onDocRef = useRef(onDoc);
   const onSoloRef = useRef(onSoloAgain);
   const onCaretRef = useRef(onCaret);
+  const onSheetSelectionRef = useRef(onSheetSelection);
+  const onSlideSelectionRef = useRef(onSlideSelection);
   const onRecoveryRef = useRef(onRecovery);
   onCaretRef.current = onCaret;
+  onSheetSelectionRef.current = onSheetSelection;
+  onSlideSelectionRef.current = onSlideSelection;
   onRecoveryRef.current = onRecovery;
   onDocRef.current = onDoc;
   onSoloRef.current = onSoloAgain;
@@ -107,13 +147,28 @@ export function useDocumentRoom({
     let connecting = false;
     let link: RoomLink = "joining";
     let stop: RoomStop | undefined;
-    const report = () => onRecoveryRef.current?.(roomRecoveryText(link, queue.length, stop));
+    const report = () => {
+      noteUnackedEdits(queue.length);
+      onRecoveryRef.current?.(roomRecoveryText(link, queue.length, stop));
+    };
     const publishSelection = (anchor: number, head: number) => {
       const message = localSelectionMessage(anchor, head);
       if (!message || socket?.readyState !== WebSocket.OPEN || !authed) return;
       socket.send(JSON.stringify(message));
     };
     if (sendSelection) sendSelection.current = publishSelection;
+    const publishSheetSelection = (selection: SheetSelection) => {
+      const message = localSheetSelectionMessage(selection);
+      if (!message || socket?.readyState !== WebSocket.OPEN || !authed) return;
+      socket.send(JSON.stringify(message));
+    };
+    if (sendSheetSelection) sendSheetSelection.current = publishSheetSelection;
+    const publishSlideSelection = (selection: SlideSelection) => {
+      const message = localSlideSelectionMessage(selection);
+      if (!message || socket?.readyState !== WebSocket.OPEN || !authed) return;
+      socket.send(JSON.stringify(message));
+    };
+    if (sendSlideSelection) sendSlideSelection.current = publishSlideSelection;
     const flush = () => {
       if (socket?.readyState !== WebSocket.OPEN || !authed) return;
       const current = socket;
@@ -196,6 +251,7 @@ export function useDocumentRoom({
           state?: string | null;
           update?: string;
           id?: string;
+          seed?: boolean;
         };
         if (message.type === "error") {
           const plan = authFailurePlan(message.reason ?? "");
@@ -210,6 +266,10 @@ export function useDocumentRoom({
           return;
         }
         if (message.type === "selection") {
+          const slide = remoteSlideSelection(message, editorCollaborator().name);
+          if (slide) onSlideSelectionRef.current?.(slide);
+          const sheet = remoteSheetSelection(message, editorCollaborator().name);
+          if (sheet) onSheetSelectionRef.current?.(sheet);
           const caret = remoteCaret(message, editorCollaborator().name);
           if (caret) onCaretRef.current?.(caret);
           return;
@@ -233,6 +293,7 @@ export function useDocumentRoom({
         }
         if (message.type === "update" && message.update) {
           Y.applyUpdate(doc, base64ToBytes(message.update), "remote");
+          if (doc.getXmlFragment("prosemirror").length > 0) onDocRef.current(doc);
           return;
         }
         if (message.type !== "joined") return;
@@ -243,18 +304,11 @@ export function useDocumentRoom({
         const multi = message.mode === "multiuser";
         if (wasMulti && !multi) onSoloRef.current();
         wasMulti = multi;
-        onDocRef.current(multi ? doc : null);
-        if (multi && !message.state && !seededThisSocket) {
+        if (multi && message.seed && !seededThisSocket) {
           seededThisSocket = true;
-          sendUpdate({
-            id: "",
-            type: "seed",
-            update: bytesToBase64(Y.encodeStateAsUpdate(doc)),
-            unit: "paragraph",
-            key: "0",
-            at: new Date().toISOString(),
-          });
+          markSeedDocument(doc);
         }
+        onDocRef.current(multi ? doc : null);
         flush();
         report();
       };
@@ -285,6 +339,23 @@ export function useDocumentRoom({
       if (document.visibilityState === "visible" && socket?.readyState === WebSocket.OPEN && authed)
         socket.send(JSON.stringify({ type: "activity" }));
     };
+    const onOffline = () => {
+      if (closed || giveUp || pausedForSignIn) return;
+      link = "reconnecting";
+      report();
+      socket?.close();
+    };
+    const onOnline = () => {
+      if (closed || giveUp || pausedForSignIn) return;
+      if (socket?.readyState === WebSocket.OPEN && authed) {
+        link = "open";
+        report();
+        return;
+      }
+      clearTimeout(timer);
+      attempt = 0;
+      void connect();
+    };
     const stopListen = onSession((next) => {
       if (!next || closed || giveUp || !pausedForSignIn) return;
       pausedForSignIn = false;
@@ -297,6 +368,8 @@ export function useDocumentRoom({
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("keydown", onInteract);
     window.addEventListener("pointerdown", onInteract);
+    window.addEventListener("offline", onOffline);
+    window.addEventListener("online", onOnline);
     return () => {
       closed = true;
       stopListen();
@@ -304,9 +377,14 @@ export function useDocumentRoom({
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("keydown", onInteract);
       window.removeEventListener("pointerdown", onInteract);
+      window.removeEventListener("offline", onOffline);
+      window.removeEventListener("online", onOnline);
       doc.off("update", onUpdate);
       if (sendSelection) sendSelection.current = () => {};
+      if (sendSheetSelection) sendSheetSelection.current = () => {};
+      if (sendSlideSelection) sendSlideSelection.current = () => {};
       bindWaitingUndo(null);
+      noteUnackedEdits(0);
       socket?.close();
       onDocRef.current(null);
       onRecoveryRef.current?.(null);
@@ -317,31 +395,19 @@ export function useDocumentRoom({
 /** Keep sheet cells and slide elements in the shared Y.Doc while people edit together. */
 export function mirrorLiveEdit(doc: Y.Doc, kind: "sheet" | "slide", content: unknown, op: unknown) {
   if (kind === "sheet") {
-    const cells = doc.getMap<string>("cells");
-    const mutations =
-      op && typeof op === "object" && "mutations" in op && Array.isArray(op.mutations)
-        ? (op.mutations as { id?: string; params?: unknown }[])
-        : [];
-    doc.transact(() => {
-      for (const mutation of mutations) {
-        const params = mutation.params as
-          | { range?: { startRow?: number; startColumn?: number }; cellValue?: unknown }
-          | undefined;
-        const row = params?.range?.startRow;
-        const column = params?.range?.startColumn;
-        const key = row != null && column != null ? `${row}:${column}` : (mutation.id ?? "edit");
-        cells.set(key, JSON.stringify(params?.cellValue ?? params ?? null));
-      }
-    });
+    const before = new Map(doc.getMap<string>("cells").entries());
+    mirrorSheetCells(doc, op, content);
+    noteSheetEdit(doc, before, new Map(doc.getMap<string>("cells").entries()));
     return;
   }
-  const slides = doc.getMap<string>("slides");
-  const change = (op ?? {}) as { added?: string[]; edited?: string[]; removed?: string[] };
-  const deck = content as { slides?: Record<string, unknown> };
-  doc.transact(() => {
-    for (const id of [...(change.added ?? []), ...(change.edited ?? [])]) {
-      if (deck.slides?.[id] != null) slides.set(id, JSON.stringify(deck.slides[id]));
-    }
-    for (const id of change.removed ?? []) slides.delete(id);
-  });
+  const beforeElements = new Map(doc.getMap<string>("slideElements").entries());
+  const beforeSlides = new Map(doc.getMap<string>("slides").entries());
+  mirrorSlides(doc, content, op);
+  noteSlideEdit(
+    doc,
+    beforeElements,
+    new Map(doc.getMap<string>("slideElements").entries()),
+    beforeSlides,
+    new Map(doc.getMap<string>("slides").entries()),
+  );
 }

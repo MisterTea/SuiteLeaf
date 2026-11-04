@@ -211,9 +211,10 @@ function addSheet(
 ) {
   for (const [cell, item] of formulasOf(sheet.cellData ?? {})) {
     const refs = references(item.formula);
-    const key = home && sheet.name ? qualify(sheet.name, cell) : cell;
-    const edges = home && sheet.name
-      ? [...refs.cells.map((item) => qualify(sheet.name, item)), ...refs.external]
+    const name = sheet.name;
+    const key = home && name ? qualify(name, cell) : cell;
+    const edges = home && name
+      ? [...refs.cells.map((item) => qualify(name, item)), ...refs.external]
       : [...refs.cells, ...refs.external];
     graph.set(key, edges);
     if (refs.unlisted.length) unlisted.set(key, refs.unlisted);

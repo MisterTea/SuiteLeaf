@@ -15,6 +15,14 @@ const grid = {
   "1": { "0": { v: "Tomato" } },
 };
 
+it("writes Arabic cell fields from right to left", () => {
+  const arabic = render(<SheetCellFields grid={grid} language="ar" onEdit={() => {}} />);
+  expect(arabic.container.querySelector(".sheet-cell-fields")?.getAttribute("dir")).toBe("rtl");
+  arabic.unmount();
+  const english = render(<SheetCellFields grid={grid} language="en" onEdit={() => {}} />);
+  expect(english.container.querySelector(".sheet-cell-fields")?.getAttribute("dir")).toBe("ltr");
+});
+
 it("edits a sheet cell from its text field and leaves the grid unchanged", () => {
   const edits: string[] = [];
   render(

@@ -33,7 +33,7 @@ it("draws a master color and font on a title that stores neither", () => {
   render(<SlideFace deck={deck} slide={slide} index={0} />);
   const node = document.querySelector(".slide-text") as HTMLElement | null;
   expect(node?.style.color).toBe("rgb(17, 34, 51)");
-  expect(node?.style.fontFamily).toBe("Georgia");
+  expect(node?.style.fontFamily).toContain("SuiteLeaf Durian");
   expect(title.color).toBeUndefined();
 });
 

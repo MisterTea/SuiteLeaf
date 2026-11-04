@@ -33,12 +33,19 @@ export function audienceLines(
   const lines: string[] = [];
   for (const element of elements) {
     if (element.decorative) continue;
-    if (
-      revealed != null &&
-      element.id &&
-      audiencePhase(element, revealed, order, null) === "hidden"
-    ) {
-      continue;
+    if (revealed != null && element.id) {
+      const phase = audiencePhase(
+        {
+          id: element.id,
+          animation: element.animation,
+          animationOrder: element.animationOrder,
+          animationTrigger: element.animationTrigger,
+        },
+        revealed,
+        order,
+        null,
+      );
+      if (phase === "hidden") continue;
     }
     if (element.type === "table" && element.rows) {
       for (const row of element.rows) {

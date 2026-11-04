@@ -47,12 +47,19 @@ export function clipBoxToSlide(
 }
 
 /** Place the original text box inside the clipped print box. */
-export function offslideShiftStyle(clip: SlideClip): CSSProperties {
+export function offslideShiftStyle(
+  clip: SlideClip,
+  valign?: "middle" | "bottom" | "top",
+): CSSProperties {
   return {
     position: "absolute",
     left: `${(-clip.shiftX / clip.width) * 100}%`,
     top: `${(-clip.shiftY / clip.height) * 100}%`,
     width: `${(clip.originWidth / clip.width) * 100}%`,
     height: `${(clip.originHeight / clip.height) * 100}%`,
+    display: "flex",
+    flexDirection: "column",
+    justifyContent:
+      valign === "bottom" ? "flex-end" : valign === "middle" ? "center" : "flex-start",
   };
 }

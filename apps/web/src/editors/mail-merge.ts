@@ -1,5 +1,6 @@
 import type { JsonNode } from "@suiteleaf/core";
 import { documentPdf } from "@suiteleaf/core/doc-pdf";
+import { plainMergeNumber, sameWritten } from "./mail-merge-match";
 
 export type MailMergeResult =
   { ok: true; content: JsonNode } | { ok: false; missing: string[] };
@@ -43,13 +44,13 @@ export function formatMergeField(value: string, format: string | undefined, loca
     }
   }
   if (format === "number") {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed) && value.trim() !== "") return new Intl.NumberFormat(locale).format(parsed);
+    const parsed = plainMergeNumber(value);
+    if (parsed !== null) return new Intl.NumberFormat(locale).format(parsed);
   }
   if (format?.startsWith("currency:")) {
     const code = format.slice("currency:".length).trim().toUpperCase();
-    const parsed = Number(value);
-    if (!/^[A-Z]{3}$/.test(code) || !Number.isFinite(parsed) || value.trim() === "") return value;
+    const parsed = plainMergeNumber(value);
+    if (!/^[A-Z]{3}$/.test(code) || parsed === null) return value;
     try {
       return new Intl.NumberFormat(locale, { style: "currency", currency: code }).format(parsed);
     } catch {
@@ -150,7 +151,7 @@ function applyMergeBlocks(text: string, values: Map<string, string>): string {
           ? raw.slice(equal + 2).trim()
           : null;
       const actual = (values.get(headerName(column)) ?? "").trim();
-      const matched = expected == null ? actual !== "" : actual === expected;
+      const matched = expected == null ? actual !== "" : sameWritten(actual, expected);
       const yes = negate ? !matched : matched;
       const splitAt = body.indexOf("{{else}}");
       const whenSet = splitAt < 0 ? body : body.slice(0, splitAt);

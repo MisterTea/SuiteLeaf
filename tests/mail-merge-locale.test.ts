@@ -64,6 +64,10 @@ describe("merge locale", () => {
     expect(formatMergeField("10", "currency:usd", "en-US")).toBe("$10.00");
     expect(formatMergeField("10", "currency:secret-value", "en-US")).toBe("10");
     expect(formatMergeField("secret-value", "currency:USD", "en-US")).toBe("secret-value");
+    expect(formatMergeField("10.0", "number", "en-US")).toBe("10");
+    expect(formatMergeField("1e2", "number", "en-US")).toBe("1e2");
+    expect(formatMergeField("10 beds", "currency:USD", "en-US")).toBe("10 beds");
+    expect(formatMergeField("10.0", "currency:USD", "en-US")).toBe("$10.00");
     expect(template.content[0].content[0].text).toBe("{{Fee|currency:USD}}");
   });
 });

@@ -3,6 +3,7 @@ import {
   decideClientSession,
   idleSecsFromInfo,
   sessionActivityNote,
+  sessionEndFor,
   sessionTimes,
 } from "../apps/web/src/session-policy";
 
@@ -18,6 +19,10 @@ describe("client session policy", () => {
     expect(
       decideClientSession({ expiresAt: later, updatedAt: stale, now, idleSecs: 30 * 60 }),
     ).toBe("idle");
+    expect(sessionEndFor("idle")).toBe("idle");
+    expect(sessionEndFor("expired")).toBe("expired");
+    expect(sessionEndFor("reauth")).toBe("expired");
+    expect(sessionEndFor("accept")).toBeNull();
     expect(
       decideClientSession({ expiresAt: later, updatedAt: fresh, now, idleSecs: 30 * 60 }),
     ).toBe("accept");
@@ -62,6 +67,13 @@ describe("client session policy", () => {
     });
     expect(refused).toBe("This session has expired.");
     expect(refused).not.toContain("2026-02-31");
+    expect(sessionActivityNote({ now })).toBe("No idle limit is set.");
+    expect(sessionActivityNote({ expiresAt: later, updatedAt: fresh, now, idleSecs: 60 })).toBe(
+      "This device is signed in.",
+    );
+    expect(sessionActivityNote({ expiresAt: later, updatedAt: stale, now, idleSecs: 60 })).toBe(
+      "This device is idle.",
+    );
   });
 
   it("reads the idle limit and the sign-in times without a secret", () => {
@@ -73,6 +85,11 @@ describe("client session policy", () => {
         session: { expiresAt: later, updatedAt: fresh, token: "secret-value" },
       }),
     ).toEqual({ expiresAt: later, updatedAt: fresh });
+    expect(
+      sessionTimes({
+        session: { expiresAt: new Date(later), updatedAt: new Date("not a date") },
+      }),
+    ).toEqual({ expiresAt: later, updatedAt: undefined });
     expect(JSON.stringify(sessionTimes({ session: { token: "secret-value" } }))).not.toContain(
       "secret-value",
     );

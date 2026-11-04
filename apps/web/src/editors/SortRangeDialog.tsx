@@ -15,6 +15,7 @@ export default function SortRangeDialog({
   values,
   initialRules,
   initialHeader,
+  shared = false,
   onSort,
   onClose,
 }: {
@@ -23,12 +24,15 @@ export default function SortRangeDialog({
   /** Choices to show already filled in (when the assistant sorts). */
   initialRules?: SortRule[];
   initialHeader?: boolean;
-  onSort: (rules: SortRule[], hasHeader: boolean) => void;
+  /** Other people have the sheet open, so a sort can stay on this screen. */
+  shared?: boolean;
+  onSort: (rules: SortRule[], hasHeader: boolean, share: boolean) => void;
   onClose: () => void;
 }) {
   const [hasHeader, setHasHeader] = useState(
     () => initialHeader ?? detectHeaderRow(values),
   );
+  const [share, setShare] = useState(false);
   const [rules, setRules] = useState<SortRule[]>(
     initialRules ?? [{ column: 0, ascending: true }],
   );
@@ -38,7 +42,7 @@ export default function SortRangeDialog({
     setRules(rules.map((r, j) => (j === i ? { ...r, ...change } : r)));
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    onSort(rules, hasHeader);
+    onSort(rules, hasHeader, share);
   };
   const form = useRef<HTMLFormElement>(null);
   useEffect(() => {
@@ -86,6 +90,16 @@ export default function SortRangeDialog({
             />
             Data has header row
           </label>
+          {shared ? (
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={share}
+                onChange={(e) => setShare(e.target.checked)}
+              />
+              Sort for everyone
+            </label>
+          ) : null}
           {rules.map((rule, i) => (
             <div className="sort-rule" key={i}>
               <label>

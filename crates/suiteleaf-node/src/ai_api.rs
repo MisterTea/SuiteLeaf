@@ -98,9 +98,7 @@ async fn completions(
         .get(header::CONTENT_TYPE)
         .cloned()
         .unwrap_or_else(|| header::HeaderValue::from_static("text/event-stream"));
-    let stream = upstream
-        .bytes_stream()
-        .map_err(|error| std::io::Error::other(error));
+    let stream = upstream.bytes_stream().map_err(std::io::Error::other);
     Response::builder()
         .status(status)
         .header(header::CONTENT_TYPE, content_type)

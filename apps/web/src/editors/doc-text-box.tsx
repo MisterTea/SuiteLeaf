@@ -207,12 +207,20 @@ export const TextBox = Node.create({
   },
 
   addKeyboardShortcuts() {
+    // setHardBreak refuses an isolating parent, and a text box is one.
+    const lineBreak = () => {
+      const { state } = this.editor;
+      const hardBreak = state.schema.nodes.hardBreak;
+      if (state.selection.$from.parent.type.name !== "textBox" || !hardBreak) return false;
+      return this.editor.commands.command(({ tr, dispatch }) => {
+        if (dispatch) tr.replaceSelectionWith(hardBreak.create()).scrollIntoView();
+        return true;
+      });
+    };
     return {
       Escape: () => this.editor.commands.exitTextBox(),
-      Enter: () => {
-        if (this.editor.state.selection.$from.parent.type.name !== "textBox") return false;
-        return this.editor.commands.setHardBreak();
-      },
+      Enter: lineBreak,
+      "Shift-Enter": lineBreak,
     };
   },
 

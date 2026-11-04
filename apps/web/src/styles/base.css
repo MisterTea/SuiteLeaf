@@ -1,0 +1,184 @@
+:root {
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+  color-scheme: light;
+  color: var(--text-primary);
+  background: var(--bg-app);
+  font-synthesis: none;
+  font-size: 14px;
+  --green: #188038;
+  --google-blue: #1a73e8;
+  --google-green: #188038;
+  --google-yellow: #f9ab00;
+  --google-red: #ea4335;
+  --doc-color: #1a73e8;
+  --sheet-color: #188038;
+  --slide-color: #f29900;
+
+  /* Theme tokens: light default */
+  --bg-app: #f8f9fa;
+  --surface: #ffffff;
+  --surface-hover: #f1f3f4;
+  --surface-active: #e8eaed;
+  --surface-muted: #f0f4ef;
+  --border: #dadce0;
+  --border-subtle: #e2e7e1;
+  --text-primary: #202124;
+  --text-secondary: #5f6368;
+  --text-muted: #80868b;
+  --toolbar-bg: #edf2fa;
+  --toolbar-tool-hover: rgba(0, 0, 0, 0.08);
+  --toolbar-active: #d3e3fd;
+  --toolbar-active-text: #041e49;
+  --input-bg: #ffffff;
+  --dialog-bg: #ffffff;
+  --card-bg: #ffffff;
+  --sidebar-bg: #f0f4ef;
+  --sidebar-selected: #dce9dd;
+  --sidebar-selected-text: #1b583e;
+  --search-bg: #edf1ec;
+  --paper-bg: #ffffff;
+  --paper-shadow:
+    0 1px 3px 0 rgba(60, 64, 67, 0.15), 0 4px 8px 3px rgba(60, 64, 67, 0.05);
+  --viewport-bg: #f1f3f4;
+  --slides-stage-bg: #f1f3f4;
+  --slide-thumb-selected: #e8f0fe;
+  --notes-bg: #ffffff;
+}
+
+:root[data-theme="dark"],
+:root.dark-theme {
+  color-scheme: dark;
+  --green: #81c995;
+  --google-blue: #8ab4f8;
+  --google-green: #81c995;
+  --google-yellow: #fdd663;
+  --google-red: #f28b82;
+  --doc-color: #8ab4f8;
+  --sheet-color: #81c995;
+  --slide-color: #fdd663;
+
+  /* Theme tokens: dark mode */
+  --bg-app: #18191c;
+  --surface: #1f2125;
+  --surface-hover: #2d3137;
+  --surface-active: #373b42;
+  --surface-muted: #25282e;
+  --border: #3c4043;
+  --border-subtle: #303338;
+  --text-primary: #e8eaed;
+  --text-secondary: #9aa0a6;
+  --text-muted: #80868b;
+  --toolbar-bg: #26292f;
+  --toolbar-tool-hover: rgba(255, 255, 255, 0.1);
+  --toolbar-active: #004a77;
+  --toolbar-active-text: #c2e7ff;
+  --input-bg: #2a2d33;
+  --dialog-bg: #22252a;
+  --card-bg: #202227;
+  --sidebar-bg: #1c1d22;
+  --sidebar-selected: #24382c;
+  --sidebar-selected-text: #a8dab5;
+  --search-bg: #282a30;
+  --paper-bg: #1e2024;
+  --paper-shadow:
+    0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 4px 8px 3px rgba(0, 0, 0, 0.25);
+  --viewport-bg: #131417;
+  --slides-stage-bg: #141518;
+  --slide-thumb-selected: #17324d;
+  --notes-bg: #1f2125;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --green: #81c995;
+    --google-blue: #8ab4f8;
+    --google-green: #81c995;
+    --google-yellow: #fdd663;
+    --google-red: #f28b82;
+    --doc-color: #8ab4f8;
+    --sheet-color: #81c995;
+    --slide-color: #fdd663;
+
+    /* Theme tokens: dark mode */
+    --bg-app: #18191c;
+    --surface: #1f2125;
+    --surface-hover: #2d3137;
+    --surface-active: #373b42;
+    --surface-muted: #25282e;
+    --border: #3c4043;
+    --border-subtle: #303338;
+    --text-primary: #e8eaed;
+    --text-secondary: #9aa0a6;
+    --text-muted: #80868b;
+    --toolbar-bg: #26292f;
+    --toolbar-tool-hover: rgba(255, 255, 255, 0.1);
+    --toolbar-active: #004a77;
+    --toolbar-active-text: #c2e7ff;
+    --input-bg: #2a2d33;
+    --dialog-bg: #22252a;
+    --card-bg: #202227;
+    --sidebar-bg: #1c1d22;
+    --sidebar-selected: #24382c;
+    --sidebar-selected-text: #a8dab5;
+    --search-bg: #282a30;
+    --paper-bg: #1e2024;
+    --paper-shadow:
+      0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 4px 8px 3px rgba(0, 0, 0, 0.25);
+    --viewport-bg: #131417;
+    --slides-stage-bg: #141518;
+    --slide-thumb-selected: #17324d;
+    --notes-bg: #1f2125;
+  }
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+button,
+input,
+select {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+button:hover {
+  background: var(--surface-hover);
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+input,
+select {
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--input-bg);
+  padding: 7px 10px;
+  color: inherit;
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+a:focus-visible {
+  outline: 2px solid #548f75;
+  outline-offset: 2px;
+}
+a {
+  color: var(--green);
+  text-decoration: none;
+}

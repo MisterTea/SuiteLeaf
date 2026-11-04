@@ -63,7 +63,7 @@ export function assignComboAxes<T extends { name: string; axis?: number }>(
 /** Value headers for a combo chart. The first header is the category, not a series. */
 export function seriesFromHeaders(headers: readonly string[]): { name: string; axis: number }[] {
   const names = headers.slice(1).map((header, index) => header.trim() || `Series ${index + 1}`);
-  return assignComboAxes(names.map((name) => ({ name }))).map((item) => ({
+  return assignComboAxes(names.map((name) => ({ name, axis: 1 }))).map((item) => ({
     name: item.name,
     axis: item.axis ?? 1,
   }));

@@ -1,0 +1,23 @@
+.settings-page {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 32px 24px;
+}
+.settings-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.settings-header h1 { margin: 0; }
+.settings-card {
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--dialog-bg);
+  color: var(--text-primary);
+}
+.settings-card h2 { margin-top: 0; }
+.settings-card p { line-height: 1.6; }
+.settings-directory { overflow-wrap: anywhere; font-family: monospace; }
+

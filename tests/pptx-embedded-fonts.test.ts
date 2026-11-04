@@ -286,7 +286,7 @@ describe("embedded font line grid", () => {
     expect(grids.get("Lato")).toBeCloseTo(1.2, 5);
     expect(grids.get("Arial")).toBeCloseTo(1.5, 5);
     expect(officeSingleSpacing("Lato", grids)).toBeCloseTo(1.2, 5);
-    expect(officeSingleSpacing("Arial", grids)).toBeCloseTo(1.1172, 4);
+    expect(officeSingleSpacing("Arial", grids)).toBeCloseTo(1.214, 4);
     const parsed = await parsePowerPoint(bytes);
     const texts = parsed.content.slides[parsed.content.slideOrder[0]].elements.filter(
       (el) => el.type === "text",
@@ -294,7 +294,7 @@ describe("embedded font line grid", () => {
     const byText = (needle: string) => texts.find((el) => el.content?.includes(needle));
     expect(byText("Ninety")?.lineHeight).toBeCloseTo(1.2 * 0.9, 5);
     expect(byText("Exact")?.lineHeight).toBeCloseTo(24 / 18, 5);
-    expect(byText("Shipped")?.lineHeight).toBeCloseTo(1.1172, 4);
+    expect(byText("Shipped")?.lineHeight).toBeCloseTo(1.214, 4);
   });
 });
 

@@ -37,6 +37,46 @@ describe("sheet queries", () => {
     expect(rows[0]?.bed).toBe("10");
   });
 
+  it("sorts blank cells last and keeps equal rows in their original order", () => {
+    const rows = [
+      { crop: "North", note: "second" },
+      { crop: "  ", note: "blank" },
+      { crop: "South", note: "third" },
+      { crop: "North", note: "first" },
+    ];
+    const before = JSON.stringify(rows);
+    const ascending = refreshQuery(
+      queryDocument([{ op: "sort", column: "crop", direction: "asc" }]),
+      rows,
+      null,
+      "2026-11-03T00:00:00.000Z",
+    );
+    expect(ascending.ok).toBe(true);
+    if (ascending.ok) {
+      expect(ascending.rows.map((row) => row.note)).toEqual(["second", "first", "third", "blank"]);
+    }
+    const descending = refreshQuery(
+      queryDocument([{ op: "sort", column: "crop", direction: "desc" }]),
+      rows,
+      null,
+      "2026-11-03T00:00:00.000Z",
+    );
+    expect(descending.ok).toBe(true);
+    if (descending.ok) {
+      expect(descending.rows.map((row) => row.note)).toEqual(["third", "second", "first", "blank"]);
+    }
+    expect(JSON.stringify(rows)).toBe(before);
+    const missing = refreshQuery(
+      queryDocument([{ op: "sort", column: "secret-value", direction: "asc" }]),
+      rows,
+      null,
+      "2026-11-03T00:00:00.000Z",
+    );
+    expect(missing.ok).toBe(false);
+    if (!missing.ok) expect(missing.error).toBe("That column is not in the source.");
+    expect(JSON.stringify(missing)).not.toContain("secret-value");
+  });
+
   it("keeps rows that do not equal the filter value", () => {
     const rows = [
       { bed: "North", crop: "Tomato" },

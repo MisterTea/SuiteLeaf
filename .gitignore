@@ -60,5 +60,6 @@ next-env.d.ts
 
 # Rust build output and local cluster data
 /target/
+/node-a/
 /deploy/data/
 /deploy/.env

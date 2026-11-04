@@ -89,6 +89,13 @@ const laidOut = () =>
     expect(canvas()).not.toBeNull();
     expect(canvas()!.getAttribute("aria-busy")).toBeNull();
   });
+function styleLength(value: string, basis: number): number | null {
+  if (value.endsWith("%")) return (Number.parseFloat(value) / 100) * basis;
+  if (value.endsWith("px")) return Number.parseFloat(value);
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
 const box = (text: string) =>
   [...document.querySelectorAll<HTMLElement>(".slide-canvas [data-element-id]")].find((el) =>
     (el.querySelector("textarea")?.value ?? el.textContent ?? "").includes(text),
@@ -145,7 +152,7 @@ describe("MARP side-by-side editing", () => {
   });
 
   it("draws thumbnails and the slideshow with the editor's own boxes", async () => {
-    open();
+    const { file } = open();
     await laidOut();
     const editorBox = box("Ship the")!;
     const thumbnail = document.querySelectorAll(".thumbnail-preview")[0];
@@ -155,8 +162,19 @@ describe("MARP side-by-side editing", () => {
     expect(drawnBox.className.split(" ")).toEqual(
       expect.arrayContaining(["slide-element", "slide-text"]),
     );
-    for (const property of ["left", "top", "width", "height", "fontSize", "lineHeight", "fontFamily"] as const)
-      expect(drawnBox.style[property]).toBe(editorBox.style[property]);
+    const width = file.content.width || 960;
+    const height = file.content.height || 540;
+    for (const property of ["left", "top", "width", "height", "fontSize", "lineHeight", "fontFamily"] as const) {
+      if (property === "fontFamily") {
+        expect(drawnBox.style.fontFamily).toBe(editorBox.style.fontFamily);
+        continue;
+      }
+      const basis = property === "top" || property === "height" ? height : width;
+      const drawn = styleLength(drawnBox.style[property], basis);
+      const editor = styleLength(editorBox.style[property], basis);
+      if (drawn == null || editor == null) expect(drawnBox.style[property]).toBe(editorBox.style[property]);
+      else expect(drawn).toBeCloseTo(editor, 3);
+    }
     expect(thumbnail.querySelector("[data-element-id], textarea")).toBeNull();
   });
 

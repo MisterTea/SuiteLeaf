@@ -67,9 +67,9 @@ test("native Save As → autosave → external conflict → recovery → reopeni
       env: { ...process.env, SUITELEAF_TEST_DATA: join(dir, "library") },
     });
     const reopened = await app.firstWindow();
-    await reopened
-      .getByRole("link", { name: "Untitled document Recovery draft available" })
-      .click();
+    const draft = reopened.getByRole("link", { name: "Untitled document", exact: true });
+    await expect(draft).toHaveAccessibleDescription(/Recovery draft available/);
+    await draft.click();
     await expect(
       reopened.getByRole("textbox", { name: "Document content" }),
     ).toContainText("Recovery edit");

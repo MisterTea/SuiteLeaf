@@ -89,7 +89,9 @@ class Parser {
   }
   private compare(left: Value, right: Value, op: string): boolean {
     if (typeof left === "string" || typeof right === "string") {
-      const order = String(left ?? "").localeCompare(String(right ?? ""));
+      const order = String(left ?? "").localeCompare(String(right ?? ""), undefined, {
+        sensitivity: "accent",
+      });
       if (op === "=") return order === 0;
       if (op === "<>") return order !== 0;
       if (op === "<") return order < 0;
@@ -153,6 +155,10 @@ class Parser {
     }
     if (ch === '"') return this.string();
     if (/[0-9.]/.test(ch)) return this.number();
+    if (ch === "$") {
+      const { row, column } = this.anchor();
+      return this.at(row, column);
+    }
     const name = this.ident();
     this.skip();
     if (this.peek() === "(") return this.call(name);
@@ -184,6 +190,7 @@ class Parser {
   }
   private cell(label: string): Value {
     const column = columnIndex(label);
+    if (this.peek() === "$") this.i++;
     let row = "";
     while (/[0-9]/.test(this.peek())) {
       row += this.peek();

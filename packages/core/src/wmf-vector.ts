@@ -288,8 +288,8 @@ function dibStretchImage(
       full[d + 3] = 255;
     }
   }
-  let sx = Math.max(0, xSrc);
-  let sy = Math.max(0, ySrc);
+  const sx = Math.max(0, xSrc);
+  const sy = Math.max(0, ySrc);
   let sw = srcWidth > 0 ? srcWidth : bw;
   let shSrc = srcHeight > 0 ? srcHeight : sh;
   if (sx >= bw || sy >= sh) return;
