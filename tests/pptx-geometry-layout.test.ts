@@ -342,7 +342,7 @@ describe("PowerPoint geometry", () => {
     const px = (emu: number) => (emu / 12192000) * 960;
     expect(list?.hang).toBeUndefined();
     expect(list?.runs?.[0]).toMatchObject({
-      text: "• Parent",
+      text: "• ",
       paraMargin: px(100000),
       paraHang: px(100000),
     });
@@ -436,4 +436,16 @@ it("keeps vert270 text running upward inside its box", async () => {
     (el) => el.content === "Risk",
   );
   expect(label?.textFlow).toBe("up");
+});
+
+it("paints master labels below layout artwork and layout labels above it", async () => {
+  const shape = (text: string, fill?: string) => `<p:sp><p:nvSpPr><p:cNvPr id="8"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="3000000" cy="500000"/></a:xfrm><a:prstGeom prst="rect"/>${fill ? `<a:solidFill><a:srgbClr val="${fill}"/></a:solidFill>` : ''}</p:spPr>${text ? `<p:txBody><a:bodyPr/><a:p><a:r><a:rPr sz="1800"/><a:t>${text}</a:t></a:r></a:p></p:txBody>` : ''}</p:sp>`;
+  const parsed = await deck('<p:sld><p:cSld><p:spTree/></p:cSld></p:sld>', `<p:sldLayout><p:cSld><p:spTree>${shape('', 'FFFFFF')}${shape('Layout')}</p:spTree></p:cSld></p:sldLayout>`, `<p:sldMaster><p:cSld><p:spTree>${shape('Master')}</p:spTree></p:cSld></p:sldMaster>`);
+  const elements = parsed.content.slides[parsed.content.slideOrder[0]].elements;
+  const master = elements.findIndex(e => e.content === 'Master');
+  const layout = elements.findIndex(e => e.content === 'Layout');
+  const cover = elements.findIndex(e => e.alt === 'Inherited slide artwork');
+  expect(master).toBeGreaterThanOrEqual(0);
+  expect(cover).toBeGreaterThan(master);
+  expect(layout).toBeGreaterThan(cover);
 });

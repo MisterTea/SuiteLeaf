@@ -1,5 +1,6 @@
 import type JSZip from "jszip";
-import type { SlideElement, TextRun } from "./index";
+import { diagramTextElement, type DiagramParagraph as Paragraph } from "./pptx-diagram-text";
+import type { SlideElement } from "./index";
 import { paintableImage, pictureClip } from "./pptx-pictures";
 import { shapeArtwork, shapeIsHidden } from "./pptx-geometry";
 import { themePaint } from "./pptx-theme";
@@ -9,20 +10,6 @@ type Metrics = {
   height: number;
   emuWidth: number;
   emuHeight: number;
-};
-
-type Paragraph = {
-  text: string;
-  runs: TextRun[];
-  bullet?: boolean;
-  bold?: boolean;
-  italic?: boolean;
-  underline?: boolean;
-  size?: number;
-  align?: "left" | "center" | "right" | "justify";
-  color?: string;
-  font?: string;
-  lineHeight?: number;
 };
 
 type Zip = Pick<JSZip, "file">;
@@ -950,49 +937,7 @@ export async function diagramElements(
     const rawText = boxOf(textXfrm, metrics) ?? shapeBox;
     const textBox = frameClips ? clipToFrame(rawText, framePx) : rawText;
     if (!textBox) continue;
-    const body = attrs(/<a:bodyPr\b([^>]*)\/?>/.exec(tx)?.[1] || "");
-    const inset = (name: string, fallback: number) =>
-      (Math.max(0, Number(body[name] ?? fallback) || 0) / metrics.emuWidth) *
-      metrics.width;
-    const pad = /<a:bodyPr\b/.test(tx)
-      ? {
-          t: inset("tIns", 45720),
-          r: inset("rIns", 91440),
-          b: inset("bIns", 45720),
-          l: inset("lIns", 91440),
-        }
-      : undefined;
-    const first = paragraphs[0];
-    const valign =
-      body.anchor === "ctr" ? "middle" : body.anchor === "b" ? "bottom" : undefined;
-    elements.push({
-      type: "text",
-      ...textBox,
-      content: paragraphs.map((paragraph) => paragraph.text).join("\n"),
-      runs: paragraphs.flatMap((paragraph, index) => [
-        ...(index ? [{ text: "\n", paragraphBreak: true as const }] : []),
-        ...paragraph.runs,
-      ]),
-      bold: first?.bold,
-      italic: first?.italic,
-      ...(first?.underline ? { underline: true } : {}),
-      fontSize: first?.size || 18,
-      fontFamily: first?.font || "Arial",
-      color: first?.color || paint.fontColor || "#1e293b",
-      align: first?.align || "left",
-      bullet: paragraphs.some((paragraph) => paragraph.bullet),
-      ...(valign ? { valign } : {}),
-      ...(pad
-        ? {
-            inset: pad.t,
-            padLeft: pad.l,
-            ...(pad.r !== pad.l ? { padRight: pad.r } : {}),
-            ...(pad.b !== pad.t ? { padBottom: pad.b } : {}),
-          }
-        : {}),
-      ...(first?.lineHeight ? { lineHeight: first.lineHeight } : {}),
-      ...(body.wrap === "none" ? { nowrap: true } : {}),
-    });
+    elements.push(diagramTextElement(tx, paragraphs, textBox, metrics, paint.fontColor));
   }
   return elements;
 }

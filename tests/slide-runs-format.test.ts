@@ -173,7 +173,7 @@ describe("painting runs as HTML", () => {
   it("puts a list marker in the gutter, as a picture or a glyph, and sizes it to the words", () => {
     const marp = runsToHtml([{ text: "• Point one" }], undefined, 24);
     expect(marp).toContain("slide-bullet-fixed");
-    expect(marp).toContain("float:left");
+    expect(marp).toContain("display:inline-block;width:0;transform:translateX(calc(-24px");
     const picture = runsToHtml(
       [{ text: "• ", bulletSrc: "data:image/png;base64,AA==", paraHang: 18 }, { text: "Word", fontSize: 30 }],
     );
@@ -196,6 +196,30 @@ describe("painting runs as HTML", () => {
     expect(html.match(/display:inline-block;width:calc\(/g)?.length).toBeGreaterThanOrEqual(2);
     expect(html).toContain("Name");
     expect(html).toContain("<br>");
+  });
+
+  it("measures continuation tabs from the box inset including the hanging gutter", () => {
+    const html = runsToHtml([
+      { text: "• Text", paraHang: 18, paraTab: 72 },
+      { text: "\n" },
+      { text: "\tcode" },
+    ]);
+    expect(html).toContain("width:calc(54 *");
+    expect(html).not.toContain("width:calc(72 *");
+    expect(html).toContain('class="slide-bullet-slot"');
+  });
+
+  it("uses a new paragraph's font for its line strut in a mixed-font box", () => {
+    const html = textInnerHtml({
+      content: "Title\nBody", fontFamily: "Nunito", fontSize: 18, lineHeight: 1.2,
+      runs: [
+        { text: "Title", font: "Nunito", fontSize: 18 },
+        { text: "\n", paragraphBreak: true, fontSize: 18 },
+        { text: "Body", font: "Assistant", fontSize: 18 },
+      ],
+    });
+    const body = html.split('data-para-index="1"')[1];
+    expect(body.split("><span")[0]).toContain("font-family:'Assistant'");
   });
 
   it("paints a tight line's words higher, as PowerPoint takes the missing height from above", () => {
@@ -268,4 +292,13 @@ describe("styling a range of words", () => {
       ],
     });
   });
+});
+
+
+it("hangs trailing ordinary spaces at hard line ends without dropping their text", () => {
+  const html = runsToHtml([{text:"Centered ",fontSize:60},{text:"\n"},{text:"Second"}]);
+  expect(html).toContain('data-slide-hanging-space="1"');
+  expect(html).toContain('width:0;overflow:hidden;font-size:0;line-height:0"> </span>');
+  expect(html).toContain("Centered");
+  expect(runsToHtml([{text:"Internal space remains"}])).not.toContain("data-slide-hanging-space");
 });

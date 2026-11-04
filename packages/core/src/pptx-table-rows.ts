@@ -178,6 +178,7 @@ type RowMeasure = {
   padBottom?: number;
   padLeft?: number;
   colSpan?: number;
+  textFlow?: "up" | "down" | "upright";
   /** Subscript runs are narrower than the concatenated cell text. */
   runs?: { text?: string; baseline?: number; fontSize?: number }[];
 };
@@ -213,16 +214,21 @@ export function tableTextRowEmu(
   rows: string[][],
   marks: RowMeasure[][],
   colEmu: number[],
+  columnStarts?: number[][],
 ): number[] {
   const pt = 12700;
   return rows.map((row, r) => {
     let col = 0;
     let need = 0;
     row.forEach((text, c) => {
+      col = columnStarts?.[r]?.[c] ?? col;
       const mark = marks[r]?.[c];
       const span = mark?.colSpan && mark.colSpan > 0 ? mark.colSpan : 1;
       const width = colEmu.slice(col, col + span).reduce((sum, cell) => sum + cell, 0);
       col += span;
+      // Rotated text runs along the spanning cell's height. Measuring it
+      // against a narrow column creates dozens of false wrapped lines.
+      if (mark?.textFlow) return;
       // Fixture grids use token widths. A real cell is at least a tenth of an inch.
       if (!(width > 100_000)) return;
       const blanks = blankParagraphLines(text);

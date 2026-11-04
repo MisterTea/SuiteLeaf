@@ -27,9 +27,9 @@ it("scales stored normAutofit font and line spacing", async () => {
   );
   const file = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
   const [fitted, half] = file.content.slides[file.content.slideOrder[0]].elements;
-  expect(fitted.fontSize).toBeCloseTo(20.625);
+  expect(fitted.fontSize).toBeCloseTo(21);
   expect(fitted.lineHeight).toBeCloseTo(0.8 * officeSingleSpacing("Arial"), 4);
-  expect(fitted.runs?.[0]?.fontSize).toBeCloseTo(20.625);
+  expect(fitted.runs?.[0]?.fontSize).toBeCloseTo(21);
   expect(half.fontSize).toBeCloseTo(9);
 });
 
@@ -198,4 +198,10 @@ it("clamps a negative body inset so the slide still opens", async () => {
   expect(text?.padBottom).toBe(0);
   expect(text?.inset).toBeGreaterThan(0);
   expect(() => parseFile(JSON.stringify(file))).not.toThrow();
+});
+
+it("keeps an explicitly named ordinary bullet font apart from the words", async () => {
+ const zip=new JSZip();zip.file("ppt/slides/slide1.xml",`<p:sld><p:spTree><p:sp><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="4000000" cy="2000000"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:p><a:pPr><a:buFont typeface="Arial"/><a:buChar char="•"/></a:pPr><a:r><a:rPr sz="2000"><a:solidFill><a:srgbClr val="000000"/></a:solidFill><a:latin typeface="Calibri"/></a:rPr><a:t>Word</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:sld>`);
+ const f=await parsePowerPoint(await zip.generateAsync({type:"uint8array"}));const e=f.content.slides[f.content.slideOrder[0]].elements[0];
+ expect(e.runs?.[0]).toMatchObject({text:"• ",font:"SuiteLeaf Aspen",color:"#000000"});expect(e.runs?.[1].font).toBe("SuiteLeaf Willow");
 });

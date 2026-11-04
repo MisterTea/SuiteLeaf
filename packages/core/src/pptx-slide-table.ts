@@ -74,6 +74,7 @@ export async function paintSlideTable(
   }[] = [];
   let yEmu = 0;
   const rowEmu: number[] = [];
+  const cellColumns: number[][] = [];
   const trRx = /<a:tr\b[\s\S]*?<\/a:tr>/g;
   let trMatch: RegExpExecArray | null;
   while ((trMatch = trRx.exec(tbl)) !== null) {
@@ -81,6 +82,7 @@ export async function paintSlideTable(
     const rowH = Number(/<a:tr\b[^>]*\bh="(\d+)"/.exec(rowXml)?.[1] ?? 0);
     const row: string[] = [];
     const marks: ReturnType<typeof explicitTableCell>[] = [];
+    const columns: number[] = [];
     let xEmu = 0;
     let col = 0;
     const tcRx = /<a:tc\b[\s\S]*?<\/a:tc>/g;
@@ -121,6 +123,7 @@ export async function paintSlideTable(
         });
       }
       const cellTx = await parseTextBody(cell, otherStyle ? [otherStyle] : [], { table: true });
+      columns.push(col);
       row.push(cellTx.map((p) => p.text).join("\n"));
       const laid = explicitTableCell(cell, cellTx, (xml) =>
         paintColor(xml, scheme),
@@ -137,6 +140,7 @@ export async function paintSlideTable(
     if (row.length > 0) {
       rows.push(row);
       cellMarks.push(marks);
+      cellColumns.push(columns);
       rowEmu.push(rowH);
     }
     yEmu += rowH;
@@ -188,7 +192,7 @@ export async function paintSlideTable(
   const frameCy = Number(/<(?:a|p):ext\b[^>]*\bcy="(\d+)"/.exec(xfrm)?.[1] ?? 0);
   const frameTop = Number(/<(?:a|p):off\b[^>]*\by="(-?\d+)"/.exec(xfrm)?.[1] ?? 0);
   const distributedRows = distributeUnsetTableRows(rowEmu, frameCy, frameCx);
-  const neededRows = tableTextRowEmu(rows, styledMarks, cols);
+  const neededRows = tableTextRowEmu(rows, styledMarks, cols, cellColumns);
   const grownRows = growClippedTableRows(
     distributedRows,
     neededRows,

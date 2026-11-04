@@ -13,7 +13,7 @@ import { clipBoxToSlide, offslideShiftStyle, type SlideClip } from "./slide-prin
 import { rotatedPictureFrame, turnedPictureTransform } from "./slide-picture-frame";
 import { RotatedSlideShape, rotatedShapePrintable, shapeDropShadow } from "./slide-rotated-shape";
 import { SlideMediaStill } from "./slide-media-still";
-import { slideCellPaint, tableCellLayout, tableRowHeightCss } from "./slide-table-format";
+import { slideCellPaint, tableCellFlow, tableCellLayout, tableRowHeightCss } from "./slide-table-format";
 import { boxFont, SlideTextBody } from "./slide-text";
 import { proofingLanguage, proofingTextDirection } from "./proofing-language";
 import { wordArtProps } from "./slide-word-art";
@@ -633,6 +633,8 @@ export function SlideFace({
                           (mark?.rowSpan ?? 1) > 1,
                           slideCellPaint(mark, hideDefaultRules),
                         );
+                        const flow = tableCellFlow(mark);
+                        const body = flow ? <div data-cell-flow={mark?.textFlow} style={flow}>{cellBody(cell, mark)}</div> : cellBody(cell, mark);
                         return (
                           <td
                             key={cIdx}
@@ -646,10 +648,10 @@ export function SlideFace({
                           >
                             {layout.clip ? (
                               <div data-row-clip="" style={layout.clip}>
-                                {cellBody(cell, mark)}
+                                {body}
                               </div>
                             ) : (
-                              cellBody(cell, mark)
+                              body
                             )}
                           </td>
                         );

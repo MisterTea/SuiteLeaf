@@ -7,6 +7,21 @@ import { tableCellLayout, tableRowHeightCss } from "../../apps/web/src/editors/s
 
 afterEach(cleanup);
 
+it("keeps a vertical table header inside the cell content", () => {
+  const file = createFile("slide", "Vertical table");
+  if (file.kind !== "slide") throw new Error("expected slides");
+  const deck = file.content;
+  const slide = deck.slides[deck.slideOrder[0]];
+  slide.elements = [{ id: "t", type: "table", x: 0, y: 0, width: 200, height: 100,
+    rows: [["Specified Impact"]], rowHeights: [1], cellMarks: [[{ textFlow: "up", align: "center", valign: "middle" }]] }];
+  render(<SlideFace deck={deck} slide={slide} index={0} />);
+  const content = document.querySelector<HTMLElement>('[data-cell-flow="up"]');
+  expect(content?.textContent).toBe("Specified Impact");
+  expect(content?.style.writingMode).toBe("vertical-rl");
+  expect(content?.style.transform).toBe("rotate(180deg)");
+  expect(content?.closest("td")?.style.transform).toBe("");
+});
+
 it("sizes a table row from the stored grid, including a collapsed row", () => {
   expect(tableRowHeightCss(0.4, 200, 960)).toBe("calc(80 / 960 * 100cqw)");
   expect(tableRowHeightCss(0, 200, 960)).toBe("0px");

@@ -1,0 +1,5 @@
+/* PT Sans is licensed under the SIL Open Font License; see LICENSE-PT-Sans.txt. */
+@font-face { font-family: "PT Sans"; src: url("./pt-sans-400-normal.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: "PT Sans"; src: url("./pt-sans-700-normal.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: block; }
+@font-face { font-family: "PT Sans"; src: url("./pt-sans-400-italic.woff2") format("woff2"); font-weight: 400; font-style: italic; font-display: block; }
+@font-face { font-family: "PT Sans"; src: url("./pt-sans-700-italic.woff2") format("woff2"); font-weight: 700; font-style: italic; font-display: block; }

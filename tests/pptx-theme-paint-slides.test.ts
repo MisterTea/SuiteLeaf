@@ -390,7 +390,7 @@ it("paints rotated layout labels and a duotone theme background", async () => {
     nowrap: true,
     color: "#FFFFFF",
   });
-  expect(label?.fontSize).toBeLessThan(18);
+  expect(label?.fontSize).toBe(18);
   expect(elements.some((el) => el.content?.includes("Click to edit"))).toBe(false);
   const background = elements.find((el) => el.alt === "Slide background");
   expect(background?.src?.startsWith("data:image/svg+xml;base64,")).toBe(true);

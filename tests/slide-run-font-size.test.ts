@@ -169,3 +169,14 @@ describe("imported slide font sizes", () => {
     expect(cleanRun({ text: "Structure", reflection }).reflection).toEqual(reflection);
   });
 });
+
+ it("scales mixed hard-break line heights with each line font size", () => {
+ const html = runsToHtml([{text:"Title",fontSize:44},{text:"\n",fontSize:32},{text:"Subtitle",fontSize:32}], undefined, undefined, {fontSize:44,lineHeight:1.2207});
+ expect(html).toContain("line-height:calc(32 * var(--slide-pt, 1) * 1.2207 * 1px)");
+ });
+
+it("anchors a fixed bullet gutter to centered text rather than the box edge", () => {
+ const html=runsToHtml([{text:"• centered",fontSize:20}],undefined,30);
+ expect(html).toContain("display:inline-block;width:0;transform:translateX(calc(-30px");
+ expect(html).not.toContain("float:left");
+});

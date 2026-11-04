@@ -102,7 +102,7 @@ export const OFFICE_TO_SUITELEAF: Record<string, string> = {
   "Lucida Console": "SuiteLeaf Tupelo",
   "Lucida Fax": "SuiteLeaf Eucalyptus Demibold",
   "Lucida Handwriting": "SuiteLeaf Baobab",
-  "Lucida Sans": "SuiteLeaf Sassafras Demibold",
+  "Lucida Sans": "SuiteLeaf Sassafras",
   "Lucida Sans Typewriter": "SuiteLeaf Banyan",
   "Lucida Sans Unicode": "SuiteLeaf Buckeye",
   "MS Gothic": "SuiteLeaf Bamboo",

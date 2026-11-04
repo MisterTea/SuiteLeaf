@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SlideElement } from "../packages/core/src";
 import { officeSingleSpacing } from "../packages/core/src/office-fonts";
-import { slideCellPaint, toggleSlideCellMark } from "../apps/web/src/editors/slide-table-format";
+import { slideCellPaint, tableCellFlow, toggleSlideCellMark } from "../apps/web/src/editors/slide-table-format";
 
 const table: SlideElement = {
   id: "t",
@@ -17,6 +17,16 @@ const table: SlideElement = {
 };
 
 describe("slide table marks", () => {
+  it("turns cell text independently from its borders", () => {
+    expect(tableCellFlow(undefined)).toBeUndefined();
+    expect(tableCellFlow({ textFlow: "up", align: "center", valign: "middle" })).toMatchObject({
+      writingMode: "vertical-rl", transform: "rotate(180deg)", alignItems: "center", justifyContent: "center",
+    });
+    expect(tableCellFlow({ textFlow: "down", align: "right", valign: "bottom" })).toMatchObject({
+      writingMode: "vertical-rl", alignItems: "flex-end", justifyContent: "flex-end",
+    });
+    expect(tableCellFlow({ textFlow: "upright" })).toMatchObject({ textOrientation: "upright", alignItems: "flex-start", justifyContent: "flex-start" });
+  });
   it("toggles bold and italic on one cell", () => {
     const bold = toggleSlideCellMark(table, 0, 0, "bold");
     expect(bold?.cellMarks?.[0]?.[0]).toEqual({ bold: true });

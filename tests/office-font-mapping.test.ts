@@ -14,6 +14,7 @@ import { excelFixture } from "./office-fixtures";
 describe("Office font names", () => {
   it("become the installed family that lays text out the same way, and back", () => {
     expect(suiteLeafFont("Calibri")).toBe("SuiteLeaf Willow");
+    expect(suiteLeafFont("Lucida Sans")).toBe("SuiteLeaf Sassafras");
     expect(suiteLeafFont("Calibri Light")).toBe("SuiteLeaf Willow Light");
     expect(suiteLeafFont("Aptos SemiBold")).toBe("SuiteLeaf Elm SemiBold");
     expect(suiteLeafFont("ＭＳ ゴシック")).toBe("SuiteLeaf Bamboo");

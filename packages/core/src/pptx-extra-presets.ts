@@ -1,3 +1,4 @@
+import { mathPlusPreset, mathEqualPreset } from "./pptx-math-presets";
 import type { PresetDef } from "./pptx-preset-data";
 import {
   curvedDownArrowPreset,
@@ -15,6 +16,8 @@ import { quadArrowPreset } from "./pptx-quad-arrow";
  * A swoosh arrow is the curved shaft with a head, not the shape's rectangle.
  */
 export const extraPresets: Record<string, PresetDef> = {
+  mathPlus: mathPlusPreset,
+  mathEqual: mathEqualPreset,
   curvedDownArrow: curvedDownArrowPreset,
   curvedUpArrow: curvedUpArrowPreset,
   uturnArrow: uturnArrowPreset,

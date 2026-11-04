@@ -94,6 +94,13 @@ export async function paintSlideShapes(
   const hideSlideNumber =
     slideNumberShown === false ||
     (slideNumberShown !== true && hideTitleChrome);
+  // A master can draw its page field as ordinary artwork, with no ph tag.
+  // An empty local placeholder must not create a second, default-sized copy.
+  const inheritedNumberLabel = [masterPart?.xml, layoutPart?.xml].some((xml) =>
+    [...(xml || "").matchAll(/<p:sp\b[\s\S]*?<\/p:sp>/g)].some(
+      (shape) => !/<p:ph\b/.test(shape[0]) && /<a:fld\b[^>]*\btype="slidenum"/.test(shape[0]),
+    ),
+  );
   const spRx = /<p:sp\b[\s\S]*?<\/p:sp>/g;
   let spMatch: RegExpExecArray | null;
   while ((spMatch = spRx.exec(slideXml)) !== null) {
@@ -241,7 +248,7 @@ export async function paintSlideShapes(
       );
       if (
         paragraphs.some((paragraph) => paragraph.text.trim()) ||
-        wantsNumber
+        (wantsNumber && !inheritedNumberLabel)
       ) {
         // A slide-number field is already the page number. Keep the date and
         // other runs that share its placeholder instead of dropping them.
@@ -279,7 +286,7 @@ export async function paintSlideShapes(
         const cssLineOf = (paragraph: (typeof paragraphs)[number]) => {
           if (paragraph.exactLine) return paragraph.lineHeight;
           const factor = paragraph.lineHeight ?? 1;
-          const single = officeSingleSpacing(first?.font || "Arial", embeddedLineGrids);
+          const single = officeSingleSpacing(paragraph.font || first?.font || "Arial", embeddedLineGrids);
           return single * factor;
         };
         const cssLines = paragraphs.map(cssLineOf);

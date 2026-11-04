@@ -497,3 +497,25 @@ it("does not paint table cells in the presentation default text style", async ()
   expect(table?.cellMarks?.[0]?.[0]?.color).toBeUndefined();
   expect(table?.cellMarks?.[1]?.[0]?.fontSize).toBe(14);
 });
+
+it("lets table header color replace inherited run color while retaining explicit fills", () => {
+  const xml = '<a:tc><a:txBody><a:p><a:r><a:rPr/><a:t>Header</a:t></a:r></a:p></a:txBody></a:tc>';
+  const paragraphs = [{ text: 'Header', font: 'Calibri', color: '#000000', runs: [{text:'Header',font:'Calibri',color:'#000000'}] }];
+  const cell = explicitTableCell(xml, paragraphs, () => undefined);
+  const mark = mergeTableCell(cell, {color:'#ffffff'}, undefined);
+  expect(mark.color).toBe('#ffffff');
+  expect(mark.runs?.[0].color).toBeUndefined();
+  const colored = explicitTableCell(xml.replace('<a:rPr/>','<a:rPr><a:solidFill><a:srgbClr val="FF0000"/></a:solidFill></a:rPr>'), paragraphs, () => '#ff0000');
+  expect(colored.runs?.[0].color).toBe('#000000');
+});
+
+it("keeps DrawingML table subscript scaling", () => {
+  const cell = explicitTableCell('<a:tc/>', [{text:'pwith',runs:[{text:'p',font:'Calibri'},{text:'with',font:'Calibri',baseline:-25,scriptScale:true}]}], () => undefined);
+  expect(cell.runs?.[1]).toMatchObject({baseline:-25,scriptScale:true});
+});
+
+it("retains table script scaling through saved presentation validation", async () => {
+  const { presentationSchema } = await import('../packages/core/src/slide-schema');
+  const parsed = presentationSchema.parse({id:'deck',slideOrder:['s'],slides:{s:{id:'s',elements:[{id:'t',type:'table',x:0,y:0,width:100,height:100,rows:[['p']],cellMarks:[[{runs:[{text:'p',baseline:-25,scriptScale:true}]}]]}]}},width:960,height:540});
+  expect(parsed.slides.s.elements[0].cellMarks?.[0][0].runs?.[0].scriptScale).toBe(true);
+});

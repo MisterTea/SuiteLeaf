@@ -388,6 +388,7 @@ export const slideElementSchema = z.object({
           padBottom: z.number().nonnegative().max(200).optional(),
           padLeft: z.number().nonnegative().max(200).optional(),
           valign: z.enum(["top", "middle", "bottom"]).optional(),
+          textFlow: z.enum(["up", "down", "upright"]).optional(),
           lines: z
             .array(
               z.object({
@@ -419,6 +420,7 @@ export const slideElementSchema = z.object({
                 fontSize: z.number().positive().optional(),
                 bulletSrc: z.string().max(700_000).optional(),
                 baseline: z.number().min(-1000).max(1000).optional(),
+                scriptScale: z.boolean().optional(),
                 bold: z.boolean().optional(),
                 paragraphBreak: z.boolean().optional(),
                 paraMargin: z.number().nonnegative().max(20000).optional(),

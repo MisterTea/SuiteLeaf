@@ -2,7 +2,6 @@ import { gatherNativeDrawing } from "./pptx-native-objects";
 import { composeRotation } from "./pptx-group-xform";
 import {
   drawingPose,
-  fittedLabelSize,
   inheritedLabels,
   inheritedShapes,
   insideHiddenGroup,
@@ -219,6 +218,7 @@ export async function paintSlideBackdrop(slide: SlideContext) {
     }
     pieces.sort((a, b) => a.at - b.at);
     for (const piece of pieces) await piece.draw();
+    await paintInheritedLabels({ ...slide, layers: [part] });
   }
 }
 
@@ -245,16 +245,9 @@ export async function paintInheritedLabels(slide: SlideContext) {
         paragraphs.find((paragraph) => paragraph.text.trim()) ?? paragraphs[0];
       const content = paragraphs.map((paragraph) => paragraph.text).join("\n");
       const declared = first?.size || 18;
-      const fontSize = label.stretchText
-        ? declared
-        : fittedLabelSize(
-            content,
-            declared,
-            label.width,
-            label.height,
-            !!label.nowrap,
-          );
-      const scale = declared > 0 ? fontSize / declared : 1;
+      // spAutoFit grows the shape, not the font. normAutofit has already
+      // been applied by parseTextBody; do not fit inherited labels twice.
+      const fontSize = declared;
       elements.push({
         id: crypto.randomUUID(),
         type: "text",
@@ -265,11 +258,7 @@ export async function paintInheritedLabels(slide: SlideContext) {
         content,
         runs: paragraphs.flatMap((paragraph, index) => [
           ...(index ? [{ text: "\n", paragraphBreak: true as const }] : []),
-          ...paragraph.runs.map((run) =>
-            scale < 0.999 && run.fontSize
-              ? { ...run, fontSize: run.fontSize * scale }
-              : run,
-          ),
+          ...paragraph.runs,
         ]),
         bold: first?.bold,
         italic: first?.italic,

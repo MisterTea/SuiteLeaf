@@ -44,3 +44,11 @@ export function autofitLineFactor(
   const base = original ?? 1;
   return Math.min(4, Math.max(0, base - reduction));
 }
+
+/** PowerPoint quantizes reduced run sizes to the next whole point. The stored
+ * percentage is a fitting hint; retaining fractions makes lines too narrow.
+ * Unscaled and enlarged text retain their authored point precision. */
+export function autofitPointSize(points: number, scale: number): number {
+  const fitted = points * scale;
+  return scale > 0 && scale < 1 ? Math.ceil(fitted - 1e-8) : fitted;
+}

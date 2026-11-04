@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
+import { officeSingleSpacing } from "../packages/core/src/office-fonts";
 import { parsePowerPoint } from "../packages/core/src/pptx";
 
 const theme = `<a:theme><a:themeElements><a:clrScheme name="Office">
@@ -17,7 +18,7 @@ const theme = `<a:theme><a:themeElements><a:clrScheme name="Office">
   <a:folHlink><a:srgbClr val="954F72"/></a:folHlink>
 </a:clrScheme></a:themeElements></a:theme>`;
 
-const drawing = `<dsp:drawing xmlns:dsp="http://schemas.microsoft.com/office/drawing/2008/diagram" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><dsp:spTree><dsp:nvGrpSpPr><dsp:cNvPr id="0" name=""/></dsp:nvGrpSpPr><dsp:grpSpPr/><dsp:sp><dsp:nvSpPr><dsp:cNvPr id="2" name="Chevron"/></dsp:nvSpPr><dsp:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="2000000" cy="800000"/></a:xfrm><a:prstGeom prst="chevron"><a:avLst/></a:prstGeom><a:solidFill><a:schemeClr val="accent1"/></a:solidFill><a:ln w="12700"><a:solidFill><a:schemeClr val="lt1"/></a:solidFill></a:ln></dsp:spPr><dsp:style><a:fontRef idx="minor"><a:schemeClr val="lt1"/></a:fontRef></dsp:style><dsp:txBody><a:bodyPr anchor="ctr" lIns="0" tIns="0" rIns="0" bIns="0"/><a:lstStyle/><a:p><a:pPr algn="ctr"/><a:r><a:rPr sz="1800"/><a:t>Planning</a:t></a:r></a:p></dsp:txBody><dsp:txXfrm><a:off x="100000" y="0"/><a:ext cx="1600000" cy="800000"/></dsp:txXfrm></dsp:sp></dsp:spTree></dsp:drawing>`;
+const drawing = `<dsp:drawing xmlns:dsp="http://schemas.microsoft.com/office/drawing/2008/diagram" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><dsp:spTree><dsp:nvGrpSpPr><dsp:cNvPr id="0" name=""/></dsp:nvGrpSpPr><dsp:grpSpPr/><dsp:sp><dsp:nvSpPr><dsp:cNvPr id="2" name="Chevron"/></dsp:nvSpPr><dsp:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="2000000" cy="800000"/></a:xfrm><a:prstGeom prst="chevron"><a:avLst/></a:prstGeom><a:solidFill><a:schemeClr val="accent1"/></a:solidFill><a:ln w="12700"><a:solidFill><a:schemeClr val="lt1"/></a:solidFill></a:ln></dsp:spPr><dsp:style><a:fontRef idx="minor"><a:schemeClr val="lt1"/></a:fontRef></dsp:style><dsp:txBody><a:bodyPr anchor="ctr" lIns="0" tIns="0" rIns="0" bIns="0"/><a:lstStyle/><a:p><a:pPr algn="ctr"><a:lnSpc><a:spcPct val="90000"/></a:lnSpc></a:pPr><a:r><a:rPr sz="1800"/><a:t>Planning</a:t></a:r></a:p></dsp:txBody><dsp:txXfrm><a:off x="100000" y="0"/><a:ext cx="1600000" cy="800000"/></dsp:txXfrm></dsp:sp></dsp:spTree></dsp:drawing>`;
 
 describe("PowerPoint diagrams and highlights", () => {
   it("places a SmartArt drawing inside its graphic frame and paints highlight behind words", async () => {
@@ -84,6 +85,7 @@ describe("PowerPoint diagrams and highlights", () => {
       align: "center",
       valign: "middle",
     });
+    expect(label?.lineHeight).toBeCloseTo(officeSingleSpacing(label?.fontFamily) * 0.9);
     expect(label && label.x).toBeGreaterThan(chevron?.x ?? 0);
     expect(quote?.runs?.[0]?.highlight?.toLowerCase()).toBe("#ffff00");
     expect(quote?.runs?.[0]?.color?.toLowerCase()).not.toBe("#ffff00");

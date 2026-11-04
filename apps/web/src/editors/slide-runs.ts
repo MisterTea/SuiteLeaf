@@ -296,7 +296,7 @@ function bulletSlotHtml(
   // Float the marker into the gutter. A negative text-indent is not painted
   // while the box is being edited, so the first bullet would disappear.
   const fixedStyle = fixed
-    ? `float:left;width:${slidePx(slot)};margin-left:${slidePx(-slot)};text-indent:0;line-height:inherit`
+    ? `display:inline-block;width:0;transform:translateX(${slidePx(-slot)});text-indent:0;line-height:inherit`
     : `display:inline-block;min-width:${slidePx(slot)};vertical-align:baseline;text-indent:0`;
   if (picture) {
     return `<span${fixedAttr} data-bullet-src="${run.bulletSrc}" style="${fixedStyle};line-height:0">${picture}<span style="font-size:0;line-height:0">${escapeHtml(run.text)}</span></span>`;
@@ -353,12 +353,14 @@ function lineBoxHtml(
   kern: number | undefined,
   slot: number,
   hanging = false,
+  lineFactor?: number,
 ): string {
   const rules = ["display:block", "margin:0"];
   const data = ['data-slide-line="1"'];
   if (line.font) {
     rules.push(`font-size:calc(${line.font} * var(--slide-pt, 1) * 1px)`);
     data.push(`data-font-size="${line.font}"`);
+    if (lineFactor) rules.push(`line-height:${lineHeightCss(line.font, lineFactor)}`);
   }
   const inner = htmlForRuns(line.runs, kern, slot, hanging);
   if (!inner) rules.push("min-height:1lh");
@@ -436,9 +438,22 @@ function tabbedParagraphHtml(
     .map((pieces, lineIndex) => {
       const stops: readonly TabStop[] =
         lineIndex === 0 && hang > 0 ? [{ pos: origin + hang, align: "l" }, ...stored] : stored;
-      let x = origin;
+      // Continuation lines begin at the text margin, to the right of the
+      // bullet gutter. Default tab stops remain relative to the box inset.
+      let x = origin + (lineIndex > 0 ? hang : 0);
       let html = "";
       pieces.forEach((piece, index) => {
+        // Tabs anywhere in the paragraph must not change its bullet gutter.
+        // The plain-text path splits a combined marker/words run into a slot;
+        // do the same before measuring tab positions here.
+        const split = index === 0 && hang > 0 && lineIndex === 0 && !piece.tab
+          ? takeMarker({ ...piece.run, text: piece.text }) : null;
+        if (split) {
+          html += bulletSlotHtml(split.marker, kern, hang);
+          html += runSpan(split.rest, kern);
+          x = origin + hang + textWidthPt(split.rest.text, split.rest, metrics);
+          return;
+        }
         // The marker sits in the gutter. Its symbol-font space is a full em,
         // so measuring that space pushes the next tab onto the following stop.
         if (index === 0 && hang > 0 && isSymbolBullet(piece.run)) {
@@ -482,7 +497,7 @@ function renderParagraphInner(
   // otherwise stay as tall as the title and clip the lines below it.
   if (lines.length > 1 && mixedLineSizes(lines))
     return lines
-      .map((line, index) => lineBoxHtml(line, kern, index === 0 ? slot : 0, hanging))
+      .map((line, index) => lineBoxHtml(line, kern, index === 0 ? slot : 0, hanging, mark?.paraLine || metrics?.lineHeight))
       .join("");
   let lastContent = -1;
   for (let i = 0; i < paragraph.length; i++) {
@@ -491,6 +506,16 @@ function renderParagraphInner(
   return paragraph
     .map((run, index) => {
       if (run.text === "\n") return lineBreakHtml(run, index > lastContent);
+      // DrawingML hangs ordinary spaces at a hard line end. CSS `pre`
+      // includes them in centered/right alignment; keep them in the DOM for
+      // editing while excluding their width from the painted line.
+      const atLineEnd = index === paragraph.length - 1 || paragraph[index + 1].text === "\n";
+      const tail = atLineEnd ? / +$/.exec(run.text)?.[0] : undefined;
+      if (tail) {
+        const visible = { ...run, text: run.text.slice(0, -tail.length) };
+        return htmlForRuns([visible], kern, index === 0 ? slot : 0, hanging) +
+          `<span data-slide-hanging-space="1" style="display:inline-block;width:0;overflow:hidden;font-size:0;line-height:0">${tail}</span>`;
+      }
       return htmlForRuns([run], kern, index === 0 ? slot : 0, hanging);
     })
     .join("");
@@ -693,6 +718,13 @@ export function glueShortHyphenHtml(text: string): string {
 
 /** The paragraph strut follows the words. A leading symbol bullet is only a marker. */
 function strutMark(mark: TextRun | undefined, paragraph: readonly TextRun[]): TextRun | undefined {
+  // A paragraph break carries size/spacing but no font. In a mixed-family
+  // box the inherited family can have a different baseline, enlarging every
+  // line beyond its requested pitch. Use the paragraph's words for the strut.
+  if (mark && !mark.font) {
+    const font = paragraph.find((run) => run.text.trim() && !isSymbolBullet(run))?.font;
+    if (font) mark = { ...mark, font };
+  }
   if (!mark || !isSymbolBullet(mark)) return mark;
   let size = 0;
   for (const run of paragraph) {
@@ -731,6 +763,7 @@ function leadingShift(fontSize: number, factor: number, metrics?: TabMetrics): s
 function paragraphStyle(run: TextRun | undefined, empty = false, metrics?: TabMetrics): string {
   if (!run) return "display:block;margin:0";
   const rules = ["display:block", "margin:0"];
+  if (run.font) rules.push(`font-family:${paintFontFamily(run.font)}`);
   // Wrapped lines start at the margin plus the hang. A negative indent pulls
   // the first line back. `hanging` is dropped by the print engine, which left
   // every continuation flush with the bullet.

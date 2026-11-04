@@ -304,7 +304,11 @@ def write_css(office_dir, out):
             our_typographic = ours["name"].getDebugName(16) or our_legacy
             office_legacy = office["name"].getDebugName(1)
             for name in font_names(office, 1):
-                to_suiteleaf.setdefault(name, our_legacy)
+                # A shared Office family may have separate legacy families in
+                # our fonts (Lucida Sans Demibold versus regular). Route the
+                # shared name to the typographic family containing every face.
+                target_family = our_typographic if name in font_names(office, 16) else our_legacy
+                to_suiteleaf.setdefault(name, target_family)
             for name in font_names(office, 16):
                 to_suiteleaf.setdefault(name, our_typographic)
             to_office.setdefault(our_legacy, office_legacy)

@@ -274,6 +274,9 @@ it("paints a DIB stretch blit as the metafile picture", () => {
     ...pixels,
   ]);
   const svg = svgOf(metafile([windowExt, blit]));
+  const withoutExtent = svgOf(metafile([blit]));
+  expect(withoutExtent).toContain('viewBox="0 0 20 10"');
+  expect(withoutExtent).toContain('<image ');
   expect(svg).toContain("<image ");
   expect(svg).toContain('width="20"');
   expect(svg).toContain('height="10"');

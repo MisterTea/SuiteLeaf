@@ -1,6 +1,6 @@
 import type JSZip from "jszip";
 import type { TextRun } from "./index";
-import { autofitLineFactor, normAutofitFactors } from "./pptx-autofit";
+import { autofitLineFactor, autofitPointSize, normAutofitFactors } from "./pptx-autofit";
 import {
   exactLineFactor,
   lastLineSpacing,
@@ -332,11 +332,14 @@ export function textBodyParser({
             }
           }
           const latinMatch = /<a:latin\s+typeface="([^"]+)"/.exec(rXml);
+          // Each run inherits its own paragraph's default face, not the first
+          // paragraph's box face or a preceding run's explicit heading face.
+          if (!run.font && defaultFont) run.font = themeFont(defaultFont);
           if (latinMatch && !isSymbolFont(latinMatch[1])) {
             fontFamily = themeFont(latinMatch[1]);
             // The box face is one paragraph. A run that names its own face
             // must keep it, or a later Calibri line paints in the theme Arial.
-            if (!run.font && fontFamily) run.font = fontFamily;
+            if (fontFamily) run.font = fontFamily;
           }
           const painted = runPaint(rXml, scheme);
           const resolved =
@@ -419,9 +422,9 @@ export function textBodyParser({
       // Shrink-to-fit scales every run. Percentage bullets then follow the
       // fitted size; an absolute buSzPts marker stays in points.
       if (fit.font !== 1) {
-        if (fontSize) fontSize *= fit.font;
+        if (fontSize) fontSize = autofitPointSize(fontSize, fit.font);
         for (const run of textRuns) {
-          if (run.fontSize) run.fontSize *= fit.font;
+          if (run.fontSize) run.fontSize = autofitPointSize(run.fontSize, fit.font);
         }
       }
       const autoTag = /<a:buAutoNum\b([^>]*)\/?>/.exec(bulletStyle);
@@ -483,7 +486,7 @@ export function textBodyParser({
         const rawBullet = decodeXmlEntities(bulletChar);
         const marker = `${symbolFace ? symbolFontChar(rawBullet) : rawBullet} `;
         pText = marker + pText;
-        const symbol = suiteLeafFont(symbolFace);
+        const symbol = suiteLeafFont(symbolFace || bulletFace);
         // StarSymbol draws ▪ as a square about 1.85 times the Unicode small square.
         // The face is set so the marker does not become the paragraph's strut.
         const starSquare = /starsymbol/i.test(bulletFace || "") && rawBullet === "▪";
@@ -495,11 +498,14 @@ export function textBodyParser({
           : paintColor(inheritedBulletColorXml(styleParts), scheme);
         const first = textRuns.find((run) => run.text && run.text !== "\n");
         if (symbol || bulletSize || bulletColor) {
+          // Ordinary bullet fonts still use the words' paint when buClrTx is
+          // stored. A separate marker must not inherit the box's theme color.
+          const markerColor = bulletColor || (!symbolFace ? first?.color : undefined);
           const bulletRun: TextRun = {
             text: marker,
             ...(symbol ? { font: symbol } : starSquare ? { font: suiteLeafFont("Calibri") } : {}),
             ...(bulletSize ? { fontSize: bulletSize } : {}),
-            ...(bulletColor ? { color: bulletColor } : {}),
+            ...(markerColor ? { color: markerColor } : {}),
           };
           const at = first ? textRuns.indexOf(first) : textRuns.length;
           textRuns.splice(at, 0, bulletRun);
@@ -547,7 +553,7 @@ export function textBodyParser({
           // the script size. Percentage space-before keeps the full size.
           const shifted = paragraphMarkBaseline(pXml) || (!marked && inheritedShift);
           // The paragraph size is already fitted. The end mark's is not.
-          const fitted = marked ? marked * fit.font : fontSize;
+          const fitted = marked ? autofitPointSize(marked, fit.font) : fontSize;
           if (fitted) {
             spacingPt = fitted;
             fontSize = spacingPt * (shifted ? 0.65 : 1);
@@ -557,7 +563,7 @@ export function textBodyParser({
         // larger mark on a line that already has words does not stretch
         // those words. Shrink-to-fit scales that empty line too.
         const markSize = paragraphMarkPointSize(pXml);
-        const fittedMark = markSize ? markSize * fit.font : undefined;
+        const fittedMark = markSize ? autofitPointSize(markSize, fit.font) : undefined;
         if (fittedMark) {
           let lineSize = 0;
           for (const run of textRuns) {
@@ -570,7 +576,7 @@ export function textBodyParser({
         const gapPt =
           spacingPt ||
           fontSize ||
-          (Number(defaultRunAttrs.sz || 0) / 100 || 18) * fit.font;
+          autofitPointSize(Number(defaultRunAttrs.sz || 0) / 100 || 18, fit.font);
         // Shrink-to-fit scales a point gap with the font. Without a font
         // scale, the line-spacing reduction shrinks it instead.
         const gapScale = fit.font < 1 ? fit.font : fit.line;

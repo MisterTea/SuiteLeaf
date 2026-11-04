@@ -5,6 +5,7 @@ import {
   type Paint,
   type StylePart,
 } from "./pptx-table-style-resolve";
+import { verticalTextFlow } from "./pptx-layout-inherit";
 
 export {
   builtinTableStyle,
@@ -32,6 +33,7 @@ export type TableCellRun = {
   font?: string;
   fontSize?: number;
   baseline?: number;
+  scriptScale?: boolean;
   bold?: boolean;
   paragraphBreak?: boolean;
   paraMargin?: number;
@@ -74,6 +76,7 @@ export type TableCellStyle = {
   padBottom?: number;
   padLeft?: number;
   valign?: "top" | "middle" | "bottom";
+  textFlow?: "up" | "down" | "upright";
   /** Paragraph left edge, hanging indent, and first-line indent, in slide pixels. */
   lines?: {
     margin?: number;
@@ -217,6 +220,7 @@ export function tableCellRuns(
     ...(run.font ? { font: run.font } : {}),
     ...(run.fontSize ? { fontSize: run.fontSize } : {}),
     ...(run.baseline ? { baseline: run.baseline } : {}),
+    ...(run.scriptScale ? { scriptScale: true } : {}),
     ...(run.bold ? { bold: true } : {}),
     ...(run.paragraphBreak ? { paragraphBreak: true } : {}),
     ...(run.paraMargin ? { paraMargin: run.paraMargin } : {}),
@@ -315,7 +319,7 @@ export function explicitTableCell(
   const faced = ranked.find((paragraph) => paragraph.font);
   if (faced?.font) mark.font = faced.font;
   const runs = tableCellRuns(paragraphs);
-  if (runs) mark.runs = runs;
+  if (runs) mark.runs = explicit ? runs : runs.map(({ color: _inherited, ...run }) => run);
   const tabbed = paragraphs.find((paragraph) => paragraph.tabInterval);
   if (tabbed?.tabInterval) mark.tabSize = tabbed.tabInterval;
   if (first?.align && first.align !== "left") mark.align = first.align;
@@ -324,6 +328,8 @@ export function explicitTableCell(
   const tcPr =
     /<a:tcPr\b[^>]*>/.exec(cellXml)?.[0] ?? "";
   const tcAttrs = attrsOf(tcPr);
+  const flow = verticalTextFlow(tcAttrs.vert);
+  if (flow) mark.textFlow = flow;
   const margin = (name: string) => {
     const raw = tcAttrs[name];
     if (raw == null || raw === "") return;
@@ -407,6 +413,7 @@ export function mergeTableCell(
   if (cell.padBottom != null) mark.padBottom = cell.padBottom;
   if (cell.padLeft != null) mark.padLeft = cell.padLeft;
   if (cell.valign) mark.valign = cell.valign;
+  if (cell.textFlow) mark.textFlow = cell.textFlow;
   if (cell.lines?.length) mark.lines = cell.lines;
   if (cell.tabSize) mark.tabSize = cell.tabSize;
   if (cell.runs?.length) mark.runs = cell.runs;

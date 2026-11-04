@@ -20,3 +20,5 @@ Dialog text, page-number rules, import and export, and saved document state belo
 ## Fonts
 
 SuiteLeaf has layout-identical fonts to MS Office (e.g. Calibiri <--> SuiteLeaf Willow).  If you ever see a layout mismatch between an MS Office font and it's Suiteleaf counterpart, flag it and fix it in the Suiteleaf font.
+
+Avoid font-specific layout logic or spacing overrides. Do not tune named-font line spacing, widths, or offsets to match individual documents. Investigate shared causes in import, paragraph layout, autofit, inheritance, and font-metric interpretation; use font data through a general measurement path rather than family-specific rendering exceptions.

@@ -1,6 +1,20 @@
 import type { CSSProperties } from "react";
 import { officeSingleSpacing, type SlideElement } from "@suiteleaf/core";
 
+/** Cell writing direction changes its contents, while borders stay on the grid. */
+export function tableCellFlow(mark: NonNullable<SlideElement["cellMarks"]>[number][number] | undefined): CSSProperties | undefined {
+  if (!mark?.textFlow) return;
+  return {
+    width: "100%", height: "100%", flexShrink: 0,
+    writingMode: "vertical-rl",
+    textOrientation: mark.textFlow === "upright" ? "upright" : "mixed",
+    ...(mark.textFlow === "up" ? { transform: "rotate(180deg)" } : {}),
+    display: "flex",
+    alignItems: mark.align === "center" ? "center" : mark.align === "right" ? "flex-end" : "flex-start",
+    justifyContent: mark.valign === "middle" ? "center" : mark.valign === "bottom" ? "flex-end" : "flex-start",
+  };
+}
+
 function ruleCss(
   rule: { color: string; width?: number } | undefined,
 ): string | undefined {

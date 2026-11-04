@@ -1,3 +1,4 @@
+import { officePngSamples } from "./pptx-png-color";
 import { gatherNativeDrawing } from "./pptx-native-objects";
 import { composeRotation } from "./pptx-group-xform";
 import {
@@ -173,7 +174,7 @@ export async function paintSlidePictures(slide: SlideContext) {
       const pictureBytes =
         mime === "image/jpeg" && drawingPose(picXml).rotation
           ? jpegWithoutOrientation(imgBytes)
-          : imgBytes;
+          : mime === "image/png" ? officePngSamples(imgBytes) : imgBytes;
       // An EMF the browser cannot paint keeps its bytes so export writes the same picture.
       const src =
         recolor(applyBlipLuminance(paintableImage(pictureBytes, mime), picXml), picXml) ??

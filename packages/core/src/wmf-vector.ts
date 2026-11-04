@@ -342,6 +342,40 @@ export function vectorWmf(bytes: Uint8Array): string | undefined {
   pos += headerWords * 2;
   if (pos > bytes.length) return;
 
+  // Standard bitmap-only metafiles can omit both a placeable header and
+  // SETWINDOWEXT. Their destination rectangles define the drawable canvas.
+  // Leaving the default 1x1 extent clips all but the first bitmap pixel.
+  if (winExtX === 1 && winExtY === 1) {
+    let at = pos;
+    let bounds: { l: number; t: number; r: number; b: number } | undefined;
+    let explicitExtent = false;
+    while (at + 6 <= bytes.length) {
+      const size = view.getUint32(at, true) * 2;
+      const kind = view.getUint16(at + 4, true);
+      if (size < 6 || at + size > bytes.length || kind === 0) break;
+      if (kind === 0x020c) explicitExtent = true;
+      const extra = kind === 0x0f43 ? 2 : 0;
+      if ((kind === 0x0b41 || kind === 0x0f43) && size >= 26 + extra) {
+        const base = at + 6 + extra;
+        const h = view.getInt16(base + 12, true);
+        const w = view.getInt16(base + 14, true);
+        const y = view.getInt16(base + 16, true);
+        const x = view.getInt16(base + 18, true);
+        const rect = { l: Math.min(x, x + w), t: Math.min(y, y + h),
+          r: Math.max(x, x + w), b: Math.max(y, y + h) };
+        bounds = bounds ? { l: Math.min(bounds.l, rect.l), t: Math.min(bounds.t, rect.t),
+          r: Math.max(bounds.r, rect.r), b: Math.max(bounds.b, rect.b) } : rect;
+      }
+      at += size;
+    }
+    if (!explicitExtent && bounds && bounds.r > bounds.l && bounds.b > bounds.t) {
+      winOrgX = bounds.l;
+      winOrgY = bounds.t;
+      winExtX = bounds.r - bounds.l;
+      winExtY = bounds.b - bounds.t;
+    }
+  }
+
   const defaultFont = (): Font => ({
     kind: "font",
     face: "Arial",

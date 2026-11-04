@@ -12,7 +12,6 @@ import { extractRawStrings, parseBinaryPpt } from "./pptx-binary";
 import { openSlide, type PptxDeck } from "./pptx-slide-context";
 import {
   paintGroupPictures,
-  paintInheritedLabels,
   paintSlideBackdrop,
 } from "./pptx-slide-layers";
 import { paintConnectors, paintSlideShapes } from "./pptx-slide-shapes";
@@ -130,7 +129,6 @@ async function parseZipPptx(
     const slide = await openSlide(deck, idx, slidePaths[idx]);
     if (!slide) continue;
     await paintSlideBackdrop(slide);
-    await paintInheritedLabels(slide);
     await paintGroupPictures(slide);
 
     // 3. Parse Shapes (<p:sp>)
