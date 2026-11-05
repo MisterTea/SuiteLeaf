@@ -7,6 +7,7 @@ import {
 } from "./pptx-curved-arrows";
 import { gear6Preset, gear9Preset, leftCircularArrowPreset } from "./pptx-gear-presets";
 import { quadArrowPreset } from "./pptx-quad-arrow";
+import { cubePreset } from "./pptx-cube-preset";
 
 /**
  * Presets whose outlines are not in the baked table. Formulas match
@@ -16,6 +17,7 @@ import { quadArrowPreset } from "./pptx-quad-arrow";
  * A swoosh arrow is the curved shaft with a head, not the shape's rectangle.
  */
 export const extraPresets: Record<string, PresetDef> = {
+  cube: cubePreset,
   mathPlus: mathPlusPreset,
   mathEqual: mathEqualPreset,
   curvedDownArrow: curvedDownArrowPreset,

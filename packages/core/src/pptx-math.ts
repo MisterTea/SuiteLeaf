@@ -282,7 +282,7 @@ export function officeMathRuns(xml: string): TextRun[] {
     const block = elementInner(xml, tag, start);
     if (!block) break;
     const body = para ? (elementAt(block.inner, "oMath")?.inner ?? "") : block.inner;
-    runs.push(...runsIn(body, "base"));
+    runs.push(...runsIn(body, "base").map(run => ({ ...run, math: true })));
     cursor = block.end;
   }
   return runs;

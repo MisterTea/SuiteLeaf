@@ -1,5 +1,5 @@
 import type { SlideElement, TextRun } from "./index";
-import { officeSingleSpacing } from "./office-fonts";
+import { presentationLineHeight, presentationParagraphRuns } from "./pptx-line-spacing";
 
 export type DiagramParagraph = {
   text: string;
@@ -13,6 +13,7 @@ export type DiagramParagraph = {
   color?: string;
   font?: string;
   lineHeight?: number;
+  lineHeightPt?: number;
   exactLine?: boolean;
 };
 
@@ -49,10 +50,7 @@ export function diagramTextElement(
     type: "text",
     ...textBox,
     content: paragraphs.map((paragraph) => paragraph.text).join("\n"),
-    runs: paragraphs.flatMap((paragraph, index) => [
-      ...(index ? [{ text: "\n", paragraphBreak: true as const }] : []),
-      ...paragraph.runs,
-    ]),
+    runs: presentationParagraphRuns(paragraphs),
     bold: first?.bold,
     italic: first?.italic,
     ...(first?.underline ? { underline: true } : {}),
@@ -70,13 +68,8 @@ export function diagramTextElement(
           ...(pad.b !== pad.t ? { padBottom: pad.b } : {}),
         }
       : {}),
-    ...(first?.lineHeight
-      ? {
-          lineHeight: first.exactLine
-            ? first.lineHeight
-            : first.lineHeight * officeSingleSpacing(first.font || "Arial"),
-        }
-      : {}),
+    lineHeight: presentationLineHeight(first?.lineHeight, first?.exactLine),
+    ...(first?.lineHeightPt ? { lineHeightPt: first.lineHeightPt } : {}),
     ...(body.wrap === "none" ? { nowrap: true } : {}),
   };
 }

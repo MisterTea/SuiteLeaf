@@ -10,7 +10,7 @@ import {
   shapeIsHidden,
 } from "./pptx-geometry";
 import { styleBlipElement } from "./pptx-style-blip";
-import { officeSingleSpacing } from "./office-fonts";
+import { presentationLineHeight, presentationParagraphRuns } from "./pptx-line-spacing";
 import { hostedPictureClip, pictureBackdrop, pictureOutline } from "./pptx-picture-clip";
 import {
   applyBlipLuminance,
@@ -233,7 +233,6 @@ export async function paintInheritedLabels(slide: SlideContext) {
     metrics,
     parseTextBody,
     elements,
-    embeddedLineGrids,
   } = slide;
   for (const part of layers) {
     if (part === layoutPart && hideLayoutShapes) continue;
@@ -256,10 +255,7 @@ export async function paintInheritedLabels(slide: SlideContext) {
         width: label.width,
         height: label.height,
         content,
-        runs: paragraphs.flatMap((paragraph, index) => [
-          ...(index ? [{ text: "\n", paragraphBreak: true as const }] : []),
-          ...paragraph.runs,
-        ]),
+        runs: presentationParagraphRuns(paragraphs),
         bold: first?.bold,
         italic: first?.italic,
         ...(first?.underline ? { underline: true } : {}),
@@ -273,9 +269,8 @@ export async function paintInheritedLabels(slide: SlideContext) {
         ...(label.padLeft != null ? { padLeft: label.padLeft } : {}),
         ...(label.padRight != null ? { padRight: label.padRight } : {}),
         ...(label.padBottom != null ? { padBottom: label.padBottom } : {}),
-        lineHeight:
-          officeSingleSpacing(first?.font || "Arial", embeddedLineGrids) *
-          (first?.lineHeight ?? 1),
+        lineHeight: presentationLineHeight(first?.lineHeight, first?.exactLine),
+        ...(first?.lineHeightPt ? { lineHeightPt: first.lineHeightPt } : {}),
         ...(label.nowrap ? { nowrap: true } : {}),
         ...(label.stretchText ? { stretchText: true } : {}),
         ...(label.rotation ? { rotation: label.rotation } : {}),

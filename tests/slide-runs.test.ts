@@ -253,8 +253,8 @@ describe("per-word slide formatting", () => {
         { text: "Next", fontSize: 32 },
       ],
     });
-    expect(html).toContain("line-height:calc(48 * var(--slide-pt, 1) * 0.97656 * 1px)");
-    expect(html).toContain("line-height:calc(32 * var(--slide-pt, 1) * 1.09863 * 1px)");
+    expect(html).toContain("line-height:0.97656");
+    expect(html).toContain("line-height:1.09863");
     expect(html).not.toContain("round(nearest");
     const blank = textInnerHtml({
       lineHeight: 1.2207,

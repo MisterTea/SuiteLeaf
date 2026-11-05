@@ -1,0 +1,119 @@
+[
+  {
+    "name": "libreoffice",
+    "path": "E:\\github\\office-layout-audit-source\\libreoffice",
+    "remote": "https://github.com/LibreOffice/core.git",
+    "commit": "e6a711b134f04a45ec7f01646cd0438431ab4e8b",
+    "sparse_paths": [
+      "editeng/source/editeng",
+      "editeng/source/outliner",
+      "include/editeng",
+      "include/svx",
+      "oox/source/drawingml",
+      "oox/source/ppt",
+      "sd/source/filter/ppt",
+      "svx/inc",
+      "svx/source/svdraw",
+      "svx/source/unodraw",
+      "vcl/source/font",
+      "vcl/source/gdi"
+    ]
+  },
+  {
+    "name": "apache-openoffice",
+    "path": "E:\\github\\office-layout-audit-source\\apache-openoffice",
+    "remote": "https://github.com/apache/openoffice.git",
+    "commit": "12730cc4ccbd7f3529294280375490fffcee546f",
+    "sparse_paths": [
+      "main/editeng/source/editeng",
+      "main/oox/source/drawingml",
+      "main/oox/source/ppt",
+      "main/vcl/source/gdi"
+    ]
+  },
+  {
+    "name": "onlyoffice-sdkjs",
+    "path": "E:\\github\\office-layout-audit-source\\onlyoffice-sdkjs",
+    "remote": "https://github.com/ONLYOFFICE/sdkjs.git",
+    "commit": "9d2138866d929be32f1d107e8b5bfae36156e097",
+    "sparse_paths": [
+      "common/Drawings",
+      "common/FontsFreeType",
+      "common/libfont",
+      "slide/Editor",
+      "word/Editor/Paragraph",
+      "word/Editor/ParagraphContent",
+      "word/Math"
+    ]
+  },
+  {
+    "name": "calligra",
+    "path": "E:\\github\\office-layout-audit-source\\calligra",
+    "remote": "https://github.com/KDE/calligra.git",
+    "commit": "9ff6320ee38aa5a260eca8e2e6ec4dc904bb5439",
+    "sparse_paths": [
+      "filters/stage/pptx",
+      "libs/flake",
+      "libs/textlayout",
+      "plugins/textshape",
+      "stage"
+    ]
+  },
+  {
+    "name": "opendesk",
+    "path": "E:\\github\\office-layout-audit-source\\opendesk",
+    "remote": "https://gitlab.opencode.de/bmi/opendesk/deployment/opendesk.git",
+    "commit": "b6ec2b9f0606239a2cde0f510bfde23f8c7b607d",
+    "sparse_paths": [
+      "docs",
+      "helmfile"
+    ]
+  },
+  {
+    "name": "collabora",
+    "path": "E:\\github\\office-layout-audit-source\\collabora",
+    "remote": "https://github.com/CollaboraOnline/online.git",
+    "commit": "d309e70f6625abb03cd8476c0ea42753b35335e7",
+    "sparse_paths": [
+      "browser/src",
+      "common",
+      "kit"
+    ]
+  },
+  {
+    "name": "collabora-mirror",
+    "path": "E:\\github\\office-layout-audit-source\\collabora-mirror",
+    "remote": "https://github.com/CollaboraOnline/online.mirror.git",
+    "commit": "7888e20d8783979447c3c66e662f7dc6f2904c85",
+    "sparse_paths": [
+      "engine/editeng/source/editeng",
+      "engine/include/svx",
+      "engine/oox/source/drawingml",
+      "engine/oox/source/ppt",
+      "kit"
+    ]
+  },
+  {
+    "name": "cryptpad",
+    "path": "E:\\github\\office-layout-audit-source\\cryptpad",
+    "remote": "https://github.com/cryptpad/cryptpad.git",
+    "commit": "a4209cca7db6dca4b9cefc5b34fa765e9ae3c6a8",
+    "sparse_paths": [
+      "src",
+      "www/common/onlyoffice",
+      "www/presentation"
+    ]
+  },
+  {
+    "name": "genoffice",
+    "path": "E:\\github\\office-layout-audit-source\\genoffice",
+    "remote": "https://github.com/genspark-ai/genoffice.git",
+    "commit": "4b55db9ed1994575a695160ffc6cfd0bfc866211",
+    "sparse_paths": [
+      "apps/slides/src",
+      "apps/web/src",
+      "docs",
+      "packages"
+    ]
+  }
+]

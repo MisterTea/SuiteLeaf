@@ -79,7 +79,7 @@ describe("cleaning and joining runs", () => {
       { text: "\n" },
       { text: "c" },
     ]);
-    expect(hasTextRuns({ runs: [{ text: "a", tracking: 1 }] })).toBe(false);
+    expect(hasTextRuns({ runs: [{ text: "a", tracking: 1 }] })).toBe(true);
     expect(hasTextRuns({ runs: [{ text: "a", unbroken: true }] })).toBe(true);
   });
 
@@ -165,7 +165,7 @@ describe("painting runs as HTML", () => {
     expect(paras[0]).toContain("line-height:1.5");
     expect(paras[1]).toContain('line-height:2"');
     expect(paras[1]).toContain("<br>");
-    expect(paras[2]).toContain("line-height:calc(20 * var(--slide-pt, 1) * 1.2 * 1px)");
+    expect(paras[2]).toContain("line-height:1.2");
     expect(paras[2]).toContain("-webkit-box-reflect:below 0 linear-gradient(to bottom, rgba(0,0,0,0.5), rgba(0,0,0,0.1) 35%");
     expect(paras[2]).toContain('data-reflection="1"');
   });
@@ -173,7 +173,7 @@ describe("painting runs as HTML", () => {
   it("puts a list marker in the gutter, as a picture or a glyph, and sizes it to the words", () => {
     const marp = runsToHtml([{ text: "• Point one" }], undefined, 24);
     expect(marp).toContain("slide-bullet-fixed");
-    expect(marp).toContain("display:inline-block;width:0;transform:translateX(calc(-24px");
+    expect(marp).toContain("display:inline-block;width:0;white-space:pre;transform:translateX(calc(-24px");
     const picture = runsToHtml(
       [{ text: "• ", bulletSrc: "data:image/png;base64,AA==", paraHang: 18 }, { text: "Word", fontSize: 30 }],
     );
@@ -231,11 +231,11 @@ describe("painting runs as HTML", () => {
         fontSize: 20,
         lineHeight,
       });
-    const tight = box(1.2207 * 0.8);
+    const tight = box(1.2 * 0.8);
     expect(tight).toContain("position:relative");
-    expect(tight).toContain("- 20 * var(--slide-pt, 1) * 1.2207 * 1px) / 2)");
-    expect(box(1.2207)).not.toContain("position:relative");
-    expect(box(1.2207 * 1.5)).not.toContain("position:relative");
+    expect(tight).toContain("- 20 * var(--slide-pt, 1) * 1.2 * 1px) / 2)");
+    expect(box(1.2)).not.toContain("position:relative");
+    expect(box(1.2 * 1.5)).not.toContain("position:relative");
   });
 
   it("writes a box with no marks as escaped text and a marked one as paragraphs", () => {
@@ -301,4 +301,18 @@ it("hangs trailing ordinary spaces at hard line ends without dropping their text
   expect(html).toContain('width:0;overflow:hidden;font-size:0;line-height:0"> </span>');
   expect(html).toContain("Centered");
   expect(runsToHtml([{text:"Internal space remains"}])).not.toContain("data-slide-hanging-space");
+});
+
+it("aligns overflowing nowrap text around its full line width", () => {
+  expect(runsToHtml([{text:"01",fontSize:60}], undefined, undefined, {nowrap:true,align:"center"})).toContain("transform:translateX(-50%)");
+  expect(runsToHtml([{text:"01",fontSize:60}], undefined, undefined, {nowrap:true,align:"right"})).toContain("transform:translateX(-100%)");
+  expect(runsToHtml([{text:"01",fontSize:60}], undefined, undefined, {align:"center"})).not.toContain("width:max-content");
+  expect(hasTextRuns({runs:[{text:"distributed",paraDistributed:true}]})).toBe(true);
+  expect(hasTextRuns({runs:[{text:"tracked",tracking:3}]})).toBe(true);
+});
+
+it("keeps multi-character list markers unwrapped inside a zero-width hanging slot", () => {
+ const html=textInnerHtml({content:"a) Item",fontSize:18,hang:36,runs:[{text:"a) ",font:"Arial"},{text:"Item",fontSize:18}]});
+ expect(html).toContain("width:0;white-space:pre;transform:");
+ expect(html).toContain(">a)</span>");
 });

@@ -294,7 +294,7 @@ describe("embedded font line grid", () => {
     const byText = (needle: string) => texts.find((el) => el.content?.includes(needle));
     expect(byText("Ninety")?.lineHeight).toBeCloseTo(1.2 * 0.9, 5);
     expect(byText("Exact")?.lineHeight).toBeCloseTo(24 / 18, 5);
-    expect(byText("Shipped")?.lineHeight).toBeCloseTo(1.214, 4);
+    expect(byText("Shipped")?.lineHeight).toBeCloseTo(1.2, 4);
   });
 });
 

@@ -114,8 +114,7 @@ function lineGrid(grid: number): number | undefined {
 }
 
 /**
- * `(usWinAscent + usWinDescent) / unitsPerEm`. PowerPoint single spacing uses
- * that Windows grid. A face that sets OS/2 USE_TYPO_METRICS spaces from the
+ * `(usWinAscent + usWinDescent) / unitsPerEm`: font extents, not PPTX line pitch. A face that sets OS/2 USE_TYPO_METRICS spaces from the
  * typographic ascender, descender, and line gap instead, which is tighter
  * when the Windows descent is only a clip metric. A face with no shipped
  * metric still has one in the file.

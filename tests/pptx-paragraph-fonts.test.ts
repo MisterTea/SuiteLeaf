@@ -1,7 +1,8 @@
+import { presentationLineHeight } from "../packages/core/src/pptx-line-spacing";
 import { expect, it } from "vitest";
 import JSZip from "jszip";
 import { parsePowerPoint } from "../packages/core/src/pptx";
-import { officeSingleSpacing, suiteLeafFont } from "../packages/core/src/office-fonts";
+import { suiteLeafFont } from "../packages/core/src/office-fonts";
 
 it("keeps paragraph default fonts after a run overrides the heading face", async () => {
   const zip = new JSZip();
@@ -22,5 +23,5 @@ it("keeps paragraph default fonts after a run overrides the heading face", async
   expect(runs.find((run) => run.text === "Heading")?.font).toBe(suiteLeafFont("Georgia"));
   expect(runs.find((run) => run.text === " default suffix")?.font).toBe(suiteLeafFont("Arial"));
   expect(runs.find((run) => run.text === "Body text")?.font).toBe(suiteLeafFont("Calibri"));
-  expect(runs.find((run) => run.paragraphBreak)?.paraLine).toBe(officeSingleSpacing("Calibri"));
+  expect(element.lineHeight).toBe(presentationLineHeight());
 });

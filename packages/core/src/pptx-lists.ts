@@ -40,6 +40,7 @@ export function bulletPointSize(
  */
 export function inheritedBulletColorXml(styleParts: readonly string[]): string {
   for (let index = styleParts.length - 1; index >= 0; index--) {
+    if (/<a:buClrTx\b/.test(styleParts[index] || "")) return "";
     const found = /<a:buClr\b[\s\S]*?<\/a:buClr>/.exec(styleParts[index] || "");
     if (found) return found[0];
   }
@@ -203,8 +204,10 @@ export function layoutListRuns<T extends ListRun>(
     tabInterval?: number;
     spaceBefore?: number;
     align?: "left" | "center" | "right" | "justify";
+    distributed?: boolean;
     size?: number;
     cssLine?: number;
+    cssLinePt?: number;
   }[],
 ): { hang?: number; listMargin: number; runs: T[] } {
   const textual = paragraphs.filter((paragraph) => paragraph.text.trim());
@@ -261,9 +264,12 @@ export function layoutListRuns<T extends ListRun>(
     tabInterval?: number;
     spaceBefore?: number;
     align?: "left" | "center" | "right" | "justify";
+    distributed?: boolean;
   }) => {
-    if (!perParagraph) return {};
+    const distribution = paragraph.distributed ? { paraDistributed: true } : {};
+    if (!perParagraph) return distribution;
     return {
+      ...distribution,
       ...(paragraph.listMargin ? { paraMargin: paragraph.listMargin } : {}),
       ...(paragraph.hang ? { paraHang: paragraph.hang } : {}),
       ...(paragraph.firstIndent ? { paraFirst: paragraph.firstIndent } : {}),
@@ -277,7 +283,7 @@ export function layoutListRuns<T extends ListRun>(
   };
   const runs: T[] = [];
   paragraphs.forEach((paragraph, index) => {
-    const line = paragraph.cssLine ? { paraLine: paragraph.cssLine } : {};
+    const line = { ...(paragraph.cssLine ? { paraLine: paragraph.cssLine } : {}), ...(paragraph.cssLinePt ? { paraLinePt: paragraph.cssLinePt } : {}) };
     // A leading empty paragraph is a blank line. The break before the next
     // paragraph would otherwise be filled by that paragraph's text.
     if ((index === 0 && !paragraph.text.trim()) || index) {

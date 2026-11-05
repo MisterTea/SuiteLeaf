@@ -1,3 +1,5 @@
+import { emfViewport } from "./emf-viewport";
+import { vectorEmf } from "./emf-vector";
 import { base64 } from "./emf-raster";
 import { paintFontFamily } from "./office-fonts";
 
@@ -264,6 +266,19 @@ export function readEmfPlusComment(
       }
     } else if (type === 0x402a && dataSize >= 24) state.world = readMatrix(view, payload);
     else if (type === 0x402b) state.world = identity();
+    else if (type === 0x402c && dataSize >= 24) {
+      const matrix = readMatrix(view, payload);
+      const left = flags & 0x2000 ? state.world : matrix;
+      const right = flags & 0x2000 ? matrix : state.world;
+      state.world = {
+        m11: left.m11 * right.m11 + left.m21 * right.m12,
+        m12: left.m12 * right.m11 + left.m22 * right.m12,
+        m21: left.m11 * right.m21 + left.m21 * right.m22,
+        m22: left.m12 * right.m21 + left.m22 * right.m22,
+        dx: left.m11 * right.dx + left.m21 * right.dy + left.dx,
+        dy: left.m12 * right.dx + left.m22 * right.dy + left.dy,
+      };
+    }
     else if (type === 0x4030 && dataSize >= 4) state.pageScale = view.getFloat32(payload, true) || 1;
     else if (type === 0x400a && dataSize >= 8) {
       const solid = (flags & 0x8000) !== 0;
@@ -361,6 +376,16 @@ function takePlusImage(
 function decodePlusImage(bytes: Uint8Array): ImageObject | undefined {
   if (bytes.length < 28) return;
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (view.getUint32(4, true) === 2) {
+    const length = view.getUint32(12, true);
+    if (length < 108 || length > bytes.length - 16) return;
+    const nested = bytes.subarray(16, 16 + length);
+    const viewport = emfViewport(nested, true);
+    if (!viewport) return;
+    const { width, height } = viewport;
+    const href = vectorEmf(nested, true);
+    return href ? { kind: "image", href, width, height } : undefined;
+  }
   if (view.getUint32(4, true) !== 1 || view.getUint32(24, true) !== 1) return;
   let width = view.getInt32(8, true);
   let height = view.getInt32(12, true);

@@ -17,7 +17,7 @@ import { normAutofitFactors } from "./pptx-autofit";
 import { withInheritedGeometry, withInheritedOutline } from "./pptx-placeholder-outline";
 import { hidesTitleSpecialPlaceholders } from "./pptx-title-placeholders";
 import { layoutListRuns } from "./pptx-lists";
-import { officeSingleSpacing } from "./office-fonts";
+import { presentationLineHeight } from "./pptx-line-spacing";
 import { lineIsArrowhead, readLineEnd, readLineEndSize } from "./pptx-line-ends";
 import { cssStrokeStyle } from "./pptx-line-dash";
 import { styleBlipElement } from "./pptx-style-blip";
@@ -71,7 +71,6 @@ export async function paintSlideShapes(
     recolor,
     softEdgeOf,
     paintedSlideNumber,
-    embeddedLineGrids,
   } = slide;
   const hfShown = (xml: string | undefined, name: string) => {
     const tag = xml ? /<p:hf\b([^>]*)\/?>/.exec(xml) : undefined;
@@ -284,10 +283,7 @@ export async function paintSlideShapes(
         // multiplied by that size. Scaling by the box size as well makes a
         // smaller paragraph a second time too short.
         const cssLineOf = (paragraph: (typeof paragraphs)[number]) => {
-          if (paragraph.exactLine) return paragraph.lineHeight;
-          const factor = paragraph.lineHeight ?? 1;
-          const single = officeSingleSpacing(paragraph.font || first?.font || "Arial", embeddedLineGrids);
-          return single * factor;
+          return presentationLineHeight(paragraph.lineHeight, paragraph.exactLine);
         };
         const cssLines = paragraphs.map(cssLineOf);
         const mixedLines =
@@ -299,10 +295,11 @@ export async function paintSlideShapes(
               Math.abs(line - cssLines[0]) > 0.02,
           );
         const laid = layoutListRuns(
-          mixedLines
+          (mixedLines || paragraphs.some(paragraph => paragraph.lineHeightPt))
             ? paragraphs.map((paragraph, index) => ({
                 ...paragraph,
                 ...(cssLines[index] != null ? { cssLine: cssLines[index] } : {}),
+                ...(paragraph.lineHeightPt ? { cssLinePt: paragraph.lineHeightPt } : {}),
               }))
             : paragraphs,
         );
@@ -344,17 +341,15 @@ export async function paintSlideShapes(
             ? {
                 inset: pad.t,
                 padLeft: pad.l + listMargin,
-                ...(pad.r !== pad.l ? { padRight: pad.r } : {}),
+                ...(pad.r !== pad.l || listMargin ? { padRight: pad.r } : {}),
                 ...(pad.b !== pad.t ? { padBottom: pad.b } : {}),
               }
             : listMargin
               ? { padLeft: listMargin }
               : {}),
           ...(hang ? { hang } : {}),
-          lineHeight: first?.exactLine
-            ? first.lineHeight
-            : officeSingleSpacing(first?.font || "Arial", embeddedLineGrids) *
-              (first?.lineHeight ?? fit.line),
+          lineHeight: presentationLineHeight(first?.lineHeight ?? fit.line, first?.exactLine),
+          ...(first?.lineHeightPt ? { lineHeightPt: first.lineHeightPt } : {}),
           ...(bodyAttrs.wrap === "none" || stretchText ? { nowrap: true } : {}),
           ...(stretchText ? { stretchText: true } : {}),
           ...(textFlow ? { textFlow } : {}),

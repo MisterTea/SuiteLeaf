@@ -1,6 +1,7 @@
+import { presentationLineHeight } from "../packages/core/src/pptx-line-spacing";
 import { describe, expect, it } from "vitest";
 import type { SlideElement } from "../packages/core/src";
-import { officeSingleSpacing } from "../packages/core/src/office-fonts";
+
 import { slideCellPaint, tableCellFlow, toggleSlideCellMark } from "../apps/web/src/editors/slide-table-format";
 
 const table: SlideElement = {
@@ -74,10 +75,10 @@ describe("slide table marks", () => {
       "SuiteLeaf Pine",
     );
     expect(slideCellPaint({ fontSize: 18 }, true).lineHeight).toBe(
-      officeSingleSpacing("Calibri"),
+      presentationLineHeight(),
     );
     expect(slideCellPaint({ font: "Arial", fontSize: 18 }, true).lineHeight).toBe(
-      officeSingleSpacing("Arial"),
+      presentationLineHeight(),
     );
     expect(slideCellPaint(undefined, false)).toEqual({
       fontFamily: undefined,

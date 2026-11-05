@@ -60,10 +60,6 @@ export function presetPath(name: string, xml: string, w: number, h: number): str
     const hole = irx > 0 && iry > 0 ? ` M ${rx - irx} ${ry} A ${irx} ${iry} 0 1 1 ${rx + irx} ${ry} A ${irx} ${iry} 0 1 1 ${rx - irx} ${ry} Z` : "";
     return `M 0 ${ry} A ${rx} ${ry} 0 1 0 ${w} ${ry} A ${rx} ${ry} 0 1 0 0 ${ry} Z${hole}`;
   }
-  if (name === "cube") {
-    const d = ss * 0.2;
-    return `M ${d} 0 L ${w} 0 L ${w} ${h - d} L ${w - d} ${h} L 0 ${h} L 0 ${d} Z M ${d} 0 L 0 ${d} L ${w - d} ${d} L ${w} 0 M 0 ${d} L 0 ${h} L ${w - d} ${h} L ${w - d} ${d}`;
-  }
   const starPoints = /^star(\d+)$/.exec(name);
   if (starPoints) return starPath(Number(starPoints[1]), xml, w, h);
   if (name === "roundRect") return roundRectPath(xml, w, h);

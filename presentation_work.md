@@ -1,5 +1,15 @@
 # Presentation fidelity ledger
 
+## Resume checkpoint — latest
+
+- Goal remains active: process the entire PPTX inventory against Microsoft Office PDFs, revisiting unresolved decks as shared fixes advance.
+- Current worker: `presentation_0011`, processing `pptx/cc-by-2.0/2021/e7b07de226dc4a5826d8bd665704b4d7-20210928.DPG.public.pptx`.
+- The equation revisit of 0009 returned matched after six new fixing/export iterations, all 25 pages. Its verified outcome is recorded below.
+- Ten unique decks have terminal records; 0006 and 0009 are the two last-verified general-policy matches. Shared changes require final frozen-build regression checks before corpus acceptance.
+- After 0011, resume the next eligible inventory entry. Do not run concurrent file workers.
+- No font-specific rendering or spacing exceptions. Current changes are uncommitted; last pushed checkpoint is `128fcb2`.
+- Earlier current-assignment sections are historical; this checkpoint and newest outcomes take precedence.
+
 ## Procedure and acceptance
 
 - Source: `Z:\Datasets\zenodo10k\files` (recursive, including hidden files).
@@ -211,3 +221,131 @@ Start with the current presentation above. Do not infer a match from successful 
 - Full Vitest:4283passed,29failed,18skipped /613files. Failures:28 Windows path-separator assertions or SQLite cleanup EBUSY in unchanged AI/update/store/directory tests; one slide-editor objects timeout (isolated rerun pending). Core/web typechecks and diff whitespace passed.
 - Font-specific spacing overrides remain removed. Pre-existing `scripts/zenodo-windows-pdfs.ps1` excluded from commit as unrelated work. No desktop installer build requested or packaged.
 - Isolated slide-editor objects rerun:22/22tests passed; full-run timeout did not reproduce.
+
+### 0008 — given-up after five fixing/export iterations
+
+- Source: `pptx/cc-by-2.0/2020/84d594b2aea4d30d5e580ec0824aba5c-PRESENTASI NUR PEBIY RIANTI.pptx`; subagent presentation_0008 returned terminal result. Every iteration6/6pages reviewed96dpi, unchanged-page raster checks.
+- General fixes: distributed paragraph alignment; editable DOM tracking retention; escaped kerning-feature quotes in HTML styles (previous malformed attrs dropped tracking/font family); later paragraph distributed marks; overflowing centered/right nowrap alignment and tracking/distribution-only formatting.
+- Slide2 subtitle displacement34.18px to0.18px; numeral5.71px to-0.11px. All measured baselines<4.2px.
+- Remaining slide1 distributed intra-line horizontal differences up to15.95px. Wrapping/box edges agree; no font-specific rules or arbitrary adjustments.
+- Validation877tests/123files passed; focused95.65%lines94.17%statements91.95%branches; core/web typechecks and whitespace passed, React checklist applied.
+- Evidence: `artifacts/presentation-fidelity/0008-iterations.json`, `0008-iteration5.pdf`, all-page `0008-iteration5/`, `0008-final-positions.txt`, tests/coverage/typecheck logs.
+- Changes after pushed checkpoint128fcb2 remain uncommitted.
+
+## Current assignment (latest)
+
+- 0009: `pptx/cc-by-2.0/2021/2f05f4fb02585f9c72c375101abf3d17-TEMA3_SESION1_Sensores.pptx`.
+- Assigned to presentation_0009; terminal status pending. Eight unique decks processed; zero current accepted matches after font override rollback;0006requires revalidation.
+
+## Open-source layout audit: 2026-11-04
+
+- User redirected work to downloading/auditing open-source office layout engines. Source sparse clones downloaded outside repo to `E:/github/office-layout-audit-source`; pinned manifest `docs/research/office-layout-sources.json`, audit `docs/research/office-layout-audit.md`.
+- Audited LibreOffice, Apache OpenOffice, ONLYOFFICE SDKJS, Calligra, openDesk deployment, and actual Collabora engine from official online.mirror. openDesk uses Collabora rather than independent presentation layout.
+- Key source evidence: LibreOffice/Collabora PPTX import enables FontIndependentLineSpacing, mapped to fixed-cell layout with fontHeight*1.2. OpenOffice corroborates same ancestry; Calligra has a separate presentation-specific font stretch. This supports a shared format policy, not named-font overrides.
+- ONLYOFFICE CheckFontScale uses nearest whole-point rounding and minimum1pt, preserving original sizes. Supports0009nearest-rounding direction, not old ceiling behavior; earlier18.495pt residual still needs explanation.
+- Explicit shaped-run metrics and justification allocations are useful references for our CSS distributed-text residuals. Audit proposes paragraph traces and a frozen-build cross-deck rerender before accepting any result.
+- 0009 agent errored at usage limit; no terminal deck result. Baseline25/25pages reviewed; completed iterations1–2 reported nested EMF image restoration and nearest-point fitting. Further EMF/spacing edits may be partial; especially uncommitted1.2shape experiment is not accepted or comprehensively validated. Preserve and review before resuming.
+- Audit changed no rendering code and did not run downloaded suites; report is source analysis, not an accuracy benchmark. Previous work and unrelated script preserved.
+
+## Shared layout fixes from source audit: 2026-11-04
+
+- User requested implementation and review of CryptPad/GenOffice. Downloaded pinned sparse sources (manifest updated). CryptPad presentations delegate to Euro-Office/ONLYOFFICE integration; GenOffice independently documents/implements font-independent1.2em PPTX boxes, nearest-point autofit rounding and minimum1pt.
+- Added `pptx-line-spacing.ts`: shared presentation nominal pitch independent of named fonts/clipping metrics. Used by ordinary shapes, inherited labels, SmartArt, table row measurement, table paint, and renderer tight-line reference. Exact point-derived factors bypass percentage scaling. Kept document/spreadsheet metric data; corrected misleading comments conflating font extents with PPTX pitch. No font-specific rules added.
+- Retained0009nearest-rounding correction and added minimum1pt for reduced autofit. No external implementation code copied. GenOffice uses a different reduction composition; kept existing subtraction behavior pending controlled Office fixtures.
+- Validation:362tests/60files passed; new spacing/autofit policy100%lines/statements/functions92.59%branches. Core/web typechecks and whitespace pass. Converter development build succeeded; no installed desktop package replaced.
+- Frozen converter re-exported62/62pages across0001(12),0004(17),0006(15),0007(18). All11contact sheets reviewed96dpi. Evidence under `artifacts/presentation-fidelity/shared-spacing-*` including exports manifest, all-page raster comparisons, measured char origins, test/coverage/build logs.
+- 0006 revalidated within tolerance with GENERAL policy, superseding revoked font-specific result: max textdx1.494px/dy1.387px, all15pages reviewed,19reference image bounds max0.228px. Internally duplicated fullslide background remains visually identical. This restores one accepted match without family overrides.
+- 0001 baseline errors max2.667px (earlier accumulating drift~32px); remaining horizontal/glyph-origin differences still require per-word review, not accepted as matched.0004baselines max2.656px; no full acceptance due horizontal origin differences.0007dense text still has baseline errors up to9.573px, including5/13/17; slide11max3.4px. Do not infer corpus-wide improvement or match from the pitch correction alone.
+- Current corpus state:0009still incomplete after four logged iterations and interrupted general1.2experiment; its general spacing path is now replaced by shared helper. Existing unrelated partial EMF work preserved. No additional presentation worker running. Changes remain uncommitted.
+
+## Active-goal continuation: 2026-11-04
+
+- Previous turn classified progress: implemented/tested shared policy and rerendered62pages, restoring0006match under general rules. Full corpus objective remains active and incomplete.
+- Current assignment: presentation_0009_resume resumes ninth deck from four documented iterations using current converter. Must return terminal result before parent advances; no font-specific rules.
+
+### Read-only diagnosis while0009resumes
+
+- 0007slide5 inherited lvl1 has90%line spacing and fixed10pt space-before; source normAutofit92500fontScale/20000lnSpcReduction. Office26.04pt text consecutive paragraph baselines129.77/161.57pt (31.8pt pitch).
+- General nominal26*.7*1.2=21.84pt plus authored10pt gap predicts31.84pt, matching Office. Current gapScale=.925shrinks10pt to9.25pt and plausibly explains accumulating~9px drift after multiple paragraphs.
+- Shared fixed-point paragraph gap scaling is the next hypothesis, not a proven accepted change. Evidence sent to sole active source worker0009_resume; parent made no concurrent source edits.
+
+### 0009 resume — progress through iteration6 (not terminal)
+
+- Iteration5 generalsharedpolicy25/25pages reviewed96dpi; body spacing improved, equations/table differences remain.
+- Iteration6 preserves authored point-valued paragraph gaps during font/line autofit instead of scaling them;51focusedtests passed.0009all25page raster hashes unchanged, so no claimed improvement to that deck from fixed gaps.
+- Cross-deck verification0007:18/18pages reviewed across3sheets; slide5baselineerror9.573px→max2.43px, visible accumulated body drift removed on4/13/17. Remaining glyph-origin discrepancies not automatically counted as matches. Focused gap-source coverage100%lines96.03%statements92.85%branches reported by worker.
+- Worker pursuing iteration7: percentage paragraph gaps from nominal1.2em line box, subject to export evidence. Sole worker presentation_0009_resume active, no concurrent parent source edits.
+
+### 0009 — given-up after seven genuine fixing/export iterations
+
+- Source: `pptx/cc-by-2.0/2021/2f05f4fb02585f9c72c375101abf3d17-TEMA3_SESION1_Sensores.pptx`; resumed worker presentation_0009_resume returned terminal.25/25pages each iteration reviewed96dpi.
+- Earlier iterations restored nested EMF vectors, nearest-point autofit, MultiplyWorldTransform handling, and physical nested-metafile frame. Resumed iterations5–7 use shared spacing policy, preserve absolute point paragraph gaps during autofit, and measure percentage gaps against nominal1.2em presentation line. No font-specific rules.
+- Percentage-gap baseline improvements: slide4 6.832→1.307px;5 10.467→4.187;12 8.347→1.493;13 8.347→0.864;19 6.613→0.944.
+- Cross-deck0007all18pages reviewed: point-gap fix slide5 9.573→max2.43px; visible accumulation removed4/13/17. Neither deck newly accepted as matched.
+- Remaining0009structured fraction layout22–24, slide22max100.492px horizontal/24.356vertical; slide21formula arrow/end17.478px; slide13~5.3px horizontal list/text issue; distinguish isolatedi/f glyph/ligature extraction origins from real placement.
+- Validation359tests/61files; changed-policy100%lines96.03%statements92.85%branches; core/web typechecks and whitespace pass.
+- Evidence `artifacts/presentation-fidelity/0009-iterations.json`, `0009-iteration7.pdf`, all-page `0009-iteration7/`, `0009-final-positions7.json`, `0007-point-gaps.pdf`, `0007-percentage-gaps.pdf` + reviewfolders, `0009-tests7-final.log`, `0009-resume-coverage.log`. Changes uncommitted.
+
+## Current assignment (latest)
+
+- 0010: `pptx/cc-by-2.0/2021/847921221167310e92e97396e29b6985-HRDCLU presentation.pptx`.
+- Assigned presentation_0010; terminal pending. Nine unique decks processed; one currently accepted general-policy match0006. Full corpus goal remains active; unresolved decks require revisits as shared fixes advance.
+
+### Read-only equation diagnosis for future revisit
+
+-0009slide22 has a single nonnested OMML fraction, so nested-fraction flattening alone does not explain current100px discrepancy. Office math text beforefraction begins290.2pt and numerator609.6pt; SuiteLeaf begins286.2pt and numerator541.4pt. Many operators in linearized math are adjacent with no generated operator spacing; Office inserts math spacing. Fraction baseline/axis also differs (Office equation185.1pt vs179.4pt).
+-Renderer uses generic inline-flex vertical-align:middle for fractions, rather than font MATH layout. Native MathML with resolved mathfont is a promising general experiment addressing both operator spacing and fraction axis, requiring measured tests/export. Do not add guessed offsets or named-font rules.
+-0010worker baseline35/35pages/all6sheets reviewed; automatic marker wrapping, paragraph overlap, reflections under investigation. No concurrent parent source edits.
+
+## Active-goal continuation — 0010 baseline and first correction
+
+- Prior goal turn classified progress: general paragraph-gap fixes verified and0009terminal recorded. Current0010worker confirmed live; no restart.
+-0010baseline35/35pages reviewed across6contact sheets96dpi. Main residuals automatic marker wrappingp7, mixed-size centeranchoredparagraph overlap12, reflectiongeometry35, some widths/images.
+-Iteration1: zero-width marker slot inherited pre-wrap, splitting multicharacter'a)' across two lines and expanding slotheight86px. Marker-only whitespacepre correction exported35/35; all35pagehasheschecked, onlyp7changed; p7review confirmsfiveitemsandfollowingtextboxoverlaprestored. Focused20tests passed.
+-Iteration2themefontandbold/italicinheritanceforautomaticmarkers:30importtests pass, rendererbuild underway. Worker proceeding with exactline-vspercentage metadata for mixedfontwrappedparagraphstruts and reflectiongeometry. No terminal result yet.
+-Parent independently inspected0010p7/12fullpagePNG. p12bodyanchorctr plus24ptheading/18ptbody andzerooutergaps supports oversizedwrappedline-strut cause, not arbitrarypositioning. Sent diagnostic to worker, no concurrent source edits.
+-Regressiontriage0006source: no nonzero percentage paragraph gaps; onlyreducedfontScale.9 occurs in single titleparagraph. Gapcorrections should not affect it, but finalfrozenbuildacceptance stillrequired acrosscorpus.
+
+## Active-goal continuation — isolated math experiment
+
+-0010worker remainedlive, then hitusageerror; followup resumed sameworker. Actualiteration2export35/35logged, changed7/8/12 reviewed, themeface/boldautomaticmarkers corrected. Iteration3PDF35pages produced, reviewpending; partial3build/testwork preserved. No terminal/giveupstatus.
+-Parentisolatedprobe under ignored `artifacts/presentation-fidelity/mathml-probe/`, noapplication source/fontedits concurrently. FontTools verifies shippedMagnolia has noOpenTypeMATHtable while localCambriaMathreference face1does. OfficialOpenType/MathMLspecification sources consulted; missingdata is a flaggedfontlayoutmetadata gap, not a named-renderer-rule proposal.
+-Generated privatecandidatewithMATHconstants only, nooutlines/variantscopied; nativeChromiumMathML test withoriginal/candidate/referencefont. Allnativeversionsnumeratorhorizontaloffset308.883pt vsOfficePDF319.4pt and oldSuiteLeaflinearized~255.2pt. Constants-onlycandidate gave no measurablechange vsoriginal in probe; notacceptednorinstalled. Nativefont reference verticalextent stilldiffers, so noclaimofcompleteequationmatching.
+-Probehtml/js, fontmetadata/resultsJSON/screenshot and private referencefont remain ignoredartifacts. Useful nextaction: metric-aware mathematicaloperator/fractionlayout with propertest/printcomparison; don'tguessoffsets. No broadfontbehaviorchange acceptedfromthisdiagnostic.
+
+### Math probe follow-up — positive evidence, still isolated
+
+-The firstconstants-onlytable omitted requiredsupportcontainerstructures, so browserdidnotuseit. AftervalidemptyMathGlyphInfo/MathVariants containers plusreferenceMathConstants andsourceMinConnectorOverlap200, candidatenativeMathML verticalmetrics EXACTLYmatchlocalOfficefontnative(-13.617ptnumeratordy/37.652ptformulaheight), unlikeoriginalfont(-11.684/34.406). Nooutline/variantglyphs copied, noappfontinstalled.
+-NativeMathML's defaultthinspacingforbinaryasterisk differsOffice. Usingstandardmedium4/18em onbinaryoperator in probe reducesinternalpositionerrors further. Comparedall31nonspaceequationcharactersagainst0009slide22OfficePDF, normalizedONLYfirstglyphorigin: maxdx4.387px/maxdy0.267px. Wholetextsequence agrees. Absoluteauthoredframeplacement/notebookediting/printintegration remain unverified, so NOTdeckmatch or acceptedappfix.
+-Candidate/sourcecomparisonPDFandJSON underignored `mathml-probe/`; sourceOfficePDFextractfontversion6.99matcheslocalsourceversion. LatermathrevisitshouldretainMATHmetadata generally, useOMMLoperatorclasses/nativeMathML, andverifyabsoluteframeplacement acrossformulaexamples. Nofont-specificrenderinglogic/arbitraryoffsets.
+-0010iteration3completed35pagesandreviewedchangedpages2/4/5/8/15/23/29/34 (coloredsymbolbulletsfollowtextandbuClrTxresetsancestorfill). Iteration4export35pages reviewed:p12bodyoverlapremovedbyminimumstrut/perrunleadingwithrawexactpointmetadata. Iteration5properpositiveauto-numbergutterunderway;reflectionremainsfuturegeometrywork. Workerownsapplicationchanges.
+
+### 0010 — given-up after five genuine fixing/export iterations
+
+- Source: `pptx/cc-by-2.0/2021/847921221167310e92e97396e29b6985-HRDCLU presentation.pptx`; worker `presentation_0010` returned terminal result. Each iteration exported/reviewed 35/35 pages at 96 dpi with unchanged-page raster checks.
+- Fixes: marker-only no-wrap; automatic-number theme font and bold/italic inheritance; symbol marker color and buClrTx reset; mixed-size wrapping with per-run leading/minimum strut and raw exact point metadata through schema/DOM; positive automatic-list indent as marker-to-text gutter with explicit listMarker metadata.
+- Slide 7 maximum matched baseline error: 213.083px to 5.496px. Slide 12 horizontal error: 835.048px to 3.509px, vertical: 70px to 7.173px; heading overlap removed.
+- Remaining: slide 1 yellow-caption wrapping; slide 20 table/baseline error 8.208px; slide 28 plot/caption errors up to 23.314px; slide 35 reflection placement; some baselines just above 5px. No match acceptance.
+- Next geometry lead: preset dataset missing roundRect inset text rectangle, compared with ECMA/LibreOffice definition. Not changed in this attempt.
+- Validation: 774 tests / 116 files; changed behavior 96.42% lines, 94.82% statements, 92.37% branches. Core/web typechecks, whitespace checks, React checklist passed. No named-font rules.
+- Evidence: `artifacts/presentation-fidelity/0010-iterations.json`, `0010-iteration5.pdf`, final all-page `0010-iteration5/`, `0010-final-positions.json`, tests/typecheck logs. Changes remain uncommitted.
+
+## Current assignment — equation revisit
+
+- Revisiting 0009 in worker `presentation_0009_math`, using the isolated native MathML/MATH-font-metadata proof before returning to new inventory at 0011.
+- Ten unique decks have terminal records; 0006 is the last general-policy match. The corpus goal remains active and far from complete; unresolved decks are retained for subsequent shared fixes and frozen-build checks.
+
+### 0009 equation revisit — matched after six new fixing/export iterations
+
+- Worker `presentation_0009_math` returned matched status for all 25 pages at 96 dpi. This supersedes the earlier unresolved 0009 outcome.
+- General fixes: safe generated native MathML with operator classes and semantic DOM/schema roundtrips; retained MATH constants and Unicode-mapped italic/accent metadata in the general font pipeline; semantic caret offsets; OMML equation paragraph justification; EMF physical picture source frames; no duplicated marker separator before authored whitespace.
+- Final independent character anchors: max 4.535px horizontal / 3.747px vertical. Pages 22–24: 2.821/3.747, 3.902/3.344, 2.796/3.672px respectively. Raw collapsed ff/fi/ti PDF ligature component origins were independently identified as non-placement coordinates, with surrounding glyph/word anchors and full-page review retained.
+- All 25 pages reviewed; final changes checked via raster hashes. Parent verified final-layout JSON has 25 pages, every independent anchor within tolerance, no unmatched position errors, and final PDF has 25 pages.
+- Parent independently compared shipped font to HEAD: glyf, hmtx, cmap, GSUB, GPOS, name tables byte-identical; only MATH metadata added. No Office contours or production Office-font fallback. Stretch-glyph assemblies/variants remain unsupported; flat OMML representation is not a full math AST.
+- Validation: 902 tests / 127 files passed with four workers; MathML/selection coverage 100% lines/statements/functions, 93.75% branches; font metadata behavior tests and 39 EMF tests pass; core/web typechecks and whitespace pass.
+- Evidence: `artifacts/presentation-fidelity/0009-math-iterations.json`, `0009-math-iteration6.pdf`, final all-page `0009-math-iteration6/`, `0009-math-final-layout.json`, `0009-math-font-validation.json`, `0009-math-positions6.json`, `0009-math-broad-tests6.log`, `0009-math-coverage5.log`.
+
+## Current assignment — new inventory 0011
+
+- Source: `pptx/cc-by-2.0/2021/e7b07de226dc4a5826d8bd665704b4d7-20210928.DPG.public.pptx`.
+- Assigned worker `presentation_0011`. Ten unique decks have terminal records; two last-verified matches are 0006 and 0009, subject to final frozen-build regression checks. Remaining decks and the full inventory remain in scope; no corpus-completion claim.

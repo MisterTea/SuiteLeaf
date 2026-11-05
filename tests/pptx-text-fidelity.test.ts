@@ -1,6 +1,7 @@
+import { presentationLineHeight } from "../packages/core/src/pptx-line-spacing";
 import { expect, it } from "vitest";
 import JSZip from "jszip";
-import { officeSingleSpacing } from "../packages/core/src/office-fonts";
+
 import { parsePowerPoint } from "../packages/core/src/pptx";
 import { outerShadow, textReflection } from "../packages/core/src/pptx-run-paint";
 import { exportPptx } from "../packages/core/src/pptx-export";
@@ -185,7 +186,7 @@ it("sizes a blank line after a subscript at the script size", async () => {
   expect(blank[0]?.fontSize).toBeCloseTo(24 * 0.65, 2);
   expect(blank[1]?.fontSize).toBe(28);
   const inch = parsed.content.width / (parsed.content.pointWidth / 72);
-  expect(blank[0]?.spaceBefore).toBeCloseTo((4.8 / 72) * inch, 2);
+  expect(blank[0]?.spaceBefore).toBeCloseTo((5.76 / 72) * inch, 2);
 });
 
 it("sizes a blank line from a subscript paragraph default", async () => {
@@ -215,7 +216,7 @@ it("lets a paragraph spacing percentage replace an inherited point gap", async (
   const box = parsed.content.slides[parsed.content.slideOrder[0]].elements[0];
   const inch = parsed.content.width / (parsed.content.pointWidth / 72);
   const before = box?.runs?.find((run) => run.paragraphBreak)?.spaceBefore;
-  expect(before).toBeCloseTo((1.9 / 72) * inch, 4);
+  expect(before).toBeCloseTo((2.28 / 72) * inch, 4);
   expect(before).toBeLessThan((10 / 72) * inch);
 });
 
@@ -231,7 +232,7 @@ it("lets a paragraph line-spacing multiple replace the list style", async () => 
   );
   const parsed = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
   const line = parsed.content.slides[parsed.content.slideOrder[0]].elements[0];
-  expect(line?.lineHeight).toBeCloseTo(officeSingleSpacing("Arial") * 2, 5);
+  expect(line?.lineHeight).toBeCloseTo(presentationLineHeight() * 2, 5);
 });
 
 it("keeps a second paragraph's line spacing when the box uses the first", async () => {
@@ -242,7 +243,7 @@ it("keeps a second paragraph's line spacing when the box uses the first", async 
   );
   const parsed = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
   const box = parsed.content.slides[parsed.content.slideOrder[0]].elements[0];
-  const single = officeSingleSpacing("Arial");
+  const single = presentationLineHeight();
   expect(box?.lineHeight).toBeCloseTo(single, 5);
   const tight = box?.runs?.find((run) => run.paragraphBreak);
   expect(tight?.paraLine).toBeCloseTo(single * 0.8, 5);
@@ -295,7 +296,7 @@ it("keeps the line-height multiple when a later paragraph uses a smaller font", 
   );
   const parsed = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
   const box = parsed.content.slides[parsed.content.slideOrder[0]].elements[0];
-  const single = officeSingleSpacing("Arial");
+  const single = presentationLineHeight();
   expect(box?.lineHeight).toBeCloseTo(single, 5);
   const body = box?.runs?.find((run) => run.paragraphBreak);
   expect(body?.paraLine).toBeUndefined();
@@ -404,7 +405,7 @@ it("paints a later latin face when a leading blank paragraph inherits the theme"
   const box = parsed.content.slides[parsed.content.slideOrder[0]].elements[0];
   expect(box?.fontFamily).toBe("SuiteLeaf Willow");
   expect(box?.fontSize).toBe(20);
-  expect(box?.lineHeight).toBeCloseTo(officeSingleSpacing("Calibri"), 5);
+  expect(box?.lineHeight).toBeCloseTo(presentationLineHeight(), 5);
   expect(box?.runs?.find((run) => run.paragraphBreak)?.fontSize).toBe(14);
   expect(box?.runs?.find((run) => run.text === "looking after")?.font).toBe("SuiteLeaf Willow");
   expect(box?.runs?.find((run) => run.text.startsWith("http"))?.font).toBe("SuiteLeaf Pine");
@@ -556,4 +557,22 @@ it("draws a StarSymbol square bullet larger than the Unicode small square", asyn
   const bullet = box?.runs?.find((run) => run.text.startsWith("▪"));
   expect(bullet?.fontSize).toBeCloseTo(64 * 1.85, 2);
   expect(bullet?.color).toBe("#000000");
+});
+
+it("resolves automatic-number theme faces and keeps the words' emphasis", async () => {
+ const zip=new JSZip();
+ zip.file("ppt/theme/theme1.xml", '<a:theme><a:themeElements><a:fontScheme><a:majorFont><a:latin typeface="Georgia"/></a:majorFont><a:minorFont><a:latin typeface="Arial"/></a:minorFont></a:fontScheme></a:themeElements></a:theme>');
+ zip.file("ppt/slides/slide1.xml", '<p:sld><p:cSld><p:spTree><p:sp><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="4000000" cy="2000000"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:p><a:pPr><a:buFont typeface="+mj-lt"/><a:buAutoNum type="alphaLcParenR"/></a:pPr><a:r><a:rPr sz="1800" b="1" i="1"/><a:t>Item</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>');
+ zip.file("ppt/slides/_rels/slide1.xml.rels", '<Relationships><Relationship Id="l" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/></Relationships>');
+ zip.file("ppt/slideLayouts/slideLayout1.xml", '<p:sldLayout><p:cSld><p:spTree/></p:cSld></p:sldLayout>');
+ zip.file("ppt/slideLayouts/_rels/slideLayout1.xml.rels", '<Relationships><Relationship Id="m" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/></Relationships>');
+ zip.file("ppt/slideMasters/slideMaster1.xml", '<p:sldMaster/>');
+ zip.file("ppt/slideMasters/_rels/slideMaster1.xml.rels", '<Relationships><Relationship Id="t" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="../theme/theme1.xml"/></Relationships>');
+ const parsed=await parsePowerPoint(await zip.generateAsync({type:"uint8array"}));const marker=parsed.content.slides[parsed.content.slideOrder[0]].elements.find(e=>e.type==="text")?.runs?.[0];
+ expect(marker).toMatchObject({text:"a) ",bold:true,italic:true,font:"SuiteLeaf Durian"});
+});
+
+it("inherits text color for symbol markers when buClrTx replaces an ancestor bullet fill", async()=>{
+ const zip=new JSZip();zip.file("ppt/slides/slide1.xml", '<p:sld><p:cSld><p:spTree><p:sp><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="4000000" cy="1000000"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:lstStyle><a:lvl1pPr><a:buClr><a:srgbClr val="FF0000"/></a:buClr><a:buFont typeface="Wingdings"/><a:buChar char="q"/></a:lvl1pPr></a:lstStyle><a:p><a:pPr><a:buClrTx/></a:pPr><a:r><a:rPr sz="1800"><a:solidFill><a:srgbClr val="0000FF"/></a:solidFill></a:rPr><a:t>Blue</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>');
+ const d=await parsePowerPoint(await zip.generateAsync({type:"uint8array"}));const e=d.content.slides[d.content.slideOrder[0]].elements.find(x=>x.type==="text");expect(e?.runs?.[0].color).toBe("#0000FF");
 });

@@ -2,9 +2,7 @@
  * PowerPoint's "Shrink text on overflow" (`a:normAutofit`).
  * `fontScale` is the fraction of each run's original size. 100000 is 100%.
  * `lnSpcReduction` is subtracted from percentage line spacing. 10000 is 10%.
- * It does not apply to a fixed `a:spcPts` line height. A point gap between
- * paragraphs shrinks with the font scale, or by the reduction when the font
- * is not scaled.
+ * It does not apply to a fixed `a:spcPts` line height or paragraph gap.
  */
 export function normAutofitFactors(txBodyXml: string): {
   font: number;
@@ -45,10 +43,10 @@ export function autofitLineFactor(
   return Math.min(4, Math.max(0, base - reduction));
 }
 
-/** PowerPoint quantizes reduced run sizes to the next whole point. The stored
+/** PowerPoint quantizes reduced run sizes to the nearest whole point. The stored
  * percentage is a fitting hint; retaining fractions makes lines too narrow.
  * Unscaled and enlarged text retain their authored point precision. */
 export function autofitPointSize(points: number, scale: number): number {
   const fitted = points * scale;
-  return scale > 0 && scale < 1 ? Math.ceil(fitted - 1e-8) : fitted;
+  return scale > 0 && scale < 1 ? Math.max(1, Math.round(fitted)) : fitted;
 }

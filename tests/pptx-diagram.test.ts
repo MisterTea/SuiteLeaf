@@ -1,6 +1,7 @@
+import { presentationLineHeight } from "../packages/core/src/pptx-line-spacing";
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
-import { officeSingleSpacing } from "../packages/core/src/office-fonts";
+
 import { parsePowerPoint } from "../packages/core/src/pptx";
 
 const theme = `<a:theme><a:themeElements><a:clrScheme name="Office">
@@ -85,7 +86,7 @@ describe("PowerPoint diagrams and highlights", () => {
       align: "center",
       valign: "middle",
     });
-    expect(label?.lineHeight).toBeCloseTo(officeSingleSpacing(label?.fontFamily) * 0.9);
+    expect(label?.lineHeight).toBeCloseTo(presentationLineHeight() * 0.9);
     expect(label && label.x).toBeGreaterThan(chevron?.x ?? 0);
     expect(quote?.runs?.[0]?.highlight?.toLowerCase()).toBe("#ffff00");
     expect(quote?.runs?.[0]?.color?.toLowerCase()).not.toBe("#ffff00");

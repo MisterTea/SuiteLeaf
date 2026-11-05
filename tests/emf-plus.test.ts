@@ -418,3 +418,17 @@ it("paints an EMF+ JPEG from DrawImagePoints and a split PNG from DrawImage", ()
   expect(xml).toContain("transform=\"matrix(");
   expect(xml).not.toContain("M200 40");
 });
+it("draws a nested EMF image instead of dropping metafile-backed diagram artwork", () => {
+  const nested = emf([gdiLine()]);
+  const object = concat([u32(0xdbc01002), u32(2), u32(4), u32(nested.length), nested]);
+  const points = concat([u32(0), u32(2), f32(0), f32(0), f32(200), f32(200), u32(3), f32(0), f32(0), f32(200), f32(0), f32(0), f32(200)]);
+  const xml = svgOf(emf([comment([header(), plusRecord(0x4008, 0x0500, object), plusRecord(0x401b, 0, points)])]));
+  expect(xml).toContain("data:image/svg+xml;base64,");
+});
+it("composes prepended and appended EMF+ world transforms", () => {
+  const matrix = (x: number, y: number) => concat([f32(x), f32(0), f32(0), f32(y), f32(10), f32(20)]);
+  const draw = plusRecord(0x400a, 0x8000, concat([u32(0xff123456), u32(1), f32(0), f32(0), f32(10), f32(10)]));
+  const xml = svgOf(emf([comment([header(), plusRecord(0x402a, 0, matrix(2, 3)), plusRecord(0x402c, 0, matrix(4, 5)), draw, plusRecord(0x402c, 0x2000, matrix(1, 1)), draw]) ]));
+  expect(xml).toContain('M50 120');
+  expect(xml).toContain('M130 420');
+});

@@ -86,6 +86,9 @@ function DrawnWords({ el }: { el: SlideElement }) {
         fontFamily={el.fontFamily}
         fontSize={el.fontSize}
         lineHeight={el.lineHeight}
+        lineHeightPt={el.lineHeightPt}
+        align={el.align}
+        nowrap={el.nowrap}
         editing={false}
         onText={noop}
         onCaret={noop}
@@ -178,7 +181,9 @@ export function SlideFace({
                 fontFamily: paintFontFamily(inherited.fontFamily || "Arial"),
                 color: inherited.color || "#1e293b",
                 textAlign: el.align || "left",
-                lineHeight: el.lineHeight
+                lineHeight: el.lineHeightPt
+                  ? `calc(${el.lineHeightPt} * var(--slide-pt, 1) * 1px)`
+                  : el.lineHeight
                   ? `calc(${typeSize} * var(--slide-pt, 1) * ${el.lineHeight} * 1px)`
                   : undefined,
                 whiteSpace: el.preformatted ? "pre" : "pre-wrap",

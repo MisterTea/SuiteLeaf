@@ -1,3 +1,4 @@
+import { runsToHtml } from "../../apps/web/src/editors/slide-runs";
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -272,4 +273,36 @@ describe("the box being typed in", () => {
     fireEvent.doubleClick(node);
     expect(window.getSelection()!.toString()).toBe("");
   });
+});
+
+it("preserves imported tracking and distributed alignment while reading editable text", () => {
+  const root = document.createElement("div");
+  root.innerHTML = runsToHtml([{text:"Spaced",tracking:3,paraDistributed:true}]);
+  expect(runsFromDom(root)[0]).toMatchObject({text:"Spaced",tracking:3,paraDistributed:true});
+});
+
+it("does not truncate later run paint when disabled kerning uses a quoted feature tag", () => {
+  const root = document.createElement("div");
+  root.innerHTML = runsToHtml([{text:"Tracked",fontSize:10.5,tracking:3,font:"Arial"}], 18);
+  const span = root.querySelector<HTMLElement>("[data-tracking]")!;
+  expect(span.style.fontFeatureSettings).toBe('"kern" 0');
+  expect(span.style.letterSpacing).toContain("3");
+  expect(span.style.fontFamily).toContain("SuiteLeaf Aspen");
+});
+
+it("uses a small paragraph strut with per-run leading, retaining exact point pitches through DOM and saved state", async()=>{
+ const {slideElementSchema}=await import("../../packages/core/src/slide-schema");
+ const runs=[{text:"1. ",font:"Arial"},{text:"Large words ",fontSize:24},{text:"small words",fontSize:18}];
+ const flow=dom(runsToHtml(runs,undefined,undefined,{fontSize:24,lineHeight:1.8}));
+ const p=flow.querySelector<HTMLElement>(".slide-para")!;expect(p.style.fontSize).toContain("18 *");expect(p.style.lineHeight).toBe("1.8");
+ expect(runsFromDom(flow).find(run=>run.text.includes("Large words"))?.fontSize).toBe(24);
+ const exact=dom(runsToHtml([{text:"Large words ",fontSize:24,paraLinePt:30},{text:"small words",fontSize:18},{text:"\n",paragraphBreak:true,paraLine:1.2},{text:"Next",fontSize:18}],undefined,undefined,{fontSize:24,lineHeight:1.5,lineHeightPt:30}));
+ const blocks=exact.querySelectorAll<HTMLElement>(".slide-para");expect(blocks[0].style.lineHeight).toContain("30 *");expect(blocks[0].style.fontSize).toContain("24 *");expect(blocks[1].style.lineHeight).toBe("1.2");
+ const saved=slideElementSchema.parse({id:"exact",type:"text",x:0,y:0,width:100,height:100,lineHeightPt:30,runs:runsFromDom(exact)});expect(saved.lineHeightPt).toBe(30);expect(saved.runs?.[0].paraLinePt).toBe(30);
+});
+
+it("uses a positive automatic-list indent as a marker gap while retaining ordinary first-line indents",()=>{
+ const list=dom(runsToHtml([{text:"1. ",fontSize:24,listMarker:true,paraFirst:36},{text:"Words",fontSize:18}],undefined,undefined,{fontSize:24,lineHeight:1.8}));
+ const p=list.querySelector<HTMLElement>(".slide-para")!;expect(p.style.textIndent).toBe("");expect(list.querySelector<HTMLElement>(".slide-bullet-slot")?.style.minWidth).toContain("36px");expect(runsFromDom(list)[0]).toMatchObject({text:"1. ",listMarker:true,paraFirst:36});
+ const ordinary=dom(runsToHtml([{text:"Authored text",fontSize:18,paraFirst:36}]));expect(ordinary.querySelector<HTMLElement>(".slide-para")?.style.textIndent).toContain("36px");
 });

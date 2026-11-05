@@ -346,7 +346,9 @@ export function paintableImage(
   if (mime === "image/emf") {
     const png = rasterEmf(bytes);
     if (png) return png;
-    const svg = vectorEmf(bytes);
+    // DrawingML supplies the destination picture frame. EMF rclFrame defines
+    // its physical source canvas; ink bounds may include off-canvas labels.
+    const svg = vectorEmf(bytes, true);
     if (svg) return svg;
     // Chromium cannot paint image/emf, so the alt text would show up on the page.
     return undefined;

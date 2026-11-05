@@ -101,6 +101,10 @@ export function editorCanvasHooks(
           hang={el.hang}
           fontFamily={el.fontFamily}
           fontSize={el.fontSize}
+          lineHeight={el.lineHeight}
+          lineHeightPt={el.lineHeightPt}
+          align={el.align}
+          nowrap={el.nowrap}
           placeholder={el.placeholder}
           editing={editingId === el.id && !readOnly}
           onText={(runs, opts) =>

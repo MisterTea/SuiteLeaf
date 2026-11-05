@@ -517,6 +517,8 @@ def build(args):
                 break
 
     out = TTFont(io.BytesIO(data))
+    from suiteleaf_math import copy_math_metrics
+    copy_math_metrics(out, office)
     name_font(out, family, style, f"{original_notice} Modified by SuiteLeaf: outlines scaled and centered; widths, "
                                   f"kerning, ligatures, glyph classes, and line metrics set to match another font's layout.")
     path = Path(work) / f"{family.replace(' ', '')}-{style.replace(' ', '')}.ttf"

@@ -1,3 +1,5 @@
+import { semanticPoint, semanticTextLength } from "./slide-text-selection";
+import { readSlideMath } from "./slide-math";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import type { TextRun } from "@suiteleaf/core";
 import { paintFontFamily } from "@suiteleaf/core";
@@ -96,6 +98,8 @@ type StyleAttr = Partial<
     | "paragraphBreak"
     | "baseline"
     | "scriptScale"
+    | "tracking"
+    | "listMarker"
     | "href"
   >
 >;
@@ -112,10 +116,13 @@ function styleFrom(el: HTMLElement): StyleAttr {
   if (el.dataset.highlight) next.highlight = el.dataset.highlight;
   if (el.dataset.fontSize && Number(el.dataset.fontSize) > 0)
     next.fontSize = Number(el.dataset.fontSize);
+  if (el.dataset.listMarker === "1") next.listMarker = true;
   if (el.dataset.paragraphBreak === "1") next.paragraphBreak = true;
   if (el.dataset.baseline && Number(el.dataset.baseline))
     next.baseline = Number(el.dataset.baseline);
   if (el.dataset.scriptScale === "1") next.scriptScale = true;
+  if (el.dataset.tracking && Number.isFinite(Number(el.dataset.tracking)))
+    next.tracking = Math.max(-4000, Math.min(4000, Number(el.dataset.tracking)));
   if (el.dataset.font) next.font = el.dataset.font;
   if (el.dataset.href && /^(https?:|mailto:)/i.test(el.dataset.href))
     next.href = el.dataset.href;
@@ -125,6 +132,7 @@ function styleFrom(el: HTMLElement): StyleAttr {
 /** Read the editor DOM back into runs. Typing stays inside the span it started in. */
 function paragraphMetrics(el: HTMLElement): Partial<TextRun> {
   const next: Partial<TextRun> = {};
+  if (el.dataset.paraDistributed === "1") next.paraDistributed = true;
   const margin = Number(el.dataset.paraMargin);
   const hang = Number(el.dataset.paraHang);
   const before = Number(el.dataset.spaceBefore);
@@ -138,6 +146,8 @@ function paragraphMetrics(el: HTMLElement): Partial<TextRun> {
     next.paraAlign = align;
   const line = Number(el.dataset.paraLine);
   if (line > 0) next.paraLine = line;
+  const linePoints = Number(el.dataset.paraLinePt);
+  if (linePoints > 0) next.paraLinePt = linePoints;
   return next;
 }
 
@@ -164,6 +174,10 @@ export function runsFromDom(root: HTMLElement): TextRun[] {
       return;
     }
     if (!(node instanceof HTMLElement)) return;
+    if (node.dataset.slideMath) {
+      const math = readSlideMath(node.dataset.slideMath);
+      if (math) { runs.push(cleanRun({ ...style, ...stamp, ...math })); stamp = null; return; }
+    }
     if (node.tagName === "BR") {
       runs.push({ ...style, text: "\n" });
       return;
@@ -208,7 +222,7 @@ export function selectionOffsets(
     const pre = document.createRange();
     pre.selectNodeContents(root);
     pre.setEnd(node, offset);
-    return pre.toString().length;
+    return semanticTextLength(pre.cloneContents());
   };
   const start = measure(sel.anchorNode, sel.anchorOffset);
   const end = measure(sel.focusNode, sel.focusOffset);
@@ -220,33 +234,12 @@ export function restoreSelection(
   start: number,
   end: number,
 ) {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  let seen = 0;
-  let startNode: Node | null = null;
-  let startOffset = 0;
-  let endNode: Node | null = null;
-  let endOffset = 0;
-  let node: Node | null;
-  while ((node = walker.nextNode())) {
-    const len = node.textContent?.length ?? 0;
-    if (!startNode && seen + len >= start) {
-      startNode = node;
-      startOffset = start - seen;
-    }
-    if (seen + len >= end) {
-      endNode = node;
-      endOffset = end - seen;
-      break;
-    }
-    seen += len;
-  }
-  if (!startNode || !endNode) return;
+  const first = semanticPoint(root, start);
+  const last = semanticPoint(root, end);
+  if (!first || !last) return;
   const range = document.createRange();
-  range.setStart(
-    startNode,
-    Math.min(startOffset, startNode.textContent?.length ?? 0),
-  );
-  range.setEnd(endNode, Math.min(endOffset, endNode.textContent?.length ?? 0));
+  range.setStart(first.node, first.offset);
+  range.setEnd(last.node, last.offset);
   const sel = window.getSelection();
   sel?.removeAllRanges();
   sel?.addRange(range);
@@ -263,6 +256,9 @@ export function SlideTextBody({
   fontFamily,
   fontSize,
   lineHeight,
+  lineHeightPt,
+  align,
+  nowrap,
   placeholder,
   editing,
   onText,
@@ -279,6 +275,9 @@ export function SlideTextBody({
   fontFamily?: string;
   fontSize?: number;
   lineHeight?: number;
+  lineHeightPt?: number;
+  align?: "left" | "center" | "right" | "justify";
+  nowrap?: boolean;
   placeholder?: string;
   editing: boolean;
   onText: (runs: TextRun[], opts?: { bullet?: boolean }) => void;
@@ -317,11 +316,11 @@ export function SlideTextBody({
       editing && document.activeElement === node
         ? selectionOffsets(node)
         : null;
-    node.innerHTML = runsToHtml(expected, kern, hang, { fontFamily, fontSize, bold, italic, lineHeight });
+    node.innerHTML = runsToHtml(expected, kern, hang, { fontFamily, fontSize, bold, italic, lineHeight, lineHeightPt, align, nowrap });
     node.dataset.empty = plainText(expected) ? "false" : "true";
     if (fontsReady) measuredWithFonts.current = true;
     if (sel) restoreSelection(node, sel.start, sel.end);
-  }, [signature, editing, content, runs, bold, italic, underline, kern, hang, fontFamily, fontSize, lineHeight, fontsReady]);
+  }, [signature, editing, content, runs, bold, italic, underline, kern, hang, fontFamily, fontSize, lineHeight, lineHeightPt, align, nowrap, fontsReady]);
 
   useLayoutEffect(() => {
     if (!editing) return;
@@ -411,7 +410,7 @@ export function SlideTextBody({
           next.to,
           next.replacement,
         );
-        node.innerHTML = runsToHtml(runs, kern, hang, { fontFamily, fontSize, bold, italic, lineHeight });
+        node.innerHTML = runsToHtml(runs, kern, hang, { fontFamily, fontSize, bold, italic, lineHeight, lineHeightPt, align, nowrap });
         node.dataset.empty = plainText(runs) ? "false" : "true";
         restoreSelection(node, next.caret, next.caret);
         onTextRef.current(runs);
@@ -431,7 +430,7 @@ export function SlideTextBody({
               next.to,
               next.replacement,
             );
-            node.innerHTML = runsToHtml(runs, kern, hang, { fontFamily, fontSize, bold, italic, lineHeight });
+            node.innerHTML = runsToHtml(runs, kern, hang, { fontFamily, fontSize, bold, italic, lineHeight, lineHeightPt, align, nowrap });
             node.dataset.empty = plainText(runs) ? "false" : "true";
             restoreSelection(node, next.caret, next.caret);
             onTextRef.current(runs, next.bullet ? { bullet: true } : undefined);

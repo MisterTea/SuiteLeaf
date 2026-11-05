@@ -188,6 +188,8 @@ def _stage(args):
     Returns None when nothing worth installing is left."""
     r, staged = args
     font = TTFont(r["path"])
+    from suiteleaf_math import copy_math_metrics
+    copy_math_metrics(font, TTFont(r["office_path"]))
     # A symbol face has no CJK to omit, and may map only symbol codes, which subsetting would drop.
     if r["script"] != "symbol" and subset(font) < MIN_CHARS:
         return None

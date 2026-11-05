@@ -1,8 +1,9 @@
+import { presentationLineHeight } from "../packages/core/src/pptx-line-spacing";
 import { expect, it } from "vitest";
 import JSZip from "jszip";
 import { parsePowerPoint } from "../packages/core/src/pptx";
 import { distributeUnsetTableRows, growClippedTableRows, scaleRowsIntoFrame, tableTextRowEmu } from "../packages/core/src/pptx-table";
-import { officeSingleSpacing } from "../packages/core/src/office-fonts";
+
 
 it("keeps a vertical merge on the anchor cell", async () => {
   const zip = new JSZip();
@@ -204,7 +205,7 @@ it("grows a table row when the stored height clips wrapped text", async () => {
     [[{ ...pads }, { ...pads }]],
     [4_587_154, 5_226_242],
   );
-  const grid = officeSingleSpacing("Calibri");
+  const grid = presentationLineHeight();
   expect(spaced[0]).toBeCloseTo((3.6 + 3.6 + 9 * 18 * grid) * 12700, 0);
   expect(tableTextRowEmu([[""]], [[{ ...pads }]], [4_587_154])[0]).toBe(0);
   const blankFrame = 4_414_520;
@@ -241,7 +242,7 @@ it("grows a one-line table row so a Willow wrap keeps its last line", () => {
     "All research funding agencies (SFI, HRB, IRC, etc.); members of previous national OA committee; representatives of IUA, IUA Librarian’s Group; government departments; Teagasc, Marine Institute, HSE, etc.";
   const pads = { fontSize: 18, padTop: 3.6, padBottom: 3.6, padLeft: 7.2, padRight: 7.2 };
   const needed = tableTextRowEmu([[text]], [[pads]], [5_993_941]);
-  const grid = officeSingleSpacing("Calibri");
+  const grid = presentationLineHeight();
   expect(needed[0]).toBeCloseTo((3.6 + 3.6 + 4 * 18 * grid) * 12700, 0);
   const grown = growClippedTableRows([370_840], needed, 4_315_340, 7_506_804);
   expect(grown[0]).toBeCloseTo(needed[0], 0);
@@ -321,8 +322,8 @@ it("measures an Arial Narrow table cell with Pine advances", () => {
   const column = Math.round(200.31 * 12700);
   const pine = tableTextRowEmu([[text]], [[{ ...pads, font: "SuiteLeaf Pine" }]], [column]);
   const willow = tableTextRowEmu([[text]], [[{ ...pads, font: "Calibri" }]], [column]);
-  const grid = officeSingleSpacing("Calibri");
-  expect(pine[0]).toBeCloseTo((3.6 + 3.6 + 14) * 12700, 0);
+  const grid = presentationLineHeight();
+  expect(pine[0]).toBeCloseTo((3.6 + 3.6 + 14 * grid) * 12700, 0);
   expect(willow[0]).toBeCloseTo((3.6 + 3.6 + 2 * 14 * grid) * 12700, 0);
   const header = "Citaciones en 2019 a DC 2017-2018";
   const narrowCol = Math.round(125.02 * 12700);

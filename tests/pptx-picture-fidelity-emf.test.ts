@@ -4,6 +4,16 @@ import { paintableImage } from "../packages/core/src/pptx-pictures";
 import { rasterEmf } from "../packages/core/src/emf-raster";
 import { pngPixel } from "./pptx-picture-fidelity-fixtures";
 
+it("maps imported vector pictures to the physical canvas rather than oversized ink bounds", () => {
+  const bytes = new Uint8Array(164), view = new DataView(bytes.buffer);
+  for (const [offset, value] of [[0,1],[4,108],[40,0x464d4520],[8,-16],[12,-16],[16,207],[20,102],[32,19200],[36,8600],[72,100],[76,100],[80,100],[84,100],[108,87],[112,36],[132,2],[144,14],[148,20]]) view.setInt32(offset,value,true);
+  view.setInt16(136, 0, true); view.setInt16(138, 0, true); view.setInt16(140, 100, true); view.setInt16(142, 50, true);
+  const image = paintableImage(bytes, "image/emf");
+  expect(image).toMatch(/^data:image\/svg\+xml/);
+  const svg = Buffer.from(image!.split(",")[1], "base64").toString();
+  expect(svg).toContain('viewBox="0 0 192 86"');
+});
+
 it("paints a bitmap EMF as PNG instead of leaving it for the browser", () => {
   const bytes = new Uint8Array(240);
   const view = new DataView(bytes.buffer);

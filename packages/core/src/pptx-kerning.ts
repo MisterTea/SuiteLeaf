@@ -1,6 +1,7 @@
 import JSZip from "jszip";
 import type { Slide, SlideElement } from "./index";
 import { kerningThreshold } from "./kerning";
+import { presentationSingleSpacing } from "./pptx-line-spacing";
 
 /** DrawingML `kern` is in hundredths of a point. */
 export function runKern(value: string | undefined): number | undefined {
@@ -50,16 +51,15 @@ export function lastSpacingPoints(
 
 /**
  * The last `a:spcBef` or `a:spcAft` wins, whether it is points or a percentage
- * of the font. `spcPct` is thousandths of a percent, so 10000 is 10% of the
- * font, not a full line. A later percentage replaces an inherited point gap.
- * Shrink-to-fit also shrinks a point gap by `pointScale`. A percentage gap
- * already follows the fitted font.
+ * of the nominal presentation line. `spcPct` is thousandths of a percent;
+ * 10000 is 10% of the 1.2em presentation line. A later percentage replaces an inherited point gap.
+ * Point gaps remain absolute during shrink-to-fit; percentage gaps follow
+ * the fitted font. Line-spacing reduction does not shrink paragraph gaps.
  */
 export function paragraphGapPoints(
   xml: string,
   tag: "spcBef" | "spcAft",
   fontPt: number,
-  pointScale = 1,
 ): number | undefined {
   const matches = [
     ...xml.matchAll(
@@ -70,9 +70,9 @@ export function paragraphGapPoints(
   if (!last) return;
   const raw = Number(last[2]);
   if (!Number.isFinite(raw) || raw < 0) return;
-  if (last[1] === "spcPts") return (raw / 100) * Math.max(0, pointScale);
+  if (last[1] === "spcPts") return raw / 100;
   if (!(fontPt > 0)) return 0;
-  return Math.min(fontPt * 10, (fontPt * raw) / 100000);
+  return Math.min(fontPt * 10, (fontPt * presentationSingleSpacing * raw) / 100000);
 }
 
 /**

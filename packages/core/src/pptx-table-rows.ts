@@ -1,4 +1,4 @@
-import { officeSingleSpacing } from "./office-fonts";
+import { presentationSingleSpacing } from "./pptx-line-spacing";
 
 /**
  * Google Slides writes a 3,000,000 EMU frame and keeps the real size on the
@@ -239,13 +239,13 @@ export function tableTextRowEmu(
       const sized = mark?.fontSize && mark.fontSize > 0 ? mark.fontSize : 0;
       // Wrapped words keep the 14pt measure when the cell names no size.
       // Unsized empty paragraphs are the 18pt body default. Both sit on the
-      // Windows line grid, which is what a stored one-line row is tall enough for.
+      // font-independent presentation line box.
       const font = sized || (blanks ? 18 : 14);
       const padLeft = (mark?.padLeft ?? 7.2) * pt;
       const padRight = (mark?.padRight ?? 7.2) * pt;
       const padTop = mark?.padTop ?? 3.6;
       const padBottom = mark?.padBottom ?? 3.6;
-      const grid = officeSingleSpacing(mark?.font || "Calibri");
+      const grid = presentationSingleSpacing;
       if (!body.trim() && blanks) {
         const height = (padTop + padBottom + blanks * font * grid) * pt;
         if (height > need) need = height;

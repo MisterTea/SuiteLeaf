@@ -1,10 +1,11 @@
+import { presentationLineHeight } from "../packages/core/src/pptx-line-spacing";
 import { expect, it } from "vitest";
 import JSZip from "jszip";
 import { parseFile } from "../packages/core/src/index";
 import { parsePowerPoint } from "../packages/core/src/pptx";
 import { normAutofitFactors } from "../packages/core/src/pptx-autofit";
 import { explicitTableCell, tableLineLayout } from "../packages/core/src/pptx-table";
-import { officeSingleSpacing } from "../packages/core/src/office-fonts";
+
 
 it("scales stored normAutofit font and line spacing", async () => {
   expect(normAutofitFactors("<a:bodyPr/>")).toEqual({ font: 1, line: 1, reduction: 0 });
@@ -28,12 +29,12 @@ it("scales stored normAutofit font and line spacing", async () => {
   const file = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
   const [fitted, half] = file.content.slides[file.content.slideOrder[0]].elements;
   expect(fitted.fontSize).toBeCloseTo(21);
-  expect(fitted.lineHeight).toBeCloseTo(0.8 * officeSingleSpacing("Arial"), 4);
+  expect(fitted.lineHeight).toBeCloseTo(0.8 * presentationLineHeight(), 4);
   expect(fitted.runs?.[0]?.fontSize).toBeCloseTo(21);
   expect(half.fontSize).toBeCloseTo(9);
 });
 
-it("shrinks a point gap by the line-spacing reduction when the font is not scaled", async () => {
+it("preserves a point gap despite line-spacing reduction", async () => {
   const zip = new JSZip();
   zip.file(
     "ppt/slides/slide1.xml",
@@ -48,7 +49,7 @@ it("shrinks a point gap by the line-spacing reduction when the font is not scale
   const file = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
   const text = file.content.slides[file.content.slideOrder[0]].elements[0];
   const gap = text.runs?.find((run) => run.paragraphBreak)?.spaceBefore;
-  expect(gap).toBeCloseTo((8 / 72) * (960 / 10), 2);
+  expect(gap).toBeCloseTo((10 / 72) * (960 / 10), 2);
 });
 
 it("fits an empty line once and sizes a tab-only line by its run", async () => {
@@ -87,20 +88,20 @@ it("subtracts line-spacing reduction and keeps fixed spacing in points", async (
   );
   const file = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
   const text = file.content.slides[file.content.slideOrder[0]].elements[0];
-  const single = officeSingleSpacing("Arial");
+  const single = presentationLineHeight();
   // 80% minus 10% is 70%. Multiplying the reduction would leave 72%.
   expect(text.lineHeight).toBeCloseTo(0.7 * single, 4);
   expect(text.fontSize).toBeCloseTo(20);
   const tight = text.runs?.find((run) => run.text === "Tight");
   // 20% of the fitted 20pt, on the default 960px-wide 10in slide.
-  expect(tight?.spaceBefore).toBeCloseTo((4 / 72) * (960 / 10), 2);
+  expect(tight?.spaceBefore).toBeCloseTo((4.8 / 72) * (960 / 10), 2);
   const fixed = text.runs?.find((run) => run.text === "Fixed");
   expect(fixed?.fontSize).toBeCloseTo(9);
   const fixedBreak = text.runs?.find((run) => run.paragraphBreak);
   // 18pt of spacing on the fitted 9pt font. The 10% cut does not apply to a
-  // fixed line height. The 50% font scale shrinks a 6pt gap to 3pt.
+  // fixed line height. The authored 6pt gap stays absolute despite the 50% font scale.
   expect(fixedBreak?.paraLine).toBeCloseTo(2, 2);
-  expect(fixedBreak?.spaceBefore).toBeCloseTo((3 / 72) * (960 / 10), 2);
+  expect(fixedBreak?.spaceBefore).toBeCloseTo((6 / 72) * (960 / 10), 2);
 });
 
 it("keeps a later run size, top alignment, and nested list insets in a cell", async () => {

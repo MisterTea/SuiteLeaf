@@ -89,11 +89,17 @@ export const textRunSchema = z.object({
   spaceBefore: z.number().nonnegative().max(2000).optional(),
   /** This paragraph's alignment when one box mixes left, center, right, or justify. */
   paraAlign: z.enum(["left", "center", "right", "justify"]).optional(),
+  /** DrawingML distributed alignment expands gaps between characters on every line. */
+  paraDistributed: z.boolean().optional(),
   /**
    * CSS line-height for this paragraph when one box mixes spacing.
    * The box line-height stays the first paragraph's.
    */
   paraLine: z.number().positive().max(4).optional(),
+  /** Authored exact paragraph pitch in points, independent of run size. */
+  paraLinePt: z.number().positive().max(4000).optional(),
+  /** An imported automatic list marker, distinct from authored leading text. */
+  listMarker: z.boolean().optional(),
   /** DrawingML kern, in points. PowerPoint import moves it to the box. */
   kern: z.number().min(0).max(4000).optional(),
   /** DrawingML spc, in points. Negative tracking pulls glyphs together. */
@@ -106,6 +112,7 @@ export const textRunSchema = z.object({
    * Office math fraction. `text` stays the linear reading; the painter stacks
    * `num` over `den`.
    */
+  math: z.boolean().optional(),
   fraction: z
     .object({
       num: z.array(mathPieceSchema).max(80),
@@ -148,6 +155,8 @@ export const slideElementSchema = z.object({
   align: z.enum(["left", "center", "right", "justify"]).optional(),
   /** Unitless line height. A fitted MARP box uses the theme's line height. */
   lineHeight: z.number().positive().max(4).optional(),
+  /** Authored exact text-box pitch in points. */
+  lineHeightPt: z.number().positive().max(4000).optional(),
   /** Left inset, in slide units, so a heading can sit inside its bar. */
   padLeft: z.number().nonnegative().max(20000).optional(),
   /** Right text inset, in slide units. Absent uses the left inset. */

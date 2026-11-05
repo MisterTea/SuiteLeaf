@@ -77,9 +77,11 @@ export function textBodyParser({
       underline?: boolean;
       size?: number;
       align?: "left" | "center" | "right" | "justify";
+      distributed?: boolean;
       color?: string;
       font?: string;
       lineHeight?: number;
+      lineHeightPt?: number;
       hang?: number;
       listMargin?: number;
       spaceBefore?: number;
@@ -451,7 +453,7 @@ export function textBodyParser({
           };
           autoCounters.set(key, sequence);
         }
-        const marker = `${formatAutoNum(kind, sequence.next)} `;
+        const marker = `${formatAutoNum(kind, sequence.next)}${/^\s/u.test(pText) ? "" : " "}`;
         sequence.next += 1;
         pText = marker + pText;
         const first = textRuns.find((run) => run.text && run.text !== "\n");
@@ -462,7 +464,7 @@ export function textBodyParser({
         const numberFace = inheritedBulletTypeface(styleParts);
         const numberFont = symbolBulletFont(numberFace)
           ? undefined
-          : suiteLeafFont(numberFace);
+          : themeFont(numberFace);
         const linked = /<a:hlinkClick\b/.test(firstRunXml);
         // The marker is not part of a hyperlink run. Folding it into that
         // run paints the number in the link colour and underlines it.
@@ -470,6 +472,9 @@ export function textBodyParser({
           const at = textRuns.indexOf(first);
           textRuns.splice(at, 0, {
             text: marker,
+            listMarker: true,
+            ...(first.bold ? { bold: true } : {}),
+            ...(first.italic ? { italic: true } : {}),
             ...(bulletColor || linked
               ? { color: bulletColor || defaultColor }
               : first.color
@@ -478,13 +483,13 @@ export function textBodyParser({
             ...(bulletSize ? { fontSize: bulletSize } : {}),
             ...(numberFont ? { font: numberFont } : {}),
           });
-        } else if (first) first.text = marker + first.text;
+        } else if (first) { first.text = marker + first.text; first.listMarker = true; }
       }
       if (bulletChar && pText) {
         const bulletFace = inheritedBulletTypeface(styleParts);
         const symbolFace = symbolBulletFont(bulletFace);
         const rawBullet = decodeXmlEntities(bulletChar);
-        const marker = `${symbolFace ? symbolFontChar(rawBullet) : rawBullet} `;
+        const marker = `${symbolFace ? symbolFontChar(rawBullet) : rawBullet}${/^\s/u.test(pText) ? "" : " "}`;
         pText = marker + pText;
         const symbol = suiteLeafFont(symbolFace || bulletFace);
         // StarSymbol draws ▪ as a square about 1.85 times the Unicode small square.
@@ -500,7 +505,7 @@ export function textBodyParser({
         if (symbol || bulletSize || bulletColor) {
           // Ordinary bullet fonts still use the words' paint when buClrTx is
           // stored. A separate marker must not inherit the box's theme color.
-          const markerColor = bulletColor || (!symbolFace ? first?.color : undefined);
+          const markerColor = bulletColor || first?.color;
           const bulletRun: TextRun = {
             text: marker,
             ...(symbol ? { font: symbol } : starSquare ? { font: suiteLeafFont("Calibri") } : {}),
@@ -518,7 +523,7 @@ export function textBodyParser({
           src = await pictureBulletImage(zip, blipId, bulletHosts);
           bulletImages.set(blipId, src);
         }
-        const marker = "• ";
+        const marker = /^\s/u.test(pText) ? "•" : "• ";
         pText = marker + pText;
         const bulletSize = inheritedBulletPoints(styleParts, fontSize) || fontSize;
         const bulletRun: TextRun = {
@@ -577,11 +582,10 @@ export function textBodyParser({
           spacingPt ||
           fontSize ||
           autofitPointSize(Number(defaultRunAttrs.sz || 0) / 100 || 18, fit.font);
-        // Shrink-to-fit scales a point gap with the font. Without a font
-        // scale, the line-spacing reduction shrinks it instead.
-        const gapScale = fit.font < 1 ? fit.font : fit.line;
-        const spaceBefore = slidePoints(paragraphGapPoints(spacing, "spcBef", gapPt, gapScale));
-        const spaceAfter = slidePoints(paragraphGapPoints(spacing, "spcAft", gapPt, gapScale));
+        // Point paragraph gaps remain authored distances; percentage gaps
+        // already use the fitted font size. Neither follows line reduction.
+        const spaceBefore = slidePoints(paragraphGapPoints(spacing, "spcBef", gapPt));
+        const spaceAfter = slidePoints(paragraphGapPoints(spacing, "spcAft", gapPt));
         const exact =
           line?.kind === "pts"
             ? exactLineFactor(line.value, fontSize || gapPt)
@@ -591,6 +595,13 @@ export function textBodyParser({
           fit.reduction,
           line?.kind === "pts",
         );
+        // Display equations carry their own paragraph justification in OMML.
+        // Apply it only to a purely mathematical paragraph, not surrounding prose.
+        const mathAlign = /<m:jc\b[^>]*\bm:val="([^"]+)"/.exec(pXml)?.[1];
+        if (textRuns.some((run) => run.math) && textRuns.every((run) => run.math || !run.text.trim())) {
+          if (mathAlign === "center" || mathAlign === "centerGroup") align = "center";
+          else if (mathAlign === "left" || mathAlign === "right") align = mathAlign;
+        }
         paragraphs.push({
           text: pText,
           runs: textRuns.filter((run) => run.text),
@@ -600,6 +611,7 @@ export function textBodyParser({
           underline: isUnderline,
           size: fontSize,
           align,
+          ...(pAttrs.algn === "dist" ? { distributed: true } : {}),
           color: fontColor,
           font: fontFamily,
           ...(hang ? { hang } : {}),
@@ -617,7 +629,7 @@ export function textBodyParser({
           ...(spaceBefore ? { spaceBefore } : {}),
           ...(spaceAfter ? { spaceAfter } : {}),
           ...(exact
-            ? { lineHeight: exact, exactLine: true as const }
+            ? { lineHeight: exact, lineHeightPt: Number(line!.value) / 100, exactLine: true as const }
             : percent != null && (line?.kind === "pct" || fit.reduction > 0)
               ? { lineHeight: percent }
               : {}),

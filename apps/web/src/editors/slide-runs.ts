@@ -1,7 +1,8 @@
+import { slideMathHtml } from "./slide-math";
 import {
   fontKerning,
   kernFeature,
-  officeSingleSpacing,
+  presentationSingleSpacing,
   paintFontFamily,
   tabAdvance,
   type TabStop,
@@ -38,10 +39,14 @@ export function cleanRun(run: TextRun): TextRun {
   if (run.paraTabs?.length) next.paraTabs = run.paraTabs;
   if (run.spaceBefore) next.spaceBefore = run.spaceBefore;
   if (run.paraAlign) next.paraAlign = run.paraAlign;
+  if (run.paraDistributed) next.paraDistributed = true;
   if (run.paraLine) next.paraLine = run.paraLine;
+  if (run.paraLinePt) next.paraLinePt = run.paraLinePt;
+  if (run.listMarker) next.listMarker = true;
   if (run.unbroken) next.unbroken = true;
   if (run.tracking) next.tracking = run.tracking;
   if (run.fraction) next.fraction = run.fraction;
+  if (run.math) next.math = true;
   if (run.bulletSrc) next.bulletSrc = run.bulletSrc;
   if (run.href) next.href = run.href;
   return next;
@@ -74,11 +79,15 @@ function sameStyle(a: TextRun, b: TextRun): boolean {
     (a.paraHang ?? 0) === (b.paraHang ?? 0) &&
     (a.spaceBefore ?? 0) === (b.spaceBefore ?? 0) &&
     (a.paraAlign ?? "") === (b.paraAlign ?? "") &&
+    !!a.paraDistributed === !!b.paraDistributed &&
     (a.paraLine ?? 0) === (b.paraLine ?? 0) &&
+    (a.paraLinePt ?? 0) === (b.paraLinePt ?? 0) &&
+    !!a.listMarker === !!b.listMarker &&
     !!a.unbroken === !!b.unbroken &&
     (a.tracking ?? 0) === (b.tracking ?? 0) &&
     !a.paragraphBreak &&
     !b.paragraphBreak &&
+    !a.math && !b.math &&
     !a.fraction &&
     !b.fraction &&
     (a.bulletSrc ?? "") === (b.bulletSrc ?? "") &&
@@ -172,8 +181,13 @@ export function hasTextRuns(el: { runs?: TextRun[] }): boolean {
       run.paraHang ||
       run.spaceBefore ||
       run.paraAlign ||
+      run.paraDistributed ||
+      run.tracking ||
       run.paraLine ||
+      run.paraLinePt ||
+      run.listMarker ||
       run.unbroken ||
+      run.math ||
       run.fraction ||
       run.font ||
       run.bulletSrc,
@@ -273,11 +287,11 @@ function pictureBulletHtml(run: TextRun): string | undefined {
 
 /** A list marker at the start of a longer run, such as MARP's `• words`. */
 function takeMarker(run: TextRun): { marker: TextRun; rest: TextRun } | null {
-  const match = /^([•●○◦▪▸►‣*-]|\d{1,3}[.)]) ([\s\S]*)$/.exec(run.text);
+  const match = /^([•●○◦▪▸►‣*-]|(?:\d{1,3}|[A-Za-z]{1,8})[.)]) ([\s\S]*)$/.exec(run.text);
   if (!match) return null;
   return {
     marker: { ...run, text: `${match[1]} ` },
-    rest: { ...run, text: match[2] },
+    rest: { ...run, text: match[2], listMarker: undefined },
   };
 }
 
@@ -296,7 +310,7 @@ function bulletSlotHtml(
   // Float the marker into the gutter. A negative text-indent is not painted
   // while the box is being edited, so the first bullet would disappear.
   const fixedStyle = fixed
-    ? `display:inline-block;width:0;transform:translateX(${slidePx(-slot)});text-indent:0;line-height:inherit`
+    ? `display:inline-block;width:0;white-space:pre;transform:translateX(${slidePx(-slot)});text-indent:0;line-height:inherit`
     : `display:inline-block;min-width:${slidePx(slot)};vertical-align:baseline;text-indent:0`;
   if (picture) {
     return `<span${fixedAttr} data-bullet-src="${run.bulletSrc}" style="${fixedStyle};line-height:0">${picture}<span style="font-size:0;line-height:0">${escapeHtml(run.text)}</span></span>`;
@@ -368,12 +382,15 @@ function lineBoxHtml(
 }
 
 type TabMetrics = {
+  align?: "left" | "center" | "right" | "justify";
+  nowrap?: boolean;
   fontFamily?: string;
   fontSize?: number;
   bold?: boolean;
   italic?: boolean;
   /** Unitless line-height of the box, used when a paragraph does not set its own. */
   lineHeight?: number;
+  lineHeightPt?: number;
 };
 
 let measureCtx: CanvasRenderingContext2D | null | undefined;
@@ -614,17 +631,19 @@ function runSpan(run: TextRun, kern?: number): string {
       // The glyph may be taller than the words. A zero line box keeps that
       // height from spreading the paragraph.
       if (isSymbolBullet(run) && !run.bulletSrc) styles.push("line-height:0");
+      if (run.listMarker) data.push('data-list-marker="1"');
       if (run.paragraphBreak) data.push('data-paragraph-break="1"');
       const href =
         run.href && /^(https?:|mailto:)/i.test(run.href) && !/[\s<>"]/.test(run.href)
           ? run.href
           : "";
       if (href) data.push(`data-href="${escapeHtml(href)}"`);
-      const style = styles.length ? ` style="${styles.join(";")}"` : "";
+      const style = styles.length ? ` style="${styles.join(";").replace(/"/g, "&quot;")}"` : "";
       const attrs = data.length ? ` ${data.join(" ")}` : "";
       // latinLnBrk="0" keeps a short hyphenated word together. A word joiner
       // is missing from the PDF face and paints as a gap, so the token is a
       // nowrap span instead. A URL or other long token still breaks at the hyphen.
+      if (run.math) return `<span${attrs}${style}>${slideMathHtml(run)}</span>`;
       if (run.fraction) {
         return `<span${attrs}${style}>${fractionHtml(run)}</span>`;
       }
@@ -754,10 +773,15 @@ function lineHeightCss(fontSize: number, factor: number): string {
  * still starts where this one's box ends. Extra spacing above 100% is split
  * evenly in both.
  */
-function leadingShift(fontSize: number, factor: number, metrics?: TabMetrics): string | undefined {
-  const single = officeSingleSpacing(metrics?.fontFamily);
+function leadingShift(fontSize: number, factor: number): string | undefined {
+  const single = presentationSingleSpacing;
   if (!(single > 0) || factor > single - 0.005) return;
   return `calc((${lineHeightCss(fontSize, factor)} - ${fontSize} * var(--slide-pt, 1) * ${single} * 1px) / 2)`;
+}
+
+/** A paragraph percentage explicitly ends an inherited exact-pitch setting. */
+function paragraphLinePoints(mark: TextRun | undefined, metrics?: TabMetrics): number | undefined {
+ return mark?.paraLinePt ?? (mark?.paraLine == null ? metrics?.lineHeightPt : undefined);
 }
 
 function paragraphStyle(run: TextRun | undefined, empty = false, metrics?: TabMetrics): string {
@@ -774,20 +798,27 @@ function paragraphStyle(run: TextRun | undefined, empty = false, metrics?: TabMe
   else if (hang) rules.push(`text-indent:${slidePx(-hang)}`);
   if (run.spaceBefore) rules.push(`margin-top:${slidePx(run.spaceBefore)}`);
   if (run.paraAlign) rules.push(`text-align:${run.paraAlign}`);
+  if (run.paraDistributed) rules.push("text-align:justify", "text-align-last:justify", "text-justify:inter-character");
+  const alignment = run.paraAlign || metrics?.align;
+  if (metrics?.nowrap && (alignment === "center" || alignment === "right")) {
+    const edge = alignment === "center" ? "50%" : "100%";
+    rules.push("width:max-content", "min-width:100%", "position:relative", `left:${edge}`, `transform:translateX(-${edge})`);
+  }
   const lineFactor = run.paraLine || metrics?.lineHeight;
-  if (run.fontSize && lineFactor)
-    rules.push(`line-height:${lineHeightCss(run.fontSize, lineFactor)}`);
-  else if (run.paraLine) rules.push(`line-height:${run.paraLine}`);
+  const points = paragraphLinePoints(run, metrics);
+  if (points) rules.push(`line-height:calc(${points} * var(--slide-pt, 1) * 1px)`);
+  else if (lineFactor) rules.push(`line-height:${lineFactor}`);
   // A paragraph without its own size uses the box's size and line height.
   const strutSize = run.fontSize || metrics?.fontSize;
-  const shift = strutSize && lineFactor ? leadingShift(strutSize, lineFactor, metrics) : undefined;
+  const shift = strutSize && lineFactor ? leadingShift(strutSize, points ? points / strutSize : lineFactor) : undefined;
   if (shift) rules.push("position:relative", `top:${shift}`);
   if (run.fontSize)
     rules.push(`font-size:calc(${run.fontSize} * var(--slide-pt, 1) * 1px)`);
   // An empty block has no line box, so a blank paragraph would vanish.
   // `1lh` does not resolve while line-height is a rounded length, which
   // drops the blank line and pulls the next paragraph up.
-  if (empty && run.fontSize && lineFactor)
+  if (empty && points) rules.push(`min-height:calc(${points} * var(--slide-pt, 1) * 1px)`);
+  else if (empty && run.fontSize && lineFactor)
     rules.push(`min-height:${lineHeightCss(run.fontSize, lineFactor)}`);
   else if (empty) rules.push("min-height:1lh");
   return rules.join(";");
@@ -810,7 +841,9 @@ function paragraphAttrs(run: TextRun | undefined): string {
   if (run.paraTab) data.push(`data-para-tab="${run.paraTab}"`);
   if (run.spaceBefore) data.push(`data-space-before="${run.spaceBefore}"`);
   if (run.paraAlign) data.push(`data-para-align="${run.paraAlign}"`);
+  if (run.paraDistributed) data.push('data-para-distributed="1"');
   if (run.paraLine) data.push(`data-para-line="${run.paraLine}"`);
+  if (run.paraLinePt) data.push(`data-para-line-pt="${run.paraLinePt}"`);
   return ` ${data.join(" ")}`;
 }
 
@@ -841,15 +874,23 @@ export function runsToHtml(
   return paragraphs
     .map((paragraph, index) => {
       const mark = marks[index];
-      const slot = mark?.paraHang || hang || 0;
-      const hanging = !!(mark?.paraHang || paragraph.some((run) => run.paraHang));
-      const inner = renderParagraphInner(paragraph, kern, slot, metrics, hanging, mark);
-      const strut = strutMark(mark, paragraph);
+      const firstSlot = mark?.paraFirst && !mark.paraHang && !hang && paragraph[0]?.listMarker ? mark.paraFirst : 0;
+      const slot = mark?.paraHang || hang || firstSlot || 0;
+      const hanging = !!(firstSlot || mark?.paraHang || paragraph.some((run) => run.paraHang));
+      const sizes = paragraph.filter(run => run.text.trim() && !run.baseline && !isSymbolBullet(run) && run.fontSize).map(run => run.fontSize!);
+      const mixed = !paragraphLinePoints(mark, metrics) && sizes.length > 1 && Math.min(...sizes) < Math.max(...sizes);
+      // A browser paragraph strut participates in every wrapped line. Use the
+      // smallest authored size; larger inline runs grow only the lines they occupy.
+      const painted = mixed ? paragraph.map(run => ({...run, fontSize: run.fontSize || mark?.fontSize || metrics?.fontSize || Math.max(...sizes)})) : paragraph;
+      const inner = renderParagraphInner(painted, kern, slot, metrics, hanging, mark);
+      const originalStrut = strutMark(mark, painted);
+      const strut = mixed && originalStrut ? {...originalStrut, fontSize: Math.min(...sizes)} : originalStrut;
       const reflection = paragraph.find((run) => run.reflection)?.reflection;
       // A blank paragraph is one line. min-height on an empty block collapses
       // with the next margin, so the following text sits a line too high.
       const body = inner.length === 0 ? "<br>" : inner;
-      const style = `${paragraphStyle(strut, false, metrics)}${reflection ? `;${reflectionCss(reflection)}` : ""}`;
+      const styleMark = firstSlot && strut ? {...strut, paraFirst: undefined} : strut;
+      const style = `${paragraphStyle(styleMark, false, metrics)}${reflection ? `;${reflectionCss(reflection)}` : ""}`;
       const reflectAttr = reflection ? ` data-reflection="1"` : "";
       return `<span class="slide-para" data-para-index="${index}"${paragraphAttrs(mark)}${reflectAttr} style="${style}">${body}</span>`;
     })
@@ -868,6 +909,7 @@ export function textInnerHtml(el: {
   fontFamily?: string;
   fontSize?: number;
   lineHeight?: number;
+  lineHeightPt?: number;
 }): string {
   if (!hasTextRuns(el)) return escapeHtml(el.content ?? "");
   return runsToHtml(runsOf(el), el.kern, el.hang, {
@@ -876,5 +918,6 @@ export function textInnerHtml(el: {
     bold: el.bold,
     italic: el.italic,
     lineHeight: el.lineHeight,
+    lineHeightPt: el.lineHeightPt,
   });
 }

@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { officeSingleSpacing, type SlideElement } from "@suiteleaf/core";
+import { presentationSingleSpacing, type SlideElement } from "@suiteleaf/core";
 
 /** Cell writing direction changes its contents, while borders stay on the grid. */
 export function tableCellFlow(mark: NonNullable<SlideElement["cellMarks"]>[number][number] | undefined): CSSProperties | undefined {
@@ -101,8 +101,8 @@ export function slideCellPaint(
       ? `calc(${mark.fontSize} * var(--slide-pt, 1) * 1px)`
       : undefined,
     textAlign: mark?.align,
-    // A stored row is one Windows line grid tall, not one em.
-    lineHeight: mark?.fontSize ? officeSingleSpacing(mark.font || "Calibri") : undefined,
+    // Use the same presentation line box as the row measurer.
+    lineHeight: mark?.fontSize ? presentationSingleSpacing : undefined,
     whiteSpace: "pre-wrap",
     verticalAlign:
       mark?.valign === "middle"

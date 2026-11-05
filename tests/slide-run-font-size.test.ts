@@ -177,6 +177,6 @@ describe("imported slide font sizes", () => {
 
 it("anchors a fixed bullet gutter to centered text rather than the box edge", () => {
  const html=runsToHtml([{text:"• centered",fontSize:20}],undefined,30);
- expect(html).toContain("display:inline-block;width:0;transform:translateX(calc(-30px");
+ expect(html).toContain("display:inline-block;width:0;white-space:pre;transform:translateX(calc(-30px");
  expect(html).not.toContain("float:left");
 });

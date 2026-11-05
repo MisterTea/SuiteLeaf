@@ -1,4 +1,4 @@
-/** Windows line grid (winAscent+winDescent)/em for each installed face. PowerPoint single spacing uses this, not 1em. */
+/** Windows line grid (winAscent+winDescent)/em for each installed face. Font extents are distinct from font-independent PPTX line pitch. */
 export const officeLineGrid: Record<string, number> = {
   "Abadi MT Condensed Extra Bold": 1.1504,
   "Abadi MT Condensed Light": 1.1504,

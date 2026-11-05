@@ -362,3 +362,5 @@ export function parseRange(a1: string, sheetId: string): SourceRange {
 }
 
 export { departureChecklist, type DepartureItem } from "./capabilities/departure";
+
+export { presentationLineHeight, presentationSingleSpacing } from "./pptx-line-spacing";

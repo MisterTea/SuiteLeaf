@@ -29,10 +29,10 @@ it("reads a subscript and a stacked fraction from DrawingML math", () => {
     den: [{ text: "D" }],
   });
   const html = runsToHtml([runs[2]]);
-  expect(html).toContain("inline-flex");
-  expect(html).toContain("border-top:0.06em solid currentColor");
-  expect(html).toContain(">Bound</span>");
-  expect(html).not.toContain("NBound/D");
+  expect(html).toContain("<mfrac>");
+  expect(html).toContain("<msub>");
+  expect(html).toContain(">B</mi>");
+  expect(html).toContain("data-slide-math");
 });
 
 it("keeps a grouped fraction and the exponent outside its parentheses", () => {
@@ -92,6 +92,14 @@ it("keeps Office math when a slide text box is imported", async () => {
   ]);
 });
 
+it.each([['centerGroup', 'center'], ['center', 'center'], ['left', 'left'], ['right', 'right'], ['unknown', 'left']])("honors pure equation justification %s", async (value, align) => {
+  const zip = new JSZip();
+  zip.file("ppt/slides/slide1.xml", `<p:sld><p:cSld><p:spTree><p:sp><p:nvSpPr><p:cNvPr id="2" name="eq"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="3000000" cy="800000"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a14:m><m:oMathPara><m:oMathParaPr><m:jc m:val="${value}"/></m:oMathParaPr><m:oMath><m:r><m:t>x</m:t></m:r></m:oMath></m:oMathPara></a14:m></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`);
+  const file = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+  const box = file.content.slides[file.content.slideOrder[0]].elements.find(el => el.content === "x");
+  expect(box?.align).toBe(align);
+});
+
 it("paints the math table and not the plain fallback copy", async () => {
   const table = (label: string) =>
     `<p:graphicFrame><p:xfrm><a:off x="0" y="0"/><a:ext cx="2000000" cy="400000"/></p:xfrm><a:graphic><a:graphicData><a:tbl><a:tblGrid><a:gridCol w="2000000"/></a:tblGrid><a:tr h="400000"><a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr sz="1400"/><a:t>${label}</a:t></a:r></a:p></a:txBody><a:tcPr/></a:tc></a:tr></a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
@@ -135,9 +143,9 @@ it("stacks a limit under its operator", () => {
   const html = runsToHtml(runs);
   expect(html).not.toContain("border-top");
   expect(html).not.toContain("inline-flex");
-  expect(html).toContain("vertical-align:-0.25em");
+  expect(html).toContain("<munder>");
   expect(html).toContain("max");
-  expect(html).toContain(">a<");
+  expect(html).toContain(">a</mi>");
 });
 
 it("paints a combining circumflex the math face does not draw", () => {

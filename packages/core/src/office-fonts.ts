@@ -52,8 +52,8 @@ export function officeFont(name: string | undefined) {
 }
 
 /**
- * PowerPoint single spacing is the font's Windows line grid, not one em.
- * A stored multiple of 1 is 100% of that grid. A face this app does not ship
+ * Font-dependent line extents for document layout and glyph metrics.
+ * PPTX baseline pitch uses pptx-line-spacing instead. A face this app does not ship
  * still uses the grid measured from the deck's embedded font, when it has one.
  * Shipped Office metrics stay ahead of that measurement.
  */
