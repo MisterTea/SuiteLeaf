@@ -7,6 +7,7 @@ export { packSharedMedia, unpackSharedMedia };
 
 export { diffDocuments, type DocDiff } from "./doc-diff";
 export { cloneJson, sameJson } from "./json-data";
+export { slugify } from "./heading-anchors";
 export { fontKerning, kernFeature, kerningThreshold } from "./kerning";
 export { officeSingleSpacing, paintFontFamily, suiteLeafFont } from "./office-fonts";
 export { lineMarkerEnds, readLineEnd, type LineEndType, type LineMarker } from "./pptx-line-ends";

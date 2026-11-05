@@ -17,6 +17,8 @@ export type Probe =
   | { dimension: Dimension; kind: "revision"; value: string }
   | { dimension: Dimension; kind: "font"; value: string }
   | { dimension: Dimension; kind: "header"; value: string }
+  /** The text of a link within the document whose target exists at that stage. */
+  | { dimension: Dimension; kind: "internal-link"; value: string }
   /** Text inside a table cell. */
   | { dimension: Dimension; kind: "cell"; value: string }
   | { dimension: Dimension; kind: "footnote"; value: string }
@@ -35,6 +37,8 @@ export interface View {
   comments?: string[];
   revisions?: string[];
   fonts?: string[];
+  /** Texts of links within the document whose target exists. */
+  internalLinks?: string[];
   /** Text inside table cells. */
   cells?: string[];
   /** Header and footer text, from every section. */

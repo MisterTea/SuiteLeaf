@@ -7,17 +7,10 @@
  * whose `href` is `#<slug>`.
  */
 
-/** Turn heading text into a deterministic, URL-friendly slug. */
-export function slugify(input: string): string {
-  const slug = input
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "") // strip accents
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 120);
-  return slug || "heading";
-}
+import { slugify } from "@suiteleaf/core";
+
+/** Turn heading text into a deterministic, URL-friendly slug. Shared with DOCX import and export. */
+export { slugify };
 
 /**
  * Assign a unique slug to a heading, disambiguating collisions with "-1", "-2"…

@@ -70,6 +70,8 @@ export function probeSeen(probe: Probe, view: View | undefined): boolean | undef
       return anyIncludes(view.comments, probe.value);
     case "revision":
       return anyIncludes(view.revisions, probe.value);
+    case "internal-link":
+      return view.internalLinks === undefined ? undefined : view.internalLinks.some((text) => norm(text) === norm(probe.value));
     case "cell":
       return anyIncludes(view.cells, probe.value);
     case "header":

@@ -62,6 +62,17 @@ tell application "Microsoft Word"
     repeat with i from 1 to (count of footnotes of theDoc)
       set acc to acc & "### footnote " & (content of text object of footnote i of theDoc) & LF
     end repeat
+    set markNames to {}
+    repeat with i from 1 to (count of bookmarks of theDoc)
+      set end of markNames to (name of bookmark i of theDoc)
+    end repeat
+    repeat with i from 1 to (count of hyperlink objects of theDoc)
+      set linkRef to hyperlink object i of theDoc
+      set targetName to sub address of linkRef
+      if targetName is not missing value and targetName is not "" then
+        if markNames contains targetName then set acc to acc & "### link " & (text to display of linkRef) & LF
+      end if
+    end repeat
     repeat with i from 1 to (count of paragraphs of theDoc)
       set para to paragraph i of theDoc
       set label to list string of list format of text object of para
@@ -82,6 +93,7 @@ export function wordView(output: string): View {
   const headers: string[] = [];
   const footnotes: string[] = [];
   const numbered: string[] = [];
+  const internalLinks: string[] = [];
   const body: string[] = [];
   let pages: number | undefined;
   let inBody = false;
@@ -93,13 +105,14 @@ export function wordView(output: string): View {
       const text = clean(line.slice(11));
       if (text) headers.push(text);
     } else if (line.startsWith("### footnote ")) footnotes.push(clean(line.slice(13)));
+    else if (line.startsWith("### link ")) internalLinks.push(clean(line.slice(9)));
     else if (line.startsWith("### item ")) {
       const [label, text] = line.slice(9).split("\t");
       numbered.push(`${clean(label ?? "").replace(/[.)]$/, "")} ${clean(text ?? "")}`);
     } else if (inBody) body.push(line);
   }
   const text = body.join("\n").replace(/\r/g, "\n");
-  return { pages, text, headers, footnotes, cells: [text], numbered: numbered.join("\n") };
+  return { pages, text, headers, footnotes, internalLinks, cells: [text], numbered: numbered.join("\n") };
 }
 
 export function excelScript(input: string): string {

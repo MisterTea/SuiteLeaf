@@ -84,7 +84,7 @@ export const FIXTURE_SPECS: FixtureSpec[] = [
   {
     id: "docx-sections",
     format: "docx",
-    features: ["two sections", "section headers", "page-number footer", "footnote", "numbered list", "lettered list", "restarted list", "hyperlink"],
+    features: ["two sections", "section headers", "page-number footer", "footnote", "numbered list", "lettered list", "restarted list", "hyperlink", "bookmarked heading", "internal link"],
     classification: "supported",
     generator: "docx@9.10.0",
     probes: [
@@ -95,6 +95,7 @@ export const FIXTURE_SPECS: FixtureSpec[] = [
       { dimension: "layout", kind: "header", value: "Garden club report" },
       { dimension: "layout", kind: "header", value: "Appendix header" },
       { dimension: "layout", kind: "sections", count: 2 },
+      { dimension: "objects", kind: "internal-link", value: "the plan" },
       { dimension: "content", kind: "numbered", value: "2 Stake the beans" },
       { dimension: "content", kind: "numbered", value: "b Mulch after" },
       { dimension: "content", kind: "numbered", value: "1 Weed the paths" },
@@ -190,7 +191,9 @@ async function docxSections(): Promise<Uint8Array> {
           default: new d.Footer({ children: [new d.Paragraph({ children: [new d.TextRun("Page "), new d.TextRun({ children: [d.PageNumber.CURRENT] })] })] }),
         },
         children: [
+          new d.Paragraph({ heading: d.HeadingLevel.HEADING_1, children: [new d.Bookmark({ id: "plan", children: [new d.TextRun("Planting plan")] })] }),
           new d.Paragraph({ children: [new d.TextRun("Tomatoes are in"), new d.FootnoteReferenceRun(1)] }),
+          new d.Paragraph({ children: [new d.TextRun("See "), new d.InternalHyperlink({ anchor: "plan", children: [new d.TextRun("the plan")] })] }),
           new d.Paragraph({ text: "Water the beds", numbering: { reference: "steps", level: 0 } }),
           new d.Paragraph({ text: "Stake the beans", numbering: { reference: "steps", level: 0 } }),
           new d.Paragraph({

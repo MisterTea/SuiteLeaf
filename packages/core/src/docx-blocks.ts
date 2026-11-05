@@ -1,4 +1,5 @@
 import {
+  Bookmark,
   BorderStyle,
   HeadingLevel,
   Paragraph,
@@ -27,6 +28,7 @@ import {
 } from "./linked-chart";
 import { alignment, runs, type NoteSlot } from "./docx-runs";
 import { textBoxPlain } from "./docx-text-boxes";
+import { bookmarkName, slugify } from "./heading-anchors";
 
 export function columnSegments(
   nodes: JsonNode[],
@@ -117,6 +119,21 @@ export function listReferences(content: JsonNode): { reference: string; format: 
   };
   visit(content);
   return [...out.values()];
+}
+
+/** Each heading carries a bookmark named from its slug, once per name, so a link to it works in Word. */
+const bookmarked = new WeakMap<DocxCommentPlan, Set<string>>();
+function headingBookmark(plan: DocxCommentPlan, heading: JsonNode): string | undefined {
+  const text = (function textOf(node: JsonNode): string {
+    return (node.text ?? "") + (node.content ?? []).map(textOf).join("");
+  })(heading);
+  if (!text.trim()) return undefined;
+  const name = bookmarkName(slugify(text));
+  const used = bookmarked.get(plan) ?? new Set<string>();
+  bookmarked.set(plan, used);
+  if (used.has(name)) return undefined;
+  used.add(name);
+  return name;
 }
 
 /** Each ordered list is its own numbering instance, so it restarts instead of continuing the one before. */
@@ -227,9 +244,10 @@ export function blocks(
         ? [{ type: TabStopType.LEFT, position: Math.round(stop * 1440) }]
         : undefined;
     const namedStyle = n.type === "paragraph" ? wordStyleId(n.attrs?.styleId) : undefined;
+    const bookmark = n.type === "heading" ? headingBookmark(plan, n) : undefined;
     return [
       new Paragraph({
-        children,
+        children: bookmark ? [new Bookmark({ id: bookmark, children })] : children,
         tabStops,
         ...(namedStyle ? { style: namedStyle } : {}),
         alignment: alignment(n.attrs?.textAlign),

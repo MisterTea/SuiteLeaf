@@ -131,3 +131,15 @@ The first version used a new file name each run and had Word save a text file, s
 
 `npm run test:office-compat -- --force` with Word 16.114.4, Excel 16.114.1, and PowerPoint 16.114.4 (fingerprint `6bf3d2644771117c`) gave all four fixtures opened, 17 dimensions passing, and nothing blocking. `npx vitest run --coverage` passed (620 files, 4,509 tests): statements 93.87% and lines 96.71%. `word-lists.ts`, `msoffice.ts`, and `docx-blocks.ts` were each above 98% statements.
 
+2026-11-04, later still: links within a document survive.
+
+- **Import.** A Word link to a bookmark now becomes a SuiteLeaf link to the heading that holds the bookmark: `#plan` becomes `#planting-plan`, the slug the editor follows. A heading is matched by its text, not by its Word style name, which can be renamed or localized.
+- **Export.** Every heading carries a bookmark named from its slug (`h_planting_plan`, letters, digits, and underscores, at most 40 characters, unique in the file). A `#slug` link is written as a Word internal hyperlink to it. `slugify` moved to `packages/core/src/heading-anchors.ts`, and the editor's `anchors.ts` re-exports it, so import, export, and the editor use one slug rule.
+- **Limit.** A link to a bookmark that is not on an imported heading keeps its text, and the import notes count it.
+
+The WP-012 fixture `docx-sections` now has a bookmarked heading and an internal link, checked by an `internal-link` probe. A link counts only when its target exists at that stage: a heading in SuiteLeaf, a bookmark in the Word package. With the change reverted, `objects` was a loss at import. Word now reports each internal hyperlink whose bookmark exists. It confirmed `the plan` both in the source and in SuiteLeaf's export.
+
+`npm run test:office-compat` with Word, Excel, and PowerPoint 16.114 (fingerprint `598b0877d1ee247d`) gave 18 dimensions passing, no loss, and nothing blocking. `npx vitest run --coverage` passed (621 files, 4,512 tests): statements 93.88% and lines 96.72%. `heading-anchors.ts` was fully covered. `docx-runs.ts` was at 88.07% statements, up from 87.96%; it was below 90% before this change.
+
+On the first 200 NapierOne DOCX files, all 200 still imported and exported. 3 files had 87 internal links between them. 6 now resolve to a heading, where 0 did before. The rest point at bookmarked paragraphs that are not imported as headings: one file has 63 links and one imported heading. Following those would need anchors on any paragraph, in the model and in the editor. That is not done.
+

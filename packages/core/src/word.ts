@@ -34,6 +34,7 @@ import { wordKerning } from "./word-kerning";
 import { wordDefaultFont } from "./word-fonts";
 import { insertWordSectionBreaks } from "./word-sections";
 import { applyWordListTypes } from "./word-lists";
+import { relinkWordBookmarks } from "./heading-anchors";
 import { markMammothSymbols, symbolSpans } from "./word-symbols";
 import {
   letterheadDistanceNote,
@@ -339,6 +340,11 @@ export async function importDocx(
   );
   insertWordPageBreaks(content, xml);
   for (const warning of await insertWordSectionBreaks(content, xml, zip)) warnings.push(warning);
+  const links = relinkWordBookmarks(content, xml);
+  if (links.unresolved)
+    warnings.push(
+      `${links.unresolved} internal link${links.unresolved === 1 ? " points" : "s point"} to a place that is not a heading. SuiteLeaf links only to headings, so ${links.unresolved === 1 ? "it does" : "they do"} not move the cursor.`,
+    );
   applyWordListTypes(
     content,
     xml,

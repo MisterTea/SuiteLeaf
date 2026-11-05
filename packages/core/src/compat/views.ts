@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import JSZip from "jszip";
 import type { JsonNode, SheetFile, SlideFile, SuiteFile } from "../index";
 import { LIST_TYPES, numberLabel, numberedParagraphs } from "../word-lists";
+import { slugify } from "../heading-anchors";
 import type { CompatFormat, View } from "./types";
 
 const sha = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
@@ -70,6 +71,19 @@ function docView(content: JsonNode): View {
     for (const child of node.content ?? []) number(child);
   };
   number(content);
+  const headingSlugs = new Set<string>();
+  const internalLinks: string[] = [];
+  const links = (node: JsonNode) => {
+    if (node.type === "heading") headingSlugs.add(slugify(inline(node)));
+    for (const child of node.content ?? []) links(child);
+  };
+  links(content);
+  const linked = (node: JsonNode) => {
+    const href = String(node.marks?.find((m) => m.type === "link")?.attrs?.href ?? "");
+    if (href.startsWith("#") && headingSlugs.has(href.slice(1))) internalLinks.push(node.text ?? "");
+    for (const child of node.content ?? []) linked(child);
+  };
+  linked(content);
   const threads = (content.attrs?.commentThreads ?? []) as { messages?: { text?: string }[] }[];
   const settings = (content.attrs?.pageSettings ?? {}) as Record<string, unknown>;
   const breaks = (content.content ?? []).filter((node) => node.type === "sectionBreak");
@@ -83,6 +97,7 @@ function docView(content: JsonNode): View {
     footnotes: (content.content ?? []).filter((node) => node.type === "note").map(plain),
     sections: breaks.length + 1,
     numbered: numbered.join("\n"),
+    internalLinks,
     cells,
     text: blocks.join("\n"),
     revisions,
@@ -234,6 +249,12 @@ async function docxPackage(zip: JSZip): Promise<View> {
     footnotes: footnoteXml.split(/<\/w:footnote>/).map((part) => tagTexts(part, "w:t").join("")).filter(Boolean),
     sections: (body.match(/<w:sectPr\b/g) ?? []).length,
     cells: [...body.matchAll(/<w:tc\b[^>]*>([\s\S]*?)<\/w:tc>/g)].map((m) => tagTexts(m[1]!, "w:t").join("")),
+    internalLinks: (() => {
+      const marks = new Set([...body.matchAll(/<w:bookmarkStart\b[^>]*w:name="([^"]+)"/g)].map((m) => xmlText(m[1]!)));
+      return [...body.matchAll(/<w:hyperlink\b[^>]*w:anchor="([^"]+)"[^>]*>([\s\S]*?)<\/w:hyperlink>/g)]
+        .filter((m) => marks.has(xmlText(m[1]!)))
+        .map((m) => tagTexts(m[2]!, "w:t").join(""));
+    })(),
     numbered: numberedParagraphs(
       body,
       (await zip.file("word/numbering.xml")?.async("string")) ?? "",
