@@ -454,23 +454,42 @@ export const capabilities: Capability[] = [
   {
     id: "cap-doc-collaboration",
     name: "Document collaboration",
-    summary: "A Yjs room can mirror paragraph text. The README still says real-time shared editing is deferred.",
+    summary:
+      "People editing a SuiteDrive document at the same time, on one node or on different nodes, share text, formatting, tables, pictures, comments, carets, and undo of their own edits.",
     parity: "enterprise-workspace",
-    status: "partial",
+    status: "verified",
     platforms: ["web", "node"],
-    modes: ["cluster"],
+    modes: ["single-node", "cluster"],
     ui: ["shared document"],
     formats: [".sldoc"],
     limits: [
-      "README says real-time shared editing remains deferred.",
-      "Compaction keeps the prosemirror Yjs fragment when it is present, including marks and tables. A room that only logged paragraph strings still falls back to those strings.",
-      "Reconnect, cross-node journal recovery, and spreadsheet or slide collaboration are not claimed.",
+      "Protocol 1 is described in docs/collaboration-protocol.md. Access is withdrawn within 5 seconds of a revoked grant, session, or token, or on the person's next message.",
+      "Edits waiting for the node are kept in the tab's session storage. Closing the tab before the node answers loses them.",
+      "An edit made in an earlier generation of the room is kept as a separate local copy, not merged into the new room.",
+      "A role change stops the room until the file is opened again.",
+      "An already open room on another node can be one 30-second sweep behind.",
+      "Spreadsheet and slide collaboration are WP-003 and WP-004 and are not claimed here.",
     ],
-    evidence: doc(
-      "tests/collab-rich.test.ts",
-      "2026-10-30: tests/collab-rich.test.ts passed, 3 tests. That covers unit compaction of a bold run and a table, not a two-browser session.",
-      "pass",
-    ),
+    evidence: [
+      {
+        kind: "rust",
+        ref: "crates/suiteleaf-node/tests/multiuser",
+        result: "pass",
+        note: "2026-11-04: cargo test -p suiteleaf-node --test multiuser passed. It covers convergence across nodes for bold text, a table, and an embedded picture; restart; a dropped connection; duplicate edits; simultaneous joins; expired sessions; revoked grants; quiet viewers; token renewal; role changes; and edits from an earlier generation.",
+      },
+      {
+        kind: "browser",
+        ref: "tests/browser/doc-collab.spec.ts",
+        result: "pass",
+        note: "2026-11-04: 6 Chromium tests passed with two browsers on one node: typing, keyboard undo and redo, caret and selection, a viewer, comments, and a dropped connection.",
+      },
+      {
+        kind: "unit",
+        ref: "tests/ui/collab-session-room.test.tsx",
+        result: "pass",
+        note: "2026-11-04: the client hook reconnects, renews its token, stops on a changed role, and starts a new copy when the room generation changes instead of repeating text.",
+      },
+    ],
     workPackages: ["WP-002"],
   },
   {

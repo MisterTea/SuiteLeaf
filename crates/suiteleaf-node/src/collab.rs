@@ -23,6 +23,7 @@ mod presence;
 mod sheet_room;
 mod slide_room;
 mod socket;
+mod standing;
 #[cfg(test)]
 mod tests;
 
@@ -188,6 +189,7 @@ impl Rooms {
                 mode: "solo",
                 state: None,
                 seed: false,
+                generation: 0,
             });
         };
         let update = room
@@ -222,6 +224,7 @@ impl Rooms {
             mode,
             state,
             seed,
+            generation: room.generation,
         })
     }
 
@@ -280,18 +283,19 @@ impl Rooms {
         }))
     }
 
-    /// The person no longer has a role on this file. A viewer stays connected.
-    /// The socket is checked on its next message, not at the moment the grant changes.
-    pub fn access_ended(&self, user_id: &str, admin: bool, item: &str) -> anyhow::Result<bool> {
+    /// The person's role on this file now. `None` means the grant is gone.
+    /// An open socket asks on each message and on its recheck tick.
+    pub fn current_role(
+        &self,
+        user_id: &str,
+        admin: bool,
+        item: &str,
+    ) -> anyhow::Result<Option<Role>> {
         let who = Principal {
             id: user_id.to_owned(),
             admin,
         };
-        match self.drive.role(&who, item) {
-            Ok(Some(_)) => Ok(false),
-            Ok(None) => Ok(true),
-            Err(err) => Err(err.into()),
-        }
+        Ok(self.drive.role(&who, item)?)
     }
 
     /// Remove one person as soon as their socket closes, without waiting for the idle sweep.
@@ -366,19 +370,40 @@ impl Rooms {
         Ok(())
     }
 
+    /// Tests apply an edit without naming a generation.
+    #[cfg(test)]
     fn apply_update(&self, update: LiveUpdate<'_>) -> anyhow::Result<bool> {
+        Ok(self.apply_update_in(update, None)? == Outcome::Stored)
+    }
+
+    /// Apply an edit made in `generation`, when the client named one. An edit
+    /// from another generation, or for a room that is no longer shared, is
+    /// `Stale` and is not stored, so its Yjs structure never mixes into a
+    /// document built from a different log.
+    fn apply_update_in(
+        &self,
+        update: LiveUpdate<'_>,
+        generation: Option<i64>,
+    ) -> anyhow::Result<Outcome> {
         // Editors and owners change the document. Commenters and responders
         // may record a comment. A viewer, or a comment passed off as an edit,
         // is ignored.
         if !may_apply(update.role, update.unit) {
-            return Ok(false);
+            return Ok(Outcome::Refused);
         }
         let mut live = self.live.lock().expect("rooms");
         let Some(room) = live.get_mut(update.item) else {
-            return Ok(false);
+            return Ok(Outcome::Refused);
         };
         if room.mode != "multiuser" {
-            return Ok(false);
+            return Ok(if generation.is_some() {
+                Outcome::Stale
+            } else {
+                Outcome::Refused
+            });
+        }
+        if generation.is_some_and(|made_in| made_in != room.generation) {
+            return Ok(Outcome::Stale);
         }
         let decoded = Update::decode_v1(update.bytes).context("decode Yjs update")?;
         if update.unit == "seed" {
@@ -387,14 +412,15 @@ impl Rooms {
                 .transact()
                 .encode_state_as_update_v1(&yrs::StateVector::default());
             if existing.len() > 2 {
-                return Ok(false);
+                return Ok(Outcome::Refused);
             }
         }
         if update.role < Role::Editor && body_changed(&room.doc, update.bytes)? {
-            return Ok(false);
+            return Ok(Outcome::Refused);
         }
         let generation = room.generation;
         drop(live);
+        // From here `generation` is the room's, which the edit matched or did not name.
         let stored = STANDARD.encode(update.bytes);
         let existing = self.db.query(
             "SELECT id FROM drive_room_update WHERE itemId = ?1 AND generation = ?2 AND bytes = ?3 LIMIT 1",
@@ -424,10 +450,10 @@ impl Rooms {
         }
         let mut live = self.live.lock().expect("rooms");
         let Some(room) = live.get_mut(update.item) else {
-            return Ok(true);
+            return Ok(Outcome::Stored);
         };
         if room.generation != generation {
-            return Ok(true);
+            return Ok(Outcome::Stored);
         }
         room.doc
             .transact_mut()
@@ -443,7 +469,7 @@ impl Rooms {
             });
         }
         let _ = room.relay.send(STANDARD.encode(update.bytes));
-        Ok(true)
+        Ok(Outcome::Stored)
     }
 
     fn relay_text(&self, item: &str, text: &str) {
@@ -666,4 +692,17 @@ pub struct Join {
     pub mode: &'static str,
     pub state: Option<String>,
     pub seed: bool,
+    /// The room's document generation. An edit made in another generation cannot be placed.
+    pub generation: i64,
+}
+
+/// What happened to one edit sent on the socket.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Outcome {
+    /// In the journal and the live room.
+    Stored,
+    /// Not allowed for this role, or not a valid update.
+    Refused,
+    /// Made in another generation of the room, or the room is no longer shared.
+    Stale,
 }

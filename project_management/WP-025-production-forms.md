@@ -2,12 +2,12 @@
 id: "WP-025"
 title: "Production Forms and response workflows"
 type: "work_package"
-status: "blocked"
+status: "in_progress"
 priority: "P1"
 phase: 3
 area: "forms"
 created: "2026-10-29"
-updated: "2026-10-29"
+updated: "2026-11-04"
 owner: "unassigned"
 blocked: true
 blocked_on: ["WP-007"]

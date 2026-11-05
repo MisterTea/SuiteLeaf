@@ -60,6 +60,11 @@ pub(crate) struct ClientInner {
     pub(crate) joins: u64,
     failed: Option<String>,
     pub(crate) closed: bool,
+    pub(crate) error: Option<String>,
+    pub(crate) renewed: u64,
+    pub(crate) updates: u64,
+    pub(crate) generation: i64,
+    pub(crate) reject_reason: Option<String>,
     pub(crate) reply: Option<(String, String)>,
     pub(crate) caret: Option<(String, u64, u64)>,
     sheet: Option<(String, String, u64, u64, u64, u64)>,
@@ -123,6 +128,7 @@ pub(crate) fn start_env(
     .env("SUITELEAF_INTERNAL_TOKEN", TOKEN)
     .env("SUITELEAF_IDLE_MS", "5000")
     .env("SUITELEAF_KICK_EVERY_MS", "200")
+    .env("SUITELEAF_RECHECK_MS", "200")
     .env("RUST_LOG", "warn")
     .stdout(Stdio::piped())
     .stderr(Stdio::inherit());

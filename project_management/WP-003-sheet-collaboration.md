@@ -7,10 +7,10 @@ priority: "P0"
 phase: 1
 area: "collaboration"
 created: "2026-10-29"
-updated: "2026-11-03"
+updated: "2026-11-04"
 owner: "unassigned"
-blocked: true
-blocked_on: ["WP-002"]
+blocked: false
+blocked_on: []
 related_sources: ["S03"]
 ---
 
@@ -124,3 +124,5 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S03`. External complaints motivat
 2026-11-03: a conditional formatting rule is shared and moves with a row insert. The Fees rule formula `=A2` becomes `=A3`, and its stored rows 1 through 2 become 2 through 3. A rule on Beds keeps its row and its formula becomes `=Fees!A3`. A commenter cannot add a rule. A rule id that breaks across a line is not stored, and `secret-value` is not a rule id. Deleting the Fees sheet removes its rule and leaves the Beds rule. `npx vitest run tests/sheet-conditional.test.ts` passed (1 test). Coverage for `apps/web/src/collab/sheet-conditional.ts` was 96.89% statements, 91.15% branches, 100% functions, and 100% lines. The spreadsheet was not opened. The formatting was not painted. Rule order is not stored. This is not Univer recalculation. Completion stays blocked on WP-002.
 
 2026-11-03: a sheet filter is shared. Fees keeps the value `North` and hides stored row 2. A value that breaks across a line is left out, and `secret-value` is not stored. Inserting a row before that hidden row moves the filter's last row from 3 to 4 and the hidden row from 2 to 3. Deleting the hidden row drops it. A commenter cannot remove the filter. `npx vitest run tests/sheet-filter.test.ts` passed (1 test). Coverage for `apps/web/src/collab/sheet-filter.ts` was 93.7% statements, 90.62% branches, 100% functions, and 100% lines. The spreadsheet was not opened. The filter menu was not opened. This is not Univer recalculation. Completion stays blocked on WP-002.
+
+2026-11-04: WP-002 was accepted as done, so this package is no longer blocked. It was blocked on WP-002 from 2026-10-29 until then; that dependency is still listed under Dependencies.

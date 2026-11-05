@@ -17,7 +17,7 @@ describe("capability catalog", () => {
   it("accepts the shipped catalog and separates inconclusive evidence from passes", () => {
     expect(checkCatalog(capabilityCatalog)).toEqual([]);
     const report = releaseReport(capabilityCatalog);
-    expect(report.pass).toBe(6);
+    expect(report.pass).toBe(8);
     expect(report.fail).toBe(0);
     expect(report.skipped).toBe(0);
     expect(report["unavailable-reference"]).toBe(0);
@@ -149,7 +149,7 @@ describe("capability catalog", () => {
     const report = releaseReport(catalog);
     expect(report.fail).toBe(1);
     expect(report.skipped).toBe(1);
-    expect(report.pass).toBe(6);
+    expect(report.pass).toBe(8);
     expect(report.inconclusive).toBeGreaterThan(0);
     expect(report.total).toBe(
       report.inconclusive + report.pass + report.fail + report.skipped + report["unavailable-reference"],

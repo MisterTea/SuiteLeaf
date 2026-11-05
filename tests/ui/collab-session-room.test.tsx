@@ -76,6 +76,7 @@ function prosemirrorState() {
 
 type Props = Parameters<typeof useDocumentRoom>[0];
 const spies = {
+  onStranded: vi.fn(),
   onDoc: vi.fn(),
   onSoloAgain: vi.fn(),
   onCaret: vi.fn(),
@@ -244,6 +245,102 @@ describe("document room", () => {
     await vi.waitFor(() => expect(socket().types()).toContain("auth"));
     socket().receive({ type: "reject", reason: "This app speaks collaboration protocol 1." });
     expect(lastRecovery()).toBe("This app speaks collaboration protocol 1.");
+  });
+
+  it("sends a fresh token on the open socket and stops when the role changes", async () => {
+    render(<Probe />);
+    await joined();
+    // A new session with the same token sends nothing again.
+    act(() => fake.sessionListener({ url: "x" }));
+    await Promise.resolve();
+    expect(socket().types().filter((type) => type === "auth")).toHaveLength(1);
+    fake.token.mockResolvedValue("token-2");
+    act(() => fake.sessionListener({ url: "x" }));
+    await vi.waitFor(() =>
+      expect(socket().sent.at(-1)).toEqual({ type: "auth", accessToken: "token-2", protocol: 1 }),
+    );
+    socket().receive({ type: "renewed" });
+    expect(FakeSocket.instances).toHaveLength(1);
+    // A token that cannot be read leaves the socket as it is.
+    fake.token.mockRejectedValue(new Error("offline"));
+    act(() => fake.sessionListener({ url: "x" }));
+    await Promise.resolve();
+    expect(socket().types().filter((type) => type === "auth")).toHaveLength(2);
+    socket().receive({ type: "error", reason: "role-changed" });
+    expect(lastRecovery()).toBe(
+      "Your access to this shared document changed. Open it again to continue.",
+    );
+    expect(socket().readyState).toBe(FakeSocket.CLOSED);
+    act(() => fake.sessionListener({ url: "x" }));
+    expect(FakeSocket.instances).toHaveLength(1);
+  });
+
+  it("asks for a fresh token on a timer while the room is open", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      render(<Probe />);
+      await joined();
+      fake.token.mockResolvedValue("token-3");
+      await act(() => vi.advanceTimersByTimeAsync(30_000));
+      await vi.waitFor(() =>
+        expect(socket().sent.at(-1)).toEqual({ type: "auth", accessToken: "token-3", protocol: 1 }),
+      );
+      // A closed socket is not renewed.
+      act(() => socket().close());
+      const sent = socket().sent.length;
+      fake.token.mockResolvedValue("token-4");
+      await act(() => vi.advanceTimersByTimeAsync(30_000));
+      expect(socket(0).sent).toHaveLength(sent);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("starts a new copy when the room's generation changes instead of repeating its text", async () => {
+    const paragraphs = (text: string) => {
+      const source = new Y.Doc();
+      const paragraph = new Y.XmlElement("paragraph");
+      paragraph.insert(0, [new Y.XmlText(text)]);
+      source.getXmlFragment("prosemirror").insert(0, [paragraph]);
+      return encode(source);
+    };
+    render(<Probe />);
+    await joined({ generation: 3, state: paragraphs("Beds") });
+    const first = spies.onDoc.mock.calls.at(-1)![0] as Y.Doc;
+    act(() => first.getText("t").insert(0, "offline"));
+    const sent = socket().sent.find((m) => m.type === "update")!;
+    expect(sent.generation).toBe(3);
+    // The socket drops before the node answers. Everyone else leaves, the room
+    // is written to the file, and it is shared again from that file.
+    act(() => socket().close());
+    await vi.waitFor(() => expect(FakeSocket.instances).toHaveLength(2), { timeout: 2000 });
+    await joined({ generation: 5, state: paragraphs("Beds") });
+    const second = spies.onDoc.mock.calls.at(-1)![0] as Y.Doc;
+    expect(second).not.toBe(first);
+    expect(second.getXmlFragment("prosemirror").toString()).toBe("<paragraph>Beds</paragraph>");
+    expect(spies.onStranded).toHaveBeenCalledWith(1);
+    expect(socket().types()).not.toContain("update");
+    expect(lastRecovery()).toBeNull();
+    // An edit in the new copy names the new generation. Rejoining the same generation keeps the copy.
+    act(() => second.getText("t").insert(0, "new"));
+    expect(socket().sent.find((m) => m.type === "update")!.generation).toBe(5);
+    socket().receive({ type: "joined", mode: "multiuser", generation: 5 });
+    expect(spies.onDoc.mock.calls.at(-1)![0]).toBe(second);
+  });
+
+  it("reports an edit the node refused as made in another generation", async () => {
+    render(<Probe />);
+    await joined({ generation: 2 });
+    const doc = spies.onDoc.mock.calls.at(-1)![0] as Y.Doc;
+    act(() => doc.getText("t").insert(0, "late"));
+    const update = socket().sent.find((m) => m.type === "update")!;
+    socket().receive({ type: "reject", id: update.id as string });
+    expect(spies.onStranded).not.toHaveBeenCalled();
+    act(() => doc.getText("t").insert(0, "later"));
+    const next = socket().sent.filter((m) => m.type === "update").at(-1)!;
+    socket().receive({ type: "reject", id: next.id as string, reason: "stale" });
+    expect(spies.onStranded).toHaveBeenCalledWith(1);
+    expect(lastRecovery()).toBeNull();
   });
 
   it("reconnects after an unknown error and after a dropped socket", async () => {

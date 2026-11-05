@@ -7,10 +7,10 @@ priority: "P0"
 phase: 1
 area: "collaboration"
 created: "2026-10-29"
-updated: "2026-11-03"
+updated: "2026-11-04"
 owner: "unassigned"
-blocked: true
-blocked_on: ["WP-002"]
+blocked: false
+blocked_on: []
 related_sources: ["S01", "S02"]
 ---
 
@@ -92,3 +92,5 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S01`, `S02`. External complaints 
 2026-11-03: copying a slide gives the copy new object ids. Beds stays `a` and North becomes `copy-b` on the copy. The source slide stays `a` and `b`. The copy is placed after the source. Copying onto a slide that is already there says `That slide is already in the deck.` A slide id that breaks across a line says `Name a new slide.` and does not include `secret-value`. An object id that is already used becomes `copy-a-2`. The source deck is not changed by a refusal. `npx vitest run tests/slide-duplicate.test.ts` passed (2 tests). Coverage for `apps/web/src/collab/slide-duplicate.ts` was 95.31% statements, 90.47% branches, 100% functions, and 100% lines. The presentation was not opened. The copy was not drawn. Completion stays blocked on WP-002.
 
 2026-11-03: the slide editor's copy gives each object its own id when the id source repeats. Two objects stay, and their ids are not the same. A repeated id `copy-1` is still the new slide id. An id that breaks across a line copies nothing, and the deck stays the one that was passed in. `npx vitest run tests/slide-editing.test.ts tests/slide-comments.test.ts tests/slide-marp-sync.test.ts` passed (65 tests). The presentation was not opened. The copy was not drawn. Completion stays blocked on WP-002.
+
+2026-11-04: WP-002 was accepted as done, so this package is no longer blocked. It was blocked on WP-002 from 2026-10-29 until then; that dependency is still listed under Dependencies.
