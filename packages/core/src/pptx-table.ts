@@ -34,6 +34,7 @@ export type TableCellRun = {
   fontSize?: number;
   baseline?: number;
   scriptScale?: boolean;
+  scriptStrut?: number;
   bold?: boolean;
   paragraphBreak?: boolean;
   paraMargin?: number;

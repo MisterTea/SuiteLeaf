@@ -3338,6 +3338,69 @@
 }
 @font-face {
   font-family: "Trebuchet MS";
+  src: url("./suiteleaf-blackthorn-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "SuiteLeaf Blackthorn";
+  src: url("./suiteleaf-blackthorn-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "Trebuchet MS";
+  src: url("./suiteleaf-blackthorn-bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "SuiteLeaf Blackthorn Bold";
+  src: url("./suiteleaf-blackthorn-bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "SuiteLeaf Blackthorn";
+  src: url("./suiteleaf-blackthorn-bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "Trebuchet MS";
+  src: url("./suiteleaf-blackthorn-italic.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: block;
+}
+@font-face {
+  font-family: "SuiteLeaf Blackthorn Italic";
+  src: url("./suiteleaf-blackthorn-italic.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: block;
+}
+@font-face {
+  font-family: "SuiteLeaf Blackthorn";
+  src: url("./suiteleaf-blackthorn-italic.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: block;
+}
+@font-face {
+  font-family: "Trebuchet MS";
+  src: url("./suiteleaf-blackthorn-bold-italic.woff2") format("woff2");
+  font-weight: 700;
+  font-style: italic;
+  font-display: block;
+}
+@font-face {
+  font-family: "SuiteLeaf Blackthorn Bold Italic";
   src: url("./suiteleaf-blackthorn-bold-italic.woff2") format("woff2");
   font-weight: 700;
   font-style: italic;

@@ -163,6 +163,15 @@ describe("rotated DrawingML groups", () => {
     expect(
       placeGroupedBox([group], 1, { x: 10, y: 20, width: 30, height: 40 }, { ...metrics, width: 0 }),
     ).toEqual({ x: 10, y: 20, width: 30, height: 40 });
+    expect(
+      placeGroupedBox([group], 1, { x: 10, y: 20, width: 30, height: 40, rotation: 270 }, metrics),
+    ).toMatchObject({
+      x: 35,
+      y: 0,
+      width: 30,
+      height: 80,
+      rotation: 270,
+    });
   });
 
   it("mirrors a child across a flipped group before rotation", () => {

@@ -578,7 +578,13 @@ export function vectorEmf(bytes: Uint8Array, physicalFrame = false): string | un
         .join("");
     }
     const family = suiteLeafFont(font.family).replace(/["<>&]/g, "");
-    const quoted = /[\s']/.test(family) ? `'${family}'` : family;
+    const orig = (font.family || "").replace(/["<>&]/g, "");
+    const generic = isSymbolFont(orig) ? "sans-serif" : /times|georgia|cambria/i.test(orig) ? "serif" : "sans-serif";
+    const quoted = [
+      /[\s']/.test(family) ? `'${family}'` : family,
+      orig && orig !== family ? (/[\s']/.test(orig) ? `'${orig}'` : orig) : undefined,
+      generic,
+    ].filter(Boolean).join(", ");
     const weight = font.weight >= 600 ? ' font-weight="700"' : "";
     const italic = font.italic ? ' font-style="italic"' : "";
     const turn = font.escapement
@@ -951,6 +957,6 @@ export function vectorEmf(bytes: Uint8Array, physicalFrame = false): string | un
   flushGradient();
 
   if (!shapes.length) return;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${defs.length ? `<defs>${defs.join("")}</defs>` : ""}${shapes.join("")}</svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">${defs.length ? `<defs>${defs.join("")}</defs>` : ""}${shapes.join("")}</svg>`;
   return `data:image/svg+xml;base64,${base64(new TextEncoder().encode(svg))}`;
 }

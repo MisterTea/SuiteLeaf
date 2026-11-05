@@ -9600,7 +9600,12 @@
      "style": "Bold",
      "options": {
       "fit": true,
-      "port": ["clig", "liga", "calt", "kern"]
+      "port": [
+       "clig",
+       "liga",
+       "calt",
+       "kern"
+      ]
      },
      "donors": [
       [
@@ -9762,17 +9767,62 @@
    "merges": {},
    "faces": [
     {
-     "office": "TrebuchetMSBoldItalic.ttf",
+     "office": "trebuc.ttf",
      "index": 0,
-     "source": "gf/sarabun/Sarabun-BoldItalic.ttf",
+     "source": "gf/sarabun/Sarabun-Regular.ttf",
      "coords": null,
-     "style": "Bold Italic",
+     "style": "Regular",
      "options": {
       "fit": true
      },
      "donors": [
       [
-       "gf/roboto/Roboto-Italic[wdth,wght].ttf",
+       "gf/notosans/NotoSans[wdth,wght].ttf",
+       [
+        [
+         "wdth",
+         100.0
+        ],
+        [
+         "wght",
+         400.0
+        ]
+       ],
+       "Noto Sans"
+      ],
+      [
+       "gf/notosansarmenian/NotoSansArmenian[wdth,wght].ttf",
+       [
+        [
+         "wdth",
+         100.0
+        ],
+        [
+         "wght",
+         400.0
+        ]
+       ],
+       "Noto Sans Armenian"
+      ],
+      [
+       "gf/notosanssymbols2/NotoSansSymbols2-Regular.ttf",
+       null,
+       "Noto Sans Symbols 2"
+      ]
+     ]
+    },
+    {
+     "office": "trebucbd.ttf",
+     "index": 0,
+     "source": "gf/sarabun/Sarabun-Bold.ttf",
+     "coords": null,
+     "style": "Bold",
+     "options": {
+      "fit": true
+     },
+     "donors": [
+      [
+       "gf/notosans/NotoSans[wdth,wght].ttf",
        [
         [
          "wdth",
@@ -9783,28 +9833,84 @@
          700.0
         ]
        ],
-       "Roboto"
+       "Noto Sans"
       ],
       [
-       "gf/overpass/Overpass-Italic[wght].ttf",
+       "gf/notosansarmenian/NotoSansArmenian[wdth,wght].ttf",
        [
+        [
+         "wdth",
+         100.0
+        ],
         [
          "wght",
          700.0
         ]
        ],
-       "Overpass"
+       "Noto Sans Armenian"
       ],
       [
-       "gf/chironheihk/ChironHeiHK-Italic[wght].ttf",
+       "gf/notosanssymbols2/NotoSansSymbols2-Regular.ttf",
+       null,
+       "Noto Sans Symbols 2"
+      ]
+     ]
+    },
+    {
+     "office": "trebucit.ttf",
+     "index": 0,
+     "source": "gf/sarabun/Sarabun-Italic.ttf",
+     "coords": null,
+     "style": "Italic",
+     "options": {
+      "fit": true
+     },
+     "donors": [
+      [
+       "gf/notosans/NotoSans-Italic[wdth,wght].ttf",
        [
         [
+         "wdth",
+         100.0
+        ],
+        [
          "wght",
-         700.0
+         400.0
         ]
        ],
-       "Chiron Hei HK"
+       "Noto Sans"
       ],
+      [
+       "gf/notosansarmenian/NotoSansArmenian[wdth,wght].ttf",
+       [
+        [
+         "wdth",
+         100.0
+        ],
+        [
+         "wght",
+         400.0
+        ]
+       ],
+       "Noto Sans Armenian"
+      ],
+      [
+       "gf/notosanssymbols2/NotoSansSymbols2-Regular.ttf",
+       null,
+       "Noto Sans Symbols 2"
+      ]
+     ]
+    },
+    {
+     "office": "trebucbi.ttf",
+     "index": 0,
+     "source": "gf/sarabun/Sarabun-BoldItalic.ttf",
+     "coords": null,
+     "style": "Bold Italic",
+     "options": {
+      "fit": true
+     },
+     "donors": [
       [
        "gf/notosans/NotoSans-Italic[wdth,wght].ttf",
        [
@@ -9820,24 +9926,23 @@
        "Noto Sans"
       ],
       [
-       "gf/notosanssymbols/NotoSansSymbols[wght].ttf",
+       "gf/notosansarmenian/NotoSansArmenian[wdth,wght].ttf",
        [
+        [
+         "wdth",
+         100.0
+        ],
         [
          "wght",
          700.0
         ]
        ],
-       "Noto Sans Symbols"
+       "Noto Sans Armenian"
       ],
       [
        "gf/notosanssymbols2/NotoSansSymbols2-Regular.ttf",
        null,
        "Noto Sans Symbols 2"
-      ],
-      [
-       "gf/notosansmath/NotoSansMath-Regular.ttf",
-       null,
-       "Noto Sans Math"
       ]
      ]
     }

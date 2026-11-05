@@ -18,6 +18,48 @@ import { cubePreset } from "./pptx-cube-preset";
  */
 export const extraPresets: Record<string, PresetDef> = {
   cube: cubePreset,
+  diamond: {
+    adj: {},
+    guides: [
+      ["3wd4", "*/", "w", 3, 4],
+      ["3hd4", "*/", "h", 3, 4],
+    ],
+    rect: ["wd4", "hd4", "3wd4", "3hd4"],
+    paths: [
+      {
+        fill: true,
+        stroke: true,
+        cmds: [
+          ["M", "l", "vc"],
+          ["L", "hc", "t"],
+          ["L", "r", "vc"],
+          ["L", "hc", "b"],
+          ["Z"],
+        ],
+      },
+    ],
+  },
+  flowChartDecision: {
+    adj: {},
+    guides: [
+      ["3wd4", "*/", "w", 3, 4],
+      ["3hd4", "*/", "h", 3, 4],
+    ],
+    rect: ["wd4", "hd4", "3wd4", "3hd4"],
+    paths: [
+      {
+        fill: true,
+        stroke: true,
+        cmds: [
+          ["M", "l", "vc"],
+          ["L", "hc", "t"],
+          ["L", "r", "vc"],
+          ["L", "hc", "b"],
+          ["Z"],
+        ],
+      },
+    ],
+  },
   mathPlus: mathPlusPreset,
   mathEqual: mathEqualPreset,
   curvedDownArrow: curvedDownArrowPreset,

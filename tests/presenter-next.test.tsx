@@ -70,5 +70,53 @@ describe("redrawing a slide picture", () => {
     expect(
       sameStill({ ...still, pages }, { ...still, pages: { ...pages, pages: [page, { ...page }] } }),
     ).toBe(false);
+    const withAsset = { ...marp, marpAssets: { "a.png": "data:1" } };
+    expect(
+      sameStill(
+        { ...still, deck: withAsset },
+        { ...still, deck: { ...marp, marpAssets: { "a.png": "data:1" } } },
+      ),
+    ).toBe(true);
+    expect(
+      sameStill(
+        { ...still, deck: withAsset },
+        { ...still, deck: { ...marp, marpAssets: { "a.png": "data:2" } } },
+      ),
+    ).toBe(false);
+  });
+
+  it("measures subpixel holder dimensions and observes lazy MARP stills", () => {
+    const rectSpy = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = () =>
+      ({ width: 3175.2, height: 4498.27 } as DOMRect);
+    let intersectCb: ((entries: { isIntersecting: boolean }[]) => void) | undefined;
+    const prevIO = globalThis.IntersectionObserver;
+    const prevRO = globalThis.ResizeObserver;
+    globalThis.IntersectionObserver = class {
+      constructor(cb: (entries: { isIntersecting: boolean }[]) => void) {
+        intersectCb = cb;
+      }
+      observe() {}
+      disconnect() {}
+    } as unknown as typeof IntersectionObserver;
+    globalThis.ResizeObserver = class {
+      observe() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    try {
+      const page = { width: 960, height: 540, document: "", plain: "<p>Hi</p>" };
+      const pages = { pages: [page, page], dispose: () => {} };
+      const marp: Presentation = { ...deck, marp: true };
+      const view = render(<SlideStill deck={marp} slide={next} index={1} pages={pages} lazy />);
+      const surface = view.container.querySelector(".slide-surface") as HTMLElement;
+      expect(Number(surface.style.getPropertyValue("--slide-fit"))).toBeCloseTo(3175.2 / 960, 4);
+      expect(intersectCb).toBeDefined();
+      intersectCb?.([{ isIntersecting: true }]);
+      view.unmount();
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = rectSpy;
+      globalThis.IntersectionObserver = prevIO;
+      globalThis.ResizeObserver = prevRO;
+    }
   });
 });

@@ -118,7 +118,7 @@ it("draws EMF text in the selected face on the baseline", () => {
   const xml = atob(svg!.slice("data:image/svg+xml;base64,".length));
   expect(xml).toContain('x="10" y="30"');
   expect(xml).toContain('fill="#ff0000"');
-  expect(xml).toContain('font-family="TestFace"');
+  expect(xml).toContain('font-family="TestFace');
   expect(xml).toContain('font-size="20"');
   expect(xml).toContain('font-weight="700"');
   expect(xml).toContain(">Hi</text>");
@@ -163,7 +163,7 @@ it("draws a Symbol private-use character as the symbol byte", () => {
   textView.setUint16(80, 0xf06d, true);
   const svg = vectorEmf(emf([record(font), select(2), record(text)]));
   const xml = atob(svg!.slice("data:image/svg+xml;base64,".length));
-  expect(xml).toContain("font-family=\"'SuiteLeaf Thistle'\"");
+  expect(xml).toContain("font-family=\"'SuiteLeaf Thistle'");
   expect(xml).toContain(">m</text>");
 });
 

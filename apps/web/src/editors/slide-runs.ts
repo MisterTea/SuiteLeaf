@@ -30,6 +30,7 @@ export function cleanRun(run: TextRun): TextRun {
   if (run.caps) next.caps = run.caps;
   if (run.baseline) next.baseline = run.baseline;
   if (run.scriptScale) next.scriptScale = true;
+  if (run.scriptStrut) next.scriptStrut = run.scriptStrut;
   if (run.font) next.font = run.font;
   if (run.paragraphBreak) next.paragraphBreak = true;
   if (run.paraMargin) next.paraMargin = run.paraMargin;
@@ -249,7 +250,7 @@ function lineBoxes(paragraph: readonly TextRun[]): LineBox[] {
       // A symbol bullet is drawn larger than the words. Its size is the glyph,
       // not the line, or the extra leading pushes the last item off the slide.
       if (run.fontSize && !isSymbolBullet(run))
-        line.font = Math.max(line.font ?? 0, run.fontSize);
+        line.font = Math.max(line.font ?? 0, run.scriptScale ? (run.fontSize * 2) / 3 : run.fontSize);
       continue;
     }
     if (run.fontSize) line.font = Math.max(line.font ?? 0, run.fontSize);
@@ -397,15 +398,15 @@ let measureCtx: CanvasRenderingContext2D | null | undefined;
 
 /** Width in points. The canvas font size is the point size, matching `calc(pt * --slide-pt)`. */
 function textWidthPt(text: string, run: TextRun, metrics?: TabMetrics): number {
-  const size = run.fontSize || metrics?.fontSize || 18;
-  const bold = run.bold ?? metrics?.bold ?? false;
-  const italic = run.italic ?? metrics?.italic ?? false;
+  const size = (run.fontSize || metrics?.fontSize || 18) * (run.scriptScale ? 2 / 3 : 1);
+  const bold = Boolean(run.bold);
+  const italic = Boolean(run.italic);
   const family = (run.font || metrics?.fontFamily || "Calibri").replace(/["'\\]/g, "");
   if (!text) return 0;
   if (typeof document !== "undefined" && measureCtx === undefined)
     measureCtx = document.createElement("canvas").getContext("2d");
   if (measureCtx) {
-    measureCtx.font = `${italic ? "italic " : ""}${bold ? "700 " : ""}${size}px ${family}`;
+    measureCtx.font = `${italic ? "italic " : ""}${bold ? "700 " : ""}${size}px ${paintFontFamily(family)}`;
     const width = measureCtx.measureText(text).width;
     if (width > 0) return width;
   }
@@ -491,7 +492,11 @@ function tabbedParagraphHtml(
           x += gap;
           return;
         }
-        html += runSpan({ ...piece.run, text: piece.text }, kern);
+        let text = piece.text;
+        if (index > 0 && pieces[index - 1].tab) {
+          text = text.replace(/^ +/, (m) => "\u00A0".repeat(m.length));
+        }
+        html += runSpan({ ...piece.run, text }, kern);
         x += textWidthPt(piece.text, piece.run, metrics);
       });
       return html;
@@ -615,6 +620,7 @@ function runSpan(run: TextRun, kern?: number): string {
         );
         data.push(`data-baseline="${run.baseline}"`);
         if (run.scriptScale) data.push('data-script-scale="1"');
+        if (run.scriptStrut) data.push(`data-script-strut="${run.scriptStrut}"`);
       }
       if (run.tracking) {
         styles.push(`letter-spacing:calc(${run.tracking} * var(--slide-pt, 1) * 1px)`);
@@ -654,8 +660,8 @@ function runSpan(run: TextRun, kern?: number): string {
           ? glueShortHyphenHtml(run.text)
           : paintRunText(run.text);
       // The outer em is the inherited size, so the baseline percent stays put
-      // while the glyphs shrink to PowerPoint's script size.
-      const painted = run.scriptScale ? `<span style="font-size:0.65em">${body}</span>` : body;
+      // while the glyphs shrink to PowerPoint's script size (2/3).
+      const painted = run.scriptScale ? `<span style="font-size:calc(100% * 2 / 3)">${body}</span>` : body;
       const span = `<span${attrs}${style}>${painted}</span>`;
       return href
         ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${span}</a>`
@@ -744,6 +750,8 @@ function strutMark(mark: TextRun | undefined, paragraph: readonly TextRun[]): Te
     const font = paragraph.find((run) => run.text.trim() && !isSymbolBullet(run))?.font;
     if (font) mark = { ...mark, font };
   }
+  const scriptStrut = paragraph.find((run) => run.scriptStrut)?.scriptStrut;
+  if (scriptStrut && mark) return { ...mark, fontSize: scriptStrut };
   if (!mark || !isSymbolBullet(mark)) return mark;
   let size = 0;
   for (const run of paragraph) {
@@ -877,14 +885,17 @@ export function runsToHtml(
       const firstSlot = mark?.paraFirst && !mark.paraHang && !hang && paragraph[0]?.listMarker ? mark.paraFirst : 0;
       const slot = mark?.paraHang || hang || firstSlot || 0;
       const hanging = !!(firstSlot || mark?.paraHang || paragraph.some((run) => run.paraHang));
-      const sizes = paragraph.filter(run => run.text.trim() && !run.baseline && !isSymbolBullet(run) && run.fontSize).map(run => run.fontSize!);
+      const unshifted = paragraph.filter(run => run.text.trim() && !run.baseline && !isSymbolBullet(run) && run.fontSize).map(run => run.fontSize!);
+      const scriptScaled = paragraph.filter(run => run.text.trim() && run.fontSize).map(run => run.scriptScale ? (run.fontSize! * 2) / 3 : run.fontSize!);
+      const sizes = unshifted.length ? unshifted : scriptScaled;
       const mixed = !paragraphLinePoints(mark, metrics) && sizes.length > 1 && Math.min(...sizes) < Math.max(...sizes);
       // A browser paragraph strut participates in every wrapped line. Use the
       // smallest authored size; larger inline runs grow only the lines they occupy.
       const painted = mixed ? paragraph.map(run => ({...run, fontSize: run.fontSize || mark?.fontSize || metrics?.fontSize || Math.max(...sizes)})) : paragraph;
       const inner = renderParagraphInner(painted, kern, slot, metrics, hanging, mark);
       const originalStrut = strutMark(mark, painted);
-      const strut = mixed && originalStrut ? {...originalStrut, fontSize: Math.min(...sizes)} : originalStrut;
+      const strutBase = originalStrut;
+      const strut = mixed && strutBase ? {...strutBase, fontSize: Math.min(...sizes)} : strutBase;
       const reflection = paragraph.find((run) => run.reflection)?.reflection;
       // A blank paragraph is one line. min-height on an empty block collapses
       // with the next margin, so the following text sits a line too high.

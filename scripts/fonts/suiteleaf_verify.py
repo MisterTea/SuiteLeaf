@@ -187,7 +187,8 @@ def text_check(office_path, path, samples):
 
 def sanitizes(path):
     import ots
-    return ots.sanitize(str(path), "/dev/null", capture_output=True).returncode == 0
+    import os
+    return ots.sanitize(str(path), os.devnull, capture_output=True).returncode == 0
 
 
 def blank_glyphs(office, path, script=None):

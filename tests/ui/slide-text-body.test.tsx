@@ -88,7 +88,7 @@ describe("how a run is painted", () => {
     const spans = marked.container.querySelectorAll(":scope > span");
     expect([...spans].map((span) => span.textContent)).toEqual(["H", "2", "O"]);
     expect((spans[0] as HTMLElement).style.fontWeight).toBe("700");
-    expect((spans[1].firstElementChild as HTMLElement).style.fontSize).toBe("0.65em");
+    expect((spans[1].firstElementChild as HTMLElement).style.fontSize).toBe("calc(66.6667%)");
   });
 });
 
@@ -98,7 +98,7 @@ describe("reading the editor back into runs", () => {
       [
         "<b>bold</b><i>it</i><u>un</u><s>gone</s>",
         '<span data-color="#ff0000" data-highlight="#00ff00" data-font-size="30" data-font="Arial">x</span>',
-        '<span data-baseline="30" data-script-scale="1">2</span>',
+        '<span data-baseline="30" data-script-scale="1" data-script-strut="20">2</span>',
         '<span data-href="https://example.com">link</span><span data-href="javascript:bad()">bad</span>',
         "<br>",
         "a&nbsp;b",
@@ -115,7 +115,7 @@ describe("reading the editor back into runs", () => {
     expect(find("un")).toMatchObject({ underline: true });
     expect(find("gone")).toMatchObject({ strike: true });
     expect(find("x")).toMatchObject({ color: "#ff0000", highlight: "#00ff00", fontSize: 30, font: "Arial" });
-    expect(find("2")).toMatchObject({ baseline: 30, scriptScale: true });
+    expect(find("2")).toMatchObject({ baseline: 30, scriptScale: true, scriptStrut: 20 });
     expect(find("link")).toMatchObject({ href: "https://example.com" });
     expect(find("bad")?.href).toBeUndefined();
     expect(runs.map((run) => run.text).join("")).toBe("bolditungonex2linkbad\na b\nblock\nbig\nparadot");

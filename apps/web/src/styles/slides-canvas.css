@@ -321,6 +321,8 @@
   box-sizing: border-box;
   /* Office slants a face that has no italic, such as Cambria Math. */
   font-synthesis-style: auto;
+  /* PowerPoint does not apply standard OpenType ligatures (ti, fi, fl, ff) to slide text. */
+  font-variant-ligatures: none;
   cursor: move;
 }
 .slide-surface.marp-fit .slide-element {
@@ -455,6 +457,10 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
+}
+.slide-text[data-valign="middle"] .element-editor,
+.slide-text[data-valign="middle"] .slide-text-face {
+  padding-top: calc(var(--slide-pad-t, var(--slide-inset, 4px)) + var(--slide-valign-lead, 0px));
 }
 .slide-text[data-valign="bottom"] {
   justify-content: flex-end;
@@ -619,6 +625,7 @@
   width: 100%;
   height: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 .slide-table td {
   border: calc(1px * var(--slide-pt, 1)) solid #94a3b8;

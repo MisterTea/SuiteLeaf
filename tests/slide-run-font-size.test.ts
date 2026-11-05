@@ -44,14 +44,17 @@ describe("imported slide font sizes", () => {
     expect(html).toContain("top:-0.3em");
     expect(html).not.toContain("vertical-align:0.3em");
     expect(html).toContain("line-height:0");
-    expect(html).toContain("font-size:0.65em");
+    expect(html).toContain("font-size:calc(100% * 2 / 3)");
     expect(runStyle({ text: "1", baseline: 30, fontSize: 18 }).lineHeight).toBe(0);
     expect(runStyle({ text: "1", baseline: 30, fontSize: 18 }).top).toBe("-0.3em");
     expect(html).toContain('data-script-scale="1"');
     expect(html).toContain("font-size:calc(18 * var(--slide-pt, 1) * 1px)");
-    expect(cleanRun({ text: "1", baseline: 30, scriptScale: true }).scriptScale).toBe(true);
+    expect(cleanRun({ text: "1", baseline: 30, scriptScale: true, scriptStrut: 12 }).scriptStrut).toBe(12);
+    const allScript = runsToHtml([{ text: "Title", baseline: 30, scriptScale: true, scriptStrut: 64, fontSize: 96 }]);
+    expect(allScript).toContain('data-script-strut="64"');
+    expect(allScript).toContain('class="slide-para" data-para-index="0" data-slide-para="1" style="display:block;margin:0;font-size:calc(64 * var(--slide-pt, 1) * 1px)"');
     const sized = runsToHtml([{ text: "2", baseline: 30, fontSize: 12 }]);
-    expect(sized).not.toContain("font-size:0.65em");
+    expect(sized).not.toContain("font-size:calc(100% * 2 / 3)");
   });
 
   it("keeps a hyphenated word together when latin line breaking is off", () => {

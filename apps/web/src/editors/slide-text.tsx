@@ -78,7 +78,7 @@ export function RunSpans({
   return runsOf({ content, runs, bold, italic, underline }).map(
     (run, index) => (
       <span key={index} style={runStyle(run, fontSize)}>
-        {run.scriptScale ? <span style={{ fontSize: "0.65em" }}>{run.text}</span> : run.text}
+        {run.scriptScale ? <span style={{ fontSize: "calc(100% * 2 / 3)" }}>{run.text}</span> : run.text}
       </span>
     ),
   );
@@ -98,6 +98,7 @@ type StyleAttr = Partial<
     | "paragraphBreak"
     | "baseline"
     | "scriptScale"
+    | "scriptStrut"
     | "tracking"
     | "listMarker"
     | "href"
@@ -121,6 +122,7 @@ function styleFrom(el: HTMLElement): StyleAttr {
   if (el.dataset.baseline && Number(el.dataset.baseline))
     next.baseline = Number(el.dataset.baseline);
   if (el.dataset.scriptScale === "1") next.scriptScale = true;
+  if (Number(el.dataset.scriptStrut) > 0) next.scriptStrut = Number(el.dataset.scriptStrut);
   if (el.dataset.tracking && Number.isFinite(Number(el.dataset.tracking)))
     next.tracking = Math.max(-4000, Math.min(4000, Number(el.dataset.tracking)));
   if (el.dataset.font) next.font = el.dataset.font;

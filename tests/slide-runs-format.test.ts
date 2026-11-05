@@ -123,7 +123,7 @@ describe("painting runs as HTML", () => {
     expect(html).toContain("font-kerning:");
     expect(html).toContain("font-variant-caps:small-caps");
     expect(html).toContain('data-script-scale="1"');
-    expect(html).toContain('<span style="font-size:0.65em">2</span>');
+    expect(html).toContain('<span style="font-size:calc(100% * 2 / 3)">2</span>');
     expect(html).toContain('data-tracking="3"');
     expect(html).toContain('data-font="BadFont"');
     expect(html).toContain('<a href="https://example.com/a" target="_blank"');
@@ -315,4 +315,28 @@ it("keeps multi-character list markers unwrapped inside a zero-width hanging slo
  const html=textInnerHtml({content:"a) Item",fontSize:18,hang:36,runs:[{text:"a) ",font:"Arial"},{text:"Item",fontSize:18}]});
  expect(html).toContain("width:0;white-space:pre;transform:");
  expect(html).toContain(">a)</span>");
+});
+
+
+it("preserves leading spaces following a tab stop using non-breaking spaces", () => {
+  const html = textInnerHtml({
+    fontSize: 18,
+    runs: [
+      { text: "Twitter: \t @punch4nfdi ", fontSize: 18 },
+    ],
+  });
+  expect(html).toContain("\u00A0@punch4nfdi");
+});
+
+it("does not measure unbolded tabbed runs with bold weight when the box has bold true", () => {
+  const html = textInnerHtml({
+    bold: true,
+    runs: [
+      { text: "Title", bold: true },
+      { text: "\n", paragraphBreak: true },
+      { text: "Twitter: \t @punch4nfdi " },
+    ],
+  });
+  expect(html).toContain("\u00A0@punch4nfdi");
+  expect(html).toContain("display:inline-block;width:calc(");
 });

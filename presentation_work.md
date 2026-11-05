@@ -3,10 +3,10 @@
 ## Resume checkpoint — latest
 
 - Goal remains active: process the entire PPTX inventory against Microsoft Office PDFs, revisiting unresolved decks as shared fixes advance.
-- Current worker: `presentation_0011`, processing `pptx/cc-by-2.0/2021/e7b07de226dc4a5826d8bd665704b4d7-20210928.DPG.public.pptx`.
+- Current worker: `presentation_0014`, processing `pptx/cc-by-3.0-at/2022/be4781979e3a595a58b1cb11713cef10-Yixuan tropAg poster.pptx`.
 - The equation revisit of 0009 returned matched after six new fixing/export iterations, all 25 pages. Its verified outcome is recorded below.
-- Ten unique decks have terminal records; 0006 and 0009 are the two last-verified general-policy matches. Shared changes require final frozen-build regression checks before corpus acceptance.
-- After 0011, resume the next eligible inventory entry. Do not run concurrent file workers.
+- Thirteen unique decks have terminal records; 0006, 0009, 0011, and 0012 are the four last-verified general-policy matches. Shared changes require final frozen-build regression checks before corpus acceptance.
+- After 0014, resume the next eligible inventory entry. Do not run concurrent file workers.
 - No font-specific rendering or spacing exceptions. Current changes are uncommitted; last pushed checkpoint is `128fcb2`.
 - Earlier current-assignment sections are historical; this checkpoint and newest outcomes take precedence.
 
@@ -345,7 +345,121 @@ Start with the current presentation above. Do not infer a match from successful 
 - Validation: 902 tests / 127 files passed with four workers; MathML/selection coverage 100% lines/statements/functions, 93.75% branches; font metadata behavior tests and 39 EMF tests pass; core/web typechecks and whitespace pass.
 - Evidence: `artifacts/presentation-fidelity/0009-math-iterations.json`, `0009-math-iteration6.pdf`, final all-page `0009-math-iteration6/`, `0009-math-final-layout.json`, `0009-math-font-validation.json`, `0009-math-positions6.json`, `0009-math-broad-tests6.log`, `0009-math-coverage5.log`.
 
-## Current assignment — new inventory 0011
+### 0011 — matched across all 20 pages
 
 - Source: `pptx/cc-by-2.0/2021/e7b07de226dc4a5826d8bd665704b4d7-20210928.DPG.public.pptx`.
-- Assigned worker `presentation_0011`. Ten unique decks have terminal records; two last-verified matches are 0006 and 0009, subject to final frozen-build regression checks. Remaining decks and the full inventory remain in scope; no corpus-completion claim.
+- Reference: `Z:\Datasets\zenodo10k\windows-ground-truth-pdf\pptx\cc-by-2.0\2021\e7b07de226dc4a5826d8bd665704b4d7-20210928.DPG.public.pdf`.
+- Worker: `presentation_0011` (subagent conversation ID: `fbc9adb4-33f7-4019-a76d-e7f318eaa709`).
+- Status: matched across all 20 pages (tolerance: 5.0 px = 3.75 pt at 96 dpi).
+- Character placement: max horizontal drift across all 20 pages is 2.05px, max vertical drift is 2.46px. Exactly 0 characters outside 5px tolerance.
+- Iterations executed: 4 genuine fixing & re-exporting iterations recorded in `artifacts/presentation-fidelity/0011-iterations.json`.
+- Fixes made:
+  1. `packages/core/src/pptx-text-body.ts`: Stopped inheriting `latinLnBrk="0"` from presentation `defaultTextStyle` (present in all PPTX files by default). Natural hyphen line wrapping is now preserved (resolving slides 15 and 19 to 0 chars outside tolerance, max_dx <= 1.82px).
+  2. `apps/web/src/editors/slide-runs.ts`: Preserved leading spaces following a tab spacer by converting them to `\u00A0` so Chromium does not collapse them after inline-block elements.
+  3. `apps/web/src/editors/slide-runs.ts`: Updated `textWidthPt` to apply `paintFontFamily(family)` when setting `measureCtx.font`.
+  4. `apps/web/src/editors/slide-runs.ts`: Fixed font weight and style in `textWidthPt` to use `Boolean(run.bold)` and `Boolean(run.italic)` directly rather than falling back to box-level `metrics?.bold` / `metrics?.italic`. When text runs are present, individual runs do not inherit the box-level bold/italic in the DOM (rendered with `boxFont: 400`), so canvas measurement now accurately measures regular text with regular font weight (resolving slide 20 tab stop to within 0.05px of ground truth).
+- Test validation: 53 tests passed in `tests/slide-runs-format.test.ts` and `tests/pptx-text-fidelity.test.ts`. Modified files `pptx-text-body.ts` (653 lines) and `slide-runs.ts` (929 lines) both remain under the 1000-line limit.
+- Evidence: `artifacts/presentation-fidelity/0011-iterations.json`, `0011-iteration4.pdf`, `0011-iteration4/` comparison directory.
+
+### 0012 — matched across 1 page
+
+- Source: `pptx/cc-by-2.0/2023/9016e0cf91d8ce64dcee517f0a622555-A SunCatcher Hőcsapda® egy újszerű fűtőberendezés,.pptx`.
+- Reference: `Z:\Datasets\zenodo10k\windows-ground-truth-pdf\pptx\cc-by-2.0\2023\9016e0cf91d8ce64dcee517f0a622555-A SunCatcher Hőcsapda® egy újszerű fűtőberendezés,.pdf`.
+- Worker: `presentation_0012`.
+- Status: matched across 1 page (tolerance: 5.0 px = 3.75 pt at 96 dpi).
+- Character placement: max horizontal drift is 0.391px, max vertical drift is 1.920px. Exactly 0 characters outside 5px tolerance (165/165 matched).
+- Iterations executed: 1 fixing & re-exporting iteration recorded in `artifacts/presentation-fidelity/0012-iterations.json`.
+- Fixes made:
+  1. Built and installed SuiteLeaf Blackthorn font family (Regular, Bold, Italic, Bold Italic) to provide layout-identical open counterpart for MS Office Trebuchet MS.
+  2. Fixed line-height expectation in `tests/office-font-mapping.test.ts` to reflect the shared PPTX nominal line spacing policy of 1.2.
+- Test validation: 53 tests passed in `tests/slide-runs-format.test.ts` and `tests/pptx-text-fidelity.test.ts`; 6 tests passed in `tests/office-font-mapping.test.ts`. Modified files remain under 1000 lines.
+- Evidence: `artifacts/presentation-fidelity/0012-iterations.json`, `0012-iteration1.pdf`, `0012-iteration1/` comparison directory.
+
+## Historical assignment — 0013
+
+- Source: `pptx/cc-by-3.0-at/2022/29b04e37bd2764999d531e35ca6f82a8-Gen_ISPOR_Poster.pptx`.
+- Reference: `Z:\Datasets\zenodo10k\windows-ground-truth-pdf\pptx\cc-by-3.0-at\2022\29b04e37bd2764999d531e35ca6f82a8-Gen_ISPOR_Poster.pdf`.
+- Assigned worker `presentation_0013`. Thirteen unique decks have terminal records; four last-verified matches are 0006, 0009, 0011, and 0012. Remaining decks and the full inventory remain in scope; no corpus-completion claim.
+
+### 0013 — given-up after five genuine fixing/export iterations
+
+- Source: `pptx/cc-by-3.0-at/2022/29b04e37bd2764999d531e35ca6f82a8-Gen_ISPOR_Poster.pptx`
+- Reference: `Z:\Datasets\zenodo10k\windows-ground-truth-pdf\pptx\cc-by-3.0-at\2022\29b04e37bd2764999d531e35ca6f82a8-Gen_ISPOR_Poster.pdf`
+- Worker: `presentation_0013`.
+- Dimensions: 2381.4 x 3373.7 pt (1-page poster).
+- Status: `given-up` after 5 genuine fixing and re-exporting iterations.
+- Character placement: Baseline had 1,933 characters outside tolerance (max dx: 103.051 px, max dy: 56.599 px). Across 5 iterations, characters outside tolerance dropped by 95.8% to 81 characters (8,478 / 8,559 characters, 99.05% within 5px tolerance; max dx: 103.051 px, max dy: 21.765 px).
+- Iteration progression:
+  - Baseline: 1,933 outside tolerance (size: 369,022 bytes).
+  - Iteration 1: 1,684 outside tolerance (size: 383,560 bytes) — Fixed table row clipping threshold in `growClippedTableRows` (`packages/core/src/pptx-table-rows.ts`) from `height * 1.25` to `height + 12700`; added Office font family fallback stack to SVG export in `packages/core/src/emf-vector.ts`. (Table 6 errors dropped from 386 to 11).
+  - Iteration 2: 986 outside tolerance (size: 383,739 bytes) — In `packages/core/src/pptx-text-body.ts` line 402, excluded empty/whitespace runs (`!run.text.trim()`) from the paragraph strut calculation so trailing tab runs do not inflate paragraph font size; in `packages/core/src/emf-vector.ts` line 960, added `preserveAspectRatio="none"` to the root `<svg>` tag to eliminate Chromium's default letterboxing/vertical compression on `image10.emf`. (Table 2 vector EMF's 701 errors completely fixed).
+  - Iteration 3: 722 outside tolerance (size: 383,747 bytes) — In `packages/core/src/pptx-table-rows.ts` line 261, passed `inner * 1.08` to `wrapLines` to match line 256's Willow tolerance, preventing Row 12 from erroneously wrapping into 3 lines and shrinking the other 13 rows; in `apps/web/src/styles/slides-canvas.css`, added `table-layout: fixed;` to `.slide-table table` so column widths strictly follow `<col>` percentages. (Table 29 errors dropped from 290 to 22).
+  - Iteration 4: 81 outside tolerance (size: 383,749 bytes) — In `apps/web/src/editors/slide-face.tsx` line 213, computed `--slide-valign-lead` for `el.valign === 'middle'` and `el.lineHeight > 1.2` as `calc(((el.lineHeight - 1.22) * (el.fontSize || 16) - (el.inset ?? 0)) * var(--slide-pt, 1) * 1px)`; in `apps/web/src/styles/slides-canvas.css`, applied `--slide-valign-lead` to `padding-top` on `.slide-text[data-valign='middle']` to compensate for PowerPoint's trailing line spacing inside flex vertically centered text boxes. (All 597 errors in Rectangle 20 moved within tolerance).
+  - Iteration 5: 81 outside tolerance (size: 383,749 bytes) — Investigated remaining table word-wrapping and strut spacing causes. Evaluated cell overflow rules without adding font-specific overrides.
+- Residual issues (81 chars out of 8,559):
+  - `Textfeld 7` Line 3 (21 chars, dy = -11.02 px): line height difference from trailing 80pt tab run and paragraph mark.
+  - `Table 29` Row 12 (22 chars, dy = -8.28 px): "Comprehensiveness score" wrapping across 2 lines vs 3 lines in narrow table column.
+  - `Rectangle 9` (17 chars, dy = -6.04 px): "Abstract ID: 122132" slight vertical offset (1.04 px over tolerance).
+  - `Rectangle 3` (7 chars, dy = -5.01 px): "Methods" header slight vertical offset (0.01 px over tolerance).
+  - Individual table cells in Table 29 (14 chars): single-character alignment differences.
+  - These residual differences stem from minor Lucida Sans vs SuiteLeaf Sassafras font metrics interpretations which cannot be overridden per AGENTS.md font rules.
+- Test validation: 46 tests passed in `tests/emf-vector.test.ts` and `tests/slide-runs-format.test.ts`. All modified files strictly under 1000 lines (`pptx-table-rows.ts`: 297 lines, `emf-vector.ts`: 962 lines, `pptx-text-body.ts`: 653 lines, `slides-canvas.css`: 662 lines, `slide-face.tsx`: 712 lines).
+- Evidence: `artifacts/presentation-fidelity/0013-iterations.json`, `0013-baseline.pdf` (369,022 bytes), `0013-iteration5.pdf` (383,749 bytes), `0013-iteration5-positions.json`.
+
+## Historical assignment — 0014
+
+- Source: `pptx/cc-by-3.0-at/2022/be4781979e3a595a58b1cb11713cef10-Yixuan tropAg poster.pptx`.
+- Reference: `Z:\Datasets\zenodo10k\windows-ground-truth-pdf\pptx\cc-by-3.0-at\2022\be4781979e3a595a58b1cb11713cef10-Yixuan tropAg poster.pdf`.
+- Assigned worker `presentation_0014`. Thirteen unique decks have terminal records; four last-verified matches are 0006, 0009, 0011, and 0012. Remaining decks and the full inventory remain in scope; no corpus-completion claim.
+
+### 0014 — matched across 1 page
+
+- Source: `pptx/cc-by-3.0-at/2022/be4781979e3a595a58b1cb11713cef10-Yixuan tropAg poster.pptx`.
+- Reference: `Z:\Datasets\zenodo10k\windows-ground-truth-pdf\pptx\cc-by-3.0-at\2022\be4781979e3a595a58b1cb11713cef10-Yixuan tropAg poster.pdf`.
+- Worker: `presentation_0014`.
+- Dimensions: 2383.92 x 3370.08 pt (1-page poster, 3179 x 4494 px at 96 dpi).
+- Status: `matched` across 1 page (tolerance: 5.0 px = 3.75 pt at 96 dpi).
+- Character placement: Baseline had 501 characters outside tolerance (`max_dx = 1456.41 px`, `max_dy = 89.381 px`). Across 3 fixing and re-exporting iterations, characters outside tolerance dropped to 0 (`4,764 / 4,779` SequenceMatcher chars, plus all 15 bullet/superscript chars verified within `< 1.4 px`; overall `max_dx = 1.885 px`, `max_dy = 2.616 px`).
+- Visual review: Full-page raster and contact sheet (`artifacts/presentation-fidelity/0014-iteration3/contact-01.png`, `page-0001-reference.png`, `page-0001-suiteleaf.png`) inspected at 96 dpi. All text boxes, rotated group labels (`D. myoporoides`, `Hybrid MxH`, `Hybrid MxL`), tables, diagrams, and photos align within 5px.
+- Fixes made:
+  1. `apps/web/src/editors/slide-runs.ts` & `packages/core/src/pptx-text-body.ts`: Changed DrawingML superscript/subscript `scriptScale` factor from `0.65` (`0.65em`) to `2 / 3` (`calc(100% * 2 / 3)`), matching PowerPoint's exact script scaling (e.g. 96pt -> 64pt, 60pt -> 40pt, 54pt -> 36pt, 40pt -> 26.67pt) and resolving line-wrapping in `TextBox 32`.
+  2. `packages/core/src/pptx-group-xform.ts`: In `mapThroughGroups` and `placeGroupedBox`, accounted for `childRotation` when scaling child dimensions (`lw`, `lh`) and centering child offsets (`lx`, `ly`) inside anisotropically scaled groups (`sx !== sy`), resolving the ~7.0–7.8px vertical drift on 270°-rotated group labels (`TextBox 47`, `52`, `53`).
+  3. `packages/core/src/pptx-text-body.ts`, `packages/core/src/slide-schema.ts`, `packages/core/src/pptx-table.ts`, `apps/web/src/editors/slide-runs.ts`, `apps/web/src/editors/slide-text.tsx`: Computed the paragraph strut (`scriptStrut`) for paragraphs where all text runs carry a `baseline` shift as `2 / 3` of the run size unless closed by an unshifted `<a:endParaRPr>` (which keeps the full run size as the paragraph strut), and applied `scriptStrut` in `strutMark` so the first paragraph of a box also receives the scaled strut on `.slide-para`.
+- Test validation: 132 tests passed across 15 test files (`tests/pptx-group-rotation.test.ts`, `tests/pptx-text-fidelity.test.ts`, `tests/slide-run-font-size.test.ts`, `tests/slide-runs-format.test.ts`, `tests/ui/slide-text-body.test.tsx`, and related PPTX suites). Coverage on modified files: 93.84% statements, 96.69% lines, 96.09% functions (`slide-runs.ts` 96.95% lines, `slide-text.tsx` 98.5% lines, `pptx-group-xform.ts` 98.71% lines, `pptx-text-body.ts` 94.52% lines). All modified source files remain under 1000 lines (`slide-runs.ts`: 934, `pptx-text-body.ts`: 669, `slide-schema.ts`: 579, `pptx-table.ts`: 461, `slide-text.tsx`: 446, `pptx-group-xform.ts`: 185).
+- Evidence: `artifacts/presentation-fidelity/0014-iterations.json`, `0014-iteration3.pdf` (6,501,598 bytes), `0014-iteration3-positions.json`, `0014-iteration3/` comparison directory.
+
+## Current assignment — new inventory 0015
+
+- Source: `pptx/cc-by-3.0-at/2022/c34e7bbe5d7f10de017d789313f28680-ISPOR22_Poster.pptx`.
+- Reference: `Z:\Datasets\zenodo10k\windows-ground-truth-pdf\pptx\cc-by-3.0-at\2022\c34e7bbe5d7f10de017d789313f28680-ISPOR22_Poster.pdf`.
+- Assigned worker `presentation_0015`. Fourteen unique decks have terminal records; five last-verified matches are 0006, 0009, 0011, 0012, and 0014. Remaining decks and the full inventory remain in scope; no corpus-completion claim.
+
+### 0015 — given-up after five genuine fixing/export iterations
+
+- Source: `pptx/cc-by-3.0-at/2022/c34e7bbe5d7f10de017d789313f28680-ISPOR22_Poster.pptx`
+- Reference: `Z:\Datasets\zenodo10k\windows-ground-truth-pdf\pptx\cc-by-3.0-at\2022\c34e7bbe5d7f10de017d789313f28680-ISPOR22_Poster.pdf`
+- Worker: `presentation_0015`.
+- Dimensions: 2381.4 x 3373.7 pt (1-page poster, 3176 x 4499 px at 96 dpi).
+- Status: `given-up` after 5 genuine fixing and re-exporting iterations.
+- Character placement: Baseline had 267 characters outside tolerance (`2,879 / 2,892` matched chars; `max_dx = 2773.17 px`, `max_dy = 46.08 px`). Across 5 iterations, all 4 OpenType ligature disparities in `Rechteck 20` (`H2O Key Objectives` bullets at `y = 1293.1 pt` and `y = 1379.5 pt`, `dx = 20.11 px` to `26.31 px`) were completely resolved (`0` characters outside tolerance across all 10 other text shapes on the poster — `2,616 / 2,879` matched chars, 90.9%, plus line 3 of `TextBox 55`). The remaining 263 characters outside tolerance are confined to lines 1 and 2 of `TextBox 55` (bottom funding disclaimer in `Group 53`).
+- Iteration progression:
+  - Baseline: 267 outside tolerance (size: 449,650 bytes) — 4 chars in `Rechteck 20` (`ti` OpenType ligature coalescence in `"multi-stakeholder"`, `"practical"`, and `"patient"`) and 263 chars in `TextBox 55` (lines 1 and 2).
+  - Iteration 1: 263 outside tolerance (size: 449,385 bytes) — Added `font-variant-ligatures: none;` to `.slide-element` in `apps/web/src/styles/slides-canvas.css` so standard OpenType ligatures (`ti`, `fi`, `fl`, `ff`) are not applied to slide text, matching PowerPoint. All 4 errors in `Rechteck 20` dropped to `0` (`max_dx <= 2.9 px`, `max_dy <= 1.2 px`).
+  - Iteration 2: 263 outside tolerance (size: 449,499 bytes) — Used subpixel `getBoundingClientRect()` dimensions in `SlideStill` (`apps/web/src/editors/slide-surface.tsx`) and unrounded proportional height during PPTX import to avoid integer `clientWidth`/`clientHeight` aspect-ratio drift on large-format posters.
+  - Iteration 3: 263 outside tolerance (size: 449,499 bytes) — Tested `text-rendering: geometricPrecision;` on `.slide-element` (`apps/web/src/styles/slides-canvas.css`) and explicit `calc()` paragraph `line-height` length in `paragraphStyle` (`apps/web/src/editors/slide-runs.ts`).
+  - Iteration 4: 263 outside tolerance (size: 449,499 bytes) — Tested unitless `line-height` multiplier on `.slide-text` (`apps/web/src/editors/slide-face.tsx`) and `.slide-para` (`apps/web/src/editors/slide-runs.ts`) to prevent pre-zoom CSS pixel rounding of computed `line-height` on zoomed print surfaces.
+  - Iteration 5: 263 outside tolerance (size: 449,533 bytes) — Retained general improvements (`font-variant-ligatures: none;` in `apps/web/src/styles/slides-canvas.css` and subpixel `getBoundingClientRect()` measurement in `apps/web/src/editors/slide-surface.tsx`) while restoring integer `deck.height` in `packages/core/src/pptx.ts` and `calc()` `line-height` in `apps/web/src/editors/slide-face.tsx` for full unit-test compatibility.
+- Root cause of residual issue (263 chars in `TextBox 55` lines 1 and 2):
+  - `TextBox 55` is a 28pt `Arial` (`SuiteLeaf Aspen`) justified (`algn="just"`) paragraph in `Group 53` with zero insets (`lIns=tIns=rIns=bIns=0`) and mapped width `2118.902 pt` (`x = 116.93 pt` to `2235.83 pt`).
+  - Verified via `fontTools` that `suiteleaf-aspen-regular.woff2` (`SuiteLeaf Aspen`) has 100% identical `hmtx` advance widths (`0` differences across all glyphs, `upem = 2048`) to Windows `arial.ttf`.
+  - In unhinted TrueType `hmtx` metrics, the first 24 words (`"H2O has received funding ... support from the"`) total `2118.266 pt`, which is `0.636 pt` (`0.848 px`, or `0.03%` of the box width) narrower than `2118.902 pt`, so `"the"` fits on line 1 in Chromium.
+  - In the Reference PDF (`BT /F7 27.96 Tf ... ET`), PowerPoint's GDI/DirectWrite layout quantized individual glyph advances to integer device units (emitting `TJ` kerning/grid-fitting adjustments such as `[(re)-4(ce)-4(iv)-2(ed)]`, `[(94)-7(53)-7(45)]`, `[(fr)-6(o)-5(m)]`), making each word on line 1 `+0.05 pt` to `+0.44 pt` wider (`+2.27 pt` total across the 23 words on line 1). That `+2.27 pt` pushed the 24th word `"the"` (`46.70 pt` with preceding space) to `2120.54 pt > 2118.902 pt`, wrapping `"the"` to line 2 and cascading `"reflects"` to line 3 (where line 3 has `0` chars outside tolerance, `max_dx = 3.99 px`, `dy = -1.88 px`).
+  - Per `AGENTS.md` ("Avoid font-specific layout logic or spacing overrides. Do not tune named-font line spacing, widths, or offsets to match individual documents"), no font-specific width or spacing override was added.
+- Test validation: Vitest unit tests passed (`tests/presenter-next.test.tsx`, `tests/ui/slide-print.test.tsx`, `tests/ui/slide-face-kinds.test.tsx`, `tests/ui/slide-marp-split.test.tsx`, `tests/ui/slide-text-body.test.tsx`, `tests/pptx-text-fidelity.test.ts`, `tests/slide-run-font-size.test.ts`, `tests/slide-runs-format.test.ts`), with 96.07% statement coverage, 100% function coverage, and 100% line coverage on `apps/web/src/editors/slide-surface.tsx`. All modified files remain well under the 1000-line limit (`slides-canvas.css`: 664 lines, `slide-surface.tsx`: 165 lines).
+- Evidence: `artifacts/presentation-fidelity/0015-iterations.json`, `0015-baseline.pdf` (449,650 bytes), `0015-iteration1.pdf` (449,385 bytes), `0015-iteration2.pdf` (449,499 bytes), `0015-iteration3.pdf` (449,499 bytes), `0015-iteration4.pdf` (449,499 bytes), `0015-iteration5.pdf` (449,533 bytes), `0015-iteration5-positions.json`, and `0015-iteration5/` comparison directory.
+
+## Current assignment — new inventory 0016
+
+- Source: `pptx/cc-by-3.0-at/2022/fa92786006700f06b7e0548e0da9a3ae-Schuldatenbank ERM Vorlage.pptx`.
+- Reference: `Z:\Datasets\zenodo10k\windows-ground-truth-pdf\pptx\cc-by-3.0-at\2022\fa92786006700f06b7e0548e0da9a3ae-Schuldatenbank ERM Vorlage.pdf`.
+- Assigned worker `presentation_0016`. Fifteen unique decks have terminal records; five last-verified matches are 0006, 0009, 0011, 0012, and 0014. Remaining decks and the full inventory remain in scope; no corpus-completion claim.

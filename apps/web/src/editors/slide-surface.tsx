@@ -103,8 +103,9 @@ export const SlideStill = memo(function SlideStill({
     const box = holder.current;
     if (!box) return;
     const measure = () => {
-      const w = box.clientWidth;
-      const h = box.clientHeight;
+      const rect = box.getBoundingClientRect();
+      const w = rect.width || box.clientWidth;
+      const h = rect.height || box.clientHeight;
       if (!w || !h) return;
       const scale = Math.min(w / width, h / height);
       setFit({ scale, x: (w - width * scale) / 2, y: (h - height * scale) / 2 });

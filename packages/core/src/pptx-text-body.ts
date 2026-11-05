@@ -208,7 +208,16 @@ export function textBodyParser({
           .at(-1) || "";
       const hasBullet = /<a:buChar\b|<a:buAutoNum\b|<a:buBlip\b/.test(bulletStyle);
       const bulletChar = /<a:buChar\b[^>]*\bchar="([^"]*)"/.exec(bulletStyle)?.[1];
-      const keepWords = pAttrs.latinLnBrk === "0" || pAttrs.latinLnBrk === "false";
+      const specificPAttrs = Object.assign(
+        {},
+        ...styleParts.slice(1).map((xml) =>
+          parseXmlAttrs(/^<[^>]+/.exec(xml)?.[0] || ""),
+        ),
+        ownParagraphAttrs,
+      );
+      const keepWords =
+        specificPAttrs.latinLnBrk === "0" ||
+        specificPAttrs.latinLnBrk === "false";
       const spacing = styleParts.join("");
       const line = lastLineSpacing(spacing);
 
@@ -316,7 +325,7 @@ export function textBodyParser({
               if (ownSz && !sizedRun && !shifted) {
                 fontSize = szPt;
                 sizedRun = true;
-              } else if (fontSize === undefined) fontSize = szPt;
+              } else if (fontSize === undefined) fontSize = szPt * (shifted ? 2 / 3 : 1);
             }
           }
           if (rAttrs.cap === "small" || rAttrs.cap === "all") run.caps = rAttrs.cap;
@@ -390,11 +399,26 @@ export function textBodyParser({
       // keep a 28pt list default.
       let strut: number | undefined;
       for (const run of textRuns) {
-        if (!run.text || run.text === "\n" || run.baseline || !(run.fontSize && run.fontSize > 0))
+        if (!run.text || !run.text.trim() || run.text === "\n" || run.baseline || !(run.fontSize && run.fontSize > 0))
           continue;
         strut = strut == null ? run.fontSize : Math.max(strut, run.fontSize);
       }
       if (strut != null) fontSize = strut;
+      else {
+        // Every word is raised or lowered. PowerPoint sizes the line from
+        // those runs: at the script size unless an unshifted end mark closes
+        // the paragraph, which keeps the runs' stored size.
+        let shiftedStrut = 0;
+        for (const run of textRuns)
+          if (run.text.trim() && run.baseline && run.fontSize)
+            shiftedStrut = Math.max(shiftedStrut, run.fontSize);
+        if (shiftedStrut) {
+          const plainMark = /<a:endParaRPr\b/.test(pXml) && !paragraphMarkBaseline(pXml);
+          fontSize = shiftedStrut * (plainMark ? 1 : 2 / 3);
+          const firstShifted = textRuns.find((run) => run.text.trim() && run.baseline);
+          if (firstShifted) firstShifted.scriptStrut = fontSize;
+        }
+      }
       const markPoints = paragraphMarkPointSize(pXml);
       const lastRun = textRuns[textRuns.length - 1];
       if (lastRun?.text === "\n" && pText.replace(/\n/g, "").trim()) {
@@ -427,6 +451,7 @@ export function textBodyParser({
         if (fontSize) fontSize = autofitPointSize(fontSize, fit.font);
         for (const run of textRuns) {
           if (run.fontSize) run.fontSize = autofitPointSize(run.fontSize, fit.font);
+          if (run.scriptStrut) run.scriptStrut = autofitPointSize(run.scriptStrut, fit.font);
         }
       }
       const autoTag = /<a:buAutoNum\b([^>]*)\/?>/.exec(bulletStyle);
@@ -561,7 +586,7 @@ export function textBodyParser({
           const fitted = marked ? autofitPointSize(marked, fit.font) : fontSize;
           if (fitted) {
             spacingPt = fitted;
-            fontSize = spacingPt * (shifted ? 0.65 : 1);
+            fontSize = spacingPt * (shifted ? 2 / 3 : 1);
           }
         }
         // The paragraph mark sizes the empty line after a hard break. A

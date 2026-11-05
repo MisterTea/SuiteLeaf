@@ -35,8 +35,11 @@ def worker_count():
     """Worker processes for the build: SUITELEAF_JOBS, else one per 6 GB of memory (each holds whole fonts), at most one per core."""
     if os.environ.get("SUITELEAF_JOBS"):
         return max(1, int(os.environ["SUITELEAF_JOBS"]))
-    memory = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
-    return max(1, min(os.cpu_count() or 1, memory // (6 << 30)))
+    try:
+        memory = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+        return max(1, min(os.cpu_count() or 1, memory // (6 << 30)))
+    except AttributeError:
+        return max(1, min(os.cpu_count() or 1, 4))
 
 def total(shaper, text):
     return sum(p.x_advance for p in shaper.shape(text).glyph_positions)

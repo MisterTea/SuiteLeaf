@@ -73,6 +73,7 @@ export function mapThroughGroups(
   emuY: number,
   emuW: number,
   emuH: number,
+  childRotation?: number,
 ) {
   let rotation = 0;
   let flipH = false;
@@ -83,10 +84,17 @@ export function mapThroughGroups(
   for (const group of chain) {
     const sx = group.cx / group.chcx;
     const sy = group.cy / group.chcy;
-    let lx = (emuX - group.chx) * sx;
-    let ly = (emuY - group.chy) * sy;
-    const lw = emuW * sx;
-    const lh = emuH * sy;
+    const rotRad = ((childRotation ?? 0) * Math.PI) / 180;
+    const cosR = Math.abs(Math.cos(rotRad));
+    const sinR = Math.abs(Math.sin(rotRad));
+    const effectiveScaleW = Math.sqrt((sx * cosR) ** 2 + (sy * sinR) ** 2);
+    const effectiveScaleH = Math.sqrt((sx * sinR) ** 2 + (sy * cosR) ** 2);
+    const lw = emuW * effectiveScaleW;
+    const lh = emuH * effectiveScaleH;
+    const childCx = emuX + emuW / 2;
+    const childCy = emuY + emuH / 2;
+    let lx = (childCx - group.chx) * sx - lw / 2;
+    let ly = (childCy - group.chy) * sy - lh / 2;
     // A group flip mirrors the child in the group box and mirrors its outline.
     if (group.flipH) {
       lx = group.cx - lx - lw;
@@ -154,6 +162,7 @@ export function placeGroupedBox<
     (box.y / metrics.height) * metrics.emuHeight,
     (box.width / metrics.width) * metrics.emuWidth,
     (box.height / metrics.height) * metrics.emuHeight,
+    box.rotation,
   );
   const rotation = composeRotation(mapped.rotation, box.rotation);
   const own = box as T & { flipH?: boolean; flipV?: boolean };

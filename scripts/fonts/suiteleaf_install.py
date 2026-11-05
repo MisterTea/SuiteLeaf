@@ -204,10 +204,13 @@ def _stage(args):
 
 def install(results, office_dir, root, out):
     """Write the faces into `out`. Several builds may install at once, so the writing holds a lock."""
-    import fcntl
     out = Path(out)
-    with open(Path(tempfile.gettempdir()) / "suiteleaf-install.lock", "w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+    try:
+        import fcntl
+        with open(Path(tempfile.gettempdir()) / "suiteleaf-install.lock", "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            _install(results, office_dir, root, out)
+    except ImportError:
         _install(results, office_dir, root, out)
 
 
@@ -294,7 +297,11 @@ def write_css(office_dir, out):
     for path in [os.path.join(office_dir, f) for f in sorted(os.listdir(office_dir))] + elsewhere:
         if not path.lower().endswith((".ttf", ".otf", ".ttc")):
             continue
-        for office in TTCollection(path).fonts if path.lower().endswith(".ttc") else [TTFont(path, lazy=True)]:
+        try:
+            office_fonts = TTCollection(path).fonts if path.lower().endswith(".ttc") else [TTFont(path, lazy=True)]
+        except Exception:
+            continue
+        for office in office_fonts:
             target = mapping.get(office["name"].getDebugName(4))
             if target not in files:
                 continue

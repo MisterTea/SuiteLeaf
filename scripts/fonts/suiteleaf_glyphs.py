@@ -33,6 +33,20 @@ def mark_glyphs(font):
 def office_face_path(office_dir, work, office_file, index):
     """A path HarfBuzz and fontTools can open as one face; collection faces are copied out to `work`."""
     path = os.path.join(office_dir, office_file)
+    if not os.path.exists(path):
+        aliases = {
+            "Trebuchet MS.ttf": "trebuc.ttf",
+            "Trebuchet MS Bold.ttf": "trebucbd.ttf",
+            "Trebuchet MS Italic.ttf": "trebucit.ttf",
+            "TrebuchetMSBoldItalic.ttf": "trebucbi.ttf",
+            "trebuc.ttf": "Trebuchet MS.ttf",
+            "trebucbd.ttf": "Trebuchet MS Bold.ttf",
+            "trebucit.ttf": "Trebuchet MS Italic.ttf",
+            "trebucbi.ttf": "TrebuchetMSBoldItalic.ttf",
+        }
+        alt = aliases.get(office_file)
+        if alt and os.path.exists(os.path.join(office_dir, alt)):
+            path = os.path.join(office_dir, alt)
     if not office_file.lower().endswith(".ttc"):
         return path
     out = Path(work) / f"office-{Path(office_file).stem}-{index}.ttf"

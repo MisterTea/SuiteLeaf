@@ -59,6 +59,8 @@ export const textRunSchema = z.object({
    * of the inherited size; the percent stays relative to the inherited size.
    */
   scriptScale: z.boolean().optional(),
+  /** Line size of a paragraph whose words are all raised or lowered. */
+  scriptStrut: z.number().optional(),
   /** Symbol-font text and bullets, such as Wingdings, keep that typeface (as its SuiteLeaf face). */
   font: z.string().max(80).optional(),
   /** DrawingML picture bullet (`buBlip`). The marker text stays for editing; the image is what paints. */
@@ -430,6 +432,8 @@ export const slideElementSchema = z.object({
                 bulletSrc: z.string().max(700_000).optional(),
                 baseline: z.number().min(-1000).max(1000).optional(),
                 scriptScale: z.boolean().optional(),
+  /** Line size of a paragraph whose words are all raised or lowered. */
+  scriptStrut: z.number().optional(),
                 bold: z.boolean().optional(),
                 paragraphBreak: z.boolean().optional(),
                 paraMargin: z.number().nonnegative().max(20000).optional(),

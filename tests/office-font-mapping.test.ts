@@ -96,6 +96,6 @@ describe("Office font names", () => {
     const deck = (await parsePowerPoint(bytes)).content;
     const text = deck.slides[deck.slideOrder[0]].elements.find((el) => el.content === "Title");
     expect(text?.fontFamily).toBe("SuiteLeaf Willow");
-    expect(text?.lineHeight).toBeCloseTo(1.2207, 4);
+    expect(text?.lineHeight).toBeCloseTo(1.2, 4);
   });
 });

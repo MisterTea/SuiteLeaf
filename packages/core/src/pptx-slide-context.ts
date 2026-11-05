@@ -134,7 +134,8 @@ export async function openSlide(deck: PptxDeck, idx: number, slidePath: string) 
     emuW: number,
     emuH: number,
     at: number,
-  ) => mapThroughGroups(slideGroups, at, emuX, emuY, emuW, emuH);
+    childRotation?: number,
+  ) => mapThroughGroups(slideGroups, at, emuX, emuY, emuW, emuH, childRotation);
 
   // Helper to extract transform. `at` is the shape's index in the slide XML
   // when its own xfrm is in a group's child coordinate space.
@@ -163,11 +164,12 @@ export async function openSlide(deck: PptxDeck, idx: number, slidePath: string) 
         };
         let emuW = readEmu(extAttrs.cx);
         let emuH = readEmu(extAttrs.cy);
+        const ownRot = Number(/<(?:a|p):xfrm\b[^>]*\brot="(-?\d+)"/.exec(xfrmMatch[0])?.[1] ?? 0) / 60000;
         if (
           at != null &&
           (ownLength == null || xfrmMatch.index < ownLength)
         ) {
-          const mapped = mapGrouped(emuX, emuY, emuW, emuH, at);
+          const mapped = mapGrouped(emuX, emuY, emuW, emuH, at, ownRot);
           emuX = mapped.emuX;
           emuY = mapped.emuY;
           emuW = mapped.emuW;

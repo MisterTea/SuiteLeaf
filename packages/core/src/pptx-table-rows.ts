@@ -258,7 +258,7 @@ export function tableTextRowEmu(
       const lines =
         oneLine != null && oneLine <= inner * 1.08 && !body.includes("\n")
           ? 1
-          : wrapLines(body, inner, font, !!mark?.bold, mark?.font);
+          : wrapLines(body, inner * 1.08, font, !!mark?.bold, mark?.font);
       const height = (padTop + padBottom + lines * font * grid) * pt;
       if (height > need) need = height;
     });
@@ -280,7 +280,7 @@ export function growClippedTableRows(
 ): number[] {
   const grown = rowEmu.map((height, index) => {
     const need = neededEmu[index] ?? 0;
-    if (!(height > 0) || !(need > height * 1.25)) return height;
+    if (!(height > 0) || !(need > height + 12700)) return height;
     return need;
   });
   const grew = grown.some((height, index) => height > (rowEmu[index] ?? 0));

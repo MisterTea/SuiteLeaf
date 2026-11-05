@@ -183,7 +183,7 @@ it("sizes a blank line after a subscript at the script size", async () => {
   const box = parsed.content.slides[parsed.content.slideOrder[0]].elements[0];
   const runs = box?.runs ?? [];
   const blank = runs.filter((run) => run.paragraphBreak);
-  expect(blank[0]?.fontSize).toBeCloseTo(24 * 0.65, 2);
+  expect(blank[0]?.fontSize).toBeCloseTo(24 * (2 / 3), 2);
   expect(blank[1]?.fontSize).toBe(28);
   const inch = parsed.content.width / (parsed.content.pointWidth / 72);
   expect(blank[0]?.spaceBefore).toBeCloseTo((5.76 / 72) * inch, 2);
@@ -199,7 +199,7 @@ it("sizes a blank line from a subscript paragraph default", async () => {
   const blank = parsed.content.slides[parsed.content.slideOrder[0]].elements[0]?.runs?.find(
     (run) => run.paragraphBreak,
   );
-  expect(blank?.fontSize).toBeCloseTo(25.48 * 0.65, 2);
+  expect(blank?.fontSize).toBeCloseTo(25.48 * (2 / 3), 2);
 });
 
 it("lets a paragraph spacing percentage replace an inherited point gap", async () => {
@@ -575,4 +575,27 @@ it("resolves automatic-number theme faces and keeps the words' emphasis", async 
 it("inherits text color for symbol markers when buClrTx replaces an ancestor bullet fill", async()=>{
  const zip=new JSZip();zip.file("ppt/slides/slide1.xml", '<p:sld><p:cSld><p:spTree><p:sp><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="4000000" cy="1000000"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:lstStyle><a:lvl1pPr><a:buClr><a:srgbClr val="FF0000"/></a:buClr><a:buFont typeface="Wingdings"/><a:buChar char="q"/></a:lvl1pPr></a:lstStyle><a:p><a:pPr><a:buClrTx/></a:pPr><a:r><a:rPr sz="1800"><a:solidFill><a:srgbClr val="0000FF"/></a:solidFill></a:rPr><a:t>Blue</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>');
  const d=await parsePowerPoint(await zip.generateAsync({type:"uint8array"}));const e=d.content.slides[d.content.slideOrder[0]].elements.find(x=>x.type==="text");expect(e?.runs?.[0].color).toBe("#0000FF");
+});
+
+it("sizes all-script paragraphs at 2/3 unless closed by an unshifted endParaRPr", async () => {
+  const zip = new JSZip();
+  zip.file(
+    "ppt/slides/slide1.xml",
+    `<p:sld><p:cSld><p:spTree>
+      <p:sp><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="4000000" cy="1000000"/></a:xfrm></p:spPr>
+        <p:txBody><a:bodyPr><a:normAutofit fontScale="90000"/></a:bodyPr>
+          <a:p><a:r><a:rPr sz="9600" baseline="30000"/><a:t>Title</a:t></a:r><a:endParaRPr sz="9600" baseline="30000"/></a:p>
+        </p:txBody></p:sp>
+      <p:sp><p:spPr><a:xfrm><a:off x="0" y="1000000"/><a:ext cx="4000000" cy="1000000"/></a:xfrm></p:spPr>
+        <p:txBody><a:bodyPr/>
+          <a:p><a:r><a:rPr sz="6000" baseline="30000"/><a:t>Authors</a:t></a:r><a:endParaRPr sz="4400"/></a:p>
+        </p:txBody></p:sp>
+    </p:spTree></p:cSld></p:sld>`,
+  );
+  const parsed = await parsePowerPoint(await zip.generateAsync({ type: "uint8array" }));
+  const els = parsed.content.slides[parsed.content.slideOrder[0]].elements;
+  expect(els[0]?.fontSize).toBe(58);
+  expect(els[0]?.runs?.[0]?.scriptStrut).toBe(58);
+  expect(els[1]?.fontSize).toBe(60);
+  expect(els[1]?.runs?.[0]?.scriptStrut).toBe(60);
 });

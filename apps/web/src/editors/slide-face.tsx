@@ -210,6 +210,10 @@ export function SlideFace({
                   el.padLeft != null ? `calc(${el.padLeft}px * var(--canvas-fit, 1))` : undefined,
                 ["--slide-hang" as string]:
                   el.hang ? `calc(${el.hang}px * var(--canvas-fit, 1))` : undefined,
+                ["--slide-valign-lead" as string]:
+                  el.valign === "middle" && el.lineHeight && el.lineHeight > 1.2
+                    ? `calc(${((el.lineHeight - 1.22) * (el.fontSize || 16) - (el.inset ?? 0))} * var(--slide-pt, 1) * 1px)`
+                    : undefined,
                 ...shapeDropShadow(el),
                 ...(offslide ? { overflow: "hidden" } : {}),
               }}

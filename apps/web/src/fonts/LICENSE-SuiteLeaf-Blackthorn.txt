@@ -10,12 +10,12 @@ Arabic and Hebrew text lays out close to, but not exactly as, Trebuchet MS: this
 chooses contextual forms and ligatures differently there, so lines can be slightly wider or narrower.
 
 Characters the source font lacks were filled with glyphs from these fonts, scaled and centered
-the same way (counts are across it). Each keeps its own license, reproduced below; all are
+the same way (counts are across its styles). Each keeps its own license, reproduced below; all are
 compatible with the license of the whole font.
 
-- 2 glyphs from Chiron Hei HK (OFL-1.1). Copyright 2025 The Chiron Hei HK Project Authors (https://github.com/chiron-fonts/chiron-hei-hk).
-- 3 glyphs from Noto Sans Symbols 2 (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
-- 169 glyphs from Roboto (OFL-1.1). Copyright 2011 The Roboto Project Authors (https://github.com/googlefonts/roboto-classic)
+- 716 glyphs from Noto Sans (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
+- 376 glyphs from Noto Sans Armenian (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/armenian)
+- 20 glyphs from Noto Sans Symbols 2 (OFL-1.1). Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
 
 The build scripts are in scripts/fonts/ of the SuiteLeaf repository.
 
@@ -27,7 +27,7 @@ Copyright 2018 The Sarabun Project Authors (https://github.com/cadsondemak/Sarab
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
-http://scripts.sil.org/OFL
+https://scripts.sil.org/OFL
 
 
 -----------------------------------------------------------
