@@ -32,6 +32,7 @@ import { rejoinSplitPictures, settleWordPictures } from "./image-inline";
 import { layoutNote } from "./image-wrap";
 import { wordKerning } from "./word-kerning";
 import { wordDefaultFont } from "./word-fonts";
+import { insertWordSectionBreaks } from "./word-sections";
 import { markMammothSymbols, symbolSpans } from "./word-symbols";
 import {
   letterheadDistanceNote,
@@ -336,6 +337,7 @@ export async function importDocx(
     rejoinSplitPictures(drawings.doc, drawings.sharesParagraph),
   );
   insertWordPageBreaks(content, xml);
+  for (const warning of await insertWordSectionBreaks(content, xml, zip)) warnings.push(warning);
   const hasTitlePg =
     /<w:titlePg\b(?:\s+[^>]*w:val="(?:true|1|on)")?(?:\/|\s*>)/.test(xml);
   const isPureCoverPage = isCoverPage && !/<w:br\b[^>]*w:type="page"/.test(xml);

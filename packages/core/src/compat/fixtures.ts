@@ -82,6 +82,22 @@ export const FIXTURE_SPECS: FixtureSpec[] = [
     ],
   },
   {
+    id: "docx-sections",
+    format: "docx",
+    features: ["two sections", "section headers", "page-number footer", "footnote", "numbered list", "hyperlink"],
+    classification: "supported",
+    generator: "docx@9.10.0",
+    probes: [
+      { dimension: "content", kind: "text", value: "Tomatoes are in" },
+      { dimension: "content", kind: "text", value: "Stake the beans" },
+      { dimension: "content", kind: "text", value: "Club site" },
+      { dimension: "content", kind: "footnote", value: "Planted in May" },
+      { dimension: "layout", kind: "header", value: "Garden club report" },
+      { dimension: "layout", kind: "header", value: "Appendix header" },
+      { dimension: "layout", kind: "sections", count: 2 },
+    ],
+  },
+  {
     id: "xlsx-budget",
     format: "xlsx",
     features: ["two sheets", "numbers", "SUM formula", "cross-sheet formula", "cell comment", "Calibri"],
@@ -154,6 +170,37 @@ async function docxReport(): Promise<Uint8Array> {
   return new Uint8Array(await d.Packer.toBuffer(doc));
 }
 
+async function docxSections(): Promise<Uint8Array> {
+  const d = await import("docx");
+  const doc = new d.Document({
+    footnotes: { 1: { children: [new d.Paragraph("Planted in May")] } },
+    numbering: {
+      config: [{ reference: "steps", levels: [{ level: 0, format: d.LevelFormat.DECIMAL, text: "%1.", alignment: d.AlignmentType.START }] }],
+    },
+    sections: [
+      {
+        headers: { default: new d.Header({ children: [new d.Paragraph("Garden club report")] }) },
+        footers: {
+          default: new d.Footer({ children: [new d.Paragraph({ children: [new d.TextRun("Page "), new d.TextRun({ children: [d.PageNumber.CURRENT] })] })] }),
+        },
+        children: [
+          new d.Paragraph({ children: [new d.TextRun("Tomatoes are in"), new d.FootnoteReferenceRun(1)] }),
+          new d.Paragraph({ text: "Water the beds", numbering: { reference: "steps", level: 0 } }),
+          new d.Paragraph({ text: "Stake the beans", numbering: { reference: "steps", level: 0 } }),
+          new d.Paragraph({
+            children: [new d.ExternalHyperlink({ link: "https://example.org/club", children: [new d.TextRun({ text: "Club site", style: "Hyperlink" })] })],
+          }),
+        ],
+      },
+      {
+        headers: { default: new d.Header({ children: [new d.Paragraph("Appendix header")] }) },
+        children: [new d.Paragraph("Appendix notes follow")],
+      },
+    ],
+  });
+  return new Uint8Array(await d.Packer.toBuffer(doc));
+}
+
 async function xlsxBudget(): Promise<Uint8Array> {
   const X = await import("xlsx");
   const costs = X.utils.aoa_to_sheet([
@@ -194,6 +241,7 @@ async function pptxPlan(): Promise<Uint8Array> {
 
 const GENERATORS: Record<string, () => Promise<Uint8Array>> = {
   "docx-report": docxReport,
+  "docx-sections": docxSections,
   "xlsx-budget": xlsxBudget,
   "pptx-plan": pptxPlan,
 };

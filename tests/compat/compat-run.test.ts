@@ -41,6 +41,15 @@ describe("office compatibility run", () => {
         layout: "unavailable-reference",
         media: "pass",
       },
+      "docx-sections": {
+        content: "pass",
+        formulas: "not-measured",
+        review: "not-measured",
+        objects: "not-measured",
+        fonts: "not-measured",
+        layout: "pass",
+        media: "not-measured",
+      },
       "xlsx-budget": {
         content: "pass",
         formulas: "pass",

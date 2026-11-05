@@ -16,6 +16,9 @@ export type Probe =
   | { dimension: Dimension; kind: "comment"; value: string }
   | { dimension: Dimension; kind: "revision"; value: string }
   | { dimension: Dimension; kind: "font"; value: string }
+  | { dimension: Dimension; kind: "header"; value: string }
+  | { dimension: Dimension; kind: "footnote"; value: string }
+  | { dimension: Dimension; kind: "sections"; count: number }
   | { dimension: Dimension; kind: "table"; count: number }
   | { dimension: Dimension; kind: "image"; sha256: string }
   | { dimension: Dimension; kind: "pages"; count: number }
@@ -28,6 +31,10 @@ export interface View {
   comments?: string[];
   revisions?: string[];
   fonts?: string[];
+  /** Header and footer text, from every section. */
+  headers?: string[];
+  footnotes?: string[];
+  sections?: number;
   tables?: number;
   images?: string[];
   pages?: number;

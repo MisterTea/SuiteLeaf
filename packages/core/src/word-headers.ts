@@ -127,13 +127,18 @@ function partRels(xml: string) {
   return map;
 }
 
+/**
+ * The section whose header and footer are the document's own: the first,
+ * which is on the first page. Later sections carry theirs on section breaks.
+ * When the first names none, every section's references are read.
+ */
 function sectionXml(documentXml: string) {
   const sects = [
     ...documentXml.matchAll(/<w:sectPr\b[^>]*>([\s\S]*?)<\/w:sectPr>/g),
   ];
   if (!sects.length) return "";
-  const last = sects[sects.length - 1][1];
-  if (/<w:(?:header|footer)Reference\b/.test(last)) return last;
+  const first = sects[0][1];
+  if (/<w:(?:header|footer)Reference\b/.test(first)) return first;
   return sects.map((sect) => sect[1]).join("\n");
 }
 

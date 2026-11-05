@@ -55,7 +55,17 @@ function docView(content: JsonNode): View {
   };
   walk(content);
   const threads = (content.attrs?.commentThreads ?? []) as { messages?: { text?: string }[] }[];
+  const settings = (content.attrs?.pageSettings ?? {}) as Record<string, unknown>;
+  const breaks = (content.content ?? []).filter((node) => node.type === "sectionBreak");
+  const plain = (node: JsonNode): string => (node.text ?? "") + (node.content ?? []).map(plain).join(" ");
+  const headers = [
+    ...["header", "footer", "firstHeader", "firstFooter", "evenHeader", "evenFooter"].map((key) => settings[key]),
+    ...breaks.flatMap((node) => [node.attrs?.header, node.attrs?.footer]),
+  ].filter((value): value is string => typeof value === "string" && value !== "");
   return {
+    headers,
+    footnotes: (content.content ?? []).filter((node) => node.type === "note").map(plain),
+    sections: breaks.length + 1,
     text: blocks.join("\n"),
     revisions,
     comments: threads.flatMap((thread) => (thread.messages ?? []).map((m) => m.text ?? "")),
@@ -195,7 +205,12 @@ async function docxPackage(zip: JSZip): Promise<View> {
   const revisions = [...body.matchAll(/<w:ins\b[^>]*>([\s\S]*?)<\/w:ins>/g)].map((m) => tagTexts(m[1]!, "w:t").join(""));
   const commentXml = (await zip.file("word/comments.xml")?.async("string")) ?? "";
   const fontXml = [body, (await zip.file("word/styles.xml")?.async("string")) ?? ""].join("");
+  const furniture = await texts(zip, /^word\/(header|footer)\d*\.xml$/);
+  const footnoteXml = (await zip.file("word/footnotes.xml")?.async("string")) ?? "";
   return {
+    headers: furniture.map(([, xml]) => tagTexts(xml, "w:t").join("")),
+    footnotes: footnoteXml.split(/<\/w:footnote>/).map((part) => tagTexts(part, "w:t").join("")).filter(Boolean),
+    sections: (body.match(/<w:sectPr\b/g) ?? []).length,
     text: paragraphs.join("\n"),
     revisions,
     comments: commentXml.split(/<\/w:comment>/).map((part) => tagTexts(part, "w:t").join("")).filter(Boolean),

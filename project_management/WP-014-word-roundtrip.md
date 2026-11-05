@@ -87,3 +87,24 @@ Still open in this package:
 - A document that names no body font still exports Arial as its default. Word would use Times New Roman.
 - The rest of the requirements and acceptance criteria above: sections, numbering, image anchoring, notes, fields, citations, comments and revisions through edits, editability in Word, and legacy conversion.
 
+2026-11-04, later: Word sections survive import.
+
+- **The document's header and footer come from the first section**, the one on page one. Before this, they came from the last section's properties, so a report with an appendix showed the appendix header on every page and lost its own.
+- **Each later section that starts on a new page becomes a SuiteLeaf section break** (`word-sections.ts`). The break carries that section's default header and footer and its page-number restart. A section that names no header or footer keeps the previous section's, as Word does.
+- **What is not represented gets an import note:** a section that continues on the same page or column gets no break, a break that cannot be placed is reported, and so is a section whose page orientation differs, because SuiteLeaf stores one orientation per document.
+- **Export already wrote a section break's header and footer**, so the round trip now keeps both sections and both headers.
+
+`tests/word-sections.test.ts` covers start type, restart, inheritance, a one-paragraph section, an existing page break, an unplaced break, and orientation. Writing it found a bug: the first version took each section's anchor from the text after the section-ending paragraphs, so a one-paragraph section lost its anchor. Anchors are now read from the text that follows each section end.
+
+2026-11-04, later: the WP-012 run has a fourth fixture, `docx-sections`: two sections with their own headers, a footer with a page number, a footnote, a numbered list, and a hyperlink. New probes check header text, footnote text, and the section count. With the section import turned off, `layout` was a loss at import (the appendix header and the second section were gone). With it on, every probe passes.
+
+`npm run test:office-compat` with LibreOffice 26.2.5.2 (fingerprint `184bf44e1bbb190d`) gave 17 dimensions passing, no loss, and nothing blocking. `npx vitest run --coverage` passed (618 files, 4,498 tests): statements 93.86% and lines 96.71%. `word-sections.ts` was at 100% statements and lines. `word-headers.ts` was at 89.38% statements, up from 88.97%; it was already below 90% before this change.
+
+On the first 200 NapierOne DOCX files, all 200 still imported and exported. 35 had more than one section, with 73 sections starting on a new page. 68 of those breaks were placed, and the 5 files with an unplaced break each say so in their import notes. Whether each break landed on the right paragraph was not checked by hand.
+
+Still open:
+- Fonts set only on a paragraph style.
+- The Times New Roman default for a document that names no body font.
+- Orientation and margins per section.
+- Numbering, image anchoring, fields, citations, comments and revisions through edits, editability in Word, and legacy conversion.
+

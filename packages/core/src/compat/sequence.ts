@@ -70,6 +70,12 @@ export function probeSeen(probe: Probe, view: View | undefined): boolean | undef
       return anyIncludes(view.comments, probe.value);
     case "revision":
       return anyIncludes(view.revisions, probe.value);
+    case "header":
+      return anyIncludes(view.headers, probe.value);
+    case "footnote":
+      return anyIncludes(view.footnotes, probe.value);
+    case "sections":
+      return view.sections === undefined ? undefined : view.sections === probe.count;
     case "font":
       return view.fonts === undefined ? undefined : view.fonts.some((font) => font.toLowerCase() === probe.value.toLowerCase());
     case "table":
