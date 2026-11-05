@@ -1,4 +1,4 @@
-import { advertisedIds, capabilities } from "./catalog-data";
+import { advertisedIds, capabilities, progressCapabilities } from "./catalog-data";
 import type { CapabilityCatalog, Evidence } from "./schema";
 
 export { departureChecklist, type DepartureItem } from "./departure";
@@ -12,14 +12,14 @@ const open: Evidence = {
 
 export const capabilityCatalog: CapabilityCatalog = {
   id: "suiteleaf-capabilities",
-  updated: "2026-10-30",
+  updated: "2026-11-04",
   competitor: {
     product: "Microsoft 365 and Google Workspace",
     edition: "Microsoft 365 Apps for enterprise compared with Google Workspace Business Standard, each on its documented web and desktop clients",
     platform: "web and desktop",
     referenceDate: "2026-10-29",
   },
-  capabilities,
+  capabilities: [...capabilities, ...progressCapabilities],
   advertisedIds,
   workflows: [
     {
@@ -118,11 +118,32 @@ export const capabilityCatalog: CapabilityCatalog = {
     runner: "vitest",
     provider: "@vitest/coverage-v8",
     policy:
-      "AGENTS.md requires unit coverage above 90 percent. vitest.config.ts has no coverage.exclude list, so new capability modules stay in the default measurement set. A repository-wide failing threshold is not configured until a dated full-suite measurement exists. npm run check:capabilities measures packages/core/src/capabilities and fails under 90 percent lines, functions, branches, and statements.",
+      "AGENTS.md requires unit coverage above 90 percent. vitest.config.ts measures every source file under apps/web/src, apps/desktop/src, packages/core/src, and services/*/src, excludes only type declarations, and fails npm run test:coverage below 90 percent lines or statements. Branches and functions are measured and reported but are not a failing threshold for the whole suite. npm run check:capabilities measures packages/core/src/capabilities and fails under 90 percent lines, functions, branches, and statements. Rust coverage is not measured by these commands.",
     mustInclude: ["packages/core/src/capabilities"],
     mustNotExclude: ["packages/core/src/capabilities"],
   },
   baseline: [
+    {
+      name: "Full Vitest suite with coverage",
+      command: "npx vitest run --coverage",
+      result: "pass",
+      detail:
+        "2026-11-04: 614 files and 4,467 tests passed. Statements 93.82%, lines 96.69%, functions 95.77%, branches 85.84%. Branches are below 90% and are not a failing threshold. This is the Vitest suite, not the Rust tests.",
+    },
+    {
+      name: "Node Rust tests",
+      command: "cargo test -p suiteleaf-node",
+      result: "pass",
+      detail: "2026-11-04: 65 unit, 1 cluster, and 36 multiuser tests passed. Other crates were not part of this run.",
+    },
+    {
+      name: "Two-browser editors",
+      command:
+        "npx playwright test tests/browser/doc-collab.spec.ts tests/browser/sheet-collab.spec.ts tests/browser/slide-collab.spec.ts --project=chromium",
+      result: "pass",
+      detail:
+        "2026-11-04: 6 document tests, 1 spreadsheet test, and 1 presentation test passed. The spreadsheet test types North into the painted grid and sees it on the other screen. Other browsers were not run.",
+    },
     {
       name: "Native JSON helpers",
       command:

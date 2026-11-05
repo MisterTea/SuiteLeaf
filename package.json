@@ -23,7 +23,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "check:capabilities": "vitest run tests/capabilities/catalog.test.ts --coverage.enabled --coverage.include=packages/core/src/capabilities/**/*.ts --coverage.thresholds.lines=90 --coverage.thresholds.functions=90 --coverage.thresholds.statements=90 --coverage.thresholds.branches=90",
+    "check:capabilities": "vitest run tests/capabilities/catalog.test.ts tests/capabilities/catalog-sources.test.ts --coverage.enabled --coverage.include=packages/core/src/capabilities/**/*.ts --coverage.thresholds.lines=90 --coverage.thresholds.functions=90 --coverage.thresholds.statements=90 --coverage.thresholds.branches=90",
     "test:e2e": "playwright test --project=chromium",
     "test:e2e:desktop": "playwright test --project=chromium",
     "test:e2e:mobile": "playwright test --project=mobile",

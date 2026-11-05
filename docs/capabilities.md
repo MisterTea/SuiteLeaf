@@ -2,7 +2,9 @@
 
 SuiteLeaf release claims come from `packages/core/src/capabilities/catalog.ts`, not from the presence of a menu. The catalog records stable capability IDs, parity tier, platform, runtime mode, UI entry, formats, limits, evidence, and the work package that owns the next change.
 
-Statuses are `absent`, `partial`, `implemented`, and `verified`. `verified` requires an evidence row whose result is `pass`. Documentation can explain a limit. It cannot mark a workflow passed. The disaster-recovery workflow stays inconclusive. A local archive can restore a clean database. That restore does not start a node and is not a remote storage service, so the workflow is not a pass. Independent backup stays `partial`. On 2026-11-01, `npx vitest run --coverage` passed 1805 tests in 325 files. The measured totals were 71.56% lines, 68.49% statements, 63.85% functions, and 61.49% branches. That is below 90%. It is the Vitest suite, not the Rust tests. No capability is `verified`. Employee departure stays inconclusive. A named device can be signed out, and one session can be asked to sign in again. Removing the account can give their files to someone else. The review itself does not remove the account or move any files. That note does not include a device name. It is not a pass. The offline-trip workflow stays inconclusive. An edit that conflicts with a file changed outside SuiteLeaf stays as a recovery draft titled `My edit`. Reloading reads `External edit` from the file. The draft is still there after the store restarts. The desktop app was not started, so this is not a pass.
+Statuses are `absent`, `partial`, `implemented`, and `verified`. `verified` requires an evidence row whose result is `pass`. Documentation can explain a limit. It cannot mark a workflow passed. The disaster-recovery, offline-trip, and employee-departure workflows stay inconclusive. Each one's evidence note says what was shown and why it is not a pass. Document collaboration is `verified`: Rust tests across three nodes, six two-browser tests, and unit tests passed on 2026-11-04.
+
+On 2026-11-04, `npx vitest run --coverage` passed 4,467 tests in 614 files. Statements were 93.82%, lines 96.69%, functions 95.77%, and branches 85.84%. `vitest.config.ts` fails that command below 90% lines or statements. Branches and functions are reported but are not a failing threshold. This is the Vitest suite. Rust coverage is not measured.
 
 Parity tiers stay separate:
 
@@ -18,7 +20,14 @@ The comparison context is stored on the catalog: Microsoft 365 Apps for enterpri
 npm run check:capabilities
 ```
 
-That command validates the catalog and measures coverage for `packages/core/src/capabilities`. The gate fails below 90 percent lines, functions, branches, and statements. Do not add that directory to a coverage exclude list. `npm run test:coverage` remains the whole-suite measurement. It does not yet fail the build on a repository-wide threshold, because that full measurement is not the same command as this catalog check.
+That command validates the catalog and checks it against its sources. It fails when:
+
+- a README **What works** bullet, or a README sentence that makes a claim, has no advertised capability behind it;
+- a work package whose status is not `blocked` has no capability row, so existing work is not left out or listed as missing;
+- the whole-suite coverage gate drops below 90 percent lines or statements, or excludes anything except type declarations;
+- `packages/core/src/capabilities` falls below 90 percent lines, functions, branches, or statements.
+
+Do not add that directory to a coverage exclude list. `npm run test:coverage` is the whole-suite measurement, and it fails below 90 percent lines or statements.
 
 `releaseReport` counts `pass`, `fail`, `skipped`, `unavailable-reference`, and `inconclusive` separately. A skipped or unavailable reference is not a pass.
 
@@ -28,6 +37,26 @@ That command validates the catalog and measures coverage for `packages/core/src/
 2. Point `evidence.ref` at the test, document, or module that justifies the status.
 3. Set `result` from the latest run. Leave it `inconclusive` until a run exists.
 4. Add a `baseline` row when a representative existing test is run for a release note. Record the command and the observed result. Do not invent a pass rate.
-5. Run `npm run check:capabilities`.
+5. When a README bullet or claim changes, update `README_CLAIMS` or `README_SENTENCES` in `tests/capabilities/catalog-sources.test.ts`.
+6. When a work package starts, give it a capability row, even if that row is `partial` with inconclusive evidence.
+7. Run `npm run check:capabilities`.
 
 Representative workflows live in the same catalog: report and citations, financial workbook, media presentation, shared folder, offline trip, employee departure, and disaster recovery. They are defined so later packages can attach evidence. An inconclusive workflow is not a completed release gate.
+
+## Four kinds of file claims
+
+A file claim is one of four things. Each one needs its own evidence, and one does not imply another.
+
+- **Native preservation:** a SuiteLeaf file saved and opened again keeps what was in it.
+- **Office conversion:** a Word, Excel, or PowerPoint file becomes an editable SuiteLeaf file, or the reverse, with the content and structure carried across.
+- **Visual fidelity:** the converted file looks like the source when it is laid out or rendered.
+- **Calculation correctness:** formulas give the same results as the source application.
+
+| Format | Native preservation | Office conversion | Visual fidelity | Calculation correctness |
+| --- | --- | --- | --- | --- |
+| `.sldoc`, `.slsheet`, `.slslides`, `.sldraw` | `cap-native-files`, implemented | Not applicable | Same renderer that saved it. Not separately verified | Spreadsheet formulas are stored. Results are not certified against another application |
+| `.docx` | Not applicable | `cap-office-import` and `cap-docs-docx-export`, partial | Not verified. Measured corpus work is WP-012 and WP-014 | Fields are WP-017 |
+| `.xlsx` and other Excel formats | Not applicable | `cap-office-import` and `cap-sheets-xlsx-export`, partial | Not verified. Historical notes are in `docs/excel-visual-parity.md`. Measured corpus work is WP-012 and WP-015 | Not verified. Formula compatibility is WP-015 |
+| `.pptx` and other PowerPoint formats | Not applicable | `cap-pptx-import` and `cap-pptx-export`, partial | Not verified. Measured corpus work is WP-012 and WP-016 | Not applicable |
+
+Historical corpus results in `docs/` describe the files and the revision they were measured on. They are not current evidence for a catalog row until the run is repeated and recorded with a date.
