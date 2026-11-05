@@ -33,6 +33,7 @@
     "setup:electron": "node node_modules/electron/install.js",
     "format": "prettier --write apps/*/src packages/*/src services/*/src services/*/test tests",
     "test:office-corpus": "node scripts/verify-office-imports.mjs",
+    "test:office-compat": "tsx scripts/office-compat.mts",
     "build:auth": "npm run build -w @suiteleaf/auth",
     "build:ai": "npm run build -w @suiteleaf/ai",
     "build:node": "cargo build --release -p suiteleaf-node",

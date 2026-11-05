@@ -7,10 +7,10 @@ priority: "P1"
 phase: 2
 area: "migration"
 created: "2026-10-29"
-updated: "2026-10-29"
+updated: "2026-11-04"
 owner: "unassigned"
 blocked: true
-blocked_on: ["WP-007", "WP-010", "WP-012", "WP-013"]
+blocked_on: ["WP-007", "WP-010", "WP-013"]
 related_sources: ["S15", "S16", "S09", "S12"]
 ---
 
@@ -67,3 +67,5 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S15`, `S16`, `S09`, `S12`. Extern
 # Progress
 
 2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-007", "WP-010", "WP-012", "WP-013"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
+
+2026-11-04: WP-012 was accepted as done and is removed from `blocked_on`. This package is still blocked on WP-007, WP-010, and WP-013.

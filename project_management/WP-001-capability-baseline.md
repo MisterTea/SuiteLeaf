@@ -120,3 +120,5 @@ Known limits:
 Status is `in_review`. WP-012 stays blocked on WP-001 until the evidence is accepted.
 
 2026-11-04, later: the product owner accepted the evidence above. Status is `done`. WP-012 no longer waits on WP-001. The known limits listed above still apply.
+
+2026-11-04, later still: the source check now asks for a capability row only from a package that has started (`in_progress`, `in_review`, or `done`). A `ready` package has no work yet. Before this, unblocking WP-013 as `ready` would have failed the check, because WP-013 has no row. `docs/capabilities.md` says the same.

@@ -90,7 +90,7 @@ describe("catalog sources", () => {
     ]);
   });
 
-  it("gives every work package with recorded progress a capability row", () => {
+  it("gives every work package that has started a capability row", () => {
     const dir = join(root, "project_management");
     const files = readdirSync(dir).filter((name) => /^WP-\d{3}-.*\.md$/.test(name));
     expect(files).toHaveLength(38);
@@ -99,7 +99,9 @@ describe("catalog sources", () => {
       const text = readFileSync(join(dir, name), "utf8");
       const id = frontMatter(text, "id")!;
       const status = frontMatter(text, "status");
-      return status !== "blocked" && !inRows.has(id) ? [`${id} (${status})`] : [];
+      // `ready` and `blocked` packages have no work yet. A started package needs a row.
+      const started = status === "in_progress" || status === "in_review" || status === "done";
+      return started && !inRows.has(id) ? [`${id} (${status})`] : [];
     });
     expect(missing).toEqual([]);
   });

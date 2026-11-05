@@ -23,7 +23,7 @@ npm run check:capabilities
 That command validates the catalog and checks it against its sources. It fails when:
 
 - a README **What works** bullet, or a README sentence that makes a claim, has no advertised capability behind it;
-- a work package whose status is not `blocked` has no capability row, so existing work is not left out or listed as missing;
+- a work package that has started (`in_progress`, `in_review`, or `done`) has no capability row, so existing work is not left out or listed as missing;
 - the whole-suite coverage gate drops below 90 percent lines or statements, or excludes anything except type declarations;
 - `packages/core/src/capabilities` falls below 90 percent lines, functions, branches, or statements.
 

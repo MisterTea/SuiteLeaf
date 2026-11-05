@@ -2,15 +2,15 @@
 id: "WP-014"
 title: "Word document round-trip fidelity"
 type: "work_package"
-status: "blocked"
+status: "ready"
 priority: "P0"
 phase: 1
 area: "documents"
 created: "2026-10-29"
-updated: "2026-10-29"
+updated: "2026-11-04"
 owner: "unassigned"
-blocked: true
-blocked_on: ["WP-012"]
+blocked: false
+blocked_on: []
 related_sources: ["S15", "S16", "S17"]
 ---
 
@@ -66,3 +66,7 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S15`, `S16`, `S17`. External comp
 # Progress
 
 2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-012"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
+
+2026-11-04: WP-012's compatibility run found a font loss that this package owns. The generated fixture `docx-report` sets Calibri on every run. After import and export, Arial is the only font in the document. DOCX import keeps a run's font only for symbol fonts (`word-symbols.ts`), and there is no document default font, so `docx-export.ts` writes Arial. Word would lay out a Calibri document in Arial. The run tolerates this as a `fonts` loss owned by WP-014 (`TOLERATED` in `packages/core/src/compat/report.ts`), and `docs/office-imports.md` states the limit. When it is repaired, remove that entry; the run lists an entry that no longer matches a loss. This package is still blocked on WP-012, and no product behavior changed here.
+
+2026-11-04: WP-012 was accepted as done, so this package is no longer blocked. Status is `ready`, meaning it is ready to start; no work has begun. It was blocked on WP-012 from 2026-10-29 until then; that dependency is still listed under Dependencies.

@@ -2,15 +2,15 @@
 id: "WP-013"
 title: "User-visible compatibility reports and safe export"
 type: "work_package"
-status: "blocked"
+status: "ready"
 priority: "P0"
 phase: 1
 area: "compatibility"
 created: "2026-10-29"
-updated: "2026-10-29"
+updated: "2026-11-04"
 owner: "unassigned"
-blocked: true
-blocked_on: ["WP-012"]
+blocked: false
+blocked_on: []
 related_sources: ["S15", "S16"]
 ---
 
@@ -67,3 +67,5 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S15`, `S16`. External complaints 
 # Progress
 
 2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-012"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
+
+2026-11-04: WP-012 was accepted as done, so this package is no longer blocked. Status is `ready`, meaning it is ready to start; no work has begun. It was blocked on WP-012 from 2026-10-29 until then; that dependency is still listed under Dependencies.
