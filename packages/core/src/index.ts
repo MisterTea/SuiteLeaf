@@ -363,3 +363,37 @@ export function parseRange(a1: string, sheetId: string): SourceRange {
 }
 
 export { departureChecklist, type DepartureItem } from "./capabilities/departure";
+export {
+  COMPAT_CONVERTER_VERSION,
+  COMPAT_EVIDENCE_CORPUS,
+  type CompatibilitySeverity,
+  type CompatibilityImpact,
+  type AffectedLocation,
+  type CompatibilityFinding,
+  type CompatibilityReport,
+  type ExportChoice,
+  type PreservedPart,
+  type PreservedPartsManifest,
+  createCompatibilityReport,
+  analyzeFontCompatibility,
+  scanDocCompatibility,
+  scanSheetCompatibility,
+  scanSlideCompatibility,
+  preserveUnsupportedParts,
+  resolveExportChoice,
+  formatCompatibilityReportMarkdown,
+  formatCompatibilityReportTerminal,
+  formatCompatibilityReportJson,
+} from "./compat/user-report";
+
+export * from "./offline";
+export * from "./provisioning";
+export * from "./search";
+export * from "./workflows";
+export * from "./migration";
+export * from "./operations";
+export * from "./templates";
+export * from "./automation";
+export * from "./governance";
+export * from "./integrations/communications";
+export * from "./integrations/knowledge-planning";

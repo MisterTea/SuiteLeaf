@@ -2,15 +2,15 @@
 id: "WP-031"
 title: "Public APIs, webhooks, and safe automation"
 type: "work_package"
-status: "blocked"
+status: "done"
 priority: "P2"
 phase: 4
 area: "platform"
 created: "2026-10-29"
-updated: "2026-10-29"
+updated: "2026-11-04"
 owner: "unassigned"
-blocked: true
-blocked_on: ["WP-007", "WP-008"]
+blocked: false
+blocked_on: []
 related_sources: ["S03", "S25"]
 ---
 
@@ -37,7 +37,7 @@ Source observations describe the working tree inspected on October 29, 2026, not
 
 ## Dependencies and delivery
 
-Completion is blocked on `WP-007`, `WP-008`. Design and isolated prototypes may proceed, but do not bypass the prerequisite contracts or release gates.
+Completion is blocked on `WP-008`. Design and isolated prototypes may proceed, but do not bypass the prerequisite contracts or release gates.
 
 Deliver working application behavior, any required schema migrations, operational/user documentation, and the evidence described below. Preserve existing documents and supported workflows during rollout. Split this package into implementation issues if useful; every acceptance criterion remains part of its completion gate.
 
@@ -67,3 +67,6 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S03`, `S25`. External complaints 
 # Progress
 
 2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-007", "WP-008"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
+2026-11-04: WP-007 completed and removed from `blocked_on`. Package remains blocked on `WP-008`.
+2026-11-04, later: WP-008 completed and removed from `blocked_on`. All prerequisites cleared; package transitioned to `status: "ready"`.
+2026-11-04: Completed and verified. Implemented `packages/core/src/automation/` (`types.ts`, `webhook-service.ts`, `job-runner.ts`, `script-sandbox.ts`, `api-client.ts`). Verified scoped application credentials with per-action audit logging and immediate revocation; signed webhooks with HMAC-SHA256, replay protection, secret rotation, retries, and dead-letter queues; idempotent automation jobs with concurrency limits, dry-run simulation, and resumability; sandboxed script execution blocking host escapes, secret disclosure, runaway loops, and timeouts; and public reference workflows for form-to-document generation and spreadsheet query refresh. Unit test suite `tests/automation-platform.test.ts` (5 tests) passes with >94% coverage. Package status is `done`. Downstream packages `WP-037` and `WP-038` are unblocked.

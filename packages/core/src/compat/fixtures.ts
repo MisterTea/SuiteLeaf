@@ -65,19 +65,34 @@ export const FIXTURE_SPECS: FixtureSpec[] = [
   {
     id: "docx-report",
     format: "docx",
-    features: ["heading", "bold run", "Calibri", "table", "picture", "comment", "tracked insertion", "page break"],
+    features: [
+      "sections",
+      "repeated headers",
+      "table",
+      "footnote",
+      "citations and sources",
+      "comment",
+      "tracked insertion",
+      "Calibri",
+      "picture",
+    ],
     classification: "supported",
-    generator: "docx@9.10.0",
+    generator: "docx@9.10.0 + jszip@3",
     probes: [
       { dimension: "content", kind: "text", value: "Garden report" },
       { dimension: "content", kind: "text", value: "Tomatoes are in" },
       { dimension: "content", kind: "text", value: "Second page" },
+      { dimension: "content", kind: "footnote", value: "Planted in spring" },
+      { dimension: "content", kind: "citation", value: "Día19" },
+      { dimension: "content", kind: "source", value: "Día19" },
       { dimension: "objects", kind: "table", count: 1 },
       { dimension: "objects", kind: "cell", value: "Beans" },
       { dimension: "review", kind: "comment", value: "Check the stakes" },
       { dimension: "review", kind: "revision", value: "Paths are swept" },
       { dimension: "fonts", kind: "font", value: "Calibri" },
       { dimension: "media", kind: "image", sha256: PNG_SHA256 },
+      { dimension: "layout", kind: "header", value: "Garden report header" },
+      { dimension: "layout", kind: "sections", count: 2 },
       { dimension: "layout", kind: "pages", count: 2 },
     ],
   },
@@ -102,6 +117,20 @@ export const FIXTURE_SPECS: FixtureSpec[] = [
       { dimension: "content", kind: "numbered", value: "2 Stake the beans" },
       { dimension: "content", kind: "numbered", value: "b Mulch after" },
       { dimension: "content", kind: "numbered", value: "1 Weed the paths" },
+    ],
+  },
+  {
+    id: "docx-citations",
+    format: "docx",
+    features: ["CITATION complex field", "CITATION simple field", "non-ASCII source tag", "bibliography sources"],
+    classification: "supported",
+    generator: "docx@9.10.0 + jszip@3 (citation fields and customXml sources)",
+    probes: [
+      { dimension: "content", kind: "text", value: "Beds drain well" },
+      { dimension: "content", kind: "citation", value: "Día19" },
+      { dimension: "content", kind: "citation", value: "Smi20" },
+      { dimension: "content", kind: "source", value: "Día19" },
+      { dimension: "content", kind: "source", value: "Smi20" },
     ],
   },
   {
@@ -140,6 +169,7 @@ export const FIXTURE_SPECS: FixtureSpec[] = [
 
 async function docxReport(): Promise<Uint8Array> {
   const d = await import("docx");
+  const { default: JSZip } = await import("jszip");
   const run = (text: string, bold = false) => new d.TextRun({ text, bold, font: "Calibri" });
   const cell = (text: string) => new d.TableCell({ children: [new d.Paragraph({ children: [run(text)] })] });
   const doc = new d.Document({
@@ -147,11 +177,14 @@ async function docxReport(): Promise<Uint8Array> {
     comments: {
       children: [{ id: 0, author: "Maya", date: new Date("2026-01-01T00:00:00Z"), children: [new d.Paragraph("Check the stakes")] }],
     },
+    footnotes: { 1: { children: [new d.Paragraph("Planted in spring")] } },
     sections: [
       {
+        headers: { default: new d.Header({ children: [new d.Paragraph("Garden report header")] }) },
         children: [
           new d.Paragraph({ heading: d.HeadingLevel.HEADING_1, children: [run("Garden report")] }),
-          new d.Paragraph({ children: [run("Tomatoes are in", true)] }),
+          new d.Paragraph({ children: [run("Tomatoes are in", true), new d.FootnoteReferenceRun(1)] }),
+          new d.Paragraph({ children: [run("Beds drain well CITEONE.")] }),
           new d.Paragraph({
             children: [
               new d.CommentRangeStart(0),
@@ -165,16 +198,65 @@ async function docxReport(): Promise<Uint8Array> {
               new d.InsertedTextRun({ text: "Paths are swept", id: 1, author: "Maya", date: "2026-01-01T00:00:00Z" }),
             ],
           }),
-          new d.Table({ rows: [new d.TableRow({ children: [cell("Bed"), cell("Crop")] }), new d.TableRow({ children: [cell("North"), cell("Beans")] })] }),
+          new d.Table({
+            rows: [
+              new d.TableRow({ tableHeader: true, children: [cell("Bed"), cell("Crop")] }),
+              new d.TableRow({ children: [cell("North"), cell("Beans")] }),
+            ],
+          }),
           new d.Paragraph({
             children: [new d.ImageRun({ type: "png", data: FIXTURE_PNG, transformation: { width: 32, height: 32 } })],
           }),
-          new d.Paragraph({ children: [new d.PageBreak(), run("Second page")] }),
+        ],
+      },
+      {
+        headers: { default: new d.Header({ children: [new d.Paragraph("Garden report header")] }) },
+        children: [
+          new d.Paragraph({ heading: d.HeadingLevel.HEADING_1, children: [run("Second page")] }),
+          new d.Paragraph({ children: [run("Second section text.")] }),
         ],
       },
     ],
   });
-  return new Uint8Array(await d.Packer.toBuffer(doc));
+  const zip = await JSZip.loadAsync(await d.Packer.toBuffer(doc));
+  const r = (inner: string) => `<w:r>${inner}</w:r>`;
+  const complex =
+    r('<w:fldChar w:fldCharType="begin"/>') +
+    r('<w:instrText xml:space="preserve"> CITATION Día19 \\l 3082 </w:instrText>') +
+    r('<w:fldChar w:fldCharType="separate"/>') +
+    r("<w:t>(Díaz, 2019)</w:t>") +
+    r('<w:fldChar w:fldCharType="end"/>');
+  const body = (await zip.file("word/document.xml")!.async("string")).replace(
+    /<w:t[^>]*>Beds drain well CITEONE\.<\/w:t><\/w:r>/,
+    () => `<w:t xml:space="preserve">Beds drain well </w:t></w:r>${complex}<w:r><w:t>.</w:t></w:r>`,
+  );
+  zip.file("word/document.xml", body);
+  zip.file("customXml/item1.xml", SOURCES_XML);
+  zip.file(
+    "customXml/itemProps1.xml",
+    '<?xml version="1.0" encoding="UTF-8" standalone="no"?><ds:datastoreItem ds:itemID="{33333333-3333-3333-3333-333333333333}" xmlns:ds="http://schemas.openxmlformats.org/customXml"><ds:schemaRefs><ds:schemaRef ds:uri="http://schemas.openxmlformats.org/officeDocument/2006/bibliography"/></ds:schemaRefs></ds:datastoreItem>',
+  );
+  zip.file(
+    "customXml/_rels/item1.xml.rels",
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXmlProps" Target="itemProps1.xml"/></Relationships>',
+  );
+  const rels = await zip.file("word/_rels/document.xml.rels")!.async("string");
+  zip.file(
+    "word/_rels/document.xml.rels",
+    rels.replace(
+      "</Relationships>",
+      '<Relationship Id="rIdCustomXml1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXml" Target="../customXml/item1.xml"/></Relationships>',
+    ),
+  );
+  const types = await zip.file("[Content_Types].xml")!.async("string");
+  zip.file(
+    "[Content_Types].xml",
+    types.replace(
+      "</Types>",
+      '<Override PartName="/customXml/itemProps1.xml" ContentType="application/vnd.openxmlformats-officedocument.customXmlProperties+xml"/></Types>',
+    ),
+  );
+  return zip.generateAsync({ type: "uint8array" });
 }
 
 async function docxSections(): Promise<Uint8Array> {
@@ -224,6 +306,60 @@ async function docxSections(): Promise<Uint8Array> {
   return new Uint8Array(await d.Packer.toBuffer(doc));
 }
 
+const SOURCES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<b:Sources SelectedStyle="\\APASixthEditionOfficeOnline.xsl" StyleName="APA" Version="6" xmlns:b="http://schemas.openxmlformats.org/officeDocument/2006/bibliography" xmlns="http://schemas.openxmlformats.org/officeDocument/2006/bibliography">
+<b:Source><b:Tag>Día19</b:Tag><b:SourceType>Book</b:SourceType><b:Guid>{11111111-1111-1111-1111-111111111111}</b:Guid><b:Author><b:Author><b:NameList><b:Person><b:Last>Díaz</b:Last><b:First>Ana</b:First></b:Person></b:NameList></b:Author></b:Author><b:Title>Suelos del huerto</b:Title><b:Year>2019</b:Year><b:Publisher>Verde</b:Publisher></b:Source>
+<b:Source><b:Tag>Smi20</b:Tag><b:SourceType>Book</b:SourceType><b:Guid>{22222222-2222-2222-2222-222222222222}</b:Guid><b:Author><b:Author><b:NameList><b:Person><b:Last>Smith</b:Last><b:First>Jo</b:First></b:Person></b:NameList></b:Author></b:Author><b:Title>Raised beds</b:Title><b:Year>2020</b:Year><b:Publisher>Garden Press</b:Publisher></b:Source>
+</b:Sources>`;
+
+async function docxCitations(): Promise<Uint8Array> {
+  const d = await import("docx");
+  const { default: JSZip } = await import("jszip");
+  const doc = new d.Document({
+    sections: [{ children: [new d.Paragraph("Beds drain well CITEONE and stay warm CITETWO.")] }],
+  });
+  const zip = await JSZip.loadAsync(await d.Packer.toBuffer(doc));
+  const run = (inner: string) => `<w:r>${inner}</w:r>`;
+  const complex =
+    run('<w:fldChar w:fldCharType="begin"/>') +
+    run('<w:instrText xml:space="preserve"> CITATION Día19 \\l 3082 </w:instrText>') +
+    run('<w:fldChar w:fldCharType="separate"/>') +
+    run("<w:t>(Díaz, 2019)</w:t>") +
+    run('<w:fldChar w:fldCharType="end"/>');
+  const simple = '<w:fldSimple w:instr=" CITATION Smi20 \\l 1033 ">' + run("<w:t>(Smith, 2020)</w:t>") + "</w:fldSimple>";
+  const body = (await zip.file("word/document.xml")!.async("string"))
+    .replace(/<w:t[^>]*>Beds drain well CITEONE and stay warm CITETWO\.<\/w:t><\/w:r>/, () =>
+      `<w:t xml:space="preserve">Beds drain well </w:t></w:r>${complex}<w:r><w:t xml:space="preserve"> and stay warm </w:t></w:r>${simple}<w:r><w:t>.</w:t></w:r>`,
+    );
+  zip.file("word/document.xml", body);
+  zip.file("customXml/item1.xml", SOURCES_XML);
+  zip.file(
+    "customXml/itemProps1.xml",
+    '<?xml version="1.0" encoding="UTF-8" standalone="no"?><ds:datastoreItem ds:itemID="{33333333-3333-3333-3333-333333333333}" xmlns:ds="http://schemas.openxmlformats.org/officeDocument/2006/customXml"><ds:schemaRefs><ds:schemaRef ds:uri="http://schemas.openxmlformats.org/officeDocument/2006/bibliography"/></ds:schemaRefs></ds:datastoreItem>',
+  );
+  zip.file(
+    "customXml/_rels/item1.xml.rels",
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXmlProps" Target="itemProps1.xml"/></Relationships>',
+  );
+  const rels = await zip.file("word/_rels/document.xml.rels")!.async("string");
+  zip.file(
+    "word/_rels/document.xml.rels",
+    rels.replace(
+      "</Relationships>",
+      '<Relationship Id="rIdCustomXml1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXml" Target="../customXml/item1.xml"/></Relationships>',
+    ),
+  );
+  const types = await zip.file("[Content_Types].xml")!.async("string");
+  zip.file(
+    "[Content_Types].xml",
+    types.replace(
+      "</Types>",
+      '<Override PartName="/customXml/itemProps1.xml" ContentType="application/vnd.openxmlformats-officedocument.customXmlProperties+xml"/></Types>',
+    ),
+  );
+  return zip.generateAsync({ type: "uint8array" });
+}
+
 async function xlsxBudget(): Promise<Uint8Array> {
   const X = await import("xlsx");
   const costs = X.utils.aoa_to_sheet([
@@ -265,6 +401,7 @@ async function pptxPlan(): Promise<Uint8Array> {
 const GENERATORS: Record<string, () => Promise<Uint8Array>> = {
   "docx-report": docxReport,
   "docx-sections": docxSections,
+  "docx-citations": docxCitations,
   "xlsx-budget": xlsxBudget,
   "pptx-plan": pptxPlan,
 };

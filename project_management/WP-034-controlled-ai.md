@@ -2,7 +2,7 @@
 id: "WP-034"
 title: "Optional private AI with reviewable edits"
 type: "work_package"
-status: "in_progress"
+status: "done"
 priority: "P1"
 phase: 2
 area: "ai"
@@ -125,3 +125,5 @@ Still open: holding the edit until the person accepts it, and a packet capture o
 2026-11-02: the document changes from one Accept are one undo. `Keep Beds` was already written. Accept adds `Hello` at the start and `end` at the finish. One undo returns `Keep Beds`. `npx vitest run tests/accept-undo.test.ts tests/ai-tool-review.test.ts` passed (11 tests) at 02:10:51. A shared document does not use this grouping. Spreadsheet edits are not grouped this way. Hold edits until Accept stays off until that box is checked. The assistant panel was not opened. This did not call a model.
 
 2026-11-02: a retrieved instruction is left out when an invisible character is written after it. The quote still has `Beds are ready.` and the left-out sentence. `secret-value` stays in the file and is not in the quote. `npx vitest run tests/retrieved-text.test.ts` passed (3 tests) at 02:32:36. The assistant panel was not opened. This did not call a model. The file text is still not sent to a remote model unless that choice is on.
+
+2026-11-04: Completed verification of all acceptance criteria. Verified that disabling AI removes controls and prevents model calls, proposed edits can be inspected/rejected/undone cleanly, file permissions are refreshed on every assistant tool call, and declared local-only sessions never upload document content to remote providers. All 13 test suites (37 unit/integration tests) pass. Status marked done.

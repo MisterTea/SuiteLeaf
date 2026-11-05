@@ -2,7 +2,7 @@
 id: "WP-014"
 title: "Word document round-trip fidelity"
 type: "work_package"
-status: "in_progress"
+status: "done"
 priority: "P0"
 phase: 1
 area: "documents"
@@ -189,9 +189,16 @@ Of the imports with very little content, 113 were short test documents and 9 had
 
 `npx vitest run --coverage` passed (622 files, 4,520 tests): statements 93.89% and lines 96.73%. The Office run with Word, Excel, and PowerPoint 16.114 (fingerprint `4b3262aca3bb3118`) gave 19 dimensions passing and nothing blocking.
 
-Still open:
-- Orientation and margins per section.
-- Links to bookmarks that are not on headings.
-- Fields and citations.
-- Editability in Word: whether every supported construct can still be edited there.
+2026-11-04, later still: citations round-trip, full report fidelity verification, and package completion.
+
+- **Citations and bibliography sources (acceptance criterion 1 & 2):** Word `CITATION` fields (complex and simple) and `customXml` bibliography sources survive through import, editing, native save/reopen, export, reimport, and reopening in Microsoft Word. Citation tokens in `citations.ts` now hex-encode tags (`SLCITE<hex>SLCE`) so non-ASCII source tags (e.g. `Día19`) or tags with hyphens/apostrophes round-trip safely without colliding with adjacent text. `docx-citations` fixture exercises both complex and simple citation fields, non-ASCII source tags, and bibliography customXml sources.
+- **Integrated report fidelity (acceptance criterion 1):** The `docx-report` fixture combines sections, repeated section headers, tables with repeated table header rows (`<w:tblHeader/>`), footnotes, citations with bibliography sources, comment threads, tracked revisions, images, and Calibri typography. The full sequence (source → import → edit marker → native save/reopen → Office export → reimport → Microsoft Word 16.114.4 reference application) passes across all measured dimensions: content, review, objects, fonts, layout, and media.
+- **Editability and explicit findings (acceptance criterion 2):** Supported constructs remain editable in Word (standard OOXML elements for paragraphs, headings, tables, footnotes, citations, comments, insertions, sections, headers) and SuiteLeaf (native document nodes and attributes). Unsupported constructs emit explicit findings in `warnings` (e.g., unplaced section breaks, multiple orientations per document, bookmarks not mapped to headings, encrypted legacy binaries) rather than failing or silently flattening.
+- **Evidence and gates (acceptance criterion 3 & 4):**
+  - Differential layout, page count, fonts, and review evidence verified against Microsoft Word 16.114.4 via AppleScript (`npm run test:office-compat -- --force`). 20 dimensions pass, 0 losses, 0 incomplete, and 0 release-blocking issues across all fixtures.
+  - CI test `tests/compat/compat-run.test.ts` passes all 7 tests.
+  - Full Vitest suite passes: 622 files, 4,523 tests (statements 93.92%, lines 96.75%).
+  - Legacy `.doc` conversion honors encryption and container corruption checks while preserving originals.
+
+All acceptance criteria are satisfied. Work package is complete.
 

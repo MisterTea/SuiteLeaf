@@ -21,6 +21,7 @@ import {
   extensionFor,
   isNativeName,
   parseNamedFile,
+  sameJson,
   serializeFile,
   type SheetFile,
   type SuiteFile,
@@ -137,6 +138,7 @@ export async function importDirectory(
   options: {
     convertOffice?: OfficeConverter;
     onFile?: (event: ImportEvent) => void;
+    idempotent?: boolean;
   } = {},
 ): Promise<ImportResult> {
   const root = await realpath(resolve(source));
@@ -196,30 +198,71 @@ export async function importDirectory(
         const stem = basename(path, extname(path));
         const text = serializeFile(file);
         let saved = "";
-        for (let suffix = 0; ; suffix++) {
-          const target = join(
-            folder,
-            `${stem}${suffix ? ` (${suffix})` : ""}.${extensionFor(file.kind)}`,
-          );
-          let handle;
+
+        if (options.idempotent) {
+          const target = join(folder, `${stem}.${extensionFor(file.kind)}`);
+          let isUnchanged = false;
           try {
-            handle = await open(target, "wx");
-          } catch (error) {
-            if ((error as NodeJS.ErrnoException).code === "EEXIST") continue;
-            throw error;
+            const existingRaw = await readFile(target, "utf8");
+            const existingFile = parseNamedFile(basename(target), existingRaw);
+            if (
+              existingFile.kind === file.kind &&
+              sameJson(existingFile.content, file.content)
+            ) {
+              isUnchanged = true;
+            } else if (existingFile.id) {
+              // Preserve existing file id and createdAt on updates
+              (file as any).id = existingFile.id;
+              (file as any).createdAt = existingFile.createdAt;
+            }
+          } catch {
+            // does not exist yet or not a valid suiteleaf file
           }
+          if (isUnchanged) {
+            result.skipped++;
+            options.onFile?.({
+              source: path,
+              status: "skipped",
+              destination: target,
+            });
+            continue;
+          }
+          const updatedText = serializeFile(file);
+          const handle = await open(target, "w");
           try {
-            await handle.writeFile(text, "utf8");
+            await handle.writeFile(updatedText, "utf8");
             await handle.sync();
-          } catch (error) {
+          } finally {
             await handle.close();
-            await unlink(target).catch(() => {});
-            throw error;
           }
-          await handle.close();
           saved = target;
-          break;
+        } else {
+          for (let suffix = 0; ; suffix++) {
+            const target = join(
+              folder,
+              `${stem}${suffix ? ` (${suffix})` : ""}.${extensionFor(file.kind)}`,
+            );
+            let handle;
+            try {
+              handle = await open(target, "wx");
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code === "EEXIST") continue;
+              throw error;
+            }
+            try {
+              await handle.writeFile(text, "utf8");
+              await handle.sync();
+            } catch (error) {
+              await handle.close();
+              await unlink(target).catch(() => {});
+              throw error;
+            }
+            await handle.close();
+            saved = target;
+            break;
+          }
         }
+
         result.imported++;
         options.onFile?.({
           source: path,

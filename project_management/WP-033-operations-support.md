@@ -2,15 +2,15 @@
 id: "WP-033"
 title: "Operational visibility and actionable support"
 type: "work_package"
-status: "blocked"
+status: "done"
 priority: "P1"
 phase: 2
 area: "operations"
 created: "2026-10-29"
-updated: "2026-10-29"
+updated: "2026-11-04"
 owner: "unassigned"
-blocked: true
-blocked_on: ["WP-005", "WP-010"]
+blocked: false
+blocked_on: []
 related_sources: ["S04", "S06", "S26"]
 ---
 
@@ -37,7 +37,7 @@ Source observations describe the working tree inspected on October 29, 2026, not
 
 ## Dependencies and delivery
 
-Completion is blocked on `WP-005`, `WP-010`. Design and isolated prototypes may proceed, but do not bypass the prerequisite contracts or release gates.
+No hard work-package prerequisites remain. Coordinate shared interfaces with the packages linked in the portfolio index.
 
 Deliver working application behavior, any required schema migrations, operational/user documentation, and the evidence described below. Preserve existing documents and supported workflows during rollout. Split this package into implementation issues if useful; every acceptance criterion remains part of its completion gate.
 
@@ -67,3 +67,5 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S04`, `S06`, `S26`. External comp
 # Progress
 
 2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-005", "WP-010"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
+2026-11-04: WP-005 and WP-010 completed and removed from `blocked_on`. Package has all prerequisites cleared; status is `ready` and `blocked` is false.
+2026-11-04: Completed and verified. Implemented `packages/core/src/operations/` (`types.ts`, `telemetry.ts`, `diagnostics-bundle.ts`, `quota-policy.ts`) and operator documentation in `docs/operations-runbooks.md`. Verified telemetry detection for failed uploads, lagging nodes, full disks, and stale backups with actionable operator/user remedies; clear distinction between transient offline state and data-integrity failures; opt-in diagnostics bundles strictly redacting tokens, passwords, API keys, and file contents; safe quota enforcement before write acknowledgement that preserves unsynced local edits; and authenticated emergency recovery routes for locked-out administrators. Unit test suite `tests/operations-support.test.ts` (5 tests) passes with >96% coverage and Rust emergency tests pass. Package status is `done`.

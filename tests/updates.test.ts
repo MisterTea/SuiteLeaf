@@ -14,6 +14,7 @@ import {
   recordReleaseOffer,
   recoverPausedRollout,
   restartWhileDirty,
+  signatureMatches,
   signUpdate,
   startReleasePoll,
   updateProxyAddress,
@@ -704,5 +705,225 @@ describe("signed updates", () => {
     });
     stop();
     expect(asked).toBe(false);
+  });
+
+  it("handles signature validation and decideUpdate branch edge cases", async () => {
+    expect(signatureMatches(manifest, "", keys.publicKey)).toBe(false);
+    expect(signatureMatches(manifest, "YWJj", "bad-pem")).toBe(false);
+
+    expect(decision({ ...manifest, product: "other" }, pilot).reason).toBe(
+      "The update is not a SuiteLeaf release.",
+    );
+    expect(decision({ ...manifest, channel: "pilot" }, stable).reason).toBe(
+      "This release is for a different update channel.",
+    );
+    expect(decision({ ...manifest, version: "bad-version" }, pilot).reason).toBe(
+      "The version is not major.minor.patch.",
+    );
+    expect(decision({ ...manifest, version: "0.0.9", schemaVersion: 5 }, pilot).reason).toBe(
+      "This release is older than the installed version.",
+    );
+  });
+
+  it("handles recordReleaseOffer and fetchReleaseOffer error conditions", async () => {
+    expect(
+      recordReleaseOffer({
+        offer: "not-json",
+        currentVersion: "0.1.0",
+        currentSchema: 5,
+        currentRuntime: "22.12.0",
+        publicKeyPem: keys.publicKey,
+        policy: pilot,
+      }),
+    ).toEqual({ action: "reject", reason: "The release offer is not a SuiteLeaf manifest." });
+
+    expect(
+      await fetchReleaseOffer({
+        url: "http://insecure.example/offer.json",
+        fetchOffer: async () => ({ ok: true, status: 200, text: "" }),
+        currentVersion: "0.1.0",
+        currentSchema: 5,
+        currentRuntime: "22.12.0",
+        publicKeyPem: keys.publicKey,
+        policy: pilot,
+      }),
+    ).toEqual({ action: "reject", reason: "The release address is not an https address." });
+
+    expect(
+      await fetchReleaseOffer({
+        url: "https://updates.example/offer.json",
+        fetchOffer: async () => {
+          throw new Error("network");
+        },
+        currentVersion: "0.1.0",
+        currentSchema: 5,
+        currentRuntime: "22.12.0",
+        publicKeyPem: keys.publicKey,
+        policy: pilot,
+      }),
+    ).toEqual({ action: "hold", reason: "The release server did not answer." });
+
+    expect(
+      await fetchReleaseOffer({
+        url: "https://updates.example/offer.json",
+        fetchOffer: async () => ({ ok: false, status: 500, text: "" }),
+        currentVersion: "0.1.0",
+        currentSchema: 5,
+        currentRuntime: "22.12.0",
+        publicKeyPem: keys.publicKey,
+        policy: pilot,
+      }),
+    ).toEqual({ action: "hold", reason: "The release server did not answer." });
+
+    expect(
+      await fetchReleaseOffer({
+        url: "https://updates.example/offer.json",
+        fetchOffer: async () => ({ ok: true, status: 200, text: "a".repeat(65000) }),
+        currentVersion: "0.1.0",
+        currentSchema: 5,
+        currentRuntime: "22.12.0",
+        publicKeyPem: keys.publicKey,
+        policy: pilot,
+      }),
+    ).toEqual({ action: "reject", reason: "The release offer is too large." });
+
+    expect(
+      await fetchReleaseOffer({
+        url: "https://updates.example/offer.json",
+        fetchOffer: async () => ({ ok: true, status: 200, text: "{ bad json" }),
+        currentVersion: "0.1.0",
+        currentSchema: 5,
+        currentRuntime: "22.12.0",
+        publicKeyPem: keys.publicKey,
+        policy: pilot,
+      }),
+    ).toEqual({ action: "reject", reason: "The release offer is not a SuiteLeaf manifest." });
+
+    const signed = { ...manifest, sha256: "abc" };
+    expect(
+      await fetchReleaseOffer({
+        url: "https://updates.example/offer.json",
+        fetchOffer: async () => ({
+          ok: true,
+          status: 200,
+          text: JSON.stringify({
+            manifest: signed,
+            signature: signUpdate(signed, keys.privateKey),
+            installerSha256: "abc",
+            installerUrl: "http://insecure.example/installer.dmg",
+          }),
+        }),
+        fetchBytes: async () => ({ ok: true, status: 200, bytes: new Uint8Array() }),
+        currentVersion: "0.1.0",
+        currentSchema: 5,
+        currentRuntime: "22.12.0",
+        publicKeyPem: keys.publicKey,
+        policy: pilot,
+      }),
+    ).toEqual({ action: "reject", reason: "The installer address is not an https address." });
+
+    expect(
+      await fetchReleaseOffer({
+        url: "https://updates.example/offer.json",
+        fetchOffer: async () => ({
+          ok: true,
+          status: 200,
+          text: JSON.stringify({
+            manifest: signed,
+            signature: signUpdate(signed, keys.privateKey),
+            installerSha256: "abc",
+            installerUrl: "https://updates.example/installer.dmg",
+          }),
+        }),
+        fetchBytes: async () => {
+          throw new Error("download failed");
+        },
+        currentVersion: "0.1.0",
+        currentSchema: 5,
+        currentRuntime: "22.12.0",
+        publicKeyPem: keys.publicKey,
+        policy: pilot,
+      }),
+    ).toEqual({ action: "hold", reason: "The installer could not be downloaded." });
+
+    expect(
+      await fetchReleaseOffer({
+        url: "https://updates.example/offer.json",
+        fetchOffer: async () => ({
+          ok: true,
+          status: 200,
+          text: JSON.stringify({
+            manifest: signed,
+            signature: signUpdate(signed, keys.privateKey),
+            installerSha256: "abc",
+            installerUrl: "https://updates.example/installer.dmg",
+          }),
+        }),
+        fetchBytes: async () => ({ ok: false, status: 404, bytes: new Uint8Array() }),
+        currentVersion: "0.1.0",
+        currentSchema: 5,
+        currentRuntime: "22.12.0",
+        publicKeyPem: keys.publicKey,
+        policy: pilot,
+      }),
+    ).toEqual({ action: "hold", reason: "The installer could not be downloaded." });
+
+    expect(
+      await fetchReleaseOffer({
+        url: "https://updates.example/offer.json",
+        fetchOffer: async () => ({
+          ok: true,
+          status: 200,
+          text: JSON.stringify({
+            manifest: signed,
+            signature: signUpdate(signed, keys.privateKey),
+            installerSha256: "abc",
+            installerUrl: "https://updates.example/installer.dmg",
+          }),
+        }),
+        fetchBytes: async () => ({
+          ok: true,
+          status: 200,
+          bytes: { byteLength: 513 * 1024 * 1024 } as unknown as Uint8Array,
+        }),
+        currentVersion: "0.1.0",
+        currentSchema: 5,
+        currentRuntime: "22.12.0",
+        publicKeyPem: keys.publicKey,
+        policy: pilot,
+      }),
+    ).toEqual({ action: "reject", reason: "The installer is too large." });
+  });
+
+  it("handles startReleasePoll platform block and recoverPausedRollout unreadable directory", async () => {
+    let asked = false;
+    const stopBlocked = startReleasePoll({
+      currentVersion: "0.1.0",
+      currentRuntime: "22.12.0",
+      currentSchema: 5,
+      currentPlatform: "darwin",
+      currentOsVersion: "12.0",
+      env: {
+        SUITELEAF_UPDATE_URL: "https://updates.example/offer.json",
+        SUITELEAF_UPDATE_PUBLIC_KEY: keys.publicKey,
+      },
+      fetchOffer: async () => {
+        asked = true;
+        return { ok: true, status: 200, text: "" };
+      },
+    });
+    stopBlocked();
+    expect(asked).toBe(false);
+
+    const unreadable = await recoverPausedRollout({
+      paused: true,
+      updatesDirectory: "/nonexistent/updates",
+      unsavedEdits: false,
+      list: async () => {
+        throw new Error("read fail");
+      },
+    });
+    expect(unreadable.action).toBe("recovered");
+    expect(unreadable.removed).toEqual([]);
   });
 });

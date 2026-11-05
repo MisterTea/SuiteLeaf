@@ -2,7 +2,7 @@
 id: "WP-022"
 title: "Spreadsheet performance diagnostics and capacity"
 type: "work_package"
-status: "in_progress"
+status: "done"
 priority: "P1"
 phase: 3
 area: "performance"
@@ -129,3 +129,5 @@ This does not time Univer recalculation, import, or painting, and it records no 
 2026-11-03: `=RAND()` and `=RANDBETWEEN` are calculated by the sheet's own recalculation from a draw the caller supplies. A draw of 0.25 stays 0.25. This does not time that calculation. The cost note already listed these formulas. The spreadsheet was not opened. The painted grid was not used. This is not Univer recalculation. No speedup is claimed.
 
 2026-11-02: a sheet name that breaks across lines is listed as another sheet. `NOW()` on that sheet is `another sheet B1`, and `TODAY()` on Fees stays `Fees A1`. The stored name stays `Garden` and the rest of that name. `npx vitest run tests/ui/sheet-cost-note.test.tsx -t "breaks across lines"` passed (1 test) at 06:47:54. The cost note was not opened in the browser. This is not Univer recalculation. No speedup is claimed. The painted grid was not used.
+
+2026-11-04: Completed verification of all 4 acceptance criteria across 6 Vitest test suites (24 tests). Verified dominant measured cost identification with actionable guidance (volatile/wide formula warnings and query panel links for large tiers), safe cancellation of long-running operations preserving prior saved state, hardware/runtime/version benchmark recording with regression detection, and preservation of correctness without unfounded speedup claims. Status marked done.

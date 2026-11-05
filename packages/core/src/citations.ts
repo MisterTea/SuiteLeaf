@@ -545,9 +545,9 @@ export function rewriteWordCitations(xml: string): {
     /<w:fldSimple\b([^>]*?)(?:\/>|>([\s\S]*?)<\/w:fldSimple>)/g,
     (whole, attrs: string, inner?: string) => {
       const instruction = attr(attrs, "w:instr");
-      const cite = /\bCITATION\s+([A-Za-z0-9]+)/.exec(instruction);
+      const cite = CITATION_TAG.exec(instruction);
       if (cite)
-        return `<w:r><w:t xml:space="preserve">SLCITE${cite[1]}</w:t></w:r>`;
+        return `<w:r><w:t xml:space="preserve">${citeToken(cite[1]!)}</w:t></w:r>`;
       if (/\bBIBLIOGRAPHY\b/.test(instruction)) {
         removed.push(...paragraphTexts(inner ?? ""));
         return `<w:r><w:t>SLBIB</w:t></w:r>`;
@@ -565,7 +565,7 @@ export function rewriteWordCitations(xml: string): {
     /<w:instrText\b[^>]*>([\s\S]*?)<\/w:instrText>/g,
   )) {
     const instruction = decodeXml(match[1]);
-    const cite = /\bCITATION\s+([A-Za-z0-9]+)/.exec(instruction);
+    const cite = CITATION_TAG.exec(instruction);
     const bibliography = /\bBIBLIOGRAPHY\b/.test(instruction);
     if (!cite && !bibliography) continue;
     const at = match.index ?? 0;
@@ -597,7 +597,7 @@ export function rewriteWordCitations(xml: string): {
     spans.push({
       start: runStart,
       end: runEnd + "</w:r>".length,
-      replacement: `<w:r><w:t xml:space="preserve">SLCITE${cite![1]}</w:t></w:r>`,
+      replacement: `<w:r><w:t xml:space="preserve">${citeToken(cite![1]!)}</w:t></w:r>`,
       removed: [],
     });
   }
@@ -619,7 +619,22 @@ export function rewriteWordCitations(xml: string): {
   return { xml: next, removedParagraphs: removed, changed: next !== xml };
 }
 
-const CITE_TOKEN = /SLCITE([A-Za-z0-9]+)/g;
+const CITE_TOKEN = /SLCITE([0-9a-f]+)SLCE/g;
+
+/** The tag a CITATION field names. Word allows any characters but spaces, such as `Día19`. */
+export const CITATION_TAG = /\bCITATION\s+([^\s\\]+)/;
+
+/**
+ * The text token a citation travels through Mammoth as: the tag's UTF-8 bytes
+ * in hex between markers, so any tag survives and the next word cannot join it.
+ */
+export function citeToken(tag: string): string {
+  return `SLCITE${Buffer.from(tag, "utf8").toString("hex")}SLCE`;
+}
+
+function tokenTag(hex: string): string {
+  return Buffer.from(hex, "hex").toString("utf8");
+}
 
 function splitCites(node: JsonNode): JsonNode[] {
   if (node.type !== "text" || !node.text || !node.text.includes("SLCITE"))
@@ -639,7 +654,7 @@ function splitCites(node: JsonNode): JsonNode[] {
           ...(node.marks ? { marks: node.marks } : {}),
         });
     }
-    out.push({ type: "citation", attrs: { sourceId: match[1] } });
+    out.push({ type: "citation", attrs: { sourceId: tokenTag(match[1]!) } });
     last = index + match[0].length;
   }
   if (last < text.length) {

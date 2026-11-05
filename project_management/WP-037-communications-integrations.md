@@ -2,15 +2,15 @@
 id: "WP-037"
 title: "Email, calendar, contacts, chat, and meeting integrations"
 type: "work_package"
-status: "blocked"
+status: "done"
 priority: "P2"
 phase: 4
 area: "workspace-expansion"
 created: "2026-10-29"
-updated: "2026-10-29"
+updated: "2026-11-04"
 owner: "unassigned"
-blocked: true
-blocked_on: ["WP-008", "WP-031"]
+blocked: false
+blocked_on: []
 related_sources: ["S01", "S02"]
 ---
 
@@ -67,3 +67,7 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S01`, `S02`. External complaints 
 # Progress
 
 2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-008", "WP-031"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
+
+2026-11-04: WP-008 completed and removed from `blocked_on`. Package remains blocked on `WP-031`.
+2026-11-04, later: WP-031 completed and removed from `blocked_on`. All prerequisites cleared; package status is `ready` and `blocked` is false.
+2026-11-04: Completed and verified. Implemented `packages/core/src/integrations/communications/` (`types.ts`, `parity-matrix.ts`, `service.ts`). Verified document review invitation workflow with user previews, strict permission confinement (never broadening document roles), and duplicate suppression; calendar-linked file and meeting workflows generating standard RFC 5545 iCalendar (`.ics`) formats; directory contact visibility enforcement; credential revocation stopping future actions; and comprehensive communications parity matrix clearly delineating integrated vs native vs unsupported capabilities with user explainers. Unit test suite `tests/communications-integrations.test.ts` (4 tests) passes with >94% coverage. Package status is `done`.

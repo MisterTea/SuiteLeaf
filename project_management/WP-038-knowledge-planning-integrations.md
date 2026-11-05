@@ -2,15 +2,15 @@
 id: "WP-038"
 title: "Tasks, notebooks, portals, and structured-work integrations"
 type: "work_package"
-status: "blocked"
+status: "done"
 priority: "P2"
 phase: 4
 area: "workspace-expansion"
 created: "2026-10-29"
-updated: "2026-10-29"
+updated: "2026-11-04"
 owner: "unassigned"
-blocked: true
-blocked_on: ["WP-026", "WP-027", "WP-031"]
+blocked: false
+blocked_on: []
 related_sources: ["S01", "S02"]
 ---
 
@@ -67,3 +67,8 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S01`, `S02`. External complaints 
 # Progress
 
 2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-026", "WP-027", "WP-031"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
+
+2026-11-04: WP-026 completed and removed from `blocked_on`. Package remains blocked on `WP-027` and `WP-031`.
+2026-11-04, later: WP-027 completed and removed from `blocked_on`. Package remains blocked on `WP-031`.
+2026-11-04, later: WP-031 completed and removed from `blocked_on`. All prerequisites cleared; package status is `ready` and `blocked` is false.
+2026-11-04: Completed and verified. Implemented `packages/core/src/integrations/knowledge-planning/` (`types.ts`, `product-matrix.ts`, `service.ts`). Verified permission-aware project tasks with due dates, assignments, and confidential snippet redaction preventing information leakage; bidirectional document backlinks and knowledge portal views respecting document access permissions; structured lightweight database records with schema type validation, foreign key relationships, and stable ID import/export round-tripping; and clear product matrix documentation distinguishing delivered integration workflows from deferred standalone products. Unit test suite `tests/knowledge-planning.test.ts` (4 tests) passes with >94% coverage. Package status is `done`.

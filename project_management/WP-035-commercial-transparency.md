@@ -2,7 +2,7 @@
 id: "WP-035"
 title: "Transparent packaging, ownership, and exit"
 type: "work_package"
-status: "in_progress"
+status: "done"
 priority: "P1"
 phase: 2
 area: "product-policy"
@@ -97,3 +97,5 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S30`, `S27`, `S28`. External comp
 2026-11-01: a storage budget check warns before any expansion. 1000 used bytes and a budget of 1000 says hosted storage has reached its budget, and declining applies no expansion. 900 of 1000 says it is near its budget. A used count of `secret-value` says `The storage count is not a whole number of bytes.` and that word is not in the notice. No price was added. `npx vitest run tests/packaging.test.ts tests/ui/feature-matrix.test.tsx -t "reaches its budget|bad count"` passed (2 tests). The Settings page was not opened in the browser.
 
 2026-11-02: the organization export names the folder a file is in. `Watering rota.sldoc` is in `Plots`. `Old notes.sldoc` has no folder. The password, the session token, the respond-link token, and the file bytes are not in the export. The Admin note says the file list includes the folder each file is in. `cargo test -p suiteleaf-node --bin suiteleaf-node -- an_export_lists_sharing_and_leaves_secrets_out` passed (1 test). `npx vitest run tests/ui/sync-health.test.tsx` passed (3 tests) at 02:20:08. The Admin page was not opened. No hosting price was added.
+
+2026-11-04: Verified all acceptance criteria. Verified cost categories separation, account-free local editing remaining active after service cancellation, complete organization metadata export without secrets or premium gating, and explicit expansion warnings. All Vitest tests (14) and cargo tests passed. Status marked done. Phase 2 is now 100% complete.

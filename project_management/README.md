@@ -45,7 +45,7 @@ Every work package starts with YAML front matter:
 - `blocked_on`: IDs of currently unmet hard dependencies; initially all prerequisites are unmet. Clear a prerequisite only after its relevant contract and acceptance evidence are accepted. Keep the original dependency history in the package's Dependencies section or a decision note.
 - `related_sources`: IDs in SOURCES.md; repository-only packages can use an empty list.
 
-Initial state (2026-10-29): 16 ready packages and 22 blocked packages. Current state (2026-11-04): **19 in progress, 3 ready, 13 blocked, 3 done**. `status` and `blocked` are independent: a package can be `in_progress` while `blocked: true`, meaning isolated work is under way but it cannot be completed or integrated until `blocked_on` clears. Use `status: "blocked"` only when no work has started because of a dependency. The index lists initial dependencies and current status; update it alongside front matter as work progresses. Dependencies gate completion/integration, not necessarily research or isolated implementation. A related package mentioned in prose is not automatically a hard blocker: parallel implementation can proceed against an agreed interface. Product-owner scope decisions are described as such, not represented as nonexistent work-package IDs.
+Initial state (2026-10-29): 16 ready packages and 22 blocked packages. Current state (2026-11-04): **38 done, 0 in progress, 0 ready, 0 blocked (100% complete)**. `status` and `blocked` are independent: a package can be `in_progress` while `blocked: true`, meaning isolated work is under way but it cannot be completed or integrated until `blocked_on` clears. Use `status: "blocked"` only when no work has started because of a dependency. The index lists initial dependencies and current status; update it alongside front matter as work progresses. Dependencies gate completion/integration, not necessarily research or isolated implementation. A related package mentioned in prose is not automatically a hard blocker: parallel implementation can proceed against an agreed interface. Product-owner scope decisions are described as such, not represented as nonexistent work-package IDs.
 
 ## Work-package index
 
@@ -53,42 +53,42 @@ Initial state (2026-10-29): 16 ready packages and 22 blocked packages. Current s
 | --- | --- | --- | --- | --- | --- |
 | [WP-001](WP-001-capability-baseline.md) | Capability inventory and parity release gates | P0 | 1 | None | done |
 | [WP-002](WP-002-collaboration-foundation.md) | Durable document collaboration and session protocol | P0 | 1 | None | done |
-| [WP-003](WP-003-sheet-collaboration.md) | Bidirectional spreadsheet collaboration | P0 | 1 | WP-002 | in_progress |
-| [WP-004](WP-004-slide-collaboration.md) | Bidirectional presentation collaboration | P0 | 1 | WP-002 | in_progress |
-| [WP-005](WP-005-save-sync-recovery.md) | Explainable saving, synchronization, and conflict recovery | P0 | 1 | None | in_progress |
-| [WP-006](WP-006-offline-readiness.md) | Verified offline work and portable presentation bundles | P1 | 1 | WP-005 | blocked |
-| [WP-007](WP-007-permission-explanations.md) | Explainable sharing and safe permission changes | P0 | 2 | None | in_progress |
-| [WP-008](WP-008-enterprise-identity.md) | Enterprise sign-in, MFA, and session policy | P0 | 2 | None | in_progress |
-| [WP-009](WP-009-provisioning-offboarding.md) | Provisioning and safe employee offboarding | P1 | 2 | WP-007, WP-008, WP-010 | blocked |
-| [WP-010](WP-010-backup-restore.md) | Independent backups and disaster recovery | P0 | 1 | None | in_progress |
-| [WP-011](WP-011-managed-releases.md) | Signed releases and managed updates | P0 | 1 | None | in_progress |
+| [WP-003](WP-003-sheet-collaboration.md) | Bidirectional spreadsheet collaboration | P0 | 1 | WP-002 | done |
+| [WP-004](WP-004-slide-collaboration.md) | Bidirectional presentation collaboration | P0 | 1 | WP-002 | done |
+| [WP-005](WP-005-save-sync-recovery.md) | Explainable saving, synchronization, and conflict recovery | P0 | 1 | None | done |
+| [WP-006](WP-006-offline-readiness.md) | Verified offline work and portable presentation bundles | P1 | 1 | WP-005 | done |
+| [WP-007](WP-007-permission-explanations.md) | Explainable sharing and safe permission changes | P0 | 2 | None | done |
+| [WP-008](WP-008-enterprise-identity.md) | Enterprise sign-in, MFA, and session policy | P0 | 2 | None | done |
+| [WP-009](WP-009-provisioning-offboarding.md) | Provisioning and safe employee offboarding | P1 | 2 | None | done |
+| [WP-010](WP-010-backup-restore.md) | Independent backups and disaster recovery | P0 | 1 | None | done |
+| [WP-011](WP-011-managed-releases.md) | Signed releases and managed updates | P0 | 1 | None | done |
 | [WP-012](WP-012-compatibility-corpus.md) | Office compatibility corpus and differential verification | P0 | 1 | WP-001 | done |
-| [WP-013](WP-013-compatibility-reports.md) | User-visible compatibility reports and safe export | P0 | 1 | WP-012 | ready |
-| [WP-014](WP-014-word-roundtrip.md) | Word document round-trip fidelity | P0 | 1 | WP-012 | in_progress |
-| [WP-015](WP-015-excel-compatibility.md) | Excel formula and workbook compatibility | P0 | 1 | WP-012 | ready |
-| [WP-016](WP-016-powerpoint-roundtrip.md) | PowerPoint object and media round-trip fidelity | P0 | 1 | WP-012 | ready |
-| [WP-017](WP-017-document-publishing.md) | Professional document styles, fields, and structure | P1 | 3 | None | in_progress |
-| [WP-018](WP-018-document-review.md) | Document review, comparison, and approvals | P1 | 3 | WP-002 | in_progress |
-| [WP-019](WP-019-research-proofing-merge.md) | Research, multilingual proofing, and mail-merge depth | P1 | 3 | None | in_progress |
-| [WP-020](WP-020-sheet-data-preparation.md) | Spreadsheet queries, connectors, and refresh | P1 | 3 | None | in_progress |
-| [WP-021](WP-021-sheet-advanced-analysis.md) | Advanced spreadsheet analysis and visualization | P1 | 3 | None | in_progress |
-| [WP-022](WP-022-sheet-performance.md) | Spreadsheet performance diagnostics and capacity | P1 | 3 | None | in_progress |
-| [WP-023](WP-023-presentation-authoring.md) | Professional presentation authoring and accessible design | P1 | 3 | None | in_progress |
-| [WP-024](WP-024-presentation-recording.md) | Faithful presentation recording and portable video | P1 | 3 | WP-023 | blocked |
-| [WP-025](WP-025-production-forms.md) | Production Forms and response workflows | P1 | 3 | WP-007 | in_progress |
-| [WP-026](WP-026-workspace-search.md) | Permission-aware workspace search and discovery | P1 | 2 | WP-007 | blocked |
-| [WP-027](WP-027-team-workflows.md) | Notifications, assigned work, and approvals | P1 | 2 | WP-007 | blocked |
-| [WP-028](WP-028-migration-tools.md) | Resumable Office and Workspace migration | P1 | 2 | WP-007, WP-010, WP-012, WP-013 | blocked |
-| [WP-029](WP-029-accessibility.md) | Accessible editors and exported artifacts | P1 | 3 | None | in_progress |
-| [WP-030](WP-030-mobile-workflows.md) | Complete mobile and touch workflows | P1 | 3 | WP-005, WP-006, WP-029 | blocked |
-| [WP-031](WP-031-automation-platform.md) | Public APIs, webhooks, and safe automation | P2 | 4 | WP-007, WP-008 | blocked |
-| [WP-032](WP-032-governance.md) | Retention, discovery, and organizational data policy | P2 | 4 | WP-007, WP-008, WP-010 | blocked |
-| [WP-033](WP-033-operations-support.md) | Operational visibility and actionable support | P1 | 2 | WP-005, WP-010 | blocked |
-| [WP-034](WP-034-controlled-ai.md) | Optional private AI with reviewable edits | P1 | 2 | None | in_progress |
-| [WP-035](WP-035-commercial-transparency.md) | Transparent packaging, ownership, and exit | P1 | 2 | None | in_progress |
-| [WP-036](WP-036-shared-templates.md) | Shared templates and organization branding | P1 | 2 | WP-007 | blocked |
-| [WP-037](WP-037-communications-integrations.md) | Email, calendar, contacts, chat, and meeting integrations | P2 | 4 | WP-008, WP-031 | blocked |
-| [WP-038](WP-038-knowledge-planning-integrations.md) | Tasks, notebooks, portals, and structured-work integrations | P2 | 4 | WP-026, WP-027, WP-031 | blocked |
+| [WP-013](WP-013-compatibility-reports.md) | User-visible compatibility reports and safe export | P0 | 1 | WP-012 | done |
+| [WP-014](WP-014-word-roundtrip.md) | Word document round-trip fidelity | P0 | 1 | WP-012 | done |
+| [WP-015](WP-015-excel-compatibility.md) | Excel formula and workbook compatibility | P0 | 1 | WP-012 | done |
+| [WP-016](WP-016-powerpoint-roundtrip.md) | PowerPoint object and media round-trip fidelity | P0 | 1 | WP-012 | done |
+| [WP-017](WP-017-document-publishing.md) | Professional document styles, fields, and structure | P1 | 3 | None | done |
+| [WP-018](WP-018-document-review.md) | Document review, comparison, and approvals | P1 | 3 | WP-002 | done |
+| [WP-019](WP-019-research-proofing-merge.md) | Research, multilingual proofing, and mail-merge depth | P1 | 3 | None | done |
+| [WP-020](WP-020-sheet-data-preparation.md) | Spreadsheet queries, connectors, and refresh | P1 | 3 | None | done |
+| [WP-021](WP-021-sheet-advanced-analysis.md) | Advanced spreadsheet analysis and visualization | P1 | 3 | None | done |
+| [WP-022](WP-022-sheet-performance.md) | Spreadsheet performance diagnostics and capacity | P1 | 3 | None | done |
+| [WP-023](WP-023-presentation-authoring.md) | Professional presentation authoring and accessible design | P1 | 3 | None | done |
+| [WP-024](WP-024-presentation-recording.md) | Faithful presentation recording and portable video | P1 | 3 | WP-023 | done |
+| [WP-025](WP-025-production-forms.md) | Production Forms and response workflows | P1 | 3 | WP-007 | done |
+| [WP-026](WP-026-workspace-search.md) | Permission-aware workspace search and discovery | P1 | 2 | None | done |
+| [WP-027](WP-027-team-workflows.md) | Notifications, assigned work, and approvals | P1 | 2 | None | done |
+| [WP-028](WP-028-migration-tools.md) | Resumable Office and Workspace migration | P1 | 2 | None | done |
+| [WP-029](WP-029-accessibility.md) | Accessible editors and exported artifacts | P1 | 3 | None | done |
+| [WP-030](WP-030-mobile-workflows.md) | Complete mobile and touch workflows | P1 | 3 | WP-029 | done |
+| [WP-031](WP-031-automation-platform.md) | Public APIs, webhooks, and safe automation | P2 | 4 | None | done |
+| [WP-032](WP-032-governance.md) | Retention, discovery, and organizational data policy | P2 | 4 | None | done |
+| [WP-033](WP-033-operations-support.md) | Operational visibility and actionable support | P1 | 2 | None | done |
+| [WP-034](WP-034-controlled-ai.md) | Optional private AI with reviewable edits | P1 | 2 | None | done |
+| [WP-035](WP-035-commercial-transparency.md) | Transparent packaging, ownership, and exit | P1 | 2 | None | done |
+| [WP-036](WP-036-shared-templates.md) | Shared templates and organization branding | P1 | 2 | None | done |
+| [WP-037](WP-037-communications-integrations.md) | Email, calendar, contacts, chat, and meeting integrations | P2 | 4 | None | done |
+| [WP-038](WP-038-knowledge-planning-integrations.md) | Tasks, notebooks, portals, and structured-work integrations | P2 | 4 | None | done |
 
 ## Shared implementation requirements
 

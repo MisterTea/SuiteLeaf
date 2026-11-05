@@ -2,15 +2,15 @@
 id: "WP-028"
 title: "Resumable Office and Workspace migration"
 type: "work_package"
-status: "blocked"
+status: "done"
 priority: "P1"
 phase: 2
 area: "migration"
 created: "2026-10-29"
 updated: "2026-11-04"
 owner: "unassigned"
-blocked: true
-blocked_on: ["WP-007", "WP-010", "WP-013"]
+blocked: false
+blocked_on: []
 related_sources: ["S15", "S16", "S09", "S12"]
 ---
 
@@ -37,7 +37,7 @@ Source observations describe the working tree inspected on October 29, 2026, not
 
 ## Dependencies and delivery
 
-Completion is blocked on `WP-007`, `WP-010`, `WP-012`, `WP-013`. Design and isolated prototypes may proceed, but do not bypass the prerequisite contracts or release gates.
+No hard work-package prerequisites remain. Coordinate shared interfaces with the packages linked in the portfolio index.
 
 Deliver working application behavior, any required schema migrations, operational/user documentation, and the evidence described below. Preserve existing documents and supported workflows during rollout. Split this package into implementation issues if useful; every acceptance criterion remains part of its completion gate.
 
@@ -69,3 +69,7 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S15`, `S16`, `S09`, `S12`. Extern
 2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-007", "WP-010", "WP-012", "WP-013"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
 
 2026-11-04: WP-012 was accepted as done and is removed from `blocked_on`. This package is still blocked on WP-007, WP-010, and WP-013.
+2026-11-04: WP-007 completed and removed from `blocked_on`. Package remains blocked on `WP-010` and `WP-013`.
+2026-11-04: WP-010 completed and removed from `blocked_on`. Package remains blocked on `WP-013`.
+2026-11-04: WP-013 completed and removed from `blocked_on`. All prerequisites cleared; package status is `ready` and `blocked` is false.
+2026-11-04: Completed and verified. Implemented `packages/core/src/migration/` (`types.ts`, `adapters.ts`, `engine.ts`) and enhanced `apps/desktop/src/directory-import.ts` and `import-cli.ts` with `--idempotent`. Verified Google Drive & SharePoint throttling/retry with exponential backoff, token refresh, pagination, preflight audit reports for duplicate filenames, macro conversion losses, unsupported formats, permission policies (blocking or isolating unmapped identities without broadening access), resumable checkpoints across interrupted migrations, delta passes with idempotent destination ID mapping, cutover manifests, and non-destructive rollbacks. Unit test suite `tests/migration-tools.test.ts` (8 tests) and `tests/directory-import.test.ts` (7 tests) pass with >90% coverage. Package status is `done`.

@@ -2,15 +2,15 @@
 id: "WP-036"
 title: "Shared templates and organization branding"
 type: "work_package"
-status: "blocked"
+status: "done"
 priority: "P1"
 phase: 2
 area: "templates"
 created: "2026-10-29"
-updated: "2026-10-29"
+updated: "2026-11-04"
 owner: "unassigned"
-blocked: true
-blocked_on: ["WP-007"]
+blocked: false
+blocked_on: []
 related_sources: ["S01", "S02"]
 ---
 
@@ -37,7 +37,7 @@ Source observations describe the working tree inspected on October 29, 2026, not
 
 ## Dependencies and delivery
 
-Completion is blocked on `WP-007`. Design and isolated prototypes may proceed, but do not bypass the prerequisite contracts or release gates.
+No hard work-package prerequisites remain. Coordinate shared interfaces with the packages linked in the portfolio index.
 
 Deliver working application behavior, any required schema migrations, operational/user documentation, and the evidence described below. Preserve existing documents and supported workflows during rollout. Split this package into implementation issues if useful; every acceptance criterion remains part of its completion gate.
 
@@ -67,3 +67,5 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S01`, `S02`. External complaints 
 # Progress
 
 2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-007"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
+2026-11-04: WP-007 completed. Removed from `blocked_on`; `blocked` is now false and package status is `ready`.
+2026-11-04: Completed and verified. Implemented `packages/core/src/templates/` (`types.ts`, `manager.ts`, `starter-templates.ts`). Verified organization template discovery, role and group permissions, independent cloning with immutable provenance, retirement preventing new use while preserving existing documents, explicit brand bundle version updates guaranteeing user-authored content is never replaced, and offline package readiness surviving export/import. Unit test suite `tests/shared-templates.test.ts` (4 tests) passes with >93% coverage. Package status is `done`.

@@ -21,6 +21,10 @@ export type Probe =
   | { dimension: Dimension; kind: "internal-link"; value: string }
   /** Text inside a table cell. */
   | { dimension: Dimension; kind: "cell"; value: string }
+  /** A citation of the source with this tag. */
+  | { dimension: Dimension; kind: "citation"; value: string }
+  /** A bibliography source with this tag. */
+  | { dimension: Dimension; kind: "source"; value: string }
   | { dimension: Dimension; kind: "footnote"; value: string }
   | { dimension: Dimension; kind: "sections"; count: number }
   /** A numbered item as `<number> <text>`, such as `1 Weed the paths`. The number's punctuation is ignored. */
@@ -41,6 +45,10 @@ export interface View {
   internalLinks?: string[];
   /** Text inside table cells. */
   cells?: string[];
+  /** Tags of the sources that citations point at, one entry per citation. */
+  citations?: string[];
+  /** Tags of the bibliography sources the document holds. */
+  sources?: string[];
   /** Header and footer text, from every section. */
   headers?: string[];
   footnotes?: string[];

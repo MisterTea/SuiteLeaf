@@ -50,6 +50,15 @@ describe("office compatibility run", () => {
         layout: "pass",
         media: "not-measured",
       },
+      "docx-citations": {
+        content: "pass",
+        formulas: "not-measured",
+        review: "not-measured",
+        objects: "not-measured",
+        fonts: "not-measured",
+        layout: "not-measured",
+        media: "not-measured",
+      },
       "xlsx-budget": {
         content: "pass",
         formulas: "pass",

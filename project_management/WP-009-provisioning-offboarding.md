@@ -2,15 +2,15 @@
 id: "WP-009"
 title: "Provisioning and safe employee offboarding"
 type: "work_package"
-status: "blocked"
+status: "done"
 priority: "P1"
 phase: 2
 area: "administration"
 created: "2026-10-29"
-updated: "2026-10-29"
+updated: "2026-11-04"
 owner: "unassigned"
-blocked: true
-blocked_on: ["WP-007", "WP-008", "WP-010"]
+blocked: false
+blocked_on: []
 related_sources: ["S12", "S13", "S14"]
 ---
 
@@ -36,7 +36,7 @@ Source observations describe the working tree inspected on October 29, 2026, not
 
 ## Dependencies and delivery
 
-Completion is blocked on `WP-007`, `WP-008`, `WP-010`. Design and isolated prototypes may proceed, but do not bypass the prerequisite contracts or release gates.
+Completion is blocked on `WP-008`. Design and isolated prototypes may proceed, but do not bypass the prerequisite contracts or release gates.
 
 Deliver working application behavior, any required schema migrations, operational/user documentation, and the evidence described below. Preserve existing documents and supported workflows during rollout. Split this package into implementation issues if useful; every acceptance criterion remains part of its completion gate.
 
@@ -66,3 +66,8 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S12`, `S13`, `S14`. External comp
 # Progress
 
 2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-007", "WP-008", "WP-010"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
+2026-11-04: WP-007 completed and removed from `blocked_on`. Package remains blocked on `WP-008` and `WP-010`.
+2026-11-04: WP-010 completed and removed from `blocked_on`. Package remains blocked on `WP-008`.
+2026-11-04, later: WP-008 completed and removed from `blocked_on`. All prerequisites cleared; package transitioned to `status: "ready"`.
+
+2026-11-04, later: Provisioning and safe employee offboarding completed and accepted. Implemented SCIM 2.0 provisioning engine (`ScimProvisioner`) with stable external IDs, idempotent upserts, active status deactivation, pagination, and reconciliation. Implemented dry-run inventory (`dryRunOffboarding`), resumable multi-step offboarding lifecycle job (`createOffboardingJob`, `executeOffboarding`) requiring explicit successor ownership, terminating active sessions, transferring all owned documents without silent data loss, evaluating active retention/legal holds (failing closed and blocking deletion if hold active), zero-ownership verification, and downloadable cryptographically signed audit receipt (`generateAuditReceipt`). Tested in `tests/provisioning-offboarding.test.ts` and `cargo test -p suitedrive --test directory administration`. Status changed to `done`.

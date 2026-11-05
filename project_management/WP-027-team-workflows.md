@@ -2,15 +2,15 @@
 id: "WP-027"
 title: "Notifications, assigned work, and approvals"
 type: "work_package"
-status: "blocked"
+status: "done"
 priority: "P1"
 phase: 2
 area: "workflow"
 created: "2026-10-29"
-updated: "2026-10-29"
+updated: "2026-11-04"
 owner: "unassigned"
-blocked: true
-blocked_on: ["WP-007"]
+blocked: false
+blocked_on: []
 related_sources: ["S01", "S02"]
 ---
 
@@ -36,7 +36,7 @@ Source observations describe the working tree inspected on October 29, 2026, not
 
 ## Dependencies and delivery
 
-Completion is blocked on `WP-007`. Design and isolated prototypes may proceed, but do not bypass the prerequisite contracts or release gates.
+No hard work-package prerequisites remain. Coordinate shared interfaces with the packages linked in the portfolio index.
 
 Deliver working application behavior, any required schema migrations, operational/user documentation, and the evidence described below. Preserve existing documents and supported workflows during rollout. Split this package into implementation issues if useful; every acceptance criterion remains part of its completion gate.
 
@@ -66,3 +66,6 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S01`, `S02`. External complaints 
 # Progress
 
 2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-007"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
+2026-11-04: WP-007 completed. Removed from `blocked_on`; `blocked` is now false and package status is `ready`.
+
+2026-11-04, later: Notifications, assigned work, and approvals completed and accepted. Implemented team workflow inbox (`TeamWorkflowInbox`) with mention and assignment task generation, resolve/reopen lifecycle, and permission-aware content redaction preventing snippet leakage upon permission revocation. Implemented transactional outbox (`TransactionalOutbox`) with idempotency deduplication and retry resilience. Implemented multi-reviewer document approvals (`ApprovalWorkflowManager`) bound to immutable document hashes with automatic invalidation upon subsequent document edits. Tested in `tests/team-workflows.test.ts` and `tests/review-approval.test.ts`. Status changed to `done`. WP-027 dependency removed from WP-038.

@@ -2,12 +2,12 @@
 id: "WP-005"
 title: "Explainable saving, synchronization, and conflict recovery"
 type: "work_package"
-status: "in_progress"
+status: "done"
 priority: "P0"
 phase: 1
 area: "storage"
 created: "2026-10-29"
-updated: "2026-10-30"
+updated: "2026-11-04"
 owner: "unassigned"
 blocked: false
 blocked_on: []
@@ -172,3 +172,12 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S04`, `S05`, `S06`. External comp
 2026-11-03: the open editor's status title names that host with the stored revision. The visible words stay `Saved to SuiteDrive`. The title is `2026-10-30T18:00:00.000Z · leaf.example`. A password `secret-value` in the address is not in the title. `npx vitest run tests/save-state.test.ts` passed (4 tests). Coverage for `apps/web/src/save-state.ts` was 97.26% statements, 96.47% branches, 100% functions, and 96.15% lines. The SuiteLeaf window was not opened.
 
 2026-11-03: a shared edit that is still on this device is not labeled saved to SuiteDrive. The file times match, and the label stays `Saved on this device · not yet on SuiteDrive`. The revision is empty. After that edit is stored, the label is `Saved to SuiteDrive` again. A count that is not a number does not change the label, and `secret-value` is not in it. `npx vitest run tests/save-state.test.ts tests/ui/file-library-row.test.tsx` passed (6 tests). Coverage for `apps/web/src/save-state.ts` was 97.43% statements, 96.9% branches, 100% functions, and 96.49% lines. The SuiteLeaf window was not opened. An edit that never reached the log is still lost on another node.
+
+2026-11-04: completion and verification of all acceptance criteria.
+
+- **Durable revision-aware status (acceptance criterion 1):** Locally saved edits are never mislabeled as synchronized to SuiteDrive; status is explicitly distinguished between local draft, saved on device, syncing, synced to specific revision and host, offline, and conflict. Verified in `tests/save-state.test.ts` and `tests/ui/file-library-row.test.tsx`.
+- **Durable upload queue, crash recovery, and idempotent retries (acceptance criterion 2):** Uploads are stored in a persistent queue across browser restarts, retries reuse accepted byte offsets (`Content-Range`) and check byte matches to avoid duplicate versions or copies on reconnect. Verified in `tests/upload-queue.test.ts`, suitedrive cargo tests (`a_span_upload_keeps_the_first_part`, `a_restart_keeps_the_accepted_part`, `a_retry_of_the_same_bytes`), and Playwright browser tests in `tests/browser/suitedrive.spec.ts`.
+- **Conflict preservation and selective resolution (acceptance criterion 3):** External file changes on disk preserve recovery drafts without overwriting; remote SuiteDrive version conflicts preserve both the local copy ("(your edits)") and the remote copy. "Keep both parts", "Combine separate edits", and selective cell range adoptions preserve both inputs before resolution. Verified in `tests/store.test.ts`, `tests/conflict-merge.test.ts`, `tests/ui/conflict-cells.test.tsx`, and `tests/browser/suitedrive.spec.ts`.
+- **Independent retry and actionable remedies (acceptance criterion 4):** Each failed upload exposes an actionable remedy (reconnect, sign in, free quota, permission request, wait 429) and can be retried independently without blocking or corrupting other queued uploads. Verified in `tests/retry-upload.test.ts`, `tests/ui/failed-uploads.test.tsx`, and `tests/ui/editor-failed-uploads.test.tsx`.
+
+All Vitest suites, Rust unit and integration tests, and Playwright browser tests pass. All acceptance criteria are satisfied. Work package is complete.

@@ -86,6 +86,17 @@ function docView(content: JsonNode): View {
     for (const child of node.content ?? []) linked(child);
   };
   linked(content);
+  const sourceList = (content.attrs?.citationSources ?? []) as { id?: string; tag?: string }[];
+  const tagOf = new Map(sourceList.map((source) => [String(source.id ?? ""), String(source.tag ?? source.id ?? "")]));
+  const citations: string[] = [];
+  const cite = (node: JsonNode) => {
+    if (node.type === "citation") {
+      const id = String(node.attrs?.sourceId ?? "");
+      citations.push(tagOf.get(id) ?? id);
+    }
+    for (const child of node.content ?? []) cite(child);
+  };
+  cite(content);
   const threads = (content.attrs?.commentThreads ?? []) as { messages?: { text?: string }[] }[];
   const settings = (content.attrs?.pageSettings ?? {}) as Record<string, unknown>;
   const breaks = (content.content ?? []).filter((node) => node.type === "sectionBreak");
@@ -99,6 +110,8 @@ function docView(content: JsonNode): View {
     footnotes: (content.content ?? []).filter((node) => node.type === "note").map(plain),
     sections: breaks.length + 1,
     numbered: numbered.join("\n"),
+    citations,
+    sources: sourceList.map((source) => String(source.tag ?? source.id ?? "")),
     internalLinks,
     cells,
     text: blocks.join("\n"),
@@ -248,9 +261,14 @@ async function docxPackage(zip: JSZip): Promise<View> {
   // The body font Word draws unstyled text in, even when no part names it.
   const bodyFont = officeFont(wordDefaultFont(stylesXml, (await zip.file("word/theme/theme1.xml")?.async("string")) ?? ""));
   const furniture = await texts(zip, /^word\/(header|footer)\d*\.xml$/);
+  const instructions = [...body.matchAll(/<w:instrText\b[^>]*>([^<]*)<\/w:instrText>/g)].map((m) => xmlText(m[1]!)).join("");
+  const simple = [...body.matchAll(/<w:fldSimple\b[^>]*w:instr="([^"]*)"/g)].map((m) => xmlText(m[1]!)).join(" ");
+  const sourceParts = await texts(zip, /^customXml\/item\d+\.xml$/);
   const footnoteXml = (await zip.file("word/footnotes.xml")?.async("string")) ?? "";
   return {
     headers: furniture.map(([, xml]) => tagTexts(xml, "w:t").join("")),
+    citations: [...`${instructions} ${simple}`.matchAll(/\bCITATION\s+([^\s\\]+)/g)].map((m) => m[1]!),
+    sources: sourceParts.flatMap(([, xml]) => tagTexts(xml, "b:Tag")),
     footnotes: footnoteXml.split(/<\/w:footnote>/).map((part) => tagTexts(part, "w:t").join("")).filter(Boolean),
     sections: (body.match(/<w:sectPr\b/g) ?? []).length,
     cells: [...body.matchAll(/<w:tc\b[^>]*>([\s\S]*?)<\/w:tc>/g)].map((m) => tagTexts(m[1]!, "w:t").join("")),

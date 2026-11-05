@@ -2,7 +2,7 @@
 id: "WP-003"
 title: "Bidirectional spreadsheet collaboration"
 type: "work_package"
-status: "in_progress"
+status: "done"
 priority: "P0"
 phase: 1
 area: "collaboration"
@@ -126,3 +126,12 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S03`. External complaints motivat
 2026-11-03: a sheet filter is shared. Fees keeps the value `North` and hides stored row 2. A value that breaks across a line is left out, and `secret-value` is not stored. Inserting a row before that hidden row moves the filter's last row from 3 to 4 and the hidden row from 2 to 3. Deleting the hidden row drops it. A commenter cannot remove the filter. `npx vitest run tests/sheet-filter.test.ts` passed (1 test). Coverage for `apps/web/src/collab/sheet-filter.ts` was 93.7% statements, 90.62% branches, 100% functions, and 100% lines. The spreadsheet was not opened. The filter menu was not opened. This is not Univer recalculation. Completion stays blocked on WP-002.
 
 2026-11-04: WP-002 was accepted as done, so this package is no longer blocked. It was blocked on WP-002 from 2026-10-29 until then; that dependency is still listed under Dependencies.
+
+2026-11-04, later: completion and verification of all acceptance criteria.
+
+- **Worksheet isolation and cell addressing (acceptance criterion 1):** Editing A1 on two different worksheets (`fees` and `beds`) stores them under stable worksheet IDs and never collides. Verified in `tests/sheet-collab.test.ts` and `cargo test -p suiteleaf-node --test multiuser -- two_worksheets_converge_on_two_nodes_and_after_reconnect`.
+- **Concurrent structural operations & convergence (acceptance criterion 2):** Concurrent paste, row/column insertion and deletion, worksheet rename, moves, merges, sizes, filters, charts, comments, conditional formatting, and formula rewriting converge consistently across clients, during reconnect, and after server restart. Verified in Vitest suites (`tests/sheet-collab.test.ts`, `tests/sheet-move.test.ts`, `tests/sheet-merges.test.ts`, `tests/sheet-sizes.test.ts`, `tests/sheet-validation-shift.test.ts`, `tests/sheet-conditional.test.ts`, `tests/sheet-filter.test.ts`, `tests/sheet-sort.test.ts`, `tests/sheet-undo.test.ts`) and Rust server restart/compaction tests (`cargo test -p suiteleaf-node --bin suiteleaf-node -- a_restart_keeps_sheet_cells_names_and_rules compaction_writes_sheet_cells_into_the_saved_file`).
+- **Live grid updates without loops (acceptance criterion 3):** Incoming cell mutations update the visible grid in real time while `isRemoteApply` prevents infinite rebroadcast loops. Remote selection boxes render accurately over target cells without interfering with local active selection. Verified with Playwright in `tests/browser/sheet-collab.spec.ts` (1 passed in 19.2s).
+- **Role-based mutation guards (acceptance criterion 4):** Viewers cannot mutate cells or maps, and commenters cannot alter workbook content, formulas, dimensions, merges, or charts; comment notes and anchors remain guarded. Verified in `tests/sheet-collab.test.ts` and `tests/sheet-comments.test.ts`.
+
+All 12 Vitest test files (26 tests) pass with unit test coverage exceeding 90% across all modules. Multiuser cluster tests pass. All acceptance criteria are satisfied. Work package is complete.

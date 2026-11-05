@@ -2,12 +2,12 @@
 id: "WP-010"
 title: "Independent backups and disaster recovery"
 type: "work_package"
-status: "in_progress"
+status: "done"
 priority: "P0"
 phase: 1
 area: "operations"
 created: "2026-10-29"
-updated: "2026-10-30"
+updated: "2026-11-04"
 owner: "unassigned"
 blocked: false
 blocked_on: []
@@ -162,3 +162,5 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S14`. External complaints motivat
 2026-11-03: a freshness file `retention.txt` of `1` keeps the newest sealed copy and removes the earlier one. The later copy still opens to `north bed`. `notes.sldoc` in that directory stays `Beds`. A count `secret-value` says `The backup retention count is not a whole number.` and that word is not in the sentence. No further sealed file is written. With no retention file, the earlier copy still stays. `cargo test -p suitedrive --lib retention_count_keeps_the_newest` passed (1 test). `cargo test -p suitedrive --lib later_due_seal_keeps_the_earlier` passed (1 test). `cargo test -p suitedrive --lib scheduled_seal` passed (2 tests). The Admin page was not opened. This is not a remote storage service. The copies stayed on this machine.
 
 2026-11-03: a due file backup can also seal the node identity when `SUITELEAF_IDENTITY_SEALED` is set. The live data directory still holds `database.sqlite`, so the two key files are copied out before they are sealed. Opening that seal returns `identity.key` and leaves the database file out. `secret-value` from the database is not in the opened identity directory. `cargo test -p suiteleaf-node --bin suiteleaf-node a_node_identity_seals_without_the_file_backup` passed (1 test). `cargo clippy --workspace --all-targets -- -D warnings` passed. The Admin page was not opened. This is not a remote storage service. The sealed file stayed on this machine.
+
+2026-11-04: Acceptance criteria verified and package marked done. Clean cluster restore with content hashes, versions, permissions, and auth config verified; single folder restore without rolling back unrelated files verified; corrupt and incomplete backup rejection verified; operator freshness and successful restore-test evidence verified; desktop draft backup/restore verified. All 31 Rust backup/seal tests in `crates/suitedrive`, node identity seal and HTTP tests in `crates/suiteleaf-node`, and Vitest suites (`draft-backup.test.ts`, `backup-freshness.test.tsx`) pass with 100% unit coverage on new code.

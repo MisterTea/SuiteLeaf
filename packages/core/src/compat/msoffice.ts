@@ -62,6 +62,10 @@ tell application "Microsoft Word"
     repeat with i from 1 to (count of footnotes of theDoc)
       set acc to acc & "### footnote " & (content of text object of footnote i of theDoc) & LF
     end repeat
+    repeat with i from 1 to (count of fields of theDoc)
+      set fieldRef to field i of theDoc
+      if field type of fieldRef is field citation then set acc to acc & "### citation " & (content of field code of fieldRef) & LF
+    end repeat
     set markNames to {}
     repeat with i from 1 to (count of bookmarks of theDoc)
       set end of markNames to (name of bookmark i of theDoc)
@@ -97,6 +101,7 @@ export function wordView(output: string): View {
   const numbered: string[] = [];
   const internalLinks: string[] = [];
   const fonts = new Set<string>();
+  const citations: string[] = [];
   const body: string[] = [];
   let pages: number | undefined;
   let inBody = false;
@@ -110,13 +115,17 @@ export function wordView(output: string): View {
     } else if (line.startsWith("### footnote ")) footnotes.push(clean(line.slice(13)));
     else if (line.startsWith("### link ")) internalLinks.push(clean(line.slice(9)));
     else if (line.startsWith("### font ")) fonts.add(clean(line.slice(9)));
+    else if (line.startsWith("### citation ")) {
+      const tag = /CITATION\s+([^\s\\]+)/.exec(line)?.[1];
+      if (tag) citations.push(tag);
+    }
     else if (line.startsWith("### item ")) {
       const [label, text] = line.slice(9).split("\t");
       numbered.push(`${clean(label ?? "").replace(/[.)]$/, "")} ${clean(text ?? "")}`);
     } else if (inBody) body.push(line);
   }
   const text = body.join("\n").replace(/\r/g, "\n");
-  return { pages, text, headers, footnotes, internalLinks, fonts: [...fonts], cells: [text], numbered: numbered.join("\n") };
+  return { pages, text, headers, footnotes, internalLinks, citations, fonts: [...fonts], cells: [text], numbered: numbered.join("\n") };
 }
 
 export function excelScript(input: string): string {
