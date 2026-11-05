@@ -123,3 +123,6 @@ Known limits:
 Status is `in_review`. WP-013, WP-014, WP-015, and WP-016 stay blocked on WP-012 until the evidence is accepted.
 
 2026-11-04, later: the product owner accepted the evidence above. Status is `done`. WP-013, WP-014, WP-015, and WP-016 no longer wait on WP-012, and WP-028 no longer lists it. The known limits listed above still apply.
+
+2026-11-04, after acceptance: the known limit "Microsoft Office is not driven" is closed. Under WP-014 the run gained `packages/core/src/compat/msoffice.ts` and now uses Word, Excel, and PowerPoint as the default reference, with LibreOffice as the fallback. See the WP-014 note of the same date and `docs/office-compat.md`. PowerPoint's AppleScript cannot read table cells, so table text is measured only in the SuiteLeaf and package stages.
+

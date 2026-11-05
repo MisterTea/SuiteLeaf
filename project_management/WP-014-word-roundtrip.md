@@ -108,3 +108,26 @@ Still open:
 - Orientation and margins per section.
 - Numbering, image anchoring, fields, citations, comments and revisions through edits, editability in Word, and legacy conversion.
 
+2026-11-04, later still: numbered lists keep their numbering style and restart on export.
+
+- **The losses.** A probe of wider Word features found that lettered and roman lists came back as decimal. It also found that DOCX export put every ordered list under one Word numbering definition and ignored its start number. In the generated report, `a) Compost first` became `3. Compost first`, and a second decimal list that should restart at 1 continued at 5.
+- **Import.** `word-lists.ts` reads each numbered paragraph's format from numbering.xml: directly, through a level override, or through its paragraph style. It then sets the matching ordered list's `type` (`a`, `A`, `i`, `I`), matched by its first item's text. The editor's ordered list already stores and draws `type`.
+- **Export.** Each ordered list now gets a numbering definition for its style and start, and its own instance, so it restarts.
+
+Known limits:
+- The punctuation after the number is not kept (`a)` comes back as `a.`).
+- Mammoth reads two different lists with nothing between them as one list.
+
+The probe also showed what already survives: tracked deletions, formatting revisions, comments, endnotes, external links, and merged cells. Two other losses were seen and not fixed: internal links to a bookmark, and paragraph-style fonts.
+
+2026-11-04, later still: the WP-012 fixture `docx-sections` now has a lettered list and a restarted decimal list. New `numbered` probes check `b Mulch after` and `1 Weed the paths` at every stage. With the change reverted, the lettered list was lost at import and the restart at export. A table-cell probe kind replaced plain text for table contents, because PowerPoint cannot read table cells.
+
+2026-11-04, later still: Microsoft Office is now the WP-012 reference application, as the product owner asked. Word, Excel, and PowerPoint are driven through AppleScript, and each export is opened read-only and closed without saving.
+- **Word** reported both sections' headers, the footnote, two pages, and its own list numbers, `a Compost first` and `1 Weed the paths`.
+- **Excel** recalculated a cached 999 to 60.
+- **PowerPoint** reported the slides, text, notes, and table count.
+
+The first version used a new file name each run and had Word save a text file, so the Office sandbox asked for access every time. The run now opens one fixed file per format and writes no output file.
+
+`npm run test:office-compat -- --force` with Word 16.114.4, Excel 16.114.1, and PowerPoint 16.114.4 (fingerprint `6bf3d2644771117c`) gave all four fixtures opened, 17 dimensions passing, and nothing blocking. `npx vitest run --coverage` passed (620 files, 4,509 tests): statements 93.87% and lines 96.71%. `word-lists.ts`, `msoffice.ts`, and `docx-blocks.ts` were each above 98% statements.
+

@@ -136,7 +136,7 @@ describe("office compatibility run", () => {
     expect(outcomes(result).objects).toBe("loss");
     expect(lost(result, "objects")).toEqual([
       ["table", "export"],
-      ["text", "export"],
+      ["cell", "export"],
     ]);
   }, 60_000);
 

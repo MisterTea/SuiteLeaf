@@ -73,7 +73,7 @@ export const FIXTURE_SPECS: FixtureSpec[] = [
       { dimension: "content", kind: "text", value: "Tomatoes are in" },
       { dimension: "content", kind: "text", value: "Second page" },
       { dimension: "objects", kind: "table", count: 1 },
-      { dimension: "objects", kind: "text", value: "Beans" },
+      { dimension: "objects", kind: "cell", value: "Beans" },
       { dimension: "review", kind: "comment", value: "Check the stakes" },
       { dimension: "review", kind: "revision", value: "Paths are swept" },
       { dimension: "fonts", kind: "font", value: "Calibri" },
@@ -84,7 +84,7 @@ export const FIXTURE_SPECS: FixtureSpec[] = [
   {
     id: "docx-sections",
     format: "docx",
-    features: ["two sections", "section headers", "page-number footer", "footnote", "numbered list", "hyperlink"],
+    features: ["two sections", "section headers", "page-number footer", "footnote", "numbered list", "lettered list", "restarted list", "hyperlink"],
     classification: "supported",
     generator: "docx@9.10.0",
     probes: [
@@ -95,6 +95,9 @@ export const FIXTURE_SPECS: FixtureSpec[] = [
       { dimension: "layout", kind: "header", value: "Garden club report" },
       { dimension: "layout", kind: "header", value: "Appendix header" },
       { dimension: "layout", kind: "sections", count: 2 },
+      { dimension: "content", kind: "numbered", value: "2 Stake the beans" },
+      { dimension: "content", kind: "numbered", value: "b Mulch after" },
+      { dimension: "content", kind: "numbered", value: "1 Weed the paths" },
     ],
   },
   {
@@ -123,7 +126,7 @@ export const FIXTURE_SPECS: FixtureSpec[] = [
       { dimension: "content", kind: "text", value: "Second slide" },
       { dimension: "content", kind: "notes", value: "Remember the hose" },
       { dimension: "objects", kind: "table", count: 1 },
-      { dimension: "objects", kind: "text", value: "Beans" },
+      { dimension: "objects", kind: "cell", value: "Beans" },
       { dimension: "fonts", kind: "font", value: "Calibri" },
       { dimension: "media", kind: "image", sha256: PNG_SHA256 },
       { dimension: "layout", kind: "pages", count: 2 },
@@ -175,7 +178,10 @@ async function docxSections(): Promise<Uint8Array> {
   const doc = new d.Document({
     footnotes: { 1: { children: [new d.Paragraph("Planted in May")] } },
     numbering: {
-      config: [{ reference: "steps", levels: [{ level: 0, format: d.LevelFormat.DECIMAL, text: "%1.", alignment: d.AlignmentType.START }] }],
+      config: [
+        { reference: "steps", levels: [{ level: 0, format: d.LevelFormat.DECIMAL, text: "%1.", alignment: d.AlignmentType.START }] },
+        { reference: "options", levels: [{ level: 0, format: d.LevelFormat.LOWER_LETTER, text: "%1)", alignment: d.AlignmentType.START }] },
+      ],
     },
     sections: [
       {
@@ -194,7 +200,13 @@ async function docxSections(): Promise<Uint8Array> {
       },
       {
         headers: { default: new d.Header({ children: [new d.Paragraph("Appendix header")] }) },
-        children: [new d.Paragraph("Appendix notes follow")],
+        children: [
+          new d.Paragraph("Appendix notes follow"),
+          new d.Paragraph({ text: "Compost first", numbering: { reference: "options", level: 0 } }),
+          new d.Paragraph({ text: "Mulch after", numbering: { reference: "options", level: 0 } }),
+          new d.Paragraph("Then again"),
+          new d.Paragraph({ text: "Weed the paths", numbering: { reference: "steps", level: 0, instance: 2 } }),
+        ],
       },
     ],
   });

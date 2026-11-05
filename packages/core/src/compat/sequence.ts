@@ -70,10 +70,14 @@ export function probeSeen(probe: Probe, view: View | undefined): boolean | undef
       return anyIncludes(view.comments, probe.value);
     case "revision":
       return anyIncludes(view.revisions, probe.value);
+    case "cell":
+      return anyIncludes(view.cells, probe.value);
     case "header":
       return anyIncludes(view.headers, probe.value);
     case "footnote":
       return anyIncludes(view.footnotes, probe.value);
+    case "numbered":
+      return view.numbered === undefined ? undefined : view.numbered.split("\n").some((line) => norm(line) === norm(probe.value));
     case "sections":
       return view.sections === undefined ? undefined : view.sections === probe.count;
     case "font":

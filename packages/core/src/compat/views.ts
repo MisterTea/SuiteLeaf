@@ -6,6 +6,7 @@
 import { createHash } from "node:crypto";
 import JSZip from "jszip";
 import type { JsonNode, SheetFile, SlideFile, SuiteFile } from "../index";
+import { LIST_TYPES, numberLabel, numberedParagraphs } from "../word-lists";
 import type { CompatFormat, View } from "./types";
 
 const sha = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
@@ -30,6 +31,7 @@ function docView(content: JsonNode): View {
   const blocks: string[] = [];
   const revisions: string[] = [];
   const images: string[] = [];
+  const cells: string[] = [];
   let tables = 0;
   const inline = (node: JsonNode): string => {
     if (node.type === "hardBreak") return "\n";
@@ -42,6 +44,7 @@ function docView(content: JsonNode): View {
   };
   const walk = (node: JsonNode) => {
     if (node.type === "table") tables += 1;
+    if (node.type === "tableCell" || node.type === "tableHeader") cells.push((node.content ?? []).map(inline).join("\n"));
     if (node.type === "image" || node.type === "inlineImage") {
       const hash = dataUrlHash(node.attrs?.src);
       if (hash) images.push(hash);
@@ -54,6 +57,19 @@ function docView(content: JsonNode): View {
     for (const child of node.content ?? []) walk(child);
   };
   walk(content);
+  const numbered: string[] = [];
+  const formats = Object.fromEntries(Object.entries(LIST_TYPES).map(([format, type]) => [type, format]));
+  const number = (node: JsonNode) => {
+    if (node.type === "orderedList") {
+      const start = Number(node.attrs?.start) > 0 ? Number(node.attrs?.start) : 1;
+      const format = formats[String(node.attrs?.type ?? "")] ?? "decimal";
+      (node.content ?? []).forEach((item, index) => {
+        numbered.push(`${numberLabel(start + index, format)} ${inline(item.content?.[0] ?? item)}`);
+      });
+    }
+    for (const child of node.content ?? []) number(child);
+  };
+  number(content);
   const threads = (content.attrs?.commentThreads ?? []) as { messages?: { text?: string }[] }[];
   const settings = (content.attrs?.pageSettings ?? {}) as Record<string, unknown>;
   const breaks = (content.content ?? []).filter((node) => node.type === "sectionBreak");
@@ -66,6 +82,8 @@ function docView(content: JsonNode): View {
     headers,
     footnotes: (content.content ?? []).filter((node) => node.type === "note").map(plain),
     sections: breaks.length + 1,
+    numbered: numbered.join("\n"),
+    cells,
     text: blocks.join("\n"),
     revisions,
     comments: threads.flatMap((thread) => (thread.messages ?? []).map((m) => m.text ?? "")),
@@ -133,6 +151,7 @@ function slideView(file: SlideFile): View {
   const notes: string[] = [];
   const comments: string[] = [];
   const images: string[] = [];
+  const cells: string[] = [];
   let tables = 0;
   for (const id of deck.slideOrder) {
     const slide = deck.slides[id];
@@ -142,7 +161,10 @@ function slideView(file: SlideFile): View {
     for (const el of slide.elements) {
       if (el.type === "table") {
         tables += 1;
-        for (const row of el.rows ?? []) texts.push(row.join("\n"));
+        for (const row of el.rows ?? []) {
+          texts.push(row.join("\n"));
+          cells.push(...row);
+        }
       }
       if (el.type === "image") {
         const hash = dataUrlHash(el.src);
@@ -151,7 +173,7 @@ function slideView(file: SlideFile): View {
       if (el.content) texts.push(el.content);
     }
   }
-  return { text: texts.join("\n"), notes: notes.join("\n"), comments, tables, images, pages: deck.slideOrder.length };
+  return { text: texts.join("\n"), notes: notes.join("\n"), comments, cells, tables, images, pages: deck.slideOrder.length };
 }
 
 /** What SuiteLeaf holds. Fonts are not read here: a default font is often not stored on the run. */
@@ -211,6 +233,15 @@ async function docxPackage(zip: JSZip): Promise<View> {
     headers: furniture.map(([, xml]) => tagTexts(xml, "w:t").join("")),
     footnotes: footnoteXml.split(/<\/w:footnote>/).map((part) => tagTexts(part, "w:t").join("")).filter(Boolean),
     sections: (body.match(/<w:sectPr\b/g) ?? []).length,
+    cells: [...body.matchAll(/<w:tc\b[^>]*>([\s\S]*?)<\/w:tc>/g)].map((m) => tagTexts(m[1]!, "w:t").join("")),
+    numbered: numberedParagraphs(
+      body,
+      (await zip.file("word/numbering.xml")?.async("string")) ?? "",
+      (await zip.file("word/styles.xml")?.async("string")) ?? "",
+    )
+      .filter((p) => p.label)
+      .map((p) => `${p.label} ${p.text}`)
+      .join("\n"),
     text: paragraphs.join("\n"),
     revisions,
     comments: commentXml.split(/<\/w:comment>/).map((part) => tagTexts(part, "w:t").join("")).filter(Boolean),
@@ -270,6 +301,7 @@ async function pptxPackage(zip: JSZip): Promise<View> {
     notes: notes.map(([, xml]) => tagTexts(xml, "a:t").join(" ")).join("\n"),
     comments: comments.flatMap(([, xml]) => [...tagTexts(xml, "p:text"), ...tagTexts(xml, "a:t")]),
     tables: (all.match(/<a:tbl>/g) ?? []).length,
+    cells: [...all.matchAll(/<a:tc\b[^>]*>([\s\S]*?)<\/a:tc>/g)].map((m) => tagTexts(m[1]!, "a:t").join("")),
     fonts: unique(attrValues(all, /<a:latin\b[^>]*\btypeface="([^"]*)"/g)),
     images: await mediaHashes(zip, "ppt/media/"),
     pages: slides.length,

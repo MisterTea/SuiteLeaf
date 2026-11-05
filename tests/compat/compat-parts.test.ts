@@ -139,7 +139,7 @@ describe("LibreOffice reference", () => {
     const docx = await libreOfficeReference(new Uint8Array([1]), "docx", {
       exec: fakeOffice({ "input.pdf": "/Type /Page /Type /Page", "input.txt": "Garden report" }).exec,
     });
-    expect(docx.view).toEqual({ pages: 2, text: "Garden report" });
+    expect(docx.view).toEqual({ pages: 2, text: "Garden report", numbered: "", cells: ["Garden report"] });
     const pptx = await libreOfficeReference(new Uint8Array([1]), "pptx", { exec: fakeOffice({ "input.pdf": "/Type /Page" }).exec });
     expect(pptx.view).toEqual({ pages: 1 });
   });

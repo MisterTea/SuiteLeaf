@@ -17,8 +17,12 @@ export type Probe =
   | { dimension: Dimension; kind: "revision"; value: string }
   | { dimension: Dimension; kind: "font"; value: string }
   | { dimension: Dimension; kind: "header"; value: string }
+  /** Text inside a table cell. */
+  | { dimension: Dimension; kind: "cell"; value: string }
   | { dimension: Dimension; kind: "footnote"; value: string }
   | { dimension: Dimension; kind: "sections"; count: number }
+  /** A numbered item as `<number> <text>`, such as `1 Weed the paths`. The number's punctuation is ignored. */
+  | { dimension: Dimension; kind: "numbered"; value: string }
   | { dimension: Dimension; kind: "table"; count: number }
   | { dimension: Dimension; kind: "image"; sha256: string }
   | { dimension: Dimension; kind: "pages"; count: number }
@@ -31,10 +35,14 @@ export interface View {
   comments?: string[];
   revisions?: string[];
   fonts?: string[];
+  /** Text inside table cells. */
+  cells?: string[];
   /** Header and footer text, from every section. */
   headers?: string[];
   footnotes?: string[];
   sections?: number;
+  /** Numbered items as `<number> <text>`, one per line. */
+  numbered?: string;
   tables?: number;
   images?: string[];
   pages?: number;

@@ -19,9 +19,13 @@ export type Exec = (file: string, args: string[], timeoutMs: number) => Promise<
 
 export const defaultExec: Exec = (file, args, timeoutMs) =>
   new Promise((resolve, reject) => {
-    execFile(file, args, { timeout: timeoutMs, maxBuffer: 4 * 1024 * 1024 }, (error, stdout) => {
-      if (error) reject(error);
-      else resolve({ stdout: String(stdout) });
+    execFile(file, args, { timeout: timeoutMs, maxBuffer: 4 * 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        // The tool's own message (osascript, soffice) is on stderr. Keep it ahead of the command line.
+        const said = String(stderr ?? "").trim().split("\n")[0];
+        if (said) error.message = `${said} (${error.message.split("\n")[0]})`;
+        reject(error);
+      } else resolve({ stdout: String(stdout) });
     });
   });
 
@@ -34,6 +38,17 @@ export const PROFILE_XCU = `<?xml version="1.0" encoding="UTF-8"?>
 <item oor:path="/org.openoffice.Office.Common/Security/Scripting"><prop oor:name="DisableMacrosExecution" oor:op="fuse"><value>true</value></prop></item>
 </oor:items>
 `;
+
+/** Numbered lines of LibreOffice text as `<number> <text>`: `    1. Water` becomes `1 Water`. */
+export function numberedLines(text: string): string {
+  return text
+    .split(/\r?\n/)
+    .flatMap((line) => {
+      const match = /^\s*([0-9]+|[a-zA-Z]{1,4})[.)]\s+(.*)$/.exec(line);
+      return match ? [`${match[1]} ${match[2]!.trim()}`] : [];
+    })
+    .join("\n");
+}
 
 /** Pages in a PDF, counted from its page objects. */
 export function pdfPages(pdf: string): number {
@@ -142,6 +157,8 @@ export async function libreOfficeReference(
       if (format === "docx") {
         await convert("txt:Text (encoded):UTF8");
         view.text = await readFile(join(out, "input.txt"), "utf8");
+        view.numbered = numberedLines(view.text);
+        view.cells = [view.text];
       }
     }
     return { status: "opened", application, view };

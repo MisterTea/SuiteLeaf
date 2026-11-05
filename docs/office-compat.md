@@ -3,8 +3,9 @@
 This is how SuiteLeaf measures what survives a full Office round trip (WP-012). For the corpus import inventory, see [office-imports.md](office-imports.md).
 
 ```sh
-npm run test:office-compat                    # generated fixtures, LibreOffice as reference
-npm run test:office-compat -- --no-reference  # SuiteLeaf stages only
+npm run test:office-compat                         # generated fixtures, Microsoft Office as reference
+npm run test:office-compat -- --reference=libreoffice
+npm run test:office-compat -- --no-reference       # SuiteLeaf stages only
 npm run test:office-compat -- --force         # ignore saved results
 ```
 
@@ -20,9 +21,19 @@ Each file goes through these stages, in this order:
 4. **native**: the native file saved and opened again.
 5. **export**: SuiteLeaf's Office package, read as another application would read it.
 6. **reimport**: that export imported again.
-7. **reference**: LibreOffice reopens the export.
+7. **reference**: Microsoft Office reopens the export. LibreOffice is used when Office cannot be reached, or with `--reference=libreoffice`.
 
-LibreOffice runs in a throwaway profile with macros and link updates turned off. Every Excel formula is recalculated on load, so the values come from LibreOffice and not from the results SuiteLeaf cached. Original files are never changed.
+## Microsoft Office as the reference
+
+On macOS, the run drives Word, Excel, and PowerPoint through AppleScript. Each export is opened read-only and closed without saving. Nothing is written back, and no output file is created.
+
+- **Word** gives the page count, body text, each section's header and footer, footnotes, and every list paragraph's number as Word shows it.
+- **Excel** recalculates everything (`calculate full`), then gives each sheet's values, so formula results are Excel's own. A workbook whose cached `SUM` was 999 came back as 60.
+- **PowerPoint** gives the slide count, text box text, speaker notes, and how many tables each slide has. Its AppleScript cannot read table cells, so table text is not measured there.
+
+The Office apps are sandboxed. The run therefore opens one fixed file per format, `reference.docx`, `reference.xlsx`, or `reference.pptx`, in `datasets/validation/office-compat/msoffice/`. The first time, each app asks for access to that file. Choose **Select…** in that dialog and pick the `msoffice` folder to grant the whole folder once.
+
+LibreOffice, when used, runs in a throwaway profile with macros and link updates turned off and recalculates every Excel formula on load. Original files are never changed.
 
 ## Dimensions and outcomes
 
@@ -74,8 +85,8 @@ The list is empty. Until 2026-11-04 it held one entry: DOCX run fonts were dropp
 
 ## Limits of this run
 
-- Microsoft Word, Excel, and PowerPoint are not driven as reference applications. LibreOffice is the reference.
-- LibreOffice reads DOCX text and page count, XLSX values, and PPTX slide count. It does not read fonts, comments, or slide text.
+- Office automation is macOS only. Elsewhere, the run falls back to LibreOffice, which does not read headers, fonts, comments, or slide text.
+- Neither reference reads fonts or comments. PowerPoint does not give table text.
 - Layout is measured as a page or slide count, not by comparing rendered pages.
 - The large external corpora in `datasets/` still go through `scripts/office-roundtrip-report.mjs`, which reports features by owner but not these dimensions.
 - XLSX pictures and PPTX comments are not in the fixtures, because the generators used cannot write them.
