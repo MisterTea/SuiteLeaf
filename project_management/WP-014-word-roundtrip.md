@@ -160,3 +160,38 @@ Still open in this package:
 - Links to bookmarks that are not on headings.
 - Fields, citations, editability in Word, and legacy `.doc` conversion.
 
+2026-11-04, later still: a document that names no body font, and honest legacy conversion.
+
+**No body font.** Microsoft Word reported that the generated `docx-sections` file draws its unstyled text in Times New Roman. SuiteLeaf stored no body font, and its export drew that text in Arial. `wordDefaultFont` now returns Word's own fallback, Times New Roman (SuiteLeaf Maple), when neither the default paragraph style nor the document defaults name a font. Word's fonts for the export now match the source: Cambria and Times New Roman.
+
+The Word package reader in the WP-012 run now counts that effective body font, and `docx-sections` has a Times New Roman probe. With import not storing the body font, the probe was a loss at export. `tests/word-margins.test.ts` expected no page settings for a file without margins. It now expects only the fallback body font and page numbers off; margins still use the default.
+
+**Legacy Word (acceptance criterion 4).** The corpus has 476 Word 97–2003 files, plus 20 password-protected NapierOne DOCX files. Run through `openOfficeReader`, the entry the app's Office worker uses, they showed:
+- three encrypted `.doc` files (`PasswordProtected.doc`, `password_password_cryptoapi.doc`, `password_tika_binaryrc4.doc`) "imported" instead of refused;
+- seven fuzzed files threw a raw `TypeError`.
+
+`doc-binary.ts` now refuses these:
+- the header's fEncrypted or fObfuscated flag, as `encrypted`;
+- a file that is not a compound file or has no WordDocument stream, as `invalid-container`;
+- any failure while reading the text, as `invalid-container`.
+
+Every message says the original is unchanged. A readable file with no text now says so in its import notes.
+
+After the change:
+- 464 `.doc` and 2 other legacy files imported;
+- 3 were refused as encrypted and 8 as invalid containers;
+- all 20 password-protected DOCX files were refused as encrypted;
+- nothing threw anything else, and no input changed, checked by SHA-256 of the bytes passed in and of the file on disk.
+
+Of the imports with very little content, 113 were short test documents and 9 had no readable text, now noted. `tdf132637_protectTrackChanges.doc` is only protected against edits, and it still opens.
+
+`tests/doc-binary.test.ts` covers the flags, the refusals, Word 95 text, the UTF-16 fallback, a Word 97 piece table with a property record, and the no-text note, plus corpus-guarded checks of the three encrypted files. `doc-binary.ts` was at 88.49% statements and 98.88% lines in its own test, up from 66.32%. The one uncovered line is the defensive catch, which no constructed input reached.
+
+`npx vitest run --coverage` passed (622 files, 4,520 tests): statements 93.89% and lines 96.73%. The Office run with Word, Excel, and PowerPoint 16.114 (fingerprint `4b3262aca3bb3118`) gave 19 dimensions passing and nothing blocking.
+
+Still open:
+- Orientation and margins per section.
+- Links to bookmarks that are not on headings.
+- Fields and citations.
+- Editability in Word: whether every supported construct can still be edited there.
+

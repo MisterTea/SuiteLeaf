@@ -8,6 +8,8 @@ import JSZip from "jszip";
 import type { JsonNode, SheetFile, SlideFile, SuiteFile } from "../index";
 import { LIST_TYPES, numberLabel, numberedParagraphs } from "../word-lists";
 import { slugify } from "../heading-anchors";
+import { officeFont } from "../office-fonts";
+import { wordDefaultFont } from "../word-fonts";
 import type { CompatFormat, View } from "./types";
 
 const sha = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
@@ -241,7 +243,10 @@ async function docxPackage(zip: JSZip): Promise<View> {
   const paragraphs = body.split(/<\/w:p>/).map((part) => tagTexts(part, "w:t").join(""));
   const revisions = [...body.matchAll(/<w:ins\b[^>]*>([\s\S]*?)<\/w:ins>/g)].map((m) => tagTexts(m[1]!, "w:t").join(""));
   const commentXml = (await zip.file("word/comments.xml")?.async("string")) ?? "";
-  const fontXml = [body, (await zip.file("word/styles.xml")?.async("string")) ?? ""].join("");
+  const stylesXml = (await zip.file("word/styles.xml")?.async("string")) ?? "";
+  const fontXml = [body, stylesXml].join("");
+  // The body font Word draws unstyled text in, even when no part names it.
+  const bodyFont = officeFont(wordDefaultFont(stylesXml, (await zip.file("word/theme/theme1.xml")?.async("string")) ?? ""));
   const furniture = await texts(zip, /^word\/(header|footer)\d*\.xml$/);
   const footnoteXml = (await zip.file("word/footnotes.xml")?.async("string")) ?? "";
   return {
@@ -267,7 +272,7 @@ async function docxPackage(zip: JSZip): Promise<View> {
     revisions,
     comments: commentXml.split(/<\/w:comment>/).map((part) => tagTexts(part, "w:t").join("")).filter(Boolean),
     tables: (body.match(/<w:tbl>/g) ?? []).length,
-    fonts: unique(attrValues(fontXml, /w:ascii="([^"]*)"/g)),
+    fonts: unique([...attrValues(fontXml, /w:ascii="([^"]*)"/g), bodyFont]),
     images: await mediaHashes(zip, "word/media/"),
   };
 }

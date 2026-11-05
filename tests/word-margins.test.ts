@@ -76,7 +76,8 @@ describe("Word page margins", () => {
       "Plain note.docx",
     );
     if (file.kind !== "doc") throw new Error("expected a document");
-    expect(file.content.attrs?.pageSettings).toBeUndefined();
+    // No margins are stored; only Word's fallback body font, Times New Roman (SuiteLeaf Maple).
+    expect(file.content.attrs?.pageSettings).toEqual({ font: "SuiteLeaf Maple", pageNumbers: false });
     const settings = settingsOf(file.content);
     expect(settings.marginTop).toBe(MARGIN_DEFAULT_PX);
     expect(settings.marginBottom).toBe(MARGIN_DEFAULT_PX);

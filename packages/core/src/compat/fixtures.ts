@@ -97,6 +97,8 @@ export const FIXTURE_SPECS: FixtureSpec[] = [
       { dimension: "layout", kind: "sections", count: 2 },
       { dimension: "objects", kind: "internal-link", value: "the plan" },
       { dimension: "fonts", kind: "font", value: "Cambria" },
+      // The generator names no body font, so Word draws the rest in Times New Roman.
+      { dimension: "fonts", kind: "font", value: "Times New Roman" },
       { dimension: "content", kind: "numbered", value: "2 Stake the beans" },
       { dimension: "content", kind: "numbered", value: "b Mulch after" },
       { dimension: "content", kind: "numbered", value: "1 Weed the paths" },

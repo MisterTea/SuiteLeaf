@@ -48,12 +48,16 @@ export function wordStyleFonts(stylesXml: string, themeXml = ""): Map<string, st
  * The font body text gets: the default paragraph style's, then the document
  * defaults, with theme fonts (Word 2007 and later name "minor" fonts) looked up
  * in the theme. It comes back as the installed family that lays text out the
- * same way, such as SuiteLeaf Willow for Calibri.
+ * same way, such as SuiteLeaf Willow for Calibri. A document that names none
+ * gets Word's own fallback, Times New Roman, as Word itself does.
  */
-export function wordDefaultFont(stylesXml: string, themeXml = ""): string | undefined {
+/** What Word draws text in when neither the default paragraph style nor the document defaults name a font. */
+export const WORD_FALLBACK_FONT = "Times New Roman";
+
+export function wordDefaultFont(stylesXml: string, themeXml = ""): string {
   const normal = /<w:style\b(?=[^>]*w:type="paragraph")(?=[^>]*w:default="(?:1|true)")[^>]*>([\s\S]*?)<\/w:style>/.exec(stylesXml)?.[1];
   const ownRun = normal && /<w:rPr\b[^>]*>([\s\S]*?)<\/w:rPr>/.exec(normal)?.[1];
   const defaults = /<w:rPrDefault\b[^>]*>([\s\S]*?)<\/w:rPrDefault>/.exec(stylesXml)?.[1];
   const font = runFont(ownRun, themeXml) ?? runFont(defaults, themeXml);
-  return font ? suiteLeafFont(font) : undefined;
+  return suiteLeafFont(font ?? WORD_FALLBACK_FONT);
 }

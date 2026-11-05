@@ -1,12 +1,51 @@
 import * as CFB from "cfb";
 import { createFile, parseFile, type DocFile } from "./index";
+import { OfficeImportError } from "./office";
 
-/** Paragraph text from a legacy Word .doc. Formatting in the binary is not read. */
+const UNCHANGED = "The original file is unchanged.";
+
+/**
+ * Whether a Word 97–2003 file is password protected: the FIB's fEncrypted
+ * (0x0100) or fObfuscated (0x8000, XOR obfuscation) flag. Word 6 and Word 95
+ * use the same fEncrypted bit.
+ */
+export function wordBinaryEncrypted(word: Uint8Array): boolean {
+  if (word.length < 0x0c) return false;
+  const magic = word[0]! | (word[1]! << 8);
+  if (magic !== 0xa5ec && magic !== 0xa5dc) return false;
+  const flags = word[0x0a]! | (word[0x0b]! << 8);
+  return (flags & 0x0100) !== 0 || (magic === 0xa5ec && (flags & 0x8000) !== 0);
+}
+
+/**
+ * Paragraph text from a legacy Word .doc. Formatting in the binary is not read.
+ * A password-protected file, a file that is not a Word binary, and a damaged
+ * one are refused with an `OfficeImportError`, never read as empty text.
+ */
 export function extractDocParagraphs(bytes: Uint8Array): string[] {
-  const cfb = CFB.read(bytes, { type: "array" });
+  let cfb: CFB.CFB$Container;
+  try {
+    cfb = CFB.read(bytes, { type: "array" });
+  } catch {
+    throw new OfficeImportError("invalid-container", `This is not a readable Word 97–2003 file. ${UNCHANGED}`);
+  }
   const wordEntry = CFB.find(cfb, "WordDocument");
-  if (!wordEntry?.content) return [];
+  if (!wordEntry?.content)
+    throw new OfficeImportError("invalid-container", `This file has no Word 97–2003 document stream. ${UNCHANGED}`);
   const word = Buffer.from(wordEntry.content);
+  if (wordBinaryEncrypted(word))
+    throw new OfficeImportError(
+      "encrypted",
+      `This Word 97–2003 file is password protected. SuiteLeaf does not open encrypted files. ${UNCHANGED}`,
+    );
+  try {
+    return readWordText(cfb, word);
+  } catch {
+    throw new OfficeImportError("invalid-container", `This Word 97–2003 file is damaged and its text could not be read. ${UNCHANGED}`);
+  }
+}
+
+function readWordText(cfb: CFB.CFB$Container, word: Buffer): string[] {
   if (word.length < 32) return [];
   const magic = word.readUInt16LE(0);
   // Word 6 and Word 95 store 8-bit text between fcMin and fcMac.
@@ -122,6 +161,7 @@ export function importBinaryDoc(
     sourceName: name.slice(0, 250),
     warnings: [
       "Legacy DOC import keeps paragraph text. Character and paragraph formatting is not provided by the extractor.",
+      ...(parts.length ? [] : ["No text could be read from this Word 97–2003 file, so the document is empty. The original file is unchanged."]),
     ],
     features: ["text"],
   };
