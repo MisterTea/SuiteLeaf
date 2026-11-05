@@ -22,16 +22,8 @@ export interface Tolerated {
   documentedIn: string;
 }
 
-export const TOLERATED: Tolerated[] = [
-  {
-    fixture: "docx-report",
-    dimension: "fonts",
-    owner: "WP-014",
-    limitation:
-      "DOCX import keeps a run's font only for symbol fonts, and DOCX export writes Arial as the document default, so Calibri text comes back as Arial.",
-    documentedIn: "docs/office-imports.md",
-  },
-];
+/** Empty since WP-014 kept DOCX run fonts on 2026-11-04. Add an entry only with an owner and a documented limit. */
+export const TOLERATED: Tolerated[] = [];
 
 export function toleratedFor(result: CompatResult, dimension: Dimension, list: Tolerated[] = TOLERATED): Tolerated | undefined {
   return list.find((entry) => entry.fixture === result.fixture && entry.dimension === dimension);

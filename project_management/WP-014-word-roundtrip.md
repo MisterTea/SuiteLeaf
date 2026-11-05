@@ -2,7 +2,7 @@
 id: "WP-014"
 title: "Word document round-trip fidelity"
 type: "work_package"
-status: "ready"
+status: "in_progress"
 priority: "P0"
 phase: 1
 area: "documents"
@@ -70,3 +70,20 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S15`, `S16`, `S17`. External comp
 2026-11-04: WP-012's compatibility run found a font loss that this package owns. The generated fixture `docx-report` sets Calibri on every run. After import and export, Arial is the only font in the document. DOCX import keeps a run's font only for symbol fonts (`word-symbols.ts`), and there is no document default font, so `docx-export.ts` writes Arial. Word would lay out a Calibri document in Arial. The run tolerates this as a `fonts` loss owned by WP-014 (`TOLERATED` in `packages/core/src/compat/report.ts`), and `docs/office-imports.md` states the limit. When it is repaired, remove that entry; the run lists an entry that no longer matches a loss. This package is still blocked on WP-012, and no product behavior changed here.
 
 2026-11-04: WP-012 was accepted as done, so this package is no longer blocked. Status is `ready`, meaning it is ready to start; no work has begun. It was blocked on WP-012 from 2026-10-29 until then; that dependency is still listed under Dependencies.
+
+2026-11-04: DOCX import keeps a run's own font. Before this, only symbol fonts survived, and any other run font was dropped, so DOCX export wrote Arial. The import already marked symbol-font text so it would get through Mammoth, which keeps no fonts. It now also marks a run whose font differs from the document's body font. The run's font is read from `w:rFonts`, or from the theme when the run names a theme font. The text arrives as a `textStyle` font in the SuiteLeaf face drawn the same way, and DOCX export writes the Office name back. A run in the body font gets no mark. When the document names no body font, every run that names a font keeps it. There is no font-specific logic: the general font mapping in `office-fonts.ts` does the translation.
+
+`tests/symbol-fonts.test.ts` covers:
+- a Georgia run, a run in the body font, a theme run, an unusual name, and a plain run;
+- a document with no body font;
+- symbol-only marking left as it was.
+
+`npx vitest run tests/symbol-fonts.test.ts tests/compat tests/capabilities` passed (41 tests). `npx vitest run --coverage` passed (617 files, 4,494 tests): statements 93.84% and lines 96.7%. `word-fonts.ts` was at 100% statements and lines.
+
+2026-11-04: on the first 60 NapierOne DOCX files, 50 name fonts on their runs. Before this change, 14 of those 71 fonts were still present after import and export. After it, 67 of 71 were, and all 60 files still imported and exported. The 4 that remain were not examined. The WP-012 run with LibreOffice 26.2.5.2 (fingerprint `2aabca6e038309e9`) now passes `fonts` for `docx-report`: 15 dimensions passed, nothing was lost, and nothing blocked a release. The tolerated entry was removed, and the WP-012 CI test now plants a dropped font and checks that it blocks. `docs/office-imports.md` and `docs/office-compat.md` were updated.
+
+Still open in this package:
+- Fonts set only on a paragraph style, such as a heading's theme font, are not carried onto the text.
+- A document that names no body font still exports Arial as its default. Word would use Times New Roman.
+- The rest of the requirements and acceptance criteria above: sections, numbering, image anchoring, notes, fields, citations, comments and revisions through edits, editability in Word, and legacy conversion.
+

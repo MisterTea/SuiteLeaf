@@ -37,7 +37,7 @@ describe("office compatibility run", () => {
         formulas: "not-measured",
         review: "pass",
         objects: "pass",
-        fonts: "loss",
+        fonts: "pass",
         layout: "unavailable-reference",
         media: "pass",
       },
@@ -64,20 +64,27 @@ describe("office compatibility run", () => {
       expect(result.outcome).toBe("completed");
       expect(result.reference.status).toBe("unavailable");
     }
-    expect(lost(results[0]!, "fonts")).toEqual([["font", "export"]]);
     const summary = summaryMarkdown(results, FIXTURE_SPECS);
     expect(blockingIssues(results, FIXTURE_SPECS), summary).toEqual([]);
     expect(unusedTolerated(results)).toEqual([]);
-    expect(summary).toContain("LOSS (tolerated)");
     expect(summary).toContain("no ref");
   }, 60_000);
 
-  it("blocks a release when the tolerated font loss is not on the list", async () => {
-    const result = await run(byId("docx-report"));
-    expect(blockingIssues([result], FIXTURE_SPECS, [])).toEqual([
-      { fixture: "docx-report", reason: "fonts loss: font lost at export" },
-    ]);
-    expect(TOLERATED[0]!.owner).toBe("WP-014");
+  it("reports a dropped run font under fonts, blocks it, and accepts it once tolerated with an owner", async () => {
+    const plain = (node: JsonNode): JsonNode => ({
+      ...node,
+      marks: node.marks?.filter((mark) => mark.type !== "textStyle"),
+      content: node.content?.map(plain),
+    });
+    const result = await run(byId("docx-report"), {
+      beforeExport: (file: SuiteFile) => ({ ...file, content: plain(file.content as JsonNode) }) as SuiteFile,
+    });
+    expect(lost(result, "fonts")).toEqual([["font", "export"]]);
+    expect(blockingIssues([result], FIXTURE_SPECS)).toEqual([{ fixture: "docx-report", reason: "fonts loss: font lost at export" }]);
+    const tolerated = [{ fixture: "docx-report", dimension: "fonts" as const, owner: "WP-014", limitation: "x", documentedIn: "docs/office-imports.md" }];
+    expect(blockingIssues([result], FIXTURE_SPECS, tolerated)).toEqual([]);
+    expect(summaryMarkdown([result], FIXTURE_SPECS, tolerated)).toContain("LOSS (tolerated)");
+    expect(TOLERATED).toEqual([]);
   }, 60_000);
 
   it("reports a lost formula under formulas", async () => {

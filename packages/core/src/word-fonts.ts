@@ -1,6 +1,7 @@
 import { suiteLeafFont } from "./office-fonts";
 
-function runFont(rPr: string | undefined, themeXml: string): string | undefined {
+/** A run's own font: `w:rFonts` by name, or a theme font looked up in the theme. */
+export function runFont(rPr: string | undefined, themeXml: string): string | undefined {
   const fonts = rPr && /<w:rFonts\b[^>]*>/.exec(rPr)?.[0];
   if (!fonts) return undefined;
   const named = /\bw:ascii="([^"]+)"/.exec(fonts)?.[1] ?? /\bw:hAnsi="([^"]+)"/.exec(fonts)?.[1];

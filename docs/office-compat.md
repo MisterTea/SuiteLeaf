@@ -70,9 +70,7 @@ For a `supported` fixture, these block a release and set exit code 1:
 
 `TOLERATED` in `packages/core/src/compat/report.ts` gives each tolerated difference an owning work package, the limit, and the user document that states it. The summary lists any tolerated entry that no longer matches a loss, so it can be removed once its repair lands.
 
-| Fixture | Dimension | Owner | Limit |
-| --- | --- | --- | --- |
-| `docx-report` | fonts | WP-014 | DOCX import keeps a run's font only for symbol fonts, and export writes Arial as the default, so Calibri text comes back as Arial. Stated in [office-imports.md](office-imports.md). |
+The list is empty. Until 2026-11-04 it held one entry: DOCX run fonts were dropped on import, so Calibri text came back as Arial. WP-014 fixed that.
 
 ## Limits of this run
 

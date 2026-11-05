@@ -45,7 +45,7 @@ Every work package starts with YAML front matter:
 - `blocked_on`: IDs of currently unmet hard dependencies; initially all prerequisites are unmet. Clear a prerequisite only after its relevant contract and acceptance evidence are accepted. Keep the original dependency history in the package's Dependencies section or a decision note.
 - `related_sources`: IDs in SOURCES.md; repository-only packages can use an empty list.
 
-Initial state (2026-10-29): 16 ready packages and 22 blocked packages. Current state (2026-11-04): **18 in progress, 4 ready, 13 blocked, 3 done**. `status` and `blocked` are independent: a package can be `in_progress` while `blocked: true`, meaning isolated work is under way but it cannot be completed or integrated until `blocked_on` clears. Use `status: "blocked"` only when no work has started because of a dependency. The index lists initial dependencies and current status; update it alongside front matter as work progresses. Dependencies gate completion/integration, not necessarily research or isolated implementation. A related package mentioned in prose is not automatically a hard blocker: parallel implementation can proceed against an agreed interface. Product-owner scope decisions are described as such, not represented as nonexistent work-package IDs.
+Initial state (2026-10-29): 16 ready packages and 22 blocked packages. Current state (2026-11-04): **19 in progress, 3 ready, 13 blocked, 3 done**. `status` and `blocked` are independent: a package can be `in_progress` while `blocked: true`, meaning isolated work is under way but it cannot be completed or integrated until `blocked_on` clears. Use `status: "blocked"` only when no work has started because of a dependency. The index lists initial dependencies and current status; update it alongside front matter as work progresses. Dependencies gate completion/integration, not necessarily research or isolated implementation. A related package mentioned in prose is not automatically a hard blocker: parallel implementation can proceed against an agreed interface. Product-owner scope decisions are described as such, not represented as nonexistent work-package IDs.
 
 ## Work-package index
 
@@ -64,7 +64,7 @@ Initial state (2026-10-29): 16 ready packages and 22 blocked packages. Current s
 | [WP-011](WP-011-managed-releases.md) | Signed releases and managed updates | P0 | 1 | None | in_progress |
 | [WP-012](WP-012-compatibility-corpus.md) | Office compatibility corpus and differential verification | P0 | 1 | WP-001 | done |
 | [WP-013](WP-013-compatibility-reports.md) | User-visible compatibility reports and safe export | P0 | 1 | WP-012 | ready |
-| [WP-014](WP-014-word-roundtrip.md) | Word document round-trip fidelity | P0 | 1 | WP-012 | ready |
+| [WP-014](WP-014-word-roundtrip.md) | Word document round-trip fidelity | P0 | 1 | WP-012 | in_progress |
 | [WP-015](WP-015-excel-compatibility.md) | Excel formula and workbook compatibility | P0 | 1 | WP-012 | ready |
 | [WP-016](WP-016-powerpoint-roundtrip.md) | PowerPoint object and media round-trip fidelity | P0 | 1 | WP-012 | ready |
 | [WP-017](WP-017-document-publishing.md) | Professional document styles, fields, and structure | P1 | 3 | None | in_progress |
