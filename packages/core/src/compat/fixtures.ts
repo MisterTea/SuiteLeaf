@@ -84,7 +84,7 @@ export const FIXTURE_SPECS: FixtureSpec[] = [
   {
     id: "docx-sections",
     format: "docx",
-    features: ["two sections", "section headers", "page-number footer", "footnote", "numbered list", "lettered list", "restarted list", "hyperlink", "bookmarked heading", "internal link"],
+    features: ["two sections", "section headers", "page-number footer", "footnote", "numbered list", "lettered list", "restarted list", "hyperlink", "bookmarked heading", "internal link", "Cambria heading style"],
     classification: "supported",
     generator: "docx@9.10.0",
     probes: [
@@ -96,6 +96,7 @@ export const FIXTURE_SPECS: FixtureSpec[] = [
       { dimension: "layout", kind: "header", value: "Appendix header" },
       { dimension: "layout", kind: "sections", count: 2 },
       { dimension: "objects", kind: "internal-link", value: "the plan" },
+      { dimension: "fonts", kind: "font", value: "Cambria" },
       { dimension: "content", kind: "numbered", value: "2 Stake the beans" },
       { dimension: "content", kind: "numbered", value: "b Mulch after" },
       { dimension: "content", kind: "numbered", value: "1 Weed the paths" },
@@ -177,6 +178,11 @@ async function docxReport(): Promise<Uint8Array> {
 async function docxSections(): Promise<Uint8Array> {
   const d = await import("docx");
   const doc = new d.Document({
+    styles: {
+      paragraphStyles: [
+        { id: "Heading1", name: "Heading 1", basedOn: "Normal", next: "Normal", quickFormat: true, run: { font: "Cambria", size: 32, bold: true } },
+      ],
+    },
     footnotes: { 1: { children: [new d.Paragraph("Planted in May")] } },
     numbering: {
       config: [

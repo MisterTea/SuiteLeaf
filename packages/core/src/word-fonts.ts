@@ -14,6 +14,37 @@ export function runFont(rPr: string | undefined, themeXml: string): string | und
 }
 
 /**
+ * Paragraph style id → the font that style gives its text, following
+ * `w:basedOn` and looking theme fonts up in the theme. A style that names no
+ * font of its own, all the way up, is left out: its text is in the body font.
+ */
+export function wordStyleFonts(stylesXml: string, themeXml = ""): Map<string, string> {
+  const styles = new Map<string, { basedOn?: string; rPr?: string }>();
+  for (const match of stylesXml.matchAll(/<w:style\b([^>]*)>([\s\S]*?)<\/w:style>/g)) {
+    if (!/w:type="paragraph"/.test(match[1]!)) continue;
+    const id = /w:styleId="([^"]+)"/.exec(match[1]!)?.[1];
+    if (!id) continue;
+    styles.set(id, {
+      basedOn: /<w:basedOn\b[^>]*w:val="([^"]+)"/.exec(match[2]!)?.[1],
+      rPr: /<w:rPr\b[^>]*>([\s\S]*?)<\/w:rPr>/.exec(match[2]!)?.[1],
+    });
+  }
+  const out = new Map<string, string>();
+  for (const id of styles.keys()) {
+    const seen = new Set<string>();
+    for (let at: string | undefined = id; at && !seen.has(at); at = styles.get(at)?.basedOn) {
+      seen.add(at);
+      const font = runFont(styles.get(at)?.rPr, themeXml);
+      if (font) {
+        out.set(id, font);
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+/**
  * The font body text gets: the default paragraph style's, then the document
  * defaults, with theme fonts (Word 2007 and later name "minor" fonts) looked up
  * in the theme. It comes back as the installed family that lays text out the

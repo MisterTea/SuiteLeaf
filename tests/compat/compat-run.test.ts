@@ -46,7 +46,7 @@ describe("office compatibility run", () => {
         formulas: "not-measured",
         review: "not-measured",
         objects: "pass",
-        fonts: "not-measured",
+        fonts: "pass",
         layout: "pass",
         media: "not-measured",
       },

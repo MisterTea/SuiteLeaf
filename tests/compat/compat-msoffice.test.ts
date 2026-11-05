@@ -30,7 +30,7 @@ const office = (reply: string, fail?: Error): { exec: Exec; calls: string[][] } 
 describe("Microsoft Office reference", () => {
   it("reads Word's pages, body, headers, footnotes, and list numbers", () => {
     const view = wordView(
-      "### pages 2\n### body\nTomatoes\u0002\rWater\n### header Club report\r\n### footer \n### footnote Planted\r\n### link the plan\n### item a)\tCompost\r\n### item 1.\tWeed\n",
+      "### pages 2\n### body\nTomatoes\u0002\rWater\n### header Club report\r\n### footer \n### footnote Planted\r\n### link the plan\n### font Cambria\n### font Cambria\n### item a)\tCompost\r\n### item 1.\tWeed\n",
     );
     expect(view).toEqual({
       pages: 2,
@@ -38,6 +38,7 @@ describe("Microsoft Office reference", () => {
       headers: ["Club report"],
       footnotes: ["Planted"],
       internalLinks: ["the plan"],
+      fonts: ["Cambria"],
       cells: ["Tomatoes\u0002\nWater"],
       numbered: "a Compost\n1 Weed",
     });

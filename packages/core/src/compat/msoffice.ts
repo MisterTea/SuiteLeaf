@@ -75,6 +75,8 @@ tell application "Microsoft Word"
     end repeat
     repeat with i from 1 to (count of paragraphs of theDoc)
       set para to paragraph i of theDoc
+      set face to name of font object of text object of para
+      if face is not missing value and face is not "" then set acc to acc & "### font " & face & LF
       set label to list string of list format of text object of para
       if label is not missing value and label is not "" then set acc to acc & "### item " & label & TB & (content of text object of para) & LF
     end repeat
@@ -94,6 +96,7 @@ export function wordView(output: string): View {
   const footnotes: string[] = [];
   const numbered: string[] = [];
   const internalLinks: string[] = [];
+  const fonts = new Set<string>();
   const body: string[] = [];
   let pages: number | undefined;
   let inBody = false;
@@ -106,13 +109,14 @@ export function wordView(output: string): View {
       if (text) headers.push(text);
     } else if (line.startsWith("### footnote ")) footnotes.push(clean(line.slice(13)));
     else if (line.startsWith("### link ")) internalLinks.push(clean(line.slice(9)));
+    else if (line.startsWith("### font ")) fonts.add(clean(line.slice(9)));
     else if (line.startsWith("### item ")) {
       const [label, text] = line.slice(9).split("\t");
       numbered.push(`${clean(label ?? "").replace(/[.)]$/, "")} ${clean(text ?? "")}`);
     } else if (inBody) body.push(line);
   }
   const text = body.join("\n").replace(/\r/g, "\n");
-  return { pages, text, headers, footnotes, internalLinks, cells: [text], numbered: numbered.join("\n") };
+  return { pages, text, headers, footnotes, internalLinks, fonts: [...fonts], cells: [text], numbered: numbered.join("\n") };
 }
 
 export function excelScript(input: string): string {

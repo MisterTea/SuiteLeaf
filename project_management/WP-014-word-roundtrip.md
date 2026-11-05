@@ -143,3 +143,20 @@ The WP-012 fixture `docx-sections` now has a bookmarked heading and an internal 
 
 On the first 200 NapierOne DOCX files, all 200 still imported and exported. 3 files had 87 internal links between them. 6 now resolve to a heading, where 0 did before. The rest point at bookmarked paragraphs that are not imported as headings: one file has 63 links and one imported heading. Following those would need anchors on any paragraph, in the model and in the editor. That is not done.
 
+2026-11-04, later still: a paragraph style's font reaches its text.
+
+- **Import.** Most Word documents set the heading font only on the heading style, often a theme font, so imported headings were drawn in the body font. `wordStyleFonts` resolves each paragraph style's font through `w:basedOn` and the theme, and guards against style cycles. A run that names no font of its own now takes its paragraph style's font, through the same marks as run fonts, when that font differs from the body font. Innermost paragraphs are read first, so a text box keeps its own paragraph's style. The editor's named styles still carry no font family.
+- **Export.** The font is written on the runs, not as a named style.
+- **Existing tests.** Two assertions in `tests/office.test.ts` (Apache POI `65099.docx`) pinned headings and table text to bold only. Their styles set Arial Gras (`EdfTitre3`) and Arial (`EdfCorpstexte`) while the body is Calibri, so those fonts are now expected.
+
+Evidence:
+- **Compat run.** The WP-012 fixture `docx-sections` now has a Heading 1 style in Cambria and a `fonts` probe. Word reports each paragraph's font as part of the reference. With style fonts turned off, `fonts` was a loss at export, and Microsoft Word agreed. `npm run test:office-compat` with Word, Excel, and PowerPoint 16.114 (fingerprint `9ba745807cdcfa4e`) gave 19 dimensions passing, no loss, and nothing blocking.
+- **Corpus.** On the first 200 NapierOne DOCX files, 1,021 of 1,660 headings carry an explicit font, up from 486. All 200 files imported and exported, in 25 seconds both before and after.
+- **Tests.** `npx vitest run --coverage` passed (621 files, 4,513 tests): statements 93.88% and lines 96.72%. `word-symbols.ts` was fully covered and `word-fonts.ts` was at 97.22% statements.
+
+Still open in this package:
+- The Times New Roman default for a document that names no body font.
+- Orientation and margins per section.
+- Links to bookmarks that are not on headings.
+- Fields, citations, editability in Word, and legacy `.doc` conversion.
+
