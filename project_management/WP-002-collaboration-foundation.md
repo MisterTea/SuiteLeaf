@@ -2,12 +2,12 @@
 id: "WP-002"
 title: "Durable document collaboration and session protocol"
 type: "work_package"
-status: "in_progress"
+status: "done"
 priority: "P0"
 phase: 1
 area: "collaboration"
 created: "2026-10-29"
-updated: "2026-10-30"
+updated: "2026-11-04"
 owner: "unassigned"
 blocked: false
 blocked_on: []
@@ -197,3 +197,32 @@ Spreadsheet and slide collaboration stay in WP-003 and WP-004.
 2026-11-03: an idle compact that does not change the paragraphs keeps the saved bytes. `One` and `Two` stay, and `updatedAt` stays `2026-10-13T18:00:00.000Z`. A later time `secret-value` is not written. Changing the first paragraph to `One more` still records `2026-11-03T00:00:00.000Z`, and compacting that same text again does not change the bytes. `cargo test -p suiteleaf-node --bin suiteleaf-node an_unchanged_compact_keeps_the_saved_time` passed (1 test). The earlier paragraph compaction test still passed. The SuiteLeaf window was not opened. This was not typed in two browsers. An edit that never reached the log is still lost on another node.
 
 2026-11-03: an unchanged sheet cell and an unchanged slide keep the saved bytes. A cell that is already `North` stays the file bytes. Changing it to `West` writes `West`. A slide that is already `s1` stays the file bytes. Changing its title to `West` writes `West`. `secret-value` is not written. `cargo test -p suiteleaf-node --bin suiteleaf-node an_unchanged_sheet_cell_keeps_the_saved_bytes` passed (1 test). `cargo test -p suiteleaf-node --bin suiteleaf-node an_unchanged_slide_keeps_the_saved_bytes` passed (1 test). The earlier sheet and slide compaction tests still passed. The SuiteLeaf window was not opened. The painted grid was not used. Spreadsheet and slide collaboration stay in WP-003 and WP-004. An edit that never reached the log is still lost on another node.
+
+2026-11-04: an open socket is checked again every 5 seconds, even when the client sends nothing. Before this, the check waited for that person's next message, so a viewer who only read kept receiving live edits after losing access. Lars, a quiet viewer, was closed with `forbidden` after his grant was removed, and he did not receive Maya's later edit `Tomatoes are picked`. Sam was closed with `unauthorized` after his session was deleted. Ravi was closed with `role-changed` when his role went from editor to viewer, and his edit after reopening was refused. A token renewed on the open socket replaces the one it signed in with: deleting Sam's first session left him connected, and deleting the renewed session closed him. Another person's token closes the socket. The browser asks for a token every 30 seconds and sends it only when it has changed. Tokens last 15 minutes. `cargo test -p suiteleaf-node --test multiuser standing` passed (4 tests). With the check moved to 10 minutes, all four failed. `cargo test -p suiteleaf-node standing::` passed (5 unit tests).
+
+2026-11-04: each shared room names its generation in `joined`, and each edit names the generation it was made in. An edit from another generation is refused with `reject` and `reason: "stale"` and is not stored. Before this, a client that came back after the room had been written to the file and shared again merged the new room into its old Yjs copy, so the text could repeat, and its waiting edit could never be placed. Now it starts a new copy from the snapshot. The new copy held `Beds` once, and the waiting edit was saved as the separate local file "Notes (your edits)" with a status line naming it. With that step turned off, the old copy was reused and the test failed. `cargo test -p suiteleaf-node --test multiuser generations` passed (1 test): Sam's edit from the first room was refused as stale in the next generation, and `Tomatoes are gone` did not reach the room. `npx vitest run tests/ui/collab-session-room.test.tsx tests/collab-reconnect.test.ts tests/collab-recovery.test.ts tests/workspace-room-stranded.test.ts` passed.
+
+2026-11-04: the protocol is written in `docs/collaboration-protocol.md`. It covers messages, ordering, idempotency, acknowledgement, generations, presence, the access bound, reconnecting, and replication across nodes. The capability `cap-doc-collaboration` is `verified`, with Rust, browser, and unit evidence and the limits below. The README no longer says real-time editing is deferred. Full runs: `npx vitest run --coverage` passed (614 files, 4,467 tests); statements were 93.82% and lines 96.69%. `apps/web/src/collab/session.ts` was at 97.43% statements, `recovery.ts` at 100%, `connection.ts` at 93.4%, and `workspace/workspace-room.ts` at 93.75%. `cargo test -p suiteleaf-node` passed (65 unit, 1 cluster, 36 multiuser). `cargo clippy -p suiteleaf-node --all-targets` reported nothing. `npx playwright test tests/browser/doc-collab.spec.ts --project=chromium` passed (6 tests). This was opened in two browsers.
+
+Acceptance evidence:
+- Different nodes converge on text, formatting, tables, and images, and reopening keeps them: `formatted_text_a_table_and_an_image_converge_on_another_node`.
+- Network loss: `a_dropped_connection_and_a_duplicate_edit_keep_the_saved_text` and the browser test `a dropped connection says it is reconnecting`.
+- Token expiration: `an_expired_session_cannot_change_the_open_room` and the `standing` tests.
+- Duplicate messages: `a_repeated_update_is_acknowledged_once_in_the_journal`.
+- Simultaneous joins: `simultaneous_joins_see_the_saved_edit` and `joins_before_the_log_arrives_still_see_the_edit`.
+- Node restart: `a_restart_keeps_an_edit_that_was_written_to_the_log`.
+- Revoked access within a documented bound of 5 seconds: the `standing` tests. Commenters cannot forge edits: `a_viewer_or_commenter_cannot_change_the_live_document` and `a_commenter_may_store_a_comment`.
+- Undo keeps the other person's work: the browser undo and redo test and `undoing_one_paragraph_keeps_the_other_persons_text`.
+- Going idle keeps edits: `tests/session-idle.test.ts`.
+- The fault cases replay the same three-node fixture: Garden notes, with "North bed" and "South bed".
+
+Known limits, not hidden:
+- Waiting edits live in the tab's session storage, so closing the tab before an `ack` loses them.
+- Reconnecting sends the full room state, not a diff against a state vector.
+- A role change stops the room until the file is opened again.
+- An open room on another node can be one 30-second sweep behind.
+- Old-generation edits are kept as a local copy, not merged.
+
+Status is `in_review`, not `done`. The portfolio clears a prerequisite only after its evidence is accepted, so WP-003, WP-004, and WP-018 stay blocked on WP-002 until then.
+
+2026-11-04, later: the product owner accepted the evidence above. Status is `done`. WP-003, WP-004, and WP-018 no longer wait on WP-002. The known limits listed above still apply.

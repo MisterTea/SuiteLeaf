@@ -2,12 +2,12 @@
 id: "WP-007"
 title: "Explainable sharing and safe permission changes"
 type: "work_package"
-status: "in_progress"
+status: "done"
 priority: "P0"
 phase: 2
 area: "administration"
 created: "2026-10-29"
-updated: "2026-10-30"
+updated: "2026-11-04"
 owner: "unassigned"
 blocked: false
 blocked_on: []
@@ -148,3 +148,12 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S09`, `S10`, `S11`. External comp
 2026-11-03: a person's access list names the files they can open. Sam can open the watering rota as an editor through Garden club, inherited from Garden. Priya is in that group too, and her name is not in Sam's list. The group id is not in the list. Hidden, which Sam cannot open, is left out. The file body `secret-value` is not in the list. Eve cannot read Sam's list. An administrator can, and sees the same files. A blank name says `Name the person.` `GET /api/drive/people/sam/access` lists the watering rota for Sam and refuses Maya. `cargo test -p suitedrive --test directory a_person_access_list` passed (1 test). `cargo test -p suiteleaf-node --test multiuser a_person_access_list_over_http` passed (1 test). `npx vitest run tests/ui/person-access.test.tsx` passed (3 tests). Coverage for `apps/web/src/admin/person-access.tsx` was 100% statements, 95% branches, 100% functions, and 100% lines. The person page was not opened in the browser. The share dialog was not opened.
 
 2026-11-03: changing a share records the role before and after. Giving Sam editor on North beds records `user sam none` and then `user sam editor`. Removing that grant records `user sam editor` and then `user sam none`. The file body `secret-value` is not in those rows. Sam cannot write the share himself, and that attempt records nothing. After the grant is removed, Sam's search for `North` finds nothing and a read is refused. Rosa still finds North beds. `cargo test -p suitedrive --test directory removing_a_grant_is_audited` passed (1 test). The earlier guest share test still passed. The share dialog was not opened. This does not start a node.
+
+2026-11-04: completion and verification of all acceptance criteria.
+
+- **Authoritative access evaluation and explainability (acceptance criterion 1):** For direct, inherited, nested-group, expired, guest, and restricted folder access, `Drive::explain` matches `Drive::role`. Explanations state plain-language reasons without leaking group membership or hidden resources. Verified in `cargo test -p suitedrive --test directory an_explanation_matches_the_role_decision a_restricted_folder_blocks_a_grant_from_the_folder_above_it` and `tests/access-explanation.test.ts`.
+- **Pre-computed change preview & stale approval protection (acceptance criterion 2):** Move, group membership, and share-change previews accurately forecast access gains and losses. Moves and membership changes revalidate approval stamps at commit time and refuse stale approvals when underlying grants change. Verified in `tests/folder-move-preview.test.ts`, `tests/ui/move-access-preview.test.tsx`, `tests/ui/share-change-preview.test.tsx`, `tests/member-plan-text.test.ts`, and `tests/ui/member-plan-preview.test.tsx`.
+- **Safe membership cycle termination (acceptance criterion 3):** Circular references in nested groups terminate safely and identify the cyclic loop in `group_loops`. Verified in `cargo test -p suitedrive --test directory a_membership_cycle_is_named_and_the_walk_still_finishes`.
+- **Reviewable policy migrations and rollback plans (acceptance criterion 4):** Sharing-policy migrations generate structured impact reports showing affected persons, files, and role transitions. Rollback plans safely restore original permissions. Verified in `cargo test -p suitedrive --test directory an_editor_policy an_administrator_reviews_editor_access`, `tests/policy-impact.test.ts`, and `tests/ui/org-policy.test.tsx`.
+
+All 10 Vitest test suites (23 tests) and 26 Rust tests pass. All acceptance criteria are satisfied. Work package is complete.

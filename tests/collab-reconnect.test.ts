@@ -225,3 +225,47 @@ describe("collaboration reconnect", () => {
     expect(queue.pending()[0].update).toBe("beds");
   });
 });
+describe("room generations", () => {
+  const edit = (id: string, generation?: number, type: "update" | "seed" = "update") => ({
+    id,
+    type,
+    update: "AA==",
+    unit: "paragraph",
+    key: "0",
+    at: "",
+    ...(generation === undefined ? {} : { generation }),
+  });
+
+  it("drops edits made in another generation and keeps the rest", () => {
+    const queue = new OutboundQueue();
+    queue.push(edit("old-1", 3));
+    queue.push(edit("old-seed", 3, "seed"));
+    queue.push(edit("now-1", 4));
+    queue.push(edit("before-generations"));
+    expect(queue.dropOtherGenerations(4)).toBe(1);
+    expect(queue.pending().map((m) => m.id)).toEqual(["now-1", "before-generations"]);
+    expect(queue.dropOtherGenerations(4)).toBe(0);
+  });
+
+  it("keeps a whole-number generation through session storage and drops anything else", () => {
+    const store = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => void store.set(key, value),
+      removeItem: (key: string) => void store.delete(key),
+    } as unknown as Storage;
+    const queue = new OutboundQueue();
+    queue.push(edit("a", 7));
+    saveQueue(storage, "file-1", queue);
+    const read = new OutboundQueue();
+    loadQueue(storage, "file-1", read);
+    expect(read.pending()[0]?.generation).toBe(7);
+    store.set(
+      "suiteleaf-room-queue:file-1",
+      JSON.stringify([{ ...edit("b"), generation: "secret-value" }, { ...edit("c"), generation: 1.5 }]),
+    );
+    loadQueue(storage, "file-1", read);
+    expect(read.pending().map((m) => m.generation)).toEqual([undefined, undefined]);
+    expect(JSON.stringify(read.pending())).not.toContain("secret-value");
+  });
+});

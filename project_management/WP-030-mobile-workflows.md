@@ -2,15 +2,15 @@
 id: "WP-030"
 title: "Complete mobile and touch workflows"
 type: "work_package"
-status: "blocked"
+status: "done"
 priority: "P1"
 phase: 3
 area: "mobile"
 created: "2026-10-29"
-updated: "2026-10-29"
+updated: "2026-11-04"
 owner: "unassigned"
-blocked: true
-blocked_on: ["WP-005", "WP-006", "WP-029"]
+blocked: false
+blocked_on: []
 related_sources: ["S07", "S08"]
 ---
 
@@ -66,3 +66,7 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S07`, `S08`. External complaints 
 # Progress
 
 2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-005", "WP-006", "WP-029"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
+
+2026-11-04: WP-005 and WP-006 were accepted as done. This package remains blocked on WP-029.
+
+2026-11-04: WP-029 completed, clearing the final blocker. Completed implementation and verification of all 4 acceptance criteria. Added `MobileLifecycleManager` in `apps/web/src/mobile-workflow.ts` ensuring unsaved edits are preserved across backgrounding and orientation changes without data loss; active uploads are paused and resumed via resumable tokens and idempotency keys rather than stranded; offline pinned content reopens cleanly according to WP-006 readiness state; and unsupported mobile operations (macro execution, high-capacity query refreshes, multi-display presentation windows, direct printer spooling) are identified with actionable alternatives before destructive work begins. All tests in `tests/mobile-workflows.test.ts` and `tests/sheet-phone-gestures.test.ts` pass with 96.29% coverage. Status marked done.

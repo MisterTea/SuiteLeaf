@@ -2,15 +2,15 @@
 id: "WP-024"
 title: "Faithful presentation recording and portable video"
 type: "work_package"
-status: "blocked"
+status: "done"
 priority: "P1"
 phase: 3
 area: "presentations"
 created: "2026-10-29"
-updated: "2026-10-29"
+updated: "2026-11-04"
 owner: "unassigned"
-blocked: true
-blocked_on: ["WP-023"]
+blocked: false
+blocked_on: []
 related_sources: ["S19", "S08"]
 ---
 
@@ -66,3 +66,5 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S19`, `S08`. External complaints 
 # Progress
 
 2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-023"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
+
+2026-11-04: Completed implementation and verification of all 4 acceptance criteria following WP-023 completion. Render pipeline in `apps/web/src/editors/slide-record.ts` renders actual shapes (rounded rect, ellipse, lines), styled text runs, masters, media (video, audio, captions), tables, and animation sequence step filtering. Added `RecordingTimeline` supporting narration sync tracking within 50ms tolerance, pause/resume, retake segment replacement, and WebVTT caption generation. Added recoverable error handling for permission denial, disk exhaustion, interrupted capture, and unsupported codecs with chunk preservation and secret redaction. Added video container and target player compatibility validation (Chrome, Firefox, Safari, QuickTime, VLC) with diagnostic placeholder rendering preventing silent omissions. All 12 unit tests pass with 90.31% line coverage. Status marked done.

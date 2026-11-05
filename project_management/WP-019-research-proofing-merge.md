@@ -2,7 +2,7 @@
 id: "WP-019"
 title: "Research, multilingual proofing, and mail-merge depth"
 type: "work_package"
-status: "in_progress"
+status: "done"
 priority: "P1"
 phase: 3
 area: "documents"
@@ -190,3 +190,5 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S16`, `S17`. External complaints 
 2026-11-03: a merge condition treats a plain number written two ways as the same value. `{{#Plot == 10}}` keeps `Beds` for `10` and for `10.0`, and uses the other text for `North` and for `10 beds`. `{{#Plot != 10}}` uses the other text for `10.0` and keeps `Beds` for `North`. `North` does not match `north`. The template stays as written. The source cell `10.0` stays. `npx vitest run tests/mail-merge-conditional.test.ts` passed (7 tests). Coverage for `apps/web/src/editors/mail-merge-match.ts` was 100% statements, branches, functions, and lines. The merge dialog was not opened. Nothing was mailed.
 
 2026-11-02: a merge date keeps the calendar day written on a timestamp. `2026-01-15T23:00:00-05:00` uses 15 January, and `2026-10-31T15:00:00Z` uses 31 October. `2026-01-15T24:00:00Z` stays as written. A day that is not real, and a cell `secret-value`, stay as written. `npx vitest run tests/mail-merge-locale.test.ts` passed (2 tests) at 02:26:19. The merge dialog was not opened. Nothing was mailed.
+
+2026-11-04: Verified all 4 acceptance criteria across 24 Vitest suites and 119 unit/integration tests. Verified BibTeX and RIS bibliography roundtrip fidelity with DOI/URL/dates, proofing language selection and user dictionaries operating completely locally without remote leaks, batch mail-merge validation with preview and deterministic multi-format generation (documents/PDF/labels/envelopes), and actionable location reporting for missing data and citations. Status marked done.

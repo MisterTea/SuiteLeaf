@@ -29,7 +29,11 @@
     "./paragraph-indent": "./src/paragraph-indent.ts",
     "./image-wrap": "./src/image-wrap.ts",
     "./image-inline": "./src/image-inline.ts",
-    "./image-extent": "./src/image-extent.ts"
+    "./image-extent": "./src/image-extent.ts",
+    "./offline": "./src/offline/index.ts",
+    "./provisioning": "./src/provisioning/index.ts",
+    "./search": "./src/search/index.ts",
+    "./workflows": "./src/workflows/index.ts"
   },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",

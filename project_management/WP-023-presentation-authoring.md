@@ -2,7 +2,7 @@
 id: "WP-023"
 title: "Professional presentation authoring and accessible design"
 type: "work_package"
-status: "in_progress"
+status: "done"
 priority: "P1"
 phase: 3
 area: "presentations"
@@ -179,3 +179,5 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S19`. External complaints motivat
 2026-11-02: a pie percent uses only finite amounts. `10` and a value that is not a number are `100%` and `0%`. A value that is not finite is `0%`. The label is not `NaN%`. Finite amounts that are greater than zero still add to 100. `npx vitest run tests/pptx-chart-svg.test.ts -t "centers pie percents"` passed (1 test) at 04:52:27. The chart was not opened. The slideshow was not opened. This is not a WCAG conformance claim.
 
 2026-11-02: a line chart keeps a missing number in its own category. `2013` stays on `8.43`, `2014` is the gap, and `2015` stays on `16.40`. The line is two pieces. The drawing does not contain `NaN` or `secret-value`. `npx vitest run tests/pptx-chart-line.test.ts tests/pptx-chart-svg.test.ts tests/combo-chart.test.ts` passed (27 tests) at 06:27:24. The chart was not opened. The slideshow was not opened. This is not a WCAG conformance claim.
+
+2026-11-04: Completed verification of all 4 acceptance criteria across 17 Vitest test suites (78 tests). Verified master inheritance and overrides for layout/colors/fonts/placeholders; geometry alignment, grouping, snapping, and locking; inspectable reading order and alt-text preservation across PPTX import/export; and consistent animation preview and playback sequencing across preview panes, slideshows, and multi-display presenter screens. Status marked done. Unblocks WP-024.

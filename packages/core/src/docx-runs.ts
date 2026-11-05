@@ -1,5 +1,6 @@
 import {
   AlignmentType,
+  InternalHyperlink,
   CommentRangeEnd,
   CommentRangeStart,
   CommentReference,
@@ -29,6 +30,7 @@ import {
 import type { JsonNode } from "./index";
 import { asEquation, type EqNode } from "./equations";
 import { officeFont } from "./office-fonts";
+import { bookmarkName } from "./heading-anchors";
 import type { DocxCommentPlan } from "./doc-comments";
 import { inText, type CitationLibrary } from "./citations";
 import { croppedFrame, docxImageCrop, imageCrop } from "./image-crop";
@@ -248,13 +250,17 @@ export function runs(
     }
     const run = new TextRun(opts);
     const link = n.marks?.find((m) => m.type === "link");
+    const href = String(link?.attrs?.href ?? "");
     const body: ParagraphChild =
-      link && /^(https?:|mailto:|tel:)/i.test(String(link.attrs?.href))
+      link && /^(https?:|mailto:|tel:)/i.test(href)
         ? new ExternalHyperlink({
-            link: String(link.attrs?.href),
+            link: href,
             children: [run],
           })
-        : run;
+        : link && /^#[A-Za-z0-9-]+$/.test(href)
+          ? // A link to a heading, written to the bookmark the heading carries.
+            new InternalHyperlink({ anchor: bookmarkName(href.slice(1)), children: [run] })
+          : run;
     return [...marked(plan, index, "starts"), body, ...marked(plan, index, "ends")];
   });
 }

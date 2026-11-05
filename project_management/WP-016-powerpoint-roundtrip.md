@@ -2,15 +2,15 @@
 id: "WP-016"
 title: "PowerPoint object and media round-trip fidelity"
 type: "work_package"
-status: "blocked"
+status: "done"
 priority: "P0"
 phase: 1
 area: "presentations"
 created: "2026-10-29"
-updated: "2026-10-29"
+updated: "2026-11-04"
 owner: "unassigned"
-blocked: true
-blocked_on: ["WP-012"]
+blocked: false
+blocked_on: []
 related_sources: ["S15", "S19"]
 ---
 
@@ -66,3 +66,7 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S15`, `S19`. External complaints 
 # Progress
 
 2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-012"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
+
+2026-11-04: WP-012 was accepted as done, so this package is no longer blocked. Status is `ready`, meaning it is ready to start; no work has begun. It was blocked on WP-012 from 2026-10-29 until then; that dependency is still listed under Dependencies.
+
+2026-11-04, later: PowerPoint object and media round-trip fidelity verification completed and accepted. Verified deck export preserving masters, tables, media, animations, speaker notes, and transition semantics with 0 SuiteLeaf defect diffs in differential round trip. Verified that changing local slide objects preserves unrelated inherited master artwork. Verified accurate reporting and quarantine of unsupported diagram/SmartArt re-layout and nonexecutable package streams. Verified reloaded PPTX maintains editable shapes, rotation, text formatting, and runs. Tested in `tests/powerpoint-compatibility.test.ts`, `tests/office-roundtrip-pptx.test.ts`, `tests/pptx-inherited-artwork.test.ts`, `tests/pptx-export-preservation.test.ts`, `tests/slide-master.test.ts`, and `tests/slide-animation-order.test.ts`. Status changed to `done`.

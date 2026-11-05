@@ -5,6 +5,18 @@ import {
   type Kind,
   type SuiteFile,
 } from "./file-schema";
+export type {
+  DrawingContent,
+  DrawingFormat,
+  DrawingFile,
+  DocFile,
+  FormFile,
+  JsonNode,
+  Kind,
+  SheetFile,
+  SlideFile,
+  SuiteFile,
+} from "./file-schema";
 import { safeLink } from "./link-target";
 import { packSharedMedia, unpackSharedMedia } from "./shared-media";
 

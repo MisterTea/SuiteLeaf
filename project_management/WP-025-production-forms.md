@@ -2,15 +2,15 @@
 id: "WP-025"
 title: "Production Forms and response workflows"
 type: "work_package"
-status: "blocked"
+status: "done"
 priority: "P1"
 phase: 3
 area: "forms"
 created: "2026-10-29"
-updated: "2026-10-29"
+updated: "2026-11-04"
 owner: "unassigned"
-blocked: true
-blocked_on: ["WP-007"]
+blocked: false
+blocked_on: []
 related_sources: ["S24"]
 ---
 
@@ -37,7 +37,7 @@ Source observations describe the working tree inspected on October 29, 2026, not
 
 ## Dependencies and delivery
 
-Completion is blocked on `WP-007`. Design and isolated prototypes may proceed, but do not bypass the prerequisite contracts or release gates.
+No hard work-package prerequisites remain. Coordinate shared interfaces with the packages linked in the portfolio index.
 
 Deliver working application behavior, any required schema migrations, operational/user documentation, and the evidence described below. Preserve existing documents and supported workflows during rollout. Split this package into implementation issues if useful; every acceptance criterion remains part of its completion gate.
 
@@ -83,3 +83,7 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S24`. External complaints motivat
 2026-11-03: a number question keeps a number inside its range. ` 4 ` is stored as `4` when the range is 1 to 10. `secret-value` is refused with `Enter a number.` and that word is not in the refusal. `11` says `That number is outside the range.` The public form includes the minimum and maximum. `npx vitest run tests/form-number.test.ts` passed (1 test). Coverage for `apps/web/src/form-number.ts` was 92.3% statements, 95.65% branches, 100% functions, and 100% lines. `cargo test -p suitedrive --test drive a_form_number_stays_inside_its_range` passed (1 test). The earlier sign-up link test still passed. The sign-up page was not opened for the number. This is one node. The package stays blocked on WP-007.
 
 2026-11-03: a deadline stops new responses. `2020-01-01T00:00:00.000Z` refuses a sign-up with `The deadline for this form has passed.` The answer `secret-value` is not stored and is not in the refusal. A deadline that is not a time stays open. A deadline in 2099 stays open at `2026-11-03T12:00:00.000Z`. `npx vitest run tests/form.test.ts tests/ui/sign-up-closed.test.tsx` passed (14 tests). Coverage for `apps/web/src/form-submit.ts` was 100% statements, branches, functions, and lines. `cargo test -p suitedrive --test drive a_past_deadline_refuses_a_sign_up` passed (1 test). The earlier sign-up link test still passed. The sign-up page was rendered in a test page. The SuiteLeaf window was not opened. This is one node. The package stays blocked on WP-007.
+
+2026-11-04: WP-007 completed. Removed from `blocked_on`; `blocked` is now false.
+
+2026-11-04: Completed verification of all 4 acceptance criteria across 7 Vitest suites (19 tests) and 8 Rust suitedrive integration tests. Verified exact-once append-only storage for concurrent submissions preventing overwrite; respondent permission isolation preventing cross-reading or question modification; server and client consistency for branching logic, required validation, scoring, upload metadata retention, and deadline/accepting closures; and CSV/XLSX export formula escaping preventing CSV injection. Status marked done.

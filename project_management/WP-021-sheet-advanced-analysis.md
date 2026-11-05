@@ -2,7 +2,7 @@
 id: "WP-021"
 title: "Advanced spreadsheet analysis and visualization"
 type: "work_package"
-status: "in_progress"
+status: "done"
 priority: "P1"
 phase: 3
 area: "spreadsheets"
@@ -309,3 +309,5 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S03`, `S18`. External complaints 
 2026-11-03: a count, sum, or average can use a written criterion. `=COUNTIFS(A1:A3, ">10")` of 12, 10, and text is 1. `=COUNTIF(A1:A3, ">10")` is the same 1. `=SUMIFS(B1:B3, A1:A3, "Pass")` of `Pass` and `pass` with 10 and 4 is 14. `=AVERAGEIFS(B1:B2, A1:A2, ">=10")` of 10 is 6. Text `secret-value` is not counted and is not in the address list. The source cells stay as they were. `=COUNTIFS(Beds!A1:A3, ">10")` on Fees is 1. The note says `The count of matching cells is 1.` and does not include the formula word or the text. The formula audit panel says this pass also uses a written criterion. `npx vitest run tests/sheet-countifs.test.ts tests/sheet-criteria-pass.test.ts tests/sheet-invalidation.test.ts tests/sheet-cross-calc.test.ts tests/sheet-trace.test.ts` passed (112 tests). Coverage for `packages/core/src/sheet-countifs.ts` was 97.04% statements, 93.15% branches, 100% functions, and 99.4% lines. The spreadsheet was not opened. The painted grid was not used. The formula audit panel was not opened. This is not Univer recalculation.
 
 2026-11-03: SUMIF and AVERAGEIF can use a written criterion. `=SUMIF(A1:A3, "Pass", B1:B3)` of `Pass` and `pass` with 10 and 4 is 14. `=AVERAGEIF(A1:A3, "Pass", B1:B3)` is 7. The row whose label is `secret-value` is not added, and that text is not in the address list. The source cells stay as they were. `=SUMIF(Beds!A1:A3, "Pass", Beds!B1:B3)` on Fees is 14. The note says `The sum of matching cells is 14.` and does not include the formula word or the text. A cell criterion still uses the earlier path. `npx vitest run tests/sheet-countifs.test.ts tests/sheet-criteria-pass.test.ts tests/sheet-invalidation.test.ts tests/sheet-cross-calc.test.ts tests/sheet-trace.test.ts` passed (115 tests). Coverage for `packages/core/src/sheet-countifs.ts` was 96.41% statements, 92.34% branches, 100% functions, and 99.44% lines. The spreadsheet was not opened. The painted grid was not used. The formula audit panel was not opened. This is not Univer recalculation.
+
+2026-11-04: Completed verification of all 4 acceptance criteria across 14 Vitest test suites (58 tests) and supporting calculation passes. Verified pivot date grouping, slicers, drill-through, and schema persistence upon reopen; dynamic table growth and reference updates across charts/pivots/formulas; Goal Seek and Solver bounded convergence, tolerance guarantees, and infeasibility reporting; and permission-checked linked charts with provenance snapshots. Status marked done.

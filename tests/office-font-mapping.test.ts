@@ -48,7 +48,8 @@ describe("Office font names", () => {
     expect(wordDefaultFont(defaults('w:ascii="Times New Roman"'))).toBe("SuiteLeaf Maple");
     const normal = '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:rPr><w:rFonts w:ascii="Aptos"/></w:rPr></w:style>';
     expect(wordDefaultFont(defaults('w:ascii="Arial"') + normal)).toBe("SuiteLeaf Elm");
-    expect(wordDefaultFont("<w:styles/>")).toBeUndefined();
+    // Word draws text in Times New Roman when nothing names a font.
+    expect(wordDefaultFont("<w:styles/>")).toBe("SuiteLeaf Maple");
   });
 
   it("keeps only a plain family name for the document body font", () => {

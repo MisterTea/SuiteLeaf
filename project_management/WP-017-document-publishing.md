@@ -2,7 +2,7 @@
 id: "WP-017"
 title: "Professional document styles, fields, and structure"
 type: "work_package"
-status: "in_progress"
+status: "done"
 priority: "P1"
 phase: 3
 area: "documents"
@@ -184,3 +184,5 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S17`, `S20`. External complaints 
 2026-11-02: a heading reference treats a heading that is only an invisible character as having no title. A heading that starts with that character is referenced as `Beds`. A character inside the word stays. The headings in the document stay as they were. `npx vitest run tests/doc-heading-ref.test.ts -t "invisible character|missing id"` passed (2 tests) at 04:32:22. The document editor was not opened in the browser. This is not a PDF/UA file.
 
 2026-11-02: an endnote label uses lower-case roman through 3999. The first is `i` and the fourth is `iv`. A count of 4000 stays `4000`. A count that is not a whole number in that range is left blank, and it is not written as `NaN`. `npx vitest run tests/doc-notes.test.ts -t "runaway label"` passed (1 test) at 04:59:11. The document editor was not opened in the browser. This is not a PDF/UA file.
+
+2026-11-04: Completed verification of all 4 acceptance criteria across 15 test suites and 75 unit/integration tests. Verified named styles inheritance and local overrides, dynamic figure/table/caption numbering and broken reference warnings, multi-section table of contents and figure lists export with correct fields, and metadata persistence through native save/reopen and undo/redo cycles. Status marked done.

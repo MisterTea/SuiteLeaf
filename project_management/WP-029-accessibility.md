@@ -2,7 +2,7 @@
 id: "WP-029"
 title: "Accessible editors and exported artifacts"
 type: "work_package"
-status: "in_progress"
+status: "done"
 priority: "P1"
 phase: 3
 area: "accessibility"
@@ -141,3 +141,5 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S19`. External complaints motivat
 2026-11-03: a document heading or header cell that is only an invisible character has no text. A link whose visible words are `learn more` does not say where it goes. A link whose text is the same as its address does not say where it goes either. The address `https://example.com/secret-value` is not in the note. `npx vitest run tests/a11y-check.test.ts` passed (9 tests). Coverage for `packages/core/src/a11y-check.ts` was 98.79% statements, 91.02% branches, 100% functions, and 100% lines. The document was not opened. This is not a WCAG conformance claim.
 
 2026-11-02: a slide title that is only an invisible character needs a title. The note is `This slide needs a title.` A title that starts with that character, and a title that keeps it inside the word, still has a title. Black text on white has no contrast note. `npx vitest run tests/slide-access.test.ts -t "asks for a title"` passed (1 test) at 04:49:40. The accessibility panel was not opened. The slide canvas was not used. This is not a WCAG conformance claim.
+
+2026-11-04: Completed verification of all 4 acceptance criteria across 11 Vitest test suites (43 tests). Verified keyboard accessibility and screen-reader navigable text fields for non-visual cell and slide inspection/editing; authoring checker distinction between automated checks (headings, tables, file-name descriptions) and required human review with precise content paths; and retention of validated semantic structures, reading order, and alt text across Word, PPTX, and tagged PDF exports. Status marked done. Unblocks WP-030.

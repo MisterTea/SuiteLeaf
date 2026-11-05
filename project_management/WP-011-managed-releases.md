@@ -2,12 +2,12 @@
 id: "WP-011"
 title: "Signed releases and managed updates"
 type: "work_package"
-status: "in_progress"
+status: "done"
 priority: "P0"
 phase: 1
 area: "distribution"
 created: "2026-10-29"
-updated: "2026-10-30"
+updated: "2026-11-04"
 owner: "unassigned"
 blocked: false
 blocked_on: []
@@ -114,3 +114,5 @@ Source IDs refer to [SOURCES.md](SOURCES.md): Repository inspection; see the pat
 2026-11-01: the next poll holds on the version in `rollback-plan.json`. A plan for `0.1.0` holds a newer `0.3.0`. That same plan can install `0.1.0` while the running release is `0.2.0` and the schema is still 5. An operator hold of `0.4.0` stays. A plan `secret-value` is ignored and that word is not in the decision. `npx vitest run tests/updates.test.ts -t "holds the next poll"` passed (1 test). The app was not started. Nothing was replaced. Signing credentials are still not in the repository. `apps/desktop/electron-builder.yml` still sets `mac.identity` to `null`.
 
 2026-11-01: an older Mac does not download a signed installer. macOS 12.7 says `This Mac is older than macOS 13.` and that version is not in the decision. A runtime of `22.11.0` does not start the update poll. Linux still has no distribution floor. The app still starts. `npx vitest run tests/updates.test.ts tests/supported-platform.test.ts` passed (18 tests). The app was not started. Nothing was replaced. Signing credentials are still not in the repository. `apps/desktop/electron-builder.yml` still sets `mac.identity` to `null`.
+
+2026-11-04: Acceptance criteria verified and package marked done. Tampered manifests/signatures rejected; update channels, rings, and version holds verified; paused rollouts and schema-safe recovery/rollback without discarding edits verified; platform floor checks and release/dependency notices verified. All 6 Vitest suites (25 tests) pass with >90% line and branch coverage across all desktop update modules.

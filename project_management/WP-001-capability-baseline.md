@@ -2,12 +2,12 @@
 id: "WP-001"
 title: "Capability inventory and parity release gates"
 type: "work_package"
-status: "in_progress"
+status: "done"
 priority: "P0"
 phase: 1
 area: "quality"
 created: "2026-10-29"
-updated: "2026-10-30"
+updated: "2026-11-04"
 owner: "unassigned"
 blocked: false
 blocked_on: []
@@ -88,3 +88,37 @@ Still open for this package: record a dated full-suite coverage measurement, and
 2026-11-01: the sharing capability no longer says access is unexplained before a permission change. Share changes, folder moves, and group membership have a preview. The remaining limit is that a sharing-policy migration does not produce an impact report. Sharing stays `partial`. `npx vitest run tests/capabilities/catalog.test.ts` passed (8 tests). The share dialog and the Admin page were not opened. No capability is `verified`.
 
 2026-11-01: the sharing capability now records an editor-to-viewer migration for files the owner has. The remaining limit is that this is not an organization-wide policy and the Admin page does not run it. Sharing stays `partial`. `npx vitest run tests/capabilities/catalog.test.ts` passed (8 tests). The Admin page was not opened. No capability is `verified`.
+
+2026-11-04: the catalog is now checked against its sources. `tests/capabilities/catalog-sources.test.ts` fails when:
+- a README **What works** bullet, or a README sentence that makes a claim, has no advertised capability behind it;
+- a work package whose status is not `blocked` has no capability row;
+- the whole-suite coverage gate drops below 90% lines or statements, or excludes anything except type declarations.
+
+`npm run check:capabilities` runs it with the catalog test. It caught two gaps, now closed. Document collaboration was advertised in the README but not in `advertisedIds`; with it removed again, the check failed. Six started packages had no row: WP-003, WP-004, WP-018, WP-022, WP-029, and WP-035. They now have `partial` rows, catalogued as hardening work rather than as missing features. The 13 test files those rows cite were run again today and passed (65 tests).
+
+2026-11-04: a dated full-suite measurement now exists.
+- `npx vitest run --coverage`: 615 files and 4,472 tests passed. Statements 93.82%, lines 96.69%, functions 95.77%, branches 85.84%. `vitest.config.ts` fails that command below 90% lines or statements and excludes only type declarations. Branches are below 90% and are not a failing threshold. That is a disclosed limit, not a pass.
+- `cargo test -p suiteleaf-node` passed: 65 unit, 1 cluster, and 36 multiuser tests.
+
+These runs are baseline rows in the catalog, and the coverage policy text no longer says there is no repository-wide threshold.
+
+2026-11-04: the spreadsheet workflow now has cell entry. `npx playwright test tests/browser/sheet-collab.spec.ts tests/browser/slide-collab.spec.ts --project=chromium` passed (2 tests). In the sheet test, North was typed into the painted grid in one browser and appeared in the other, while the other worksheet stayed separate. With the 2026-10-31 document and presentation walks and the six two-browser document tests, each editor has one complete workflow on record.
+
+2026-11-04: `docs/capabilities.md` separates native preservation, Office conversion, visual fidelity, and calculation correctness, with a table for each format. It says historical corpus results are not current evidence until they are run again. The README points to that section. `cap-doc-collaboration` is the first `verified` row.
+
+Acceptance evidence:
+- Advertised features: every advertised feature names its platforms and modes and has evidence or an inconclusive label. The schema requires this, and the source check ties README claims to advertised rows.
+- Existing advanced features: they are catalogued, and every started package has a row.
+- Release reports: `releaseReport` counts pass, fail, skipped, unavailable-reference, and inconclusive separately. The catalog test covers a failure beside inconclusive rows.
+- Update procedure: `docs/capabilities.md` has a seven-step update procedure, and `npm run check:capabilities` enforces it.
+
+Known limits:
+- Branch coverage is 85.84% and is not a failing threshold.
+- Rust coverage is not measured.
+- Most rows and four of seven workflows remain inconclusive. That is the honest label, not a gap in this package.
+
+Status is `in_review`. WP-012 stays blocked on WP-001 until the evidence is accepted.
+
+2026-11-04, later: the product owner accepted the evidence above. Status is `done`. WP-012 no longer waits on WP-001. The known limits listed above still apply.
+
+2026-11-04, later still: the source check now asks for a capability row only from a package that has started (`in_progress`, `in_review`, or `done`). A `ready` package has no work yet. Before this, unblocking WP-013 as `ready` would have failed the check, because WP-013 has no row. `docs/capabilities.md` says the same.

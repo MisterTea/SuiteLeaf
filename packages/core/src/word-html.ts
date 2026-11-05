@@ -104,7 +104,7 @@ export function htmlToDocument(
       const next = [...marks];
       if (markType && !next.some((m) => m.type === markType))
         next.push({ type: markType });
-      // Symbol-font text, in its SuiteLeaf face (symbolSpans).
+      // A run's own font, or symbol-font text, in its SuiteLeaf face (symbolSpans).
       if (tag === "span" && e.attribs["data-font"])
         next.push({ type: "textStyle", attrs: { fontFamily: e.attribs["data-font"] } });
       const href = tag === "a" ? (e.attribs.href ?? "") : "";

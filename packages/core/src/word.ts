@@ -32,6 +32,9 @@ import { rejoinSplitPictures, settleWordPictures } from "./image-inline";
 import { layoutNote } from "./image-wrap";
 import { wordKerning } from "./word-kerning";
 import { wordDefaultFont } from "./word-fonts";
+import { insertWordSectionBreaks } from "./word-sections";
+import { applyWordListTypes } from "./word-lists";
+import { relinkWordBookmarks } from "./heading-anchors";
 import { markMammothSymbols, symbolSpans } from "./word-symbols";
 import {
   letterheadDistanceNote,
@@ -336,6 +339,18 @@ export async function importDocx(
     rejoinSplitPictures(drawings.doc, drawings.sharesParagraph),
   );
   insertWordPageBreaks(content, xml);
+  for (const warning of await insertWordSectionBreaks(content, xml, zip)) warnings.push(warning);
+  const links = relinkWordBookmarks(content, xml);
+  if (links.unresolved)
+    warnings.push(
+      `${links.unresolved} internal link${links.unresolved === 1 ? " points" : "s point"} to a place that is not a heading. SuiteLeaf links only to headings, so ${links.unresolved === 1 ? "it does" : "they do"} not move the cursor.`,
+    );
+  applyWordListTypes(
+    content,
+    xml,
+    (await zip.file("word/numbering.xml")?.async("string")) ?? "",
+    (await zip.file("word/styles.xml")?.async("string")) ?? "",
+  );
   const hasTitlePg =
     /<w:titlePg\b(?:\s+[^>]*w:val="(?:true|1|on)")?(?:\/|\s*>)/.test(xml);
   const isPureCoverPage = isCoverPage && !/<w:br\b[^>]*w:type="page"/.test(xml);

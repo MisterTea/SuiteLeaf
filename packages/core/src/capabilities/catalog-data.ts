@@ -454,23 +454,42 @@ export const capabilities: Capability[] = [
   {
     id: "cap-doc-collaboration",
     name: "Document collaboration",
-    summary: "A Yjs room can mirror paragraph text. The README still says real-time shared editing is deferred.",
+    summary:
+      "People editing a SuiteDrive document at the same time, on one node or on different nodes, share text, formatting, tables, pictures, comments, carets, and undo of their own edits.",
     parity: "enterprise-workspace",
-    status: "partial",
+    status: "verified",
     platforms: ["web", "node"],
-    modes: ["cluster"],
+    modes: ["single-node", "cluster"],
     ui: ["shared document"],
     formats: [".sldoc"],
     limits: [
-      "README says real-time shared editing remains deferred.",
-      "Compaction keeps the prosemirror Yjs fragment when it is present, including marks and tables. A room that only logged paragraph strings still falls back to those strings.",
-      "Reconnect, cross-node journal recovery, and spreadsheet or slide collaboration are not claimed.",
+      "Protocol 1 is described in docs/collaboration-protocol.md. Access is withdrawn within 5 seconds of a revoked grant, session, or token, or on the person's next message.",
+      "Edits waiting for the node are kept in the tab's session storage. Closing the tab before the node answers loses them.",
+      "An edit made in an earlier generation of the room is kept as a separate local copy, not merged into the new room.",
+      "A role change stops the room until the file is opened again.",
+      "An already open room on another node can be one 30-second sweep behind.",
+      "Spreadsheet and slide collaboration are WP-003 and WP-004 and are not claimed here.",
     ],
-    evidence: doc(
-      "tests/collab-rich.test.ts",
-      "2026-10-30: tests/collab-rich.test.ts passed, 3 tests. That covers unit compaction of a bold run and a table, not a two-browser session.",
-      "pass",
-    ),
+    evidence: [
+      {
+        kind: "rust",
+        ref: "crates/suiteleaf-node/tests/multiuser",
+        result: "pass",
+        note: "2026-11-04: cargo test -p suiteleaf-node --test multiuser passed. It covers convergence across nodes for bold text, a table, and an embedded picture; restart; a dropped connection; duplicate edits; simultaneous joins; expired sessions; revoked grants; quiet viewers; token renewal; role changes; and edits from an earlier generation.",
+      },
+      {
+        kind: "browser",
+        ref: "tests/browser/doc-collab.spec.ts",
+        result: "pass",
+        note: "2026-11-04: 6 Chromium tests passed with two browsers on one node: typing, keyboard undo and redo, caret and selection, a viewer, comments, and a dropped connection.",
+      },
+      {
+        kind: "unit",
+        ref: "tests/ui/collab-session-room.test.tsx",
+        result: "pass",
+        note: "2026-11-04: the client hook reconnects, renews its token, stops on a changed role, and starts a new copy when the room generation changes instead of repeating text.",
+      },
+    ],
     workPackages: ["WP-002"],
   },
   {
@@ -553,6 +572,146 @@ export const capabilities: Capability[] = [
   },
 ];
 
+/** Rows added 2026-11-04 for packages with recorded progress, so existing work is catalogued as hardening rather than listed as missing. */
+const since = "2026-11-04";
+const pass = (kind: "unit" | "rust" | "browser", ref: string, note: string): Capability["evidence"][number] => ({
+  kind,
+  ref,
+  result: "pass",
+  note: `${since}: ${note}`,
+});
+
+export const progressCapabilities: Capability[] = [
+  {
+    id: "cap-sheet-collaboration",
+    name: "Spreadsheet collaboration",
+    summary:
+      "People editing one SuiteDrive workbook share cells by worksheet, row and column operations, renames, merges, sizes, sort for everyone, named ranges, validation, comments, charts, and selections.",
+    parity: "enterprise-workspace",
+    status: "partial",
+    platforms: ["web", "node"],
+    modes: ["single-node", "cluster"],
+    ui: ["shared spreadsheet"],
+    formats: [".slsheet"],
+    limits: [
+      "WP-003 is not complete. Each acceptance case is tracked in that package.",
+      "A personal filter and a personal sort stay on this screen and do not change the shared cells.",
+    ],
+    evidence: [
+      pass("unit", "tests/sheet-collab.test.ts", "passed in a 13-file run (65 tests) with the other rows added on this date."),
+      pass(
+        "browser",
+        "tests/browser/sheet-collab.spec.ts",
+        "1 Chromium test passed in two browsers. North typed into the painted grid on one screen appeared on the other, and the other worksheet stayed separate.",
+      ),
+    ],
+    workPackages: ["WP-003"],
+  },
+  {
+    id: "cap-slide-collaboration",
+    name: "Presentation collaboration",
+    summary:
+      "People editing one SuiteDrive deck share each slide object separately, the slide order, notes, comments, pictures, the master, and slide selections.",
+    parity: "enterprise-workspace",
+    status: "partial",
+    platforms: ["web", "node"],
+    modes: ["single-node", "cluster"],
+    ui: ["shared presentation"],
+    formats: [".slslides"],
+    limits: ["WP-004 is not complete. Each acceptance case is tracked in that package."],
+    evidence: [
+      pass("unit", "tests/slide-room.test.ts", "passed in the same 13-file run."),
+      pass(
+        "browser",
+        "tests/browser/slide-collab.spec.ts",
+        "1 Chromium test passed in two browsers. Another person's slide edit showed on the canvas, and this person's selected slide stayed put.",
+      ),
+    ],
+    workPackages: ["WP-004"],
+  },
+  {
+    id: "cap-document-review",
+    name: "Document review",
+    summary:
+      "Two reviewers' copies can be combined against a baseline, and a block both changed asks for a choice. A Word download carries the stored review.",
+    parity: "professional-desktop",
+    status: "partial",
+    platforms: ["web", "desktop"],
+    modes: ["serverless", "single-node", "cluster"],
+    ui: ["review panel"],
+    formats: [".sldoc", ".docx"],
+    limits: [
+      "The review travels in a SuiteLeaf part inside the Word file. Word's own tracked changes are not written from it.",
+      "Assigned review and approval are WP-018 and WP-027 and are not claimed here.",
+    ],
+    evidence: [
+      pass("unit", "tests/review-combine.test.ts", "passed with tests/review-docx.test.ts and tests/review-store.test.ts in the same run."),
+    ],
+    workPackages: ["WP-018"],
+  },
+  {
+    id: "cap-sheet-performance",
+    name: "Spreadsheet cost and cancellation",
+    summary:
+      "The Cost note counts cells, formulas, volatile formulas, rules, and charts. A long query refresh or step can be cancelled and keeps the last saved result.",
+    parity: "professional-desktop",
+    status: "partial",
+    platforms: ["web", "desktop"],
+    modes: ["serverless", "single-node", "cluster"],
+    ui: ["Cost", "Data refresh"],
+    formats: [".slsheet"],
+    limits: [
+      "The Cost note does not time recalculation.",
+      "Capacity tiers and a profiled large-workbook benchmark are WP-022 and are not claimed here.",
+    ],
+    evidence: [
+      pass(
+        "unit",
+        "tests/sheet-benchmark.test.ts",
+        "passed with tests/ui/sheet-cost-note.test.tsx and tests/sheet-invalidation.test.ts in the same run. This is not a timing benchmark of a large workbook.",
+      ),
+    ],
+    workPackages: ["WP-022"],
+  },
+  {
+    id: "cap-accessibility-checks",
+    name: "Accessibility notes",
+    summary:
+      "Documents, spreadsheets, and presentations list accessibility findings. Each note says whether it is automatic or needs a person, and choosing it goes to that place.",
+    parity: "everyday-editor",
+    status: "partial",
+    platforms: ["web", "desktop"],
+    modes: ["serverless", "single-node", "cluster"],
+    ui: ["Accessibility notes"],
+    formats: [".sldoc", ".slsheet", ".slslides"],
+    limits: [
+      "Notes are checks, not a conformance claim. A screen-reader pass and tagged exports are WP-029 and are not claimed here.",
+    ],
+    evidence: [
+      pass("unit", "tests/a11y-check.test.ts", "passed with tests/ui/access-notes.test.tsx and tests/slide-access.test.ts in the same run."),
+    ],
+    workPackages: ["WP-029"],
+  },
+  {
+    id: "cap-commercial-transparency",
+    name: "Packaging and organization export",
+    summary:
+      "Packaging lists license, hosting, storage, backups, support, and the assistant as separate categories. An administrator can export accounts, groups, memberships, and sharing without secrets.",
+    parity: "enterprise-workspace",
+    status: "partial",
+    platforms: ["web", "node"],
+    modes: ["single-node", "cluster"],
+    ui: ["Admin", "Feature matrix"],
+    formats: [".json"],
+    limits: [
+      "Prices other than the license are not published, and the matrix says so instead of showing a price.",
+      "The export does not include file bytes.",
+    ],
+    evidence: [pass("unit", "tests/packaging.test.ts", "passed with tests/ui/sync-health.test.tsx in the same run.")],
+    workPackages: ["WP-035"],
+  },
+];
+
 export const advertisedIds = [
   "cap-files-library",
   "cap-office-import",
@@ -577,4 +736,5 @@ export const advertisedIds = [
   "cap-suitedrive",
   "cap-sharing",
   "cap-assistant",
+  "cap-doc-collaboration",
 ];

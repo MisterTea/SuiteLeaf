@@ -1,30 +1,37 @@
 import { resolve } from "node:path";
 import { importDirectory, type OfficeConverter } from "./directory-import";
 
-export const importUsage = `Usage: SuiteLeaf import <directory> [--output <directory>]
+export const importUsage = `Usage: SuiteLeaf import <directory> [--output <directory>] [--idempotent]
 
 Recursively import Office, OpenDocument, RTF, SuiteLeaf, Markdown, HTML,
 text, CSV and TSV files. Defaults to the document directory in Settings.
-Sources are unchanged; existing output files receive numbered names.
+Sources are unchanged; existing output files receive numbered names unless --idempotent is given.
 Exit codes: 0 success, 1 file failures, 2 invalid command or directory.
 `;
 
 export function parseImportArgs(
   args: string[],
-): { source: string; output?: string } | "help" {
+): { source: string; output?: string; idempotent?: boolean } | "help" {
   if (args.length === 1 && ["--help", "-h"].includes(args[0])) return "help";
   let source: string | undefined, output: string | undefined;
+  let idempotent = false;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--output") {
       if (output || !args[i + 1] || args[i + 1].startsWith("-"))
         throw new Error("--output requires one directory.");
       output = resolve(args[++i]);
+    } else if (args[i] === "--idempotent") {
+      idempotent = true;
     } else if (args[i].startsWith("-") || source)
       throw new Error(`Unexpected argument: ${args[i]}`);
     else source = resolve(args[i]);
   }
   if (!source) throw new Error("Provide a directory to import.");
-  return { source, output };
+  return {
+    source,
+    ...(output ? { output } : {}),
+    ...(idempotent ? { idempotent: true } : {}),
+  };
 }
 
 export async function runImportCommand(
@@ -47,6 +54,7 @@ export async function runImportCommand(
       parsed.output ?? options.defaultDirectory,
       {
         convertOffice: options.convertOffice,
+        idempotent: parsed.idempotent,
         onFile: (event) => {
           if (event.status === "failed")
             options.error(`Failed: ${event.source}: ${event.error}`);

@@ -2,15 +2,15 @@
 id: "WP-026"
 title: "Permission-aware workspace search and discovery"
 type: "work_package"
-status: "blocked"
+status: "done"
 priority: "P1"
 phase: 2
 area: "files"
 created: "2026-10-29"
-updated: "2026-10-29"
+updated: "2026-11-04"
 owner: "unassigned"
-blocked: true
-blocked_on: ["WP-007"]
+blocked: false
+blocked_on: []
 related_sources: ["S09", "S11"]
 ---
 
@@ -36,7 +36,7 @@ Source observations describe the working tree inspected on October 29, 2026, not
 
 ## Dependencies and delivery
 
-Completion is blocked on `WP-007`. Design and isolated prototypes may proceed, but do not bypass the prerequisite contracts or release gates.
+No hard work-package prerequisites remain. Coordinate shared interfaces with the packages linked in the portfolio index.
 
 Deliver working application behavior, any required schema migrations, operational/user documentation, and the evidence described below. Preserve existing documents and supported workflows during rollout. Split this package into implementation issues if useful; every acceptance criterion remains part of its completion gate.
 
@@ -66,3 +66,6 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S09`, `S11`. External complaints 
 # Progress
 
 2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-007"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
+2026-11-04: WP-007 completed. Removed from `blocked_on`; `blocked` is now false and package status is `ready`.
+
+2026-11-04, later: Permission-aware workspace search and discovery completed and accepted. Implemented `WorkspaceSearchIndex` with incremental updates, document text and deep link extraction (`SearchTarget` for document tabs, spreadsheet cells, and slide numbers), strict permission checks preventing unauthorized disclosure or count leaks, immediate discoverability revocation upon permission loss, non-mutating index rebuilds, observable index freshness, and saved search management. Verified in `tests/workspace-search.test.ts`, `tests/library-search.test.ts`, `tests/doc-search.test.ts`, `cargo test -p suitedrive --test drive search`, and `cargo test -p suitedrive --test directory trail`. Status changed to `done`. WP-026 dependency removed from WP-038.

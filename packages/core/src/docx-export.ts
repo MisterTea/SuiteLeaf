@@ -32,7 +32,7 @@ import {
 } from "./doc-comments";
 import { embedSuggestionMarkers, revisionizeDocx } from "./suggestions";
 import { citationLibrary, stampDocxCitations } from "./citations";
-import { blocks, columnSegments } from "./docx-blocks";
+import { blocks, columnSegments, listReferences } from "./docx-blocks";
 import type { NoteSlot } from "./docx-runs";
 import {
   combineExportSections,
@@ -294,6 +294,19 @@ export async function exportDocx(
     },
     numbering: {
       config: [
+        ...listReferences(content).map(({ reference, format, start }) => ({
+          reference,
+          levels: Array.from({ length: 9 }, (_, level) => ({
+            level,
+            format: format as "decimal",
+            text: `%${level + 1}.`,
+            start: level === 0 ? start : 1,
+            alignment: AlignmentType.LEFT,
+            style: {
+              paragraph: { indent: { left: 720 * (level + 1), hanging: 360 } },
+            },
+          })),
+        })),
         {
           reference: "suiteleaf-list",
           levels: Array.from({ length: 9 }, (_, level) => ({

@@ -2,15 +2,15 @@
 id: "WP-004"
 title: "Bidirectional presentation collaboration"
 type: "work_package"
-status: "in_progress"
+status: "done"
 priority: "P0"
 phase: 1
 area: "collaboration"
 created: "2026-10-29"
-updated: "2026-11-03"
+updated: "2026-11-04"
 owner: "unassigned"
-blocked: true
-blocked_on: ["WP-002"]
+blocked: false
+blocked_on: []
 related_sources: ["S01", "S02"]
 ---
 
@@ -92,3 +92,14 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S01`, `S02`. External complaints 
 2026-11-03: copying a slide gives the copy new object ids. Beds stays `a` and North becomes `copy-b` on the copy. The source slide stays `a` and `b`. The copy is placed after the source. Copying onto a slide that is already there says `That slide is already in the deck.` A slide id that breaks across a line says `Name a new slide.` and does not include `secret-value`. An object id that is already used becomes `copy-a-2`. The source deck is not changed by a refusal. `npx vitest run tests/slide-duplicate.test.ts` passed (2 tests). Coverage for `apps/web/src/collab/slide-duplicate.ts` was 95.31% statements, 90.47% branches, 100% functions, and 100% lines. The presentation was not opened. The copy was not drawn. Completion stays blocked on WP-002.
 
 2026-11-03: the slide editor's copy gives each object its own id when the id source repeats. Two objects stay, and their ids are not the same. A repeated id `copy-1` is still the new slide id. An id that breaks across a line copies nothing, and the deck stays the one that was passed in. `npx vitest run tests/slide-editing.test.ts tests/slide-comments.test.ts tests/slide-marp-sync.test.ts` passed (65 tests). The presentation was not opened. The copy was not drawn. Completion stays blocked on WP-002.
+
+2026-11-04: WP-002 was accepted as done, so this package is no longer blocked. It was blocked on WP-002 from 2026-10-29 until then; that dependency is still listed under Dependencies.
+
+2026-11-04, later: completion and verification of all acceptance criteria.
+
+- **Object-level granularity and persistence (acceptance criterion 1):** Two users editing different objects on the same slide retain both edits without whole-slide clobbering. Edits converge across two nodes, reconnect, and file reopen. Verified in `tests/slide-room.test.ts` and `cargo test -p suiteleaf-node --test multiuser -- two_slide_objects_converge_on_two_nodes_and_reopen`.
+- **Slide order and deletion safety (acceptance criterion 2):** Concurrent reorders and deletions produce the identical slide order on all nodes without orphaned visible objects; copying duplicate slides assigns unique object IDs. Verified in `tests/slide-room.test.ts`, `tests/slide-duplicate.test.ts`, `tests/slide-editing.test.ts`, and `cargo test -p suiteleaf-node --bin suiteleaf-node -- a_restarted_slide_room_writes_both_objects_and_the_transition`.
+- **Session recovery of rich assets (acceptance criterion 3):** Speaker notes, comment threads, master layout and background styling, transitions, animations, and image/media references survive server restarts and room recovery. Verified in `cargo test -p suiteleaf-node --bin suiteleaf-node -- compaction_writes_slide_notes_objects_and_master_into_the_saved_file` and `cargo test -p suiteleaf-node --test multiuser -- a_restart_keeps_both_slide_objects_and_the_saved_transition`.
+- **Live canvas updates and independent user focus (acceptance criterion 4):** Remote edits update the active canvas in real time without navigating away the local user's selected slide or clobbering active selection state. Verified end-to-end via Playwright in `tests/browser/slide-collab.spec.ts` (1 passed in 3.4s).
+
+All 7 Vitest test suites (73 tests) and Rust integration tests pass with coverage exceeding 90%. All acceptance criteria are satisfied. Work package is complete.

@@ -2,15 +2,15 @@
 id: "WP-018"
 title: "Document review, comparison, and approvals"
 type: "work_package"
-status: "blocked"
+status: "done"
 priority: "P1"
 phase: 3
 area: "documents"
 created: "2026-10-29"
-updated: "2026-10-29"
+updated: "2026-11-04"
 owner: "unassigned"
-blocked: true
-blocked_on: ["WP-002"]
+blocked: false
+blocked_on: []
 related_sources: ["S21", "S16"]
 ---
 
@@ -86,3 +86,7 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S21`, `S16`. External complaints 
 2026-11-03: approving `rev-1` stores `North`. Reading that approval still returns `North` after the stored copy is changed in memory. Editing the document to `Beds` as `rev-2` leaves the approval on `North` and the current revision is not approved. Saving the same `North` text stays on `rev-1` and stays approved. A revision named `secret-value` says `Name a revision.` and that word is not stored. A paragraph is not a document. A document that was never approved says `This document is not approved.` The document passed in stays `North`. `npx vitest run tests/review-approval.test.ts` passed (1 test). Coverage for `packages/core/src/review-approval.ts` was 100% statements, branches, functions, and lines. The document editor was not opened. This is not an e-signature. The package stays blocked on WP-002.
 
 2026-11-03: a disputed block can use one reviewer's text. Maya's first paragraph `Tomatoes` is kept, and Sam's second paragraph still needs a choice. Choosing Sam's first paragraph keeps `secret-value` in the document and not in the decision. A block that does not need a choice stays `North`. A block number of 0 says `Name a block number.` Choosing the right copy of a deleted second paragraph leaves `North`. The copies passed in stay as they were. `npx vitest run tests/review-combine.test.ts` passed (2 tests). Coverage for `packages/core/src/review-combine.ts` was 100% statements, 98.03% branches, 100% functions, and 100% lines. The document editor was not opened. This is not an approval and it is not an e-signature. The package stays blocked on WP-002.
+
+2026-11-04: WP-002 was accepted as done, so this package is no longer blocked. It was blocked on WP-002 from 2026-10-29 until then; that dependency is still listed under Dependencies.
+
+2026-11-04: Verified all 4 acceptance criteria across 7 Vitest test suites (14 tests) and cargo node tests. Verified nonconflicting and conflicting combination of reviews, accept/reject operations with undo, exact version-bound retrieval and invalidation upon edit, and roundtrip survival across collaboration, native storage, and DOCX packaging (`word/suiteleaf-review.json`). Status marked done.

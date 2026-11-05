@@ -274,6 +274,26 @@ impl Cluster {
     }
 
     pub(crate) async fn connect(&self, node: usize, item: &str, person_id: &str) -> LiveClient {
+        self.connect_with(node, item, person_id, true).await
+    }
+
+    /// A client that sends nothing after it joins, like a viewer reading.
+    pub(crate) async fn connect_quiet(
+        &self,
+        node: usize,
+        item: &str,
+        person_id: &str,
+    ) -> LiveClient {
+        self.connect_with(node, item, person_id, false).await
+    }
+
+    async fn connect_with(
+        &self,
+        node: usize,
+        item: &str,
+        person_id: &str,
+        heartbeat: bool,
+    ) -> LiveClient {
         let person = self.person(person_id);
         let url = format!(
             "{}/api/drive/items/{item}/session?access_token={}",
@@ -284,7 +304,7 @@ impl Cluster {
             .await
             .unwrap_or_else(|_| panic!("{person_id} timed out joining the room"))
             .unwrap_or_else(|err| panic!("{person_id} could not join: {err}"));
-        LiveClient::spawn(person.name.clone(), socket).await
+        LiveClient::spawn(person.name.clone(), socket, heartbeat).await
     }
 
     pub(crate) async fn editors(&self, node: usize, item: &str, ids: &[&str]) -> Vec<LiveClient> {

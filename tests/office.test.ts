@@ -324,7 +324,8 @@ describe("editable Office imports", () => {
       expect(headings.length).toBe(1);
       expect(headings[0].attrs?.level).toBe(3);
       expect(documentText(headings[0])).toBe("1.1.1 Acronyms");
-      expect(headings[0].content?.[0].marks).toEqual([{ type: "bold" }]);
+      // The heading's own style (EdfTitre3) sets Arial Gras, which the import now keeps.
+      expect(headings[0].content?.[0].marks).toEqual([{ type: "bold" }, { type: "textStyle", attrs: { fontFamily: "Arial Gras" } }]);
 
       const tables = (file.content.content ?? []).filter(
         (n) => n.type === "table",
@@ -333,19 +334,20 @@ describe("editable Office imports", () => {
       const rows = tables[0].content ?? [];
       expect(rows.length).toBe(6);
 
+      // Table text uses the EdfCorpstexte style, which sets Arial (SuiteLeaf Aspen); the body font is Calibri.
       // Header row
       expect(rows[0].content?.[0].type).toBe("tableHeader");
       expect(documentText(rows[0].content![0])).toBe("Acronym");
-      expect(rows[0].content![0].content?.[0]?.content?.[0]?.marks).toEqual([{ type: "bold" }]);
+      expect(rows[0].content![0].content?.[0]?.content?.[0]?.marks).toEqual([{ type: "bold" }, { type: "textStyle", attrs: { fontFamily: "SuiteLeaf Aspen" } }]);
       expect(rows[0].content?.[1].type).toBe("tableHeader");
       expect(documentText(rows[0].content![1])).toBe("Definition");
-      expect(rows[0].content![1].content?.[0]?.content?.[0]?.marks).toEqual([{ type: "bold" }]);
+      expect(rows[0].content![1].content?.[0]?.content?.[0]?.marks).toEqual([{ type: "bold" }, { type: "textStyle", attrs: { fontFamily: "SuiteLeaf Aspen" } }]);
 
       // First column bold in data rows
       expect(documentText(rows[1].content![0])).toBe("LAB");
-      expect(rows[1].content![0].content?.[0]?.content?.[0]?.marks).toEqual([{ type: "bold" }]);
+      expect(rows[1].content![0].content?.[0]?.content?.[0]?.marks).toEqual([{ type: "bold" }, { type: "textStyle", attrs: { fontFamily: "SuiteLeaf Aspen" } }]);
       expect(documentText(rows[1].content![1])).toBe("Logical Architecture Blank");
-      expect(rows[1].content![1].content?.[0]?.content?.[0]?.marks).toBeUndefined();
+      expect(rows[1].content![1].content?.[0]?.content?.[0]?.marks).toEqual([{ type: "textStyle", attrs: { fontFamily: "SuiteLeaf Aspen" } }]);
 
       expect(report.textPreserved).toBe(true);
     },

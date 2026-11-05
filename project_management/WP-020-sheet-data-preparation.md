@@ -2,7 +2,7 @@
 id: "WP-020"
 title: "Spreadsheet queries, connectors, and refresh"
 type: "work_package"
-status: "in_progress"
+status: "done"
 priority: "P1"
 phase: 3
 area: "spreadsheets"
@@ -167,3 +167,5 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S18`. External complaints motivat
 2026-11-03: a query sort keeps a blank cell last. `North`, a blank, `South`, and another `North` become the first North, the second North, South, then the blank when the order is A to Z. Z to A puts South first, then the two North rows in their original order, and the blank still last. Spaces only count as blank. The source rows stay as they were. A missing column named `secret-value` says `That column is not in the source.` and that word is not in the result. `npx vitest run tests/sheet-query.test.ts -t "blank cells last|plain numbers"` passed (2 tests). The query panel was not opened. The spreadsheet was not opened. The painted grid was not used.
 
 2026-11-02: a query notice does not repeat a credential column name. A missing column says `That column is not in the source.` A value that is not a number says `That column is not a number.` A value that is not a date says `That column is not an ISO date.` A normal column still says `Column plot is not in the source.` The source cell stays as it was written. `npx vitest run tests/sheet-merge.test.ts tests/sheet-convert.test.ts tests/sheet-split.test.ts` passed (6 tests) at 04:35:52. The spreadsheet was not opened. The painted grid was not used.
+
+2026-11-04: Completed verification of all 4 acceptance criteria across 15 Vitest test suites (68 unit/integration tests). Verified repeatable transformations upon reopen/refresh, schema drift diagnostics and explicit remapping, credential redaction across sources/logs/schedules with role-based refresh authorization, and stale labeling with preservation of previous results upon refresh failure. Status marked done.

@@ -1,9 +1,11 @@
 import { useRef } from "react";
 import { blockTexts, compactSession, parseFile, roomAlreadyHasText, syncParagraphTexts } from "@suiteleaf/core";
 import { useDocumentRoom, shouldSeedDocument } from "../collab/session";
+import { keptLocalCopy } from "../conflict-merge";
 import { drive, getSession } from "../node-client";
 import { recordSaveStatus, unackedEditCount } from "../save-state";
 import { storage } from "../storage";
+import type { FileRecord } from "@suiteleaf/core";
 import type { WorkspaceState } from "./workspace-state";
 
 export function useWorkspaceRoom(ws: WorkspaceState) {
@@ -55,6 +57,7 @@ export function useWorkspaceRoom(ws: WorkspaceState) {
         }).label,
       );
     },
+    onStranded: (edits) => void keepStrandedEdits(current.current, edits, storage.save, setStatus),
     onDoc: (doc) => {
       if (!doc) {
         setRemoteCarets([]);
@@ -117,4 +120,33 @@ export function useWorkspaceRoom(ws: WorkspaceState) {
       }).catch(() => {});
     },
   });
+}
+
+/** Status after edits could not be stored in the shared document. It names the copy, not the edits. */
+export function strandedEditsStatus(edits: number, copyTitle: string | null): string {
+  const which = edits === 1 ? "1 edit was" : `${edits} edits were`;
+  return copyTitle
+    ? `${which} not stored in the shared document. Your copy is in “${copyTitle}”.`
+    : `${which} not stored in the shared document, and a copy could not be saved.`;
+}
+
+/**
+ * The room started a new generation while these edits waited. The open file
+ * still has them, so they are kept as a separate local file before the editor
+ * follows the new room or the newer SuiteDrive version.
+ */
+export async function keepStrandedEdits(
+  open: FileRecord | null | undefined,
+  edits: number,
+  save: (record: FileRecord) => Promise<unknown>,
+  setStatus: (status: string) => void,
+): Promise<void> {
+  if (!open) return;
+  const copy = keptLocalCopy(open.file);
+  try {
+    await save({ file: copy });
+    setStatus(strandedEditsStatus(edits, copy.title));
+  } catch {
+    setStatus(strandedEditsStatus(edits, null));
+  }
 }

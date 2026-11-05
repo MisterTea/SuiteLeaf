@@ -3,12 +3,13 @@ import { describe, expect, it } from "vitest";
 import { createFile, type DocFile, type JsonNode, type SheetFile } from "../packages/core/src";
 import { exportDocx } from "../packages/core/src/docx-export";
 import { importOffice } from "../packages/core/src/office";
-import { officeFont } from "../packages/core/src/office-fonts";
+import { officeFont, suiteLeafFont } from "../packages/core/src/office-fonts";
 import { parsePowerPoint } from "../packages/core/src/pptx";
 import { exportPptx } from "../packages/core/src/pptx-export";
 import { symbolBulletFont } from "../packages/core/src/pptx-lists";
 import { isSymbolFont, symbolCode } from "../packages/core/src/symbol-fonts";
 import { markWordSymbols, symbolSpans } from "../packages/core/src/word-symbols";
+import { wordStyleFonts } from "../packages/core/src/word-fonts";
 import { exportXlsx } from "../packages/core/src/xlsx-export";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -56,7 +57,51 @@ describe("symbol fonts", () => {
     expect(xml).toContain("<w:t>plain</w:t>");
     const html = symbolSpans(`<p>${xml.match(/<w:t\b[^>]*>([^<]*)<\/w:t>/g)!.map((t) => t.replace(/<[^>]+>/g, "")).join("")}</p>`);
     expect(html).toBe('<p><span data-font="SuiteLeaf Sprig">\uF04A</span><span data-font="SuiteLeaf Thistle">p</span>plain</p>');
-    expect(symbolSpans("<p>\u2063Comic Sans\u2064x\u2063</p>")).toBe("<p>\u2063Comic Sans\u2064x\u2063</p>");
+    expect(symbolSpans("<p>\u2063Comic Sans\u2064x\u2063</p>")).toBe('<p><span data-font="Comic Sans">x</span></p>');
+    const long = `\u2063${"F".repeat(81)}\u2064x\u2063`;
+    expect(symbolSpans(`<p>${long}</p>`)).toBe(`<p>${long}</p>`);
+  });
+
+  it("gives a paragraph style's font to runs that name none, through basedOn and theme fonts", () => {
+    const theme = '<a:majorFont><a:latin typeface="Cambria"/></a:majorFont>';
+    const styles =
+      '<w:style w:type="paragraph" w:styleId="Normal"><w:name w:val="Normal"/></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="Heading1"><w:basedOn w:val="Normal"/><w:rPr><w:rFonts w:asciiTheme="majorHAnsi"/></w:rPr></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="Heading2"><w:basedOn w:val="Heading1"/></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="LoopA"><w:basedOn w:val="LoopB"/></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="LoopB"><w:basedOn w:val="LoopA"/></w:style>' +
+      '<w:style w:type="character" w:styleId="Strong"><w:rPr><w:rFonts w:ascii="Impact"/></w:rPr></w:style>';
+    const fonts = wordStyleFonts(styles, theme);
+    expect([...fonts.entries()]).toEqual([
+      ["Heading1", "Cambria"],
+      ["Heading2", "Cambria"],
+    ]);
+    const context = { defaultFont: "SuiteLeaf Willow", themeXml: theme, styleFonts: fonts };
+    const xml =
+      '<w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t>Plan</w:t></w:r><w:r><w:rPr><w:rFonts w:ascii="Georgia"/></w:rPr><w:t>own</w:t></w:r></w:p>' +
+      '<w:p><w:pPr><w:pStyle w:val="Normal"/></w:pPr><w:r><w:t>body</w:t></w:r></w:p>' +
+      // A text box inside a heading paragraph keeps its own paragraph's style.
+      '<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:txbxContent><w:p><w:r><w:t>boxed</w:t></w:r></w:p></w:txbxContent></w:r></w:p>';
+    const text = markWordSymbols(xml, context).match(/<w:t\b[^>]*>([^<]*)<\/w:t>/g)!.map((t) => t.replace(/<[^>]+>/g, "")).join("|");
+    expect(symbolSpans(text)).toBe(
+      `<span data-font="${suiteLeafFont("Cambria")}">Plan</span>|<span data-font="${suiteLeafFont("Georgia")}">own</span>|body|boxed`,
+    );
+  });
+
+  it("marks a run whose own font differs from the body font, and leaves a run in the body font alone", () => {
+    const theme = '<a:minorFont><a:latin typeface="Calibri"/></a:minorFont><a:majorFont><a:latin typeface="Cambria"/></a:majorFont>';
+    const run = (fonts: string, text: string) => `<w:r><w:rPr><w:rFonts ${fonts}/></w:rPr><w:t>${text}</w:t></w:r>`;
+    const xml = `<w:p>${run('w:ascii="Georgia"', "own")}${run('w:ascii="Calibri"', "body")}${run('w:asciiTheme="majorHAnsi"', "theme")}${run('w:ascii="Bad&amp;Name"', "odd")}<w:r><w:t>plain</w:t></w:r></w:p>`;
+    const marked = markWordSymbols(xml, { defaultFont: "SuiteLeaf Willow", themeXml: theme });
+    const text = marked.match(/<w:t\b[^>]*>([^<]*)<\/w:t>/g)!.map((t) => t.replace(/<[^>]+>/g, "")).join("|");
+    expect(symbolSpans(text)).toBe(
+      `<span data-font="${suiteLeafFont("Georgia")}">own</span>|body|<span data-font="${suiteLeafFont("Cambria")}">theme</span>|odd|plain`,
+    );
+    // Without a body font, every run that names a font keeps it.
+    const unknown = markWordSymbols(run('w:ascii="Calibri"', "body"), { themeXml: "" });
+    expect(symbolSpans(unknown.replace(/<[^>]+>/g, ""))).toBe('<span data-font="SuiteLeaf Willow">body</span>');
+    // Symbol marking alone, as before, leaves an ordinary font unmarked.
+    expect(markWordSymbols(run('w:ascii="Georgia"', "own"))).toBe(run('w:ascii="Georgia"', "own"));
   });
 
   it("imports Word symbol text in the SuiteLeaf face and writes the Office font back", async () => {

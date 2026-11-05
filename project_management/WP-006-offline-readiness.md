@@ -2,15 +2,15 @@
 id: "WP-006"
 title: "Verified offline work and portable presentation bundles"
 type: "work_package"
-status: "blocked"
+status: "done"
 priority: "P1"
 phase: 1
 area: "offline"
 created: "2026-10-29"
-updated: "2026-10-29"
+updated: "2026-11-04"
 owner: "unassigned"
-blocked: true
-blocked_on: ["WP-005"]
+blocked: false
+blocked_on: []
 related_sources: ["S07", "S08"]
 ---
 
@@ -66,3 +66,7 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S07`, `S08`. External complaints 
 # Progress
 
 2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-005"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
+
+2026-11-04: WP-005 was accepted as done, so this package is no longer blocked. Status is `ready`. It was blocked on WP-005 from 2026-10-29 until then; that dependency is still listed under Dependencies.
+
+2026-11-04, later: Verified offline work and portable presentation bundles completed and accepted. Implemented offline readiness checking (`checkOfflineReadiness`), dependency scanning, missing asset identification with remedies, storage eviction risk assessment (`evaluateEvictionRisk`), pin management (`OfflinePinManager`), portable slide bundles with SHA-256 manifests and network-isolated standalone viewers (`createPortableSlideBundle`, `verifyPortableSlideBundle`), licensing notice generation, managed offline authentication lease evaluation preventing silent deletion of unsynchronized edits (`evaluateOfflinePolicy`), and access-revocation boundaries (`explainOfflineRevocation`). Verified with Vitest in `tests/offline-readiness.test.ts`, `tests/offline-sw.test.ts`, and `tests/slide-marp-bundle.test.ts`. Status changed to `done`.

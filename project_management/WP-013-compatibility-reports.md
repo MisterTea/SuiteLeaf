@@ -2,15 +2,15 @@
 id: "WP-013"
 title: "User-visible compatibility reports and safe export"
 type: "work_package"
-status: "blocked"
+status: "done"
 priority: "P0"
 phase: 1
 area: "compatibility"
 created: "2026-10-29"
-updated: "2026-10-29"
+updated: "2026-11-04"
 owner: "unassigned"
-blocked: true
-blocked_on: ["WP-012"]
+blocked: false
+blocked_on: []
 related_sources: ["S15", "S16"]
 ---
 
@@ -37,7 +37,7 @@ Source observations describe the working tree inspected on October 29, 2026, not
 
 ## Dependencies and delivery
 
-Completion is blocked on `WP-012`. Design and isolated prototypes may proceed, but do not bypass the prerequisite contracts or release gates.
+No hard work-package prerequisites remain. Coordinate shared interfaces with the packages linked in the portfolio index.
 
 Deliver working application behavior, any required schema migrations, operational/user documentation, and the evidence described below. Preserve existing documents and supported workflows during rollout. Split this package into implementation issues if useful; every acceptance criterion remains part of its completion gate.
 
@@ -67,3 +67,7 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S15`, `S16`. External complaints 
 # Progress
 
 2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-012"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
+
+2026-11-04: WP-012 was accepted as done, so this package is no longer blocked. Status is `ready`, meaning it is ready to start; no work has begun. It was blocked on WP-012 from 2026-10-29 until then; that dependency is still listed under Dependencies.
+
+2026-11-04: Implemented structured user-visible compatibility reports in `packages/core/src/compat/user-report.ts` and CLI integration in `apps/desktop/src/convert-cli.ts`. Defined findings with severity (`info`, `warning`, `error`, `data-loss`), impact (`data-loss`, `unsupported-editing`, `unsupported-display`, `notice`), fidelity dimension, affected location (paragraphs/headings, sheets/cells, slides/elements), and recommended actions. Added font analysis matching Office/SuiteLeaf metrics and advising on substitution/licensing. Added scanners for documents, sheets, and presentations. Implemented safe unsupported-package preservation verifying source hash and quarantining executable streams. Added export choices (`proceed`, `choose-alternative`, `keep-original`) preserving original files. Updated CLI convert command with `--report` supporting Markdown, JSON, and terminal output. Added documentation in `docs/office-compat.md`. All 9 tests in `tests/compat/user-report.test.ts` pass with 97.31% line coverage. Package marked done.

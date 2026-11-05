@@ -1,5 +1,5 @@
 export type RoomLink = "joining" | "open" | "reconnecting" | "stopped";
-export type RoomStop = "unauthorized" | "forbidden" | "version";
+export type RoomStop = "unauthorized" | "forbidden" | "version" | "role";
 
 /** The collaboration protocol this app speaks. */
 export const COLLAB_PROTOCOL = 1;
@@ -9,8 +9,24 @@ export function joinMessage(): { type: "join"; protocol: number } {
 }
 
 /**
+ * How often an open room asks for a fresh token. The node rechecks the
+ * socket's token every few seconds, and a token lasts 15 minutes, so a new one
+ * is sent well before the old one stops signing in.
+ */
+export const RENEW_TOKEN_EVERY_MS = 30_000;
+
+export function authMessage(accessToken: string): {
+  type: "auth";
+  accessToken: string;
+  protocol: number;
+} {
+  return { type: "auth", accessToken, protocol: COLLAB_PROTOCOL };
+}
+
+/**
  * An expired token pauses the room and keeps queued edits for the next sign-in.
- * A lost grant stops the room. Any other word is not a stop, and it is not kept.
+ * A lost grant stops the room. A changed role stops it until the file is opened
+ * again with that role. Any other word is not a stop, and it is not kept.
  */
 export function authFailurePlan(reason: string): {
   pauseForSignIn: boolean;
@@ -22,6 +38,9 @@ export function authFailurePlan(reason: string): {
   }
   if (reason === "forbidden") {
     return { pauseForSignIn: false, giveUp: true, stop: "forbidden" };
+  }
+  if (reason === "role-changed") {
+    return { pauseForSignIn: false, giveUp: true, stop: "role" };
   }
   return { pauseForSignIn: false, giveUp: false, stop: null };
 }
@@ -47,6 +66,11 @@ export function roomRecoveryText(
       return pending > 0
         ? "You no longer have access. Edits still on this device were not stored."
         : "You no longer have access to this shared document.";
+    }
+    if (stop === "role") {
+      return pending > 0
+        ? "Your access to this shared document changed. Open it again. Edits still on this device were not stored."
+        : "Your access to this shared document changed. Open it again to continue.";
     }
     if (stop === "version") {
       return "This app speaks collaboration protocol 1.";

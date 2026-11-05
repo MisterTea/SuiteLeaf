@@ -72,6 +72,7 @@ impl LiveClient {
         socket: tokio_tungstenite::WebSocketStream<
             tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
         >,
+        heartbeat: bool,
     ) -> Self {
         let (mut write, mut read) = socket.split();
         let (tx, mut rx) = mpsc::unbounded_channel::<String>();
@@ -82,6 +83,11 @@ impl LiveClient {
             joins: 0,
             failed: None,
             closed: false,
+            error: None,
+            renewed: 0,
+            updates: 0,
+            generation: 0,
+            reject_reason: None,
             reply: None,
             caret: None,
             sheet: None,
@@ -150,12 +156,28 @@ impl LiveClient {
                     continue;
                 }
                 if kind == "ack" || kind == "reject" {
+                    inner.reject_reason = value
+                        .get("reason")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_owned);
                     if let Some(id) = value.get("id").and_then(|v| v.as_str()) {
                         inner.reply = Some((kind.to_owned(), id.to_owned()));
                     }
                     continue;
                 }
+                if kind == "error" {
+                    inner.error = value
+                        .get("reason")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_owned);
+                    continue;
+                }
+                if kind == "renewed" {
+                    inner.renewed += 1;
+                    continue;
+                }
                 if kind == "update" {
+                    inner.updates += 1;
                     if let Some(encoded) = value.get("update").and_then(|v| v.as_str())
                         && let Err(err) = integrate(&inner.doc, &decode_b64(encoded))
                     {
@@ -180,12 +202,20 @@ impl LiveClient {
                     .get("joined")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
+                inner.generation = value
+                    .get("generation")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(-1);
                 inner.joins += 1;
             }
             reader_state.lock().expect("client").closed = true;
         });
         let heartbeat_tx = tx.clone();
         let heartbeat = tokio::spawn(async move {
+            if !heartbeat {
+                // A quiet client sends nothing on its own, like an idle viewer.
+                std::future::pending::<()>().await;
+            }
             let mut tick = tokio::time::interval(Duration::from_secs(1));
             loop {
                 tick.tick().await;
@@ -210,6 +240,26 @@ impl LiveClient {
             panic!("{} never received joined", client.name);
         }
         client
+    }
+
+    pub(crate) fn error(&self) -> Option<String> {
+        self.state.lock().expect("client").error.clone()
+    }
+
+    pub(crate) fn generation(&self) -> i64 {
+        self.state.lock().expect("client").generation
+    }
+
+    pub(crate) fn reject_reason(&self) -> Option<String> {
+        self.state.lock().expect("client").reject_reason.clone()
+    }
+
+    pub(crate) fn renewed(&self) -> u64 {
+        self.state.lock().expect("client").renewed
+    }
+
+    pub(crate) fn updates(&self) -> u64 {
+        self.state.lock().expect("client").updates
     }
 
     pub(crate) fn closed(&self) -> bool {

@@ -17,8 +17,9 @@ use serde_json::{Value, json};
 use suitedrive::{Drive, Principal, Role};
 
 use super::{
-    Join, LiveUpdate, ROOM_SHARED, Rooms,
+    Join, LiveUpdate, Outcome, ROOM_SHARED, Rooms,
     presence::{iso_from_ms, now_ms, role_of},
+    standing::{bearer_headers, recheck_every, standing},
 };
 use crate::{
     auth::{Auth, AuthUser},
@@ -49,23 +50,31 @@ pub async fn session(
     }
     let drive = state.drive.clone();
     let rooms = state.rooms.clone();
+    let auth = state.auth.clone();
     if let Some(user) = preauth {
         let role = match accepted_role(drive, &user, &id).await {
             Ok(role) => role,
             Err(status) => return status.into_response(),
         };
+        // Only the credentials are kept, so the recheck can verify them again.
+        let mut credentials = HeaderMap::new();
+        for name in [header::AUTHORIZATION, header::COOKIE] {
+            for value in headers.get_all(&name) {
+                credentials.append(name.clone(), value.clone());
+            }
+        }
         return upgrade
             .on_upgrade(move |socket| async move {
-                let _ = run_socket(socket, rooms, id, user, role).await;
+                let signed = Signed { auth, credentials };
+                let _ = run_socket(socket, rooms, id, user, role, signed).await;
             })
             .into_response();
     }
     // The browser cannot set an Authorization header on a WebSocket. The
     // token arrives in the first message so it is not written into the URL.
-    let auth = state.auth.clone();
     upgrade
         .on_upgrade(move |mut socket| async move {
-            let Some(user) = read_auth_user(&mut socket, &auth).await else {
+            let Some((user, credentials)) = read_auth_user(&mut socket, &auth).await else {
                 let _ = socket
                     .send(Message::Text(
                         json!({"type":"error","reason":"unauthorized"})
@@ -88,9 +97,16 @@ pub async fn session(
                     return;
                 }
             };
-            let _ = run_socket(socket, rooms, id, user, role).await;
+            let signed = Signed { auth, credentials };
+            let _ = run_socket(socket, rooms, id, user, role, signed).await;
         })
         .into_response()
+}
+
+/// How the socket signed in. The recheck verifies these again; a renewal replaces them.
+struct Signed {
+    auth: Auth,
+    credentials: HeaderMap,
 }
 
 async fn accepted_role(
@@ -112,7 +128,7 @@ async fn accepted_role(
 
 /// The first socket message must be `{type:"auth", accessToken}`. The token
 /// is not logged.
-async fn read_auth_user(socket: &mut WebSocket, auth: &Auth) -> Option<AuthUser> {
+async fn read_auth_user(socket: &mut WebSocket, auth: &Auth) -> Option<(AuthUser, HeaderMap)> {
     let message = tokio::time::timeout(std::time::Duration::from_secs(5), socket.recv()).await;
     let Ok(Some(Ok(Message::Text(text)))) = message else {
         return None;
@@ -128,13 +144,9 @@ async fn read_auth_user(socket: &mut WebSocket, auth: &Auth) -> Option<AuthUser>
             .await;
         return None;
     }
-    let token = auth_token(&value)?;
-    let mut headers = HeaderMap::new();
-    let Ok(header_value) = format!("Bearer {token}").parse() else {
-        return None;
-    };
-    headers.insert(header::AUTHORIZATION, header_value);
-    auth.user(&headers)
+    let headers = bearer_headers(auth_token(&value)?)?;
+    let user = auth.user(&headers)?;
+    Some((user, headers))
 }
 
 /// The browser and this node both speak protocol 1. A missing number is 1.
@@ -163,9 +175,12 @@ async fn run_socket(
     socket: WebSocket,
     rooms: Rooms,
     item: String,
-    user: AuthUser,
+    mut user: AuthUser,
     role: Role,
+    mut signed: Signed,
 ) -> anyhow::Result<()> {
+    let every = recheck_every(std::env::var("SUITELEAF_RECHECK_MS").ok().as_deref());
+    let mut recheck = tokio::time::interval_at(tokio::time::Instant::now() + every, every);
     let (mut sink, mut stream) = socket.split();
     let joined = rooms.join(&item, &user, role, now_ms())?;
     sink.send(Message::Text(
@@ -179,6 +194,18 @@ async fn run_socket(
     loop {
         let incoming = tokio::select! {
             message = stream.next() => message,
+            _ = recheck.tick() => {
+                let credentials = Some((&signed.auth, &signed.credentials));
+                let (verdict, fresh) = standing(&rooms, &user, &item, role, credentials)?;
+                if let Some(fresh) = fresh {
+                    user = fresh;
+                }
+                if let Some(reason) = verdict.reason() {
+                    let _ = sink.send(Message::Text(error_message(reason).into())).await;
+                    break;
+                }
+                continue;
+            }
             remote = async {
                 match relay.as_mut() {
                     Some(relay) => relay.recv().await.ok(),
@@ -214,19 +241,28 @@ async fn run_socket(
         };
         let value: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
         let kind = value.get("type").and_then(|v| v.as_str()).unwrap_or("");
-        if rooms.session_expired(&user.id)?
-            || rooms.access_ended(&user.id, user.is_admin(), &item)?
-        {
-            let _ = sink
-                .send(Message::Text(
-                    json!({"type":"error","reason":"unauthorized"})
-                        .to_string()
-                        .into(),
-                ))
-                .await;
+        let (verdict, _) = standing(&rooms, &user, &item, role, None)?;
+        if let Some(reason) = verdict.reason() {
+            let _ = sink.send(Message::Text(error_message(reason).into())).await;
             break;
         }
         match kind {
+            "auth" => {
+                // A fresh token for the same person replaces the one the socket signed in with.
+                match renewal(&signed.auth, &value, &user.id) {
+                    Some(credentials) => {
+                        signed.credentials = credentials;
+                        sink.send(Message::Text(json!({"type":"renewed"}).to_string().into()))
+                            .await?;
+                    }
+                    None => {
+                        let _ = sink
+                            .send(Message::Text(error_message("unauthorized").into()))
+                            .await;
+                        break;
+                    }
+                }
+            }
             "activity" | "join" => {
                 rooms.activity(&item, &user.id, now_ms())?;
                 if kind == "join" {
@@ -268,7 +304,8 @@ async fn run_socket(
                     at
                 };
                 let name = user.name.clone().unwrap_or_else(|| "You".into());
-                let applied = rooms.apply_update(LiveUpdate {
+                let made_in = value.get("generation").and_then(|v| v.as_i64());
+                let outcome = rooms.apply_update_in(LiveUpdate {
                     item: &item,
                     user_id: &user.id,
                     name: &name,
@@ -277,12 +314,12 @@ async fn run_socket(
                     unit,
                     key,
                     at: &at,
-                })?;
-                if applied {
+                }, made_in)?;
+                if outcome == Outcome::Stored {
                     rooms.activity(&item, &user.id, now_ms())?;
                 }
                 if let Some(reply) = update_reply(
-                    applied,
+                    outcome,
                     value.get("id").and_then(|v| v.as_str()).unwrap_or(""),
                 ) {
                     sink.send(Message::Text(reply.into())).await?;
@@ -397,19 +434,33 @@ async fn run_socket(
     Ok(())
 }
 
+fn error_message(reason: &str) -> String {
+    json!({"type": "error", "reason": reason}).to_string()
+}
+
+/// The credentials from an `auth` message on an open socket, when they sign in
+/// as the same person. Another person's token, or a token that does not sign
+/// in, returns `None`. The token is not logged or echoed.
+fn renewal(auth: &Auth, value: &Value, user_id: &str) -> Option<HeaderMap> {
+    protocol_supported(value).ok()?;
+    let headers = bearer_headers(auth_token(value)?)?;
+    let renewed = auth.user(&headers)?;
+    (renewed.id == user_id).then_some(headers)
+}
+
 /// An acknowledgement means the update is in the journal. A refusal is not stored.
+/// A stale refusal says the edit was made in another generation of the room.
 /// The reply names the update id and not the document bytes.
-fn update_reply(applied: bool, id: &str) -> Option<String> {
+fn update_reply(outcome: Outcome, id: &str) -> Option<String> {
     if id.is_empty() || id.len() > 80 || id.contains('\n') || id.contains('\r') {
         return None;
     }
-    Some(
-        json!({
-            "type": if applied { "ack" } else { "reject" },
-            "id": id,
-        })
-        .to_string(),
-    )
+    let reply = match outcome {
+        Outcome::Stored => json!({"type": "ack", "id": id}),
+        Outcome::Refused => json!({"type": "reject", "id": id}),
+        Outcome::Stale => json!({"type": "reject", "id": id, "reason": "stale"}),
+    };
+    Some(reply.to_string())
 }
 
 fn joined_message(rooms: &Rooms, item: &str, joined: &Join) -> anyhow::Result<String> {
@@ -424,6 +475,7 @@ fn joined_message(rooms: &Rooms, item: &str, joined: &Join) -> anyhow::Result<St
         "mode": joined.mode,
         "state": joined.state,
         "seed": joined.seed,
+        "generation": joined.generation,
         "occupants": occupants,
     })
     .to_string())
@@ -435,14 +487,17 @@ mod tests {
 
     #[test]
     fn an_acknowledgement_names_the_update_and_not_the_document() {
-        let ack = update_reply(true, "edit-1").unwrap();
+        let ack = update_reply(Outcome::Stored, "edit-1").unwrap();
         assert!(ack.contains("\"type\":\"ack\""));
         assert!(ack.contains("edit-1"));
         assert!(!ack.contains("Tomatoes"));
-        let reject = update_reply(false, "view-1").unwrap();
+        let reject = update_reply(Outcome::Refused, "view-1").unwrap();
         assert!(reject.contains("\"type\":\"reject\""));
-        assert!(update_reply(true, "").is_none());
-        assert!(update_reply(true, "line\nbreak").is_none());
+        assert!(!reject.contains("reason"));
+        let stale = update_reply(Outcome::Stale, "old-1").unwrap();
+        assert_eq!(stale, r#"{"id":"old-1","reason":"stale","type":"reject"}"#);
+        assert!(update_reply(Outcome::Stored, "").is_none());
+        assert!(update_reply(Outcome::Stored, "line\nbreak").is_none());
     }
 
     #[test]

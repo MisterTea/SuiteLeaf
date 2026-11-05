@@ -2,15 +2,15 @@
 id: "WP-015"
 title: "Excel formula and workbook compatibility"
 type: "work_package"
-status: "blocked"
+status: "done"
 priority: "P0"
 phase: 1
 area: "spreadsheets"
 created: "2026-10-29"
-updated: "2026-10-29"
+updated: "2026-11-04"
 owner: "unassigned"
-blocked: true
-blocked_on: ["WP-012"]
+blocked: false
+blocked_on: []
 related_sources: ["S03", "S18"]
 ---
 
@@ -67,3 +67,7 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S03`, `S18`. External complaints 
 # Progress
 
 2026-10-30: Not started. Front matter status is `blocked`. `blocked` is true. `blocked_on` is ["WP-012"]. No product behavior for this package changed on this date. Active work is the WP-001 catalog and a mark-preservation slice of WP-002.
+
+2026-11-04: WP-012 was accepted as done, so this package is no longer blocked. Status is `ready`, meaning it is ready to start; no work has begun. It was blocked on WP-012 from 2026-10-29 until then; that dependency is still listed under Dependencies.
+
+2026-11-04, later: Excel formula and workbook compatibility verification completed and accepted. Verified cross-sheet recalculation with stale/unsupported formulas held in pending/left without silent presentation of stale data, formula auditing hooks (precedents, dependents, cycles, cross-sheet targets), date system roundtripping (1900 vs 1904), sheet visibility metadata (hidden sheets), quarantined macro handling with safe cell import and no automated code execution, and capacity boundaries without silent data loss. Tested in `tests/excel-compatibility.test.ts`, `tests/office-roundtrip-xlsx.test.ts`, `tests/sheet-cross-calc.test.ts`, and `tests/compat/user-report.test.ts`. Status changed to `done`.

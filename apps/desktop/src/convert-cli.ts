@@ -21,6 +21,13 @@ import {
 import type { SuiteFile } from "@suiteleaf/core";
 import { PPTX_INPUT_LIMIT } from "@suiteleaf/core/office";
 import { isPowerPointExtension } from "@suiteleaf/core/open-office";
+import {
+  scanSlideCompatibility,
+  formatCompatibilityReportMarkdown,
+  formatCompatibilityReportTerminal,
+  formatCompatibilityReportJson,
+  type CompatibilityReport,
+} from "@suiteleaf/core";
 import type { OfficeConverter } from "./directory-import";
 
 export const cliUsage = `Usage:
@@ -32,7 +39,7 @@ files into PDFs or PNG slide folders and does not add them to the document
 library or SuiteDrive. Use <command> --help for details.
 `;
 
-export const convertUsage = `Usage: SuiteLeaf convert <file-or-directory> --to pdf|png [--output <path>]
+export const convertUsage = `Usage: SuiteLeaf convert <file-or-directory> --to pdf|png [--output <path>] [--report [path]]
 
 Import each PowerPoint file and export a PDF or a folder of PNG slides.
 The presentation is not saved to the document library or SuiteDrive. Sources
@@ -45,6 +52,9 @@ and so on, in a folder named after the presentation. A file creates that
 folder beside the presentation, or inside --output. Pass a .png path to
 choose the folder name. A directory keeps its subfolders under --output, or
 writes each result beside its source when --output is omitted.
+
+--report writes a compatibility report (.json or .md), or prints to terminal
+when path is omitted.
 
 Formats: pptx, ppt, ppsx, pptm, potx, ppsm. Other files in a directory are
 skipped.
@@ -85,11 +95,12 @@ const inside = (path: string, root: string) =>
 
 export function parseConvertArgs(
   args: string[],
-): { source: string; output?: string; to: ConvertFormat } | "help" {
+): { source: string; output?: string; to: ConvertFormat; report?: string } | "help" {
   if (args.length === 1 && ["--help", "-h"].includes(args[0])) return "help";
   let source: string | undefined,
     output: string | undefined,
-    to: string | undefined;
+    to: string | undefined,
+    report: string | undefined;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--output") {
       if (output || !args[i + 1] || args[i + 1].startsWith("-"))
@@ -99,6 +110,12 @@ export function parseConvertArgs(
       if (to || !args[i + 1] || args[i + 1].startsWith("-"))
         throw new Error("--to pdf or --to png is required.");
       to = args[++i].toLowerCase();
+    } else if (args[i] === "--report") {
+      if (!args[i + 1] || args[i + 1].startsWith("-")) {
+        report = "terminal";
+      } else {
+        report = resolve(args[++i]);
+      }
     } else if (args[i].startsWith("-") || source)
       throw new Error(`Unexpected argument: ${args[i]}`);
     else source = resolve(args[i]);
@@ -106,7 +123,7 @@ export function parseConvertArgs(
   if (!source) throw new Error("Provide a PowerPoint file or a directory.");
   if (to !== "pdf" && to !== "png")
     throw new Error("--to pdf or --to png is required.");
-  return { source, output, to };
+  return { source, output, to, report };
 }
 
 export function isPng(bytes: Uint8Array) {
@@ -231,6 +248,7 @@ export async function convertPresentations(
     openRenderer: () => Promise<PdfRenderer>;
     openPngRenderer?: () => Promise<PngRenderer>;
     onFile?: (event: ConvertEvent) => void;
+    onReport?: (report: CompatibilityReport) => Promise<void> | void;
   },
 ): Promise<ConvertResult> {
   const root = await realpath(resolve(source));
@@ -287,6 +305,12 @@ export async function convertPresentations(
         throw new Error(
           "This PowerPoint file did not import as a presentation.",
         );
+      if (options.onReport) {
+        const report = scanSlideCompatibility(file, format, {
+          sourceName: basename(path),
+        });
+        await options.onReport(report);
+      }
       const stem = basename(path, extname(path));
       const explicitFile =
         !sourceIsDirectory &&
@@ -398,6 +422,7 @@ export async function runConvertCommand(
     } catch {
       throw new Error(`Cannot read ${parsed.source}.`);
     }
+    const reports: CompatibilityReport[] = [];
     const result = await convertPresentations(
       parsed.source,
       parsed.output,
@@ -412,8 +437,24 @@ export async function runConvertCommand(
           else if (event.status === "converted")
             options.log(`Converted: ${event.source} → ${event.destination}`);
         },
+        onReport: (report) => {
+          reports.push(report);
+          if (parsed.report === "terminal") {
+            options.log(formatCompatibilityReportTerminal(report));
+          }
+        },
       },
     );
+    if (parsed.report && parsed.report !== "terminal" && reports.length > 0) {
+      const isMd = parsed.report.endsWith(".md");
+      const content = isMd
+        ? reports.map(formatCompatibilityReportMarkdown).join("\n\n---\n\n")
+        : reports.length === 1
+          ? formatCompatibilityReportJson(reports[0])
+          : JSON.stringify(reports, null, 2);
+      await writeFile(parsed.report, content, "utf8");
+      options.log(`Wrote compatibility report: ${parsed.report}`);
+    }
     options.log(
       `Converted ${result.converted}; skipped ${result.skipped}; failed ${result.failed}.`,
     );

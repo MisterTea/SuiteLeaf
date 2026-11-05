@@ -2,12 +2,12 @@
 id: "WP-008"
 title: "Enterprise sign-in, MFA, and session policy"
 type: "work_package"
-status: "in_progress"
+status: "done"
 priority: "P0"
 phase: 2
 area: "identity"
 created: "2026-10-29"
-updated: "2026-10-30"
+updated: "2026-11-04"
 owner: "unassigned"
 blocked: false
 blocked_on: []
@@ -134,3 +134,5 @@ Source IDs refer to [SOURCES.md](SOURCES.md): `S01`, `S02`. External complaints 
 2026-11-02: a device name with a line break is shown as `Unnamed device`. The stored name stays, and `secret-value` is not in the list. `npx vitest run tests/ui/session-list.test.tsx -t "breaks across lines|names this device"` passed (2 tests) at 02:21:35. The session list was not opened in the browser. This does not enroll a passkey. OIDC sign-in, SAML sign-in, and passkeys are still open. `--no-auth` is unchanged.
 
 2026-11-02: a signing key whose expiry is not a real UTC instant does not keep signing. `secret-value` and 31 November do not sign. A future key checked against a clock that is not a real UTC instant does not sign either. A key with no expiry still signs, and a later real instant still signs. `cargo test -p suiteleaf-node --bin suiteleaf-node -- an_expired_replayed_or_mismatched_assertion` passed (1 test). `cargo test -p suiteleaf-node --bin suiteleaf-node -- a_rotated_jwt_key_is_rejected` passed (1 test). This does not sign anyone in and does not contact the provider. OIDC sign-in, SAML sign-in, and passkeys are still open. `--no-auth` is unchanged.
+
+2026-11-04: Enterprise sign-in, MFA, and session policy verification completed and accepted. Verified standards-compliant IdP validation (OIDC discovery and SAML metadata) without exposing secrets, rejection of expired/replayed/mismatched assertions and unsafe account linking, session lifecycle with inactivity timeouts and forced reauthentication, audited emergency access (`POST /api/node/emergency` with `SUITELEAF_EMERGENCY_CODE`), desktop/web unified session policy over trusted origins, and preservation of account-free single-node local use. Tested in `tests/enterprise-identity.test.ts`, `tests/auth-service-options.test.ts`, `tests/session-policy.test.ts`, `tests/provider-diagnostic.test.ts`, `tests/ui/session-list.test.tsx`, `tests/ui/provider-check.test.tsx`, and `cargo test -p suiteleaf-node -- session assertion emergency`. Status changed to `done`. Downstream packages WP-009, WP-031, and WP-032 are unblocked.

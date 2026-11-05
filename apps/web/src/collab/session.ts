@@ -23,7 +23,15 @@ import {
   type CollabUpdate,
 } from "./connection";
 import { noteUnackedEdits } from "../save-state";
-import { authFailurePlan, joinMessage, roomRecoveryText, type RoomLink, type RoomStop } from "./recovery";
+import {
+  RENEW_TOKEN_EVERY_MS,
+  authFailurePlan,
+  authMessage,
+  joinMessage,
+  roomRecoveryText,
+  type RoomLink,
+  type RoomStop,
+} from "./recovery";
 import {
   localSelectionMessage,
   localSheetSelectionMessage,
@@ -76,6 +84,7 @@ export function useDocumentRoom({
   onSheetSelection,
   onSlideSelection,
   onRecovery,
+  onStranded,
 }: {
   itemId?: string;
   role: DriveRole | "local" | null;
@@ -97,6 +106,11 @@ export function useDocumentRoom({
   onSheetSelection?: (selection: RemoteSheetSelection) => void;
   onSlideSelection?: (selection: RemoteSlideSelection) => void;
   onRecovery?: (text: string | null) => void;
+  /**
+   * Edits made on this device that the room can no longer store, because the
+   * room moved to another generation while they waited. The caller keeps them.
+   */
+  onStranded?: (edits: number) => void;
 }) {
   const onDocRef = useRef(onDoc);
   const onSoloRef = useRef(onSoloAgain);
@@ -104,6 +118,8 @@ export function useDocumentRoom({
   const onSheetSelectionRef = useRef(onSheetSelection);
   const onSlideSelectionRef = useRef(onSlideSelection);
   const onRecoveryRef = useRef(onRecovery);
+  const onStrandedRef = useRef(onStranded);
+  onStrandedRef.current = onStranded;
   onCaretRef.current = onCaret;
   onSheetSelectionRef.current = onSheetSelection;
   onSlideSelectionRef.current = onSlideSelection;
@@ -116,7 +132,9 @@ export function useDocumentRoom({
       onRecoveryRef.current?.(null);
       return;
     }
-    const doc = new Y.Doc();
+    let doc = new Y.Doc();
+    /** The room generation from the latest joined message. */
+    let generation: number | null = null;
     const queue = new OutboundQueue();
     const roomStorage = (): Storage | null => {
       try {
@@ -145,6 +163,8 @@ export function useDocumentRoom({
     let timer: ReturnType<typeof setTimeout> | undefined;
     let authed = false;
     let connecting = false;
+    /** The token this socket last signed in with. A renewal sends only a different one. */
+    let sentToken: string | null = null;
     let link: RoomLink = "joining";
     let stop: RoomStop | undefined;
     const report = () => {
@@ -200,14 +220,16 @@ export function useDocumentRoom({
             : "paragraph",
         key: point.key,
       });
-      sendUpdate({
+      const message: CollabUpdate = {
         id: "",
         type: "update",
         update: bytesToBase64(update),
         unit: point.unit,
         key: point.key,
         at,
-      });
+      };
+      if (generation !== null) message.generation = generation;
+      sendUpdate(message);
     };
     doc.on("update", onUpdate);
     const schedule = () => {
@@ -241,7 +263,8 @@ export function useDocumentRoom({
       authed = false;
       let seededThisSocket = false;
       next.onopen = () => {
-        next.send(JSON.stringify({ type: "auth", accessToken: token, protocol: 1 }));
+        sentToken = token;
+        next.send(JSON.stringify(authMessage(token)));
       };
       next.onmessage = (event) => {
         const message = JSON.parse(String(event.data)) as {
@@ -252,6 +275,7 @@ export function useDocumentRoom({
           update?: string;
           id?: string;
           seed?: boolean;
+          generation?: number;
         };
         if (message.type === "error") {
           const plan = authFailurePlan(message.reason ?? "");
@@ -285,10 +309,12 @@ export function useDocumentRoom({
           next.close();
           return;
         }
+        if (message.type === "renewed") return;
         if ((message.type === "ack" || message.type === "reject") && message.id) {
           queue.settle(message.id);
           remember();
           report();
+          if (message.type === "reject" && message.reason === "stale") onStrandedRef.current?.(1);
           return;
         }
         if (message.type === "update" && message.update) {
@@ -300,6 +326,19 @@ export function useDocumentRoom({
         authed = true;
         attempt = 0;
         link = "open";
+        const joinedIn = Number.isSafeInteger(message.generation) ? (message.generation as number) : null;
+        if (joinedIn !== null && generation !== null && joinedIn !== generation) {
+          // The room was written to the file and started again. Its document is
+          // built from a new log, so this device starts a new copy instead of
+          // merging the old one into it.
+          const stranded = queue.dropOtherGenerations(joinedIn);
+          remember();
+          doc.off("update", onUpdate);
+          doc = new Y.Doc();
+          doc.on("update", onUpdate);
+          if (stranded > 0) onStrandedRef.current?.(stranded);
+        }
+        if (joinedIn !== null) generation = joinedIn;
         if (message.state) Y.applyUpdate(doc, base64ToBytes(message.state), "remote");
         const multi = message.mode === "multiuser";
         if (wasMulti && !multi) onSoloRef.current();
@@ -324,6 +363,21 @@ export function useDocumentRoom({
       };
     };
     void connect();
+    /** Send a fresh token on the open socket before the node's recheck refuses the old one. */
+    const renew = async () => {
+      const current = socket;
+      if (!current || current.readyState !== WebSocket.OPEN || !authed || closed) return;
+      let token: string;
+      try {
+        token = await accessToken();
+      } catch {
+        return;
+      }
+      if (token === sentToken || socket !== current || current.readyState !== WebSocket.OPEN) return;
+      sentToken = token;
+      current.send(JSON.stringify(authMessage(token)));
+    };
+    const renewTimer = setInterval(() => void renew(), RENEW_TOKEN_EVERY_MS);
     const onVisible = () => {
       if (document.visibilityState !== "visible") {
         report();
@@ -357,7 +411,11 @@ export function useDocumentRoom({
       void connect();
     };
     const stopListen = onSession((next) => {
-      if (!next || closed || giveUp || !pausedForSignIn) return;
+      if (!next || closed || giveUp) return;
+      if (!pausedForSignIn) {
+        void renew();
+        return;
+      }
       pausedForSignIn = false;
       stop = undefined;
       attempt = 0;
@@ -374,6 +432,7 @@ export function useDocumentRoom({
       closed = true;
       stopListen();
       clearTimeout(timer);
+      clearInterval(renewTimer);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("keydown", onInteract);
       window.removeEventListener("pointerdown", onInteract);

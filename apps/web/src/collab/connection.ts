@@ -37,6 +37,8 @@ export type CollabUpdate = {
   unit: string;
   key: string;
   at: string;
+  /** The room generation the edit was made in. Absent on an edit saved before generations were sent. */
+  generation?: number;
 };
 
 type QueuedUpdate = { message: CollabUpdate; sent: boolean };
@@ -96,6 +98,22 @@ export class OutboundQueue {
     return false;
   }
 
+  /**
+   * Remove edits made in another generation of the room. They cannot be placed
+   * in this generation's document. Returns how many edits (not seeds) were removed.
+   * An edit with no generation stays.
+   */
+  dropOtherGenerations(generation: number): number {
+    let edits = 0;
+    this.items = this.items.filter((item) => {
+      const made = item.message.generation;
+      if (made === undefined || made === generation) return true;
+      if (item.message.type === "update") edits += 1;
+      return false;
+    });
+    return edits;
+  }
+
   /** Replace the waiting updates. Each one is unsent. The list passed in is not changed. */
   load(messages: readonly CollabUpdate[]) {
     const items: { message: CollabUpdate; sent: boolean }[] = [];
@@ -117,7 +135,7 @@ function storedUpdate(value: unknown): CollabUpdate | null {
   if (typeof message.id !== "string" || !message.id) return null;
   if (message.type !== "update" && message.type !== "seed") return null;
   if (typeof message.update !== "string") return null;
-  return {
+  const stored: CollabUpdate = {
     id: message.id,
     type: message.type,
     update: message.update,
@@ -125,6 +143,8 @@ function storedUpdate(value: unknown): CollabUpdate | null {
     key: typeof message.key === "string" ? message.key : "0",
     at: typeof message.at === "string" ? message.at : "",
   };
+  if (Number.isSafeInteger(message.generation)) stored.generation = message.generation;
+  return stored;
 }
 
 /** Write the waiting updates. A later page load can send them again. */

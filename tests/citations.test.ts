@@ -1,3 +1,4 @@
+import { CITATION_TAG, citeToken, rewriteWordCitations } from "../packages/core/src/citations";
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
 import { createFile, type JsonNode } from "../packages/core/src";
@@ -102,6 +103,17 @@ function reportDoc(year = "2024"): JsonNode {
 }
 
 describe("citations and bibliography", () => {
+  it("keeps a source tag with accents or punctuation, and the next word stays apart", () => {
+    expect(CITATION_TAG.exec(" CITATION Día19 \\l 3082 ")?.[1]).toBe("Día19");
+    expect(CITATION_TAG.exec(" CITATION O'Br-2020 \\l 1033 ")?.[1]).toBe("O'Br-2020");
+    expect(citeToken("Día19")).toBe(`SLCITE${Buffer.from("Día19").toString("hex")}SLCE`);
+    const { xml } = rewriteWordCitations(
+      '<w:p><w:r><w:t xml:space="preserve">Soil </w:t></w:r><w:fldSimple w:instr=" CITATION Día19 \\l 3082 "><w:r><w:t>(Díaz)</w:t></w:r></w:fldSimple><w:r><w:t>abc</w:t></w:r></w:p>',
+    );
+    expect(xml).toContain(`${citeToken("Día19")}</w:t>`);
+    expect(xml).not.toContain("(Díaz)");
+  });
+
   it("formats APA, MLA, and Chicago without a page placeholder", () => {
     expect(inText(mensah, "apa")).toBe("(Mensah, 2024)");
     expect(inText(mensah, "mla")).toBe("(Mensah)");
