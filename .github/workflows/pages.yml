@@ -25,7 +25,7 @@ jobs:
     if: "!contains(github.event.head_commit.message, '[skip demo]') && !contains(github.event.head_commit.message, '[skip ci]') && !contains(github.event.head_commit.message, 'live demo update')"
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment_retry.outputs.page_url }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -61,14 +61,18 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-        with:
-          # Pages can keep a valid deployment in updating_pages past its
-          # default ten-minute timeout. Allow that publish to finish.
-          timeout: 1800000
+        continue-on-error: true
+
+      # GitHub caps each publish at ten minutes. Retry a failed publish once
+      # with the existing artifact instead of rebuilding the application.
+      - name: Retry GitHub Pages deployment
+        if: steps.deployment.outcome == 'failure'
+        id: deployment_retry
+        uses: actions/deploy-pages@v4
 
       - name: Verify live deployment
         env:
-          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+          PAGE_URL: ${{ steps.deployment.outputs.page_url || steps.deployment_retry.outputs.page_url }}
         run: |
           for attempt in {1..12}; do
             version=$(curl --fail --silent --show-error --location --connect-timeout 5 --max-time 10 \
