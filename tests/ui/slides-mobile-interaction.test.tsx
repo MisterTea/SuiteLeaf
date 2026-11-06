@@ -95,7 +95,7 @@ it("starts slide selection with a hold, toggles slides on tap, and exits with Do
   expect(editor.active()).toBe("c");
 });
 
-it("reorders the selected group after a second hold and drag", () => {
+it.each([1, 2])("reorders a slide when dragging during hold %s", (holdCount) => {
   const editor = openSlides();
   vi.useFakeTimers();
   document.querySelector<HTMLElement>(".thumbnails-list")!.style.flexDirection =
@@ -107,15 +107,74 @@ it("reorders the selected group after a second hold and drag", () => {
       width: 100,
       height: 80,
     } as DOMRect);
-  hold(thumb("a"));
-  pointer(thumb("a"), "pointerup");
-  fireEvent.click(thumb("a"));
+  if (holdCount === 2) {
+    hold(thumb("a"));
+    pointer(thumb("a"), "pointerup");
+    fireEvent.click(thumb("a"));
+  }
   hold(thumb("a"));
   pointer(thumb("a"), "pointermove", 350, 80);
   pointer(thumb("a"), "pointerup", 350, 80);
   expect(editor.order()).toEqual(["b", "c", "a"]);
   act(() => editor.slide().undo());
   expect(editor.order()).toEqual(["a", "b", "c"]);
+});
+
+it("drags selected slides immediately as a group without scrolling the filmstrip", () => {
+  const editor = openSlides();
+  vi.useFakeTimers();
+  const list = document.querySelector<HTMLElement>(".thumbnails-list")!;
+  list.style.flexDirection = "row";
+  for (const [index, id] of ["a", "b", "c"].entries())
+    vi.spyOn(thumb(id), "getBoundingClientRect").mockReturnValue({
+      left: index * 110, top: 0, width: 100, height: 80,
+    } as DOMRect);
+  hold(thumb("a"));
+  pointer(thumb("a"), "pointerup");
+  fireEvent.click(thumb("a"));
+  tap(thumb("b"));
+  pointer(thumb("b"), "pointerdown");
+  pointer(thumb("b"), "pointermove", 350, 80);
+  expect(list.scrollLeft).toBe(0);
+  pointer(thumb("b"), "pointerup", 350, 80);
+  fireEvent.click(thumb("b"));
+  expect(editor.order()).toEqual(["c", "a", "b"]);
+  expect(thumb("a").getAttribute("aria-selected")).toBe("true");
+  expect(thumb("b").getAttribute("aria-selected")).toBe("true");
+  act(() => editor.slide().undo());
+  expect(editor.order()).toEqual(["a", "b", "c"]);
+});
+
+it("cancels a selected slide drag without reordering", () => {
+  const editor = openSlides();
+  vi.useFakeTimers();
+  hold(thumb("a"));
+  pointer(thumb("a"), "pointerup");
+  fireEvent.click(thumb("a"));
+  pointer(thumb("a"), "pointerdown");
+  pointer(thumb("a"), "pointermove", 350, 80);
+  pointer(thumb("a"), "pointercancel");
+  pointer(thumb("a"), "pointerup", 350, 80);
+  expect(editor.order()).toEqual(["a", "b", "c"]);
+  expect(document.querySelector(".drag-source")).toBeNull();
+});
+
+it.each([false, true])("scrolls from an unselected slide without reordering (readOnly=%s)", (readOnly) => {
+  const editor = openSlides({ readOnly });
+  vi.useFakeTimers();
+  const list = document.querySelector<HTMLElement>(".thumbnails-list")!;
+  hold(thumb("a"));
+  pointer(thumb("a"), "pointerup");
+  fireEvent.click(thumb("a"));
+  const target = thumb(readOnly ? "a" : "b");
+  pointer(target, "pointerdown");
+  pointer(target, "pointermove", 50, 80);
+  pointer(target, "pointerup", 50, 80);
+  fireEvent.click(target);
+  expect(list.scrollLeft).toBe(50);
+  expect(editor.order()).toEqual(["a", "b", "c"]);
+  expect(thumb("a").getAttribute("aria-selected")).toBe("true");
+  expect(thumb("b").getAttribute("aria-selected")).toBe("false");
 });
 
 it("cancels a hold when the user swipes or the pointer is canceled", () => {

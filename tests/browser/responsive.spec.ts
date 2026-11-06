@@ -3,6 +3,82 @@ import { createFile, serializeFile } from "../../packages/core/src/native-file";
 import { defaultPageSettings } from "../../packages/core/src/document-layout";
 import { readFile } from "node:fs/promises";
 
+test("Mobile expanded formula editor preserves text proportions", async ({ page, isMobile }) => {
+  test.skip(!isMobile);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Sample budget" }).click();
+  await page.locator("[data-sheet-ready='true']").waitFor();
+  const formulaBar = page.locator('[data-u-comp="formula-bar"]');
+  const canvas = formulaBar.locator('canvas[data-u-comp="render-canvas"]');
+  const height = (await formulaBar.boundingBox())!.height;
+  await formulaBar.locator(".univerjs-icon-down-icon").locator("..").tap();
+  await expect.poll(async () => (await formulaBar.boundingBox())!.height).toBeGreaterThan(height * 2);
+  // The canvas bitmap must have the same scale in both axes; otherwise its
+  // painted text is compressed even though the editor's box has expanded.
+  await expect.poll(() => canvas.evaluate((element) => {
+    const bitmap = element as HTMLCanvasElement;
+    const bounds = bitmap.getBoundingClientRect();
+    return Math.abs(bounds.width / bitmap.width - bounds.height / bitmap.height);
+  })).toBeLessThan(0.03);
+  await formulaBar.locator(".univerjs-icon-down-icon").locator("..").tap();
+  await expect.poll(async () => (await formulaBar.boundingBox())!.height).toBe(height);
+});
+
+test("Mobile comment editor leaves its submit button tappable", async ({ page, isMobile }) => {
+  test.skip(!isMobile);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Sample budget" }).click();
+  await page.locator("[data-sheet-ready='true']").waitFor();
+  await page.getByRole("button", { name: "Insert comment (Cmd+Option+M)" }).tap();
+  await page.locator('[id^="CELL-"] canvas#univer-doc-main-canvas').tap();
+  await page.keyboard.type("Review this cell");
+  // A canvas overlapping the action row would intercept this real tap.
+  await page.getByRole("button", { name: "Comment", exact: true }).tap();
+});
+
+test("Mobile MARP typing pauses preserve the markdown caret and scroll position", async ({ page, isMobile }) => {
+  test.skip(!isMobile);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const source = "---\nmarp: true\n---\n\n" + Array.from({ length: 12 }, (_, index) =>
+    `# Slide ${index + 1}\n\n` + Array.from({ length: 5 }, (_, line) => `Paragraph ${index + 1}.${line + 1}: A line that remains readable while editing.`).join("\n\n")
+  ).join("\n\n---\n\n");
+  await page.goto("/");
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({ name: "scroll.md", mimeType: "text/markdown", buffer: Buffer.from(source) });
+  await expect(page.locator(".slide-canvas")).not.toHaveAttribute("aria-busy", "true");
+  const initialFit = await page.locator(".slides-editor").evaluate((element) => JSON.parse((element as HTMLElement).dataset.deckSnapshot!).marpFit);
+  await page.getByRole("button", { name: "Show markdown", exact: true }).click();
+  // Shrink the visual viewport without shortening the editor's layout.
+  const session = await page.context().newCDPSession(page);
+  await session.send("Emulation.setPageScaleFactor", { pageScaleFactor: 1.5 });
+  const markdown = page.getByLabel("Presentation markdown");
+  const position = source.indexOf("Paragraph 5.2") + "Paragraph 5.2".length;
+  await markdown.evaluate((element, caret) => {
+    const area = element as HTMLTextAreaElement;
+    area.focus();
+    area.setSelectionRange(caret, caret);
+    area.scrollTop = area.scrollHeight * 0.36;
+  }, position);
+  await page.waitForTimeout(250);
+  await page.keyboard.insertText(" scroll-regression");
+  const location = () => markdown.evaluate((element) => {
+    const area = element as HTMLTextAreaElement;
+    const parents = [];
+    for (let parent = area.parentElement; parent; parent = parent.parentElement)
+      parents.push({ className: parent.className, top: parent.scrollTop });
+    return { top: area.scrollTop, caret: area.selectionStart, focused: document.activeElement === area, parents,
+      viewport: { top: window.visualViewport?.pageTop, offsetTop: window.visualViewport?.offsetTop },
+    };
+  });
+  const before = await location();
+  await expect.poll(() => page.locator(".slides-editor").evaluate((element, fit) => {
+    const deck = JSON.parse((element as HTMLElement).dataset.deckSnapshot!);
+    return deck.marpSource.includes("scroll-regression") && deck.marpFit === fit;
+  }, initialFit)).toBe(true);
+  await page.waitForTimeout(250);
+  const after = await location();
+  expect(after).toEqual(before);
+});
+
 test("Mobile MARP switches between a full slide editor and full markdown pane", async ({ page, isMobile }) => {
   test.skip(!isMobile);
   const source = "---\nmarp: true\n---\n\n# Phone slides\n\nEdit either view.\n";
@@ -189,6 +265,13 @@ test("Mobile Docs reflows readable text, tables and images and restores paper la
   expect(layout.firstParagraphHeight).toBeGreaterThan(400);
   await assertNoHorizontalScroll(page, "Reflowed document");
   await expect(page.locator(".page-furniture")).toBeHidden();
+  const paper = page.locator(".paper");
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate((value) => document.documentElement.dataset.theme = value, theme);
+    for (const edge of ["top", "right", "bottom", "left"])
+      await expect(paper).toHaveCSS(`border-${edge}-width`, "0px");
+    await expect(paper).toHaveCSS("box-shadow", "none");
+  }
   await page.emulateMedia({ media: "print" });
   await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
   await expect.poll(() => page.locator(".doc-page-spacer").count()).toBeGreaterThan(0);
@@ -271,8 +354,17 @@ test("Mobile slides touch: text selection, editing, slide holds and notes", asyn
   const second = (await page.locator('.thumbnail-row[data-slide-id="b"]').boundingBox())!;
   const last = (await page.locator('.thumbnail-row[data-slide-id="c"]').boundingBox())!;
   const start = { x: second.x + second.width / 2, y: second.y + second.height / 2 };
-  await touchGesture(page, start, { x: last.x + last.width - 4, y: start.y }, 600);
+  await touchGesture(page, start, { x: last.x + last.width - 4, y: start.y });
   await expect.poll(() => page.locator(".thumbnail-row").evaluateAll((rows) => rows.map((row) => row.getAttribute("data-slide-id")))).toEqual(["c", "a", "b"]);
+  await page.getByRole("button", { name: "Done", exact: true }).tap();
+  const firstThumbnail = page.locator('.thumbnail-row[data-slide-id="c"]');
+  await firstThumbnail.scrollIntoViewIfNeeded();
+  const firstBounds = (await firstThumbnail.boundingBox())!;
+  const middleBounds = (await thumb.boundingBox())!;
+  await touchGesture(page,
+    { x: firstBounds.x + firstBounds.width / 2, y: firstBounds.y + firstBounds.height / 2 },
+    { x: middleBounds.x + middleBounds.width - 4, y: firstBounds.y + firstBounds.height / 2 }, 600);
+  await expect.poll(() => page.locator(".thumbnail-row").evaluateAll((rows) => rows.map((row) => row.getAttribute("data-slide-id")))).toEqual(["a", "c", "b"]);
   await page.getByRole("button", { name: "Done", exact: true }).tap();
   await page.getByRole("button", { name: "Speaker notes", exact: true }).tap();
   await expect(page.locator(".notes-textarea")).toBeVisible();

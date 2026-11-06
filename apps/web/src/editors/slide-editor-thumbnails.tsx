@@ -16,6 +16,7 @@ import type { SlidesEditorState } from "./slide-editor-state";
 import type { DeckHistoryApi } from "./slide-editor-history";
 import type { SlideOrderActions } from "./slide-editor-commands";
 import { useSlideThumbnailTouch } from "./slide-thumbnail-touch";
+import { scrollThumbnailIntoView } from "./slide-thumbnail-scroll";
 
 export type SlideDrag = {
   ids: string[];
@@ -99,9 +100,9 @@ export function useThumbnailDrag(
   }, []);
 
   useEffect(() => {
-    thumbnailsRef.current
-      ?.querySelector(`[data-slide-id="${activeSlideId}"]`)
-      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    const strip = thumbnailsRef.current;
+    const thumbnail = strip?.querySelector<HTMLElement>(`[data-slide-id="${activeSlideId}"]`);
+    scrollThumbnailIntoView(strip, thumbnail ?? null);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the editor state's refs and setters are stable
   }, [activeSlideId, deck.slideOrder]);
 }

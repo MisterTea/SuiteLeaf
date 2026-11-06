@@ -5,7 +5,7 @@ import type { SlideDrag } from "./slide-editor-thumbnails";
 
 export const SLIDE_HOLD_MS = 500;
 
-/** A first hold selects slides; a later hold picks up the selected group. */
+/** A hold selects slides; selected thumbnails can then be dragged as a group. */
 export function useSlideThumbnailTouch(
   state: SlidesEditorState,
   applySelection: (
@@ -59,6 +59,14 @@ export function useSlideThumbnailTouch(
     const pointerId = e.pointerId;
     const startX = e.clientX,
       startY = e.clientY;
+    // Selection mode already distinguishes a thumbnail drag from filmstrip
+    // scrolling. Pick up a selected group without requiring another hold.
+    if (mode.current && state.selectedRef.current.includes(id) && !state.readOnlyRef.current) {
+      const next = { ids: [...state.selectedRef.current], startX, startY, over: null };
+      dragRef.current = next;
+      setSlideDrag(next);
+      target.setPointerCapture?.(pointerId);
+    }
     timer.current = setTimeout(() => {
       timer.current = null;
       if (!press.current) return;
@@ -73,7 +81,7 @@ export function useSlideThumbnailTouch(
           : [id];
       state.anchorRef.current = id;
       applySelection(id, ids, null);
-      if (alreadySelecting && !state.readOnlyRef.current) {
+      if (!state.readOnlyRef.current) {
         const next = { ids, startX, startY, over: null };
         dragRef.current = next;
         setSlideDrag(next);
@@ -90,7 +98,7 @@ export function useSlideThumbnailTouch(
     ) {
       clearTimer();
       ignoreClick.current = true;
-      if (mode.current) {
+      if (mode.current && !dragRef.current) {
         const list = e.currentTarget.closest(".thumbnails-list");
         if (list) list.scrollLeft += start.lastX - e.clientX;
       }
@@ -99,6 +107,7 @@ export function useSlideThumbnailTouch(
   };
   const onPointerUp = () => {
     clearTimer();
+    if (dragRef.current?.over != null) ignoreClick.current = true;
     press.current = null;
   };
   const onPointerCancel = () => {

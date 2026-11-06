@@ -1,6 +1,10 @@
 /* Phone editing uses a reading width rather than a scaled paper page. */
 .doc-reflow-language { display: none; }
 @media screen and (max-width: 700px) {
+  .docs-editor .paper {
+    border: 0;
+    box-shadow: none;
+  }
   .docs-editor:not(.seeing-letterhead) {
     --doc-reflow: 1;
   }

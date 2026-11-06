@@ -636,7 +636,7 @@
   }
   /* The comment editor canvas is absolutely positioned and, on a phone,
      covers the Comment button. Keep it to the text line. */
-  canvas#univer-doc-main-canvas {
+  :is([id^="CELL-"], [id^="PANEL-"]) canvas#univer-doc-main-canvas {
     height: 22px !important;
     max-height: 22px !important;
   }
