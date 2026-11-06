@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as Y from "yjs";
 import { connectDocs } from "../packages/core/src/collab";
-import { sheetCellKey } from "../apps/web/src/collab/sheet-cells";
+import { mirrorSheetCells, sheetCellKey } from "../apps/web/src/collab/sheet-cells";
 import { noteSheetEdit, redoLocalSheet, sheetConflictText, undoLocalSheet } from "../apps/web/src/collab/sheet-undo";
 
 describe("sheet undo", () => {
@@ -40,4 +40,23 @@ describe("sheet undo", () => {
     noteSheetEdit(local, new Map(local.getMap<string>("cells").entries()), new Map(local.getMap<string>("cells").entries()));
     expect(redoLocalSheet(new Y.Doc())).toBeNull();
   });
+});
+
+it("records native formatting matrices without a range and restores previous styles and values", () => {
+  const doc = new Y.Doc();
+  const key = sheetCellKey("s1", 0, 0)!;
+  const cells = doc.getMap<string>("cells");
+  cells.set(key, JSON.stringify({ v: "Header", s: { bl: 1 } }));
+  const before = new Map(cells.entries());
+  mirrorSheetCells(doc, { kind: "sheet", mutations: [{
+    id: "sheet.mutation.set-range-values",
+    params: { subUnitId: "s1", cellValue: { 0: { 0: { s: { bg: { rgb: "#d2e3fc" } } } } } },
+  }] });
+  const after = new Map(cells.entries());
+  expect(JSON.parse(cells.get(key)!)).toEqual({ v: "Header", s: { bl: 1, bg: { rgb: "#d2e3fc" } } });
+  noteSheetEdit(doc, before, after);
+  undoLocalSheet(doc);
+  expect(cells.get(key)).toBe(before.get(key));
+  redoLocalSheet(doc);
+  expect(cells.get(key)).toBe(after.get(key));
 });

@@ -1,3 +1,4 @@
+import { mergeSheetCellPatch } from "./sheet-cell-patch";
 import * as Y from "yjs";
 import { projectCharts } from "./sheet-charts";
 import { commentWriteAllowed, projectSheetComments } from "./sheet-comments";
@@ -247,9 +248,11 @@ export function sheetCellRecords(
     if (fields.suiteleafRemote === true) continue;
     if (!("value" in fields) && !("cellValue" in fields)) continue;
     const range = fields.range;
-    if (!range || typeof range !== "object") continue;
+    const value = cellValue(fields);
+    if ((!range || typeof range !== "object") &&
+      (!value || typeof value !== "object" || !isRowMatrix(value))) continue;
     const sheetId = typeof fields.subUnitId === "string" ? fields.subUnitId : "";
-    for (const cell of cellsOf(sheetId, range as { startRow?: unknown; startColumn?: unknown }, cellValue(fields))) {
+    for (const cell of cellsOf(sheetId, (range ?? {}) as { startRow?: unknown; startColumn?: unknown }, cellValue(fields))) {
       const key = sheetCellKey(sheetId, cell.row, cell.column);
       if (!key) continue;
       let json: string;
@@ -576,7 +579,8 @@ function writeMutation(
     { mutations: [mutation], viewOrder: viewOrderOf(op), styles },
     styles,
   )) {
-    cells.set(record.key, record.json);
+    cells.set(record.key, mergeSheetCellPatch(cells.get(record.key), record.json,
+      !!(mutation.params as { isOverrideStyle?: boolean } | undefined)?.isOverrideStyle));
   }
 }
 

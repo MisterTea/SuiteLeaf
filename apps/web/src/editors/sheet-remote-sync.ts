@@ -56,7 +56,10 @@ export function watchRemoteSheet(
             startColumn: write.column,
             endColumn: write.column,
           },
-          value: write.value,
+          value: write.value && typeof write.value === "object"
+            ? { s: null, ...write.value }
+            : write.value,
+          isOverrideStyle: true,
         });
       }
     } finally {

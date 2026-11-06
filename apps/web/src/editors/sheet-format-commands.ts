@@ -27,7 +27,7 @@ function boundsCover(outer: CellBounds, inner: CellBounds) {
  * A single cell grows to the sheet's used block when that block is more than
  * one cell and contains the selection. Univer range themes persist as a
  * workbook resource and paint through a render interceptor, so they never
- * land on cell style bg. Each row is filled with setBackgroundColor instead.
+ * land on cell style bg. A single style command paints the block instead.
  */
 function rangeForAlternatingColors(sheet: {
   getDataRange?: () => { getRange: () => CellBounds };
@@ -42,28 +42,6 @@ function rangeForAlternatingColors(sheet: {
   if ((rows < 2 && columns < 2) || !boundsCover(used, box)) return range;
   return data;
 }
-function paintAlternatingColors(
-  sheet: {
-    getRange: (
-      row: number,
-      column: number,
-      rows: number,
-      columns: number,
-    ) => { setBackgroundColor: (color: string) => unknown };
-  },
-  box: CellBounds,
-) {
-  const width = box.endColumn - box.startColumn + 1;
-  const height = box.endRow - box.startRow + 1;
-  if (width < 1 || height < 1) return;
-  for (let row = 0; row < height; row++) {
-    const color = row === 0 ? HEADER_FILL : DATA_FILLS[(row - 1) % 2];
-    sheet
-      .getRange(box.startRow + row, box.startColumn, 1, width)
-      .setBackgroundColor(color);
-  }
-}
-
 /** Univer's facade names right alignment "normal" and throws on "right". */
 export function facadeAlign(align: "left" | "center" | "right") {
   return align === "right" ? "normal" : align;
@@ -218,7 +196,23 @@ export function sheetFormatCommands({
     const selected = book.current?.getActiveRange?.();
     if (!sheet || !selected) return;
     const target = rangeForAlternatingColors(sheet, selected);
-    paintAlternatingColors(sheet, target.getRange());
+    const box = target.getRange();
+    const width = box.endColumn - box.startColumn + 1;
+    const height = box.endRow - box.startRow + 1;
+    if (width < 1 || height < 1) return;
+    api.current?.syncExecuteCommand("sheet.command.set-style", {
+      unitId: book.current.getId(),
+      subUnitId: sheet.getSheetId(),
+      range: box,
+      style: {
+        type: "bg",
+        value: Array.from({ length: height }, (_, row) =>
+          Array.from({ length: width }, () => ({
+            rgb: row === 0 ? HEADER_FILL : DATA_FILLS[(row - 1) % 2],
+          })),
+        ),
+      },
+    });
     persist.current();
   };
   const applyBorders = () => {

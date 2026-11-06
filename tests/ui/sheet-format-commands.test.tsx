@@ -186,3 +186,13 @@ it("bands only the selection when it is a block or outside the data", () => {
   act(() => commands().alternatingColors());
   expect(style(1, 3).bg?.rgb).toBe("#ffffff");
 });
+
+ it("undoes and redoes the whole alternating-colors block in one step", async () => {
+  const { commands } = setup({ 0: { 0: { v: "Header" } }, 1: { 0: { v: 1 } }, 2: { 0: { v: 2 } } });
+  select(h, 0, 0, 3, 1);
+  commands().alternatingColors();
+  await h.api.undo();
+  for (let row = 0; row < 3; row++) expect(style(row, 0).bg?.rgb).toBeUndefined();
+  await h.api.redo();
+  expect([0, 1, 2].map(row => style(row, 0).bg?.rgb)).toEqual(["#d2e3fc", "#ffffff", "#e8f0fe"]);
+});

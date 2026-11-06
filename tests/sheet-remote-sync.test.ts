@@ -102,7 +102,8 @@ it("writes remote cells as remote commands and saves for an editor", () => {
         suiteleafRemote: true,
         subUnitId: "s1",
         range: { startRow: 2, endRow: 2, startColumn: 1, endColumn: 1 },
-        value: { v: "hi" },
+        value: { s: null, v: "hi" },
+        isOverrideStyle: true,
       },
     },
   ]);
