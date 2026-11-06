@@ -206,7 +206,7 @@ export default function Slides({
   const api = useRef(latestApi);
   api.current = latestApi;
 
-  const { onElementMouseDown } = useElementDrag(state, { activeSlide, updateElement });
+  const { onElementMouseDown, onElementPointerDown, onElementPointerUp } = useElementDrag(state, { activeSlide, updateElement });
   const deckExports = useSlideExports(state, { file, marpDraft });
   const { printing, printSlides } = deckExports;
   const showControls = useShowControls(state, { file, marpDraft });
@@ -235,6 +235,8 @@ export default function Slides({
     liveId,
     onError,
     onElementMouseDown,
+    onElementPointerDown,
+    onElementPointerUp,
     updateElement,
     rememberCaret: textFormat.rememberCaret,
     selectElement,

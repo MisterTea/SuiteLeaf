@@ -1,13 +1,20 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createFile, type SheetFile } from "@suiteleaf/core";
 import { SheetAuditNote } from "../../apps/web/src/editors/sheet-audit-note";
 
 afterEach(cleanup);
 
 describe("formula audit note", () => {
+  it("provides a way back to the sheet", async () => {
+    const onClose = vi.fn();
+    const file = createFile("sheet", "Budget") as SheetFile;
+    render(<SheetAuditNote content={file.content} onClose={onClose} />);
+    await userEvent.click(screen.getByRole("button", { name: "Back to sheet" }));
+    expect(onClose).toHaveBeenCalledOnce();
+  });
   it("shows the cycle for A1 and not a cell value", async () => {
     const file = createFile("sheet", "Beds") as SheetFile;
     const id = file.content.workbook.sheetOrder[0];

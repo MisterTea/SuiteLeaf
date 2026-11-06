@@ -75,6 +75,8 @@ import { charts, EmbeddedChart } from "./sheet-embedded-chart";
 import { formulaBarVisible, toggleFilterValueFromLabel } from "./sheet-editor-util";
 import { watchChartDoubleClick } from "./sheet-chart-floats";
 import { watchPhoneTaps, watchSheetSelection } from "./sheet-grid-watchers";
+import { watchSheetTouchNavigation } from "./sheet-touch-navigation";
+import { RANGE_TYPE } from "@univerjs/core";
 import { outlineTables, tableFormulaNote } from "./sheet-content-sync";
 import { startSheetSession } from "./sheet-session";
 import { redoSharedSheet, undoSharedSheet, watchRemoteSheet } from "./sheet-remote-sync";
@@ -150,6 +152,7 @@ export default function Sheets({
     [sheetAccessOpen, setSheetAccessOpen] = useState(false),
     [queryOpen, setQueryOpen] = useState(false),
     [goalOpen, setGoalOpen] = useState(false);
+  const [selectionType, setSelectionType] = useState<number>();
   const form = useAnalysisForm();
   const [, setRevision] = useState(0);
   const format = useSheetTextFormat();
@@ -366,8 +369,10 @@ export default function Sheets({
         reportSelection,
         placeRemoteRef,
         remoteSelectionsRef,
+        onSelectionRange: setSelectionType,
       });
       const stopPhoneTaps = watchPhoneTaps({ injector, workbook, sheetHost });
+      const stopTouch = sheetHost ? watchSheetTouchNavigation(sheetHost, injector, workbook, () => readOnlyRef.current) : () => {};
       const stopSession = startSheetSession({
         univer,
         univerAPI,
@@ -409,6 +414,7 @@ export default function Sheets({
         stopFormulaLock();
         stopSelection();
         stopPhoneTaps();
+        stopTouch();
         partialCleanup?.();
         partialCleanup = undefined;
       };
@@ -667,6 +673,7 @@ export default function Sheets({
         sheetList={sheetList}
       />
       <SheetSidePanels
+        setAuditOpen={setAuditOpen}
         costOpen={costOpen}
         auditOpen={auditOpen}
         languageOpen={languageOpen}
@@ -683,6 +690,20 @@ export default function Sheets({
         setProofing={setProofing}
       />
       <SheetToolbar
+        insertAxis={selectionType === RANGE_TYPE.ROW ? "row" : selectionType === RANGE_TYPE.COLUMN ? "column" : undefined}
+        onInsertAxis={() => {
+          if (readOnlyRef.current) return;
+          const sheet = book.current?.getActiveSheet();
+          const range = sheet?.getSelection()?.getActiveRange();
+          if (!range) return;
+          try {
+            if (selectionType === RANGE_TYPE.ROW) sheet.insertRowsAfter(range.getLastRow(), 1);
+            else if (selectionType === RANGE_TYPE.COLUMN) sheet.insertColumnsAfter(range.getLastColumn(), 1);
+            persist.current();
+          } catch (cause) {
+            onError(cause instanceof Error ? cause.message : String(cause));
+          }
+        }}
         readOnly={readOnly}
         ready={ready}
         api={api}

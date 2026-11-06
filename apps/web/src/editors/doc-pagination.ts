@@ -24,6 +24,7 @@ import { annotateWidowLines, avoidSingleLine } from "./doc-widow-control";
 import { sectionAttrs, type DocSection } from "./doc-section-break";
 import { keepParagraphTogether, keepsLines } from "./doc-keep-lines";
 import { gutterDecorations } from "./doc-gutter";
+import { documentReflows } from "./doc-reflow";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -161,6 +162,7 @@ export const DocumentPagination = Extension.create({
                   .setMeta(paginationKey, DecorationSet.empty)
                   .setMeta("addToHistory", false),
               );
+              if (documentReflows(view.dom)) return;
               const saved = documentPageSettings(
                 view.state.doc.toJSON() as JsonNode,
               );
@@ -493,6 +495,10 @@ export const DocumentPagination = Extension.create({
           observer.observe(view.dom);
           view.dom.addEventListener("load", schedule, true);
           view.dom.addEventListener(letterheadLiveEvent, schedule);
+          window.addEventListener("resize", schedule);
+          // Printing changes the CSS layout before taking its snapshot.
+          window.addEventListener("beforeprint", paginate);
+          window.addEventListener("afterprint", schedule);
           document.fonts?.ready.then(schedule);
           schedule();
           return {
@@ -509,6 +515,9 @@ export const DocumentPagination = Extension.create({
               observer.disconnect();
               view.dom.removeEventListener("load", schedule, true);
               view.dom.removeEventListener(letterheadLiveEvent, schedule);
+              window.removeEventListener("resize", schedule);
+              window.removeEventListener("beforeprint", paginate);
+              window.removeEventListener("afterprint", schedule);
             },
           };
         },

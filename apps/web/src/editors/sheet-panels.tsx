@@ -151,6 +151,7 @@ export function SheetToolDialogs({
 
 /** Notes and side panels the toolbar opens: cost, audit, language, accessibility, query, and goal seek. */
 export function SheetSidePanels({
+  setAuditOpen,
   costOpen,
   auditOpen,
   languageOpen,
@@ -166,6 +167,7 @@ export function SheetSidePanels({
   proofing,
   setProofing,
 }: {
+  setAuditOpen?: (open: boolean) => void;
   costOpen: boolean;
   auditOpen: boolean;
   languageOpen: boolean;
@@ -186,7 +188,7 @@ export function SheetSidePanels({
     {costOpen ? (
       <SheetCostNote content={content.current} onOpenQuery={() => setQueryOpen(true)} />
     ) : null}
-    {auditOpen ? <SheetAuditNote content={content.current} /> : null}
+    {auditOpen ? <SheetAuditNote content={content.current} onClose={() => setAuditOpen?.(false)} /> : null}
     {languageOpen ? (
       <SheetLanguageField
         language={proofing}

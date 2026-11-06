@@ -27,6 +27,8 @@ export function editorCanvasHooks(
     liveId,
     onError,
     onElementMouseDown,
+    onElementPointerDown,
+    onElementPointerUp,
     updateElement,
     rememberCaret,
     selectElement,
@@ -39,6 +41,8 @@ export function editorCanvasHooks(
       liveId: string | null;
       onError: (s: string) => void;
       onElementMouseDown: (e: React.MouseEvent, elementId: string, handle?: ResizeHandle) => void;
+      onElementPointerDown: (e: React.PointerEvent, elementId: string, handle?: ResizeHandle) => void;
+      onElementPointerUp: (e: React.PointerEvent) => void;
       revealMarkdown: (lines?: [number, number]) => void;
     },
 ) {
@@ -49,7 +53,10 @@ export function editorCanvasHooks(
   } = state;
 
   const renderHandles = (elementId: string) => (
-    <div className="selection-handles">
+    <div className="selection-handles" onPointerDown={(e) => {
+      const handle = (e.target as HTMLElement).className.match(/handle-(nw|ne|se|sw|n|e|s|w)\b/)?.[1] as ResizeHandle | undefined;
+      if (handle) onElementPointerDown(e, elementId, handle);
+    }} onPointerUp={onElementPointerUp}>
       <div
         className="resize-handle handle-nw"
         onMouseDown={(e) => onElementMouseDown(e, elementId, "nw")}
@@ -230,6 +237,8 @@ export function editorCanvasHooks(
         ...editorFadeAttrs(el),
         onMouseDown: (e) => onElementMouseDown(e, el.id),
         onClick: (e) => e.stopPropagation(),
+        onPointerDown: (e) => onElementPointerDown(e, el.id),
+        onPointerUp: onElementPointerUp,
       };
       if (el.type === "text") {
         props.onMouseDown = (e) => {
@@ -462,8 +471,10 @@ export function SlideCanvasStage({
       {slideComments.dock}
       </div>
 
-      {/* Speaker Notes Pane */}
-      <div className="speaker-notes-pane">
+      <button type="button" className="mobile-speaker-notes-toggle" aria-expanded={showNotes} aria-controls="slide-speaker-notes" onClick={() => setShowNotes(!showNotes)}>
+        {showNotes ? "Hide speaker notes" : "Speaker notes"}
+      </button>
+      <div id="slide-speaker-notes" className={`speaker-notes-pane${showNotes ? " open" : ""}`}>
         <div
           className="notes-drag-handle"
           onClick={() => setShowNotes(!showNotes)}

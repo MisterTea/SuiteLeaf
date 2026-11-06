@@ -15,6 +15,7 @@ import { presentationSlidePath } from "../slide-location";
 import type { SlidesEditorState } from "./slide-editor-state";
 import type { DeckHistoryApi } from "./slide-editor-history";
 import type { SlideOrderActions } from "./slide-editor-commands";
+import { useSlideThumbnailTouch } from "./slide-thumbnail-touch";
 
 export type SlideDrag = {
   ids: string[];
@@ -80,12 +81,15 @@ export function useThumbnailDrag(
     };
     const onDragStart = (event: DragEvent) => event.preventDefault();
     window.addEventListener("mousemove", onMove);
+    const onPointerMove = (e: PointerEvent) => { if (e.pointerType === "touch") onMove(e); };
+    window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("mouseup", onUp);
     window.addEventListener("pointerup", onUp);
     window.addEventListener("dragend", onUp);
     window.addEventListener("dragstart", onDragStart);
     return () => {
       window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("mouseup", onUp);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("dragend", onUp);
@@ -205,8 +209,13 @@ export function SlideThumbnails({
     deck, activeSlideId, selectedSlideIds, selectedRef, anchorRef, activeRef, readOnlyRef,
     setTransitionScope, setContextMenu,
   } = state;
+  const touch = useSlideThumbnailTouch(state, applySelection, dragRef, setSlideDrag);
   return (
-    <aside className="slides-sidebar" aria-label="Slide thumbnails">
+    <aside className={`slides-sidebar${touch.selectMode ? " selecting-slides" : ""}`} aria-label="Slide thumbnails">
+      {touch.selectMode ? <div className="slide-selection-mode" role="status">
+        <span>{selectedSlideIds.length} selected</span>
+        <button type="button" onClick={touch.finishSelection}>Done</button>
+      </div> : null}
       <div className="slides-sidebar-header">
         <span>Slides ({deck.slideOrder.length})</span>
         <div className="sidebar-slide-actions">
@@ -336,7 +345,12 @@ export function SlideThumbnails({
             </>
           );
           const handlers = {
+              onPointerDown: (e: React.PointerEvent<HTMLElement>) => touch.onPointerDown(e, id),
+              onPointerMove: touch.onPointerMove,
+              onPointerUp: touch.onPointerUp,
+              onPointerCancel: touch.onPointerCancel,
               onMouseDown: (e: React.MouseEvent) => {
+                if (touch.touchInteraction.current) return;
                 if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey)
                   return;
                 // Firefox starts a native drag unless the press is cancelled,
@@ -356,6 +370,7 @@ export function SlideThumbnails({
               onClick: (e: React.MouseEvent) => {
                 // The row is a link; the editor chooses the slide instead of following it.
                 e.preventDefault();
+                if (touch.click(id)) return;
                 if (suppressThumbnailClick.current) return;
                 thumbnailsRef.current?.focus();
                 if (e.shiftKey) {
@@ -379,6 +394,7 @@ export function SlideThumbnails({
               },
               onContextMenu: (e: React.MouseEvent) => {
                 e.preventDefault();
+                if (touch.touchInteraction.current) return;
                 if (readOnlyRef.current) return;
                 if (!selectedRef.current.includes(id)) {
                   anchorRef.current = id;

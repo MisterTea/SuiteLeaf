@@ -63,7 +63,7 @@ export function useSlidesEditorState({
     undo: false,
     redo: false,
   });
-  const [showNotes, setShowNotes] = useState(true);
+  const [showNotes, setShowNotes] = useState(() => window.innerWidth > 700);
   const [presenting, setPresenting] = useState(false);
   const [handoutsOpen, setHandoutsOpen] = useState(false);
   const [wordArtOpen, setWordArtOpen] = useState(false);

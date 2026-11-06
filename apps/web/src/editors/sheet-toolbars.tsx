@@ -38,6 +38,8 @@ type Toggle = Dispatch<SetStateAction<boolean>>;
 const SHEET_FONTS = ["Arial", "Roboto", "Calibri", "Times New Roman", "Courier New", "Georgia"];
 
 export function SheetToolbar({
+  insertAxis,
+  onInsertAxis,
   readOnly,
   ready,
   api,
@@ -64,6 +66,8 @@ export function SheetToolbar({
   toggleFilter,
   functions,
 }: {
+  insertAxis?: "row" | "column";
+  onInsertAxis?: () => void;
   readOnly: boolean;
   ready: boolean;
   api: RefObject<any>;
@@ -100,6 +104,11 @@ export function SheetToolbar({
     aria-label="Spreadsheet formatting"
   >
     <MenuSearchPill />
+    {insertAxis ? (
+      <Tool label={insertAxis === "row" ? "Insert row below" : "Insert column right"} disabled={readOnly || !ready} onClick={() => onInsertAxis?.()}>
+        <Plus size={16} />
+      </Tool>
+    ) : null}
 
     <Tool
       label="Undo (Cmd+Z)"

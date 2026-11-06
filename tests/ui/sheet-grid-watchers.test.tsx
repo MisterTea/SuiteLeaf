@@ -101,6 +101,23 @@ function selection(injector: any, host: HTMLDivElement, remote: RemoteSheetSelec
   return { reported, placeRemoteRef };
 }
 
+it("attaches scroll tracking when the viewport appears after workbook startup", () => {
+  const { injector, host, scroll, viewport } = setup();
+  let painted = false;
+  const lazyInjector = { get: (token: unknown) => {
+    const service = injector.get(token);
+    return token === IRenderManagerService ? { getRenderUnitById: () => painted ? service.getRenderUnitById() : null } : service;
+  } };
+  selection(lazyInjector, host);
+  expect(scroll).toHaveLength(0);
+  painted = true;
+  select(h, 1, 1);
+  expect(scroll).toHaveLength(1);
+  viewport.viewportScrollY = 20;
+  scroll[0]();
+  expect(JSON.parse(host.dataset.activeCell!).top).toBe(30);
+});
+
 it("reports each selection and places the active cell's corner on screen", () => {
   const { injector, host, scroll, viewport } = setup();
   const { reported } = selection(injector, host);

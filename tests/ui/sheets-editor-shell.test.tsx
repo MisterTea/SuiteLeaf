@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import * as Y from "yjs";
+import { RANGE_TYPE } from "@univerjs/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EditorActions } from "../../apps/web/src/ui";
 import { createFile, type PivotDefinition, type SheetFile } from "../../packages/core/src";
@@ -15,6 +16,9 @@ const seen = vi.hoisted(() => ({
   data: null as null | Record<string, any>,
   actions: null as null | Record<string, any>,
   editChart: null as null | { current: (id: string) => void },
+  selection: null as null | ((type?: number) => void),
+  toolbar: {} as Record<string, any>,
+  panels: {} as Record<string, any>,
   widths: { fail: null as null | unknown },
   startup: {
     fail: null as null | (() => void),
@@ -78,8 +82,11 @@ vi.mock("../../apps/web/src/editors/sheet-session", () => ({
   },
 }));
 vi.mock("../../apps/web/src/editors/sheet-grid-watchers", () => ({
-  watchSheetSelection: () => () => {},
+  watchSheetSelection: (props: { onSelectionRange: (type?: number) => void }) => { seen.selection = props.onSelectionRange; return () => {}; },
   watchPhoneTaps: () => () => {},
+}));
+vi.mock("../../apps/web/src/editors/sheet-touch-navigation", () => ({
+  watchSheetTouchNavigation: () => () => {},
 }));
 vi.mock("../../apps/web/src/editors/sheet-chart-floats", () => ({
   watchChartDoubleClick: (_host: HTMLElement, ref: { current: (id: string) => void }) => {
@@ -138,8 +145,8 @@ vi.mock("../../apps/web/src/templates/sheet-image", () => ({
   placeSheetImage: (...args: unknown[]) => seen.spies.placeImage(...args),
 }));
 vi.mock("../../apps/web/src/editors/sheet-embedded-chart", () => ({ charts: new Map(), EmbeddedChart: () => null }));
-vi.mock("../../apps/web/src/editors/sheet-panels", () => ({ SheetToolDialogs: () => null, SheetSidePanels: () => null }));
-vi.mock("../../apps/web/src/editors/sheet-toolbars", () => ({ SheetToolbar: () => null, SheetFormatToolbar: () => null }));
+vi.mock("../../apps/web/src/editors/sheet-panels", () => ({ SheetToolDialogs: () => null, SheetSidePanels: (props: Record<string, any>) => { seen.panels = props; return null; } }));
+vi.mock("../../apps/web/src/editors/sheet-toolbars", () => ({ SheetToolbar: (props: Record<string, any>) => { seen.toolbar = props; return null; }, SheetFormatToolbar: () => null }));
 vi.mock("../../apps/web/src/editors/sheet-analysis-panel", () => ({
   SheetAnalysisPanel: ({ panel }: { panel: string }) => <div role="region" aria-label={`${panel} panel`} />,
   SheetPivotBar: ({ activePivot, activePivotError }: { activePivot: PivotDefinition; activePivotError?: string }) => (
@@ -189,6 +196,30 @@ function openSheets(file = sheetFile(), props: Partial<Parameters<typeof Sheets>
 }
 
 describe("starting the spreadsheet engine", () => {
+  it("inserts after the selected rows or columns and closes audit from its panel", async () => {
+    const { ready } = openSheets();
+    await ready();
+    const insertRowsAfter = vi.fn(), insertColumnsAfter = vi.fn();
+    Object.assign(seen.engine!.sheet, {
+      getSelection: () => ({ getActiveRange: () => ({ getLastRow: () => 4, getLastColumn: () => 2 }) }),
+      insertRowsAfter, insertColumnsAfter,
+    });
+    expect(seen.toolbar.insertAxis).toBeUndefined();
+    act(() => seen.selection!(RANGE_TYPE.ROW));
+    expect(seen.toolbar.insertAxis).toBe("row");
+    act(() => seen.toolbar.onInsertAxis());
+    expect(insertRowsAfter).toHaveBeenCalledWith(4, 1);
+    act(() => seen.selection!(RANGE_TYPE.COLUMN));
+    expect(seen.toolbar.insertAxis).toBe("column");
+    act(() => seen.toolbar.onInsertAxis());
+    expect(insertColumnsAfter).toHaveBeenCalledWith(2, 1);
+    act(() => seen.selection!(RANGE_TYPE.NORMAL));
+    expect(seen.toolbar.insertAxis).toBeUndefined();
+    act(() => seen.toolbar.setAuditOpen(true));
+    expect(seen.panels.auditOpen).toBe(true);
+    act(() => seen.panels.setAuditOpen(false));
+    expect(seen.panels.auditOpen).toBe(false);
+  });
   it("creates the workbook, signs in the author, and reports the sheet actions", async () => {
     setLocalName("Rosa");
     const { onActions, ready, file } = openSheets();

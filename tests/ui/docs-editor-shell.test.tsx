@@ -14,6 +14,7 @@ import { svgDataUri, svgFromDataUri } from "../../apps/web/src/editors/svg-data"
 import { insertDocImage } from "../../apps/web/src/editors/doc-image-insert";
 import { exportDocTabs } from "../../apps/web/src/editors/doc-export";
 import { stubBrowser } from "./other-editors-env";
+import { paginationKey } from "../../apps/web/src/editors/doc-pagination";
 
 const agent = vi.hoisted(() => ({ ctx: null as DocsAgentContext | null }));
 
@@ -110,6 +111,21 @@ function openDocs(file = docFile(), props: Partial<Parameters<typeof Docs>[0]> =
 }
 
 describe("the document editor", () => {
+  it("clears page decorations in reflow and restores pagination without changing the saved document", async () => {
+    const { editor } = openDocs(docFile(paragraphs("First", "Last")));
+    const ed = await editor();
+    act(() => { ed.commands.setTextSelection(3); ed.commands.setPageBreak(); });
+    const saved = ed.getJSON();
+    act(() => window.dispatchEvent(new Event("beforeprint")));
+    expect(paginationKey.getState(ed.state)!.find().length).toBeGreaterThan(0);
+    ed.view.dom.style.setProperty("--doc-reflow", "1");
+    act(() => window.dispatchEvent(new Event("beforeprint")));
+    expect(paginationKey.getState(ed.state)!.find()).toEqual([]);
+    ed.view.dom.style.setProperty("--doc-reflow", "0");
+    act(() => window.dispatchEvent(new Event("beforeprint")));
+    expect(paginationKey.getState(ed.state)!.find().length).toBeGreaterThan(0);
+    expect(ed.getJSON()).toEqual(saved);
+  });
   it("opens the file, counts its pages, and saves the body on flush", async () => {
     const { editor, actions, onChange } = openDocs(docFile(paragraphs("Hello garden")));
     const ed = await editor();

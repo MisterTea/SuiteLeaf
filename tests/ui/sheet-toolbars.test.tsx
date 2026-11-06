@@ -43,6 +43,8 @@ it("sends each toolbar button to its command and toggles the side panels", async
   render(
     <SheetToolbar
       readOnly={false}
+      insertAxis="row"
+      onInsertAxis={() => log.push("insert-row")}
       ready
       api={{ current: { undo: () => log.push("undo"), redo: () => log.push("redo"), executeCommand: (id: string) => log.push(id) } }}
       book={{ current: { getActiveSheet: () => ({ getFilter: () => filters.current }) } }}
@@ -85,6 +87,7 @@ it("sends each toolbar button to its command and toggles the side panels", async
   click("Create a filter");
   click("Functions");
   click("Pivot table");
+  click("Insert row below");
   fireEvent.change(within(bar).getByLabelText("Zoom"), { target: { value: "150%" } });
   const formats = bar.querySelector(".more-formats-menu")!;
   fireEvent.click(within(formats as HTMLElement).getAllByRole("button")[0]);
@@ -97,6 +100,7 @@ it("sends each toolbar button to its command and toggles the side panels", async
     "filter",
     "sum",
     "panel:pivot",
+    "insert-row",
     "error:printer busy",
   ]);
   expect(calls.map(([name]) => name)).toEqual([
@@ -116,6 +120,7 @@ it("marks an active filter and disables editing tools for a viewer", () => {
   render(
     <SheetToolbar
       readOnly
+      insertAxis="column"
       ready={false}
       api={{ current: null }}
       book={{ current: { getActiveSheet: () => ({ getFilter: () => ({}) }) } }}
@@ -145,6 +150,7 @@ it("marks an active filter and disables editing tools for a viewer", () => {
   const filter = screen.getByRole("button", { name: "Remove filter" });
   expect(filter.getAttribute("aria-pressed")).toBe("true");
   expect(filter).toHaveProperty("disabled", true);
+  expect(screen.getByRole("button", { name: "Insert column right" })).toHaveProperty("disabled", true);
   expect(screen.getByRole("button", { name: "Undo (Cmd+Z)" })).toHaveProperty("disabled", true);
   expect(screen.getByRole("button", { name: "Insert chart" })).toHaveProperty("disabled", true);
 });

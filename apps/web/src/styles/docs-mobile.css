@@ -1,0 +1,63 @@
+/* Phone editing uses a reading width rather than a scaled paper page. */
+.doc-reflow-language { display: none; }
+@media screen and (max-width: 700px) {
+  .docs-editor:not(.seeing-letterhead) {
+    --doc-reflow: 1;
+  }
+  .docs-editor:not(.seeing-letterhead) .paginated-paper {
+    width: 100%;
+    max-width: 100%;
+    min-height: 70vh !important;
+    flex-shrink: 1;
+    zoom: 1 !important;
+    background: var(--doc-paper, white);
+  }
+  .docs-editor:not(.seeing-letterhead) .paginated-paper .document-content {
+    width: 100%;
+    min-height: 70vh;
+    padding: 24px 20px;
+    font-size: 16px;
+    overflow-wrap: anywhere;
+  }
+  .docs-editor:not(.seeing-letterhead) :is(.page-furniture, .page-gutter-band, .doc-page-spacer, .doc-note-layers, .doc-page-count, .doc-toc-page, .doc-toc-leader, .zoom-select) {
+    display: none;
+  }
+  .docs-editor:not(.seeing-letterhead) .doc-reflow-language { display: inline; }
+  .docs-editor:not(.seeing-letterhead) .document-content .doc-columns {
+    display: block !important;
+    column-count: 1 !important;
+  }
+  .docs-editor:not(.seeing-letterhead) .document-content :is(p, h1, h2, h3, h4, h5, h6, pre, .doc-image-host, [data-resize-wrapper]) {
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+  .docs-editor:not(.seeing-letterhead) .document-content pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .docs-editor:not(.seeing-letterhead) .document-content [data-resize-wrapper] {
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+  }
+  .docs-editor:not(.seeing-letterhead) .document-content img {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+  .docs-editor:not(.seeing-letterhead) .document-content table {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  .docs-editor:not(.seeing-letterhead) .document-content col {
+    width: auto !important;
+  }
+  .docs-editor:not(.seeing-letterhead) .doc-note[data-kind="footnote"] {
+    position: static;
+    opacity: 1;
+    pointer-events: auto;
+    max-height: none !important;
+    overflow: visible !important;
+    margin-top: 12px;
+  }
+}

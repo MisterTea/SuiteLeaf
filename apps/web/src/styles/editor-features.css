@@ -45,13 +45,13 @@
 .find-bar input[type="number"] { width: 65px; }
 
 /* Page spacers are decorations: pagination leaves the editable document intact. */
-.paginated-paper { position: relative; width: var(--page-width); max-width: none; flex-shrink: 0; border: 0; outline: 1px solid #dadce0; box-shadow: 0 1px 3px 0 rgba(60, 64, 67, 0.3), 0 4px 8px 3px rgba(60, 64, 67, 0.15); background: repeating-linear-gradient(to bottom, white 0, white var(--page-height), var(--viewport-bg) var(--page-height), var(--viewport-bg) var(--page-stride)); }
+.paginated-paper { position: relative; width: var(--page-width); max-width: none; flex-shrink: 0; border: 0; outline: 1px solid #dadce0; box-shadow: 0 1px 3px 0 rgba(60, 64, 67, 0.3), 0 4px 8px 3px rgba(60, 64, 67, 0.15); background: repeating-linear-gradient(to bottom, var(--doc-paper, white) 0, var(--doc-paper, white) var(--page-height), var(--viewport-bg) var(--page-height), var(--viewport-bg) var(--page-stride)); }
 .paginated-paper .document-content { padding: var(--body-inset-top, var(--page-margin-top, var(--page-margin))) var(--page-margin-right, var(--page-margin)) var(--body-inset-bottom, var(--page-margin-bottom, var(--page-margin))) var(--page-margin-left, var(--page-margin)); min-height: var(--page-height); position: relative; z-index: 1; }
 .doc-page-spacer { display: block; height: var(--spacer-height); margin: 0 !important; padding: 0 !important; border: 0 !important; pointer-events: none; }
 tr.doc-page-spacer { display: table-row; }
 tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; background: transparent; }
 .manual-page-break { height: 0; margin: 0; }
-.page-furniture { position: absolute; inset: 0; pointer-events: none; color: #555; font: 10pt Arial, sans-serif; }
+.page-furniture { position: absolute; inset: 0; pointer-events: none; color: var(--doc-muted, #555); font: 10pt Arial, sans-serif; }
 .paginated-paper.is-editing-furniture .document-content { opacity: 0.45; }
 .page-header, .page-footer, .page-header *, .page-footer * { pointer-events: auto; }
 .page-furniture-page { position: absolute; left: var(--page-margin-left, var(--page-margin)); right: var(--page-margin-right, var(--page-margin)); top: calc(var(--page-index) * var(--page-stride)); height: var(--page-height); }
@@ -363,11 +363,11 @@ tr.doc-page-spacer td { height: var(--spacer-height); padding: 0; border: 0; bac
 .doc-note[data-kind="footnote"].doc-note-placed { opacity: 1; top: calc(var(--page-index) * var(--page-stride) + var(--note-top)); }
 .doc-note-continued { position: absolute; left: var(--page-margin-left, var(--page-margin)); right: var(--page-margin-right, var(--page-margin)); overflow: hidden; top: calc(var(--page-index) * var(--page-stride) + var(--note-top)); font-size: 10pt; line-height: 1.4; }
 .doc-note-continued-inner, .doc-note-row { display: flex; gap: 0.45em; align-items: flex-start; }
-.doc-note-rule { border-top: 1px solid #202124; padding-top: 4px; }
+.doc-note-rule { border-top: 1px solid var(--doc-rule, #202124); padding-top: 4px; }
 .doc-note-label { border: 0; background: transparent; color: #1a73e8; cursor: pointer; font: inherit; padding: 0; min-width: 1.2em; text-align: left; }
 .doc-note-body { flex: 1; min-width: 0; }
 .doc-note-body p { margin: 0; }
-.doc-endnotes-title { margin-top: 18px; padding-top: 8px; border-top: 1px solid #202124; font-size: 12pt; font-weight: 600; }
+.doc-endnotes-title { margin-top: 18px; padding-top: 8px; border-top: 1px solid var(--doc-rule, #202124); font-size: 12pt; font-weight: 600; }
 .doc-endnotes-title[hidden] { display: none; }
 .doc-note-layers { pointer-events: none; }
 

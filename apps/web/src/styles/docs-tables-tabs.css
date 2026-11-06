@@ -13,13 +13,13 @@
 }
 .document-content td,
 .document-content th {
-  border: 1pt solid #000;
+  border: 1pt solid var(--doc-rule, #000);
   min-width: 1em;
   padding: 5.75px 7px;
   position: relative;
 }
 .document-content th {
-  background: #edf3ec;
+  background: var(--doc-table-header, #edf3ec);
   font-weight: 700;
   text-align: start;
 }

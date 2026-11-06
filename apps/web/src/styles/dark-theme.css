@@ -70,7 +70,17 @@
   border-right-color: rgba(255, 255, 255, 0.16) !important;
 }
 
-/* Document: dark desk, white page. */
+/* Document defaults follow the screen theme; print uses the light defaults. */
+@media screen {
+  :root.dark-theme .docs-editor,
+  :root[data-theme="dark"] .docs-editor {
+    --doc-paper: #000000;
+    --doc-ink: #ffffff;
+    --doc-muted: #cccccc;
+    --doc-rule: #80868b;
+    --doc-table-header: #25282e;
+  }
+}
 :root.dark-theme .document-stage,
 :root[data-theme="dark"] .document-stage {
   background: var(--viewport-bg);

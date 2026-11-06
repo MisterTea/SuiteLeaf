@@ -27,6 +27,7 @@ export function watchSheetSelection({
   reportSelection,
   placeRemoteRef,
   remoteSelectionsRef,
+  onSelectionRange,
 }: {
   injector: Injector;
   workbook: SheetWorkbook;
@@ -34,7 +35,9 @@ export function watchSheetSelection({
   reportSelection: { current: ((selection: SheetSelection) => void) | undefined };
   placeRemoteRef: { current: () => void };
   remoteSelectionsRef: { current: RemoteSheetSelection[] };
+  onSelectionRange?: (type: number | undefined) => void;
 }) {
+  let fillScroll: { unsubscribe: () => void } | undefined;
   // Univer closes an open note only when a selection move ends, not when the
   // name box or a command sets the selection.
   const notePopups = injector.get(SheetsNotePopupService);
@@ -47,6 +50,7 @@ export function watchSheetSelection({
         sheet = workbook.getActiveSheet(),
         sheetId = sheet.getSheetId();
       if (range) {
+        onSelectionRange?.(range.rangeType);
         reportSelection.current?.({
           sheetId,
           startRow: range.startRow,
@@ -93,6 +97,7 @@ export function watchSheetSelection({
     range: { startRow: number; startColumn: number; endRow: number; endColumn: number } | null | undefined,
   ) => {
     if (!sheetHost || !range) return;
+    followScroll();
     try {
       const corner = workbook.getActiveSheet()?.getRange(range.endRow, range.endColumn).getCellRect();
       if (!corner) return;
@@ -167,25 +172,31 @@ export function watchSheetSelection({
       paintRemoteSheetSelections(sheetHost, []);
     }
   };
-  const fillScroll = injector
-    .get(IRenderManagerService)
-    .getRenderUnitById(workbook.getId())
-    ?.scene.getViewport("viewMain")
-    ?.onScrollAfter$.subscribeEvent(() => {
-      const active = workbook.getActiveSheet()?.getSelection()?.getActiveRange();
-      publishActiveCell(
-        active
-          ? {
-              startRow: active.getRow(),
-              startColumn: active.getColumn(),
-              endRow: active.getLastRow(),
-              endColumn: active.getLastColumn(),
-            }
-          : null,
-      );
-    });
+  let scrollFrame = 0;
+  const publishScrolledCell = () => {
+    const active = workbook.getActiveSheet()?.getSelection()?.getActiveRange();
+    publishActiveCell(active ? {
+      startRow: active.getRow(), startColumn: active.getColumn(),
+      endRow: active.getLastRow(), endColumn: active.getLastColumn(),
+    } : null);
+  };
+  function followScroll() {
+    // The viewport may be created after the workbook. Bind when the first
+    // painted selection arrives instead of losing scroll updates at startup.
+    fillScroll ??= injector
+      .get(IRenderManagerService)
+      .getRenderUnitById(workbook.getId())
+      ?.scene.getViewport("viewMain")
+      ?.onScrollAfter$.subscribeEvent(() => {
+        publishScrolledCell();
+        cancelAnimationFrame(scrollFrame);
+        scrollFrame = requestAnimationFrame(publishScrolledCell);
+      });
+  }
+  followScroll();
   return () => {
     closeNoteOnMove.unsubscribe();
+    cancelAnimationFrame(scrollFrame);
     fillScroll?.unsubscribe();
   };
 }
@@ -363,10 +374,10 @@ export function watchPhoneTaps({
     }, 180);
   };
   sheetHost?.addEventListener("pointerdown", onPhonePointerDown, true);
-  sheetHost?.addEventListener("pointerup", onPhonePointerUp);
+  sheetHost?.addEventListener("pointerup", onPhonePointerUp, true);
   return () => {
     watchPhoneBoxWrite.dispose();
     sheetHost?.removeEventListener("pointerdown", onPhonePointerDown, true);
-    sheetHost?.removeEventListener("pointerup", onPhonePointerUp);
+    sheetHost?.removeEventListener("pointerup", onPhonePointerUp, true);
   };
 }

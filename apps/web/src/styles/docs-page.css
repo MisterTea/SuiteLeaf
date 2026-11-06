@@ -157,7 +157,7 @@
   width: min(816px, 100%);
   max-width: 100%;
   min-height: 1056px;
-  background: #ffffff;
+  background: var(--doc-paper, #ffffff);
   border: 1px solid #e1e3e1;
   box-shadow:
     0 1px 3px 0 rgba(60, 64, 67, 0.15),
@@ -177,7 +177,7 @@
   font-feature-settings: var(--doc-kern-feature, "kern" 0);
   line-height: 1.333333;
   font-family: var(--doc-font, Arial, sans-serif);
-  color: #000000;
+  color: var(--doc-ink, #000000);
   box-sizing: border-box;
   word-break: break-word;
   overflow-wrap: break-word;

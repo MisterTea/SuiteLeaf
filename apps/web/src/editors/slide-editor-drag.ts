@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { flushSync } from "react-dom";
 import { placeSlideGroup, slideOp, snapSlideBox, type Slide } from "@suiteleaf/core";
 import { hasTextRuns } from "./slide-runs";
 import { isMarpChrome, isMarpTitle, reorderFittedMarpItem, reorderMarpItem } from "./slide-marp";
@@ -16,6 +17,8 @@ export function useElementDrag(
     draggingRef, marpOpenRef, stageRef, liveDirty, setDeck, onChangeRef, setSnapGuide, historyRef,
     commitRef,
   } = state;
+  const lastTouchTap = useRef<{ id: string; time: number } | null>(null);
+  const touchPress = useRef<{ id: number; elementId: string; handle?: ResizeHandle } | null>(null);
 
   // Mouse drag & resize handlers for elements
   const onElementMouseDown = (
@@ -48,6 +51,7 @@ export function useElementDrag(
     if (!el || readOnlyRef.current || el.locked) return;
     if (
       el.type === "text" &&
+      !("pointerType" in e && e.pointerType === "touch") &&
       (el.math || el.preformatted || el.hang || hasTextRuns(el) || el.content?.includes("$")) &&
       deckRef.current.marp
     ) {
@@ -85,6 +89,34 @@ export function useElementDrag(
       initH: el.height,
       group,
     };
+  };
+
+  const onElementPointerDown = (e: React.PointerEvent, elementId: string, handle?: ResizeHandle) => {
+    if (e.pointerType !== "touch" || window.innerWidth > 700) return;
+    if (!handle && editingRef.current === elementId) return;
+    e.preventDefault();
+    onElementMouseDown(e, elementId, handle);
+    touchPress.current = { id: e.pointerId, elementId, handle };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const onElementPointerUp = (e: React.PointerEvent) => {
+    const press = touchPress.current;
+    if (!press || press.id !== e.pointerId) return;
+    touchPress.current = null;
+    const el = activeSlide.elements.find((item) => item.id === press.elementId);
+    if (dragMoved.current || press.handle || el?.type !== "text" || readOnlyRef.current) {
+      lastTouchTap.current = null;
+      return;
+    }
+    const now = performance.now();
+    if (lastTouchTap.current?.id === el.id && now - lastTouchTap.current.time < 350) {
+      draggingRef.current = null;
+      editingRef.current = el.id;
+      textRange.current = null;
+      flushSync(() => setEditingId(el.id));
+      e.currentTarget.querySelector<HTMLElement>('[contenteditable="true"], textarea')?.focus();
+      lastTouchTap.current = null;
+    } else lastTouchTap.current = { id: el.id, time: now };
   };
 
   useEffect(() => {
@@ -137,7 +169,7 @@ export function useElementDrag(
         return;
       }
       if (deckRef.current.marp) return;
-      const stageRect = stageRef.current.getBoundingClientRect();
+      const stageRect = (stageRef.current.querySelector(".slide-canvas") ?? stageRef.current).getBoundingClientRect();
       const scale = stageRect.width / (deck.width || 960);
 
       const dx = (e.clientX - startX) / scale;
@@ -223,12 +255,26 @@ export function useElementDrag(
 
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
+    const onPointerMove = (e: PointerEvent) => {
+      if (touchPress.current?.id === e.pointerId) onMouseMove(e);
+    };
+    const onPointerUp = (e: PointerEvent) => {
+      if (e.pointerType !== "touch") return;
+      touchPress.current = null;
+      onMouseUp();
+    };
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
     return () => {
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the editor state's refs and setters are stable
   }, [deck.width, updateElement]);
 
-  return { onElementMouseDown };
+  return { onElementMouseDown, onElementPointerDown, onElementPointerUp };
 }

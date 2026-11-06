@@ -875,9 +875,10 @@ export default function Docs({
       ) : null}
       <footer className="editor-status">
         <span className="word-count">{proofing.label}</span> <SuggestionFlag />{" "}
-        <span>
+        <span className="doc-page-count">
           {pageCount} {pageCount === 1 ? "page" : "pages"} · English
         </span>
+        <span className="doc-reflow-language">English</span>
       </footer>
       <DocTabBar
         editor={editor}

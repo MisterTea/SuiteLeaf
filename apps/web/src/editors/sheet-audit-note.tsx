@@ -11,7 +11,7 @@ import {
 } from "@suiteleaf/core";
 
 /** Precedents and dependents for one cell. Cell values are not shown. */
-export function SheetAuditNote({ content }: { content: SheetFile["content"] }) {
+export function SheetAuditNote({ content, onClose }: { content: SheetFile["content"]; onClose?: () => void }) {
   const [address, setAddress] = useState("A1");
   const [asked, setAsked] = useState("A1");
   const id = content.workbook.sheetOrder[0];
@@ -63,6 +63,7 @@ export function SheetAuditNote({ content }: { content: SheetFile["content"] }) {
   return (
     <section className="access-notes" aria-label="Formula audit">
       <h2>Formula audit</h2>
+      {onClose ? <button type="button" onClick={onClose}>Back to sheet</button> : null}
       <form
         onSubmit={(event) => {
           event.preventDefault();

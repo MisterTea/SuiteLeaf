@@ -190,7 +190,7 @@
   }
   .workspace-header {
     display: grid;
-    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    grid-template-columns: auto auto auto minmax(0, 1fr);
     align-items: center;
     column-gap: 2px;
     row-gap: 0;
@@ -218,11 +218,14 @@
     display: contents;
   }
   .workspace-header .title-top-row {
-    grid-column: 3 / -1;
+    grid-column: 3;
     grid-row: 1;
     min-width: 0;
     flex-wrap: nowrap;
     gap: 2px;
+    max-width: 40vw;
+    overflow-x: auto;
+    scrollbar-width: none;
   }
   .workspace-header .title-folder-row {
     grid-column: 1 / -1;
@@ -236,31 +239,29 @@
     font-size: 12px;
   }
   .title-block input {
-    font-size: 16px;
-    font-weight: 500;
-    width: 100%;
-    min-width: 0;
-    max-width: none;
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    padding: 6px 4px;
+    display: none;
   }
   .title-top-row .star-btn,
   .title-top-row .file-menu-more {
     flex-shrink: 0;
   }
   .workspace-header > .header-right-tools {
-    grid-column: 1 / -1;
-    grid-row: 4;
+    grid-column: 4;
+    grid-row: 1;
     justify-content: flex-start;
-    align-self: stretch;
+    align-self: center;
     gap: 0;
-    margin: 2px 0 0;
-    padding-left: 2px;
-    padding-right: 2px;
-    background: var(--toolbar-bg);
-    border-top: 1px solid var(--border);
+    margin: 0;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .workspace-header > .header-right-tools > * {
+    flex-shrink: 0;
+  }
+  .workspace-header .title-top-row::-webkit-scrollbar,
+  .workspace-header > .header-right-tools::-webkit-scrollbar {
+    display: none;
   }
   .workspace-header > .header-right-tools .doc-icon-btn,
   .workspace-header > .header-right-tools .ai-button,
@@ -560,6 +561,7 @@
     height: auto;
   }
   .toolbar,
+  .sheets-toolbar,
   .slides-toolbar {
     flex-wrap: nowrap;
     overflow-x: auto;
@@ -571,9 +573,6 @@
   .slides-toolbar > .toolbar-edits {
     flex: 0 0 auto;
     min-inline-size: max-content;
-  }
-  .sheets-toolbar {
-    overflow: visible;
   }
   .toolbar::-webkit-scrollbar,
   .sheets-toolbar::-webkit-scrollbar,
