@@ -76,6 +76,7 @@ import { formulaBarVisible, toggleFilterValueFromLabel } from "./sheet-editor-ut
 import { watchChartDoubleClick } from "./sheet-chart-floats";
 import { watchPhoneTaps, watchSheetSelection } from "./sheet-grid-watchers";
 import { watchSheetTouchNavigation } from "./sheet-touch-navigation";
+import { watchSheetAxisResize } from "./sheet-axis-resize";
 import { RANGE_TYPE } from "@univerjs/core";
 import { outlineTables, tableFormulaNote } from "./sheet-content-sync";
 import { startSheetSession } from "./sheet-session";
@@ -373,6 +374,7 @@ export default function Sheets({
       });
       const stopPhoneTaps = watchPhoneTaps({ injector, workbook, sheetHost });
       const stopTouch = sheetHost ? watchSheetTouchNavigation(sheetHost, injector, workbook, () => readOnlyRef.current) : () => {};
+      const stopResize = sheetHost ? watchSheetAxisResize({ host: sheetHost, injector, workbook, readOnly: () => readOnlyRef.current, onError: (message) => error.current(message) }) : () => {};
       const stopSession = startSheetSession({
         univer,
         univerAPI,
@@ -415,6 +417,7 @@ export default function Sheets({
         stopSelection();
         stopPhoneTaps();
         stopTouch();
+        stopResize();
         partialCleanup?.();
         partialCleanup = undefined;
       };

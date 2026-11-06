@@ -1,6 +1,84 @@
 import { test, expect, type Page } from "@playwright/test";
 import { createFile, serializeFile } from "../../packages/core/src/native-file";
 import { defaultPageSettings } from "../../packages/core/src/document-layout";
+import { readFile } from "node:fs/promises";
+
+test("Mobile MARP switches between a full slide editor and full markdown pane", async ({ page, isMobile }) => {
+  test.skip(!isMobile);
+  const source = "---\nmarp: true\n---\n\n# Phone slides\n\nEdit either view.\n";
+  await page.goto("/");
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({ name: "mobile-marp.md", mimeType: "text/markdown", buffer: Buffer.from(source) });
+  const canvas = page.locator(".slide-canvas");
+  const markdown = page.getByLabel("Presentation markdown");
+  await expect(canvas).toBeVisible();
+  await expect(canvas).not.toHaveAttribute("aria-busy", "true");
+  await expect(markdown).toHaveCount(0);
+  const switchToCode = page.getByRole("button", { name: "Show markdown", exact: true });
+  await expect(switchToCode).toBeInViewport();
+  await switchToCode.tap();
+  await expect(canvas).toBeHidden();
+  await expect(markdown).toBeVisible();
+  await expect(page.locator(".marp-split-handle")).toBeHidden();
+  const stage = (await page.locator(".slide-stage-row").boundingBox())!;
+  const pane = (await page.locator(".marp-pane").boundingBox())!;
+  expect(pane.width).toBeGreaterThan(stage.width - 2);
+  expect(pane.height).toBeGreaterThan(stage.height * 0.9);
+  await markdown.fill(source.replace("Edit either view.", "Changed on the phone."));
+  await page.getByRole("button", { name: "Show slide editor", exact: true }).tap();
+  await expect(canvas).toBeVisible();
+  await expect(canvas).not.toHaveAttribute("aria-busy", "true");
+  await expect(markdown).toHaveCount(0);
+  expect((await canvas.boundingBox())!.width).toBeGreaterThan(page.viewportSize()!.width * 0.8);
+  await switchToCode.tap();
+  await expect(markdown).toHaveValue(/Changed on the phone/);
+  await assertNoHorizontalScroll(page, "Mobile MARP editor");
+});
+
+test("Mobile sheet selected rows and columns have large resize handles and retain sizes", async ({ page, isMobile }) => {
+  test.skip(!isMobile);
+  const file = createFile("sheet", "Mobile resizing");
+  await page.goto("/");
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({ name: "resize.suiteleaf", mimeType: "application/json", buffer: Buffer.from(serializeFile(file)) });
+  await page.locator("[data-sheet-ready='true']").waitFor();
+  const canvas = page.locator('.sheet-host canvas[id^="univer-sheet-main-canvas"]');
+  const bounds = (await canvas.boundingBox())!;
+  await touchGesture(page, { x: bounds.x + 16, y: bounds.y + 56 });
+  const row = page.locator(".sheet-resize-border.row");
+  await expect(row).toBeVisible();
+  const rowHandle = row.getByRole("button").first();
+  await expect(rowHandle).toBeInViewport();
+  const rh = (await rowHandle.boundingBox())!;
+  expect(rh.width).toBeGreaterThanOrEqual(44);
+  const rowStart = { x: rh.x + rh.width / 2, y: rh.y + rh.height / 2 };
+  await touchGesture(page, rowStart, { x: rowStart.x, y: rowStart.y + 36 });
+  const snapshot = async () => {
+    const download = page.waitForEvent("download");
+    const button = page.getByRole("button", { name: "Download", exact: true });
+    await button.scrollIntoViewIfNeeded();
+    await button.click();
+    const saved = JSON.parse(await readFile((await (await download).path())!, "utf8"));
+    return saved.content.workbook.sheets[saved.content.workbook.sheetOrder[0]];
+  };
+  const taller = await snapshot();
+  expect(taller.rowData[1].h).toBeGreaterThanOrEqual((taller.defaultRowHeight ?? 24) + 30);
+  await touchGesture(page, { x: bounds.x + 196, y: bounds.y + 10 });
+  const column = page.locator(".sheet-resize-border.column");
+  await expect(column).toBeVisible();
+  await expect(row).toHaveCount(0);
+  const ch = (await column.getByRole("button").first().boundingBox())!;
+  expect(ch.height).toBeGreaterThanOrEqual(44);
+  const columnStart = { x: ch.x + ch.width / 2, y: ch.y + ch.height / 2 };
+  await touchGesture(page, columnStart, { x: columnStart.x + 45, y: columnStart.y });
+  const wider = await snapshot();
+  expect(wider.columnData[1].w).toBeGreaterThanOrEqual((wider.defaultColumnWidth ?? 100) + 40);
+  expect(wider.rowData[1].h).toBe(taller.rowData[1].h);
+  await page.getByRole("button", { name: "Back to files" }).click();
+  await page.getByRole("link", { name: "Mobile resizing", exact: true }).click();
+  await page.locator("[data-sheet-ready='true']").waitFor();
+  const reopened = await snapshot();
+  expect(reopened.rowData[1].h).toBe(taller.rowData[1].h);
+  expect(reopened.columnData[1].w).toBe(wider.columnData[1].w);
+});
 
 test("Mobile workspace combines navigation and actions without showing the title", async ({ page, isMobile }) => {
   test.skip(!isMobile);

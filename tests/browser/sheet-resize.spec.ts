@@ -146,3 +146,24 @@ test("dragging column and row headers changes the saved size and keeps it on reo
   expect(reopened.cellData[0][1].v).toBe("Budget");
   expect(errors).toEqual([]);
 });
+
+test("selected row and column borders resize from the grid and undo", async ({ page }) => {
+  await newSheet(page);
+  const canvas = page.locator('.sheet-host canvas[id^="univer-sheet-main-canvas"]');
+  const bounds = (await canvas.boundingBox())!;
+  const before = sheetOf(await snapshot(page));
+  await page.mouse.click(bounds.x + 16, bounds.y + 56);
+  const row = page.locator(".sheet-resize-border.row");
+  await expect(row).toBeVisible();
+  const rowBox = (await row.boundingBox())!;
+  await drag(page, { x: rowBox.x + 200, y: rowBox.y + rowBox.height / 2 }, { x: 0, y: 36 });
+  expect(rowHeight(sheetOf(await snapshot(page)), 1)).toBeGreaterThanOrEqual(rowHeight(before, 1) + 30);
+  await page.getByRole("button", { name: "Undo (Cmd+Z)", exact: true }).click();
+  expect(rowHeight(sheetOf(await snapshot(page)), 1)).toBe(rowHeight(before, 1));
+  await page.mouse.click(bounds.x + 196, bounds.y + 10);
+  const column = page.locator(".sheet-resize-border.column");
+  await expect(column).toBeVisible();
+  const columnBox = (await column.boundingBox())!;
+  await drag(page, { x: columnBox.x + columnBox.width / 2, y: columnBox.y + 100 }, { x: 60, y: 0 });
+  expect(columnWidth(sheetOf(await snapshot(page)), 1)).toBeGreaterThanOrEqual(columnWidth(before, 1) + 50);
+});

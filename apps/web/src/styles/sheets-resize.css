@@ -1,0 +1,88 @@
+.sheet-host:has(> .sheet-axis-resize) {
+  position: relative;
+}
+.sheet-axis-resize {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 35;
+}
+.sheet-resize-border {
+  position: absolute;
+  pointer-events: auto;
+  touch-action: none;
+}
+.sheet-resize-border.row {
+  height: 6px;
+  cursor: row-resize;
+  transform: translateY(calc(-50% + var(--resize-delta, 0px)));
+}
+.sheet-resize-border.column {
+  width: 6px;
+  cursor: col-resize;
+  transform: translateX(calc(-50% + var(--resize-delta, 0px)));
+}
+.sheet-resize-border:hover,
+.sheet-resize-border:focus-visible,
+.resizing .sheet-resize-border {
+  background: var(--google-blue);
+}
+.sheet-resize-handle {
+  display: none;
+}
+@media (max-width: 700px) {
+  .sheet-resize-border {
+    background: var(--google-blue);
+  }
+  .sheet-resize-border.row {
+    height: 3px;
+  }
+  .sheet-resize-border.column {
+    width: 3px;
+  }
+  .sheet-resize-handle {
+    display: block;
+    position: absolute;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    touch-action: none;
+    cursor: inherit;
+    transform: translate(-50%, -50%);
+  }
+  .sheet-resize-handle::after {
+    display: grid;
+    place-items: center;
+    content: "↕";
+    position: absolute;
+    inset: 11px;
+    border: 2px solid white;
+    border-radius: 50%;
+    background: var(--google-blue);
+    color: var(--surface);
+    font:
+      bold 16px/1 Arial,
+      sans-serif;
+    box-shadow: 0 1px 4px #0006;
+  }
+  .column .sheet-resize-handle::after {
+    content: "↔";
+  }
+  .row .sheet-resize-handle {
+    top: 50%;
+  }
+  .row .sheet-resize-handle.end {
+    right: 0;
+    transform: translateY(-50%);
+  }
+  .column .sheet-resize-handle {
+    left: 50%;
+  }
+  .column .sheet-resize-handle.end {
+    bottom: 0;
+    transform: translateX(-50%);
+  }
+}

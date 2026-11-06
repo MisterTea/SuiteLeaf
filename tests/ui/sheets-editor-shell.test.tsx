@@ -88,6 +88,7 @@ vi.mock("../../apps/web/src/editors/sheet-grid-watchers", () => ({
 vi.mock("../../apps/web/src/editors/sheet-touch-navigation", () => ({
   watchSheetTouchNavigation: () => () => {},
 }));
+vi.mock("../../apps/web/src/editors/sheet-axis-resize", () => ({ watchSheetAxisResize: () => () => {} }));
 vi.mock("../../apps/web/src/editors/sheet-chart-floats", () => ({
   watchChartDoubleClick: (_host: HTMLElement, ref: { current: (id: string) => void }) => {
     seen.editChart = ref;

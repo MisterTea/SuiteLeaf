@@ -360,14 +360,28 @@ export function SlideCanvasStage({
     followMarkdownCaret: (text: string, line: number) => void;
   }) {
   const {
-    deck, marpOpen, stageRef, textPress, setFocusedBox, marpStale, painted, setPainted,
+    deck, marpOpen, setMarpOpen, stageRef, textPress, setFocusedBox, marpStale, painted, setPainted,
     canvasMotion, snapGuide, marpWarnings, marpAreaRef, showNotes, setShowNotes,
   } = state;
   return (
     <div className="slides-canvas-stage">
       {slideComments.notice}
+      {deck.marp ? (
+        <button
+          type="button"
+          className="mobile-marp-view-toggle"
+          aria-pressed={marpOpen}
+          onClick={() => {
+            marpDraft.current?.flush();
+            selectElement(null);
+            setMarpOpen(!marpOpen);
+          }}
+        >
+          {marpOpen ? "Show slide editor" : "Show markdown"}
+        </button>
+      ) : null}
       <div
-        className="slide-stage-row"
+        className={`slide-stage-row${deck.marp && marpOpen ? " showing-markdown" : ""}`}
         style={deck.marp && marpOpen ? { ["--marp-split" as string]: marpSplit } : undefined}
       >
       <div

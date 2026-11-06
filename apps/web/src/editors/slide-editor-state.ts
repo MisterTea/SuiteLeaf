@@ -82,7 +82,7 @@ export function useSlidesEditorState({
   const [accessOpen, setAccessOpen] = useState(false);
   const [recording, setRecording] = useState(false);
   const recorderRef = useRef<SlideshowRecorder | null>(null);
-  const [marpOpen, setMarpOpen] = useState(() => !!file.content.marp);
+  const [marpOpen, setMarpOpen] = useState(() => !!file.content.marp && window.innerWidth > 700);
   const [marpWarnings, setMarpWarnings] = useState<string[]>([]);
   const [previewTheme, setPreviewTheme] = useState<SlideTheme | null>(null);
   const [transitionScope, setTransitionScope] = useState<"all" | "selected">(

@@ -17,6 +17,31 @@
   border-left: 1px solid var(--border);
   background: #fff;
 }
+.mobile-marp-view-toggle { display: none; }
+@media screen and (max-width: 700px) {
+  .mobile-marp-view-toggle {
+    display: block;
+    align-self: flex-start;
+    flex-shrink: 0;
+    min-height: 40px;
+    margin: 4px 8px;
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--toolbar-bg);
+    color: var(--text-primary);
+    font: inherit;
+  }
+  .slides-toolbar button[aria-label="Markdown"] { display: none; }
+  .slides-canvas-stage .slide-stage-row > .slide-stage-viewport { flex: 1 1 auto; }
+  .slide-stage-row.showing-markdown > .slide-stage-viewport { display: none; }
+  .slide-stage-row.showing-markdown > .marp-pane {
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+    border: 0;
+  }
+}
 /* Straddles the markdown pane's left border and takes no room in the row. */
 .marp-split-handle {
   position: relative;

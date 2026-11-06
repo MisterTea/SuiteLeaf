@@ -91,18 +91,23 @@ test("dragging the border between the slide and its markdown resizes both, and t
   await expect(handle).toBeHidden();
 });
 
-test("stacks the markdown under the slide in a narrow window", async ({ page }) => {
+test("switches between the slide and markdown in a narrow window", async ({ page }) => {
   await page.setViewportSize({ width: 640, height: 900 });
-  const { markdown } = await openDeck(page);
-  // The canvas keeps its 16:9 box and can stick out of the scrolling stage by a
-  // couple of pixels. The panes are what stack.
-  const stage = (await page.locator(".slide-stage-viewport").boundingBox())!;
+  const { canvas, markdown } = await openDeck(page);
+  await expect(canvas).toBeVisible();
+  await expect(markdown).toHaveCount(0);
+  await page.getByRole("button", { name: "Show markdown", exact: true }).click();
+  await expect(canvas).toBeHidden();
+  const stage = (await page.locator(".slide-stage-row").boundingBox())!;
   const pane = (await page.locator(".marp-pane").boundingBox())!;
   const code = (await markdown.boundingBox())!;
-  expect(pane.y).toBeGreaterThanOrEqual(stage.y + stage.height - 1);
+  expect(pane.height).toBeGreaterThan(stage.height * 0.9);
   expect(code.y).toBeGreaterThanOrEqual(pane.y - 1);
   expect(code.y + Math.min(code.height, 80)).toBeLessThanOrEqual(pane.y + pane.height + 1);
   expect(code.width).toBeGreaterThan(400);
+  await page.getByRole("button", { name: "Show slide editor", exact: true }).click();
+  await expect(canvas).toBeVisible();
+  await expect(markdown).toHaveCount(0);
 });
 
 test("typing on the slide rewrites only those words in the markdown", async ({ page }) => {

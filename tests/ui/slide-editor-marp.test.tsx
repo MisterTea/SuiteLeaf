@@ -60,6 +60,31 @@ const fitted = (editor: ReturnType<typeof openSlides>) =>
   waitFor(() => expect(editor.deck().marpFit).toBe(MARP_FIT_REVISION), { timeout: 5000 });
 
 describe("a MARP deck in the editor", () => {
+  it("switches mobile views and commits pending markdown before returning to the slide", async () => {
+    const width = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+    try {
+      const editor = openMarp();
+      await fitted(editor);
+      expect(screen.queryByLabelText("Presentation markdown")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Show markdown", exact: true }));
+      expect(markdown().value).toBe(SOURCE);
+      fireEvent.change(markdown(), { target: { value: SOURCE.replace("Ship the beta", "Ship the gamma") } });
+      fireEvent.click(screen.getByRole("button", { name: "Show slide editor", exact: true }));
+      expect(screen.queryByLabelText("Presentation markdown")).toBeNull();
+      await waitFor(() => expect(editor.deck().marpSource).toContain("Ship the gamma"));
+      fireEvent.click(screen.getByRole("button", { name: "Show markdown", exact: true }));
+      expect(markdown().value).toContain("Ship the gamma");
+      editor.unmount();
+      openMarp(SOURCE, { readOnly: true });
+      fireEvent.click(screen.getByRole("button", { name: "Show markdown", exact: true }));
+      expect(markdown().readOnly).toBe(true);
+      fireEvent.click(screen.getByRole("button", { name: "Show slide editor", exact: true }));
+      expect(screen.queryByLabelText("Presentation markdown")).toBeNull();
+    } finally {
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
+    }
+  });
   it("exports the markdown that was typed but not yet followed by the slides", async () => {
     const editor = openMarp();
     fireEvent.change(markdown(), { target: { value: SOURCE.replace("Ship the beta", "Ship the gamma") } });
