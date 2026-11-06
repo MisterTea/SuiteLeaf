@@ -27,6 +27,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,6 +47,9 @@ jobs:
           # The demo is single-node mode: files stay in this browser's storage.
           VITE_SUITELEAF_DEMO: "1"
 
+      - name: Record deployed commit
+        run: printf '%s\n' "$GITHUB_SHA" > apps/web/dist/deployment-version.txt
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
@@ -57,3 +61,23 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          # Pages can keep a valid deployment in updating_pages past its
+          # default ten-minute timeout. Allow that publish to finish.
+          timeout: 1800000
+
+      - name: Verify live deployment
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          for attempt in {1..12}; do
+            version=$(curl --fail --silent --show-error --location --connect-timeout 5 --max-time 10 \
+              "${PAGE_URL%/}/deployment-version.txt?commit=$GITHUB_SHA" || true)
+            if [ "$version" = "$GITHUB_SHA" ]; then
+              echo "Verified live commit $GITHUB_SHA"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "The live site did not serve commit $GITHUB_SHA" >&2
+          exit 1
