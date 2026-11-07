@@ -5,7 +5,7 @@ import {
   type DriveLink,
   type SuiteFile,
 } from "@suiteleaf/core";
-import { contentRangeHeader } from "../upload-queue";
+import { contentRangeHeader, sendUploadSpans } from "../upload-queue";
 import { DriveConflict, api, drive, type DriveItem } from "../node-client";
 
 /** Send one slice. A finished file is renamed like a full upload. An unfinished slice is not a version. */
@@ -14,9 +14,9 @@ export async function uploadDriveSpan(
   link: DriveLink,
   start: number,
   end: number,
+  body = new TextEncoder().encode(serializeFile(file)),
 ): Promise<{ done: false; accepted: number } | { done: true; link: DriveLink; accepted: number }> {
   // Ranges count UTF-8 bytes, as the server does, not string characters.
-  const body = new TextEncoder().encode(serializeFile(file));
   const range = contentRangeHeader(start, end, body.length);
   if (!range || end > body.length || (body.length > 0 && start >= end)) {
     throw new Error("That upload does not continue the saved part.");
@@ -53,4 +53,21 @@ export async function uploadDriveSpan(
       name: item.name,
     },
   };
+}
+
+/** Upload a new file in bounded requests, including imports on hosted servers. */
+export async function uploadDriveChunks(file: SuiteFile, link: DriveLink): Promise<DriveLink> {
+  const body = new TextEncoder().encode(serializeFile(file));
+  let saved: DriveLink | undefined;
+  const result = await sendUploadSpans({
+    bytes: body.length,
+    sent: 0,
+    upload: async ({ start, end }) => {
+      const result = await uploadDriveSpan(file, link, start, end, body);
+      if (result.done) saved = result.link;
+      return result;
+    },
+  });
+  if (!result.done || !saved) throw new Error("That upload does not continue the saved part.");
+  return saved;
 }

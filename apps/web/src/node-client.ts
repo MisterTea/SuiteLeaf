@@ -1,3 +1,4 @@
+import { uploadDriveChunks } from "./drive/upload-span";
 import { createAuthClient } from "better-auth/client";
 import {
   jwtClient,
@@ -6,9 +7,7 @@ import {
 } from "better-auth/client/plugins";
 import {
   mimeFor,
-  nativeFilename,
   parseNamedFile,
-  serializeFile,
   type DriveLink,
   type FileRecord,
   type SuiteFile,
@@ -540,21 +539,7 @@ export async function uploadDriveFileUnlocked(
   file: SuiteFile,
   link: DriveLink,
 ): Promise<DriveLink> {
-  let item = await drive.write(
-    link.itemId,
-    serializeFile(file),
-    mimeFor(file.kind),
-    link.versionId,
-  );
-  // A SuiteDrive file is named after its title, like a cloud document.
-  const name = nativeFilename(file);
-  if (item.name !== name) item = await drive.update(link.itemId, { name });
-  return {
-    ...link,
-    versionId: item.headVersionId ?? undefined,
-    syncedAt: file.updatedAt,
-    name: item.name,
-  };
+  return uploadDriveChunks(file, link);
 }
 
 /** Upload `file` as a new version. Throws [`DriveConflict`] if someone else

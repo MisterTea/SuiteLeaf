@@ -402,6 +402,38 @@ describe("drive files", () => {
     expect(calls.filter((c) => c.method === "PUT").at(-1)!.headers.get("if-match")).toBeNull();
   });
 
+  it("imports a large file in contiguous bounded UTF-8 chunks and commits only at the end", async () => {
+    const { saveNewDriveFile } = await signedIn();
+    const file = createFile("doc", "Report");
+    // Multibyte data makes character offsets differ from the required byte offsets.
+    if (file.kind !== "doc") throw new Error("Expected a document");
+    file.content = { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "é".repeat(2_500_000) }] }] };
+    const expected = new TextEncoder().encode(serializeFile(file));
+    let accepted = 0;
+    const chunks: Uint8Array[] = [];
+    route = ({ method, headers, body }) => {
+      if (method === "POST") return Response.json(item({ name: "Report.sldoc" }));
+      if (method === "PUT") {
+        const chunk = body as Uint8Array;
+        expect(chunk.byteLength).toBeLessThanOrEqual(262_144);
+        expect(headers.get("content-range")).toBe(
+          `bytes ${accepted}-${accepted + chunk.length - 1}/${expected.length}`,
+        );
+        chunks.push(chunk);
+        accepted += chunk.length;
+        return accepted === expected.length
+          ? Response.json(item({ headVersionId: "imported" }))
+          : Response.json({ accepted }, { status: 202 });
+      }
+      if (method === "PATCH") return Response.json(item({ headVersionId: "imported" }));
+    };
+    const link = await saveNewDriveFile(file, null, "Report.sldoc");
+    expect(expected.length).toBeGreaterThan(4_500_000);
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(Buffer.concat(chunks).equals(Buffer.from(expected))).toBe(true);
+    expect(link.versionId).toBe("imported");
+  });
+
   it("restores a version, and refuses a stale restore", async () => {
     const { drive, DriveConflict } = await signedIn();
     route = () => Response.json(item());
