@@ -94,16 +94,31 @@ export async function cloudBlobRequest(
       chunks.push(Buffer.from(chunk));
     }
     if (!(await exists(path))) {
-      try {
-        await put(path, Buffer.concat(chunks), {
-          access: "private",
-          addRandomSuffix: false,
-          allowOverwrite: false,
-          contentType: "application/octet-stream",
-        });
-      } catch (error) {
-        if (!(await exists(path))) throw error;
+      let lastError: unknown;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          await put(path, Buffer.concat(chunks), {
+            access: "private",
+            addRandomSuffix: false,
+            allowOverwrite: false,
+            contentType: "application/octet-stream",
+          });
+          lastError = null;
+          break;
+        } catch (error) {
+          lastError = error;
+          if (await exists(path)) {
+            lastError = null;
+            break;
+          }
+          if (attempt < 2) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, 300 * (attempt + 1)),
+            );
+          }
+        }
       }
+      if (lastError) throw lastError;
     }
     res.writeHead(204).end();
     return;

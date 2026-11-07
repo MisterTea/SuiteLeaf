@@ -122,6 +122,7 @@ fetch(${json(`${env.baseURL}/api/auth/sign-in/social`)},{method:"POST",credentia
     return handler(req, res);
   } catch (error) {
     console.error("Authentication or cloud service request failed.");
+    console.error(error);
     return send(res, 500, "text/plain", "Authentication service error.");
   }
 }).listen(

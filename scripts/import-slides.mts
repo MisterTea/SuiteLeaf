@@ -13,6 +13,7 @@ async function getUploadedFiles(): Promise<Set<string>> {
   const items = await sql`
     SELECT name FROM drive_item 
     WHERE "parentId" = (SELECT id FROM drive_item WHERE name = ${FOLDER_NAME} AND kind = 'folder' LIMIT 1)
+      AND "headVersionId" IS NOT NULL
   `;
   return new Set(items.map((i: any) => i.name));
 }
@@ -88,50 +89,63 @@ async function run() {
     console.log(`Starting upload: ${filename}`);
     console.log(`========================================`);
 
-    await ensureInFolder(page);
+    // Clean up any uncommitted files from previous failed uploads
+    await sql`DELETE FROM drive_upload_chunk WHERE "itemId" IN (SELECT id FROM drive_item WHERE "headVersionId" IS NULL AND kind != 'folder')`;
+    await sql`DELETE FROM drive_upload WHERE id IN (SELECT id FROM drive_item WHERE "headVersionId" IS NULL AND kind != 'folder')`;
+    await sql`DELETE FROM drive_item WHERE "headVersionId" IS NULL AND kind != 'folder'`;
 
-    const fullPath = join(SLIDES_DIR, filename);
-    const fileInput = page.locator("input[type=file]:not([webkitdirectory])");
-    await fileInput.setInputFiles([fullPath]);
-
-    const startTime = Date.now();
-    let completed = false;
-    let lastStatus = "";
-
-    // Allow up to 10 minutes per file (for huge files like 134MB)
-    const maxIterations = 300; // 300 * 2s = 600s = 10 mins
-    for (let i = 0; i < maxIterations; i++) {
-      await page.waitForTimeout(2000);
-      const elapsed = Math.round((Date.now() - startTime) / 1000);
-
-      // Check for error banner
-      const errorBanner = page.locator(".error-banner");
-      if (await errorBanner.count() > 0 && await errorBanner.first().isVisible()) {
-        const errorText = await errorBanner.first().innerText();
-        console.error(`ERROR for ${filename} at ${elapsed}s: ${errorText}`);
-        throw new Error(`Import error for ${filename}: ${errorText}`);
+    let fileSucceeded = false;
+    for (let fileAttempt = 1; fileAttempt <= 2; fileAttempt++) {
+      if (fileAttempt > 1) {
+        console.log(`Retrying upload for ${filename} (attempt ${fileAttempt})...`);
+        await page.goto("https://suiteleaf.vercel.app/#/");
+        await page.waitForTimeout(3000);
       }
+      await ensureInFolder(page);
 
-      // Check popover
-      const popover = page.locator(".import-popover, .import-progress");
-      if (await popover.count() > 0) {
-        const text = (await popover.first().innerText()).replace(/\n/g, " ");
-        if (text !== lastStatus) {
-          lastStatus = text;
-          console.log(`[${elapsed}s] ${text}`);
+      const fullPath = join(SLIDES_DIR, filename);
+      const fileInput = page.locator("input[type=file]:not([webkitdirectory])");
+      await fileInput.setInputFiles([fullPath]);
+
+      const startTime = Date.now();
+      let lastStatus = "";
+
+      const maxIterations = 300; // 300 * 2s = 600s = 10 mins
+      for (let i = 0; i < maxIterations; i++) {
+        await page.waitForTimeout(2000);
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+
+        // Check for error banner
+        const errorBanner = page.locator(".error-banner");
+        if (await errorBanner.count() > 0 && await errorBanner.first().isVisible()) {
+          const errorText = await errorBanner.first().innerText();
+          console.error(`ERROR for ${filename} at ${elapsed}s: ${errorText}`);
+          break;
+        }
+
+        // Check popover
+        const popover = page.locator(".import-popover, .import-progress");
+        if (await popover.count() > 0) {
+          const text = (await popover.first().innerText()).replace(/\n/g, " ");
+          if (text !== lastStatus) {
+            lastStatus = text;
+            console.log(`[${elapsed}s] ${text}`);
+          }
+        }
+
+        // If redirected to /file/ or popover disappears after upload
+        if (page.url().includes("/file/")) {
+          console.log(`SUCCESS: ${filename} imported and opened at ${page.url()} (${elapsed}s)`);
+          fileSucceeded = true;
+          break;
         }
       }
 
-      // If redirected to /file/ or popover disappears after upload
-      if (page.url().includes("/file/")) {
-        console.log(`SUCCESS: ${filename} imported and opened at ${page.url()} (${elapsed}s)`);
-        completed = true;
-        break;
-      }
+      if (fileSucceeded) break;
     }
 
-    if (!completed) {
-      throw new Error(`Timeout waiting for ${filename} to import`);
+    if (!fileSucceeded) {
+      throw new Error(`Failed to upload ${filename} after 2 attempts`);
     }
 
     // Verify it is in DB

@@ -64,10 +64,21 @@ export async function uploadDriveChunks(file: SuiteFile, link: DriveLink, onProg
     bytes: body.length,
     sent: 0,
     upload: async ({ start, end }) => {
-      const result = await uploadDriveSpan(file, link, start, end, body);
-      onProgress?.(result.accepted, body.length);
-      if (result.done) saved = result.link;
-      return result;
+      let lastErr: unknown;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const result = await uploadDriveSpan(file, link, start, end, body);
+          onProgress?.(result.accepted, body.length);
+          if (result.done) saved = result.link;
+          return result;
+        } catch (err) {
+          lastErr = err;
+          if (attempt < 2) {
+            await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+          }
+        }
+      }
+      throw lastErr;
     },
   });
   if (!result.done || !saved) throw new Error("That upload does not continue the saved part.");

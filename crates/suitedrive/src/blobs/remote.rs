@@ -67,20 +67,38 @@ impl RemoteBlobs {
         path: &str,
         bytes: Option<&[u8]>,
     ) -> Result<Response> {
-        let mut request = self
-            .client
-            .request(method, format!("{}/internal/cloud/blobs/{path}", self.base))
-            .bearer_auth(&self.token);
-        if let Some(bytes) = bytes {
-            request = request.body(bytes.to_vec());
+        let mut last_err = anyhow::anyhow!("Document storage is unavailable.");
+        for attempt in 0..4 {
+            if attempt > 0 {
+                std::thread::sleep(Duration::from_millis(500 * (1 << (attempt - 1))));
+            }
+            let mut request = self
+                .client
+                .request(
+                    method.clone(),
+                    format!("{}/internal/cloud/blobs/{path}", self.base),
+                )
+                .bearer_auth(&self.token);
+            if let Some(bytes) = bytes {
+                request = request.body(bytes.to_vec());
+            }
+            match request.send() {
+                Ok(response) => {
+                    if response.status() == StatusCode::NOT_FOUND || response.status().is_success()
+                    {
+                        return Ok(response);
+                    }
+                    if response.status().is_server_error() && attempt < 3 {
+                        continue;
+                    }
+                    bail!("Document storage operation failed ({}).", response.status());
+                }
+                Err(e) => {
+                    last_err = e.into();
+                }
+            }
         }
-        let response = request
-            .send()
-            .map_err(|_| anyhow::anyhow!("Document storage is unavailable."))?;
-        if response.status() != StatusCode::NOT_FOUND && !response.status().is_success() {
-            bail!("Document storage operation failed ({}).", response.status());
-        }
-        Ok(response)
+        Err(last_err)
     }
     pub(super) fn get(&self, hash: &Hash) -> Result<Option<Vec<u8>>> {
         blocking(|| self.get_native(hash))
