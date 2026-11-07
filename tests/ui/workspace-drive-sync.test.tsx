@@ -135,6 +135,69 @@ afterEach(() => {
 });
 
 describe("a SuiteDrive file", () => {
+  it.each(["doc", "sheet", "slide"] as const)(
+    "opens a signed-in %s in the shared room even when another tab holds the cache lock",
+    async (kind) => {
+      const request = vi.fn(
+        async (
+          _name: string,
+          _options: unknown,
+          run: (lock: null) => Promise<void>,
+        ) => run(null),
+      );
+      Object.defineProperty(navigator, "locks", {
+        value: { request },
+        configurable: true,
+      });
+      try {
+        const plan = store(kind);
+        await open(plan);
+        expect(request).not.toHaveBeenCalled();
+        expect(fake.room).toMatchObject({ itemId: "item-1", role: "owner" });
+        expect(editorProps().readOnly).toBe(false);
+        const doc = new Y.Doc();
+        fake.seed = true;
+        act(() => (fake.room!.onDoc as (doc: Y.Doc) => void)(doc));
+        await waitFor(() => expect(editorProps().collabDoc).toBe(doc));
+        expect(screen.queryByText("Already open in another tab")).toBeNull();
+      } finally {
+        Object.defineProperty(navigator, "locks", {
+          value: undefined,
+          configurable: true,
+        });
+      }
+    },
+  );
+
+  it("keeps the cache lock for a SuiteDrive copy opened without a session", async () => {
+    fake.session = null;
+    const request = vi.fn(
+      async (
+        _name: string,
+        _options: unknown,
+        run: (lock: null) => Promise<void>,
+      ) => run(null),
+    );
+    Object.defineProperty(navigator, "locks", {
+      value: { request },
+      configurable: true,
+    });
+    try {
+      const plan = store();
+      await renderWorkspace(Workspace, ModeContext, plan.file.id, cluster);
+      await advance(2000);
+      expect(
+        await screen.findByText("Already open in another tab"),
+      ).toBeTruthy();
+      expect(request).toHaveBeenCalledTimes(6);
+    } finally {
+      Object.defineProperty(navigator, "locks", {
+        value: undefined,
+        configurable: true,
+      });
+    }
+  });
+
   it("hides presentation file comments until the header Comments button is pressed", async () => {
     const deck = store("slide", "Slides");
     await open(deck);

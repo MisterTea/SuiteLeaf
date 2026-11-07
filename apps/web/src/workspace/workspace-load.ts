@@ -153,6 +153,19 @@ export function useWorkspaceLoad(
     // reports the file as open in another tab. `signal` cannot be combined
     // with ifAvailable, so a cancelled attempt just returns the lock.
     const acquire = async () => {
+      // SuiteDrive editors share the server's Yjs room, including tabs signed
+      // in as the same person. Local files still need an exclusive cache lock.
+      const cached = await driveQueue.current.enqueue(() => storage.get(id!));
+      if (cancel) return;
+      if (
+        cached?.drive &&
+        getSession() &&
+        ["doc", "sheet", "slide"].includes(cached.file.kind)
+      ) {
+        setLocked(false);
+        await load();
+        return;
+      }
       if (!navigator.locks) {
         await load();
         return;

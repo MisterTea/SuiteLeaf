@@ -1,6 +1,52 @@
 use crate::collab::*;
 
 #[test]
+fn same_user_tabs_have_independent_presence_and_activity() {
+    use crate::schema::node_schema;
+    let dir = tempfile::tempdir().unwrap();
+    let db = Arc::new(
+        Db::open_in_memory(
+            suiteleaf_net::identity::ed25519::Keypair::generate(),
+            node_schema(None).unwrap(),
+        )
+        .unwrap(),
+    );
+    let drive = Drive::open(db.clone(), &dir.path().join("blobs")).unwrap();
+    let rooms = Rooms::new(db.clone(), drive);
+    let ann = AuthUser {
+        id: "ann".into(),
+        email: None,
+        name: Some("Ann".into()),
+        role: None,
+    };
+    let first = rooms
+        .join_connection("file", &ann, Role::Editor, 1, "tab-1")
+        .unwrap();
+    let second = rooms
+        .join_connection("file", &ann, Role::Editor, 1, "tab-2")
+        .unwrap();
+    assert_eq!(first.generation, second.generation);
+    assert!(first.seed);
+    assert!(!second.seed);
+    // Rejoining a connection must not create another presence or seed again.
+    rooms
+        .join_connection("file", &ann, Role::Editor, 2, "tab-2")
+        .unwrap();
+    assert_eq!(rooms.occupants("file").unwrap().len(), 2);
+    rooms.activity("file", "tab-2", 50).unwrap();
+    let row = db
+        .get("drive_presence", &presence_id("file", "tab-2"))
+        .unwrap()
+        .unwrap();
+    assert_eq!(row.get("lastActiveMs").and_then(as_int), Some(50));
+    rooms.leave_connection("file", "ann", 51, "tab-1").unwrap();
+    assert_eq!(rooms.writers("file").unwrap().len(), 1);
+    assert_eq!(rooms.occupants("file").unwrap()[0].user_id, "ann");
+    rooms.leave_connection("file", "ann", 52, "tab-2").unwrap();
+    assert!(rooms.writers("file").unwrap().is_empty());
+}
+
+#[test]
 fn leaving_drops_a_person_before_the_idle_sweep() {
     use crate::{auth::AuthUser, schema::node_schema};
 

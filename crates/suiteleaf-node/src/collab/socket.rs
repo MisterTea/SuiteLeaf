@@ -109,6 +109,22 @@ struct Signed {
     credentials: HeaderMap,
 }
 
+/// Release just this socket's presence on close, including failed sends/reads.
+struct SocketPresence {
+    rooms: Rooms,
+    item: String,
+    user_id: String,
+    connection: String,
+}
+
+impl Drop for SocketPresence {
+    fn drop(&mut self) {
+        let _ = self
+            .rooms
+            .leave_connection(&self.item, &self.user_id, now_ms(), &self.connection);
+    }
+}
+
 async fn accepted_role(
     drive: Arc<Drive>,
     user: &AuthUser,
@@ -189,10 +205,17 @@ async fn run_socket(
         .sockets
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let _count = SocketCount(rooms.sockets.clone());
+    let connection = uuid::Uuid::new_v4().to_string();
     let every = recheck_every(std::env::var("SUITELEAF_RECHECK_MS").ok().as_deref());
     let mut recheck = tokio::time::interval_at(tokio::time::Instant::now() + every, every);
     let (mut sink, mut stream) = socket.split();
-    let joined = rooms.join(&item, &user, role, now_ms())?;
+    let joined = rooms.join_connection(&item, &user, role, now_ms(), &connection)?;
+    let _presence = SocketPresence {
+        rooms: rooms.clone(),
+        item: item.clone(),
+        user_id: user.id.clone(),
+        connection: connection.clone(),
+    };
     sink.send(Message::Text(
         joined_message(&rooms, &item, &joined)?.into(),
     ))
@@ -226,7 +249,7 @@ async fn run_socket(
                     && !update.is_empty()
                 {
                     if update == ROOM_SHARED {
-                        let again = rooms.join(&item, &user, role, now_ms())?;
+                        let again = rooms.join_connection(&item, &user, role, now_ms(), &connection)?;
                         let _ = sink
                             .send(Message::Text(
                                 joined_message(&rooms, &item, &again)?.into(),
@@ -274,7 +297,7 @@ async fn run_socket(
                 }
             }
             "activity" | "join" => {
-                rooms.activity(&item, &user.id, now_ms())?;
+                rooms.activity(&item, &connection, now_ms())?;
                 if kind == "join" {
                     if let Err(reason) = protocol_supported(&value) {
                         let _ = sink
@@ -284,7 +307,7 @@ async fn run_socket(
                             .await;
                         break;
                     }
-                    let again = rooms.join(&item, &user, role, now_ms())?;
+                    let again = rooms.join_connection(&item, &user, role, now_ms(), &connection)?;
                     sink.send(Message::Text(joined_message(&rooms, &item, &again)?.into()))
                         .await?;
                 }
@@ -329,7 +352,7 @@ async fn run_socket(
                     made_in,
                 )?;
                 if outcome == Outcome::Stored {
-                    rooms.activity(&item, &user.id, now_ms())?;
+                    rooms.activity(&item, &connection, now_ms())?;
                 }
                 if let Some(reply) = update_reply(
                     outcome,
@@ -443,7 +466,6 @@ async fn run_socket(
             _ => {}
         }
     }
-    rooms.leave(&item, &user.id, now_ms())?;
     Ok(())
 }
 

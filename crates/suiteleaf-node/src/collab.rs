@@ -89,14 +89,27 @@ impl Rooms {
         }
     }
 
+    #[cfg(test)]
     pub fn join(&self, item: &str, user: &AuthUser, role: Role, now: i64) -> anyhow::Result<Join> {
+        self.join_connection(item, user, role, now, &user.id)
+    }
+
+    /// Each socket owns its presence; two tabs may have the same authenticated user.
+    fn join_connection(
+        &self,
+        item: &str,
+        user: &AuthUser,
+        role: Role,
+        now: i64,
+        connection: &str,
+    ) -> anyhow::Result<Join> {
         let _lock = self.db.exclusive("cloud-mutations")?;
         if self.db.is_postgres() {
             self.catch_up_unlocked(item)?;
         }
         // A viewer joins the same room and receives its text. `may_apply` still
         // ignores a viewer's edit.
-        let id = presence_id(item, &user.id);
+        let id = presence_id(item, connection);
         self.db.transact(|tx| {
             tx.upsert(
                 "drive_presence",
@@ -114,9 +127,10 @@ impl Rooms {
             )
         })?;
         let has_editor = role >= Role::Editor
-            || self.occupants(item)?.iter().any(|person| {
-                matches!(person.role.as_str(), "editor" | "owner")
-            });
+            || self
+                .occupants(item)?
+                .iter()
+                .any(|person| matches!(person.role.as_str(), "editor" | "owner"));
         // One guard at a time. `std::sync::Mutex` is not reentrant, and a
         // second lock on this thread never returns.
         let promoted = {
@@ -230,16 +244,16 @@ impl Rooms {
                 .get("drive_room", item)?
                 .and_then(|row| text_col(&row, "seedOwnerId"));
             let alive = claim.as_ref().is_some_and(|id| {
-                self.occupants(item)
-                    .is_ok_and(|people| people.iter().any(|p| &p.user_id == id))
+                self.db.get("drive_presence", &presence_id(item, id))
+                    .is_ok_and(|row| row.is_some())
             });
-            seed = claim.as_deref() == Some(&user.id) || !alive;
+            seed = claim.as_deref() == Some(connection) || !alive;
             if seed {
                 self.db.transact(|tx| {
                     tx.upsert(
                         "drive_room",
                         item,
-                        [("seedOwnerId", DbValue::from(user.id.as_str()))],
+                        [("seedOwnerId", DbValue::from(connection))],
                     )
                 })?;
             }
@@ -330,12 +344,23 @@ impl Rooms {
     }
 
     /// Remove one person as soon as their socket closes, without waiting for the idle sweep.
+    #[cfg(test)]
     pub fn leave(&self, item: &str, user_id: &str, now: i64) -> anyhow::Result<()> {
+        self.leave_connection(item, user_id, now, user_id)
+    }
+
+    fn leave_connection(
+        &self,
+        item: &str,
+        user_id: &str,
+        now: i64,
+        connection: &str,
+    ) -> anyhow::Result<()> {
         let _lock = self.db.exclusive("cloud-mutations")?;
         if self.db.is_postgres() {
             self.catch_up_unlocked(item)?;
         }
-        let id = presence_id(item, user_id);
+        let id = presence_id(item, connection);
         if self.db.get("drive_presence", &id)?.is_none() {
             return Ok(());
         }

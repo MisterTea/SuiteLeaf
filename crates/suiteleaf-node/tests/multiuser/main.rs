@@ -19,6 +19,7 @@ mod http_files;
 mod http_public_sharing;
 mod http_sessions;
 mod http_sharing;
+mod same_user;
 mod sheets;
 mod slides;
 mod standing;
