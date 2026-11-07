@@ -64,3 +64,5 @@ next-env.d.ts
 /deploy/data/
 /deploy/.env
 .env*
+
+/.venv-fonts/

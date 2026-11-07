@@ -1,3 +1,4 @@
+import { completedCapabilities } from "./catalog-completed";
 import { advertisedIds, capabilities, progressCapabilities } from "./catalog-data";
 import type { CapabilityCatalog, Evidence } from "./schema";
 
@@ -12,14 +13,14 @@ const open: Evidence = {
 
 export const capabilityCatalog: CapabilityCatalog = {
   id: "suiteleaf-capabilities",
-  updated: "2026-11-04",
+  updated: "2026-11-06",
   competitor: {
     product: "Microsoft 365 and Google Workspace",
     edition: "Microsoft 365 Apps for enterprise compared with Google Workspace Business Standard, each on its documented web and desktop clients",
     platform: "web and desktop",
     referenceDate: "2026-10-29",
   },
-  capabilities: [...capabilities, ...progressCapabilities],
+  capabilities: [...capabilities, ...progressCapabilities, ...completedCapabilities],
   advertisedIds,
   workflows: [
     {

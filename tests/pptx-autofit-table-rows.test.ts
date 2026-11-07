@@ -337,7 +337,11 @@ it("measures an Arial Narrow table cell with Pine advances", () => {
     [[{ ...pads, bold: true }]],
     [narrowCol],
   );
-  expect(pineHeader[0]).toBeLessThan(willowHeader[0]);
+  // At 125pt both fonts need two lines; a narrower font does not always
+  // change the discrete line count. The wider cell above distinguishes them.
+  const twoLines = (pads.padTop + pads.padBottom + 2 * pads.fontSize * grid) * 12700;
+  expect(pineHeader[0]).toBeCloseTo(twoLines, 0);
+  expect(willowHeader[0]).toBeCloseTo(twoLines, 0);
 });
 
 it("keeps a subscript header on one line so the row stays its stored height", () => {

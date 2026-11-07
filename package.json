@@ -38,7 +38,8 @@
     "build:ai": "npm run build -w @suiteleaf/ai",
     "build:node": "cargo build --release -p suiteleaf-node",
     "test:rust": "cargo test --workspace",
-    "storyboards": "playwright test --config playwright.storyboards.config.ts"
+    "storyboards": "playwright test --config playwright.storyboards.config.ts",
+    "setup:test-fonts": "node scripts/setup-test-fonts.mjs"
   },
   "devDependencies": {
     "@neondatabase/serverless": "^1.2.0",

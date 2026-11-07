@@ -1,8 +1,13 @@
 import { expect, it } from "vitest";
+import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
 it("ports math metrics generically without changing replacement glyphs or requiring unmapped variants", () => {
-  const result = spawnSync("python", ["-c", String.raw`
+  const localPython = process.platform === "win32"
+    ? ".venv-fonts/Scripts/python.exe"
+    : ".venv-fonts/bin/python";
+  const python = process.env.PYTHON ?? (existsSync(localPython) ? localPython : "python3");
+  const result = spawnSync(python, ["-c", String.raw`
 import sys, io, copy
 sys.path.insert(0, 'scripts/fonts')
 from suiteleaf_math import copy_math_metrics
@@ -49,6 +54,6 @@ assert target['MATH'].table.MathVariants.MinConnectorOverlap==200
 assert target['MATH'].table.MathGlyphInfo is not None
 print('math metrics preserved; replacement outlines unchanged')
 `], { encoding: "utf8", timeout: 30_000 });
-  expect(result.status, result.stderr).toBe(0);
+  expect(result.status, `${result.error?.message ?? ""}\n${result.stderr}\nRun npm run setup:test-fonts to install the font test dependencies.`).toBe(0);
   expect(result.stdout).toContain("replacement outlines unchanged");
 });

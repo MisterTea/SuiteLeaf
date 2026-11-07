@@ -141,8 +141,11 @@ function wrapLines(
     }
     let line = 0;
     let lines = 1;
-    for (const word of para.split(" ")) {
-      if (!word) continue;
+    for (const word of para.match(/ +|[^ ]+/g) ?? []) {
+      if (word.startsWith(" ")) {
+        line += word.length * space;
+        continue;
+      }
       const wordWidth = widthOf(word);
       if (wordWidth > widthPt) {
         if (line > 0) {
@@ -150,7 +153,7 @@ function wrapLines(
           line = 0;
         }
         for (const ch of word) {
-          const advance = glyphEm(ch) * font * scale;
+          const advance = glyphEm(ch, face) * font * scale;
           if (line > 0 && line + advance > widthPt) {
             lines += 1;
             line = advance;
@@ -158,11 +161,10 @@ function wrapLines(
         }
         continue;
       }
-      const gap = line > 0 ? space : 0;
-      if (line > 0 && line + gap + wordWidth > widthPt) {
+      if (line > 0 && line + wordWidth > widthPt) {
         lines += 1;
         line = wordWidth;
-      } else line += gap + wordWidth;
+      } else line += wordWidth;
     }
     count += lines;
   }

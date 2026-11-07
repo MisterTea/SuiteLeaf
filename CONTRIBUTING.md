@@ -7,3 +7,10 @@ Keep browser and Electron renderer code shared. Add platform behavior through th
 Add file-format migrations for incompatible schema changes. Test failed saves and imports, not just successful rendering. Protect existing user data and retain recovery drafts when persistence fails.
 
 Reference books and research downloads are local-only materials. Do not add them or copied book illustrations/text to source or release artifacts. Use original fixtures and examples for tests and documentation.
+
+### Font metric tests
+
+Run `npm run setup:test-fonts` once before `npm test` or `npm run test:coverage`.
+This creates an ignored `.venv-fonts` environment with FontTools. Python 3 is
+required; set `PYTHON` to select another interpreter. CI installs this environment
+before running the unit suite.

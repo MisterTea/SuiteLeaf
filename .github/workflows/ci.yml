@@ -34,6 +34,10 @@ jobs:
       # The better-auth adapter suite runs against a real node and auth sidecar.
       - run: cargo build -p suiteleaf-node
       - run: npm run build:auth
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: npm run setup:test-fonts
       - run: npm test
       - run: npm run build
       - run: node node_modules/electron/install.js
