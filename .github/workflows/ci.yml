@@ -27,6 +27,7 @@ jobs:
           node-version: 24
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
+      - run: npm run check:secrets
       - uses: Swatinem/rust-cache@v2
       - run: npm ci
       - run: npm run typecheck
@@ -47,6 +48,76 @@ jobs:
         with:
           name: test-results
           path: test-results/
+  vercel:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: suiteleaf
+          POSTGRES_PASSWORD: suiteleaf-ci-password
+          POSTGRES_DB: suiteleaf
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U suiteleaf -d suiteleaf"
+          --health-interval=2s
+          --health-timeout=5s
+          --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build Vercel container image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.vercel
+          load: true
+          tags: suiteleaf-vercel:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Verify Vercel container deployment
+        env:
+          DATABASE_URL: postgresql://suiteleaf:suiteleaf-ci-password@127.0.0.1:5432/suiteleaf
+          SUITELEAF_AUTH_SECRET: ci-vercel-auth-secret-0123456789abcdef
+        run: |
+          setup=$(docker run --rm --entrypoint suiteleaf-node suiteleaf-vercel:ci setup-token)
+          hash=$(node -e 'console.log(JSON.parse(process.argv[1]).hash)' "$setup")
+          docker run --rm --network host \
+            -e DATABASE_URL="$DATABASE_URL" \
+            --entrypoint suiteleaf-node suiteleaf-vercel:ci migrate-cloud
+          docker run -d --name suiteleaf-vercel-ci --network host \
+            -e PORT=8788 \
+            -e DATABASE_URL="$DATABASE_URL" \
+            -e SUITELEAF_AUTH_SECRET="$SUITELEAF_AUTH_SECRET" \
+            -e SUITELEAF_BOOTSTRAP_TOKEN_HASH="$hash" \
+            -e VERCEL_URL="suiteleaf-pr.vercel.app" \
+            suiteleaf-vercel:ci
+          trap 'docker logs suiteleaf-vercel-ci || true; docker rm -f suiteleaf-vercel-ci >/dev/null 2>&1 || true' EXIT
+          for _ in $(seq 1 60); do
+            if info=$(curl -fsS http://127.0.0.1:8788/api/node/info 2>/dev/null); then
+              providers=$(curl -fsS http://127.0.0.1:8788/api/auth/suiteleaf/providers)
+              html=$(curl -fsS http://127.0.0.1:8788/)
+              node -e '
+                const assert = require("node:assert/strict");
+                const info = JSON.parse(process.argv[1]);
+                const providers = JSON.parse(process.argv[2]);
+                const html = process.argv[3];
+                assert.equal(info.mode, "cluster");
+                assert.equal(info.database, "postgres");
+                assert.equal(info.storage, "vercel-blob");
+                assert.equal(info.auth.enabled, true);
+                assert.equal(providers.inviteOnly, true);
+                assert(html.includes("<div id=\"root\">"));
+              ' "$info" "$providers" "$html"
+              trap - EXIT
+              docker rm -f suiteleaf-vercel-ci >/dev/null
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Vercel container did not become healthy" >&2
+          exit 1
   e2e:
     strategy:
       fail-fast: false

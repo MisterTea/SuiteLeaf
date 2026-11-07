@@ -1,5 +1,6 @@
 import { semanticPoint, semanticTextLength } from "./slide-text-selection";
 import { readSlideMath } from "./slide-math";
+import { textAreaWidthPt } from "./slide-office-wrap";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import type { TextRun } from "@suiteleaf/core";
 import { paintFontFamily } from "@suiteleaf/core";
@@ -310,7 +311,8 @@ export function SlideTextBody({
     if (!node) return;
     const expected = runsOf({ content, runs, bold, italic, underline });
     const remeasure = fontsReady && !measuredWithFonts.current;
-    if (!remeasure && JSON.stringify(runsFromDom(node)) === JSON.stringify(expected)) {
+    const unwrapForEditing = editing && !!node.querySelector("[data-slide-soft-line]");
+    if (!remeasure && !unwrapForEditing && JSON.stringify(runsFromDom(node)) === JSON.stringify(expected)) {
       node.dataset.empty = plainText(expected) ? "false" : "true";
       return;
     }
@@ -318,7 +320,10 @@ export function SlideTextBody({
       editing && document.activeElement === node
         ? selectionOffsets(node)
         : null;
-    node.innerHTML = runsToHtml(expected, kern, hang, { fontFamily, fontSize, bold, italic, lineHeight, lineHeightPt, align, nowrap });
+    const widthPt = fontsReady && !editing ? textAreaWidthPt(node, fontSize) : undefined;
+    const style = getComputedStyle(node);
+    const unitPt = fontSize ? (parseFloat(style.getPropertyValue("--canvas-fit")) || 1) / (parseFloat(style.fontSize) / fontSize) : 1;
+    node.innerHTML = runsToHtml(expected, kern, hang, { fontFamily, fontSize, bold, italic, lineHeight, lineHeightPt, align, nowrap, widthPt, unitPt });
     node.dataset.empty = plainText(expected) ? "false" : "true";
     if (fontsReady) measuredWithFonts.current = true;
     if (sel) restoreSelection(node, sel.start, sel.end);

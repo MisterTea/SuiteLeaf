@@ -51,6 +51,33 @@ Production secrets remain in Vercel project settings. Do not commit environment
 files. Schema changes still require a separately reviewed migration before the
 new server is released; ordinary application pushes need no manual deployment.
 
+### Database credentials
+
+Keep Neon connection strings in the server-side `DATABASE_URL` and
+`DATABASE_URL_UNPOOLED` environment variables. The runtime and migration scripts
+read these variables; there must be no connection-string fallback in source code.
+For local work, copy `.env.cloud.example` to the ignored `.env.cloud.local`, fill
+in the values privately, and run:
+
+```sh
+node scripts/migrate-cloud.mjs .env.cloud.local
+```
+
+In Vercel, store both variables as Secrets for each environment that uses Neon.
+After rotating a Neon password, update both the pooled and direct connection
+strings in Vercel and any ignored local files, then redeploy so running functions
+receive the new values. Do not put connection strings in command arguments,
+browser code, or variables beginning with `VITE_`.
+
+The removed temporary `scripts/import-slides.mts` runner contained credentials in
+an older Git commit, including an administrator session token. Deleting the file
+does not erase that commit: rotate the database password and revoke the exposed
+session in Admin. Do not restore the runner with embedded credentials.
+
+Run `npm run check:secrets` before committing. CI runs the same check and reports
+only paths and line numbers, never credential values. It scans current repository
+files; it does not remove historical commits or replace credential rotation.
+
 ## Release
 
 Build the backend and auth service, then pull production variables into an ignored

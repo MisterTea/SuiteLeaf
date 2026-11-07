@@ -314,7 +314,7 @@ test.describe("SuiteDrive across two nodes", () => {
     });
     await expect(editorA).toContainText("still drafting");
     pageA.once("dialog", (d) => void d.accept());
-    await pageA.getByRole("button", { name: "Reload from SuiteDrive" }).click();
+    await pageA.getByRole("button", { name: "Discard local changes and reload" }).click();
     await expect(
       pageA.getByRole("textbox", { name: "Document content" }),
     ).toContainText("Rewritten on node B, final");
@@ -364,7 +364,7 @@ test.describe("SuiteDrive across two nodes", () => {
     await expect(banner).toBeVisible({ timeout: 20000 });
 
     page.once("dialog", (d) => void d.accept());
-    await page.getByRole("button", { name: "Reload from SuiteDrive" }).click();
+    await page.getByRole("button", { name: "Discard local changes and reload" }).click();
     await expect(editor).toContainText("Saved elsewhere");
 
     // With nothing left to upload, the local copy follows newer versions.

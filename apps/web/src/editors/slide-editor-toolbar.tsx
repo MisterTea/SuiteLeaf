@@ -19,6 +19,7 @@ import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import type { Slide } from "@suiteleaf/core";
 import { Menu, MenuItem, Tool } from "../ui";
 import { MenuSearchPill } from "../command-palette";
+import { ReleaseDropdown } from "../release-dropdown";
 import type { SlidesEditorState } from "./slide-editor-state";
 import type { DeckHistoryApi } from "./slide-editor-history";
 import type { SlideOrderActions } from "./slide-editor-commands";
@@ -279,14 +280,14 @@ export function SlidesToolbar({
             <Play size={14} fill="currentColor" />
             <span className="tool-words">Slideshow</span>
           </button>
-          <Dropdown.Root>
-            <Dropdown.Trigger
-              className="slideshow-btn slideshow-menu-btn"
-              aria-label="Slideshow options"
-              title="Slideshow options"
-            >
-              <ChevronDown size={12} />
-            </Dropdown.Trigger>
+          <ReleaseDropdown
+            trigger={<ChevronDown size={12} />}
+            triggerProps={{
+              className: "slideshow-btn slideshow-menu-btn",
+              "aria-label": "Slideshow options",
+              title: "Slideshow options",
+            }}
+          >
             <Dropdown.Portal>
               <Dropdown.Content
                 className="menu-content"
@@ -313,7 +314,7 @@ export function SlidesToolbar({
                 </MenuItem>
               </Dropdown.Content>
             </Dropdown.Portal>
-          </Dropdown.Root>
+          </ReleaseDropdown>
         </div>
       </div>
     </div>

@@ -147,6 +147,9 @@ export function authOptions(
       ...(env.github ? { github: env.github } : {}),
     },
     session: {
+      // A daily renewal still leaves at least 31 days to return to the app.
+      expiresIn: 32 * 24 * 60 * 60,
+      updateAge: 24 * 60 * 60,
       additionalFields: {
         reauthAt: { type: "string", required: false, input: false },
       },

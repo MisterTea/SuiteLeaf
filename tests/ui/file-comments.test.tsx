@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FileComments } from "../../apps/web/src/drive/file-comments";
 
@@ -27,6 +27,7 @@ vi.mock("../../apps/web/src/node-client", () => ({
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   comments.mockReset();
   comments.mockResolvedValue(listed);
   comment.mockReset();
@@ -40,6 +41,42 @@ it("writes an Arabic file comment from right to left", () => {
 });
 
 describe("file comments", () => {
+  it("clears a dropped connection warning after the next successful poll", async () => {
+    vi.useFakeTimers();
+    comments.mockRejectedValueOnce(new Error("SuiteDrive is unreachable. Your changes stay on this device."));
+    render(<FileComments itemId="file" canPost />);
+    await act(async () => {});
+    expect(screen.getByRole("alert").textContent).toContain("SuiteDrive is unreachable");
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(screen.getByText("Water the beds")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("waits for a slow poll and preserves a failed comment and its draft after polling recovers", async () => {
+    vi.useFakeTimers();
+    let finish!: (value: typeof listed) => void;
+    comments.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    render(<FileComments itemId="file" canPost />);
+    await act(() => vi.advanceTimersByTimeAsync(6000));
+    expect(comments).toHaveBeenCalledTimes(1);
+    await act(async () => { finish(listed); });
+    comment.mockRejectedValueOnce(new Error("Comment could not be posted."));
+    const box = screen.getByLabelText("Add a comment");
+    fireEvent.change(box, { target: { value: "Keep this draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Comment" }));
+    await act(async () => {});
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(comments).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("alert").textContent).toBe("Comment could not be posted.");
+    expect((box as HTMLTextAreaElement).value).toBe("Keep this draft");
+  });
+  it("provides a close button when the workspace opens it as a panel", async () => {
+    const onClose = vi.fn();
+    render(<FileComments itemId="file" canPost onClose={onClose} />);
+    await screen.findByText("Water the beds");
+    fireEvent.click(screen.getByRole("button", { name: "Close comments" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
   it("shows a comment beside the file and hides the box from a viewer", async () => {
     comments.mockRejectedValueOnce("offline");
     const { unmount } = render(<FileComments itemId="file" canPost={false} />);

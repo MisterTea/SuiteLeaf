@@ -25,8 +25,7 @@ export function assistantWhere(demo: boolean, cluster: boolean): string {
 }
 
 /** The name shown on the panel. Built-in models use their short name; anything else is shown as typed. */
-export function assistantLabel(): string {
-  const name = readModelName();
+export function assistantLabel(name = readModelName()): string {
   return name in AI_MODELS ? AI_MODELS[name as keyof typeof AI_MODELS].short : name;
 }
 
@@ -96,7 +95,7 @@ export function AssistantSettings() {
     ? "SuiteLeaf sends each prompt to this endpoint's /v1/completions API. FrogNano is the model name unless you change it."
     : onComputer
       ? "The first time you ask the assistant, SuiteLeaf downloads the selected model to this computer if it is not already here, then runs it."
-      : "The first time you ask the assistant, this server downloads the selected model if it is not already there. A server with its own model endpoint uses that instead.";
+      : "The connected server runs the assistant using a model on the server or a hosted provider configured by its administrator.";
   return (
     <details className="agent-setup">
       <summary>Assistant settings</summary>

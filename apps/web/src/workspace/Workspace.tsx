@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Leaf,
@@ -10,6 +11,7 @@ import {
   Cloud,
   Download,
   MoreVertical,
+  Share2,
 } from "lucide-react";
 import { extensionFor, nativeFilename } from "@suiteleaf/core";
 import { storage } from "../storage";
@@ -52,6 +54,7 @@ import { WorkspaceEditor } from "./workspace-editor";
 
 export function Workspace() {
   const ws = useWorkspaceState();
+  const [commentsFile, setCommentsFile] = useState<string | null>(null);
   const {
     id, navigate, record, setRecord, error, setError, status, setStatus,
     syncRemedy, setSyncRemedy, locked, templateDraft, setTemplateDraft,
@@ -127,6 +130,9 @@ export function Workspace() {
       </div>
     );
   const f = record.file;
+  const hasSlideFileComments =
+    f.kind === "slide" && !!record.drive && !!driveRole && driveRole !== "local";
+  const fileCommentsOpen = commentsFile === f.id;
   const starred = !!record.starred;
   return (
     <CommandPalette kind={f.kind}>
@@ -313,7 +319,12 @@ export function Workspace() {
               className="doc-icon-btn"
               title="Comments"
               aria-label="Comments"
+              aria-expanded={hasSlideFileComments ? fileCommentsOpen : undefined}
               onClick={() => {
+                if (hasSlideFileComments) {
+                  setCommentsFile(fileCommentsOpen ? null : f.id);
+                  return;
+                }
                 actions.current?.docActions?.toggleComments?.();
                 if (f.kind === "sheet") {
                   // Opening and the header event both toggle the panel, so only one runs.
@@ -341,10 +352,12 @@ export function Workspace() {
             {cluster && record.drive ? (
               <button
                 type="button"
-                className="share-btn"
+                className="share-btn share-icon-btn"
+                aria-label="Share"
+                title="Share"
                 onClick={() => setShareOpen(true)}
               >
-                Share
+                <Share2 size={18} aria-hidden="true" />
               </button>
             ) : null}
             <AiButton />
@@ -377,59 +390,68 @@ export function Workspace() {
             </button>
           </div>
         </header>
-        {driveFolder.notice ? (
-          <MoveBanner
-            notice={driveFolder.notice}
-            onUndo={() =>
-              void driveFolder.undo().catch((e) => setError(message(e)))
-            }
-            onDismiss={driveFolder.dismiss}
-          />
-        ) : null}
-        {error ? (
-          <div className="error" role="alert">
-            <CircleAlert size={18} />
-            {error}
-            <button onClick={() => void save().catch(() => {})}>
-              Retry save
-            </button>
-            {cluster ? null : (
-              <button onClick={() => void saveAs()}>Save As</button>
-            )}
-            <button
-              onClick={() => {
-                if (
-                  window.confirm(
-                    "Reload the saved file and discard unsaved edits?",
-                  )
-                )
-                  void storage
-                    .reload(id!)
-                    .then((r) => {
-                      if (r) {
-                        current.current = r;
-                        version.current = savedVersion.current = 0;
-                        window.location.reload();
-                      }
-                    })
-                    .catch((e) => setError(message(e)));
-              }}
-            >
-              Reload saved
-            </button>
-            <button aria-label="Dismiss error" onClick={() => setError("")}>
-              ×
-            </button>
+        {driveFolder.notice || error || driveConflict ? (
+          <div
+            className="workspace-notices"
+            role="region"
+            aria-label="File notifications"
+            tabIndex={0}
+          >
+            {driveFolder.notice ? (
+              <MoveBanner
+                notice={driveFolder.notice}
+                onUndo={() =>
+                  void driveFolder.undo().catch((e) => setError(message(e)))
+                }
+                onDismiss={driveFolder.dismiss}
+              />
+            ) : null}
+            {error ? (
+              <div className="error" role="alert">
+                <CircleAlert size={18} />
+                {error}
+                <button onClick={() => void save().catch(() => {})}>
+                  Retry save
+                </button>
+                {cluster ? null : (
+                  <button onClick={() => void saveAs()}>Save As</button>
+                )}
+                <button
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        "Reload the saved file and discard unsaved edits?",
+                      )
+                    )
+                      void storage
+                        .reload(id!)
+                        .then((r) => {
+                          if (r) {
+                            current.current = r;
+                            version.current = savedVersion.current = 0;
+                            window.location.reload();
+                          }
+                        })
+                        .catch((e) => setError(message(e)));
+                  }}
+                >
+                  Reload saved
+                </button>
+                <button aria-label="Dismiss error" onClick={() => setError("")}>
+                  ×
+                </button>
+              </div>
+            ) : null}
+            {driveConflict ? (
+              <DriveConflictBanner
+                driveConflict={driveConflict}
+                saveDriveCopy={saveDriveCopy}
+                combineDriveChanges={combineDriveChanges}
+                reloadFromDrive={reloadFromDrive}
+                setError={setError}
+              />
+            ) : null}
           </div>
-        ) : null}
-        {driveConflict ? (
-          <DriveConflictBanner
-            driveConflict={driveConflict}
-            saveDriveCopy={saveDriveCopy}
-            combineDriveChanges={combineDriveChanges}
-            reloadFromDrive={reloadFromDrive}
-            setError={setError}
-          />
         ) : null}
         {driveFolder.open && record.drive && driveFolder.place ? (
           <MoveDialog
@@ -532,6 +554,8 @@ export function Workspace() {
               inert={historyPreview ? true : undefined}
             >
               <WorkspaceEditor
+                fileCommentsOpen={fileCommentsOpen}
+                onCloseComments={() => setCommentsFile(null)}
                 ws={ws}
                 record={record}
                 update={update}

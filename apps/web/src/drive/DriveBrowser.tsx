@@ -35,8 +35,16 @@ import { DRIVE_SAVED, lastEditOf } from "./last-edit";
 import { accessLabel } from "./roles";
 import { ShareNotices } from "./share-notices";
 import { formatModified } from "./status";
+import {
+  driveRoot as rootOf,
+  type DriveCrumb as Crumb,
+  type DrivePlace as Place,
+} from "./drive-folder-url";
+import {
+  useDriveFolderRoute,
+  type DriveFolderRoute,
+} from "./use-drive-folder-route";
 
-type Crumb = { id: string | null; name: string };
 /** The visible SuiteDrive folder and what can be done in it. */
 export interface DriveControl {
   path: string[];
@@ -49,14 +57,8 @@ export interface DriveControl {
   switchView: (view: "mine" | "shared") => void;
   newFolder: (name: string) => Promise<void>;
 }
-type View = "mine" | "shared" | "trash";
-type Place = { view: View; path: Crumb[] };
 
 const PLACE_KEY = "suiteleaf:drive-place";
-const rootOf = (view: View): Place => ({
-  view,
-  path: [{ id: null, name: view === "mine" ? "My Drive" : "Shared with me" }],
-});
 /** Remembers the home screen's folder for this account, so leaving a file
  * returns to the folder it was opened from. */
 const place = {
@@ -175,8 +177,11 @@ export function DriveBrowser({
   refreshKey,
   control,
   startIn,
+  folderRoute,
 }: {
   mode: "open" | "save";
+  /** Home's router location; dialogs keep their navigation local. */
+  folderRoute?: DriveFolderRoute;
   defaultName?: string;
   inline?: boolean;
   /** Open this folder instead of the top of My Drive. Used by the editor's Open and Save as. */
@@ -203,8 +208,15 @@ export function DriveBrowser({
         }
       : (inline && place.load()) || rootOf("mine"),
   );
-  const [view, setView] = useState<View>(initial.view);
-  const [path, setPath] = useState<Crumb[]>(initial.path);
+  const [currentPlace, setPlace] = useState<Place>(initial);
+  const { view, path } = currentPlace;
+  const routing = useDriveFolderRoute(folderRoute, currentPlace, setPlace);
+  const { visit } = routing;
+  const setPath = useCallback(
+    (next: Crumb[] | ((path: Crumb[]) => Crumb[])) =>
+      visit({ view, path: typeof next === "function" ? next(path) : next }),
+    [view, path, visit],
+  );
   const [items, setItems] = useState<DriveItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -238,6 +250,7 @@ export function DriveBrowser({
     request = useRef(0);
 
   const refresh = useCallback(async () => {
+    if (routing.pending || routing.error) return;
     const key = `${view}:${folder.id}`;
     const n = ++request.current;
     // Re-listing the folder already on screen keeps it there meanwhile.
@@ -265,8 +278,11 @@ export function DriveBrowser({
         setLoading(false);
       }
     }
-  }, [folder.id, view]);
-  useEffect(() => void refresh(), [refresh, refreshKey]);
+  }, [folder.id, view, routing.pending, routing.error, setPath]);
+  useEffect(() => {
+    if (routing.pending || routing.error) request.current++;
+    else void refresh();
+  }, [refresh, refreshKey, routing.pending, routing.error]);
   // An empty box stays on the folder. A short pause lets a recording type
   // the whole word before the list switches to results.
   useEffect(() => {
@@ -319,9 +335,10 @@ export function DriveBrowser({
     };
   }, [refresh]);
   useEffect(() => {
+    if (routing.pending || routing.error) return;
     onFolderChange?.(folder.id, folder.name);
     if (inline) place.save({ view, path });
-  }, [folder.id, folder.name, onFolderChange, inline, view, path]);
+  }, [folder.id, folder.name, onFolderChange, inline, view, path, routing.pending, routing.error]);
 
   const act = async (work: () => Promise<unknown>) => {
     setBusy(true);
@@ -335,13 +352,11 @@ export function DriveBrowser({
   };
 
   const switchView = (next: "mine" | "shared") => {
-    setView(next);
-    setPath(rootOf(next).path);
+    routing.visit(rootOf(next));
     setKept("");
   };
   const openTrash = () => {
-    setView("trash");
-    setPath([{ id: null, name: "Trash" }]);
+    routing.visit(rootOf("trash"));
     setKept("");
   };
   const moveToTrash = (item: DriveItem) => {
@@ -382,13 +397,13 @@ export function DriveBrowser({
   const canWrite = view === "mine" || folder.id !== null;
 
   const visible = items.filter(
-    (i) => i.kind === "folder" || mode === "save" || isNativeName(i.name),
+    (i) => !routing.error && (i.kind === "folder" || mode === "save" || isNativeName(i.name)),
   );
   if (control)
     control.current = {
       path: path.map((c) => c.name),
       items: visible,
-      loading,
+      loading: loading || routing.pending,
       choose,
       goTo: (depth) => setPath(path.slice(0, Math.max(1, depth))),
       switchView,
@@ -460,7 +475,7 @@ export function DriveBrowser({
         {canWrite ? (
           <button
             className="drive-new-folder"
-            disabled={busy}
+            disabled={busy || routing.pending || !!routing.error}
             onClick={() => setAsking({ action: "new-folder" })}
           >
             <FolderPlus size={16} />
@@ -485,9 +500,9 @@ export function DriveBrowser({
           ))}
         </nav>
       )}
-      {error ? (
+      {routing.error || error ? (
         <p className="dialog-error" role="alert">
-          {error}
+          {routing.error || error}
         </p>
       ) : null}
       {inline && mode === "open" && onOpen ? (
@@ -562,7 +577,7 @@ export function DriveBrowser({
               </div>
             ))
           )
-        ) : loading ? (
+        ) : routing.error ? null : loading || routing.pending ? (
           <p className="drive-empty">Loading…</p>
         ) : visible.length === 0 ? (
           <p className="drive-empty">

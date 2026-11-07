@@ -14,6 +14,33 @@ import {
 
 afterEach(cleanup);
 
+it("roundtrips automatic soft lines without adding authored paragraph breaks", () => {
+  const runs = [{ text: "• ", font: "SuiteLeaf Aspen", paraHang: 18 }, { text: "First second third", fontSize: 28, underline: true }];
+  const html = runsToHtml(runs, 12, undefined, { fontSize: 28, widthPt: 100 });
+  expect(html).toContain('data-slide-soft-line="1"');
+  const node = document.createElement("div");
+  node.innerHTML = html;
+  const parsed = runsFromDom(node);
+  expect(parsed.map(run => run.text).join("")).toBe("• First second third");
+  expect(parsed.some(run => run.text.includes("\n"))).toBe(false);
+  expect(parsed.find(run => run.text.includes("third"))?.underline).toBe(true);
+  document.body.append(node);
+  const range = document.createRange();
+  range.selectNodeContents(node);
+  window.getSelection()!.removeAllRanges();
+  window.getSelection()!.addRange(range);
+  expect(selectionOffsets(node)).toEqual({ start: 0, end: "• First second third".length });
+  restoreSelection(node, 8, 14);
+  expect(selectionOffsets(node)).toEqual({ start: 8, end: 14 });
+  node.remove();
+});
+
+it("does not charge a shared hanging gutter twice or measure a symbol marker as body text", () => {
+  const html = runsToHtml([{ text: "v ", font: "Wingdings", fontSize: 10 }, { text: "One two three", fontSize: 10 }], 12, 36, { fontSize: 10, widthPt: 100 });
+  expect(html).not.toContain('data-slide-soft-line="1"');
+  expect(html).toContain("slide-bullet-fixed");
+});
+
 function dom(html: string) {
   const root = document.createElement("div");
   root.innerHTML = html;

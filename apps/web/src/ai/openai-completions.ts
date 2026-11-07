@@ -17,8 +17,10 @@ export interface CompletionTarget {
   authorization?: () => Promise<string | undefined>;
   /** Ask the server to download a built-in model before the first reply. */
   prepare?: boolean;
-  /** When set, a host other than this computer is not fetched. */
+  /** Restrict requests to this computer or the authenticated connected server. */
   localOnly?: boolean;
+  /** Connected SuiteLeaf server, supplied by runtime rather than remote-endpoint preferences. */
+  serverUrl?: string;
   /** Organization cap for `max_tokens`. */
   maxTokens?: number;
   /** False holds the document. Missing means this call is not a remote document send. */
@@ -193,7 +195,7 @@ export function openAiCompletionModel(target: CompletionTarget) {
           message: `Preparing ${display}`,
         });
         const preparing = loadUrl(target.endpoint);
-        if (!promptHostAllowed(preparing, target.localOnly === true)) {
+        if (!promptHostAllowed(preparing, target.localOnly === true, target.authorization ? target.serverUrl : undefined)) {
           const error: AiStatus = {
             state: "error",
             backend: "remote",
@@ -205,6 +207,7 @@ export function openAiCompletionModel(target: CompletionTarget) {
         try {
           const response = await fetch(preparing, {
             method: "POST",
+            redirect: target.serverUrl ? "error" : "follow",
             headers,
             body: JSON.stringify({ model: target.model }),
           });
@@ -330,7 +333,7 @@ async function streamCompletion(
     });
     return;
   }
-  if (!promptHostAllowed(url, target.localOnly === true)) {
+  if (!promptHostAllowed(url, target.localOnly === true, target.authorization ? target.serverUrl : undefined)) {
     onEvent({ type: "error", message: "Document text stays here." });
     return;
   }
@@ -345,6 +348,7 @@ async function streamCompletion(
   try {
     response = await fetch(url, {
       method: "POST",
+      redirect: target.serverUrl ? "error" : "follow",
       headers,
       signal,
       body: JSON.stringify({

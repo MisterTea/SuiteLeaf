@@ -10,6 +10,12 @@
   flex-direction: column;
   gap: 8px;
 }
+.file-comments-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
 .file-comments h2,
 .file-comments p {
   margin: 0;

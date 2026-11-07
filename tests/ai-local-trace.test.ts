@@ -4,6 +4,16 @@ import { openAiCompletionModel } from "../apps/web/src/ai/openai-completions";
 import { promptHostAllowed } from "../apps/web/src/ai/policy";
 
 describe("local-only completion", () => {
+  it("permits only the connected server's assistant routes, including its configured base path", () => {
+    const server = "https://suiteleaf.vercel.app";
+    expect(promptHostAllowed(`${server}/api/ai/v1/load`, true, server)).toBe(true);
+    expect(promptHostAllowed(`${server}/api/ai/v1/completions`, true, server)).toBe(true);
+    expect(promptHostAllowed("https://leaf.example/team/api/ai/v1/completions", true, "https://leaf.example/team/")).toBe(true);
+    for (const url of ["https://other.example/api/ai/v1/completions", "https://suiteleaf.vercel.app.other.example/api/ai/v1/completions", `${server}:8443/api/ai/v1/completions`, `${server}/api/drive/items`, `${server}/api/ai/v1/completions/other`]) {
+      expect(promptHostAllowed(url, true, server)).toBe(false);
+    }
+    expect(promptHostAllowed(`${server}/api/ai/v1/load`, true, "not a URL")).toBe(false);
+  });
   it("does not fetch a remote host with the document text", async () => {
     const calls: string[] = [];
     const previous = globalThis.fetch;

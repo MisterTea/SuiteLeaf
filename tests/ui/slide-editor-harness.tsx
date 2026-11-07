@@ -139,6 +139,8 @@ export function pick(id: string, init: MouseEventInit = {}) {
 export function choose(menu: string, item: string) {
   const trigger = screen.getByRole("button", { name: menu });
   fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+  fireEvent.pointerUp(trigger, { button: 0, ctrlKey: false });
+  fireEvent.click(trigger);
   const entry = screen.getByRole("menuitem", { name: new RegExp(`^${item.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`) });
   fireEvent.click(entry);
 }

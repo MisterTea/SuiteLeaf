@@ -135,6 +135,43 @@ afterEach(() => {
 });
 
 describe("a SuiteDrive file", () => {
+  it("hides presentation file comments until the header Comments button is pressed", async () => {
+    const deck = store("slide", "Slides");
+    await open(deck);
+    const button = screen.getByLabelText("Comments", { selector: "button" });
+    expect(button.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("region", { name: "File comments" })).toBeNull();
+    fireEvent.click(button);
+    expect(button.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("region", { name: "File comments" }).textContent).toBe("can post");
+    expect(fake.actions!.slideActions.toggleComments).not.toHaveBeenCalled();
+    fireEvent.click(button);
+    expect(button.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("region", { name: "File comments" })).toBeNull();
+    fireEvent.click(button);
+    fireEvent.click(screen.getByRole("button", { name: "Close comments" }));
+    expect(button.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("region", { name: "File comments" })).toBeNull();
+  });
+
+  it("keeps a viewer's presentation comments read only when opened", async () => {
+    driveApi.get.mockImplementation(async (id: string) => driveItem(id, { role: "viewer" }));
+    await open(store("slide", "Read-only slides"));
+    expect(screen.queryByRole("region", { name: "File comments" })).toBeNull();
+    fireEvent.click(screen.getByLabelText("Comments", { selector: "button" }));
+    expect(screen.getByRole("region", { name: "File comments" }).textContent).toBe("read only");
+  });
+
+  it("keeps local presentations connected to the slide comment panel", async () => {
+    const deck = store("slide", "Local slides");
+    delete deck.drive;
+    fake.records.set(deck.file.id, structuredClone(deck));
+    await open(deck, { kind: "single" });
+    fireEvent.click(screen.getByLabelText("Comments", { selector: "button" }));
+    expect(fake.actions!.slideActions.toggleComments).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("region", { name: "File comments" })).toBeNull();
+  });
+
   it("opens the desktop's cached copy with its sync status, not as a recovered draft", async () => {
     const plan = store();
     fake.records.set(plan.file.id, { ...structuredClone(plan), recovery: true });
@@ -469,21 +506,66 @@ describe("a SuiteDrive conflict", () => {
     );
   });
 
-  it("reloads the SuiteDrive version after confirming, keeping edits here", async () => {
+  it("discards local changes after confirming and reloads the SuiteDrive version without a copy", async () => {
     const plan = await conflicted();
     const reload = vi.fn();
     const location = window.location;
     vi.stubGlobal("confirm", vi.fn(() => false));
-    fireEvent.click(within(banner()).getByRole("button", { name: "Reload from SuiteDrive" }));
+    fireEvent.click(within(banner()).getByRole("button", { name: "Discard local changes and reload" }));
     expect(nodeExtras.openDriveFile).not.toHaveBeenCalled();
     vi.stubGlobal("confirm", vi.fn(() => true));
     Object.defineProperty(window, "location", { value: { ...location, reload }, configurable: true });
     nodeExtras.openDriveFile.mockResolvedValue({ file: { ...plan.file, title: "Theirs" }, drive: { itemId: "item-1", versionId: "v9" } });
-    fireEvent.click(within(banner()).getByRole("button", { name: "Reload from SuiteDrive" }));
+    fireEvent.click(within(banner()).getByRole("button", { name: "Discard local changes and reload" }));
     await waitFor(() => expect(reload).toHaveBeenCalled());
     Object.defineProperty(window, "location", { value: location, configurable: true });
     expect(saved(plan.file.id)).toMatchObject({ file: { title: "Theirs" }, drive: { versionId: "v9" } });
-    expect(saved(`${plan.file.id}-kept`).file.title).toBe("Plan (kept)");
+    expect(saved(`${plan.file.id}-kept`)).toBeUndefined();
+    expect(uploadQueue.get("item-1")).toBeUndefined();
+  });
+
+  it("keeps local changes when discarding cannot download the server version", async () => {
+    const plan = await conflicted("slide");
+    const local = structuredClone(saved(plan.file.id));
+    const pending = uploadQueue.get("item-1");
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    nodeExtras.openDriveFile.mockRejectedValueOnce(new Error("SuiteDrive is unreachable."));
+    fireEvent.click(within(banner()).getByRole("button", { name: "Discard local changes and reload" }));
+    await screen.findByText("SuiteDrive is unreachable.");
+    expect(saved(plan.file.id)).toEqual(local);
+    expect(uploadQueue.get("item-1")).toEqual(pending);
+    expect(saved(`${plan.file.id}-kept`)).toBeUndefined();
+    expect(banner()).toBeTruthy();
+  });
+
+  it("keeps edits and their upload when the downloaded version cannot be saved locally", async () => {
+    const plan = await conflicted("slide");
+    const local = structuredClone(saved(plan.file.id));
+    const pending = uploadQueue.get("item-1");
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    nodeExtras.openDriveFile.mockResolvedValue({ file: { ...plan.file, title: "Theirs" }, drive: { itemId: "item-1", versionId: "v9" } });
+    fake.failSave = "Local storage is full.";
+    fireEvent.click(within(banner()).getByRole("button", { name: "Discard local changes and reload" }));
+    await screen.findByText("Local storage is full.");
+    expect(saved(plan.file.id)).toEqual(local);
+    expect(uploadQueue.get("item-1")).toEqual(pending);
+  });
+
+  it("preserves the assistant's existing reload-with-a-copy behavior", async () => {
+    const plan = await conflicted();
+    fake.hosts.workspace!();
+    const tools = fake.conflictCtx as unknown as { reload: () => Promise<void> };
+    const reload = vi.fn();
+    const location = window.location;
+    Object.defineProperty(window, "location", { value: { ...location, reload }, configurable: true });
+    try {
+      nodeExtras.openDriveFile.mockResolvedValue({ file: { ...plan.file, title: "Theirs" }, drive: { itemId: "item-1", versionId: "v9" } });
+      await act(() => tools.reload());
+      expect(reload).toHaveBeenCalledTimes(1);
+      expect(saved(`${plan.file.id}-kept`).file.title).toBe("Plan (kept)");
+    } finally {
+      Object.defineProperty(window, "location", { value: location, configurable: true });
+    }
   });
 
   it("shows conflict actions that fail", async () => {

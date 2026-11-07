@@ -16,6 +16,9 @@ function aliasedOfficeFace(name: string): string | undefined {
   const bare = name.replace(/\s*\((?:body|headings|heading)\)\s*$/i, "").trim();
   if (bare !== name && OFFICE_TO_SUITELEAF[bare]) return OFFICE_TO_SUITELEAF[bare];
   if (/^times$/i.test(name)) return OFFICE_TO_SUITELEAF["Times New Roman"];
+  // Windows Office substitutes the Helvetica families with Arial. Preserve that
+  // family choice instead of letting an unavailable Mac face fall back to Calibri.
+  if (/^helvetica(?: neue)?$/i.test(bare)) return OFFICE_TO_SUITELEAF.Arial;
   const tokens = name.split(/\s+/).filter(Boolean);
   let start = 0;
   let end = tokens.length;

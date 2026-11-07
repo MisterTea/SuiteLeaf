@@ -56,6 +56,14 @@ export function tableCellLayout(
   if (!rowHeight) return { td: painted };
   const { paddingTop, paddingRight, paddingBottom, paddingLeft, verticalAlign, ...rest } =
     painted;
+  // DrawingML insets are measured from the grid, whose strokes are centred.
+  // CSS positions an absolute child inside the collapsed half-border instead.
+  // Return that half-stroke to the text area rather than narrowing every cell.
+  const gridEdge = (border: CSSProperties["borderLeft"]) => {
+    if (typeof border !== "string" || border === "none") return "0px";
+    const width = /^calc\(([-\d.]+) \* var\(--slide-pt, 1\) \* 1px\)/.exec(border)?.[1];
+    return width ? `calc(${-Number(width) / 2} * var(--slide-pt, 1) * 1px)` : "0px";
+  };
   return {
     td: {
       ...rest,
@@ -67,6 +75,8 @@ export function tableCellLayout(
     clip: {
       position: "absolute",
       inset: 0,
+      left: gridEdge(painted.borderLeft ?? painted.border),
+      right: gridEdge(painted.borderRight ?? painted.border),
       overflow: "hidden",
       display: "flex",
       flexDirection: "column",

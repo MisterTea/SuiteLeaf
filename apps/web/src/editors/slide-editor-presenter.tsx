@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight, StickyNote, X } from "lucide-react";
+import { useState } from "react";
 import { filename, type SlideFile } from "@suiteleaf/core";
 import { exportBinary } from "../storage";
 import { audienceLines, openAudienceScreen } from "./audience-screen";
@@ -27,13 +28,14 @@ export function SlideShowOverlay({
   controls: ShowControls;
   playback: ShowPlayback;
 }) {
+  const [audienceError, setAudienceError] = useState("");
   const {
     deck, presentSlideIndex, showSpeakerNotes, setShowSpeakerNotes, reducedMotion, moveShowRef,
     blankScreen, timerPaused, setTimerPaused, showStartedAt, setShowStartedAt, frozenElapsedMs,
     setFrozenElapsedMs, clock, setClock, showCursor, audiencePopup, recording, setRecording,
     recorderRef,
   } = state;
-  const { overlayRef, controlsVisible, controlsHoveredRef, endShow } = controls;
+  const { overlayRef, controlsVisible, controlsHoveredRef, endShow, showFullscreenRef } = controls;
   const {
     showMotionClass,
     presentSlide,
@@ -189,13 +191,30 @@ export function SlideShowOverlay({
         <button
           type="button"
           onClick={() => {
-            const popup = window.open("", "suiteleaf-audience");
-            audiencePopup.current = popup;
-            openAudienceScreen(
-              popup,
-              frame.audience,
-              presentSlide ? audienceLines(presentSlide.elements, undefined, deck.master?.elements ?? []) : [],
-            );
+            setAudienceError("");
+            // Switching to a second window can leave fullscreen. It must not end the show.
+            const wasFullscreen = showFullscreenRef.current;
+            showFullscreenRef.current = false;
+            try {
+              const popup = audiencePopup.current && !audiencePopup.current.closed
+                ? audiencePopup.current
+                : window.open("about:blank", "_blank");
+              audiencePopup.current = popup;
+              if (!openAudienceScreen(
+                popup,
+                frame.audience,
+                presentSlide ? audienceLines(presentSlide.elements, showCursor.revealed, deck.master?.elements ?? []) : [],
+              )) {
+                showFullscreenRef.current = wasFullscreen && !!document.fullscreenElement;
+                setAudienceError("Could not open the audience screen. Allow pop-ups for SuiteLeaf and try again.");
+              } else if (wasFullscreen && document.fullscreenElement) {
+                void document.exitFullscreen().catch(() => {});
+              }
+            } catch {
+              showFullscreenRef.current = wasFullscreen && !!document.fullscreenElement;
+              audiencePopup.current = null;
+              setAudienceError("Could not open the audience screen. Allow pop-ups for SuiteLeaf and try again.");
+            }
           }}
         >
           Audience screen
@@ -269,6 +288,7 @@ export function SlideShowOverlay({
           <X size={15} /> Exit
         </button>
       </div>
+      {audienceError ? <p className="presenter-audience-error" role="alert">{audienceError}</p> : null}
     </div>
   );
 }

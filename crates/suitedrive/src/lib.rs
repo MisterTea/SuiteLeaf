@@ -27,6 +27,7 @@ pub mod move_preview;
 mod person_access;
 mod policy;
 mod presence;
+mod public_sharing;
 pub mod recover;
 mod replication;
 mod row;
@@ -47,6 +48,7 @@ pub use guest::{GuestShare, guest_role};
 pub use items::Item;
 pub use policy::{PolicyChange, PolicyPlan};
 pub use presence::{PRESENCE_IDLE, PRESENCE_TTL, Presence};
+pub use public_sharing::PublicLink;
 pub use replication::{BlobRequest, BlobResponse, BlobTransport};
 pub use schema::{SCHEMA_VERSION, tables};
 pub use search::{SearchHit, SpreadsheetHit};
@@ -84,6 +86,7 @@ pub struct Drive {
     partials: Mutex<BTreeMap<String, OpenUpload>>,
     partial_dir: PathBuf,
     storage_budget: Mutex<Option<u64>>,
+    public_sharing_lock: Mutex<()>,
 }
 
 impl Drive {
@@ -98,6 +101,7 @@ impl Drive {
             partials: Mutex::default(),
             partial_dir: PathBuf::new(),
             storage_budget: Mutex::new(None),
+            public_sharing_lock: Mutex::new(()),
         }))
     }
     /// Open the blob store and start tracking versions whose blobs are missing.
@@ -119,6 +123,7 @@ impl Drive {
             partials: Mutex::new(load_partials(&partial_dir)),
             partial_dir,
             storage_budget: Mutex::new(None),
+            public_sharing_lock: Mutex::new(()),
         });
         let weak = Arc::downgrade(&drive);
         db.on_applied(Box::new(move |rows| {

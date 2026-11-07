@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createRef } from "react";
+import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DriveItem } from "../../apps/web/src/node-client";
 
@@ -103,6 +104,86 @@ afterEach(() => {
 });
 
 const rows = () => screen.getAllByRole("listitem").map((row) => row.querySelector(".drive-item-name")?.textContent);
+
+function RoutedDrive() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  return <>
+    <output aria-label="URL">{location.pathname + location.search}</output>
+    <button onClick={() => void navigate(-1)}>Browser back</button>
+    <button onClick={() => void navigate(1)}>Browser forward</button>
+    <DriveBrowser inline mode="open" folderRoute={{ pathname: location.pathname, search: location.search, navigate }} />
+  </>;
+}
+const routedDrive = (url: string) => render(<MemoryRouter initialEntries={[url]}><RoutedDrive /></MemoryRouter>);
+const urlIs = (url: string) => waitFor(() => expect(screen.getByLabelText("URL").textContent).toBe(url));
+
+describe("folder URL navigation", () => {
+  it("opens name-only URLs, encodes folder names, and follows Back and Forward", async () => {
+    state.items.push(item("nested", "A / B # %", "f-beds", { kind: "folder" }));
+    routedDrive("/drive");
+    await screen.findByRole("button", { name: "Beds", exact: true });
+    fireEvent.click(screen.getByRole("button", { name: "Beds", exact: true }));
+    await urlIs("/drive/Beds?folder=f-beds");
+    fireEvent.click(await screen.findByRole("button", { name: "A / B # %", exact: true }));
+    await urlIs("/drive/Beds/A%20%2F%20B%20%23%20%25?folder=nested");
+    fireEvent.click(screen.getByRole("button", { name: "Browser back" }));
+    await urlIs("/drive/Beds?folder=f-beds");
+    await screen.findByRole("button", { name: "Rows.sldoc", exact: true });
+    fireEvent.click(screen.getByRole("button", { name: "Browser forward" }));
+    await urlIs("/drive/Beds/A%20%2F%20B%20%23%20%25?folder=nested");
+    await screen.findByText("This folder is empty.");
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Folder path" })).getByRole("button", { name: "My Drive" }));
+    await urlIs("/drive");
+  });
+  it("opens a bookmarked name path even when storage remembers a different folder", async () => {
+    rememberDriveFolder("other", "Other folder");
+    routedDrive("/drive/Beds");
+    await screen.findByRole("button", { name: "Rows.sldoc", exact: true });
+    await urlIs("/drive/Beds?folder=f-beds");
+    expect(drive.list).not.toHaveBeenCalledWith("other");
+  });
+  it("uses folder IDs after renaming and restores the remembered folder from home", async () => {
+    const first = routedDrive("/drive/Old%20name?folder=f-beds");
+    await urlIs("/drive/Beds?folder=f-beds");
+    await screen.findByRole("button", { name: "Rows.sldoc", exact: true });
+    first.unmount();
+    routedDrive("/");
+    await urlIs("/drive/Beds?folder=f-beds");
+    await screen.findByRole("button", { name: "Rows.sldoc", exact: true });
+  });
+  it("lets an explicit Drive root override the remembered folder and puts views in history", async () => {
+    rememberDriveFolder("f-beds", "Beds");
+    routedDrive("/drive");
+    await screen.findByRole("button", { name: "Plan.sldoc", exact: true });
+    fireEvent.click(screen.getByRole("tab", { name: "Shared with me" }));
+    await urlIs("/drive?view=shared");
+    fireEvent.click(screen.getByRole("button", { name: "Trash", exact: true }));
+    await urlIs("/drive?view=trash");
+    fireEvent.click(screen.getByRole("button", { name: "Browser back" }));
+    await urlIs("/drive?view=shared");
+    await waitFor(() => expect((screen.getByRole("tab", { name: "Shared with me" })).getAttribute("aria-selected")).toBe("true"));
+  });
+  it("reports an invalid folder URL and lets the user return to My Drive", async () => {
+    routedDrive("/drive/Missing");
+    expect((await screen.findByRole("alert")).textContent).toContain("unavailable");
+    expect(screen.queryByRole("button", { name: "Plan.sldoc", exact: true })).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "My Drive" }));
+    await urlIs("/drive");
+    await screen.findByRole("button", { name: "Plan.sldoc", exact: true });
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+  it("ignores a slow folder lookup after the user switches to the root", async () => {
+    let resolve!: (items: DriveItem[]) => void;
+    drive.list.mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
+    routedDrive("/drive/Beds");
+    fireEvent.click(screen.getByRole("tab", { name: "My Drive" }));
+    await urlIs("/drive");
+    await act(async () => resolve([state.items[0]!]));
+    await screen.findByRole("button", { name: "Plan.sldoc", exact: true });
+    expect(screen.getByLabelText("URL").textContent).toBe("/drive");
+  });
+});
 
 describe("NameDialog", () => {
   it("selects the name without its extension and submits the trimmed name", () => {

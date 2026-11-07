@@ -217,6 +217,18 @@
   font-weight: 500;
   color: #e8eaed;
 }
+.presenter-audience-error {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  z-index: 3;
+  margin: 0;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-primary);
+}
 .exit-present-btn {
   margin-left: 6px;
   border-left: 1px solid rgba(255, 255, 255, 0.2) !important;

@@ -1,5 +1,5 @@
-//! `/api/drive`: the SuiteDrive REST API. Every route requires a signed-in
-//! user and checks SuiteDrive ACLs.
+//! SuiteDrive REST API. File management requires a signed-in user and checks
+//! ACLs; separate capability endpoints allow anonymous public reads.
 
 use std::sync::Arc;
 
@@ -21,6 +21,7 @@ mod content;
 mod forms;
 mod items;
 mod names;
+mod public_sharing;
 mod sharing;
 mod versions;
 
@@ -128,6 +129,17 @@ async fn blocking<T: Send + 'static>(
 
 pub fn router(state: AppState) -> Router {
     Router::new()
+        .route(
+            "/api/admin/public-sharing",
+            get(public_sharing::policy).put(public_sharing::set_policy),
+        )
+        .route(
+            "/api/drive/items/{id}/public-link",
+            get(public_sharing::get_link)
+                .post(public_sharing::create_link)
+                .delete(public_sharing::clear_link),
+        )
+        .route("/api/public/files/{token}", get(public_sharing::read_file))
         .route("/api/me", get(me))
         .route("/api/accounts", get(search_accounts))
         .route("/api/drive/groups", get(search_groups))

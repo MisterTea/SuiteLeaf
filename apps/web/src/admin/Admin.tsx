@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { PublicSharingPolicy } from "./public-sharing-policy";
+import { Navigate } from "react-router-dom";
 import {
+  AdminBackButton,
   BackupFreshnessNote,
   CycleNotice,
   DocumentTrail,
@@ -88,8 +90,8 @@ export function AdminScreen() {
     return (
       <main className="admin-page">
         <div className="admin-bar">
+          <AdminBackButton />
           <h1>Admin</h1>
-          <Link to="/">Back to files</Link>
         </div>
         <div className="admin-main">
           <p>You do not have access to Admin.</p>
@@ -264,6 +266,7 @@ export function AdminApp() {
         }}
       />
       <header className="admin-bar">
+        <AdminBackButton />
         <h1>Admin</h1>
         <nav className="admin-tabs" aria-label="Admin">
           <button
@@ -287,12 +290,12 @@ export function AdminApp() {
             Groups
           </button>
         </nav>
-        <Link to="/">Back to files</Link>
       </header>
       <main className="admin-main">
         <FeatureMatrix />
         <ExpansionNotice />
         <ProviderCheck />
+        <PublicSharingPolicy />
         <OrganizationExport />
         <BackupStatus />
         <ReplicationStatus />

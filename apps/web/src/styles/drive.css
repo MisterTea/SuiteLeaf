@@ -252,16 +252,20 @@
 }
 .drive-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 .drive-tabs {
   display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
   gap: 6px;
 }
 .drive-tablist {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 .drive-tabs button,
@@ -298,7 +302,7 @@
   color: var(--toolbar-active-text);
   font-size: 13px;
 }
-.workspace > .drive-move-banner {
+.workspace-notices > .drive-move-banner {
   margin: 8px 16px 0;
 }
 .drive-trash-banner p,

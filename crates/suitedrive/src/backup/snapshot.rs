@@ -101,11 +101,25 @@ pub(crate) fn import_snapshot(archive: &suitedb::Db, live: &suitedb::Db) -> Resu
     let grants = archive.query("SELECT * FROM drive_acl", &[])?;
     let accounts = missing_accounts(archive, live, &grants, &owner_ids(&items))?;
     let auth = restore_auth_config(archive, live)?;
+    // Keep the organization's public-sharing policy, but never revive link secrets.
+    // Older snapshots predate this table.
+    let settings = if archive.schema().table("drive_setting").is_some()
+        && live.schema().table("drive_setting").is_some()
+    {
+        archive.query("SELECT * FROM drive_setting", &[])?
+    } else {
+        Vec::new()
+    };
     let item_count = items.len();
     let version_count = versions.len();
     let grant_count = grants.len();
     let account_count = accounts.len();
     live.transact(|tx| {
+        for row in &settings {
+            if let Some(id) = text_of(row, "id") {
+                tx.upsert("drive_setting", &id, columns(row))?;
+            }
+        }
         for row in &items {
             let Some(id) = text_of(row, "id") else {
                 continue;
@@ -244,6 +258,16 @@ mod tests {
         };
         archive
             .transact(|tx| {
+                tx.upsert(
+                    "drive_setting",
+                    "public-sharing",
+                    [("value", Value::from("0"))],
+                )?;
+                tx.upsert(
+                    "drive_public_link",
+                    "tomatoes",
+                    [("token", Value::from("old-secret"))],
+                )?;
                 tx.upsert("drive_item", "beds", item("", "Beds", "folder", ""))?;
                 tx.upsert(
                     "drive_item",
@@ -358,6 +382,13 @@ mod tests {
         assert_eq!(restored.grants, 2);
         assert_eq!(restored.accounts, 1);
         assert!(restored.auth);
+        assert_eq!(
+            live.get("drive_setting", "public-sharing")
+                .unwrap()
+                .unwrap()["value"],
+            Value::from("0")
+        );
+        assert!(live.get("drive_public_link", "tomatoes").unwrap().is_none());
         assert_eq!(
             live.get("drive_item", "beds").unwrap().unwrap()["name"],
             Value::Text("Beds".into())

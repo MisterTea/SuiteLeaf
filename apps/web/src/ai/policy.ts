@@ -120,12 +120,18 @@ export function remotePrompt(
   return { error: "Document text stays on this computer until you choose to send it." };
 }
 
-/** A local-only session may call only this computer. Other hosts are not fetched. */
-export function promptHostAllowed(url: string, localOnly: boolean): boolean {
+/** Local mode permits this computer and the connected SuiteLeaf server's assistant routes. */
+export function promptHostAllowed(url: string, localOnly: boolean, serverUrl?: string): boolean {
   if (!localOnly) return true;
   try {
-    const host = new URL(url).hostname;
-    return host === "localhost" || host === "127.0.0.1" || host === "::1";
+    const target = new URL(url);
+    const host = target.hostname;
+    if (host === "localhost" || host === "127.0.0.1" || host === "::1") return true;
+    if (!serverUrl) return false;
+    const server = new URL(`${serverUrl.replace(/\/+$/, "")}/api/ai/v1/`);
+    return (server.protocol === "https:" || server.protocol === "http:") &&
+      target.origin === server.origin &&
+      (target.pathname === `${server.pathname}load` || target.pathname === `${server.pathname}completions`);
   } catch {
     return false;
   }

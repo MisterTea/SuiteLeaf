@@ -41,7 +41,7 @@ it("lets someone choose a remote endpoint and a model, starting from FrogNano", 
   await user.click(screen.getByText("Assistant settings"));
   expect((screen.getByRole("radio", { name: "On the server" }) as HTMLInputElement).checked).toBe(true);
   expect((screen.getByLabelText("Model") as HTMLInputElement).value).toBe("frognano-4b");
-  expect(screen.getByText(/downloads the selected model/)).toBeTruthy();
+  expect(screen.getByText(/hosted provider configured by its administrator/)).toBeTruthy();
   expect([...document.querySelectorAll("#suiteleaf-ai-models option")].map((option) => (option as HTMLOptionElement).value)).toEqual([
     "frognano-4b",
     "gemma-4-e4b",

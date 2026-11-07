@@ -30,7 +30,7 @@ export function DriveConflictBanner({
     keepBoth?: boolean,
     cells?: readonly string[],
   ) => Promise<string | null>;
-  reloadFromDrive: () => Promise<void>;
+  reloadFromDrive: (options?: { discardLocal?: boolean }) => Promise<void>;
   setError: (error: string) => void;
 }) {
   return (
@@ -43,8 +43,7 @@ export function DriveConflictBanner({
         {savedWhen(driveConflict.updatedAt)} Your edits weren't uploaded
         and are safe on this device. Save them as a copy to keep both
         versions, combine them when they are in different parts of a
-        document, or reload the SuiteDrive version. Your edits stay on this
-        device as a separate file.
+        document, or discard your local changes and reload the SuiteDrive version.
       </span>
       <span className="drive-conflict-actions">
         <button
@@ -71,22 +70,22 @@ export function DriveConflictBanner({
         >
           Keep both parts
         </button>
-        <ConflictCells
-          onTake={(addresses) => combineDriveChanges(false, addresses)}
-        />
         <button
-          title="Keep your edits as a separate file on this device and open the newer SuiteDrive version here"
+          title="Discard your local edits and open the latest file from SuiteDrive without keeping a copy"
           onClick={() => {
             if (
               window.confirm(
-                "Open the SuiteDrive version in this file? Your edits will be kept on this device as a separate file.",
+                "Discard your local changes and reload the SuiteDrive version? No local copy will be kept.",
               )
             )
-              void reloadFromDrive().catch((e) => setError(message(e)));
+              void reloadFromDrive({ discardLocal: true }).catch((e) => setError(message(e)));
           }}
         >
-          Reload from SuiteDrive
+          Discard local changes and reload
         </button>
+        <ConflictCells
+          onTake={(addresses) => combineDriveChanges(false, addresses)}
+        />
       </span>
     </div>
   );

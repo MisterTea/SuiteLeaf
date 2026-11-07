@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, X } from "lucide-react";
+import { ShareLinks } from "./share-links";
 import {
   drive,
   getSession,
@@ -682,9 +683,12 @@ export function ShareDialog({
           })}
         </ul>
         {access ? (
-          <p className="share-private">
-            Only the people and groups listed here can open this file.
-          </p>
+          <ShareLinks
+            key={target.id}
+            itemId={target.id}
+            canManage={canManage}
+            isFile={kind !== "folder" && target.id === itemId}
+          />
         ) : null}
         {notice ? (
           <p className="share-notice" role="status">

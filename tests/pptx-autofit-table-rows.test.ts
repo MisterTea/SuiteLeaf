@@ -326,7 +326,9 @@ it("measures an Arial Narrow table cell with Pine advances", () => {
   expect(pine[0]).toBeCloseTo((3.6 + 3.6 + 14 * grid) * 12700, 0);
   expect(willow[0]).toBeCloseTo((3.6 + 3.6 + 2 * 14 * grid) * 12700, 0);
   const header = "Citaciones en 2019 a DC 2017-2018";
-  const narrowCol = Math.round(125.02 * 12700);
+  // Exact shipped advances place the third Willow line between 123 and
+  // 125pt; Pine still fits in two lines at the narrower boundary.
+  const narrowCol = Math.round(123 * 12700);
   const pineHeader = tableTextRowEmu(
     [[header]],
     [[{ ...pads, font: "Arial Narrow", bold: true }]],
@@ -337,16 +339,18 @@ it("measures an Arial Narrow table cell with Pine advances", () => {
     [[{ ...pads, bold: true }]],
     [narrowCol],
   );
-  // At 125pt both fonts need two lines; a narrower font does not always
-  // change the discrete line count. The wider cell above distinguishes them.
-  const twoLines = (pads.padTop + pads.padBottom + 2 * pads.fontSize * grid) * 12700;
-  expect(pineHeader[0]).toBeCloseTo(twoLines, 0);
-  expect(willowHeader[0]).toBeCloseTo(twoLines, 0);
+  expect(pineHeader[0]).toBeLessThan(willowHeader[0]);
+  // The original 125.02pt fixture fits both real faces in two lines.
+  for (const font of ["Arial Narrow", "Calibri"]) {
+    expect(tableTextRowEmu([[header]], [[{ ...pads, font, bold: true }]], [125.02 * 12700])[0])
+      .toBeCloseTo((7.2 + 2 * 14 * grid) * 12700, 0);
+  }
 });
 
 it("keeps a subscript header on one line so the row stays its stored height", () => {
   const text = "P(Xt|Xt-1)";
-  const column = 1_093_157;
+  // 74.69pt of content: below the actual 76.29pt unscripted advance.
+  const column = 1_040_000;
   const pads = { fontSize: 18, bold: true, padTop: 3.6, padBottom: 3.6, padLeft: 3.6, padRight: 3.6 };
   const plain = tableTextRowEmu([[text]], [[pads]], [column]);
   const subscript = tableTextRowEmu(
@@ -356,9 +360,9 @@ it("keeps a subscript header on one line so the row stays its stored height", ()
         ...pads,
         runs: [
           { text: "P(X", fontSize: 18 },
-          { text: "t", fontSize: 18, baseline: -25 },
+          { text: "t", fontSize: 18, baseline: -25, scriptScale: true },
           { text: "|X", fontSize: 18 },
-          { text: "t-1", fontSize: 18, baseline: -25 },
+          { text: "t-1", fontSize: 18, baseline: -25, scriptScale: true },
           { text: ")", fontSize: 18 },
         ],
       },
@@ -367,6 +371,9 @@ it("keeps a subscript header on one line so the row stays its stored height", ()
   );
   expect(subscript[0]).toBeLessThan(plain[0]);
   expect(subscript[0]).toBeLessThan(381_131);
+  // The original wider cell also fits the unscripted glyphs with real hmtx.
+  expect(tableTextRowEmu([[text]], [[pads]], [1_093_157])[0])
+    .toBeCloseTo((7.2 + 18 * presentationLineHeight()) * 12700, 0);
 });
 
 it("keeps a header that is barely wider than its column on one line", () => {

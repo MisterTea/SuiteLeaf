@@ -96,18 +96,30 @@ export function audienceScreenDocument(frame: AudienceFrame, lines: readonly str
 
 export type AudiencePopup = {
   closed?: boolean;
-  document: { open: () => void; write: (html: string) => void; close: () => void };
+  location: { replace: (url: string) => void };
 } | null;
 
-/** Write the audience screen. A missing window does nothing. */
+const audienceUrls = new WeakMap<NonNullable<AudiencePopup>, string>();
+
+/** A standalone document stays out of the app router and survives a popup refresh. */
 export function openAudienceScreen(
   popup: AudiencePopup,
   frame: AudienceFrame,
   lines: readonly string[],
 ): boolean {
   if (!popup || popup.closed) return false;
-  popup.document.open();
-  popup.document.write(audienceScreenDocument(frame, lines));
-  popup.document.close();
-  return true;
+  const previous = audienceUrls.get(popup);
+  let next: string | undefined;
+  try {
+    next = URL.createObjectURL(
+      new Blob([audienceScreenDocument(frame, lines)], { type: "text/html" }),
+    );
+    popup.location.replace(next);
+    audienceUrls.set(popup, next);
+    if (previous) URL.revokeObjectURL(previous);
+    return true;
+  } catch {
+    if (next) URL.revokeObjectURL(next);
+    return false;
+  }
 }

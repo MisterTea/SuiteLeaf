@@ -228,6 +228,7 @@ export async function accessToken(): Promise<string> {
 
 async function bearer(current: NodeSession): Promise<string> {
   if (jwtCache && jwtCache.expires - 60_000 > Date.now()) return jwtCache.token;
+  await refreshSession(current);
   try {
     const response = await fetch(`${current.url}/api/auth/token`, {
       headers: { authorization: `Bearer ${current.token}` },
@@ -241,6 +242,34 @@ async function bearer(current: NodeSession): Promise<string> {
     return token;
   } catch {
     return current.token;
+  }
+}
+
+/** Renew the persistent cookie and keep the local expiry in step with the server. */
+async function refreshSession(current: NodeSession): Promise<void> {
+  let rejected = false;
+  try {
+    const response = await fetch(`${current.url}/api/auth/get-session`, {
+      credentials: "include",
+      headers: { authorization: `Bearer ${current.token}` },
+    });
+    rejected = response.status === 401;
+    if (response.ok) {
+      const data = await response.json();
+      rejected = data === null;
+      if (data?.session && data?.user && session === current) {
+        setSession({ ...current, user: data.user, ...sessionTimes(data) });
+      }
+    }
+  } catch {
+    // Keep the existing session during an outage; the node can verify it directly.
+  }
+  if (session !== current && session?.token !== current.token) {
+    throw new Error("Your SuiteDrive session ended. Sign in again.");
+  }
+  if (rejected) {
+    setSession(null, "expired");
+    throw new Error("Your SuiteDrive session ended. Sign in again.");
   }
 }
 

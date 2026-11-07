@@ -9,6 +9,17 @@ const nextcloud = {
 
 afterEach(() => vi.unstubAllGlobals());
 
+it("keeps a monthly returning user signed in with daily sliding renewal", () => {
+  const options = authOptions({
+    baseURL: "https://suite.example",
+    secret: "x".repeat(32),
+    trustedOrigins: [],
+  }, undefined);
+  expect(options.session.expiresIn).toBe(32 * 24 * 60 * 60);
+  expect(options.session.updateAge).toBe(24 * 60 * 60);
+  expect(options.session.expiresIn - options.session.updateAge).toBeGreaterThanOrEqual(31 * 24 * 60 * 60);
+});
+
 it("does not let a Nextcloud profile email sign in to an existing account", async () => {
   const options = authOptions(
     {

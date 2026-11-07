@@ -1,3 +1,4 @@
+import { fontAdvance } from "./font-advances";
 import { presentationSingleSpacing } from "./pptx-line-spacing";
 
 /**
@@ -80,92 +81,49 @@ export function scaleRowsIntoFrame(
   return rowEmu.map((height) => height * scale);
 }
 
-/** Arial Narrow lays out as SuiteLeaf Pine, which is narrower than Willow. */
-function narrowTableFace(font: string | undefined): boolean {
-  const name = font?.trim().toLowerCase();
-  return name === "suiteleaf pine" || name === "arial narrow";
-}
-
-/**
- * Advance, in em, of SuiteLeaf Pine (regular). Bold uses the same 1.06 scale
- * as Willow. These are the face's own advances, so a narrow cell does not
- * wrap a line early and grow the row.
- */
-function pineEm(ch: string): number {
-  if (ch === " ") return 0.228;
-  if ("ijl".includes(ch)) return 0.182;
-  if ("ftr".includes(ch)) return 0.243;
-  if (".,:;!'`|".includes(ch)) return 0.223;
-  if (ch === "m" || ch === "w") return 0.637;
-  if (ch === "%") return 0.729;
-  if ("MW@".includes(ch)) return 0.763;
-  if (ch >= "0" && ch <= "9") return 0.456;
-  if (ch >= "A" && ch <= "Z") return 0.555;
-  return 0.401;
-}
-
-/** Advance, in em, of SuiteLeaf Willow. Narrow averages wrap a line too late and clip it. */
-function glyphEm(ch: string, face?: string): number {
-  if (narrowTableFace(face)) return pineEm(ch);
-  if (ch === " ") return 0.226;
-  if ("ijl".includes(ch)) return 0.23;
-  if ("ftr".includes(ch)) return 0.33;
-  if (".,:;!'`|".includes(ch)) return 0.25;
-  if (ch === "m" || ch === "w") return 0.76;
-  if (ch === "%") return 0.715;
-  if ("MW@".includes(ch)) return 0.87;
-  if (ch >= "0" && ch <= "9") return 0.507;
-  if (ch >= "A" && ch <= "Z") return 0.58;
-  return 0.5;
-}
-
 function wrapLines(
   text: string,
   widthPt: number,
-  font: number,
-  bold: boolean,
-  face?: string,
+  advances: number[],
 ): number {
-  const scale = bold ? 1.06 : 1;
-  const space = glyphEm(" ", face) * font * scale;
-  const widthOf = (word: string) => {
-    let width = 0;
-    for (const ch of word) width += glyphEm(ch, face) * font * scale;
-    return width;
-  };
+  let offset = 0;
   let count = 0;
   for (const para of text.split("\n")) {
     if (!para) {
       count += 1;
+      offset += 1;
       continue;
     }
     let line = 0;
     let lines = 1;
+    let gap = 0;
     for (const word of para.match(/ +|[^ ]+/g) ?? []) {
-      if (word.startsWith(" ")) {
-        line += word.length * space;
-        continue;
-      }
-      const wordWidth = widthOf(word);
+      const chars = [...word];
+      const widths = advances.slice(offset, offset + chars.length);
+      offset += chars.length;
+      const wordWidth = widths.reduce((sum, value) => sum + value, 0);
+      if (/^ +$/.test(word)) { gap += wordWidth; continue; }
       if (wordWidth > widthPt) {
         if (line > 0) {
           lines += 1;
           line = 0;
         }
-        for (const ch of word) {
-          const advance = glyphEm(ch, face) * font * scale;
+        for (const advance of widths) {
           if (line > 0 && line + advance > widthPt) {
             lines += 1;
             line = advance;
           } else line += advance;
         }
+        gap = 0;
         continue;
       }
-      if (line > 0 && line + wordWidth > widthPt) {
+      if (line > 0 && line + gap + wordWidth > widthPt) {
         lines += 1;
         line = wordWidth;
-      } else line += wordWidth;
+      } else line += gap + wordWidth;
+      gap = 0;
     }
+    offset += 1; // explicit paragraph break
     count += lines;
   }
   return Math.max(count, 1);
@@ -175,6 +133,7 @@ type RowMeasure = {
   fontSize?: number;
   font?: string;
   bold?: boolean;
+  italic?: boolean;
   padTop?: number;
   padRight?: number;
   padBottom?: number;
@@ -182,23 +141,18 @@ type RowMeasure = {
   colSpan?: number;
   textFlow?: "up" | "down" | "upright";
   /** Subscript runs are narrower than the concatenated cell text. */
-  runs?: { text?: string; baseline?: number; fontSize?: number }[];
+  runs?: { text?: string; baseline?: number; fontSize?: number; font?: string; bold?: boolean; italic?: boolean; scriptScale?: boolean }[];
 };
 
-/** Width of a cell's runs, in points. A newline means the cell is not one line. */
-function runLineWidth(mark: RowMeasure, font: number): number | undefined {
-  if (!mark.runs?.length) return;
-  const scale = mark.bold ? 1.06 : 1;
-  let width = 0;
-  for (const run of mark.runs) {
-    const size = (run.fontSize && run.fontSize > 0 ? run.fontSize : font) * (run.baseline ? 0.65 : 1);
-    const faceScale = run.baseline ? 1 : scale;
-    for (const ch of run.text || "") {
-      if (ch === "\n") return;
-      width += glyphEm(ch, mark.font) * size * faceScale;
-    }
-  }
-  return width;
+/** Measure the same face, style, and script size that each rendered run uses. */
+function cellAdvances(text: string, mark: RowMeasure, font: number): number[] {
+  const runs = mark.runs?.length && mark.runs.map(run => run.text || "").join("").replace(/\n+$/, "") === text
+    ? mark.runs : [{ text }];
+  return runs.flatMap(run => {
+    const size = (run.fontSize && run.fontSize > 0 ? run.fontSize : font) * (run.scriptScale ? 2 / 3 : 1);
+    const advanceOf = fontAdvance(run.font ?? mark.font, run.bold ?? !!mark.bold, run.italic ?? !!mark.italic);
+    return [...(run.text || "")].map(ch => advanceOf(ch) * size);
+  });
 }
 
 /**
@@ -254,13 +208,7 @@ export function tableTextRowEmu(
         return;
       }
       const inner = Math.max(font, (width - padLeft - padRight) / pt);
-      const oneLine = runLineWidth(mark ?? {}, font);
-      // Willow's advances run a little wide. A line that is only slightly
-      // over the cell still fits in PowerPoint, and wrapping it doubles the row.
-      const lines =
-        oneLine != null && oneLine <= inner * 1.08 && !body.includes("\n")
-          ? 1
-          : wrapLines(body, inner * 1.08, font, !!mark?.bold, mark?.font);
+      const lines = wrapLines(body, inner, cellAdvances(body, mark ?? {}, font));
       const height = (padTop + padBottom + lines * font * grid) * pt;
       if (height > need) need = height;
     });

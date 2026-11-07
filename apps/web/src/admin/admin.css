@@ -5,6 +5,7 @@
 }
 .admin-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 16px;
   padding: 16px 24px;
@@ -105,10 +106,27 @@
 .admin-muted {
   color: #5f6368;
 }
-.admin-link {
+.admin-icon-button {
   display: inline-flex;
-  margin: 8px 12px 0;
-  color: var(--google-blue);
-  font-weight: 600;
-  text-decoration: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.admin-icon-button:hover {
+  background: var(--bg-app);
+}
+.admin-icon-button:focus-visible {
+  outline: 2px solid var(--google-blue);
+  outline-offset: 2px;
+}
+.admin-link {
+  margin: 8px 0 0;
 }

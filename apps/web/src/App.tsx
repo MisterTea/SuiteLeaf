@@ -6,19 +6,19 @@ import {
   Route,
   Routes,
   useNavigate,
+  useLocation,
   useParams,
   useSearchParams,
 } from "react-router-dom";
-import { completeHandoff, finishSignOut, pendingHandoffUrl } from "./node-client";
+import {
+  completeHandoff,
+  finishSignOut,
+  pendingHandoffUrl,
+} from "./node-client";
 import SignUpPage from "./sign-up";
 import { AdminScreen } from "./admin/Admin";
 import { SignInScreen, useNodeSession } from "./drive/SignIn";
-import {
-  ModeContext,
-  resolveMode,
-  useMode,
-  type ResolvedMode,
-} from "./mode";
+import { ModeContext, resolveMode, useMode, type ResolvedMode } from "./mode";
 import { AgentLayer } from "./ai/AgentSidebar";
 import { TemplateGallery } from "./templates/gallery";
 import { disconnectFromServer } from "./drive/drive-files";
@@ -26,6 +26,18 @@ import { message } from "./error-message";
 import { LocalHome } from "./home/LocalHome";
 import { ClusterHome } from "./home/ClusterHome";
 import { Workspace } from "./workspace/Workspace";
+import { PublicFileRoute } from "./drive/public-file-route";
+import { SharedFileRoute } from "./drive/shared-file-route";
+
+function AppTools() {
+  const { pathname } = useLocation();
+  return pathname.startsWith("/public/") ? null : (
+    <>
+      <AgentLayer />
+      <DocumentSettings />
+    </>
+  );
+}
 
 function Home() {
   const { mode } = useMode();
@@ -130,9 +142,17 @@ export default function App() {
   return (
     <ModeContext.Provider value={mode}>
       <HashRouter>
-        <AgentLayer />
-        <DocumentSettings />
+        <AppTools />
         <Routes>
+          <Route path="/public/:token" element={<PublicFileRoute />} />
+          <Route
+            path="/shared/:itemId"
+            element={
+              <ClusterGate>
+                <SharedFileRoute />
+              </ClusterGate>
+            }
+          />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/auth-complete" element={<AuthComplete />} />
           <Route

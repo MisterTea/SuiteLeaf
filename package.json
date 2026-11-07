@@ -21,6 +21,7 @@
     "package:desktop": "npm run package -w @suiteleaf/desktop",
     "typecheck": "tsc --noEmit -p apps/web && tsc --noEmit -p apps/desktop && tsc --noEmit -p packages/core && tsc --noEmit -p services/auth && tsc --noEmit -p services/ai",
     "lint": "eslint .",
+    "check:secrets": "node scripts/check-secrets.mjs",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "check:capabilities": "vitest run tests/capabilities/catalog.test.ts tests/capabilities/catalog-sources.test.ts --coverage.enabled --coverage.include=packages/core/src/capabilities/**/*.ts --coverage.thresholds.lines=90 --coverage.thresholds.functions=90 --coverage.thresholds.statements=90 --coverage.thresholds.branches=90",

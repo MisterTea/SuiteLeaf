@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Cloud, LogOut, Unplug } from "lucide-react";
 import { createFile } from "@suiteleaf/core";
 import { drive, signOut } from "../node-client";
@@ -91,6 +91,7 @@ function AccountChip({
  * as the file list. */
 export function ClusterHome({ serverUrl }: { serverUrl: string }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { locked } = useMode();
   const [error, setError] = useState("");
   const [listed, setListed] = useState(0);
@@ -158,31 +159,30 @@ export function ClusterHome({ serverUrl }: { serverUrl: string }) {
     <div className="home">
       <aside className="sidebar">
         <Logo />
-        <div className="local-note cluster-note">
-          <Cloud size={16} />
-          Your organization&apos;s workspace.
-          <small>
-            Files are saved to SuiteDrive on {new URL(serverUrl).host}.
-            {locked
-              ? null
-              : " Your files on this computer are kept for when you disconnect."}
-          </small>
-          {summary ? (
-            <small
-              className={`cluster-sync ${sync?.replicating ? "copying" : ""}`}
-              aria-live="polite"
-            >
-              <span className="local-dot" />
-              {summary}
-            </small>
-          ) : null}
-        </div>
         <AdminLink cluster role={session?.user.role} />
         <AccountChip serverUrl={serverUrl} onError={setError} />
       </aside>
       <main className="home-main">
         <header className="home-top">
-          <span />
+          <div className="cluster-note">
+            <Cloud size={16} />
+            Your organization&apos;s workspace.
+            <small>
+              Files are saved to SuiteDrive on {new URL(serverUrl).host}.
+              {locked
+                ? null
+                : " Your files on this computer are kept for when you disconnect."}
+            </small>
+            {summary ? (
+              <small
+                className={`cluster-sync ${sync?.replicating ? "copying" : ""}`}
+                aria-live="polite"
+              >
+                <span className="local-dot" />
+                {summary}
+              </small>
+            ) : null}
+          </div>
           <span className="version">OPEN SOURCE · v0.1</span>
           <AiButton />
         </header>
@@ -240,6 +240,7 @@ export function ClusterHome({ serverUrl }: { serverUrl: string }) {
           </header>
           <DriveBrowser
             inline
+            folderRoute={{ pathname: location.pathname, search: location.search, navigate }}
             mode="open"
             control={driveControl}
             onFolderChange={onFolderChange}

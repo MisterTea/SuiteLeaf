@@ -388,6 +388,7 @@ impl Drive {
             for token in &links {
                 tx.delete("drive_respond_link", token)?;
             }
+            tx.delete("drive_public_link", id)?;
             tx.delete("drive_item", id)?;
             Ok(())
         })?;

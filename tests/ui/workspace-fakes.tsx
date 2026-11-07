@@ -340,10 +340,11 @@ export const shareNoticesModule = {
 };
 export const lastEditedModule = { LastEdited: () => null };
 export const fileCommentsModule = {
-  FileComments: ({ canPost, wordingStays }: { canPost: boolean; wordingStays: boolean }) => (
+  FileComments: ({ canPost, wordingStays, onClose }: { canPost: boolean; wordingStays: boolean; onClose?: () => void }) => (
     <section aria-label="File comments">
       {canPost ? "can post" : "read only"}
       {wordingStays ? " · wording stays" : ""}
+      {onClose ? <button aria-label="Close comments" onClick={onClose} /> : null}
     </section>
   ),
 };

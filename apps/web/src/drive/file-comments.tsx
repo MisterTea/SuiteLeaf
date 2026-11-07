@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { X } from "lucide-react";
 import { drive, getSession, type DriveComment } from "../node-client";
 
 /** Comments stored beside the file. A commenter can add one without changing
@@ -8,15 +9,18 @@ export function FileComments({
   canPost,
   wordingStays = false,
   dir = "ltr",
+  onClose,
 }: {
   itemId: string;
   canPost: boolean;
   wordingStays?: boolean;
   dir?: "ltr" | "rtl";
+  onClose?: () => void;
 }) {
   const [comments, setComments] = useState<DriveComment[]>([]);
   const [text, setText] = useState("");
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(false);
   const you = getSession()?.user;
 
@@ -26,7 +30,10 @@ export function FileComments({
 
   useEffect(() => {
     let cancel = false;
+    let loading = false;
     const load = () => {
+      if (loading) return;
+      loading = true;
       void drive
         .comments(itemId)
         .then((next) => {
@@ -34,9 +41,13 @@ export function FileComments({
           setComments((current) =>
             JSON.stringify(current) === JSON.stringify(next) ? current : next,
           );
+          setLoadError("");
         })
         .catch((e) => {
-          if (!cancel) setError(e instanceof Error ? e.message : String(e));
+          if (!cancel) setLoadError(e instanceof Error ? e.message : String(e));
+        })
+        .finally(() => {
+          loading = false;
         });
     };
     load();
@@ -65,7 +76,20 @@ export function FileComments({
 
   return (
     <section className="file-comments" aria-label="Comments on this file" dir={dir}>
-      <h2>Comment</h2>
+      <div className="file-comments-header">
+        <h2>Comment</h2>
+        {onClose ? (
+          <button
+            type="button"
+            className="doc-icon-btn"
+            aria-label="Close comments"
+            title="Close comments"
+            onClick={onClose}
+          >
+            <X size={18} />
+          </button>
+        ) : null}
+      </div>
       <p>
         {wordingStays
           ? "You can comment. The wording of the file stays as it is."
@@ -106,9 +130,9 @@ export function FileComments({
           </button>
         </>
       ) : null}
-      {error ? (
+      {error || loadError ? (
         <p className="dialog-error" role="alert">
-          {error}
+          {error || loadError}
         </p>
       ) : null}
     </section>

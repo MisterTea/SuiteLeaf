@@ -26,6 +26,10 @@ describe("Office font names", () => {
     expect(suiteLeafFont("Adobe Garamond Pro")).toBe("SuiteLeaf Palm");
     expect(suiteLeafFont("Arial (body)")).toBe("SuiteLeaf Aspen");
     expect(suiteLeafFont("Times")).toBe("SuiteLeaf Maple");
+    expect(suiteLeafFont("Helvetica")).toBe("SuiteLeaf Aspen");
+    expect(suiteLeafFont("Helvetica Neue")).toBe("SuiteLeaf Aspen");
+    expect(suiteLeafFont(" helvetica neue (body) ")).toBe("SuiteLeaf Aspen");
+    expect(paintFontFamily("Helvetica Neue")).toBe("'SuiteLeaf Aspen'");
     expect(suiteLeafFont("Lato Heavy")).toBe("Lato Heavy");
     expect(officeSingleSpacing("Adobe Garamond Pro")).toBeCloseTo(1.125, 4);
     expect(paintFontFamily("Adobe Garamond Pro")).toBe("'SuiteLeaf Palm'");

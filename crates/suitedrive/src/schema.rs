@@ -3,11 +3,15 @@
 use suitedb::{ColumnType, TableDef};
 
 /// Bump when the drive tables change.
-pub const SCHEMA_VERSION: u32 = 6;
+pub const SCHEMA_VERSION: u32 = 7;
 
 pub fn tables() -> Vec<TableDef> {
     use ColumnType::*;
     vec![
+        TableDef::new("drive_public_link", "id")
+            .column("token", Text)
+            .index("token"),
+        TableDef::new("drive_setting", "id").column("value", Text),
         TableDef::new("drive_open_presence", "id")
             .column("itemId", Text)
             .column("userId", Text)

@@ -386,6 +386,7 @@ function createModel(): LocalModel {
       endpoint: `${serverUrl}/api/ai/v1`,
       model: prefs.model,
       authorization: () => accessToken().catch(() => undefined),
+      serverUrl,
       prepare: true,
       localOnly: prefs.localOnly,
       maxTokens,

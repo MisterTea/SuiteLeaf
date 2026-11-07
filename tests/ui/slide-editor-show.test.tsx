@@ -99,7 +99,11 @@ describe("the slideshow", () => {
 
   it("uses the on-screen controls, pauses the timer, and opens the audience screen", () => {
     const editor = threeSlides();
-    const popup = { closed: false, document: { open: vi.fn(), write: vi.fn(), close: vi.fn() } };
+    vi.stubGlobal("URL", class extends URL {
+      static createObjectURL = vi.fn(() => "blob:audience");
+      static revokeObjectURL = vi.fn();
+    });
+    const popup = { closed: false, location: { replace: vi.fn() } };
     vi.spyOn(window, "open").mockReturnValue(popup as unknown as Window);
     act(() => editor.slide().presenterView());
     expect(within(show()).getByRole("complementary", { name: "Speaker notes" })).toBeTruthy();
@@ -110,11 +114,13 @@ describe("the slideshow", () => {
     expect(within(show()).queryByRole("complementary", { name: "Speaker notes" })).toBeNull();
 
     fireEvent.click(control("Audience screen"));
-    expect(window.open).toHaveBeenCalledWith("", "suiteleaf-audience");
-    expect(popup.document.write.mock.lastCall?.[0]).toContain("Intro");
+    expect(window.open).toHaveBeenCalledWith("about:blank", "_blank");
+    expect(popup.location.replace).toHaveBeenCalledWith("blob:audience");
+    fireEvent.click(control("Audience screen"));
+    expect(window.open).toHaveBeenCalledTimes(1);
     fireEvent.click(control(/Next/));
     expect(counter()).toBe("Slide 2 of 3");
-    expect(popup.document.write.mock.lastCall?.[0]).toContain("Plan");
+    expect(popup.location.replace.mock.calls.length).toBeGreaterThanOrEqual(3);
     fireEvent.click(control(/Previous/));
     expect(counter()).toBe("Slide 1 of 3");
 
@@ -125,6 +131,25 @@ describe("the slideshow", () => {
     expect(controls.className).toContain("visible");
     fireEvent.click(control(/Exit/));
     expect(screen.queryByRole("dialog", { name: "Slideshow" })).toBeNull();
+  });
+
+  it("keeps the slideshow open and explains blocked or failed audience windows", () => {
+    const editor = threeSlides();
+    act(() => editor.slide().presenterView());
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    fireEvent.click(control("Audience screen"));
+    expect(screen.getByRole("alert").textContent).toContain("Allow pop-ups for SuiteLeaf");
+    expect(show()).toBeTruthy();
+    open.mockImplementationOnce(() => { throw new Error("Popup blocked"); });
+    fireEvent.click(control("Audience screen"));
+    expect(screen.getByRole("alert").textContent).toContain("Could not open the audience screen");
+    vi.stubGlobal("URL", class extends URL {
+      static createObjectURL = vi.fn(() => "blob:audience");
+      static revokeObjectURL = vi.fn();
+    });
+    open.mockReturnValue({ closed: false, location: { replace: vi.fn() } } as unknown as Window);
+    fireEvent.click(control("Audience screen"));
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("skips hidden slides and advances on its own after the slide's time", async () => {

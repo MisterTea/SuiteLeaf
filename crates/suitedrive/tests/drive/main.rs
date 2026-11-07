@@ -1,6 +1,7 @@
 mod files;
 mod forms;
 mod presence;
+mod public_sharing;
 mod search;
 mod sharing;
 mod sign_up;

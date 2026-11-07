@@ -59,6 +59,13 @@ const update = (change: Partial<typeof session>) =>
     session.emit();
   });
 
+it("shows the model the hosted server selected", () => {
+  session.model = { state: "ready", backend: "remote", model: "openai/gpt-5-mini" };
+  render(wrap(<AgentSidebar />, { cluster: true }));
+  expect(screen.getByText("openai/gpt-5-mini · on the server")).toBeTruthy();
+  expect(screen.getByPlaceholderText("Ask openai/gpt-5-mini to do something…")).toBeTruthy();
+});
+
 beforeEach(() => {
   memoryStorage();
   memoryStorage("sessionStorage");

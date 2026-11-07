@@ -2,13 +2,13 @@
 
 ## Resume checkpoint — latest
 
-- Goal remains active: process the entire PPTX inventory against Microsoft Office PDFs, revisiting unresolved decks as shared fixes advance.
-- Current worker: `presentation_0014`, processing `pptx/cc-by-3.0-at/2022/be4781979e3a595a58b1cb11713cef10-Yixuan tropAg poster.pptx`.
-- The equation revisit of 0009 returned matched after six new fixing/export iterations, all 25 pages. Its verified outcome is recorded below.
-- Thirteen unique decks have terminal records; 0006, 0009, 0011, and 0012 are the four last-verified general-policy matches. Shared changes require final frozen-build regression checks before corpus acceptance.
-- After 0014, resume the next eligible inventory entry. Do not run concurrent file workers.
-- No font-specific rendering or spacing exceptions. Current changes are uncommitted; last pushed checkpoint is `128fcb2`.
-- Earlier current-assignment sections are historical; this checkpoint and newest outcomes take precedence.
+- Goal remains active: process the entire PPTX inventory against Microsoft Office PDFs; revisit unresolved decks as shared fixes advance.
+- Current worker: `presentation_0013_metrics_revisit`, revisiting `pptx/cc-by-3.0-at/2022/29b04e37bd2764999d531e35ca6f82a8-Gen_ISPOR_Poster.pptx` to replace named-face table estimates with general font-data measurement.
+- Eighteen unique decks have terminal records. Eight historical matches are 0006, 0009, 0011, 0012, 0014, 0016, 0017, and 0018. Final corpus acceptance still needs frozen-build regression checks.
+- 0018 matched at baseline. After the 0013 shared-measurement revisit returns, resume unprocessed inventory at 0019 (`64c9cfee363d9822bf7774d28d9738ad-3e_Plaque_assay.pptx`).
+- No concurrent file workers or named-font rendering/layout exceptions.
+- Resume baseline: clean worktree at commit `cd90022`; previous uncommitted/128fcb2 notes are historical. Current continuation changes are separate.
+- Earlier assignment sections are historical; this checkpoint and newest outcomes take precedence.
 
 ## Procedure and acceptance
 
@@ -28,7 +28,7 @@
 - Pre-existing untracked `scripts/zenodo-windows-pdfs.ps1` belongs to other work; leave it intact.
 - Local comparison output/inventory lives under ignored `artifacts/presentation-fidelity/`; keep this ledger as the durable handoff.
 
-## Current presentation
+## Historical initial assignment
 
 `pptx/apache2.0/2024/41fde69739d885f2e079e2218c9ad5b4-20240620 Spyderisk Overview.pptx`
 
@@ -42,7 +42,7 @@ Status: assigned to subagent `presentation_0002`; not accepted yet.
 
 ## Resume
 
-Start with the current presentation above. Do not infer a match from successful conversion or matching text alone. Record fixes, tests, comparison artifacts, and remaining disparities here before moving to the next eligible path. Each terminal outcome must be returned by its own subagent before launching the next.
+Use the latest resume checkpoint above; older assignment sections are historical. Do not infer a match from successful conversion or matching text alone. Record fixes, tests, comparison artifacts, and remaining disparities here before moving to the next eligible path. Each terminal outcome must be returned by its own subagent before launching the next.
 
 ## Inventory and skip handling
 
@@ -463,3 +463,123 @@ Start with the current presentation above. Do not infer a match from successful 
 - Source: `pptx/cc-by-3.0-at/2022/fa92786006700f06b7e0548e0da9a3ae-Schuldatenbank ERM Vorlage.pptx`.
 - Reference: `Z:\Datasets\zenodo10k\windows-ground-truth-pdf\pptx\cc-by-3.0-at\2022\fa92786006700f06b7e0548e0da9a3ae-Schuldatenbank ERM Vorlage.pdf`.
 - Assigned worker `presentation_0016`. Fifteen unique decks have terminal records; five last-verified matches are 0006, 0009, 0011, 0012, and 0014. Remaining decks and the full inventory remain in scope; no corpus-completion claim.
+
+
+## Resume after another chat — 2026-11-05
+
+- Inspected current ledger, live agents, clean Git status and commit history. Other chat progressed through 0015; no active file worker was found in this agent tree. Existing 0011 worker's old usage-limit result is superseded by newer ledger outcomes.
+- Verified 0016 reference exists; baseline and iteration-1 PDF/raster/position artifacts exist, with no terminal ledger result or iteration JSON. Assigned `presentation_0016_resume` to inspect and continue those attempts rather than restart the corpus.
+- Prior checkpoint was stale (0014, thirteen outcomes, uncommitted128fcb2). Updated checkpoint to actual 0016 cursor and cd90022 baseline. Full corpus objective remains incomplete and active.
+
+## Active-goal continuation — 2026-11-05, deck 0016
+
+- Previous turn classified progress: reconciled newer chat's ledger and cd90022 worktree, corrected cursor and assigned the unfinished deck rather than repeating completed documents.
+- Verified `presentation_0016_resume` is running; worker found no live conversion before resuming. No restart caused by polling timeout.
+- Inherited iteration 1 is genuine: committed diamond preset text-rectangle correction in cd90022. Parent inspected saved page metrics: page 1 max dx0.345px/dy3.208px, page 2 max dx0.292px/dy3.067px, no out-of-tolerance characters on these pages.
+- Worker identifies one genuine page-3 first-bullet wrapping issue (18 characters), investigating source geometry and right margins. Terminal status pending; no new match claimed.
+- Next eligible new file after terminal 0016: `pptx/cc-by-3.0-us/2022/37eb8c56ea1ef4ca9a0146042be137e4-1c_Plaque_assay.pptx` (0017).
+
+## Active-goal continuation — 0016 iteration 2 tested
+
+- Verified the existing worker remained live and its actual renderer build completed; no restart or duplicate worker was launched.
+- Worker recovered durable `0016-iterations.json` with inherited canonical diamond/flowChartDecision correction evidence. Tested general `break-spaces` wrapping behavior; 54 relevant tests pass and second export/positions artifacts exist.
+- Iteration 2 produced identical positions: same 18 out-of-tolerance characters. The trailing-blank hypothesis is not established; no acceptance or width compensation is justified. Worker will reject/revert unsupported behavior.
+- Measured final word Straße, ends about 886.4pt within the 886.8pt text edge; earlier anchors agree within 0.4px, yet Office wraps that word. General advance quantization/wrap policy remains under investigation, resembling unresolved 0015 disclaimer boundary. No named-font tuning.
+- Previous turn classified progress through authoritative inherited-attempt verification; this turn adds a genuine tested/rejected layout experiment. Goal remains active; 0016 terminal status is still pending.
+
+## Active-goal continuation — wrap measurement hypotheses, 2026-11-05
+
+- Previous turn classified progress: a genuine renderer change/export rejected the trailing-blank hypothesis. Worker remains live; no restart.
+- New evidence from worker: first-line available word area795.6pt; through Straße, canvas kerned795.293pt vs unkerned800.379pt. Nominal28pt per-glyph600dpi rounding plus kerning predicts795.674pt (wrap), whereas first rounding size to27.96pt predicts793.881pt (fits). Thus current fixture cannot distinguish unkerned wrap measurement from nominal-size device rounding.
+- Parent independently inspected reference sizes:0015 frequently uses exact0.12pt steps (26.64,27.96,32.04,39.96,80.04), consistent with600dpi sizing;0016 also has small0.024pt offsets, so don't treat this as universal proof. Proposed quantization remains a hypothesis, not an accepted app policy.
+- Worker is probing Windows GDI metrics before implementing any shared wrap behavior. No font-specific widths, arbitrary epsilons, or hidden box-size changes authorized by this evidence. Terminal0016status remains pending and goal remains active.
+
+## Active-goal continuation — 0016 candidate and regression gate
+
+- Windows GDI private-loaded Willow measurement at233px returned about800.10pt for the candidate line; canvas unkerned800.38pt, both exceed795.6pt available. Canvas kerned795.293pt fits. This supported a reversible dual-measure wrap experiment, not a universal proof.
+- Iteration3 implements unkerned break measurement with original kerned painting and semantic soft-line spans; new helper tests100%lines/statements/functions92.85%branches reported. Parent requested canvas-state isolation and non-authored soft-break DOM preservation.
+- Candidate0016export matches822/822characters (maxdx1.821px/dy3.208px), all3pages visually reviewed96dpi, BUT broad regression probes0014/0015 worsen to854/747outliers versus0/263. Candidate is NOT accepted as a match or retained shared policy yet. Worker investigating line layout/scaling/justification mechanics and must resolve or reject regression.
+- Full-scope fidelity gate takes precedence over a single-document match. Worker remains active; no terminal0016result, no next file worker launched. Previous turn's measurement evidence counted as progress; current turn adds tested shared-code experiment and decisive regression evidence.
+
+## Active-goal continuation — 0016 iteration 4 regression check
+
+- Verified worker stays live; build4/export and new regression measurements completed. Iteration3 is durably marked regression-failed, with corrected test count43.
+- Worker found symbol-marker text incorrectly included in word measurement despite zero-width hanging paint. Iteration4 excludes those marker lengths, restores canvas kerning state, and accounts for first-line/hanging widths. Parent also requested hyphen-break and authored soft-line semantics checks.
+- Parent inspected new JSON:0016 remains822/822within tolerance;0014regression drops854→286outliers but remains worse than0;0015remains747 vsprior263. Candidate remains unaccepted. Sent targeted follow-up to verify scriptScale/baseline size is applied consistently to measurement as to paint, because0014's earlier superscript fix used2/3scaling.
+- Current turn classified progress: shared implementation corrected and cross-deck regression evidence changed next diagnosis. Full corpus objective remains active; no terminal0016acceptance or next worker yet.
+
+## Active-goal continuation — 0016 iteration 5 regression refinement
+
+- Worker found root content width already excludes shared hanging gutter through root padding; iteration4 subtracted it again. Iteration5 corrects width accounting, retains script scaling, supports unequal first/continuation widths, and bypasses unsupported complex break cases without claiming universal wrap fidelity.
+- Actual exports:0016 stays within tolerance;0015 restores prior263outliers (no new match claim);0014improves286→126outliers but still regresses its accepted baseline. Worker found remaining shared-gutter marker detection incorrectly keyed to per-paragraph hanging flag, granting extra first-line width and causing browser rewrap inside a forced line. Iteration6 correction underway; shared policy remains unaccepted until regression evidence passes.
+- Broad125file run:835pass/1failure reported in pre-existing ArialNarrow/Willow table-row expectation, related to earlier0013width tolerance. Worker will independently verify baseline behavior rather than weaken test.
+- Verified build5/export activity; no restarts. Current goal turn is progress through concrete width-accounting fix and new regression diagnosis, not merely a status restatement. Full corpus goal remains active.
+
+## 0016 — matched (2026-11-05)
+
+- Source: `pptx/cc-by-3.0-at/2022/fa92786006700f06b7e0548e0da9a3ae-Schuldatenbank ERM Vorlage.pptx`; subagent `presentation_0016_resume` returned matched after six fixing/export iterations.
+- All three pages visually reviewed at 96 dpi. All 822 anchors are within 5 px; maximum horizontal drift 1.821 px and vertical drift 3.208 px. Evidence: `artifacts/presentation-fidelity/0016-final-layout.json`, `0016-iterations.json`, and `0016-iteration6.pdf`.
+- Shared word fitting measures unkerned advances while painting original kerned text, with content-width and hanging-marker corrections. No named-font rules. Unsupported text forms keep existing layout paths.
+- Earlier attempts that regressed controls were rejected. Final controls: 0011 all 20 pages and 0014 within tolerance; 0015 retains its prior 263 outliers.
+- Worker validation: 821 tests across 124 files passed; changed-source coverage 97.89% lines / 93.48% branches; web typecheck and whitespace checks passed. One independently reproduced, unchanged HEAD table-width test fails and remains unresolved; do not weaken its expectation.
+- Changes remain uncommitted. Advance sequentially to 0017.
+
+## 0017 — active baseline investigation
+
+- Worker `presentation_0017` exported two baseline pages. Page 1: 67 anchors, 32 outliers, max horizontal drift 97.770 px. Page 2: 70 anchors, 35 outliers, max horizontal drift 102.849 px. Maximum vertical drift 2.333 px.
+- Worker reports Office Arial versus SuiteLeaf Willow painting; investigating source font inheritance/resolution before changing layout. Not a terminal outcome.
+- Parent separately inspected the known table-width failure: `pptx-table-rows.ts` uses a global 1.08 width allowance with a Willow-specific justification. This approximate-width path needs shared measurement investigation; no concurrent source edits while 0017 owns layout changes, and no weakening of the failing test.
+
+### 0017 fix 1 underway — resolved family substitution cause
+
+- Source master and labels explicitly name Helvetica Neue. Ground-truth PDF embeds ArialMT/Arial-ItalicMT; SuiteLeaf baseline paints Willow via unavailable-face fallback. This is family resolution, not textbox inheritance or spacing.
+- Worker added central Helvetica/Helvetica Neue to Arial/Aspen substitution, supported by reference output and Windows Helvetica substitution evidence. No geometry or font-specific spacing adjustment.
+- Mapping tests: 6 passing; `office-fonts.ts` coverage 100% statements/lines/functions, 90.69% branches. Renderer rebuild/export and all-page review remain pending; not accepted yet.
+
+## 0017 — matched (2026-11-05)
+
+- Worker `presentation_0017` returned matched after one genuine fixing/export iteration. Source: `pptx/cc-by-3.0-us/2022/37eb8c56ea1ef4ca9a0146042be137e4-1c_Plaque_assay.pptx`.
+- Corrected central Helvetica/Helvetica Neue family resolution to Arial/Aspen, matching explicit source declarations and Office PDF Arial faces. No spacing or geometry exceptions.
+- Both pages visually reviewed at 96 dpi, including pictures/crops, labels, italic text and superscripts. All 137 anchors within tolerance; max drift 2.599 px horizontal / 1.947 px vertical. Parent independently inspected both-page comparison and position metrics.
+- Final controls: 0011 all 20 pages and 0014 zero outliers; 0015 unchanged historical 263. Parent independently read control JSONs.
+- Validation: 99 tests passed; modified-source coverage 100% lines/statements/functions, 90.69% branches; core typecheck and whitespace passed. Existing known table-width failure remains separately documented.
+- Evidence: `artifacts/presentation-fidelity/0017-iterations.json`, `0017-final-layout.json`, `0017-iteration1.pdf`, and all-page comparison folder `0017-iteration1/`.
+- Changes remain uncommitted. Advance sequentially to 0018.
+
+### Shared table measurement follow-up queued
+
+- Read-only audit confirms older `pptx-table-rows.ts` still contains `narrowTableFace`, `pineEm`, and `glyphEm` named-face approximations, a synthetic bold multiplier, and a global 1.08 fit allowance. These precede current 0016/0017 fixes and need replacement through actual font advances, consistent with the user's no-font-specific-layout requirement.
+- After current 0018 terminal, prioritize a separate-deck revisit of unresolved 0013 to validate a general font-data table measurement replacement and the known failing width test, then resume unprocessed inventory at 0019. Avoid concurrent source/build changes while 0018 is active.
+
+## 0018 — matched at baseline (2026-11-05)
+
+- Source: `pptx/cc-by-3.0-us/2022/550de60adfe24c6baef2f7b29bd494a5-ext2f_Plaque_assay.pptx`; worker `presentation_0018` returned matched using genuine SuiteLeaf CLI export. No code changes or extra tests needed.
+- Both pages visually reviewed at 96 dpi: photographs/crops, shapes, title wraps, italic labels, superscripts. All 208 anchors within tolerance, max 0.443 px horizontal / 2.413 px vertical; photograph edges at most 1 px different. Parent independently reviewed both pages and position JSON.
+- Evidence: `artifacts/presentation-fidelity/0018-final-layout.json`, `0018-iterations.json`, `0018-baseline.pdf`, position JSON and both page-comparison PNGs.
+- Next sequential worker revisits 0013 for shared table-measurement repair; afterward unprocessed inventory resumes at 0019.
+
+### 0013 measurement revisit — independent font-data evidence
+
+- Parent measured shipped WOFF2 `hmtx` advances through fontTools without changing source. For the existing test string `New  England   Journal  of Medicine` at 14 pt and 185.91 pt content width: Willow 202.713 pt (190.053 with collapsed spaces), Pine 183.778 pt (171.010 collapsed), Sassafras 240.659 pt.
+- This independently supports the existing test expectation: Willow wraps and Pine fits, even with collapsed spaces. The 1.08 allowance contradicts actual font advances. Evidence sent to active worker; no concurrent source edits.
+
+### 0013 revisit — actual counterpart-font verification
+
+- Parent compared installed Windows Calibri regular/bold `hmtx` advances with shipped Willow: all 95 printable ASCII advances match exactly. Arial Narrow/Pine differs only by font-unit quantization (max 0.000234375 em regular / 0.000203125 em bold), below layout tolerance. No font-data correction is justified for this table bug by those measurements.
+- Active worker is generating a reproducible registry from 322 shipped faces and replacing approximate table widths/8% inflation with general data-driven measurement. Durable status: `artifacts/presentation-fidelity/0013-metrics-iterations.json`; implementation/export acceptance still pending.
+
+### 0013 revisit — current baseline captured
+
+- Current SuiteLeaf renderer baseline re-exported as `0013-metrics-baseline.pdf`; its position JSON reports 8,551 matched anchors, 71 outliers, max drift 102.926 px horizontal / 22.657 px vertical. This current baseline supersedes historical 81-outlier numbers for assessing the new measurement fix.
+- Generated font-advance registry and generic lookup/table integration are in progress; no repaired PDF accepted yet. Parent reviewed the proposed algorithm and requested run-style handling, reproducible font-pipeline regeneration, and baseline-specific comparisons before acceptance.
+
+### 0013 revisit — prototype validation / test-boundary audit
+
+- Worker reports exact-advance prototype fixes original Willow/Pine width failure. Renderer build and first repaired export remain active; no terminal match yet.
+- Other older contrast fixtures relied on approximate thresholds: at the original header width actual Pine and Willow both use two lines; the original plain formula width also fits with exact advances. Parent requested preserving original inputs with data-supported expectations and adding separate narrower contrast cases, plus direct exact-advance assertions. Do not silently drop original cases or loosen coverage.
+
+### 0013 revisit — iteration 1 and border-width experiment
+
+- Iteration 1 exported exact font-data measurement; all 8,551 matched anchors and 71 outliers unchanged from current baseline. Generic lookup removes named-face width heuristics and synthetic bold/8% factors; original width test expectations now pass in worker prototype.
+- Worker identified table wrap difference: Office `Comprehensi / veness score` versus browser `Comprehens / iveness / score`. A collapsed border reduces the browser text area relative to DrawingML grid insets. Iteration 2 adjusts horizontal text area by the half-border widths; build/export pending.
+- Parent reviewed changed tests: original threshold inputs remain as explicit measured cases, with additional narrower boundary contrasts. Requested correct handling of unequal collapsed neighboring borders and generator custom-output paths before final acceptance.

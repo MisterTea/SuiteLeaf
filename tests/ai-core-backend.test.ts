@@ -121,7 +121,7 @@ describe("choosing the model", () => {
     expect(backend.aiServerUrl()).toBe("https://team.example.org");
     backend.localModel();
     const target = completions.at(-1)!;
-    expect(target).toMatchObject({ endpoint: "https://team.example.org/api/ai/v1", model: "frognano-4b", prepare: true, localOnly: true });
+    expect(target).toMatchObject({ endpoint: "https://team.example.org/api/ai/v1", model: "frognano-4b", prepare: true, localOnly: true, serverUrl: "https://team.example.org" });
     expect(await (target.authorization as () => Promise<string>)()).toBe("token-1");
     expect(backend.localModel()).toBe(backend.localModel());
     off();

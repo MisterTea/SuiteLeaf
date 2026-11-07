@@ -13,6 +13,8 @@ import {
 import { createPortal } from "react-dom";
 import { isUnimplemented, pendingReason } from "./commands";
 import { useRegisterCommand } from "./command-palette";
+import { ReleaseDropdown } from "./release-dropdown";
+import { useReleaseActivation } from "./release-activation";
 
 /** Where a side pane opens: beside the editor and its toolbar, as version history does. */
 export const SidePaneSlot = createContext<HTMLElement | null>(null);
@@ -83,13 +85,10 @@ export function Menu({
   return (
     <MenuPath.Provider value={path}>
       <MenuRegistrar.Provider value={true}>{children}</MenuRegistrar.Provider>
-      <Dropdown.Root>
-        <Dropdown.Trigger
-          className="menu-trigger"
-          aria-label={trigger ? label : undefined}
-        >
-          {trigger ?? label}
-        </Dropdown.Trigger>
+      <ReleaseDropdown
+        trigger={trigger ?? label}
+        triggerProps={{ className: "menu-trigger", "aria-label": trigger ? label : undefined }}
+      >
         <Dropdown.Portal>
           <Dropdown.Content
             className="menu-content"
@@ -109,7 +108,7 @@ export function Menu({
             </AfterClose.Provider>
           </Dropdown.Content>
         </Dropdown.Portal>
-      </Dropdown.Root>
+      </ReleaseDropdown>
     </MenuPath.Provider>
   );
 }
@@ -381,6 +380,7 @@ export function Tool({
   active?: boolean;
   disabled?: boolean;
 }) {
+  const activation = useReleaseActivation(onClick);
   return (
     <button
       type="button"
@@ -390,7 +390,7 @@ export function Tool({
       aria-pressed={active}
       disabled={disabled}
       onMouseDown={(e) => e.preventDefault()}
-      onClick={onClick}
+      {...activation}
     >
       {children}
     </button>

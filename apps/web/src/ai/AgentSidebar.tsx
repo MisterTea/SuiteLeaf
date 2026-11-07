@@ -15,7 +15,12 @@ import { clearTodos, todoStore } from "./todo";
 import { PARSE_ERROR } from "./model-stream";
 
 /** What the panel calls the assistant: FrogNano, Gemma, or the model name the user typed. */
-const assistantName = () => assistantLabel();
+const assistantName = () => {
+  const model = agentSession.model;
+  return readAiPreferences().place === "server" && model.state === "ready" && model.backend === "remote"
+    ? assistantLabel(model.modelId ?? model.model)
+    : assistantLabel();
+};
 
 let open = sessionStorage.getItem("suiteleaf.ai.open") === "1";
 const openListeners = new Set<() => void>();

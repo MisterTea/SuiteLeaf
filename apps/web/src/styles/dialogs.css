@@ -196,6 +196,7 @@
 }
 .error {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   background: #fff1e9;
@@ -212,29 +213,26 @@
 .error button:last-child {
   margin-left: auto;
 }
+.error > svg {
+  flex-shrink: 0;
+}
+.drive-conflict {
+  align-items: flex-start;
+}
 .drive-conflict-text {
-  flex: 1;
+  flex: 1 1 320px;
   min-width: 0;
   line-height: 1.45;
 }
 .drive-conflict-actions {
   display: flex;
-  flex-shrink: 0;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  min-width: 0;
   gap: 8px;
 }
 .drive-conflict-actions button:last-child {
   margin-left: 0;
-}
-@media (max-width: 700px) {
-  .drive-conflict {
-    flex-wrap: wrap;
-  }
-  .drive-conflict-text {
-    flex-basis: calc(100% - 28px);
-  }
-  .drive-conflict-actions {
-    margin-left: 28px;
-  }
 }
 .loading {
   padding: 80px 30px;

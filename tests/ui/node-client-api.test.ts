@@ -26,6 +26,7 @@ function stubFetch() {
       calls.push(call);
       const answer = await route(call);
       if (answer) return answer;
+      if (call.url === "/api/auth/get-session") return Response.json({});
       if (call.url === "/api/auth/token") return Response.json({ token: jwt(Date.now() / 1000 + 3600) });
       return Response.json({});
     }),
@@ -70,6 +71,65 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("node sessions", () => {
+  it("persists a renewed expiry so the next monthly visit stays signed in", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-11-07T12:00:00.000Z"));
+    try {
+      const api = await signedIn({ expiresAt: "2026-11-08T00:00:00.000Z" });
+      route = ({ url, headers }) => {
+        if (url !== "/api/auth/get-session") return;
+        expect(headers.get("authorization")).toBe("Bearer session-token");
+        return Response.json({
+          user: { id: "u1", name: "Ann" },
+          session: { expiresAt: "2026-12-09T12:00:00.000Z", updatedAt: "2026-11-07T12:00:00.000Z" },
+        });
+      };
+      await api.accessToken();
+      expect(api.getSession("2026-12-08T12:00:00.000Z")?.user.name).toBe("Ann");
+      vi.resetModules();
+      const reopened = await client();
+      expect(reopened.getSession("2026-12-08T12:00:00.000Z")?.expiresAt).toBe("2026-12-09T12:00:00.000Z");
+      expect(reopened.getSession("2026-12-10T12:00:00.000Z")).toBeNull();
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("does not renew a revoked session", async () => {
+    const api = await signedIn();
+    route = ({ url }) => url === "/api/auth/get-session" ? Response.json(null) : undefined;
+    await expect(api.accessToken()).rejects.toThrow("Sign in again");
+    expect(api.getSession()).toBeNull();
+    expect(api.sessionEndReason()).toBe("expired");
+    expect(calls.some((call) => call.url === "/api/auth/token")).toBe(false);
+  });
+
+  it("keeps the session during an auth outage but clears it on an explicit rejection", async () => {
+    const api = await signedIn();
+    route = ({ url }) => {
+      if (url.startsWith("/api/auth/")) throw new TypeError("offline");
+    };
+    expect(await api.accessToken()).toBe("session-token");
+    expect(api.getSession()?.token).toBe("session-token");
+    route = ({ url }) => url === "/api/auth/get-session" ? new Response(null, { status: 401 }) : undefined;
+    await expect(api.accessToken()).rejects.toThrow("Sign in again");
+    expect(api.getSession()).toBeNull();
+  });
+
+  it("does not restore a session when a refresh finishes after sign-out", async () => {
+    const api = await signedIn();
+    let finish!: (response: Response) => void;
+    route = ({ url }) => url === "/api/auth/get-session"
+      ? new Promise<Response>((resolve) => { finish = resolve; })
+      : undefined;
+    const refresh = api.accessToken();
+    const rejected = expect(refresh).rejects.toThrow("Sign in again");
+    await api.signOut();
+    finish(Response.json({ user: { id: "u1" }, session: { expiresAt: "2027-01-01T00:00:00.000Z" } }));
+    await rejected;
+    expect(api.getSession()).toBeNull();
+    expect(localStorage.getItem("suiteleaf:node-session")).toBeNull();
+  });
+
   it("ignores a stored session that is broken or incomplete", async () => {
     localStorage.setItem("suiteleaf:node-session", "{broken");
     expect((await client()).getSession()).toBeNull();
@@ -335,7 +395,7 @@ describe("drive and admin endpoints", () => {
       [await adminApi.applyEditorPolicy("s"), "POST", "/api/admin/editor-policy", { stamp: "s" }],
       [await adminApi.removeMember("g", "group", "h"), "DELETE", "/api/admin/groups/g/members", { memberType: "group", memberId: "h" }],
     ];
-    const requests = calls.filter((c) => c.url !== "/api/auth/token");
+    const requests = calls.filter((c) => c.url !== "/api/auth/token" && c.url !== "/api/auth/get-session");
     expect(requests).toHaveLength(results.length);
     results.forEach(([, method, url, body], i) => {
       expect(requests[i]).toMatchObject({ method, url });
@@ -439,6 +499,57 @@ describe("drive files", () => {
     expect(chunks.length).toBeGreaterThan(1);
     expect(Buffer.concat(chunks).equals(Buffer.from(expected))).toBe(true);
     expect(link.versionId).toBe("imported");
+  });
+
+  it("retries a large presentation in bounded binary slices and replays accepted bytes safely", async () => {
+    const { uploadDriveFile, DriveConflict } = await signedIn();
+    const file = createFile("slide", "Cloud deck");
+    if (file.kind !== "slide") throw new Error("Expected slides");
+    file.content.slides[file.content.slideOrder[0]]!.notes = "🚀".repeat(1_300_000);
+    const expected = new TextEncoder().encode(serializeFile(file));
+    expect(expected.length).toBeGreaterThan(4.5 * 1024 * 1024);
+    const received = new Uint8Array(expected.length);
+    let accepted = 0;
+    let interrupt = true;
+    route = ({ method, headers, body }) => {
+      if (method === "PATCH") return Response.json(item({ name: "Cloud deck.slslides", headVersionId: "v2" }));
+      if (method !== "PUT") return;
+      const range = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(headers.get("content-range") ?? "")!;
+      expect(range).toBeTruthy();
+      const [start, end, total] = range.slice(1).map(Number);
+      expect(total).toBe(expected.length);
+      expect(headers.get("if-match")).toBe('"v1"');
+      const bytes = body as Uint8Array;
+      expect(bytes.byteLength).toBeLessThanOrEqual(262_144);
+      expect(bytes.byteLength).toBe(end - start + 1);
+      if (start === 262_144 && interrupt) {
+        interrupt = false;
+        throw new TypeError("Failed to fetch");
+      }
+      received.set(bytes, start);
+      accepted = Math.max(accepted, end + 1);
+      return accepted < total
+        ? Response.json({ accepted }, { status: 202 })
+        : Response.json(item({ name: "Old.slslides", headVersionId: "v2" }));
+    };
+    const link = { nodeUrl: NODE, itemId: "i1", versionId: "v1", name: "Old.slslides" };
+    expect(await uploadDriveFile(file, link)).toMatchObject({ name: "Cloud deck.slslides", versionId: "v2", syncedAt: file.updatedAt });
+    expect(Buffer.from(received).equals(Buffer.from(expected))).toBe(true);
+    expect(calls.filter((call) => call.headers.get("content-range")?.startsWith("bytes 262144-")).length).toBe(2);
+
+    route = ({ method }) => method === "PUT" ? Response.json({ item: item() }, { status: 409 }) : undefined;
+    await expect(uploadDriveFile(file, link)).rejects.toBeInstanceOf(DriveConflict);
+  });
+
+  it("does not report a large upload as finished without a committed server version", async () => {
+    const { uploadDriveFile } = await signedIn();
+    const file = createFile("slide", "Incomplete upload");
+    if (file.kind !== "slide") throw new Error("Expected slides");
+    file.content.slides[file.content.slideOrder[0]]!.notes = "x".repeat(300_000);
+    route = ({ method, headers }) => method === "PUT"
+      ? Response.json({ accepted: Number(headers.get("content-range")!.split("-")[1].split("/")[0]) + 1 }, { status: 202 })
+      : undefined;
+    await expect(uploadDriveFile(file, { nodeUrl: NODE, itemId: "i1", name: "Incomplete upload.slslides" })).rejects.toThrow("does not continue the saved part");
   });
 
   it("restores a version, and refuses a stale restore", async () => {

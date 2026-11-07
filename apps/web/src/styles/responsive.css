@@ -246,6 +246,7 @@
     flex-shrink: 0;
   }
   .workspace-header > .header-right-tools {
+    flex-wrap: nowrap;
     grid-column: 4;
     grid-row: 1;
     justify-content: flex-start;

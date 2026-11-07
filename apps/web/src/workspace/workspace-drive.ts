@@ -1,5 +1,6 @@
 import { nativeFilename, type SuiteFile } from "@suiteleaf/core";
 import { storage } from "../storage";
+import { uploadQueue } from "../upload-queue";
 import { recordSaveStatus } from "../save-state";
 import { combineDocuments, keepBothDrawings, keepBothForms, keepBothSheets, keepBothSlides, keepSelectedCells, keptLocalCopy } from "../conflict-merge";
 import { openDriveFile, saveNewDriveFile } from "../node-client";
@@ -15,7 +16,7 @@ export function driveFileActions(
   const {
     setRecord, setError, setStatus, current, version, savedVersion, actions,
     driveConflictRef, agreedContent, setEditorEpoch, setDriveDialog,
-    setDriveConflict,
+    setDriveConflict, timer, historyTimer, driveTimer, driveGeneration, driveQueue, queue,
   } = ws;
   const saveToDrive = async (folderId: string | null, name: string) => {
     await actions.current?.flush();
@@ -33,14 +34,38 @@ export function driveFileActions(
     setStatus(recordSaveStatus(current.current, { desktop: !!window.suiteleaf, signedIn: true }).label);
     requestLastEditRefresh();
   };
-  const reloadFromDrive = async () => {
+  const reloadFromDrive = async (options?: { discardLocal?: boolean }) => {
     const conflict = driveConflictRef.current;
-    if (!conflict || !current.current) return;
-    await storage.save({ file: keptLocalCopy(current.current.file) });
+    const open = current.current;
+    if (!conflict || !open) return;
     const fresh = await openDriveFile(conflict);
-    const file = { ...fresh.file, id: current.current.file.id } as SuiteFile;
-    version.current = savedVersion.current = 0;
-    await storage.save({ ...current.current, file, drive: fresh.drive });
+    // A failed download leaves the local edits and pending upload intact.
+    if (current.current?.file.id !== open.file.id) return;
+    if (!options?.discardLocal) {
+      await storage.save({ file: keptLocalCopy(current.current.file) });
+    }
+    clearTimeout(timer.current);
+    clearTimeout(historyTimer.current);
+    clearTimeout(driveTimer.current);
+    driveTimer.current = undefined;
+    driveGeneration.current++;
+    // Finish earlier saves before replacing the cache, so they cannot restore discarded edits.
+    const replaced = await driveQueue.current.enqueue(() =>
+      queue.current.enqueue(async () => {
+        if (current.current?.file.id !== open.file.id) return false;
+        const file = { ...fresh.file, id: open.file.id } as SuiteFile;
+        const next = { ...current.current, file, drive: fresh.drive };
+        await storage.save(next);
+        current.current = next;
+        agreedContent.current = file;
+        version.current = savedVersion.current = 0;
+        const pending = uploadQueue.get(conflict.id);
+        if (pending) uploadQueue.succeed(conflict.id, pending.revision);
+        return true;
+      }),
+    );
+    if (!replaced) return;
+    window.suiteleaf?.setDirty(false);
     window.location.reload();
   };
   const saveDriveCopy = async () => {

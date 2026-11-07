@@ -1,4 +1,5 @@
 import { slideMathHtml } from "./slide-math";
+import { officeWrapLines } from "./slide-office-wrap";
 import {
   fontKerning,
   kernFeature,
@@ -383,6 +384,8 @@ function lineBoxHtml(
 }
 
 type TabMetrics = {
+  widthPt?: number;
+  unitPt?: number;
   align?: "left" | "center" | "right" | "justify";
   nowrap?: boolean;
   fontFamily?: string;
@@ -397,7 +400,7 @@ type TabMetrics = {
 let measureCtx: CanvasRenderingContext2D | null | undefined;
 
 /** Width in points. The canvas font size is the point size, matching `calc(pt * --slide-pt)`. */
-function textWidthPt(text: string, run: TextRun, metrics?: TabMetrics): number {
+function textWidthPt(text: string, run: TextRun, metrics?: TabMetrics, unkerned = false): number {
   const size = (run.fontSize || metrics?.fontSize || 18) * (run.scriptScale ? 2 / 3 : 1);
   const bold = Boolean(run.bold);
   const italic = Boolean(run.italic);
@@ -407,7 +410,10 @@ function textWidthPt(text: string, run: TextRun, metrics?: TabMetrics): number {
     measureCtx = document.createElement("canvas").getContext("2d");
   if (measureCtx) {
     measureCtx.font = `${italic ? "italic " : ""}${bold ? "700 " : ""}${size}px ${paintFontFamily(family)}`;
+    const previousKerning = measureCtx.fontKerning;
+    measureCtx.fontKerning = unkerned ? "none" : "auto";
     const width = measureCtx.measureText(text).width;
+    measureCtx.fontKerning = previousKerning;
     if (width > 0) return width;
   }
   return text.length * size * 0.5;
@@ -892,7 +898,19 @@ export function runsToHtml(
       // A browser paragraph strut participates in every wrapped line. Use the
       // smallest authored size; larger inline runs grow only the lines they occupy.
       const painted = mixed ? paragraph.map(run => ({...run, fontSize: run.fontSize || mark?.fontSize || metrics?.fontSize || Math.max(...sizes)})) : paragraph;
-      const inner = renderParagraphInner(painted, kern, slot, metrics, hanging, mark);
+      // The shared box gutter is already included in the measured root padding.
+      // Only paragraph-specific gutters consume additional content-box width.
+      const wrapWidth = (metrics?.widthPt || 0) - ((mark?.paraMargin || 0) + (mark?.paraHang || 0)) * (metrics?.unitPt || 1);
+      const markerLength = slot > 0 && painted[0]
+        ? isSymbolBullet(painted[0]) ? painted[0].text.length : takeMarker(painted[0])?.marker.text.length || 0
+        : 0;
+      const firstWidth = wrapWidth + ((!markerLength ? mark?.paraHang || hang || 0 : 0) - (!firstSlot ? mark?.paraFirst || 0 : 0)) * (metrics?.unitPt || 1);
+      const softLines = !metrics?.nowrap && kern && metrics?.widthPt
+        ? officeWrapLines(painted, wrapWidth, (text, run) => textWidthPt(text, run, metrics, true), markerLength, firstWidth)
+        : undefined;
+      const inner = softLines
+        ? softLines.map((line, lineIndex) => `<span data-slide-soft-line="1" style="display:block;${lineIndex ? "text-indent:0;" : ""}${(mark?.paraAlign || metrics?.align) === "justify" && lineIndex < softLines.length - 1 ? "text-align-last:justify;" : ""}">${renderParagraphInner(line, kern, lineIndex ? 0 : slot, metrics, hanging && !lineIndex, mark)}</span>`).join("")
+        : renderParagraphInner(painted, kern, slot, metrics, hanging, mark);
       const originalStrut = strutMark(mark, painted);
       const strutBase = originalStrut;
       const strut = mixed && strutBase ? {...strutBase, fontSize: Math.min(...sizes)} : strutBase;

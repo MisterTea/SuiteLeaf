@@ -362,6 +362,8 @@ def write_css(office_dir, out):
     (out / "office-fonts.css").write_text(header + "\n" + "\n".join(rules) + "\n")
     print(f"wrote {out / 'office-fonts.css'}: {len(rules)} faces")
     write_names(to_suiteleaf, to_office)
+    from suiteleaf_advances import generate
+    generate(out)
 
 
 NAMES_TS = Path(__file__).resolve().parents[2] / "packages/core/src/office-font-names.ts"

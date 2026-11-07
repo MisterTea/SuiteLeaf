@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import type { SyncHealth } from "../upload-queue";
 import { adminDestination, documentLabel, formatBytes } from "./admin-model";
 
@@ -9,11 +9,58 @@ export function AdminLink({
   cluster: boolean;
   role?: string | null;
 }) {
+  const navigate = useNavigate();
   if (adminDestination(cluster, role) !== "admin") return null;
   return (
-    <Link className="admin-link" to="/admin">
-      Admin
-    </Link>
+    <button
+      type="button"
+      className="admin-icon-button admin-link"
+      aria-label="Admin"
+      title="Admin"
+      onClick={() => navigate("/admin")}
+    >
+      <svg
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M12 3 4 6v6c0 4 4 7 8 9 4-2 8-5 8-9V6l-8-3Z" />
+        <path d="m9 12 2 2 4-4" />
+      </svg>
+    </button>
+  );
+}
+
+export function AdminBackButton() {
+  const navigate = useNavigate();
+  return (
+    <button
+      type="button"
+      className="admin-icon-button"
+      aria-label="Back to files"
+      title="Back to files"
+      onClick={() => navigate("/")}
+    >
+      <svg
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="m12 5-7 7 7 7M5 12h14" />
+      </svg>
+    </button>
   );
 }
 

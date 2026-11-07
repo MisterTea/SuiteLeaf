@@ -64,5 +64,6 @@ next-env.d.ts
 /deploy/data/
 /deploy/.env
 .env*
+!.env.cloud.example
 
 /.venv-fonts/

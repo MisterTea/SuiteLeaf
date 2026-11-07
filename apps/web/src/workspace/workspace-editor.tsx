@@ -38,12 +38,16 @@ export function WorkspaceEditor({
   update,
   onActions,
   save,
+  fileCommentsOpen = false,
+  onCloseComments,
 }: {
   ws: WorkspaceState;
   record: FileRecord;
   update: (content: SuiteFile["content"], extra?: unknown) => void;
   onActions: (a: EditorActions) => void;
   save: () => Promise<void>;
+  fileCommentsOpen?: boolean;
+  onCloseComments?: () => void;
 }) {
   const {
     id, slideId, navigate, showSlide, setError, setStatus, driveParentId,
@@ -72,8 +76,9 @@ export function WorkspaceEditor({
           </div>
         }
       >
-        {record.drive && driveRole && driveRole !== "local" ? (
+        {record.drive && driveRole && driveRole !== "local" && (f.kind !== "slide" || fileCommentsOpen) ? (
           <FileComments
+            onClose={f.kind === "slide" ? onCloseComments : undefined}
             itemId={record.drive.itemId}
             canPost={driveRole !== "viewer"}
             wordingStays={driveRole === "commenter" || driveRole === "responder"}
