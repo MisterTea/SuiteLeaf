@@ -21,6 +21,18 @@ import type { DelimitedOptions } from "../csv";
 import { message } from "../error-message";
 import { MarpPicturesDialog } from "./MarpPicturesDialog";
 
+type FolderFiles = { relativePath: string; file: File }[];
+async function planFolder(raw: FolderFiles, folderName = "") {
+  const normalized = folderName ? { folderName, files: raw } : normalizeFolderFiles(raw);
+  const marpChoices: string[] = [];
+  for (const path of markdownInFolder(normalized.files)) {
+    const item = normalized.files.find((file) => file.relativePath === path);
+    if (item && hasMarpHeader(await item.file.text())) marpChoices.push(path);
+  }
+  const office = officeImportTargets(raw);
+  return { normalized, marpChoices, office, count: marpChoices.length ? 1 : office.length };
+}
+
 export function ImportButton({
   onImport,
   onError,
@@ -54,6 +66,12 @@ export function ImportButton({
   const [dropOver, setDropOver] = useState(false);
   const [importing, setImporting] = useState(false);
   const stopImport = useRef(false);
+  const [progress, setProgress] = useState<{ completed: number; total: number | null; name: string } | null>(null);
+  const begin = (name: string) => {
+    if (stopImport.current) throw new Error("Import cancelled. The original file is unchanged.");
+    setProgress((current) => current && { ...current, name });
+  };
+  const advance = () => setProgress((current) => current && { ...current, completed: current.completed + 1 });
   const [deckChoice, setDeckChoice] = useState<{
     choices: string[];
     resolve: (path: string | null) => void;
@@ -69,6 +87,7 @@ export function ImportButton({
     resolve: (choice: ImportAssets | "skip" | "cancel") => void;
   } | null>(null);
   const importOne = async (f: File, open: boolean) => {
+    begin(f.name);
     const ext = f.name.split(".").pop()?.toLowerCase();
     let assets: ImportAssets | undefined;
     if (ext === "md" || ext === "markdown") {
@@ -89,14 +108,16 @@ export function ImportButton({
       assets,
       { shouldStop: () => stopImport.current },
     );
-    if (!file) return;
+    if (!file) { advance(); return; }
     if (open) await onImport({ file }, f.name);
     else if (keepImported) await keepImported(file);
     else await onImport({ file }, f.name);
+    advance();
   };
   const importChosen = async (f: File) => {
     stopImport.current = false;
     setImporting(true);
+    setProgress({ completed: 0, total: 1, name: f.name });
     try {
       await importOne(f, true);
     } catch (e) {
@@ -110,33 +131,29 @@ export function ImportButton({
     raw: { relativePath: string; file: File }[],
     folderName = "",
     openSingle = true,
+    prepared?: Awaited<ReturnType<typeof planFolder>>,
   ) => {
-    const normalized = folderName ? { folderName, files: raw } : normalizeFolderFiles(raw);
-    const choices = markdownInFolder(normalized.files);
-    const marpChoices: string[] = [];
-    for (const path of choices) {
-      const item = normalized.files.find((file) => file.relativePath === path);
-      if (item && hasMarpHeader(await item.file.text())) marpChoices.push(path);
-    }
+    const { normalized, marpChoices, office } = prepared ?? await planFolder(raw, folderName);
     if (!marpChoices.length) {
-      const office = officeImportTargets(raw);
       if (!office.length) throw new Error("That folder has no markdown file.");
       for (const item of office) {
         if (stopImport.current)
           throw new Error("Import cancelled. The original file is unchanged.");
+        begin(item.file.relativePath);
         const file = await importFile(
           item.file.file,
           (draft) => new Promise((resolve) => setReview({ draft, resolve })),
           undefined,
           { shouldStop: () => stopImport.current },
         );
-        if (!file) continue;
+        if (!file) { advance(); continue; }
         const open = opensImportedFile(office.length) && openSingle;
         if (placeInFolder) {
           const placed = await placeInFolder(file, item.folder);
           if (open) await onImport(placed ?? { file }, item.file.file.name);
         } else if (open || !keepImported) await onImport({ file }, item.file.file.name);
         else await keepImported(file);
+        advance();
       }
       return opensImportedFile(office.length) && openSingle;
     }
@@ -150,6 +167,7 @@ export function ImportButton({
     }
     const markdown = normalized.files.find((item) => item.relativePath === markdownPath);
     if (!markdown) throw new Error("That folder has no markdown file.");
+    begin(markdown.relativePath);
     const text = await markdown.file.text();
     const assets = await loadMarpBundle(markdownPath, text, normalized.files);
     const file = await importFile(
@@ -158,10 +176,11 @@ export function ImportButton({
       assets,
       { shouldStop: () => stopImport.current },
     );
-    if (!file) return false;
+    if (!file) { advance(); return false; }
     if (openSingle) await onImport({ file }, markdown.file.name);
     else if (keepImported) await keepImported(file);
     else await onImport({ file }, markdown.file.name);
+    advance();
     return openSingle || !keepImported;
   };
   const openFolder = () => {
@@ -205,7 +224,9 @@ export function ImportButton({
     const entries = [...event.dataTransfer.items]
       .map((item) => item.webkitGetAsEntry?.() ?? null)
       .filter((entry): entry is FileSystemEntry => !!entry);
+    stopImport.current = false;
     setImporting(true);
+    setProgress({ completed: 0, total: null, name: "" });
     let opened = false;
     try {
       const loose: File[] = [];
@@ -219,20 +240,25 @@ export function ImportButton({
           }
         }
       } else loose.push(...event.dataTransfer.files);
+      const plans = [];
+      for (const folder of folders) plans.push(await planFolder(folder));
+      setProgress({ completed: 0, total: loose.length + plans.reduce((sum, plan) => sum + plan.count, 0), name: "" });
       const open = opensImportedFile(loose.length + folders.length);
-      stopImport.current = false;
       for (const file of loose) {
         await importOne(file, open);
         if (open) opened = true;
       }
-      for (const folder of folders) {
-        if (await importFolder(folder, "", open)) opened = true;
+      for (let i = 0; i < folders.length; i++) {
+        if (await importFolder(folders[i], "", open, plans[i])) opened = true;
       }
     } catch (err) {
       onError(message(err));
     } finally {
-      if (!opened) await onBatchDone?.();
-      setImporting(false);
+      try {
+        if (!opened) await onBatchDone?.();
+      } finally {
+        setImporting(false);
+      }
     }
   };
   useEffect(() => {
@@ -255,6 +281,7 @@ export function ImportButton({
     setImporting(true);
     try {
       if (window.suiteleaf && !filePicker) {
+        setProgress({ completed: 0, total: null, name: "" });
         const r = await storage.open();
         if (r) await onImport(r);
       } else input.current?.click();
@@ -270,17 +297,24 @@ export function ImportButton({
         <button
           type="button"
           disabled={importing}
-          aria-expanded={menu}
+          aria-expanded={menu || importing}
           aria-haspopup="dialog"
           onClick={() => setMenu((open) => !open)}
         >
           <Upload size={16} />
           {importing ? "Importing…" : "Import"}
         </button>
-        {importing ? (
-          <button type="button" onClick={() => { stopImport.current = true; }}>
-            Cancel import
-          </button>
+        {importing && progress ? (
+          <div className="import-popover import-progress" role="dialog" aria-label="Import progress">
+            <strong>Importing files</strong>
+            <p className="import-progress-name" title={progress.name}>
+              {progress.name || "Reading files…"}
+            </p>
+            <progress aria-label="Files processed" max={progress.total || 1}
+              value={progress.total === null ? undefined : progress.completed} />
+            <p role="status">{progress.total === null ? "Preparing import…" : `${progress.completed} of ${progress.total} files processed`}</p>
+            <button type="button" onClick={() => { stopImport.current = true; }}>Cancel import</button>
+          </div>
         ) : null}
         {menu ? (
           <div className="import-popover" role="dialog" aria-label="Import">
@@ -336,6 +370,7 @@ export function ImportButton({
           }
           stopImport.current = false;
           setImporting(true);
+          setProgress({ completed: 0, total: files.length, name: "" });
           try {
             for (const file of files) await importOne(file, false);
             await onBatchDone?.();
@@ -358,8 +393,12 @@ export function ImportButton({
           if (!list.length) return;
           stopImport.current = false;
           setImporting(true);
+          setProgress({ completed: 0, total: null, name: "" });
           try {
-            await importFolder(list.map((file) => ({ relativePath: file.webkitRelativePath || file.name, file })));
+            const raw = list.map((file) => ({ relativePath: file.webkitRelativePath || file.name, file }));
+            const plan = await planFolder(raw);
+            setProgress({ completed: 0, total: plan.count, name: "" });
+            await importFolder(raw, "", true, plan);
           } catch (err) {
             onError(message(err));
           } finally {

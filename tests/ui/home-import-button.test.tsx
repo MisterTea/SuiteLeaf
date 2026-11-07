@@ -75,6 +75,45 @@ afterEach(() => {
 });
 
 describe("ImportButton", () => {
+  it("shows file progress and waits for each save before advancing", async () => {
+    let finishFirst!: () => void;
+    let finishSecond!: () => void;
+    const keepImported = vi.fn()
+      .mockImplementationOnce(() => new Promise<void>((resolve) => { finishFirst = resolve; }))
+      .mockImplementationOnce(() => new Promise<void>((resolve) => { finishSecond = resolve; }));
+    const { picker } = setup({ keepImported });
+    start(picker, [file("a.docx"), file("b.docx")]);
+    const popover = await screen.findByRole("dialog", { name: "Import progress" });
+    await waitFor(() => expect(keepImported).toHaveBeenCalledTimes(1));
+    const bar = within(popover).getByRole("progressbar") as HTMLProgressElement;
+    expect(bar.max).toBe(2);
+    expect(bar.value).toBe(0);
+    expect(popover.textContent).toContain("a.docx");
+    await act(async () => finishFirst());
+    await waitFor(() => expect(keepImported).toHaveBeenCalledTimes(2));
+    expect(bar.value).toBe(1);
+    expect(popover.textContent).toContain("b.docx");
+    expect(popover.textContent).toContain("1 of 2 files processed");
+    await act(async () => finishSecond());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Import progress" })).toBeNull());
+  });
+
+  it("shows folder progress and closes it when conversion fails", async () => {
+    let fail!: (error: Error) => void;
+    hoisted.convert = () => new Promise((_, reject) => { fail = reject; });
+    const { folderPicker, onError } = setup();
+    start(folderPicker, [file("work/a.docx"), file("work/b.xlsx")]);
+    const popover = await screen.findByRole("dialog", { name: "Import progress" });
+    await waitFor(() => expect(hoisted.calls).toHaveLength(1));
+    const bar = within(popover).getByRole("progressbar") as HTMLProgressElement;
+    expect(bar.max).toBe(2);
+    expect(bar.value).toBe(0);
+    expect(popover.textContent).toContain("a.docx");
+    await act(async () => fail(new Error("Could not convert file.")));
+    expect(onError).toHaveBeenCalledWith("Could not convert file.");
+    expect(screen.queryByRole("dialog", { name: "Import progress" })).toBeNull();
+  });
+
   it("opens and closes its menu", () => {
     setup();
     const button = screen.getByRole("button", { name: "Import" });
