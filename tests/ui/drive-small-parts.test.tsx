@@ -289,7 +289,7 @@ describe("ShareNotices", () => {
     render(<ShareNotices onOpen={vi.fn()} />);
     await act(async () => {});
     expect(screen.getByLabelText("Files shared with you")).toBeTruthy();
-    await act(() => vi.advanceTimersByTimeAsync(1000));
+    await act(() => vi.advanceTimersByTimeAsync(30_000));
     expect(hoisted.notices).toHaveBeenCalledTimes(2);
     expect(screen.getByLabelText("Files shared with you")).toBeTruthy();
   });

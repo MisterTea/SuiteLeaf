@@ -11,3 +11,8 @@ artifacts
 deploy/data
 deploy/.env
 .git
+.env*
+**/.env*
+.codex-remote-attachments
+coverage
+tmp

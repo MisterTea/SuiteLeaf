@@ -255,6 +255,8 @@ async fn run_socket(
                                 joined_message(&rooms, &item, &again)?.into(),
                             ))
                             .await;
+                    } else if update == "meta:changed" {
+                        sink.send(Message::Text(json!({"type":"file-changed"}).to_string().into())).await?;
                     } else if let Some(body) = update.strip_prefix("sel:") {
                         let _ = sink.send(Message::Text(body.to_owned().into())).await;
                     } else {
@@ -280,6 +282,30 @@ async fn run_socket(
             break;
         }
         match kind {
+            "presence" => {
+                let who = Principal {
+                    id: user.id.clone(),
+                    admin: user.is_admin(),
+                };
+                let now = std::time::SystemTime::now();
+                rooms.drive.report_presence(
+                    &who,
+                    &item,
+                    user.name.as_deref().unwrap_or("Someone"),
+                    value
+                        .get("editing")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
+                    now,
+                )?;
+                let people = rooms.drive.presence(&who, &item, now)?;
+                sink.send(Message::Text(
+                    json!({"type":"presence","people":people})
+                        .to_string()
+                        .into(),
+                ))
+                .await?;
+            }
             "auth" => {
                 // A fresh token for the same person replaces the one the socket signed in with.
                 match renewal(&signed.auth, &value, &user.id) {
@@ -506,6 +532,7 @@ fn joined_message(rooms: &Rooms, item: &str, joined: &Join) -> anyhow::Result<St
         .collect::<Vec<_>>();
     Ok(json!({
         "type": "joined",
+        "notifications": rooms.db.is_postgres(),
         "joined": joined.joined,
         "mode": joined.mode,
         "state": joined.state,

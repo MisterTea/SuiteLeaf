@@ -428,7 +428,7 @@ describe("DriveBrowser", () => {
       lastAuthorName: "Sam",
       lastEditedAt: "2026-10-02T10:00:00.000Z",
     });
-    await act(() => vi.advanceTimersByTimeAsync(2000));
+      await act(() => vi.advanceTimersByTimeAsync(10_000));
     expect(document.querySelector(".just-edited")).toBeTruthy();
     await act(() => vi.advanceTimersByTimeAsync(2400));
     expect(document.querySelector(".just-edited")).toBeNull();

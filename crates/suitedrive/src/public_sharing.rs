@@ -141,14 +141,14 @@ fn public_document(bytes: &[u8]) -> DriveResult<Vec<u8>> {
     let object = file.as_object_mut().ok_or(DriveError::NotFound)?;
     object.remove("edits");
     object.remove("versions");
-    if object.get("kind").and_then(|v| v.as_str()) == Some("form") {
-        if let Some(content) = object.get_mut("content").and_then(|v| v.as_object_mut()) {
-            content.insert("responses".into(), serde_json::json!([]));
-            if let Some(questions) = content.get_mut("questions").and_then(|v| v.as_array_mut()) {
-                for q in questions {
-                    if let Some(q) = q.as_object_mut() {
-                        q.remove("answer");
-                    }
+    if object.get("kind").and_then(|v| v.as_str()) == Some("form")
+        && let Some(content) = object.get_mut("content").and_then(|v| v.as_object_mut())
+    {
+        content.insert("responses".into(), serde_json::json!([]));
+        if let Some(questions) = content.get_mut("questions").and_then(|v| v.as_array_mut()) {
+            for q in questions {
+                if let Some(q) = q.as_object_mut() {
+                    q.remove("answer");
                 }
             }
         }

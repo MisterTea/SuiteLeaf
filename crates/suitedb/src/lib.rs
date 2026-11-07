@@ -289,13 +289,10 @@ impl Db {
     /// Committed cloud mutations in commit order. The cursor is disposable;
     /// authoritative collaboration state is rebuilt from the persisted room log.
     pub fn changes_since(&self, cursor: i64) -> Result<(i64, Vec<RowChange>)> {
-        if self.postgres.is_none() {
+        let Some(store) = &self.postgres else {
             return Ok((cursor, vec![]));
-        }
-        let rows = self.query(
-            "SELECT seq, payload FROM _cloud_ops WHERE seq>?1 ORDER BY seq LIMIT 1000",
-            &[Value::Integer(cursor)],
-        )?;
+        };
+        let rows = store.changes_since(cursor)?;
         let mut next = cursor;
         let mut changes = Vec::new();
         for row in rows {

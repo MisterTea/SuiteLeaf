@@ -14,3 +14,5 @@ research-library
 artifacts
 deploy/data
 deploy/.env
+coverage
+tmp

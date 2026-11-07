@@ -83,7 +83,9 @@ pub(crate) fn standing(
     credentials: Option<(&Auth, &HeaderMap)>,
 ) -> anyhow::Result<(Standing, Option<AuthUser>)> {
     let fresh = credentials.map(|(auth, headers)| auth.user(headers));
-    let signed_in = fresh.as_ref().map(|who| who.as_ref().map(|u| u.id.as_str()));
+    let signed_in = fresh
+        .as_ref()
+        .map(|who| who.as_ref().map(|u| u.id.as_str()));
     let admin = match &fresh {
         Some(Some(who)) => who.is_admin(),
         _ => user.is_admin(),
@@ -100,7 +102,10 @@ pub(crate) fn standing(
 /// Headers that carry one bearer token, as the HTTP routes receive it.
 pub(crate) fn bearer_headers(token: &str) -> Option<HeaderMap> {
     let mut headers = HeaderMap::new();
-    headers.insert(header::AUTHORIZATION, format!("Bearer {token}").parse().ok()?);
+    headers.insert(
+        header::AUTHORIZATION,
+        format!("Bearer {token}").parse().ok()?,
+    );
     Some(headers)
 }
 
@@ -110,7 +115,13 @@ mod tests {
 
     #[test]
     fn a_person_who_still_signs_in_with_the_same_role_stays() {
-        let kept = decide("maya", Some(Some("maya")), false, Role::Editor, Some(Role::Editor));
+        let kept = decide(
+            "maya",
+            Some(Some("maya")),
+            false,
+            Role::Editor,
+            Some(Role::Editor),
+        );
         assert_eq!(kept, Standing::Keep);
         assert_eq!(kept.reason(), None);
         let unchecked = decide("maya", None, false, Role::Viewer, Some(Role::Viewer));
@@ -121,7 +132,13 @@ mod tests {
     fn a_token_that_no_longer_signs_in_or_names_someone_else_is_unauthorized() {
         let gone = decide("maya", Some(None), false, Role::Editor, Some(Role::Editor));
         assert_eq!(gone, Standing::Unauthorized);
-        let other = decide("maya", Some(Some("sam")), false, Role::Editor, Some(Role::Editor));
+        let other = decide(
+            "maya",
+            Some(Some("sam")),
+            false,
+            Role::Editor,
+            Some(Role::Editor),
+        );
         assert_eq!(other, Standing::Unauthorized);
         let expired = decide("maya", None, true, Role::Editor, Some(Role::Editor));
         assert_eq!(expired.reason(), Some("unauthorized"));
@@ -142,7 +159,10 @@ mod tests {
         assert_eq!(recheck_every(None), Duration::from_millis(RECHECK_MS));
         assert_eq!(recheck_every(Some("200")), Duration::from_millis(200));
         assert_eq!(recheck_every(Some("10")), Duration::from_millis(RECHECK_MS));
-        assert_eq!(recheck_every(Some("secret-value")), Duration::from_millis(RECHECK_MS));
+        assert_eq!(
+            recheck_every(Some("secret-value")),
+            Duration::from_millis(RECHECK_MS)
+        );
     }
 
     #[test]

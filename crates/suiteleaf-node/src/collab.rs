@@ -244,7 +244,8 @@ impl Rooms {
                 .get("drive_room", item)?
                 .and_then(|row| text_col(&row, "seedOwnerId"));
             let alive = claim.as_ref().is_some_and(|id| {
-                self.db.get("drive_presence", &presence_id(item, id))
+                self.db
+                    .get("drive_presence", &presence_id(item, id))
                     .is_ok_and(|row| row.is_some())
             });
             seed = claim.as_deref() == Some(connection) || !alive;
@@ -462,16 +463,22 @@ impl Rooms {
         Ok(())
     }
 
-    pub fn poll_cloud(&self, cursor: &mut i64) -> anyhow::Result<()> {
+    pub fn poll_cloud(&self, cursor: &mut i64) -> anyhow::Result<bool> {
         if self.sockets.load(std::sync::atomic::Ordering::Relaxed) == 0 {
-            return Ok(());
+            return Ok(false);
         }
         let (next, changes) = self.db.changes_since(*cursor)?;
-        if changes
+        let rooms_changed = changes
             .iter()
-            .any(|c| c.table == "drive_room" || c.table == "drive_room_update")
-        {
+            .any(|c| c.table == "drive_room" || c.table == "drive_room_update");
+        if rooms_changed {
             self.catch_up_open_rooms()?;
+        }
+        for change in changes.iter().filter(|c| c.table == "drive_item") {
+            let live = self.live.lock().expect("rooms");
+            if let Some(room) = live.get(&change.pk) {
+                let _ = room.relay.send("meta:changed".to_owned());
+            }
         }
         for change in changes.iter().filter(|c| c.table == "drive_signal") {
             if let Some(row) = self.db.get("drive_signal", &change.pk)? {
@@ -488,8 +495,9 @@ impl Rooms {
                 }
             }
         }
+        let full_batch = next.saturating_sub(*cursor) >= 1000;
         *cursor = next;
-        Ok(())
+        Ok(rooms_changed || changes.iter().any(|c| c.table == "drive_signal") || full_batch)
     }
 
     /// Tests apply an edit without naming a generation.
@@ -628,17 +636,6 @@ impl Rooms {
     pub fn kick(&self, now: i64, pause: i64) -> anyhow::Result<Vec<String>> {
         let _lock = self.db.exclusive("cloud-mutations")?;
         if self.db.is_postgres() {
-            let rows = self
-                .db
-                .query("SELECT id FROM drive_room WHERE mode='multiuser'", &[])?;
-            for row in rows {
-                if let Some(item) = text_col(&row, "id") {
-                    let mut live = self.live.lock().expect("rooms");
-                    if !live.contains_key(&item) {
-                        live.insert(item.clone(), self.restore_live(&item)?);
-                    }
-                }
-            }
             let expired = self.db.query(
                 "SELECT id FROM drive_signal WHERE expiresAt<?1",
                 &[suitedb::hlc::iso_now().into()],
@@ -675,6 +672,21 @@ impl Rooms {
             self.db.transact(|tx| tx.delete("drive_presence", &id))?;
             kicked.push(user.clone());
             self.maybe_compact(&item, &user, now)?;
+        }
+        if self.db.is_postgres() {
+            // Only recover abandoned rooms. Active rooms belong to their socket
+            // instances and must not be restored by every maintenance worker.
+            let rows = self.db.query(
+                "SELECT id FROM drive_room WHERE mode='multiuser' AND id NOT IN (SELECT itemId FROM drive_presence WHERE itemId IS NOT NULL)", &[],
+            )?;
+            for row in rows {
+                if let Some(item) = text_col(&row, "id") {
+                    let mut live = self.live.lock().expect("rooms");
+                    if !live.contains_key(&item) {
+                        live.insert(item.clone(), self.restore_live(&item)?);
+                    }
+                }
+            }
         }
         // Presence is replicated. Another node can delete the idle rows
         // first, and this node is the only one with the Yjs document.

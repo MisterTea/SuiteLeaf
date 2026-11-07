@@ -23,6 +23,8 @@ import {
   type CollabUpdate,
 } from "./connection";
 import { noteUnackedEdits } from "../save-state";
+import { hasRoomChannel, openRoomChannel, ROOM_FILE_CHANGED } from "./room-channel";
+import type { FilePresence } from "../node-client";
 import {
   RENEW_TOKEN_EVERY_MS,
   authFailurePlan,
@@ -166,8 +168,14 @@ export function useDocumentRoom({
     /** The token this socket last signed in with. A renewal sends only a different one. */
     let sentToken: string | null = null;
     let link: RoomLink = "joining";
+    let roomChannel: ReturnType<typeof openRoomChannel> | undefined;
+    const idleInBackground = () => document.visibilityState === "hidden" && queue.length === 0;
     let stop: RoomStop | undefined;
     const report = () => {
+      if (link !== "open") {
+        roomChannel?.close();
+        roomChannel = undefined;
+      }
       noteUnackedEdits(queue.length);
       onRecoveryRef.current?.(roomRecoveryText(link, queue.length, stop));
     };
@@ -206,6 +214,7 @@ export function useDocumentRoom({
       remember();
       report();
       flush();
+      if (!socket || socket.readyState === WebSocket.CLOSED) void connect();
     };
     const onUpdate = (update: Uint8Array, origin: unknown) => {
       if (origin === "remote") return;
@@ -233,14 +242,14 @@ export function useDocumentRoom({
     };
     doc.on("update", onUpdate);
     const schedule = () => {
-      if (closed || giveUp) return;
+      if (closed || giveUp || idleInBackground()) return;
       const delay = reconnectDelay(attempt);
       attempt += 1;
       timer = setTimeout(() => void connect(), delay);
     };
     const connect = async () => {
       const session = getSession();
-      if (!session || closed || giveUp || connecting) return;
+      if (!session || closed || giveUp || connecting || idleInBackground()) return;
       link = attempt === 0 ? "joining" : "reconnecting";
       report();
       if (socket && socket.readyState !== WebSocket.CLOSED) return;
@@ -253,7 +262,7 @@ export function useDocumentRoom({
         schedule();
         return;
       }
-      if (closed || giveUp) {
+      if (closed || giveUp || idleInBackground()) {
         connecting = false;
         return;
       }
@@ -276,7 +285,17 @@ export function useDocumentRoom({
           id?: string;
           seed?: boolean;
           generation?: number;
+          notifications?: boolean;
+          people?: FilePresence[];
         };
+        if (message.type === "presence" && Array.isArray(message.people)) {
+          roomChannel?.receive(message.people);
+          return;
+        }
+        if (message.type === "file-changed") {
+          window.dispatchEvent(new Event(ROOM_FILE_CHANGED));
+          return;
+        }
         if (message.type === "error") {
           const plan = authFailurePlan(message.reason ?? "");
           if (plan.stop) {
@@ -315,6 +334,7 @@ export function useDocumentRoom({
           remember();
           report();
           if (message.type === "reject" && message.reason === "stale") onStrandedRef.current?.(1);
+          if (idleInBackground()) next.close();
           return;
         }
         if (message.type === "update" && message.update) {
@@ -326,6 +346,9 @@ export function useDocumentRoom({
         authed = true;
         attempt = 0;
         link = "open";
+        if (message.notifications && !hasRoomChannel(itemId)) {
+          roomChannel = openRoomChannel(itemId, (message) => next.send(message));
+        }
         const joinedIn = Number.isSafeInteger(message.generation) ? (message.generation as number) : null;
         if (joinedIn !== null && generation !== null && joinedIn !== generation) {
           // The room was written to the file and started again. Its document is
@@ -380,6 +403,10 @@ export function useDocumentRoom({
     const renewTimer = setInterval(() => void renew(), RENEW_TOKEN_EVERY_MS);
     const onVisible = () => {
       if (document.visibilityState !== "visible") {
+        if (idleInBackground()) {
+          clearTimeout(timer);
+          socket?.close();
+        }
         report();
         return;
       }
@@ -430,6 +457,7 @@ export function useDocumentRoom({
     window.addEventListener("online", onOnline);
     return () => {
       closed = true;
+      roomChannel?.close();
       stopListen();
       clearTimeout(timer);
       clearInterval(renewTimer);

@@ -138,14 +138,12 @@ pub async fn proxy(
     let mut response = Response::builder().status(upstream.status().as_u16());
     if upstream.status().is_success()
         && let Some(digest) = registration
-    {
-        if auth
+        && auth
             .db
             .transact(|tx| tx.delete("cloud_invite", &digest))
             .is_err()
-        {
-            return StatusCode::SERVICE_UNAVAILABLE.into_response();
-        }
+    {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
     }
     for (name, value) in upstream.headers() {
         if !HOP_HEADERS.contains(&name.as_str()) {

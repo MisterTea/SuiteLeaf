@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { drive, getSession, type DriveComment } from "../node-client";
+import { visiblePoll } from "./visible-poll";
 
 /** Comments stored beside the file. A commenter can add one without changing
  * the document text. Anyone who can open the file can read them. */
@@ -31,10 +32,10 @@ export function FileComments({
   useEffect(() => {
     let cancel = false;
     let loading = false;
-    const load = () => {
+    const load = async () => {
       if (loading) return;
       loading = true;
-      void drive
+      await drive
         .comments(itemId)
         .then((next) => {
           if (cancel) return;
@@ -45,16 +46,16 @@ export function FileComments({
         })
         .catch((e) => {
           if (!cancel) setLoadError(e instanceof Error ? e.message : String(e));
+          throw e;
         })
         .finally(() => {
           loading = false;
         });
     };
-    load();
-    const timer = setInterval(load, 2000);
+    const stop = visiblePoll(load, 10_000);
     return () => {
       cancel = true;
-      clearInterval(timer);
+      stop();
     };
   }, [itemId]);
 

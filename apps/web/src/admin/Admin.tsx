@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { visiblePoll } from "../drive/visible-poll";
 import { PublicSharingPolicy } from "./public-sharing-policy";
 import { Navigate } from "react-router-dom";
 import {
@@ -158,8 +159,8 @@ function ReplicationStatus() {
   const [problem, setProblem] = useState("");
   useEffect(() => {
     let stop = false;
-    const load = () => {
-      void adminApi
+    const load = async () => {
+      await adminApi
         .replication()
         .then((report) => {
           if (stop) return;
@@ -167,15 +168,15 @@ function ReplicationStatus() {
           setPeers(report.peers);
           setProblem("");
         })
-        .catch(() => {
+        .catch((error) => {
           if (!stop) setProblem("Replication status is unavailable.");
+          throw error;
         });
     };
-    load();
-    const timer = setInterval(load, 2000);
+    const cancel = visiblePoll(load, 10_000);
     return () => {
       stop = true;
-      clearInterval(timer);
+      cancel();
     };
   }, []);
   if (problem) return <p className="admin-error">{problem}</p>;

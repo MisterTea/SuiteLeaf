@@ -10,6 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 type Manager = PostgresConnectionManager<MakeTlsConnector>;
 type Connection = r2d2::PooledConnection<Manager>;
+type SnapshotRow = (String, String, BTreeMap<String, Value>);
 pub(super) struct PostgresStore {
     pool: BlockingPool,
     operation_locks: BlockingPool,
@@ -55,6 +56,38 @@ pub(super) fn blocking<T: Send>(f: impl FnOnce() -> T + Send) -> T {
 }
 
 impl Db {
+    /// A disposable change-feed cursor captured before accepting sockets. Joins
+    /// rebuild authoritative room state; only later events need replaying.
+    pub fn cloud_tip(&self) -> Result<i64> {
+        let Some(store) = &self.postgres else {
+            return Ok(0);
+        };
+        blocking(|| {
+            Ok(store
+                .connection()?
+                .query_one("SELECT COALESCE(MAX(seq),0) FROM _cloud_ops", &[])
+                .map_err(error)?
+                .get(0))
+        })
+    }
+
+    /// Database-clock lease: one fleet-wide maintenance sweep per period,
+    /// including during bursts of cold starts. A crashed holder expires.
+    pub fn claim_cloud_maintenance(&self, every: std::time::Duration) -> Result<bool> {
+        let Some(store) = &self.postgres else {
+            return Ok(true);
+        };
+        let millis = every.as_millis().clamp(50, 3_600_000) as i64;
+        blocking(|| {
+            Ok(store.connection()?.query_opt(
+                "INSERT INTO _cloud_leases(name,expires_at) VALUES('rooms',clock_timestamp()+$1::bigint*INTERVAL '1 millisecond')
+                 ON CONFLICT(name) DO UPDATE SET expires_at=EXCLUDED.expires_at
+                 WHERE _cloud_leases.expires_at<=clock_timestamp() RETURNING name",
+                &[&millis],
+            ).map_err(error)?.is_some())
+        })
+    }
+
     /// Connect to an already migrated central database. No SQLite file is opened.
     pub fn open_postgres(
         url: &str,
@@ -126,10 +159,20 @@ impl Drop for CloudLock {
 }
 
 impl PostgresStore {
-    pub(super) fn snapshot(
-        &self,
-        schema: &Schema,
-    ) -> Result<Vec<(String, String, BTreeMap<String, Value>)>> {
+    pub(super) fn changes_since(&self, cursor: i64) -> Result<Vec<BTreeMap<String, Value>>> {
+        blocking(|| {
+            // A single SELECT needs no explicit BEGIN/PREPARE/COMMIT cycle.
+            let rows = self
+                .connection()?
+                .query(
+                    "SELECT seq,payload FROM _cloud_ops WHERE seq>$1 ORDER BY seq LIMIT 1000",
+                    &[&cursor],
+                )
+                .map_err(error)?;
+            decode_rows(&rows)
+        })
+    }
+    pub(super) fn snapshot(&self, schema: &Schema) -> Result<Vec<SnapshotRow>> {
         blocking(|| {
             let mut connection = self.connection()?;
             let mut tx = connection
@@ -210,17 +253,17 @@ impl PostgresStore {
         tx.batch_execute("CREATE TABLE IF NOT EXISTS _cloud_schema (singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK(singleton), version BIGINT NOT NULL);
             CREATE TABLE IF NOT EXISTS _conflicts (tbl TEXT NOT NULL, col TEXT NOT NULL, value TEXT NOT NULL, winner TEXT NOT NULL, loser TEXT NOT NULL, PRIMARY KEY(tbl,col,loser));
             CREATE TABLE IF NOT EXISTS _cloud_ops (seq BIGSERIAL PRIMARY KEY, id BYTEA UNIQUE NOT NULL, payload BYTEA NOT NULL);
-            CREATE TABLE IF NOT EXISTS _cloud_objects (hash TEXT PRIMARY KEY, bytes BIGINT NOT NULL);").map_err(error)?;
+            CREATE TABLE IF NOT EXISTS _cloud_objects (hash TEXT PRIMARY KEY, bytes BIGINT NOT NULL);
+            CREATE TABLE IF NOT EXISTS _cloud_leases (name TEXT PRIMARY KEY, expires_at TIMESTAMPTZ NOT NULL);").map_err(error)?;
         if let Some(row) = tx
             .query_opt(
                 "SELECT version FROM _cloud_schema WHERE singleton = TRUE",
                 &[],
             )
             .map_err(error)?
+            && row.get::<_, i64>(0) > i64::from(schema.version)
         {
-            if row.get::<_, i64>(0) > i64::from(schema.version) {
-                return Err(Error::Schema("Database is newer than this release.".into()));
-            }
+            return Err(Error::Schema("Database is newer than this release.".into()));
         }
         for table in &schema.tables {
             tx.batch_execute(&format!(
@@ -316,7 +359,7 @@ impl PostgresStore {
         let op = Op::sign(
             OpBody {
                 parents: vec![],
-                hlc: Clock::new(crate::op::node_tag(&key.public().into())).tick(),
+                hlc: Clock::new(crate::op::node_tag(&key.public())).tick(),
                 schema: schema.version,
                 author: key.public().to_bytes(),
                 changes,

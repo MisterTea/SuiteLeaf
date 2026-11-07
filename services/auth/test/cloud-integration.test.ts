@@ -133,6 +133,7 @@ describe.skipIf(!enabled)("cloud backend integration", () => {
       SUITELEAF_AUTH_SECRET: randomBytes(32).toString("hex"),
       SUITELEAF_BOOTSTRAP_TOKEN_HASH: setup.hash,
       SUITELEAF_KICK_EVERY_MS: "500",
+      SUITELEAF_IDLE_MS: "3000",
       RUST_LOG: "warn",
     };
     const migration = spawnSync(binary, ["migrate-cloud"], {
@@ -341,6 +342,8 @@ describe.skipIf(!enabled)("cloud backend integration", () => {
       state?: string;
       update?: string;
       id?: string;
+      notifications?: boolean;
+      people?: { name: string; editing: boolean }[];
     };
     async function connect(index: number, id: string, token: string) {
       const socket = new WebSocket(
@@ -361,6 +364,13 @@ describe.skipIf(!enabled)("cloud backend integration", () => {
       socket.send(
         JSON.stringify({ type: "auth", accessToken: token, protocol: 1 }),
       );
+      // Live clients refresh activity; a killed instance's stale connection
+      // expires quickly in this test instead of waiting the production 15 min.
+      const heartbeat = setInterval(() => {
+        if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "activity" }));
+        else clearInterval(heartbeat);
+      }, 1000);
+      socket.addEventListener("close", () => clearInterval(heartbeat), { once: true });
       const take = async (predicate: (frame: Frame) => boolean) => {
         await waitFor(async () => frames.some(predicate));
         return frames.splice(frames.findIndex(predicate), 1)[0];
@@ -405,12 +415,18 @@ describe.skipIf(!enabled)("cloud backend integration", () => {
       }),
     );
     const a = await connect(0, item.id, owner);
-    expect((await a.take((f) => f.type === "joined")).mode).toBe("solo");
+    const shared = await a.take((f) => f.type === "joined");
+    expect(shared.mode).toBe("multiuser");
+    expect(shared.notifications).toBe(true);
     const b = await connect(1, item.id, guest);
     expect((await b.take((f) => f.type === "joined")).mode).toBe("multiuser");
-    const shared = await a.take(
-      (f) => f.type === "joined" && f.mode === "multiuser",
-    );
+    a.send({ type: "presence", editing: true });
+    await a.take((f) => f.type === "presence");
+    b.send({ type: "presence", editing: false });
+    const presence = await b.take((f) => f.type === "presence");
+    expect(presence.people).toEqual([expect.objectContaining({ editing: true })]);
+    await json(await request(0, path, "PATCH", owner, { name: "renamed-collaboration.sldoc" }));
+    await b.take((f) => f.type === "file-changed");
     expect(shared.seed).toBe(true);
     const docA = new Y.Doc(),
       docB = new Y.Doc();

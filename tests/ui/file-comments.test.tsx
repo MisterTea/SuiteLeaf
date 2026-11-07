@@ -47,7 +47,7 @@ describe("file comments", () => {
     render(<FileComments itemId="file" canPost />);
     await act(async () => {});
     expect(screen.getByRole("alert").textContent).toContain("SuiteDrive is unreachable");
-    await act(() => vi.advanceTimersByTimeAsync(2000));
+    await act(() => vi.advanceTimersByTimeAsync(20_000));
     expect(screen.getByText("Water the beds")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
   });
@@ -65,7 +65,7 @@ describe("file comments", () => {
     fireEvent.change(box, { target: { value: "Keep this draft" } });
     fireEvent.click(screen.getByRole("button", { name: "Comment" }));
     await act(async () => {});
-    await act(() => vi.advanceTimersByTimeAsync(2000));
+    await act(() => vi.advanceTimersByTimeAsync(10_000));
     expect(comments).toHaveBeenCalledTimes(2);
     expect(screen.getByRole("alert").textContent).toBe("Comment could not be posted.");
     expect((box as HTMLTextAreaElement).value).toBe("Keep this draft");
@@ -106,17 +106,21 @@ describe("file comments", () => {
   });
 
   it("shows a refusal and leaves an unchanged list in place", async () => {
+    vi.useFakeTimers();
     render(<FileComments itemId="file" canPost />);
-    const box = await screen.findByLabelText("Add a comment");
+    await act(async () => {});
+    const box = screen.getByLabelText("Add a comment");
     comment.mockRejectedValueOnce(new Error("You cannot comment on this file."));
     fireEvent.change(box, { target: { value: "West" } });
     fireEvent.click(screen.getByRole("button", { name: "Comment" }));
-    expect((await screen.findByRole("alert")).textContent).toContain("You cannot comment on this file.");
+    await act(async () => {});
+    expect(screen.getByRole("alert").textContent).toContain("You cannot comment on this file.");
     expect(screen.getByText("Water the beds")).toBeTruthy();
     comment.mockRejectedValueOnce("refused");
     fireEvent.change(box, { target: { value: "Plot" } });
     fireEvent.click(screen.getByRole("button", { name: "Comment" }));
-    expect((await screen.findByRole("alert")).textContent).toContain("refused");
+    await act(async () => {});
+    expect(screen.getByRole("alert").textContent).toContain("refused");
     comment.mockClear();
     fireEvent.change(box, { target: { value: "   " } });
     fireEvent.keyDown(box, { key: "Enter", metaKey: true });
@@ -124,7 +128,8 @@ describe("file comments", () => {
     expect(comment).not.toHaveBeenCalled();
     fireEvent.change(box, { target: { value: "Ripe" } });
     fireEvent.keyDown(box, { key: "Enter", ctrlKey: true });
-    await waitFor(() => expect(comment).toHaveBeenCalledWith("file", "Ripe"));
+    await act(async () => {});
+    expect(comment).toHaveBeenCalledWith("file", "Ripe");
 
     comments.mockResolvedValue([
       ...listed,
@@ -136,7 +141,7 @@ describe("file comments", () => {
         createdAt: "2026-11-03T18:01:00.000Z",
       },
     ]);
-    await new Promise((resolve) => setTimeout(resolve, 2100));
+    await act(() => vi.advanceTimersByTimeAsync(10_000));
     expect(screen.getByText("Maya Chen")).toBeTruthy();
     expect(screen.getByText("North plot")).toBeTruthy();
     comments.mockResolvedValue([
@@ -149,7 +154,7 @@ describe("file comments", () => {
         createdAt: "2026-11-03T18:01:00.000Z",
       },
     ]);
-    await new Promise((resolve) => setTimeout(resolve, 2100));
+    await act(() => vi.advanceTimersByTimeAsync(10_000));
     expect(screen.getByText("North plot")).toBeTruthy();
 
     session.user = { id: "maya", name: "" };
@@ -162,7 +167,7 @@ describe("file comments", () => {
         createdAt: "2026-11-03T18:02:00.000Z",
       },
     ]);
-    await new Promise((resolve) => setTimeout(resolve, 2100));
+    await act(() => vi.advanceTimersByTimeAsync(10_000));
     expect(screen.getByText("You")).toBeTruthy();
     session.user = { id: "maya", name: "Maya Chen" };
   }, 15000);

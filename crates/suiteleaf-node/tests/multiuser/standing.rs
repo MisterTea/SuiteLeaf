@@ -66,7 +66,11 @@ async fn a_quiet_viewer_is_closed_after_the_grant_is_removed_and_reads_no_later_
     let editors = cluster.editors(0, &notes, &["maya", "sam"]).await;
     let lars = cluster.connect_quiet(0, &notes, "lars").await;
     different_paragraphs_converge(&editors).await;
-    wait_paragraphs(std::slice::from_ref(&lars), &["Tomatoes are in", "Beans are staked"]).await;
+    wait_paragraphs(
+        std::slice::from_ref(&lars),
+        &["Tomatoes are in", "Beans are staked"],
+    )
+    .await;
     set_role(&cluster, &notes, "lars", None).await;
     wait_closed(&lars).await;
     assert_eq!(lars.error().as_deref(), Some("forbidden"));
@@ -79,7 +83,10 @@ async fn a_quiet_viewer_is_closed_after_the_grant_is_removed_and_reads_no_later_
     wait_paragraphs(&editors, &["Tomatoes are picked", "Beans are staked"]).await;
     sleep(Duration::from_millis(400)).await;
     assert_eq!(lars.updates(), seen, "a removed viewer read a later edit");
-    assert_eq!(lars.paragraphs(), vec!["Tomatoes are in", "Beans are staked"]);
+    assert_eq!(
+        lars.paragraphs(),
+        vec!["Tomatoes are in", "Beans are staked"]
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -147,7 +154,10 @@ async fn a_renewed_token_keeps_the_socket_and_another_persons_token_closes_it() 
     // The first session ends. The socket now signs in with the renewed token, so it stays.
     delete_session(&cluster, "sam-session").await;
     sleep(Duration::from_millis(800)).await;
-    assert!(!sam.closed(), "a renewed socket was closed with the old session");
+    assert!(
+        !sam.closed(),
+        "a renewed socket was closed with the old session"
+    );
     delete_session(&cluster, "sam-session-2").await;
     wait_closed(&sam).await;
     assert_eq!(sam.error().as_deref(), Some("unauthorized"));

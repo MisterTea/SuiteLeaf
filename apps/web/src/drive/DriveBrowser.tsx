@@ -32,6 +32,7 @@ import { MoveBanner, type MoveNotice } from "./file-folder";
 import { MoveDialog } from "./MoveDialog";
 import { versionWhen } from "../editors/version-history-model";
 import { DRIVE_SAVED, lastEditOf } from "./last-edit";
+import { visiblePoll } from "./visible-poll";
 import { accessLabel } from "./roles";
 import { ShareNotices } from "./share-notices";
 import { formatModified } from "./status";
@@ -326,13 +327,7 @@ export function DriveBrowser({
   useEffect(() => () => clearTimeout(flash.current), []);
   // Another person can save, or share, while this list is already open.
   useEffect(() => {
-    const timer = setInterval(() => void refresh(), 2000);
-    const onSave = () => void refresh();
-    window.addEventListener(DRIVE_SAVED, onSave);
-    return () => {
-      clearInterval(timer);
-      window.removeEventListener(DRIVE_SAVED, onSave);
-    };
+    return visiblePoll(refresh, 10_000, { immediate: false, events: [DRIVE_SAVED] });
   }, [refresh]);
   useEffect(() => {
     if (routing.pending || routing.error) return;

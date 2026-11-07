@@ -116,6 +116,13 @@ pub struct NetHandle {
 }
 
 impl NetHandle {
+    /// Cloud storage has no peer transport. A closed command channel makes
+    /// accidental peer operations fail promptly without starting a swarm.
+    pub fn offline(local: PeerId) -> Self {
+        let (tx, _) = mpsc::channel(1);
+        Self { tx, local }
+    }
+
     pub fn local_peer_id(&self) -> PeerId {
         self.local
     }
@@ -516,5 +523,26 @@ impl Runner {
             }
             request_response::Event::ResponseSent { .. } => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod offline_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn cloud_handle_has_no_peers_and_refuses_peer_operations_promptly() {
+        let peer = identity::Keypair::generate_ed25519().public().to_peer_id();
+        let net = NetHandle::offline(peer);
+        assert_eq!(net.local_peer_id(), peer);
+        assert!(net.peers().await.is_empty());
+        assert!(net.listen_addrs().await.is_empty());
+        assert!(net.publish("unused", vec![]).await.is_err());
+        assert!(net.request(peer, Protocol::DbSync, vec![]).await.is_err());
+        assert!(
+            net.dial("/ip4/127.0.0.1/tcp/1234".parse().unwrap())
+                .await
+                .is_err()
+        );
     }
 }

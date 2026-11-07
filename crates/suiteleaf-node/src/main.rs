@@ -16,6 +16,7 @@ mod internal;
 mod keys;
 mod org_export;
 mod replication;
+mod room_maintenance;
 mod schema;
 mod session_list;
 mod session_policy;
@@ -310,15 +311,20 @@ async fn run(mut config: Config, init: bool, internal_token: Option<String>) -> 
     }
     admin_api::ensure_an_admin(&db).context("choose an admin")?;
 
-    let (net, events) = suiteleaf_net::start(NetConfig {
-        keypair: identity,
-        swarm_key,
-        listen: config.listen.clone(),
-        bootstrap: config.bootstrap.clone(),
-        allowlist,
-        mdns: config.mdns,
-        topics: vec![OPS_TOPIC.into()],
-    })?;
+    let (net, events) = if config.cloud {
+        let (_, events) = tokio::sync::mpsc::channel(1);
+        (suiteleaf_net::NetHandle::offline(peer_id), events)
+    } else {
+        suiteleaf_net::start(NetConfig {
+            keypair: identity,
+            swarm_key,
+            listen: config.listen.clone(),
+            bootstrap: config.bootstrap.clone(),
+            allowlist,
+            mdns: config.mdns,
+            topics: vec![OPS_TOPIC.into()],
+        })?
+    };
     let interval = Duration::from_secs(config.sync_interval_secs.max(1));
     let replicator = Replicator::new(db.clone(), net.clone());
     if !config.cloud {
@@ -373,45 +379,7 @@ async fn run(mut config: Config, init: bool, internal_token: Option<String>) -> 
         local: crate::ai_local::LocalAi::new(),
     };
     let app = http::router(state.clone());
-    let rooms = state.rooms.clone();
-    let cloud = config.cloud;
-    tokio::spawn(async move {
-        // SUITELEAF_KICK_EVERY_MS lets a test compact an idle room without
-        // waiting half a minute. Production keeps the 30 second sweep.
-        let every_ms = std::env::var("SUITELEAF_KICK_EVERY_MS")
-            .ok()
-            .and_then(|value| value.parse::<u64>().ok())
-            .filter(|ms| *ms >= 50)
-            .unwrap_or(30_000);
-        let mut tick =
-            tokio::time::interval(Duration::from_millis(if cloud { 250 } else { every_ms }));
-        let mut swept = tokio::time::Instant::now() - Duration::from_millis(every_ms);
-        let mut cursor = 0;
-        let pause = std::env::var("SUITELEAF_IDLE_MS")
-            .ok()
-            .and_then(|value| value.parse().ok())
-            .unwrap_or(crate::collab::IDLE_MS);
-        loop {
-            tick.tick().await;
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis() as i64)
-                .unwrap_or(0);
-            if !cloud || swept.elapsed() >= Duration::from_millis(every_ms) {
-                if let Err(error) = rooms.kick(now, pause) {
-                    tracing::warn!("Room maintenance failed: {error}");
-                }
-                swept = tokio::time::Instant::now();
-            }
-            if cloud {
-                if let Err(error) = rooms.poll_cloud(&mut cursor) {
-                    tracing::warn!("Room replay failed: {error}");
-                }
-            } else {
-                let _ = rooms.catch_up_open_rooms();
-            }
-        }
-    });
+    room_maintenance::start(state.rooms.clone(), db.clone(), config.cloud)?;
     let listener = TcpListener::bind(config.http_addr)
         .await
         .with_context(|| format!("bind {}", config.http_addr))?;

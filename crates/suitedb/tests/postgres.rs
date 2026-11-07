@@ -23,6 +23,44 @@ fn open() -> Db {
     .unwrap()
 }
 
+#[test]
+#[ignore = "requires an isolated Postgres database"]
+fn maintenance_is_leased_across_instances_and_recovers_after_expiry() {
+    Db::migrate_postgres(&url(), &schema()).unwrap();
+    let first = open();
+    let second = open();
+    let period = std::time::Duration::from_millis(2000);
+    assert!(first.claim_cloud_maintenance(period).unwrap());
+    assert!(!second.claim_cloud_maintenance(period).unwrap());
+    // Migration is repeatable and must not erase an existing lease.
+    Db::migrate_postgres(&url(), &schema()).unwrap();
+    assert!(!second.claim_cloud_maintenance(period).unwrap());
+    std::thread::sleep(std::time::Duration::from_millis(2100));
+    assert!(second.claim_cloud_maintenance(period).unwrap());
+    assert!(!first.claim_cloud_maintenance(period).unwrap());
+}
+
+#[test]
+#[ignore = "requires an isolated Postgres database"]
+fn a_new_instance_starts_at_the_tip_and_reads_only_subsequent_commits() {
+    Db::migrate_postgres(&url(), &schema()).unwrap();
+    let writer = open();
+    writer
+        .transact(|tx| tx.upsert("records", "before-cursor", [("amount", Value::Integer(1))]))
+        .unwrap();
+    let reader = open();
+    let tip = reader.cloud_tip().unwrap();
+    assert!(reader.changes_since(tip).unwrap().1.is_empty());
+    writer
+        .transact(|tx| tx.upsert("records", "after-cursor", [("amount", Value::Integer(2))]))
+        .unwrap();
+    let (next, changes) = reader.changes_since(tip).unwrap();
+    assert!(next > tip);
+    assert_eq!(changes.len(), 1);
+    assert_eq!(changes[0].pk, "after-cursor");
+    assert!(reader.changes_since(next).unwrap().1.is_empty());
+}
+
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires an isolated Postgres database"]
 async fn postgres_connections_can_be_destroyed_inside_async_tasks() {

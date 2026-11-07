@@ -5,6 +5,9 @@ import { storage } from "../storage";
 import { drive, getSession, type DriveItem } from "../node-client";
 import { requestLastEditRefresh } from "../drive/last-edit";
 import type { WorkspaceState } from "./workspace-state";
+import { observeItem } from "../drive/observe-item";
+import { visiblePoll } from "../drive/visible-poll";
+import { roomPresence } from "../collab/room-channel";
 
 /** Status after an idle open file picks up someone else's SuiteDrive save. */
 function remoteAuthorStatus(name: string | null | undefined) {
@@ -49,13 +52,12 @@ export function useRemoteVersionWatch(ws: WorkspaceState) {
       setDriveConflict(item);
       setStatus("SuiteDrive has a newer version");
     };
-    const watch = async () => {
+    const watch = async (item: DriveItem) => {
       if (stop || !alive.current || driveConflictRef.current || !getSession())
         return;
       const open = current.current;
       if (!open?.drive || open.drive.itemId !== itemId) return;
       try {
-        const item = await drive.get(itemId);
         if (stop || !alive.current || driveConflictRef.current) return;
         const linked = current.current;
         if (!linked?.drive || linked.drive.itemId !== itemId) return;
@@ -128,14 +130,15 @@ export function useRemoteVersionWatch(ws: WorkspaceState) {
           requestLastEditRefresh();
           await storage.save(current.current ?? next);
         });
-      } catch {
+      } catch (error) {
         // The next tick retries a dropped request.
+        throw error;
       }
     };
-    const interval = setInterval(() => void watch(), 2000);
+    const cancel = observeItem(itemId, watch, false);
     return () => {
       stop = true;
-      clearInterval(interval);
+      cancel();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- refs and setters come from useWorkspaceState, so they are stable
   }, [id, record?.drive?.itemId, driveConflict]);
@@ -157,24 +160,33 @@ export function usePresence(ws: WorkspaceState) {
     const beat = async () => {
       if (stop || !getSession()) return;
       const editing = version.current !== savedVersion.current;
+      const livePeople = await roomPresence(itemId, editing);
+      if (stop || !getSession() || document.visibilityState === "hidden") return;
+      if (livePeople !== null) {
+        setOthersHere(livePeople);
+        return;
+      }
+      let failed: unknown;
       try {
         await drive.reportPresence(itemId, editing);
-      } catch {
+      } catch (error) {
         // The next beat tries again. Reporting does not block a save.
+        failed = error;
       }
       if (stop || !getSession()) return;
       try {
         const people = await drive.presence(itemId);
         if (!stop) setOthersHere(people);
-      } catch {
+      } catch (error) {
         // Keep the names already shown until a later read works.
+        failed = error;
       }
+      if (failed) throw failed;
     };
-    void beat();
-    const interval = setInterval(() => void beat(), 5000);
+    const cancel = visiblePoll(beat, 5000);
     return () => {
       stop = true;
-      clearInterval(interval);
+      cancel();
       setOthersHere([]);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- refs and setters come from useWorkspaceState, so they are stable

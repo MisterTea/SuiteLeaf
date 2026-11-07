@@ -74,11 +74,17 @@ async fn an_edit_from_another_generation_is_refused_as_stale_and_not_stored() {
         .await;
     let again = cluster.editors(0, &notes, &["maya", "sam"]).await;
     let next = again[0].generation();
-    assert!(next > generation, "the shared room kept generation {generation}");
+    assert!(
+        next > generation,
+        "the shared room kept generation {generation}"
+    );
     // Sam's edit from the first room cannot be placed in this one.
     edit_in(&again[1], "old-2", &old, generation);
     wait_reply(&again[1], "reject", "old-2").await;
     assert_eq!(again[1].reject_reason().as_deref(), Some("stale"));
     let text = again[0].paragraphs().join("\n");
-    assert!(!text.contains("Tomatoes are gone"), "a stale edit reached the room: {text}");
+    assert!(
+        !text.contains("Tomatoes are gone"),
+        "a stale edit reached the room: {text}"
+    );
 }

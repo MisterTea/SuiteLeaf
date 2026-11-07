@@ -1,5 +1,16 @@
-FROM rust:1-bookworm AS rust
+FROM rust:1-bookworm AS chef
+RUN cargo install cargo-chef --locked --version 0.1.78
 WORKDIR /src
+
+FROM chef AS planner
+COPY Cargo.toml Cargo.lock ./
+COPY crates crates
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS rust
+# The recipe changes only with dependency manifests, not application edits.
+COPY --from=planner /src/recipe.json recipe.json
+RUN cargo chef cook --locked --release --package suiteleaf-node --recipe-path recipe.json
 COPY Cargo.toml Cargo.lock ./
 COPY crates crates
 COPY services/auth/schema.json services/auth/schema.json
@@ -9,11 +20,17 @@ FROM node:24-bookworm AS web
 WORKDIR /src
 ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1 NODE_LLAMA_CPP_SKIP_DOWNLOAD=true
 COPY package.json package-lock.json ./
+COPY apps/desktop/package.json apps/desktop/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY packages/core/package.json packages/core/package.json
+COPY services/ai/package.json services/ai/package.json
+COPY services/auth/package.json services/auth/package.json
+RUN npm ci --no-audit --no-fund
 COPY apps apps
 COPY packages packages
 COPY services services
 ENV VITE_SUITELEAF_SERVER=1
-RUN npm ci --no-audit --no-fund && npm run build:web && npm run build:auth
+RUN npm run build:web && npm run build:auth
 
 FROM node:24-bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { drive, type DriveItem, type DriveRole, type ShareNotice } from "../node-client";
 import { accessLabel } from "./roles";
+import { visiblePoll } from "./visible-poll";
 
 /** The title people say out loud, without the SuiteLeaf extension. */
 export function sharedFileTitle(name: string): string {
@@ -40,15 +41,15 @@ export function ShareNotices({
       try {
         const next = await drive.notices();
         if (!stop) setNotices(next);
-      } catch {
+      } catch (error) {
         // Keep the last list. The next poll retries.
+        throw error;
       }
     };
-    void tick();
-    const timer = setInterval(() => void tick(), 1000);
+    const cancel = visiblePoll(tick, 30_000);
     return () => {
       stop = true;
-      clearInterval(timer);
+      cancel();
     };
   }, []);
 

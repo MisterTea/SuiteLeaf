@@ -203,10 +203,7 @@ impl LiveClient {
                     .get("joined")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
-                inner.seed_requested = value
-                    .get("seed")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
+                inner.seed_requested = value.get("seed").and_then(|v| v.as_bool()).unwrap_or(false);
                 inner.generation = value
                     .get("generation")
                     .and_then(|v| v.as_i64())

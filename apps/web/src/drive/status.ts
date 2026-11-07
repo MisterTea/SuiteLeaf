@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { visiblePoll } from "./visible-poll";
 
 /** What a server reports about the rest of its cluster. */
 export interface ServerSync {
@@ -41,17 +42,15 @@ export function useServerSync(url: string, every = 4000) {
   const [sync, setSync] = useState<ServerSync | null>(null);
   useEffect(() => {
     let alive = true;
-    const poll = () => {
-      if (document.visibilityState === "hidden") return;
-      void serverSync(url).then((next) => alive && setSync(next));
+    const poll = async () => {
+      const next = await serverSync(url);
+      if (alive) setSync(next);
+      if (!next) throw new Error("Server status is unavailable");
     };
-    poll();
-    const timer = setInterval(poll, every);
-    addEventListener("focus", poll);
+    const stop = visiblePoll(poll, every);
     return () => {
       alive = false;
-      clearInterval(timer);
-      removeEventListener("focus", poll);
+      stop();
     };
   }, [url, every]);
   return sync;

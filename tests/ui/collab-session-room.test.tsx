@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
 import { mirrorLiveEdit, shouldSeedDocument, useDocumentRoom } from "../../apps/web/src/collab/session";
 import type { DriveRole } from "../../apps/web/src/node-client";
+import { hasRoomChannel, roomPresence, ROOM_FILE_CHANGED } from "../../apps/web/src/collab/room-channel";
 
 const fake = vi.hoisted(() => ({
   session: { url: "http://127.0.0.1:8787", user: { id: "maya", name: "Maya" } } as null | {
@@ -142,6 +143,23 @@ afterEach(() => {
 });
 
 describe("document room", () => {
+  it("uses advertised socket notifications and removes the channel on disconnect", async () => {
+    const view = render(<Probe />);
+    await joined({ notifications: true });
+    expect(hasRoomChannel("file-1")).toBe(true);
+    const pending = roomPresence("file-1", true);
+    expect(socket().sent.at(-1)).toEqual({ type: "presence", editing: true });
+    socket().receive({ type: "presence", people: [{ name: "Sam", editing: false }] });
+    expect(await pending).toEqual([{ name: "Sam", editing: false }]);
+    const changed = vi.fn();
+    window.addEventListener(ROOM_FILE_CHANGED, changed);
+    socket().receive({ type: "file-changed" });
+    expect(changed).toHaveBeenCalledTimes(1);
+    window.removeEventListener(ROOM_FILE_CHANGED, changed);
+    act(() => socket().close());
+    expect(hasRoomChannel("file-1")).toBe(false);
+    view.unmount();
+  });
   it("stays closed for a local file or a missing role", () => {
     render(<Probe role="local" />);
     render(<Probe role={null} />);
@@ -387,12 +405,45 @@ describe("document room", () => {
       window.dispatchEvent(new KeyboardEvent("keydown"));
     });
     expect(socket().types()).not.toContain("activity");
+    expect(socket().readyState).toBe(FakeSocket.CLOSED);
+    setVisibility("visible");
+    await joined();
+    expect(FakeSocket.instances).toHaveLength(2);
     setVisibility("visible");
     expect(socket().sent.at(-1)).toEqual({ type: "join", protocol: 1 });
     act(() => {
       window.dispatchEvent(new Event("pointerdown"));
     });
     expect(socket().sent.at(-1)).toEqual({ type: "activity" });
+  });
+
+  it("keeps background edits connected until acknowledged, then suspends without retrying", async () => {
+    render(<Probe />);
+    await joined();
+    const doc = spies.onDoc.mock.calls.at(-1)![0] as Y.Doc;
+    act(() => doc.getText("pending").insert(0, "keep this edit"));
+    const update = socket().sent.find((message) => message.type === "update")!;
+    setVisibility("hidden");
+    expect(socket().readyState).toBe(FakeSocket.OPEN);
+    socket().receive({ type: "ack", id: update.id });
+    expect(socket().readyState).toBe(FakeSocket.CLOSED);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(FakeSocket.instances).toHaveLength(1);
+    // An edit arriving from a pending local operation must still be delivered.
+    act(() => doc.getText("pending").insert(0, "another edit "));
+    await vi.waitFor(() => expect(FakeSocket.instances).toHaveLength(2));
+    await joined();
+    expect(socket().types()).toContain("update");
+  });
+
+  it("does not open an idle hidden file until the page becomes visible", async () => {
+    setVisibility("hidden");
+    render(<Probe />);
+    await Promise.resolve();
+    expect(FakeSocket.instances).toHaveLength(0);
+    setVisibility("visible");
+    await joined();
+    expect(FakeSocket.instances).toHaveLength(1);
   });
 
   it("reconnects when the tab becomes visible with no open socket", async () => {

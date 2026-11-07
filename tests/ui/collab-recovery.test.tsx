@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
 import { useRef, useState } from "react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import * as Y from "yjs";
 import { useDocumentRoom } from "../../apps/web/src/collab/session";
 
@@ -66,10 +66,15 @@ function Probe({ onDoc }: { onDoc: (doc: Y.Doc | null) => void }) {
   return <p role="status">{notice}</p>;
 }
 
+beforeEach(() => {
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+});
+
 afterEach(() => {
   cleanup();
   FakeSocket.instances = [];
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   try {
     sessionStorage.clear();
   } catch {
