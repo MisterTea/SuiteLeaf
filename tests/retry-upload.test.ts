@@ -28,6 +28,56 @@ function job(itemId: string, revision: string, nextAttemptAt: number): UploadJob
 }
 
 describe("retry one queued upload", () => {
+  it("loads the full cached file before checking whether a failed upload already succeeded", async () => {
+    const beds = record("beds", "2026-10-31T19:00:00.000Z", "Beds");
+    const catalog = { ...beds, file: { ...beds.file, content: undefined } } as unknown as FileRecord;
+    const queue = new UploadQueue(memoryUploadStore([job("beds", beds.file.updatedAt, 0)]));
+    const result = await retryQueuedFile("beds", {
+      jobs: () => queue.jobs(), records: async () => [catalog],
+      load: async (id) => { expect(id).toBe(beds.file.id); return beds; },
+      read: async () => ({ text: serializeFile(beds.file), versionId: "v9" }),
+      upload: async () => { throw new Error("must not upload"); },
+      save: async () => undefined,
+      succeed: (id, revision) => queue.succeed(id, revision),
+      fail: () => { throw new Error("must not fail"); },
+    });
+    expect(result).toBe("already");
+    expect(queue.jobs()).toEqual([]);
+  });
+
+  it("clears an old failure when the newer local revision is already stored on SuiteDrive", async () => {
+    const beds = record("beds", "2026-10-31T19:00:00.000Z", "Beds");
+    const queue = new UploadQueue(memoryUploadStore([job("beds", "2026-10-31T18:00:00.000Z", 50)]));
+    const result = await retryQueuedFile("beds", {
+      jobs: () => queue.jobs(),
+      records: async () => [beds],
+      read: async () => ({ text: serializeFile(beds.file), versionId: "v9" }),
+      upload: async () => { throw new Error("An obsolete job must not overwrite the server"); },
+      save: async (saved) => {
+        expect(saved.drive).toMatchObject({ versionId: "v9", syncedAt: beds.file.updatedAt });
+      },
+      succeed: (id, revision) => queue.succeed(id, revision),
+      fail: () => { throw new Error("should not fail"); },
+    });
+    expect(result).toBe("already");
+    expect(queue.jobs()).toEqual([]);
+  });
+
+  it("records local cache failures instead of leaving Retry rejected without a result", async () => {
+    const queue = new UploadQueue(memoryUploadStore([job("beds", "rev", 0)]));
+    const result = await retryQueuedFile("beds", {
+      jobs: () => queue.jobs(),
+      records: async () => { throw new Error("A stored file is missing a data chunk."); },
+      read: async () => { throw new Error("must not read"); },
+      upload: async () => { throw new Error("must not upload"); },
+      save: async () => undefined,
+      succeed: () => { throw new Error("must not clear the job"); },
+      fail: (id, revision, error) => queue.fail(id, revision, error, 0),
+    });
+    expect(result).toBe("failed");
+    expect(queue.get("beds")?.failure?.kind).toBe("other");
+  });
+
   it("uploads the named file and leaves the other file on its schedule", async () => {
     const beds = record("beds", "2026-10-31T18:00:00.000Z", "Beds");
     const paths = record("paths", "2026-10-31T18:05:00.000Z", "Paths");

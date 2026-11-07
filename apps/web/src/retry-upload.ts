@@ -25,16 +25,16 @@ export function queuedRecord(records: FileRecord[], job: UploadJob): FileRecord 
 export async function retryQueuedFile(itemId: string, deps: RetryDeps): Promise<RetryResult> {
   const job = deps.jobs().find((item) => item.itemId === itemId);
   if (!job) return "absent";
-  let record = queuedRecord(await deps.records(), job);
-  if (!record?.drive) return "missing";
-  if (record.file.content === undefined && deps.load) {
-    const loaded = await deps.load(record.file.id);
-    if (loaded) record = loaded;
-  }
-  const drive = record.drive;
-  if (!drive) return "missing";
-  const body = serializeFile(record.file);
   try {
+    let record = (await deps.records()).find((record) => record.drive?.itemId === itemId);
+    if (!record?.drive) return "missing";
+    if (record.file.content === undefined && deps.load) {
+      const loaded = await deps.load(record.file.id);
+      if (loaded) record = loaded;
+    }
+    const drive = record.drive;
+    if (!drive || drive.itemId !== itemId) return "missing";
+    const body = serializeFile(record.file);
     const remote = await deps.read(job.itemId);
     if (sameUploadBody(body, remote.text)) {
       await deps.save({
@@ -44,6 +44,10 @@ export async function retryQueuedFile(itemId: string, deps: RetryDeps): Promise<
       deps.succeed(job.itemId, job.revision);
       return "already";
     }
+    // Collaboration may have saved a newer local revision since this job
+    // failed. Verify already-stored bytes above, but never upload that newer
+    // revision on behalf of an old queued job.
+    if (record.file.updatedAt !== job.revision) return "missing";
     const link = await deps.upload(record.file, drive);
     await deps.save({ ...record, drive: link });
     deps.succeed(job.itemId, job.revision);

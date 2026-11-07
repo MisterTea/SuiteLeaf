@@ -18,6 +18,42 @@ import {
 } from "../apps/web/src/upload-queue";
 
 describe("SuiteDrive upload queue", () => {
+  it("keeps a valid retry while ignoring damaged persisted jobs", () => {
+    const valid = { itemId: "beds", revision: "rev", bytes: 4, attempts: 1, nextAttemptAt: 0 };
+    const damaged = [null, {}, { ...valid, revision: "" }, { ...valid, bytes: -1 },
+      { ...valid, attempts: -1 }, { ...valid, nextAttemptAt: "bad" },
+      { ...valid, failure: null }, { ...valid, failure: { kind: "unknown", message: "bad", remedy: "bad" } }];
+    const store = browserUploadStore({
+      getItem: () => JSON.stringify([...damaged, valid]),
+      setItem: () => undefined,
+    });
+    expect(store.read().map((job) => job.itemId)).toEqual(["beds"]);
+    for (const raw of ["{}", "broken JSON"]) {
+      expect(browserUploadStore({ getItem: () => raw, setItem: () => undefined }).read()).toEqual([]);
+    }
+  });
+
+  it("does not call local or unreadable-response errors a network outage", () => {
+    for (const error of [
+      new SyntaxError("Unexpected token < in JSON at secret-value"),
+      new Error("That upload does not continue the saved part."),
+      new Error("A stored file is missing a data chunk."),
+      new TypeError("Cannot read properties of undefined"),
+      undefined,
+    ]) {
+      const failure = classifyUploadFailure(error);
+      expect(failure.kind).toBe("other");
+      expect(failure.remedy).not.toContain("reachable");
+      expect(JSON.stringify(failure)).not.toContain("secret-value");
+    }
+  });
+
+  it.each(["Failed to fetch", "Load failed", "fetch failed", "Network request failed"])(
+    "recognizes the browser transport failure %s", (reported) => {
+      expect(classifyUploadFailure(new TypeError(reported)).kind).toBe("network");
+    },
+  );
+
   it("keeps one job per file and does not reset attempts for the same revision", () => {
     const queue = new UploadQueue(memoryUploadStore());
     const first = queue.enqueue("a", "rev-1", 12, 0);

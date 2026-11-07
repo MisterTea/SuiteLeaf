@@ -152,7 +152,9 @@ export function classifyUploadFailure(error: unknown): UploadFailure {
       remedy: "Reload the SuiteDrive version or save a copy. Retrying would not replace the other save.",
     };
   }
-  if (status === undefined || /unreachable|offline|network|failed to fetch/i.test(reported)) {
+  // Local storage, serialization, and response parsing errors also lack an
+  // HTTP status. Only a transport failure means the server was unreachable.
+  if (/unreachable|offline|network|failed to fetch|load failed|fetch failed/i.test(reported) || name === "NetworkError") {
     return {
       kind: "network",
       message: "SuiteDrive could not be reached.",
