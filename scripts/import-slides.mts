@@ -95,9 +95,13 @@ async function run() {
     await sql`DELETE FROM drive_item WHERE "headVersionId" IS NULL AND kind != 'folder'`;
 
     let fileSucceeded = false;
-    for (let fileAttempt = 1; fileAttempt <= 2; fileAttempt++) {
+    for (let fileAttempt = 1; fileAttempt <= 3; fileAttempt++) {
       if (fileAttempt > 1) {
-        console.log(`Retrying upload for ${filename} (attempt ${fileAttempt})...`);
+        console.log(`Waiting 20s before retry for ${filename} (attempt ${fileAttempt})...`);
+        await page.waitForTimeout(20000);
+        await sql`DELETE FROM drive_upload_chunk WHERE "itemId" IN (SELECT id FROM drive_item WHERE "headVersionId" IS NULL AND kind != 'folder')`;
+        await sql`DELETE FROM drive_upload WHERE id IN (SELECT id FROM drive_item WHERE "headVersionId" IS NULL AND kind != 'folder')`;
+        await sql`DELETE FROM drive_item WHERE "headVersionId" IS NULL AND kind != 'folder'`;
         await page.goto("https://suiteleaf.vercel.app/#/");
         await page.waitForTimeout(3000);
       }
@@ -145,7 +149,7 @@ async function run() {
     }
 
     if (!fileSucceeded) {
-      throw new Error(`Failed to upload ${filename} after 2 attempts`);
+      throw new Error(`Failed to upload ${filename} after 3 attempts`);
     }
 
     // Verify it is in DB

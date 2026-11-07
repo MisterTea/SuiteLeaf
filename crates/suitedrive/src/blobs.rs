@@ -215,6 +215,9 @@ impl BlobStore {
     /// Blobs still needed to assemble `content` locally. Chunks are unknown
     /// until the manifest arrives, so a missing manifest is reported alone.
     pub fn missing(&self, content: &Hash) -> Result<Vec<Hash>> {
+        if self.remote.is_some() {
+            return Ok(Vec::new());
+        }
         let Some(manifest) = self.get(content)? else {
             return Ok(vec![*content]);
         };

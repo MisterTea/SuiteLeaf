@@ -14,6 +14,7 @@ const fake = vi.hoisted(() => ({
 vi.mock("@vercel/blob", () => ({
   ...fake,
   BlobNotFoundError: class BlobNotFoundError extends Error {},
+  BlobServiceRateLimited: class BlobServiceRateLimited extends Error {},
 }));
 vi.mock("ai", () => ({ streamText: fake.streamText }));
 vi.mock("@ai-sdk/gateway", () => ({

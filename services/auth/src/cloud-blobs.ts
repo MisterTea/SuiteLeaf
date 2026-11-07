@@ -2,7 +2,15 @@ import { timingSafeEqual } from "node:crypto";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { BlobNotFoundError, del, get, head, list, put } from "@vercel/blob";
+import {
+  BlobNotFoundError,
+  BlobServiceRateLimited,
+  del,
+  get,
+  head,
+  list,
+  put,
+} from "@vercel/blob";
 
 const prefix = "suiteleaf/objects/";
 export function acceptsBridgeToken(
@@ -23,13 +31,26 @@ export function blobPath(hash: string): string | null {
 }
 
 async function exists(path: string) {
-  try {
-    await head(path);
-    return true;
-  } catch (error) {
-    if (error instanceof BlobNotFoundError) return false;
-    throw error;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await head(path);
+      return true;
+    } catch (error) {
+      if (error instanceof BlobNotFoundError) return false;
+      if (
+        attempt < 2 &&
+        (error instanceof BlobServiceRateLimited ||
+          (error as { status?: number })?.status === 429)
+      ) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, 1000 * (attempt + 1)),
+        );
+        continue;
+      }
+      throw error;
+    }
   }
+  return false;
 }
 
 /** This route is loopback-only and never mounted on the public Axum router. */
@@ -95,7 +116,7 @@ export async function cloudBlobRequest(
     }
     if (!(await exists(path))) {
       let lastError: unknown;
-      for (let attempt = 0; attempt < 3; attempt++) {
+      for (let attempt = 0; attempt < 4; attempt++) {
         try {
           await put(path, Buffer.concat(chunks), {
             access: "private",
@@ -111,10 +132,13 @@ export async function cloudBlobRequest(
             lastError = null;
             break;
           }
-          if (attempt < 2) {
-            await new Promise((resolve) =>
-              setTimeout(resolve, 300 * (attempt + 1)),
-            );
+          if (attempt < 3) {
+            const delay =
+              error instanceof BlobServiceRateLimited ||
+              (error as { status?: number })?.status === 429
+                ? 1500 * (attempt + 1)
+                : 400 * (attempt + 1);
+            await new Promise((resolve) => setTimeout(resolve, delay));
           }
         }
       }

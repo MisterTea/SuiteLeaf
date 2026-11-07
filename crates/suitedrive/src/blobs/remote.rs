@@ -70,7 +70,7 @@ impl RemoteBlobs {
         let mut last_err = anyhow::anyhow!("Document storage is unavailable.");
         for attempt in 0..4 {
             if attempt > 0 {
-                std::thread::sleep(Duration::from_millis(500 * (1 << (attempt - 1))));
+                std::thread::sleep(Duration::from_millis(1000 * (1 << (attempt - 1))));
             }
             let mut request = self
                 .client
@@ -88,7 +88,10 @@ impl RemoteBlobs {
                     {
                         return Ok(response);
                     }
-                    if response.status().is_server_error() && attempt < 3 {
+                    if (response.status().is_server_error()
+                        || response.status() == StatusCode::TOO_MANY_REQUESTS)
+                        && attempt < 3
+                    {
                         continue;
                     }
                     bail!("Document storage operation failed ({}).", response.status());
