@@ -743,6 +743,23 @@ describe("the live room", () => {
     expect(editorProps().collabDoc).toBe(doc);
   });
 
+  it("uses CRDT instead of full document uploads when collabDoc is active", async () => {
+    const plan = store("slide", "Deck");
+    await open(plan);
+    const doc = new Y.Doc();
+    act(() => room().onDoc(doc));
+    expect(editorProps().collabDoc).toBe(doc);
+
+    const nextContent = { ...plan.file.content, slideOrder: ["s1", "s2"] };
+    act(() => editorProps().onChange(nextContent, { kind: "slide", added: ["s2"] }));
+    await advance(2000);
+
+    expect(uploadQueue.get("item-1")).toBeUndefined();
+    expect(saved(plan.file.id).file.content).toEqual(nextContent);
+    expect(saved(plan.file.id).drive?.syncedAt).toBe(saved(plan.file.id).file.updatedAt);
+    expect(status()).toBe("Saved to SuiteDrive");
+  });
+
   it("adopts a newer file after working alone again, or compacts the session", async () => {
     const plan = store();
     await open(plan);

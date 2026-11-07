@@ -66,6 +66,7 @@ pub(crate) struct ClientInner {
     pub(crate) generation: i64,
     pub(crate) reject_reason: Option<String>,
     pub(crate) reply: Option<(String, String)>,
+    pub(crate) seed_requested: bool,
     pub(crate) caret: Option<(String, u64, u64)>,
     sheet: Option<(String, String, u64, u64, u64, u64)>,
     slide: Option<(String, String, Option<String>)>,

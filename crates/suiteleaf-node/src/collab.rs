@@ -97,8 +97,6 @@ impl Rooms {
         // A viewer joins the same room and receives its text. `may_apply` still
         // ignores a viewer's edit.
         let id = presence_id(item, &user.id);
-        let writers = self.writers(item)?;
-        let already = writers.iter().any(|row| row.user_id == user.id);
         self.db.transact(|tx| {
             tx.upsert(
                 "drive_presence",
@@ -115,11 +113,10 @@ impl Rooms {
                 ],
             )
         })?;
-        let count = if already {
-            writers.len()
-        } else {
-            writers.len() + 1
-        };
+        let has_editor = role >= Role::Editor
+            || self.occupants(item)?.iter().any(|person| {
+                matches!(person.role.as_str(), "editor" | "owner")
+            });
         // One guard at a time. `std::sync::Mutex` is not reentrant, and a
         // second lock on this thread never returns.
         let promoted = {
@@ -128,7 +125,7 @@ impl Rooms {
                 live.insert(item.to_owned(), self.restore_live(item)?);
             }
             let room = live.get_mut(item).expect("room was just stored");
-            if count >= 2 && room.mode == "solo" {
+            if has_editor && room.mode == "solo" {
                 room.mode = "multiuser";
                 room.generation += 1;
                 Some(room.generation)
@@ -850,6 +847,7 @@ impl Rooms {
 }
 
 struct Presence {
+    #[allow(dead_code)]
     user_id: String,
 }
 

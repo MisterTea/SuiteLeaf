@@ -89,6 +89,7 @@ impl LiveClient {
             generation: 0,
             reject_reason: None,
             reply: None,
+            seed_requested: false,
             caret: None,
             sheet: None,
             slide: None,
@@ -202,6 +203,10 @@ impl LiveClient {
                     .get("joined")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
+                inner.seed_requested = value
+                    .get("seed")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 inner.generation = value
                     .get("generation")
                     .and_then(|v| v.as_i64())
@@ -252,6 +257,10 @@ impl LiveClient {
 
     pub(crate) fn reject_reason(&self) -> Option<String> {
         self.state.lock().expect("client").reject_reason.clone()
+    }
+
+    pub(crate) fn seed_requested(&self) -> bool {
+        self.state.lock().expect("client").seed_requested
     }
 
     pub(crate) fn renewed(&self) -> u64 {

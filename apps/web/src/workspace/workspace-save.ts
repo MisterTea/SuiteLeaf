@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from "react";
 import { cloneJson, readLibraryMarks, serializeFile } from "@suiteleaf/core";
 import { storage } from "../storage";
-import { recordSaveStatus } from "../save-state";
+import { recordSaveStatus, unackedEditCount } from "../save-state";
 import { retriesAutomatically, sameUploadBody, sendUploadSpans, uploadDelay, uploadQueue } from "../upload-queue";
 import { DriveConflict, drive, getSession, uploadDriveFile } from "../node-client";
 import { uploadDriveSpan } from "../drive/upload-span";
@@ -32,7 +32,7 @@ export function useWorkspaceSave(ws: WorkspaceState) {
     setRecord, setError, setStatus, setSyncRemedy, current, version, savedVersion,
     queue, timer, actions, alive, saveError, driveQueue, driveTimer,
     driveConflictRef, driveSyncing, driveGeneration, snapshotExplicit, canSaveRef,
-    setDriveConflict,
+    setDriveConflict, collabDocRef,
   } = ws;
   /** Upload the current file to SuiteDrive as a new version. */
   const syncDrive = useCallback(async () => {
@@ -40,6 +40,7 @@ export function useWorkspaceSave(ws: WorkspaceState) {
     driveTimer.current = undefined;
     if (!canSaveRef.current) return;
     if (!current.current?.drive || driveConflictRef.current) return;
+    if (collabDocRef.current) return;
     if (!getSession()) {
       setStatus(
         recordSaveStatus(current.current, { desktop: !!window.suiteleaf, signedIn: false }).label,
@@ -185,8 +186,21 @@ export function useWorkspaceSave(ws: WorkspaceState) {
       const explicit = snapshotExplicit.current;
       snapshotExplicit.current = false;
       if (alive.current && current.current.drive && !driveConflictRef.current) {
-        clearTimeout(driveTimer.current);
-        driveTimer.current = setTimeout(() => void syncDrive(), 1500);
+        if (collabDocRef.current) {
+          clearTimeout(driveTimer.current);
+          driveTimer.current = undefined;
+          current.current = {
+            ...current.current,
+            drive: {
+              ...current.current.drive,
+              syncedAt: snapshot.updatedAt,
+            },
+          };
+          await storage.save(current.current);
+        } else {
+          clearTimeout(driveTimer.current);
+          driveTimer.current = setTimeout(() => void syncDrive(), 1500);
+        }
       } else if (alive.current && !current.current.drive) {
         void noteLocalSnapshot(snapshot, explicit).catch(() => {});
       }
@@ -195,9 +209,10 @@ export function useWorkspaceSave(ws: WorkspaceState) {
           recordSaveStatus(current.current, {
             desktop: !!window.suiteleaf,
             conflict: !!driveConflictRef.current,
-            syncing: !!current.current.drive && !driveConflictRef.current,
+            syncing: !collabDocRef.current && !!current.current.drive && !driveConflictRef.current,
             signedIn: !!getSession(),
             online: navigator.onLine,
+            unacked: unackedEditCount(),
           }).label,
         );
         window.suiteleaf?.setDirty(false);

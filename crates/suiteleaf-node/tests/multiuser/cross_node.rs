@@ -234,9 +234,9 @@ async fn formatted_text_a_table_and_an_image_converge_on_another_node() {
         )
         .await;
     let again = cluster.connect(1, &notes, "ravi").await;
-    // A node that already compacted the room hands a lone person a solo room,
-    // and that person opens the saved file checked above.
-    if again.mode() == "solo" {
+    // A node that already compacted the room hands a lone person a room to seed
+    // (or a solo room), and that person opens the saved file checked above.
+    if again.mode() == "solo" || again.seed_requested() {
         drop(again);
         cluster.assert_alive();
         return;

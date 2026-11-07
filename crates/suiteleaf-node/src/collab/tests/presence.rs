@@ -164,11 +164,21 @@ fn a_solo_join_returns_instead_of_locking_the_room_twice() {
             name: Some("Ann".into()),
             role: None,
         };
+        let viewer = AuthUser {
+            id: "val".into(),
+            email: None,
+            name: Some("Val".into()),
+            role: None,
+        };
+        let view_first = rooms.join("view-file", &viewer, Role::Viewer, 1).unwrap();
+        assert!(view_first.joined);
+        assert_eq!(view_first.mode, "solo");
+
         let first = rooms.join("file", &ann, Role::Editor, 1).unwrap();
         assert!(first.joined);
-        assert_eq!(first.mode, "solo");
+        assert_eq!(first.mode, "multiuser");
         let again = rooms.join("file", &ann, Role::Editor, 2).unwrap();
-        assert_eq!(again.mode, "solo");
+        assert_eq!(again.mode, "multiuser");
         let sam = AuthUser {
             id: "sam".into(),
             email: None,
@@ -349,4 +359,72 @@ fn a_presence_time_that_is_not_a_time_does_not_drop_the_edit() {
     let room = live.get("file").expect("room");
     assert_eq!(room.mode, "multiuser");
     assert_eq!(paragraph_texts(&room.doc), vec!["Beds".to_string()]);
+}
+
+#[test]
+fn solo_editor_uses_crdt_and_compacts_on_leave() {
+    use crate::{auth::AuthUser, schema::node_schema};
+    use suitedrive::Principal;
+    use yrs::{Array, TextPrelim, Transact};
+
+    let dir = tempfile::tempdir().unwrap();
+    let db = Arc::new(
+        Db::open_in_memory(
+            suiteleaf_net::identity::ed25519::Keypair::generate(),
+            node_schema(None).unwrap(),
+        )
+        .unwrap(),
+    );
+    let drive = Drive::open(db.clone(), &dir.path().join("blobs")).unwrap();
+    let file = br#"{"format":"suiteleaf","version":1,"id":"f","kind":"doc","title":"Notes","createdAt":"2026-10-30T18:00:00.000Z","updatedAt":"2026-10-30T18:00:00.000Z","content":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"North bed"}]}]}}"#;
+    let who = Principal {
+        id: "maya".into(),
+        admin: false,
+    };
+    let item = drive
+        .create(&who, None, "Notes.sldoc", "file", Some("application/json"))
+        .unwrap();
+    drive
+        .write(&who, &item.id, None, Some("application/json"), file)
+        .unwrap();
+    let rooms = Rooms::new(db, drive.clone());
+    let maya = AuthUser {
+        id: "maya".into(),
+        email: None,
+        name: Some("Maya".into()),
+        role: None,
+    };
+
+    let join = rooms.join(&item.id, &maya, Role::Editor, 1).unwrap();
+    assert!(join.joined);
+    assert_eq!(join.mode, "multiuser");
+    assert!(join.seed);
+
+    let doc = Doc::new();
+    let paragraphs = doc.get_or_insert_array("paragraphs");
+    let before = doc.transact().state_vector();
+    {
+        let mut txn = doc.transact_mut();
+        paragraphs.insert(&mut txn, 0, TextPrelim::new("Radishes planted"));
+    }
+    let update = doc.transact().encode_state_as_update_v1(&before);
+    assert!(
+        rooms
+            .apply_update(LiveUpdate {
+                item: &item.id,
+                user_id: "maya",
+                name: "Maya",
+                role: Role::Editor,
+                bytes: &update,
+                unit: "paragraph",
+                key: "0",
+                at: "2026-11-01T12:00:00.000Z",
+            })
+            .unwrap()
+    );
+
+    rooms.leave(&item.id, "maya", 2).unwrap();
+    let (_item, bytes) = drive.read(&who, &item.id, None).unwrap();
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(text.contains("Radishes planted"));
 }
