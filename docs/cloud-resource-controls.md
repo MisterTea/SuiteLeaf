@@ -32,4 +32,6 @@ node scripts/migrate-cloud.mjs .env.cloud.production.local
 
 The ignored-build script compares against `VERCEL_GIT_PREVIOUS_SHA`, covering all commits since the previous deployment. Docs, tests, workflow files, and desktop source changes can skip the cloud build. Workspace manifests and unknown inputs build conservatively. Missing history and first deployments always build; `VERCEL_FORCE_BUILD=1` overrides skipping.
 
+Git metadata must remain available in the Vercel checkout until the ignored build step runs; do not exclude `.git` in `.vercelignore`. The Docker context still excludes `.git` through `.dockerignore`. The project uses a fixed Standard build machine rather than the previous 30-core Turbo machine. Build CPU minutes count allocated cores times elapsed build minutes, so the smaller builder lowers the per-minute rate while caches limit rebuild work.
+
 Verify with the polling/component Vitest tests, the isolated Postgres suite, the multiuser Rust suite, the cloud integration suite, and a container build. Inspect cache hits in a subsequent build and compare unique startup identities, foreground/background API rates, and project-specific CPU/memory billing after rollout. Container log copies are broadcast across in-flight requests and must not be counted as separate starts.
