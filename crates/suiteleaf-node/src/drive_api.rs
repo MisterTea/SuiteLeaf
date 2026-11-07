@@ -38,7 +38,7 @@ use sharing::{
 use versions::{copy_version, name_version, restore_version, versions};
 
 /// Uploads are limited to the size of the largest native SuiteLeaf file.
-pub const MAX_UPLOAD: usize = 256 * 1024 * 1024;
+pub const MAX_UPLOAD: usize = 1024 * 1024 * 1024;
 
 pub struct NetTransport(pub NetHandle);
 

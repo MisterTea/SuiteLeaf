@@ -15,7 +15,7 @@ impl Drive {
         if !matches!(self.role(who,id)?,Some(role) if role>=Role::Editor) {
             return Err(DriveError::Forbidden);
         }
-        if total > 256 * 1024 * 1024
+        if total > 1024 * 1024 * 1024
             || chunk.len() > 1024 * 1024
             || start.checked_add(chunk.len()).is_none_or(|n| n > total)
         {

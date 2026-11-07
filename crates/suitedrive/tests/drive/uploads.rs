@@ -143,3 +143,20 @@ fn a_storage_budget_refuses_a_file_that_does_not_fit() {
     let (_item, bytes) = n.drive.read(&rosa, &file.id, None).unwrap();
     assert_eq!(bytes, b"beds");
 }
+
+#[test]
+fn an_upload_span_accepts_files_larger_than_256mb() {
+    let n = node();
+    let ann = user("ann");
+    let file = n
+        .drive
+        .create(&ann, None, "Large.sldoc", "file", None)
+        .unwrap();
+    let total = 350 * 1024 * 1024;
+    let res = n
+        .drive
+        .write_span(&ann, &file.id, None, Some("text/plain"), 0, total, b"head");
+    assert!(res.is_ok());
+    assert!(res.unwrap().is_none());
+}
+

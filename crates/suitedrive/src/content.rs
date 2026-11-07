@@ -44,7 +44,7 @@ pub(crate) fn load_partials(dir: &Path) -> BTreeMap<String, OpenUpload> {
         }
         let total = u64::from_le_bytes(bytes[..8].try_into().unwrap_or([0; 8])) as usize;
         let body = bytes[8..].to_vec();
-        if total == 0 || total > 256 * 1024 * 1024 || body.len() >= total {
+        if total == 0 || total > 1024 * 1024 * 1024 || body.len() >= total {
             continue;
         }
         map.insert(id, OpenUpload { total, bytes: body });
@@ -188,7 +188,7 @@ impl Drive {
             let role = self.role(who, id)?;
             return Err(DriveError::Conflict(Box::new(self.to_item(&row, role)?)));
         }
-        if total > 256 * 1024 * 1024 || start > total || chunk.len() > total - start {
+        if total > 1024 * 1024 * 1024 || start > total || chunk.len() > total - start {
             return Err(DriveError::BadRequest(
                 "That upload does not continue the saved part.".into(),
             ));
