@@ -485,9 +485,6 @@ export function SlideCanvasStage({
       {slideComments.dock}
       </div>
 
-      <button type="button" className="mobile-speaker-notes-toggle" aria-expanded={showNotes} aria-controls="slide-speaker-notes" onClick={() => setShowNotes(!showNotes)}>
-        {showNotes ? "Hide speaker notes" : "Speaker notes"}
-      </button>
       <div id="slide-speaker-notes" className={`speaker-notes-pane${showNotes ? " open" : ""}`}>
         <div
           className="notes-drag-handle"

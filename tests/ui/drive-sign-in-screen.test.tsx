@@ -51,7 +51,9 @@ vi.mock("../../apps/web/src/ai/tools/cluster", () => ({
   signInSnapshot: (host: string) => `Sign in on ${host}`,
   signInTools: hoisted.signInTools,
 }));
-vi.mock("../../apps/web/src/ai/AgentSidebar", () => ({ AiButton: () => null }));
+vi.mock("../../apps/web/src/ai/AgentSidebar", () => ({
+  AiButton: () => <button aria-label="AI assistant">AI</button>,
+}));
 
 import { ConnectDialog, SignInScreen, useNodeSession } from "../../apps/web/src/drive/SignIn";
 
@@ -95,6 +97,7 @@ describe("SignInScreen", () => {
     const submit = screen.getByRole("button", { name: "Sign in" }) as HTMLButtonElement;
     await waitFor(() => expect(submit.disabled).toBe(false));
     expect(screen.getByRole("heading").textContent).toBe("Sign indrive.example");
+    expect(screen.queryByRole("button", { name: "AI assistant" })).toBeNull();
     fireEvent.change(screen.getByLabelText("Email or username"), { target: { value: " ada " } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "garden-path" } });
     fireEvent.submit(screen.getByRole("form", { name: "Sign in to SuiteLeaf" }));

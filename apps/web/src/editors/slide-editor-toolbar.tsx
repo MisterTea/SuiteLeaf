@@ -12,6 +12,7 @@ import {
   Printer,
   Redo2,
   Square,
+  StickyNote,
   Type,
   Undo2,
 } from "lucide-react";
@@ -50,6 +51,9 @@ export function SlidesToolbar({
   handleMediaUpload,
   printSlides,
   beginShow,
+  startCast,
+  castReason,
+  castError,
 }: Pick<DeckHistoryApi, "undo" | "redo"> &
   Pick<SlideOrderActions, "addSlide"> &
   Pick<
@@ -66,7 +70,7 @@ export function SlidesToolbar({
     | "handleImageUpload"
   > &
   Pick<SlideExports, "printSlides"> &
-  Pick<ShowControls, "beginShow"> & {
+  Pick<ShowControls, "beginShow" | "startCast" | "castReason" | "castError"> & {
     state: SlidesEditorState;
     readOnly: boolean;
     activeSlide: Slide;
@@ -76,7 +80,7 @@ export function SlidesToolbar({
   }) {
   const {
     deck, panel, setPanel, accessOpen, setAccessOpen, selectedElementId, marpOpen, setMarpOpen,
-    historyMarks, imageInputRef, audioInputRef, videoInputRef,
+    historyMarks, imageInputRef, audioInputRef, videoInputRef, showNotes, setShowNotes,
   } = state;
   return (
     <div
@@ -84,9 +88,18 @@ export function SlidesToolbar({
       role="toolbar"
       aria-label="Slides toolbar"
     >
-      <fieldset className="toolbar-edits" disabled={readOnly}>
       <div className="tool-group">
         <MenuSearchPill />
+        <Tool
+          label={showNotes ? "Hide speaker notes" : "Speaker notes"}
+          active={showNotes}
+          onClick={() => setShowNotes((open) => !open)}
+        >
+          <StickyNote size={16} aria-hidden="true" />
+        </Tool>
+      </div>
+      <fieldset className="toolbar-edits" disabled={readOnly}>
+      <div className="tool-group">
         <button
           type="button"
           className="menu-trigger theme-toggle"
@@ -312,11 +325,19 @@ export function SlidesToolbar({
                 >
                   Presenter view
                 </MenuItem>
+                <MenuItem
+                  synonyms={["cast", "chromecast", "present on TV"]}
+                  availability={() => castReason ?? true}
+                  onSelect={() => startCast(currentSlideIndex)}
+                >
+                  Cast…
+                </MenuItem>
               </Dropdown.Content>
             </Dropdown.Portal>
           </ReleaseDropdown>
         </div>
       </div>
+      {castError && !state.presenting ? <p role="alert">{castError}</p> : null}
     </div>
   );
 }

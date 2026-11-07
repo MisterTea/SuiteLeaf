@@ -3,6 +3,61 @@ import { createFile, serializeFile } from "../../packages/core/src/native-file";
 import { defaultPageSettings } from "../../packages/core/src/document-layout";
 import { readFile } from "node:fs/promises";
 
+test("Mobile shared presentation keeps the header compact with folder and edit details", async ({ page, isMobile }) => {
+  test.skip(!isMobile);
+  const file = createFile("slide", "Shared lecture");
+  const item = {
+    id: "mobile-lecture", name: file.title, kind: "file", role: "owner",
+    parentId: "lectures", parentName: "Lecture Slides", ownerId: "jason",
+    updatedAt: file.updatedAt, lastEditedAt: file.updatedAt,
+    lastAuthorName: "Jason Gauci", available: true,
+  };
+  await page.addInitScript(() => localStorage.setItem("suiteleaf:node-session", JSON.stringify({
+    url: location.origin, token: "layout-test", user: { id: "jason", name: "Jason Gauci" },
+  })));
+  await page.route("**/api/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const body = path === `/api/drive/items/${item.id}` ? item
+      : path.endsWith("/presence") ? { people: [] }
+      : path.endsWith("/notices") ? { notices: [] }
+      : path.endsWith("/folders") ? { folders: [] }
+      : path.endsWith("/items") ? { items: [] }
+      : {};
+    await route.fulfill({ json: body });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: /^New presentation/ }).waitFor();
+  await page.evaluate(async (record) => {
+    await new Promise<void>((resolve, reject) => {
+      const open = indexedDB.open("SuiteLeaf");
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => {
+        const db = open.result;
+        const tx = db.transaction("encoded", "readwrite");
+        tx.objectStore("encoded").put(record);
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onerror = () => reject(tx.error);
+      };
+    });
+  }, {
+    id: file.id, title: file.title, updatedAt: file.updatedAt, native: serializeFile(file),
+    drive: { nodeUrl: "http://localhost", itemId: item.id, name: file.title, syncedAt: file.updatedAt },
+  });
+  await page.goto(`/#/file/${file.id}`);
+  const header = page.locator(".workspace-header");
+  await expect(header.getByRole("button", { name: "Folder Lecture Slides" })).toBeVisible();
+  await expect(header.locator(".last-edited")).toContainText("Jason Gauci");
+  for (const [width, height] of [[320, 844], [390, 844], [700, 390]]) {
+    await page.setViewportSize({ width, height });
+    const bounds = (await header.boundingBox())!;
+    expect(bounds.height).toBeLessThanOrEqual(85);
+    expect((await header.locator(".back").boundingBox())!.y - bounds.y).toBeLessThanOrEqual(4);
+    const details = (await header.locator(".title-folder-row").boundingBox())!;
+    expect(details.y - bounds.y).toBeLessThanOrEqual(42);
+    await assertNoHorizontalScroll(page, `Shared presentation header at ${width}px`);
+  }
+});
+
 test("Mobile expanded formula editor preserves text proportions", async ({ page, isMobile }) => {
   test.skip(!isMobile);
   await page.goto("/");

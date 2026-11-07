@@ -404,12 +404,6 @@ body.agent-open .new-cards {
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
 }
 
-/* The assistant stays reachable while the person signs in. */
-.sign-in-tools {
-  position: absolute;
-  top: 16px;
-  right: 20px;
-}
 body.agent-open .sign-in-screen {
   margin-right: var(--agent-width);
 }

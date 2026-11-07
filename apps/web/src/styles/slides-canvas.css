@@ -644,6 +644,10 @@
   cursor: pointer;
 }
 .slide-video .slide-media-play {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
   margin: 0 8px 8px;
 }
 .slide-table table {

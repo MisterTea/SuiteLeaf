@@ -63,5 +63,13 @@ export default defineConfig({
   worker: {
     format: "es",
   },
-  build: { chunkSizeWarningLimit: 4000 },
+  build: {
+    chunkSizeWarningLimit: 4000,
+    rollupOptions: {
+      input: {
+        app: resolve(import.meta.dirname, "index.html"),
+        castReceiver: resolve(import.meta.dirname, "cast-receiver.html"),
+      },
+    },
+  },
 });

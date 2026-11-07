@@ -287,7 +287,9 @@ export function SlideShowOverlay({
         >
           <X size={15} /> Exit
         </button>
+        {controls.castConnected ? <button type="button" onClick={controls.stopCast}>Stop casting</button> : null}
       </div>
+      {controls.castError ? <p className="presenter-audience-error" role="alert">{controls.castError}</p> : null}
       {audienceError ? <p className="presenter-audience-error" role="alert">{audienceError}</p> : null}
     </div>
   );

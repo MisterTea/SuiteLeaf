@@ -51,6 +51,7 @@ import { SlideMenus } from "./workspace-slide-menus";
 import { DriveConflictBanner } from "./workspace-conflict";
 import { ImportNotes } from "./workspace-import-notes";
 import { WorkspaceEditor } from "./workspace-editor";
+import { FullscreenButton } from "./fullscreen-button";
 
 export function Workspace() {
   const ws = useWorkspaceState();
@@ -361,6 +362,7 @@ export function Workspace() {
               </button>
             ) : null}
             <AiButton />
+            <FullscreenButton />
             {mode.kind === "cluster" ? (
               <span
                 className="workspace-brand workspace-server"

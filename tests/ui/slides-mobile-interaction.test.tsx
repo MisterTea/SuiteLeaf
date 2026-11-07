@@ -192,8 +192,9 @@ it("cancels a hold when the user swipes or the pointer is canceled", () => {
   expect(screen.queryByRole("button", { name: "Done" })).toBeNull();
 });
 
-it("keeps speaker notes behind a button on mobile, retaining saved notes", () => {
+it.each([false, true])("toggles speaker notes from the toolbar icon, retaining saved notes (readOnly=%s)", (readOnly) => {
   const editor = openSlides({
+    readOnly,
     edit: (deck) => {
       deck.slides.a.notes = "Opening remarks";
     },
@@ -201,14 +202,23 @@ it("keeps speaker notes behind a button on mobile, retaining saved notes", () =>
   expect(
     screen.queryByPlaceholderText("Click to add speaker notes"),
   ).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Speaker notes" }));
+  const toggle = screen.getByRole("button", { name: "Speaker notes" });
+  expect(toggle.closest('[role="toolbar"]')?.getAttribute("aria-label")).toBe("Slides toolbar");
+  expect(toggle.textContent).toBe("");
+  expect(toggle.querySelector("svg")).not.toBeNull();
+  expect(toggle.getAttribute("aria-pressed")).toBe("false");
+  expect((toggle as HTMLButtonElement).disabled).toBe(false);
+  fireEvent.click(toggle);
+  expect(toggle.getAttribute("aria-pressed")).toBe("true");
   const notes = screen.getByPlaceholderText(
     "Click to add speaker notes",
   ) as HTMLTextAreaElement;
   expect(notes.value).toBe("Opening remarks");
-  fireEvent.change(notes, { target: { value: "Updated notes" } });
+  expect(notes.readOnly).toBe(readOnly);
+  if (!readOnly) fireEvent.change(notes, { target: { value: "Updated notes" } });
   fireEvent.click(screen.getByRole("button", { name: "Hide speaker notes" }));
-  expect(editor.deck().slides.a.notes).toBe("Updated notes");
+  expect(toggle.getAttribute("aria-pressed")).toBe("false");
+  expect(editor.deck().slides.a.notes).toBe(readOnly ? "Opening remarks" : "Updated notes");
   expect(
     screen.queryByPlaceholderText("Click to add speaker notes"),
   ).toBeNull();

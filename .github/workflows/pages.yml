@@ -46,6 +46,7 @@ jobs:
         env:
           # The demo is single-node mode: files stay in this browser's storage.
           VITE_SUITELEAF_DEMO: "1"
+          VITE_SUITELEAF_CAST_APP_ID: ${{ vars.VITE_SUITELEAF_CAST_APP_ID }}
 
       - name: Record deployed commit
         run: printf '%s\n' "$GITHUB_SHA" > apps/web/dist/deployment-version.txt

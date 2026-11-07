@@ -5,9 +5,6 @@
   flex-direction: column;
   max-height: 160px;
 }
-.mobile-speaker-notes-toggle {
-  display: none;
-}
 .slide-selection-mode {
   display: flex;
   align-items: center;
@@ -17,17 +14,6 @@
 }
 @media (max-width: 700px) {
   .slides-editor .format-hint-bar { display: none; }
-  .mobile-speaker-notes-toggle {
-    display: block;
-    align-self: flex-end;
-    flex-shrink: 0;
-    min-height: 36px;
-    margin: 0 8px 4px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--toolbar-bg);
-    color: var(--text-primary);
-  }
   .speaker-notes-pane:not(.open) { display: none; }
   .speaker-notes-pane .notes-drag-handle { display: none; }
   .slides-sidebar.selecting-slides { flex-wrap: wrap; }

@@ -1,0 +1,6 @@
+html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #000; }
+.cast-audience, .cast-waiting { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+.cast-waiting { color: #fff; font: 28px system-ui, sans-serif; }
+.cast-slide { position: relative; overflow: hidden; background: #fff; }
+.cast-slide .slide-still { width: 100%; height: 100%; }
+.cast-blank { position: absolute; inset: 0; z-index: 100; }

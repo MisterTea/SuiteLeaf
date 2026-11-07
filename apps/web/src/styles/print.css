@@ -15,7 +15,6 @@
   .slides-toolbar,
   .slides-sidebar,
   .speaker-notes-pane,
-  .mobile-speaker-notes-toggle,
   .marp-pane,
   .presenter-overlay {
     display: none !important;

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { filename, type Slide, type SlideFile } from "@suiteleaf/core";
-import { animationSequence } from "@suiteleaf/core/slide-motion";
+import { showAudienceHooks } from "./slide-show-audience";
+import { useSlideCast } from "./use-slide-cast";
+import type { MarpPages } from "./slide-marp-render";
 import { exportBinary } from "../storage";
 import {
   formatElapsed,
@@ -14,13 +16,8 @@ import { audienceLines, openAudienceScreen } from "./audience-screen";
 import { readMaster } from "./slide-master";
 import { transitionMs } from "./slide-theme";
 import {
-  animationEnterMs,
-  audienceClass,
-  audiencePhase,
   clickSteps,
-  exitConcealed,
   fadeOnClickIds,
-  hiddenParagraphIndexes,
   moveShowCursor,
   samePlace,
   shownSlideIndex,
@@ -33,7 +30,7 @@ import type { SlidesEditorState } from "./slide-editor-state";
 /** Starting, stepping, and ending the slideshow. */
 export function useShowControls(
   state: SlidesEditorState,
-  { file, marpDraft }: { file: SlideFile; marpDraft: RefObject<MarpDraft | null> },
+  { file, marpDraft, marpPages }: { file: SlideFile; marpDraft: RefObject<MarpDraft | null>; marpPages?: MarpPages | null },
 ) {
   const {
     deckRef, showCursorRef, setShowCursor, setShowSpeakerNotes, setBlankScreen, setShowStartedAt,
@@ -47,7 +44,7 @@ export function useShowControls(
   const showFullscreenRef = useRef(false);
   const overlayRef = useRef<HTMLDivElement>(null);
 
-  const beginShow = useCallback((fromIndex: number, withNotes?: boolean) => {
+  const beginShow = useCallback((fromIndex: number, withNotes?: boolean, fullscreen = true) => {
     marpDraft.current?.flush();
     const order = deckRef.current.slideOrder;
     const shown = (index: number) => deckRef.current.slides[order[index]]?.hidden !== true;
@@ -65,7 +62,7 @@ export function useShowControls(
     setPresenting(true);
     // Browsers only allow fullscreen from inside the click or key press.
     const root = document.documentElement;
-    if (!document.fullscreenElement && root.requestFullscreen) {
+    if (fullscreen && !document.fullscreenElement && root.requestFullscreen) {
       showFullscreenRef.current = true;
       root.requestFullscreen().then(
         () => {
@@ -79,6 +76,8 @@ export function useShowControls(
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the editor state's refs and setters are stable
   }, []);
+
+  const casting = useSlideCast(state, marpPages, beginShow);
 
   moveShowRef.current = (where) => {
     setBlankScreen(null);
@@ -101,6 +100,7 @@ export function useShowControls(
   };
 
   const endShow = useCallback(() => {
+    casting.stopCast();
     const recorder = recorderRef.current;
     recorderRef.current = null;
     setRecording(false);
@@ -117,9 +117,10 @@ export function useShowControls(
       if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the editor state's refs and setters are stable
-  }, [file.title]);
+  }, [file.title, casting.stopCast]);
 
   return {
+    ...casting,
     controlsVisible,
     setControlsVisible,
     idleTimerRef,
@@ -333,39 +334,7 @@ export function useShowPlayback(
   const elapsedLabel = formatElapsed(elapsedSeconds);
 
   /** The audience sees fade-on-click objects only once they are revealed. */
-  const audienceHooks = (slide: Slide | undefined): SlideFaceHooks => {
-    const sequence = animationSequence(slide?.elements ?? []);
-    const order = sequence.map((item) => item.id);
-    return {
-      box: (el) => {
-        const phase = exitConcealed(el.id, sequence, showCursor.revealed)
-          ? "hidden"
-          : audiencePhase(el, showCursor.revealed, order, showCursor.enteringId);
-        return {
-          className: ` ${audienceClass(phase, el.animation)}`,
-          props: {
-            "data-element-id": el.id,
-            ...(phase === "entering" || phase === "after"
-              ? { style: { animationDuration: `${animationEnterMs(el.animationDuration)}ms` } }
-              : {}),
-            ...(phase === "plain" ? {} : { "data-fade": phase === "hidden" ? "hidden" : "visible" }),
-            ...(phase === "hidden" ? { "aria-hidden": true } : {}),
-          },
-        };
-      },
-      before: (el) => {
-        const hidden = hiddenParagraphIndexes(el, sequence, showCursor.revealed);
-        if (!hidden.length) return undefined;
-        const css = hidden
-          .map(
-            (index) =>
-              `[data-element-id="${el.id}"] .slide-para[data-para-index="${index}"]{visibility:hidden}`,
-          )
-          .join("");
-        return <style>{css}</style>;
-      },
-    };
-  };
+  const audienceHooks = (slide: Slide | undefined): SlideFaceHooks => showAudienceHooks(slide, showCursor);
 
   const slideHeading = (slide: Slide) => slideTitleText(slide.elements, deck.master?.elements ?? []);
   const frame = showFrame({

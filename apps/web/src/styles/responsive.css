@@ -191,6 +191,11 @@
   .workspace-header {
     display: grid;
     grid-template-columns: auto auto auto minmax(0, 1fr);
+    /* Keep the action row compact even when the editor has spare height.
+       Folder and last-edit details each use only their content height. */
+    grid-template-rows: 40px;
+    grid-auto-rows: max-content;
+    align-content: start;
     align-items: center;
     column-gap: 2px;
     row-gap: 0;
@@ -222,6 +227,7 @@
     grid-row: 1;
     min-width: 0;
     flex-wrap: nowrap;
+    max-height: 40px;
     gap: 2px;
     max-width: 40vw;
     overflow-x: auto;
@@ -452,6 +458,7 @@
   }
   .save-status {
     flex-shrink: 0;
+    flex-wrap: nowrap;
     max-width: 72px;
     overflow: hidden;
     text-overflow: ellipsis;

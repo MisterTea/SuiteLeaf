@@ -209,7 +209,7 @@ export default function Slides({
   const { onElementMouseDown, onElementPointerDown, onElementPointerUp } = useElementDrag(state, { activeSlide, updateElement });
   const deckExports = useSlideExports(state, { file, marpDraft });
   const { printing, printSlides } = deckExports;
-  const showControls = useShowControls(state, { file, marpDraft });
+  const showControls = useShowControls(state, { file, marpDraft, marpPages });
   const { beginShow, endShow } = showControls;
   useSlidesAgentHost(state, { file, commit, applySelection, beginShow, endShow, ...deckExports });
 
@@ -279,6 +279,9 @@ export default function Slides({
         {...objects}
         printSlides={printSlides}
         beginShow={beginShow}
+        startCast={showControls.startCast}
+        castReason={showControls.castReason}
+        castError={showControls.castError}
         formatTools={
           <SlideFormatTools
             state={state}

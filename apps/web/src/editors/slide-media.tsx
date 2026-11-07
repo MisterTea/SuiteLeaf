@@ -1,4 +1,5 @@
-import { useEffect, useMemo, type MouseEvent } from "react";
+import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import { Play, Square } from "lucide-react";
 import type { SlideElement } from "@suiteleaf/core";
 
 /** A clip stored in the file. A blob address plays where a long data address does not. */
@@ -36,7 +37,13 @@ function playClip(event: MouseEvent<HTMLButtonElement>) {
   event.stopPropagation();
   const media =
     event.currentTarget.parentElement?.querySelector("audio, video");
-  if (media instanceof HTMLMediaElement) void media.play().catch(() => {});
+  if (!(media instanceof HTMLMediaElement)) return;
+  if (media instanceof HTMLVideoElement && !media.paused && !media.ended) {
+    media.pause();
+    media.currentTime = 0;
+  } else {
+    void media.play().catch(() => {});
+  }
 }
 
 /** A caption track for the spoken words. The media address is not included. */
@@ -48,6 +55,8 @@ export function captionTrack(caption: string): string {
 /** File name plus a play button. Video also shows the picture. */
 export function SlideMediaControls({ element }: { element: SlideElement }) {
   const video = element.type === "video";
+  const [playing, setPlaying] = useState(false);
+  const videoAction = playing ? "Stop video" : "Play video";
   const src = usePlayableUrl(element.src);
   const name = element.alt?.trim() || (video ? "Video" : "Audio");
   const caption = element.caption?.trim() ?? "";
@@ -62,6 +71,10 @@ export function SlideMediaControls({ element }: { element: SlideElement }) {
           poster={element.poster}
           preload="auto"
           playsInline
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+          onEnded={() => setPlaying(false)}
+          onEmptied={() => setPlaying(false)}
         >
           {track}
         </video>
@@ -70,10 +83,14 @@ export function SlideMediaControls({ element }: { element: SlideElement }) {
       <button
         type="button"
         className="slide-media-play"
+        aria-label={video ? videoAction : undefined}
+        title={video ? videoAction : undefined}
         onMouseDown={(event) => event.stopPropagation()}
         onClick={playClip}
       >
-        {video ? "Play video" : "Play audio"}
+        {video ? (
+          playing ? <Square size={18} aria-hidden="true" /> : <Play size={18} aria-hidden="true" />
+        ) : "Play audio"}
       </button>
       {video ? null : (
         <audio src={src} preload="auto">
