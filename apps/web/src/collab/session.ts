@@ -242,14 +242,14 @@ export function useDocumentRoom({
     };
     doc.on("update", onUpdate);
     const schedule = () => {
-      if (closed || giveUp || idleInBackground()) return;
+      if (closed || giveUp || pausedForSignIn || idleInBackground()) return;
       const delay = reconnectDelay(attempt);
       attempt += 1;
       timer = setTimeout(() => void connect(), delay);
     };
     const connect = async () => {
       const session = getSession();
-      if (!session || closed || giveUp || connecting || idleInBackground()) return;
+      if (!session || closed || giveUp || pausedForSignIn || connecting || idleInBackground()) return;
       link = attempt === 0 ? "joining" : "reconnecting";
       report();
       if (socket && socket.readyState !== WebSocket.CLOSED) return;
@@ -262,7 +262,7 @@ export function useDocumentRoom({
         schedule();
         return;
       }
-      if (closed || giveUp || idleInBackground()) {
+      if (closed || giveUp || pausedForSignIn || idleInBackground()) {
         connecting = false;
         return;
       }

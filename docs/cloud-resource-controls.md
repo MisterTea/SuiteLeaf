@@ -30,6 +30,8 @@ node scripts/migrate-cloud.mjs .env.cloud.production.local
 
 `Dockerfile.vercel` uses a cargo-chef recipe layer for Rust dependencies, and copies npm workspace manifests before installing dependencies. Source edits can reuse both dependency layers. The first build populates these caches. `.dockerignore` and `.vercelignore` exclude local coverage, temporary files, and private environment files from upload/context.
 
+The web build explicitly allows a 4 GiB V8 heap. The Standard builder's container otherwise defaults to 2 GiB, which is too small for this app's bundle. This setting is scoped to the build command and leaves room for native allocations on the 8 GiB builder.
+
 The ignored-build script compares against `VERCEL_GIT_PREVIOUS_SHA`, covering all commits since the previous deployment. Docs, tests, workflow files, and desktop source changes can skip the cloud build. Workspace manifests and unknown inputs build conservatively. Missing history and first deployments always build; `VERCEL_FORCE_BUILD=1` overrides skipping.
 
 Git metadata must remain available in the Vercel checkout until the ignored build step runs; do not exclude `.git` in `.vercelignore`. The Docker context still excludes `.git` through `.dockerignore`. The project uses a fixed Standard build machine rather than the previous 30-core Turbo machine. Build CPU minutes count allocated cores times elapsed build minutes, so the smaller builder lowers the per-minute rate while caches limit rebuild work.

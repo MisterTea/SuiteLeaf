@@ -235,6 +235,7 @@ describe("document room", () => {
   it("pauses for sign-in on an expired token and resumes with the next session", async () => {
     render(<Probe />);
     await joined();
+    const doc = spies.onDoc.mock.calls.at(-1)![0] as Y.Doc;
     socket().receive({ type: "error", reason: "unauthorized" });
     expect(lastRecovery()).toBe("Sign in again to open the shared document.");
     expect(socket().readyState).toBe(FakeSocket.CLOSED);
@@ -244,10 +245,16 @@ describe("document room", () => {
       window.dispatchEvent(new Event("online"));
     });
     expect(FakeSocket.instances).toHaveLength(1);
+    act(() => doc.getText("pending-auth").insert(0, "keep while signed out"));
+    setVisibility("visible");
+    await Promise.resolve();
+    expect(FakeSocket.instances).toHaveLength(1);
     act(() => fake.sessionListener(null));
     act(() => fake.sessionListener({ url: "x" }));
     await vi.waitFor(() => expect(FakeSocket.instances).toHaveLength(2));
     await joined();
+    const pending = socket().sent.find((message) => message.type === "update")!;
+    socket().receive({ type: "ack", id: pending.id });
     expect(lastRecovery()).toBeNull();
   });
 
@@ -449,7 +456,7 @@ describe("document room", () => {
   it("reconnects when the tab becomes visible with no open socket", async () => {
     render(<Probe />);
     await joined();
-    socket().receive({ type: "error", reason: "unauthorized" });
+    act(() => socket().close());
     setVisibility("visible");
     await vi.waitFor(() => expect(FakeSocket.instances).toHaveLength(2));
   });

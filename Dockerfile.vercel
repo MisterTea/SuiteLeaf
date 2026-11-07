@@ -30,7 +30,9 @@ COPY apps apps
 COPY packages packages
 COPY services services
 ENV VITE_SUITELEAF_SERVER=1
-RUN npm run build:web && npm run build:auth
+# V8 otherwise defaults to a 2 GiB heap in the Standard builder's container.
+# Keep the web build within the 8 GiB machine while leaving native headroom.
+RUN NODE_OPTIONS=--max-old-space-size=4096 npm run build:web && npm run build:auth
 
 FROM node:24-bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
