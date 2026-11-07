@@ -201,9 +201,13 @@ export function ClusterHome({ serverUrl }: { serverUrl: string }) {
             <h2>SuiteDrive</h2>
             <ImportButton
               filePicker
-              onImport={(r) => createInDrive(r.file, folder.current, navigate)}
+              uploading
+              onImport={async (r, _name, onProgress) => {
+                if (r.drive) navigate(`/file/${r.file.id}`);
+                else await createInDrive(r.file, folder.current, navigate, onProgress);
+              }}
               onError={setError}
-              placeInFolder={async (file, directory) => {
+              placeInFolder={async (file, directory, onProgress) => {
                 let parentId = folder.current;
                 const known = await drive.listFolders();
                 for (const part of directory.split("/").filter(Boolean)) {
@@ -226,10 +230,10 @@ export function ClusterHome({ serverUrl }: { serverUrl: string }) {
                   });
                   parentId = created.id;
                 }
-                return keepCreated(file, parentId, true);
+                return keepCreated(file, parentId, true, onProgress);
               }}
-              keepImported={async (file) => {
-                await keepCreated(file, folder.current, true);
+              keepImported={async (file, onProgress) => {
+                await keepCreated(file, folder.current, true, onProgress);
               }}
               onBatchDone={() => setListed((n) => n + 1)}
             />

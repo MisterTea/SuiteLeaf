@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createFile, type SuiteFile } from "../../packages/core/src";
+import { createFile, type SuiteFile, type FileRecord } from "../../packages/core/src";
 
 type BrowserProps = {
   control: { current: unknown };
@@ -11,10 +11,10 @@ type BrowserProps = {
   refreshKey: string;
 };
 type ImportProps = {
-  onImport: (r: { file: SuiteFile }) => Promise<void>;
+  onImport: (r: FileRecord, name?: string, progress?: (completed: number, total: number) => void) => Promise<void>;
   onError: (s: string) => void;
-  placeInFolder: (file: SuiteFile, folder: string) => Promise<unknown>;
-  keepImported: (file: SuiteFile) => Promise<void>;
+  placeInFolder: (file: SuiteFile, folder: string, progress?: (completed: number, total: number) => void) => Promise<unknown>;
+  keepImported: (file: SuiteFile, progress?: (completed: number, total: number) => void) => Promise<void>;
   onBatchDone: () => void;
 };
 
@@ -210,25 +210,36 @@ describe("ClusterHome", () => {
     ]);
   });
 
+  it("opens an import already placed in SuiteDrive without uploading it twice", async () => {
+    renderHome();
+    const file = createFile("slide", "Lecture");
+    await act(async () => hoisted.importer!.onImport({
+      file,
+      drive: { nodeUrl: server, itemId: "placed", name: "Lecture.slslides" },
+    }));
+    expect(hoisted.createInDrive).not.toHaveBeenCalled();
+  });
+
   it("imports into SuiteDrive, building the dropped folder path", async () => {
     renderHome();
     const props = hoisted.importer!;
     const file = createFile("doc", "Lesson");
-    await props.onImport({ file });
-    expect(hoisted.createInDrive).toHaveBeenCalledWith(file, null, expect.any(Function));
+    const report = vi.fn();
+    await props.onImport({ file }, "Lesson.sldoc", report);
+    expect(hoisted.createInDrive).toHaveBeenCalledWith(file, null, expect.any(Function), report);
     act(() => hoisted.browser!.onFolderChange("f-root", "Root"));
     hoisted.folders = [
       { id: "f-work", name: "Work", parentId: "f-root" },
       { id: "f-other", name: "Work", parentId: null },
     ];
-    await hoisted.importer!.placeInFolder(file, "Work/New/Deep");
+    await hoisted.importer!.placeInFolder(file, "Work/New/Deep", report);
     expect(hoisted.create.mock.calls).toEqual([
       [{ name: "New", parentId: "f-work", kind: "folder" }],
       [{ name: "Deep", parentId: "id-New", kind: "folder" }],
     ]);
-    expect(hoisted.keepCreated).toHaveBeenLastCalledWith(file, "id-Deep", true);
-    await hoisted.importer!.keepImported(file);
-    expect(hoisted.keepCreated).toHaveBeenLastCalledWith(file, "f-root", true);
+    expect(hoisted.keepCreated).toHaveBeenLastCalledWith(file, "id-Deep", true, report);
+    await hoisted.importer!.keepImported(file, report);
+    expect(hoisted.keepCreated).toHaveBeenLastCalledWith(file, "f-root", true, report);
     act(() => hoisted.importer!.onBatchDone());
     expect(hoisted.browser!.refreshKey).toBe("1");
     act(() => hoisted.importer!.onError("Import failed."));

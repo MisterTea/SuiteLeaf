@@ -21,6 +21,7 @@ import type { DelimitedOptions } from "../csv";
 import { message } from "../error-message";
 import { MarpPicturesDialog } from "./MarpPicturesDialog";
 
+type ProgressCallback = (completed: number, total: number) => void;
 type FolderFiles = { relativePath: string; file: File }[];
 async function planFolder(raw: FolderFiles, folderName = "") {
   const normalized = folderName ? { folderName, files: raw } : normalizeFolderFiles(raw);
@@ -37,25 +38,28 @@ export function ImportButton({
   onImport,
   onError,
   filePicker = false,
+  uploading = false,
   importer,
   placeInFolder,
   keepImported,
   onBatchDone,
 }: {
   /** `name` is the chosen file's name when it came from the file picker. */
-  onImport: (r: FileRecord, name?: string) => Promise<void>;
+  onImport: (r: FileRecord, name?: string, onProgress?: ProgressCallback) => Promise<void>;
   onError: (s: string) => void;
   /** Always use the browser file picker, even on desktop. */
   filePicker?: boolean;
+  /** Whether saving imports uploads them to SuiteDrive. */
+  uploading?: boolean;
   /** Receives a function that imports a chosen file the same way the picker does. */
   importer?: RefObject<((f: File) => Promise<void>) | null>;
   /**
    * Save one converted Office file into `folder`, a path relative to the
    * library folder that is open. The path includes the folder that was dropped.
    */
-  placeInFolder?: (file: SuiteFile, folder: string) => Promise<FileRecord | void>;
+  placeInFolder?: (file: SuiteFile, folder: string, onProgress?: ProgressCallback) => Promise<FileRecord | void>;
   /** Save one file from a batch without leaving the current page. */
-  keepImported?: (file: SuiteFile) => Promise<void>;
+  keepImported?: (file: SuiteFile, onProgress?: ProgressCallback) => Promise<void>;
   /** Called after a batch import that stayed on this page. */
   onBatchDone?: () => void | Promise<void>;
 }) {
@@ -67,8 +71,21 @@ export function ImportButton({
   const [importing, setImporting] = useState(false);
   const stopImport = useRef(false);
   const [progress, setProgress] = useState<{ completed: number; total: number | null; name: string } | null>(null);
+  const [conversion, setConversion] = useState<number | null>(null);
+  const [upload, setUpload] = useState(0);
+  const [conversionStage, setConversionStage] = useState("Starting…");
+  const converting: ProgressCallback = (completed, total) => {
+    if (total > 0) setConversion(Math.min(99, Math.floor(completed / total * 100)));
+  };
+  const uploaded: ProgressCallback = (accepted, total) => {
+    setUpload(total > 0 ? Math.min(100, Math.max(0, Math.floor(accepted / total * 100))) : 100);
+  };
+  const converted = () => setConversion(100);
   const begin = (name: string) => {
     if (stopImport.current) throw new Error("Import cancelled. The original file is unchanged.");
+    setConversion(null);
+    setConversionStage("Starting…");
+    setUpload(0);
     setProgress((current) => current && { ...current, name });
   };
   const advance = () => setProgress((current) => current && { ...current, completed: current.completed + 1 });
@@ -106,12 +123,13 @@ export function ImportButton({
       f,
       (draft) => new Promise((resolve) => setReview({ draft, resolve })),
       assets,
-      { shouldStop: () => stopImport.current },
+      { shouldStop: () => stopImport.current, onProgress: converting, onStage: (stage) => setConversionStage(stage === "loading" ? "Loading converter…" : "Converting…") },
     );
     if (!file) { advance(); return; }
-    if (open) await onImport({ file }, f.name);
-    else if (keepImported) await keepImported(file);
-    else await onImport({ file }, f.name);
+    converted();
+    if (open) await onImport({ file }, f.name, uploaded);
+    else if (keepImported) await keepImported(file, uploaded);
+    else await onImport({ file }, f.name, uploaded);
     advance();
   };
   const importChosen = async (f: File) => {
@@ -144,15 +162,16 @@ export function ImportButton({
           item.file.file,
           (draft) => new Promise((resolve) => setReview({ draft, resolve })),
           undefined,
-          { shouldStop: () => stopImport.current },
+          { shouldStop: () => stopImport.current, onProgress: converting, onStage: (stage) => setConversionStage(stage === "loading" ? "Loading converter…" : "Converting…") },
         );
         if (!file) { advance(); continue; }
+        converted();
         const open = opensImportedFile(office.length) && openSingle;
         if (placeInFolder) {
-          const placed = await placeInFolder(file, item.folder);
-          if (open) await onImport(placed ?? { file }, item.file.file.name);
-        } else if (open || !keepImported) await onImport({ file }, item.file.file.name);
-        else await keepImported(file);
+          const placed = await placeInFolder(file, item.folder, uploaded);
+          if (open) await onImport(placed ?? { file }, item.file.file.name, uploaded);
+        } else if (open || !keepImported) await onImport({ file }, item.file.file.name, uploaded);
+        else await keepImported(file, uploaded);
         advance();
       }
       return opensImportedFile(office.length) && openSingle;
@@ -174,12 +193,13 @@ export function ImportButton({
       markdown.file,
       (draft) => new Promise((resolve) => setReview({ draft, resolve })),
       assets,
-      { shouldStop: () => stopImport.current },
+      { shouldStop: () => stopImport.current, onProgress: converting, onStage: (stage) => setConversionStage(stage === "loading" ? "Loading converter…" : "Converting…") },
     );
     if (!file) { advance(); return false; }
-    if (openSingle) await onImport({ file }, markdown.file.name);
-    else if (keepImported) await keepImported(file);
-    else await onImport({ file }, markdown.file.name);
+    converted();
+    if (openSingle) await onImport({ file }, markdown.file.name, uploaded);
+    else if (keepImported) await keepImported(file, uploaded);
+    else await onImport({ file }, markdown.file.name, uploaded);
     advance();
     return openSingle || !keepImported;
   };
@@ -310,6 +330,18 @@ export function ImportButton({
             <p className="import-progress-name" title={progress.name}>
               {progress.name || "Reading files…"}
             </p>
+            {progress.name ? (
+              <>
+                <p>Convert: {conversion === null ? conversionStage : `${conversion}%`}</p>
+                <progress aria-label="Conversion progress" max={100} value={conversion ?? undefined} />
+                {uploading ? (
+                  <>
+                    <p>Upload: {conversion !== 100 ? "Waiting for conversion" : `${upload}%`}</p>
+                    <progress aria-label="Upload progress" max={100} value={upload} />
+                  </>
+                ) : null}
+              </>
+            ) : null}
             <progress aria-label="Files processed" max={progress.total || 1}
               value={progress.total === null ? undefined : progress.completed} />
             <p role="status">{progress.total === null ? "Preparing import…" : `${progress.completed} of ${progress.total} files processed`}</p>

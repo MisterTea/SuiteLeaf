@@ -140,6 +140,22 @@ describe("Office import worker", () => {
     workers[0].onerror!({ message: "x" });
   });
 
+  it("reports converter startup and validated slide progress", async () => {
+    const onStage = vi.fn();
+    const onProgress = vi.fn();
+    const running = importOfficeFile(docx("Lecture.pptx"), { onStage, onProgress });
+    await vi.waitFor(() => expect(workers).toHaveLength(1));
+    expect(onStage).toHaveBeenCalledWith("loading");
+    const worker = workers[0];
+    worker.onmessage!({ data: { started: true } });
+    expect(onStage).toHaveBeenLastCalledWith("converting");
+    worker.onmessage!({ data: { progress: { completed: 1, total: 3 } } });
+    worker.onmessage!({ data: { progress: { completed: 1, total: 3 } } });
+    expect(onProgress.mock.calls).toEqual([[1, 3]]);
+    worker.onmessage!({ data: { ok: true, file: createFile("slide", "Lecture") } });
+    await running;
+  });
+
   it("allows a presentation to take longer than two minutes while slides advance", async () => {
     vi.useFakeTimers();
     const running = importOfficeFile(docx("Lecture.pptx"));
@@ -178,7 +194,7 @@ describe("Office import worker", () => {
     replies = ["silent"];
     const running = importOfficeFile(docx());
     const failed = expect(running).rejects.toThrow(
-      "No conversion progress for two minutes while importing “Letter.docx”. The original file is unchanged.",
+      "The Office converter did not start within two minutes for “Letter.docx”. Reload the page and check your connection. The original file is unchanged.",
     );
     await vi.advanceTimersByTimeAsync(120_000);
     await failed;

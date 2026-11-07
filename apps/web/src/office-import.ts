@@ -30,7 +30,7 @@ class ConverterError extends Error {
 async function convert(
   file: File,
   password: string | undefined,
-  control?: { saved?: SuiteFile | null; shouldStop?: () => boolean },
+  control?: { saved?: SuiteFile | null; shouldStop?: () => boolean; onProgress?: (completed: number, total: number) => void; onStage?: (stage: "loading" | "converting") => void },
 ): Promise<SuiteFile> {
   if (control?.shouldStop?.()) {
     const settled = settleOfficeImport({
@@ -68,11 +68,16 @@ async function convert(
       else reject(new ConverterError("conversion-failed", settled.error));
     };
     let completed = -1;
+    let totalSlides = 0;
+    let started = false;
+    control?.onStage?.("loading");
     const timedOut = () => {
       if (!finish()) return;
       reject(
         new Error(
-          `No conversion progress for two minutes while importing “${file.name}”. The original file is unchanged.`,
+          started
+            ? `No conversion progress for two minutes while importing “${file.name}”.${totalSlides ? ` Last completed slide: ${completed} of ${totalSlides}.` : ""} The original file is unchanged.`
+            : `The Office converter did not start within two minutes for “${file.name}”. Reload the page and check your connection. The original file is unchanged.`,
         ),
       );
     };
@@ -86,13 +91,25 @@ async function convert(
         settle(null);
         return;
       }
+      if (event.data.started) {
+        if (!started) {
+          started = true;
+          control?.onStage?.("converting");
+          clearTimeout(timer);
+          timer = setTimeout(timedOut, 120_000);
+        }
+        return;
+      }
       if (event.data.progress) {
         const next = event.data.progress;
         // Only actual forward progress extends the watchdog, not repeated heartbeats.
         if (Number.isInteger(next.completed) && Number.isInteger(next.total) &&
             next.total > 0 && next.completed >= 0 && next.completed <= next.total &&
             next.completed > completed) {
+          started = true;
+          totalSlides = next.total;
           completed = next.completed;
+          control?.onProgress?.(next.completed, next.total);
           clearTimeout(timer);
           timer = setTimeout(timedOut, 120_000);
         }
@@ -130,7 +147,7 @@ async function convert(
 
 export async function importOfficeFile(
   file: File,
-  control?: { saved?: SuiteFile | null; shouldStop?: () => boolean },
+  control?: { saved?: SuiteFile | null; shouldStop?: () => boolean; onProgress?: (completed: number, total: number) => void; onStage?: (stage: "loading" | "converting") => void },
 ): Promise<SuiteFile> {
   let password: string | undefined;
   for (;;) {

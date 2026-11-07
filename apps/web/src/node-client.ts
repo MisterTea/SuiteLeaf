@@ -559,8 +559,9 @@ export function withDriveLock<T>(task: () => Promise<T>): Promise<T> {
 export async function uploadDriveFileUnlocked(
   file: SuiteFile,
   link: DriveLink,
+  onProgress?: (accepted: number, total: number) => void,
 ): Promise<DriveLink> {
-  return uploadDriveChunks(file, link);
+  return uploadDriveChunks(file, link, onProgress);
 }
 
 /** Upload `file` as a new version. Throws [`DriveConflict`] if someone else
@@ -568,8 +569,9 @@ export async function uploadDriveFileUnlocked(
 export async function uploadDriveFile(
   file: SuiteFile,
   link: DriveLink,
+  onProgress?: (accepted: number, total: number) => void,
 ): Promise<DriveLink> {
-  return withDriveLock(() => uploadDriveFileUnlocked(file, link));
+  return withDriveLock(() => uploadDriveFileUnlocked(file, link, onProgress));
 }
 
 export async function currentAccount(): Promise<NodeUser> {
@@ -809,7 +811,7 @@ export async function saveNewDriveFile(
   file: SuiteFile,
   parentId: string | null,
   name: string,
-  options?: { fallbackToRoot?: boolean },
+  options?: { fallbackToRoot?: boolean; onProgress?: (accepted: number, total: number) => void },
 ): Promise<DriveLink> {
   const { url } = requireSession();
   const mime = mimeFor(file.kind);
@@ -827,5 +829,5 @@ export async function saveNewDriveFile(
     nodeUrl: url,
     itemId: item.id,
     name: item.name,
-  });
+  }, options?.onProgress);
 }

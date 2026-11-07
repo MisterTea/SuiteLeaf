@@ -9,6 +9,7 @@ self.onmessage = async (
   }>,
 ) => {
   try {
+    self.postMessage({ started: true });
     const file = await openOfficeFile(
       event.data.bytes,
       event.data.format,

@@ -42,7 +42,7 @@ export async function importFile(
   file: File,
   review?: ReviewDelimited,
   assets?: ImportAssets,
-  control?: { saved?: SuiteFile | null; shouldStop?: () => boolean },
+  control?: { saved?: SuiteFile | null; shouldStop?: () => boolean; onProgress?: (completed: number, total: number) => void; onStage?: (stage: "loading" | "converting") => void },
 ): Promise<SuiteFile | null> {
   if (control?.shouldStop?.()) {
     if (control.saved) return control.saved;

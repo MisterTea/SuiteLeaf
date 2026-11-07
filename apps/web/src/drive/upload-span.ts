@@ -56,14 +56,16 @@ export async function uploadDriveSpan(
 }
 
 /** Upload a new file in bounded requests, including imports on hosted servers. */
-export async function uploadDriveChunks(file: SuiteFile, link: DriveLink): Promise<DriveLink> {
+export async function uploadDriveChunks(file: SuiteFile, link: DriveLink, onProgress?: (accepted: number, total: number) => void): Promise<DriveLink> {
   const body = new TextEncoder().encode(serializeFile(file));
+  onProgress?.(0, body.length);
   let saved: DriveLink | undefined;
   const result = await sendUploadSpans({
     bytes: body.length,
     sent: 0,
     upload: async ({ start, end }) => {
       const result = await uploadDriveSpan(file, link, start, end, body);
+      onProgress?.(result.accepted, body.length);
       if (result.done) saved = result.link;
       return result;
     },

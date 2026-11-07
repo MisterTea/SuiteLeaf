@@ -427,7 +427,14 @@ describe("drive files", () => {
       }
       if (method === "PATCH") return Response.json(item({ headVersionId: "imported" }));
     };
-    const link = await saveNewDriveFile(file, null, "Report.sldoc");
+    const progress: number[][] = [];
+    const link = await saveNewDriveFile(file, null, "Report.sldoc", {
+      onProgress: (accepted, total) => progress.push([accepted, total]),
+    });
+    expect(progress[0]).toEqual([0, expected.length]);
+    expect(progress.at(-1)).toEqual([expected.length, expected.length]);
+    expect(progress).toHaveLength(chunks.length + 1);
+    expect(progress[1][0]).toBe(262144);
     expect(expected.length).toBeGreaterThan(4_500_000);
     expect(chunks.length).toBeGreaterThan(1);
     expect(Buffer.concat(chunks).equals(Buffer.from(expected))).toBe(true);
