@@ -21,7 +21,8 @@ interface NodeInfo {
 }
 
 function abortAfter(timeout: number): AbortSignal {
-  if (typeof AbortSignal.timeout === "function") return AbortSignal.timeout(timeout);
+  if (typeof AbortSignal.timeout === "function")
+    return AbortSignal.timeout(timeout);
   const controller = new AbortController();
   setTimeout(() => controller.abort(), timeout);
   return controller.signal;
@@ -84,6 +85,13 @@ export async function resolveMode(): Promise<ResolvedMode> {
       locked: false,
       demo: false,
     };
+  if (import.meta.env.VITE_SUITELEAF_SERVER === "1") {
+    return {
+      mode: { kind: "cluster", serverUrl: location.origin },
+      locked: true,
+      demo: false,
+    };
+  }
   if (location.protocol.startsWith("http")) {
     if (isClusterNode(await nodeInfo(location.origin)))
       return {
@@ -136,4 +144,3 @@ export const ModeContext = createContext<ResolvedMode>({
   demo: false,
 });
 export const useMode = () => useContext(ModeContext);
-

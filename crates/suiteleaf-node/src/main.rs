@@ -5,6 +5,7 @@ mod ai_local;
 mod assertion;
 mod auth;
 mod backup_status;
+mod cloud;
 mod collab;
 mod collab_rich;
 mod config;
@@ -46,6 +47,10 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Generate a one-time administrator setup token (keep its output private).
+    SetupToken,
+    /// Apply the cloud Postgres schema before starting a release.
+    MigrateCloud,
     /// Create an identity and a new cluster swarm key in a data directory.
     Init {
         #[arg(long, default_value = "suiteleaf-data")]
@@ -166,6 +171,26 @@ async fn main() -> Result<()> {
         .with_writer(std::io::stderr)
         .init();
     match Cli::parse().command {
+        Command::SetupToken => {
+            let token = format!(
+                "{}{}",
+                uuid::Uuid::new_v4().simple(),
+                uuid::Uuid::new_v4().simple()
+            );
+            println!(
+                "{}",
+                serde_json::json!({"token":token,"hash":cloud::token_hash(&token)})
+            );
+            Ok(())
+        }
+        Command::MigrateCloud => {
+            let url = std::env::var("DATABASE_URL_UNPOOLED")
+                .or_else(|_| std::env::var("DATABASE_URL"))
+                .context("DATABASE_URL is required")?;
+            Db::migrate_postgres(&url, &schema::node_schema(None)?)?;
+            println!("Cloud database schema is current.");
+            Ok(())
+        }
         Command::Init {
             data_dir,
             swarm_key,
@@ -198,28 +223,85 @@ async fn main() -> Result<()> {
     }
 }
 
-async fn run(config: Config, init: bool, internal_token: Option<String>) -> Result<()> {
+async fn run(mut config: Config, init: bool, internal_token: Option<String>) -> Result<()> {
+    config.cloud = config.cloud || std::env::var("SUITELEAF_CLOUD").as_deref() == Ok("1");
+    if config.cloud {
+        config.listen.clear();
+        config.bootstrap.clear();
+        config.mdns = false;
+        if let Ok(port) = std::env::var("PORT") {
+            config.http_addr = format!("0.0.0.0:{port}").parse()?;
+        }
+        if let Ok(url) = std::env::var("SUITELEAF_PUBLIC_URL") {
+            config.public_url = Some(url);
+        } else if let Ok(url) = std::env::var("VERCEL_URL") {
+            config.public_url = Some(format!("https://{url}"));
+        }
+        // Staged production builds are tested on their unique deployment
+        // origin before the canonical domain is assigned.
+        for variable in ["VERCEL_URL", "VERCEL_PROJECT_PRODUCTION_URL"] {
+            if let Ok(url) = std::env::var(variable) {
+                let origin = format!("https://{url}");
+                if !config.cors_origins.contains(&origin) {
+                    config.cors_origins.push(origin);
+                }
+            }
+        }
+    }
+    let internal_token = internal_token.unwrap_or_else(|| {
+        format!(
+            "{}{}",
+            uuid::Uuid::new_v4().simple(),
+            uuid::Uuid::new_v4().simple()
+        )
+    });
     std::fs::create_dir_all(&config.data_dir)?;
-    let identity = keys::load_or_create_identity(&config.data_dir)?;
+    let identity = if config.cloud {
+        suiteleaf_net::identity::Keypair::generate_ed25519()
+    } else {
+        keys::load_or_create_identity(&config.data_dir)?
+    };
     if init && !config.data_dir.join(keys::SWARM_KEY_FILE).exists() {
         keys::create_swarm_key(&config.data_dir)?;
     }
-    let swarm_key = parse_swarm_key(&keys::load_swarm_key(&config.data_dir)?)?;
+    let swarm_key = if config.cloud {
+        parse_swarm_key(&suiteleaf_net::generate_swarm_key())?
+    } else {
+        parse_swarm_key(&keys::load_swarm_key(&config.data_dir)?)?
+    };
     let peer_id = identity.public().to_peer_id();
 
     let schema = schema::node_schema(config.auth.schema.as_deref())?;
-    let db = Arc::new(
+    let db = Arc::new(if config.cloud {
+        Db::open_postgres(
+            &std::env::var("DATABASE_URL").context("DATABASE_URL is required")?,
+            keys::ed25519(&identity)?,
+            schema,
+        )?
+    } else {
         Db::open(
             &config.data_dir.join("suitedb.sqlite"),
             keys::ed25519(&identity)?,
             schema,
         )
-        .context("open SuiteDB")?,
-    );
+        .context("open SuiteDB")?
+    });
     let allowlist: Option<HashSet<_>> = (!config.allowlist.is_empty())
         .then(|| config.allowlist.iter().copied().chain([peer_id]).collect());
     db.set_allowlist(allowlist.clone());
-    let drive = Drive::open(db.clone(), &config.data_dir.join("blobs"))?;
+    let drive = if config.cloud {
+        let token = internal_token.clone();
+        let db = db.clone();
+        let port = std::env::var("SUITELEAF_CLOUD_BRIDGE_PORT")
+            .unwrap_or_else(|_| "41235".into())
+            .parse::<u16>()?;
+        tokio::task::spawn_blocking(move || {
+            Drive::open_cloud(db, &format!("http://127.0.0.1:{port}"), &token)
+        })
+        .await??
+    } else {
+        Drive::open(db.clone(), &config.data_dir.join("blobs"))?
+    };
     if let Ok(raw) = std::env::var("SUITELEAF_STORAGE_BUDGET_BYTES") {
         match Drive::storage_budget_from(&raw) {
             Ok(budget) => drive.set_storage_budget(budget),
@@ -239,15 +321,14 @@ async fn run(config: Config, init: bool, internal_token: Option<String>) -> Resu
     })?;
     let interval = Duration::from_secs(config.sync_interval_secs.max(1));
     let replicator = Replicator::new(db.clone(), net.clone());
-    tokio::spawn(replicator.run(events, Some(Arc::new(DriveBlobs(drive.clone()))), interval));
-    tokio::spawn(
-        drive
-            .clone()
-            .replicate(Arc::new(NetTransport(net.clone())), interval),
-    );
-
-    let internal_token =
-        internal_token.unwrap_or_else(|| hex::encode(uuid::Uuid::new_v4().as_bytes()));
+    if !config.cloud {
+        tokio::spawn(replicator.run(events, Some(Arc::new(DriveBlobs(drive.clone()))), interval));
+        tokio::spawn(
+            drive
+                .clone()
+                .replicate(Arc::new(NetTransport(net.clone())), interval),
+        );
+    }
     let internal = TcpListener::bind("127.0.0.1:0").await?;
     let internal_url = format!("http://{}", internal.local_addr()?);
     let internal_router = internal::router(internal::InternalState {
@@ -273,6 +354,15 @@ async fn run(config: Config, init: bool, internal_token: Option<String>) -> Resu
             )?,
         }
     }
+    if config.cloud {
+        tokio::time::timeout(Duration::from_secs(30), async {
+            while auth.sidecar().is_none() {
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        })
+        .await
+        .context("cloud authentication service did not become ready")?;
+    }
     let state = AppState {
         db: db.clone(),
         net: net.clone(),
@@ -284,6 +374,7 @@ async fn run(config: Config, init: bool, internal_token: Option<String>) -> Resu
     };
     let app = http::router(state.clone());
     let rooms = state.rooms.clone();
+    let cloud = config.cloud;
     tokio::spawn(async move {
         // SUITELEAF_KICK_EVERY_MS lets a test compact an idle room without
         // waiting half a minute. Production keeps the 30 second sweep.
@@ -292,7 +383,10 @@ async fn run(config: Config, init: bool, internal_token: Option<String>) -> Resu
             .and_then(|value| value.parse::<u64>().ok())
             .filter(|ms| *ms >= 50)
             .unwrap_or(30_000);
-        let mut tick = tokio::time::interval(Duration::from_millis(every_ms));
+        let mut tick =
+            tokio::time::interval(Duration::from_millis(if cloud { 250 } else { every_ms }));
+        let mut swept = tokio::time::Instant::now() - Duration::from_millis(every_ms);
+        let mut cursor = 0;
         let pause = std::env::var("SUITELEAF_IDLE_MS")
             .ok()
             .and_then(|value| value.parse().ok())
@@ -303,8 +397,19 @@ async fn run(config: Config, init: bool, internal_token: Option<String>) -> Resu
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_millis() as i64)
                 .unwrap_or(0);
-            let _ = rooms.kick(now, pause);
-            let _ = rooms.catch_up_open_rooms();
+            if !cloud || swept.elapsed() >= Duration::from_millis(every_ms) {
+                if let Err(error) = rooms.kick(now, pause) {
+                    tracing::warn!("Room maintenance failed: {error}");
+                }
+                swept = tokio::time::Instant::now();
+            }
+            if cloud {
+                if let Err(error) = rooms.poll_cloud(&mut cursor) {
+                    tracing::warn!("Room replay failed: {error}");
+                }
+            } else {
+                let _ = rooms.catch_up_open_rooms();
+            }
         }
     });
     let listener = TcpListener::bind(config.http_addr)

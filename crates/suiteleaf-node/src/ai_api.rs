@@ -44,6 +44,9 @@ async fn load_model(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
+    if state.config.cloud {
+        return Json(json!({"state":"ready","backend":"remote","chatFormat":"gemma","model":std::env::var("SUITELEAF_AI_GATEWAY_MODEL").unwrap_or_else(|_|"openai/gpt-5-mini".into())})).into_response();
+    }
     if state.config.ai.upstream.is_some() {
         return Json(json!({ "state": "ready" })).into_response();
     }
@@ -59,13 +62,33 @@ async fn completions(
     if body.len() > 4_000_000 {
         return StatusCode::PAYLOAD_TOO_LARGE.into_response();
     }
-    let Some(upstream) = state.config.ai.upstream.clone() else {
+    let cloud = state.config.cloud;
+    let upstream = if cloud {
+        state
+            .auth
+            .sidecar()
+            .map(|url| format!("{url}/internal/cloud/ai"))
+    } else {
+        state.config.ai.upstream.clone()
+    };
+    let Some(upstream) = upstream else {
+        if cloud {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({ "error": "The hosted assistant is temporarily unavailable." })),
+            )
+                .into_response();
+        }
         return proxy_local(&state, "/v1/completions", headers, body).await;
     };
     let mut request = reqwest::Client::builder()
         .build()
         .expect("HTTP client")
-        .post(completions_url(&upstream))
+        .post(if cloud {
+            upstream
+        } else {
+            completions_url(&upstream)
+        })
         .header(
             header::CONTENT_TYPE,
             headers
@@ -74,7 +97,14 @@ async fn completions(
                 .unwrap_or(b"application/json"),
         )
         .body(body);
-    if let Some(key) = &state.config.ai.api_key {
+    if cloud {
+        if let Some(token) = headers.get("x-vercel-oidc-token") {
+            request = request.header("x-vercel-oidc-token", token);
+        }
+        if let Some(key) = state.auth.registration_key.read().unwrap().clone() {
+            request = request.bearer_auth(key);
+        }
+    } else if let Some(key) = &state.config.ai.api_key {
         request = request.bearer_auth(key);
     }
     let upstream = match request.send().await {

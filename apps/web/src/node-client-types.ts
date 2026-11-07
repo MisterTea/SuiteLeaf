@@ -125,6 +125,7 @@ export interface ShareNotice {
   createdAt: string;
 }
 export interface AuthProviders {
+  inviteOnly?: boolean;
   emailAndPassword: boolean;
   username: boolean;
   providers: string[];

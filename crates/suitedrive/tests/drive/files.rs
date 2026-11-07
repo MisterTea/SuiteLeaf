@@ -218,7 +218,25 @@ fn delete_forever_removes_a_trashed_file_and_its_bytes() {
         n.drive.delete_forever(&bob, &file.id),
         Err(DriveError::Forbidden)
     ));
+    n.db.transact(|tx| {
+        tx.upsert("drive_room", &file.id, [("mode", Value::from("multiuser"))])?;
+        tx.upsert(
+            "drive_room_update",
+            "pending-update",
+            [
+                ("itemId", Value::from(file.id.as_str())),
+                ("bytes", Value::from("pending collaboration content")),
+            ],
+        )
+    })
+    .unwrap();
     n.drive.delete_forever(&ann, &file.id).unwrap();
+    assert!(n.db.get("drive_room", &file.id).unwrap().is_none());
+    assert!(
+        n.db.get("drive_room_update", "pending-update")
+            .unwrap()
+            .is_none()
+    );
     assert!(matches!(
         n.drive.get(&ann, &file.id),
         Err(DriveError::NotFound)

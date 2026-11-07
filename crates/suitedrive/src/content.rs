@@ -14,6 +14,7 @@ use crate::{
     forms::form_without_responses,
     row::{Row, text},
 };
+mod cloud_upload;
 
 pub(crate) struct OpenUpload {
     total: usize,
@@ -83,6 +84,7 @@ impl Drive {
         mime: Option<&str>,
         bytes: &[u8],
     ) -> DriveResult<Item> {
+        let _lock = self.db.exclusive(&format!("file:{id}"))?;
         let allowed = match self.role(who, id)? {
             Some(role) if role >= Role::Editor => true,
             Some(Role::Responder) => self.responder_may_append(id, bytes)?,
@@ -165,6 +167,10 @@ impl Drive {
         total: usize,
         chunk: &[u8],
     ) -> DriveResult<Option<Item>> {
+        let _lock = self.db.exclusive(&format!("file:{id}"))?;
+        if self.db.is_postgres() {
+            return self.write_cloud_span(who, id, if_match, mime, start, total, chunk);
+        }
         let allowed = matches!(self.role(who, id)?, Some(role) if role >= Role::Editor);
         if !allowed {
             return Err(DriveError::Forbidden);
@@ -302,6 +308,7 @@ impl Drive {
     /// Write file bytes without an If-Match check. Used when a collaboration
     /// room compacts, after the last writer has gone idle.
     pub fn write_head(&self, author_id: &str, id: &str, bytes: &[u8]) -> DriveResult<Item> {
+        let _lock = self.db.exclusive(&format!("file:{id}"))?;
         let row = self.item_row(id)?;
         if text(&row, "kind").as_deref() != Some("file") {
             return Err(DriveError::BadRequest("Folders have no content.".into()));

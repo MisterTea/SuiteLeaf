@@ -87,6 +87,19 @@ pub struct Drive {
 }
 
 impl Drive {
+    pub fn open_cloud(db: Arc<Db>, bridge_url: &str, token: &str) -> anyhow::Result<Arc<Drive>> {
+        anyhow::ensure!(db.is_postgres(), "Cloud storage requires Postgres");
+        Ok(Arc::new(Drive {
+            db,
+            blobs: BlobStore::open_remote(bridge_url, token)?,
+            wanted: Mutex::default(),
+            notify: Notify::new(),
+            presence: Mutex::default(),
+            partials: Mutex::default(),
+            partial_dir: PathBuf::new(),
+            storage_budget: Mutex::new(None),
+        }))
+    }
     /// Open the blob store and start tracking versions whose blobs are missing.
     pub fn open(db: Arc<Db>, root: &Path) -> anyhow::Result<Arc<Drive>> {
         for t in tables() {

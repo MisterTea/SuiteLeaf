@@ -13,7 +13,12 @@ import {
   type SuiteFile,
 } from "@suiteleaf/core";
 import type { AccessExplanation } from "./drive/access-explanation";
-import { decideClientSession, idleSecsFromInfo, sessionEndFor, sessionTimes } from "./session-policy";
+import {
+  decideClientSession,
+  idleSecsFromInfo,
+  sessionEndFor,
+  sessionTimes,
+} from "./session-policy";
 import {
   createInFolderOrRoot,
   DriveConflict,
@@ -36,7 +41,6 @@ import {
 
 export * from "./node-client-types";
 export * from "./node-sign-up";
-
 
 const SESSION_KEY = "suiteleaf:node-session";
 const listeners = new Set<(session: NodeSession | null) => void>();
@@ -120,11 +124,17 @@ export async function signIn(
 export async function signUp(
   url: string,
   details: { name: string; email: string; username?: string; password: string },
+  inviteToken?: string,
 ) {
-  const { data, error } = await authClient(url).signUp.email({
-    ...details,
-    username: details.username || undefined,
-  });
+  const { data, error } = await authClient(url).signUp.email(
+    {
+      ...details,
+      username: details.username || undefined,
+    },
+    inviteToken
+      ? { headers: { "x-suiteleaf-invite": inviteToken } }
+      : undefined,
+  );
   if (error || !data?.token) throw failure(error);
   return startSession(url, data.token, data.user, data);
 }
@@ -151,7 +161,13 @@ async function startSession(
   } catch {
     info = null;
   }
-  setSession({ url, token, user, ...sessionTimes(data), idleSecs: idleSecsFromInfo(info) });
+  setSession({
+    url,
+    token,
+    user,
+    ...sessionTimes(data),
+    idleSecs: idleSecsFromInfo(info),
+  });
   return session!;
 }
 
@@ -228,7 +244,10 @@ async function bearer(current: NodeSession): Promise<string> {
   }
 }
 
-export async function api(path: string, init: RequestInit = {}): Promise<Response> {
+export async function api(
+  path: string,
+  init: RequestInit = {},
+): Promise<Response> {
   const current = requireSession();
   const headers = new Headers(init.headers);
   headers.set("authorization", `Bearer ${await bearer(current)}`);
@@ -328,7 +347,9 @@ export const drive = {
     return (await response.json()).accounts;
   },
   async searchGroups(query: string): Promise<{ id: string; name: string }[]> {
-    const response = await api(`/api/drive/groups?q=${encodeURIComponent(query)}`);
+    const response = await api(
+      `/api/drive/groups?q=${encodeURIComponent(query)}`,
+    );
     return (await response.json()).groups;
   },
   async access(id: string): Promise<ItemAccess> {
@@ -719,7 +740,9 @@ export const adminApi = {
     return (await api(`/api/admin/groups/${encodeURIComponent(id)}`)).json();
   },
   async createGroup(name: string): Promise<AdminGroup> {
-    return (await api("/api/admin/groups", { method: "POST", ...json({ name }) })).json();
+    return (
+      await api("/api/admin/groups", { method: "POST", ...json({ name }) })
+    ).json();
   },
   async renameGroup(id: string, name: string): Promise<AdminGroup> {
     return (
@@ -730,9 +753,15 @@ export const adminApi = {
     ).json();
   },
   async deleteGroup(id: string): Promise<void> {
-    await api(`/api/admin/groups/${encodeURIComponent(id)}`, { method: "DELETE" });
+    await api(`/api/admin/groups/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
   },
-  async addMember(groupId: string, memberType: "user" | "group", memberId: string): Promise<AdminGroupDetail> {
+  async addMember(
+    groupId: string,
+    memberType: "user" | "group",
+    memberId: string,
+  ): Promise<AdminGroupDetail> {
     return (
       await api(`/api/admin/groups/${encodeURIComponent(groupId)}/members`, {
         method: "POST",
@@ -742,10 +771,13 @@ export const adminApi = {
   },
   async memberPlan(groupId: string, memberId: string, adding: boolean) {
     return (
-      await api(`/api/admin/groups/${encodeURIComponent(groupId)}/member-plan`, {
-        method: "POST",
-        ...json({ memberId, adding }),
-      })
+      await api(
+        `/api/admin/groups/${encodeURIComponent(groupId)}/member-plan`,
+        {
+          method: "POST",
+          ...json({ memberId, adding }),
+        },
+      )
     ).json();
   },
   async editorPolicy() {
@@ -759,7 +791,11 @@ export const adminApi = {
       })
     ).json();
   },
-  async removeMember(groupId: string, memberType: "user" | "group", memberId: string): Promise<AdminGroupDetail> {
+  async removeMember(
+    groupId: string,
+    memberType: "user" | "group",
+    memberId: string,
+  ): Promise<AdminGroupDetail> {
     return (
       await api(`/api/admin/groups/${encodeURIComponent(groupId)}/members`, {
         method: "DELETE",

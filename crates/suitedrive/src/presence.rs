@@ -66,6 +66,31 @@ impl Drive {
         at: SystemTime,
     ) -> DriveResult<()> {
         self.require(who, id, Role::Viewer)?;
+        if self.db.is_postgres() {
+            use suitedb::Value;
+            let key = format!("{id}:{}", who.id);
+            self.db.transact(|tx| {
+                tx.upsert(
+                    "drive_open_presence",
+                    &key,
+                    [
+                        ("itemId", Value::from(id)),
+                        ("userId", who.id.clone().into()),
+                        ("name", presence_name(name).into()),
+                        ("editing", Value::Integer(i64::from(editing))),
+                        (
+                            "lastActiveMs",
+                            Value::Integer(
+                                at.duration_since(SystemTime::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_millis() as i64,
+                            ),
+                        ),
+                    ],
+                )
+            })?;
+            return Ok(());
+        }
         let mut items = self.presence.lock().unwrap();
         items.entry(id.to_owned()).or_default().insert(
             who.id.clone(),
@@ -88,6 +113,38 @@ impl Drive {
         now: SystemTime,
     ) -> DriveResult<Vec<Presence>> {
         self.require(who, id, Role::Viewer)?;
+        if self.db.is_postgres() {
+            let rows=self.db.query("SELECT userId, name, editing, lastActiveMs FROM drive_open_presence WHERE itemId=?1",&[id.into()])?;
+            let now = now
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64;
+            let mut people = rows
+                .into_iter()
+                .filter_map(|row| {
+                    use suitedb::Value;
+                    if row.get("userId") == Some(&Value::Text(who.id.clone())) {
+                        return None;
+                    }
+                    let Some(Value::Integer(at)) = row.get("lastActiveMs") else {
+                        return None;
+                    };
+                    if now.saturating_sub(*at) > PRESENCE_TTL.as_millis() as i64 {
+                        return None;
+                    }
+                    let Some(Value::Text(name)) = row.get("name") else {
+                        return None;
+                    };
+                    Some(Presence {
+                        name: name.clone(),
+                        editing: row.get("editing") == Some(&Value::Integer(1)),
+                        idle: now.saturating_sub(*at) > PRESENCE_IDLE.as_millis() as i64,
+                    })
+                })
+                .collect::<Vec<_>>();
+            people.sort_by(|a, b| a.name.cmp(&b.name).then(a.editing.cmp(&b.editing)));
+            return Ok(people);
+        }
         let mut items = self.presence.lock().unwrap();
         let Some(people) = items.get_mut(id) else {
             return Ok(vec![]);

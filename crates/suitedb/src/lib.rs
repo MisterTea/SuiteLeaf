@@ -1,6 +1,6 @@
-//! SuiteDB: every node holds a complete SQLite copy of the database.
+//! SuiteDB: replicated SQLite for self-hosting, or central Postgres in cloud mode.
 //!
-//! Writes become signed [`Op`]s that link to the author's previous DAG heads.
+//! Self-hosted writes become signed [`Op`]s that link to the author's previous DAG heads.
 //! Each op is a batch of row changes applied with these CRDT rules:
 //!
 //! * Every column is a last-writer-wins register ordered by
@@ -11,11 +11,16 @@
 //!
 //! Each register only ever moves to a larger version, so applying the same
 //! ops in any order, any number of times, produces the same tables.
+//! Cloud transactions use native Postgres tables and a sequenced metadata-only
+//! change feed. They do not ingest or broadcast peer replication operations.
 
 pub mod hlc;
 pub mod op;
+mod postgres_store;
 pub mod schema;
+mod sqlite_materialize;
 pub mod sync;
+use sqlite_materialize::{apply_change, heads, refresh_conflicts};
 
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
@@ -45,6 +50,8 @@ pub enum Error {
     Unauthorized(String),
     #[error(transparent)]
     Sqlite(#[from] rusqlite::Error),
+    #[error("Postgres: {0}")]
+    Postgres(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -88,7 +95,7 @@ impl Value {
 }
 
 /// A row touched by an applied op, local or remote.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct RowChange {
     pub table: String,
     pub pk: String,
@@ -217,6 +224,7 @@ pub struct PeerLag {
 }
 
 pub struct Db {
+    postgres: Option<postgres_store::PostgresStore>,
     inner: Mutex<Inner>,
     key: ed25519::Keypair,
     peer: PeerId,
@@ -278,6 +286,30 @@ fn set_meta(conn: &Connection, key: &str, value: &str) -> Result<()> {
 }
 
 impl Db {
+    /// Committed cloud mutations in commit order. The cursor is disposable;
+    /// authoritative collaboration state is rebuilt from the persisted room log.
+    pub fn changes_since(&self, cursor: i64) -> Result<(i64, Vec<RowChange>)> {
+        if self.postgres.is_none() {
+            return Ok((cursor, vec![]));
+        }
+        let rows = self.query(
+            "SELECT seq, payload FROM _cloud_ops WHERE seq>?1 ORDER BY seq LIMIT 1000",
+            &[Value::Integer(cursor)],
+        )?;
+        let mut next = cursor;
+        let mut changes = Vec::new();
+        for row in rows {
+            if let Some(Value::Integer(seq)) = row.get("seq") {
+                next = *seq;
+            }
+            if let Some(Value::Blob(bytes)) = row.get("payload") {
+                let rows: Vec<RowChange> = serde_json::from_slice(bytes)
+                    .map_err(|_| Error::Invalid("Invalid cloud change event".into()))?;
+                changes.extend(rows);
+            }
+        }
+        Ok((next, changes))
+    }
     pub fn open(path: &Path, key: ed25519::Keypair, schema: Schema) -> Result<Db> {
         Db::init(Connection::open(path)?, key, schema)
     }
@@ -322,6 +354,7 @@ impl Db {
         tx.commit()?;
         let peer = PublicKey::from(key.public()).to_peer_id();
         let db = Db {
+            postgres: None,
             inner: Mutex::new(Inner { conn, clock }),
             key,
             peer,
@@ -386,6 +419,12 @@ impl Db {
         if tx.changes.is_empty() {
             return Ok(None);
         }
+        if let Some(store) = &self.postgres {
+            let (id, bytes, rows) = store.transact(&self.schema, &self.key, tx.changes)?;
+            let _ = self.local_ops.send(bytes);
+            self.run_hooks(&rows);
+            return Ok(Some(id));
+        }
         let (id, bytes, rows) = {
             let mut inner = self.lock();
             let hlc = inner.clock.tick();
@@ -424,6 +463,11 @@ impl Db {
     /// missing parents wait in `_pending`; invalid or unauthorized ops are
     /// logged and skipped so one bad op cannot stall a sync stream.
     pub fn ingest_many<'a>(&self, ops: impl IntoIterator<Item = &'a [u8]>) -> Result<IngestReport> {
+        if self.postgres.is_some() {
+            return Err(Error::Invalid(
+                "Cloud databases do not accept peer replication.".into(),
+            ));
+        }
         let mut report = IngestReport::default();
         let mut rows = Vec::new();
         {
@@ -470,6 +514,9 @@ impl Db {
 
     /// Re-apply held-back ops, for example after a schema upgrade.
     pub fn retry_pending(&self) -> Result<usize> {
+        if self.postgres.is_some() {
+            return Ok(0);
+        }
         let (count, rows) = {
             let mut inner = self.lock();
             let t = inner.conn.transaction()?;
@@ -597,6 +644,9 @@ impl Db {
         cursor: u64,
         max_bytes: usize,
     ) -> Result<SyncBatch> {
+        if self.postgres.is_some() {
+            return Err(Error::Invalid("Peer sync is disabled in cloud mode".into()));
+        }
         let start = if epoch == Some(self.epoch.as_str()) {
             cursor
         } else {
@@ -652,10 +702,16 @@ impl Db {
     }
 
     pub fn heads(&self) -> Result<Vec<OpId>> {
+        if self.postgres.is_some() {
+            return Ok(vec![]);
+        }
         heads(&self.lock().conn)
     }
 
     pub fn op_count(&self) -> Result<u64> {
+        if let Some(store) = &self.postgres {
+            return store.op_count();
+        }
         Ok(self
             .lock()
             .conn
@@ -663,6 +719,9 @@ impl Db {
     }
 
     pub fn pending_count(&self) -> Result<u64> {
+        if self.postgres.is_some() {
+            return Ok(0);
+        }
         Ok(self
             .lock()
             .conn
@@ -673,6 +732,9 @@ impl Db {
     /// How far each known peer is behind this node's op log.
     /// The result has counts and peer ids, not op payloads.
     pub fn replication_lag(&self) -> Result<Vec<PeerLag>> {
+        if self.postgres.is_some() {
+            return Ok(vec![]);
+        }
         let inner = self.lock();
         let tip = inner
             .conn
@@ -710,6 +772,17 @@ impl Db {
     /// database still in WAL mode is not copied as a half-written file.
     /// The live database is not replaced. `dest` is created or overwritten.
     pub fn checkpoint_copy(&self, dest: &Path) -> Result<()> {
+        if let Some(store) = &self.postgres {
+            let snapshot = Self::open_in_memory(self.key.clone(), self.schema.clone())?;
+            let changes = store.snapshot(&self.schema)?;
+            snapshot.transact(|tx| {
+                for (table, pk, row) in changes {
+                    tx.upsert(&table, &pk, row)?;
+                }
+                Ok(())
+            })?;
+            return snapshot.checkpoint_copy(dest);
+        }
         if let Some(parent) = dest.parent()
             && !parent.as_os_str().is_empty()
         {
@@ -726,6 +799,11 @@ impl Db {
 
     /// Run read-only queries. Writes must go through [`Db::transact`].
     pub fn read<T>(&self, f: impl FnOnce(&Connection) -> Result<T>) -> Result<T> {
+        if self.postgres.is_some() {
+            return Err(Error::Invalid(
+                "SQLite closure queries are unavailable in cloud mode".into(),
+            ));
+        }
         let inner = self.lock();
         inner.conn.execute_batch("PRAGMA query_only = ON")?;
         let result = f(&inner.conn);
@@ -735,6 +813,9 @@ impl Db {
 
     /// Run a read-only query and return rows as column-name maps.
     pub fn query(&self, sql: &str, params: &[Value]) -> Result<Vec<BTreeMap<String, Value>>> {
+        if let Some(store) = &self.postgres {
+            return store.query(&self.schema, sql, params);
+        }
         self.read(|conn| {
             let mut stmt = conn.prepare(sql)?;
             let names: Vec<String> = stmt.column_names().into_iter().map(String::from).collect();
@@ -768,6 +849,9 @@ impl Db {
     }
 
     pub fn conflicts(&self) -> Result<Vec<Conflict>> {
+        if self.postgres.is_some() {
+            return Ok(vec![]);
+        }
         self.read(|conn| {
             Ok(conn
                 .prepare("SELECT tbl, col, value, winner, loser FROM _conflicts ORDER BY tbl, col, value, loser")?
@@ -783,159 +867,4 @@ impl Db {
                 .collect::<std::result::Result<_, _>>()?)
         })
     }
-}
-
-fn heads(conn: &Connection) -> Result<Vec<OpId>> {
-    let ids: Vec<Vec<u8>> = conn
-        .prepare("SELECT id FROM _heads ORDER BY id")?
-        .query_map([], |r| r.get(0))?
-        .collect::<std::result::Result<_, _>>()?;
-    Ok(ids
-        .into_iter()
-        .filter_map(|b| b.try_into().ok().map(OpId))
-        .collect())
-}
-
-fn apply_change(conn: &Connection, def: &TableDef, change: &Change, version: &str) -> Result<()> {
-    let table = quote(&def.name);
-    let pk_col = quote(&def.pk);
-    let (created, upserted, deleted): (Option<String>, Option<String>, Option<String>) = conn
-        .query_row(
-            "SELECT created, upserted, deleted FROM _rows WHERE tbl = ?1 AND pk = ?2",
-            params![def.name, change.pk],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-        )
-        .optional()?
-        .unwrap_or((None, None, None));
-    let save_row =
-        |created: &Option<String>, upserted: &Option<String>, deleted: &Option<String>| {
-            conn.execute(
-            "INSERT INTO _rows (tbl, pk, created, upserted, deleted) VALUES (?1, ?2, ?3, ?4, ?5)
-             ON CONFLICT (tbl, pk) DO UPDATE SET created = excluded.created,
-               upserted = excluded.upserted, deleted = excluded.deleted",
-            params![def.name, change.pk, created, upserted, deleted],
-        )
-        };
-    match &change.kind {
-        ChangeKind::Upsert(cols) => {
-            let created = Some(created.map_or(version.to_owned(), |c| c.min(version.to_owned())));
-            let upserted = Some(upserted.map_or(version.to_owned(), |u| u.max(version.to_owned())));
-            save_row(&created, &upserted, &deleted)?;
-            let mut visible: Vec<(&String, &Value)> = Vec::new();
-            for (col, value) in cols {
-                if col == &def.pk {
-                    continue;
-                }
-                let current: Option<String> = conn
-                    .query_row(
-                        "SELECT version FROM _versions WHERE tbl = ?1 AND pk = ?2 AND col = ?3",
-                        params![def.name, change.pk, col],
-                        |r| r.get(0),
-                    )
-                    .optional()?;
-                if current.as_deref().is_none_or(|c| version > c) {
-                    conn.execute(
-                        "INSERT INTO _versions (tbl, pk, col, version) VALUES (?1, ?2, ?3, ?4)
-                         ON CONFLICT (tbl, pk, col) DO UPDATE SET version = excluded.version",
-                        params![def.name, change.pk, col, version],
-                    )?;
-                    if deleted.as_deref().is_none_or(|d| version > d) {
-                        visible.push((col, value));
-                    }
-                }
-            }
-            let alive = match (&upserted, &deleted) {
-                (Some(u), Some(d)) => u > d,
-                _ => true,
-            };
-            if alive {
-                conn.execute(
-                    &format!("INSERT INTO {table} ({pk_col}) VALUES (?1) ON CONFLICT ({pk_col}) DO NOTHING"),
-                    [&change.pk],
-                )?;
-                if !visible.is_empty() {
-                    let sets: Vec<String> = visible
-                        .iter()
-                        .enumerate()
-                        .map(|(i, (c, _))| format!("{} = ?{}", quote(c), i + 2))
-                        .collect();
-                    let mut values: Vec<&dyn ToSql> = vec![&change.pk];
-                    values.extend(visible.iter().map(|(_, v)| *v as &dyn ToSql));
-                    conn.execute(
-                        &format!("UPDATE {table} SET {} WHERE {pk_col} = ?1", sets.join(", ")),
-                        values.as_slice(),
-                    )?;
-                }
-            }
-        }
-        ChangeKind::Delete => {
-            if deleted.as_deref().is_some_and(|d| d >= version) {
-                return Ok(());
-            }
-            let deleted = Some(version.to_owned());
-            save_row(&created, &upserted, &deleted)?;
-            if upserted.as_deref().is_none_or(|u| u < version) {
-                conn.execute(
-                    &format!("DELETE FROM {table} WHERE {pk_col} = ?1"),
-                    [&change.pk],
-                )?;
-            } else {
-                let stale: Vec<String> = conn
-                    .prepare(
-                        "SELECT col FROM _versions WHERE tbl = ?1 AND pk = ?2 AND version < ?3",
-                    )?
-                    .query_map(params![def.name, change.pk, version], |r| r.get(0))?
-                    .collect::<std::result::Result<_, _>>()?;
-                let stale: Vec<&String> = stale
-                    .iter()
-                    .filter(|c| def.column_type(c).is_some())
-                    .collect();
-                if !stale.is_empty() {
-                    let sets: Vec<String> = stale
-                        .iter()
-                        .map(|c| format!("{} = NULL", quote(c)))
-                        .collect();
-                    conn.execute(
-                        &format!("UPDATE {table} SET {} WHERE {pk_col} = ?1", sets.join(", ")),
-                        [&change.pk],
-                    )?;
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
-fn refresh_conflicts(conn: &Connection, def: &TableDef) -> Result<()> {
-    let table = quote(&def.name);
-    let pk = quote(&def.pk);
-    for col in &def.unique {
-        let c = quote(col);
-        conn.execute(
-            "DELETE FROM _conflicts WHERE tbl = ?1 AND col = ?2",
-            params![def.name, col],
-        )?;
-        let rows: Vec<(String, String)> = conn
-            .prepare(&format!(
-                "SELECT CAST(t.{c} AS TEXT), t.{pk} FROM {table} t
-                 JOIN _rows r ON r.tbl = ?1 AND r.pk = t.{pk}
-                 WHERE t.{c} IN (SELECT {c} FROM {table} WHERE {c} IS NOT NULL GROUP BY {c} HAVING COUNT(*) > 1)
-                 ORDER BY t.{c}, r.created, t.{pk}"
-            ))?
-            .query_map([&def.name], |r| Ok((r.get(0)?, r.get(1)?)))?
-            .collect::<std::result::Result<_, _>>()?;
-        let mut winner: Option<(String, String)> = None;
-        for (value, row) in rows {
-            match &winner {
-                Some((v, w)) if *v == value => {
-                    conn.execute(
-                        "INSERT INTO _conflicts (tbl, col, value, winner, loser) VALUES (?1, ?2, ?3, ?4, ?5)",
-                        params![def.name, col, value, w, row],
-                    )?;
-                }
-                _ => winner = Some((value, row)),
-            }
-        }
-    }
-    Ok(())
 }

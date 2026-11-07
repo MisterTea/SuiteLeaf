@@ -3,11 +3,34 @@
 use suitedb::{ColumnType, TableDef};
 
 /// Bump when the drive tables change.
-pub const SCHEMA_VERSION: u32 = 5;
+pub const SCHEMA_VERSION: u32 = 6;
 
 pub fn tables() -> Vec<TableDef> {
     use ColumnType::*;
     vec![
+        TableDef::new("drive_open_presence", "id")
+            .column("itemId", Text)
+            .column("userId", Text)
+            .column("name", Text)
+            .column("editing", Integer)
+            .column("lastActiveMs", Integer)
+            .index("itemId"),
+        TableDef::new("drive_signal", "id")
+            .column("itemId", Text)
+            .column("payload", Text)
+            .column("expiresAt", Text)
+            .index("itemId"),
+        TableDef::new("drive_upload", "id")
+            .column("ownerId", Text)
+            .column("total", Integer)
+            .column("offset", Integer)
+            .column("baseVersion", Text)
+            .column("mime", Text),
+        TableDef::new("drive_upload_chunk", "id")
+            .column("itemId", Text)
+            .column("offset", Integer)
+            .column("bytes", Blob)
+            .index("itemId"),
         TableDef::new("drive_item", "id")
             .column("parentId", Text)
             .column("name", Text)
@@ -74,6 +97,7 @@ pub fn tables() -> Vec<TableDef> {
             .index("itemId"),
         // One live collaboration room. generation stops two nodes compacting twice.
         TableDef::new("drive_room", "id")
+            .column("seedOwnerId", Text)
             .column("mode", Text)
             .column("generation", Integer)
             .column("baseline", Text),

@@ -179,6 +179,16 @@ async fn run_socket(
     role: Role,
     mut signed: Signed,
 ) -> anyhow::Result<()> {
+    struct SocketCount(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+    impl Drop for SocketCount {
+        fn drop(&mut self) {
+            self.0.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+    rooms
+        .sockets
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let _count = SocketCount(rooms.sockets.clone());
     let every = recheck_every(std::env::var("SUITELEAF_RECHECK_MS").ok().as_deref());
     let mut recheck = tokio::time::interval_at(tokio::time::Instant::now() + every, every);
     let (mut sink, mut stream) = socket.split();
@@ -305,16 +315,19 @@ async fn run_socket(
                 };
                 let name = user.name.clone().unwrap_or_else(|| "You".into());
                 let made_in = value.get("generation").and_then(|v| v.as_i64());
-                let outcome = rooms.apply_update_in(LiveUpdate {
-                    item: &item,
-                    user_id: &user.id,
-                    name: &name,
-                    role,
-                    bytes: &bytes,
-                    unit,
-                    key,
-                    at: &at,
-                }, made_in)?;
+                let outcome = rooms.apply_update_in(
+                    LiveUpdate {
+                        item: &item,
+                        user_id: &user.id,
+                        name: &name,
+                        role,
+                        bytes: &bytes,
+                        unit,
+                        key,
+                        at: &at,
+                    },
+                    made_in,
+                )?;
                 if outcome == Outcome::Stored {
                     rooms.activity(&item, &user.id, now_ms())?;
                 }

@@ -339,6 +339,23 @@ impl Drive {
             .filter_map(|row| text(row, "contentHash"))
             .collect();
         let acls = self.column_values("SELECT id FROM drive_acl WHERE itemId = ?1", "id", id)?;
+        let mut transient_rows = Vec::new();
+        for table in [
+            "drive_upload_chunk",
+            "drive_room_update",
+            "drive_signal",
+            "drive_open_presence",
+            "drive_presence",
+        ] {
+            transient_rows.push((
+                table,
+                self.column_values(
+                    &format!("SELECT id FROM {table} WHERE itemId = ?1"),
+                    "id",
+                    id,
+                )?,
+            ));
+        }
         let comments =
             self.column_values("SELECT id FROM drive_comment WHERE itemId = ?1", "id", id)?;
         let notices =
@@ -349,6 +366,13 @@ impl Drive {
             id,
         )?;
         self.db.transact(|tx| {
+            tx.delete("drive_upload", id)?;
+            tx.delete("drive_room", id)?;
+            for (table, ids) in &transient_rows {
+                for id in ids {
+                    tx.delete(table, id)?;
+                }
+            }
             for version_id in &version_ids {
                 tx.delete("drive_version", version_id)?;
             }

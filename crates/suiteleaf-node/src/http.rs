@@ -76,13 +76,16 @@ async fn info(State(state): State<AppState>) -> Json<serde_json::Value> {
     Json(json!({
         "name": "SuiteLeaf node",
         "mode": "cluster",
+        "storage": if state.config.cloud { "vercel-blob" } else { "disk" },
+        "database": if state.config.cloud { "postgres" } else { "sqlite" },
+        "replication": !state.config.cloud,
         "version": env!("CARGO_PKG_VERSION"),
         "peerId": state.net.local_peer_id().to_string(),
         "publicUrl": state.config.public_url(),
         "listen": listen,
         "peers": peers,
         "auth": {
-            "enabled": state.auth.sidecar().is_some(),
+            "enabled": state.config.auth.enabled,
             "idleSecs": state.auth.idle_secs(),
         },
         "suitedb": { "schema": state.db.schema().version, "ops": ops, "pending": pending, "heads": heads },
@@ -264,11 +267,13 @@ async fn end_session(
 }
 
 pub fn router(state: AppState) -> Router {
+    let cloud_db = state.db.clone();
     let auth = state.auth.clone();
     let config = state.config.clone();
     let api = Router::new()
         .route("/healthz", get(health))
         .route("/api/node/info", get(info))
+        .route("/api/admin/invitations", post(crate::cloud::invite))
         .route("/api/node/emergency", post(emergency))
         .route("/api/node/sessions", get(sessions))
         .route("/api/node/sessions/lost-device", post(lost_device))
@@ -292,4 +297,8 @@ pub fn router(state: AppState) -> Router {
         None => api,
     };
     api.layer(cors(&config))
+        .layer(axum::middleware::from_fn_with_state(
+            cloud_db,
+            crate::cloud::serialize_mutation,
+        ))
 }

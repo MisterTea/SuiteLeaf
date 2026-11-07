@@ -41,6 +41,7 @@ const ROOM_SHARED: &str = "mode:multiuser";
 
 #[derive(Clone)]
 pub struct Rooms {
+    pub(super) sockets: Arc<std::sync::atomic::AtomicUsize>,
     db: Arc<Db>,
     drive: Arc<Drive>,
     live: Arc<Mutex<HashMap<String, Live>>>,
@@ -81,6 +82,7 @@ struct LiveUpdate<'a> {
 impl Rooms {
     pub fn new(db: Arc<Db>, drive: Arc<Drive>) -> Self {
         Rooms {
+            sockets: Arc::default(),
             db,
             drive,
             live: Arc::default(),
@@ -88,6 +90,10 @@ impl Rooms {
     }
 
     pub fn join(&self, item: &str, user: &AuthUser, role: Role, now: i64) -> anyhow::Result<Join> {
+        let _lock = self.db.exclusive("cloud-mutations")?;
+        if self.db.is_postgres() {
+            self.catch_up_unlocked(item)?;
+        }
         // A viewer joins the same room and receives its text. `may_apply` still
         // ignores a viewer's edit.
         let id = presence_id(item, &user.id);
@@ -152,7 +158,15 @@ impl Rooms {
                     [
                         ("mode", DbValue::from("multiuser")),
                         ("generation", DbValue::Integer(generation)),
-                        ("baseline", DbValue::from("")),
+                        (
+                            "baseline",
+                            self.db
+                                .get("drive_item", item)?
+                                .and_then(|row| text_col(&row, "headVersionId"))
+                                .unwrap_or_default()
+                                .into(),
+                        ),
+                        ("seedOwnerId", DbValue::Null),
                     ],
                 )
             })?;
@@ -208,11 +222,31 @@ impl Rooms {
         let another_editor = self.occupants(item)?.iter().any(|person| {
             person.user_id != user.id && matches!(person.role.as_str(), "editor" | "owner")
         });
-        let seed = mode == "multiuser"
+        let mut seed = mode == "multiuser"
             && state.is_none()
             && !room.seed_claimed
             && role >= Role::Editor
             && (promoted.is_none() || !another_editor);
+        if seed && self.db.is_postgres() {
+            let claim = self
+                .db
+                .get("drive_room", item)?
+                .and_then(|row| text_col(&row, "seedOwnerId"));
+            let alive = claim.as_ref().is_some_and(|id| {
+                self.occupants(item)
+                    .is_ok_and(|people| people.iter().any(|p| &p.user_id == id))
+            });
+            seed = claim.as_deref() == Some(&user.id) || !alive;
+            if seed {
+                self.db.transact(|tx| {
+                    tx.upsert(
+                        "drive_room",
+                        item,
+                        [("seedOwnerId", DbValue::from(user.id.as_str()))],
+                    )
+                })?;
+            }
+        }
         if seed {
             room.seed_claimed = true;
         }
@@ -300,6 +334,10 @@ impl Rooms {
 
     /// Remove one person as soon as their socket closes, without waiting for the idle sweep.
     pub fn leave(&self, item: &str, user_id: &str, now: i64) -> anyhow::Result<()> {
+        let _lock = self.db.exclusive("cloud-mutations")?;
+        if self.db.is_postgres() {
+            self.catch_up_unlocked(item)?;
+        }
         let id = presence_id(item, user_id);
         if self.db.get("drive_presence", &id)?.is_none() {
             return Ok(());
@@ -313,6 +351,11 @@ impl Rooms {
     /// Yjs ignores an update this room already has. A newer generation replaces
     /// the in-memory document with that generation's log.
     pub fn catch_up(&self, item: &str) -> anyhow::Result<bool> {
+        let _lock = self.db.exclusive("cloud-mutations")?;
+        self.catch_up_unlocked(item)
+    }
+
+    fn catch_up_unlocked(&self, item: &str) -> anyhow::Result<bool> {
         let stored = self.db.get("drive_room", item)?;
         let Some(row) = stored else {
             return Ok(false);
@@ -320,6 +363,19 @@ impl Rooms {
         let mode = text_col(&row, "mode").unwrap_or_default();
         let generation = row.get("generation").and_then(as_int).unwrap_or(0);
         if mode != "multiuser" || generation <= 0 {
+            if self.db.is_postgres() {
+                let mut live = self.live.lock().expect("rooms");
+                if let Some(room) = live.get_mut(item)
+                    && room.generation < generation
+                {
+                    room.mode = "solo";
+                    room.generation = generation;
+                    room.doc = Doc::new();
+                    room.baseline = None;
+                    room.seed_claimed = false;
+                    let _ = room.relay.send(ROOM_SHARED.to_owned());
+                }
+            }
             return Ok(false);
         }
         let rows = self.db.query(
@@ -337,6 +393,20 @@ impl Rooms {
             room.doc = Doc::new();
             room.mode = "multiuser";
             room.generation = generation;
+            let version = text_col(&row, "baseline").filter(|s| !s.is_empty());
+            room.baseline = self
+                .drive
+                .read(
+                    &Principal {
+                        id: "cloud-recovery".into(),
+                        admin: true,
+                    },
+                    item,
+                    version.as_deref(),
+                )
+                .ok()
+                .map(|(_, bytes)| bytes);
+            let _ = room.relay.send(ROOM_SHARED.to_owned());
         }
         let before = room.doc.transact().state_vector();
         for row in rows {
@@ -370,6 +440,36 @@ impl Rooms {
         Ok(())
     }
 
+    pub fn poll_cloud(&self, cursor: &mut i64) -> anyhow::Result<()> {
+        if self.sockets.load(std::sync::atomic::Ordering::Relaxed) == 0 {
+            return Ok(());
+        }
+        let (next, changes) = self.db.changes_since(*cursor)?;
+        if changes
+            .iter()
+            .any(|c| c.table == "drive_room" || c.table == "drive_room_update")
+        {
+            self.catch_up_open_rooms()?;
+        }
+        for change in changes.iter().filter(|c| c.table == "drive_signal") {
+            if let Some(row) = self.db.get("drive_signal", &change.pk)? {
+                let current =
+                    text_col(&row, "expiresAt").is_some_and(|s| s > suitedb::hlc::iso_now());
+                if current
+                    && let (Some(item), Some(payload)) =
+                        (text_col(&row, "itemId"), text_col(&row, "payload"))
+                {
+                    let live = self.live.lock().expect("rooms");
+                    if let Some(room) = live.get(&item) {
+                        let _ = room.relay.send(payload);
+                    }
+                }
+            }
+        }
+        *cursor = next;
+        Ok(())
+    }
+
     /// Tests apply an edit without naming a generation.
     #[cfg(test)]
     fn apply_update(&self, update: LiveUpdate<'_>) -> anyhow::Result<bool> {
@@ -385,6 +485,10 @@ impl Rooms {
         update: LiveUpdate<'_>,
         generation: Option<i64>,
     ) -> anyhow::Result<Outcome> {
+        let _lock = self.db.exclusive("cloud-mutations")?;
+        if self.db.is_postgres() {
+            self.catch_up_unlocked(update.item)?;
+        }
         // Editors and owners change the document. Commenters and responders
         // may record a comment. A viewer, or a comment passed off as an edit,
         // is ignored.
@@ -473,6 +577,25 @@ impl Rooms {
     }
 
     fn relay_text(&self, item: &str, text: &str) {
+        if self.db.is_postgres() {
+            let _ = self.db.transact(|tx| {
+                tx.upsert(
+                    "drive_signal",
+                    &uuid::Uuid::now_v7().to_string(),
+                    [
+                        ("itemId", DbValue::from(item)),
+                        ("payload", DbValue::from(text)),
+                        (
+                            "expiresAt",
+                            DbValue::from(suitedb::hlc::iso_from_ms(
+                                suitedb::hlc::now_ms() + 15_000,
+                            )),
+                        ),
+                    ],
+                )
+            });
+            return;
+        }
         let live = self.live.lock().expect("rooms");
         if let Some(room) = live.get(item) {
             let _ = room.relay.send(text.to_owned());
@@ -481,6 +604,34 @@ impl Rooms {
 
     /// Drop idle presence. Compacts only when a multiuser room is left empty.
     pub fn kick(&self, now: i64, pause: i64) -> anyhow::Result<Vec<String>> {
+        let _lock = self.db.exclusive("cloud-mutations")?;
+        if self.db.is_postgres() {
+            let rows = self
+                .db
+                .query("SELECT id FROM drive_room WHERE mode='multiuser'", &[])?;
+            for row in rows {
+                if let Some(item) = text_col(&row, "id") {
+                    let mut live = self.live.lock().expect("rooms");
+                    if !live.contains_key(&item) {
+                        live.insert(item.clone(), self.restore_live(&item)?);
+                    }
+                }
+            }
+            let expired = self.db.query(
+                "SELECT id FROM drive_signal WHERE expiresAt<?1",
+                &[suitedb::hlc::iso_now().into()],
+            )?;
+            if !expired.is_empty() {
+                self.db.transact(|tx| {
+                    for row in expired {
+                        if let Some(id) = text_col(&row, "id") {
+                            tx.delete("drive_signal", &id)?;
+                        }
+                    }
+                    Ok(())
+                })?;
+            }
+        }
         let rows = self.db.query("SELECT * FROM drive_presence", &[])?;
         let mut kicked = Vec::new();
         for row in rows {
@@ -533,6 +684,9 @@ impl Rooms {
     }
 
     fn maybe_compact(&self, item: &str, author: &str, now: i64) -> anyhow::Result<()> {
+        if self.db.is_postgres() {
+            self.catch_up_unlocked(item)?;
+        }
         if !self.writers(item)?.is_empty() {
             return Ok(());
         }
@@ -644,7 +798,25 @@ impl Rooms {
                 doc,
                 mode: "multiuser",
                 generation,
-                baseline: None,
+                baseline: if self.db.is_postgres() {
+                    let version = stored
+                        .as_ref()
+                        .and_then(|row| text_col(row, "baseline"))
+                        .filter(|s| !s.is_empty());
+                    self.drive
+                        .read(
+                            &Principal {
+                                id: "cloud-recovery".into(),
+                                admin: true,
+                            },
+                            item,
+                            version.as_deref(),
+                        )
+                        .ok()
+                        .map(|(_, bytes)| bytes)
+                } else {
+                    None
+                },
                 touches: Vec::new(),
                 relay,
                 seed_claimed: false,
@@ -653,7 +825,7 @@ impl Rooms {
         Ok(Live {
             doc,
             mode: "solo",
-            generation: 0,
+            generation,
             baseline: None,
             touches: Vec::new(),
             relay,

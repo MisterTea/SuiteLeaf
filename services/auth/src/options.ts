@@ -17,6 +17,8 @@ export const JWT_ISSUER = "suiteleaf";
 export const JWT_AUDIENCE = "suiteleaf";
 
 export interface AuthEnv {
+  inviteOnly?: boolean;
+  registrationKey?: string;
   baseURL: string;
   secret: string;
   trustedOrigins: string[];
@@ -36,6 +38,9 @@ export function envFromProcess(env = process.env): AuthEnv {
     );
   const baseURL = env.SUITELEAF_PUBLIC_URL ?? "http://127.0.0.1:8787";
   return {
+    ...(env.SUITELEAF_CLOUD === "1"
+      ? { inviteOnly: true, registrationKey: env.SUITELEAF_INTERNAL_TOKEN }
+      : {}),
     baseURL,
     secret,
     trustedOrigins: [
@@ -160,6 +165,16 @@ export function authOptions(
       user: {
         create: {
           async before(user, context) {
+            if (
+              env.inviteOnly &&
+              (!env.registrationKey ||
+                context?.headers?.get("x-suiteleaf-registration") !==
+                  env.registrationKey)
+            ) {
+              throw new APIError("FORBIDDEN", {
+                message: "An invitation is required to create an account.",
+              });
+            }
             if (!context) return;
             const existing = Number(
               await context.context.adapter.count({ model: "user" }),
@@ -244,9 +259,11 @@ export function authOptions(
   } satisfies BetterAuthOptions;
 }
 
-function sessionActor(context: {
-  context?: { session?: { user?: { id?: string } } | null };
-} | null): string | undefined {
+function sessionActor(
+  context: {
+    context?: { session?: { user?: { id?: string } } | null };
+  } | null,
+): string | undefined {
   return context?.context?.session?.user?.id;
 }
 

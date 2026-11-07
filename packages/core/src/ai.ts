@@ -1,7 +1,10 @@
 /** A local model backend: raw prompt text in, streamed text out. */
-export type AiBackendKind = "llama.cpp" | "webnn" | "webgpu" | "wasm" | "remote";
+export type AiBackendKind =
+  "llama.cpp" | "webnn" | "webgpu" | "wasm" | "remote";
 
 export interface AiStatus {
+  /** Native completion grammar advertised by a hosted model adapter. */
+  chatFormat?: "gemma";
   state: "idle" | "loading" | "ready" | "error";
   backend?: AiBackendKind;
   modelId?: AiModelId;
@@ -136,11 +139,15 @@ export const AI_MODELS: Record<AiModelId, AiModelInfo> = {
       file: "Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
       url: "https://huggingface.co/meta-models/Muse-Glimmer-30B-GGUF/resolve/main/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
     },
-    probe: "<|begin_of_text|><|start|>user<|message|>Hi<|eot|><|start|>assistant",
+    probe:
+      "<|begin_of_text|><|start|>user<|message|>Hi<|eot|><|start|>assistant",
   },
 };
 
 /** Which model a GGUF file holds, from its name. */
 export const modelIdForFile = (path: string): AiModelId =>
-  /frognano/i.test(path) ? "frognano-4b" : /muse[-_]?glimmer/i.test(path) ? "muse-glimmer-30b" : "gemma-4-e4b";
-
+  /frognano/i.test(path)
+    ? "frognano-4b"
+    : /muse[-_]?glimmer/i.test(path)
+      ? "muse-glimmer-30b"
+      : "gemma-4-e4b";

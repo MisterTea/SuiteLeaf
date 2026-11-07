@@ -7,6 +7,8 @@ use suiteleaf_net::{Multiaddr, PeerId};
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
+    /// Central Postgres + private object storage; no peer replication.
+    pub cloud: bool,
     /// Holds `identity.key`, `swarm.key`, `suitedb.sqlite`, and `blobs/`.
     pub data_dir: PathBuf,
     /// The public HTTP listener for the web app and APIs.
@@ -77,6 +79,7 @@ impl Default for AiConfig {
 impl Default for Config {
     fn default() -> Self {
         Config {
+            cloud: false,
             data_dir: PathBuf::from("suiteleaf-data"),
             http_addr: "127.0.0.1:8787".parse().unwrap(),
             public_url: None,

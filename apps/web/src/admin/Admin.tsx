@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
-import { BackupFreshnessNote, CycleNotice, DocumentTrail, FailedUploadList, OrganizationExportButton, ReplicationLagNote, SyncHealthNote } from "./admin-view";
+import {
+  BackupFreshnessNote,
+  CycleNotice,
+  DocumentTrail,
+  FailedUploadList,
+  OrganizationExportButton,
+  ReplicationLagNote,
+  SyncHealthNote,
+} from "./admin-view";
 import { download } from "../storage";
 import { syncHealth, uploadQueue } from "../upload-queue";
 import { useMode } from "../mode";
@@ -24,9 +32,15 @@ import "./admin.css";
 import { ExpansionNotice, FeatureMatrix } from "../packaging-view";
 import { ProviderCheck } from "./provider-check";
 import { DepartureNote } from "./departure-note";
-import { MemberPlanPreview, commitMember, memberPlanText, type MemberPlan } from "./member-plan";
+import {
+  MemberPlanPreview,
+  commitMember,
+  memberPlanText,
+  type MemberPlan,
+} from "./member-plan";
 import { OrgPolicyReview, type OrgPolicyPlan } from "./org-policy";
 import { PersonAccess } from "./person-access";
+import { Invitations } from "./invitations";
 import {
   SessionList,
   endLostDevice,
@@ -119,11 +133,14 @@ function BackupStatus() {
   }>({ configured: false });
   useEffect(() => {
     let stop = false;
-    void adminApi.backup().then((next) => {
-      if (!stop) setReport(next);
-    }).catch(() => {
-      if (!stop) setReport({ configured: true, readable: false });
-    });
+    void adminApi
+      .backup()
+      .then((next) => {
+        if (!stop) setReport(next);
+      })
+      .catch(() => {
+        if (!stop) setReport({ configured: true, readable: false });
+      });
     return () => {
       stop = true;
     };
@@ -133,7 +150,9 @@ function BackupStatus() {
 
 function ReplicationStatus() {
   const [pending, setPending] = useState(0);
-  const [peers, setPeers] = useState<{ peer: string; sameEpoch: boolean; behind: number }[]>([]);
+  const [peers, setPeers] = useState<
+    { peer: string; sameEpoch: boolean; behind: number }[]
+  >([]);
   const [problem, setProblem] = useState("");
   useEffect(() => {
     let stop = false;
@@ -169,7 +188,9 @@ function BrowserUploads() {
   }, []);
   return (
     <>
-      <SyncHealthNote health={syncHealth(jobs, Date.now(), uploadQueue.lastSuccessAt())} />
+      <SyncHealthNote
+        health={syncHealth(jobs, Date.now(), uploadQueue.lastSuccessAt())}
+      />
       <FailedUploadList
         jobs={jobs}
         onRetry={(itemId) => {
@@ -215,13 +236,18 @@ export function AdminApp() {
       />
       <SessionList
         sessions={sessions}
-        activity={{ now: new Date().toISOString(), idleSecs: session?.idleSecs }}
+        activity={{
+          now: new Date().toISOString(),
+          idleSecs: session?.idleSecs,
+        }}
         onRotate={async (id) => {
           await rotateNodeSession(id);
         }}
         onEnd={async (id) => {
           await endNodeSession(id);
-          setSessions((current) => current.filter((session) => session.id !== id));
+          setSessions((current) =>
+            current.filter((session) => session.id !== id),
+          );
         }}
         onReauth={async (id) => {
           await requireNodeSession(id);
@@ -230,7 +256,9 @@ export function AdminApp() {
           const ended = await endLostDevice(device);
           if (ended > 0) {
             const named = device.trim();
-            setSessions((current) => current.filter((item) => item.userAgent.trim() !== named));
+            setSessions((current) =>
+              current.filter((item) => item.userAgent.trim() !== named),
+            );
           }
           return ended;
         }}
@@ -348,6 +376,7 @@ function PeopleList({
   }, [query, group, users, onError]);
   return (
     <>
+      <Invitations />
       <form
         className="admin-form"
         onSubmit={(event) => {
@@ -367,7 +396,11 @@ function PeopleList({
         <h2>New account</h2>
         <label>
           Name
-          <input value={name} onChange={(e) => setName(e.target.value)} required />
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+          />
         </label>
         <label>
           Email
@@ -494,7 +527,9 @@ function PersonPage({
       <h2>{person.user.name || person.user.email}</h2>
       <PersonAccess
         onLoad={async () =>
-          (await api(`/api/drive/people/${encodeURIComponent(id)}/access`)).json()
+          (
+            await api(`/api/drive/people/${encodeURIComponent(id)}/access`)
+          ).json()
         }
       />
       <CycleNotice message={error} />
@@ -507,11 +542,19 @@ function PersonPage({
       >
         <label>
           Name
-          <input aria-label="Person name" value={name} onChange={(e) => setName(e.target.value)} />
+          <input
+            aria-label="Person name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
         </label>
         <label>
           Email
-          <input aria-label="Person email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <input
+            aria-label="Person email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
         </label>
         <button type="submit">Save person</button>
       </form>
@@ -522,7 +565,12 @@ function PersonPage({
             aria-label="Role"
             value={isAdminRole(person.user.role) ? "admin" : "user"}
             onChange={(e) =>
-              run(() => adminApi.setRole(id, e.target.value === "admin" ? "admin" : "user"))
+              run(() =>
+                adminApi.setRole(
+                  id,
+                  e.target.value === "admin" ? "admin" : "user",
+                ),
+              )
             }
           >
             <option value="user">User</option>
@@ -535,7 +583,10 @@ function PersonPage({
         >
           {person.user.banned ? "Enable" : "Disable"}
         </button>
-        <button type="button" onClick={() => run(() => adminApi.revokeSessions(id))}>
+        <button
+          type="button"
+          onClick={() => run(() => adminApi.revokeSessions(id))}
+        >
           Sign out everywhere
         </button>
       </div>
@@ -543,7 +594,9 @@ function PersonPage({
         className="admin-form"
         onSubmit={(event) => {
           event.preventDefault();
-          run(() => adminApi.setPassword(id, password).then(() => setPassword("")));
+          run(() =>
+            adminApi.setPassword(id, password).then(() => setPassword("")),
+          );
         }}
       >
         <label>
@@ -557,7 +610,9 @@ function PersonPage({
           />
         </label>
         <button type="submit">Set password</button>
-        <p className="admin-muted">Setting a password also signs them out everywhere.</p>
+        <p className="admin-muted">
+          Setting a password also signs them out everywhere.
+        </p>
       </form>
       <section className="admin-card">
         <h3>Documents</h3>
@@ -586,7 +641,9 @@ function PersonPage({
             <li key={file.id}>
               <span>{file.name}</span>
               <small className="admin-muted">
-                {file.via === "owned" ? "Owns" : `Via ${file.groupName ?? "a group"}`}
+                {file.via === "owned"
+                  ? "Owns"
+                  : `Via ${file.groupName ?? "a group"}`}
                 {" · "}
                 {formatBytes(file.size)}
               </small>
@@ -601,7 +658,9 @@ function PersonPage({
             <li key={group.id}>
               <span>{group.name}</span>
               <small className="admin-muted">
-                {person.directGroupIds.includes(group.id) ? "Direct" : "Through another group"}
+                {person.directGroupIds.includes(group.id)
+                  ? "Direct"
+                  : "Through another group"}
               </small>
             </li>
           ))}
@@ -753,7 +812,9 @@ function GroupPage({
       </>
     );
   }
-  const names = new Map(users.map((user) => [user.id, user.name || user.email || user.id]));
+  const names = new Map(
+    users.map((user) => [user.id, user.name || user.email || user.id]),
+  );
   const groupNames = new Map(groups.map((group) => [group.id, group.name]));
   const run = (work: () => Promise<unknown>) =>
     void work()
@@ -779,7 +840,11 @@ function GroupPage({
       >
         <label>
           Group name
-          <input aria-label="Group name" value={name} onChange={(e) => setName(e.target.value)} />
+          <input
+            aria-label="Group name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
         </label>
         <button type="submit">Rename group</button>
       </form>
@@ -837,9 +902,17 @@ function GroupPage({
             disabled={!personId}
             onPreview={async () => {
               const person = users.find((user) => user.id === personId);
-              const plan = (await adminApi.memberPlan(id, personId, true)) as MemberPlan;
+              const plan = (await adminApi.memberPlan(
+                id,
+                personId,
+                true,
+              )) as MemberPlan;
               reviewed.current = plan;
-              return memberPlanText(plan, person?.name || person?.email || "That person", true);
+              return memberPlanText(
+                plan,
+                person?.name || person?.email || "That person",
+                true,
+              );
             }}
             onApply={async () => {
               const plan = reviewed.current;
@@ -879,7 +952,11 @@ function GroupPage({
             disabled={!childId}
             onPreview={async () => {
               const group = groups.find((item) => item.id === childId);
-              const plan = (await adminApi.memberPlan(id, childId, true)) as MemberPlan;
+              const plan = (await adminApi.memberPlan(
+                id,
+                childId,
+                true,
+              )) as MemberPlan;
               groupReviewed.current = plan;
               return memberPlanText(plan, group?.name || "That group", true);
             }}

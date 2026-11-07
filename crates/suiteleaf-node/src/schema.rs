@@ -27,6 +27,11 @@ pub fn node_schema(auth_override: Option<&Path>) -> Result<Schema> {
     let auth: AuthSchema = serde_json::from_str(&text).context("parse the auth schema")?;
     let mut tables = auth.tables;
     tables.extend(suitedrive::tables());
+    tables.push(
+        TableDef::new("cloud_invite", "id")
+            .column("email", suitedb::ColumnType::Text)
+            .column("expiresAt", suitedb::ColumnType::Text),
+    );
     let schema = Schema {
         version: auth.version * 100 + suitedrive::SCHEMA_VERSION,
         tables,

@@ -117,6 +117,7 @@ vi.mock("../../apps/web/src/node-client", () => {
   fake.api = vi.fn();
   return {
     adminApi,
+    providers: vi.fn(async () => ({inviteOnly:false})),
     api: (path: string, init?: RequestInit) => fake.api(path, init),
     json: (body: unknown) => ({ headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
     currentAccount,

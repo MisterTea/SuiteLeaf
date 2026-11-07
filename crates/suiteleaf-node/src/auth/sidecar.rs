@@ -29,11 +29,18 @@ impl Auth {
         let Some(base) = self.sidecar() else {
             bail!("Authentication is not available on this node.");
         };
+        let registration_key = self
+            .registration_key
+            .read()
+            .unwrap()
+            .clone()
+            .unwrap_or_default();
         let response = self
             .client
             .post(format!("{base}{path}"))
             .header(header::AUTHORIZATION, authorization)
             .header(header::CONTENT_TYPE, "application/json")
+            .header(crate::cloud::REGISTRATION_HEADER, registration_key)
             .json(body)
             .send()
             .await
@@ -73,12 +80,15 @@ pub async fn proxy(
         .uri()
         .path_and_query()
         .map(|p| p.as_str())
-        .unwrap_or("/");
+        .unwrap_or("/")
+        .to_owned();
     let url = format!("{base}{path}");
     let method = req.method().clone();
     let mut headers = reqwest::header::HeaderMap::new();
     for (name, value) in req.headers() {
-        if !HOP_HEADERS.contains(&name.as_str()) {
+        if !HOP_HEADERS.contains(&name.as_str())
+            && name.as_str() != crate::cloud::REGISTRATION_HEADER
+        {
             headers.append(name.clone(), value.clone());
         }
     }
@@ -86,6 +96,26 @@ pub async fn proxy(
     let body = match axum::body::to_bytes(req.into_body(), 1024 * 1024).await {
         Ok(b) => b,
         Err(_) => return StatusCode::PAYLOAD_TOO_LARGE.into_response(),
+    };
+    let registration = if auth.db.is_postgres() && path.starts_with("/api/auth/sign-up/") {
+        match crate::cloud::registration(&auth.db, &headers, &body) {
+            Ok(Some(digest)) => {
+                let Some(key) = auth.registration_key.read().unwrap().clone() else {
+                    return StatusCode::SERVICE_UNAVAILABLE.into_response();
+                };
+                headers.insert(crate::cloud::REGISTRATION_HEADER, key.parse().unwrap());
+                Some(digest)
+            }
+            _ => {
+                return (
+                    StatusCode::FORBIDDEN,
+                    "An invitation is required to create an account.",
+                )
+                    .into_response();
+            }
+        }
+    } else {
+        None
     };
     let upstream = match auth
         .client
@@ -106,6 +136,17 @@ pub async fn proxy(
         }
     };
     let mut response = Response::builder().status(upstream.status().as_u16());
+    if upstream.status().is_success()
+        && let Some(digest) = registration
+    {
+        if auth
+            .db
+            .transact(|tx| tx.delete("cloud_invite", &digest))
+            .is_err()
+        {
+            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        }
+    }
     for (name, value) in upstream.headers() {
         if !HOP_HEADERS.contains(&name.as_str()) {
             response = response.header(name, value);
@@ -125,6 +166,9 @@ pub fn supervise(
     internal_url: String,
     internal_token: String,
 ) -> Result<()> {
+    if config.cloud {
+        *auth.registration_key.write().unwrap() = Some(internal_token.clone());
+    }
     let secret = std::env::var("SUITELEAF_AUTH_SECRET")
         .ok()
         .or_else(|| config.auth.secret.clone())
@@ -151,7 +195,16 @@ pub fn supervise(
                 .env("SUITELEAF_INTERNAL_URL", &internal_url)
                 .env("SUITELEAF_INTERNAL_TOKEN", &internal_token)
                 .env("SUITELEAF_TRUSTED_ORIGINS", config.cors_origins.join(","))
-                .env("SUITELEAF_AUTH_PORT", "0")
+                .env(
+                    "SUITELEAF_AUTH_PORT",
+                    if config.cloud {
+                        std::env::var("SUITELEAF_CLOUD_BRIDGE_PORT")
+                            .unwrap_or_else(|_| "41235".into())
+                    } else {
+                        "0".into()
+                    },
+                )
+                .env("SUITELEAF_CLOUD", if config.cloud { "1" } else { "0" })
                 .env("SUITELEAF_EXIT_WITH_STDIN", "1")
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())

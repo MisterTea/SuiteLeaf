@@ -1,4 +1,9 @@
-import type { AiGenerateEvent, AiGenerateRequest, AiModelId, AiStatus } from "@suiteleaf/core/ai";
+import type {
+  AiGenerateEvent,
+  AiGenerateRequest,
+  AiModelId,
+  AiStatus,
+} from "@suiteleaf/core/ai";
 import { AI_MODELS } from "@suiteleaf/core/ai";
 import { cappedTokens, promptHostAllowed, remotePrompt } from "./policy";
 
@@ -36,7 +41,10 @@ export function loadUrl(endpoint: string): string {
 }
 
 /** Split a server-sent-events buffer into complete events, keeping a partial tail. */
-export function takeSseEvents(buffer: string): { events: string[]; rest: string } {
+export function takeSseEvents(buffer: string): {
+  events: string[];
+  rest: string;
+} {
   const parts = buffer.split(/\r?\n\r?\n/);
   const rest = parts.pop() ?? "";
   return { events: parts.filter((part) => part.trim()), rest };
@@ -48,7 +56,9 @@ export interface CompletionPiece {
 }
 
 /** One SSE event from an OpenAI completions or chat-completions stream. `[DONE]` ends it. */
-export function pieceFromSse(event: string): CompletionPiece | "done" | undefined {
+export function pieceFromSse(
+  event: string,
+): CompletionPiece | "done" | undefined {
   const data = event
     .split(/\r?\n/)
     .filter((line) => line.startsWith("data:"))
@@ -56,7 +66,14 @@ export function pieceFromSse(event: string): CompletionPiece | "done" | undefine
     .join("\n");
   if (!data) return undefined;
   if (data === "[DONE]") return "done";
-  let json: { choices?: { text?: string; finish_reason?: string | null; delta?: { content?: string } }[]; error?: { message?: string } };
+  let json: {
+    choices?: {
+      text?: string;
+      finish_reason?: string | null;
+      delta?: { content?: string };
+    }[];
+    error?: { message?: string };
+  };
   try {
     json = JSON.parse(data);
   } catch {
@@ -65,12 +82,20 @@ export function pieceFromSse(event: string): CompletionPiece | "done" | undefine
   if (json.error?.message) throw new Error(json.error.message);
   const choice = json.choices?.[0];
   if (!choice) return undefined;
-  const finish = choice.finish_reason === "length" ? "length" : choice.finish_reason ? "stop" : undefined;
+  const finish =
+    choice.finish_reason === "length"
+      ? "length"
+      : choice.finish_reason
+        ? "stop"
+        : undefined;
   return { text: choice.text ?? choice.delta?.content ?? "", finish };
 }
 
 /** Apply `data:` status events from a model-download stream. The last event is the result. */
-export async function applyStatusStream(body: ReadableStream<Uint8Array>, set: (status: AiStatus) => void): Promise<AiStatus> {
+export async function applyStatusStream(
+  body: ReadableStream<Uint8Array>,
+  set: (status: AiStatus) => void,
+): Promise<AiStatus> {
   const reader = body.getReader();
   const decode = new TextDecoder();
   let buffer = "";
@@ -102,7 +127,13 @@ function knownId(model: string): AiModelId | undefined {
 }
 
 function ready(model: string, message: string): AiStatus {
-  return { state: "ready", backend: "remote", modelId: knownId(model), model: model in AI_MODELS ? AI_MODELS[model as AiModelId].name : model, message };
+  return {
+    state: "ready",
+    backend: "remote",
+    modelId: knownId(model),
+    model: model in AI_MODELS ? AI_MODELS[model as AiModelId].name : model,
+    message,
+  };
 }
 
 /**
@@ -111,7 +142,12 @@ function ready(model: string, message: string): AiStatus {
  * returns the continuation as text.
  */
 export function openAiCompletionModel(target: CompletionTarget) {
-  let status: AiStatus = { state: "idle", backend: "remote", model: target.model, modelId: knownId(target.model) };
+  let status: AiStatus = {
+    state: "idle",
+    backend: "remote",
+    model: target.model,
+    modelId: knownId(target.model),
+  };
   const listeners = new Set<(next: AiStatus) => void>();
   const set = (next: AiStatus) => {
     status = next;
@@ -125,22 +161,44 @@ export function openAiCompletionModel(target: CompletionTarget) {
     },
     async load() {
       if (!target.endpoint.trim()) {
-        const error: AiStatus = { state: "error", backend: "remote", message: "Enter the address of an OpenAI-compatible endpoint." };
+        const error: AiStatus = {
+          state: "error",
+          backend: "remote",
+          message: "Enter the address of an OpenAI-compatible endpoint.",
+        };
         set(error);
         return error;
       }
       const headers = await requestHeaders(target);
       if (!headers) {
-        const error: AiStatus = { state: "error", backend: "remote", message: "Sign in to use the assistant on this server." };
+        const error: AiStatus = {
+          state: "error",
+          backend: "remote",
+          message: "Sign in to use the assistant on this server.",
+        };
         set(error);
         return error;
       }
       if (target.prepare) {
-        const display = target.model in AI_MODELS ? AI_MODELS[target.model as AiModelId].name : target.model;
-        set({ state: "loading", backend: "remote", modelId: knownId(target.model), model: display, progress: 0, message: `Preparing ${display}` });
+        const display =
+          target.model in AI_MODELS
+            ? AI_MODELS[target.model as AiModelId].name
+            : target.model;
+        set({
+          state: "loading",
+          backend: "remote",
+          modelId: knownId(target.model),
+          model: display,
+          progress: 0,
+          message: `Preparing ${display}`,
+        });
         const preparing = loadUrl(target.endpoint);
         if (!promptHostAllowed(preparing, target.localOnly === true)) {
-          const error: AiStatus = { state: "error", backend: "remote", message: "Document text stays here." };
+          const error: AiStatus = {
+            state: "error",
+            backend: "remote",
+            message: "Document text stays here.",
+          };
           set(error);
           return error;
         }
@@ -158,7 +216,11 @@ export function openAiCompletionModel(target: CompletionTarget) {
             } catch {
               // The body is already the message.
             }
-            const error: AiStatus = { state: "error", backend: "remote", message: message || `The server returned ${response.status}.` };
+            const error: AiStatus = {
+              state: "error",
+              backend: "remote",
+              message: message || `The server returned ${response.status}.`,
+            };
             set(error);
             return error;
           }
@@ -169,13 +231,38 @@ export function openAiCompletionModel(target: CompletionTarget) {
             const error: AiStatus = {
               state: "error",
               backend: "remote",
-              message: next.message ?? "The server did not finish preparing the model.",
+              message:
+                next.message ??
+                "The server did not finish preparing the model.",
             };
             set(error);
             return error;
           }
+          if (type.includes("application/json")) {
+            const prepared = (await response.json()) as {
+              model?: unknown;
+              chatFormat?: unknown;
+            };
+            if (
+              typeof prepared.model === "string" &&
+              prepared.model.length < 200
+            ) {
+              const next: AiStatus = {
+                ...ready(prepared.model, new URL(preparing).host),
+                ...(prepared.chatFormat === "gemma"
+                  ? { chatFormat: "gemma" as const }
+                  : {}),
+              };
+              set(next);
+              return next;
+            }
+          }
         } catch (error) {
-          const failed: AiStatus = { state: "error", backend: "remote", message: String((error as Error).message ?? error) };
+          const failed: AiStatus = {
+            state: "error",
+            backend: "remote",
+            message: String((error as Error).message ?? error),
+          };
           set(failed);
           return failed;
         }
@@ -184,7 +271,11 @@ export function openAiCompletionModel(target: CompletionTarget) {
       try {
         host = new URL(completionsUrl(target.endpoint)).host;
       } catch {
-        const error: AiStatus = { state: "error", backend: "remote", message: "Enter an http:// or https:// endpoint address." };
+        const error: AiStatus = {
+          state: "error",
+          backend: "remote",
+          message: "Enter an http:// or https:// endpoint address.",
+        };
         set(error);
         return error;
       }
@@ -192,7 +283,10 @@ export function openAiCompletionModel(target: CompletionTarget) {
       set(next);
       return next;
     },
-    generate(request: AiGenerateRequest, onEvent: (event: AiGenerateEvent) => void) {
+    generate(
+      request: AiGenerateRequest,
+      onEvent: (event: AiGenerateEvent) => void,
+    ) {
       const controller = new AbortController();
       void streamCompletion(target, request, onEvent, controller.signal);
       return () => controller.abort();
@@ -222,12 +316,18 @@ async function streamCompletion(
   try {
     url = completionsUrl(target.endpoint);
   } catch (error) {
-    onEvent({ type: "error", message: String((error as Error).message ?? error) });
+    onEvent({
+      type: "error",
+      message: String((error as Error).message ?? error),
+    });
     return;
   }
   const headers = await requestHeaders(target);
   if (!headers) {
-    onEvent({ type: "error", message: "Sign in to use the assistant on this server." });
+    onEvent({
+      type: "error",
+      message: "Sign in to use the assistant on this server.",
+    });
     return;
   }
   if (!promptHostAllowed(url, target.localOnly === true)) {
@@ -259,10 +359,22 @@ async function streamCompletion(
     });
   } catch (error) {
     if (signal.aborted) {
-      onEvent({ type: "done", reason: "aborted", promptTokens: 0, cachedTokens: 0, outputTokens: 0, promptMs: 0, generateMs: 0 });
+      onEvent({
+        type: "done",
+        reason: "aborted",
+        promptTokens: 0,
+        cachedTokens: 0,
+        outputTokens: 0,
+        promptMs: 0,
+        generateMs: 0,
+      });
       return;
     }
-    onEvent({ type: "error", message: `The model endpoint did not answer. ${(error as Error).message ?? ""}`.trim() });
+    onEvent({
+      type: "error",
+      message:
+        `The model endpoint did not answer. ${(error as Error).message ?? ""}`.trim(),
+    });
     return;
   }
   if (!response.ok) {
@@ -273,7 +385,10 @@ async function streamCompletion(
     } catch {
       // The body is already the message.
     }
-    onEvent({ type: "error", message: message || `The model endpoint returned ${response.status}.` });
+    onEvent({
+      type: "error",
+      message: message || `The model endpoint returned ${response.status}.`,
+    });
     return;
   }
   const reader = response.body?.getReader();
@@ -307,10 +422,21 @@ async function streamCompletion(
     }
   } catch (error) {
     if (signal.aborted) {
-      onEvent({ type: "done", reason: "aborted", promptTokens: 0, cachedTokens: 0, outputTokens: 0, promptMs: 0, generateMs: Math.round(performance.now() - started) });
+      onEvent({
+        type: "done",
+        reason: "aborted",
+        promptTokens: 0,
+        cachedTokens: 0,
+        outputTokens: 0,
+        promptMs: 0,
+        generateMs: Math.round(performance.now() - started),
+      });
       return;
     }
-    onEvent({ type: "error", message: String((error as Error).message ?? error) });
+    onEvent({
+      type: "error",
+      message: String((error as Error).message ?? error),
+    });
     return;
   }
   const ended = performance.now();

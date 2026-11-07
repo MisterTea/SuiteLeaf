@@ -45,7 +45,10 @@ function installMedia(dark: boolean, legacy = false) {
 beforeEach(() => {
   vi.resetModules();
   for (const name of ["localStorage", "sessionStorage"])
-    Object.defineProperty(globalThis, name, { value: memoryStorage(), configurable: true });
+    Object.defineProperty(globalThis, name, {
+      value: memoryStorage(),
+      configurable: true,
+    });
   delete window.suiteleaf;
   document.documentElement.className = "";
 });
@@ -64,7 +67,9 @@ describe("theme", () => {
     const theme = await import("../../apps/web/src/theme");
     expect(theme.getThemeMode()).toBe("dark");
     expect(document.documentElement.dataset.theme).toBe("dark");
-    expect(document.documentElement.classList.contains("univer-dark")).toBe(true);
+    expect(document.documentElement.classList.contains("univer-dark")).toBe(
+      true,
+    );
     theme.setThemeMode("light");
     expect(localStorage.getItem("suiteleaf_theme_mode")).toBe("light");
     expect(document.documentElement.className).toBe("light-theme");
@@ -145,9 +150,27 @@ describe("theme", () => {
 });
 
 describe("app mode", () => {
+  it("keeps a hosted deployment in server mode while its API is unavailable", async () => {
+    vi.stubEnv("VITE_SUITELEAF_SERVER", "1");
+    const fetcher = vi.fn(() => Promise.reject(new Error("offline")));
+    vi.stubGlobal("fetch", fetcher);
+    const { resolveMode } = await import("../../apps/web/src/mode");
+    expect(await resolveMode()).toEqual({
+      mode: { kind: "cluster", serverUrl: location.origin },
+      locked: true,
+      demo: false,
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
   const info = (body: unknown, ok = true) =>
-    Promise.resolve(new Response(JSON.stringify(body), { status: ok ? 200 : 503 }));
-  const node = { name: "SuiteLeaf node", mode: "cluster", auth: { enabled: true } };
+    Promise.resolve(
+      new Response(JSON.stringify(body), { status: ok ? 200 : 503 }),
+    );
+  const node = {
+    name: "SuiteLeaf node",
+    mode: "cluster",
+    auth: { enabled: true },
+  };
 
   it("normalizes a server address and tries http after https", async () => {
     const { probeServer } = await import("../../apps/web/src/mode");
@@ -155,43 +178,64 @@ describe("app mode", () => {
       url.startsWith("https:") ? Promise.reject(new Error("TLS")) : info(node),
     );
     vi.stubGlobal("fetch", fetcher);
-    expect(await probeServer("  suite.example.com/leaf/  ")).toBe("http://suite.example.com/leaf");
+    expect(await probeServer("  suite.example.com/leaf/  ")).toBe(
+      "http://suite.example.com/leaf",
+    );
     expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
       "https://suite.example.com/leaf/api/node/info",
       "http://suite.example.com/leaf/api/node/info",
     ]);
     fetcher.mockClear();
     fetcher.mockImplementation(() => info(node));
-    expect(await probeServer("https://suite.example.com")).toBe("https://suite.example.com");
+    expect(await probeServer("https://suite.example.com")).toBe(
+      "https://suite.example.com",
+    );
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   it("explains addresses and servers it cannot use", async () => {
     const { probeServer } = await import("../../apps/web/src/mode");
-    await expect(probeServer("http://")).rejects.toThrow("Enter a server address such as suiteleaf.example.com.");
-    await expect(probeServer("ftp://x.example")).rejects.toThrow("Use an http:// or https:// address.");
+    await expect(probeServer("http://")).rejects.toThrow(
+      "Enter a server address such as suiteleaf.example.com.",
+    );
+    await expect(probeServer("ftp://x.example")).rejects.toThrow(
+      "Use an http:// or https:// address.",
+    );
     vi.stubGlobal("fetch", () => info({ name: "Other" }));
-    await expect(probeServer("x.example")).rejects.toThrow("No SuiteLeaf server answered at that address.");
+    await expect(probeServer("x.example")).rejects.toThrow(
+      "No SuiteLeaf server answered at that address.",
+    );
     vi.stubGlobal("fetch", () => info({}, false));
-    await expect(probeServer("x.example")).rejects.toThrow("No SuiteLeaf server answered");
+    await expect(probeServer("x.example")).rejects.toThrow(
+      "No SuiteLeaf server answered",
+    );
     vi.stubGlobal("fetch", () => info({ ...node, auth: { enabled: false } }));
-    await expect(probeServer("x.example")).rejects.toThrow("sign-in service is not running yet");
+    await expect(probeServer("x.example")).rejects.toThrow(
+      "sign-in service is not running yet",
+    );
   });
 
   it("times out a probe without AbortSignal.timeout", async () => {
     vi.useFakeTimers();
     const timeout = Object.getOwnPropertyDescriptor(AbortSignal, "timeout")!;
     try {
-      Object.defineProperty(AbortSignal, "timeout", { value: undefined, configurable: true });
+      Object.defineProperty(AbortSignal, "timeout", {
+        value: undefined,
+        configurable: true,
+      });
       const { probeServer } = await import("../../apps/web/src/mode");
       vi.stubGlobal(
         "fetch",
         (_url: string, init: RequestInit) =>
           new Promise((_, reject) =>
-            init.signal!.addEventListener("abort", () => reject(new Error("aborted"))),
+            init.signal!.addEventListener("abort", () =>
+              reject(new Error("aborted")),
+            ),
           ),
       );
-      const probe = expect(probeServer("https://slow.example")).rejects.toThrow("No SuiteLeaf server");
+      const probe = expect(probeServer("https://slow.example")).rejects.toThrow(
+        "No SuiteLeaf server",
+      );
       await vi.advanceTimersByTimeAsync(10_000);
       await probe;
     } finally {
@@ -204,11 +248,17 @@ describe("app mode", () => {
     vi.stubEnv("VITE_SUITELEAF_DEMO", "1");
     const { resolveMode, isDemo } = await import("../../apps/web/src/mode");
     expect(isDemo).toBe(true);
-    expect(await resolveMode()).toEqual({ mode: { kind: "single" }, locked: true, demo: true });
+    expect(await resolveMode()).toEqual({
+      mode: { kind: "single" },
+      locked: true,
+      demo: true,
+    });
   });
 
   it("asks the desktop app for its mode", async () => {
-    window.suiteleaf = { getMode: async () => ({ kind: "cluster", serverUrl: "https://n" }) } as never;
+    window.suiteleaf = {
+      getMode: async () => ({ kind: "cluster", serverUrl: "https://n" }),
+    } as never;
     const { resolveMode } = await import("../../apps/web/src/mode");
     expect(await resolveMode()).toEqual({
       mode: { kind: "cluster", serverUrl: "https://n" },
@@ -230,8 +280,14 @@ describe("app mode", () => {
   it("uses a saved mode, or single-user mode when the saved one is broken", async () => {
     vi.stubGlobal("fetch", () => info({ name: "static host" }));
     const { resolveMode } = await import("../../apps/web/src/mode");
-    localStorage.setItem("suiteleaf:mode", JSON.stringify({ kind: "cluster", serverUrl: "https://n" }));
-    expect((await resolveMode()).mode).toEqual({ kind: "cluster", serverUrl: "https://n" });
+    localStorage.setItem(
+      "suiteleaf:mode",
+      JSON.stringify({ kind: "cluster", serverUrl: "https://n" }),
+    );
+    expect((await resolveMode()).mode).toEqual({
+      kind: "cluster",
+      serverUrl: "https://n",
+    });
     localStorage.setItem("suiteleaf:mode", "{broken");
     expect((await resolveMode()).mode).toEqual({ kind: "single" });
     localStorage.setItem("suiteleaf:mode", JSON.stringify({ kind: "cluster" }));
@@ -263,8 +319,12 @@ describe("app mode", () => {
 
   it("remembers the server it disconnected from once", async () => {
     const reload = vi.fn();
-    vi.spyOn(window, "location", "get").mockReturnValue({ ...window.location, reload } as Location);
-    const { disconnect, leftServer, forgetLeftServer } = await import("../../apps/web/src/mode");
+    vi.spyOn(window, "location", "get").mockReturnValue({
+      ...window.location,
+      reload,
+    } as Location);
+    const { disconnect, leftServer, forgetLeftServer } =
+      await import("../../apps/web/src/mode");
     await disconnect("https://suite.example.com:8443/");
     expect(leftServer()).toBe("suite.example.com:8443");
     forgetLeftServer();
@@ -276,24 +336,34 @@ describe("app mode", () => {
 describe("browser storage", () => {
   it("downloads exports and Save As in the browser", async () => {
     const created: Blob[] = [];
-    vi.stubGlobal("URL", Object.assign(URL, {
-      createObjectURL: (blob: Blob) => {
-        created.push(blob);
-        return "blob:x";
-      },
-      revokeObjectURL: vi.fn(),
-    }));
+    vi.stubGlobal(
+      "URL",
+      Object.assign(URL, {
+        createObjectURL: (blob: Blob) => {
+          created.push(blob);
+          return "blob:x";
+        },
+        revokeObjectURL: vi.fn(),
+      }),
+    );
     const clicks: string[] = [];
-    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
       clicks.push(this.download);
     });
     const print = vi.spyOn(window, "print").mockImplementation(() => {});
-    const { storage, exportText, exportBinary, printDocument } = await import("../../apps/web/src/storage");
+    const { storage, exportText, exportBinary, printDocument } =
+      await import("../../apps/web/src/storage");
     const record = { file: createFile("doc", "Notes") };
     expect(await storage.saveAs(record)).toBe(record);
     expect(await storage.open()).toBeNull();
     expect(await exportText("a.txt", "hello")).toBeUndefined();
-    await exportBinary("a.bin", new Uint8Array([1, 2]), "application/octet-stream");
+    await exportBinary(
+      "a.bin",
+      new Uint8Array([1, 2]),
+      "application/octet-stream",
+    );
     await printDocument("T");
     expect(clicks).toEqual(["Notes.sldoc", "a.txt", "a.bin"]);
     expect(created.map((b) => b.type)).toEqual([
@@ -309,10 +379,13 @@ describe("browser storage", () => {
     const exportFile = vi.fn(async () => "/saved");
     const print = vi.fn(async () => {});
     window.suiteleaf = { exportFile, print } as never;
-    const { storage, exportText, exportBinary, printDocument } = await import("../../apps/web/src/storage");
+    const { storage, exportText, exportBinary, printDocument } =
+      await import("../../apps/web/src/storage");
     expect(storage).toBe(window.suiteleaf);
     expect(await exportText("a.txt", "x")).toBe("/saved");
-    expect(await exportBinary("a.bin", new Uint8Array([1]), "x")).toBe("/saved");
+    expect(await exportBinary("a.bin", new Uint8Array([1]), "x")).toBe(
+      "/saved",
+    );
     await printDocument("Title");
     expect(print).toHaveBeenCalledWith("Title");
   });

@@ -39,7 +39,14 @@ export function SignInScreen({
   serverUrl: string;
   onDisconnect?: () => Promise<void>;
 }) {
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [inviteToken] = useState(
+    () =>
+      new URLSearchParams(location.hash.split("?")[1] ?? "").get("invite") ??
+      "",
+  );
+  const [mode, setMode] = useState<"signin" | "signup">(
+    inviteToken ? "signup" : "signin",
+  );
   const [available, setAvailable] = useState<AuthProviders | null>(null);
   const [form, setForm] = useState({
     identifier: "",
@@ -90,16 +97,19 @@ export function SignInScreen({
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    void run(() =>
-      mode === "signin"
-        ? signIn(serverUrl, form.identifier.trim(), form.password)
-        : signUp(serverUrl, {
-            name: form.name.trim() || form.username.trim() || form.email.trim(),
-            email: form.email.trim(),
-            username: form.username.trim(),
-            password: form.password,
-          }),
-    );
+    void run(() => {
+      if (mode === "signin")
+        return signIn(serverUrl, form.identifier.trim(), form.password);
+      const details = {
+        name: form.name.trim() || form.username.trim() || form.email.trim(),
+        email: form.email.trim(),
+        username: form.username.trim(),
+        password: form.password,
+      };
+      return inviteToken
+        ? signUp(serverUrl, details, inviteToken)
+        : signUp(serverUrl, details);
+    });
   };
 
   const social = (provider: string) =>
@@ -227,6 +237,7 @@ export function SignInScreen({
           <button
             type="button"
             className="dialog-text-btn"
+            hidden={available?.inviteOnly && !inviteToken}
             onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
           >
             {mode === "signin" ? "Create an account" : "I have an account"}

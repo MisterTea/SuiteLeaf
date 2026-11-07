@@ -22,6 +22,7 @@ thiserror.workspace = true
 tokio = { version = "1", features = ["sync", "time", "rt", "macros"] }
 tracing.workspace = true
 uuid.workspace = true
+reqwest = { workspace = true, features = ["blocking", "rustls-tls"] }
 
 [dev-dependencies]
 libp2p-identity = { version = "0.3", features = ["ed25519", "rand"] }

@@ -1,0 +1,10 @@
+cloud = true
+data_dir = "/tmp/suiteleaf"
+http_addr = "0.0.0.0:80"
+web_root = "/opt/suiteleaf/web"
+listen = []
+bootstrap = []
+cors_origins = ["suiteleaf://app"]
+
+[auth]
+command = ["node", "/opt/suiteleaf/auth/server.mjs"]

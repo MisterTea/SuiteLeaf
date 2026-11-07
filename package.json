@@ -41,6 +41,7 @@
     "storyboards": "playwright test --config playwright.storyboards.config.ts"
   },
   "devDependencies": {
+    "@neondatabase/serverless": "^1.2.0",
     "@playwright/test": "^1.58.2",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",

@@ -58,6 +58,7 @@ impl AuthUser {
 
 #[derive(Clone)]
 pub struct Auth {
+    pub(crate) registration_key: Arc<RwLock<Option<String>>>,
     db: Arc<Db>,
     sidecar: Arc<RwLock<Option<String>>>,
     idle: Arc<RwLock<Option<Duration>>>,
@@ -76,6 +77,7 @@ pub struct EmergencySession {
 impl Auth {
     pub fn new(db: Arc<Db>) -> Self {
         Auth {
+            registration_key: Arc::default(),
             db,
             sidecar: Arc::default(),
             idle: Arc::default(),

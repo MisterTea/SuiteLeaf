@@ -7,6 +7,7 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
+mod remote;
 
 /// Content is split into chunks of this size before hashing.
 pub const CHUNK_SIZE: usize = 1024 * 1024;
@@ -68,6 +69,7 @@ impl Manifest {
 /// file that is renamed into place, so a blob is either complete or absent.
 pub struct BlobStore {
     root: PathBuf,
+    remote: Option<remote::RemoteBlobs>,
 }
 
 impl BlobStore {
@@ -75,6 +77,7 @@ impl BlobStore {
         fs::create_dir_all(root).with_context(|| format!("create {}", root.display()))?;
         Ok(BlobStore {
             root: root.to_owned(),
+            remote: None,
         })
     }
 
@@ -85,6 +88,9 @@ impl BlobStore {
 
     /// Bytes already stored, including manifests. A directory that is missing counts as zero.
     pub fn stored_bytes(&self) -> Result<u64> {
+        if let Some(remote) = &self.remote {
+            return remote.stored_bytes();
+        }
         fn walk(path: &Path, total: &mut u64) -> Result<()> {
             if !path.exists() {
                 return Ok(());
@@ -106,11 +112,17 @@ impl BlobStore {
     }
 
     pub fn has(&self, hash: &Hash) -> bool {
+        if let Some(remote) = &self.remote {
+            return remote.has(hash).unwrap_or(true);
+        }
         self.path(hash).exists()
     }
 
     /// Remove one blob. Missing files are already gone.
     pub fn remove(&self, hash: &Hash) -> Result<()> {
+        if let Some(remote) = &self.remote {
+            return remote.remove(hash);
+        }
         match fs::remove_file(self.path(hash)) {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -119,6 +131,9 @@ impl BlobStore {
     }
 
     pub fn get(&self, hash: &Hash) -> Result<Option<Vec<u8>>> {
+        if let Some(remote) = &self.remote {
+            return remote.get(hash);
+        }
         match fs::read(self.path(hash)) {
             Ok(bytes) => Ok(Some(bytes)),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
@@ -141,6 +156,9 @@ impl BlobStore {
     }
 
     fn write(&self, hash: &Hash, bytes: &[u8]) -> Result<()> {
+        if let Some(remote) = &self.remote {
+            return remote.put(hash, bytes);
+        }
         let path = self.path(hash);
         if path.exists() {
             return Ok(());

@@ -3,6 +3,8 @@ import { betterAuth } from "better-auth";
 import { toNodeHandler, fromNodeHeaders } from "better-auth/node";
 import { suitedbAdapter } from "./adapter";
 import { authOptions, envFromProcess, providers } from "./options";
+import { cloudBlobRequest } from "./cloud-blobs";
+import { cloudAiRequest } from "./cloud-ai";
 
 const env = envFromProcess();
 const internalUrl = process.env.SUITELEAF_INTERNAL_URL;
@@ -54,6 +56,16 @@ const json = (value: unknown) => JSON.stringify(value).replace(/</g, "\\u003c");
 createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", env.baseURL);
   try {
+    if (env.inviteOnly && url.pathname.startsWith("/internal/cloud/blobs/")) {
+      return await cloudBlobRequest(req, res, internalToken!);
+    }
+    if (
+      env.inviteOnly &&
+      url.pathname === "/internal/cloud/ai" &&
+      req.method === "POST"
+    ) {
+      return await cloudAiRequest(req, res, internalToken!);
+    }
     if (url.pathname === "/health") return send(res, 200, "text/plain", "ok");
     if (url.pathname === "/api/auth/suiteleaf/providers")
       return send(
@@ -64,6 +76,7 @@ createServer(async (req, res) => {
           emailAndPassword: true,
           username: true,
           providers: enabled,
+          ...(env.inviteOnly ? { inviteOnly: true } : {}),
         }),
       );
     if (url.pathname === "/api/auth/suiteleaf/start") {
@@ -108,7 +121,7 @@ fetch(${json(`${env.baseURL}/api/auth/sign-in/social`)},{method:"POST",credentia
     }
     return handler(req, res);
   } catch (error) {
-    console.error(error);
+    console.error("Authentication or cloud service request failed.");
     return send(res, 500, "text/plain", "Authentication service error.");
   }
 }).listen(

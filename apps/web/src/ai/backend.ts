@@ -1,9 +1,21 @@
-import { AI_MODELS, type AiBridge, type AiGenerateEvent, type AiGenerateRequest, type AiModelId, type AiStatus } from "@suiteleaf/core/ai";
+import {
+  AI_MODELS,
+  type AiBridge,
+  type AiGenerateEvent,
+  type AiGenerateRequest,
+  type AiModelId,
+  type AiStatus,
+} from "@suiteleaf/core/ai";
 import { isDemo } from "../mode";
 import { accessToken } from "../node-client";
 import { openAiCompletionModel } from "./openai-completions";
 import { assistantBlock, orgAssistantLimit } from "./policy";
-import { knownModel, onAiPreferencesChanged, readAiPreferences, readModelName } from "./preferences";
+import {
+  knownModel,
+  onAiPreferencesChanged,
+  readAiPreferences,
+  readModelName,
+} from "./preferences";
 import { wllamaModel } from "./wllama-model";
 
 /** The on-device model, wherever it runs. */
@@ -11,7 +23,10 @@ export interface LocalModel {
   status(): AiStatus;
   onStatus(callback: (status: AiStatus) => void): () => void;
   load(): Promise<AiStatus>;
-  generate(request: AiGenerateRequest, onEvent: (event: AiGenerateEvent) => void): () => void;
+  generate(
+    request: AiGenerateRequest,
+    onEvent: (event: AiGenerateEvent) => void,
+  ): () => void;
 }
 
 /** Where the browser backend downloads weights from (a Hugging Face compatible host). */
@@ -30,15 +45,20 @@ export function selectedModel(): AiModelId {
 
 /** Which chat format to render. A remote model keeps the name the user typed. Serverless mode runs FrogNano or Gemma in the page. */
 export function formatModelId(): string {
-  if (isDemo) return selectedModel() === "gemma-4-e4b" ? "gemma-4-e4b" : "frognano-4b";
+  if (isDemo)
+    return selectedModel() === "gemma-4-e4b" ? "gemma-4-e4b" : "frognano-4b";
   if (readAiPreferences().place === "remote") return readModelName();
-  return localModel().status().modelId ?? selectedModel();
+  const status = localModel().status();
+  if (status.chatFormat === "gemma") return "gemma-4-e4b";
+  return status.modelId ?? status.model ?? selectedModel();
 }
 
 /** Force a browser device ("webnn-gpu", "webgpu", "wasm"); otherwise WebNN, then WebGPU. */
-export const forcedDevice = () => localStorage.getItem("suiteleaf.ai.device") ?? undefined;
+export const forcedDevice = () =>
+  localStorage.getItem("suiteleaf.ai.device") ?? undefined;
 /** Force the WebGPU weights ("q4f16" or "q4"); otherwise q4 only where the GPU lacks shader-f16. */
-const forcedDtype = () => localStorage.getItem("suiteleaf.ai.dtype") ?? undefined;
+const forcedDtype = () =>
+  localStorage.getItem("suiteleaf.ai.dtype") ?? undefined;
 
 function statusHub(initial: AiStatus) {
   let status = initial;
@@ -70,7 +90,8 @@ function electronModel(bridge: AiBridge): LocalModel {
         const error: AiStatus = {
           state: "error",
           backend: "llama.cpp",
-          message: "This computer can run frognano-4b, gemma-4-e4b, or muse-glimmer-30b.",
+          message:
+            "This computer can run frognano-4b, gemma-4-e4b, or muse-glimmer-30b.",
         };
         hub.set(error);
         return error;
@@ -99,9 +120,13 @@ const COMPILE_BUDGET_MS: Record<string, number> = {
  * device worked, later loads skip it until the browser (its user agent) changes.
  */
 const WEBNN_FAILURE = "suiteleaf.ai.webnnFailure";
-function knownWebnnFailure(model: AiModelId): { message: string; at: string } | undefined {
+function knownWebnnFailure(
+  model: AiModelId,
+): { message: string; at: string } | undefined {
   try {
-    const saved = JSON.parse(localStorage.getItem(WEBNN_FAILURE) ?? "null")?.[model];
+    const saved = JSON.parse(localStorage.getItem(WEBNN_FAILURE) ?? "null")?.[
+      model
+    ];
     return saved?.browser === navigator.userAgent ? saved : undefined;
   } catch {
     return undefined;
@@ -114,7 +139,11 @@ function rememberWebnnFailure(model: AiModelId, message: string) {
   } catch {
     // Start over.
   }
-  saved[model] = { message, at: new Date().toISOString(), browser: navigator.userAgent };
+  saved[model] = {
+    message,
+    at: new Date().toISOString(),
+    browser: navigator.userAgent,
+  };
   localStorage.setItem(WEBNN_FAILURE, JSON.stringify(saved));
 }
 
@@ -136,10 +165,16 @@ function workerModel(): LocalModel {
   /** Load the model on one device in a fresh worker. */
   const tryDevice = (device: string, fallbacks: string[]) =>
     new Promise<AiStatus>((done) => {
-      const candidate = new Worker(new URL("./web-model.worker.ts", import.meta.url), { type: "module" });
+      const candidate = new Worker(
+        new URL("./web-model.worker.ts", import.meta.url),
+        { type: "module" },
+      );
       const timer = setTimeout(() => {
         candidate.terminate();
-        done({ state: "error", message: `${device}: did not finish compiling within ${COMPILE_BUDGET_MS[device] / 1000}s` });
+        done({
+          state: "error",
+          message: `${device}: did not finish compiling within ${COMPILE_BUDGET_MS[device] / 1000}s`,
+        });
       }, COMPILE_BUDGET_MS[device] ?? 900_000);
       candidate.onmessage = ({ data }) => {
         if (data.type === "status") {
@@ -150,7 +185,11 @@ function workerModel(): LocalModel {
             done(status);
             return;
           }
-          hub.set(status.state === "ready" && fallbacks.length ? { ...status, fallback: fallbacks.join("; ") } : status);
+          hub.set(
+            status.state === "ready" && fallbacks.length
+              ? { ...status, fallback: fallbacks.join("; ") }
+              : status,
+          );
           if (status.state === "ready") {
             clearTimeout(timer);
             worker = candidate;
@@ -174,7 +213,13 @@ function workerModel(): LocalModel {
         }
         done({ state: "error", message: `${device}: ${message}` });
       };
-      candidate.postMessage({ type: "load", host: modelHost(), model: modelId, device, dtype: forcedDtype() });
+      candidate.postMessage({
+        type: "load",
+        host: modelHost(),
+        model: modelId,
+        device,
+        dtype: forcedDtype(),
+      });
     });
 
   const load = async () => {
@@ -182,14 +227,22 @@ function workerModel(): LocalModel {
     const devices = forced ? [forced] : ["webnn-gpu", "webgpu"];
     const failures: string[] = [];
     const known = forced ? undefined : knownWebnnFailure(modelId);
-    hub.set({ state: "loading", progress: 0, modelId, model: name, message: `Starting ${name}` });
+    hub.set({
+      state: "loading",
+      progress: 0,
+      modelId,
+      model: name,
+      message: `Starting ${name}`,
+    });
     for (const device of devices) {
       if (device.startsWith("webnn") && !("ml" in navigator)) {
         failures.push(`${device}: WebNN is not available in this browser`);
         continue;
       }
       if (device.startsWith("webnn") && known) {
-        failures.push(`${known.message} (on ${new Date(known.at).toLocaleDateString()}; skipped until the browser updates)`);
+        failures.push(
+          `${known.message} (on ${new Date(known.at).toLocaleDateString()}; skipped until the browser updates)`,
+        );
         continue;
       }
       if (device === "webgpu" && !("gpu" in navigator)) {
@@ -198,7 +251,9 @@ function workerModel(): LocalModel {
       }
       const status = await tryDevice(device, failures);
       if (status.state === "ready") {
-        const webnn = failures.find((f) => f.startsWith("webnn") && !f.includes("not available"));
+        const webnn = failures.find(
+          (f) => f.startsWith("webnn") && !f.includes("not available"),
+        );
         if (webnn && !known && !forced) rememberWebnnFailure(modelId, webnn);
         return status;
       }
@@ -206,7 +261,12 @@ function workerModel(): LocalModel {
       failures.push(status.message ?? device);
     }
     loading = undefined;
-    const status: AiStatus = { state: "error", modelId, model: name, message: `${name} could not run here. ${failures.join("; ")}` };
+    const status: AiStatus = {
+      state: "error",
+      modelId,
+      model: name,
+      message: `${name} could not run here. ${failures.join("; ")}`,
+    };
     hub.set(status);
     return status;
   };
@@ -259,7 +319,14 @@ let stamp = "";
 function modelStamp() {
   if (isDemo) return "demo";
   const prefs = readAiPreferences();
-  return [prefs.place, prefs.endpoint, prefs.apiKey, prefs.model, serverUrl ?? "", window.suiteleaf?.ai ? "desktop" : ""].join("\n");
+  return [
+    prefs.place,
+    prefs.endpoint,
+    prefs.apiKey,
+    prefs.model,
+    serverUrl ?? "",
+    window.suiteleaf?.ai ? "desktop" : "",
+  ].join("\n");
 }
 
 function forgetModel() {
@@ -324,7 +391,9 @@ function createModel(): LocalModel {
       maxTokens,
     });
   if (window.suiteleaf?.ai) return electronModel(window.suiteleaf.ai);
-  return unavailable("Connect to a SuiteLeaf server, or choose an OpenAI-compatible endpoint.");
+  return unavailable(
+    "Connect to a SuiteLeaf server, or choose an OpenAI-compatible endpoint.",
+  );
 }
 
 export function localModel(): LocalModel {

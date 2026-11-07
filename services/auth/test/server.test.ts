@@ -128,7 +128,7 @@ describe("auth service", () => {
     const response = await get("/api/auth/suiteleaf/complete?redirect=suiteleaf://app/");
     expect(response.status).toBe(500);
     expect(await response.text()).toBe("Authentication service error.");
-    expect(error).toHaveBeenCalledWith(new Error("no session"));
+    expect(error).toHaveBeenCalledWith("Authentication or cloud service request failed.");
   });
 
   it("passes every other route to better-auth", async () => {
