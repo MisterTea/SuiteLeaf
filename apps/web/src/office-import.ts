@@ -67,20 +67,35 @@ async function convert(
       else if (settled.error === IMPORT_CANCELLED) reject(new Error(settled.error));
       else reject(new ConverterError("conversion-failed", settled.error));
     };
-    const timer = setTimeout(() => {
+    let completed = -1;
+    const timedOut = () => {
       if (!finish()) return;
       reject(
         new Error(
-          "Office import exceeded two minutes. The original file is unchanged.",
+          `No conversion progress for two minutes while importing “${file.name}”. The original file is unchanged.`,
         ),
       );
-    }, 120000);
+    };
+    let timer = setTimeout(timedOut, 120_000);
     const watch = setInterval(() => {
       if (control?.shouldStop?.()) settle(null);
     }, 50);
     worker.onmessage = (event) => {
+      if (done) return;
       if (control?.shouldStop?.()) {
         settle(null);
+        return;
+      }
+      if (event.data.progress) {
+        const next = event.data.progress;
+        // Only actual forward progress extends the watchdog, not repeated heartbeats.
+        if (Number.isInteger(next.completed) && Number.isInteger(next.total) &&
+            next.total > 0 && next.completed >= 0 && next.completed <= next.total &&
+            next.completed > completed) {
+          completed = next.completed;
+          clearTimeout(timer);
+          timer = setTimeout(timedOut, 120_000);
+        }
         return;
       }
       if (event.data.ok) settle(event.data.file);

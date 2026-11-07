@@ -140,12 +140,45 @@ describe("Office import worker", () => {
     workers[0].onerror!({ message: "x" });
   });
 
-  it("gives up after two minutes", async () => {
+  it("allows a presentation to take longer than two minutes while slides advance", async () => {
+    vi.useFakeTimers();
+    const running = importOfficeFile(docx("Lecture.pptx"));
+    await vi.advanceTimersByTimeAsync(90_000);
+    const worker = workers[0];
+    worker.onmessage!({ data: { progress: { completed: 1, total: 3 } } });
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(worker.terminated).toBe(false);
+    worker.onmessage!({ data: { progress: { completed: 2, total: 3 } } });
+    await vi.advanceTimersByTimeAsync(90_000);
+    const file = createFile("slide", "Lecture");
+    worker.onmessage!({ data: { ok: true, file } });
+    expect(await running).toBe(file);
+    expect(worker.terminated).toBe(true);
+    worker.onmessage!({ data: { progress: { completed: 3, total: 3 } } });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("still times out when progress stalls or repeats", async () => {
+    vi.useFakeTimers();
+    const running = importOfficeFile(docx("Stalled.pptx"));
+    const failed = expect(running).rejects.toThrow("importing “Stalled.pptx”");
+    await vi.advanceTimersByTimeAsync(90_000);
+    const worker = workers[0];
+    worker.onmessage!({ data: { progress: { completed: 1, total: 3 } } });
+    await vi.advanceTimersByTimeAsync(90_000);
+    worker.onmessage!({ data: { progress: { completed: 1, total: 3 } } });
+    worker.onmessage!({ data: { progress: { completed: 99, total: 3 } } });
+    await vi.advanceTimersByTimeAsync(30_000);
+    await failed;
+    expect(worker.terminated).toBe(true);
+  });
+
+  it("gives up after two minutes without progress and names the file", async () => {
     vi.useFakeTimers();
     replies = ["silent"];
     const running = importOfficeFile(docx());
     const failed = expect(running).rejects.toThrow(
-      "Office import exceeded two minutes. The original file is unchanged.",
+      "No conversion progress for two minutes while importing “Letter.docx”. The original file is unchanged.",
     );
     await vi.advanceTimersByTimeAsync(120_000);
     await failed;

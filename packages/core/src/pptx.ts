@@ -22,6 +22,7 @@ import { chartExPainter, paintGraphicFrames } from "./pptx-slide-frames";
 async function parseZipPptx(
   zip: JSZip,
   defaultTitle: string,
+  onProgress?: (completed: number, total: number) => void,
 ): Promise<SlideFile> {
   const presFile = zip.file("ppt/presentation.xml");
   const presXml = presFile ? await presFile.async("string") : "";
@@ -125,9 +126,10 @@ async function parseZipPptx(
     tableStylesXml,
   };
 
+  onProgress?.(0, slidePaths.length);
   for (let idx = 0; idx < slidePaths.length; idx++) {
     const slide = await openSlide(deck, idx, slidePaths[idx]);
-    if (!slide) continue;
+    if (!slide) { onProgress?.(idx + 1, slidePaths.length); continue; }
     await paintSlideBackdrop(slide);
     await paintGroupPictures(slide);
 
@@ -262,6 +264,7 @@ async function parseZipPptx(
       ...(mapped === 0 && motion.timing ? { timing: motion.timing } : {}),
     };
     slideOrder.push(slideId);
+    onProgress?.(idx + 1, slidePaths.length);
   }
 
   out.content.slides = slides;
@@ -275,6 +278,7 @@ async function parseZipPptx(
 export async function parsePowerPoint(
   input: ArrayBuffer | Uint8Array,
   title?: string,
+  onProgress?: (completed: number, total: number) => void,
 ): Promise<SlideFile> {
   const u8 = input instanceof Uint8Array ? input : new Uint8Array(input);
   const defaultTitle = title?.trim() || "Imported presentation";
@@ -289,14 +293,14 @@ export async function parsePowerPoint(
   if (isZip) {
     try {
       const zip = await JSZip.loadAsync(u8);
-      return await parseZipPptx(zip, defaultTitle);
+      return await parseZipPptx(zip, defaultTitle, onProgress);
     } catch {
       // A missing end-of-central-directory record still leaves local headers.
       const repaired = zipFromLocalHeaders(u8);
       if (repaired) {
         try {
           const zip = await JSZip.loadAsync(repaired);
-          return await parseZipPptx(zip, defaultTitle);
+          return await parseZipPptx(zip, defaultTitle, onProgress);
         } catch {
           // The local members were not a readable package.
         }

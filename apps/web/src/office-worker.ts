@@ -13,7 +13,10 @@ self.onmessage = async (
       event.data.bytes,
       event.data.format,
       event.data.name,
-      { password: event.data.password },
+      {
+        password: event.data.password,
+        onProgress: (completed, total) => self.postMessage({ progress: { completed, total } }),
+      },
     );
     self.postMessage({ ok: true, file });
   } catch (e) {

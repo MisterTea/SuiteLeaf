@@ -61,7 +61,7 @@ export async function openOfficeFile(
   input: ArrayBuffer | Uint8Array,
   format: string,
   name: string,
-  options: { password?: string; saved?: SuiteFile; shouldStop?: () => boolean } = {},
+  options: { password?: string; saved?: SuiteFile; shouldStop?: () => boolean; onProgress?: (completed: number, total: number) => void } = {},
 ): Promise<SuiteFile> {
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   const extension = format.toLowerCase();
@@ -85,7 +85,7 @@ export async function openOfficeFile(
   }
   if (POWERPOINT.has(extension))
     return titled(
-      await parsePowerPoint(bytes, name.replace(/\.[^.]+$/, "")),
+      await parsePowerPoint(bytes, name.replace(/\.[^.]+$/, ""), options.onProgress),
       extension,
       name,
     );
