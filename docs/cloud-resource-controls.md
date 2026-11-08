@@ -39,3 +39,9 @@ The ignored-build script compares against `VERCEL_GIT_PREVIOUS_SHA`, covering al
 Git metadata must remain available in the Vercel checkout until the ignored build step runs; do not exclude `.git` in `.vercelignore`. The Docker context still excludes `.git` through `.dockerignore`. The project uses a fixed Standard build machine rather than the previous 30-core Turbo machine. Build CPU minutes count allocated cores times elapsed build minutes, so the smaller builder lowers the per-minute rate while caches limit rebuild work.
 
 Verify with the polling/component Vitest tests, the isolated Postgres suite, the multiuser Rust suite, the cloud integration suite, and a container build. Inspect cache hits in a subsequent build and compare unique startup identities, foreground/background API rates, and project-specific CPU/memory billing after rollout. Container log copies are broadcast across in-flight requests and must not be counted as separate starts.
+
+## Verified rollout, 7 November 2026
+
+Application source commit `4cad51ab` deployed successfully on the fixed Standard builder (4 vCPUs, 8 GiB). Vercel retained a 1.45 GiB cache under its 1.5 GiB limit, compared with the discarded 2.95 GiB cache before the slim images and scoped install. Public production health returned HTTP 200 and the post-deployment error-log scan was clear.
+
+The 181 affected-area Vitest tests pass. Global coverage is 95.44% lines and 92.55% statements. The full Windows run still has 29 unrelated failures, all reproduced in a clean original checkout. Rust unit, multiuser, isolated Postgres, and real cloud integration checks pass, as do typechecking, Rust formatting, and Clippy. The additive production lease migration was applied before rollout.
