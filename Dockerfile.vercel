@@ -1,4 +1,5 @@
-FROM rust:1-bookworm AS chef
+FROM rust:1-slim-bookworm AS chef
+RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 RUN cargo install cargo-chef --locked --version 0.1.78
 WORKDIR /src
 
@@ -16,7 +17,7 @@ COPY crates crates
 COPY services/auth/schema.json services/auth/schema.json
 RUN cargo build --locked --release -p suiteleaf-node
 
-FROM node:24-bookworm AS web
+FROM node:24-bookworm-slim AS web
 WORKDIR /src
 ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1 NODE_LLAMA_CPP_SKIP_DOWNLOAD=true
 COPY package.json package-lock.json ./
@@ -25,7 +26,7 @@ COPY apps/web/package.json apps/web/package.json
 COPY packages/core/package.json packages/core/package.json
 COPY services/ai/package.json services/ai/package.json
 COPY services/auth/package.json services/auth/package.json
-RUN npm ci --no-audit --no-fund
+RUN npm ci --no-audit --no-fund --workspace=@suiteleaf/web --workspace=@suiteleaf/core --workspace=@suiteleaf/auth --include-workspace-root && npm cache clean --force
 COPY apps apps
 COPY packages packages
 COPY services services
