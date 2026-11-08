@@ -391,6 +391,13 @@ export function SlideMenus({
       </Menu>
       <Menu label="Tools">
         <MenuItem
+          synonyms={["language", "proofing language"]}
+          focusesTarget
+          onSelect={() => actions.current?.slideActions?.openLanguage?.()}
+        >
+          Proofing language
+        </MenuItem>
+        <MenuItem
           focusesTarget
           onSelect={() =>
             actions.current?.slideActions?.openSpelling?.()

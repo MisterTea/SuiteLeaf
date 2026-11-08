@@ -28,6 +28,36 @@ function job(itemId: string, revision: string, nextAttemptAt: number): UploadJob
 }
 
 describe("retry one queued upload", () => {
+  it("keeps a newer pending upload when only an older local revision is confirmed saved", async () => {
+    const beds = record("beds", "2026-10-31T18:00:00.000Z", "Beds");
+    beds.drive!.syncedAt = beds.file.updatedAt;
+    const queue = new UploadQueue(memoryUploadStore([job("beds", "2026-10-31T19:00:00.000Z", 0)]));
+    const result = await retryQueuedFile("beds", {
+      jobs: () => queue.jobs(), records: async () => [beds],
+      read: async () => ({ text: "different server revision" }),
+      upload: async () => { throw new Error("must not upload older bytes"); },
+      save: async () => undefined,
+      succeed: () => { throw new Error("must not clear the newer pending revision"); },
+      fail: () => { throw new Error("must not fail"); },
+    });
+    expect(result).toBe("missing");
+    expect(queue.get("beds")?.revision).toBe("2026-10-31T19:00:00.000Z");
+  });
+  it("clears a superseded failure when the latest local revision is confirmed saved, even offline", async () => {
+    const beds = record("beds", "2026-10-31T19:00:00.000Z", "Beds");
+    beds.drive!.syncedAt = beds.file.updatedAt;
+    const queue = new UploadQueue(memoryUploadStore([job("beds", "2026-10-31T18:00:00.000Z", 0)]));
+    const result = await retryQueuedFile("beds", {
+      jobs: () => queue.jobs(), records: async () => [beds],
+      read: async () => { throw new Error("offline"); },
+      upload: async () => { throw new Error("must not upload an old revision"); },
+      save: async () => undefined,
+      succeed: (id, revision) => queue.succeed(id, revision),
+      fail: () => { throw new Error("must not fail"); },
+    });
+    expect(result).toBe("already");
+    expect(queue.jobs()).toEqual([]);
+  });
   it("loads the full cached file before checking whether a failed upload already succeeded", async () => {
     const beds = record("beds", "2026-10-31T19:00:00.000Z", "Beds");
     const catalog = { ...beds, file: { ...beds.file, content: undefined } } as unknown as FileRecord;

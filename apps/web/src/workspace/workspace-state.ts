@@ -76,6 +76,20 @@ export function useWorkspaceState() {
     cluster = mode.kind === "cluster";
   useEffect(() => {
     if (!menusOpen) return;
+    const position = () => {
+      const button = menuButton.current;
+      const menu = menuBar.current;
+      if (!button?.closest(".editor-toolbar-navigation") || !menu) return;
+      const bounds = button.getBoundingClientRect();
+      const top = Math.min(bounds.bottom + 4, Math.max(8, window.innerHeight - 120));
+      menu.style.top = `${top}px`;
+      menu.style.left = `${Math.max(8, Math.min(bounds.left, window.innerWidth - menu.offsetWidth - 8))}px`;
+      menu.style.maxHeight = `${Math.min(520, window.innerHeight * 0.7, window.innerHeight - top - 8)}px`;
+    };
+    position();
+    const positionedMenu = menuBar.current;
+    window.addEventListener("resize", position);
+    window.addEventListener("scroll", position, true);
     const close = (event: Event) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
@@ -91,6 +105,11 @@ export function useWorkspaceState() {
     document.addEventListener("pointerdown", close, true);
     document.addEventListener("keydown", close);
     return () => {
+      window.removeEventListener("resize", position);
+      window.removeEventListener("scroll", position, true);
+      positionedMenu?.style.removeProperty("top");
+      positionedMenu?.style.removeProperty("left");
+      positionedMenu?.style.removeProperty("max-height");
       document.removeEventListener("pointerdown", close, true);
       document.removeEventListener("keydown", close);
     };

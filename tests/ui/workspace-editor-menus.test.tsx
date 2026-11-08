@@ -133,6 +133,7 @@ describe("document menus", () => {
       ["Tools › Named styles", "doc.openNamedStyles()"],
       ["Tools › Word count", "doc.openWordCount()"],
       ["Tools › Spelling", "doc.openSpelling()"],
+      ["Tools › Proofing language", "doc.openSpelling()"],
       ["Tools › Grammar", "doc.openGrammar()"],
       ["Tools › Ignored grammar", "doc.openIgnoredGrammar()"],
       ["Tools › Personal dictionary", "doc.openDictionary()"],
@@ -268,6 +269,7 @@ describe("spreadsheet menus", () => {
       ["Data › Data validation", "sheet.dataValidation()"],
       ["Data › Protect sheets and ranges", "sheet.tabsProtection()"],
       ["Tools › Spelling", "sheet.openSpelling()"],
+      ["Tools › Proofing language", "sheet.openLanguage()"],
       ["Tools › Your name on comments…", "sheet.commentName()"],
     ]);
   });
@@ -352,6 +354,7 @@ describe("presentation menus", () => {
       ["Comments › Comment", "slide.insertComment()"],
       ["Comments › Resolved", "slide.openResolved()"],
       ["Tools › Spelling", "slide.openSpelling()"],
+      ["Tools › Proofing language", "slide.openLanguage()"],
     ]);
   });
 

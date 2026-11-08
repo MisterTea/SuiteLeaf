@@ -245,7 +245,7 @@ describe("a SuiteDrive file", () => {
   it("uploads saved edits and says so", async () => {
     const plan = store();
     await open(plan);
-    expect(document.querySelector(".workspace-server")?.textContent).toBe("drive.example");
+    expect(document.querySelector(".header-right-tools .workspace-brand")).toBeNull();
     expect(screen.getByRole("region", { name: "File comments" }).textContent).toBe("can post");
     expect(await assistantAccessNow()).toBe("owner");
     const refreshed = vi.fn();
@@ -358,6 +358,9 @@ describe("a SuiteDrive file", () => {
       expect((screen.getByLabelText("File title") as HTMLInputElement).readOnly).toBe(true);
       expect(screen.getByRole("region", { name: "File comments" }).textContent).toBe(comments);
       expect(screen.queryByRole("button", { name: "Move" })).toBeNull();
+      fireEvent.keyDown(screen.getByRole("button", { name: "File", exact: true }), { key: "ArrowDown" });
+      expect((await screen.findByRole("menuitem", { name: "Move", exact: true })).getAttribute("aria-disabled")).toBe("true");
+      expect(screen.getByRole("menuitem", { name: "Rename", exact: true }).getAttribute("aria-disabled")).toBe("true");
       cleanup();
     }
   });
@@ -407,32 +410,29 @@ describe("a SuiteDrive file", () => {
     await advance(5000);
   });
 
-  it("opens the share dialog and the folder it is in", async () => {
+  it("opens sharing without showing a folder location in the header", async () => {
     driveApi.get.mockImplementation(async (id: string) => driveItem(id, { parentId: "f1", parentName: "Beds" }));
     driveApi.listFolders.mockResolvedValue([{ id: "f1", name: "Beds", parentId: null }]);
     await open(store());
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
     fireEvent.click(screen.getByRole("button", { name: "Close share" }));
     expect(screen.queryByRole("dialog", { name: "Share Plan" })).toBeNull();
-    fireEvent.click(await screen.findByRole("button", { name: "Folder Beds" }));
-    await waitFor(() => expect(paths.at(-1)).toBe("/"));
-    expect(editorExtras.rememberDriveFolder).toHaveBeenCalledWith("f1", "Beds", [
-      { id: "f1", name: "Beds", parentId: null },
-    ]);
+    expect(screen.queryByRole("button", { name: "Folder Beds" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Move" })).toBeNull();
   });
 
-  it("still opens the folder when the folder list is unavailable", async () => {
+  it("offers moving from File when the folder list is unavailable", async () => {
     driveApi.get.mockImplementation(async (id: string) => driveItem(id, { parentId: "f1", parentName: "Beds" }));
     driveApi.listFolders.mockRejectedValue(new Error("offline"));
     await open(store());
-    fireEvent.click(await screen.findByRole("button", { name: "Folder Beds" }));
-    await waitFor(() => expect(editorExtras.rememberDriveFolder).toHaveBeenCalledWith("f1", "Beds", []));
+    await runMenu("File › Move");
+    expect(screen.getByRole("dialog", { name: "Move dialog" })).toBeTruthy();
   });
 
   it("moves the file and undoes the move", async () => {
     driveApi.get.mockImplementation(async (id: string) => driveItem(id, { parentId: "f1", parentName: "Beds" }));
     await open(store());
-    fireEvent.click(await screen.findByRole("button", { name: "Move" }));
+    await runMenu("File › Move");
     const move = fake.moveDialog as unknown as {
       includeMyDrive: boolean;
       onMoved: (r: unknown) => void;
@@ -446,13 +446,14 @@ describe("a SuiteDrive file", () => {
         folderName: "Herbs",
       }),
     );
-    expect(await screen.findByRole("button", { name: "Folder Herbs" })).toBeTruthy();
+    expect(document.querySelector(".drive-move-banner")?.textContent).toContain("Herbs");
+    expect(screen.queryByRole("button", { name: "Folder Herbs" })).toBeNull();
     driveApi.update.mockRejectedValueOnce(new Error("Move refused."));
     fireEvent.click(within(document.querySelector(".drive-move-banner") as HTMLElement).getByRole("button", { name: "Undo" }));
     expect((await screen.findByRole("alert")).textContent).toContain("Move refused.");
     fireEvent.click(within(document.querySelector(".drive-move-banner") as HTMLElement).getByRole("button", { name: "Dismiss" }));
     expect(document.querySelector(".drive-move-banner")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Move" }));
+    await runMenu("File › Move");
     act(() => (fake.moveDialog as unknown as { onClose: () => void }).onClose());
     expect(screen.queryByRole("dialog", { name: "Move dialog" })).toBeNull();
   });
@@ -469,6 +470,8 @@ describe("a SuiteDrive file", () => {
     const plan = store();
     await open(plan);
     const download = screen.getByRole("button", { name: "Download" });
+    expect(download.textContent).toBe("");
+    expect(download.querySelector("svg")).not.toBeNull();
     expect(download.getAttribute("title")).toContain("Download “Plan.sldoc”");
     fireEvent.click(download);
     await waitFor(() => expect(storageExtras.exportText).toHaveBeenCalledWith("Plan.sldoc", expect.any(String), expect.any(String)));
@@ -851,7 +854,6 @@ describe("SuiteDrive commands", () => {
     driveApi.get.mockImplementation(async (id: string) => driveItem(id, { parentId: "f1", parentName: "Beds" }));
     const plan = store();
     await open(plan);
-    await waitFor(() => expect(screen.getByRole("button", { name: "Folder Beds" })).toBeTruthy());
     await runMenu("File › Save as…");
     const browser = () => fake.browser as unknown as {
       mode: string;

@@ -16,6 +16,31 @@
   padding: 8px 16px 6px;
   flex-shrink: 0;
 }
+.workspace-upload-notices {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+.workspace-upload-notices .admin-list {
+  margin: 0;
+}
+.workspace-upload-notices .admin-list li,
+.upload-retry-feedback {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.workspace-upload-notices .admin-list li > span,
+.upload-retry-feedback p {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.upload-retry-feedback p {
+  margin: 4px 0;
+}
 .back {
   border: 0;
   background: transparent;
@@ -38,43 +63,6 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-}
-.title-folder-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  padding: 0 4px 2px;
-}
-.folder-chip,
-.header-move {
-  flex-shrink: 0;
-  border: 0;
-  background: transparent;
-  border-radius: 12px;
-  padding: 2px 8px;
-  font-size: 13px;
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-.folder-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  max-width: 220px;
-  min-width: 0;
-}
-.folder-chip span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.header-move {
-  font-weight: 600;
-  color: var(--google-blue);
-}
-.folder-chip:hover,
-.header-move:hover {
-  background: var(--surface-hover);
 }
 .title-block input {
   border: 1px solid transparent;
@@ -235,6 +223,33 @@
   font-size: 12px;
   margin-left: 4px;
 }
+.status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  position: relative;
+  color: var(--text-secondary);
+}
+.status-icon-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.status-icon-error {
+  color: var(--danger, #b3261e);
+}
+.status-icon:focus-visible {
+  outline: 2px solid var(--text-secondary);
+  border-radius: 4px;
+}
 .last-edited {
   margin: 0;
   padding: 0 6px 1px;
@@ -258,6 +273,65 @@
   max-width: 100%;
   align-items: center;
   gap: 8px;
+}
+.editor-toolbar-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  margin-left: auto;
+}
+.editor-toolbar-navigation {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+}
+.editor-toolbar-navigation .back,
+.editor-toolbar-navigation .file-menu-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  padding: 0;
+}
+.workspace:has(.editor-toolbar-navigation) .file-menu {
+  display: none;
+  position: fixed;
+  z-index: 80;
+  flex-direction: column;
+  align-items: stretch;
+  width: max-content;
+  min-width: 180px;
+  max-width: calc(100vw - 24px);
+  max-height: min(70vh, 520px);
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 4px 12px #0003;
+}
+.workspace:has(.editor-toolbar-navigation) .file-menu.open {
+  display: flex;
+}
+.editor-toolbar-actions .header-right-tools {
+  flex-wrap: nowrap;
+  gap: 4px;
+  margin-left: 4px;
+}
+.editor-toolbar-actions .doc-icon-btn,
+.editor-toolbar-actions .share-btn.share-icon-btn,
+.editor-toolbar-actions .save-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
 }
 .workspace-notices {
   flex-shrink: 0;
@@ -333,10 +407,6 @@
   color: var(--text-secondary);
   margin-left: 4px;
 }
-.workspace-server {
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-}
 .save-copy {
   background: var(--surface-muted);
   color: var(--google-blue);
@@ -344,7 +414,12 @@
   font-weight: 500;
   border: 1px solid var(--border);
   border-radius: 18px;
-  padding: 6px 14px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .save-copy:hover {
   background: var(--surface-hover);

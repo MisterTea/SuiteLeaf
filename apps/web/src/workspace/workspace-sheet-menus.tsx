@@ -486,6 +486,13 @@ export function SheetMenus({
       </Menu>
       <Menu label="Tools">
         <MenuItem
+          synonyms={["language", "proofing language"]}
+          focusesTarget
+          onSelect={() => actions.current?.sheetActions?.openLanguage?.()}
+        >
+          Proofing language
+        </MenuItem>
+        <MenuItem
           focusesTarget
           onSelect={() =>
             actions.current?.sheetActions?.openSpelling?.()

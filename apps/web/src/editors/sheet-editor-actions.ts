@@ -94,6 +94,7 @@ export type SheetActionsContext = SheetFormatCommands &
     cleanup: Ref<{ trim: () => void; duplicates: () => void; split: () => void } | null>;
     printing: Ref<SheetPrintHandle | null>;
     spelling: Ref<{ open: () => void } | null>;
+    openLanguage: () => void;
     undoCollab: Ref<() => boolean>;
     redoCollab: Ref<() => boolean>;
     readOnlyRef: Ref<boolean>;
@@ -362,6 +363,7 @@ export function sheetEditorActions(ctx: SheetActionsContext): EditorActions {
         );
       },
       openSpelling: () => spelling.current?.open(),
+      openLanguage: () => ctx.openLanguage(),
     },
   };
 }

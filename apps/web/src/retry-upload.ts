@@ -1,5 +1,6 @@
 import { serializeFile, type DriveLink, type FileRecord, type SuiteFile } from "@suiteleaf/core";
 import { sameUploadBody, type UploadJob } from "./upload-queue";
+import { persistedRevision } from "./save-state";
 
 export type RetryResult = "uploaded" | "already" | "missing" | "absent" | "failed";
 
@@ -28,6 +29,14 @@ export async function retryQueuedFile(itemId: string, deps: RetryDeps): Promise<
   try {
     let record = (await deps.records()).find((record) => record.drive?.itemId === itemId);
     if (!record?.drive) return "missing";
+    // A later successful save can supersede a failed upload without sending
+    // that old job again. Only a confirmed, at-least-as-new revision counts.
+    const synced = persistedRevision(record.drive.syncedAt);
+    const queued = persistedRevision(job.revision);
+    if (synced && queued && synced === record.file.updatedAt && synced >= queued) {
+      deps.succeed(job.itemId, job.revision);
+      return "already";
+    }
     if (record.file.content === undefined && deps.load) {
       const loaded = await deps.load(record.file.id);
       if (loaded) record = loaded;

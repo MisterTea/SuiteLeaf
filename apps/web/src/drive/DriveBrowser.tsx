@@ -27,6 +27,8 @@ import {
   type DriveSearchHit,
 } from "../node-client";
 import { DriveDialog } from "./drive-dialog";
+import { NameDialog } from "./name-dialog";
+export { NameDialog } from "./name-dialog";
 import { folderCrumbs } from "./folder-paths";
 import { MoveBanner, type MoveNotice } from "./file-folder";
 import { MoveDialog } from "./MoveDialog";
@@ -98,55 +100,6 @@ export function rememberDriveFolder(
     view: "mine",
     path: folderCrumbs(parentId, parentName, folders),
   });
-}
-
-/** Ask for a folder or file name. Renaming a file selects the name without
- * its extension, so typing replaces just the title. */
-export function NameDialog({
-  title,
-  submitLabel,
-  initial,
-  keepExtension = false,
-  onSubmit,
-  onClose,
-}: {
-  title: string;
-  submitLabel: string;
-  initial: string;
-  keepExtension?: boolean;
-  onSubmit: (name: string) => void;
-  onClose: () => void;
-}) {
-  const [value, setValue] = useState(initial);
-  const input = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    const dot = initial.lastIndexOf(".");
-    input.current?.focus();
-    input.current?.setSelectionRange(
-      0,
-      keepExtension && dot > 0 ? dot : initial.length,
-    );
-  }, [initial, keepExtension]);
-  const name = value.trim();
-  return (
-    <DriveDialog
-      title={title}
-      submitLabel={submitLabel}
-      canSubmit={!!name}
-      onSubmit={() => onSubmit(name)}
-      onClose={onClose}
-    >
-      <div className="floating-field">
-        <label htmlFor="drive-item-name">Name</label>
-        <input
-          id="drive-item-name"
-          ref={input}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-        />
-      </div>
-    </DriveDialog>
-  );
 }
 
 function ItemIcon({ item }: { item: { name: string; kind: string } }) {

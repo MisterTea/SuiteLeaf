@@ -380,6 +380,13 @@ export function DocMenus({
       </Menu>
       <Menu label="Tools">
         <MenuItem
+          synonyms={["language", "proofing language"]}
+          focusesTarget
+          onSelect={() => actions.current?.docActions?.openSpelling()}
+        >
+          Proofing language
+        </MenuItem>
+        <MenuItem
           synonyms={[
             "mail merge",
             "merge letters",

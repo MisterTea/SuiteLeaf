@@ -3,12 +3,9 @@ import { Link } from "react-router-dom";
 import {
   Leaf,
   ArrowLeft,
-  Check,
   CircleAlert,
-  Star,
   Clock,
   MessageSquare,
-  Cloud,
   Download,
   MoreVertical,
   Share2,
@@ -17,9 +14,9 @@ import { extensionFor, nativeFilename } from "@suiteleaf/core";
 import { storage } from "../storage";
 import { uploadQueue } from "../upload-queue";
 import { EditorFailedUploads, retryOtherDueUploads } from "../editor-failed-uploads";
-import { drive, getSession } from "../node-client";
-import { DriveBrowser, rememberDriveFolder } from "../drive/DriveBrowser";
-import { FolderControls, MoveBanner, useDriveFolder } from "../drive/file-folder";
+import { getSession } from "../node-client";
+import { DriveBrowser } from "../drive/DriveBrowser";
+import { MoveBanner, useDriveFolder } from "../drive/file-folder";
 import { MoveDialog } from "../drive/MoveDialog";
 import { LastEdited } from "../drive/LastEdited";
 import { presenceLabel } from "../drive/presence-label";
@@ -52,9 +49,13 @@ import { DriveConflictBanner } from "./workspace-conflict";
 import { ImportNotes } from "./workspace-import-notes";
 import { WorkspaceEditor } from "./workspace-editor";
 import { FullscreenButton } from "./fullscreen-button";
+import { StatusIcon, saveIconState } from "../status-icon";
+import { EditorToolbarTarget, EditorToolbarNavigationTarget, ToolbarActions } from "../editor-toolbar-actions";
 
 export function Workspace() {
   const ws = useWorkspaceState();
+  const [toolbarTarget, setToolbarTarget] = useState<HTMLDivElement | null>(null);
+  const [navigationTarget, setNavigationTarget] = useState<HTMLDivElement | null>(null);
   const [commentsFile, setCommentsFile] = useState<string | null>(null);
   const {
     id, navigate, record, setRecord, error, setError, status, setStatus,
@@ -76,7 +77,7 @@ export function Workspace() {
   useRemoteVersionWatch(ws);
   usePresence(ws);
   describeRef.current = describeVersion;
-  const { update, changeTitle, toggleStar } = useWorkspaceEdits(
+  const { update, changeTitle } = useWorkspaceEdits(
     ws,
     save,
     syncDrive,
@@ -134,8 +135,9 @@ export function Workspace() {
   const hasSlideFileComments =
     f.kind === "slide" && !!record.drive && !!driveRole && driveRole !== "local";
   const fileCommentsOpen = commentsFile === f.id;
-  const starred = !!record.starred;
   return (
+    <EditorToolbarTarget.Provider value={setToolbarTarget}>
+    <EditorToolbarNavigationTarget.Provider value={setNavigationTarget}>
     <CommandPalette kind={f.kind}>
       <div className="workspace">
         {cluster ? (
@@ -145,6 +147,7 @@ export function Workspace() {
           />
         ) : null}
         <header className="workspace-header">
+          <ToolbarActions target={navigationTarget}>
           <button
             className="back"
             aria-label="Back to files"
@@ -156,6 +159,7 @@ export function Workspace() {
           >
             <ArrowLeft size={20} />
           </button>
+          </ToolbarActions>
           <WorkspaceFileIcon kind={f.kind} />
           <div className="title-block">
             <div className="title-top-row">
@@ -193,20 +197,7 @@ export function Workspace() {
               ) : driveRole === "responder" ? (
                 <span className="view-only-badge">Can respond</span>
               ) : null}
-              <button
-                type="button"
-                className={`doc-icon-btn star-btn ${starred ? "starred" : ""}`}
-                aria-label={starred ? "Starred" : "Star document"}
-                aria-pressed={starred}
-                onClick={toggleStar}
-                title={starred ? "Unstar" : "Star"}
-              >
-                <Star
-                  size={16}
-                  fill={starred ? "#fbbc04" : "none"}
-                  color={starred ? "#fbbc04" : "#5f6368"}
-                />
-              </button>
+              <ToolbarActions target={navigationTarget}>
               <button
                 ref={menuButton}
                 type="button"
@@ -218,9 +209,13 @@ export function Workspace() {
               >
                 <MoreVertical size={18} />
               </button>
-              <span className="save-status" role="status" title={editorSaveTitle(status, record)}>
-                {status.includes("Saved") ? <Check size={13} /> : null}
-                {status}
+              </ToolbarActions>
+              <span className="save-status" role="status">
+                <StatusIcon
+                  state={syncRemedy ? "error" : saveIconState(status)}
+                  label={status}
+                  detail={editorSaveTitle(status, record)}
+                />
                 {syncRemedy ? (
                   <button
                     type="button"
@@ -241,35 +236,7 @@ export function Workspace() {
                   {roomNotice}
                 </span>
               ) : null}
-              <EditorFailedUploads />
             </div>
-            {record.drive ? (
-              <FolderControls
-                place={driveFolder.place}
-                canMove={canEdit}
-                onOpen={() => {
-                  const where = driveFolder.place;
-                  if (!where) return;
-                  void save()
-                    .then(async () => {
-                      let folders: {
-                        id: string;
-                        name: string;
-                        parentId: string | null;
-                      }[] = [];
-                      try {
-                        folders = await drive.listFolders();
-                      } catch {
-                        folders = [];
-                      }
-                      rememberDriveFolder(where.parentId, where.name, folders);
-                      navigate("/");
-                    })
-                    .catch(() => {});
-                }}
-                onMove={() => driveFolder.setOpen(true)}
-              />
-            ) : null}
             {record.drive ? <LastEdited itemId={record.drive.itemId} /> : null}
             <div
               ref={menuBar}
@@ -285,6 +252,9 @@ export function Workspace() {
                 save={save}
                 exportNative={exportNative}
                 makeCopy={makeCopy}
+                canMove={!!record.drive && canEdit && !!driveFolder.place}
+                onMove={() => driveFolder.setOpen(true)}
+                onRename={changeTitle}
               />
               {f.kind === "doc" ? (
                 <DocMenus actions={actions} doAction={doAction} />
@@ -300,6 +270,7 @@ export function Workspace() {
               {f.kind === "slide" ? <SlideMenus actions={actions} /> : null}
             </div>
           </div>
+          <ToolbarActions target={toolbarTarget}>
           <div className="header-right-tools">
             <button
               type="button"
@@ -363,22 +334,15 @@ export function Workspace() {
             ) : null}
             <AiButton />
             <FullscreenButton />
-            {mode.kind === "cluster" ? (
-              <span
-                className="workspace-brand workspace-server"
-                title={`Saving to SuiteDrive on ${new URL(mode.serverUrl).host}`}
-              >
-                <Cloud size={16} />
-                {new URL(mode.serverUrl).host}
-              </span>
-            ) : (
+            {mode.kind !== "cluster" ? (
               <span className="workspace-brand">
                 <Leaf size={16} />
                 SuiteLeaf
               </span>
-            )}
+            ) : null}
             <button
               className="save-copy"
+              aria-label={window.suiteleaf && !cluster ? "Save As" : "Download"}
               disabled={!actionsReady}
               onClick={download}
               title={
@@ -387,11 +351,12 @@ export function Workspace() {
                   : `Download “${nativeFilename(f)}”, a SuiteLeaf file you can open again with Open / import`
               }
             >
-              <Download size={16} />
-              {window.suiteleaf && !cluster ? "Save As" : "Download"}
+              <Download size={16} aria-hidden="true" />
             </button>
           </div>
+          </ToolbarActions>
         </header>
+        <EditorFailedUploads />
         {driveFolder.notice || error || driveConflict ? (
           <div
             className="workspace-notices"
@@ -609,5 +574,7 @@ export function Workspace() {
         </div>
       </div>
     </CommandPalette>
+    </EditorToolbarNavigationTarget.Provider>
+    </EditorToolbarTarget.Provider>
   );
 }

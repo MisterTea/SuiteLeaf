@@ -122,13 +122,46 @@ describe("Workspace on this device", () => {
     expect(status()).not.toBe("Unsaved changes");
   });
 
-  it("stars the file", async () => {
+  it.each(["doc", "sheet", "slide", "form"] as const)("renames a %s from the File menu", async (kind) => {
+    const plan = store(kind);
+    if (kind === "form") {
+      await renderWorkspace(Workspace, ModeContext, plan.file.id, { kind: "single" });
+      await screen.findByLabelText("File title");
+    } else await open(plan);
+    await runMenu("File › Rename");
+    const dialog = screen.getByRole("dialog", { name: "Rename file" });
+    const input = within(dialog).getByRole("textbox", { name: "Name" }) as HTMLInputElement;
+    expect(input.value).toBe("Plan");
+    expect(input.maxLength).toBe(200);
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, 4]);
+    fireEvent.change(input, { target: { value: "  Plan B  " } });
+    fireEvent.submit(dialog);
+    expect(screen.queryByRole("dialog", { name: "Rename file" })).toBeNull();
+    await flushTimers();
+    expect(saved(plan.file.id).file.title).toBe("Plan B");
+  });
+
+  it("leaves the title alone when Rename is canceled and refuses blank names", async () => {
     const plan = store();
     await open(plan);
-    fireEvent.click(screen.getByRole("button", { name: "Star document" }));
-    await waitFor(() => expect(saved(plan.file.id).starred).toBe(true));
-    fireEvent.click(screen.getByRole("button", { name: "Starred" }));
-    await waitFor(() => expect(saved(plan.file.id).starred).toBeFalsy());
+    await runMenu("File › Rename");
+    const dialog = screen.getByRole("dialog", { name: "Rename file" });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Name" }), { target: { value: "   " } });
+    expect((within(dialog).getByRole("button", { name: "Rename", exact: true }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.submit(dialog);
+    expect(screen.getByRole("dialog", { name: "Rename file" })).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog", { name: "Rename file" })).toBeNull();
+    expect(saved(plan.file.id).file.title).toBe("Plan");
+  });
+
+  it("does not show a favorite button in the editor", async () => {
+    const plan = store("doc", "Plan", { starred: true });
+    await open(plan);
+    expect(screen.queryByRole("button", { name: "Star document" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Starred" })).toBeNull();
+    expect(document.querySelector(".star-btn")).toBeNull();
+    expect(saved(plan.file.id).starred).toBe(true);
   });
 
   it("goes back to the file list after saving", async () => {
@@ -409,11 +442,11 @@ describe("Workspace on this device", () => {
     expect(saved(form.file.id).file.edits ?? []).toEqual([]);
   });
 
-  it("shows a star, Save As or editor flush that failed", async () => {
+  it("shows a local save, Save As or editor flush that failed", async () => {
     const plan = store();
     await open(plan);
     fake.failSave = "Disk full.";
-    fireEvent.click(screen.getByRole("button", { name: "Star document" }));
+    fireEvent.keyDown(window, { key: "s", ctrlKey: true });
     expect((await screen.findByRole("alert")).textContent).toContain("Disk full.");
     fireEvent.click(screen.getByRole("button", { name: "Dismiss error" }));
     fake.failSave = null;

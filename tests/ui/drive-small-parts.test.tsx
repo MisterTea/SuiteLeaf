@@ -18,7 +18,7 @@ vi.mock("../../apps/web/src/node-client", () => ({ drive: hoisted }));
 import { ExpiryCalendar } from "../../apps/web/src/drive/ExpiryCalendar";
 import { LastEdited } from "../../apps/web/src/drive/LastEdited";
 import { SignUpLinkDialog } from "../../apps/web/src/drive/SignUpLinkDialog";
-import { FolderControls, MoveBanner, useDriveFolder } from "../../apps/web/src/drive/file-folder";
+import { MoveBanner, useDriveFolder } from "../../apps/web/src/drive/file-folder";
 import { ShareNotices, sharedFileTitle } from "../../apps/web/src/drive/share-notices";
 import { useServerSync } from "../../apps/web/src/drive/status";
 import { DriveDialog } from "../../apps/web/src/drive/drive-dialog";
@@ -135,27 +135,7 @@ describe("SignUpLinkDialog", () => {
   });
 });
 
-describe("folder chip and move banner", () => {
-  it("names the folder, offers Move only to editors, and reports a move", () => {
-    const onOpen = vi.fn();
-    const onMove = vi.fn();
-    const { rerender, container } = render(
-      <FolderControls place={null} canMove onOpen={onOpen} onMove={onMove} />,
-    );
-    expect(container.textContent).toBe("");
-    rerender(
-      <FolderControls place={{ parentId: "f", name: "Beds" }} canMove={false} onOpen={onOpen} onMove={onMove} />,
-    );
-    expect(screen.queryByRole("button", { name: "Move" })).toBeNull();
-    rerender(
-      <FolderControls place={{ parentId: "f", name: "Beds" }} canMove onOpen={onOpen} onMove={onMove} />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Folder Beds" }));
-    fireEvent.click(screen.getByRole("button", { name: "Move" }));
-    expect(onOpen).toHaveBeenCalledTimes(1);
-    expect(onMove).toHaveBeenCalledTimes(1);
-  });
-
+describe("move banner", () => {
   it("undoes or dismisses a move notice", () => {
     const onUndo = vi.fn();
     const onDismiss = vi.fn();

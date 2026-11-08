@@ -48,8 +48,6 @@ export function SheetToolbar({
   redoCollab,
   printSheet,
   onError,
-  languageOpen,
-  setLanguageOpen,
   auditOpen,
   setAuditOpen,
   costOpen,
@@ -76,8 +74,6 @@ export function SheetToolbar({
   redoCollab: RefObject<() => boolean>;
   printSheet: RefObject<() => Promise<void>>;
   onError: (s: string) => void;
-  languageOpen: boolean;
-  setLanguageOpen: Toggle;
   auditOpen: boolean;
   setAuditOpen: Toggle;
   costOpen: boolean;
@@ -137,13 +133,6 @@ export function SheetToolbar({
       }}
     >
       <Printer size={16} />
-    </Tool>
-    <Tool
-      label="Language"
-      active={languageOpen}
-      onClick={() => setLanguageOpen((open) => !open)}
-    >
-      <span>Language</span>
     </Tool>
     <Tool
       label="Audit"

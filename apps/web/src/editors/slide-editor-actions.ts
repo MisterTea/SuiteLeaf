@@ -156,6 +156,7 @@ export function useSlideEditorActions(
         redoReason: () => slideApi.current.redoReason(),
         deleteReason: () => slideApi.current.deleteReason(),
         openSpelling: () => spellingRef.current?.open(),
+        openLanguage: () => setPanel((open) => (open === "language" ? null : "language")),
       },
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the editor state's refs and setters are stable

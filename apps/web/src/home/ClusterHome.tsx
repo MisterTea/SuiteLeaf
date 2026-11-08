@@ -5,7 +5,8 @@ import { createFile } from "@suiteleaf/core";
 import { drive, signOut } from "../node-client";
 import { DriveBrowser, type DriveControl } from "../drive/DriveBrowser";
 import { useNodeSession } from "../drive/SignIn";
-import { syncSummary, useServerSync } from "../drive/status";
+import { useServerSync } from "../drive/status";
+import { ServerStatusIcon } from "../drive/server-status";
 import { AdminLink } from "../admin/Admin";
 import { disconnect, useMode } from "../mode";
 import { formsEnabled } from "../flags";
@@ -102,7 +103,6 @@ export function ClusterHome({ serverUrl }: { serverUrl: string }) {
     setFolderName(id ? name : undefined);
   }, []);
   const sync = useServerSync(serverUrl);
-  const summary = syncSummary(sync);
   const make = useCallback(
     (kind: NewKind) =>
       void createInDrive(
@@ -173,15 +173,7 @@ export function ClusterHome({ serverUrl }: { serverUrl: string }) {
                 ? null
                 : " Your files on this computer are kept for when you disconnect."}
             </small>
-            {summary ? (
-              <small
-                className={`cluster-sync ${sync?.replicating ? "copying" : ""}`}
-                aria-live="polite"
-              >
-                <span className="local-dot" />
-                {summary}
-              </small>
-            ) : null}
+            <ServerStatusIcon sync={sync} host={new URL(serverUrl).host} />
           </div>
           <span className="version">OPEN SOURCE · v0.1</span>
           <AiButton />

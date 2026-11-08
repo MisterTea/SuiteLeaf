@@ -186,9 +186,11 @@ export function BackupFreshnessNote({ report }: { report: BackupFreshness }) {
 export function FailedUploadList({
   jobs,
   onRetry,
+  retryingId,
 }: {
   jobs: { itemId: string; failure?: { remedy: string } }[];
   onRetry: (itemId: string) => void;
+  retryingId?: string;
 }) {
   const failed = jobs.filter((job) => job.failure);
   if (!failed.length) return null;
@@ -199,8 +201,8 @@ export function FailedUploadList({
           <span>
             File {index + 1}. {job.failure?.remedy}
           </span>
-          <button type="button" onClick={() => onRetry(job.itemId)}>
-            Retry
+          <button type="button" disabled={retryingId !== undefined} onClick={() => onRetry(job.itemId)}>
+            {retryingId === job.itemId ? "Retrying…" : "Retry"}
           </button>
         </li>
       ))}

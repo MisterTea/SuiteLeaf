@@ -192,7 +192,7 @@
     display: grid;
     grid-template-columns: auto auto auto minmax(0, 1fr);
     /* Keep the action row compact even when the editor has spare height.
-       Folder and last-edit details each use only their content height. */
+       Last-edit details use only their content height. */
     grid-template-rows: 40px;
     grid-auto-rows: max-content;
     align-content: start;
@@ -233,21 +233,15 @@
     overflow-x: auto;
     scrollbar-width: none;
   }
-  .workspace-header .title-folder-row {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    padding: 0 10px 2px;
-  }
   .workspace-header .last-edited {
     grid-column: 1 / -1;
-    grid-row: 3;
+    grid-row: 2;
     padding: 0 12px 2px;
     font-size: 12px;
   }
   .title-block input {
     display: none;
   }
-  .title-top-row .star-btn,
   .title-top-row .file-menu-more {
     flex-shrink: 0;
   }
@@ -445,14 +439,6 @@
     padding: 6px 12px;
     font-size: 14px;
   }
-  .header-right-tools .workspace-server {
-    display: inline-flex;
-    max-width: 108px;
-    overflow: hidden;
-    font-size: 11px;
-    line-height: 1.2;
-    white-space: nowrap;
-  }
   .toolbar-edits-rest {
     flex-wrap: nowrap;
   }
@@ -465,11 +451,6 @@
     font-size: 12px;
     white-space: nowrap;
     margin-left: 0;
-  }
-  /* A saved file is the check mark. The full sentence stays in the
-     status text for people using a screen reader and for the tests. */
-  .save-status:has(svg) {
-    max-width: 16px;
   }
   .menu-item {
     min-height: 48px;

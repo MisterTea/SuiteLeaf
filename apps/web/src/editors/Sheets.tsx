@@ -526,6 +526,7 @@ export default function Sheets({
         cleanup,
         printing,
         spelling,
+        openLanguage: () => setLanguageOpen((open) => !open),
         undoCollab,
         redoCollab,
         readOnlyRef,
@@ -715,8 +716,6 @@ export default function Sheets({
         redoCollab={redoCollab}
         printSheet={printSheet}
         onError={onError}
-        languageOpen={languageOpen}
-        setLanguageOpen={setLanguageOpen}
         auditOpen={auditOpen}
         setAuditOpen={setAuditOpen}
         costOpen={costOpen}

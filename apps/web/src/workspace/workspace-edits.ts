@@ -11,9 +11,7 @@ import { storage } from "../storage";
 import { frogSummary } from "../ai/summarize";
 import { mirrorLiveEdit } from "../collab/session";
 import { editorCollaborator } from "../collaborator";
-import { starRecord } from "../library-trash";
 import { openEditors } from "../drive/drive-files";
-import { message } from "../error-message";
 import type { WorkspaceState } from "./workspace-state";
 
 export function versionDescriber(ws: WorkspaceState) {
@@ -48,7 +46,7 @@ export function useWorkspaceEdits(
   describeVersion: (versionId: string) => void,
 ) {
   const {
-    setRecord, setError, setStatus, current, version, queue, timer, historyTimer,
+    setRecord, setStatus, current, version, timer, historyTimer,
     alive, canEditRef, canSaveRef, collabDocRef,
   } = ws;
   const scheduleSeal = () => {
@@ -192,14 +190,5 @@ export function useWorkspaceEdits(
     });
     applyHistory(result.file, result.sealed);
   };
-  const toggleStar = () => {
-    if (!current.current) return;
-    const next = starRecord(current.current, !current.current.starred);
-    current.current = next;
-    setRecord(next);
-    void queue.current
-      .enqueue(() => storage.save(current.current!))
-      .catch((e) => setError(message(e)));
-  };
-  return { update, changeTitle, toggleStar };
+  return { update, changeTitle };
 }

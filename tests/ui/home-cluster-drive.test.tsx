@@ -162,19 +162,19 @@ describe("ClusterHome", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("hides the account without a session and shows the sync line", () => {
+  it("hides the account without a session and shows the sync icon", () => {
     hoisted.session = { user: { id: "x" } };
     hoisted.sync = { peers: 2, replicating: 1, heads: "h1" };
     renderHome();
     expect(document.querySelector(".account-avatar")?.textContent).toBe("?");
-    expect(screen.getByText("Copying 1 file from other servers…").className).toContain("copying");
+    expect(screen.getByTitle("Copying 1 file from other servers… · drive.example").dataset.state).toBe("busy");
     expect(screen.getByTestId("browser").textContent).toBe("h1:1:0");
     cleanup();
     hoisted.session = null;
     hoisted.sync = { peers: 1, replicating: 0, heads: "h2" };
     renderHome();
     expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
-    expect(screen.getByText("Connected to 1 other server").className).not.toContain("copying");
+    expect(screen.getByTitle("Connected to 1 other server · drive.example").dataset.state).toBe("connected");
   });
 
   it("creates new files in the open SuiteDrive folder", async () => {

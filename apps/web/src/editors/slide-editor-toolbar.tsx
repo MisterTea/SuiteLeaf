@@ -1,5 +1,6 @@
 import type { ChangeEvent, ReactNode } from "react";
 import {
+  AlignHorizontalJustifyStart,
   ChevronDown,
   Circle,
   FileText,
@@ -20,6 +21,7 @@ import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import type { Slide } from "@suiteleaf/core";
 import { Menu, MenuItem, Tool } from "../ui";
 import { MenuSearchPill } from "../command-palette";
+import { EditorToolbarActionsSlot, EditorToolbarNavigationSlot } from "../editor-toolbar-actions";
 import { ReleaseDropdown } from "../release-dropdown";
 import type { SlidesEditorState } from "./slide-editor-state";
 import type { DeckHistoryApi } from "./slide-editor-history";
@@ -88,6 +90,7 @@ export function SlidesToolbar({
       role="toolbar"
       aria-label="Slides toolbar"
     >
+      <EditorToolbarNavigationSlot />
       <div className="tool-group">
         <MenuSearchPill />
         <Tool
@@ -114,14 +117,6 @@ export function SlidesToolbar({
         <button
           type="button"
           className="menu-trigger theme-toggle"
-          aria-pressed={panel === "language"}
-          onClick={() => setPanel((open) => (open === "language" ? null : "language"))}
-        >
-          <span className="tool-words">Language</span>
-        </button>
-        <button
-          type="button"
-          className="menu-trigger theme-toggle"
           aria-pressed={accessOpen}
           onClick={() => setAccessOpen((open) => !open)}
         >
@@ -130,7 +125,12 @@ export function SlidesToolbar({
         </button>
         <Menu
           label="Align"
-          trigger={<span className="tool-words">Align</span>}
+          trigger={
+            <>
+              <AlignHorizontalJustifyStart size={16} className="narrow-only-icon" aria-hidden="true" />
+              <span className="tool-words">Align</span>
+            </>
+          }
         >
           <MenuItem onSelect={() => alignSelected("left")}>Align left</MenuItem>
           <MenuItem onSelect={() => alignSelected("center")}>Align center</MenuItem>
@@ -337,6 +337,7 @@ export function SlidesToolbar({
           </ReleaseDropdown>
         </div>
       </div>
+      <EditorToolbarActionsSlot />
       {castError && !state.presenting ? <p role="alert">{castError}</p> : null}
     </div>
   );

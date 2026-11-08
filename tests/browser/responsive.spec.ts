@@ -3,7 +3,7 @@ import { createFile, serializeFile } from "../../packages/core/src/native-file";
 import { defaultPageSettings } from "../../packages/core/src/document-layout";
 import { readFile } from "node:fs/promises";
 
-test("Mobile shared presentation keeps the header compact with folder and edit details", async ({ page, isMobile }) => {
+test("Mobile shared presentation keeps upload retries visible through rotation", async ({ page, isMobile }) => {
   test.skip(!isMobile);
   const file = createFile("slide", "Shared lecture");
   const item = {
@@ -45,17 +45,50 @@ test("Mobile shared presentation keeps the header compact with folder and edit d
   });
   await page.goto(`/#/file/${file.id}`);
   const header = page.locator(".workspace-header");
-  await expect(header.getByRole("button", { name: "Folder Lecture Slides" })).toBeVisible();
+  await expect(header.locator(".title-folder-row")).toHaveCount(0);
   await expect(header.locator(".last-edited")).toContainText("Jason Gauci");
-  for (const [width, height] of [[320, 844], [390, 844], [700, 390]]) {
+  const toolbar = page.getByRole("toolbar", { name: "Slides toolbar" });
+  await expect(toolbar.getByRole("button", { name: "Download", exact: true })).toBeAttached();
+  await expect(header.locator(".header-right-tools")).toHaveCount(0);
+  await expect(toolbar.locator(".editor-toolbar-navigation button")).toHaveCount(2);
+  await expect(toolbar.locator(".editor-toolbar-navigation button").nth(0)).toHaveAttribute("aria-label", "Back to files");
+  await expect(toolbar.locator(".editor-toolbar-navigation button").nth(1)).toHaveAttribute("aria-label", "Main menu");
+  await expect(page.locator(".star-btn")).toHaveCount(0);
+  await page.evaluate(({ itemId, revision }) => localStorage.setItem("suiteleaf.uploadQueue", JSON.stringify([{
+    itemId, revision, bytes: 20, attempts: 1, nextAttemptAt: 0,
+    failure: { kind: "network", message: "offline", remedy: "Retry when SuiteDrive is reachable. This copy stays on this device." },
+  }])), { itemId: item.id, revision: file.updatedAt });
+  const uploads = page.getByRole("region", { name: "Upload notifications" });
+  for (const [width, height] of [[320, 844], [390, 844], [700, 390], [844, 390]]) {
     await page.setViewportSize({ width, height });
     const bounds = (await header.boundingBox())!;
-    expect(bounds.height).toBeLessThanOrEqual(85);
-    expect((await header.locator(".back").boundingBox())!.y - bounds.y).toBeLessThanOrEqual(4);
-    const details = (await header.locator(".title-folder-row").boundingBox())!;
-    expect(details.y - bounds.y).toBeLessThanOrEqual(42);
+    expect(bounds.height).toBeLessThanOrEqual(width <= 700 ? 85 : 140);
+    const details = (await header.locator(".last-edited").boundingBox())!;
+    if (width <= 700) expect(details.y - bounds.y).toBeLessThanOrEqual(42);
+    await toolbar.evaluate((element) => { element.scrollLeft = 0; });
+    const back = toolbar.getByRole("button", { name: "Back to files" });
+    const more = toolbar.getByRole("button", { name: "Main menu" });
+    await expect(back).toBeInViewport();
+    await expect(more).toBeInViewport();
+    expect((await back.boundingBox())!.x).toBeLessThan((await more.boundingBox())!.x);
+    await more.tap();
+    const menu = page.getByRole("menubar");
+    await expect(menu).toBeVisible();
+    const menuBounds = (await menu.boundingBox())!;
+    expect(menuBounds.x).toBeGreaterThanOrEqual(0);
+    expect(menuBounds.x + menuBounds.width).toBeLessThanOrEqual(width);
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+    await expect(uploads.getByRole("button", { name: "Retry", exact: true })).toBeInViewport();
+    const notice = (await uploads.boundingBox())!;
+    expect(notice.y).toBeGreaterThanOrEqual(bounds.y + bounds.height - 1);
+    expect(notice.x).toBeGreaterThanOrEqual(0);
+    expect(notice.x + notice.width).toBeLessThanOrEqual(width);
     await assertNoHorizontalScroll(page, `Shared presentation header at ${width}px`);
   }
+  await uploads.getByRole("button", { name: "Retry", exact: true }).tap();
+  await expect(uploads.getByRole("status")).toContainText("saved to SuiteDrive");
+  await expect(uploads.getByRole("list")).toHaveCount(0);
 });
 
 test("Mobile expanded formula editor preserves text proportions", async ({ page, isMobile }) => {
@@ -222,15 +255,24 @@ test("Mobile workspace combines navigation and actions without showing the title
       await expect(header.getByRole("status")).toContainText("Saved");
       await expect(page.getByLabel("File title")).toBeHidden();
       expect((await header.boundingBox())!.height).toBeLessThanOrEqual(48);
-      const back = (await header.getByRole("button", { name: "Back to files" }).boundingBox())!;
-      for (const label of ["Main menu", "Version history", "Comments", "AI assistant", "Download"]) {
-        const button = header.getByRole("button", { name: label, exact: true });
+      const back = (await page.getByRole("button", { name: "Back to files" }).boundingBox())!;
+      for (const label of ["Back to files", "Main menu", "Version history", "Comments", "AI assistant", "Download"]) {
+        const inToolbar = kind === "presentation";
+        const parent = inToolbar ? page.getByRole("toolbar", { name: "Slides toolbar" }) : header;
+        const button = parent.getByRole("button", { name: label, exact: true });
         await button.scrollIntoViewIfNeeded();
         await expect(button).toBeInViewport();
         const box = (await button.boundingBox())!;
-        expect(Math.abs(box.y + box.height / 2 - back.y - back.height / 2)).toBeLessThanOrEqual(2);
+        if (inToolbar) {
+          const bar = (await parent.boundingBox())!;
+          expect(box.y).toBeGreaterThanOrEqual(bar.y);
+          expect(box.y + box.height).toBeLessThanOrEqual(bar.y + bar.height);
+          if (label === "Download") await expect(button).toHaveText("");
+        } else {
+          expect(Math.abs(box.y + box.height / 2 - back.y - back.height / 2)).toBeLessThanOrEqual(2);
+        }
       }
-      await header.getByRole("button", { name: "Main menu" }).click();
+      await page.getByRole("button", { name: "Main menu" }).click();
       await expect(page.locator("#file-menu")).toBeVisible();
       await assertNoHorizontalScroll(page, `${kind} header at ${width}px`);
     }

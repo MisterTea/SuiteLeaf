@@ -1,4 +1,6 @@
 import { extensionFor, type SuiteFile } from "@suiteleaf/core";
+import { useState } from "react";
+import { NameDialog } from "../drive/name-dialog";
 import { Menu, MenuItem, SubMenu } from "../ui";
 import { drawingAction } from "../drawing-home";
 import { drawingExports } from "../editors/drawing-format";
@@ -14,6 +16,9 @@ export function FileMenu({
   save,
   exportNative,
   makeCopy,
+  canMove,
+  onMove,
+  onRename,
 }: {
   ws: WorkspaceState;
   file: SuiteFile;
@@ -22,12 +27,17 @@ export function FileMenu({
   save: () => Promise<void>;
   exportNative: () => Promise<void>;
   makeCopy: () => Promise<void>;
+  canMove: boolean;
+  onMove: () => void;
+  onRename: (title: string) => void;
 }) {
   const {
     setError, setTemplateDraft, actionsReady, current, actions, setHistoryOpen,
-    setHistoryPreview, setDriveDialog, cluster,
+    setHistoryPreview, setDriveDialog, cluster, canEdit,
   } = ws;
+  const [renaming, setRenaming] = useState(false);
   return (
+    <>
     <Menu label="File">
       <SubMenu label="New">
         <MenuItem onSelect={() => void doAction("new-doc")}>
@@ -82,6 +92,24 @@ export function FileMenu({
       <MenuItem onSelect={() => void doAction("save")}>
         Save now
       </MenuItem>
+      <MenuItem
+        disabled={!canEdit}
+        focusesTarget
+        synonyms={["rename file", "change title"]}
+        onSelect={() => setRenaming(true)}
+      >
+        Rename
+      </MenuItem>
+      {current.current?.drive ? (
+        <MenuItem
+          disabled={!canMove}
+          focusesTarget
+          synonyms={["move file", "move to folder"]}
+          onSelect={onMove}
+        >
+          Move
+        </MenuItem>
+      ) : null}
       <MenuItem
         shortcut="Cmd+Alt+Shift+H"
         onSelect={() => {
@@ -179,5 +207,19 @@ export function FileMenu({
         Print / Save as PDF
       </MenuItem>
     </Menu>
+    {renaming ? (
+      <NameDialog
+        title="Rename file"
+        submitLabel="Rename"
+        initial={f.title}
+        maxLength={200}
+        onClose={() => setRenaming(false)}
+        onSubmit={(title) => {
+          onRename(title);
+          setRenaming(false);
+        }}
+      />
+    ) : null}
+    </>
   );
 }

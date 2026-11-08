@@ -522,6 +522,7 @@ export type EditorActions = {
     showGridlines: (visible: boolean) => void;
     showFormulaBar: (visible: boolean) => void;
     openSpelling?: () => void;
+    openLanguage?: () => void;
     insertPageBreak?: () => void;
     openPrintSettings?: () => void;
   };
@@ -592,6 +593,7 @@ export type EditorActions = {
     redoReason?: () => string | undefined;
     deleteReason?: () => string | undefined;
     openSpelling?: () => void;
+    openLanguage?: () => void;
   };
 };
 export type SheetView = {

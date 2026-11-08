@@ -160,12 +160,13 @@ describe("other panels", () => {
 
   it("sets the proofing language and opens the size and position panel", () => {
     const editor = openSlides();
-    fireEvent.click(screen.getByRole("button", { name: "Language" }));
+    expect(screen.queryByRole("button", { name: "Language" })).toBeNull();
+    act(() => editor.slide().openLanguage?.());
     const language = screen.getByRole("combobox", { name: /language/i }) as HTMLSelectElement;
     const other = [...language.options].map((option) => option.value).find((value) => value && value !== language.value)!;
     fireEvent.change(language, { target: { value: other } });
     expect(editor.deck().proofingLanguage).toBe(other);
-    fireEvent.click(screen.getByRole("button", { name: "Language" }));
+    act(() => editor.slide().openLanguage?.());
     expect(screen.queryByRole("combobox", { name: /language/i })).toBeNull();
   });
 

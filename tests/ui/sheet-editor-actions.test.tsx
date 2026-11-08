@@ -123,6 +123,7 @@ function setup({ readOnly = false } = {}) {
     cleanup: { current: { trim: note("trim"), duplicates: note("duplicates"), split: note("split") } },
     printing: { current: { insertPageBreak: note("page-break"), openPrintSettings: note("print-settings") } },
     spelling: { current: { open: note("spelling") } },
+    openLanguage: note("language"),
     undoCollab: { current: () => (log.push("undo-collab"), false) },
     redoCollab: { current: () => (log.push("redo-collab"), true) },
     readOnlyRef: { current: readOnly },
@@ -237,6 +238,7 @@ it("routes the sheet menu to the grid commands and helpers", async () => {
   menu.insertPageBreak();
   menu.openPrintSettings();
   menu.openSpelling();
+  menu.openLanguage?.();
   expect(log).toEqual([
     "dropdown:existing",
     "comment-name",
@@ -278,6 +280,7 @@ it("routes the sheet menu to the grid commands and helpers", async () => {
     "page-break",
     "print-settings",
     "spelling",
+    "language",
   ]);
 });
 

@@ -52,8 +52,6 @@ it("sends each toolbar button to its command and toggles the side panels", async
       redoCollab={{ current: () => true }}
       printSheet={{ current: async () => Promise.reject(new Error("printer busy")) }}
       onError={(message) => log.push(`error:${message}`)}
-      languageOpen={false}
-      setLanguageOpen={toggle("language") as never}
       auditOpen={false}
       setAuditOpen={toggle("audit") as never}
       costOpen
@@ -76,7 +74,8 @@ it("sends each toolbar button to its command and toggles the side panels", async
   click("Undo (Cmd+Z)");
   click("Redo (Cmd+Y)");
   click("Print (Cmd+P)");
-  for (const name of ["Language", "Audit", "Cost", "Accessibility", "Query", "Goal Seek"]) click(name);
+  expect(within(bar).queryByRole("button", { name: "Language" })).toBeNull();
+  for (const name of ["Audit", "Cost", "Accessibility", "Query", "Goal Seek"]) click(name);
   click("Paint format");
   click("Format as currency");
   click("Format as percent");
@@ -92,7 +91,7 @@ it("sends each toolbar button to its command and toggles the side panels", async
   const formats = bar.querySelector(".more-formats-menu")!;
   fireEvent.click(within(formats as HTMLElement).getAllByRole("button")[0]);
   await new Promise((done) => setTimeout(done, 0));
-  expect(flips).toEqual(["language:true", "audit:true", "cost:true", "access:true", "query:true", "goal:true"]);
+  expect(flips).toEqual(["audit:true", "cost:true", "access:true", "query:true", "goal:true"]);
   expect(log).toEqual([
     "undo",
     "sheet.operation.show-comment-modal",
@@ -128,8 +127,6 @@ it("marks an active filter and disables editing tools for a viewer", () => {
       redoCollab={{ current: () => false }}
       printSheet={{ current: async () => {} }}
       onError={noop}
-      languageOpen
-      setLanguageOpen={noop as never}
       auditOpen
       setAuditOpen={noop as never}
       costOpen={false}

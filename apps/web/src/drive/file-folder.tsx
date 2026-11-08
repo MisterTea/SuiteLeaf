@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Folder } from "lucide-react";
 import { drive, type DriveItem } from "../node-client";
 import { MY_DRIVE, movedToFolderText } from "./folder-paths";
 import type { MoveResult } from "./MoveDialog";
@@ -78,38 +77,6 @@ export function useDriveFolder(itemId: string | undefined, active: boolean) {
     undo,
     dismiss: () => setNotice(null),
   };
-}
-
-export function FolderControls({
-  place,
-  canMove,
-  onOpen,
-  onMove,
-}: {
-  place: DrivePlace | null;
-  canMove: boolean;
-  onOpen: () => void;
-  onMove: () => void;
-}) {
-  if (!place) return null;
-  return (
-    <div className="title-folder-row">
-      <button
-        type="button"
-        className="folder-chip"
-        aria-label={`Folder ${place.name}`}
-        onClick={onOpen}
-      >
-        <Folder size={14} aria-hidden="true" />
-        <span>{place.name}</span>
-      </button>
-      {canMove ? (
-        <button type="button" className="header-move" onClick={onMove}>
-          Move
-        </button>
-      ) : null}
-    </div>
-  );
 }
 
 /** Stays until Undo or Dismiss. It does not clear itself. */
