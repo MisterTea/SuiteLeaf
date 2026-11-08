@@ -119,6 +119,7 @@ test("a local spreadsheet version compares cells, including format, and stays re
 test("a local slide version shows added and removed text and a deleted slide", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 390, height: 664 });
   const id = "local-deck";
   const yesterdayAt = at(1, 19, 20);
   const morningAt = at(0, 10, 4);
@@ -142,10 +143,26 @@ test("a local slide version shows added and removed text and a deleted slide", a
   await preview.getByRole("button", { name: "Thank you, deleted slide" }).click();
   await expect(preview.locator(".slide-compare-flag")).toHaveText("Deleted");
   await expect(preview.locator("s").filter({ hasText: "Thank you" })).toBeVisible();
+  const close = page.getByRole("button", { name: "Close version history" });
+  await expect(close).toBeInViewport();
   await preview.click();
   await page.keyboard.type("SHOULD NOT LAND");
   await expect(preview).not.toContainText("SHOULD NOT LAND");
-  await page.getByRole("button", { name: "Close version history" }).click();
+  const back = page.getByRole("button", { name: "Back to editor", exact: true });
+  await expect(back).toBeInViewport();
+  await preview.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  await expect(back).toBeInViewport();
+  await back.click();
+  await expect(preview).toHaveCount(0);
+  await expect(panel).toHaveCount(0);
   await expect(page.locator(".slide-canvas textarea").first()).toHaveValue("Spring fair");
   await expect(page.locator(".thumbnail-row")).toHaveCount(2);
+
+  await page.getByRole("button", { name: "Version history", exact: true }).click();
+  await panel.getByRole("button", { name: `${versionWhen(yesterdayAt)} · You`, exact: true }).click();
+  await panel.getByRole("button", { name: "Restore this version" }).click();
+  await expect(preview).toHaveCount(0);
+  await expect(panel).toHaveCount(0);
+  await expect(page.locator(".slide-canvas textarea").first()).toHaveValue("Fundraiser pitch");
+  await expect(page.locator(".thumbnail-row")).toHaveCount(3);
 });

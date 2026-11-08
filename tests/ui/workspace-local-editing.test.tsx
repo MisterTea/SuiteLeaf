@@ -366,6 +366,20 @@ describe("Workspace on this device", () => {
     expect(leaving.defaultPrevented).toBe(true);
   });
 
+  it.each(["doc", "sheet", "slide"] as const)("leaves a %s comparison directly from the preview", async (kind) => {
+    const plan = store(kind);
+    await open(plan);
+    fireEvent.click(screen.getByRole("button", { name: "Version history" }));
+    const history = fake.history as unknown as { onPreview: (preview: unknown) => void };
+    act(() => history.onPreview({ kind, content: {}, diff: {}, label: "Earlier version" }));
+    expect(document.querySelector(".live-editor")?.hasAttribute("inert")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Back to editor" }));
+    expect(screen.queryByRole("complementary", { name: "Version history panel" })).toBeNull();
+    expect(document.querySelector(".version-preview-session")).toBeNull();
+    expect(document.querySelector(".live-editor")?.hasAttribute("inert")).toBe(false);
+    expect(editorProps().file.content).toEqual(plan.file.content);
+  });
+
   it("previews, restores and commits versions from history", async () => {
     const plan = store();
     await open(plan);

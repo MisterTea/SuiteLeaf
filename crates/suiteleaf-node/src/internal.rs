@@ -333,6 +333,7 @@ async fn handle(
 pub fn router(state: InternalState) -> Router {
     Router::new()
         .route("/internal/db", post(handle))
+        .layer(axum::extract::DefaultBodyLimit::max(40_000_000))
         .with_state(state)
 }
 

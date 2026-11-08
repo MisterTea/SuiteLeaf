@@ -222,6 +222,11 @@
   .workspace-header > .title-block {
     display: contents;
   }
+  /* Navigation and actions already live in the editor toolbar. */
+  .workspace-header.toolbar-hosted,
+  .workspace-header.toolbar-hosted .title-top-row {
+    display: contents;
+  }
   .workspace-header .title-top-row {
     grid-column: 3;
     grid-row: 1;

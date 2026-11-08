@@ -5,6 +5,11 @@ import { suitedbAdapter } from "./adapter";
 import { authOptions, envFromProcess, providers } from "./options";
 import { cloudBlobRequest } from "./cloud-blobs";
 import { cloudAiRequest } from "./cloud-ai";
+import { MailStore } from "./mail/store";
+import { mailRequest } from "./mail/http";
+import { startMailJobs } from "./mail/jobs";
+import { finishGoogle } from "./mail/google";
+import { confidentialRequest } from "./mail/confidential";
 
 const env = envFromProcess();
 const internalUrl = process.env.SUITELEAF_INTERNAL_URL;
@@ -26,6 +31,12 @@ const auth = betterAuth(
 );
 const handler = toNodeHandler(auth);
 const enabled = providers(env);
+const mailStore = new MailStore(
+  internalUrl,
+  internalToken,
+  process.env.SUITELEAF_AUTH_SECRET ?? "",
+);
+if (process.env.SUITELEAF_MAIL_WORKER_ID) startMailJobs(mailStore, process.env.SUITELEAF_MAIL_WORKER_ID);
 
 /** Hand-off targets must be trusted origins, such as `suiteleaf://app` or a
  * web build served from another host. */
@@ -56,6 +67,22 @@ const json = (value: unknown) => JSON.stringify(value).replace(/</g, "\\u003c");
 createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", env.baseURL);
   try {
+    if(url.pathname==="/api/auth/suiteleaf/mail/confidential")return await confidentialRequest(req,res,mailStore);
+    if (url.pathname === "/api/auth/suiteleaf/mail/google/callback") {
+      try {
+        if (url.searchParams.has("error")) throw new Error("Google authorization was declined.");
+        await finishGoogle(mailStore, url.searchParams.get("state") || "", url.searchParams.get("code") || "");
+        return send(res, 200, "text/html; charset=utf-8", '<!doctype html><title>Gmail connected</title><h1>Gmail connected</h1><p>You can close this tab and return to SuiteLeaf Mail. Refresh the account list if needed.</p><a href="/#/mail">Open Mail</a>');
+      } catch {
+        return send(res, 400, "text/html; charset=utf-8", '<!doctype html><title>Gmail connection failed</title><h1>Gmail connection failed</h1><p>Return to Mail and start Google authorization again. Check the server OAuth configuration and allowed permissions.</p>');
+      }
+    }
+    if (url.pathname === "/api/auth/suiteleaf/mail") {
+      const session = await auth.api.getSession({
+        headers: fromNodeHeaders(req.headers),
+      });
+      return await mailRequest(req, res, session?.user.id, mailStore);
+    }
     if (env.inviteOnly && url.pathname.startsWith("/internal/cloud/blobs/")) {
       return await cloudBlobRequest(req, res, internalToken!);
     }

@@ -82,6 +82,16 @@ pub async fn proxy(
         .map(|p| p.as_str())
         .unwrap_or("/")
         .to_owned();
+    if req.uri().path() == "/api/auth/suiteleaf/mail" {
+        let check = auth.clone();
+        let headers = req.headers().clone();
+        if !matches!(
+            tokio::task::spawn_blocking(move || check.user(&headers)).await,
+            Ok(Some(_))
+        ) {
+            return StatusCode::UNAUTHORIZED.into_response();
+        }
+    }
     let url = format!("{base}{path}");
     let method = req.method().clone();
     let mut headers = reqwest::header::HeaderMap::new();
@@ -93,7 +103,12 @@ pub async fn proxy(
         }
     }
     headers.insert("x-forwarded-for", peer.ip().to_string().parse().unwrap());
-    let body = match axum::body::to_bytes(req.into_body(), 1024 * 1024).await {
+    let limit = if req.uri().path() == "/api/auth/suiteleaf/mail" {
+        32_000_000
+    } else {
+        1024 * 1024
+    };
+    let body = match axum::body::to_bytes(req.into_body(), limit).await {
         Ok(b) => b,
         Err(_) => return StatusCode::PAYLOAD_TOO_LARGE.into_response(),
     };
@@ -163,6 +178,7 @@ pub fn supervise(
     config: Arc<Config>,
     internal_url: String,
     internal_token: String,
+    mail_worker_id: String,
 ) -> Result<()> {
     if config.cloud {
         *auth.registration_key.write().unwrap() = Some(internal_token.clone());
@@ -192,6 +208,7 @@ pub fn supervise(
                 .env("SUITELEAF_AUTH_SECRET", &secret)
                 .env("SUITELEAF_INTERNAL_URL", &internal_url)
                 .env("SUITELEAF_INTERNAL_TOKEN", &internal_token)
+                .env("SUITELEAF_MAIL_WORKER_ID", &mail_worker_id)
                 .env("SUITELEAF_TRUSTED_ORIGINS", config.cors_origins.join(","))
                 .env(
                     "SUITELEAF_AUTH_PORT",

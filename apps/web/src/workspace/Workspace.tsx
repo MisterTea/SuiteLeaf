@@ -18,7 +18,6 @@ import { getSession } from "../node-client";
 import { DriveBrowser } from "../drive/DriveBrowser";
 import { MoveBanner, useDriveFolder } from "../drive/file-folder";
 import { MoveDialog } from "../drive/MoveDialog";
-import { LastEdited } from "../drive/LastEdited";
 import { presenceLabel } from "../drive/presence-label";
 import { ShareDialog } from "../drive/ShareDialog";
 import { SignUpLinkDialog } from "../drive/SignUpLinkDialog";
@@ -29,7 +28,7 @@ import { AiButton } from "../ai/AgentSidebar";
 import { VersionHistory, VersionPreview } from "../editors/version-history";
 import { SheetVersionPreview, SlideVersionPreview } from "../editors/version-compare";
 import { SaveTemplateDialog } from "../templates/gallery";
-import { editorSaveTitle, recordSaveStatus } from "../save-state";
+import { recordSaveStatus } from "../save-state";
 import { message } from "../error-message";
 import { useWorkspaceState } from "./workspace-state";
 import { useWorkspaceRoom } from "./workspace-room";
@@ -40,7 +39,6 @@ import { useWorkspaceEdits, versionDescriber } from "./workspace-edits";
 import { useWorkspaceCommands } from "./workspace-commands";
 import { driveFileActions } from "./workspace-drive";
 import { useWorkspaceAgent } from "./workspace-agent";
-import { WorkspaceFileIcon } from "./workspace-file-icon";
 import { FileMenu } from "./workspace-file-menu";
 import { DocMenus } from "./workspace-doc-menus";
 import { SheetMenus } from "./workspace-sheet-menus";
@@ -49,7 +47,7 @@ import { DriveConflictBanner } from "./workspace-conflict";
 import { ImportNotes } from "./workspace-import-notes";
 import { WorkspaceEditor } from "./workspace-editor";
 import { FullscreenButton } from "./fullscreen-button";
-import { StatusIcon, saveIconState } from "../status-icon";
+import { WorkspaceStatusToast } from "./workspace-status-toast";
 import { EditorToolbarTarget, EditorToolbarNavigationTarget, ToolbarActions } from "../editor-toolbar-actions";
 
 export function Workspace() {
@@ -146,7 +144,7 @@ export function Workspace() {
             onOpen={(item) => openFromDrive(item, navigate)}
           />
         ) : null}
-        <header className="workspace-header">
+        <header className={`workspace-header${navigationTarget && toolbarTarget ? " toolbar-hosted" : ""}`}>
           <ToolbarActions target={navigationTarget}>
           <button
             className="back"
@@ -160,7 +158,6 @@ export function Workspace() {
             <ArrowLeft size={20} />
           </button>
           </ToolbarActions>
-          <WorkspaceFileIcon kind={f.kind} />
           <div className="title-block">
             <div className="title-top-row">
               <input
@@ -170,6 +167,7 @@ export function Workspace() {
                 readOnly={!canEdit}
                 onChange={(e) => changeTitle(e.target.value)}
               />
+              <ToolbarActions target={navigationTarget}>
               {record.drive ? (
                 <div
                   className="also-here"
@@ -197,6 +195,7 @@ export function Workspace() {
               ) : driveRole === "responder" ? (
                 <span className="view-only-badge">Can respond</span>
               ) : null}
+              </ToolbarActions>
               <ToolbarActions target={navigationTarget}>
               <button
                 ref={menuButton}
@@ -210,34 +209,7 @@ export function Workspace() {
                 <MoreVertical size={18} />
               </button>
               </ToolbarActions>
-              <span className="save-status" role="status">
-                <StatusIcon
-                  state={syncRemedy ? "error" : saveIconState(status)}
-                  label={status}
-                  detail={editorSaveTitle(status, record)}
-                />
-                {syncRemedy ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const itemId = current.current?.drive?.itemId;
-                      if (itemId) uploadQueue.release(itemId, Date.now());
-                      setSyncRemedy(null);
-                      void syncDrive();
-                      void retryOtherDueUploads(itemId);
-                    }}
-                  >
-                    Retry sync
-                  </button>
-                ) : null}
-              </span>
-              {roomNotice ? (
-                <span className="save-status" role="status">
-                  {roomNotice}
-                </span>
-              ) : null}
             </div>
-            {record.drive ? <LastEdited itemId={record.drive.itemId} /> : null}
             <div
               ref={menuBar}
               id="file-menu"
@@ -356,6 +328,19 @@ export function Workspace() {
           </div>
           </ToolbarActions>
         </header>
+        <WorkspaceStatusToast
+          key={f.id}
+          status={status}
+          record={record}
+          roomNotice={roomNotice}
+          retry={syncRemedy ? () => {
+            const itemId = current.current?.drive?.itemId;
+            if (itemId) uploadQueue.release(itemId, Date.now());
+            setSyncRemedy(null);
+            void syncDrive();
+            void retryOtherDueUploads(itemId);
+          } : undefined}
+        />
         <EditorFailedUploads />
         {driveFolder.notice || error || driveConflict ? (
           <div
@@ -496,25 +481,41 @@ export function Workspace() {
           className={`editor-and-history${historyOpen ? " history-open" : ""}`}
         >
           <div className="editor-and-history-main">
-            {historyPreview?.kind === "doc" ? (
-              <VersionPreview
-                key={JSON.stringify(historyPreview.tabs ?? historyPreview.content)}
-                content={historyPreview.content}
-                label={historyPreview.label}
-                offers={historyPreview.offers}
-                tabs={historyPreview.tabs}
-                onRestoreParagraph={(key) => restoreParagraph.current(key)}
-              />
-            ) : historyPreview?.kind === "sheet" ? (
-              <SheetVersionPreview
-                diff={historyPreview.diff}
-                label={historyPreview.label}
-              />
-            ) : historyPreview?.kind === "slide" ? (
-              <SlideVersionPreview
-                diff={historyPreview.diff}
-                label={historyPreview.label}
-              />
+            {historyPreview ? (
+              <div className="version-preview-session">
+                <div className="version-preview-toolbar">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHistoryOpen(false);
+                      setHistoryPreview(null);
+                    }}
+                  >
+                    <ArrowLeft size={18} aria-hidden="true" />
+                    Back to editor
+                  </button>
+                </div>
+                {historyPreview?.kind === "doc" ? (
+                  <VersionPreview
+                    key={JSON.stringify(historyPreview.tabs ?? historyPreview.content)}
+                    content={historyPreview.content}
+                    label={historyPreview.label}
+                    offers={historyPreview.offers}
+                    tabs={historyPreview.tabs}
+                    onRestoreParagraph={(key) => restoreParagraph.current(key)}
+                  />
+                ) : historyPreview?.kind === "sheet" ? (
+                  <SheetVersionPreview
+                    diff={historyPreview.diff}
+                    label={historyPreview.label}
+                  />
+                ) : historyPreview?.kind === "slide" ? (
+                  <SlideVersionPreview
+                    diff={historyPreview.diff}
+                    label={historyPreview.label}
+                  />
+                ) : null}
+              </div>
             ) : null}
             <div
               className={`live-editor${historyPreview ? " previewing" : ""}`}

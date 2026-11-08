@@ -28,12 +28,29 @@ pub fn node_schema(auth_override: Option<&Path>) -> Result<Schema> {
     let mut tables = auth.tables;
     tables.extend(suitedrive::tables());
     tables.push(
+        TableDef::new("mail_account", "id")
+            .column("userId", suitedb::ColumnType::Text)
+            .column("workerId", suitedb::ColumnType::Text)
+            .column("payload", suitedb::ColumnType::Text),
+    );
+    tables.push(
+        TableDef::new("mail_record", "id")
+            .column("userId", suitedb::ColumnType::Text)
+            .column("accountId", suitedb::ColumnType::Text)
+            .column("kind", suitedb::ColumnType::Text)
+            .column("state", suitedb::ColumnType::Text)
+            .column("dueAt", suitedb::ColumnType::Text)
+            .column("owner", suitedb::ColumnType::Text)
+            .column("payload", suitedb::ColumnType::Text),
+    );
+    tables.push(
         TableDef::new("cloud_invite", "id")
             .column("email", suitedb::ColumnType::Text)
             .column("expiresAt", suitedb::ColumnType::Text),
     );
     let schema = Schema {
-        version: auth.version * 100 + suitedrive::SCHEMA_VERSION,
+        // Reserve separate digits for independent auth, drive, and mail migrations.
+        version: auth.version * 10_000 + suitedrive::SCHEMA_VERSION * 100 + 1,
         tables,
     };
     schema.validate()?;
@@ -57,6 +74,8 @@ mod tests {
             "directory_group",
             "directory_edge",
             "audit_event",
+            "mail_account",
+            "mail_record",
         ] {
             assert!(schema.table(table).is_some(), "{table} is missing");
         }

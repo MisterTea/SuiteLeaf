@@ -16,6 +16,56 @@
   padding: 8px 16px 6px;
   flex-shrink: 0;
 }
+.workspace-status-toast {
+  position: fixed;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--dialog-bg);
+  color: var(--text-primary);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  overflow-wrap: anywhere;
+}
+.workspace-status-toast[hidden] {
+  display: none;
+}
+.workspace-status-toast .save-status {
+  margin: 0;
+  max-width: none;
+  overflow: visible;
+}
+.workspace-status-toast .status-icon {
+  width: auto;
+  height: auto;
+  gap: 8px;
+  flex-shrink: 1;
+}
+.workspace-status-toast .status-icon svg {
+  flex-shrink: 0;
+}
+.workspace-status-toast .status-icon-label {
+  position: static;
+  width: auto;
+  height: auto;
+  margin: 0;
+  overflow: visible;
+  clip-path: none;
+  white-space: normal;
+}
+.workspace-status-toast p {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
 .workspace-upload-notices {
   flex-shrink: 0;
   padding: 8px 16px;

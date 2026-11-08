@@ -357,6 +357,8 @@ async fn run(mut config: Config, init: bool, internal_token: Option<String>) -> 
                 config.clone(),
                 internal_url.clone(),
                 internal_token,
+                std::env::var("SUITELEAF_MAIL_WORKER_ID")
+                    .unwrap_or_else(|_| net.local_peer_id().to_string()),
             )?,
         }
     }

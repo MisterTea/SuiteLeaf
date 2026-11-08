@@ -46,7 +46,6 @@ test("Mobile shared presentation keeps upload retries visible through rotation",
   await page.goto(`/#/file/${file.id}`);
   const header = page.locator(".workspace-header");
   await expect(header.locator(".title-folder-row")).toHaveCount(0);
-  await expect(header.locator(".last-edited")).toContainText("Jason Gauci");
   const toolbar = page.getByRole("toolbar", { name: "Slides toolbar" });
   await expect(toolbar.getByRole("button", { name: "Download", exact: true })).toBeAttached();
   await expect(header.locator(".header-right-tools")).toHaveCount(0);
@@ -54,6 +53,10 @@ test("Mobile shared presentation keeps upload retries visible through rotation",
   await expect(toolbar.locator(".editor-toolbar-navigation button").nth(0)).toHaveAttribute("aria-label", "Back to files");
   await expect(toolbar.locator(".editor-toolbar-navigation button").nth(1)).toHaveAttribute("aria-label", "Main menu");
   await expect(page.locator(".star-btn")).toHaveCount(0);
+  const toast = page.locator(".workspace-status-toast");
+  await expect(toast).toBeInViewport();
+  expect((await toast.locator(".status-icon-label").boundingBox())!.width).toBeGreaterThan(80);
+  expect((await toolbar.boundingBox())!.y).toBeLessThanOrEqual(8);
   await page.evaluate(({ itemId, revision }) => localStorage.setItem("suiteleaf.uploadQueue", JSON.stringify([{
     itemId, revision, bytes: 20, attempts: 1, nextAttemptAt: 0,
     failure: { kind: "network", message: "offline", remedy: "Retry when SuiteDrive is reachable. This copy stays on this device." },
@@ -61,10 +64,11 @@ test("Mobile shared presentation keeps upload retries visible through rotation",
   const uploads = page.getByRole("region", { name: "Upload notifications" });
   for (const [width, height] of [[320, 844], [390, 844], [700, 390], [844, 390]]) {
     await page.setViewportSize({ width, height });
-    const bounds = (await header.boundingBox())!;
-    expect(bounds.height).toBeLessThanOrEqual(width <= 700 ? 85 : 140);
-    const details = (await header.locator(".last-edited").boundingBox())!;
-    if (width <= 700) expect(details.y - bounds.y).toBeLessThanOrEqual(42);
+    if (width <= 700) {
+      expect(await header.boundingBox()).toBeNull();
+    } else {
+      expect((await header.boundingBox())!.height).toBeLessThanOrEqual(140);
+    }
     await toolbar.evaluate((element) => { element.scrollLeft = 0; });
     const back = toolbar.getByRole("button", { name: "Back to files" });
     const more = toolbar.getByRole("button", { name: "Main menu" });
@@ -81,7 +85,8 @@ test("Mobile shared presentation keeps upload retries visible through rotation",
     await expect(menu).toBeHidden();
     await expect(uploads.getByRole("button", { name: "Retry", exact: true })).toBeInViewport();
     const notice = (await uploads.boundingBox())!;
-    expect(notice.y).toBeGreaterThanOrEqual(bounds.y + bounds.height - 1);
+    const headerBounds = await header.boundingBox();
+    expect(notice.y).toBeGreaterThanOrEqual(headerBounds ? headerBounds.y + headerBounds.height - 1 : 0);
     expect(notice.x).toBeGreaterThanOrEqual(0);
     expect(notice.x + notice.width).toBeLessThanOrEqual(width);
     await assertNoHorizontalScroll(page, `Shared presentation header at ${width}px`);
@@ -252,9 +257,12 @@ test("Mobile workspace combines navigation and actions without showing the title
       await page.goto("/");
       await page.getByRole("button", { name: new RegExp(`^New ${kind}`) }).click();
       const header = page.locator(".workspace-header");
-      await expect(header.getByRole("status")).toContainText("Saved");
       await expect(page.getByLabel("File title")).toBeHidden();
-      expect((await header.boundingBox())!.height).toBeLessThanOrEqual(48);
+      if (kind === "presentation") {
+        await expect(page.getByRole("toolbar", { name: "Slides toolbar" })).toBeVisible();
+        await expect.poll(() => header.boundingBox()).toBeNull();
+      }
+      else expect((await header.boundingBox())!.height).toBeLessThanOrEqual(48);
       const back = (await page.getByRole("button", { name: "Back to files" }).boundingBox())!;
       for (const label of ["Back to files", "Main menu", "Version history", "Comments", "AI assistant", "Download"]) {
         const inToolbar = kind === "presentation";

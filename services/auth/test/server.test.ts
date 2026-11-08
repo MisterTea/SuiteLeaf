@@ -9,12 +9,13 @@ const fake = vi.hoisted(() => ({
     async () => ({ token: "one time" }),
   ),
   options: undefined as unknown,
+  getSession: vi.fn(async () => null as null | { user: { id: string } }),
 }));
 
 vi.mock("better-auth", () => ({
   betterAuth: (options: unknown) => {
     fake.options = options;
-    return { api: { generateOneTimeToken: fake.generateOneTimeToken } };
+    return { api: { generateOneTimeToken: fake.generateOneTimeToken, getSession: fake.getSession } };
   },
 }));
 vi.mock("better-auth/node", () => ({
@@ -63,6 +64,14 @@ afterAll(() => {
 const get = (path: string) => fetch(`${base}${path}`, { redirect: "manual" });
 
 describe("auth service", () => {
+  it("requires a real auth session before handling mail", async () => {
+    const response = await fetch(`${base}/api/auth/suiteleaf/mail`, { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer bad" }, body: JSON.stringify({ action: "accounts" }) });
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "Sign in to use mail." });
+    expect(fake.getSession).toHaveBeenCalled();
+    fake.getSession.mockResolvedValueOnce({ user: { id: "ada" } });
+    expect((await get("/api/auth/suiteleaf/mail")).status).toBe(405);
+  });
   it("builds better-auth with the node's database adapter", () => {
     expect(fake.options).toMatchObject({
       baseURL: "http://auth.test",

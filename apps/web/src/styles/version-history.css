@@ -344,6 +344,39 @@
 .version-menu button:hover {
   background: #f1f3f4;
 }
+.version-preview-session {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: #f9fbfd;
+}
+.version-preview-toolbar {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid #dadce0;
+}
+.version-preview-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid #dadce0;
+  border-radius: 6px;
+  background: #fff;
+  color: #202124;
+  font: inherit;
+  cursor: pointer;
+}
+.version-preview-session > .version-preview {
+  position: relative;
+  inset: auto;
+  flex: 1;
+  min-height: 0;
+}
 .version-preview {
   position: absolute;
   inset: 0;

@@ -18,10 +18,18 @@
     "@ai-sdk/gateway": "^4.0.137",
     "@vercel/blob": "^2.8.2",
     "ai": "^7.0.164",
-    "better-auth": "1.7.7"
+    "better-auth": "1.7.7",
+    "html-to-text": "^10.0.1",
+    "imapflow": "^2.11.0",
+    "mailparser": "^3.14.2",
+    "nodemailer": "^10.4.0"
   },
   "devDependencies": {
     "@better-auth/test-utils": "1.7.7",
-    "esbuild": "^0.25.0"
+    "@types/html-to-text": "^9.0.4",
+    "@types/mailparser": "^3.9.0",
+    "@types/nodemailer": "^8.0.2",
+    "esbuild": "^0.25.0",
+    "selfsigned": "^5.5.0"
   }
 }

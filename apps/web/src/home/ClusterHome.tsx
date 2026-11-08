@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Cloud, LogOut, Unplug } from "lucide-react";
 import { createFile } from "@suiteleaf/core";
 import { drive, signOut } from "../node-client";
@@ -159,6 +159,7 @@ export function ClusterHome({ serverUrl }: { serverUrl: string }) {
     <div className="home">
       <aside className="sidebar">
         <Logo />
+        <Link to="/mail">Mail</Link>
         <AdminLink cluster role={session?.user.role} />
         <AccountChip serverUrl={serverUrl} onError={setError} />
       </aside>

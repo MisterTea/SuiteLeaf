@@ -28,10 +28,12 @@ import { ClusterHome } from "./home/ClusterHome";
 import { Workspace } from "./workspace/Workspace";
 import { PublicFileRoute } from "./drive/public-file-route";
 import { SharedFileRoute } from "./drive/shared-file-route";
+import { MailRoute } from "./mail/MailApp";
+import { PublicMail } from "./mail/PublicMail";
 
 function AppTools() {
   const { pathname } = useLocation();
-  return pathname.startsWith("/public/") ? null : (
+  return pathname.startsWith("/public/") || pathname.startsWith("/confidential/") ? null : (
     <>
       <AgentLayer />
       <DocumentSettings />
@@ -145,6 +147,7 @@ export default function App() {
         <AppTools />
         <Routes>
           <Route path="/public/:token" element={<PublicFileRoute />} />
+          <Route path="/confidential/:token" element={<PublicMail />} />
           <Route
             path="/shared/:itemId"
             element={
@@ -154,6 +157,14 @@ export default function App() {
             }
           />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route
+            path="/mail"
+            element={
+              <ClusterGate>
+                <MailRoute />
+              </ClusterGate>
+            }
+          />
           <Route path="/auth-complete" element={<AuthComplete />} />
           <Route
             path="/admin"

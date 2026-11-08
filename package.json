@@ -23,6 +23,7 @@
     "lint": "eslint .",
     "check:secrets": "node scripts/check-secrets.mjs",
     "test": "vitest run",
+    "test:mail:stalwart": "npm run build:auth && cargo build -p suiteleaf-node && node scripts/test-mail-stalwart.mjs",
     "test:coverage": "vitest run --coverage",
     "check:capabilities": "vitest run tests/capabilities/catalog.test.ts tests/capabilities/catalog-sources.test.ts --coverage.enabled --coverage.include=packages/core/src/capabilities/**/*.ts --coverage.thresholds.lines=90 --coverage.thresholds.functions=90 --coverage.thresholds.statements=90 --coverage.thresholds.branches=90",
     "test:e2e": "playwright test --project=chromium",
