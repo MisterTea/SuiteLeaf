@@ -26,7 +26,8 @@ body.agent-open .save-status {
 body.agent-open .gdocs-modal-overlay {
   right: var(--agent-width);
 }
-.ai-button {
+.ai-button,
+.install-button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -38,7 +39,8 @@ body.agent-open .gdocs-modal-overlay {
   font: 600 13px/1.2 inherit;
   cursor: pointer;
 }
-.ai-button:hover {
+.ai-button:hover,
+.install-button:hover {
   background: var(--agent-accent-soft);
 }
 .ai-button.active {

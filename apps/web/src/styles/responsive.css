@@ -271,6 +271,7 @@
   }
   .workspace-header > .header-right-tools .doc-icon-btn,
   .workspace-header > .header-right-tools .ai-button,
+  .workspace-header > .header-right-tools .install-button,
   .workspace-header > .header-right-tools .save-copy {
     width: 36px;
     height: 36px;

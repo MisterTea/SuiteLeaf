@@ -24,6 +24,7 @@ import { SignUpLinkDialog } from "../drive/SignUpLinkDialog";
 import { ShareNotices } from "../drive/share-notices";
 import { driveName, openFromDrive } from "../drive/drive-files";
 import { CommandPalette } from "../command-palette";
+import { InstallButton } from "../InstallButton";
 import { AiButton } from "../ai/AgentSidebar";
 import { VersionHistory, VersionPreview } from "../editors/version-history";
 import { SheetVersionPreview, SlideVersionPreview } from "../editors/version-compare";
@@ -305,6 +306,7 @@ export function Workspace() {
               </button>
             ) : null}
             <AiButton />
+            <InstallButton />
             <FullscreenButton />
             {mode.kind !== "cluster" ? (
               <span className="workspace-brand">

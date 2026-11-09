@@ -1,0 +1,36 @@
+.install-dialog {
+  box-sizing: border-box;
+  width: min(440px, calc(100% - 32px));
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text-primary);
+  white-space: normal;
+}
+
+.install-dialog::backdrop {
+  background: rgb(0 0 0 / 45%);
+}
+
+.install-dialog h2 {
+  margin: 0;
+}
+
+.install-dialog ul {
+  padding-inline-start: 20px;
+}
+
+.install-dialog li + li {
+  margin-top: 8px;
+}
+
+.install-dialog form {
+  text-align: end;
+}
+
+.home-app-buttons {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

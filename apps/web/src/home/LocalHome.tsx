@@ -36,6 +36,7 @@ import { ConnectDialog } from "../drive/SignIn";
 import { probeServer, switchMode, useMode } from "../mode";
 import { formsEnabled } from "../flags";
 import { useAgentHost } from "../ai/host";
+import { InstallButton } from "../InstallButton";
 import { AiButton } from "../ai/AgentSidebar";
 import { homeSnapshot, homeTools, type HomeAgentContext } from "../ai/tools/files";
 import { connectTools } from "../ai/tools/cluster";
@@ -490,7 +491,10 @@ export function LocalHome() {
             />
           </label>
           <span className="version">OPEN SOURCE · v0.1</span>
-          <AiButton />
+          <div className="home-app-buttons">
+            <AiButton />
+            <InstallButton />
+          </div>
         </header>
         <LeftServerNotice />
         {focused ? null : (

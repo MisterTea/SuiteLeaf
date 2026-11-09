@@ -111,6 +111,13 @@ npm run build
 
 Serve `apps/web/dist/` from any static HTTPS host, at the domain root or a subdirectory. Routes use URL fragments, so a server-side route rewrite is unnecessary. The production service worker caches application assets for offline use after its first successful installation. Development mode does not install a service worker. Hosting the website does not create a shared server-side file library.
 
+To install SuiteLeaf from the hosted site:
+
+- **Windows, macOS, and Linux (Chrome or Edge)** — Open SuiteLeaf and use the browser's install option in the address bar or browser menu.
+- **macOS (Safari 17 or later on macOS Sonoma or later)** — Choose **File → Add to Dock**.
+- **Android (Chrome)** — Open the browser menu, choose **Add to home screen**, then **Install** when offered.
+- **iPhone and iPad (Safari)** — Open the Share menu, choose **Add to Home Screen**, and enable **Open as Web App** if shown.
+
 Desktop bundles are generated in `apps/desktop/out/`. Build unsigned installers on their native operating systems:
 
 ```sh

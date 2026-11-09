@@ -12,6 +12,7 @@ import { disconnect, useMode } from "../mode";
 import { formsEnabled } from "../flags";
 import { drawingFromAction, newFile, type NewKind } from "../drawing-home";
 import { useAgentHost } from "../ai/host";
+import { InstallButton } from "../InstallButton";
 import { AiButton } from "../ai/AgentSidebar";
 import { driveSnapshot, driveTools, type DriveAgentContext } from "../ai/tools/cluster";
 import {
@@ -193,7 +194,10 @@ export function ClusterHome({ serverUrl }: { serverUrl: string }) {
             <ServerStatusIcon sync={sync} host={new URL(serverUrl).host} />
           </div>
           <span className="version">OPEN SOURCE · v0.1</span>
-          <AiButton />
+          <div className="home-app-buttons">
+            <AiButton />
+            <InstallButton />
+          </div>
         </header>
         <section className="welcome">
           <p className="eyebrow">YOUR TEAM WORKSPACE</p>
