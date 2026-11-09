@@ -183,7 +183,74 @@
   background: #410e0b;
   color: #f9dedc;
 }
-.marp-textarea {
+.marp-editor-host {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.marp-ace-editor {
+  flex: 1;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.marp-ace-editor .ace_gutter {
+  background: #f8f9fa;
+  color: #8c959f;
+  border-right: 1px solid var(--border, #e5e7eb);
+}
+.marp-ace-editor .ace_gutter-active-line {
+  background: #edf2f7;
+}
+:root.dark-theme .marp-ace-editor,
+:root[data-theme="dark"] .marp-ace-editor {
+  background: #18181b;
+  color: #f4f4f5;
+}
+:root.dark-theme .marp-ace-editor .ace_gutter,
+:root[data-theme="dark"] .marp-ace-editor .ace_gutter {
+  background: #121214;
+  color: #71717a;
+  border-right-color: #27272a;
+}
+:root.dark-theme .marp-ace-editor .ace_gutter-active-line,
+:root[data-theme="dark"] .marp-ace-editor .ace_gutter-active-line {
+  background: #27272a;
+}
+.marp-ace-editor .ace_heading,
+.marp-ace-editor .ace_markup.ace_heading {
+  font-weight: 600;
+  color: #0969da;
+}
+:root.dark-theme .marp-ace-editor .ace_heading,
+:root.dark-theme .marp-ace-editor .ace_markup.ace_heading,
+:root[data-theme="dark"] .marp-ace-editor .ace_heading,
+:root[data-theme="dark"] .marp-ace-editor .ace_markup.ace_heading {
+  color: #58a6ff;
+}
+.marp-ace-editor .ace_string.ace_strong {
+  font-weight: bold;
+}
+.marp-ace-editor .ace_string.ace_emphasis {
+  font-style: italic;
+}
+.marp-ace-editor .ace_constant.ace_buildin,
+.marp-ace-editor .ace_support.ace_function {
+  color: #953800;
+}
+:root.dark-theme .marp-ace-editor .ace_constant.ace_buildin,
+:root.dark-theme .marp-ace-editor .ace_support.ace_function,
+:root[data-theme="dark"] .marp-ace-editor .ace_constant.ace_buildin,
+:root[data-theme="dark"] .marp-ace-editor .ace_support.ace_function {
+  color: #ffab70;
+}
+.marp-textarea:not(.ace_text-input) {
   flex: 1;
   width: 100%;
   min-height: 0;

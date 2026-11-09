@@ -568,6 +568,7 @@ export default function DrawingEditor({
                 draftRef={draftRef}
                 onCaretLine={followCaret}
                 label={`${FORMAT_NAME[format]} source`}
+                mode={format === "graphviz" ? "dot" : format === "svg" ? "xml" : "markdown"}
               />
             </aside>
           </>
