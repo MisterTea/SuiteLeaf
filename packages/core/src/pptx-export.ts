@@ -32,6 +32,7 @@ function color(value: string | undefined, fallback = "1E293B") {
 function runs(el: SlideElement): TextRun[] {
   if (el.runs?.length) return el.runs.filter((run) => run.text);
   if (!el.content) return [];
+  if (el.math) return [{ text: el.content.replace(/[\r\n]+/g, " "), latex: el.content, math: true }];
   const run: TextRun = { text: el.content };
   if (el.bold) run.bold = true;
   if (el.italic) run.italic = true;
@@ -137,7 +138,7 @@ export async function exportPptx(sourceFile: SlideFile): Promise<Uint8Array> {
           );
         if (!image) continue;
         slide.addImage({
-          data: el.src,
+          data: el.emfSrc ?? el.src,
           altText: el.svgSrc
             ? svgFallbackMarker(el.id)
             : el.imageLayer
@@ -174,6 +175,13 @@ export async function exportPptx(sourceFile: SlideFile): Promise<Uint8Array> {
             ? {
                 color: color(el.stroke, "000000"),
                 width: points(el.strokeWidth || 1),
+                // PptxGenJS serializes the preset verbatim; its type omits
+                // some DrawingML presets supported by the runtime.
+                dashType: (el.strokeStyle === "dashed"
+                  ? "dash"
+                  : el.strokeStyle === "dotted"
+                    ? "dot"
+                    : el.strokeStyle) as PptxGenJS.ShapeLineProps["dashType"],
                 beginArrowType: el.lineHead,
                 endArrowType: el.lineTail,
               }

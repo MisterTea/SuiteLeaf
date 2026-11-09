@@ -399,3 +399,4 @@ export * from "./automation";
 export * from "./governance";
 export * from "./integrations/communications";
 export * from "./integrations/knowledge-planning";
+export { latexMathML, officeMathLatex, unwrapSlideLatex } from "./slide-latex";

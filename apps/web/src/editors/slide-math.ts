@@ -1,4 +1,4 @@
-import { textRunSchema, type TextRun } from "@suiteleaf/core";
+import { latexMathML, textRunSchema, type TextRun } from "@suiteleaf/core";
 
 const escape = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;")
   .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -37,6 +37,11 @@ export function slideMathHtml(run: TextRun): string {
       : `<mfrac>${pieces(fraction.num)}${pieces(fraction.den)}</mfrac>`
     : `<mrow>${tokens(run.text)}</mrow>`;
   const data = escape(JSON.stringify(run));
+  if (run.latex) {
+    try {
+      return `<span data-slide-math="${data}" contenteditable="false">${latexMathML(run.latex)}</span>`;
+    } catch { /* Display the saved text if LaTeX is invalid. */ }
+  }
   return `<span data-slide-math="${data}" contenteditable="false"><math xmlns="http://www.w3.org/1998/Math/MathML" displaystyle="true" style="font-family:inherit;font-size:inherit">${body}</math></span>`;
 }
 

@@ -12,9 +12,9 @@ export function presentationLineHeight(factor = 1, exact = false): number {
 }
 
 /** Per-paragraph pitch must override the box even when a later paragraph returns to percentages. */
-export function presentationParagraphRuns(paragraphs: {runs: TextRun[]; lineHeight?: number; lineHeightPt?: number; exactLine?: boolean}[]): TextRun[] {
+export function presentationParagraphRuns(paragraphs: {runs: TextRun[]; lineHeight?: number; lineHeightPt?: number; exactLine?: boolean; spaceBefore?: number}[]): TextRun[] {
  return paragraphs.flatMap((p,index)=>{
-  const pitch={paraLine:presentationLineHeight(p.lineHeight,p.exactLine), ...(p.lineHeightPt?{paraLinePt:p.lineHeightPt}:{})};
+  const pitch={paraLine:presentationLineHeight(p.lineHeight,p.exactLine), ...(p.lineHeightPt?{paraLinePt:p.lineHeightPt}:{}), ...(p.spaceBefore?{spaceBefore:p.spaceBefore}:{})};
   return [...(index?[{text:"\n",paragraphBreak:true,...pitch}]:[]), ...p.runs.map((run,i)=>i===0?{...run,...pitch}:run)];
  });
 }

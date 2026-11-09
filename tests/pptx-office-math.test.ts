@@ -1,8 +1,24 @@
 import { expect, it } from "vitest";
 import JSZip from "jszip";
 import { parsePowerPoint } from "../packages/core/src/pptx";
+import { exportPptx } from "../packages/core/src/pptx-export";
+import { createFile, type SlideFile } from "../packages/core/src";
 import { officeMathRuns } from "../packages/core/src/pptx-math";
+import { officeMathLatex } from "../packages/core/src/slide-latex";
 import { runsToHtml } from "../apps/web/src/editors/slide-runs";
+
+it("exports a standalone LaTeX slide equation as native math", async () => {
+  const file = createFile("slide", "Equations") as SlideFile;
+  file.content.slides[file.content.slideOrder[0]].elements.push({
+    id: "equation", type: "text", math: true, fontSize: 24, color: "#336699",
+    x: 10, y: 20, width: 400, height: 100, content: "$$\\frac{a}{b}$$",
+  });
+  const reopened = await parsePowerPoint(await exportPptx(file));
+  const equation = reopened.content.slides[reopened.content.slideOrder[0]].elements
+    .flatMap((element) => element.runs ?? []).find((run) => run.fraction);
+  expect(equation?.fraction).toMatchObject({ num: [{ text: "a" }], den: [{ text: "b" }] });
+  expect(equation?.officeMath?.xml).toContain('val="336699"');
+});
 
 it("reads a subscript and a stacked fraction from DrawingML math", () => {
   const runs = officeMathRuns(`<a14:m><m:oMath>
@@ -69,7 +85,7 @@ it("keeps a radical in front of the expression under it", () => {
   expect(runs.map((run) => run.text)).toEqual(["√ab"]);
 });
 
-it("keeps Office math when a slide text box is imported", async () => {
+it("round trips native Office math until its runs are edited", async () => {
   const zip = new JSZip();
   zip.file(
     "ppt/slides/slide1.xml",
@@ -85,11 +101,31 @@ it("keeps Office math when a slide text box is imported", async () => {
     el.content?.includes("P"),
   );
   expect(box?.content).toBe("PB=");
+  const exportedXml = async () => {
+    const exported = await JSZip.loadAsync(await exportPptx(file));
+    return exported.file("ppt/slides/slide1.xml")!.async("string");
+  };
+  expect(await exportedXml()).toContain("<m:sSub>");
+  const equationRun = box!.runs!.find((run) => run.officeMath)!;
+  equationRun.text = "Q";
+  expect(await exportedXml()).not.toContain("<m:sSub>");
+  equationRun.text = "P";
+  expect(officeMathLatex(equationRun.officeMath!.xml)).toBe("{P}_{B}");
   expect(box?.runs?.map((run) => [run.text, run.baseline])).toEqual([
     ["P", undefined],
     ["B", -25],
     ["=", undefined],
   ]);
+  box!.runs!.splice(box!.runs!.indexOf(equationRun), equationRun.officeMath!.count, {
+    text: "\\frac{x^2}{\\sqrt{y}}",
+    math: true,
+    latex: "\\frac{x^2}{\\sqrt{y}}",
+  });
+  const editedXml = await exportedXml();
+  expect(editedXml).toContain("<m:f>");
+  expect(editedXml).toContain("<m:sSup>");
+  expect(editedXml).toContain("<m:rad>");
+  expect(editedXml).not.toContain("<m:sSub>");
 });
 
 it.each([['centerGroup', 'center'], ['center', 'center'], ['left', 'left'], ['right', 'right'], ['unknown', 'left']])("honors pure equation justification %s", async (value, align) => {

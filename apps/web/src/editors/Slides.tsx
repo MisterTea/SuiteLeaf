@@ -1,3 +1,4 @@
+import { SlideEquationDialog, equationRun, hasSlideEquation, slideEquations } from "./slide-equation-dialog";
 import { SlidePrintDeck } from "./slide-print";
 import { SlideAccessPanel } from "./slide-access-notes";
 import { lazy, Suspense, useMemo, useRef, useState } from "react";
@@ -177,6 +178,7 @@ export default function Slides({
     fadeReason,
   } = slideCommands(state, { ...history, ...ordering, ...objects, ...textFormat });
 
+  const [equationTarget, setEquationTarget] = useState<string | null>(null);
   const latestApi = {
     undo,
     redo,
@@ -184,6 +186,7 @@ export default function Slides({
     copy: copySelection,
     paste: pasteClipboard,
     insertTextBox: addTextBox,
+    insertEquation: () => setEquationTarget(""),
     insertImage: () => imageInputRef.current?.click(),
     insertAudio: () => audioInputRef.current?.click(),
     insertVideo: () => videoInputRef.current?.click(),
@@ -229,6 +232,14 @@ export default function Slides({
   useSlideEditorKeys(state, { api, beginShow });
   const playback = useShowPlayback(state, { ...showControls, activeSlide });
 
+  const equationElement = activeSlide.elements.find((element) => element.id === equationTarget);
+  const equationChoices = equationElement ? slideEquations(equationElement) : [];
+  const editEquation = (element: (typeof activeSlide.elements)[number]) => {
+    if (readOnly || !hasSlideEquation(element)) return false;
+    setEquationTarget(element.id);
+    return true;
+  };
+
   const canvasHooks = editorCanvasHooks(state, {
     file,
     readOnly,
@@ -241,6 +252,7 @@ export default function Slides({
     rememberCaret: textFormat.rememberCaret,
     selectElement,
     revealMarkdown,
+    editEquation,
   });
 
   return (
@@ -248,6 +260,30 @@ export default function Slides({
       className="slides-editor"
       data-deck-snapshot={deckSnapshot}
     >
+      {equationTarget !== null && !readOnly && (
+        <SlideEquationDialog key={equationTarget} equations={equationChoices}
+          onClose={() => setEquationTarget(null)}
+          onSave={(source, index) => {
+            const choice = equationChoices[index];
+            if (equationElement && choice && source !== choice.source.trim()) {
+              if (equationElement.math) {
+                updateElement(equationElement.id, { content: source });
+              } else {
+                const runs = [...(equationElement.runs ?? [])];
+                runs.splice(choice.index, choice.count, equationRun(source, runs[choice.index]));
+                updateElement(equationElement.id, { runs, content: runs.map((run) => run.text).join("") });
+              }
+            } else if (!equationTarget) {
+              objects.insertOnActive([{
+                id: crypto.randomUUID(), type: "text", x: deck.width / 4, y: deck.height / 3,
+                width: deck.width / 2, height: deck.height / 4, align: "center",
+                fontSize: 24, content: source, math: true,
+              }]);
+            }
+            setEquationTarget(null);
+          }}
+        />
+      )}
       <SlidePrintDeck active={printing} deck={deck} />
       {notice && !presenting ? (
         <div className="slides-notice" role="status">
@@ -277,6 +313,9 @@ export default function Slides({
         redo={redo}
         addSlide={addSlide}
         {...objects}
+        insertEquation={() => setEquationTarget("")}
+        editEquation={selectedElement && hasSlideEquation(selectedElement)
+          ? () => editEquation(selectedElement) : undefined}
         printSlides={printSlides}
         beginShow={beginShow}
         startCast={showControls.startCast}

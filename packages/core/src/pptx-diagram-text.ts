@@ -14,6 +14,7 @@ export type DiagramParagraph = {
   font?: string;
   lineHeight?: number;
   lineHeightPt?: number;
+  spaceBefore?: number;
   exactLine?: boolean;
 };
 
@@ -71,5 +72,6 @@ export function diagramTextElement(
     lineHeight: presentationLineHeight(first?.lineHeight, first?.exactLine),
     ...(first?.lineHeightPt ? { lineHeightPt: first.lineHeightPt } : {}),
     ...(body.wrap === "none" ? { nowrap: true } : {}),
+    ...(/^(?:1|true)$/.test(body.spcFirstLastPara) ? { paragraphEdgeSpacing: true } : {}),
   };
 }

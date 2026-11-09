@@ -80,12 +80,16 @@ function customPath(
   const paths = [...xml.matchAll(/<a:path\b([^>]*)>([\s\S]*?)<\/a:path>/g)];
   if (!paths.length) return undefined;
   // Edited freeforms keep the preset's guide formulas and arcTo corners.
-  // Numeric lnTo paths stay on the direct reader below.
-  const guided = paths.some(
-    (path) =>
+  // Paths without their own coordinate space use the shape extent.
+  const guided = paths.some((path) => {
+    const size = attrs(path[1]);
+    return (
+      !Number(size.w) ||
+      !Number(size.h) ||
       /<a:arcTo\b/.test(path[2] || "") ||
-      /<a:pt\b[^>]*\b(?:x|y)="(?!-?\d+(?:\.\d+)?")/.test(path[2] || ""),
-  );
+      /<a:pt\b[^>]*\b(?:x|y)="(?!-?\d+(?:\.\d+)?")/.test(path[2] || "")
+    );
+  });
   if (guided) return guideCustomPath(xml, shapeW, shapeH);
   let w = 1;
   let h = 1;

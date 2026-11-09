@@ -2,12 +2,12 @@
 
 ## Resume checkpoint
 
-- Task: process every genuine PPTX recursively under `Z:\Datasets\zenodo10k\files`, one sequential subagent per file.
-- Current: 0001–0005 completed; worker `pptx_roundtrip_0006` assigned to af21bf76f7eb1d313e44b8e82851ab7b-final-project-presentation.pptx.
-- Outcomes: five matched for static visual/layout fidelity, zero given up; 10,437 genuine decks remain. The older `presentation_work.md` records PDF exports, not this task's PPTX round trips.
+- Task: process every genuine PPTX recursively under `Z:\Datasets\zenodo10k\files`. Pi with local Ornith handles all deck content and image comparisons. SuiteLeaf code fixes stay in the main chat.
+- Current: 0001–0009 completed. Deck 0010 baseline is next.
+- Outcomes: nine matched for static visual/layout fidelity, zero given up; 10,433 genuine decks remain. The older `presentation_work.md` records PDF exports, not this task's PPTX round trips.
 - Inventory: `artifacts/presentation-fidelity/inventory.csv` (10,445 entries; parse with Python CSV because paths can contain newlines). Revalidate source availability. Metadata files beginning `._` and Office locks beginning `~$` are excluded.
 - Fresh 2026-11-08 enumeration: 10,442 genuine presentations and three excluded metadata/lock files. All source files stat successfully using Windows extended paths. `artifacts/presentation-pptx/inventory.json` records this task's queue, source sizes, and available reference PDFs (10,242). The 200 presentations lacking existing reference PDFs still need source rendering, rather than automatic skipping.
-- Process in case-insensitive relative-path order. Record source, worker, status, iterations, fixes, tests, output/comparison paths, and remaining discrepancies before launching the next worker.
+- Process in case-insensitive relative-path order. Record source, status, iterations, fixes, tests, evidence paths, and remaining discrepancies before starting the next deck.
 - Artifacts: `artifacts/presentation-pptx/`; source dataset remains untouched.
 
 ## Acceptance procedure
@@ -152,3 +152,53 @@
 - Size2679128bytes; same-renderer freshly rendered source required.
 - In progress; actual CLI PPTX roundtrip and all-slide fullres review, fixes/re-exports until match or minimum5substantive iterations before giving up. Images confined to worker.
 - 0006 baseline genuine CLI/Office render15slides and fresh original rendered. Contact review finds major losses: inherited slide gradient background dropped throughout; cap=all formatting lost on1/11/14 (case/wrapping); list paragraph indents/margins differ. Worker implementing editable background gradient preservation, then caps and paragraph geometry. Not matched.
+- Pi/Ornith experiment on 0006 iteration 1. The locally configured `ollama-ornith-local` model produced a text report from same-renderer PDF line bounds, raster scores, and package-wide XML token counts. Evidence and report are `artifacts/presentation-pptx/0006/pi-ornith-evidence.json` and `pi-ornith-report.md`. It flags capitalization and wrapping on 1/11/14 and bounds on 2/5/8/12. Extraction whitespace and package counts require verification, and the model has no image input. Use it to triage alongside the worker's full-resolution review.
+- Pi/Ornith vision retest after user enabled image inputs. Subagent supplied the iteration 1 source and export slide 1 PNGs. Ornith correctly transcribed the capitalization and three-to-two-line change. It reversed the vertical shift, which measures 24.54 px lower in the export, and misstated where LEVEL moved. Report and raw log are under `artifacts/presentation-pptx/0006/`. The model can flag visual changes for review. Use measured geometry for the 5 px check.
+
+#### Terminal outcome 0006
+
+- Matched all 15 slides after four substantive fix and re-export iterations. All 2,329 non-whitespace characters matched within 0.8 px and all slides passed full-resolution review at the 5 px tolerance.
+- Fixes preserve editable gradient backgrounds, capitalization, native bullets, and kerning alongside tracking. 434 tests and both typechecks passed. Changed helpers have 100% line coverage.
+- Final PPTX and acceptance evidence are under `artifacts/presentation-pptx/0006/iteration4/` and `iteration4-review/`.
+
+### 0007 — assigned
+
+- Source: `pptx\cc-by-2.0\2020\0a0c7478080d6346c27a1c6c556feb29-ppt_penulisan artikel RJI.pptx`.
+- Worker `pptx_roundtrip_0007`. Work directory `artifacts/presentation-pptx/0007/`.
+- User changed the comparison workflow during 0007. Only Pi with local Ornith may inspect slide images or content. SuiteLeaf fixes and verification commands are handled in the main chat. Worker interrupted after native numbering implementation and iteration 1 export. Preserve its code and outputs. Pi review script under 0007 supplies image pairs and measured text bounds directly to the local model and saves text reports.
+- Independent spot check requested by user. Compared the measured PDF line bounds on 0007 iteration 1 slides 3–5 without opening images. All three have matching line text and counts. Slide 3 has two vertical changes of 5.07 px down (Revision) and 5.44 px up ((Author)). Ornith surfaced the bounds but called the slide a match and gave a misleading shared direction. Slides 4 and 5 have maximum unique-line bbox differences of 0.04 and 0.07 px. Keep slide 3 unresolved and use numeric tolerance checks alongside Ornith reports.
+- Comparison workflow confirmed: Pi with Ornith inspects all deck content and render pairs. Code fixes stay in the main chat. Reusable runner: scripts/compare-pptx-with-ornith.ps1. It saves text reports and independently flags measured unique-line bounds at or above 5 px for review.
+
+#### Terminal outcome 0007
+
+- Matched static layout on all 18 slides after three fix and re-export iterations. Native numbering restored list wrapping, retained diagram paragraph gaps brought slide 3 text inside tolerance, and freeform paths now default to the shape extent. Pi with Ornith reviewed all 18 pages, then reviewed slide 3 again after each subsequent export. The other 17 pages remained pixel-identical.
+- All 187 samples across 11 slide 3 connectors align within 1 px in iteration 3, up from 34 samples in iteration 2. Ornith noted possible fill or antialias differences. Static layout acceptance is recorded in `artifacts/presentation-pptx/0007/iteration3-review/acceptance.json`.
+- 428 tests passed. Selected coverage: 98.82% lines, 95.57% statements, 85% branches. Core and desktop typechecks passed.
+
+### 0008 — in progress
+
+- Source: `pptx\cc-by-2.0\2020\84d594b2aea4d30d5e580ec0824aba5c-PRESENTASI NUR PEBIY RIANTI.pptx`. Work directory: `artifacts/presentation-pptx/0008/`. Pi with Ornith handles all deck comparisons and image review.
+- 0008 baseline rendered all six slides. Ornith reviewed every pair and flagged a dashed rule on slide 3 rendered solid. Source package contains a dash preset on that slide. The shape exporter now emits stored DrawingML dash presets, including mappings from older dashed and dotted styles. Four focused drawing tests and the core typecheck passed. Iteration 1 CLI rebuild underway.
+
+#### Terminal outcome 0008
+
+- Matched static layout on all six slides after one fix and re-export. Restored native line dash presets, including slide 3’s dashed rule. The other five final renders are pixel-identical to the Ornith-reviewed baseline. Ornith’s targeted slide 3 review found the same visible line endings and placement despite differences in PDF extraction.
+- 428 regression tests passed. Export coverage reached 100% lines and 90.72% statements. Core and desktop typechecks passed. Output and evidence are under `artifacts/presentation-pptx/0008/iteration1/` and `iteration1-review/`.
+
+### 0009 — in progress
+
+- Source: `pptx\cc-by-2.0\2021\2f05f4fb02585f9c72c375101abf3d17-TEMA3_SESION1_Sensores.pptx`. Use Pi with Ornith for all comparisons. Work directory: `artifacts/presentation-pptx/0009/`.
+- 0009 baseline has 25 slides. Ornith found an orientation issue on slide 2, which uses an embedded EMF. SuiteLeaf now retains the original EMF beside its browser preview and exports it when preview processing and orientation correction have not changed the source appearance. Six preservation tests and the core typecheck passed. The intermediate builds produced a one-slide recovery output and do not count. The corrected CLI exported all 25 slides with 11 EMFs. Same-renderer and Ornith checks are underway. Baseline review session 22939 and corrected review session 41853.
+- 0009 iteration 2 preserves native Office equation markup when its editable runs still match the imported equation. Edited runs export as current text. PowerPoint rendered all 25 slides. Equations restored on slides 21–24, improving raster error on all four and restoring source line counts on 22–24. The slide 19 5.44 px line-box flag comes from leading whitespace: both first visible glyph origins are (489.09, 577.31) px. Ornith flagged a possible custom-geometry arrow difference on 22 for follow-up. No match yet.
+- 24 focused math/paragraph tests passed, plus the broad 428-test regression run. The focused export helper coverage gate passed at 97.97% lines and 95.76% statements. Including the full existing equation parser in the coverage scope fell below threshold (88.72% lines and 85% statements combined). Core and desktop typechecks passed. Remaining changed renders are queued through Ornith, sessions 83204 and 88820. Baseline review session 22939 continues.
+
+#### Terminal outcome 0009
+
+- Matched static layout across all 25 slides after three substantive fix and re-export iterations. Native EMF, Office math, and freeform arrows are retained. Ornith reviewed all baseline slides and each changed final slide. The verification export from the final code is pixel-identical to the reviewed iteration 3 on all 25 slides.
+- Slides 19 and 25 have PDF line bounds extended by leading whitespace. First visible glyph positions confirm no horizontal shift. Cropped reviews on 4 and 24 confirm glyph differences account for the remaining visually flagged raster deltas. Slide 13 preserves all three source image assets byte-for-byte.
+- 429 regression tests passed. Focused coverage 98.05% lines, 95.90% statements and 90.57% branches. Both typechecks passed. The wider existing shape/native-objects coverage scope was 89.58% lines and 86.82% statements. Acceptance evidence is in `artifacts/presentation-pptx/0009/iteration3-verification-review/acceptance.json`.
+
+### 0010 — in progress
+
+- Source: `pptx\cc-by-2.0\2021\847921221167310e92e97396e29b6985-HRDCLU presentation.pptx`. Use Pi with Ornith for all comparisons. Work directory: `artifacts/presentation-pptx/0010/`.
+- Added an equation editor to Slides with Insert → Equation, a LaTeX preview, and edit actions for imported equations. Edited and newly inserted equations export as native Office math. Verified an edited deck 0009 equation by reimport, PowerPoint rendering of all 25 slides, and Ornith review of the stacked fraction, exponent, and radical. Evidence is under artifacts/presentation-pptx/equation-edit-verification/. Deck 0010 baseline now has all 35 Ornith reports and is ready for triage.

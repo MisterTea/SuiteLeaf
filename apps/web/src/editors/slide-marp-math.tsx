@@ -1,3 +1,4 @@
+import { unwrapSlideLatex } from "@suiteleaf/core";
 import { useMemo } from "react";
 import katex from "katex";
 import hljs from "highlight.js/lib/core";
@@ -53,10 +54,7 @@ export function MarpRichText({ source }: { source: string }) {
 /** Typeset LaTeX. A click on the box replaces this with the source for editing. */
 export function MarpMath({ source }: { source: string }) {
   const html = useMemo(() => {
-    const tex = source
-      .replace(/^\s*\$\$\s*/, "")
-      .replace(/\s*\$\$\s*$/, "")
-      .trim();
+    const tex = unwrapSlideLatex(source);
     try {
       return katex.renderToString(tex, {
         displayMode: true,

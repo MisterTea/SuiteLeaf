@@ -179,8 +179,9 @@ export async function paintSlidePictures(slide: SlideContext) {
           ? jpegWithoutOrientation(imgBytes)
           : mime === "image/png" ? officePngSamples(imgBytes) : imgBytes;
       // An EMF the browser cannot paint keeps its bytes so export writes the same picture.
+      const preview = paintableImage(pictureBytes, mime);
       const src =
-        recolor(applyBlipLuminance(paintableImage(pictureBytes, mime), picXml), picXml) ??
+        recolor(applyBlipLuminance(preview, picXml), picXml) ??
         (mime === "image/emf" ? `data:image/emf;base64,${uint8ToBase64(imgBytes)}` : undefined);
       if (!src) continue;
       const nativeFrame =
@@ -315,6 +316,12 @@ export async function paintSlidePictures(slide: SlideContext) {
         ...(placed.flipV ? { flipV: placed.flipV } : {}),
         ...softEdgeOf(picXml),
         src,
+        ...(mime === "image/emf" &&
+        src === preview &&
+        !svgSrc &&
+        placed.rotation === (rotation || undefined)
+          ? { emfSrc: `data:image/emf;base64,${uint8ToBase64(imgBytes)}` }
+          : {}),
         alt: pictureAlt(picXml),
         ...sourceCrop(picXml),
         ...hostedPictureClip(picXml, [layoutHost, masterHost], placed.width, placed.height),

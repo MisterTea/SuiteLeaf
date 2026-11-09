@@ -120,7 +120,10 @@ describe("PPTX export preservation", () => {
       y: 0,
       width: 100,
       height: 100,
-      src: `data:image/${i ? "emf" : "tiff"};base64,${bytes.toString("base64")}`,
+      src: i
+        ? "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4="
+        : `data:image/tiff;base64,${bytes.toString("base64")}`,
+      ...(i ? { emfSrc: `data:image/emf;base64,${bytes.toString("base64")}` } : {}),
     }));
     const exported = await exportPptx(file);
     const zip = await JSZip.loadAsync(exported);
@@ -141,7 +144,7 @@ describe("PPTX export preservation", () => {
       reopened.content.slideOrder[0]
     ].elements.filter((el) => el.type === "image");
     expect(images.map((el) => el.src)).toEqual(
-      slide.elements.map((el) => el.src),
+      slide.elements.map((el) => el.emfSrc ?? el.src),
     );
   });
   it("keeps object rotation and lets a run turn off inherited underline", async () => {

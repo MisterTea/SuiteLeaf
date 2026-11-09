@@ -101,6 +101,7 @@ export const textRunSchema = z.object({
   /** Authored exact paragraph pitch in points, independent of run size. */
   paraLinePt: z.number().positive().max(4000).optional(),
   /** An imported automatic list marker, distinct from authored leading text. */
+  autoNumber: z.object({ kind: z.string(), prefix: z.string(), startAt: z.number().int().positive().optional(), level: z.number().int().min(0).max(8).optional() }).optional(),
   listMarker: z.boolean().optional(),
   /** DrawingML kern, in points. PowerPoint import moves it to the box. */
   kern: z.number().min(0).max(4000).optional(),
@@ -115,6 +116,12 @@ export const textRunSchema = z.object({
    * `num` over `den`.
    */
   math: z.boolean().optional(),
+  latex: z.string().max(4096).optional(),
+  officeMath: z.object({
+    xml: z.string().max(262144),
+    count: z.number().int().positive(),
+    signature: z.string().max(262144),
+  }).optional(),
   fraction: z
     .object({
       num: z.array(mathPieceSchema).max(80),
@@ -353,6 +360,8 @@ export const slideElementSchema = z.object({
     .string()
     .regex(/^data:image\/svg\+xml;base64,/i)
     .optional(),
+  /** Original Office metafile retained alongside its browser preview. */
+  emfSrc: z.string().regex(/^data:image\/emf;base64,/i).optional(),
   /** Original JPEG XR layer and numeric background removal editing data. */
   imageLayer: z
     .object({

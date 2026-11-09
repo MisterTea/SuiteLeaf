@@ -41,6 +41,8 @@ import {
 } from "./pptx-theme";
 import { parseXmlAttrs, resolveZipPath } from "./pptx-package";
 import { detectImageMime } from "./pptx-media";
+import { gatherNativeDrawing } from "./pptx-native-objects";
+import { nativeFreeformXml } from "./pptx-native-freeform";
 import type { SlideContext } from "./pptx-slide-context";
 import type { ChartExPainter } from "./pptx-slide-frames";
 
@@ -58,6 +60,7 @@ export async function paintSlideShapes(
     emuWidth,
     slideXml,
     slideRels,
+    slideGroups,
     slidePath,
     layoutPart,
     masterPart,
@@ -241,7 +244,19 @@ export async function paintSlideShapes(
       rememberShape(spXml);
       const revealed = paintSlideBackgroundWindow(art, { width, height });
       const officeFill = revealed.type === "shape" ? officeGradientFill(themePart?.xml, filled, revealed.fill, colorMap) : undefined;
-      elements.push({ id: crypto.randomUUID(), ...revealed, ...(officeFill ? {officeFill} : {}) });
+      const native =
+        revealed.type === "image" &&
+        !phMatch &&
+        !slideGroups.some((group) => spMatch!.index >= group.childStart && spMatch!.index < group.end)
+          ? nativeFreeformXml(spXml, spPr, paint.strokeEmu)
+          : undefined;
+      const nativeDrawing = native ? await gatherNativeDrawing(zip, slidePath, native) : undefined;
+      elements.push({
+        id: crypto.randomUUID(),
+        ...revealed,
+        ...(officeFill ? { officeFill } : {}),
+        ...(nativeDrawing ? { nativeDrawing } : {}),
+      });
       painted = true;
     }
 

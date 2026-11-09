@@ -48,6 +48,8 @@ export function SlidesToolbar({
   ungroupSelected,
   selectElement,
   addTextBox,
+  insertEquation,
+  editEquation,
   addShape,
   handleImageUpload,
   handleMediaUpload,
@@ -73,6 +75,8 @@ export function SlidesToolbar({
   > &
   Pick<SlideExports, "printSlides"> &
   Pick<ShowControls, "beginShow" | "startCast" | "castReason" | "castError"> & {
+    insertEquation: () => void;
+    editEquation?: () => void;
     state: SlidesEditorState;
     readOnly: boolean;
     activeSlide: Slide;
@@ -229,6 +233,8 @@ export function SlidesToolbar({
         >
           <MousePointer2 size={16} />
         </Tool>
+        <Tool label="Insert equation" onClick={insertEquation}>∑</Tool>
+        {editEquation && <Tool label="Edit equation" onClick={editEquation}>ƒ</Tool>}
         <Tool label="Insert text box" onClick={addTextBox}>
           <Type size={16} />
         </Tool>

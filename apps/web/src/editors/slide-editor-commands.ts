@@ -30,6 +30,7 @@ export type SlideEditorApi = {
   copy: () => void;
   paste: () => void;
   insertTextBox: () => void;
+  insertEquation?: () => void;
   insertImage: () => void;
   insertAudio: () => void;
   insertVideo: () => void;

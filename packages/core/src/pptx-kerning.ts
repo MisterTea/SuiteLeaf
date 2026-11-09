@@ -127,7 +127,13 @@ export async function stampKerning(bytes: Uint8Array, slides: Slide[]): Promise<
         text += 1;
         return shape
           .replace(`name="${marker}"`, `name="Text ${text}"`)
-          .replace(/<a:(rPr|endParaRPr)\b(?![^>]*\bkern=)/g, `<a:$1 kern="${Math.round(kern * 100)}"`);
+          .replace(/<a:(?:rPr|endParaRPr)\b[^>]*>/g, (tag) => {
+            const attribute = `kern="${Math.round(kern * 100)}"`;
+            // PptxGenJS writes kern=0 whenever it writes character spacing.
+            return /\bkern="[^"]*"/.test(tag)
+              ? tag.replace(/\bkern="[^"]*"/, attribute)
+              : tag.replace(/^<[^\s/>]+/, (name) => `${name} ${attribute}`);
+          });
       });
     }
     zip.file(part, xml);

@@ -3,11 +3,15 @@ import type { Slide, SlideElement, TextRun } from "./index";
 import { officeFont } from "./office-fonts";
 import { presentationSingleSpacing } from "./pptx-line-spacing";
 import { isSymbolFont } from "./symbol-fonts";
+import { restoreOfficeMath } from "./pptx-math-preservation";
 
 /** Metadata on a paragraph separator belongs to the paragraph after it. */
 export function exportParagraphs(element: SlideElement): TextRun[][] {
   const result: TextRun[][] = [[]];
-  for (const run of element.runs ?? [{ text: element.content ?? "" }]) {
+  const content = element.content ?? "";
+  for (const run of element.runs ?? [element.math
+    ? { text: content.replace(/[\r\n]+/g, " "), latex: content, math: true }
+    : { text: content }]) {
     if (run.paragraphBreak)
       result.push([{ ...run, text: "", paragraphBreak: false }]);
     else result.at(-1)!.push(run);
@@ -22,12 +26,17 @@ function markerOf(
   runs: TextRun[],
 ): { text: string; run: TextRun } | undefined {
   const run = runs.find((item) => item.text);
+  if (run?.autoNumber && run.text.startsWith(run.autoNumber.prefix))
+    return { text: run.autoNumber.prefix, run };
+  const separator = element.bullet && runs.some((item) => item !== run && item.text)
+    ? "(?:\\s|$)"
+    : "\\s";
   const marker =
     element.bullet &&
     run &&
     (isSymbolFont(run.font) || isSymbolFont(officeFont(run.font ?? ""))
-      ? /^(.)\s/u.exec(run.text)
-      : /^([•▪◦‣∙●○■□–—-])\s/u.exec(run.text));
+      ? new RegExp(`^(.)${separator}`, "u").exec(run.text)
+      : new RegExp(`^([•▪◦‣∙●○■□–—-])${separator}`, "u").exec(run.text));
   return marker && run ? { text: marker[1], run } : undefined;
 }
 function properties(element: SlideElement, runs: TextRun[]): string {
@@ -55,12 +64,12 @@ function properties(element: SlideElement, runs: TextRun[]): string {
   const geometry = ` marL="${Math.round((margin + hang) * 9525)}" indent="${Math.round(indent * 9525)}"`;
   const bullet =
     marker || authoredBullet
-      ? `${marker?.run.color ? `<a:buClr><a:srgbClr val="${escape(marker.run.color.replace("#", ""))}"/></a:buClr>` : ""}${marker?.run.fontSize ? `<a:buSzPts val="${Math.round(marker.run.fontSize * 100)}"/>` : ""}${marker?.run.font ? `<a:buFont typeface="${escape(officeFont(marker.run.font))}"/>` : ""}<a:buChar char="${escape(marker?.text ?? "•")}"/>`
+      ? `${marker?.run.color ? `<a:buClr><a:srgbClr val="${escape(marker.run.color.replace("#", ""))}"/></a:buClr>` : ""}${marker?.run.fontSize ? `<a:buSzPts val="${Math.round(marker.run.fontSize * 100)}"/>` : ""}${marker?.run.font ? `<a:buFont typeface="${escape(officeFont(marker.run.font))}"/>` : ""}${marker?.run.autoNumber ? `<a:buAutoNum type="${escape(marker.run.autoNumber.kind)}"${marker.run.autoNumber.startAt ? ` startAt="${marker.run.autoNumber.startAt}"` : ""}/>` : `<a:buChar char="${escape(marker?.text ?? "•")}"/>`}`
       : "<a:buNone/>";
   const tabs = first.paraTabs?.length
     ? `<a:tabLst>${first.paraTabs.map((tab) => `<a:tab pos="${Math.round(tab.pos * 12700)}" algn="${tab.align}"/>`).join("")}</a:tabLst>`
     : "";
-  return `<a:pPr algn="${first.paraDistributed ? "dist" : alignment}"${geometry}${first.paraTab ? ` defTabSz="${Math.round(first.paraTab * 12700)}"` : ""}>${line}${before}${bullet}${tabs}</a:pPr>`;
+  return `<a:pPr algn="${first.paraDistributed ? "dist" : alignment}"${geometry}${marker?.run.autoNumber?.level ? ` lvl="${marker.run.autoNumber.level}"` : ""}${first.paraTab ? ` defTabSz="${Math.round(first.paraTab * 12700)}"` : ""}>${line}${before}${bullet}${tabs}</a:pPr>`;
 }
 
 /** PptxGenJS cannot express mixed paragraph pitches and folded imported gaps. */
@@ -101,6 +110,7 @@ export async function stampTextParagraphs(
           if (!run?.caps) return runXml;
           return runXml.replace(/<a:rPr\b/, `<a:rPr cap="${run.caps}"`);
         });
+        rest = restoreOfficeMath(rest, textRuns, element.fontSize || 18, element.color);
         const breaks: TextRun[] = [];
         let previous: TextRun = {
           text: "",

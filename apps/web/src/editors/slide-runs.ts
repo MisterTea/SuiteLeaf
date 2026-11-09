@@ -49,6 +49,8 @@ export function cleanRun(run: TextRun): TextRun {
   if (run.tracking) next.tracking = run.tracking;
   if (run.fraction) next.fraction = run.fraction;
   if (run.math) next.math = true;
+  if (run.latex) next.latex = run.latex;
+  if (run.officeMath) next.officeMath = run.officeMath;
   if (run.bulletSrc) next.bulletSrc = run.bulletSrc;
   if (run.href) next.href = run.href;
   return next;

@@ -33,6 +33,7 @@ export function editorCanvasHooks(
     rememberCaret,
     selectElement,
     revealMarkdown,
+    editEquation,
   }: Pick<SlideUpdates, "updateElement"> &
     Pick<SlideTextFormat, "rememberCaret"> &
     Pick<SlideElementActions, "selectElement"> & {
@@ -43,6 +44,7 @@ export function editorCanvasHooks(
       onElementMouseDown: (e: React.MouseEvent, elementId: string, handle?: ResizeHandle) => void;
       onElementPointerDown: (e: React.PointerEvent, elementId: string, handle?: ResizeHandle) => void;
       onElementPointerUp: (e: React.PointerEvent) => void;
+      editEquation?: (element: SlideElement) => boolean;
       revealMarkdown: (lines?: [number, number]) => void;
     },
 ) {
@@ -255,6 +257,7 @@ export function editorCanvasHooks(
         props.onDoubleClick = (e) => {
           e.stopPropagation();
           if (readOnlyRef.current) return;
+          if ((el.math || (e.target as HTMLElement).closest?.("[data-slide-math]")) && editEquation?.(el)) return;
           editingRef.current = el.id;
           textRange.current = null;
           setEditingId(el.id);

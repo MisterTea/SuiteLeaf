@@ -16,6 +16,18 @@ it("keeps no-fill outlines transparent and applies picture alpha", async () => {
       height: 100,
       fill: "transparent",
       stroke: "#FF0000",
+      strokeStyle: "dotted",
+    },
+    {
+      id: "rule",
+      type: "shape",
+      shapeType: "line",
+      x: 0,
+      y: 120,
+      width: 100,
+      height: 0,
+      stroke: "#000000",
+      strokeStyle: "dashed",
     },
     {
       id: "fade",
@@ -32,6 +44,8 @@ it("keeps no-fill outlines transparent and applies picture alpha", async () => {
   const xml = await zip.file("ppt/slides/slide1.xml")!.async("string");
   expect(xml).toMatch(/<a:solidFill>[\s\S]*?<a:alpha val="0"/);
   expect(xml).toContain('<a:alphaModFix amt="35000"/>');
+  expect(xml).toContain('<a:prstDash val="dot"/>');
+  expect(xml).toContain('<a:prstDash val="dash"/>');
 });
 
 it("exports connector ends as lines and preserves both picture and connector flips", async () => {
@@ -47,6 +61,7 @@ it("exports connector ends as lines and preserves both picture and connector fli
       height: 50,
       fill: "transparent",
       stroke: "#000000",
+      strokeStyle: "lgDashDotDot",
       lineTail: "triangle",
       lineHead: "oval",
       flipH: true,
@@ -66,6 +81,7 @@ it("exports connector ends as lines and preserves both picture and connector fli
   ];
   const zip = await JSZip.loadAsync(await exportPptx(file));
   const xml = await zip.file("ppt/slides/slide1.xml")!.async("string");
+  expect(xml).toContain('<a:prstDash val="lgDashDotDot"/>');
   expect(xml).toContain('<a:prstGeom prst="line">');
   expect(xml).toContain('<a:headEnd type="oval"');
   expect(xml).toContain('<a:tailEnd type="triangle"');

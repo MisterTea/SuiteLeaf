@@ -32,6 +32,7 @@ import { isSymbolFont, splitSymbolRun } from "./symbol-fonts";
 import { paintColor } from "./pptx-theme";
 import { runPaint } from "./pptx-run-paint";
 import { officeMathRuns } from "./pptx-math";
+import { officeMathSignature } from "./pptx-math-preservation";
 import { decodeXmlEntities, parseXmlAttrs, type PptxPart } from "./pptx-package";
 
 /** What a slide's text bodies inherit: the deck defaults, theme fonts and colours, and links. */
@@ -242,8 +243,16 @@ export function textBodyParser({
       while ((rMatch = rRx.exec(pXml)) !== null) {
         const rXml = rMatch[0];
         if (/^<a14:m\b|^<m:oMath/.test(rXml)) {
-          for (const mathRun of officeMathRuns(rXml)) {
-            if (!mathRun.text) continue;
+          const mathRuns = officeMathRuns(rXml).filter((run) => run.text);
+          if (mathRuns.length && rXml.length <= 262144) {
+            const signature = officeMathSignature(mathRuns);
+            if (signature.length <= 262144) mathRuns[0].officeMath = {
+              xml: rXml.startsWith("<a14:m") ? rXml : `<a14:m>${rXml}</a14:m>`,
+              count: mathRuns.length,
+              signature,
+            };
+          }
+          for (const mathRun of mathRuns) {
             pText += mathRun.text;
             if (mathRun.bold) isBold = true;
             if (mathRun.italic) isItalic = true;
@@ -479,6 +488,7 @@ export function textBodyParser({
           autoCounters.set(key, sequence);
         }
         const marker = `${formatAutoNum(kind, sequence.next)}${/^\s/u.test(pText) ? "" : " "}`;
+        const autoNumber = { kind, prefix: marker.trimEnd(), startAt, level };
         sequence.next += 1;
         pText = marker + pText;
         const first = textRuns.find((run) => run.text && run.text !== "\n");
@@ -498,6 +508,7 @@ export function textBodyParser({
           textRuns.splice(at, 0, {
             text: marker,
             listMarker: true,
+            autoNumber,
             ...(first.bold ? { bold: true } : {}),
             ...(first.italic ? { italic: true } : {}),
             ...(bulletColor || linked
@@ -508,7 +519,7 @@ export function textBodyParser({
             ...(bulletSize ? { fontSize: bulletSize } : {}),
             ...(numberFont ? { font: numberFont } : {}),
           });
-        } else if (first) { first.text = marker + first.text; first.listMarker = true; }
+        } else if (first) { first.text = marker + first.text; first.listMarker = true; first.autoNumber = autoNumber; }
       }
       if (bulletChar && pText) {
         const bulletFace = inheritedBulletTypeface(styleParts);

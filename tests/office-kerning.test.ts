@@ -117,6 +117,14 @@ describe("PowerPoint kerning", () => {
     expect(xml).not.toContain("kern=");
   });
 
+  it("exports authored kerning together with character spacing", async () => {
+    const file = await deck(slideXml('kern="1200" spc="200"'));
+    const zip = await JSZip.loadAsync(await exportPptx(file));
+    const xml = await zip.file("ppt/slides/slide1.xml")!.async("string");
+    expect(xml).toMatch(/<a:rPr\b[^>]*spc="200"[^>]*kern="1200"/);
+    expect(xml).not.toContain('kern="0"');
+  });
+
   it("parses kern sizes and skips runs without text", () => {
     expect(runKern("1200")).toBe(12);
     expect(runKern(undefined)).toBeUndefined();

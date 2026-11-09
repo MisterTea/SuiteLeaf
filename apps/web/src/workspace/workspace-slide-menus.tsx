@@ -95,6 +95,12 @@ export function SlideMenus({
           Text box
         </MenuItem>
         <MenuItem
+          synonyms={["equation", "insert equation", "latex", "math"]}
+          onSelect={() => actions.current?.slideActions?.insertEquation?.()}
+        >
+          Equation
+        </MenuItem>
+        <MenuItem
           synonyms={["image", "insert image", "picture", "photo"]}
           onSelect={() =>
             actions.current?.slideActions?.insertImage()

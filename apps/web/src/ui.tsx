@@ -533,6 +533,7 @@ export type EditorActions = {
     copy: () => void;
     paste: () => void;
     insertTextBox: () => void;
+    insertEquation?: () => void;
     insertImage: () => void;
     /** Insert › Audio. A WAV, MP3, or Ogg file on the current slide. */
     insertAudio: () => void;

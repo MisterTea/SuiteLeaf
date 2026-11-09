@@ -114,6 +114,7 @@ export function useSlideEditorActions(
         copy: () => api.current.copy(),
         paste: () => api.current.paste(),
         insertTextBox: () => api.current.insertTextBox(),
+        insertEquation: () => api.current.insertEquation?.(),
         insertImage: () => api.current.insertImage(),
         insertAudio: () => api.current.insertAudio(),
         insertVideo: () => api.current.insertVideo(),

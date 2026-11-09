@@ -7,6 +7,20 @@ import {
   stampTextParagraphs,
 } from "../packages/core/src/pptx-text-paragraphs";
 
+it("exports a separate bullet marker before an authored leading separator", async () => {
+  const file = createFile("slide", "Bullet") as SlideFile;
+  file.content.slides[file.content.slideOrder[0]].elements = [{
+    id: "bullet", type: "text", x: 0, y: 0, width: 400, height: 100,
+    bullet: true, hang: 18,
+    runs: [{ text: "•", color: "#9bafb5" }, { text: "\ufeffItem" }],
+  }];
+  const zip = await JSZip.loadAsync(await exportPptx(file));
+  const xml = await zip.file("ppt/slides/slide1.xml")!.async("string");
+  expect(xml).toContain('<a:buChar char="•"/>');
+  expect(xml).not.toContain("<a:t>•</a:t>");
+  expect(xml).toContain("<a:t>\ufeffItem</a:t>");
+});
+
 it("keeps all/small caps as editable run features across soft breaks", async () => {
   const file = createFile("slide", "Caps") as SlideFile;
   file.content.slides[file.content.slideOrder[0]].elements = [{

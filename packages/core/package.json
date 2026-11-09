@@ -36,6 +36,7 @@
     "./workflows": "./src/workflows/index.ts"
   },
   "dependencies": {
+    "katex": "0.16.47",
     "@noble/ciphers": "^2.4.0",
     "@noble/hashes": "^2.4.0",
     "cfb": "^1.2.2",
